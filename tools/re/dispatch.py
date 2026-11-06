@@ -4,7 +4,7 @@ Concretely evaluates the compare/sub/jump-table chain that follows `call 0x40f29
 (the "request" getter) for each given ID, then lists the field names and typed getters
 used by the case body it lands in.
 
-    python3 tools/dispatch.py 0x4f4a4f 0x2398 0x21fc 0x2cf7
+    python3 tools/re/dispatch.py 0x4f4a4f 0x2398 0x21fc 0x2cf7
 """
 import re
 import struct
