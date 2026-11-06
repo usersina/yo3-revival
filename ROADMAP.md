@@ -44,8 +44,8 @@ Stop finding missing fields one crash at a time.
 - [x] Two clients at once: `YO3_INSTANCE=b` with its own display and reflinked Wine prefix
 - [x] Player search returns the players online, filtered by name, level or id; both clients list each other
       (needed the friend and black list pushes, `0x251C`/`0x252A`)
-- [ ] Entering map locations, lobbies and rooms. The map unlocks; its facilities are the Shop, Official Event,
-      Championship, User event, NPC duel and character settings
+- [x] Map locations: the map unlocks, and each of its six facilities opens and returns to the map (rooms are the
+      chat rooms above; the DUEL panel belongs to duels, M5)
   - [x] Shop: opens to the Shop Menu with empty shelves and returns to the map (rental records pushed at entry)
   - [x] NPC duel: opens (Kaiba Corporation), says there are no valid decks, returns to the map (the trunk now has
         `cards`/`noTrade` arrays, all zero)
@@ -56,6 +56,10 @@ Stop finding missing fields one crash at a time.
 - [ ] Friends, mail and teams (as far as the main screen needs). The friend and black lists are pushed empty;
       adding friends needs their requests mapped (`0x2528`, `0x252C`, `0x252E` carry `to_id`)
 - [ ] Player search criteria we ignore: language, country, manner level, status, community, event
+- [ ] Main menu screens (the menu opens now): Card Album, Rental Card List, My Profile, D-Mail, Duel Log, Team,
+      Friend List, Ignore List, Leaderboard, BOOSTERPASS, Duel Options (Edit Deck is M4)
+- [ ] Saving character settings (Confirm; the player update `0x2CEF` carries `avatar1`, `speech%02d`, …)
+- [ ] Creating and joining user events
 - **Exit:** two headless clients log in as different players, find each other and chat (met 2026-11-06:
   Yugi and Kaiba chat in the Lobby; the room list shows the other player)
 
@@ -71,6 +75,7 @@ Stop finding missing fields one crash at a time.
 
 ## M5: Duels
 
+- [ ] The main screen's DUEL panel (`duelbtnEnable`, `GoDuel`, `DuelWait`): duel invitations or matchmaking
 - [ ] Map the duel server tier (`DuelServerConnection`): how a duel is handed off, ports, handshake
 - [ ] Confirm in Ghidra that Online 3's duel stream is Konami's engine command set (as in Online 2)
 - [ ] Rules engine: ocgcore as a separate process (AGPL), as in YOLaucher's `duelcore`

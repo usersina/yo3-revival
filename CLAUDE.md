@@ -87,7 +87,8 @@ the knowledge.
    - an unanswered request (the last `<-` in `check`, or `UNHANDLED` in the server output)
    - fields the client looked up and didn't find (the tracer); `top` means the reply itself
    - a "There is no response from the server. (N)" dialog (N is the request id in decimal)
-   - a Wine "page fault … at address X" in `logs/client-wine.log`
+   - a Wine "page fault … at address X" in `logs/client-wine.log`, or an `E` line in `logs/fields.tsv` (traced runs):
+     the exception and the game-code addresses on the stack, a rough backtrace even when Wine prints none
    - clicks that do nothing: the screen may still be locked (the main screen locks itself until its startup steps
      finish; see the main-screen section of the protocol). `YO3_TRACE_HITS` shows which step it stopped at.
 2. **Locate.** Find the request's builder and the reply ids its screen compares (grep the id in
