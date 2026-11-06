@@ -142,8 +142,19 @@ fn news_list_is_nested_under_a_lang_record() {
 }
 
 #[test]
-fn player_search_succeeds() {
-    assert_eq!(one(in_world().handle(&req_with(0x2CF0, "search_type", 1))).request(), Some(0x2CF7));
+fn player_search_succeeds_with_a_result_count() {
+    // InfoWindow 0x4591CA reads result_number (field trace); it matches the items sent.
+    let r = one(in_world().handle(&req_with(0x2CF0, "search_type", 1)));
+    assert_eq!(r.request(), Some(0x2CF7));
+    assert_eq!(r.get("result_number"), Some(&Value::U32(r.items.len() as u32)));
+}
+
+#[test]
+fn present_count_is_answered() {
+    // 0x2775 is a bare request (0x4F3A00); PresentWindow 0x476DE0 reads present_count from 0x2774.
+    let r = one(in_world().handle(&req(0x2775)));
+    assert_eq!(r.request(), Some(0x2774));
+    assert_eq!(r.get("present_count"), Some(&Value::U32(0)));
 }
 
 #[test]

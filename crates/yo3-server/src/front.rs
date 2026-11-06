@@ -160,7 +160,10 @@ impl FrontSession {
                 let lang = entries.fold(Message::record().with("lang", Value::text("1")), Message::item);
                 Message::reply(0x21FC).item(lang)
             }
-            0x2CF0 => Message::reply(0x2CF7),
+            // Player search; InfoWindow reads result_number (0x4591CA). No players to list yet.
+            0x2CF0 => Message::reply(0x2CF7).with("result_number", Value::U32(0)),
+            // Present count (PresentWindow 0x476DE0 reads present_count from 0x2774).
+            0x2775 => Message::reply(0x2774).with("present_count", Value::U32(0)),
             _ => return vec![],
         };
         vec![reply]
