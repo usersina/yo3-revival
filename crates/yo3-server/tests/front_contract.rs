@@ -87,10 +87,22 @@ fn world_entry_sends_exactly_one_trunk_record() {
     // The 9000 handler copies item[0] into UserData+0x8C8 without a NULL check.
     let mut s = fresh();
     s.handle(&req_with(0x1F4C, "player_id", 1001));
-    let r = one(s.handle(&req_with(0x1FA4, "player_id", 1001)));
+    let replies = s.handle(&req_with(0x1FA4, "player_id", 1001));
+    let r = &replies[0];
     assert_eq!(r.request(), Some(9000));
     assert_eq!(r.items.len(), 1);
     assert_eq!(r.items[0].tag, 3);
+}
+
+#[test]
+fn world_entry_pushes_the_friend_and_black_lists() {
+    // The client never asks for them: the global dispatcher 0x4F4A00 stores 0x251C in dataset
+    // slot 6 and 0x252A in slot 7, and 0x45E6D0 / 0x45E810 (run for every listed player) read
+    // those slots without a NULL check (crash at 0x45E734). Empty lists are fine.
+    let mut s = fresh();
+    s.handle(&req_with(0x1F4C, "player_id", 1001));
+    let ids: Vec<_> = s.handle(&req_with(0x1FA4, "player_id", 1001)).iter().map(Message::request).collect();
+    assert_eq!(ids, [Some(9000), Some(0x251C), Some(0x252A)]);
 }
 
 #[test]

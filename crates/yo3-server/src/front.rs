@@ -255,7 +255,12 @@ impl FrontSession {
                     return vec![];
                 }
                 // Copied wholesale into the trunk dataset; which fields later scenes read is unknown.
-                Message::reply(9000).item(Message::record())
+                let trunk = Message::reply(9000).item(Message::record());
+                // The client never asks for its friend and black lists; the global dispatcher stores
+                // 0x251C in dataset slot 6 and 0x252A in slot 7, and listing any player reads both
+                // without a NULL check (0x45E6D0, 0x45E810). Items would be {friend_id, friend_name,
+                // login_flag} and {black_id, black_name, login_flag} (0x475A20 modes 2 and 3).
+                return vec![trunk, Message::reply(0x251C), Message::reply(0x252A)];
             }
             0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_ids)),
             0x27D8 => Message::reply(0x27D9).item(Message::record()),

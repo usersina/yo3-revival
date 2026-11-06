@@ -52,6 +52,8 @@ async fn client_reaches_the_main_screen() {
     assert_eq!(rpc(&mut front, select).await.request(), Some(0x2266));
     let trunk = Message::reply(0x1FA4).with("player_id", Value::U32(1001));
     assert_eq!(rpc(&mut front, trunk).await.request(), Some(9000));
+    assert_eq!(recv(&mut front).await.request(), Some(0x251C), "friend list push");
+    assert_eq!(recv(&mut front).await.request(), Some(0x252A), "black list push");
     assert_eq!(rpc(&mut front, Message::reply(0x2072)).await.request(), Some(0x2398));
 
     // every packet is logged decoded
