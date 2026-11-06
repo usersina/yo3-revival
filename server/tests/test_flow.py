@@ -63,6 +63,19 @@ async def _flow():
     assert (await rpc(w, r, codec.message(0x1F4C, {"player_id": codec.u32(1001)}))).request == 0x2266
     trunk = await rpc(w, r, codec.message(0x1FA4, {"player_id": codec.u32(1001)}))
     assert trunk.request == 9000 and len(trunk.items) == 1 and trunk.items[0].tag == codec.RECORD
+
+    # main screen
+    for req, rep in ((0x271A, 0x271B), (0x2710, 0x2711), (0x2AFB, 0x2B13), (0x2AFD, 0x2B17)):
+        assert (await rpc(w, r, codec.message(req))).request == rep, hex(req)
+    regs = await rpc(w, r, codec.message(0x2072))
+    assert regs.request == 0x2398 and len(regs.fields["regulations"].data) == 40
+    assert len((await rpc(w, r, codec.message(0x27D8))).items) == 1
+    assert (await rpc(w, r, codec.message(0x2583))).get("count") == 0
+    refresh = await rpc(w, r, codec.message(0x2CEE))
+    assert refresh.request == 0x2CF3 and refresh.items[0].fields["pbin"].tag == codec.T_BIN
+    info = await rpc(w, r, codec.message(0x1F41))
+    assert info.request == 0x21FC and info.items[0].items[0].get("starttime")
+    assert (await rpc(w, r, codec.message(0x2CF0, {"search_type": codec.u32(1)}))).request == 0x2CF7
     w.close()
     task.cancel()
 

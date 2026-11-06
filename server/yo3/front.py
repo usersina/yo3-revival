@@ -9,14 +9,45 @@ Request/reply pairs confirmed so far (client: LoginWindow.cpp dispatcher at 0x46
   0x1FA4 trunk data      -> 9000    item[0] is copied wholesale into the user's trunk
                                     dataset (app+0x8C8, a YO3Trunk). An empty item list
                                     would crash the client (it dereferences item[0]).
+
+Main screen (MainGamen polls, re-armed on a timer via obj+0xE8; an unanswered poll shows
+"There is no response from the server. (<request id>)"). Every reply also passes through
+the global front dispatcher at 0x4F4A00 (tools/dispatch.py routes an ID through it):
+  0x2072 -> 0x2398   {regulations: u16 BE ids}; read without a NULL check (crash if absent)
+  0x2583 -> 0x2588   {count}
+  0x27D8 -> 0x27D9   item[0] is dereferenced without a check: must carry one record
+  0x271A -> 0x271B   0x2710 -> 0x2711   0x2AFB -> 0x2B13   0x2AFD -> 0x2B17
+  0x2CEE -> 0x2CF3   item = player record (its player_id must match), reloaded into PlayerData
+Info / chat windows:
+  0x1F41 info list       -> 0x21FC  item {lang} whose items are {starttime, title, body}
+  0x2CF0 player search   -> 0x2CF7  RESPONSE_PLAYER_SEARCH_SUCCESS, items = players
+  0x2724 heartbeat (every 30 s / 120 s): the client checks no reply
 """
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass, field
 
-from .codec import Message, blob, message, record, text, u32
+from .codec import Message, blob, message, record, text, u16be_array, u32
 
 VERSION_VALID = 0x219F
+HEARTBEAT = 0x2724
+
+# Regulations (banlists) the client ships in data/regulation/*.y3r: ids 1-20.
+# Type 0 = dated F/L lists (2, 16, 17, 18), 1 = special formats, 2 = 2011 lists (19, 20).
+REGULATION_IDS = list(range(1, 21))
+
+# Main-screen polls whose replies carry nothing the client reads.
+BARE_REPLIES = {
+    0x271A: 0x271B,
+    0x2710: 0x2711,
+    0x2AFB: 0x2B13,
+    0x2AFD: 0x2B17,
+}
+
+NEWS = [
+    ("Welcome back to Yu-Gi-Oh! ONLINE", "This is a private revival server. Have fun duelling with your friends!"),
+]
 
 
 @dataclass
@@ -84,6 +115,10 @@ class FrontSession:
         if self.count == 1:
             return [message(VERSION_VALID)]
         rid = msg.request
+        if rid == HEARTBEAT:
+            return []
+        if rid in BARE_REPLIES:
+            return [message(BARE_REPLIES[rid])]
         handler = HANDLERS.get(rid)
         if handler is None:
             self.log("front", f"UNHANDLED request {rid:#x}" if isinstance(rid, int) else "request without id")
@@ -121,6 +156,28 @@ class FrontSession:
             return []
         return [message(9000, items=[trunk_record(self.account, player)])]
 
+    def on_unread_count(self, msg):
+        return [message(0x2588, {"count": u32(0)})]
+
+    def on_regulations(self, msg):
+        return [message(0x2398, {"regulations": u16be_array(REGULATION_IDS)})]
+
+    def on_27d8(self, msg):
+        # Meaning unknown; the global dispatcher copies item[0] into a 0xC4-byte object.
+        return [message(0x27D9, items=[record()])]
+
+    def on_player_refresh(self, msg):
+        player = self.player or self.account.players[0]
+        return [message(0x2CF3, items=[player_record(player)])]
+
+    def on_info_list(self, msg):
+        now = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        entries = [record({"starttime": text(now), "title": text(t), "body": text(b)}) for t, b in NEWS]
+        return [message(0x21FC, items=[record({"lang": text("1")}, entries)])]
+
+    def on_player_search(self, msg):
+        return [message(0x2CF7)]
+
 
 HANDLERS = {
     0x1F47: FrontSession.on_auth,
@@ -128,4 +185,10 @@ HANDLERS = {
     0x1F49: FrontSession.on_player_list,
     0x1F4C: FrontSession.on_select_player,
     0x1FA4: FrontSession.on_trunk,
+    0x1F41: FrontSession.on_info_list,
+    0x2072: FrontSession.on_regulations,
+    0x27D8: FrontSession.on_27d8,
+    0x2583: FrontSession.on_unread_count,
+    0x2CEE: FrontSession.on_player_refresh,
+    0x2CF0: FrontSession.on_player_search,
 }
