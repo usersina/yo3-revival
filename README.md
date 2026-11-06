@@ -11,7 +11,8 @@ A private server for Yu-Gi-Oh! ONLINE 3 (Duel Accelerator), for playing with fri
 | Gate → front redirect, version check (`"2010.03.23 skelton"`) | works |
 | Auth / login / player list / player select | works |
 | World entry `0x1FA4` → `9000` (trunk data) | works; the client enters the main screen |
-| Main screen: `0x2CF0`, `0x1F41`, `0x2072` | **not answered yet** |
+| Main screen polls, news list, player search, regulations | works; the main screen is stable |
+| `0x2775` (presents?) | **not answered yet** |
 | Lobby, shop, decks, duels | not started |
 
 ## Run
@@ -38,6 +39,28 @@ cd ~/.wine/drive_c/Program\ Files\ \(x86\)/Konami/Yu-Gi-Oh!\ ONLINE\ 3 && wine y
 ```
 
 Every packet in both directions is logged decoded to `logs/server-*.log` and `logs/packets-*.jsonl`.
+
+### Headless client
+
+`tools/vclient.sh` runs the game on a private Xvfb display (`:77`) with its own virtual mouse, so it never touches
+your screen:
+
+```bash
+tools/vclient.sh xvfb && tools/vclient.sh start && tools/vclient.sh login
+tools/vclient.sh shot name     # -> logs/shots/name.png
+tools/vclient.sh click X Y     # game-window coordinates
+```
+
+### Reverse-engineering helpers
+
+- `python3 tools/dispatch.py 0x4f4a4f 0x2398` routes a reply ID through the client's global front dispatcher and
+  lists the fields its case reads.
+- Ghidra headless export (output stays in the ignored `re/` folder):
+
+```bash
+/opt/ghidra/support/analyzeHeadless re/ghidra yo3 -import "<game dir>/yo3.exe" -overwrite \
+  -scriptPath tools/ghidra -postScript ExportDecompiled.java "$PWD/re/yo3_decompiled.c"
+```
 
 Tests: `python3 server/tests/test_flow.py` round-trips the client's own data files through the codec and plays the
 login flow against a live server.
