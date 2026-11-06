@@ -79,6 +79,11 @@ Stop finding missing fields one crash at a time.
 ## M5: Duels
 
 - [ ] The main screen's DUEL panel (`duelbtnEnable`, `GoDuel`, `DuelWait`): duel invitations or matchmaking
+- [ ] NPC duels (Kaiba Corporation): the scene now accepts the starter deck and shows "Select an opponent". The
+      roster is `0x2711` (`{npc_type, npc_id}` + `need_ex` sub-items); about 24 NPCs have portraits
+      (`data/npc/npcsel*.png`) and 132 `deck_type` 3 presets look like their decks. Still unknown: where an NPC's
+      name and details come from (`npc_name`, NPC `PlayerData` with `npc_id` at `+0x400`, `0x51C4F0`) and what
+      choosing one sends. Whether CPU duels run inside the client would show how PvP duels work
 - [ ] Map the duel server tier (`DuelServerConnection`): how a duel is handed off, ports, handshake
 - [ ] Confirm in Ghidra that Online 3's duel stream is Konami's engine command set (as in Online 2)
 - [ ] Rules engine: ocgcore as a separate process (AGPL), as in YOLaucher's `duelcore`

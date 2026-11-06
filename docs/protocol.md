@@ -85,7 +85,7 @@ clicks do nothing. Every reply also passes through the global front dispatcher; 
 | `0x2CEE` player refresh `{player_id, type}` | `0x2CF3` (`0x2CF4`) | item = the selected player's record; its `player_id` must match | `0x47378A`, `0x4F5FC2` | confirmed |
 | `0x2583` | `0x2588` (`0x2589`) | `count` u32 | `0x4730B0` | shape (unread mail or presents?) |
 | `0x271A` | `0x271B` (`0x271C`) | none | `0x47352F` | shape |
-| `0x2710` | `0x2711` (`0x2712`) | none | `0x473646` | shape |
+| `0x2710` NPC roster | `0x2711` (`0x2712`) | items = NPCs `{npc_type (tab 0–2), npc_id}`, each with up to three sub-items `{need_ex}` (`0x4BEB40`); kept in slot 4 for the NPC duel's opponent list. We send none | `0x473646`; an experiment with one NPC listed it (two stars, no name) but picking it sent nothing: the NPC's details come from somewhere not found yet | shape (empty) |
 | `0x2AFB` | `0x2B13` (`0x2B14`) | none | `0x4738FA` | shape |
 | `0x2AFD` | `0x2B17` (`0x2B18`) | none; the global case reads `member_id`, `authority` if present | `0x473A3A`, `0x4F5E0E` | shape (team?) |
 | `0x2775` next present (bare) | `0x2778` none (`0x2777`/`0x2779` would carry a present) | none | builder `0x4F3A00`. The `0x2201` reply sets flag `0x80` (so does a `0x2774` push), so startup step `0x473AE0` opens PresentWindow, which sends `0x2775` and holds the main screen locked until it closes. Its switch (`0x476E74`): `0x2777`/`0x2779` "PRESENT content get success", `0x2778`/`0x277A` "content get error", which retries while `+0x58` > 0 and then closes (`0x4783C9`); its `0x2774` case reads `present_count` and drops it | confirmed (live: the facilities unlock after `0x2778`) |
@@ -198,6 +198,7 @@ NULL, which these callers check. Send them when we know what they mean.
 | `0x2201` | `bgm` int (top level) | global dispatcher `0x4F506A` | probably the lobby music |
 | `0x21FC` | `icon`, `lefttime` (int), `maintenance` (string), in the `{lang}` item | `0x4F477C`, `0x44E6EF`, `0x44E72D` | a maintenance countdown; absent = none |
 | player record | `npc_id` int | `0x51BFE2` | 0 = a human player |
+| player record | `npcbin` raw: four u16 per NPC id (the player's experience with each NPC, compared with `need_ex`) | `0x51C680` (NULL-safe) | absent = no experience |
 | player record | `evalnum`, `evaltotal`, `evallevel` uint | the shop's `0x1C20` case (`0x48ABB6`…), through UserData+`0x2C` | the player's manner rating; only used when the shop text is empty |
 | `0x27D9` | `cpuUse`, `notRelease` (raw) in its record | `0x4F2080`, `0x4F20BA` | meaning open (CPU duels? unreleased cards?) |
 | (around `0x2CF7`) | `premium` uint, from **another dataset**, not the reply | `0x44F3E7` | probably the account's Duelist Premium flag |
