@@ -3,7 +3,8 @@
 # screen or mouse.
 #
 #   tools/client/vclient.sh xvfb            start the virtual display (:77) if it is not running
-#   tools/client/vclient.sh start           launch yo3.exe on it (trace -> logs/client-stdout.log)
+#   tools/client/vclient.sh start [--trace] launch yo3.exe on it (trace -> logs/client-stdout.log);
+#                                           --trace also logs every field lookup -> logs/fields.tsv
 #   tools/client/vclient.sh login           title -> ONLINE -> OK (saved credentials) -> first player
 #   tools/client/vclient.sh shot NAME       screenshot the game window -> logs/shots/NAME.png
 #   tools/client/vclient.sh click X Y       left click at game-window coordinates (1024x768)
@@ -52,8 +53,16 @@ case "${1:-}" in
     xdpyinfo >/dev/null 2>&1 || { Xvfb "$DISPLAY" -screen 0 1280x960x24 -nolisten tcp & sleep 1; }
     xdpyinfo | grep dimensions ;;
   start)
+    if [ "${2:-}" = "--trace" ]; then
+      TRACER="$ROOT/tools/tracer/build"
+      [ -f "$TRACER/yo3trace.dll" ] || "$ROOT/tools/tracer/build.sh" >/dev/null
+      export YO3_TRACE_FILE; YO3_TRACE_FILE="$(winepath -w "$LOGS/fields.tsv")"
+      cmd=(wine "$TRACER/yo3trace-launch.exe" "$(winepath -w "$GAME/yo3.exe")" "$(winepath -w "$TRACER/yo3trace.dll")")
+    else
+      cmd=(wine yo3.exe)
+    fi
     cd "$GAME"
-    WINEDEBUG=fixme-all nohup wine yo3.exe >"$LOGS/client-stdout.log" 2>"$LOGS/client-wine.log" &
+    WINEDEBUG=fixme-all nohup "${cmd[@]}" >"$LOGS/client-stdout.log" 2>"$LOGS/client-wine.log" &
     for _ in $(seq 60); do [ -n "$(win)" ] && break; sleep 0.5; done
     echo "window $(win)" ;;
   login)
