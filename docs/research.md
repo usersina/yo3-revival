@@ -2,6 +2,9 @@
 
 Research date: 2026-11-06. Client examined: `yo3.exe` built 2011-07-01, last patch `p11070600`.
 
+> Snapshot from before any server code existed. Its tool paths are out of date (`tools/re/` now), and the plan in
+> §5 continues in [ROADMAP.md](../ROADMAP.md). Protocol facts found since then live in [protocol.md](protocol.md).
+
 ## Verdict
 
 A private server for you and your friends is realistic. In October 2026, two independent projects revived

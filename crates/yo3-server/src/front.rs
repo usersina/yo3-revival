@@ -1,22 +1,7 @@
 //! Front server: login -> player select -> world entry -> main-screen polls.
 //!
-//! Request -> reply pairs, established from the client (yo3.exe addresses in brackets):
-//!   opener (version string)  -> 0x219F version valid
-//!   0x1F47 auth              -> 0x219A {regulation_id, user_id, uname, dpoint}
-//!   0x1F48 login             -> 0x2201 {regulation_id} + item {user_id, uname, dpoint}  [0x469C00]
-//!   0x1F49 player list       -> 0x2260 items = player records                          [0x51C260]
-//!   0x1F4C select player     -> 0x2266
-//!   0x1FA4 trunk data        -> 9000   exactly one record, copied into UserData+0x8C8  [0x46AFA8]
-//!   0x2072 regulations       -> 0x2398 {regulations: u16 BE ids}                       [0x4F545B]
-//!   0x27D8                   -> 0x27D9 one record                                      [0x4F5BE9]
-//!   0x2CEE player refresh    -> 0x2CF3 item = the selected player's record             [0x4F5FC2]
-//!   0x2583 unread count      -> 0x2588 {count}
-//!   0x271A / 0x2710 / 0x2AFB / 0x2AFD -> 0x271B / 0x2711 / 0x2B13 / 0x2B17
-//!   0x1F41 info list         -> 0x21FC item {lang} whose items are {starttime, title, body} [0x458A64]
-//!   0x2CF0 player search     -> 0x2CF7 RESPONSE_PLAYER_SEARCH_SUCCESS
-//!   0x2724 heartbeat         -> (none; the client checks no reply)
-//! Main-screen polls are re-armed on a timer; an unanswered one shows
-//! "There is no response from the server. (<request id>)".
+//! The request/reply catalog, with the client evidence and status of every pair, is
+//! `docs/protocol.md`. Keep it, this file and `tests/front_contract.rs` in step.
 use std::sync::Arc;
 
 use yo3_proto::{Message, Packet, Value};

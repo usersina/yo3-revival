@@ -1,0 +1,92 @@
+# Protocol catalog
+
+The client (`yo3.exe`) is the spec. Every row cites its evidence: a client address, a line of the client's own
+trace (`File.cpp Lnnn`), or a recorded packet. **Status** is one of:
+- **confirmed**: the shape is proven, and so is the meaning where one is given
+- **shape**: the client accepts the shape we send, but the meaning or contents are unknown
+- **guess**: we picked a value; revisit
+- **open**: not answered yet
+
+The contract tests in `crates/yo3-server/tests/front_contract.rs` enforce the confirmed shapes.
+
+## Wire format
+
+- Frame: `u32 BE (len(body) ^ 0x77777777)` + body.
+- Body: Blowfish-ECB, key `"12345678"`, each 32-bit word little-endian (`BlowfishLE`), zero-padded to 8 bytes.
+- Message: `u8 tag | u16 nfields | (u8 namelen, name, u8 vtype, value)… | u16 nitems | items…`, big-endian.
+  - Value types:
+
+    | vtype | Kind | Encoding |
+    |---|---|---|
+    | 5 / 6 | u32 | 4 bytes |
+    | 7 / 9 | text | `u32 len` + bytes; the client stops reading at the first NUL |
+    | 8 | binary | `u32 len` + bytes; NULs are kept |
+
+  - Tags: replies and requests use 4, list records use 3. The message ID is the `request` field.
+- Every connection opens with a bare version string: `00 12 "2010.03.23 skelton"`.
+- The client's `.y3d/.y3a/.y3r` files use the same frame and message layout.
+- Client-side failures:
+  - An unanswered poll shows "There is no response from the server. (*decimal id*)". For example, `(8,306)` is
+    `0x2072`.
+  - A missing field that the client reads without a NULL check is a crash: Wine's "Unhandled page fault" at the
+    reading address.
+- Timestamps sent to the client are **JST** (UTC+9). The client converts them to local time.
+
+## Gate (TCP 5730)
+
+| Request | Reply | Fields | Evidence | Status |
+|---|---|---|---|---|
+| opener | `0x21FE` | `host` text, `port` u32 (front server) | `LoginWindow.cpp L303/L314` | confirmed |
+
+## Front (TCP 1213)
+
+### Login (dispatcher `0x469C00`, `LoginWindow.cpp`)
+
+| Request | Reply | Fields | Evidence | Status |
+|---|---|---|---|---|
+| opener | `0x219F` | none | "front server : version valid." L370 | confirmed |
+| `0x1F47` auth | `0x219A` | `regulation_id`, `user_id`, `uname`, `dpoint` | "user auth success" L395 | confirmed |
+| `0x1F48` login `{lang}` | `0x2201` | top: `regulation_id`; item[0]: `user_id`, `uname`, `dpoint` | L449, `uid : [1001]` L457 | confirmed |
+| `0x1F49` player list | `0x2260` | items = player records (below) | "MyPlayerList" L509, loader `0x51C260` | confirmed |
+| `0x1F4C` select `{player_id}` | `0x2266` | none | "my player use success" L577 | confirmed |
+| `0x1FA4` trunk `{player_id}` | `9000` (`0x2328`) | exactly one record; item[0] is copied wholesale into `UserData+0x8C8` | "trunk data success" L666, `0x46AFA8` | shape (contents: **guess**, empty) |
+
+**Player record** (read by `0x46C1E4` and `0x51C260`):
+- `pname`, `pindex`, `player_id`, `dlv`, `title`, `n_win`, `n_lose`, `n_draw`, `team_level`, `team_name`,
+  `team_authority`.
+- `avatar1`: **binary**, 34 bytes (17 BE u16). Sent as text, it crashes at `0x46C750`.
+- `pbin`: **binary**, required. The main screen reads byte `0x4B` at `0x4727DE`; without it the client crashes.
+  We send 512 bytes, a **guess** based on the 4,096 entries of `yo3pbininfo.bin`.
+- `speech00`–`speech22` and `comment00`–`comment01`: text.
+
+### Main screen (MainGamen polls `0x472EDC…`, global dispatcher `0x4F4A00`)
+
+The main screen re-arms each poll on a timer (`obj+0xE8 = request id`). Every reply also passes through the global
+front dispatcher; `python3 tools/re/dispatch.py 0x4f4a4f <id>` shows the case it lands in.
+
+| Request | Reply (error) | Fields | Evidence | Status |
+|---|---|---|---|---|
+| `0x2072` regulations | `0x2398` (`0x2399`) | `regulations`: binary u16 BE regulation ids | read unchecked at `0x4F545B` | confirmed field; list contents **guess** (all 20) |
+| `0x27D8` | `0x27D9` (`0x27DA`) | one record (copied into a 0xC4-byte object) | item[0] read unchecked at `0x4F5BE9` | shape |
+| `0x2CEE` player refresh `{player_id, type}` | `0x2CF3` (`0x2CF4`) | item = the selected player's record; its `player_id` must match | `0x47378A`, `0x4F5FC2` | confirmed |
+| `0x2583` | `0x2588` (`0x2589`) | `count` u32 | `0x4730B0` | shape (unread mail or presents?) |
+| `0x271A` | `0x271B` (`0x271C`) | none | `0x47352F` | shape |
+| `0x2710` | `0x2711` (`0x2712`) | none | `0x473646` | shape |
+| `0x2AFB` | `0x2B13` (`0x2B14`) | none | `0x4738FA` | shape |
+| `0x2AFD` | `0x2B17` (`0x2B18`) | none; the global case reads `member_id`, `authority` if present | `0x473A3A`, `0x4F5E0E` | shape (team?) |
+| `0x2775` | ? | ? | builder `0x4F3A5E`; PresentWindow handles `0x2774/0x2779/0x277A` | **open** |
+
+### Info and chat windows
+
+| Request | Reply (error) | Fields | Evidence | Status |
+|---|---|---|---|---|
+| `0x1F41` info list | `0x21FC` | item[0] `{lang}` whose items are `{starttime "%Y-%m-%d %H:%M:%S" JST, title, body}` | "information recv success!" `InfoWindow.cpp L1547`, `0x458A64` | confirmed (`lang` value **guess** "1") |
+| `0x2CF0` player search `{back_num, base_point, front_num, search_flag, search_type}` | `0x2CF7` (`0x2CF8`) | items = players (shape unknown; we send none) | `RESPONSE_PLAYER_SEARCH_SUCCESS` `ChatWindow.cpp L651` | confirmed (empty) |
+| `0x2724` heartbeat | none | none | builders `0x4F17DF` (every 30 s) and `0x4F45A5` (after 120 s); no reply is checked | confirmed |
+
+## Families seen in the client, not mapped yet
+
+- `0x2CEC`–`0x2CF8`: player search, character creation (`CharMake.cpp`: `0x2CF5/6`) and player data.
+- `0x2774`–`0x277A`: presents (`PresentWindow.cpp`); `RESPONSE_PRESENT_CONTENT_GET_SUCCESS`.
+- 48 more `REQUEST_` / `RESPONSE_COMMUNICATION_*` names for trade and rental (search the exe's strings).
+- `DuelServerConnection`: the third server tier, not reached yet.
