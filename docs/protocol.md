@@ -58,7 +58,9 @@ The contract tests in `crates/yo3-server/tests/front_contract.rs` enforce the co
 **Player record** (read by `0x46C1E4` and `0x51C260`):
 - `pname`, `pindex`, `player_id`, `dlv`, `title`, `n_win`, `n_lose`, `n_draw`, `team_level`, `team_name`,
   `team_authority`.
-- `avatar1`: **binary**, 34 bytes (17 BE u16). Sent as text, it crashes at `0x46C750`.
+- `avatar1`: **binary**, BE u16 entries copied into PlayerData+`0x28`. Sent as text, it crashes at `0x46C750`. Character
+  settings read entries 17–40 through a checked index (`0x429210`; with only 17 entries the CRT aborts from
+  `0x42923F`), so we send 41 zero entries (82 bytes): a default male avatar. The real length is unknown (**guess**).
 - `pbin`: **binary**, required. The main screen reads byte `0x4B` at `0x4727DE`; without it the client crashes.
   We send 512 bytes, a **guess** based on the 4,096 entries of `yo3pbininfo.bin`.
 - `speech00`–`speech22` and `comment00`–`comment01`: text.

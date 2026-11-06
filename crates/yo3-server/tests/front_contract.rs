@@ -70,8 +70,10 @@ fn player_records_carry_everything_the_loader_reads() {
     let r = one(fresh().handle(&req(0x1F49)));
     assert_eq!(r.request(), Some(0x2260));
     let p = &r.items[0];
-    // avatar1 must be binary: tags 7/9 stop at the first NUL and the client crashes (0x46C750).
-    assert!(matches!(p.get("avatar1"), Some(Value::Bin(b)) if b.len() == 34));
+    // avatar1 must be binary: tags 7/9 stop at the first NUL and the client crashes (0x46C750). The
+    // loader copies it into a u16 array; character settings read entries 17..=40 through a checked
+    // index (0x429210, failing at 0x42923F), so it needs at least 41 entries.
+    assert!(matches!(p.get("avatar1"), Some(Value::Bin(b)) if b.len() == 41 * 2));
     // pbin is dereferenced by the main screen at 0x4727DE; missing => NULL => crash.
     assert!(matches!(p.get("pbin"), Some(Value::Bin(b)) if b.len() == 512));
     for name in ["pname", "pindex", "player_id", "dlv", "title", "n_win", "n_lose", "n_draw", "speech00", "speech22", "comment01"] {

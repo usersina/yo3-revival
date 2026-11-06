@@ -49,6 +49,8 @@ Stop finding missing fields one crash at a time.
   - [x] Shop: opens to the Shop Menu with empty shelves and returns to the map (rental records pushed at entry)
   - [x] NPC duel: opens (Kaiba Corporation), says there are no valid decks, returns to the map (the trunk now has
         `cards`/`noTrade` arrays, all zero)
+  - [x] Character settings: Avatar Settings opens with a default avatar and returns to the map (`avatar1` needs
+        41 entries); saving changes is not handled yet
 - [ ] Friends, mail and teams (as far as the main screen needs). The friend and black lists are pushed empty;
       adding friends needs their requests mapped (`0x2528`, `0x252C`, `0x252E` carry `to_id`)
 - [ ] Player search criteria we ignore: language, country, manner level, status, community, event
@@ -91,7 +93,7 @@ Stop finding missing fields one crash at a time.
 | `regulations` list | all 20 ids | Which banlists the UI should offer |
 | `0x21FC` `lang` | `"1"` | Read as a string; semantics unknown |
 | `0x2583/0x271A/0x2710/0x2AFB/0x2AFD/0x27D8` | minimal replies | Meanings unknown; they only stop timeouts |
-| `avatar1` slots | zeros | Slot meanings unmapped |
+| `avatar1` length and slots | 41 zero entries (a default male avatar) | Slot meanings unmapped |
 | `bgm`, `icon`/`lefttime`/`maintenance`, `npc_id`, `cpuUse`/`notRelease`, `premium` | left out (read as 0 / NULL) | The tracer shows the client reads them; see "Fields the client reads that we leave out" in docs/protocol.md |
 | Chat room `region`, `status`, `type`; `0x2458.lang` | 0 / 1 | Shown fine; meanings unknown |
 | Whisper `chat_type` values | any type with `to_name` is a whisper | Only room chat (type 1) was seen live |

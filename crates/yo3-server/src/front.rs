@@ -36,7 +36,7 @@ pub struct Player {
 
 impl Player {
     pub fn new(player_id: u32, name: &str) -> Player {
-        Player { player_id, name: name.into(), index: 0, level: 1, avatar: vec![0; 34], pbin: vec![0; 512] }
+        Player { player_id, name: name.into(), index: 0, level: 1, avatar: vec![0; 41 * 2], pbin: vec![0; 512] }
     }
 
     /// The record read by the player list (0x46C1E4) and the PlayerData loader (0x51C260).
