@@ -1,59 +1,8 @@
 //! Chat rooms and messages (ChatWindow dispatcher 0x435950), with several players online.
-use std::sync::{Arc, Mutex};
+mod common;
 
-use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+use common::{Client, Server, one, req, req_with};
 use yo3_proto::{Message, Packet, Value};
-use yo3_server::front::{Account, FrontSession, Hub, Player, World};
-
-fn req(id: u32) -> Packet {
-    Packet::Message(Message::reply(id))
-}
-
-fn req_with(id: u32, fields: &[(&str, Value)]) -> Packet {
-    Packet::Message(fields.iter().fold(Message::reply(id), |m, (k, v)| m.with(k, v.clone())))
-}
-
-struct Client {
-    session: FrontSession,
-    inbox: UnboundedReceiver<Message>,
-}
-
-impl Client {
-    fn send(&mut self, p: Packet) -> Vec<Message> {
-        self.session.handle(&p)
-    }
-
-    fn pushed(&mut self) -> Vec<Message> {
-        std::iter::from_fn(|| self.inbox.try_recv().ok()).collect()
-    }
-}
-
-struct Server {
-    world: Arc<World>,
-    hub: Arc<Mutex<Hub>>,
-}
-
-impl Server {
-    fn new() -> Server {
-        Server { world: Arc::new(World::new((1..=20).collect())), hub: Arc::new(Mutex::new(Hub::default())) }
-    }
-
-    /// A client that logged in and selected `player_id`.
-    fn join(&self, player_id: u32, name: &str) -> Client {
-        let account = Account { players: vec![Player::new(player_id, name)], ..Account::test() };
-        let (tx, inbox) = unbounded_channel();
-        let mut c = Client { session: FrontSession::new(account, self.world.clone(), self.hub.clone(), tx), inbox };
-        c.send(Packet::Version("2010.03.23 skelton".into()));
-        c.send(req_with(0x1F4C, &[("player_id", Value::U32(player_id))]));
-        c.send(req_with(0x1FA4, &[("player_id", Value::U32(player_id))]));
-        c
-    }
-}
-
-fn one(replies: Vec<Message>) -> Message {
-    assert_eq!(replies.len(), 1, "expected one reply, got {replies:?}");
-    replies.into_iter().next().unwrap()
-}
 
 fn enter(c: &mut Client, room: u32) -> Message {
     one(c.send(req_with(0x2136, &[("room_id", Value::U32(room))])))
