@@ -1,14 +1,274 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+//! Readers for the Yu-Gi-Oh! ONLINE 3 client's own data: `.ypk` archives, Konami's card
+//! table, and the regulation / preset-deck / booster-pack records the server hands out.
+
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
+
+use yo3_proto::{Message, Value};
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error("{path}: {source}")]
+    Proto { path: String, source: yo3_proto::Error },
+    #[error("missing {0}")]
+    Missing(String),
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub type Result<T> = std::result::Result<T, Error>;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+/// The default install location under Wine.
+pub fn default_game_dir() -> PathBuf {
+    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    home.join(".wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3")
+}
+
+/// One file inside a `.ypk` archive.
+#[derive(Clone, Debug)]
+pub struct Entry {
+    pub name: String,
+    pub method: u16,
+    pub size: u32,
+    compressed: u32,
+    offset: u64,
+}
+
+/// A `.ypk` archive: ZIP local headers with a `YO` signature and no central directory.
+pub struct Ypk {
+    path: PathBuf,
+    entries: Vec<Entry>,
+}
+
+impl Ypk {
+    pub fn open(path: impl AsRef<Path>) -> Result<Ypk> {
+        let path = path.as_ref().to_path_buf();
+        let mut r = BufReader::new(File::open(&path)?);
+        let len = r.get_ref().metadata()?.len();
+        let mut entries = Vec::new();
+        let mut pos = 0u64;
+        let mut head = [0u8; 30];
+        while pos + 30 <= len {
+            r.seek(SeekFrom::Start(pos))?;
+            r.read_exact(&mut head)?;
+            if &head[..4] != b"YO\x03\x04" {
+                break;
+            }
+            let u16_at = |i: usize| u16::from_le_bytes([head[i], head[i + 1]]);
+            let u32_at = |i: usize| u32::from_le_bytes(head[i..i + 4].try_into().unwrap());
+            let (method, compressed, size) = (u16_at(8), u32_at(18), u32_at(22));
+            let (name_len, extra_len) = (u16_at(26) as u64, u16_at(28) as u64);
+            let mut name = vec![0; name_len as usize];
+            r.read_exact(&mut name)?;
+            let offset = pos + 30 + name_len + extra_len;
+            entries.push(Entry { name: String::from_utf8_lossy(&name).into_owned(), method, size, compressed, offset });
+            pos = offset + compressed as u64;
+        }
+        Ok(Ypk { path, entries })
+    }
+
+    pub fn entries(&self) -> &[Entry] {
+        &self.entries
+    }
+
+    /// Reads and inflates one entry; `None` if the archive has no such file.
+    pub fn read(&self, name: &str) -> Result<Option<Vec<u8>>> {
+        let Some(e) = self.entries.iter().find(|e| e.name == name) else { return Ok(None) };
+        let mut f = File::open(&self.path)?;
+        f.seek(SeekFrom::Start(e.offset))?;
+        let mut raw = vec![0; e.compressed as usize];
+        f.read_exact(&mut raw)?;
+        if e.method == 0 {
+            return Ok(Some(raw));
+        }
+        let mut out = Vec::with_capacity(e.size as usize);
+        flate2::read::DeflateDecoder::new(&raw[..]).read_to_end(&mut out)?;
+        Ok(Some(out))
+    }
+
+    fn read_required(&self, name: &str) -> Result<Vec<u8>> {
+        self.read(name)?.ok_or_else(|| Error::Missing(name.into()))
+    }
+
+    fn records(&self, dir: &str, exts: &[&str]) -> Result<Vec<Message>> {
+        let mut out = Vec::new();
+        for e in self.entries.iter().filter(|e| e.name.starts_with(dir) && exts.iter().any(|x| e.name.ends_with(x))) {
+            let blob = self.read_required(&e.name)?;
+            out.push(yo3_proto::decode_file(&blob).map_err(|source| Error::Proto { path: e.name.clone(), source })?);
+        }
+        Ok(out)
+    }
+}
+
+/// One row of Konami's card table.
+#[derive(Clone, Debug)]
+pub struct Card {
+    /// Row in CARD_Prop.bin; decks and packs refer to cards by row.
+    pub row: u16,
+    /// Konami card ID ("CID"), e.g. 4007 = Blue-Eyes White Dragon; regulations use these.
+    pub cid: u16,
+    pub atk: u32,
+    pub def: u32,
+    pub name: String,
+}
+
+#[derive(Default)]
+pub struct CardDb {
+    cards: Vec<Card>,
+    by_cid: HashMap<u16, usize>,
+    by_row: HashMap<u16, usize>,
+}
+
+impl CardDb {
+    /// Parses CARD_Prop.bin (8 bytes per row) with names from CARD_Indx/CARD_Name.
+    pub fn parse(prop: &[u8], index: &[u8], names: &[u8]) -> CardDb {
+        let mut db = CardDb::default();
+        for (row, p) in prop.as_chunks::<8>().0.iter().enumerate() {
+            let a = u32::from_le_bytes(p[..4].try_into().unwrap());
+            let cid = (a & 0x3FFF) as u16;
+            if cid == 0 {
+                continue;
+            }
+            let name = index
+                .get(row * 8..row * 8 + 4)
+                .map(|o| u32::from_le_bytes(o.try_into().unwrap()) as usize)
+                .map(|off| utf16z(names.get(off..).unwrap_or_default()))
+                .unwrap_or_default();
+            let card = Card { row: row as u16, cid, atk: ((a >> 14) & 0x1FF) * 10, def: ((a >> 23) & 0x1FF) * 10, name };
+            db.by_cid.entry(cid).or_insert(db.cards.len());
+            db.by_row.insert(card.row, db.cards.len());
+            db.cards.push(card);
+        }
+        db
+    }
+
+    pub fn len(&self) -> usize {
+        self.cards.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.cards.is_empty()
+    }
+
+    pub fn by_cid(&self, cid: u16) -> Option<&Card> {
+        self.by_cid.get(&cid).map(|&i| &self.cards[i])
+    }
+
+    pub fn by_row(&self, row: u16) -> Option<&Card> {
+        self.by_row.get(&row).map(|&i| &self.cards[i])
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Card> {
+        self.cards.iter()
+    }
+}
+
+fn utf16z(bytes: &[u8]) -> String {
+    let units: Vec<u16> =
+        bytes.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes([c[0], c[1]])).take_while(|&u| u != 0).collect();
+    String::from_utf16_lossy(&units)
+}
+
+fn u16_list(msg: &Message, name: &str) -> Vec<u16> {
+    msg.get(name)
+        .and_then(Value::as_bytes)
+        .map(|b| b.as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes([c[0], c[1]])).collect())
+        .unwrap_or_default()
+}
+
+fn int(msg: &Message, name: &str) -> u32 {
+    msg.get(name).and_then(Value::as_u32).unwrap_or(0)
+}
+
+/// A banlist ("regulation"). Its lists hold Konami card IDs.
+#[derive(Clone, Debug)]
+pub struct Regulation {
+    pub id: u32,
+    pub kind: u32,
+    pub status: u32,
+    pub name_id: u32,
+    /// card0 = forbidden, card1 = limited, card2 = semi-limited, card3 = unrestricted again.
+    pub lists: [Vec<u16>; 4],
+    pub record: Message,
+}
+
+impl Regulation {
+    pub fn forbidden(&self) -> &[u16] {
+        &self.lists[0]
+    }
+}
+
+/// A preset deck ("recipe"). Its lists hold CARD_Prop rows.
+#[derive(Clone, Debug)]
+pub struct Deck {
+    pub id: u32,
+    pub kind: u32,
+    pub main: Vec<u16>,
+    pub extra: Vec<u16>,
+    pub side: Vec<u16>,
+    pub record: Message,
+}
+
+/// A booster pack. Its list holds CARD_Prop rows.
+#[derive(Clone, Debug)]
+pub struct Pack {
+    pub id: u32,
+    pub kind: u32,
+    pub cards: Vec<u16>,
+    pub record: Message,
+}
+
+/// Everything the server serves straight from the client's own files.
+pub struct GameData {
+    pub cards: CardDb,
+    pub regulations: Vec<Regulation>,
+    pub decks: Vec<Deck>,
+    pub packs: Vec<Pack>,
+}
+
+impl GameData {
+    pub fn load(game_dir: &Path) -> Result<GameData> {
+        let ypk = Ypk::open(game_dir.join("package/data002.ypk"))?;
+        let cards = CardDb::parse(
+            &ypk.read_required("data/bin#/CARD_Prop.bin")?,
+            &ypk.read_required("data/bin#/CARD_Indx_E.bin")?,
+            &ypk.read_required("data/bin#/CARD_Name_E.bin")?,
+        );
+        let mut regulations: Vec<Regulation> = ypk
+            .records("data/regulation/", &[".y3r"])?
+            .into_iter()
+            .map(|m| Regulation {
+                id: int(&m, "regulation_id"),
+                kind: int(&m, "regulation_type"),
+                status: int(&m, "status"),
+                name_id: int(&m, "name_id"),
+                lists: ["card0", "card1", "card2", "card3"].map(|k| u16_list(&m, k)),
+                record: m,
+            })
+            .collect();
+        regulations.sort_by_key(|r| r.id);
+        let mut decks: Vec<Deck> = ypk
+            // One preset deck ships as data/recipe/232.y3a.
+            .records("data/recipe/", &[".y3d", ".y3a"])?
+            .into_iter()
+            .map(|m| Deck {
+                id: int(&m, "deck_id"),
+                kind: int(&m, "deck_type"),
+                main: u16_list(&m, "main"),
+                extra: u16_list(&m, "extra"),
+                side: u16_list(&m, "side"),
+                record: m,
+            })
+            .collect();
+        decks.sort_by_key(|d| d.id);
+        let mut packs: Vec<Pack> = ypk
+            .records("data/pack/", &[".y3a"])?
+            .into_iter()
+            .map(|m| Pack { id: int(&m, "pack_id"), kind: int(&m, "pack_type"), cards: u16_list(&m, "pack"), record: m })
+            .collect();
+        packs.sort_by_key(|p| p.id);
+        Ok(GameData { cards, regulations, decks, packs })
     }
 }
