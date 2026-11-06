@@ -145,6 +145,18 @@ them has a global case. The lists are empty until the economy exists (M4); every
 | `0x1B68` buy `{sale_id, item_num, end_time, ex_pack}` | `0x1C24` (`0x1C25`) | `dpoint` | "shop buy succes" | open |
 | `0x1B6A` exchange `{sale_id, item_id, kaban}` | `0x1C28` (`0x1C29`) | | "shop exchange succes" | open |
 
+### Events (TournamentScene, UserEventScene)
+
+The map's Official Event tile (`MenuSelect` 21) opens TournamentScene, Championship (20) a 64-player tournament map
+that sends nothing, and User event (22) UserEventScene. With no decks, Official Event and Championship stop at "There
+are no valid Decks available." and OK returns to the map.
+
+| Request | Reply (error) | Fields | Evidence | Status |
+|---|---|---|---|---|
+| `0x177A` event list (bare, `0x4D0BB0`) | `0x177B` (`0x177C`, dialog `0x4F7940`) | top `result_number`; items `{event_type, status, event_id}`. TournamentScene looks for `event_type` 10 with `status` 12; none means its no-event path | `0x4D0BB0`; the Stadium opens | shape (empty) |
+| `0x1789` event search `{search_flag, pname, status, pack_type, base_point, front_num 30, back_num}` (`0x4D9E37`) | `0x177B` (`0x177C`) | as above; the list case `0x4D66A0` reads `result_number` (tracer) and `premium` from another dataset | captured packet; User Event lists nothing, page 1/1 | shape (empty) |
+| `0x339A` own user event (bare, `0x4D9C2B`) | `0x33FE` (`0x33FF`) | `remain`, `event_id`: the scene keeps `event_id` only while `remain` ≠ 0 | `0x4D9BB0` | shape (both 0) |
+
 ## Accounts
 
 The client never sends a user id or password. `0x1F47` is a bare request; the credentials typed at login are copied

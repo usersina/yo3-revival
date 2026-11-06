@@ -286,6 +286,11 @@ impl FrontSession {
                 .into_iter()
                 .fold(Message::reply(0x2D75), |m, k| m.with(k, Value::U32(0))),
             0x1B69 => Message::reply(0x1C2A),
+            // Event list {event_type, status, event_id} (TournamentScene 0x4D0BB0) and event search
+            // (UserEventScene 0x4D9E37): no events are held.
+            0x177A | 0x1789 => Message::reply(0x177B).with("result_number", Value::U32(0)),
+            // The player's own user event (UserEventScene 0x4D9BB0): none.
+            0x339A => Message::reply(0x33FE).with("remain", Value::U32(0)).with("event_id", Value::U32(0)),
             0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_ids)),
             0x27D8 => Message::reply(0x27D9).item(Message::record()),
             0x2CEE => Message::reply(0x2CF3).item(self.player().record()),

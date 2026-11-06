@@ -51,6 +51,8 @@ Stop finding missing fields one crash at a time.
         `cards`/`noTrade` arrays, all zero)
   - [x] Character settings: Avatar Settings opens with a default avatar and returns to the map (`avatar1` needs
         41 entries); saving changes is not handled yet
+  - [x] Official Event (Stadium) and Championship (tournament map): open, report no valid decks, return
+  - [x] User event (Satellite Plaza): lists no events; creating one is not handled yet
 - [ ] Friends, mail and teams (as far as the main screen needs). The friend and black lists are pushed empty;
       adding friends needs their requests mapped (`0x2528`, `0x252C`, `0x252E` carry `to_id`)
 - [ ] Player search criteria we ignore: language, country, manner level, status, community, event
@@ -101,6 +103,7 @@ Stop finding missing fields one crash at a time.
 | Player search by name | case-insensitive substring | Konami's matching rule is unknown |
 | Friend and black list pushes | sent once, right after `9000` | The original timing is unknown; the client only needs them before it lists a player |
 | Shop lists, `perk_num`, rental terms | all empty or 0 | Real stock comes with the economy (M4); `perk_num`'s meaning is unknown |
+| Event lists (`0x177B`), own user event (`0x33FE`) | empty, 0 | No events are held; paging by `base_point`/`front_num` like player search is assumed |
 | Rental records push (`0x2D6C`) | sent once after `9000`, empty | The original timing is unknown; the shop only needs it before it opens |
 | Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
 
