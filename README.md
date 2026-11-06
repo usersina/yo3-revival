@@ -12,15 +12,19 @@ A private server for Yu-Gi-Oh! ONLINE 3 (Duel Accelerator), for playing with fri
 | Auth / login / player list / player select | works |
 | World entry `0x1FA4` → `9000` (trunk data) | works; the client enters the main screen |
 | Main screen polls, news list, player search, regulations | works; the main screen is stable |
+| Rust server (`crates/`) | parity with the original Python prototype, verified on the real client |
 | `0x2775` (presents?) | **not answered yet** |
 | Lobby, shop, decks, duels | not started |
 
 ## Run
 
 ```bash
-pip install pycryptodome
-cd server && python3 -m yo3.server --log-dir ../logs
+cargo run --release -p yo3-server -- --log-dir logs
 ```
+
+Options: `--bind`, `--advertise` (the front-server address the gate hands out, e.g. your LAN or VPN IP for
+friends), `--gate-port 5730`, `--front-port 1213`, `--http-port 8080`, `--game-dir` (defaults to the Wine install).
+The server reads the banlists, preset decks and packs from the game's own files.
 
 In the game folder's `yo3.ini` (Konami's original is kept as `yo3.ini.konami`):
 
@@ -38,7 +42,18 @@ Run the client from a terminal to get its own debug trace (`LoginWindow.cpp L370
 cd ~/.wine/drive_c/Program\ Files\ \(x86\)/Konami/Yu-Gi-Oh!\ ONLINE\ 3 && wine yo3.exe > client-stdout.log
 ```
 
-Every packet in both directions is logged decoded to `logs/server-*.log` and `logs/packets-*.jsonl`.
+Every packet in both directions is logged to stdout and, decoded, to `logs/packets-*.jsonl`.
+
+## Tests
+
+```bash
+cargo nextest run --workspace     # or: cargo test --workspace
+```
+
+- `yo3-proto`: golden vectors, truncation safety and property-based round trips for the codec
+- `yo3-data`: every data file in the client's archives round-trips byte for byte; card, banlist and deck lookups
+  (skipped when the game isn't installed)
+- `yo3-server`: one contract test per client requirement, most of them former crashes, plus a TCP flow test
 
 ### Headless client
 
@@ -62,16 +77,17 @@ tools/vclient.sh click X Y     # game-window coordinates
   -scriptPath tools/ghidra -postScript ExportDecompiled.java "$PWD/re/yo3_decompiled.c"
 ```
 
-Tests: `python3 server/tests/test_flow.py` round-trips the client's own data files through the codec and plays the
-login flow against a live server.
+- GhidraMCP (headless) is registered for this project in Claude Code's local config, pointing at `re/ghidra`.
+  Ghidra locks a project while it's open, so stop it before re-running the headless export.
 
 ## Layout
 
-- `server/yo3/codec.py`: framing, Blowfish, and the EasyMultiPlay key/value format
-- `server/yo3/front.py`: front-server request handlers and the account/player model
-- `server/yo3/server.py`: asyncio gate/front/HTTP servers and logging
-- `tools/`: `ypk.py` (archives), `y3dec.py`/`emp.py` (data files), `cards.py` (card table), `yodis.py`/`rtti.py`
-  (disassembly with string and RTTI annotations for `yo3.exe`)
+- `crates/yo3-proto`: framing, Blowfish and the EasyMultiPlay key/value format
+- `crates/yo3-data`: `.ypk` archives, Konami's card table, regulations, preset decks and packs
+- `crates/yo3-server`: gate, front and patch-HTTP servers (`front.rs` holds the request/reply contract)
+- `tools/`: Python reverse-engineering helpers. `ypk.py` (archives), `y3dec.py`/`emp.py` (data files), `cards.py`
+  (card table), `yodis.py`/`rtti.py` (annotated disassembly), `dispatch.py` (reply routing), `vclient.sh`
+  (headless client), `ghidra/` (export script)
 
 ## Client notes
 
