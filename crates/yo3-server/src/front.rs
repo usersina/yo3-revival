@@ -134,6 +134,7 @@ pub struct Hub {
 struct Online {
     player_id: u32,
     name: String,
+    level: u32,
     room: Option<u32>,
     outbox: Outbox,
 }
@@ -143,9 +144,10 @@ impl Hub {
         self.online.len()
     }
 
-    fn join(&mut self, player_id: u32, name: &str, outbox: Outbox) -> u64 {
+    fn join(&mut self, player: &Player, outbox: Outbox) -> u64 {
         self.next_id += 1;
-        self.online.insert(self.next_id, Online { player_id, name: name.into(), room: None, outbox });
+        let online = Online { player_id: player.player_id, name: player.name.clone(), level: player.level, room: None, outbox };
+        self.online.insert(self.next_id, online);
         self.next_id
     }
 
@@ -238,14 +240,14 @@ impl FrontSession {
             0x1F49 => a.players.iter().fold(Message::reply(0x2260), |m, p| m.item(p.record())),
             0x1F4C => {
                 self.selected = self.find_player(msg);
-                let Some(index) = self.selected else { return vec![] };
-                let (player_id, name) = (self.account.players[index].player_id, self.account.players[index].name.clone());
-                let outbox = self.outbox.clone();
-                let mut hub = self.hub();
+                if self.selected.is_none() {
+                    return vec![];
+                }
+                let mut hub = self.hub.lock().expect("hub lock");
                 if let Some(old) = self.online {
                     hub.leave(old);
                 }
-                let id = hub.join(player_id, &name, outbox);
+                let id = hub.join(self.player(), self.outbox.clone());
                 drop(hub);
                 self.online = Some(id);
                 Message::reply(0x2266)
@@ -277,8 +279,7 @@ impl FrontSession {
                 let lang = entries.fold(Message::record().with("lang", Value::text("1")), Message::item);
                 Message::reply(0x21FC).item(lang)
             }
-            // Player search; InfoWindow reads result_number (0x4591CA). No players to list yet.
-            0x2CF0 => Message::reply(0x2CF7).with("result_number", Value::U32(0)),
+            0x2CF0 => self.player_search(msg),
             // Present count (PresentWindow 0x476DE0 reads present_count from 0x2774).
             0x2775 => Message::reply(0x2774).with("present_count", Value::U32(0)),
             0x2135 => self.room_list(),
@@ -325,6 +326,42 @@ impl FrontSession {
         }
         hub.set_room(id, Some(room.id));
         Message::reply(0x245A).with("room_id", Value::U32(room.id))
+    }
+
+    /// 0x2CF0 -> 0x2CF7: the online players matching the search, one page of them. InfoWindow
+    /// 0x458410 reads result_number (the total; it shows pages of 100) and each item through
+    /// 0x475A20 in player mode. It skips its own player_id, so the searcher is listed too.
+    /// search_flag bits come from the builder 0x45F390; 0x4B6AF0 looks one player up by id.
+    fn player_search(&self, msg: &Message) -> Message {
+        const BY_NAME: u32 = 0x2;
+        const BY_LEVEL: u32 = 0x10;
+        const BY_ID: u32 = 0x40000;
+        let uint = |k| msg.get(k).and_then(Value::as_u32);
+        let flags = uint("search_flag").unwrap_or(0);
+        // Guess: case-insensitive part of the name. Other criteria (lang, country, eval_level,
+        // the preset tabs) are not stored yet, so they match everyone.
+        let name = msg.get("pname").and_then(Value::as_str).unwrap_or_default().to_lowercase();
+        let levels = uint("min_level").unwrap_or(0)..=uint("max_level").unwrap_or(u32::MAX);
+        let hub = self.hub();
+        let mut found: Vec<&Online> = hub
+            .online
+            .values()
+            .filter(|o| flags & BY_NAME == 0 || o.name.to_lowercase().contains(&name))
+            .filter(|o| flags & BY_LEVEL == 0 || levels.contains(&o.level))
+            .filter(|o| flags & BY_ID == 0 || Some(o.player_id) == uint("player_id"))
+            .collect();
+        found.sort_by_key(|o| o.player_id);
+        // Guess: a page starts at base_point and holds at most front_num players.
+        let skip = uint("base_point").unwrap_or(0) as usize;
+        let page = found.iter().skip(skip).take(uint("front_num").unwrap_or(100) as usize);
+        page.fold(Message::reply(0x2CF7).with("result_number", Value::U32(found.len() as u32)), |m, o| {
+            m.item(
+                Message::record()
+                    .with("player_id", Value::U32(o.player_id))
+                    .with("pname", Value::text(&o.name))
+                    .with("dlv", Value::U32(o.level)),
+            )
+        })
     }
 
     /// 0x2134 -> 0x2456 to the sender, and the line as a 0x2455 push to the room (or the whisper

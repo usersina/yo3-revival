@@ -32,9 +32,13 @@ export, see [CLAUDE.md](../CLAUDE.md)).
 | `0x410D60` | `item[edi]` of a message (NULL when out of range) |
 | `0x469C00` | login dispatcher (`LoginWindow.cpp`) |
 | `0x4F4A00` | global front dispatcher; its switch starts at `0x4F4A4F` (route ids with `tools/re/dispatch.py`) |
-| `0x458475` | InfoWindow dispatcher (news) |
+| `0x458410` | InfoWindow reply handler: news (`0x21FC`, from `0x458475`), player search (`0x2CF7`), friend list (`0x251C`) |
 | `0x472EDC…0x473A3A` | main-screen poll reply handlers (each re-arms its request through `obj+0xE8`) |
 | `0x4A523F`, `0x4A551E`, `0x4A5D05` | `CommunicationAgent` switches (195/106/102 cases) |
+| `0x413FE0` | address of front dataset slot `EDI` (vector at `+0x16C`); the global dispatcher keeps some replies there: `0x2711` → 4, `0x251C` friend list → 6, `0x252A` black list → 7, `0x21FC` news → 10, `0x24BA` → 24 |
+| `0x45E6D0` / `0x45E810` | "is this player a friend / ignored?": read slots 6 / 7 with no NULL check, for every player listed |
+| `0x45F390` | player search request builder (Detailed Search criteria → `search_flag` bits) |
+| `0x475A20` | fills a list entry (`ppInfo`) from an item; ECX picks the kind: 0 player, 1 NPC, 2 friend, 3 ignored, 4 team member |
 | `0x435950` | ChatWindow dispatcher: `0x2455` push, then a jump table for `0x2456 + n` (send / list / enter / exit) |
 | `0x434D20` | reads one chat room item (`id`, `name`, `capacity`, `num`, `region`, `status`, `type`) |
 | `0x4F3C10`, `0x4F3CF0`, `0x4F4280` | chat requests `0x2135` (list), `0x2136` (enter), `0x2137` (leave) |
@@ -85,6 +89,7 @@ parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Su
 - Credentials are never sent; see "Accounts" in the protocol catalog.
 - Several clients can run at once (unnamed mutexes only, so no single-instance guard). Under Wine each needs its own
   prefix when it gets its own X display; otherwise Wine dies with X `BadWindow` errors.
+- The player list hides the searcher's own entry and entries with `player_id` 0, and pages by 100.
 - In chat, the client prints its own lines only from the server's `0x2455` echo, its own name in cyan and others' in
   white.
 
@@ -97,3 +102,4 @@ parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Su
 | Crash in the 9000 handler (if no items) | it dereferences `item[0]` | Lists the client indexes need at least one record |
 | Null read at `0x4F54C8` | `0x2398` without `regulations` | Check the **global** dispatcher too, not only the screen's own handler |
 | (prevented) `0x27D9` | item[0] read unchecked | Route every new reply through `dispatch.py` before shipping it |
+| Null read at `0x45E734` once a search listed a player | friend list never pushed, so dataset slot 6 was NULL | A reply's first non-empty list can wake code that needs other state: test with real items live |

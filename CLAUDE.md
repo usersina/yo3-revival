@@ -113,6 +113,8 @@ the knowledge.
 ## Environment gotchas
 
 - The user's shell aliases `ls` → eza and `cat` → bat. Use `command ls` / `command cat` in scripts.
+- Don't run `cargo fmt`: there is no `rustfmt.toml` and the code was never formatted with the defaults (lines run to
+  about 120 columns), so it rewraps every file. Match the surrounding style by hand.
 - `pgrep -f` / `pkill -f` match the calling shell's own command line. Find processes by port (`ss -ltnp`) instead.
 - Ports: gate 5730, front 1213, HTTP 8080. The game's `yo3.ini` points at 127.0.0.1; Konami's original is saved
   next to it as `yo3.ini.konami`.

@@ -84,8 +84,28 @@ front dispatcher; `python3 tools/re/dispatch.py 0x4f4a4f <id>` shows the case it
 | Request | Reply (error) | Fields | Evidence | Status |
 |---|---|---|---|---|
 | `0x1F41` info list | `0x21FC` | item[0] `{lang}` whose items are `{starttime "%Y-%m-%d %H:%M:%S" JST, title, body}` | "information recv success!" `InfoWindow.cpp L1547`, `0x458A64` | confirmed (`lang` value **guess** "1") |
-| `0x2CF0` player search `{back_num, base_point, front_num, search_flag, search_type}` | `0x2CF7` (`0x2CF8`) | `result_number` u32 (top, read at `0x4591CA`); items = players (shape unknown; we send none) | `RESPONSE_PLAYER_SEARCH_SUCCESS` `ChatWindow.cpp L651`, field trace | confirmed (empty) |
+| `0x2CF0` player search (below) | `0x2CF7` (`0x2CF8`) | `result_number` u32: the total, the client shows pages of 100 (`/100 + 1`); items = players `{player_id, pname, dlv}` | InfoWindow `0x458410` (`0x2CF7` case), item reader `0x475A20`; `RESPONSE_PLAYER_SEARCH_SUCCESS` `ChatWindow.cpp L651` | confirmed (fields); paging and name matching **guess** |
 | `0x2724` heartbeat | none | none | builders `0x4F17DF` (every 30 s) and `0x4F45A5` (after 120 s); no reply is checked | confirmed |
+
+**Player search** (`0x2CF0`, built by InfoWindow `0x45F390`):
+- Request: `search_flag`, `search_type`, `base_point`, `front_num`, `back_num`, plus the criteria the flags name.
+  The default search (no criteria) sends `{search_flag 1, search_type 1, base_point 0, front_num 100, back_num 0}`
+  (captured).
+- `search_flag` bits, from the builder and the Detailed Search dialog: `0x1` everyone, `0x2` name (`pname`),
+  `0x4` language (`lang`), `0x8` country (`country` text), `0x10` level (`min_level` + `max_level`), `0x100`
+  manner level (`eval_level`), status (`0x200`/`0x400`/`0x800`/`0x1000`: duel in progress, waiting for a single
+  duel or a match), community (`0x40` friends, `0x80` ignore list, `0x20` team, `0x20000` chat room), event
+  (`0x2000`/`0x4000`/`0x8000`). The preset tabs above the list send fixed sets of these bits. Which status bit is
+  which is open.
+- Live: the dialog's name search sends `{search_flag 2, pname "kai", search_type 1, base_point 0, front_num 100,
+  back_num 0}`.
+- `0x4B6AF0` looks one player up: `{search_flag 0x40000, player_id, search_type 0}`, and reads item[0]'s
+  `player_id`, `pname`, `duel_id`, `duel_status` (and `friend_id`/`black_id`/`member_id`) through `0x4B6060`.
+- Reply items, read by `0x475A20` in player mode (ECX = 0): `player_id` (int; 0 is skipped), `pname`, `dlv`,
+  `duel_id`, `event_score`, `duel_status`, `tprank`, `duel_match_type`, `world_evid`, `official_evid`, `user_evid`,
+  `userevent_remain`. The handler skips the searcher's own `player_id`, so a server may list everyone.
+- We filter on name (case-insensitive substring, a **guess**), level range and player id, and ignore the other
+  criteria. Paging is a **guess**: skip `base_point`, return at most `front_num`.
 
 ### Chat (ChatWindow dispatcher `0x435950`)
 
@@ -116,6 +136,7 @@ NULL, which these callers check. Send them when we know what they mean.
 | player record | `npc_id` int | `0x51BFE2` | 0 = a human player |
 | `0x27D9` | `cpuUse`, `notRelease` (raw) in its record | `0x4F2080`, `0x4F20BA` | meaning open (CPU duels? unreleased cards?) |
 | (around `0x2CF7`) | `premium` uint, from **another dataset**, not the reply | `0x44F3E7` | probably the account's Duelist Premium flag |
+| `0x2CF7` items | `duel_id`, `event_score`, `duel_status`, `tprank`, `duel_match_type`, `world_evid`, `official_evid`, `user_evid` (int) | `0x475A20` | 0 = not duelling, no rank, no event; they pick the list icon |
 
 ## Families seen in the client, not mapped yet
 

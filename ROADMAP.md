@@ -40,9 +40,12 @@ Stop finding missing fields one crash at a time.
 - [x] Sessions registry: who is online, in which room (`Hub`); sessions leave on disconnect
 - [x] Accounts by client address (the client never sends credentials), up to four players each
 - [x] Two clients at once: `YO3_INSTANCE=b` with its own display and reflinked Wine prefix
-- [ ] Player search returns real players (0x2CF7 items; use the tracer to learn the item fields)
+- [x] Player search returns the players online, filtered by name, level or id; both clients list each other
+      (needed the friend and black list pushes, `0x251C`/`0x252A`)
 - [ ] Entering map locations, lobbies and rooms
-- [ ] Friends, mail and teams (as far as the main screen needs)
+- [ ] Friends, mail and teams (as far as the main screen needs). The friend and black lists are pushed empty;
+      adding friends needs their requests mapped (`0x2528`, `0x252C`, `0x252E` carry `to_id`)
+- [ ] Player search criteria we ignore: language, country, manner level, status, community, event
 - **Exit:** two headless clients log in as different players, find each other and chat (met 2026-11-06:
   Yugi and Kaiba chat in the Lobby; the room list shows the other player)
 
@@ -86,6 +89,9 @@ Stop finding missing fields one crash at a time.
 | `bgm`, `icon`/`lefttime`/`maintenance`, `npc_id`, `cpuUse`/`notRelease`, `premium` | left out (read as 0 / NULL) | The tracer shows the client reads them; see "Fields the client reads that we leave out" in docs/protocol.md |
 | Chat room `region`, `status`, `type`; `0x2458.lang` | 0 / 1 | Shown fine; meanings unknown |
 | Whisper `chat_type` values | any type with `to_name` is a whisper | Only room chat (type 1) was seen live |
+| Player search paging | skip `base_point`, return at most `front_num` | Only page 1 (`0, 100`) was seen |
+| Player search by name | case-insensitive substring | Konami's matching rule is unknown |
+| Friend and black list pushes | sent once, right after `9000` | The original timing is unknown; the client only needs them before it lists a player |
 | Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
 
 ## Leads (outside the code)
