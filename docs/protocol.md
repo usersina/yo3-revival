@@ -182,6 +182,23 @@ look like the starter decks) that the login regulation allows. Preset 1 holds a 
 it is preset 2 (**guess**: the original let a new player choose). The server lists it every time, so a deleted
 starter deck comes back the next time Edit Deck opens.
 
+### Duel start (not implemented; static reading only)
+
+Every duel goes through one agent, `0x4A0B50`, started by the DUEL menu (`DuelMenu` `0x49DF50`: `autoMatching`,
+`match_type`, `level`), the event scenes, the NPC info window (`0x4B9D00`) and MainGamen's event path. Its steps:
+
+| Step | Request | Reply (error) | Fields read | Status |
+|---|---|---|---|---|
+| `0x4A1090` | `0x1784 {event_id}` | `0x1785` (`0x1786`) | `join_id`, `duel_password_flag` | open |
+| `0x4A1790` | `0x17AC {event_id, join_id, duel_server_id, status, npc_id, match_type, cpu_id, regulation_id, time_turn, time_total, surrender}` | `0x17AD` (`0x17AE`, dialog `0x4F7940`) | `duel_id`, `regulation_id`, `country` (twice: both players?) | open |
+| `0x4A3340` | `0x1838 {duel_id}` | `0x1839` (`0x183A`) | `host`, `port`: where the client opens its third connection | open |
+
+The third connection is `DuelServerConnection` (factory id `0xFFFFD8F6`, constructor `0x4F1230`, handler
+`0x4F1510`, which only routes connect / receive / disconnect events). `cpu_id` and `npc_id` in `0x17AC` mean CPU duels
+also go through this path. What travels on the duel connection (engine commands, or player actions with the server
+running the rules) is the next thing to observe live: answer the three steps above, accept the connection, and log
+what the client sends.
+
 ## Accounts
 
 The client never sends a user id or password. `0x1F47` is a bare request; the credentials typed at login are copied

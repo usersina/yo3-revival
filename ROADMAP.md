@@ -85,7 +85,9 @@ Stop finding missing fields one crash at a time.
       (`data/npc/npcsel*.png`) and 132 `deck_type` 3 presets look like their decks. Still unknown: where an NPC's
       name and details come from (`npc_name`, NPC `PlayerData` with `npc_id` at `+0x400`, `0x51C4F0`) and what
       choosing one sends. Whether CPU duels run inside the client would show how PvP duels work
-- [ ] Map the duel server tier (`DuelServerConnection`): how a duel is handed off, ports, handshake
+- [ ] Map the duel server tier (`DuelServerConnection`): how a duel is handed off, ports, handshake. Handoff read
+      statically (docs/protocol.md, "Duel start"): `0x1784` → `0x17AC` → `0x1838` → `{host, port}`. Next: answer
+      it with a stub duel listener and log what the client sends on the duel connection
 - [ ] Confirm in Ghidra that Online 3's duel stream is Konami's engine command set (as in Online 2)
 - [ ] Rules engine: ocgcore as a separate process (AGPL), as in YOLaucher's `duelcore`
 - [ ] Translator: ocgcore messages ↔ Online 3 duel commands and prompts (`DLG_Text` ids), card ID ↔ passcode map
