@@ -21,6 +21,8 @@ pub const MAX_FRAME: usize = 1 << 20;
 
 pub const TAG_MESSAGE: u8 = 4;
 pub const TAG_RECORD: u8 = 3;
+/// The client builds a deck object (YO3Deck) for items with this tag (factory 0x531B90).
+pub const TAG_DECK: u8 = 6;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
@@ -155,6 +157,11 @@ impl Message {
     /// A record (tag 3) for use as a list item.
     pub fn record() -> Self {
         Message { tag: TAG_RECORD, ..Default::default() }
+    }
+
+    /// A deck (tag 6) for use as a list item.
+    pub fn deck() -> Self {
+        Message { tag: TAG_DECK, ..Default::default() }
     }
 
     pub fn with(mut self, name: &str, value: Value) -> Self {

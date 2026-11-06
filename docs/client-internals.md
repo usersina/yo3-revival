@@ -39,6 +39,10 @@ export, see [CLAUDE.md](../CLAUDE.md)).
 | `0x4725B0` | startup step that unlocks the main screen (reads `event_id`, `npc_type`; event players take another path) |
 | `0x476240` / `0x476DE0` | PresentWindow constructor / reply handler (window id `0xFFFFD90C` in the factory `0x4EEB90`) |
 | `0x48AA60` / `0x48F080` | shop (`shopmain.cpp`) reply handler / open routine; the open routine reads slot 8 unchecked |
+| `0x531B90` | item factory: builds a received item's object by its tag (6 → `YO3Deck` `0x414240`) |
+| `0x43FC60` | deck editor (`DeckEditTest`) reply handler; `0x22C8` saves missing decks locally (`0x52EE60`) |
+| `0x4BD880` | NPC duel deck check: regulation (`0x52DB30`), collection (`0x4F6340`), decks (`0x51AB00`); fails with text `0x295B` |
+| `0x51AA80` / `0x51AC50` / `0x51A9A0` / `0x51A930` | validate one deck / sizes / regulation / per-card limit |
 | `0x410DB0` | a card's count from the trunk: `cards` (or `noTrade`) byte at index row − 1, bounds-checked |
 | `0x4F6340` | builds the playable collection `(conn, flags)`: copies the trunk (slot 18), subtracts cards lent in rental records (slot 8, flag 4), and with flag `0x10` zeroes cards 5280, 5434 and 6276 (table `0x7878A0`) in `cards`/`noTrade` unchecked |
 | `0x4A523F`, `0x4A551E`, `0x4A5D05` | `CommunicationAgent` switches (195/106/102 cases) |
@@ -90,6 +94,10 @@ parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Su
 - Login is automatic after OK on the saved credentials; only player selection needs a click. Up to 4 players per
   account.
 - The client treats server times as JST.
+- The client keeps its own data under `<My Documents>\Yu-Gi-Oh! ONLINE 3` (`SHGetFolderPath` `0x8005`, `0x52B8E0`):
+  `options.y3o`, `users\`, and per player `players\<pname>\` with `decks`, `mail`, `regulations`, `duellogs`,
+  `local`, `avatars` and `<pname>.y3p`. Under Wine, My Documents is usually a link to the Linux `~/Documents`, and
+  every prefix made by `vclient.sh prefix` shares it.
 - Text values are read as C strings: anything after a NUL is lost. Use binary for blobs (`avatar1`, `pbin`,
   `regulations`).
 - Unanswered polls time out with a dialog naming the decimal request id, and the client then drops back to the title.

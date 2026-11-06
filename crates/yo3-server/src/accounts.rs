@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
 
-use crate::front::{Account, Player};
+use crate::front::{Account, LOGIN_REGULATION, Player};
 
 /// The client shows four player slots.
 pub const MAX_PLAYERS: usize = 4;
@@ -38,7 +38,7 @@ impl Directory {
             self.next_player += 1;
             players.push(p);
         }
-        let account = Account { user_id, name: format!("user{user_id}"), dpoint: 0, regulation_id: 1, players };
+        let account = Account { user_id, name: format!("user{user_id}"), dpoint: 0, regulation_id: LOGIN_REGULATION, players };
         self.by_address.insert(addr, account.clone());
         account
     }

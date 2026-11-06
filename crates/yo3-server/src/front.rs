@@ -11,6 +11,8 @@ use yo3_proto::{Message, Packet, Value};
 pub type Outbox = tokio::sync::mpsc::UnboundedSender<Message>;
 
 pub const VERSION_VALID: u32 = 0x219F;
+/// The banlist every account logs in with (0x2201 regulation_id); the NPC duel checks decks against it.
+pub const LOGIN_REGULATION: u32 = 1;
 pub const HEARTBEAT: u32 = 0x2724;
 
 /// Server clock in Japan time: the client treats server timestamps as JST (UTC+9) and
@@ -28,7 +30,7 @@ pub struct Player {
     pub name: String,
     pub index: u32,
     pub level: u32,
-    /// 17 BE u16 appearance slots (meaning of each slot not mapped yet).
+    /// 41 BE u16 appearance slots (character settings read 17..=40; slot meanings not mapped yet).
     pub avatar: Vec<u8>,
     /// Per-player flag blob; 4096 bits like the 4096 entries of data/extra/yo3pbininfo.bin.
     pub pbin: Vec<u8>,
@@ -76,7 +78,34 @@ pub struct Account {
 
 impl Account {
     pub fn test() -> Account {
-        Account { user_id: 1001, name: "test".into(), dpoint: 0, regulation_id: 1, players: vec![Player::new(1001, "test")] }
+        Account { user_id: 1001, name: "test".into(), dpoint: 0, regulation_id: LOGIN_REGULATION, players: vec![Player::new(1001, "test")] }
+    }
+}
+
+/// A deck as the deck list 0x22C8 carries it (read by 0x43FC60 and 0x414410). Cards are CARD_Prop rows.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Deck {
+    pub id: u32,
+    pub name: String,
+    pub main: Vec<u16>,
+    pub extra: Vec<u16>,
+    pub side: Vec<u16>,
+}
+
+impl Deck {
+    pub fn record(&self) -> Message {
+        Message::deck()
+            .with("deck_id", Value::U32(self.id))
+            .with("deck_name", Value::text(&self.name))
+            .with("discription", Value::text(""))
+            .with("card_protector", Value::U32(0))
+            .with("main", Value::u16_be_array(&self.main))
+            .with("extra", Value::u16_be_array(&self.extra))
+            .with("side", Value::u16_be_array(&self.side))
+    }
+
+    pub fn cards(&self) -> impl Iterator<Item = u16> + '_ {
+        self.main.iter().chain(&self.extra).chain(&self.side).copied()
     }
 }
 
@@ -104,6 +133,8 @@ pub struct World {
     pub regulation_ids: Vec<u16>,
     /// The highest CARD_Prop row: the client's per-card arrays have one byte per row (row 0 is a dummy).
     pub card_rows: usize,
+    /// Every player's deck until decks are stored per player (from the client's preset decks).
+    pub starter_deck: Option<Deck>,
     pub news: Vec<(String, String)>,
     pub rooms: Vec<Room>,
 }
@@ -113,6 +144,7 @@ impl World {
         World {
             regulation_ids,
             card_rows: 0,
+            starter_deck: None,
             news: vec![(
                 "Welcome back to Yu-Gi-Oh! ONLINE".into(),
                 "This is a private revival server. Have fun duelling with your friends!".into(),
@@ -261,10 +293,16 @@ impl FrontSession {
                 }
                 // Copied wholesale into the trunk dataset (and kept in slot 18). cards / noTrade: owned
                 // and untradeable count per card at row - 1 (0x410DB0); the NPC duel writes into both
-                // unchecked (0x4F6A82). Nobody owns any card until the collection exists (M4).
-                let no_cards = Value::Bin(vec![0; self.world.card_rows]);
+                // unchecked (0x4F6A82). Players own exactly the cards of their starter deck.
+                let mut cards = vec![0u8; self.world.card_rows];
+                for row in self.world.starter_deck.iter().flat_map(Deck::cards) {
+                    if let Some(n) = (row as usize).checked_sub(1).and_then(|i| cards.get_mut(i)) {
+                        *n += 1;
+                    }
+                }
+                let no_trade = Value::Bin(vec![0; self.world.card_rows]);
                 let trunk = Message::reply(9000)
-                    .item(Message::record().with("cards", no_cards.clone()).with("noTrade", no_cards));
+                    .item(Message::record().with("cards", Value::Bin(cards)).with("noTrade", no_trade));
                 // The client never asks for its friend and black lists; the global dispatcher stores
                 // 0x251C in dataset slot 6 and 0x252A in slot 7, and listing any player reads both
                 // without a NULL check (0x45E6D0, 0x45E810). Items would be {friend_id, friend_name,
@@ -291,6 +329,8 @@ impl FrontSession {
             0x177A | 0x1789 => Message::reply(0x177B).with("result_number", Value::U32(0)),
             // The player's own user event (UserEventScene 0x4D9BB0): none.
             0x339A => Message::reply(0x33FE).with("remain", Value::U32(0)).with("event_id", Value::U32(0)),
+            // Deck list (deck editor 0x43FC60): it saves each deck it lacks as a local file.
+            0x1F4E => self.world.starter_deck.iter().fold(Message::reply(0x22C8), |m, d| m.item(d.record())),
             0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_ids)),
             0x27D8 => Message::reply(0x27D9).item(Message::record()),
             0x2CEE => Message::reply(0x2CF3).item(self.player().record()),

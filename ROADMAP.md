@@ -69,6 +69,9 @@ Stop finding missing fields one crash at a time.
 - [ ] Player creation and deletion (`CharMake.cpp`, `0x2CF5/0x2CF6`)
 - [ ] Trunk contents: the card collection
 - [ ] Deck list, deck editor saves (`HolderSelect.cpp` "deck list")
+  - [x] Every player owns a starter deck's cards and gets it in the deck list (`0x1F4E` → `0x22C8`, tag-6
+        items); Edit Deck saves it locally and the NPC duel accepts it
+  - [ ] Saving and deleting decks (`0x22CA`, `0x1F50` → `0x22CC`); storing decks per player on the server
 - [ ] Shop: booster packs and structure decks from the client's own pack/deck files, BP economy
 - [ ] Presents, card trade and rental, if wanted
 - **Exit:** create a player, open packs, build a deck, restart the server, everything is still there
@@ -96,7 +99,8 @@ Stop finding missing fields one crash at a time.
 | Item | Current choice | Why it's uncertain |
 |---|---|---|
 | `pbin` size | 512 zero bytes | Guessed from the 4,096 entries of `yo3pbininfo.bin` |
-| Trunk (`9000`) contents | one record: `cards`/`noTrade` all zero | Other fields later screens may read are unknown |
+| Starter deck and collection | the first preset of type 1 that regulation 1 allows (preset 2); one copy of each of its cards | The original let new players choose; a real collection comes with the economy |
+| Trunk (`9000`) contents | one record: `cards` (the starter deck's), `noTrade` all zero | Other fields later screens may read are unknown |
 | `regulations` list | all 20 ids | Which banlists the UI should offer |
 | `0x21FC` `lang` | `"1"` | Read as a string; semantics unknown |
 | `0x2583/0x271A/0x2710/0x2AFB/0x2AFD/0x27D8` | minimal replies | Meanings unknown; they only stop timeouts |

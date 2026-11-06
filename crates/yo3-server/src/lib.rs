@@ -13,7 +13,7 @@ use tokio::task::JoinHandle;
 use yo3_proto::{Message, Value};
 
 use accounts::Directory;
-use front::{FrontSession, Hub, World};
+use front::{Deck, FrontSession, Hub, LOGIN_REGULATION, World};
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -66,6 +66,14 @@ fn world(cfg: &Config) -> World {
     match yo3_data::GameData::load(&cfg.game_dir) {
         Ok(data) => World {
             card_rows: data.cards.iter().map(|c| c.row as usize).max().unwrap_or(0),
+            // The first deck_type 1 preset (they look like starter decks) the login regulation allows.
+            starter_deck: data.starter_deck(LOGIN_REGULATION).map(|d| Deck {
+                id: 1,
+                name: "Starter Deck".into(),
+                main: d.main.clone(),
+                extra: d.extra.clone(),
+                side: d.side.clone(),
+            }),
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
         },
         Err(e) => {

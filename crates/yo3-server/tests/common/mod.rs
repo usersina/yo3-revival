@@ -41,7 +41,11 @@ pub struct Server {
 
 impl Server {
     pub fn new() -> Server {
-        Server { world: Arc::new(World::new((1..=20).collect())), hub: Arc::new(Mutex::new(Hub::default())) }
+        Server::with_world(World::new((1..=20).collect()))
+    }
+
+    pub fn with_world(world: World) -> Server {
+        Server { world: Arc::new(world), hub: Arc::new(Mutex::new(Hub::default())) }
     }
 
     /// A client that logged in and selected `player_id`.
