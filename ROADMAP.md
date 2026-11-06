@@ -35,13 +35,16 @@ Stop finding missing fields one crash at a time.
 ## ▶ M3: A social world
 
 - [x] Answer `0x2775` (present count) and any further main-screen requests (none so far after it)
-
-- [ ] Chat rooms ("select a chatroom" at the top left) and chat messages
+- [x] Chat rooms (the chat panel's top-left button) and chat messages: room list, enter, leave, room chat
+      with echo, whispers
+- [x] Sessions registry: who is online, in which room (`Hub`); sessions leave on disconnect
+- [x] Accounts by client address (the client never sends credentials), up to four players each
+- [x] Two clients at once: `YO3_INSTANCE=b` with its own display and reflinked Wine prefix
+- [ ] Player search returns real players (0x2CF7 items; use the tracer to learn the item fields)
 - [ ] Entering map locations, lobbies and rooms
-- [ ] Sessions registry: who is online, in which room; player search returns real players
-- [ ] Two clients at once (a second Wine prefix or display) for multiplayer tests
 - [ ] Friends, mail and teams (as far as the main screen needs)
-- **Exit:** two headless clients log in as different players, find each other and chat
+- **Exit:** two headless clients log in as different players, find each other and chat (met 2026-11-06:
+  Yugi and Kaiba chat in the Lobby; the room list shows the other player)
 
 ## M4: Accounts, collection and economy
 
@@ -81,6 +84,9 @@ Stop finding missing fields one crash at a time.
 | `0x2583/0x271A/0x2710/0x2AFB/0x2AFD/0x27D8` | minimal replies | Meanings unknown; they only stop timeouts |
 | `avatar1` slots | zeros | Slot meanings unmapped |
 | `bgm`, `icon`/`lefttime`/`maintenance`, `npc_id`, `cpuUse`/`notRelease`, `premium` | left out (read as 0 / NULL) | The tracer shows the client reads them; see "Fields the client reads that we leave out" in docs/protocol.md |
+| Chat room `region`, `status`, `type`; `0x2458.lang` | 0 / 1 | Shown fine; meanings unknown |
+| Whisper `chat_type` values | any type with `to_name` is a whisper | Only room chat (type 1) was seen live |
+| Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
 
 ## Leads (outside the code)
 

@@ -86,6 +86,23 @@ front dispatcher; `python3 tools/re/dispatch.py 0x4f4a4f <id>` shows the case it
 | `0x2CF0` player search `{back_num, base_point, front_num, search_flag, search_type}` | `0x2CF7` (`0x2CF8`) | `result_number` u32 (top, read at `0x4591CA`); items = players (shape unknown; we send none) | `RESPONSE_PLAYER_SEARCH_SUCCESS` `ChatWindow.cpp L651`, field trace | confirmed (empty) |
 | `0x2724` heartbeat | none | none | builders `0x4F17DF` (every 30 s) and `0x4F45A5` (after 120 s); no reply is checked | confirmed |
 
+### Chat (ChatWindow dispatcher `0x435950`)
+
+| Request | Reply (error) | Fields | Evidence | Status |
+|---|---|---|---|---|
+| `0x2135` room list | `0x2458` (`0x2459`) | top `lang`; items = rooms `{id, name, capacity, num, region, status, type}` (read by `0x434D20`); `id` ≥ 1 | "chat room list success!" `ChatWindow.cpp L339`; the room chooser lists them with `[num/capacity]` | confirmed (`region`/`status`/`type` **guess** 0) |
+| `0x2136` enter `{room_id}` | `0x245A {room_id}` (`0x245B {error_code}`) | the client ignores `room_id` < 1 | "In>>Lobby" printed, tab renamed | confirmed |
+| `0x2137` leave | `0x245C` | none | "chat room exit" | shape |
+| `0x2134` send | `0x2456` (`0x2457`) | fields sit in **one item (tag 10)**: `chat_str`, `chat_type`, and `to_id` or `to_name`. Room chat = `chat_type` 1 with `to_id` = the room id; whisper = `to_name` | captured packets; builders `0x4F3E00` (to_id) and `0x4F4030` (to_name) | confirmed (room); whisper shape |
+| (server push) | `0x2455` | items `{from_id, pname, chat_type, chat_str}`; the handler also checks `friend_id`/`member_id` | two clients see each other's lines; the client shows nothing on `0x2456`, so the sender needs the echo | confirmed |
+
+## Accounts
+
+The client never sends a user id or password. `0x1F47` is a bare request; the credentials typed at login are copied
+onto the front connection object (`+0x118`/`+0x134`, on `0x219F`) and never serialized. The server therefore tells
+accounts apart by the client's address and lets the player pick one of up to four players at Select Player
+(`0x1F4C {player_id}`).
+
 ## Fields the client reads that we leave out
 
 The field tracer shows these lookups failing, and the client copes: an absent int reads as 0, an absent raw value as
@@ -107,3 +124,5 @@ NULL, which these callers check. Send them when we know what they mean.
   The same numbers also show up as UI text ids (`FUN_0051E6C0(table, id)`): don't confuse the two.
 - 48 more `REQUEST_` / `RESPONSE_COMMUNICATION_*` names for trade and rental (search the exe's strings).
 - `DuelServerConnection`: the third server tier, not reached yet.
+- Official duel logs were served over HTTP (`http://download.yugioh-online.net/duellogs/last/`), alongside team and
+  Online 2 downloads under `download.yugioh-online.net`.

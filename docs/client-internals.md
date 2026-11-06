@@ -35,6 +35,9 @@ export, see [CLAUDE.md](../CLAUDE.md)).
 | `0x458475` | InfoWindow dispatcher (news) |
 | `0x472EDC…0x473A3A` | main-screen poll reply handlers (each re-arms its request through `obj+0xE8`) |
 | `0x4A523F`, `0x4A551E`, `0x4A5D05` | `CommunicationAgent` switches (195/106/102 cases) |
+| `0x435950` | ChatWindow dispatcher: `0x2455` push, then a jump table for `0x2456 + n` (send / list / enter / exit) |
+| `0x434D20` | reads one chat room item (`id`, `name`, `capacity`, `num`, `region`, `status`, `type`) |
+| `0x4F3C10`, `0x4F3CF0`, `0x4F4280` | chat requests `0x2135` (list), `0x2136` (enter), `0x2137` (leave) |
 | `0x4F17DF`, `0x4F45A5` | heartbeat `0x2724` builders (30 s / 120 s) |
 
 ## The field tracer
@@ -79,6 +82,11 @@ parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Su
 - Text values are read as C strings: anything after a NUL is lost. Use binary for blobs (`avatar1`, `pbin`,
   `regulations`).
 - Unanswered polls time out with a dialog naming the decimal request id, and the client then drops back to the title.
+- Credentials are never sent; see "Accounts" in the protocol catalog.
+- Several clients can run at once (unnamed mutexes only, so no single-instance guard). Under Wine each needs its own
+  prefix when it gets its own X display; otherwise Wine dies with X `BadWindow` errors.
+- In chat, the client prints its own lines only from the server's `0x2455` echo, its own name in cyan and others' in
+  white.
 
 ## Crash history (and the rule each one taught)
 

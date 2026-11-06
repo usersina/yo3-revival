@@ -1,14 +1,15 @@
-"""Map a client reply handler's `case 0x....:` labels to their log lines and field reads.
+"""Map a client reply handler's `case 0x....:` labels to their field reads.
 
-Reads the Ghidra export (re/yo3_decompiled.c). Pick the function by address, or by a log
-string it prints:
+Reads the Ghidra export (re/yo3_decompiled.c). Pick the function by address, or by any text
+in its body (a field name, say):
 
-    python3 tools/re/handlers.py 0x434d10
-    python3 tools/re/handlers.py "chat room list success"
+    python3 tools/re/handlers.py 0x435950
+    python3 tools/re/handlers.py '"room_id"'
 
-For each case it prints the client's own log text (e.g. "front server : chat room list
-success"), the field names it builds strings for (the keys it reads or writes) and which
-typed getters it calls.
+For each case it prints the field names it builds strings for (the keys it reads or writes)
+and which typed getters it calls. The `logs` column is usually empty: the export drops the
+client's log strings (they reach the printf helper through data pointers), so tie a log line
+such as "chat room list success" to its case from the disassembly (tools/re/yodis.py).
 """
 import re
 import sys

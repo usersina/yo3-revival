@@ -9,14 +9,14 @@ addresses and data formats: [docs/client-internals.md](docs/client-internals.md)
 ## Ground rules
 
 1. **Never touch the user's screen or mouse.** Run the game only on the private Xvfb display through
-   `tools/client/vclient.sh` (display `:77`). The user asked for this explicitly.
+   `tools/client/vclient.sh` (display `:77`, and `:78`+ for extra clients). The user asked for this explicitly.
 2. **Evidence, not invention.** Every reply shape cites client evidence (an address, a `File.cpp Lnnn` trace line,
    or a logged packet) in `docs/protocol.md` with a status: confirmed / shape / guess / open. Send only fields the
    client reads. Label guesses and add them to the guesses table in ROADMAP.md.
 3. **Test first.** New client requirement → failing contract test → implementation → green → live check. Keep
    `cargo nextest run --workspace` green and `cargo clippy --workspace --all-targets` clean before every commit.
-4. **Keep four places in step:** `docs/protocol.md`, `crates/yo3-server/src/front.rs`,
-   `crates/yo3-server/tests/front_contract.rs` and `ROADMAP.md`.
+4. **Keep four places in step:** `docs/protocol.md`, `crates/yo3-server/src/front.rs`, the contract tests
+   (`crates/yo3-server/tests/front_contract.rs`, `chat_contract.rs`, one file per screen family) and `ROADMAP.md`.
 5. **Small, logical commits** (conventional style: `feat(server): …`, `fix(…)`, `docs: …`, `refactor(…)`,
    `chore: …`) on a feature branch per slice of work. **`main` is the source of truth:** when a slice is done, tests
    are green and the live check passes, fast-forward `main` and delete the branch (the user's standing preference).
@@ -30,8 +30,8 @@ addresses and data formats: [docs/client-internals.md](docs/client-internals.md)
 |---|---|
 | `crates/yo3-proto` | Wire codec: frame, Blowfish (`BlowfishLE`), key/value messages, the version-string opener |
 | `crates/yo3-data` | Client data: `.ypk` archives, card table, regulations, preset decks, packs (golden tests skip without the game) |
-| `crates/yo3-server` | Gate / front / patch-HTTP servers. `front.rs` = the reply contract, `net.rs` = framing, `log.rs` = packet log |
-| `tools/client/vclient.sh` | Headless client: `xvfb`, `start [--trace]`, `login`, `check`, `shot`, `click`, `pixel`, `key`, `type`, `stop` |
+| `crates/yo3-server` | Gate / front / patch-HTTP servers. `front.rs` = the reply contract and the `Hub` of online players, `accounts.rs` = accounts by client address, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
+| `tools/client/vclient.sh` | Headless client: `xvfb`, `start [--trace]`, `login [SLOT]`, `check`, `shot`, `click`, `pixel`, `key`, `type`, `stop`, `prefix` |
 | `tools/tracer/` | Field-read tracer: `yo3trace.dll` + injector (C, mingw-w64), `summarize.py` |
 | `tools/re/` | Python reverse-engineering helpers (see Commands) |
 | `tools/ghidra/` | Headless export script |
@@ -44,7 +44,7 @@ addresses and data formats: [docs/client-internals.md](docs/client-internals.md)
 ```bash
 cargo nextest run --workspace                                   # all tests
 cargo clippy --workspace --all-targets                          # lints
-cargo run --release -p yo3-server -- --log-dir logs             # server (run in the background)
+cargo run --release -p yo3-server -- --log-dir logs --players Yugi,Kaiba   # server (in the background); one account, up to 4 players
 ss -ltnp | grep ':5730 '                                        # find the server's pid to stop it
 
 tools/client/vclient.sh xvfb                                    # once per boot
@@ -53,12 +53,18 @@ tools/client/vclient.sh check                                   # process, clien
 tools/client/vclient.sh shot NAME                               # logs/shots/NAME.png, then view it
 tools/client/vclient.sh stop                                    # also clears a crashed client
 
+export YO3_INSTANCE=b                                           # a second client: display :78, logs/b/, prefix .wine-b/
+tools/client/vclient.sh xvfb && tools/client/vclient.sh prefix  # once: its display and reflinked Wine prefix
+tools/client/vclient.sh start && tools/client/vclient.sh login 1   # log in as the second player (slot 1)
+
 tools/client/vclient.sh start --trace                          # same, logging every field lookup -> logs/fields.tsv
 python3 tools/tracer/summarize.py --missing                     # per reply: fields the client read but didn't find
 python3 tools/tracer/summarize.py --reply 0x2398                # everything read for one reply (top/sub level, caller)
 tools/tracer/build.sh                                           # rebuild the tracer after editing it
 
 python3 tools/re/dispatch.py 0x4f4a4f 0x2398    # route a reply id through the global dispatcher; fields it reads
+python3 tools/re/handlers.py 0x435950           # a screen's handler: per case, the field names and getters
+python3 tools/re/yodis.py 0x435950 400          # annotated disassembly (shows the log strings Ghidra's C drops)
 python3 tools/re/rtti.py ClassName              # vtable of a class (MSVC RTTI)
 python3 tools/re/emp.py FILE.y3d                # decode a client data file
 grep -n '0x2775' re/yo3_decompiled.c            # find a request id in the decompiled client
@@ -119,5 +125,13 @@ the knowledge.
 - Ghidra's addresses equal the exe's virtual addresses (image base `0x400000`).
 - With `--trace`, the client's own stdout trace reaches `logs/client-stdout.log` in buffered chunks, so recent lines
   can lag. `logs/fields.tsv` is written straight away. Wine's `winepath` prints startup noise on stderr; silence it.
+- Wine assumes one X display per prefix: two clients in one prefix on two displays die with X `BadWindow`. Each extra
+  client gets its own prefix (`vclient.sh prefix`, a btrfs reflink copy of `~/.wine`, so near-instant).
+- The server keys accounts by client address, so every local client shares one account; pick different players
+  with `login SLOT`. A player already online can still be chosen twice (no guard yet).
+- The Ghidra C export drops the client's log strings, so a log line ("chat room list success") can't be grepped
+  there. Use `yodis.py` on the handler to see which case prints it.
+- Chat request fields arrive nested in one item (tag 10), not at the top level. Check a real packet before assuming
+  a request's layout.
 - The tracer's reply attribution is a 300 ms window after each `request` read, so local data read just after a reply
   (e.g. banlist files) can be listed under that reply. The `top`/`sub` column tells you which dataset was read.
