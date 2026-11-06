@@ -9,14 +9,20 @@
  * Both entry points get a 5-byte JMP to a stub that logs and then runs the original
  * prologue from a trampoline. Nothing is patched unless the original bytes match.
  *
+ * Code hits: %YO3_TRACE_HITS% = "0x473be0,0x4725b0,..." puts an int3 on each address; a vectored
+ * handler logs the hit, runs the original byte with the trap flag set, then re-arms. An address
+ * is logged at most %YO3_TRACE_HITS_MAX% times (default 20), then its int3 is removed for good.
+ *
  * Log lines (tab separated), to %YO3_TRACE_FILE% (default yo3_fields.tsv):
  *   F  ms tid getter key found(0/1) value-type request-value field-caller getter-caller tree
  *   (tree identifies the dataset: the same tree as a message's "request" = a top-level field)
  *   I  ms tid index count caller
+ *   H  ms tid address ecx caller (a code hit; caller = the return address at [esp])
  * Build: i686-w64-mingw32-gcc -O2 -shared -s -o yo3trace.dll yo3trace.c
  */
 #include <windows.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define FIND_ADDR 0x41A980u
@@ -195,6 +201,75 @@ void __cdecl on_item(DWORD list, DWORD index, DWORD ret) {
     log_line(line);
 }
 
+/* ---- code hits ---------------------------------------------------------------------- */
+
+#define MAX_HITS 64
+static DWORD hit_addr[MAX_HITS];
+static unsigned char hit_orig[MAX_HITS];
+static volatile LONG hit_count[MAX_HITS];
+static int hit_n, hit_max = 20;
+static DWORD rearm_tls; /* per thread: 1 + index of the breakpoint to re-arm after the single step */
+
+static void poke(DWORD at, unsigned char b) {
+    DWORD old;
+    if (!VirtualProtect((void *)at, 1, PAGE_EXECUTE_READWRITE, &old)) return;
+    *(volatile unsigned char *)at = b;
+    VirtualProtect((void *)at, 1, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), (void *)at, 1);
+}
+
+static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep) {
+    DWORD code = ep->ExceptionRecord->ExceptionCode;
+    CONTEXT *ctx = ep->ContextRecord;
+    if (code == EXCEPTION_BREAKPOINT) {
+        DWORD at = (DWORD)ep->ExceptionRecord->ExceptionAddress;
+        for (int i = 0; i < hit_n; i++) {
+            if (hit_addr[i] != at) continue;
+            LONG n = InterlockedIncrement(&hit_count[i]);
+            if (n <= hit_max) {
+                char line[160];
+                DWORD caller = readable(ctx->Esp, 4) ? *(DWORD *)ctx->Esp : 0;
+                sprintf(line, "H\t%lu\t%lu\t%#lx\t%#lx\t%#lx\n", (unsigned long)(GetTickCount() - t0),
+                        (unsigned long)GetCurrentThreadId(), (unsigned long)at, (unsigned long)ctx->Ecx,
+                        (unsigned long)caller);
+                log_line(line);
+            }
+            poke(at, hit_orig[i]);
+            ctx->Eip = at;
+            if (n < hit_max) {
+                ctx->EFlags |= 0x100; /* single-step the original instruction, then re-arm */
+                TlsSetValue(rearm_tls, (void *)(DWORD_PTR)(i + 1));
+            }
+            return EXCEPTION_CONTINUE_EXECUTION;
+        }
+    } else if (code == EXCEPTION_SINGLE_STEP) {
+        DWORD i = (DWORD)(DWORD_PTR)TlsGetValue(rearm_tls);
+        if (i) {
+            TlsSetValue(rearm_tls, NULL);
+            poke(hit_addr[i - 1], 0xCC);
+            return EXCEPTION_CONTINUE_EXECUTION;
+        }
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+static int install_hits(void) {
+    char spec[1024], max[16];
+    if (!GetEnvironmentVariableA("YO3_TRACE_HITS", spec, sizeof spec)) return 0;
+    if (GetEnvironmentVariableA("YO3_TRACE_HITS_MAX", max, sizeof max)) hit_max = atoi(max);
+    rearm_tls = TlsAlloc();
+    AddVectoredExceptionHandler(1, on_exception);
+    for (char *tok = strtok(spec, ", "); tok && hit_n < MAX_HITS; tok = strtok(NULL, ", ")) {
+        DWORD at = strtoul(tok, NULL, 16);
+        if (at < TEXT_LO || at >= TEXT_HI) continue;
+        hit_addr[hit_n] = at;
+        hit_orig[hit_n] = *(unsigned char *)at;
+        poke(at, 0xCC);
+        hit_n++;
+    }
+    return hit_n;
+}
+
 /* ---- install ------------------------------------------------------------------------ */
 
 static int patch(DWORD at, const unsigned char *expect, int len, void *target) {
@@ -224,8 +299,9 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
     char line[160];
     int ok_find = patch(FIND_ADDR, FIND_PROLOGUE, 5, (void *)hook_find);
     int ok_item = patch(ITEM_ADDR, ITEM_PROLOGUE, 6, (void *)hook_item);
-    sprintf(line, "#\tyo3trace\tfind=%s\titem=%s\n", ok_find ? "hooked" : "SKIPPED (bytes differ)",
-            ok_item ? "hooked" : "SKIPPED (bytes differ)");
+    int hits = install_hits();
+    sprintf(line, "#\tyo3trace\tfind=%s\titem=%s\thits=%d\n", ok_find ? "hooked" : "SKIPPED (bytes differ)",
+            ok_item ? "hooked" : "SKIPPED (bytes differ)", hits);
     log_line(line);
     return TRUE;
 }

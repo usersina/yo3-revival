@@ -58,6 +58,7 @@ tools/client/vclient.sh xvfb && tools/client/vclient.sh prefix  # once: its disp
 tools/client/vclient.sh start && tools/client/vclient.sh login 1   # log in as the second player (slot 1)
 
 tools/client/vclient.sh start --trace                          # same, logging every field lookup -> logs/fields.tsv
+YO3_TRACE_HITS=0x473ae0,0x4725b0 tools/client/vclient.sh start --trace   # also log when these addresses run (H lines)
 python3 tools/tracer/summarize.py --missing                     # per reply: fields the client read but didn't find
 python3 tools/tracer/summarize.py --reply 0x2398                # everything read for one reply (top/sub level, caller)
 tools/tracer/build.sh                                           # rebuild the tracer after editing it
@@ -67,6 +68,8 @@ python3 tools/re/handlers.py 0x435950           # a screen's handler: per case, 
 python3 tools/re/yodis.py 0x435950 400          # annotated disassembly (shows the log strings Ghidra's C drops)
 python3 tools/re/rtti.py ClassName              # vtable of a class (MSVC RTTI)
 python3 tools/re/emp.py FILE.y3d                # decode a client data file
+python3 tools/re/ypk.py x re/gfx '*main.swf' "<game dir>"/package/*.ypk     # extract files from the .ypk archives
+ffdec -export script re/gfx/as/main re/gfx/data002.ypk/data/gfx/main.swf  # a Flash screen's ActionScript
 grep -n '0x2775' re/yo3_decompiled.c            # find a request id in the decompiled client
 ```
 
@@ -85,6 +88,8 @@ the knowledge.
    - fields the client looked up and didn't find (the tracer); `top` means the reply itself
    - a "There is no response from the server. (N)" dialog (N is the request id in decimal)
    - a Wine "page fault … at address X" in `logs/client-wine.log`
+   - clicks that do nothing: the screen may still be locked (the main screen locks itself until its startup steps
+     finish; see the main-screen section of the protocol). `YO3_TRACE_HITS` shows which step it stopped at.
 2. **Locate.** Find the request's builder and the reply ids its screen compares (grep the id in
    `re/yo3_decompiled.c`, or use GhidraMCP xrefs). Read which fields the handler reads.
 3. **Check the global dispatcher.** Run `tools/re/dispatch.py 0x4f4a4f <reply id>`. Every reply also passes through
