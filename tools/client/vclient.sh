@@ -56,8 +56,8 @@ case "${1:-}" in
     if [ "${2:-}" = "--trace" ]; then
       TRACER="$ROOT/tools/tracer/build"
       [ -f "$TRACER/yo3trace.dll" ] || "$ROOT/tools/tracer/build.sh" >/dev/null
-      export YO3_TRACE_FILE; YO3_TRACE_FILE="$(winepath -w "$LOGS/fields.tsv")"
-      cmd=(wine "$TRACER/yo3trace-launch.exe" "$(winepath -w "$GAME/yo3.exe")" "$(winepath -w "$TRACER/yo3trace.dll")")
+      export YO3_TRACE_FILE; YO3_TRACE_FILE="$(winepath -w "$LOGS/fields.tsv" 2>/dev/null)"
+      cmd=(wine "$TRACER/yo3trace-launch.exe" "$(winepath -w "$GAME/yo3.exe" 2>/dev/null)" "$(winepath -w "$TRACER/yo3trace.dll" 2>/dev/null)")
     else
       cmd=(wine yo3.exe)
     fi
