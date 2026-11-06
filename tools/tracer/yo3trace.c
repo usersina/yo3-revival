@@ -17,7 +17,8 @@
  *   F  ms tid getter key found(0/1) value-type request-value field-caller getter-caller tree
  *   (tree identifies the dataset: the same tree as a message's "request" = a top-level field)
  *   I  ms tid index count caller
- *   H  ms tid address ecx caller (a code hit; caller = the return address at [esp])
+ *   H  ms tid address ecx caller eax (a code hit; caller = the return address at [esp]; put a hit
+ *      just after a call to see its result in eax)
  *   E  ms tid code address stack (an error exception, first 20 only; stack = words on the stack that
  *      point into the game's code, nearest first: mostly return addresses, i.e. a rough backtrace)
  * Build: i686-w64-mingw32-gcc -O2 -shared -s -o yo3trace.dll yo3trace.c
@@ -232,9 +233,9 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep) {
             if (n <= hit_max) {
                 char line[160];
                 DWORD caller = readable(ctx->Esp, 4) ? *(DWORD *)ctx->Esp : 0;
-                sprintf(line, "H\t%lu\t%lu\t%#lx\t%#lx\t%#lx\n", (unsigned long)(GetTickCount() - t0),
+                sprintf(line, "H\t%lu\t%lu\t%#lx\t%#lx\t%#lx\t%#lx\n", (unsigned long)(GetTickCount() - t0),
                         (unsigned long)GetCurrentThreadId(), (unsigned long)at, (unsigned long)ctx->Ecx,
-                        (unsigned long)caller);
+                        (unsigned long)caller, (unsigned long)ctx->Eax);
                 log_line(line);
             }
             poke(at, hit_orig[i]);
