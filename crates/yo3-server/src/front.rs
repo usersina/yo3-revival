@@ -331,6 +331,8 @@ impl FrontSession {
             0x339A => Message::reply(0x33FE).with("remain", Value::U32(0)).with("event_id", Value::U32(0)),
             // Deck list (deck editor 0x43FC60): it saves each deck it lacks as a local file.
             0x1F4E => self.world.starter_deck.iter().fold(Message::reply(0x22C8), |m, d| m.item(d.record())),
+            // Deck deleted (its local file is already gone); the starter deck comes back on the next list.
+            0x1F50 => Message::reply(0x22CC),
             0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_ids)),
             0x27D8 => Message::reply(0x27D9).item(Message::record()),
             0x2CEE => Message::reply(0x2CF3).item(self.player().record()),

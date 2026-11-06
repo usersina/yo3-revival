@@ -174,12 +174,13 @@ default's index is skipped; cards 5280, 5434 and 6276 are never allowed.
 | Request | Reply (error) | Fields | Evidence | Status |
 |---|---|---|---|---|
 | `0x1F4E` deck list (bare, `0x440C43`; also re-sent after save and delete) | `0x22C8` (`0x22C9`) | items **tag 6**: `deck_id` (int), `deck_name`, `discription` (string), `card_protector` (int), `main`, `extra`, `side` (binary u16 BE CARD_Prop rows, read by `0x414410`); at most 10 are used | tracer: all found; "Starter Deck.y3d" written; the NPC duel opens | confirmed |
-| `0x1F50` delete `{delete_type, deck_name}` (`0x4449A9`) | `0x22CC` (`0x22CD`) | | "deck delete succes" | open |
-| deck add or update | `0x22CA` (`0x22CB`) | | "deck add or update succes" | open |
+| `0x1F50` delete `{delete_type, deck_name}` (`0x4449A9`, after deleting the local file `0x52F0C0`) | `0x22CC` (`0x22CD` shows an error) | none | "deck delete succes"; live: the deck leaves the Load Deck list | confirmed |
+| (none) | `0x22CA` (`0x22CB`) | | Saving in the editor only writes the local file (`0x4442E0` → `0x4159B0` → `0x52EE60`) and `cursor_deck_name`; the client never asks the server, though it has a "deck add or update succes" case | confirmed (no request) |
 
 Every player gets one deck, "Starter Deck": the first `deck_type` 1 preset (`data/recipe`, ids 1–6, 501, 502; they
 look like the starter decks) that the login regulation allows. Preset 1 holds a card regulation 1 forbids (4966), so
-it is preset 2 (**guess**: the original let a new player choose).
+it is preset 2 (**guess**: the original let a new player choose). The server lists it every time, so a deleted
+starter deck comes back the next time Edit Deck opens.
 
 ## Accounts
 

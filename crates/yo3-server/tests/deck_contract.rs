@@ -54,3 +54,14 @@ fn the_trunk_owns_every_card_of_the_starter_deck() {
     assert_eq!((cards[9], cards[19], cards[29]), (2, 1, 1));
     assert_eq!(cards.iter().map(|&n| n as u32).sum::<u32>(), 4);
 }
+
+#[test]
+fn deleting_a_deck_is_acknowledged() {
+    // The editor deletes the local file (0x52F0C0), then sends 0x1F50 (0x4449A9); 0x22CC only logs
+    // "deck delete succes", 0x22CD would show an error. Saving a deck never reaches the server.
+    let mut c = Server::with_world(world()).join(1001, "Yugi");
+    let delete = req_with(0x1F50, &[("delete_type", Value::U32(0)), ("deck_name", Value::text("Starter Deck"))]);
+    let r = one(c.send(delete));
+    assert_eq!(r.request(), Some(0x22CC));
+    assert_eq!(r.fields.len(), 1);
+}

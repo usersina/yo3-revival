@@ -71,7 +71,8 @@ Stop finding missing fields one crash at a time.
 - [ ] Deck list, deck editor saves (`HolderSelect.cpp` "deck list")
   - [x] Every player owns a starter deck's cards and gets it in the deck list (`0x1F4E` → `0x22C8`, tag-6
         items); Edit Deck saves it locally and the NPC duel accepts it
-  - [ ] Saving and deleting decks (`0x22CA`, `0x1F50` → `0x22CC`); storing decks per player on the server
+  - [x] Deleting a deck (`0x1F50` → `0x22CC`); saving never reaches the server (local files only)
+  - [ ] Decks on the server, so they follow a player to another machine (the client only uploads deletes)
 - [ ] Shop: booster packs and structure decks from the client's own pack/deck files, BP economy
 - [ ] Presents, card trade and rental, if wanted
 - **Exit:** create a player, open packs, build a deck, restart the server, everything is still there
