@@ -189,14 +189,38 @@ pub struct Regulation {
     pub kind: u32,
     pub status: u32,
     pub name_id: u32,
-    /// card0 = forbidden, card1 = limited, card2 = semi-limited, card3 = unrestricted again.
+    /// card0 = forbidden, card1 = limited, card2 = semi-limited, card3 = three copies (see `limit`).
     pub lists: [Vec<u16>; 4],
+    /// Copies allowed of a card in no list ("addition_card"; 3 when absent, a guess).
+    pub default_limit: u32,
     pub record: Message,
 }
 
 impl Regulation {
+    /// Cards no deck may hold under any regulation (0x51A9A0; the same three the trunk zeroes).
+    pub const NEVER_ALLOWED: [u16; 3] = [5280, 5434, 6276];
+
     pub fn forbidden(&self) -> &[u16] {
         &self.lists[0]
+    }
+
+    /// Copies of a card (Konami ID) a deck may hold, as 0x51A930 decides it: the index of the list
+    /// that names the card, else the default. The list whose index is the default is skipped, so
+    /// format regulations (default 0) use card3 as the cards allowed three times.
+    pub fn limit(&self, cid: u16) -> u32 {
+        (0..4)
+            .filter(|&i| i != self.default_limit as usize)
+            .find(|&i| self.lists[i].contains(&cid))
+            .map_or(self.default_limit, |i| i as u32)
+    }
+
+    /// Whether a deck (its cards as Konami IDs) is legal (0x51A9A0).
+    pub fn allows(&self, cids: impl IntoIterator<Item = u16>) -> bool {
+        let mut counts: HashMap<u16, u32> = HashMap::new();
+        for cid in cids {
+            *counts.entry(cid).or_default() += 1;
+        }
+        counts.iter().all(|(&cid, &n)| !Self::NEVER_ALLOWED.contains(&cid) && n <= self.limit(cid))
     }
 }
 
@@ -209,6 +233,13 @@ pub struct Deck {
     pub extra: Vec<u16>,
     pub side: Vec<u16>,
     pub record: Message,
+}
+
+impl Deck {
+    /// Every card of the deck (CARD_Prop rows): main, then extra, then side.
+    pub fn cards(&self) -> impl Iterator<Item = u16> + '_ {
+        self.main.iter().chain(&self.extra).chain(&self.side).copied()
+    }
 }
 
 /// A booster pack. Its list holds CARD_Prop rows.
@@ -245,6 +276,7 @@ impl GameData {
                 status: int(&m, "status"),
                 name_id: int(&m, "name_id"),
                 lists: ["card0", "card1", "card2", "card3"].map(|k| u16_list(&m, k)),
+                default_limit: m.get("addition_card").and_then(Value::as_u32).unwrap_or(3),
                 record: m,
             })
             .collect();
@@ -270,5 +302,12 @@ impl GameData {
             .collect();
         packs.sort_by_key(|p| p.id);
         Ok(GameData { cards, regulations, decks, packs })
+    }
+
+    /// The first starter preset (deck_type 1) that a regulation allows.
+    pub fn starter_deck(&self, regulation_id: u32) -> Option<&Deck> {
+        let regulation = self.regulations.iter().find(|r| r.id == regulation_id)?;
+        let cids = |d: &Deck| d.cards().filter_map(|row| self.cards.by_row(row)).map(|c| c.cid).collect::<Vec<_>>();
+        self.decks.iter().filter(|d| d.kind == 1).find(|d| regulation.allows(cids(d)))
     }
 }

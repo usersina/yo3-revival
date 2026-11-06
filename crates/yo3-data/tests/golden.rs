@@ -87,3 +87,16 @@ fn decks_and_packs_reference_card_rows() {
     let pack = data.packs.iter().find(|p| p.id == 1).unwrap();
     assert!(pack.cards.iter().all(|&row| data.cards.by_row(row).is_some()));
 }
+
+#[test]
+fn the_starter_deck_is_the_first_preset_the_regulation_allows() {
+    let dir = need_game!();
+    let data = GameData::load(&dir).unwrap();
+    let cids = |d: &yo3_data::Deck| d.cards().map(|row| data.cards.by_row(row).unwrap().cid).collect::<Vec<_>>();
+    let first = data.regulations.iter().find(|r| r.id == 1).unwrap();
+    // Preset 1 holds a card regulation 1 forbids (4966); preset 2 is the first legal one of type 1.
+    assert!(!first.allows(cids(data.decks.iter().find(|d| d.id == 1).unwrap())));
+    let starter = data.starter_deck(1).unwrap();
+    assert_eq!((starter.id, starter.kind), (2, 1));
+    assert!(first.allows(cids(starter)));
+}
