@@ -1,10 +1,14 @@
-//! Front server: login -> player select -> world entry -> main-screen polls.
+//! Front server: login -> player select -> world entry -> main-screen polls -> chat.
 //!
 //! The request/reply catalog, with the client evidence and status of every pair, is
-//! `docs/protocol.md`. Keep it, this file and `tests/front_contract.rs` in step.
-use std::sync::Arc;
+//! `docs/protocol.md`. Keep it, this file and the contract tests in step.
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use yo3_proto::{Message, Packet, Value};
+
+/// Where a session's outgoing messages go: its connection's writer task.
+pub type Outbox = tokio::sync::mpsc::UnboundedSender<Message>;
 
 pub const VERSION_VALID: u32 = 0x219F;
 pub const HEARTBEAT: u32 = 0x2724;
@@ -76,10 +80,30 @@ impl Account {
     }
 }
 
+/// A chat room, as listed in 0x2458 (fields read by 0x434D20).
+#[derive(Clone, Debug)]
+pub struct Room {
+    /// Must be at least 1: the 0x245A handler ignores lower ids.
+    pub id: u32,
+    pub name: String,
+    pub capacity: u32,
+    /// Meaning of region/status/type not mapped yet; 0 works.
+    pub region: u32,
+    pub status: u32,
+    pub kind: u32,
+}
+
+impl Room {
+    fn new(id: u32, name: &str) -> Room {
+        Room { id, name: name.into(), capacity: 50, region: 0, status: 0, kind: 0 }
+    }
+}
+
 /// Server-wide state shared by all sessions.
 pub struct World {
     pub regulation_ids: Vec<u16>,
     pub news: Vec<(String, String)>,
+    pub rooms: Vec<Room>,
 }
 
 impl World {
@@ -90,20 +114,101 @@ impl World {
                 "Welcome back to Yu-Gi-Oh! ONLINE".into(),
                 "This is a private revival server. Have fun duelling with your friends!".into(),
             )],
+            rooms: vec![
+                Room::new(1, "Lobby"),
+                Room::new(2, "Free Talk"),
+                Room::new(3, "Trading"),
+                Room::new(4, "Duel Recruiting"),
+            ],
         }
+    }
+}
+
+/// Who is online, in which chat room, and how to reach them.
+#[derive(Default)]
+pub struct Hub {
+    next_id: u64,
+    online: HashMap<u64, Online>,
+}
+
+struct Online {
+    player_id: u32,
+    name: String,
+    room: Option<u32>,
+    outbox: Outbox,
+}
+
+impl Hub {
+    pub fn online(&self) -> usize {
+        self.online.len()
+    }
+
+    fn join(&mut self, player_id: u32, name: &str, outbox: Outbox) -> u64 {
+        self.next_id += 1;
+        self.online.insert(self.next_id, Online { player_id, name: name.into(), room: None, outbox });
+        self.next_id
+    }
+
+    fn leave(&mut self, id: u64) {
+        self.online.remove(&id);
+    }
+
+    fn set_room(&mut self, id: u64, room: Option<u32>) {
+        if let Some(o) = self.online.get_mut(&id) {
+            o.room = room;
+        }
+    }
+
+    fn room_of(&self, id: u64) -> Option<u32> {
+        self.online.get(&id).and_then(|o| o.room)
+    }
+
+    fn occupancy(&self, room: u32) -> u32 {
+        self.online.values().filter(|o| o.room == Some(room)).count() as u32
+    }
+
+    /// Sends to everyone in `room` except `except`.
+    fn send_room(&self, room: u32, msg: &Message, except: u64) {
+        for (_, o) in self.online.iter().filter(|(id, o)| **id != except && o.room == Some(room)) {
+            let _ = o.outbox.send(msg.clone());
+        }
+    }
+
+    /// Sends to one player by id or name; false if they are not online.
+    fn send_player(&self, to_id: Option<u32>, to_name: Option<&str>, msg: &Message) -> bool {
+        let target = self.online.values().find(|o| Some(o.player_id) == to_id || Some(o.name.as_str()) == to_name);
+        target.is_some_and(|o| o.outbox.send(msg.clone()).is_ok())
     }
 }
 
 pub struct FrontSession {
     account: Account,
     world: Arc<World>,
+    hub: Arc<Mutex<Hub>>,
+    outbox: Outbox,
     opened: bool,
     selected: Option<usize>,
+    /// Hub registration once a player is selected.
+    online: Option<u64>,
+}
+
+impl Drop for FrontSession {
+    fn drop(&mut self) {
+        if let Some(id) = self.online
+            && let Ok(mut hub) = self.hub.lock()
+        {
+            hub.leave(id);
+        }
+    }
 }
 
 impl FrontSession {
-    pub fn new(account: Account, world: Arc<World>) -> FrontSession {
-        FrontSession { account, world, opened: false, selected: None }
+    pub fn new(account: Account, world: Arc<World>, hub: Arc<Mutex<Hub>>, outbox: Outbox) -> FrontSession {
+        FrontSession { account, world, hub, outbox, opened: false, selected: None, online: None }
+    }
+
+    fn hub(&self) -> std::sync::MutexGuard<'_, Hub> {
+        self.hub.lock().expect("hub lock")
     }
 
     /// Handles one client packet and returns the replies to send, in order.
@@ -133,9 +238,16 @@ impl FrontSession {
             0x1F49 => a.players.iter().fold(Message::reply(0x2260), |m, p| m.item(p.record())),
             0x1F4C => {
                 self.selected = self.find_player(msg);
-                if self.selected.is_none() {
-                    return vec![];
+                let Some(index) = self.selected else { return vec![] };
+                let (player_id, name) = (self.account.players[index].player_id, self.account.players[index].name.clone());
+                let outbox = self.outbox.clone();
+                let mut hub = self.hub();
+                if let Some(old) = self.online {
+                    hub.leave(old);
                 }
+                let id = hub.join(player_id, &name, outbox);
+                drop(hub);
+                self.online = Some(id);
                 Message::reply(0x2266)
             }
             0x1FA4 => {
@@ -164,9 +276,87 @@ impl FrontSession {
             0x2CF0 => Message::reply(0x2CF7).with("result_number", Value::U32(0)),
             // Present count (PresentWindow 0x476DE0 reads present_count from 0x2774).
             0x2775 => Message::reply(0x2774).with("present_count", Value::U32(0)),
+            0x2135 => self.room_list(),
+            0x2136 => self.enter_room(msg),
+            0x2137 => {
+                if let Some(id) = self.online {
+                    self.hub().set_room(id, None);
+                }
+                Message::reply(0x245C)
+            }
+            0x2134 => return self.chat(msg),
             _ => return vec![],
         };
         vec![reply]
+    }
+
+    /// 0x2135 -> 0x2458: top-level lang, one item per room (ChatWindow 0x435950, items via 0x434D20).
+    fn room_list(&self) -> Message {
+        let hub = self.hub();
+        self.world.rooms.iter().fold(Message::reply(0x2458).with("lang", Value::U32(1)), |m, r| {
+            m.item(
+                Message::record()
+                    .with("id", Value::U32(r.id))
+                    .with("name", Value::text(&r.name))
+                    .with("capacity", Value::U32(r.capacity))
+                    .with("num", Value::U32(hub.occupancy(r.id)))
+                    .with("region", Value::U32(r.region))
+                    .with("status", Value::U32(r.status))
+                    .with("type", Value::U32(r.kind)),
+            )
+        })
+    }
+
+    /// 0x2136 {room_id} -> 0x245A {room_id}, or 0x245B {error_code} if unknown or full.
+    fn enter_room(&self, msg: &Message) -> Message {
+        let wanted = msg.get("room_id").and_then(Value::as_u32);
+        let room = self.world.rooms.iter().find(|r| Some(r.id) == wanted);
+        let (Some(room), Some(id)) = (room, self.online) else {
+            return Message::reply(0x245B).with("error_code", Value::U32(1));
+        };
+        let mut hub = self.hub();
+        if hub.room_of(id) != Some(room.id) && hub.occupancy(room.id) >= room.capacity {
+            return Message::reply(0x245B).with("error_code", Value::U32(2));
+        }
+        hub.set_room(id, Some(room.id));
+        Message::reply(0x245A).with("room_id", Value::U32(room.id))
+    }
+
+    /// 0x2134 -> 0x2456 to the sender, and the line as a 0x2455 push to the room (or the whisper
+    /// target). The client sends its fields in one item (tag 10): chat_str, chat_type, and to_id
+    /// (room chat: chat_type 1, to_id = the room) or to_name (whisper). The client shows nothing
+    /// on 0x2456, so the sender gets the 0x2455 echo too. 0x2455 is read by ChatWindow 0x435950.
+    fn chat(&self, msg: &Message) -> Vec<Message> {
+        const ROOM_CHAT: u32 = 1;
+        let Some(id) = self.online else { return vec![Message::reply(0x2457)] };
+        let body = msg.items.first().unwrap_or(msg);
+        let chat_type = body.get("chat_type").and_then(Value::as_u32).unwrap_or(0);
+        let player = self.player();
+        let line = Message::record()
+            .with("from_id", Value::U32(player.player_id))
+            .with("pname", Value::text(&player.name))
+            .with("chat_type", Value::U32(chat_type))
+            .with("chat_str", Value::text(&body.get("chat_str").and_then(Value::as_str).unwrap_or_default()));
+        let push = Message::reply(0x2455).item(line);
+        let to_id = body.get("to_id").and_then(Value::as_u32);
+        let to_name = body.get("to_name").and_then(Value::as_str);
+        let hub = self.hub();
+        let delivered = match (chat_type, to_id, to_name) {
+            (_, _, Some(name)) => hub.send_player(None, Some(&name), &push),
+            (ROOM_CHAT, Some(room), None) => {
+                let here = hub.room_of(id) == Some(room);
+                if here {
+                    hub.send_room(room, &push, id);
+                }
+                here
+            }
+            (_, Some(player_id), None) => hub.send_player(Some(player_id), None, &push),
+            _ => false,
+        };
+        if !delivered {
+            return vec![Message::reply(0x2457)];
+        }
+        vec![Message::reply(0x2456), push]
     }
 
     fn find_player(&self, msg: &Message) -> Option<usize> {

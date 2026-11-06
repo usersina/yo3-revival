@@ -1,26 +1,35 @@
 //! Connection loops: framing, decryption, logging, and the patch-HTTP endpoint.
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::net::TcpListener;
+use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use yo3_proto::{MAX_FRAME, Message, Packet, decrypt, frame, frame_len};
 
+use crate::front::Outbox;
 use crate::log::PacketLog;
 
-/// Accepts connections; `make` builds a fresh packet handler for each one.
+/// Accepts connections. `make` builds a fresh packet handler for each one; it gets the
+/// connection's outbox, through which anything (replies, pushes from other sessions) is sent.
 pub async fn accept_loop<M, H>(listener: TcpListener, who: &'static str, log: Arc<PacketLog>, make: M)
 where
-    M: Fn() -> H,
+    M: Fn(SocketAddr, Outbox) -> H,
     H: FnMut(&Packet) -> Vec<Message> + Send + 'static,
 {
     loop {
         match listener.accept().await {
             Ok((stream, peer)) => {
                 tracing::info!("[{who}] connected {peer}");
-                let (log, handler) = (log.clone(), make());
+                let (outbox, queue) = unbounded_channel();
+                let handler = make(peer, outbox.clone());
+                let (reader, writer) = stream.into_split();
+                tokio::spawn(write_loop(writer, queue, who, log.clone()));
+                let log = log.clone();
                 tokio::spawn(async move {
-                    match serve(stream, who, &log, handler).await {
+                    match serve(reader, who, &log, handler, outbox).await {
                         Ok(()) => tracing::info!("[{who}] {peer} closed"),
                         Err(e) => tracing::warn!("[{who}] {peer}: {e}"),
                     }
@@ -31,7 +40,18 @@ where
     }
 }
 
-async fn serve<H>(mut stream: TcpStream, who: &str, log: &PacketLog, mut handler: H) -> std::io::Result<()>
+/// Sends everything queued for one connection, in order, until every outbox clone is gone.
+async fn write_loop(mut stream: OwnedWriteHalf, mut queue: UnboundedReceiver<Message>, who: &str, log: Arc<PacketLog>) {
+    while let Some(msg) = queue.recv().await {
+        let plain = msg.encode();
+        log.outgoing(who, &plain, &msg);
+        if stream.write_all(&frame(&plain)).await.is_err() {
+            break;
+        }
+    }
+}
+
+async fn serve<H>(mut stream: OwnedReadHalf, who: &str, log: &PacketLog, mut handler: H, outbox: Outbox) -> std::io::Result<()>
 where
     H: FnMut(&Packet) -> Vec<Message>,
 {
@@ -74,9 +94,7 @@ where
             tracing::warn!("[{who}] UNHANDLED request {id:#x}");
         }
         for reply in replies {
-            let plain = reply.encode();
-            log.outgoing(who, &plain, &reply);
-            stream.write_all(&frame(&plain)).await?;
+            let _ = outbox.send(reply);
         }
     }
 }

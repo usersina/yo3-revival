@@ -23,6 +23,9 @@ struct Args {
     game_dir: Option<PathBuf>,
     #[arg(long, default_value = "logs")]
     log_dir: PathBuf,
+    /// Players each new account starts with, comma separated (at most 4; one account per address).
+    #[arg(long, value_delimiter = ',', default_value = "test")]
+    players: Vec<String>,
 }
 
 #[tokio::main]
@@ -40,6 +43,7 @@ async fn main() -> anyhow::Result<()> {
         http_port: a.http_port,
         game_dir: a.game_dir.unwrap_or_else(yo3_data::default_game_dir),
         log_dir: a.log_dir,
+        players: a.players,
     };
     start(cfg).await?.wait().await;
     Ok(())

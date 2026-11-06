@@ -1,17 +1,19 @@
 //! Yu-Gi-Oh! ONLINE 3 private server: gate, front and patch-HTTP services.
+pub mod accounts;
 pub mod front;
 mod log;
 mod net;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use yo3_proto::{Message, Value};
 
-use front::{Account, FrontSession, World};
+use accounts::Directory;
+use front::{FrontSession, Hub, World};
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -23,6 +25,8 @@ pub struct Config {
     pub http_port: u16,
     pub game_dir: PathBuf,
     pub log_dir: PathBuf,
+    /// Players every new account starts with (one account per client address).
+    pub players: Vec<String>,
 }
 
 impl Config {
@@ -36,6 +40,7 @@ impl Config {
             http_port: 0,
             game_dir: yo3_data::default_game_dir(),
             log_dir,
+            players: vec!["test".into()],
         }
     }
 }
@@ -78,7 +83,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
 
     let gate_task = {
         let (packets, advertise) = (packets.clone(), cfg.advertise.clone());
-        tokio::spawn(net::accept_loop(gate, "gate", packets, move || {
+        tokio::spawn(net::accept_loop(gate, "gate", packets, move |_peer, _outbox| {
             let advertise = advertise.clone();
             let mut sent = false;
             move |_: &yo3_proto::Packet| {
@@ -95,8 +100,11 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     };
     let front_task = {
         let world = world.clone();
-        tokio::spawn(net::accept_loop(front, "front", packets.clone(), move || {
-            let mut session = FrontSession::new(Account::test(), world.clone());
+        let hub = Arc::new(Mutex::new(Hub::default()));
+        let directory = Mutex::new(Directory::new(cfg.players.clone()));
+        tokio::spawn(net::accept_loop(front, "front", packets.clone(), move |peer: SocketAddr, outbox| {
+            let account = directory.lock().expect("directory lock").account_for(peer.ip());
+            let mut session = FrontSession::new(account, world.clone(), hub.clone(), outbox);
             move |p: &yo3_proto::Packet| session.handle(p)
         }))
     };

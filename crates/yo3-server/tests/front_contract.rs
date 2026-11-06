@@ -1,9 +1,9 @@
 //! Contract of the front server, as established by reverse-engineering the client.
 //! Each assertion names the client code that depends on it; most of these were crashes.
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use yo3_proto::{Message, Packet, Value};
-use yo3_server::front::{Account, FrontSession, World};
+use yo3_server::front::{Account, FrontSession, Hub, World};
 
 fn world() -> Arc<World> {
     Arc::new(World::new((1..=20).collect()))
@@ -23,7 +23,8 @@ fn one(replies: Vec<Message>) -> Message {
 }
 
 fn fresh() -> FrontSession {
-    let mut s = FrontSession::new(Account::test(), world());
+    let (outbox, _) = tokio::sync::mpsc::unbounded_channel();
+    let mut s = FrontSession::new(Account::test(), world(), Arc::new(Mutex::new(Hub::default())), outbox);
     assert_eq!(one(s.handle(&Packet::Version("2010.03.23 skelton".into()))).request(), Some(0x219F));
     s
 }
