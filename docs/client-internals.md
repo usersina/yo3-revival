@@ -25,7 +25,10 @@ export, see [CLAUDE.md](../CLAUDE.md)).
 | `UserData+0x838…+0x8C8` | datasets, `0x24` apart; `+0x8C8` is the trunk (`YO3Trunk`, a plain `YO3NetObject`) |
 | `0x51C260` | PlayerData loader: `pname`, `title`, `avatar1`/`avatar`, `pbin`, `speech%02d` ×23, `comment%02d` ×2, `n_win/lose/draw` |
 | `0x40F290` | read the `request` id of a received message |
-| `0x409020` / `0x4090F0` / `0x40F1D0` | typed field getters: int / string / raw value (NULL when missing) |
+| `0x408F50` / `0x409020` / `0x4090F0` / `0x40F1D0` | typed field getters: uint / int / string / raw value (NULL when missing); all call `0x41A980` |
+| `0x41A980` | `std::map<std::string, Value*>::find`: ESI = tree (map+4), `[esp+4]` iterator out, `[esp+8]` key, `ret 8`; end node at `tree+0x18`, value at `node+0x28` |
+| `0x408640` / `0x4084A0` | setters (set-int / set-value): `find`, then insert if absent; the client uses them to build its own messages |
+| `0x51E6C0` | UI text-table lookup `(table, text id)`. Text ids overlap message ids (e.g. `0x2774`) |
 | `0x410D60` | `item[edi]` of a message (NULL when out of range) |
 | `0x469C00` | login dispatcher (`LoginWindow.cpp`) |
 | `0x4F4A00` | global front dispatcher; its switch starts at `0x4F4A4F` (route ids with `tools/re/dispatch.py`) |
@@ -33,6 +36,23 @@ export, see [CLAUDE.md](../CLAUDE.md)).
 | `0x472EDC…0x473A3A` | main-screen poll reply handlers (each re-arms its request through `obj+0xE8`) |
 | `0x4A523F`, `0x4A551E`, `0x4A5D05` | `CommunicationAgent` switches (195/106/102 cases) |
 | `0x4F17DF`, `0x4F45A5` | heartbeat `0x2724` builders (30 s / 120 s) |
+
+## The field tracer
+
+`tools/tracer/` builds `yo3trace.dll` (32-bit, mingw-w64) and `yo3trace-launch.exe`. The launcher starts `yo3.exe`
+suspended, loads the DLL with `CreateRemoteThread(LoadLibraryA)` and resumes it, so the game folder is untouched.
+The DLL patches two entry points, and only if their original bytes match:
+- **`0x41A980` (`find`):** the hook runs the real lookup through a trampoline to learn found/missing. It reads the
+  key from the MSVC 2008 `std::string`: 28 bytes, the text inline at `+4` when the capacity at `+0x18` is under 16,
+  otherwise a pointer at `+4`, with the size at `+0x14`. It names the value's class from the game's RTTI and reads
+  the value itself when the key is `request`. For getter calls the key is the getter's by-value argument, so the
+  asking code is the return address at `key − 8`.
+- **`0x410D60` (`item[n]`):** logs the index, the list size and the caller.
+
+Each line carries the dataset (tree) pointer. A lookup on the same dataset as the message's `request` field is a
+top-level field (`top`); anything else is an item or local data (`sub`). Lookups that happen with no message being
+parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Succession`) appear as
+"outside any reply".
 
 ## Data formats
 

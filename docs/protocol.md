@@ -1,7 +1,9 @@
 # Protocol catalog
 
 The client (`yo3.exe`) is the spec. Every row cites its evidence: a client address, a line of the client's own
-trace (`File.cpp Lnnn`), or a recorded packet. **Status** is one of:
+trace (`File.cpp Lnnn`), a recorded packet, or the **field tracer** (`vclient.sh start --trace`, then
+`tools/tracer/summarize.py`), which lists every field the client actually looked up in each reply. **Status** is one
+of:
 - **confirmed**: the shape is proven, and so is the meaning where one is given
 - **shape**: the client accepts the shape we send, but the meaning or contents are unknown
 - **guess**: we picked a value; revisit
@@ -74,19 +76,34 @@ front dispatcher; `python3 tools/re/dispatch.py 0x4f4a4f <id>` shows the case it
 | `0x2710` | `0x2711` (`0x2712`) | none | `0x473646` | shape |
 | `0x2AFB` | `0x2B13` (`0x2B14`) | none | `0x4738FA` | shape |
 | `0x2AFD` | `0x2B17` (`0x2B18`) | none; the global case reads `member_id`, `authority` if present | `0x473A3A`, `0x4F5E0E` | shape (team?) |
-| `0x2775` | ? | ? | builder `0x4F3A5E`; PresentWindow handles `0x2774/0x2779/0x277A` | **open** |
+| `0x2775` present count (bare) | `0x2774` | `present_count` u32 | builder `0x4F3A00`; PresentWindow `0x476DE0` reads it (field trace) | confirmed |
 
 ### Info and chat windows
 
 | Request | Reply (error) | Fields | Evidence | Status |
 |---|---|---|---|---|
 | `0x1F41` info list | `0x21FC` | item[0] `{lang}` whose items are `{starttime "%Y-%m-%d %H:%M:%S" JST, title, body}` | "information recv success!" `InfoWindow.cpp L1547`, `0x458A64` | confirmed (`lang` value **guess** "1") |
-| `0x2CF0` player search `{back_num, base_point, front_num, search_flag, search_type}` | `0x2CF7` (`0x2CF8`) | items = players (shape unknown; we send none) | `RESPONSE_PLAYER_SEARCH_SUCCESS` `ChatWindow.cpp L651` | confirmed (empty) |
+| `0x2CF0` player search `{back_num, base_point, front_num, search_flag, search_type}` | `0x2CF7` (`0x2CF8`) | `result_number` u32 (top, read at `0x4591CA`); items = players (shape unknown; we send none) | `RESPONSE_PLAYER_SEARCH_SUCCESS` `ChatWindow.cpp L651`, field trace | confirmed (empty) |
 | `0x2724` heartbeat | none | none | builders `0x4F17DF` (every 30 s) and `0x4F45A5` (after 120 s); no reply is checked | confirmed |
+
+## Fields the client reads that we leave out
+
+The field tracer shows these lookups failing, and the client copes: an absent int reads as 0, an absent raw value as
+NULL, which these callers check. Send them when we know what they mean.
+
+| Reply | Field | Where it's read | Notes |
+|---|---|---|---|
+| `0x2201` | `bgm` int (top level) | global dispatcher `0x4F506A` | probably the lobby music |
+| `0x21FC` | `icon`, `lefttime` (int), `maintenance` (string), in the `{lang}` item | `0x4F477C`, `0x44E6EF`, `0x44E72D` | a maintenance countdown; absent = none |
+| player record | `npc_id` int | `0x51BFE2` | 0 = a human player |
+| `0x27D9` | `cpuUse`, `notRelease` (raw) in its record | `0x4F2080`, `0x4F20BA` | meaning open (CPU duels? unreleased cards?) |
+| (around `0x2CF7`) | `premium` uint, from **another dataset**, not the reply | `0x44F3E7` | probably the account's Duelist Premium flag |
 
 ## Families seen in the client, not mapped yet
 
 - `0x2CEC`–`0x2CF8`: player search, character creation (`CharMake.cpp`: `0x2CF5/6`) and player data.
-- `0x2774`–`0x277A`: presents (`PresentWindow.cpp`); `RESPONSE_PRESENT_CONTENT_GET_SUCCESS`.
+- `0x2774`–`0x277A`: presents (`PresentWindow.cpp`). `0x2774` = count; `0x2777/0x2779` carry full present records
+  (`present_id`, `type`, `level`, `form`, `item_img`, `end_time`, `item`…); `0x2778/0x277A` re-request `0x2775`.
+  The same numbers also show up as UI text ids (`FUN_0051E6C0(table, id)`): don't confuse the two.
 - 48 more `REQUEST_` / `RESPONSE_COMMUNICATION_*` names for trade and rental (search the exe's strings).
 - `DuelServerConnection`: the third server tier, not reached yet.

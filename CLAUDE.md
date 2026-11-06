@@ -18,7 +18,9 @@ addresses and data formats: [docs/client-internals.md](docs/client-internals.md)
 4. **Keep four places in step:** `docs/protocol.md`, `crates/yo3-server/src/front.rs`,
    `crates/yo3-server/tests/front_contract.rs` and `ROADMAP.md`.
 5. **Small, logical commits** (conventional style: `feat(server): …`, `fix(…)`, `docs: …`, `refactor(…)`,
-   `chore: …`) on a feature branch per slice of work. Ask before merging into `main` or pushing.
+   `chore: …`) on a feature branch per slice of work. **`main` is the source of truth:** when a slice is done, tests
+   are green and the live check passes, fast-forward `main` and delete the branch (the user's standing preference).
+   Ask before pushing anywhere.
 6. **Code only in git.** Never commit game files, Konami data, decompiled code or packet logs. `re/`, `logs/` and
    `target/` are ignored. Docs may cite addresses and field names, but not paste decompiled code.
 
@@ -29,7 +31,8 @@ addresses and data formats: [docs/client-internals.md](docs/client-internals.md)
 | `crates/yo3-proto` | Wire codec: frame, Blowfish (`BlowfishLE`), key/value messages, the version-string opener |
 | `crates/yo3-data` | Client data: `.ypk` archives, card table, regulations, preset decks, packs (golden tests skip without the game) |
 | `crates/yo3-server` | Gate / front / patch-HTTP servers. `front.rs` = the reply contract, `net.rs` = framing, `log.rs` = packet log |
-| `tools/client/vclient.sh` | Headless client: `xvfb`, `start`, `login`, `check`, `shot`, `click`, `pixel`, `key`, `type`, `stop` |
+| `tools/client/vclient.sh` | Headless client: `xvfb`, `start [--trace]`, `login`, `check`, `shot`, `click`, `pixel`, `key`, `type`, `stop` |
+| `tools/tracer/` | Field-read tracer: `yo3trace.dll` + injector (C, mingw-w64), `summarize.py` |
 | `tools/re/` | Python reverse-engineering helpers (see Commands) |
 | `tools/ghidra/` | Headless export script |
 | `docs/` | Protocol catalog, client internals, original research |
@@ -50,6 +53,11 @@ tools/client/vclient.sh check                                   # process, clien
 tools/client/vclient.sh shot NAME                               # logs/shots/NAME.png, then view it
 tools/client/vclient.sh stop                                    # also clears a crashed client
 
+tools/client/vclient.sh start --trace                          # same, logging every field lookup -> logs/fields.tsv
+python3 tools/tracer/summarize.py --missing                     # per reply: fields the client read but didn't find
+python3 tools/tracer/summarize.py --reply 0x2398                # everything read for one reply (top/sub level, caller)
+tools/tracer/build.sh                                           # rebuild the tracer after editing it
+
 python3 tools/re/dispatch.py 0x4f4a4f 0x2398    # route a reply id through the global dispatcher; fields it reads
 python3 tools/re/rtti.py ClassName              # vtable of a class (MSVC RTTI)
 python3 tools/re/emp.py FILE.y3d                # decode a client data file
@@ -65,8 +73,10 @@ the knowledge.
 
 ## The loop: answering a new request
 
-1. **Observe.** Start the server and run `vclient.sh start && vclient.sh login && vclient.sh check`. Look for:
+1. **Observe.** Start the server and run `vclient.sh start --trace && vclient.sh login && vclient.sh check`, then
+   `tools/tracer/summarize.py --missing`. Look for:
    - an unanswered request (the last `<-` in `check`, or `UNHANDLED` in the server output)
+   - fields the client looked up and didn't find (the tracer); `top` means the reply itself
    - a "There is no response from the server. (N)" dialog (N is the request id in decimal)
    - a Wine "page fault … at address X" in `logs/client-wine.log`
 2. **Locate.** Find the request's builder and the reply ids its screen compares (grep the id in
@@ -76,8 +86,8 @@ the knowledge.
 4. **Record** the pair in `docs/protocol.md` with its evidence and status.
 5. **Red:** add a contract test in `front_contract.rs` naming the client address it protects.
 6. **Green:** implement in `front.rs` with the minimum the client reads.
-7. **Live:** restart the server, rerun the client, confirm the client's own trace line (e.g. `… recv success`) and
-   take a screenshot.
+7. **Live:** restart the server, rerun the traced client, confirm the tracer now shows the fields as `found`, check
+   the client's own trace line (e.g. `… recv success`), and take a screenshot.
 8. **Commit** test, code and docs together; tick ROADMAP.md.
 
 ## Conventions
@@ -90,7 +100,9 @@ the knowledge.
 - Game content (cards, banlists, decks, packs) comes from the client's files through `yo3-data`, never typed by
   hand. Decks and packs use CARD_Prop rows; regulations use Konami card ids.
 - Unknown meaning: name the arm by its id, comment "meaning unknown", and list it as a guess.
-- Python is only for `tools/re/`. Run it with system `python3` (capstone, pefile and pycryptodome are installed).
+- Python is only for tools (`tools/re/`, `tools/tracer/summarize.py`). Run it with system `python3` (capstone,
+  pefile and pycryptodome are installed). The tracer DLL is C, built with mingw-w64 (`i686-w64-mingw32-gcc`).
+- Message ids and UI text ids overlap: a number passed to `FUN_0051E6C0(table, id)` is a text string, not a reply.
 
 ## Environment gotchas
 
@@ -105,3 +117,7 @@ the knowledge.
 - Ghidra 12.1.2 lives at `/opt/ghidra`. GhidraMCP 2.0 runs headless (`--no-analyze`) on `re/ghidra`, registered in
   Claude Code's local config. Only one Ghidra process can hold the project at a time.
 - Ghidra's addresses equal the exe's virtual addresses (image base `0x400000`).
+- With `--trace`, the client's own stdout trace reaches `logs/client-stdout.log` in buffered chunks, so recent lines
+  can lag. `logs/fields.tsv` is written straight away. Wine's `winepath` prints startup noise on stderr; silence it.
+- The tracer's reply attribution is a 300 ms window after each `request` read, so local data read just after a reply
+  (e.g. banlist files) can be listed under that reply. The `top`/`sub` column tells you which dataset was read.

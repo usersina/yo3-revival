@@ -19,20 +19,23 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 - [x] Rust server (`crates/`), test-first, at parity on the real client
 - **Exit:** a cold start reaches a stable main screen with no crash and no timeout dialog (met 2026-11-06)
 
-## ▶ M2: An instrumented client
+## ✅ M2: An instrumented client
 
 Stop finding missing fields one crash at a time.
-- [ ] Field-read tracer: a 32-bit DLL (mingw-w64) that hooks the field getters (`0x409020`, `0x4090F0`,
-      `0x40F1D0`, `0x410D60`) and the `request` getter (`0x40F290`). It logs `request id, field, type, found/missing,
-      caller` to a file.
-- [ ] Load it from `vclient.sh start --trace` (a proxy DLL picked up through a `WINEDLLOVERRIDES` native override)
-- [ ] A summary script: for each reply id, the fields the client read and the ones it found missing
-- [ ] Use GhidraMCP to name the functions we understand (handlers, getters, dispatchers) as we go
-- **Exit:** one session prints every field each reply was asked for, with the missing ones flagged
+- [x] Field-read tracer: a 32-bit DLL (mingw-w64) hooking the one lookup behind every field getter
+      (`std::map::find` at `0x41A980`) and list-item reads (`0x410D60`). It logs the reply being parsed, field,
+      getter type, found/missing, value type (from RTTI), the asking function and top/sub level.
+- [x] Loaded by `vclient.sh start --trace` through an injector, so the game folder is never modified
+- [x] `tools/tracer/summarize.py`: per reply, the fields read and the ones missing, with the asking function
+- [x] First catch: `0x2775` → `0x2774 {present_count}`, `0x2CF7.result_number`, and the read-but-absent fields
+      in `docs/protocol.md`
+- Standing practice (moved to CLAUDE.md): name functions in GhidraMCP as we understand them
+- **Exit:** one session prints every field each reply was asked for, with the missing ones flagged (met 2026-11-06)
 
-## M3: A social world
+## ▶ M3: A social world
 
-- [ ] Answer `0x2775` (presents?) and any further main-screen requests
+- [x] Answer `0x2775` (present count) and any further main-screen requests (none so far after it)
+
 - [ ] Chat rooms ("select a chatroom" at the top left) and chat messages
 - [ ] Entering map locations, lobbies and rooms
 - [ ] Sessions registry: who is online, in which room; player search returns real players
@@ -77,6 +80,7 @@ Stop finding missing fields one crash at a time.
 | `0x21FC` `lang` | `"1"` | Read as a string; semantics unknown |
 | `0x2583/0x271A/0x2710/0x2AFB/0x2AFD/0x27D8` | minimal replies | Meanings unknown; they only stop timeouts |
 | `avatar1` slots | zeros | Slot meanings unmapped |
+| `bgm`, `icon`/`lefttime`/`maintenance`, `npc_id`, `cpuUse`/`notRelease`, `premium` | left out (read as 0 / NULL) | The tracer shows the client reads them; see "Fields the client reads that we leave out" in docs/protocol.md |
 
 ## Leads (outside the code)
 
