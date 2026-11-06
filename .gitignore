@@ -4,3 +4,4 @@ __pycache__/
 /re/
 /target/
 /tools/tracer/build/
+/.wine-*/

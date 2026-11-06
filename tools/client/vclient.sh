@@ -5,27 +5,44 @@
 #   tools/client/vclient.sh xvfb            start the virtual display (:77) if it is not running
 #   tools/client/vclient.sh start [--trace] launch yo3.exe on it (trace -> logs/client-stdout.log);
 #                                           --trace also logs every field lookup -> logs/fields.tsv
-#   tools/client/vclient.sh login           title -> ONLINE -> OK (saved credentials) -> first player
+#   tools/client/vclient.sh login [SLOT]    title -> ONLINE -> OK (saved credentials) -> player SLOT (0-3, default 0)
 #   tools/client/vclient.sh shot NAME       screenshot the game window -> logs/shots/NAME.png
 #   tools/client/vclient.sh click X Y       left click at game-window coordinates (1024x768)
 #   tools/client/vclient.sh key KEY...      xdotool key names, e.g. Return Escape
 #   tools/client/vclient.sh type TEXT       type text
 #   tools/client/vclient.sh pixel X Y       print the window's colour at X Y as "R G B"
 #   tools/client/vclient.sh check           process state, client trace, crash, last packets
-#   tools/client/vclient.sh stop            close the game (wineserver -k)
+#   tools/client/vclient.sh stop            close this instance's client (wineserver -k on its prefix)
+#   tools/client/vclient.sh prefix          create this instance's Wine prefix (reflinked copy of ~/.wine)
+#
+# More clients: YO3_INSTANCE=b (or c, d) uses display :78 (:79, :80), logs/b/ and its own Wine
+# prefix .wine-b/ (git-ignored). Wine assumes one X display per prefix: two clients in one
+# prefix on two displays die with X BadWindow errors. Run `xvfb` and `prefix` once per instance.
 set -euo pipefail
 
-export DISPLAY="${YO3_DISPLAY:-:77}"
+INSTANCE="${YO3_INSTANCE:-}"
+case "$INSTANCE" in "") DEFAULT_DISPLAY=:77 ;; b) DEFAULT_DISPLAY=:78 ;; c) DEFAULT_DISPLAY=:79 ;; *) DEFAULT_DISPLAY=:80 ;; esac
+export DISPLAY="${YO3_DISPLAY:-$DEFAULT_DISPLAY}"
 unset WAYLAND_DISPLAY
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-GAME="${YO3_GAME_DIR:-$HOME/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3}"
-LOGS="$ROOT/logs"
+if [ -n "$INSTANCE" ]; then export WINEPREFIX="${YO3_WINEPREFIX:-$ROOT/.wine-$INSTANCE}"; fi
+GAME="${YO3_GAME_DIR:-${WINEPREFIX:-$HOME/.wine}/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3}"
+LOGS="$ROOT/logs${INSTANCE:+/$INSTANCE}"
 mkdir -p "$LOGS/shots"
 
 win() { xdotool search --name '^Yu-Gi-Oh! ONLINE 3' 2>/dev/null | head -1; }
 
+# The window, or fail (an empty id makes `import` wait for a click and hang).
+need_win() {
+  local w; w="$(win)"
+  [ -n "$w" ] || { echo "no game window on $DISPLAY" >&2; exit 1; }
+  echo "$w"
+}
+
 pixel() {
-  import -window "$(win)" -crop "1x1+$1+$2" -depth 8 txt:- 2>/dev/null | tail -1 |
+  local w; w="$(win)"
+  [ -n "$w" ] || return 1
+  import -window "$w" -crop "1x1+$1+$2" -depth 8 txt:- 2>/dev/null | tail -1 |
     sed -E 's/.*\(([0-9]+),([0-9]+),([0-9]+).*/\1 \2 \3/'
 }
 
@@ -82,13 +99,19 @@ case "${1:-}" in
     wait_for login 30 500 210 12 93 117                       # login dialog header bar
     "$0" click 402 459                                        # OK (saved credentials)
     wait_for players 30 600 231 38 60 116                     # first player slot
-    "$0" click 656 231
+    "$0" click 656 $((231 + ${2:-0} * 46))                     # slot rows are 46 px apart
     sleep "${YO3_MAIN_WAIT:-10}"
     "$0" shot login ;;
   shot)
-    import -window "$(win)" "$LOGS/shots/${2:-shot}.png" && echo "$LOGS/shots/${2:-shot}.png" ;;
+    W="$(need_win)"; import -window "$W" "$LOGS/shots/${2:-shot}.png" && echo "$LOGS/shots/${2:-shot}.png" ;;
   click)
-    W="$(win)"; xdotool mousemove --window "$W" "$2" "$3"; sleep 0.15; xdotool click --delay 120 1 ;;
+    W="$(need_win)"; xdotool mousemove --window "$W" "$2" "$3"; sleep 0.15; xdotool click --delay 120 1 ;;
+  prefix)
+    [ -n "${WINEPREFIX:-}" ] || { echo "the default instance uses ~/.wine itself" >&2; exit 2; }
+    if [ ! -d "$WINEPREFIX" ]; then
+      cp -a --reflink=auto "$HOME/.wine" "$WINEPREFIX"   # btrfs: near-instant, shares blocks
+    fi
+    echo "$WINEPREFIX" ;;
   key)
     shift; xdotool key --delay 80 "$@" ;;
   type)
@@ -101,7 +124,7 @@ case "${1:-}" in
     grep -E '\.cpp L[0-9]+ :' "$LOGS/client-stdout.log" 2>/dev/null | tail -8 || true
     echo "--- crash"
     grep -iE 'page fault|unhandled exception' "$LOGS/client-wine.log" 2>/dev/null | tail -2 || echo "none"
-    latest=$(find "$LOGS" -maxdepth 1 -name 'packets-*.jsonl' -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
+    latest=$(find "$ROOT/logs" -maxdepth 1 -name 'packets-*.jsonl' -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
     echo "--- packets ($latest, last 10)"
     [ -n "$latest" ] && python3 -c '
 import json, sys
