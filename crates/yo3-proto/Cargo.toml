@@ -1,0 +1,11 @@
+[package]
+name = "yo3-proto"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+blowfish = "0.10.0"
+thiserror = "2.0.21"
+
+[dev-dependencies]
+proptest = "1.12.0"
