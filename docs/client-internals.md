@@ -39,8 +39,10 @@ export, see [CLAUDE.md](../CLAUDE.md)).
 | `0x4725B0` | startup step that unlocks the main screen (reads `event_id`, `npc_type`; event players take another path) |
 | `0x476240` / `0x476DE0` | PresentWindow constructor / reply handler (window id `0xFFFFD90C` in the factory `0x4EEB90`) |
 | `0x48AA60` / `0x48F080` | shop (`shopmain.cpp`) reply handler / open routine; the open routine reads slot 8 unchecked |
+| `0x410DB0` | a card's count from the trunk: `cards` (or `noTrade`) byte at index row − 1, bounds-checked |
+| `0x4F6340` | builds the playable collection `(conn, flags)`: copies the trunk (slot 18), subtracts cards lent in rental records (slot 8, flag 4), and with flag `0x10` zeroes cards 5280, 5434 and 6276 (table `0x7878A0`) in `cards`/`noTrade` unchecked |
 | `0x4A523F`, `0x4A551E`, `0x4A5D05` | `CommunicationAgent` switches (195/106/102 cases) |
-| `0x413FE0` | address of front dataset slot `EDI` (vector at `+0x16C`); the global dispatcher keeps some replies there: `0x2711` → 4, `0x251C` friend list → 6, `0x252A` black list → 7, `0x2D6C` rental records → 8, `0x21FC` news → 10, `0x2774` → 23, `0x24BA` → 24 |
+| `0x413FE0` | address of front dataset slot `EDI` (vector at `+0x16C`); the global dispatcher keeps some replies there: `0x2711` → 4, `0x251C` friend list → 6, `0x252A` black list → 7, `0x2D6C` rental records → 8, `0x21FC` news → 10, `9000` trunk → 18, `0x2774` → 23, `0x24BA` → 24 |
 | `0x45E6D0` / `0x45E810` | "is this player a friend / ignored?": read slots 6 / 7 with no NULL check, for every player listed |
 | `0x45F390` | player search request builder (Detailed Search criteria → `search_flag` bits) |
 | `0x475A20` | fills a list entry (`ppInfo`) from an item; ECX picks the kind: 0 player, 1 NPC, 2 friend, 3 ignored, 4 team member |
@@ -114,4 +116,5 @@ parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Su
 | (prevented) `0x27D9` | item[0] read unchecked | Route every new reply through `dispatch.py` before shipping it |
 | Null read at `0x45E734` once a search listed a player | friend list never pushed, so dataset slot 6 was NULL | A reply's first non-empty list can wake code that needs other state: test with real items live |
 | Null read at `0x48F0F6` opening the shop | rental records `0x2D6C` never pushed, so dataset slot 8 was NULL | Before shipping a screen, check which dataset slots it reads (`0x413FE0`, or `[+0x16C] + 4·slot`) |
+| Write to `0x42F` at `0x4F6A82` opening the NPC duel | trunk without `cards`/`noTrade`, so the collection builder wrote through NULL | Per-card arrays are sized by CARD_Prop rows |
 | (no crash) every click on the map ignored | `0x2775` answered with `0x2774`, so PresentWindow never closed and the main screen stayed locked | A screen that ignores input may be waiting on a reply: `YO3_TRACE_HITS` on its steps shows where |

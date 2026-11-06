@@ -47,6 +47,8 @@ Stop finding missing fields one crash at a time.
 - [ ] Entering map locations, lobbies and rooms. The map unlocks; its facilities are the Shop, Official Event,
       Championship, User event, NPC duel and character settings
   - [x] Shop: opens to the Shop Menu with empty shelves and returns to the map (rental records pushed at entry)
+  - [x] NPC duel: opens (Kaiba Corporation), says there are no valid decks, returns to the map (the trunk now has
+        `cards`/`noTrade` arrays, all zero)
 - [ ] Friends, mail and teams (as far as the main screen needs). The friend and black lists are pushed empty;
       adding friends needs their requests mapped (`0x2528`, `0x252C`, `0x252E` carry `to_id`)
 - [ ] Player search criteria we ignore: language, country, manner level, status, community, event
@@ -85,7 +87,7 @@ Stop finding missing fields one crash at a time.
 | Item | Current choice | Why it's uncertain |
 |---|---|---|
 | `pbin` size | 512 zero bytes | Guessed from the 4,096 entries of `yo3pbininfo.bin` |
-| Trunk (`9000`) contents | one empty record | Which fields later screens read is unknown (M2 will tell) |
+| Trunk (`9000`) contents | one record: `cards`/`noTrade` all zero | Other fields later screens may read are unknown |
 | `regulations` list | all 20 ids | Which banlists the UI should offer |
 | `0x21FC` `lang` | `"1"` | Read as a string; semantics unknown |
 | `0x2583/0x271A/0x2710/0x2AFB/0x2AFD/0x27D8` | minimal replies | Meanings unknown; they only stop timeouts |

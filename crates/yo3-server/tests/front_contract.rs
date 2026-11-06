@@ -23,8 +23,12 @@ fn one(replies: Vec<Message>) -> Message {
 }
 
 fn fresh() -> FrontSession {
+    fresh_in(world())
+}
+
+fn fresh_in(world: Arc<World>) -> FrontSession {
     let (outbox, _) = tokio::sync::mpsc::unbounded_channel();
-    let mut s = FrontSession::new(Account::test(), world(), Arc::new(Mutex::new(Hub::default())), outbox);
+    let mut s = FrontSession::new(Account::test(), world, Arc::new(Mutex::new(Hub::default())), outbox);
     assert_eq!(one(s.handle(&Packet::Version("2010.03.23 skelton".into()))).request(), Some(0x219F));
     s
 }
@@ -92,6 +96,20 @@ fn world_entry_sends_exactly_one_trunk_record() {
     assert_eq!(r.request(), Some(9000));
     assert_eq!(r.items.len(), 1);
     assert_eq!(r.items[0].tag, 3);
+}
+
+#[test]
+fn trunk_has_a_byte_per_card_row_for_owned_and_untradeable_cards() {
+    // 0x410DB0 reads "cards" / "noTrade" (binary) as one byte per card at index row - 1, bounds
+    // checked; rows are CARD_Prop rows, row 0 a dummy. The collection 0x4F6340 builds for the NPC
+    // duel zeroes three special cards in both arrays without a NULL check (crash at 0x4F6A82).
+    let mut s = fresh_in(Arc::new(World { card_rows: 4833, ..World::new((1..=20).collect()) }));
+    s.handle(&req_with(0x1F4C, "player_id", 1001));
+    let replies = s.handle(&req_with(0x1FA4, "player_id", 1001));
+    let trunk = &replies[0].items[0];
+    for k in ["cards", "noTrade"] {
+        assert_eq!(trunk.get(k), Some(&Value::Bin(vec![0; 4833])), "{k}");
+    }
 }
 
 #[test]

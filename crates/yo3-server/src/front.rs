@@ -102,6 +102,8 @@ impl Room {
 /// Server-wide state shared by all sessions.
 pub struct World {
     pub regulation_ids: Vec<u16>,
+    /// The highest CARD_Prop row: the client's per-card arrays have one byte per row (row 0 is a dummy).
+    pub card_rows: usize,
     pub news: Vec<(String, String)>,
     pub rooms: Vec<Room>,
 }
@@ -110,6 +112,7 @@ impl World {
     pub fn new(regulation_ids: Vec<u16>) -> World {
         World {
             regulation_ids,
+            card_rows: 0,
             news: vec![(
                 "Welcome back to Yu-Gi-Oh! ONLINE".into(),
                 "This is a private revival server. Have fun duelling with your friends!".into(),
@@ -256,8 +259,12 @@ impl FrontSession {
                 if self.find_player(msg).or(self.selected).is_none() {
                     return vec![];
                 }
-                // Copied wholesale into the trunk dataset; which fields later scenes read is unknown.
-                let trunk = Message::reply(9000).item(Message::record());
+                // Copied wholesale into the trunk dataset (and kept in slot 18). cards / noTrade: owned
+                // and untradeable count per card at row - 1 (0x410DB0); the NPC duel writes into both
+                // unchecked (0x4F6A82). Nobody owns any card until the collection exists (M4).
+                let no_cards = Value::Bin(vec![0; self.world.card_rows]);
+                let trunk = Message::reply(9000)
+                    .item(Message::record().with("cards", no_cards.clone()).with("noTrade", no_cards));
                 // The client never asks for its friend and black lists; the global dispatcher stores
                 // 0x251C in dataset slot 6 and 0x252A in slot 7, and listing any player reads both
                 // without a NULL check (0x45E6D0, 0x45E810). Items would be {friend_id, friend_name,

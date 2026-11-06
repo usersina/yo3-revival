@@ -61,10 +61,13 @@ impl Running {
     }
 }
 
-/// Banlist ids from the client's own regulation files, or ids 1-20 if the game is absent.
+/// Banlist ids and card rows from the client's own files, or ids 1-20 and no cards if the game is absent.
 fn world(cfg: &Config) -> World {
     match yo3_data::GameData::load(&cfg.game_dir) {
-        Ok(data) => World::new(data.regulations.iter().map(|r| r.id as u16).collect()),
+        Ok(data) => World {
+            card_rows: data.cards.iter().map(|c| c.row as usize).max().unwrap_or(0),
+            ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
+        },
         Err(e) => {
             tracing::warn!("game data not loaded ({e}); using regulation ids 1-20");
             World::new((1..=20).collect())
