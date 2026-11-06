@@ -8,6 +8,7 @@
 #   tools/vclient.sh click X Y       left click at game-window coordinates (1024x768)
 #   tools/vclient.sh key KEY...      xdotool key names, e.g. Return Escape
 #   tools/vclient.sh type TEXT       type text
+#   tools/vclient.sh login           splash -> ONLINE -> OK (saved credentials) -> first player
 #   tools/vclient.sh stop            close the game (wineserver -k)
 set -euo pipefail
 
@@ -37,6 +38,13 @@ case "${1:-}" in
     shift; xdotool key --delay 80 "$@" ;;
   type)
     xdotool type --delay 60 "$2" ;;
+  login)
+    sleep "${YO3_BOOT_WAIT:-12}"   # software rendering: the client needs a while to boot
+    "$0" click 512 384; sleep 4    # skip the KONAMI splash
+    "$0" click 297 301; sleep 4    # ONLINE
+    "$0" click 402 459; sleep 4    # OK on the saved login
+    "$0" click 656 231; sleep 6    # first player slot
+    "$0" shot login ;;
   stop)
     wineserver -k || true ;;
   *)
