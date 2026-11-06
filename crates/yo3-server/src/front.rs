@@ -24,6 +24,12 @@ use yo3_proto::{Message, Packet, Value};
 pub const VERSION_VALID: u32 = 0x219F;
 pub const HEARTBEAT: u32 = 0x2724;
 
+/// Server clock in Japan time: the client treats server timestamps as JST (UTC+9) and
+/// converts them to the player's local time.
+fn jst_now() -> chrono::DateTime<chrono::FixedOffset> {
+    chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(9 * 3600).expect("valid offset"))
+}
+
 /// Main-screen polls whose replies carry nothing the client reads.
 const BARE_REPLIES: [(u32, u32); 4] = [(0x271A, 0x271B), (0x2710, 0x2711), (0x2AFB, 0x2B13), (0x2AFD, 0x2B17)];
 
@@ -159,7 +165,7 @@ impl FrontSession {
             0x2CEE => Message::reply(0x2CF3).item(self.player().record()),
             0x2583 => Message::reply(0x2588).with("count", Value::U32(0)),
             0x1F41 => {
-                let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                let now = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
                 let entries = self.world.news.iter().map(|(title, body)| {
                     Message::record()
                         .with("starttime", Value::text(&now))

@@ -134,7 +134,10 @@ fn news_list_is_nested_under_a_lang_record() {
     assert!(r.items[0].get("lang").is_some());
     let entry = &r.items[0].items[0];
     let start = entry.get("starttime").and_then(Value::as_str).unwrap();
-    assert!(chrono::NaiveDateTime::parse_from_str(&start, "%Y-%m-%d %H:%M:%S").is_ok(), "{start}");
+    let parsed = chrono::NaiveDateTime::parse_from_str(&start, "%Y-%m-%d %H:%M:%S").expect(&start);
+    // The client treats server times as JST (UTC+9) and converts them to local time.
+    let jst_now = chrono::Utc::now().naive_utc() + chrono::Duration::hours(9);
+    assert!((jst_now - parsed).num_seconds().abs() < 60, "{start} is not JST");
     assert!(entry.get("title").is_some() && entry.get("body").is_some());
 }
 
