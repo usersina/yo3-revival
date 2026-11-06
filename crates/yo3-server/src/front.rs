@@ -280,8 +280,9 @@ impl FrontSession {
                 Message::reply(0x21FC).item(lang)
             }
             0x2CF0 => self.player_search(msg),
-            // Present count (PresentWindow 0x476DE0 reads present_count from 0x2774).
-            0x2775 => Message::reply(0x2774).with("present_count", Value::U32(0)),
+            // Next present: 0x2777 would carry one; 0x2778 = none, which closes PresentWindow
+            // (0x4783C9) and lets the main screen unlock its facilities and menu (0x473B87).
+            0x2775 => Message::reply(0x2778),
             0x2135 => self.room_list(),
             0x2136 => self.enter_room(msg),
             0x2137 => {

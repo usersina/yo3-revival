@@ -163,11 +163,13 @@ fn player_search_succeeds_with_a_result_count() {
 }
 
 #[test]
-fn present_count_is_answered() {
-    // 0x2775 is a bare request (0x4F3A00); PresentWindow 0x476DE0 reads present_count from 0x2774.
+fn asking_for_a_present_when_there_is_none_closes_the_present_window() {
+    // 0x2775 (bare, 0x4F3A00) asks for the next present. PresentWindow 0x476DE0 takes 0x2777/0x2779
+    // (a present) or 0x2778/0x277A (none): only the latter closes the window (0x4783C9), and the main
+    // screen keeps its facilities and menu locked until it closes (startup step 0x473AE0).
     let r = one(in_world().handle(&req(0x2775)));
-    assert_eq!(r.request(), Some(0x2774));
-    assert_eq!(r.get("present_count"), Some(&Value::U32(0)));
+    assert_eq!(r.request(), Some(0x2778));
+    assert!(r.fields.iter().all(|(k, _)| k == "request"), "0x2778 carries nothing: {r:?}");
 }
 
 #[test]

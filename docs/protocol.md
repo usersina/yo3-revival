@@ -64,8 +64,13 @@ The contract tests in `crates/yo3-server/tests/front_contract.rs` enforce the co
 
 ### Main screen (MainGamen polls `0x472EDC…`, global dispatcher `0x4F4A00`)
 
-The main screen re-arms each poll on a timer (`obj+0xE8 = request id`). Every reply also passes through the global
-front dispatcher; `python3 tools/re/dispatch.py 0x4f4a4f <id>` shows the case it lands in.
+MainGamen's constructor (`0x46D8A0`) queues startup steps that run one after another, each waiting for its reply
+(`obj+0xE8 = request id`): `0x472780` (Online 2 lists), `0x472DA0` (`0x2072`), `0x4731A0` (`0x27D8`), `0x4736C0`
+(`0x2CEE`), `0x472F70` (`0x2583`), `0x4733C0` (`0x271A`, `0x2710`), `0x473830` (`0x2AFB`), `0x473970` (`0x2AFD`),
+`0x473BE0` (a window if dataset slot 13 has items), `0x473AE0` (presents, below), `0x4725B0` (unlock), `0x473AB0`.
+Until the unlock step runs, the map's facilities, the menu and the duel button stay disabled (`0x472230(0x3F)`), so
+clicks do nothing. Every reply also passes through the global front dispatcher; `python3 tools/re/dispatch.py
+0x4f4a4f <id>` shows the case it lands in.
 
 | Request | Reply (error) | Fields | Evidence | Status |
 |---|---|---|---|---|
@@ -77,7 +82,7 @@ front dispatcher; `python3 tools/re/dispatch.py 0x4f4a4f <id>` shows the case it
 | `0x2710` | `0x2711` (`0x2712`) | none | `0x473646` | shape |
 | `0x2AFB` | `0x2B13` (`0x2B14`) | none | `0x4738FA` | shape |
 | `0x2AFD` | `0x2B17` (`0x2B18`) | none; the global case reads `member_id`, `authority` if present | `0x473A3A`, `0x4F5E0E` | shape (team?) |
-| `0x2775` present count (bare) | `0x2774` | `present_count` u32 | builder `0x4F3A00`; PresentWindow `0x476DE0` reads it (field trace) | confirmed |
+| `0x2775` next present (bare) | `0x2778` none (`0x2777`/`0x2779` would carry a present) | none | builder `0x4F3A00`. The `0x2201` reply sets flag `0x80` (so does a `0x2774` push), so startup step `0x473AE0` opens PresentWindow, which sends `0x2775` and holds the main screen locked until it closes. Its switch (`0x476E74`): `0x2777`/`0x2779` "PRESENT content get success", `0x2778`/`0x277A` "content get error", which retries while `+0x58` > 0 and then closes (`0x4783C9`); its `0x2774` case reads `present_count` and drops it | confirmed (live: the facilities unlock after `0x2778`) |
 
 ### Info and chat windows
 
@@ -141,8 +146,9 @@ NULL, which these callers check. Send them when we know what they mean.
 ## Families seen in the client, not mapped yet
 
 - `0x2CEC`–`0x2CF8`: player search, character creation (`CharMake.cpp`: `0x2CF5/6`) and player data.
-- `0x2774`–`0x277A`: presents (`PresentWindow.cpp`). `0x2774` = count; `0x2777/0x2779` carry full present records
-  (`present_id`, `type`, `level`, `form`, `item_img`, `end_time`, `item`…); `0x2778/0x277A` re-request `0x2775`.
+- `0x2774`–`0x277A`: presents (`PresentWindow.cpp`). `0x2774` = count, a push the global dispatcher keeps in slot 23
+  (it also sets the "presents pending" flag `0x80`); `0x2777/0x2779` carry full present records (`present_id`,
+  `type`, `level`, `form`, `item_img`, `end_time`, `item`…); `0x2778/0x277A` mean none (see `0x2775`).
   The same numbers also show up as UI text ids (`FUN_0051E6C0(table, id)`): don't confuse the two.
 - 48 more `REQUEST_` / `RESPONSE_COMMUNICATION_*` names for trade and rental (search the exe's strings).
 - `DuelServerConnection`: the third server tier, not reached yet.

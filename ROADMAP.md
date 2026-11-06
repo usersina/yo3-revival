@@ -27,14 +27,16 @@ Stop finding missing fields one crash at a time.
       getter type, found/missing, value type (from RTTI), the asking function and top/sub level.
 - [x] Loaded by `vclient.sh start --trace` through an injector, so the game folder is never modified
 - [x] `tools/tracer/summarize.py`: per reply, the fields read and the ones missing, with the asking function
-- [x] First catch: `0x2775` → `0x2774 {present_count}`, `0x2CF7.result_number`, and the read-but-absent fields
-      in `docs/protocol.md`
+- [x] First catch: `0x2775` (its reply later corrected to `0x2778`), `0x2CF7.result_number`, and the read-but-absent
+      fields in `docs/protocol.md`
+- [x] Code hits: `YO3_TRACE_HITS=0x…,0x…` logs when chosen client addresses run (int3 and a vectored handler); it
+      found the startup step that kept the map locked
 - Standing practice (moved to CLAUDE.md): name functions in GhidraMCP as we understand them
 - **Exit:** one session prints every field each reply was asked for, with the missing ones flagged (met 2026-11-06)
 
 ## ▶ M3: A social world
 
-- [x] Answer `0x2775` (present count) and any further main-screen requests (none so far after it)
+- [x] Answer `0x2775` (next present: `0x2778` = none, which closes PresentWindow and unlocks the map and menu)
 - [x] Chat rooms (the chat panel's top-left button) and chat messages: room list, enter, leave, room chat
       with echo, whispers
 - [x] Sessions registry: who is online, in which room (`Hub`); sessions leave on disconnect
@@ -42,7 +44,8 @@ Stop finding missing fields one crash at a time.
 - [x] Two clients at once: `YO3_INSTANCE=b` with its own display and reflinked Wine prefix
 - [x] Player search returns the players online, filtered by name, level or id; both clients list each other
       (needed the friend and black list pushes, `0x251C`/`0x252A`)
-- [ ] Entering map locations, lobbies and rooms
+- [ ] Entering map locations, lobbies and rooms. The map unlocks; its facilities are the Shop, Official Event,
+      Championship, User event, NPC duel and character settings
 - [ ] Friends, mail and teams (as far as the main screen needs). The friend and black lists are pushed empty;
       adding friends needs their requests mapped (`0x2528`, `0x252C`, `0x252E` carry `to_id`)
 - [ ] Player search criteria we ignore: language, country, manner level, status, community, event

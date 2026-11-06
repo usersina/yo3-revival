@@ -33,9 +33,14 @@ export, see [CLAUDE.md](../CLAUDE.md)).
 | `0x469C00` | login dispatcher (`LoginWindow.cpp`) |
 | `0x4F4A00` | global front dispatcher; its switch starts at `0x4F4A4F` (route ids with `tools/re/dispatch.py`) |
 | `0x458410` | InfoWindow reply handler: news (`0x21FC`, from `0x458475`), player search (`0x2CF7`), friend list (`0x251C`) |
-| `0x472EDC…0x473A3A` | main-screen poll reply handlers (each re-arms its request through `obj+0xE8`) |
+| `0x472EDC…0x473A3A` | main-screen startup-step reply handlers (each waits on its request through `obj+0xE8`) |
+| `0x46D8A0` | MainGamen constructor: loads `main.swf`, `sisetu_block.swf`, `main_menubar.swf`, queues the startup steps (see the protocol's main-screen section) |
+| `0x472230` | MainGamen lock bits `(this = ESI, bits)`: bit 0 facilities (`_root.sisetuEnable`), bit 1 menu (`menubtnEnable`), bit 2 duel button (`duelbtnEnable`)…; `0x3F` locks all, `0` unlocks |
+| `0x4725B0` | startup step that unlocks the main screen (reads `event_id`, `npc_type`; event players take another path) |
+| `0x476240` / `0x476DE0` | PresentWindow constructor / reply handler (window id `0xFFFFD90C` in the factory `0x4EEB90`) |
+| `0x48AA60` / `0x48F080` | shop (`shopmain.cpp`) reply handler / open routine; the open routine reads slot 8 unchecked |
 | `0x4A523F`, `0x4A551E`, `0x4A5D05` | `CommunicationAgent` switches (195/106/102 cases) |
-| `0x413FE0` | address of front dataset slot `EDI` (vector at `+0x16C`); the global dispatcher keeps some replies there: `0x2711` → 4, `0x251C` friend list → 6, `0x252A` black list → 7, `0x21FC` news → 10, `0x24BA` → 24 |
+| `0x413FE0` | address of front dataset slot `EDI` (vector at `+0x16C`); the global dispatcher keeps some replies there: `0x2711` → 4, `0x251C` friend list → 6, `0x252A` black list → 7, `0x2D6C` rental records → 8, `0x21FC` news → 10, `0x2774` → 23, `0x24BA` → 24 |
 | `0x45E6D0` / `0x45E810` | "is this player a friend / ignored?": read slots 6 / 7 with no NULL check, for every player listed |
 | `0x45F390` | player search request builder (Detailed Search criteria → `search_flag` bits) |
 | `0x475A20` | fills a list entry (`ppInfo`) from an item; ECX picks the kind: 0 player, 1 NPC, 2 friend, 3 ignored, 4 team member |
@@ -90,6 +95,11 @@ parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Su
 - Several clients can run at once (unnamed mutexes only, so no single-instance guard). Under Wine each needs its own
   prefix when it gets its own X display; otherwise Wine dies with X `BadWindow` errors.
 - The player list hides the searcher's own entry and entries with `player_id` 0, and pages by 100.
+- The main screen's map is eight hex buttons, `btn0`–`btn7` in `main.swf`. Its `sisetuStart` (called by the client)
+  wires them to GameDelegate calls: `btn0` Shop (`GoShop`), `btn1` Official Event, `btn2` Championship, `btn3` User
+  event (all three `MenuSelect`, each only if `_root.ofseve_enable` / `wcup_enable` / `ueve_enable`), `btn4` NPC duel
+  (`GoCpuDuel`), `btn7` character settings (`GoCharMake`); `btn5` and `btn6` have no handler. While the screen is
+  locked, `sisetu_block.swf` lays an invisible block over them (`sisetuEnable` false).
 - In chat, the client prints its own lines only from the server's `0x2455` echo, its own name in cyan and others' in
   white.
 
