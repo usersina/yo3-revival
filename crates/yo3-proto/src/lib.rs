@@ -43,25 +43,25 @@ pub fn encrypt(plain: &[u8]) -> Vec<u8> {
     let bf = cipher();
     let mut out = plain.to_vec();
     out.resize(plain.len().div_ceil(8) * 8, 0);
-    for chunk in out.chunks_exact_mut(8) {
-        let mut block = Block::<BlowfishLE>::try_from(&*chunk).expect("8-byte chunk");
+    for chunk in out.as_chunks_mut::<8>().0 {
+        let mut block = Block::<BlowfishLE>::from(*chunk);
         bf.encrypt_block(&mut block);
-        chunk.copy_from_slice(&block);
+        *chunk = block.into();
     }
     out
 }
 
 /// Decrypts a body; the result keeps any zero padding.
 pub fn decrypt(body: &[u8]) -> Result<Vec<u8>, Error> {
-    if body.len() % 8 != 0 {
+    if !body.len().is_multiple_of(8) {
         return Err(Error::BadBodyLength(body.len()));
     }
     let bf = cipher();
     let mut out = body.to_vec();
-    for chunk in out.chunks_exact_mut(8) {
-        let mut block = Block::<BlowfishLE>::try_from(&*chunk).expect("8-byte chunk");
+    for chunk in out.as_chunks_mut::<8>().0 {
+        let mut block = Block::<BlowfishLE>::from(*chunk);
         bf.decrypt_block(&mut block);
-        chunk.copy_from_slice(&block);
+        *chunk = block.into();
     }
     Ok(out)
 }
