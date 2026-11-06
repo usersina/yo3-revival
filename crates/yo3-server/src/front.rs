@@ -262,8 +262,23 @@ impl FrontSession {
                 // 0x251C in dataset slot 6 and 0x252A in slot 7, and listing any player reads both
                 // without a NULL check (0x45E6D0, 0x45E810). Items would be {friend_id, friend_name,
                 // login_flag} and {black_id, black_name, login_flag} (0x475A20 modes 2 and 3).
-                return vec![trunk, Message::reply(0x251C), Message::reply(0x252A)];
+                // Likewise the rental records 0x2D6C (slot 8), which opening the shop reads (0x48F080).
+                return vec![trunk, Message::reply(0x251C), Message::reply(0x252A), Message::reply(0x2D6C)];
             }
+            // Shop (handler 0x48AA60): its text, then a chain where each reply asks for the next:
+            // items, exchange items, protectors, event items, perks, rental terms, avatar items (the
+            // last clears isLoading). The stock comes with the economy (M4).
+            0x1B66 => Message::reply(0x1C20).with("text", Value::text("Welcome! The shelves are empty for now.")),
+            0x1B67 => Message::reply(0x1C22),
+            0x1B6F => Message::reply(0x1C26),
+            0x1B6B => Message::reply(0x1C32),
+            0x1B6D => Message::reply(0x1C2E),
+            // perk_num is compared with 500 to show _root.expack_del; meaning unknown.
+            0x1B72 => Message::reply(0x1C36).with("perk_num", Value::U32(0)),
+            0x2C40 => ["rental_cardnum", "rental_point", "rental_term"]
+                .into_iter()
+                .fold(Message::reply(0x2D75), |m, k| m.with(k, Value::U32(0))),
+            0x1B69 => Message::reply(0x1C2A),
             0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_ids)),
             0x27D8 => Message::reply(0x27D9).item(Message::record()),
             0x2CEE => Message::reply(0x2CF3).item(self.player().record()),

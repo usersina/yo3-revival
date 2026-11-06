@@ -46,6 +46,7 @@ Stop finding missing fields one crash at a time.
       (needed the friend and black list pushes, `0x251C`/`0x252A`)
 - [ ] Entering map locations, lobbies and rooms. The map unlocks; its facilities are the Shop, Official Event,
       Championship, User event, NPC duel and character settings
+  - [x] Shop: opens to the Shop Menu with empty shelves and returns to the map (rental records pushed at entry)
 - [ ] Friends, mail and teams (as far as the main screen needs). The friend and black lists are pushed empty;
       adding friends needs their requests mapped (`0x2528`, `0x252C`, `0x252E` carry `to_id`)
 - [ ] Player search criteria we ignore: language, country, manner level, status, community, event
@@ -95,6 +96,8 @@ Stop finding missing fields one crash at a time.
 | Player search paging | skip `base_point`, return at most `front_num` | Only page 1 (`0, 100`) was seen |
 | Player search by name | case-insensitive substring | Konami's matching rule is unknown |
 | Friend and black list pushes | sent once, right after `9000` | The original timing is unknown; the client only needs them before it lists a player |
+| Shop lists, `perk_num`, rental terms | all empty or 0 | Real stock comes with the economy (M4); `perk_num`'s meaning is unknown |
+| Rental records push (`0x2D6C`) | sent once after `9000`, empty | The original timing is unknown; the shop only needs it before it opens |
 | Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
 
 ## Leads (outside the code)

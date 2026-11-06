@@ -95,14 +95,15 @@ fn world_entry_sends_exactly_one_trunk_record() {
 }
 
 #[test]
-fn world_entry_pushes_the_friend_and_black_lists() {
-    // The client never asks for them: the global dispatcher 0x4F4A00 stores 0x251C in dataset
-    // slot 6 and 0x252A in slot 7, and 0x45E6D0 / 0x45E810 (run for every listed player) read
-    // those slots without a NULL check (crash at 0x45E734). Empty lists are fine.
+fn world_entry_pushes_the_lists_the_client_never_asks_for() {
+    // The global dispatcher 0x4F4A00 stores 0x251C in dataset slot 6, 0x252A in slot 7 and 0x2D6C
+    // in slot 8. 0x45E6D0 / 0x45E810 (run for every listed player) read slots 6 and 7 without a
+    // NULL check (crash at 0x45E734), and so does the shop's open routine 0x48F080 for slot 8
+    // (crash at 0x48F0F6). Empty lists are fine.
     let mut s = fresh();
     s.handle(&req_with(0x1F4C, "player_id", 1001));
     let ids: Vec<_> = s.handle(&req_with(0x1FA4, "player_id", 1001)).iter().map(Message::request).collect();
-    assert_eq!(ids, [Some(9000), Some(0x251C), Some(0x252A)]);
+    assert_eq!(ids, [Some(9000), Some(0x251C), Some(0x252A), Some(0x2D6C)]);
 }
 
 #[test]

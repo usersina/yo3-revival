@@ -113,3 +113,5 @@ parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Su
 | Null read at `0x4F54C8` | `0x2398` without `regulations` | Check the **global** dispatcher too, not only the screen's own handler |
 | (prevented) `0x27D9` | item[0] read unchecked | Route every new reply through `dispatch.py` before shipping it |
 | Null read at `0x45E734` once a search listed a player | friend list never pushed, so dataset slot 6 was NULL | A reply's first non-empty list can wake code that needs other state: test with real items live |
+| Null read at `0x48F0F6` opening the shop | rental records `0x2D6C` never pushed, so dataset slot 8 was NULL | Before shipping a screen, check which dataset slots it reads (`0x413FE0`, or `[+0x16C] + 4·slot`) |
+| (no crash) every click on the map ignored | `0x2775` answered with `0x2774`, so PresentWindow never closed and the main screen stayed locked | A screen that ignores input may be waiting on a reply: `YO3_TRACE_HITS` on its steps shows where |
