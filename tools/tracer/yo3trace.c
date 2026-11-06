@@ -18,6 +18,8 @@
  *   (tree identifies the dataset: the same tree as a message's "request" = a top-level field)
  *   I  ms tid index count caller
  *   H  ms tid address ecx caller (a code hit; caller = the return address at [esp])
+ *   E  ms tid code address stack (an error exception, first 20 only; stack = words on the stack that
+ *      point into the game's code, nearest first: mostly return addresses, i.e. a rough backtrace)
  * Build: i686-w64-mingw32-gcc -O2 -shared -s -o yo3trace.dll yo3trace.c
  */
 #include <windows.h>
@@ -209,6 +211,7 @@ static unsigned char hit_orig[MAX_HITS];
 static volatile LONG hit_count[MAX_HITS];
 static int hit_n, hit_max = 20;
 static DWORD rearm_tls; /* per thread: 1 + index of the breakpoint to re-arm after the single step */
+static volatile LONG exceptions_logged;
 
 static void poke(DWORD at, unsigned char b) {
     DWORD old;
@@ -249,6 +252,21 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *ep) {
             poke(hit_addr[i - 1], 0xCC);
             return EXCEPTION_CONTINUE_EXECUTION;
         }
+    } else if ((code & 0xF0000000u) == 0xC0000000u && InterlockedIncrement(&exceptions_logged) <= 20) {
+        /* An error (access violation, checked-index failure 0xC0000417, ...): log it with every
+           stack word that points into the game's code, nearest first. These are mostly return
+           addresses, so they give a backtrace even when Wine's debugger prints none. */
+        char line[600];
+        int n = sprintf(line, "E\t%lu\t%lu\t%#lx\t%#lx\t", (unsigned long)(GetTickCount() - t0),
+                        (unsigned long)GetCurrentThreadId(), (unsigned long)code,
+                        (unsigned long)(DWORD)ep->ExceptionRecord->ExceptionAddress);
+        int found = 0;
+        for (DWORD p = ctx->Esp; found < 16 && p < ctx->Esp + 0x1000 && readable(p, 4); p += 4) {
+            DWORD v = *(DWORD *)p;
+            if (v >= TEXT_LO && v < TEXT_HI) n += sprintf(line + n, found++ ? ",%#lx" : "%#lx", (unsigned long)v);
+        }
+        strcpy(line + n, "\n");
+        log_line(line);
     }
     return EXCEPTION_CONTINUE_SEARCH;
 }
@@ -257,8 +275,6 @@ static int install_hits(void) {
     char spec[1024], max[16];
     if (!GetEnvironmentVariableA("YO3_TRACE_HITS", spec, sizeof spec)) return 0;
     if (GetEnvironmentVariableA("YO3_TRACE_HITS_MAX", max, sizeof max)) hit_max = atoi(max);
-    rearm_tls = TlsAlloc();
-    AddVectoredExceptionHandler(1, on_exception);
     for (char *tok = strtok(spec, ", "); tok && hit_n < MAX_HITS; tok = strtok(NULL, ", ")) {
         DWORD at = strtoul(tok, NULL, 16);
         if (at < TEXT_LO || at >= TEXT_HI) continue;
@@ -299,6 +315,8 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
     char line[160];
     int ok_find = patch(FIND_ADDR, FIND_PROLOGUE, 5, (void *)hook_find);
     int ok_item = patch(ITEM_ADDR, ITEM_PROLOGUE, 6, (void *)hook_item);
+    rearm_tls = TlsAlloc();
+    AddVectoredExceptionHandler(1, on_exception);
     int hits = install_hits();
     sprintf(line, "#\tyo3trace\tfind=%s\titem=%s\thits=%d\n", ok_find ? "hooked" : "SKIPPED (bytes differ)",
             ok_item ? "hooked" : "SKIPPED (bytes differ)", hits);
