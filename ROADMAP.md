@@ -86,7 +86,9 @@ Stop finding missing fields one crash at a time.
 - [x] Create Duel: a hosted duel shows on its host in player search (Duel Conditions, Send Duel Request); the
       offer reaches the host, who accepts or declines; passwords, a busy host and a withdrawn offer are handled; the
       duel starts with the host's LP. Live: Kaiba challenged Yugi's hosted duel and both reached the janken
-- [ ] Match Mode (best of three: 1500/1504 between duels); Create Duel's time limits; its Friend/Team limits; watching
+- [x] Match Mode: best of three on one duel connection (1500 starts the next duel's janken, `0x2009` carries the
+      match result); Auto Duel's Both matches either rule format. Live: Kaiba won a hosted match 2–0
+- [ ] Card Swap between a match's duels (1504, side deck); Create Duel's time limits; its Friend/Team limits; watching
       duels (mode 4, `0x1838`)
 - [x] NPC roster and duel start: 26 NPCs (ids 120–197 from the NPC deck presets) listed by name with their
       levels; picking one runs `0x1784` → `0x17AC` → Select Deck (`0x1F4F`) → `0x17D4`, and the duel screen opens
@@ -200,7 +202,9 @@ Stop finding missing fields one crash at a time.
 | Duel setup `PlayerType001/002` | 0 (client) / 1 (CPU) | Meaning unknown |
 | Card table entries (1000) | param3 0, flag byte 0; uids 1.. in table order | Meanings of param3 and the flag unknown |
 | Hidden cards | against another player, the opponent's deck, hand, extra deck and face-down cards go with row 0 and face-down monsters get no field record; against the CPU, real rows | Online 2 used placeholders, whose value is unknown; a hidden card that flips without moving keeps row 0 until it moves (position changes aren't translated yet) |
-| Automatic matching | the first two players waiting for the same `match_type` (Both is a value of its own); the level choice is ignored; the second player's `0x1978` goes a second after its `0x1799` | Konami's matching rules are unknown; the delay assumes the agent reads one message per step |
+| Automatic matching | the first two players waiting for the same `match_type`, Both (6) with either and two Both players in a Single duel; the level choice is ignored; the second player's `0x1978` goes a second after its `0x1799` | Konami's matching rules are unknown; the delay assumes the agent reads one message per step |
+| Match Mode | best of three; every duel opens with a janken; a drawn duel counts for neither; no Card Swap (1504) between duels; the records count the match once | Online 3's rules for who goes first in later duels, draws and the side deck are unknown |
+| Hosted LP and `--duel-lp` | the testing aid wins over a hosted `lp_start` when it isn't 8000 | A testing convenience, not the original's |
 | Duel Menu counts | `duel_playing` = 2 × matched duels, `duel_ready` = hosted duels, `duel_auto` = players waiting | Whether they count players or duels is unknown |
 | Hosted duels | `duel_status` 1 while hosting, 3 while in a duel between players; time limits and Friend/Team limits not applied; `0x17C0` answered `0x17C1` | The original values and the limits' rules are unknown |
 | PvP setup | `PlayerType001/002` 0/1 as against the CPU | Their meaning is unknown |

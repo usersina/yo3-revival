@@ -14,6 +14,8 @@ use crate::engine::{Answer, Engine};
 use crate::front::{DuelEntry, Hub, Outbox, World, duel_over};
 use crate::translate::{DUEL_END, LOST, Prompt, Translator, WON};
 
+/// The usual starting LP (the server's own unless --duel-lp changes it).
+const DEFAULT_LP: u32 = 8000;
 /// The duel-end reason "has disconnected" (text 1999 + 14).
 const DISCONNECTED: u32 = 14;
 
@@ -38,13 +40,29 @@ pub struct Table {
     engine: Option<Engine>,
     /// By seat, once the duel opened.
     translators: Vec<Translator>,
+    /// Duels won so far in the match, by seat, and how many it takes.
+    wins: [u32; 2],
+    best_of: u32,
     over: bool,
     rng: u64,
 }
 
 impl Table {
     pub fn new(world: Arc<World>, hub: Arc<Mutex<Hub>>, duel_id: u32, seed: u64) -> Table {
-        Table { world, hub, duel_id, seats: vec![], hands: [None; 2], picker: None, engine: None, translators: vec![], over: false, rng: seed | 1 }
+        Table {
+            world,
+            hub,
+            duel_id,
+            seats: vec![],
+            hands: [None; 2],
+            picker: None,
+            engine: None,
+            translators: vec![],
+            wins: [0; 2],
+            best_of: 1,
+            over: false,
+            rng: seed | 1,
+        }
     }
 
     /// Seats a player (None when the table is full); once both sit, the janken begins.
@@ -52,6 +70,7 @@ impl Table {
         if self.seats.len() == 2 {
             return None;
         }
+        self.best_of = self.best_of.max(entry.best_of);
         self.seats.push(Seat { player_id, entry, outbox });
         let seat = self.seats.len() - 1;
         let mut out = Out::default();
@@ -120,8 +139,9 @@ impl Table {
                 return Out::default();
             }
         };
-        // A hosted duel's starting LP (Create Duel's lp_start), else the server's.
-        let lp = self.seats.iter().find_map(|s| s.entry.lp).unwrap_or(self.world.start_lp);
+        // A hosted duel's starting LP (Create Duel's lp_start), unless the server's was set to test (--duel-lp).
+        let hosted = self.seats.iter().find_map(|s| s.entry.lp);
+        let lp = hosted.filter(|_| self.world.start_lp == DEFAULT_LP).unwrap_or(self.world.start_lp);
         let answer = engine.new_duel(crate::duel::next(&mut self.rng), lp, [(&m0, &e0), (&m1, &e1)]);
         self.engine = Some(engine);
         let mut out = Out::default();
@@ -173,9 +193,37 @@ impl Table {
         }
         let results: Vec<Option<u32>> = self.translators.iter().map(Translator::result).collect();
         if let [Some(r0), Some(r1)] = results[..] {
-            self.report([r0, r1]);
+            for (part, more) in out.iter_mut().zip(self.duel_over([r0, r1])) {
+                part.extend(more);
+            }
         }
         out
+    }
+
+    /// A duel's end: the match's end once someone has won the majority of `best_of` (the result screens), else the
+    /// next duel's janken (1500; DuelResult 0x512070 sees it at the head of the queue and the match goes on). A drawn
+    /// duel counts for neither.
+    fn duel_over(&mut self, results: [u32; 2]) -> Out {
+        for (wins, result) in self.wins.iter_mut().zip(results) {
+            *wins += (result == WON) as u32;
+        }
+        let needed = self.best_of / 2 + 1;
+        if self.best_of <= 1 || self.wins.iter().any(|&w| w >= needed) {
+            let match_results = if self.best_of <= 1 {
+                results
+            } else if self.wins[0] > self.wins[1] {
+                [WON, LOST]
+            } else {
+                [LOST, WON]
+            };
+            self.report(match_results);
+            return Out::default();
+        }
+        self.engine = None;
+        self.translators.clear();
+        self.hands = [None; 2];
+        self.picker = None;
+        [vec![command(JANKEN_BEGIN, [0; 4])], vec![command(JANKEN_BEGIN, [0; 4])]]
     }
 
     /// The duel's end on both front connections (the result screen), counted against each other.
@@ -228,9 +276,10 @@ impl Table {
         }
     }
 
-    /// A client left: during the duel the other wins by disconnection.
+    /// A client left: during the duel, or between a match's duels, the other wins by disconnection.
     pub fn leave(&mut self, seat: usize) {
-        if self.engine.is_some() && !self.over && self.seats.len() == 2 {
+        let started = self.engine.is_some() || self.wins.iter().any(|&w| w > 0);
+        if started && !self.over && self.seats.len() == 2 {
             let other = 1 - seat;
             let _ = self.seats[other].outbox.send(command(DUEL_END, [WON, DISCONNECTED, 0, 0]));
             let mut results = [WON; 2];

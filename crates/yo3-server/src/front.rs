@@ -150,7 +150,15 @@ pub struct DuelEntry {
     pub opponent: Option<u32>,
     /// The duel's starting LP, when the match set it (a hosted duel's lp_start).
     pub lp: Option<u32>,
+    /// Duels in the match: 3 for Match Mode, else one (0 counts as one).
+    pub best_of: u32,
 }
+
+/// The rule's match_type (DuelMenu's table 0x790C50 by Rule Format button): Single Mode, Match Mode (best of three),
+/// and Auto Duel's Both.
+pub const SINGLE_MODE: u32 = 1;
+pub const MATCH_MODE: u32 = 3;
+const EITHER_MODE: u32 = 6;
 
 /// A duel a player hosts (Create Duel, 0x17AC with its settings), waiting for a challenger (0x17B6).
 struct Host {
@@ -431,14 +439,20 @@ impl Hub {
     /// duel: then the new duel's id, the opponent, and both match pushes (the opponent's first).
     fn wait_for_match(&mut self, me: Waiting) -> Option<(u32, [(u32, Message); 2])> {
         self.waiting.retain(|w| w.player_id != me.player_id);
-        let Some(at) = self.waiting.iter().position(|w| w.match_type == me.match_type) else {
+        // The same Rule Format matches, and Both matches either (two Both players get a Single duel, **guess**).
+        let fits = |a: u32, b: u32| a == b || a == EITHER_MODE || b == EITHER_MODE;
+        let Some(at) = self.waiting.iter().position(|w| fits(w.match_type, me.match_type)) else {
             self.waiting.push(me);
             return None;
         };
         let other = self.waiting.remove(at);
         self.last_duel += 1;
         let duel_id = self.last_duel;
-        let rule = vec![("match_type".to_string(), Value::U32(me.match_type))];
+        let match_type = match (other.match_type, me.match_type) {
+            (EITHER_MODE, EITHER_MODE) => SINGLE_MODE,
+            (EITHER_MODE, kind) | (kind, _) => kind,
+        };
+        let rule = vec![("match_type".to_string(), Value::U32(match_type))];
         let push = |vs: &Message| {
             let data = rule.iter().fold(Message::record().with("name", Value::text("duelData")), |m, (k, v)| m.with(k, v.clone()));
             Message::reply(0x1978).item(vs.clone().with("name", Value::text("vsPlayerData"))).item(data.with("duel_id", Value::U32(duel_id)))
@@ -647,8 +661,10 @@ impl FrontSession {
                         hub.enter_duel(player_id, DuelEntry { deck, npc_id, ..DuelEntry::default() });
                     } else if let Some(m) = hub.matches.get(&id) {
                         let opponent = m.players.into_iter().find(|&p| p != player_id);
-                        let lp = m.rule.iter().find(|(k, _)| k == "lp_start").and_then(|(_, v)| v.as_u32()).filter(|&lp| lp > 0);
-                        hub.enter_duel(player_id, DuelEntry { deck, duel_id: Some(id), opponent, lp, ..DuelEntry::default() });
+                        let rule = |k: &str| m.rule.iter().find(|(n, _)| n == k).and_then(|(_, v)| v.as_u32());
+                        let lp = rule("lp_start").filter(|&lp| lp > 0);
+                        let best_of = if rule("match_type") == Some(MATCH_MODE) { 3 } else { 1 };
+                        hub.enter_duel(player_id, DuelEntry { deck, duel_id: Some(id), opponent, lp, best_of, ..DuelEntry::default() });
                     }
                 }
                 Message::reply(0x22CA)
@@ -905,7 +921,9 @@ impl FrontSession {
         if accepted {
             let host = hub.hosts.remove(&duel_id).expect("the host");
             let challenger_record = hub.online.values().find(|o| o.player_id == challenger).map(|o| o.record.clone());
-            let rule: Vec<(String, Value)> = host.settings.iter().filter(|(k, _)| matches!(k.as_str(), "match_type" | "lp_start")).cloned().collect();
+            let match_type = host.setting("match_type").and_then(Value::as_u32).unwrap_or(SINGLE_MODE);
+            let mut rule: Vec<(String, Value)> = host.settings.iter().filter(|(k, _)| k == "lp_start").cloned().collect();
+            rule.push(("match_type".to_string(), Value::U32(match_type)));
             let push = |vs: &Message| {
                 let data = rule.iter().fold(Message::record().with("name", Value::text("duelData")), |m, (k, v)| m.with(k, v.clone()));
                 Message::reply(0x1978).item(vs.clone().with("name", Value::text("vsPlayerData"))).item(data.with("duel_id", Value::U32(duel_id)))

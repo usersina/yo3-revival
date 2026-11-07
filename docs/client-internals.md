@@ -57,6 +57,7 @@ export, see [CLAUDE.md](../CLAUDE.md)).
 | `0x5083A0` / `0x5084D0` | `DuelEndEffect` constructor `(result, reason, …)` / update: plays `duel_win/lose/draw.swf`, done when the movie ends |
 | `0x510950` / `0x510B70` / `0x510D50` | `DuelResult` constructor / its nine steps (`0x512070` waits for 1500/1504 or front flag `0x20000`, `0x512430` match movie…) / Flash callbacks (`requestData`, `getResult` `0x511200`, `requestStarCount`, `finish`) |
 | `0x50FC00` / `0x50FDF0` / `0x510220` | `DuelManager` after a duel: match result set → leave (`0x510220`), else 1504 → Card Swap (`0x50FDF0`), 1500 → next duel (`0x50F690`) |
+| `0x790C50` | DuelMenu's Rule Format table: `match_type` by button, 1 Single Mode, 3 Match Mode, 6 Both |
 | `0x46FEB0` | `GoDuel` (menu bar `go_duel`): the matching agent (`0xFFFFD8F7`) idle → DuelMenu (component `0xFFFFD908`); waiting (`0x4A1D10`) → cancel (`0x4A0BD0`) |
 | `0x49D070` / `0x49D310` / `0x49D8F0` | `DuelMenu` constructor / its first step (`0x17FC` → `0x17FD` counts) / Flash callbacks (`requestDataPlayers` `0x49DB30`, `requestDataAuto` `0x49DD10`, `decideAuto` `0x49DF50` → agent mode 2, `requestDataDuel` `0x49E210`, `decideDataDuel` `0x49EE90`, `cancelMenu`, `openRegSelect`) |
 | `0x4A0B50` / `0x4A0E90` | `DuelMatchingAgent` start (mode in EBX: 0 DUEL panel, 1 a player's duel, 2 auto, 3 NPC, 4 `0x1838`) / deck check: regulation by the record's `regulation_id`, `duel_regulation_id`, else the login one (connection `+0xC8`), loaded from `data/regulation/` (`0x52DB30`), then `0x51AB00` over the local decks |

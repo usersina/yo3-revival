@@ -227,9 +227,10 @@ The menu bar's duel button (`go_duel` in `main_menubar.swf`, enabled once the ma
 `duel_kind_menu.swf`); while the agent waits for a match it cancels the wait (`0x4A0BD0`). DuelMenu's callbacks
 (`0x49D8F0`): `requestDataPlayers`, `requestDataAuto`, `decideAuto`, `requestDataDuel`, `decideDataDuel`, `cancelMenu`,
 `openRegSelect`. Auto Duel offers Rule Format (Single, Match, Both) and Opponent's Level (Any, About the Same, Strong,
-Very Strong), kept in the client's own option store as `autoMatching {match_type, level}` (like `duelOption`);
+Very Strong), kept in the client's own option store as `autoMatching {match_type, level}` (like `duelOption`;
+`match_type` 1, 3 or 6, see Match Mode under the result screen);
 Create Duel (`duelMaking`: password, watch, lang_mask, detail, lp_start, time_turn, time_total, regulation, party…)
-is not served yet. Confirm starts the agent in mode 2, whose deck check (`0x4A0E90`) needs a local deck: a new
+is below. Confirm starts the agent in mode 2, whose deck check (`0x4A0E90`) needs a local deck: a new
 player has none until Edit Deck has opened once ("There are no valid Decks available.", `0x51AB00` → 5).
 
 | Step | Request | Reply (error) | Fields read | Evidence | Status |
@@ -244,7 +245,7 @@ player has none until Edit Deck has opened once ("There are no valid Decks avail
 The wait step also takes `0x17B6` (another player's offer: `playerInfo {name, player_id, pname, dlv, title}`; a
 player on the black list is declined at once, else a dialog asks) and answers `0x17CA {event_id, join_id, duel_id,
 answer}` (2 accept, 1 decline); accepting goes to `0x4A2D30`. That is how hosted duels (mode 1, `0x4A28F0`:
-`0x17B6`–`0x17B8`, `0x17C0`, `0x17CA`) meet; not served yet.
+`0x17B6`–`0x17B8`, `0x17C0`, `0x17CA`) meet; see below.
 
 **Hosted duels (Create Duel).** The Duel Menu's Create Duel (`decideDataDuel` `0x49EE90`) starts the agent in mode 0
 with the `duelMaking` choices. Challengers find the host in player search and send a request from its Player
@@ -556,6 +557,17 @@ After the movie DuelScene (`0x515A30`, flag `+0xD8` set by command 2) opens Duel
   then takes 1504 to Card Swap (`0x50FDF0`, side deck, then `0x1F4F` again) or 1500 to the next duel (`0x50F690`);
 - an empty queue and front flag `0x20000` (or MainGamen `+0x8BC`): the match is over. It reads the result below, and
   DuelManager leaves the duel (`0x510220`, scene `0xFFFFD901`) because the match result (MainGamen `+0x820`) is set.
+
+**Match Mode.** The rule's `match_type` comes from DuelMenu's Rule Format buttons through the table at `0x790C50`:
+1 Single Mode, 3 Match Mode, 6 Both (Auto Duel only); NPC duels send 4. A match is several duels on one duel
+connection: after each duel the server sends either 1500 (the next duel's janken; DuelManager's state 0 then skips
+the `0x22C4` wait because the duel connection is still open) or, once a player has won two, the front's `0x2009` with
+the match result (`duel_result` is the match's, not the last duel's). Auto Duel pairs the same Rule Format, and Both
+with either (two Both players get a Single duel, **guess**); a hosted duel's `match_type` goes into the match push.
+Live (Create Duel in Match Mode, `--duel-lp 1000`): Kaiba won duel 1, both clients went from the result screen
+straight to duel 2's janken, Kaiba won again, and the WINNER / LOSER panels closed the match. Not served: 1504 (Card
+Swap with the side deck between duels), and the loser's choice of who goes first (each duel has its own janken,
+**guess**).
 
 Other commands at the head are taken and dropped. The match is over when the **front** server pushes `0x2009`
 (dispatcher `0x4F4C9E`), sent as soon as the engine ends the duel:

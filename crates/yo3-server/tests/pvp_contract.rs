@@ -40,7 +40,12 @@ impl Seat {
 
 /// Players 1001 (rows 1) and 1002 (rows 2) matched into duel 7; both seats, not entered yet.
 fn table(engine: bool) -> Option<(Seat, Seat, Arc<Mutex<Hub>>)> {
-    let world = Arc::new(world(engine));
+    table_of(engine, 1, 8000)
+}
+
+/// The same, as a match of `best_of` duels starting with `lp` each.
+fn table_of(engine: bool, best_of: u32, lp: u32) -> Option<(Seat, Seat, Arc<Mutex<Hub>>)> {
+    let world = Arc::new(World { start_lp: lp, ..world(engine) });
     if engine && world.engine_dir.is_none() {
         eprintln!("engine not fetched; skipping");
         return None;
@@ -48,7 +53,8 @@ fn table(engine: bool) -> Option<(Seat, Seat, Arc<Mutex<Hub>>)> {
     let hub = Arc::new(Mutex::new(Hub::default()));
     for (me, them, row) in [(1001, 1002, 1), (1002, 1001, 2)] {
         let deck = Deck { main: vec![row; 40], ..Deck::default() };
-        hub.lock().unwrap().enter_duel(me, DuelEntry { deck, duel_id: Some(DUEL), opponent: Some(them), ..DuelEntry::default() });
+        let entry = DuelEntry { deck, duel_id: Some(DUEL), opponent: Some(them), best_of, ..DuelEntry::default() };
+        hub.lock().unwrap().enter_duel(me, entry);
     }
     let seat = |seed| {
         let (tx, inbox) = unbounded_channel();
@@ -187,4 +193,40 @@ fn a_player_leaving_loses_the_duel() {
     b.pushed();
     drop(a);
     assert_eq!(commands(&b.pushed()).last(), Some(&(2, [1, 14, 0, 0])));
+}
+
+/// One duel of a match from its janken: `first` wins the janken and goes first, ends its turn; `second` summons and
+/// attacks directly for the win (the LP are lower than the monster's ATK). What each client got.
+fn second_wins(first: &mut Seat, second: &mut Seat) -> (Vec<Message>, Vec<Message>) {
+    let (mut to_first, mut to_second) = (vec![], vec![]);
+    first.send(0xC, &[("selectHand", 0)]);
+    to_second.extend(second.send(0xC, &[("selectHand", 1)]));
+    to_first.extend(first.pushed());
+    to_first.extend(first.send(0xD, &[("choice", 1)]));
+    to_first.extend(first.send(3, &[("phase", 5)]));
+    to_second.extend(second.pushed());
+    to_second.extend(second.send(2, &[("CommandID", 4), ("player", 0), ("position", 0xB), ("index", 0)]));
+    to_second.extend(second.send(3, &[("phase", 3)]));
+    to_second.extend(second.send(2, &[("CommandID", 0), ("player", 0), ("position", 0), ("index", 0)]));
+    to_first.extend(first.pushed());
+    (to_first, to_second)
+}
+
+#[test]
+fn a_match_goes_on_to_its_next_duel_until_someone_wins_two() {
+    // In a match, DuelResult's first step (0x512070) finds 1500 (or 1504, Card Swap) at the head of the queue after the
+    // duel's end and resets the match result: the match goes on. DuelManager (0x50FC00) then opens the next janken
+    // (0x50F690), on the same duel connection when it is still open (state 0 skips the 0x22C4 wait). Once someone has
+    // won two duels, no 1500 follows: the front push 0x2009 ends the match.
+    let Some((mut a, mut b, _)) = table_of(true, 3, 100) else { return };
+    enter(&mut a, 1001);
+    enter(&mut b, 1002);
+    a.pushed();
+    let ends = |out: &[Message]| commands(out).into_iter().filter(|(id, _)| matches!(id, 2 | 1500)).collect::<Vec<_>>();
+    let (to_a, to_b) = second_wins(&mut a, &mut b);
+    assert_eq!(ends(&to_a), [(2, [2, 1, 0, 0]), (1500, [0; 4])], "duel 1: 1001 lost, the match goes on");
+    assert_eq!(ends(&to_b), [(2, [1, 1, 0, 0]), (1500, [0; 4])]);
+    let (to_a, to_b) = second_wins(&mut a, &mut b);
+    assert_eq!(ends(&to_a), [(2, [2, 1, 0, 0])], "duel 2: 1002 has won two");
+    assert_eq!(ends(&to_b), [(2, [1, 1, 0, 0])]);
 }

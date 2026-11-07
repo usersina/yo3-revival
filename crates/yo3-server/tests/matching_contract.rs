@@ -50,7 +50,7 @@ fn a_player_asking_for_a_match_waits() {
     // 0x1799 (0x4A1380) reads nothing; the agent then waits (0x4A1D10, a "waiting" dialog, text 0x32D0).
     let server = Server::with_world(world());
     let mut a = server.join(1001, "Yugi");
-    let r = auto_match(&mut a, 0);
+    let r = auto_match(&mut a, 1);
     assert_eq!(r.iter().map(Message::request).collect::<Vec<_>>(), [Some(0x1799)]);
     assert!(pushed_within(&mut a, Duration::from_millis(100)).is_empty());
 }
@@ -62,8 +62,8 @@ fn two_waiting_players_are_matched() {
     // kept). The second player gets it after its 0x1799 (**guess**: the agent reads one message per step).
     let server = Server::with_world(world());
     let (mut a, mut b) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
-    auto_match(&mut a, 0);
-    let r = auto_match(&mut b, 0);
+    auto_match(&mut a, 1);
+    let r = auto_match(&mut b, 1);
     assert_eq!(r.iter().map(Message::request).collect::<Vec<_>>(), [Some(0x1799)]);
     let to_a = one(pushed_within(&mut a, Duration::from_secs(3)));
     let to_b = one(pushed_within(&mut b, Duration::from_secs(3)));
@@ -72,18 +72,18 @@ fn two_waiting_players_are_matched() {
         let vs = named(push, "vsPlayerData");
         assert_eq!(vs.get("player_id").and_then(Value::as_u32), Some(opponent));
         assert_eq!(vs.get("pname").and_then(Value::as_str).as_deref(), Some(name));
-        assert_eq!(named(push, "duelData").get("match_type").and_then(Value::as_u32), Some(0));
+        assert_eq!(named(push, "duelData").get("match_type").and_then(Value::as_u32), Some(1));
     }
     let duel_id = |m: &Message| named(m, "duelData").get("duel_id").and_then(Value::as_u32).expect("duel_id");
     assert_eq!(duel_id(&to_a), duel_id(&to_b));
 }
 
 #[test]
-fn only_the_same_kind_of_duel_is_matched() {
+fn only_a_shared_kind_of_duel_is_matched() {
     let server = Server::with_world(world());
     let (mut a, mut b) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
-    auto_match(&mut a, 0);
-    auto_match(&mut b, 1);
+    auto_match(&mut a, 1);
+    auto_match(&mut b, 3);
     assert!(pushed_within(&mut a, Duration::from_millis(1500)).is_empty());
     assert!(b.pushed().is_empty());
 }
@@ -93,10 +93,10 @@ fn a_cancelled_wait_is_left_out() {
     // Cancelling the wait in mode 2 sends 0x17A2 {event_id, join_id} (0x4A15D0); 0x17A3 lets the agent finish.
     let server = Server::with_world(world());
     let (mut a, mut b) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
-    auto_match(&mut a, 0);
+    auto_match(&mut a, 1);
     let r = one(a.send(req_with(0x17A2, &[("event_id", Value::U32(2)), ("join_id", Value::U32(1))])));
     assert_eq!(r.request(), Some(0x17A3));
-    auto_match(&mut b, 0);
+    auto_match(&mut b, 1);
     assert!(pushed_within(&mut a, Duration::from_millis(1500)).is_empty());
 }
 
@@ -106,8 +106,8 @@ fn a_matched_duel_keeps_both_decks_and_announces_the_duel_server() {
     // then the duel server push 0x22C4 {duelData {host, port}, rule}. The duel server finds both entries by player.
     let server = Server::with_world(world());
     let (mut a, mut b) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
-    auto_match(&mut a, 0);
-    auto_match(&mut b, 0);
+    auto_match(&mut a, 1);
+    auto_match(&mut b, 1);
     let push = one(pushed_within(&mut a, Duration::from_secs(3)));
     let duel_id = named(&push, "duelData").get("duel_id").and_then(Value::as_u32).expect("duel_id");
     pushed_within(&mut b, Duration::from_secs(3));
@@ -128,7 +128,7 @@ fn a_matched_duel_keeps_both_decks_and_announces_the_duel_server() {
     assert_eq!(r.iter().map(Message::request).collect::<Vec<_>>(), [Some(0x17D5), Some(0x22C4)]);
     let data = named(&r[1], "duelData");
     assert_eq!(data.get("host").and_then(Value::as_str).as_deref(), Some("10.0.0.5"));
-    assert_eq!(named(data, "rule").get("match_type").and_then(Value::as_u32), Some(0));
+    assert_eq!(named(data, "rule").get("match_type").and_then(Value::as_u32), Some(1));
 }
 
 #[test]
@@ -143,9 +143,9 @@ fn the_duel_menu_counts_the_players() {
         ["duel_playing", "duel_ready", "duel_auto"].map(|k| r.get(k).and_then(Value::as_u32).expect(k))
     };
     assert_eq!(counts(&mut c), [0, 0, 0]);
-    auto_match(&mut a, 0);
+    auto_match(&mut a, 1);
     assert_eq!(counts(&mut c), [0, 0, 1]);
-    auto_match(&mut b, 0);
+    auto_match(&mut b, 1);
     assert_eq!(counts(&mut c), [2, 0, 0]);
 }
 
@@ -284,4 +284,41 @@ fn a_withdrawn_challenge_frees_the_host() {
     b.send(req_with(0x17C0, &[("event_id", Value::U32(1)), ("join_id", Value::U32(1)), ("duel_id", Value::U32(duel_id))]));
     assert_eq!(one(pushed_within(&mut a, Duration::from_millis(500))).request(), Some(0x17C0));
     assert_eq!(challenge(&mut c, duel_id, "").request(), Some(0x17B7));
+}
+
+#[test]
+fn both_rule_formats_match_either() {
+    // decideAuto (0x49DF50) sends the Rule Format by the table at 0x790C50: Single 1, Match 3, Both 6 (live: 3 and 6).
+    // Both matches a player of either format, and plays theirs; two Both players get a Single duel.
+    let server = Server::with_world(world());
+    let (mut a, mut b) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+    auto_match(&mut a, 6);
+    auto_match(&mut b, 3);
+    let push = one(pushed_within(&mut a, Duration::from_secs(3)));
+    assert_eq!(named(&push, "duelData").get("match_type").and_then(Value::as_u32), Some(3));
+    let (mut c, mut d) = (server.join(1003, "Joey"), server.join(1004, "Mai"));
+    auto_match(&mut c, 6);
+    auto_match(&mut d, 6);
+    let push = one(pushed_within(&mut c, Duration::from_secs(3)));
+    assert_eq!(named(&push, "duelData").get("match_type").and_then(Value::as_u32), Some(1));
+}
+
+#[test]
+fn a_hosted_match_mode_duel_is_a_match() {
+    // Create Duel's Match Mode sends match_type 3 (live), a best of three.
+    let server = Server::with_world(world());
+    let (mut a, mut b) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+    let join = one(a.send(req_with(0x1784, &[("event_id", Value::U32(1))])));
+    let settings = Message { tag: 4, ..Message::default() }.with("match_type", Value::U32(3)).with("status", Value::U32(1));
+    let ask = Message::reply(0x17AC).with("event_id", Value::U32(1)).with("join_id", join.get("join_id").cloned().unwrap()).item(settings);
+    let duel_id = one(a.send(yo3_proto::Packet::Message(ask))).get("duel_id").and_then(Value::as_u32).unwrap();
+    challenge(&mut b, duel_id, "");
+    pushed_within(&mut a, Duration::from_millis(500));
+    answer(&mut a, duel_id, 2);
+    let push = one(pushed_within(&mut a, Duration::from_secs(3)));
+    assert_eq!(named(&push, "duelData").get("match_type").and_then(Value::as_u32), Some(3));
+    let deck = Message::record().with("main", Value::u16_be_array(&[100, 101, 102]));
+    let yo3_proto::Packet::Message(pick) = req_with(0x1F4F, &[("duel_id", Value::U32(duel_id))]) else { unreachable!() };
+    one(a.send(yo3_proto::Packet::Message(pick.item(deck))));
+    assert_eq!(server.hub.lock().unwrap().duel_entry(1001).unwrap().best_of, 3);
 }
