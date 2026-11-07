@@ -54,7 +54,9 @@ cargo run --release -p yo3-server -- --log-dir logs --players Yugi,Kaiba   # ser
 ss -ltnp | grep ':5730 '                                        # find the server's pid to stop it
 #   state: accounts and records persist in data/ (ignored; --data-dir), backed up into data/backups/ at each start
 target/release/yo3-server accounts                              # admin (server stopped): list, add-player ADDR NAME, rename OLD NEW
-tools/release.sh                                                # the host's bundle in dist/; the friends' guide is docs/friends.md
+tools/release.sh                                                # the host's bundles in dist/ (Linux, Windows); the friends' guide is docs/friends.md
+#   once: rustup target add x86_64-pc-windows-gnu (mingw-w64 links it). A Windows build under Wine needs its own prefix
+#   (WINEPREFIX=.wine-c): vclient.sh stop kills every process of the default prefix
 
 tools/client/vclient.sh xvfb                                    # once per boot
 tools/client/vclient.sh start && tools/client/vclient.sh login  # cold start to main screen, about 30 s

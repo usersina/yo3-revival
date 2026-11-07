@@ -20,8 +20,11 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// The default install location under Wine.
+/// The default install location: under Wine, or on Windows itself.
 pub fn default_game_dir() -> PathBuf {
+    if cfg!(windows) {
+        return PathBuf::from(r"C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3");
+    }
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
     home.join(".wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3")
 }

@@ -6,17 +6,21 @@ install of the client (the last version, from 2012).
 
 ## For the host
 
-You need Linux (on Windows, use WSL), the game installed (the server reads its card data from your install), Node.js
-22.18 or newer (it runs the engine's TypeScript directly), `git` and `curl`.
+You need Linux or Windows, the game installed (the server reads its card data from your install), Node.js 22.18 or
+newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and later have it).
 
-1. Unpack the release (or build it from the repository with `tools/release.sh`) and run `./run.sh`. The first start
-   downloads what the rules engine needs (EDOPro's core, card scripts and card database, about 160 MB). Your game
-   install is found in `~/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3`; pass `--game-dir DIR`
-   otherwise.
+1. Unpack the release for your system (or build both with `tools/release.sh`) and start it: `./run.sh` on Linux,
+   `run.cmd` on Windows (double-click it, or run it in a terminal to pass options). The first start downloads what
+   the rules engine needs (EDOPro's core, card scripts and card database, about 160 MB). Your game install is found in
+   `~/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3` on Linux and `C:\Program Files
+   (x86)\Konami\Yu-Gi-Oh! ONLINE 3` on Windows; pass `--game-dir DIR` otherwise.
 2. Make the server reachable. Friends connect to TCP ports **5730** (gate), **1213** (front), **1214** (duels) and
    **8080** (patch check):
-   - **Same network:** friends use your LAN address (`ip -4 addr`, e.g. `192.168.1.2`). Open the ports if a firewall
-     runs: `sudo ufw allow 5730,1213,1214,8080/tcp`, or for firewalld `sudo firewall-cmd --add-port={5730,1213,1214,8080}/tcp`.
+   - **Same network:** friends use your LAN address (`ip -4 addr`, or `ipconfig` on Windows, e.g. `192.168.1.2`).
+     Open the ports if a firewall runs: `sudo ufw allow 5730,1213,1214,8080/tcp`, for firewalld `sudo firewall-cmd
+     --add-port={5730,1213,1214,8080}/tcp`, and on Windows allow `yo3-server.exe` when Windows asks, or in an
+     administrator terminal `netsh advfirewall firewall add rule name="yo3-revival" dir=in action=allow protocol=TCP
+     localport=5730,1213,1214,8080`.
    - **Over the internet, easiest:** a mesh VPN (Tailscale, ZeroTier, NetBird). Everyone joins your network and uses
      your VPN address (e.g. `100.x.y.z`). Nothing to forward, and only your friends can reach the server.
    - **Over the internet with port forwarding:** forward the four ports on your router to your machine, and start the
@@ -38,6 +42,8 @@ You need Linux (on Windows, use WSL), the game installed (the server reads its c
    ./yo3-server rename Duelist2 Joey         # or rename one afterwards
    ./yo3-server accounts                     # who's who
    ```
+
+   On Windows it is `yo3-server.exe add-player ...` and so on, in a terminal in the server's folder.
 
    Two friends behind the same router (the same public address) share one account; a VPN gives each their own.
 4. Accounts and win/loss records live in `data/` (`accounts.json`, `records.json`), backed up into `data/backups/` at

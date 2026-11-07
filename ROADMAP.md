@@ -25,7 +25,7 @@ most valuable first. Research for the later slices runs ahead in parallel (read-
 7. [x] Player search criteria: language, manner level, status, event, chat room (country: the client never says
        its own)
 8. [ ] Shop: protectors and avatar items for BP; card trade and rental between players
-9. [ ] A Windows server build (cross-compiled) in the release bundle, with the friends' guide updated
+9. [x] A Windows server build (cross-compiled) in the release bundle, with the friends' guide updated
 10. [ ] Final: full test run, a live smoke test of every flow (login, chat, friends, mail, shop, NPC duel, Auto
         Duel, hosted match, watching), the release bundle rebuilt; then the real friend test (M6 exit)
 
@@ -265,7 +265,8 @@ Stop finding missing fields one crash at a time.
 - [x] Admin commands: `accounts`, `add-player ADDRESS NAME` (name a friend's player before they connect), `rename`
 - [x] Linux release bundle (`tools/release.sh`: server, engine sources, `run.sh`) and the setup guide for the host
       and the players (`docs/friends.md`: `yo3.ini`, Windows or Wine, LAN / VPN / port forwarding)
-- [ ] A native Windows server build (needs `rustup target add x86_64-pc-windows-gnu`; a Windows host can use WSL)
+- [x] A native Windows server build: `tools/release.sh` cross-compiles `yo3-server.exe` (x86_64-pc-windows-gnu,
+      mingw-w64) into a zip with `run.cmd` and `engine\fetch.cmd`. Live: under Wine, a client logged in through it
 - [x] Chain questions follow the player's Activation Message option (Manual / Semi Auto Cancel / Auto Cancel): the
       server sends a level per chance (3 after an event, 1 at a phase, 0 when nothing fits). Live: no question at the
       CPU's phases, the question at its summon
