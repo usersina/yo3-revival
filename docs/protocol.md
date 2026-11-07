@@ -204,6 +204,17 @@ files mail by id), and drops a mail once fetched. Live: Yugi wrote to Kaiba from
 Kaiba); Send D-mail got `0x2584 {mail_id 1}`, Kaiba's bar showed the mail icon, and his D-Mail window listed "Yugi /
 Rematch? / 2026-11-07" with the body.
 
+### Main Menu screens (MainGamen's menu `0x46FA60`)
+
+| Screen | Request | Reply (error) | Fields | Evidence | Status |
+|---|---|---|---|---|---|
+| Rental Card List (RentalRecord `0x481A30`, `rentalrecord.swf`) | `0x2C34` (bare), then `0x2C35 {rental_kind 0, base_id}` and `0x2C35 {rental_kind 1}` | `0x2D6C` (`0x2D6D`), `0x2D6E` (`0x2D6F`) twice | the screen is built only after all three (`0x482250`); `0x2D6C` also replaces slot 8. Borrowed items `{from_name, from_type, rent_end, deck_type, confirm_to}`, lent `{to_name, rent_end, deck_type, confirm_from}`, decks `main`/`extra`/`side`; empty lists are safe. Without the replies the screen stays black | live | confirmed (empty) |
+| My Profile (`profile.swf`) | `0x1F49` (bare) | `0x2260` | the item whose `pindex` is the player's; ProfileGet (`0x4705D0`) reads `pname`, `title`, `dlv`, `tp`, `n_win`, `n_lose`, `dscore`, `n_duelall`, `turns`, `n_a_win/lose/draw`, `n_nogame`, `isurrender`, `usurrender`, `lpleft`, `n_m_win/lose`, `n_s_win/lose`, `sidedeck`, `sacrifice1..3`, `fusion`, `synchro`, `gravesummon`, `spsummon`, `itrap`, `utrap`, `imagic`, `umagic`, `iefmon`, `uefmon`, `reversalwin`, `reversallose` (absent = 0). We send `n_win`, `n_lose`, `n_draw`, `n_duelall` from the duel records against players (also in the search entries, which Player Information's "Number of Wins" reads) | live: Wins 4, Losses 2 | confirmed; NPC duels not counted (**guess**) |
+| Duel Log (DuelLogWindow `0x499750`, `duel_log.swf`) | `0x1793` (bare) on opening; Server Duel Logs `0x19C8 {pname, offset}` | `0x177B` (`0x177C`), `0x19C9` (`0x1790`) | `0x177B` is the championship list, items `{year, season, event_id}`; the server log tab queues behind it. `0x19C9` items `{end_time (epoch), match_type, dlv_1, dlv_2, pname_1, pname_2, dlog_comment, duel_id, filename, dlogURL}` (`0x49ADF0`) would be replays to download; we keep none. Latest Duel Logs and Duel Log Collection are local files | live: both lists empty | confirmed (empty) |
+| BOOSTERPASS (BpInputWindow, `boosterpass.swf`) | `0x20D0 {dpcode}` (a 16-character code) | `0x23F0 {dpauth_result, dpPoints, dpGetPoints, premium, premium_expire}`, no error reply | 0 adds `dpGetPoints` and shows the points; anything else "Incorrect BOOSTERPASS CODE.". The global dispatcher keeps `premium` from it (`0x4F5349`), so it goes with 1 | live: "Incorrect BOOSTERPASS CODE." | confirmed; every code refused (Konami's are gone) |
+| Leaderboard | none | — | ShellExecute on Konami's dead ranking page with the login item's `country` | code | nothing to serve |
+| DUEL OPTIONS | none | — | local options file | code | nothing to serve |
+
 ### Shop (`shopmain.cpp`, handler `0x48AA60`)
 
 The map's top-left facility. Opening it re-requests the trunk (`0x1FA4`), and each reply below asks for the next, in

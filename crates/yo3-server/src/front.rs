@@ -87,15 +87,21 @@ impl Player {
 
     /// The record read by the player list (0x46C1E4) and the PlayerData loader (0x51C260).
     pub fn record(&self) -> Message {
+        self.record_with([0; 3])
+    }
+
+    /// The record with the player's wins, losses and draws against players (My Profile, 0x4705D0; the VS screen).
+    pub fn record_with(&self, [wins, losses, draws]: [u32; 3]) -> Message {
         let mut m = Message::record()
             .with("pname", Value::text(&self.name))
             .with("pindex", Value::U32(self.index))
             .with("player_id", Value::U32(self.player_id))
             .with("dlv", Value::U32(self.level))
             .with("title", Value::U32(self.title))
-            .with("n_win", Value::U32(0))
-            .with("n_lose", Value::U32(0))
-            .with("n_draw", Value::U32(0))
+            .with("n_win", Value::U32(wins))
+            .with("n_lose", Value::U32(losses))
+            .with("n_draw", Value::U32(draws))
+            .with("n_duelall", Value::U32(wins + losses + draws))
             .with("team_level", Value::U32(0))
             .with("team_name", Value::text(""))
             .with("team_authority", Value::U32(0))
@@ -466,9 +472,21 @@ impl Hub {
         npcbin
     }
 
+    /// A player's wins, losses and draws against other players (NPC ids are 256 and below: practice, not counted).
+    fn totals(&self, player_id: u32) -> [u32; 3] {
+        let against_players = self.records.iter().filter(|((me, them), _)| *me == player_id && *them > 256);
+        against_players.fold([0; 3], |t, (_, r)| [t[0] + r[0], t[1] + r[1], t[2] + r[2]])
+    }
+
+    /// A player's own record (the player list 0x2260, the refresh 0x2CF3): with their totals and NPC experience.
+    fn own_record(&self, player: &Player) -> Message {
+        player.record_with(self.totals(player.player_id)).with("npcbin", Value::Bin(self.npcbin(player.player_id)))
+    }
+
     fn join(&mut self, player: &Player, outbox: Outbox) -> u64 {
         self.next_id += 1;
-        let online = Online { player_id: player.player_id, name: player.name.clone(), level: player.level, room: None, outbox, record: player.record() };
+        let record = player.record_with(self.totals(player.player_id));
+        let online = Online { player_id: player.player_id, name: player.name.clone(), level: player.level, room: None, outbox, record };
         self.online.insert(self.next_id, online);
         self.social.seen(player.player_id, &player.name);
         self.tell_friends(player.player_id);
@@ -881,7 +899,7 @@ impl FrontSession {
             ),
             0x1F49 => {
                 let hub = self.hub.lock().expect("hub lock");
-                a.players.iter().fold(Message::reply(0x2260), |m, p| m.item(p.record().with("npcbin", Value::Bin(hub.npcbin(p.player_id)))))
+                a.players.iter().fold(Message::reply(0x2260), |m, p| m.item(hub.own_record(p)))
             }
             0x1F4C => {
                 self.selected = self.find_player(msg);
@@ -944,6 +962,21 @@ impl FrontSession {
             // Event list {event_type, status, event_id} (TournamentScene 0x4D0BB0) and event search
             // (UserEventScene 0x4D9E37): no events are held.
             0x177A | 0x1789 => Message::reply(0x177B).with("result_number", Value::U32(0)),
+            // Duel Log (0x499750): the championship list it asks for on opening (its server log tab waits for it), and
+            // Server Duel Logs, which would list replays to download; the server keeps none.
+            0x1793 => Message::reply(0x177B),
+            0x19C8 => Message::reply(0x19C9),
+            // Rental Card List (0x481A30) opens once all three come: the rental records, then the borrowed (rental_kind
+            // 0) and lent (1) lists. Nobody rents yet.
+            0x2C34 => Message::reply(0x2D6C),
+            0x2C35 => Message::reply(0x2D6E),
+            // A BOOSTERPASS code (BpInputWindow, 0x40F7B0): Konami's codes are gone, so every one is refused (the "ng"
+            // frame). The global dispatcher keeps premium from it (0x4F5349), so it stays 1.
+            0x20D0 => Message::reply(0x23F0)
+                .with("dpauth_result", Value::U32(1))
+                .with("dpPoints", Value::U32(a.dpoint))
+                .with("dpGetPoints", Value::U32(0))
+                .with("premium", Value::U32(1)),
             // The player's own user event (UserEventScene 0x4D9BB0): none.
             0x339A => Message::reply(0x33FE).with("remain", Value::U32(0)).with("event_id", Value::U32(0)),
             // Deck list (deck editor 0x43FC60): it saves each deck it lacks as a local file.
@@ -1076,8 +1109,8 @@ impl FrontSession {
             0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_ids)),
             0x27D8 => Message::reply(0x27D9).item(Message::record()),
             0x2CEE => {
-                let npcbin = self.hub().npcbin(self.player().player_id);
-                Message::reply(0x2CF3).item(self.player().record().with("npcbin", Value::Bin(npcbin)))
+                let record = self.hub().own_record(self.player());
+                Message::reply(0x2CF3).item(record)
             }
             0x2CEF => self.update_player(msg),
             // D-Mail (MailWindow 0x4AC6B0): the count waiting (also the startup step 0x4730B0's, which lights the bell),
@@ -1289,10 +1322,14 @@ impl FrontSession {
         let skip = uint("base_point").unwrap_or(0) as usize;
         let page = found.iter().skip(skip).take(uint("front_num").unwrap_or(100) as usize);
         page.fold(Message::reply(0x2CF7).with("result_number", Value::U32(found.len() as u32)), |m, o| {
+            let [wins, losses, draws] = hub.totals(o.player_id);
             let entry = Message::record()
                 .with("player_id", Value::U32(o.player_id))
                 .with("pname", Value::text(&o.name))
-                .with("dlv", Value::U32(o.level));
+                .with("dlv", Value::U32(o.level))
+                .with("n_win", Value::U32(wins))
+                .with("n_lose", Value::U32(losses))
+                .with("n_draw", Value::U32(draws));
             m.item(hub.duel_fields(o.player_id, entry))
         })
     }

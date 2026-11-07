@@ -19,7 +19,7 @@ most valuable first. Research for the later slices runs ahead in parallel (read-
 3. [x] NPC experience (`npcbin`): wins against an NPC unlock its higher levels; every NPC enabled (`premium`), on
        its series tab, the four gated ones willing to duel
 4. [x] D-Mail between players, kept for players offline
-5. [ ] Main Menu screens: Card Album, Rental Card List, My Profile, Duel Log, Leaderboard, BOOSTERPASS, each with
+5. [x] Main Menu screens: Card Album, Rental Card List, My Profile, Duel Log, Leaderboard, BOOSTERPASS, each with
        what the server knows (collection, records, duels played)
 6. [ ] Teams (create, join, leave, members, team chat, Create Duel's Team limit) and user events (create, join)
 7. [ ] Player search criteria: language, country, manner level, status, event
@@ -92,8 +92,11 @@ Stop finding missing fields one crash at a time.
       `0x2588`, `0x2582` → `0x2586`); mail waits in `data/mail.json` for players offline. Live: Yugi to Kaiba
 - [ ] Teams
 - [ ] Player search criteria we ignore: language, country, manner level, status, event
-- [ ] Main menu screens (the menu opens now): Card Album, Rental Card List, My Profile, Duel Log, Team,
-      Leaderboard, BOOSTERPASS, Duel Options (Edit Deck is M4; Friend List and Ignore List work)
+- [x] Main menu screens: Rental Card List (`0x2C34`/`0x2C35` chain), My Profile (wins and losses against players),
+      Duel Log (`0x1793`, `0x19C8`, no server replays), BOOSTERPASS (codes refused); Card Album, Leaderboard (a Konami
+      web page) and Duel Options need nothing. Live: each opened; Team is with teams
+- [ ] Local duel logs: the client says it saves a Duel Log after each duel, but Latest Duel Logs stays empty after
+      ours (what it records from, and when, is open)
 - [x] Saving character settings: Avatar Settings' Confirm sends `0x2CEF` {avatar1, speech00–22, comment00–01,
       title} → `0x2CF5`; kept with the account and sent back in the player record. Live: purple hair after a restart
 - [ ] Creating and joining user events
@@ -283,6 +286,7 @@ Stop finding missing fields one crash at a time.
 | Event lists (`0x177B`), own user event (`0x33FE`) | empty, 0 | No events are held; paging by `base_point`/`front_num` like player search is assumed |
 | Rental records push (`0x2D6C`) | sent once after `9000`, empty | The original timing is unknown; the shop only needs it before it opens |
 | NPC roster `npc_type`, `need_ex` | tabs by series (NPCs 0–8, 9–16, 17–24); `need_ex` 100/200/300 | No client file gives the tabs or the experience each level needs; `need_ex` can't all be 0 (`0x4BFDC4`) |
+| Wins and losses | My Profile and Player Information count duels against players only, not NPCs | The original's counting is unknown |
 | NPC experience | 100 a win, 50 a draw, 10 a loss, per NPC level id | No request reports it; the original's amounts are unknown |
 | `premium` | 1 for every account (all NPCs, Form Team, Create Event) | The original sold it (Duelist Premium); a friends' server gives it to all |
 | `join_id`, `duel_id` | server-wide counters from 1 | The client only echoes them back |
