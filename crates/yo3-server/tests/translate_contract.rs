@@ -66,9 +66,12 @@ fn the_clients_idle_prompt_becomes_a_command_map_and_an_input_wait() {
     let idle = json!({ "type": 11, "player": 0, "summons": [hand(0)], "special_summons": [], "pos_changes": [],
         "monster_sets": [hand(0)], "spell_sets": [hand(1)], "activates": [hand(1)], "to_bp": true, "to_ep": true });
     let Prompt::Client(out) = t.prompt(&idle) else { panic!("the client chooses") };
-    let data = [0x00, 0x00, 0x0B, 0x00, 0, 0, 0, 0x50, 0x00, 0x01, 0x0B, 0x00, 0, 0, 0, 0x88];
+    // Then the other flags: phase buttons 3 (BP) and 5 (EP) enabled, as the engine allows (0x501C00 reads them).
+    let data = [0x00, 0x00, 0x0B, 0x00, 0, 0, 0, 0x50, 0x00, 0x01, 0x0B, 0x00, 0, 0, 0, 0x88, 3, 1, 5, 1];
     assert_eq!(out[0].get("COMIDDATA"), Some(&Value::Bin(data.to_vec())));
-    assert_eq!(cmd(&out[1]), (4, [0, 0, 0, 0]));
+    assert_eq!(out[0].get("otherFlagSize"), Some(&Value::U32(2)));
+    // Command 4 {mode, player}: mode 2 or 3 turns the phase panel on (0x504890).
+    assert_eq!(cmd(&out[1]), (4, [2, 0, 0, 0]));
     // Summon on hand card 0 is summons[0]; Set (bit 7) on hand card 1 is spell_sets[0].
     let summon = CardCommand { command: 4, player: 0, zone: 0xB, index: 0 };
     assert_eq!(t.answer(summon), Some(json!({ "type": 1, "action": 0, "index": 0 })));
@@ -125,4 +128,16 @@ fn place_and_position_prompts_are_answered_for_the_player() {
     assert_eq!(t.prompt(&place), Prompt::Answer(monster));
     let position = json!({ "type": 19, "player": 0, "code": 1, "positions": 5 });
     assert_eq!(t.prompt(&position), Prompt::Answer(json!({ "type": 11, "position": 1 })));
+}
+
+#[test]
+fn the_phase_buttons_end_the_main_phase() {
+    // A phase button sends duelRequestName 3 {phase: the button, 0 DP .. 5 EP} (0x521180). In Main Phase, BP
+    // answers TO_BP (6) and EP TO_EP (7), if the prompt allows them.
+    let (mut t, _) = translator();
+    let idle = json!({ "type": 11, "player": 0, "summons": [], "special_summons": [], "pos_changes": [],
+        "monster_sets": [], "spell_sets": [], "activates": [], "to_bp": false, "to_ep": true });
+    t.prompt(&idle);
+    assert_eq!(t.phase(3), None, "no Battle Phase on this prompt");
+    assert_eq!(t.phase(5), Some(json!({ "type": 1, "action": 7, "index": null })));
 }

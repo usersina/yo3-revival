@@ -26,8 +26,9 @@ const ENGINE_COMMAND: u32 = 0x11;
 const DUEL_SETUP: u32 = 0x15;
 /// duelRequestName of the command map (pump case 0x12).
 const COMMAND_DATA: u32 = 0x12;
-/// Client duelRequestName of a card command (0x520FD0).
+/// Client duelRequestName of a card command (0x520FD0) and of a phase button {phase} (0x521180).
 const CARD_COMMAND: u32 = 2;
+const PHASE_BUTTON: u32 = 3;
 /// Client duelRequestNames: the janken hand {selectHand} (0x4F1330), first or second {choice}
 /// (0x4F1430).
 const SELECT_HAND: u32 = 0xC;
@@ -51,7 +52,8 @@ const SET_LP: u32 = 0xF;
 pub(crate) const PHASE: u32 = 5;
 /// Turn change {the player whose turn starts} (DuelScene; the pop counts the turn).
 pub(crate) const TURN: u32 = 6;
-/// Wait for a player's input {player} (DuelFieldManager highlights the cards in the command map).
+/// Wait for a player's input {mode, player}: DuelFieldManager highlights the player's cards in the command map,
+/// and modes 2 and 3 turn the phase panel on (0x504890).
 pub(crate) const INPUT: u32 = 4;
 const DRAW_PHASE: u32 = 0;
 const START_LP: u32 = 8000;
@@ -84,15 +86,17 @@ pub fn command(id: u32, params: [u32; 4]) -> Message {
     params.iter().zip(["param1", "param2", "param3", "param4"]).fold(m, |m, (v, k)| m.with(k, Value::U32(*v)))
 }
 
-/// The commands each card offers, as {place, command bits} (pump case 0x12). Places are
+/// The commands each card offers, as {place, command bits} (pump case 0x12), then the other flags as {key,
+/// value} bytes (the phase panel reads key = button 0 DP .. 5 EP, value != 0 = enabled; 0x501C00). Places are
 /// `player | zone << 8 | index << 16`; bit n is the menu entry n (see [`CardCommand`]).
-pub fn command_data(cards: &[(u32, u32)]) -> Message {
-    let data = cards.iter().flat_map(|(place, bits)| place.to_be_bytes().into_iter().chain(bits.to_be_bytes())).collect();
+pub fn command_data(cards: &[(u32, u32)], flags: &[(u8, u8)]) -> Message {
+    let mut data: Vec<u8> = cards.iter().flat_map(|(place, bits)| place.to_be_bytes().into_iter().chain(bits.to_be_bytes())).collect();
+    data.extend(flags.iter().flat_map(|(k, v)| [*k, *v]));
     Message::reply(SERVER_DUEL)
         .with("duelRequestName", Value::U32(COMMAND_DATA))
         .with("comIDsize", Value::U32(cards.len() as u32))
         .with("helpIDsize", Value::U32(0))
-        .with("otherFlagSize", Value::U32(0))
+        .with("otherFlagSize", Value::U32(flags.len() as u32))
         .with("COMIDDATA", Value::Bin(data))
 }
 
@@ -149,6 +153,15 @@ impl DuelSession {
             (Some(CLIENT_DUEL), Some(CARD_COMMAND)) => {
                 let answer = CardCommand::from_message(msg)
                     .and_then(|cmd| self.engine.as_mut().and_then(|(_, t)| t.answer(cmd)))
+                    .and_then(|r| self.engine.as_mut().map(|(e, _)| e.respond(r)));
+                match answer {
+                    Some(answer) => self.advance(answer),
+                    None => vec![],
+                }
+            }
+            (Some(CLIENT_DUEL), Some(PHASE_BUTTON)) => {
+                let answer = int("phase")
+                    .and_then(|phase| self.engine.as_mut().and_then(|(_, t)| t.phase(phase)))
                     .and_then(|r| self.engine.as_mut().map(|(e, _)| e.respond(r)));
                 match answer {
                     Some(answer) => self.advance(answer),

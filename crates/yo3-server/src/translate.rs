@@ -48,6 +48,10 @@ const GRAVE: u32 = 0xE;
 const REMOVED: u32 = 0xF;
 /// The Field Spell slot.
 const FIELD_SPELL: u32 = 10;
+/// Phase panel buttons (0 DP .. 5 EP) and the input mode that turns the panel on (command 4's param1).
+const BUTTON_BP: u8 = 3;
+const BUTTON_EP: u8 = 5;
+const MODE_MAIN: u32 = 2;
 
 /// Card menu bits (`CardCommand::command`) per idle-command list, with the list's action number. Set: bit 6 for
 /// monsters and 7 for Spells/Traps is a guess (both read "Set").
@@ -235,8 +239,10 @@ impl Translator {
         match kind {
             MSG_SELECT_IDLECMD => {
                 let map = self.command_map(m);
+                let flags: Vec<(u8, u8)> =
+                    [("to_bp", BUTTON_BP), ("to_ep", BUTTON_EP)].into_iter().filter(|(k, _)| m[*k] == true).map(|(_, b)| (b, 1)).collect();
                 self.idle = Some(m.clone());
-                Prompt::Client(vec![command_data(&map), command(INPUT, [CLIENT, 0, 0, 0])])
+                Prompt::Client(vec![command_data(&map, &flags), command(INPUT, [MODE_MAIN, CLIENT, 0, 0])])
             }
             // No window for these yet: never chain, end the battle (temporary).
             _ => Prompt::Answer(cpu_answer(kind, m)),
@@ -270,6 +276,18 @@ impl Translator {
             _ => return None,
         };
         Some(table_place(p, zone, seq))
+    }
+
+    /// The engine response for a phase button (0 DP .. 5 EP), if the pending prompt allows that phase.
+    pub fn phase(&mut self, button: u32) -> Option<Json> {
+        let idle = self.idle.as_ref()?;
+        let action = match button as u8 {
+            BUTTON_BP if idle["to_bp"] == true => IDLE_TO_BP,
+            BUTTON_EP if idle["to_ep"] == true => IDLE_TO_EP,
+            _ => return None,
+        };
+        self.idle = None;
+        Some(json!({ "type": RESP_IDLECMD, "action": action, "index": null }))
     }
 
     /// The engine response for the client's card command, if it names a listed card.

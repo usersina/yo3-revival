@@ -209,7 +209,7 @@ fn command_data_gives_each_card_its_command_bits() {
     // map (0x520330), which the field queries by place `player | zone << 8 | index << 16` (0x5204E0;
     // DuelFieldManager highlights cards whose bits, less 0x2000, are set); then helpIDsize u32 pairs
     // and otherFlagSize byte pairs. Live: a hand card with bits 0-13 opens a 14-entry menu.
-    let m = yo3_server::duel::command_data(&[(0x0001_0B00, 1 << 4 | 1 << 6), (0x0000_0B00, 1 << 1)]);
+    let m = yo3_server::duel::command_data(&[(0x0001_0B00, 1 << 4 | 1 << 6), (0x0000_0B00, 1 << 1)], &[]);
     assert_eq!(m.request(), Some(SERVER_DUEL));
     assert_eq!(m.get("duelRequestName"), Some(&Value::U32(0x12)));
     assert_eq!(m.get("comIDsize"), Some(&Value::U32(2)));

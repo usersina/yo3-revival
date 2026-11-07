@@ -309,9 +309,12 @@ command 4):
 - Phases (command 5 param2): 0 Draw, 2 Main 1 (live: M1 lit); by the panel's order 1 Standby, 3 Battle, 4 Main 2, 5 End
   (**shape**).
 - `0x12` command map: `comIDsize` pairs of u32 BE (card place `player | zone<<8 | index<<16`, command bits), then
-  `helpIDsize` u32 pairs and `otherFlagSize` byte pairs (both 0 so far). DuelFieldManager (command 4) highlights the
-  cards whose bits, less `0x2000`, are set.
-- Command 4 {player}: wait for that player's input (the field highlights playable cards; clicking one opens its menu).
+  `helpIDsize` u32 pairs (none so far) and `otherFlagSize` byte pairs {key, value} (the phase buttons). DuelFieldManager
+  (command 4) highlights the cards whose bits, less `0x2000`, are set.
+- Command 4 {mode, player}: wait for that player's input (the field highlights the player's playable cards; clicking one
+  opens its menu, a left click runs its first entry). Modes 2 and 3 turn the phase panel on (`0x504890`); each button
+  (0 DP .. 5 EP) is then enabled by an other-flags pair {button, 1} in the command map (`0x501C00`, map `0x520450`).
+  A pressed button sends `duelRequestName 3 {phase: the button}` (`0x521180`); live: EP → `{phase 5}`.
 - The menu (`0x4F9320`, `duel_cardcmd.swf`) lists a card's bits in the order 0, 2, 3, 4, 5, 6, 7, 9, 8, 12, 1, 10, 11,
   13: bit 0 Attack, 1 See Details, 2 Special Summon, 3 Activate Effect, 4 Summon, 5 Flip Summon, 6 and 7 Set, 8 Change
   to Attack Position, 9 Change to Defence Position, 10 Surrender, 11 Confirm, 12 Draw, 13 Shuffle.
