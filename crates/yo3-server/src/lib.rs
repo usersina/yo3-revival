@@ -170,11 +170,12 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
             Some(dir) => Directory::open(cfg.players.clone(), &dir.join("accounts.json"))?,
             None => Directory::new(cfg.players.clone()),
         };
-        let directory = Mutex::new(directory);
+        let directory = Arc::new(Mutex::new(directory));
         tokio::spawn(net::accept_loop(front, "front", packets.clone(), move |peer: SocketAddr, local: SocketAddr, outbox| {
             let account = directory.lock().expect("directory lock").account_for(peer.ip());
             let mut session = FrontSession::new(account, world.clone(), hub.clone(), outbox);
             session.set_reached_at(local.ip());
+            session.set_directory(directory.clone());
             move |p: &yo3_proto::Packet| session.handle(p)
         }))
     };

@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value as Json, json};
 
-use crate::front::{Account, LOGIN_REGULATION, Player};
+use crate::front::{Account, COMMENTS, LOGIN_REGULATION, Player, SPEECHES};
 use crate::store;
 
 /// The client shows four player slots.
@@ -46,6 +46,16 @@ impl Directory {
                 let mut player = Player::new(p["player_id"].as_u64().ok_or_else(bad)? as u32, p["name"].as_str().ok_or_else(bad)?);
                 player.index = slot as u32;
                 player.level = p["level"].as_u64().unwrap_or(1) as u32;
+                if let Some(avatar) = p["avatar"].as_str().and_then(from_hex) {
+                    player.avatar = avatar;
+                }
+                let lines = |k: &str, n: usize| -> Vec<String> {
+                    let saved: Vec<String> = p[k].as_array().into_iter().flatten().map(|l| l.as_str().unwrap_or_default().to_string()).collect();
+                    (0..n).map(|i| saved.get(i).cloned().unwrap_or_default()).collect()
+                };
+                player.speeches = lines("speeches", SPEECHES);
+                player.comments = lines("comments", COMMENTS);
+                player.title = p["title"].as_u64().unwrap_or(0) as u32;
                 d.next_player = d.next_player.max(player.player_id + 1);
                 players.push(player);
             }
@@ -128,6 +138,14 @@ impl Directory {
         Ok(())
     }
 
+    /// Changes a player (their saved character settings) and saves the accounts.
+    pub fn update_player(&mut self, player_id: u32, change: impl FnOnce(&mut Player)) {
+        if let Some(p) = self.by_address.values_mut().flat_map(|a| &mut a.players).find(|p| p.player_id == player_id) {
+            change(p);
+            self.save();
+        }
+    }
+
     /// Every account with its address, by address.
     pub fn accounts(&self) -> impl Iterator<Item = (IpAddr, &Account)> {
         let mut all: Vec<_> = self.by_address.iter().map(|(addr, a)| (*addr, a)).collect();
@@ -140,8 +158,15 @@ impl Directory {
         let accounts: Vec<Json> = self
             .accounts()
             .map(|(addr, a)| {
-                let players: Vec<Json> =
-                    a.players.iter().map(|p| json!({ "player_id": p.player_id, "name": p.name, "level": p.level })).collect();
+                let players: Vec<Json> = a
+                    .players
+                    .iter()
+                    .map(|p| {
+                        let avatar: String = p.avatar.iter().map(|b| format!("{b:02x}")).collect();
+                        json!({ "player_id": p.player_id, "name": p.name, "level": p.level, "avatar": avatar,
+                            "speeches": p.speeches, "comments": p.comments, "title": p.title })
+                    })
+                    .collect();
                 json!({ "address": addr.to_string(), "user_id": a.user_id, "players": players })
             })
             .collect();
@@ -149,4 +174,9 @@ impl Directory {
             tracing::warn!("accounts not saved to {}: {e}", file.display());
         }
     }
+}
+
+/// Bytes from their hex digits (the saved avatar).
+fn from_hex(s: &str) -> Option<Vec<u8>> {
+    (0..s.len()).step_by(2).map(|i| s.get(i..i + 2).and_then(|b| u8::from_str_radix(b, 16).ok())).collect()
 }

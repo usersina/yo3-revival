@@ -95,6 +95,7 @@ clicks do nothing. Every reply also passes through the global front dispatcher; 
 | Request | Reply (error) | Fields | Evidence | Status |
 |---|---|---|---|---|
 | `0x1F41` info list | `0x21FC` | item[0] `{lang}` whose items are `{starttime "%Y-%m-%d %H:%M:%S" JST, title, body}` | "information recv success!" `InfoWindow.cpp L1547`, `0x458A64` | confirmed (`lang` value **guess** "1") |
+| `0x2CEF` player update (Avatar Settings' Confirm, built by `0x51C960`): top-level `avatar1` (binary, 82 bytes live), `speech00`–`speech22`, `comment00`–`comment01` (text), `title` (int) | `0x2CF5` (`0x2CF6`) | none ("avatar update success", CharMake `0x42AC70`); the client then reads its player again | live: Confirm sent it with the new hair colour in `avatar1`; after a restart the player record brought it back | confirmed; we answer `0x2CF6` when `avatar1` isn't binary |
 | `0x2CF0` player search (below) | `0x2CF7` (`0x2CF8`) | `result_number` u32: the total, the client shows pages of 100 (`/100 + 1`); items = players `{player_id, pname, dlv}` | InfoWindow `0x458410` (`0x2CF7` case), item reader `0x475A20`; `RESPONSE_PLAYER_SEARCH_SUCCESS` `ChatWindow.cpp L651` | confirmed (fields); paging and name matching **guess** |
 | `0x2724` heartbeat | none | none | builders `0x4F17DF` (every 30 s) and `0x4F45A5` (after 120 s); no reply is checked | confirmed |
 

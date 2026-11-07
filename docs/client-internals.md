@@ -134,7 +134,8 @@ parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Su
 - The main screen's map is eight hex buttons, `btn0`–`btn7` in `main.swf`. Its `sisetuStart` (called by the client)
   wires them to GameDelegate calls: `btn0` Shop (`GoShop`), `btn1` Official Event, `btn2` Championship, `btn3` User
   event (all three `MenuSelect`, each only if `_root.ofseve_enable` / `wcup_enable` / `ueve_enable`), `btn4` NPC duel
-  (`GoCpuDuel`), `btn7` character settings (`GoCharMake`); `btn5` and `btn6` have no handler. While the screen is
+  (`GoCpuDuel`), `btn7` character settings (`GoCharMake`, the tent on the right; Avatar Settings, CharMake.cpp:
+  update `0x51C960`, replies `0x42AC70`); `btn5` and `btn6` have no handler. While the screen is
   locked, `sisetu_block.swf` lays an invisible block over them (`sisetuEnable` false).
 - In chat, the client prints its own lines only from the server's `0x2455` echo, its own name in cyan and others' in
   white.

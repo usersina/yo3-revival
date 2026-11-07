@@ -58,7 +58,8 @@ Stop finding missing fields one crash at a time.
 - [ ] Player search criteria we ignore: language, country, manner level, status, community, event
 - [ ] Main menu screens (the menu opens now): Card Album, Rental Card List, My Profile, D-Mail, Duel Log, Team,
       Friend List, Ignore List, Leaderboard, BOOSTERPASS, Duel Options (Edit Deck is M4)
-- [ ] Saving character settings (Confirm; the player update `0x2CEF` carries `avatar1`, `speech%02d`, …)
+- [x] Saving character settings: Avatar Settings' Confirm sends `0x2CEF` {avatar1, speech00–22, comment00–01,
+      title} → `0x2CF5`; kept with the account and sent back in the player record. Live: purple hair after a restart
 - [ ] Creating and joining user events
 - **Exit:** two headless clients log in as different players, find each other and chat (met 2026-11-06:
   Yugi and Kaiba chat in the Lobby; the room list shows the other player)

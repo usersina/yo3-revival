@@ -34,11 +34,29 @@ pub struct Player {
     pub avatar: Vec<u8>,
     /// Per-player flag blob; 4096 bits like the 4096 entries of data/extra/yo3pbininfo.bin.
     pub pbin: Vec<u8>,
+    /// Character settings: the 23 speech lines, the 2 comments and the title.
+    pub speeches: Vec<String>,
+    pub comments: Vec<String>,
+    pub title: u32,
 }
+
+/// Speech lines and comments a player has (CharMake's update 0x51C960).
+pub const SPEECHES: usize = 23;
+pub const COMMENTS: usize = 2;
 
 impl Player {
     pub fn new(player_id: u32, name: &str) -> Player {
-        Player { player_id, name: name.into(), index: 0, level: 1, avatar: vec![0; 41 * 2], pbin: vec![0; 512] }
+        Player {
+            player_id,
+            name: name.into(),
+            index: 0,
+            level: 1,
+            avatar: vec![0; 41 * 2],
+            pbin: vec![0; 512],
+            speeches: vec![String::new(); SPEECHES],
+            comments: vec![String::new(); COMMENTS],
+            title: 0,
+        }
     }
 
     /// The record read by the player list (0x46C1E4) and the PlayerData loader (0x51C260).
@@ -48,7 +66,7 @@ impl Player {
             .with("pindex", Value::U32(self.index))
             .with("player_id", Value::U32(self.player_id))
             .with("dlv", Value::U32(self.level))
-            .with("title", Value::U32(0))
+            .with("title", Value::U32(self.title))
             .with("n_win", Value::U32(0))
             .with("n_lose", Value::U32(0))
             .with("n_draw", Value::U32(0))
@@ -57,11 +75,11 @@ impl Player {
             .with("team_authority", Value::U32(0))
             .with("avatar1", Value::Bin(self.avatar.clone()))
             .with("pbin", Value::Bin(self.pbin.clone()));
-        for i in 0..23 {
-            m = m.with(&format!("speech{i:02}"), Value::text(""));
+        for (i, line) in self.speeches.iter().enumerate() {
+            m = m.with(&format!("speech{i:02}"), Value::text(line));
         }
-        for i in 0..2 {
-            m = m.with(&format!("comment{i:02}"), Value::text(""));
+        for (i, line) in self.comments.iter().enumerate() {
+            m = m.with(&format!("comment{i:02}"), Value::text(line));
         }
         m
     }
@@ -403,6 +421,8 @@ pub struct FrontSession {
     duels: HashMap<u32, Vec<(String, Value)>>,
     /// The server address this client reached, announced as the duel server's when none is advertised.
     reached_at: Option<std::net::IpAddr>,
+    /// The accounts, where a player's saved settings are kept (none: this session's copy only).
+    directory: Option<Arc<Mutex<crate::accounts::Directory>>>,
 }
 
 impl Drop for FrontSession {
@@ -417,12 +437,40 @@ impl Drop for FrontSession {
 
 impl FrontSession {
     pub fn new(account: Account, world: Arc<World>, hub: Arc<Mutex<Hub>>, outbox: Outbox) -> FrontSession {
-        FrontSession { account, world, hub, outbox, opened: false, selected: None, online: None, duels: HashMap::new(), reached_at: None }
+        FrontSession { account, world, hub, outbox, opened: false, selected: None, online: None, duels: HashMap::new(), reached_at: None, directory: None }
     }
 
     /// The server address this client connected to.
     pub fn set_reached_at(&mut self, ip: std::net::IpAddr) {
         self.reached_at = Some(ip);
+    }
+
+    /// The accounts the player's saved settings go to.
+    pub fn set_directory(&mut self, directory: Arc<Mutex<crate::accounts::Directory>>) {
+        self.directory = Some(directory);
+    }
+
+    /// The player update 0x2CEF (CharMake's Confirm, 0x51C960): {avatar1 (binary), speech00-22, comment00-01,
+    /// title} -> 0x2CF5, or 0x2CF6 without a binary avatar1 (as text it would crash the PlayerData loader).
+    fn update_player(&mut self, msg: &Message) -> Message {
+        let body = msg.items.first().filter(|i| i.get("avatar1").is_some()).unwrap_or(msg);
+        let Some(Value::Bin(avatar)) = body.get("avatar1").cloned() else { return Message::reply(0x2CF6) };
+        let text = |k: String| body.get(&k).and_then(Value::as_str).unwrap_or_default();
+        let speeches: Vec<String> = (0..SPEECHES).map(|i| text(format!("speech{i:02}"))).collect();
+        let comments: Vec<String> = (0..COMMENTS).map(|i| text(format!("comment{i:02}"))).collect();
+        let title = body.get("title").and_then(Value::as_u32).unwrap_or(0);
+        let apply = move |p: &mut Player| {
+            p.avatar = avatar.clone();
+            p.speeches = speeches.clone();
+            p.comments = comments.clone();
+            p.title = title;
+        };
+        let Some(at) = self.selected else { return Message::reply(0x2CF6) };
+        apply(&mut self.account.players[at]);
+        if let Some(d) = &self.directory {
+            d.lock().expect("directory lock").update_player(self.account.players[at].player_id, apply);
+        }
+        Message::reply(0x2CF5)
     }
 
     fn hub(&self) -> std::sync::MutexGuard<'_, Hub> {
@@ -598,6 +646,7 @@ impl FrontSession {
             0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_ids)),
             0x27D8 => Message::reply(0x27D9).item(Message::record()),
             0x2CEE => Message::reply(0x2CF3).item(self.player().record()),
+            0x2CEF => self.update_player(msg),
             0x2583 => Message::reply(0x2588).with("count", Value::U32(0)),
             0x1F41 => {
                 let now = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
