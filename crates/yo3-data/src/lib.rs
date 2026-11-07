@@ -111,6 +111,11 @@ pub struct Card {
     pub cid: u16,
     pub atk: u32,
     pub def: u32,
+    /// From the second word: level (bits 12-15), attribute (8-11) and race (19-23), as the duel's card info
+    /// reads them (0x453740).
+    pub level: u32,
+    pub attribute: u32,
+    pub race: u32,
     pub name: String,
 }
 
@@ -127,6 +132,7 @@ impl CardDb {
         let mut db = CardDb::default();
         for (row, p) in prop.as_chunks::<8>().0.iter().enumerate() {
             let a = u32::from_le_bytes(p[..4].try_into().unwrap());
+            let b = u32::from_le_bytes(p[4..].try_into().unwrap());
             let cid = (a & 0x3FFF) as u16;
             if cid == 0 {
                 continue;
@@ -136,7 +142,16 @@ impl CardDb {
                 .map(|o| u32::from_le_bytes(o.try_into().unwrap()) as usize)
                 .map(|off| utf16z(names.get(off..).unwrap_or_default()))
                 .unwrap_or_default();
-            let card = Card { row: row as u16, cid, atk: ((a >> 14) & 0x1FF) * 10, def: ((a >> 23) & 0x1FF) * 10, name };
+            let card = Card {
+                row: row as u16,
+                cid,
+                atk: ((a >> 14) & 0x1FF) * 10,
+                def: ((a >> 23) & 0x1FF) * 10,
+                level: (b >> 12) & 0xF,
+                attribute: (b >> 8) & 0xF,
+                race: (b >> 19) & 0x1F,
+                name,
+            };
             db.by_cid.entry(cid).or_insert(db.cards.len());
             db.by_row.insert(card.row, db.cards.len());
             db.cards.push(card);

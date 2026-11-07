@@ -17,6 +17,7 @@ use yo3_proto::{Message, Value};
 
 use accounts::Directory;
 use front::{Deck, FrontSession, Hub, LOGIN_REGULATION, World};
+use translate::CardStats;
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -83,7 +84,14 @@ fn world(cfg: &Config, duel_port: u16) -> World {
                 extra: d.extra.clone(),
                 side: d.side.clone(),
             }),
-            cid_of_row: data.cards.iter().map(|c| (c.row, c.cid)).collect(),
+            cards: data
+                .cards
+                .iter()
+                .map(|c| {
+                    let stats = CardStats { cid: c.cid, atk: c.atk, def: c.def, level: c.level, attribute: c.attribute, race: c.race };
+                    (c.row, stats)
+                })
+                .collect(),
             engine_dir: engine::Engine::dir(),
             npcs: data.npc_ids(),
             npc_decks: data

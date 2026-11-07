@@ -5,11 +5,13 @@ use std::collections::HashMap;
 use serde_json::json;
 use yo3_proto::{Message, Value};
 use yo3_server::duel::CardCommand;
-use yo3_server::translate::{Prompt, Translator};
+use yo3_server::translate::{CardStats, Prompt, Translator};
 
-/// Rows 100.. (cid 4000 + row) for the client, 200.. for the CPU; the client goes first.
+/// Rows 100.. (cid 4000 + row, ATK 10 × row, DEF 1000, level 4, attribute 2, race 12) for the client, 200.. for
+/// the CPU; the client goes first.
 fn translator() -> (Translator, Vec<Message>) {
-    let cids = (100..110).chain(200..210).map(|r| (r, 4000 + r)).collect::<HashMap<_, _>>();
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
     let client: Vec<u16> = (100..110).collect();
     let cpu: Vec<u16> = (200..210).collect();
     Translator::new(0, [&client, &cpu], cids)
@@ -104,9 +106,17 @@ fn a_summon_moves_the_card_from_the_hand_to_its_zone() {
         "from": { "controller": 0, "location": 2, "sequence": 0, "position": 10 },
         "to": { "controller": 0, "location": 4, "sequence": 2, "position": 1 } })]);
     let out: Vec<_> = out.iter().map(cmd).collect();
+    // The monster's record (shown id, race, attribute, level, ATK/DEF, base ATK/DEF) comes before the move.
     assert_eq!(
         out,
-        [(1000, [1, 100, 0, 2 << 8]), (0x1A, [1 | 100 << 16, 0xB << 1, 2 << 1 | 1 << 14, 0]), (1000, [2, 101, 0, 0xB << 8])]
+        [
+            (1000, [1, 100, 0, 2 << 8]),
+            (0x3E9, [0, 4100, 12, 2]),
+            (0x3EA, [0, 4, 1000, 1000]),
+            (0x3EB, [2 << 8, 1000, 1000, 4100]),
+            (0x1A, [1 | 100 << 16, 0xB << 1, 2 << 1 | 1 << 14, 0]),
+            (1000, [2, 101, 0, 0xB << 8])
+        ]
     );
     // A face-down defense Set to the Spell/Trap zone 1 (zone 6).
     let out = t.events(&[json!({ "type": 50, "cid": 4101,

@@ -84,6 +84,10 @@ const LOC_EXTRA: u64 = 64;
 const EXTRA: u32 = 0xC;
 const GRAVE: u32 = 0xE;
 const REMOVED: u32 = 0xF;
+/// Data commands that build a field card's record (pop 0x522A50).
+const RECORD_BEGIN: u32 = 0x3E9;
+const RECORD_MORE: u32 = 0x3EA;
+const RECORD_COMMIT: u32 = 0x3EB;
 /// The Field Spell slot.
 const FIELD_SPELL: u32 = 10;
 /// Duel end {result for this client: 1 won, 2 lost; reason} (DuelScene 0x514290).
@@ -113,6 +117,17 @@ const IDLE_LISTS: [(&str, u32, u64); 7] = [
     ("spell_sets", 7, 4),
     ("activates", 3, 5),
 ];
+
+/// What the duel shows of a card, from its CARD_Prop row.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CardStats {
+    pub cid: u16,
+    pub atk: u32,
+    pub def: u32,
+    pub level: u32,
+    pub attribute: u32,
+    pub race: u32,
+}
 
 #[derive(Clone, Copy, Debug)]
 struct Card {
@@ -145,7 +160,7 @@ pub struct Translator {
     /// The client's engine player of team 0.
     first: u32,
     sides: [Side; 2],
-    cid_of_row: HashMap<u16, u16>,
+    cards: HashMap<u16, CardStats>,
     turn_player: u32,
     turns: u32,
     /// The client's pending prompt (idle or battle command).
@@ -155,7 +170,7 @@ pub struct Translator {
 impl Translator {
     /// `decks[p]` is the main deck (CARD_Prop rows) of the client's engine player p; `first` goes first. Returns
     /// the translator and the card-table commands that put both decks in the client's card table (uids 1..).
-    pub fn new(first: u32, decks: [&[u16]; 2], cid_of_row: HashMap<u16, u16>) -> (Translator, Vec<Message>) {
+    pub fn new(first: u32, decks: [&[u16]; 2], cards: HashMap<u16, CardStats>) -> (Translator, Vec<Message>) {
         let mut sides = [Side::default(), Side::default()];
         let mut out = vec![];
         let mut uid = 0;
@@ -166,7 +181,7 @@ impl Translator {
                 out.push(command(CARD, [uid, row as u32, 0, table_place(p as u32, DECK, i)]));
             }
         }
-        (Translator { first, sides, cid_of_row, turn_player: first, turns: 0, pending: None }, out)
+        (Translator { first, sides, cards, turn_player: first, turns: 0, pending: None }, out)
     }
 
     /// The client's engine player of an engine team.
@@ -238,10 +253,10 @@ impl Translator {
     /// Moves a card in the mirror and on the client: the card table entry (1000), then on screen (0x1A); the
     /// cards whose index shifted in a list zone get their table entry again.
     fn relocate(&mut self, cid: u16, from: Place, to: Place) -> Vec<Message> {
-        let rows = &self.cid_of_row;
+        let cards = &self.cards;
         let source = self.sides[from.player as usize].zone(from.zone);
         let at = if from.zone == DECK {
-            source.iter().position(|c| rows.get(&c.row) == Some(&cid)).or(if source.is_empty() { None } else { Some(0) })
+            source.iter().position(|c| cards.get(&c.row).map(|s| s.cid) == Some(cid)).or(if source.is_empty() { None } else { Some(0) })
         } else {
             (!source.is_empty()).then(|| from.index.min(source.len() - 1))
         };
@@ -254,10 +269,11 @@ impl Translator {
         }
         dest.insert(index, card);
         let row = card.row as u32;
-        let mut out = vec![
-            command(CARD, [card.uid, row, 0, table_place(to.player, to.zone, index)]),
-            command(MOVE, [card.uid | row << 16, from.packed(), Place { index, ..to }.packed(), 0]),
-        ];
+        let mut out = vec![command(CARD, [card.uid, row, 0, table_place(to.player, to.zone, index)])];
+        if to.zone < 5 {
+            out.extend(self.monster_record(to.player, to.zone, card.row));
+        }
+        out.push(command(MOVE, [card.uid | row << 16, from.packed(), Place { index, ..to }.packed(), 0]));
         // List zones renumber: re-send the shifted cards (not the face-down deck).
         for (p, zone, start) in [(from.player, from.zone, at), (to.player, to.zone, index + 1)] {
             if zone <= FIELD_SPELL || zone == DECK {
@@ -268,6 +284,20 @@ impl Translator {
             }
         }
         out
+    }
+
+    /// The record the card info and the field label show for a monster zone (0x523F00, keyed player | zone << 8):
+    /// shown id, second id, race, attribute, level, ATK, DEF, base ATK, base DEF. Data commands 0x3E9 {_, values 0,
+    /// 2, 3}, 0x3EA {_, values 4, 5, 6}, 0x3EB {key, values 7, 8, 1} (which commits it; the pop 0x522A50).
+    /// Stats from CARD_Prop: effects that change them are not followed yet.
+    fn monster_record(&self, player: u32, zone: u32, row: u16) -> Vec<Message> {
+        let s = self.cards.get(&row).copied().unwrap_or_default();
+        let cid = s.cid as u32;
+        vec![
+            command(RECORD_BEGIN, [0, cid, s.race, s.attribute]),
+            command(RECORD_MORE, [0, s.level, s.atk, s.def]),
+            command(RECORD_COMMIT, [player | zone << 8, s.atk, s.def, cid]),
+        ]
     }
 
     /// The client place of an engine location {controller, location, sequence, position}.

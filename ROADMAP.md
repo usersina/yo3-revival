@@ -109,9 +109,12 @@ Stop finding missing fields one crash at a time.
       other prompts get simple answers (first cards, yes, first option), also for the client's prompts without a window.
       Two such AIs play a full engine duel to a win (test). Live: the CPU summoned, attacked and destroyed our monster
       (LP 8000 → 7350; it went to the graveyard pile)
+- [x] Field stats: a monster entering a monster zone gets its record (data commands `0x3E9`–`0x3EB`) with CARD_Prop's
+      ATK/DEF, level, attribute and race; the field label and card info show them
 - [ ] Translator: the client's own target and effect choices (ocgcore SELECT_CARD and co. are answered for it now),
-      attack and summon animations (DuelBattle `0xA`–`0xE`, DuelSummon `0x2A`–`0x32`), position changes, field stats
-      (ATK/DEF read 0 / 0), chains, the duel's end on screen (command 2, not seen live), results to the front server
+      attack and summon animations (DuelBattle `0xA`–`0xE`, DuelSummon `0x2A`–`0x32`), position changes, stat changes
+      from effects (engine queries), chains, the duel's end on screen (command 2, not seen live), results to the front
+      server
 - [ ] Deck piles on the field (the deck count alone shows none); phase buttons (client `duelRequestName` 3)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)

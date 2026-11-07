@@ -233,7 +233,7 @@ impl DuelSession {
         let entry = self.entry.clone()?;
         let npc = entry.npc_id.and_then(|id| self.world.npc_decks.get(&id)).cloned()?;
         let decks = [&entry.deck, &npc];
-        let cids = |rows: &[u16]| rows.iter().filter_map(|r| self.world.cid_of_row.get(r).copied()).collect::<Vec<u16>>();
+        let cids = |rows: &[u16]| rows.iter().filter_map(|r| self.world.cards.get(r).map(|c| c.cid)).collect::<Vec<u16>>();
         // Engine team 0 goes first.
         let teams = if first == CLIENT { [decks[0], decks[1]] } else { [decks[1], decks[0]] };
         let (mut m0, e0, mut m1, e1) = (cids(&teams[0].main), cids(&teams[0].extra), cids(&teams[1].main), cids(&teams[1].extra));
@@ -244,7 +244,7 @@ impl DuelSession {
         let mut engine = Engine::start(dir).map_err(|e| tracing::warn!("rules engine not started: {e}")).ok()?;
         let seed = self.next();
         let answer = engine.new_duel(seed, [(&m0, &e0), (&m1, &e1)]);
-        let (translator, table) = Translator::new(first, [&entry.deck.main, &npc.main], self.world.cid_of_row.clone());
+        let (translator, table) = Translator::new(first, [&entry.deck.main, &npc.main], self.world.cards.clone());
         self.engine = Some((engine, translator));
         let mut out = vec![Self::setup(first, &entry.deck, &npc)];
         out.extend(table);

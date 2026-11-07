@@ -159,8 +159,8 @@ pub struct World {
     pub npcs: Vec<u32>,
     /// Each NPC's deck (from its preset), by npc_id.
     pub npc_decks: HashMap<u32, Deck>,
-    /// Konami card id of each CARD_Prop row, for the rules engine.
-    pub cid_of_row: HashMap<u16, u16>,
+    /// Each CARD_Prop row's Konami id and stats, for the rules engine and the duel's card info.
+    pub cards: HashMap<u16, crate::translate::CardStats>,
     /// The rules engine's directory (engine/, once fetched); without it the server deals the opening itself.
     pub engine_dir: Option<std::path::PathBuf>,
     /// Where clients connect for their duels (0x22C4 duelData host and port).
@@ -177,7 +177,7 @@ impl World {
             starter_deck: None,
             npcs: vec![],
             npc_decks: HashMap::new(),
-            cid_of_row: HashMap::new(),
+            cards: HashMap::new(),
             engine_dir: None,
             duel_server: ("127.0.0.1".into(), 0),
             news: vec![(

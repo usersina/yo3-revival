@@ -60,6 +60,9 @@ fn card_database_uses_konami_card_ids() {
     assert_eq!((dm.name.as_str(), dm.atk, dm.def), ("Dark Magician", 2500, 2100));
     assert_eq!(data.cards.by_cid(3901).unwrap().name, "Kuriboh Token");
     assert_eq!(data.cards.by_row(bewd.row).unwrap().cid, 4007);
+    // Level, attribute (1 LIGHT, 2 DARK) and race (1 Dragon, 2 Spellcaster in Konami's order).
+    assert_eq!((bewd.level, bewd.attribute, bewd.race), (8, 1, 1));
+    assert_eq!((dm.level, dm.attribute), (7, 2));
 }
 
 #[test]

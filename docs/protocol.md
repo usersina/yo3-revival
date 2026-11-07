@@ -333,8 +333,15 @@ bit 14 and defence bit 15 on field slots (`0x5000E0`); field slots are zones 0�
 (Field Spell) at index 0, then hand `0xB`, extra `0xC`, deck `0xD`, graveyard `0xE`, banished `0xF`. Cards behind a
 removed list card get their table entry again. The client has no window for ocgcore's place and position prompts, so
 the server takes the first free zone and face-up attack when allowed. Live: Summon from the hand put the monster in the
-first monster zone, the hand closed up, and the next prompt offered only the Spell card. Its ATK/DEF on the field reads
-0 / 0: the card's stats come from data not sent yet.
+first monster zone, the hand closed up, and the next prompt offered only the Spell card.
+
+A monster's field label and card info read a 9-value record per place (`0x523F00`, key `player | zone<<8`; the info
+panel `0x453740`): shown Konami id, a second id, race, attribute, level, ATK, DEF, base ATK, base DEF (ATK below base in
+red, above in blue, `0xFFFF` = "?"). Data commands build it: `0x3E9 {_, values 0, 2, 3}`, `0x3EA {_, values 4, 5, 6}`,
+`0x3EB {key, values 7, 8, 1}`, which commits (the pop; stores happen before the copy). Level, attribute and race are
+CARD_Prop's second word bits 12–15, 8–11 and 19–23. The server sends it when a monster enters a monster zone, with the
+CARD_Prop stats. Live: Giant Orc's label reads 2200 and its info "ATK 2200/DEF 0" with its icons and level 4. A
+per-place 3-value map (`0x3F5`, `0x523F50`…) holds a typed counter for the same panel.
 
 Battle: the engine's battle prompt becomes a command map with bit 0 (Attack) on each attacker and bit 3 on chainable
 cards, the M2 and EP buttons as allowed, and command 4 mode 3. A monster in slot s sits at command-map place (zone 0,
