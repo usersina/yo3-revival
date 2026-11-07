@@ -159,9 +159,14 @@ fn the_duel_menu_counts_the_players() {
 /// settings item (live: {match_type 1, surrender 1, level 1, party 1, password, watch 1, lang_mask 127, lp_start
 /// 8000, time_turn 180, time_total 600, regulation_id 1, status 1, duel_server_id 0}); returns the duel_id.
 fn host(c: &mut Client, password: &str) -> u32 {
+    host_with(c, password, 1)
+}
+
+/// The same with Opponent's Limits `party` (1 off, 2 friends, 3 team).
+fn host_with(c: &mut Client, password: &str, party: u32) -> u32 {
     let join = one(c.send(req_with(0x1784, &[("event_id", Value::U32(1))])));
     let join_id = join.get("join_id").cloned().unwrap();
-    let settings = [("match_type", 1), ("surrender", 1), ("level", 1), ("party", 1), ("watch", 1), ("lang_mask", 127)]
+    let settings = [("match_type", 1), ("surrender", 1), ("level", 1), ("party", party), ("watch", 1), ("lang_mask", 127)]
         .into_iter()
         .chain([("lp_start", 4000), ("time_turn", 180), ("time_total", 600), ("regulation_id", 1), ("status", 1), ("duel_server_id", 0)])
         .fold(Message { tag: 4, ..Message::default() }, |m, (k, v)| m.with(k, Value::U32(v)))
@@ -331,4 +336,24 @@ fn a_hosted_match_mode_duel_is_a_match() {
     let yo3_proto::Packet::Message(pick) = req_with(0x1F4F, &[("duel_id", Value::U32(duel_id))]) else { unreachable!() };
     one(a.send(yo3_proto::Packet::Message(pick.item(deck))));
     assert_eq!(server.hub.lock().unwrap().duel_entry(1001).unwrap().best_of, 3);
+}
+
+#[test]
+fn a_friends_only_duel_takes_requests_from_the_hosts_friends() {
+    // Create Duel's Opponent's Limits (party: 1 off, 2 friends, 3 team) reaches challengers as duel_party, and
+    // PlayerInfoWindow offers Send Duel Request for 2 only when the host is in the viewer's friend list (0x4B6510,
+    // +0x49C), for 3 only to a team member (+0x49E). The server refuses the others too: 0x17B8 {error_code 201} "Duel
+    // Request was refused.". There are no teams yet, so a team-only duel takes nobody.
+    let server = Server::new();
+    let (mut yugi, mut kaiba, mut joey) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"), server.join(1003, "Joey"));
+    server.hub.lock().unwrap().befriend((1001, "Yugi"), (1002, "Kaiba"));
+    let duel_id = host_with(&mut yugi, "", 2);
+    assert_eq!(found(&mut joey, 1001).get("duel_party").and_then(Value::as_u32), Some(2));
+    let refused = challenge(&mut joey, duel_id, "");
+    assert_eq!((refused.request(), refused.get("error_code").and_then(Value::as_u32)), (Some(0x17B8), Some(201)));
+    assert_eq!(challenge(&mut kaiba, duel_id, "").request(), Some(0x17B7), "a friend");
+    let mut seto = server.join(1004, "Seto");
+    let team_duel = host_with(&mut seto, "", 3);
+    let refused = challenge(&mut joey, team_duel, "");
+    assert_eq!(refused.get("error_code").and_then(Value::as_u32), Some(201));
 }

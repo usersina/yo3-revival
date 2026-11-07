@@ -116,7 +116,9 @@ Stop finding missing fields one crash at a time.
 - [x] Card Swap between a match's duels: a player with a side deck gets 1504 (DeckReplace), the swapped deck comes
       back through the front (`0x1F4F` update_type 2) and the duel connection's `0xE` starts the next janken. Live:
       Yugi swapped Danipon in for Crass Clown and duel 2 was dealt from the swapped deck
-- [ ] Create Duel's Friend/Team limits
+- [x] Create Duel's Opponent's Limits: Friend lets only the host's friends challenge (the client hides the button,
+      the server refuses with 201); Team takes nobody until teams exist. Live: Joey had no Send Duel Request, Kaiba
+      did and his request reached Yugi
 - [x] NPC roster and duel start: 26 NPCs (ids 120–197 from the NPC deck presets) listed by name with their
       levels; picking one runs `0x1784` → `0x17AC` → Select Deck (`0x1F4F`) → `0x17D4`, and the duel screen opens
       with both players. The client builds NPC duels itself (DuelManager `0x50ECF0`); no duel server is involved
@@ -253,7 +255,7 @@ Stop finding missing fields one crash at a time.
 | Match Mode | best of three; every duel opens with a janken; a drawn duel counts for neither; the records count the match once | Online 3's rules for who goes first in later duels, draws and the side deck are unknown |
 | Hosted LP and `--duel-lp` | the testing aid wins over a hosted `lp_start` when it isn't 8000 | A testing convenience, not the original's |
 | Duel Menu counts | `duel_playing` = 2 × matched duels, `duel_ready` = hosted duels, `duel_auto` = players waiting | Whether they count players or duels is unknown |
-| Hosted duels | `duel_status` 1 while hosting, 3 while in a duel between players; time limits and Friend/Team limits not applied; `0x17C0` answered `0x17C1` | The original values and the limits' rules are unknown |
+| Hosted duels | `duel_status` 1 while hosting, 3 while in a duel between players; Team-only duels take nobody (no teams); `0x17C0` answered `0x17C1` | The original values and the limits' rules are unknown |
 | PvP setup | `PlayerType001/002` 0/1 as against the CPU | Their meaning is unknown |
 | A player leaving | the other wins (command 2 {1, 14 "disconnected"}) and both records count it | The original's handling (time-outs, `0x2724` heartbeats) is unknown |
 | Menu bits for Set | 6 monster set, 7 Spell/Trap set | Both entries read "Set" |

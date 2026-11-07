@@ -194,10 +194,16 @@ impl Host {
 /// shows them as duelling).
 const HOSTING: u32 = 1;
 const DUELLING: u32 = 3;
-/// The challenge errors (0x17B8 error_code, 0x4A28F0): the host answers someone else, the duel is gone, the password.
+/// The challenge errors (0x17B8 error_code, 0x4A28F0): the host answers someone else, the duel is gone, the password,
+/// and "Duel Request was refused." (the host's Opponent's Limits).
 const BUSY: u32 = 3000;
 const NO_DUEL: u32 = 3001;
 const WRONG_PASSWORD: u32 = 4006;
+const REFUSED: u32 = 201;
+/// Create Duel's Opponent's Limits (the host's party): friends only, team only (PlayerInfoWindow 0x4B6510 offers Send
+/// Duel Request only to a player with the host in their friend list, or on its team; 1 is off).
+const FRIENDS_ONLY: u32 = 2;
+const TEAM_ONLY: u32 = 3;
 /// The host's answer (0x17CA).
 const ACCEPT: u32 = 2;
 
@@ -1213,7 +1219,14 @@ impl FrontSession {
         let password = msg.get("password").and_then(Value::as_str).unwrap_or_default();
         let refuse = |code: u32| vec![Message::reply(0x17B8).with("error_code", Value::U32(code))];
         let mut hub = self.hub();
-        let Some(host) = hub.hosts.get_mut(&duel_id).filter(|h| h.player_id != me.player_id) else { return refuse(NO_DUEL) };
+        let Some(host) = hub.hosts.get(&duel_id).filter(|h| h.player_id != me.player_id) else { return refuse(NO_DUEL) };
+        // There are no teams yet: a team-only duel takes nobody.
+        match host.setting("party").and_then(Value::as_u32) {
+            Some(FRIENDS_ONLY) if !hub.social.are_friends(host.player_id, me.player_id) => return refuse(REFUSED),
+            Some(TEAM_ONLY) => return refuse(REFUSED),
+            _ => {}
+        }
+        let Some(host) = hub.hosts.get_mut(&duel_id) else { return refuse(NO_DUEL) };
         if host.password() != password {
             return refuse(WRONG_PASSWORD);
         }

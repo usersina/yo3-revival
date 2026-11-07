@@ -375,11 +375,18 @@ Watch button → mode 4):
 | host | `0x17AC {event_id 1, join_id}` + item (tag 4) | `0x17AD {duel_id}`, then the wait `0x4A1D10` ("Waiting for opponent.", Cancel) | live item: `{match_type 1 (Single), surrender 1, level 1 (Any), party 1 (limits off), password "", watch 1, lang_mask 127, lp_start 8000, time_turn 180, time_total 600, regulation_id 1, status 1, duel_server_id 0}`; an NPC duel's item has `cpu_id` and no `status` | live | confirmed |
 | host | `0x17F2 {event_id, duel_id}` (Cancel, `0x4A2500`) | `0x17F3` (`0x17F4`) | none | live | confirmed |
 | challenger | `0x2CF0 {search_flag 0x40000, player_id}` | `0x2CF7` | the host's entry: `duel_status` 1 (Duel button; 0x4B6060: 0 none, 1 and 2-with-`duel_id` challengeable, others duelling: Watch), `duel_id`, and `duel_match_type`, `duel_regulation_id`, `duel_watch`, `duel_party`, `duel_password_flag`, `duel_level`, `duel_lang_mask` (the client checks the level and language limits), `duel_surrender`, `duel_lp_start`, `duel_time_turn`, `duel_time_total` (the Duel Conditions panel) | live: "Duel Conditions" with the host's choices and Send Duel Request | confirmed |
-| challenger | `0x17B6 {event_id, join_id, duel_id, password}` (`0x4A28F0`) | `0x17B7` ("Requesting Duel"), or `0x17B8 {error_code}`: 3000 "Another player is requesting a duel.", 3001 "Already Duelling", 4006 "Password is Incorrect.", 201 "Duel Request was refused.", others "A transmission error has occurred." | | live | confirmed |
+| challenger | `0x17B6 {event_id, join_id, duel_id, password}` (`0x4A28F0`) | `0x17B7` ("Requesting Duel"), or `0x17B8 {error_code}`: 3000 "Another player is requesting a duel.", 3001 "Already Duelling", 4006 "Password is Incorrect.", 201 "Duel Request was refused.", others "A transmission error has occurred." | the server answers 201 to a challenger outside the host's Opponent's Limits (below) | live | confirmed |
 | host | push `0x17B6 {duel_id}` + item `playerInfo` (the challenger's record) | | the wait step reads `player_id` (a player on the black list is declined at once), `pname`, `dlv`, `title` | live: "LV1 Kaiba / Default / You have a Duel Request! Will you accept?" | confirmed |
 | host | `0x17CA {event_id, join_id, duel_id, answer}` (2 Yes, 1 No) | `0x17CB` (`0x17CC` fails, `0x4A2D30`) | | live | confirmed |
 | challenger | push `0x17CA {answer}` | | 2: on to `0x4A2D30`; else refused | live | confirmed |
 | challenger | `0x17C0 {event_id, join_id, duel_id}` (its Cancel) | `0x17C1` (**guess**); the host gets push `0x17C0`, closes the offer and waits again | | code | shape |
+
+**Opponent's Limits** (Create Duel: OFF, Friend, Team) is the host's `party`: 1 off, 2 friends, 3 team. Challengers see
+it as `duel_party` ("Opponent's Limits Friend" in Duel Conditions), and PlayerInfoWindow (`0x4B6510`, button 0) offers
+Send Duel Request for 2 only when the host is in the viewer's friend list (`+0x49C`, from slot 6) and for 3 only to
+a team member (`+0x49E`). The server checks the same on `0x17B6` (201 otherwise); there are no teams yet, so a
+team-only duel takes nobody. Live: Yugi hosted with Friend; Joey's Player Information showed no Send Duel Request,
+Kaiba's (his friend) did, and Kaiba's request reached Yugi.
 
 On Yes both get the match push `0x1978` (the host's `duel_id`; `duelData` carries `match_type` and `lp_start`, which
 becomes the duel's starting LP) a second later, and the duel runs as an automatic match's. Live: Kaiba found Yugi's
