@@ -18,7 +18,7 @@ most valuable first. Research for the later slices runs ahead in parallel (read-
        ownership and the banlist itself; only a modified client gets past it, out of scope for friends)
 3. [x] NPC experience (`npcbin`): wins against an NPC unlock its higher levels; every NPC enabled (`premium`), on
        its series tab, the four gated ones willing to duel
-4. [ ] D-Mail between players, kept for players offline
+4. [x] D-Mail between players, kept for players offline
 5. [ ] Main Menu screens: Card Album, Rental Card List, My Profile, Duel Log, Leaderboard, BOOSTERPASS, each with
        what the server knows (collection, records, duels played)
 6. [ ] Teams (create, join, leave, members, team chat, Create Duel's Team limit) and user events (create, join)
@@ -88,9 +88,11 @@ Stop finding missing fields one crash at a time.
       after a restart, and Yugi removed Kaiba
 - [x] Main Menu's Friend List and Ignore List views: their search reply comes before their list, so the rows draw.
       Live: Kaiba listed with the friend icon, online and after logging out
-- [ ] Mail and teams
+- [x] D-Mail: Write Mail to a friend (`0x2580` → `0x2584`), the recipient's bell (`0x2581`), the fetch (`0x2583` →
+      `0x2588`, `0x2582` → `0x2586`); mail waits in `data/mail.json` for players offline. Live: Yugi to Kaiba
+- [ ] Teams
 - [ ] Player search criteria we ignore: language, country, manner level, status, event
-- [ ] Main menu screens (the menu opens now): Card Album, Rental Card List, My Profile, D-Mail, Duel Log, Team,
+- [ ] Main menu screens (the menu opens now): Card Album, Rental Card List, My Profile, Duel Log, Team,
       Leaderboard, BOOSTERPASS, Duel Options (Edit Deck is M4; Friend List and Ignore List work)
 - [x] Saving character settings: Avatar Settings' Confirm sends `0x2CEF` {avatar1, speech00–22, comment00–01,
       title} → `0x2CF5`; kept with the account and sent back in the player record. Live: purple hair after a restart
@@ -264,7 +266,7 @@ Stop finding missing fields one crash at a time.
 | Trunk (`9000`) contents | one record: `cards` (the starter deck's), `noTrade` all zero | Other fields later screens may read are unknown |
 | `regulations` list | all 20 ids | Which banlists the UI should offer |
 | `0x21FC` `lang` | `"1"` | Read as a string; semantics unknown |
-| `0x2583/0x271A/0x2AFB/0x2AFD/0x27D8` | minimal replies | Meanings unknown; they only stop timeouts |
+| `0x271A/0x2AFB/0x2AFD/0x27D8` | minimal replies | Meanings unknown; they only stop timeouts |
 | `avatar1` length and slots | 41 zero entries (a default male avatar) | Slot meanings unmapped |
 | `bgm`, `icon`/`lefttime`/`maintenance`, `npc_id`, `cpuUse`/`notRelease` | left out (read as 0 / NULL) | The tracer shows the client reads them; see "Fields the client reads that we leave out" in docs/protocol.md |
 | Chat room `region`, `status`, `type`; `0x2458.lang` | 0 / 1 | Shown fine; meanings unknown |

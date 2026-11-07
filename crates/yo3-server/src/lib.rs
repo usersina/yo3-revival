@@ -9,6 +9,7 @@ mod card_options;
 pub mod front;
 pub mod shop;
 mod social;
+mod mail;
 pub mod clock;
 mod log;
 mod net;
@@ -232,6 +233,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     };
     if let Some(dir) = &cfg.data_dir {
         hub.keep_social(&dir.join("friends.json"));
+        hub.keep_mail(&dir.join("mail.json"));
     }
     hub.set_directory(directory.clone());
     let hub = Arc::new(Mutex::new(hub));

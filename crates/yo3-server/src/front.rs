@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use yo3_proto::{Message, Packet, Value};
 
+use crate::mail::{Mail, Mailbox};
 use crate::social::Social;
 
 /// Where a session's outgoing messages go: its connection's writer task.
@@ -46,6 +47,9 @@ pub struct Player {
     /// The structure decks the player bought (preset deck ids, in order), listed after the starter deck.
     pub decks: Vec<u32>,
 }
+
+/// A D-Mail's mail_type to a player (3 is to the player's team).
+const MAIL_TO_PLAYER: u32 = 0;
 
 /// The npcbin's size: the client reads up to NPC id 197 (8 bytes each) without a check.
 const NPCBIN_LEN: usize = 2048;
@@ -366,6 +370,8 @@ pub struct Hub {
     pub(crate) tables: HashMap<u32, Arc<Mutex<crate::table::Table>>>,
     /// Friends, ignore lists and friend requests.
     social: Social,
+    /// D-Mail waiting for its recipients.
+    mail: Mailbox,
 }
 
 /// 0x251F's error codes for a friend request (0x4A522E): "This player cannot receive another request.", " The
@@ -472,6 +478,30 @@ impl Hub {
     /// Friends and ignore lists are kept in `file` (read now if it exists, written after each change).
     pub fn keep_social(&mut self, file: &std::path::Path) {
         self.social = Social::load(file);
+    }
+
+    /// Keeps the mail waiting for its recipients in `file`.
+    pub fn keep_mail(&mut self, file: &std::path::Path) {
+        self.mail = Mailbox::load(file);
+    }
+
+    /// 0x2580 {mail_type, title, body, to_id} (0x4AE8E0): 0x2584 {mail_id}, the mail kept for its recipient, who gets
+    /// 0x2581 if online (flag 0x1000, the bell's mail icon); or 0x2585 {error_code}: 301 "There are no Players with this
+    /// name.", 700 "A transmission error has occurred." (team mail, without teams).
+    fn send_mail(&mut self, from: (u32, String), kind: u32, to_id: u32, title: &str, body: &str) -> Message {
+        let to_name = self.social.name(to_id);
+        let refuse = |code: u32| Message::reply(0x2585).with("error_code", Value::U32(code));
+        if kind != MAIL_TO_PLAYER {
+            return refuse(700);
+        }
+        if to_name.is_empty() {
+            return refuse(301);
+        }
+        let sent = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let mail = Mail { kind, from, to: (to_id, to_name), title: title.into(), body: body.into(), sent, ..Mail::default() };
+        let mail_id = self.mail.post(mail);
+        self.push(to_id, &Message::reply(0x2581));
+        Message::reply(0x2584).with("mail_id", Value::U32(mail_id))
     }
 
     /// Makes two players friends (as an accepted request does).
@@ -1050,7 +1080,18 @@ impl FrontSession {
                 Message::reply(0x2CF3).item(self.player().record().with("npcbin", Value::Bin(npcbin)))
             }
             0x2CEF => self.update_player(msg),
-            0x2583 => Message::reply(0x2588).with("count", Value::U32(0)),
+            // D-Mail (MailWindow 0x4AC6B0): the count waiting (also the startup step 0x4730B0's, which lights the bell),
+            // the fetch (the client files each mail by its id), and a send.
+            0x2583 => Message::reply(0x2588).with("count", Value::U32(self.hub().mail.count(self.player().player_id))),
+            0x2582 => self.hub().mail.take(self.player().player_id),
+            0x2580 => {
+                let p = self.player();
+                let from = (p.player_id, p.name.clone());
+                let text = |k: &str| msg.get(k).and_then(Value::as_str).unwrap_or_default();
+                let int = |k: &str| msg.get(k).and_then(Value::as_u32).unwrap_or(0);
+                let (title, body) = (text("title"), text("body"));
+                self.hub().send_mail(from, int("mail_type"), int("to_id"), &title, &body)
+            }
             0x1F41 => {
                 let now = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
                 let entries = self.world.news.iter().map(|(title, body)| {

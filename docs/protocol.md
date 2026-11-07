@@ -97,7 +97,7 @@ lists the others by name with their Forbidden / Limited / Semi-Limited tabs (an 
 and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 600 s the clocks use.
 | `0x27D8` | `0x27D9` (`0x27DA`) | one record (copied into a 0xC4-byte object) | item[0] read unchecked at `0x4F5BE9` | shape |
 | `0x2CEE` player refresh `{player_id, type}` | `0x2CF3` (`0x2CF4`) | item = the selected player's record; its `player_id` must match | `0x47378A`, `0x4F5FC2` | confirmed |
-| `0x2583` | `0x2588` (`0x2589`) | `count` u32 | `0x4730B0` | shape (unread mail or presents?) |
+| `0x2583` | `0x2588` (`0x2589`) | `count` u32: D-Mail waiting (see D-Mail); a count sets flag `0x1000`, the bell's mail icon | `0x4730B0` | confirmed |
 | `0x271A` | `0x271B` (`0x271C`) | none | `0x47352F` | shape |
 | `0x2710` NPC roster | `0x2711` (`0x2712`) | items `{npc_type, npc_id, need_ex}`, three per NPC (one per level), kept in slot 4; see "NPC duels and duel start" | `0x473646`, `0x4BEB40`; live: 25 NPCs on three tabs | confirmed; the tabs by series and `need_ex` 100/200/300 are **guesses** |
 | `0x2AFB` | `0x2B13` (`0x2B14`) | none | `0x4738FA` | shape |
@@ -186,6 +186,23 @@ Send Friend Request showed "Sending Friend Request to Kaiba...", Kaiba's bar sho
 "You have received a Friend Request from Yugi. Add to Friend List?"; Yes gave both "… has been added to your Friend
 List."; after a server restart Kaiba still had the friend icon in Yugi's search, "Display online friends." listed him
 but not Joey, and Player Information offered "Remove from Friend List", whose Yes sent `0x24BF` and emptied the tab.
+
+### D-Mail (MailWindow `0x4AC6B0`, `dmail_main.swf`)
+
+The client keeps its mail in its own files (`players\<pname>\mail\<box>\<mail_id>.y3m`) and reads and deletes it
+there; the server only holds a mail until its recipient's window fetches it. All fields are top level.
+
+| Request | Reply (error) | Fields | Evidence | Status |
+|---|---|---|---|---|
+| `0x2583` (bare; the window opening and the main screen's startup step `0x4730B0`) | `0x2588 {count}` (`0x2589`) | the mail waiting | live | confirmed |
+| `0x2582 {count}` (when the count isn't 0) | `0x2586` items (`0x2587 {error_code}`) | `mail_id`, `mail_type` (0 a player, 3 a team), `from_id`, `from_name`, `to_id`, `to_name`, `title`, `body`, `send_date` "YYYY-MM-DD HH:MM:SS", `team_id`, `team_name` (`0x4AD3C0`); processing it clears the bell's mail flag | live | confirmed |
+| `0x2580 {mail_type, title, body, to_id}` (Send D-mail, `0x4AE8E0`; subject 16 characters, body 255) | `0x2584 {mail_id}` (`0x2585 {error_code}`: 0 and 201 silent, 300 "This Player is currently offline.", 301 "There are no Players with this name.", 700 a transmission error) | the recipient is picked from the friend list (slot 6), offline friends too; team mail (type 3) has no `to_id` and carries `team_id`, `team_name` | live | confirmed; team mail refused (700) until teams exist |
+| (push) `0x2581` (bare) | — | a mail came: flag `0x1000`, the mail icon on the bell, which opens the window | live | confirmed |
+
+The server keeps waiting mail in `data/mail.json` with the last mail id, so ids go on across restarts (the client
+files mail by id), and drops a mail once fetched. Live: Yugi wrote to Kaiba from Write Mail (the friends button listed
+Kaiba); Send D-mail got `0x2584 {mail_id 1}`, Kaiba's bar showed the mail icon, and his D-Mail window listed "Yugi /
+Rematch? / 2026-11-07" with the body.
 
 ### Shop (`shopmain.cpp`, handler `0x48AA60`)
 

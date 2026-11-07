@@ -85,6 +85,9 @@ get a friends icon at the top left, and accepting adds you to each other's lists
 friends; the search tab's two-people button shows the ones who are online. Friends are kept by the host's server.
 In Create Duel, Opponent's Limits → Friend lets only your friends send you a duel request.
 
+Main Menu → D-Mail sends a friend a message (Write Mail, then the friends button to pick them); they see a mail icon
+at the top left, or get it at their next login if they were away.
+
 You can watch a friend's duel: find them in player search (they show as duelling), open Player Information and press
 Watch Duel. You see the duel from one player's side with both hands hidden, and go back to the map when it's over.
 
