@@ -337,11 +337,12 @@ impl GameData {
     /// The NPC opponents the NPC duel lists, three levels each (ids 120 + 3k .. 120 + 3k + 2, the
     /// k-th NPC's name being text 0x5208 + 2k, 0x4BFE34). Each has a preset deck (deck_type 3)
     /// titled text 0x5FB4 + 2 * npc_id (the deck title the NPC screen shows, 0x4BFE05); NPCs
-    /// without all three decks are left out.
+    /// without all three decks or without a name (a blank row on the NPC screen) are left out.
     pub fn npc_ids(&self) -> Vec<u32> {
         let has = |id: u32| self.npc_deck(id).is_some();
+        let named = |id: u32| self.text(NPC_NAME + 2 * ((id - FIRST_NPC) / 3)).is_some_and(|n| !n.is_empty());
         let firsts = (FIRST_NPC..).step_by(3).take_while(|&id| has(id));
-        firsts.filter(|&id| has(id + 1) && has(id + 2)).flat_map(|id| id..id + 3).collect()
+        firsts.filter(|&id| has(id + 1) && has(id + 2) && named(id)).flat_map(|id| id..id + 3).collect()
     }
 
     /// The preset deck an NPC plays.
@@ -353,6 +354,8 @@ impl GameData {
 
 /// The lowest selectable NPC id (0x4BFE34, DuelManager 0x50F4F0).
 const FIRST_NPC: u32 = 120;
+/// Text id of NPC 0's name (0x4BFE34).
+const NPC_NAME: u32 = 0x5208;
 /// Text id of NPC 0's deck title (0x4BFE05).
 const NPC_DECK_TITLE: u32 = 0x5FB4;
 

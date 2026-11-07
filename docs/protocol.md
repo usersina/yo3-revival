@@ -51,7 +51,7 @@ The contract tests in `crates/yo3-server/tests/front_contract.rs` enforce the co
 |---|---|---|---|---|
 | opener | `0x219F` | none | "front server : version valid." L370 | confirmed |
 | `0x1F47` auth | `0x219A` | `regulation_id`, `user_id`, `uname`, `dpoint` | "user auth success" L395 | confirmed |
-| `0x1F48` login `{lang}` | `0x2201` | top: `regulation_id`; item[0]: `user_id`, `uname`, `dpoint` | L449, `uid : [1001]` L457 | confirmed |
+| `0x1F48` login `{lang}` | `0x2201` | top: `regulation_id`; item[0]: `user_id`, `uname`, `dpoint`, `premium` (copied into UserData by `0x51B570`; non-zero opens every NPC, `0x4BF520`, and Form Team and Create Event) | L449, `uid : [1001]` L457; live: all 25 NPCs enabled with `premium` 1 | confirmed; `premium` 1 for everyone is our choice |
 | `0x1F49` player list | `0x2260` | items = player records (below) | "MyPlayerList" L509, loader `0x51C260` | confirmed |
 | `0x1F4C` select `{player_id}` | `0x2266` | none | "my player use success" L577 | confirmed |
 | `0x1FA4` trunk `{player_id}` | `9000` (`0x2328`) | exactly one record; item[0] is copied wholesale into `UserData+0x8C8`, and the global dispatcher keeps the reply in slot 18. The record holds `cards` and `noTrade` (binary): owned and untradeable count per card, one byte at index row − 1 (CARD_Prop rows, row 0 a dummy, so 4,833 bytes). `0x410DB0` reads them bounds-checked; the collection builder `0x4F6340` writes into both unchecked (crash at `0x4F6A82`, opening the NPC duel) | "trunk data success" L666, `0x46AFA8`, `0x410DB0` | confirmed; `cards` = one copy per card of the starter deck (**guess**: a real collection comes with the economy); other contents **guess** |
@@ -99,7 +99,7 @@ and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 
 | `0x2CEE` player refresh `{player_id, type}` | `0x2CF3` (`0x2CF4`) | item = the selected player's record; its `player_id` must match | `0x47378A`, `0x4F5FC2` | confirmed |
 | `0x2583` | `0x2588` (`0x2589`) | `count` u32 | `0x4730B0` | shape (unread mail or presents?) |
 | `0x271A` | `0x271B` (`0x271C`) | none | `0x47352F` | shape |
-| `0x2710` NPC roster | `0x2711` (`0x2712`) | items `{npc_type, npc_id, need_ex}`, three per NPC (one per level), kept in slot 4; see "NPC duels and duel start" | `0x473646`, `0x4BEB40`; live: 26 NPCs listed by name | confirmed; `npc_type` 0 for all and `need_ex` = the level are **guesses** |
+| `0x2710` NPC roster | `0x2711` (`0x2712`) | items `{npc_type, npc_id, need_ex}`, three per NPC (one per level), kept in slot 4; see "NPC duels and duel start" | `0x473646`, `0x4BEB40`; live: 25 NPCs on three tabs | confirmed; the tabs by series and `need_ex` 100/200/300 are **guesses** |
 | `0x2AFB` | `0x2B13` (`0x2B14`) | none | `0x4738FA` | shape |
 | `0x2AFD` | `0x2B17` (`0x2B18`) | none; the global case reads `member_id`, `authority` if present | `0x473A3A`, `0x4F5E0E` | shape (team?) |
 | `0x2775` next present (bare) | `0x2778` none (`0x2777`/`0x2779` would carry a present) | none | builder `0x4F3A00`. The `0x2201` reply sets flag `0x80` (so does a `0x2774` push), so startup step `0x473AE0` opens PresentWindow, which sends `0x2775` and holds the main screen locked until it closes. Its switch (`0x476E74`): `0x2777`/`0x2779` "PRESENT content get success", `0x2778`/`0x277A` "content get error", which retries while `+0x58` > 0 and then closes (`0x4783C9`); its `0x2774` case reads `present_count` and drops it | confirmed (live: the facilities unlock after `0x2778`) |
@@ -282,13 +282,30 @@ Deck ready to play; a deck bought twice is listed once.
 
 The NPC roster comes from the main screen's startup poll `0x2710`; the global dispatcher keeps `0x2711` in slot 4.
 SelectNpcScene (Kaiba Corporation) reads it three items at a time (`0x4BEB40`), one per level: the first item
-gives `npc_type` (the tab, 0–2) and `npc_id`, each of the three gives `need_ex`. A level is open while the player's
-experience with that NPC (`npcbin` entry 3 of its id; absent = 0) reaches its `need_ex`, counting from the first.
-NPC ids start at 120 (`0x78`), three per NPC: names are text `0x5208 + 2 * ((id - 120) / 3)` (`0x4BFE34`), deck
-titles text `0x5FB4 + 2 * id` (`0x4BFE05`), and each NPC deck preset (`deck_type` 3) carries that title id as
-`name_id`, which is how the server finds the 78 ids (26 NPCs; the 26th has no English name). Hovering an NPC
-computes `sum(min(ex, need_ex)) * 1000 / sum(need_ex)` over its levels (`0x4BFDC4`): all-zero `need_ex` divides
-by zero.
+gives `npc_type` (the tab, 0–2: Yu-Gi-Oh!, GX, 5D's, texts 15504–15506) and `npc_id`, each of the three gives
+`need_ex`. Level j is mastered once the experience with its own id (`npcbin` entry 3; absent = 0) reaches its
+`need_ex`, counting from the first; the list offers the number mastered (at most level 2) and shows it as stars, gold
+once all three are (then the duel is "unlimited", regulation 3). A `need_ex` of 0 is mastered from the start (ours
+were 0, 1, 2 until 2026-11-07, so every NPC opened on level 2); we send 100, 200, 300 (**guess**). The tabs follow the
+series: NPCs 0–8 on tab 0, 9–16 on tab 1, 17–24 on tab 2 (**guess** from the names; the free NPCs, first ids 120,
+123, 126, 147, 150, 153, 171, 174, 177 at `0x79039C`, are three per series). An NPC is enabled when the login's
+`premium` isn't 0 or it is a free one (`0x4BF520`). NPC ids start at 120 (`0x78`), three per NPC: names are text
+`0x5208 + 2 * ((id - 120) / 3)` (`0x4BFE34`), deck titles text `0x5FB4 + 2 * id` (`0x4BFE05`), and each NPC deck
+preset (`deck_type` 3) carries that title id as `name_id`, which is how the server finds the ids: 25 NPCs (a 26th,
+ids 195–197, has decks but no name and would be a blank row, so it is left out). Hovering an NPC computes
+`sum(min(ex, need_ex)) * 1000 / sum(need_ex)` over its levels (`0x4BFDC4`, the Friendship Level bar): all-zero
+`need_ex` divides by zero. Seto Kaiba, Yami Marik, Alexis Rhodes and Jack Atlas (first ids 123, 141, 153, 174) refuse
+to duel ("Who the hell are you?", speech kind 36) unless the record's `pbin` has bits `0x250`–`0x253` (`pbin[74]`
+bits 0–3, `0x4BDAB0` state 2); the server sets them in every record.
+
+**Experience** (`npcbin`, a raw field of the player record, read by `0x51C680`): per NPC level id, four u16
+little-endian at `8 * (id - 1) + 2k`: k 0 wins, 1 losses, 2 draws (the info panel's "Wins %d / Losses %d" sums the
+three ids', `0x4BFBA0`), 3 experience. No request reports an NPC duel's result; the server keeps it against the
+`cpu_id` (the duel records, keyed by player and opponent) and counts experience 100 a win, 50 a draw, 10 a loss
+(**guess**). The client reads it unchecked up to id 197, so the blob is 2048 bytes; it comes with the player list
+(`0x2260`) and the refresh (`0x2CF3`), which the client asks for after a duel. Live: after Yugi beat Seto Kaiba
+(level 1, `--duel-lp 1000`), the list showed him with two stars, the Friendship Level bar a sixth full and "Wins 1 /
+Losses 0".
 
 Picking a level (`decideNpc` `0x4C0C80`), its speech and "Start Duel?" lead to the duel start step `0x4BE390`. It
 finds the roster item whose `npc_id` is the first id + level and hands it to `DuelMatchingAgent` (`0x4A0B50`) in mode
@@ -892,7 +909,6 @@ NULL, which these callers check. Send them when we know what they mean.
 | `0x2201` | `bgm` int (top level) | global dispatcher `0x4F506A` | probably the lobby music |
 | `0x21FC` | `icon`, `lefttime` (int), `maintenance` (string), in the `{lang}` item | `0x4F477C`, `0x44E6EF`, `0x44E72D` | a maintenance countdown; absent = none |
 | player record | `npc_id` int | `0x51BFE2` | 0 = a human player |
-| player record | `npcbin` raw: four u16 per NPC id (the player's experience with each NPC, compared with `need_ex`) | `0x51C680` (NULL-safe) | absent = no experience |
 | player record | `evalnum`, `evaltotal`, `evallevel` uint | the shop's `0x1C20` case (`0x48ABB6`…), through UserData+`0x2C` | the player's manner rating; only used when the shop text is empty |
 | `0x27D9` | `cpuUse`, `notRelease` (raw) in its record | `0x4F2080`, `0x4F20BA` | meaning open (CPU duels? unreleased cards?) |
 | (around `0x2CF7`) | `premium` uint, from **another dataset**, not the reply | `0x44F3E7` | probably the account's Duelist Premium flag |

@@ -82,6 +82,48 @@ fn player_records_carry_everything_the_loader_reads() {
 }
 
 #[test]
+fn the_login_unlocks_every_npc() {
+    // SelectNpcScene enables an NPC (0x4BF520) when UserData's premium (item[0] of 0x2201, copied by 0x51B570) isn't 0,
+    // or its first id is one of the nine free ones. premium also opens Form Team and Create Event.
+    let r = one(fresh().handle(&req(0x1F48)));
+    assert_eq!(r.items[0].get("premium"), Some(&Value::U32(1)));
+}
+
+#[test]
+fn the_record_lets_the_gated_npcs_duel() {
+    // Seto Kaiba, Yami Marik, Alexis Rhodes and Jack Atlas (first ids 123, 141, 153, 174) refuse a duel (speech kind
+    // 36) unless pbin bits 0x250-0x253 are set (0x4BDAB0 state 2): pbin[74] bits 0-3.
+    let r = one(fresh().handle(&req(0x1F49)));
+    let Some(Value::Bin(pbin)) = r.items[0].get("pbin") else { panic!("pbin") };
+    assert_eq!(pbin[74] & 0x0F, 0x0F);
+}
+
+#[test]
+fn the_record_carries_the_experience_with_each_npc() {
+    // npcbin (0x51C680): per NPC level id, u16 little-endian at 8 * (id - 1) + 2k: k 0 wins, 1 losses, 2 draws, 3
+    // experience (compared with the roster's need_ex). The client reads it unchecked up to id 197 (1576 bytes).
+    // The server keeps each result against the NPC's id and counts experience 100 a win, 50 a draw, 10 a loss
+    // (**guess**); the client sees it at its next refresh (0x2CEE -> 0x2CF3).
+    let hub = Arc::new(Mutex::new(Hub::default()));
+    let (outbox, _) = tokio::sync::mpsc::unbounded_channel();
+    let mut s = FrontSession::new(Account::test(), world(), hub.clone(), outbox);
+    s.handle(&Packet::Version("2010.03.23 skelton".into()));
+    for r in [0x1F47, 0x1F48, 0x1F49] {
+        s.handle(&req(r));
+    }
+    s.handle(&req_with(0x1F4C, "player_id", 1001));
+    for result in [1, 1, 2, 3] {
+        hub.lock().unwrap().record_result(1001, 121, result);
+    }
+    let r = one(s.handle(&req(0x2CEE)));
+    let Some(Value::Bin(npcbin)) = r.items[0].get("npcbin") else { panic!("npcbin") };
+    assert!(npcbin.len() >= 8 * 197);
+    let at = |id: usize, k: usize| u16::from_le_bytes([npcbin[8 * (id - 1) + 2 * k], npcbin[8 * (id - 1) + 2 * k + 1]]);
+    assert_eq!([at(121, 0), at(121, 1), at(121, 2), at(121, 3)], [2, 1, 1, 260]);
+    assert_eq!(at(120, 3), 0);
+}
+
+#[test]
 fn selecting_a_player() {
     let mut s = fresh();
     assert_eq!(one(s.handle(&req_with(0x1F4C, "player_id", 1001))).request(), Some(0x2266));

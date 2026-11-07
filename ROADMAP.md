@@ -16,7 +16,8 @@ most valuable first. Research for the later slices runs ahead in parallel (read-
        chances outside timely ones (EDOPro's "always chain" asks with no card able to respond, which this client's
        Activation Message option has no setting for) and a server-side deck check (the client checks sizes,
        ownership and the banlist itself; only a modified client gets past it, out of scope for friends)
-3. [ ] NPC experience (`npcbin`): wins against an NPC unlock its higher levels
+3. [x] NPC experience (`npcbin`): wins against an NPC unlock its higher levels; every NPC enabled (`premium`), on
+       its series tab, the four gated ones willing to duel
 4. [ ] D-Mail between players, kept for players offline
 5. [ ] Main Menu screens: Card Album, Rental Card List, My Profile, Duel Log, Leaderboard, BOOSTERPASS, each with
        what the server knows (collection, records, duels played)
@@ -224,7 +225,9 @@ Stop finding missing fields one crash at a time.
 - [x] Extra deck summons: commands on extra deck, Graveyard and banished cards at their pile; Synchro and Fusion
       materials one at a time in the card list. Live: Junk Synchron and Giant Orc into Ancient Fairy Dragon. Testing
       aid `--duel-extra ROWS`
-- [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports
+- [x] NPC experience (`npcbin`) so higher levels unlock: wins, losses, draws and experience per NPC level id from
+      the duel records; `need_ex` 100/200/300, the series tabs, `premium` and the gated NPCs' pbin bits. `0x17D4` only
+      signals ready. Live: beating Seto Kaiba opened his level 2 and showed "Wins 1 / Losses 0"
 - [x] Online 3's duel stream is Konami's engine family but renumbered (turn change 6, LP set `0xF`; docs/protocol.md)
 - [ ] Regulations enforced (2011-era rules; card pool limited to the client's 4,824 cards)
 - [x] PvP on the duel connection: both matched clients share one table (`table.rs`): the janken between their hands,
@@ -263,7 +266,7 @@ Stop finding missing fields one crash at a time.
 | `0x21FC` `lang` | `"1"` | Read as a string; semantics unknown |
 | `0x2583/0x271A/0x2AFB/0x2AFD/0x27D8` | minimal replies | Meanings unknown; they only stop timeouts |
 | `avatar1` length and slots | 41 zero entries (a default male avatar) | Slot meanings unmapped |
-| `bgm`, `icon`/`lefttime`/`maintenance`, `npc_id`, `cpuUse`/`notRelease`, `premium` | left out (read as 0 / NULL) | The tracer shows the client reads them; see "Fields the client reads that we leave out" in docs/protocol.md |
+| `bgm`, `icon`/`lefttime`/`maintenance`, `npc_id`, `cpuUse`/`notRelease` | left out (read as 0 / NULL) | The tracer shows the client reads them; see "Fields the client reads that we leave out" in docs/protocol.md |
 | Chat room `region`, `status`, `type`; `0x2458.lang` | 0 / 1 | Shown fine; meanings unknown |
 | Whisper `chat_type` values | any type with `to_name` is a whisper | Only room chat (type 1) was seen live |
 | Player search paging | skip `base_point`, return at most `front_num` | Only page 1 (`0, 100`) was seen |
@@ -277,7 +280,9 @@ Stop finding missing fields one crash at a time.
 | Pack presents | one per pack, `present_id` counting from 1 per session, `level`/`form` 0, `item_img` and `end_time` empty; the cards join the collection at purchase | Only the fields the window reads; presents aren't kept across reconnects (the cards are) |
 | Event lists (`0x177B`), own user event (`0x33FE`) | empty, 0 | No events are held; paging by `base_point`/`front_num` like player search is assumed |
 | Rental records push (`0x2D6C`) | sent once after `9000`, empty | The original timing is unknown; the shop only needs it before it opens |
-| NPC roster `npc_type`, `need_ex` | every NPC on tab 0; `need_ex` = the level (0, 1, 2) | No client file gives the tabs (probably the series) or the experience each level needs; `need_ex` can't all be 0 (`0x4BFDC4`) |
+| NPC roster `npc_type`, `need_ex` | tabs by series (NPCs 0–8, 9–16, 17–24); `need_ex` 100/200/300 | No client file gives the tabs or the experience each level needs; `need_ex` can't all be 0 (`0x4BFDC4`) |
+| NPC experience | 100 a win, 50 a draw, 10 a loss, per NPC level id | No request reports it; the original's amounts are unknown |
+| `premium` | 1 for every account (all NPCs, Form Team, Create Event) | The original sold it (Duelist Premium); a friends' server gives it to all |
 | `join_id`, `duel_id` | server-wide counters from 1 | The client only echoes them back |
 | `0x17D4` | answered `0x17D5`, nothing kept | Sent once the duel object is ready; may also carry results later |
 | `0x22C4` push | right after `0x17D5`; `rule` = the fields of the duel's `0x17AC` item | The original timing and rule contents are unknown; only `match_type` is read so far |

@@ -31,11 +31,25 @@ fn the_npc_roster_lists_every_level_of_every_npc() {
     }
     let need_ex: Vec<_> = r.items.iter().map(|i| i.get("need_ex").and_then(Value::as_u32).expect("need_ex")).collect();
     for levels in need_ex.chunks(3) {
-        // A level is open while the player's experience (npcbin entry 3, absent = 0) reaches its
-        // need_ex, counting up from the first, so the first must be 0. Hovering an NPC divides by
-        // the three need_ex summed (0x4BFDC4, a progress per mille): crash if they are all 0.
-        assert_eq!(levels[0], 0, "{need_ex:?}");
-        assert!(levels.iter().sum::<u32>() > 0, "{need_ex:?}");
+        // Level j is mastered once the experience with its own id (npcbin entry 3, absent = 0) reaches its need_ex,
+        // counting up from the first (0x4BEB40); the offered level is the number mastered, at most 2. A need_ex of 0
+        // is mastered from the start, so every level needs some. Hovering an NPC divides by the three summed
+        // (0x4BFDC4, the friendship bar per mille). 100/200/300 is a **guess**.
+        assert_eq!(levels, [100, 200, 300], "{need_ex:?}");
+    }
+}
+
+#[test]
+fn the_npcs_are_on_their_series_tab() {
+    // npc_type is the tab (kaiba_main.swf: Yu-Gi-Oh!, GX, 5D's, texts 15504-15506). The free NPCs (0x79039C: first
+    // ids 120, 123, 126, 147, 150, 153, 171, 174, 177) are three per series, so NPCs 0-8 are tab 0, 9-16 tab 1 and
+    // 17-25 tab 2 (**guess** from the names).
+    let world = World { npcs: (120..198).collect(), ..world() };
+    let mut c = Server::with_world(world).join(1001, "Yugi");
+    let r = one(c.send(req(0x2710)));
+    let tab = |id: u32| r.items.iter().find(|i| i.get("npc_id") == Some(&Value::U32(id))).and_then(|i| i.get("npc_type")).cloned();
+    for (id, expected) in [(120, 0), (144, 0), (147, 1), (168, 1), (171, 2), (195, 2)] {
+        assert_eq!(tab(id), Some(Value::U32(expected)), "npc_id {id}");
     }
 }
 

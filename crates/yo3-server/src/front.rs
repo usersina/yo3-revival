@@ -47,6 +47,9 @@ pub struct Player {
     pub decks: Vec<u32>,
 }
 
+/// The npcbin's size: the client reads up to NPC id 197 (8 bytes each) without a check.
+const NPCBIN_LEN: usize = 2048;
+
 /// Speech lines and comments a player has (CharMake's update 0x51C960).
 pub const SPEECHES: usize = 23;
 pub const COMMENTS: usize = 2;
@@ -68,6 +71,16 @@ impl Player {
         }
     }
 
+    /// The pbin the client gets: the player's flags, with bits 0x250-0x253 set (pbin[74] bits 0-3), without which
+    /// Seto Kaiba, Yami Marik, Alexis Rhodes and Jack Atlas refuse to duel (0x4BDAB0 state 2).
+    fn flags(&self) -> Vec<u8> {
+        let mut pbin = self.pbin.clone();
+        if let Some(b) = pbin.get_mut(74) {
+            *b |= 0x0F;
+        }
+        pbin
+    }
+
     /// The record read by the player list (0x46C1E4) and the PlayerData loader (0x51C260).
     pub fn record(&self) -> Message {
         let mut m = Message::record()
@@ -83,7 +96,7 @@ impl Player {
             .with("team_name", Value::text(""))
             .with("team_authority", Value::U32(0))
             .with("avatar1", Value::Bin(self.avatar.clone()))
-            .with("pbin", Value::Bin(self.pbin.clone()));
+            .with("pbin", Value::Bin(self.flags()));
         for (i, line) in self.speeches.iter().enumerate() {
             m = m.with(&format!("speech{i:02}"), Value::text(line));
         }
@@ -428,6 +441,23 @@ impl Hub {
             }
         }
         record
+    }
+
+    /// The player's record against each NPC level id (the record's npcbin, read by 0x51C680): u16 little-endian at
+    /// 8 * (id - 1) + 2k, k 0 wins, 1 losses, 2 draws, 3 experience (100 a win, 50 a draw, 10 a loss: a **guess**).
+    pub fn npcbin(&self, player_id: u32) -> Vec<u8> {
+        let mut npcbin = vec![0; NPCBIN_LEN];
+        for (&(me, id), &[w, l, d]) in &self.records {
+            let at = 8 * (id as usize).wrapping_sub(1);
+            if me != player_id || !(1..=256).contains(&id) || at + 8 > npcbin.len() {
+                continue;
+            }
+            let exp = 100 * w + 50 * d + 10 * l;
+            for (k, n) in [w, l, d, exp].into_iter().enumerate() {
+                npcbin[at + 2 * k..at + 2 * k + 2].copy_from_slice(&(n.min(u16::MAX as u32) as u16).to_le_bytes());
+            }
+        }
+        npcbin
     }
 
     fn join(&mut self, player: &Player, outbox: Outbox) -> u64 {
@@ -811,13 +841,18 @@ impl FrontSession {
                 .with("user_id", Value::U32(a.user_id))
                 .with("uname", Value::text(&a.name))
                 .with("dpoint", Value::U32(a.dpoint)),
+            // premium (UserData+4, 0x4BF520): every NPC, Form Team and Create Event open.
             0x1F48 => Message::reply(0x2201).with("regulation_id", Value::U32(self.world.login_regulation)).item(
                 Message::record()
                     .with("user_id", Value::U32(a.user_id))
                     .with("uname", Value::text(&a.name))
-                    .with("dpoint", Value::U32(a.dpoint)),
+                    .with("dpoint", Value::U32(a.dpoint))
+                    .with("premium", Value::U32(1)),
             ),
-            0x1F49 => a.players.iter().fold(Message::reply(0x2260), |m, p| m.item(p.record())),
+            0x1F49 => {
+                let hub = self.hub.lock().expect("hub lock");
+                a.players.iter().fold(Message::reply(0x2260), |m, p| m.item(p.record().with("npcbin", Value::Bin(hub.npcbin(p.player_id)))))
+            }
             0x1F4C => {
                 self.selected = self.find_player(msg);
                 if self.selected.is_none() {
@@ -913,17 +948,22 @@ impl FrontSession {
             }
             // Deck deleted (its local file is already gone); the starter deck comes back on the next list.
             0x1F50 => Message::reply(0x22CC),
-            // NPC roster (kept in slot 4; SelectNpcScene 0x4BEB40 reads it three items per NPC). The
-            // picked item becomes the opponent's PlayerData. A level opens when the player's
-            // experience with the NPC (npcbin, not sent yet) reaches its need_ex; the three must not
-            // all be 0 (0x4BFDC4 divides by their sum). need_ex = the level (0, 1, 2) and every NPC
-            // on the first tab (npc_type 0) are guesses.
+            // NPC roster (kept in slot 4; SelectNpcScene 0x4BEB40 reads it three items per NPC, ids 120 + 3k on).
+            // The picked item becomes the opponent's PlayerData. Level j is mastered once the experience with its id
+            // (the record's npcbin) reaches its need_ex (0: mastered from the start; 0x4BFDC4 divides by the three
+            // summed). npc_type is the series tab: NPCs 0-8 Yu-Gi-Oh!, 9-16 GX, 17-25 5D's. need_ex 100/200/300 and
+            // the tabs are guesses.
             0x2710 => self.world.npcs.iter().fold(Message::reply(0x2711), |m, &id| {
+                let tab = match id.saturating_sub(120) / 3 {
+                    0..=8 => 0,
+                    9..=16 => 1,
+                    _ => 2,
+                };
                 m.item(
                     Message::record()
-                        .with("npc_type", Value::U32(0))
+                        .with("npc_type", Value::U32(tab))
                         .with("npc_id", Value::U32(id))
-                        .with("need_ex", Value::U32(id % 3)),
+                        .with("need_ex", Value::U32(100 * (id % 3 + 1))),
                 )
             }),
             // Duel entry (DuelMatchingAgent step 0x4A1090): join_id comes back in 0x17AC.
@@ -1005,7 +1045,10 @@ impl FrontSession {
             }
             0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_ids)),
             0x27D8 => Message::reply(0x27D9).item(Message::record()),
-            0x2CEE => Message::reply(0x2CF3).item(self.player().record()),
+            0x2CEE => {
+                let npcbin = self.hub().npcbin(self.player().player_id);
+                Message::reply(0x2CF3).item(self.player().record().with("npcbin", Value::Bin(npcbin)))
+            }
             0x2CEF => self.update_player(msg),
             0x2583 => Message::reply(0x2588).with("count", Value::U32(0)),
             0x1F41 => {
