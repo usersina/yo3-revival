@@ -49,6 +49,11 @@ pub struct Player {
     pub decks: Vec<u32>,
 }
 
+/// The client language a session starts with (0x1F48 lang 1).
+const ENGLISH: u32 = 1;
+/// Everyone's manner level (evallevel 0-4, 4 the best; 0x45F786) while there are no ratings.
+const MANNER: u32 = 2;
+
 /// A D-Mail's mail_type: to a player, to the sender's team.
 const MAIL_TO_PLAYER: u32 = 0;
 const MAIL_TO_TEAM: u32 = 3;
@@ -402,6 +407,8 @@ struct Online {
     outbox: Outbox,
     /// The player's record as others get it (an opponent's vsPlayerData).
     record: Message,
+    /// The client's language (0x1F48 lang: 0 Japanese, 1 English, then German, French, Italian, Spanish, Korean, Chinese).
+    lang: u32,
 }
 
 impl Hub {
@@ -479,6 +486,12 @@ impl Hub {
         npcbin
     }
 
+    fn set_lang(&mut self, online: u64, lang: u32) {
+        if let Some(o) = self.online.get_mut(&online) {
+            o.lang = lang;
+        }
+    }
+
     /// A player's wins, losses and draws against other players (NPC ids are 256 and below: practice, not counted).
     fn totals(&self, player_id: u32) -> [u32; 3] {
         let against_players = self.records.iter().filter(|((me, them), _)| *me == player_id && *them > 256);
@@ -497,10 +510,10 @@ impl Hub {
         player.record_with(self.totals(player.player_id), team)
     }
 
-    fn join(&mut self, player: &Player, outbox: Outbox) -> u64 {
+    fn join(&mut self, player: &Player, outbox: Outbox, lang: u32) -> u64 {
         self.next_id += 1;
         let record = self.record(player);
-        let online = Online { player_id: player.player_id, name: player.name.clone(), level: player.level, room: None, outbox, record };
+        let online = Online { player_id: player.player_id, name: player.name.clone(), level: player.level, room: None, outbox, record, lang };
         self.online.insert(self.next_id, online);
         self.social.seen(player.player_id, &player.name);
         self.tell_friends(player.player_id);
@@ -919,6 +932,8 @@ pub struct FrontSession {
     presents: VecDeque<crate::shop::Present>,
     last_present: u32,
     rng: u64,
+    /// The client's language, from its login (0x1F48 lang).
+    lang: u32,
 }
 
 impl Drop for FrontSession {
@@ -948,6 +963,7 @@ impl FrontSession {
             presents: VecDeque::new(),
             last_present: 0,
             rng: seed | 1,
+            lang: ENGLISH,
         }
     }
 
@@ -1038,6 +1054,15 @@ impl FrontSession {
         if let Some(&(_, reply)) = BARE_REPLIES.iter().find(|(req, _)| *req == id) {
             return vec![Message::reply(reply)];
         }
+        // The login gives the client's language (player search's language criterion).
+        if id == 0x1F48
+            && let Some(lang) = msg.get("lang").and_then(Value::as_u32)
+        {
+            self.lang = lang;
+            if let Some(online) = self.online {
+                self.hub().set_lang(online, lang);
+            }
+        }
         // The login replies and purchases read the BP, which may have grown since this session began (duels pay
         // into the account).
         if matches!(id, 0x1F47 | 0x1F48 | 0x1B68)
@@ -1073,7 +1098,7 @@ impl FrontSession {
                 if let Some(old) = self.online {
                     hub.leave(old);
                 }
-                let id = hub.join(self.player(), self.outbox.clone());
+                let id = hub.join(self.player(), self.outbox.clone(), self.lang);
                 drop(hub);
                 self.online = Some(id);
                 Message::reply(0x2266)
@@ -1463,7 +1488,17 @@ impl FrontSession {
     /// search_flag bits come from the builder 0x45F390; 0x4B6AF0 looks one player up by id.
     fn player_search(&self, msg: &Message) -> Message {
         const BY_NAME: u32 = 0x2;
+        const BY_LANGUAGE: u32 = 0x4;
         const BY_LEVEL: u32 = 0x10;
+        const BY_MANNER: u32 = 0x100;
+        // The status bits (Detailed Search 0x45F84A): waiting for a Single Mode duel, a Match Mode one, any, and a duel
+        // in progress (a guess from the UI texts); and the event bits (official, championship, user event).
+        const WAITING_SINGLE: u32 = 0x200;
+        const WAITING_MATCH: u32 = 0x400;
+        const WAITING: u32 = 0x800;
+        const DUELLING_NOW: u32 = 0x1000;
+        const IN_EVENT: u32 = 0xE000;
+        const IN_MY_ROOM: u32 = 0x20000;
         const BY_ID: u32 = 0x40000;
         // The community bits (the preset tabs): friends ("Display online friends."), the ignore list, the team.
         const FRIENDS: u32 = 0x40;
@@ -1471,8 +1506,8 @@ impl FrontSession {
         const TEAM: u32 = 0x20;
         let uint = |k| msg.get(k).and_then(Value::as_u32);
         let flags = uint("search_flag").unwrap_or(0);
-        // Guess: case-insensitive part of the name. Other criteria (lang, country, eval_level,
-        // the status and event bits) are not stored yet, so they match everyone.
+        // Guess: case-insensitive part of the name. The country criterion matches everyone (the client never says its
+        // country); nobody is in an event.
         let name = msg.get("pname").and_then(Value::as_str).unwrap_or_default().to_lowercase();
         let levels = uint("min_level").unwrap_or(0)..=uint("max_level").unwrap_or(u32::MAX);
         let me = self.player().player_id;
@@ -1485,6 +1520,19 @@ impl FrontSession {
             .filter(|o| flags & IGNORED == 0 || o.player_id == me || hub.social.ignores(me, o.player_id))
             .filter(|o| flags & TEAM == 0 || hub.teams.of(me).is_some_and(|t| t.member(o.player_id).is_some()))
             .filter(|o| flags & BY_LEVEL == 0 || levels.contains(&o.level))
+            .filter(|o| flags & BY_LANGUAGE == 0 || uint("lang").unwrap_or(0) >> o.lang & 1 != 0)
+            .filter(|_| flags & BY_MANNER == 0 || uint("eval_level").unwrap_or(0) >> MANNER & 1 != 0)
+            .filter(|o| {
+                let status = flags & (WAITING_SINGLE | WAITING_MATCH | WAITING | DUELLING_NOW);
+                let hosted = hub.hosts.values().find(|h| h.player_id == o.player_id).map(|h| h.setting("match_type").and_then(Value::as_u32).unwrap_or(SINGLE_MODE));
+                status == 0
+                    || (status & DUELLING_NOW != 0 && hub.in_match(o.player_id).is_some())
+                    || (status & WAITING != 0 && hosted.is_some())
+                    || (status & WAITING_SINGLE != 0 && hosted.is_some_and(|t| t != MATCH_MODE))
+                    || (status & WAITING_MATCH != 0 && hosted.is_some_and(|t| t != SINGLE_MODE))
+            })
+            .filter(|_| flags & IN_EVENT == 0)
+            .filter(|o| flags & IN_MY_ROOM == 0 || (o.room.is_some() && o.room == self.online.and_then(|id| hub.room_of(id))))
             .filter(|o| flags & BY_ID == 0 || Some(o.player_id) == uint("player_id"))
             .collect();
         found.sort_by_key(|o| o.player_id);
@@ -1503,7 +1551,8 @@ impl FrontSession {
                 .with("n_draw", Value::U32(draws))
                 .with("team_id", Value::U32(team.map_or(0, |t| t.id)))
                 .with("team_name", Value::text(team.map_or("", |t| t.name.as_str())))
-                .with("team_authority", Value::U32(team.and_then(|t| t.authority(o.player_id)).unwrap_or(0)));
+                .with("team_authority", Value::U32(team.and_then(|t| t.authority(o.player_id)).unwrap_or(0)))
+                .with("evallevel", Value::U32(MANNER));
             m.item(hub.duel_fields(o.player_id, entry))
         })
     }

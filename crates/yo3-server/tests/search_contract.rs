@@ -97,3 +97,59 @@ fn pages_skip_base_point_and_hold_at_most_front_num() {
     assert_eq!(r.items.len(), 2);
     assert_eq!(r.get("result_number"), Some(&Value::U32(1 + others.len() as u32)), "the total, not the page");
 }
+
+#[test]
+fn search_by_language_matches_the_clients_language() {
+    // search_flag 0x4: `lang` is a mask of languages, bit i language i (J, E, G, F, I, S, K, C; 0x74E863). Each client
+    // gives its own in the login 0x1F48 {lang} (live: 1, English).
+    let s = Server::new();
+    let (mut joey, _yugi, mut kaiba) = (s.join(1003, "Joey"), s.join(1001, "Yugi"), s.join(1002, "Kaiba"));
+    kaiba.send(req_with(0x1F48, &[("lang", Value::U32(0))]));
+    let mut english = everyone();
+    english[0] = ("search_flag", Value::U32(0x4));
+    english.push(("lang", Value::U32(1 << 1)));
+    assert_eq!(names(&search(&mut joey, &english)), ["Joey", "Yugi"]);
+}
+
+#[test]
+fn search_by_status_finds_hosts_and_duellists() {
+    // The status bits (Detailed Search 0x45F84A, the preset tabs): 0x1000 a duel in progress, 0x800 waiting for a
+    // duel of any rule, 0x200 a Single Mode one, 0x400 a Match Mode one (**guess** from the UI texts; the "waiting"
+    // tab sends 0xE00). The manner level everyone has without ratings is 2 (0x100 asks for levels as bits).
+    let s = Server::new();
+    let (mut joey, mut kaiba) = (s.join(1003, "Joey"), s.join(1002, "Kaiba"));
+    let join = one(kaiba.send(req_with(0x1784, &[("event_id", Value::U32(1))])));
+    // Create Duel's settings (agent mode 0) come with a status.
+    let settings = Message { tag: 4, ..Message::default() }.with("match_type", Value::U32(1)).with("status", Value::U32(1)).with("password", Value::text(""));
+    let ask = Message::reply(0x17AC).with("event_id", Value::U32(1)).with("join_id", join.get("join_id").cloned().unwrap()).item(settings);
+    assert_eq!(one(kaiba.send(yo3_proto::Packet::Message(ask))).request(), Some(0x17AD));
+    let with_flags = |flags: u32| {
+        let mut f = everyone();
+        f[0] = ("search_flag", Value::U32(flags));
+        f
+    };
+    assert_eq!(names(&search(&mut joey, &with_flags(0xE00))), ["Kaiba"]);
+    assert_eq!(names(&search(&mut joey, &with_flags(0x200))), ["Kaiba"]);
+    assert!(names(&search(&mut joey, &with_flags(0x400))).is_empty(), "not a match");
+    assert!(names(&search(&mut joey, &with_flags(0x1000))).is_empty(), "nobody duels");
+    let mut manner = with_flags(0x100);
+    manner.push(("eval_level", Value::U32(1 << 2)));
+    assert_eq!(names(&search(&mut joey, &manner)), ["Joey", "Kaiba"]);
+    manner[5] = ("eval_level", Value::U32(1 << 4));
+    assert!(names(&search(&mut joey, &manner)).is_empty());
+    let entry = search(&mut joey, &everyone()).items.remove(0);
+    assert_eq!(entry.get("evallevel"), Some(&Value::U32(2)));
+}
+
+#[test]
+fn the_chat_room_tab_lists_the_players_in_the_searchers_room() {
+    // The preset tab's search_flag 0x20000 (live): the players in the searcher's chat room.
+    let s = Server::new();
+    let (mut yugi, mut kaiba, _joey) = (s.join(1001, "Yugi"), s.join(1002, "Kaiba"), s.join(1003, "Joey"));
+    for c in [&mut yugi, &mut kaiba] {
+        c.send(req_with(0x2136, &[("room_id", Value::U32(1))]));
+    }
+    let mut room = everyone();
+    room[0] = ("search_flag", Value::U32(0x20000));
+    assert_eq!(names(&search(&mut yugi, &room)), ["Kaiba", "Yugi"]);
+}

@@ -121,8 +121,13 @@ and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 
   `0x4` language (`lang`), `0x8` country (`country` text), `0x10` level (`min_level` + `max_level`), `0x100`
   manner level (`eval_level`), status (`0x200`/`0x400`/`0x800`/`0x1000`: duel in progress, waiting for a single
   duel or a match), community (`0x40` friends, `0x80` ignore list, `0x20` team, `0x20000` chat room), event
-  (`0x2000`/`0x4000`/`0x8000`). The preset tabs above the list send fixed sets of these bits. Which status bit is
-  which is open.
+  (`0x2000`/`0x4000`/`0x8000`). The preset tabs above the list send fixed sets of these bits (live: "players
+  currently waiting for a Duel" `0xE00`, the chat room `0x20000`, events `0xE000`, friends `0x40`, team `0x20`).
+  The Detailed Search builder (`0x45F84A`) sets `0x1000` for its first status box, `0x800` without it, `0x200` for
+  "Wait for Single" and `0x400` for "Wait for match": read as a duel in progress, waiting for any duel, for a Single
+  Mode one and for a Match Mode one (**guess** from the texts). `lang` is a mask, bit i language i (J, E, G, F, I, S,
+  K, C; `0x74E863`), against the language each client gives in its login (`0x1F48 {lang}`, live 1). `eval_level` is a
+  mask of manner levels 0–4 (`0x45F786`); `country` an ISO code from `countrytbl.bin`.
 - Live: the dialog's name search sends `{search_flag 2, pname "kai", search_type 1, base_point 0, front_num 100,
   back_num 0}`.
 - `0x4B6AF0` looks one player up: `{search_flag 0x40000, player_id, search_type 0}`, and reads item[0]'s
@@ -130,9 +135,13 @@ and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 
 - Reply items, read by `0x475A20` in player mode (ECX = 0): `player_id` (int; 0 is skipped), `pname`, `dlv`,
   `duel_id`, `event_score`, `duel_status`, `tprank`, `duel_match_type`, `world_evid`, `official_evid`, `user_evid`,
   `userevent_remain`. The handler skips the searcher's own `player_id`, so a server may list everyone.
-- We filter on name (case-insensitive substring, a **guess**), level range, player id and the community bits
-  (`0x40` the searcher's friends, `0x80` their ignore list, `0x20` the team: nobody, there are no teams), and ignore
-  the other criteria. Paging is a **guess**: skip `base_point`, return at most `front_num`.
+- We filter on name (case-insensitive substring, a **guess**), level range, player id, language, the status bits
+  (duelling: in a match; waiting: hosting a Create Duel of that rule), the community bits (`0x40` the searcher's
+  friends, `0x80` their ignore list, `0x20` their team, `0x20000` their chat room), the manner level (everyone has
+  level 2, the middle, while there are no ratings: entries carry `evallevel` 2) and the event bits (nobody is in an
+  event). The country matches everyone: the client never tells the server its country, so entries carry none (Player
+  Information then shows the first flag). Paging is a **guess**: skip `base_point`, return at most `front_num`.
+  Live: with Kaiba hosting, the waiting tab listed only him with the hosting icon.
 
 ### Chat (ChatWindow dispatcher `0x435950`)
 

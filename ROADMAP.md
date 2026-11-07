@@ -22,7 +22,8 @@ most valuable first. Research for the later slices runs ahead in parallel (read-
 5. [x] Main Menu screens: Card Album, Rental Card List, My Profile, Duel Log, Leaderboard, BOOSTERPASS, each with
        what the server knows (collection, records, duels played)
 6. [ ] Teams (create, join, leave, members, team chat, Create Duel's Team limit) and user events (create, join)
-7. [ ] Player search criteria: language, country, manner level, status, event
+7. [x] Player search criteria: language, manner level, status, event, chat room (country: the client never says
+       its own)
 8. [ ] Shop: protectors and avatar items for BP; card trade and rental between players
 9. [ ] A Windows server build (cross-compiled) in the release bundle, with the friends' guide updated
 10. [ ] Final: full test run, a live smoke test of every flow (login, chat, friends, mail, shop, NPC duel, Auto
@@ -93,7 +94,12 @@ Stop finding missing fields one crash at a time.
 - [x] Teams: form, invite, answer, leave, remove, authority, disband; the team in records, search and Player
       Information; team chat, team mail and Create Duel's Team limit; `data/teams.json`. Live: Millennium formed,
       Kaiba invited and joined, team chat, Set as subleader
-- [ ] Player search criteria we ignore: language, country, manner level, status, event
+- [x] Player search criteria: language (from the login), status (duelling, hosting by rule), chat room, manner level
+      (everyone 2 without ratings), events (nobody). Live: the waiting tab listed only the host
+- [ ] Manner ratings: the evaluation dialog after a duel or trade (`0x2CEC {eval_id}` → `0x2CED {eval_id,
+      eval_data}`), whose average would give each player's `evallevel`; when the dialog opens and whose name it
+      shows is open
+- [ ] Country: no request carries the client's country; a host setting per account could
 - [x] Main menu screens: Rental Card List (`0x2C34`/`0x2C35` chain), My Profile (wins and losses against players),
       Duel Log (`0x1793`, `0x19C8`, no server replays), BOOSTERPASS (codes refused); Card Album, Leaderboard (a Konami
       web page) and Duel Options need nothing. Live: each opened; Team is with teams
@@ -289,6 +295,8 @@ Stop finding missing fields one crash at a time.
 | Rental records push (`0x2D6C`) | sent once after `9000`, empty | The original timing is unknown; the shop only needs it before it opens |
 | NPC roster `npc_type`, `need_ex` | tabs by series (NPCs 0–8, 9–16, 17–24); `need_ex` 100/200/300 | No client file gives the tabs or the experience each level needs; `need_ex` can't all be 0 (`0x4BFDC4`) |
 | Teams | `level` 1 and scores 0 for every team; handing over the leadership makes the old leader a member; the founding time in Japan time | No team scores or levels exist without the original's events |
+| Search status bits | `0x1000` duelling, `0x800` hosting, `0x200` hosting Single, `0x400` hosting Match | Read from the Detailed Search texts |
+| Manner level | everyone 2 (of 0–4) | No ratings are collected yet |
 | Wins and losses | My Profile and Player Information count duels against players only, not NPCs | The original's counting is unknown |
 | NPC experience | 100 a win, 50 a draw, 10 a loss, per NPC level id | No request reports it; the original's amounts are unknown |
 | `premium` | 1 for every account (all NPCs, Form Team, Create Event) | The original sold it (Duelist Premium); a friends' server gives it to all |
