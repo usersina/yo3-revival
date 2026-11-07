@@ -50,6 +50,9 @@ cargo run --release -p yo3-server -- --log-dir logs --players Yugi,Kaiba   # ser
 #   testing aids: --duel-lp 1000 (reach a duel's end in one attack), --duel-deck 1149,1449 (the player's main deck as
 #   CARD_Prop rows repeated to 40: here Marauding Captain and Giant Orc, for a yes/no question and a card choice)
 ss -ltnp | grep ':5730 '                                        # find the server's pid to stop it
+#   state: accounts and records persist in data/ (ignored; --data-dir), backed up into data/backups/ at each start
+target/release/yo3-server accounts                              # admin (server stopped): list, add-player ADDR NAME, rename OLD NEW
+tools/release.sh                                                # the host's bundle in dist/; the friends' guide is docs/friends.md
 
 tools/client/vclient.sh xvfb                                    # once per boot
 tools/client/vclient.sh start && tools/client/vclient.sh login  # cold start to main screen, about 30 s
