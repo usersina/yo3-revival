@@ -257,9 +257,32 @@ checks the deck (`0x4A0E90`; the item may carry `regulation_id`, else the player
 | `0x4A1790` | `0x17AC {event_id, join_id}` + item (tag 4) `{cpu_id, duel_server_id, match_type, regulation_id, surrender, time_total, time_turn}`; live: `cpu_id` 124 (the NPC id), `match_type` 4, `surrender` 1, the rest 0 | `0x17AD` (`0x17AE`, dialog `0x4F7940`) | `duel_id` (agent `+0x5C`); the reply is copied to MainGamen `+0x88C` with the agent's `regulation_id`; `country` is read from the player's own data | live: the scene opens DuelManager's Select Deck | confirmed; `duel_id` = a server-wide counter (**guess**) |
 
 Mode 1 then asks for a password (`duel_password_flag` from the agent's record), mode 2 goes to `0x4A1380`, mode 0
-(the DUEL panel) waits for a match in `0x4A1D10`. Mode 4 starts at `0x4A3340`: `0x1838 {duel_id}` → `0x1839
-{host (string), port (int)}` (`0x183A` = error), written into DuelServerConnection (`+0x78`, `+0x94`), and
-MainGamen `+0x8B8` = 5, `+0x8BC` = 1. Nothing we have reached uses mode 4 yet.
+(the DUEL panel) waits for a match in `0x4A1D10`. Mode 4 (watching a duel: PlayerInfoWindow's Watch Duel button for
+a player whose `duel_status` is duelling, shown only when the entry's `duel_watch` is not 0, `0x4B6510`; the server
+sends `duel_watch` 1 and `duel_match_type` for players in a matched duel, the host's own for a hosted one) starts at `0x4A3340`: `0x1838 {duel_id}` → `0x1839` (`0x183A` = error, back
+to the map through `0x4A35F0`), which sets MainGamen `+0x8B8` = 5 and `+0x8BC` = 1 (watching) and is read twice:
+
+| Reader | Fields | Status |
+|---|---|---|
+| `0x4A3340` | `host` (string), `port` (int): DuelServerConnection `+0x78`, `+0x94` | code |
+| `0x4A3650` | items found by `name` (`0x531EB0`): `avatar_1` and `avatar_2`, the two players' records (loaded into MainGamen's two PlayerData, as `vsPlayerData` is); top-level `card_protector_1`, `card_protector_2` (int); item `duelData` {`event_type`, `official`, `duel_id`}, copied in as the duel's rule (`0x41BB10`); `official` 0 and `event_type` not 5 pick the field `0x14 + duel_id % 8` | code |
+
+DuelManager then opens the duel scene in its watching state `0x50F320`: it connects DuelServerConnection and sends
+**`0x1838 {duel_id}` on the duel connection** (not `0x200C`), skips `0x17D4` (`0x50F030` goes straight to `0x50F690`
+when `+0x8BC` is set), and `0x50F690`, finding the duel connection open, skips the `0x22C4` wait and `0x200A`. From
+there the scene reads engine commands like a player's. The server answers a spectator's `0x1838` from the duel's
+table: seat 0's opening, then every engine message of the duel so far, replayed through the spectator's own translator,
+then the clocks; after that it gets every event, never a prompt. The opening starts with seat 0's janken, because the
+spectator's scene opens on the pre-duel screen like a player's: 1500, 1501 {result, opponent's hand, own hand} of the
+decisive round, 1502 {0} (no choice to make), 1503 {turn order}; then setup `0x15`, both decks in the card table,
+duel start and LP, with **both** players' hand, deck and face-down cards hidden (row 0). Without the janken the
+spectator stayed on the pre-duel screen (live). A spectator present when a match's next duel opens gets that duel's
+opening. At the match's end it gets seat 0's duel end (command 2) and then **1505 {seat 0's match result}**, which its
+DuelResult takes as the match result (see below); without it the spectator went back to the pre-duel screen (live,
+even with a `0x2009` pushed to its front connection, which a watching DuelResult never reads). The front refuses
+(`0x183A`) a duel that isn't being played between two seated players, or a hosted duel whose `watch` isn't 1 (Allow
+Watch Duel ON). Live: Joey watched Yugi and Kaiba's Auto Duel from turn 1 (both hands face down, the clocks running),
+and when Kaiba quit, Joey's client went back to the map.
 
 DuelManager (scene `0xFFFFD8FD`, constructor `0x50E470`) picks its first state by MainGamen `+0x8B8`: 5 → `0x50F320`
 (connect DuelServerConnection, then `0x1838` on it), 6 → `0x50F030`, else → `0x50ECF0` (the NPC duel):
@@ -368,7 +391,7 @@ We send request `0x200D` (**guess**: no reader).
 | 1501 | param1 result (0 draw, 1 win, 2 lose), param2 the opponent's hand, param3 this player's hand | `resolveJanken(myHand, yourHand, result)` (`0x518F50`); after a draw the scene asks for a new hand by itself (`selectJanken` `0x518ED0`), so the server sends nothing more |
 | 1502 | param1 ≠ 0: this player chooses | `selectFirst` (FIRST TO GO / SECOND TO GO), else `beginFirst` (wait) (`0x5191A0`) |
 | 1503 | param1 1 = this player goes first | `resolveFirst(isFirst)` (`0x519230`); once the movie is done the step leaves the scene (`0x519370`) and the duel field opens |
-| 1505 | param1 the match result (MainGamen `+0x820`; the other's at `+0x84C`, `0x504D00`); param2 100 or param3 3 take other paths | **not part of the janken**: the match's end before another duel (`0x5185A3`): a DuelResult, or with param3 3 text `0x2918`, then the scene leaves. DuelScene drops it unless param3 is 3 (`0x515183`). We sent it after 1503 until traced: `0x5185A3` never ran, DuelScene took it |
+| 1505 | param1 the match result (MainGamen `+0x820`; the other's at `+0x84C`, `0x504D00`); param2 100 or param3 3 take other paths | **not part of the janken**: the match's end before another duel (`0x5185A3`): a DuelResult, or with param3 3 text `0x2918`, then the scene leaves. DuelScene drops it unless param3 is 3 (`0x515183`). We sent it after 1503 until traced: `0x5185A3` never ran, DuelScene took it. A spectator's DuelResult takes it as the match result (`0x512070`); the server sends it there |
 
 The server plays the CPU: a random hand; when the CPU wins it goes first (**guess**).
 
@@ -668,7 +691,10 @@ After the movie DuelScene (`0x515A30`, flag `+0xD8` set by command 2) opens Duel
 - duel command 1500 or 1504 at the head of the queue (peeked, not taken): the match goes on. DuelManager (`0x50FC00`)
   then takes 1504 to Card Swap (`0x50FDF0`, side deck, then `0x1F4F` again) or 1500 to the next duel (`0x50F690`);
 - an empty queue and front flag `0x20000` (or MainGamen `+0x8BC`): the match is over. It reads the result below, and
-  DuelManager leaves the duel (`0x510220`, scene `0xFFFFD901`) because the match result (MainGamen `+0x820`) is set.
+  DuelManager leaves the duel (`0x510220`, scene `0xFFFFD901`) because the match result (MainGamen `+0x820`) is set;
+- watching (`+0x8BC`): 1505 at the head is taken, its param1 is the match result (`+0x820`, the other's by
+  `0x504D00`: 1 ↔ 2, 3 stays). A watching client skips the front's result (step 1 reads it only when `+0x8BC` is 0),
+  so on an empty queue it goes on with `+0x820` unset: the match goes on, back to the pre-duel screen.
 
 **Match Mode.** The rule's `match_type` comes from DuelMenu's Rule Format buttons through the table at `0x790C50`:
 1 Single Mode, 3 Match Mode, 6 Both (Auto Duel only); NPC duels send 4. A match is several duels on one duel

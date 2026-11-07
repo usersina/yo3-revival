@@ -240,8 +240,12 @@ fn a_challenge_reaches_the_host_and_acceptance_starts_the_duel() {
     one(b.send(yo3_proto::Packet::Message(pick.item(deck))));
     let entry = server.hub.lock().unwrap().duel_entry(1002).expect("entry");
     assert_eq!((entry.duel_id, entry.opponent, entry.lp), (Some(duel_id), Some(1001), Some(4000)));
-    // Hosting ends with the match.
-    assert_eq!(found(&mut b, 1001).get("duel_status").and_then(Value::as_u32), Some(3));
+    // Hosting ends with the match: the host shows as duelling (3), and with duel_watch 1 (Allow Watch Duel) the Player
+    // Information window offers Watch (0x4B6510 case 2 in mode 2); its Duel Conditions show the match's settings.
+    let entry = found(&mut b, 1001);
+    let int = |k| entry.get(k).and_then(Value::as_u32);
+    assert_eq!((int("duel_status"), int("duel_id")), (Some(3), Some(duel_id)));
+    assert_eq!((int("duel_watch"), int("duel_match_type")), (Some(1), Some(1)));
 }
 
 #[test]

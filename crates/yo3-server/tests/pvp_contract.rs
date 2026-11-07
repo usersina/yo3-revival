@@ -252,3 +252,107 @@ fn a_player_who_runs_out_of_time_loses() {
     assert_eq!(commands(&b.pushed()).last(), Some(&(2, [1, 11, 0, 0])));
     assert_eq!(hub.lock().unwrap().record_result(1002, 1001, 0), [1, 0, 0], "1002's win is counted");
 }
+
+/// A spectator's duel connection on `hub`: it opens with 0x1838 {duel_id} (DuelManager's watching state 0x50F320)
+/// instead of 0x200A.
+fn spectator(hub: &Arc<Mutex<Hub>>) -> (Seat, Vec<Message>) {
+    let (tx, inbox) = unbounded_channel();
+    let mut s = Seat { session: DuelSession::new(Arc::new(world(true)), hub.clone(), 9).with_outbox(tx), inbox };
+    let watch = Message::reply(0x1838).with("duel_id", Value::U32(DUEL));
+    let caught_up = s.session.handle(&Packet::Message(watch));
+    (s, caught_up)
+}
+
+#[test]
+fn a_spectator_catches_up_and_then_sees_the_duel_with_both_hands_hidden() {
+    // The spectator gets seat 0's view (1001's): the setup (0x15, PlayerNum 0), both decks in the card table with
+    // every hidden card at row 0 (both hands and decks), the duel so far replayed (the opening draws), the clocks;
+    // then each event as it happens, and never a prompt (no input wait 4, no command data 0x12).
+    let Some((mut a, mut b, hub)) = after_janken(true) else { return };
+    a.send(0xD, &[("choice", 1)]);
+    b.pushed();
+    let (mut s, caught_up) = spectator(&hub);
+    // The pre-duel screen first plays seat 0's janken: its result with both hands (1001 rock, 1002 scissors), the turn
+    // order without a choice of its own (1502 {0}), then 1001 going first (1503 {1}).
+    let janken: Vec<_> = commands(&caught_up).into_iter().filter(|(id, _)| (1500..=1503).contains(id)).collect();
+    assert_eq!(janken, [(1500, [0; 4]), (1501, [1, 1, 0, 0]), (1502, [0; 4]), (1503, [1, 0, 0, 0])]);
+    let kind = |m: &Message| m.get("duelRequestName").and_then(Value::as_u32);
+    let setup = caught_up.iter().find(|m| kind(m) == Some(0x15)).expect("the setup");
+    assert_eq!(setup.get("PlayerNum").and_then(Value::as_u32), Some(0));
+    let table: Vec<_> = commands(&caught_up).into_iter().filter(|(id, _)| *id == 1000).collect();
+    assert!(table.len() >= 80, "both decks: {}", table.len());
+    assert!(table.iter().all(|(_, p)| p[1] == 0), "no hidden card shows its row");
+    let draws = commands(&caught_up).iter().filter(|(id, p)| *id == 0x1A && (p[2] >> 1) & 0x1F == 0xB).count();
+    assert!(draws >= 10, "both opening hands replayed: {draws}");
+    assert!(caught_up.iter().any(|m| kind(m) == Some(0x14)), "the clocks");
+    assert!(!caught_up.iter().any(|m| kind(m) == Some(0x12)) && !commands(&caught_up).iter().any(|(id, _)| *id == 4));
+    // 1001 summons: the spectator sees it, face up with its row, and gets no prompt.
+    a.send(2, &[("CommandID", 4), ("player", 0), ("position", 0xB), ("index", 0)]);
+    let seen = s.pushed();
+    let summoned = commands(&seen).into_iter().find(|(id, p)| *id == 0x1A && (p[2] >> 1) & 0x1F < 5).expect("the summon");
+    assert_eq!(summoned.1[2] & 1, 0, "on seat 0's side");
+    assert!(commands(&seen).iter().any(|(id, p)| *id == 1000 && p[1] == 1), "the summoned card shows its row");
+    assert!(!seen.iter().any(|m| kind(m) == Some(0x12)));
+}
+
+#[test]
+fn the_front_sends_a_spectator_to_the_duel_server() {
+    // 0x1838 {duel_id} (agent mode 4, 0x4A3340) -> 0x1839 {host, port, card_protector_1, card_protector_2} with the
+    // items avatar_1 and avatar_2 (the players' records, by seat) and duelData {event_type, official, duel_id}
+    // (0x4A3650); 0x183A when no such duel is being played.
+    use yo3_server::front::{Account, FrontSession, Player};
+    let Some((mut a, mut b, hub)) = after_janken(true) else { return };
+    a.send(0xD, &[("choice", 1)]);
+    b.pushed();
+    let world = Arc::new(world(true));
+    let front = |id: u32, name: &str| {
+        let (tx, inbox) = unbounded_channel();
+        let account = Account { players: vec![Player::new(id, name)], ..Account::test() };
+        let mut f = FrontSession::new(account, world.clone(), hub.clone(), tx);
+        f.handle(&Packet::Version("2010.03.23 skelton".into()));
+        f.handle(&Packet::Message(Message::reply(0x1F4C).with("player_id", Value::U32(id))));
+        (f, inbox)
+    };
+    let ((_yugi, _), (_kaiba, _), (mut watcher, _)) = (front(1001, "Yugi"), front(1002, "Kaiba"), front(1003, "Joey"));
+    let watch = |duel_id| Packet::Message(Message::reply(0x1838).with("duel_id", Value::U32(duel_id)));
+    let r = watcher.handle(&watch(DUEL)).remove(0);
+    assert_eq!(r.request(), Some(0x1839));
+    assert!(r.get("host").and_then(Value::as_str).is_some() && r.get("port").and_then(Value::as_u32).is_some());
+    assert_eq!((r.get("card_protector_1"), r.get("card_protector_2")), (Some(&Value::U32(0)), Some(&Value::U32(0))));
+    let item = |name: &str| r.items.iter().find(|i| i.get("name").and_then(Value::as_str).as_deref() == Some(name)).expect(name).clone();
+    assert_eq!(item("avatar_1").get("player_id"), Some(&Value::U32(1001)));
+    assert_eq!(item("avatar_2").get("player_id"), Some(&Value::U32(1002)));
+    assert!(matches!(item("avatar_1").get("avatar1"), Some(Value::Bin(_))), "a full player record");
+    let data = item("duelData");
+    let int = |k| data.get(k).and_then(Value::as_u32);
+    assert_eq!(["duel_id", "event_type", "official"].map(int), [Some(DUEL), Some(0), Some(0)]);
+    assert_eq!(watcher.handle(&watch(99)).remove(0).request(), Some(0x183A));
+}
+
+#[test]
+fn a_spectator_learns_the_matchs_result_once_the_match_is_over() {
+    // A watching client's DuelResult (0x512070) takes the match result from command 1505 {result} at the head of its
+    // queue (MainGamen +0x820; the other's by 0x504D00); without it the match goes on and the client waits on the
+    // pre-duel screen. So a spectator gets seat 0's duel ends (1001's), and after the last one 1505 {1001's match
+    // result}; between a match's duels, no 1505.
+    let Some((mut a, mut b, hub)) = table_of(true, 3, 100) else { return };
+    enter(&mut a, 1001);
+    enter(&mut b, 1002);
+    a.pushed();
+    let (mut s, _) = spectator(&hub);
+    let ends = |out: &[Message]| commands(out).into_iter().filter(|(id, _)| matches!(id, 2 | 1505)).collect::<Vec<_>>();
+    second_wins(&mut a, &mut b);
+    assert_eq!(ends(&s.pushed()), [(2, [2, 1, 0, 0])], "duel 1: 1001 lost, the match goes on");
+    second_wins(&mut a, &mut b);
+    assert_eq!(ends(&s.pushed()), [(2, [2, 1, 0, 0]), (1505, [2, 0, 0, 0])], "duel 2: 1002 won the match");
+}
+
+#[test]
+fn a_spectator_learns_who_won_when_a_player_leaves() {
+    let Some((mut a, b, hub)) = after_janken(true) else { return };
+    a.send(0xD, &[("choice", 1)]);
+    let (mut s, _) = spectator(&hub);
+    drop(b);
+    let ends: Vec<_> = commands(&s.pushed()).into_iter().filter(|(id, _)| matches!(id, 2 | 1505)).collect();
+    assert_eq!(ends, [(2, [1, 14, 0, 0]), (1505, [1, 0, 0, 0])], "1001 won, by disconnection");
+}

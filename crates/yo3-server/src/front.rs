@@ -212,6 +212,8 @@ struct Match {
     rule: Vec<(String, Value)>,
     /// A hosted duel's time_turn and time_total.
     times: Option<(u32, u32)>,
+    /// Whether others may watch it (a hosted duel's Allow Watch Duel, watch 1).
+    watchable: bool,
 }
 
 /// How long the second player's match push waits after its 0x1799, so the agent has read that first (**guess**: it
@@ -452,8 +454,16 @@ impl Hub {
                 .with("duel_id", Value::U32(duel_id))
                 .with("duel_password_flag", Value::U32(!host.password().is_empty() as u32));
         }
-        match self.in_match(player_id) {
-            Some(duel_id) => entry.with("duel_status", Value::U32(DUELLING)).with("duel_id", Value::U32(duel_id)),
+        // Duelling: PlayerInfoWindow offers Watch when duel_watch isn't 0 (0x4B6510), and shows the rule format.
+        match self.in_match(player_id).and_then(|duel_id| Some((duel_id, self.matches.get(&duel_id)?))) {
+            Some((duel_id, m)) => {
+                let match_type = m.rule.iter().find(|(k, _)| k == "match_type").and_then(|(_, v)| v.as_u32()).unwrap_or(SINGLE_MODE);
+                entry
+                    .with("duel_status", Value::U32(DUELLING))
+                    .with("duel_id", Value::U32(duel_id))
+                    .with("duel_watch", Value::U32(m.watchable as u32))
+                    .with("duel_match_type", Value::U32(match_type))
+            }
             None => entry,
         }
     }
@@ -486,7 +496,7 @@ impl Hub {
             Message::reply(0x1978).item(vs.clone().with("name", Value::text("vsPlayerData"))).item(data.with("duel_id", Value::U32(duel_id)))
         };
         let pushes = [(other.player_id, push(&me.record)), (me.player_id, push(&other.record))];
-        self.matches.insert(duel_id, Match { players: [other.player_id, me.player_id], rule, times: None });
+        self.matches.insert(duel_id, Match { players: [other.player_id, me.player_id], rule, times: None, watchable: true });
         Some((duel_id, pushes))
     }
 
@@ -884,6 +894,7 @@ impl FrontSession {
                 Message::reply(0x21FC).item(lang)
             }
             0x2CF0 => self.player_search(msg),
+            0x1838 => self.watch(msg),
             // Next present: 0x2777 would carry one; 0x2778 = none, which closes PresentWindow
             // (0x4783C9) and lets the main screen unlock its facilities and menu (0x473B87).
             0x2775 => match self.presents.pop_front() {
@@ -917,15 +928,57 @@ impl FrontSession {
         let matched = duel_id.and_then(|id| self.hub().matches.get(&id).map(|m| m.rule.clone()));
         let Some(asked) = duel_id.and_then(|id| self.duels.get(&id).cloned()).or(matched) else { return vec![ack] };
         let rule = asked.iter().fold(Message::record().with("name", Value::text("rule")), |m, (k, v)| m.with(k, v.clone()));
-        let (advertised, port) = &self.world.duel_server;
-        let reached = self.reached_at.map(|ip| ip.to_string()).unwrap_or_else(|| "127.0.0.1".into());
-        let host = if advertised.is_empty() { &reached } else { advertised };
+        let (host, port) = self.duel_server();
         let data = Message::record()
             .with("name", Value::text("duelData"))
-            .with("host", Value::text(host))
-            .with("port", Value::U32(*port as u32))
+            .with("host", Value::text(&host))
+            .with("port", Value::U32(port))
             .item(rule);
         vec![ack, Message::reply(0x22C4).item(data)]
+    }
+
+    /// The duel server's address for this client: the advertised one, else the address it reached.
+    fn duel_server(&self) -> (String, u32) {
+        let (advertised, port) = &self.world.duel_server;
+        let reached = self.reached_at.map(|ip| ip.to_string()).unwrap_or_else(|| "127.0.0.1".into());
+        (if advertised.is_empty() { reached } else { advertised.clone() }, *port as u32)
+    }
+
+    /// Watching a duel (agent mode 4, 0x4A3340): 0x1838 {duel_id} -> 0x1839 {host, port, card_protector_1,
+    /// card_protector_2} with the items avatar_1 and avatar_2 (the players' records by seat, loaded as the duel's two
+    /// players) and duelData {event_type, official, duel_id, match_type} (0x4A3650, the duel's rule); 0x183A when the
+    /// duel isn't being played by two seated players, or its host didn't allow watching.
+    fn watch(&self, msg: &Message) -> Message {
+        let refused = Message::reply(0x183A);
+        let Some(duel_id) = msg.get("duel_id").and_then(Value::as_u32) else { return refused };
+        let (table, allowed, match_type) = {
+            let hub = self.hub();
+            let m = hub.matches.get(&duel_id);
+            let rule = m.and_then(|m| m.rule.iter().find(|(k, _)| k == "match_type").and_then(|(_, v)| v.as_u32()));
+            (hub.tables.get(&duel_id).cloned(), m.is_none_or(|m| m.watchable), rule.unwrap_or(SINGLE_MODE))
+        };
+        let (Some(table), true) = (table, allowed) else { return refused };
+        // The hub is free while the table is locked (the table locks the hub when a duel ends).
+        let Some(players) = table.lock().expect("table lock").players() else { return refused };
+        let hub = self.hub();
+        let record = |id: u32| hub.online.values().find(|o| o.player_id == id).map(|o| o.record.clone());
+        let (Some(first), Some(second)) = (record(players[0]), record(players[1])) else { return refused };
+        drop(hub);
+        let (host, port) = self.duel_server();
+        let data = Message::record()
+            .with("name", Value::text("duelData"))
+            .with("event_type", Value::U32(0))
+            .with("official", Value::U32(0))
+            .with("duel_id", Value::U32(duel_id))
+            .with("match_type", Value::U32(match_type));
+        Message::reply(0x1839)
+            .with("host", Value::text(&host))
+            .with("port", Value::U32(port))
+            .with("card_protector_1", Value::U32(0))
+            .with("card_protector_2", Value::U32(0))
+            .item(first.with("name", Value::text("avatar_1")))
+            .item(second.with("name", Value::text("avatar_2")))
+            .item(data)
     }
 
     /// 0x2135 -> 0x2458: top-level lang, one item per room (ChatWindow 0x435950, items via 0x434D20).
@@ -1046,7 +1099,8 @@ impl FrontSession {
             }
             let setting = |k| host.setting(k).and_then(Value::as_u32).unwrap_or(0);
             let times = Some((setting("time_turn"), setting("time_total")));
-            hub.matches.insert(duel_id, Match { players: [player_id, challenger], rule, times });
+            let watchable = host.setting("watch").and_then(Value::as_u32).is_none_or(|w| w == 1);
+            hub.matches.insert(duel_id, Match { players: [player_id, challenger], rule, times, watchable });
             let outboxes: Vec<(Outbox, Message)> = pushes
                 .into_iter()
                 .filter_map(|(to, m)| hub.online.values().find(|o| o.player_id == to).map(|o| (o.outbox.clone(), m)))

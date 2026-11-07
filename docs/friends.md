@@ -80,7 +80,10 @@ structure deck you buy shows up in Edit Deck's deck list, ready to duel with.
 Duels between players have clocks: 3 minutes a turn and 10 minutes a duel (or the host's choice in Create Duel), and
 running out loses the duel.
 
-Not yet: changing the side deck between a match's duels, watching duels, effects that make you choose between a
+You can watch a friend's duel: find them in player search (they show as duelling), open Player Information and press
+Watch Duel. You see the duel from one player's side with both hands hidden, and go back to the map when it's over.
+
+Not yet: changing the side deck between a match's duels, effects that make you choose between a
 card's own options (the first is taken), protectors, avatar items, trading and rental in the shop. Players' decks stay on their own machines (in `Documents\Yu-Gi-Oh! ONLINE 3`).
 
 ## When something goes wrong

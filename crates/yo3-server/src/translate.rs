@@ -293,8 +293,9 @@ pub struct Translator {
     picks: Vec<usize>,
     /// The duel's result for the client (1 won, 2 lost, 3 draw), once it ended.
     result: Option<u32>,
-    /// Whether the opponent's hidden cards (deck, hand, extra deck, face-down) go to the client without their rows.
-    hide: bool,
+    /// By player, whether that side's hidden cards (deck, hand, extra deck, face-down) go to the client without their
+    /// rows: none against the CPU, the opponent's against a player, both for a spectator.
+    hidden: [bool; 2],
     /// The values each monster zone's record last went with (level, ATK, DEF, base ATK, base DEF), by player and zone.
     records: HashMap<(u32, u32), [u32; 5]>,
 }
@@ -303,16 +304,21 @@ impl Translator {
     /// `decks[p]` is the main deck (CARD_Prop rows) of the client's engine player p; `first` goes first. Returns
     /// the translator and the card-table commands that put both decks in the client's card table (uids 1..).
     pub fn new(first: u32, decks: [&[u16]; 2], cards: HashMap<u16, CardStats>) -> (Translator, Vec<Message>) {
-        Translator::build(first, decks, cards, false)
+        Translator::build(first, decks, cards, [false, false])
     }
 
     /// The same for a duel against another player, whose hidden cards the client gets with row 0 (**guess**: Online
     /// 2 used placeholders).
     pub fn against_player(first: u32, decks: [&[u16]; 2], cards: HashMap<u16, CardStats>) -> (Translator, Vec<Message>) {
-        Translator::build(first, decks, cards, true)
+        Translator::build(first, decks, cards, [false, true])
     }
 
-    fn build(first: u32, decks: [&[u16]; 2], cards: HashMap<u16, CardStats>, hide: bool) -> (Translator, Vec<Message>) {
+    /// The same for a spectator watching from player 0's side, who sees neither player's hidden cards.
+    pub fn spectating(first: u32, decks: [&[u16]; 2], cards: HashMap<u16, CardStats>) -> (Translator, Vec<Message>) {
+        Translator::build(first, decks, cards, [true, true])
+    }
+
+    fn build(first: u32, decks: [&[u16]; 2], cards: HashMap<u16, CardStats>, hidden: [bool; 2]) -> (Translator, Vec<Message>) {
         let mut sides = [Side::default(), Side::default()];
         let mut out = vec![];
         let mut uid = 0;
@@ -320,7 +326,7 @@ impl Translator {
             for (i, &row) in deck.iter().enumerate() {
                 uid += 1;
                 sides[p].zone(DECK).push(Card { uid, row });
-                let shown = if hide && p as u32 == CPU { 0 } else { row as u32 };
+                let shown = if hidden[p] { 0 } else { row as u32 };
                 out.push(command(CARD, [uid, shown, 0, table_place(p as u32, DECK, i)]));
             }
         }
@@ -337,7 +343,7 @@ impl Translator {
             hint: 0,
             picks: vec![],
             result: None,
-            hide,
+            hidden,
             records: HashMap::new(),
         };
         (t, out)
@@ -364,7 +370,7 @@ impl Translator {
             HAND | DECK | EXTRA => true,
             zone => zone <= FIELD_SPELL && !place.face_up,
         };
-        if self.hide && place.player == CPU && hidden { 0 } else { row as u32 }
+        if self.hidden[place.player as usize] && hidden { 0 } else { row as u32 }
     }
 
     /// The client commands for the engine's events (prompts excluded).
@@ -562,8 +568,7 @@ impl Translator {
         let mut out = vec![];
         let card = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied();
         if let Some(card) = card
-            && self.hide
-            && place.player == CPU
+            && self.hidden[place.player as usize]
             && place.face_up
         {
             out.push(command(CARD, [card.uid, card.row as u32, 0, table_place(place.player, place.zone, 0)]));

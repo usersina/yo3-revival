@@ -18,6 +18,8 @@ use crate::translate::{Prompt, Translator};
 pub const SERVER_DUEL: u32 = 0x200D;
 /// The client's first message on the duel connection, {player_id, autoSet} (0x50FAD1).
 const ENTER: u32 = 0x200A;
+/// A spectator's first message on the duel connection (DuelManager's watching state 0x50F320), instead of ENTER.
+const WATCH: u32 = 0x1838;
 /// Every later client message (0x49F990), told apart by duelRequestName.
 const CLIENT_DUEL: u32 = 0x200C;
 /// duelRequestName of an engine command {id, param1..param4} (pump case 0x11).
@@ -185,6 +187,8 @@ pub struct DuelSession {
     /// This connection's outbox, and in a duel against another player the shared table and this client's seat.
     outbox: Option<Outbox>,
     table: Option<(Arc<Mutex<Table>>, usize)>,
+    /// Watching a duel between players: nothing it sends matters after 0x1838.
+    watching: bool,
 }
 
 impl Drop for DuelSession {
@@ -200,7 +204,18 @@ impl Drop for DuelSession {
 impl DuelSession {
     /// A session whose CPU choices follow `seed`.
     pub fn new(world: Arc<World>, hub: Arc<Mutex<Hub>>, seed: u64) -> DuelSession {
-        DuelSession { world, hub, entry: None, player_id: None, engine: None, reported: false, rng: seed | 1, outbox: None, table: None }
+        DuelSession {
+            world,
+            hub,
+            entry: None,
+            player_id: None,
+            engine: None,
+            reported: false,
+            rng: seed | 1,
+            outbox: None,
+            table: None,
+            watching: false,
+        }
     }
 
     /// The connection's outbox, through which the other player's commands reach this client.
@@ -253,7 +268,17 @@ impl DuelSession {
     pub fn handle(&mut self, packet: &Packet) -> Vec<Message> {
         let Packet::Message(msg) = packet else { return vec![] };
         let int = |k| msg.get(k).and_then(Value::as_u32);
+        if self.watching {
+            return vec![];
+        }
         match (msg.request(), int("duelRequestName")) {
+            // A spectator: the table's catch-up, then (through the outbox) every event of the duel.
+            (Some(WATCH), _) => {
+                let table = int("duel_id").and_then(|id| self.hub.lock().expect("hub lock").tables.get(&id).cloned());
+                let (Some(table), Some(outbox)) = (table, self.outbox.clone()) else { return vec![] };
+                self.watching = true;
+                table.lock().expect("table lock").watch(outbox)
+            }
             (Some(ENTER), _) => {
                 self.player_id = int("player_id");
                 let mut entry = self.player_id.and_then(|id| self.hub.lock().expect("hub lock").duel_entry(id));

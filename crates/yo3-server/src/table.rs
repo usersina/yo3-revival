@@ -23,11 +23,20 @@ const TIME_OUT: u32 = 11;
 const DISCONNECTED: u32 = 14;
 /// The engine's MSG_NEW_TURN {player}.
 const MSG_NEW_TURN: u64 = 40;
+/// A match's end for a spectator {match result: 1 won, 2 lost, 3 draw}: its DuelResult (0x512070) reads it at the
+/// head of its queue (MainGamen +0x820) where a player's reads the front's 0x2009.
+const MATCH_END: u32 = 1505;
 
 struct Seat {
     player_id: u32,
     entry: DuelEntry,
     outbox: Outbox,
+}
+
+/// A client watching the duel from seat 0's side, with its own translator once the duel opened.
+struct Spectator {
+    outbox: Outbox,
+    translator: Option<Translator>,
 }
 
 /// What each seat is sent, by seat.
@@ -51,6 +60,12 @@ pub struct Table {
     /// The seat of the engine's first player, and this duel's clocks (none: no time limits).
     first: usize,
     clocks: Option<Clocks>,
+    /// Spectators, and what they need to catch up: the duel's starting LP and every engine message since it opened.
+    spectators: Vec<Spectator>,
+    lp: u32,
+    history: Vec<Json>,
+    /// Seat 0's decisive janken {result, opponent's hand, own hand}, which a spectator's pre-duel screen plays first.
+    janken: [u32; 3],
     over: bool,
     rng: u64,
 }
@@ -70,6 +85,10 @@ impl Table {
             best_of: 1,
             first: 0,
             clocks: None,
+            spectators: vec![],
+            lp: DEFAULT_LP,
+            history: vec![],
+            janken: [0; 3],
             over: false,
             rng: seed | 1,
         }
@@ -104,6 +123,9 @@ impl Table {
             // Each hand beats the next one: rock > scissors > paper > rock.
             let result = if theirs == mine { 0 } else if theirs == (mine + 1) % 3 { 1 } else { 2 };
             out[s].push(command(JANKEN_RESOLVE, [result, theirs, mine, 0]));
+            if s == 0 && result != 0 {
+                self.janken = [result, theirs, mine];
+            }
             match result {
                 0 => {}
                 1 => {
@@ -158,6 +180,8 @@ impl Table {
         let (turn, total) = self.seats.iter().find_map(|s| s.entry.times).unwrap_or((DEFAULT_TURN, DEFAULT_TOTAL));
         self.first = first;
         self.clocks = Clocks::new(turn, total);
+        self.lp = lp;
+        self.history.clear();
         let mut out = Out::default();
         for (s, part) in out.iter_mut().enumerate() {
             let (mine, theirs) = (&self.seats[s].entry.deck, &self.seats[1 - s].entry.deck);
@@ -168,11 +192,76 @@ impl Table {
             part.extend(table);
             part.extend([command(DUEL_START, [0; 4]), command(SET_LP, [CLIENT, lp, 0, 0]), command(SET_LP, [CPU, lp, 0, 0])]);
         }
+        for i in 0..self.spectators.len() {
+            let (translator, opening) = self.spectator_opening();
+            self.spectators[i].translator = Some(translator);
+            for m in opening {
+                let _ = self.spectators[i].outbox.send(m);
+            }
+        }
         let more = self.advance(answer);
         for (part, more) in out.iter_mut().zip(more) {
             part.extend(more);
         }
         out
+    }
+
+    /// The players at the table, by seat, once both sat.
+    pub fn players(&self) -> Option<[u32; 2]> {
+        match &self.seats[..] {
+            [a, b] => Some([a.player_id, b.player_id]),
+            _ => None,
+        }
+    }
+
+    /// Seat 0's opening for a spectator, with both sides' hidden cards hidden: its janken and turn order (which take the
+    /// pre-duel screen to the field; 1502 {0}: no choice to make), then the setup, card table, duel start and LP.
+    fn spectator_opening(&self) -> (Translator, Vec<Message>) {
+        let (mine, theirs) = (&self.seats[0].entry.deck, &self.seats[1].entry.deck);
+        let order = if self.first == 0 { CLIENT } else { CPU };
+        let (translator, table) = Translator::spectating(order, [&mine.main, &theirs.main], self.world.cards.clone());
+        let [result, their_hand, my_hand] = self.janken;
+        let mut out = vec![
+            command(JANKEN_BEGIN, [0; 4]),
+            command(JANKEN_RESOLVE, [result, their_hand, my_hand, 0]),
+            command(FIRST_BEGIN, [0; 4]),
+            command(FIRST_RESOLVE, [if self.first == 0 { FIRST } else { SECOND }, 0, 0, 0]),
+            setup(order, mine, theirs),
+        ];
+        out.extend(table);
+        out.extend([command(DUEL_START, [0; 4]), command(SET_LP, [CLIENT, self.lp, 0, 0]), command(SET_LP, [CPU, self.lp, 0, 0])]);
+        (translator, out)
+    }
+
+    /// A spectator joins (0x1838 on the duel connection): it watches from seat 0's side, and if the duel is on it gets
+    /// seat 0's opening and the duel so far, replayed through its own translator, and the clocks. Returns those.
+    pub fn watch(&mut self, outbox: Outbox) -> Vec<Message> {
+        let mut spectator = Spectator { outbox, translator: None };
+        let mut out = vec![];
+        if self.engine.is_some() && self.seats.len() == 2 {
+            let (mut translator, opening) = self.spectator_opening();
+            out = opening;
+            out.extend(translator.events(&self.history));
+            if let Some(c) = &self.clocks {
+                out.push(c.message(0, Instant::now()));
+            }
+            spectator.translator = Some(translator);
+        }
+        self.spectators.push(spectator);
+        out
+    }
+
+    /// Sends each spectator its messages; one whose connection is gone leaves.
+    fn tell_spectators(&mut self, parts: Vec<Vec<Message>>) {
+        let mut gone = vec![];
+        for (i, part) in parts.into_iter().enumerate() {
+            if part.into_iter().any(|m| self.spectators[i].outbox.send(m).is_err()) {
+                gone.push(i);
+            }
+        }
+        for i in gone.into_iter().rev() {
+            self.spectators.remove(i);
+        }
     }
 
     /// Runs the engine from `answer`: its events go to both clients, each prompt to the client it asks (or is answered
@@ -182,7 +271,8 @@ impl Table {
         let mut out = Out::default();
         let now = Instant::now();
         let mut waiting = None;
-        let Table { engine: Some(engine), translators, clocks, first, .. } = self else { return out };
+        let mut watched: Vec<Vec<Message>> = vec![vec![]; self.spectators.len()];
+        let Table { engine: Some(engine), translators, clocks, first, spectators, history, .. } = self else { return out };
         for _ in 0..10_000 {
             let a = match answer {
                 Ok(a) => a,
@@ -197,6 +287,12 @@ impl Table {
             for (part, t) in out.iter_mut().zip(translators.iter_mut()) {
                 part.extend(t.events(&a.messages));
             }
+            for (part, s) in watched.iter_mut().zip(spectators.iter_mut()) {
+                if let Some(t) = s.translator.as_mut() {
+                    part.extend(t.events(&a.messages));
+                }
+            }
+            history.extend(a.messages.iter().cloned());
             if let Some(c) = clocks.as_mut() {
                 for m in a.messages.iter().filter(|m| m["type"].as_u64() == Some(MSG_NEW_TURN)) {
                     let seat = if m["player"].as_u64() == Some(0) { *first } else { 1 - *first };
@@ -216,16 +312,24 @@ impl Table {
             }
         }
         let results: Vec<Option<u32>> = self.translators.iter().map(Translator::result).collect();
-        if let [Some(r0), Some(r1)] = results[..] {
+        let ended = results.iter().all(Option::is_some);
+        if ended {
             self.clocks = None;
-            for (part, more) in out.iter_mut().zip(self.duel_over([r0, r1])) {
-                part.extend(more);
-            }
         }
         if let Some(c) = self.clocks.as_mut() {
             c.wait_on(waiting, now);
             for (view, part) in out.iter_mut().enumerate() {
                 part.push(c.message(view, now));
+            }
+            for part in watched.iter_mut() {
+                part.push(c.message(0, now));
+            }
+        }
+        // Spectators get the duel's end before the match's (duel_over).
+        self.tell_spectators(watched);
+        if let [Some(r0), Some(r1)] = results[..] {
+            for (part, more) in out.iter_mut().zip(self.duel_over([r0, r1])) {
+                part.extend(more);
             }
         }
         out
@@ -241,6 +345,8 @@ impl Table {
         }
         let mut results = [WON; 2];
         results[seat] = LOST;
+        let watched = vec![vec![command(DUEL_END, [results[0], TIME_OUT, 0, 0])]; self.spectators.len()];
+        self.tell_spectators(watched);
         let mut out: Out = results.map(|r| vec![command(DUEL_END, [r, TIME_OUT, 0, 0])]);
         for (part, more) in out.iter_mut().zip(self.duel_over(results)) {
             part.extend(more);
@@ -278,7 +384,8 @@ impl Table {
         [vec![command(JANKEN_BEGIN, [0; 4])], vec![command(JANKEN_BEGIN, [0; 4])]]
     }
 
-    /// The duel's end on both front connections (the result screen), counted against each other.
+    /// The match's end on both front connections (the result screen), counted against each other, and seat 0's
+    /// result to the spectators (after the duel's end they were sent).
     fn report(&mut self, results: [u32; 2]) {
         if self.over || self.seats.len() < 2 {
             return;
@@ -291,6 +398,8 @@ impl Table {
             hub.push(me, &duel_over(me, result, record));
         }
         hub.end_match(self.duel_id);
+        drop(hub);
+        self.tell_spectators(vec![vec![command(MATCH_END, [results[0], 0, 0, 0])]; self.spectators.len()]);
     }
 
     /// A client's response, then the engine onwards.
@@ -334,6 +443,8 @@ impl Table {
         if started && !self.over && self.seats.len() == 2 {
             let other = 1 - seat;
             let _ = self.seats[other].outbox.send(command(DUEL_END, [WON, DISCONNECTED, 0, 0]));
+            let seat0 = if seat == 0 { LOST } else { WON };
+            self.tell_spectators(vec![vec![command(DUEL_END, [seat0, DISCONNECTED, 0, 0])]; self.spectators.len()]);
             let mut results = [WON; 2];
             results[seat] = LOST;
             self.report(results);
