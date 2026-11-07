@@ -249,8 +249,9 @@ pub struct Hub {
     last_duel: u32,
     /// Duel entries by player_id.
     duel_entries: HashMap<u32, DuelEntry>,
-    /// Wins, losses and draws by (player_id, opponent id), since the server started.
+    /// Wins, losses and draws by (player_id, opponent id), and the file they are kept in (none: since the start).
     records: HashMap<(u32, u32), [u32; 3]>,
+    records_file: Option<std::path::PathBuf>,
     /// Players waiting for an automatic match, in order, and the matched duels.
     waiting: Vec<Waiting>,
     matches: HashMap<u32, Match>,
@@ -271,6 +272,21 @@ impl Hub {
         self.online.len()
     }
 
+    /// A hub whose duel records are kept in `file` (read now if it exists, written after each duel).
+    pub fn with_records(file: &std::path::Path) -> Hub {
+        let mut hub = Hub { records_file: Some(file.to_path_buf()), ..Hub::default() };
+        match crate::store::read(file) {
+            Ok(saved) => {
+                for r in saved.iter().flat_map(|s| s["records"].as_array()).flatten() {
+                    let n = |k: &str| r[k].as_u64().unwrap_or(0) as u32;
+                    hub.records.insert((n("player_id"), n("opponent")), [n("win"), n("lose"), n("draw")]);
+                }
+            }
+            Err(e) => tracing::warn!("records not read: {e}"),
+        }
+        hub
+    }
+
     pub fn enter_duel(&mut self, player_id: u32, entry: DuelEntry) {
         self.duel_entries.insert(player_id, entry);
     }
@@ -286,7 +302,19 @@ impl Hub {
         if let Some(n) = record.get_mut(result.wrapping_sub(1) as usize) {
             *n += 1;
         }
-        *record
+        let record = *record;
+        if let Some(file) = &self.records_file {
+            let mut all: Vec<_> = self.records.iter().collect();
+            all.sort();
+            let rows: Vec<serde_json::Value> = all
+                .into_iter()
+                .map(|((me, them), [w, l, d])| serde_json::json!({ "player_id": me, "opponent": them, "win": w, "lose": l, "draw": d }))
+                .collect();
+            if let Err(e) = crate::store::write(file, &serde_json::json!({ "records": rows })) {
+                tracing::warn!("records not saved to {}: {e}", file.display());
+            }
+        }
+        record
     }
 
     fn join(&mut self, player: &Player, outbox: Outbox) -> u64 {
@@ -373,6 +401,8 @@ pub struct FrontSession {
     online: Option<u64>,
     /// The rule (0x17AC item fields) of each duel this session asked for, by duel_id.
     duels: HashMap<u32, Vec<(String, Value)>>,
+    /// The server address this client reached, announced as the duel server's when none is advertised.
+    reached_at: Option<std::net::IpAddr>,
 }
 
 impl Drop for FrontSession {
@@ -387,7 +417,12 @@ impl Drop for FrontSession {
 
 impl FrontSession {
     pub fn new(account: Account, world: Arc<World>, hub: Arc<Mutex<Hub>>, outbox: Outbox) -> FrontSession {
-        FrontSession { account, world, hub, outbox, opened: false, selected: None, online: None, duels: HashMap::new() }
+        FrontSession { account, world, hub, outbox, opened: false, selected: None, online: None, duels: HashMap::new(), reached_at: None }
+    }
+
+    /// The server address this client connected to.
+    pub fn set_reached_at(&mut self, ip: std::net::IpAddr) {
+        self.reached_at = Some(ip);
     }
 
     fn hub(&self) -> std::sync::MutexGuard<'_, Hub> {
@@ -603,7 +638,9 @@ impl FrontSession {
         let matched = duel_id.and_then(|id| self.hub().matches.get(&id).map(|m| m.rule.clone()));
         let Some(asked) = duel_id.and_then(|id| self.duels.get(&id).cloned()).or(matched) else { return vec![ack] };
         let rule = asked.iter().fold(Message::record().with("name", Value::text("rule")), |m, (k, v)| m.with(k, v.clone()));
-        let (host, port) = &self.world.duel_server;
+        let (advertised, port) = &self.world.duel_server;
+        let reached = self.reached_at.map(|ip| ip.to_string()).unwrap_or_else(|| "127.0.0.1".into());
+        let host = if advertised.is_empty() { &reached } else { advertised };
         let data = Message::record()
             .with("name", Value::text("duelData"))
             .with("host", Value::text(host))

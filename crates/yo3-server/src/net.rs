@@ -12,11 +12,12 @@ use yo3_proto::{MAX_FRAME, Message, Packet, decrypt, frame, frame_len};
 use crate::front::Outbox;
 use crate::log::PacketLog;
 
-/// Accepts connections. `make` builds a fresh packet handler for each one; it gets the
-/// connection's outbox, through which anything (replies, pushes from other sessions) is sent.
+/// Accepts connections. `make` builds a fresh packet handler for each one; it gets the peer's address, the
+/// address the peer reached (this end), and the connection's outbox, through which anything (replies, pushes
+/// from other sessions) is sent.
 pub async fn accept_loop<M, H>(listener: TcpListener, who: &'static str, log: Arc<PacketLog>, make: M)
 where
-    M: Fn(SocketAddr, Outbox) -> H,
+    M: Fn(SocketAddr, SocketAddr, Outbox) -> H,
     H: FnMut(&Packet) -> Vec<Message> + Send + 'static,
 {
     loop {
@@ -24,7 +25,8 @@ where
             Ok((stream, peer)) => {
                 tracing::info!("[{who}] connected {peer}");
                 let (outbox, queue) = unbounded_channel();
-                let handler = make(peer, outbox.clone());
+                let local = stream.local_addr().unwrap_or(peer);
+                let handler = make(peer, local, outbox.clone());
                 let (reader, writer) = stream.into_split();
                 tokio::spawn(write_loop(writer, queue, who, log.clone()));
                 let log = log.clone();

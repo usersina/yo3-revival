@@ -1,4 +1,6 @@
 /logs/
+/data/
+/dist/
 __pycache__/
 *.pyc
 /re/

@@ -1,5 +1,6 @@
 //! Yu-Gi-Oh! ONLINE 3 private server: gate, front, duel and patch-HTTP services.
 pub mod accounts;
+mod store;
 pub mod duel;
 mod table;
 pub mod engine;
@@ -23,8 +24,9 @@ use translate::CardStats;
 #[derive(Clone, Debug)]
 pub struct Config {
     pub bind: IpAddr,
-    /// Front-server address the gate hands to clients.
-    pub advertise: String,
+    /// The address the gate hands to clients for the front server, and the front for the duel server. None: the
+    /// address each client reached, so one server answers on loopback, a LAN and a VPN at once.
+    pub advertise: Option<String>,
     pub gate_port: u16,
     pub front_port: u16,
     /// Where clients open their duel connection (DuelServerConnection); only logged so far.
@@ -38,6 +40,8 @@ pub struct Config {
     pub duel_lp: u32,
     /// Testing aid: every player's main deck in a duel, as CARD_Prop rows repeated to 40 cards (empty: their own).
     pub duel_deck: Vec<u16>,
+    /// Where accounts and duel records are kept (none: in memory only).
+    pub data_dir: Option<PathBuf>,
 }
 
 impl Config {
@@ -45,7 +49,7 @@ impl Config {
     pub fn ephemeral(log_dir: PathBuf) -> Config {
         Config {
             bind: IpAddr::V4(Ipv4Addr::LOCALHOST),
-            advertise: "127.0.0.1".into(),
+            advertise: None,
             gate_port: 0,
             front_port: 0,
             duel_port: 0,
@@ -55,6 +59,7 @@ impl Config {
             players: vec!["test".into()],
             duel_lp: 8000,
             duel_deck: vec![],
+            data_dir: None,
         }
     }
 }
@@ -79,7 +84,7 @@ impl Running {
 /// Banlist ids, card rows and NPCs from the client's own files, or ids 1-20 and nothing else if the
 /// game is absent.
 fn world(cfg: &Config, duel_port: u16) -> World {
-    let duel_server = (cfg.advertise.clone(), duel_port);
+    let duel_server = (cfg.advertise.clone().unwrap_or_default(), duel_port);
     match yo3_data::GameData::load(&cfg.game_dir) {
         Ok(data) => World {
             card_rows: data.cards.iter().map(|c| c.row as usize).max().unwrap_or(0),
@@ -130,11 +135,15 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let addrs = (gate.local_addr()?, front.local_addr()?, duel.local_addr()?, http.local_addr()?);
     let front_port = addrs.1.port();
     let world = Arc::new(world(&cfg, addrs.2.port()));
+    match &world.engine_dir {
+        Some(dir) => tracing::info!("rules engine: {}", dir.display()),
+        None => tracing::warn!("rules engine not fetched (run engine/fetch.sh): duels open but can't be played"),
+    }
 
     let gate_task = {
         let (packets, advertise) = (packets.clone(), cfg.advertise.clone());
-        tokio::spawn(net::accept_loop(gate, "gate", packets, move |_peer, _outbox| {
-            let advertise = advertise.clone();
+        tokio::spawn(net::accept_loop(gate, "gate", packets, move |_peer, local: SocketAddr, _outbox| {
+            let advertise = advertise.clone().unwrap_or_else(|| local.ip().to_string());
             let mut sent = false;
             move |_: &yo3_proto::Packet| {
                 if std::mem::replace(&mut sent, true) {
@@ -148,18 +157,29 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
             }
         }))
     };
-    let hub = Arc::new(Mutex::new(Hub::default()));
+    if let Some(dir) = &cfg.data_dir {
+        store::back_up(dir)?;
+    }
+    let hub = Arc::new(Mutex::new(match &cfg.data_dir {
+        Some(dir) => Hub::with_records(&dir.join("records.json")),
+        None => Hub::default(),
+    }));
     let front_task = {
         let (world, hub) = (world.clone(), hub.clone());
-        let directory = Mutex::new(Directory::new(cfg.players.clone()));
-        tokio::spawn(net::accept_loop(front, "front", packets.clone(), move |peer: SocketAddr, outbox| {
+        let directory = match &cfg.data_dir {
+            Some(dir) => Directory::open(cfg.players.clone(), &dir.join("accounts.json"))?,
+            None => Directory::new(cfg.players.clone()),
+        };
+        let directory = Mutex::new(directory);
+        tokio::spawn(net::accept_loop(front, "front", packets.clone(), move |peer: SocketAddr, local: SocketAddr, outbox| {
             let account = directory.lock().expect("directory lock").account_for(peer.ip());
             let mut session = FrontSession::new(account, world.clone(), hub.clone(), outbox);
+            session.set_reached_at(local.ip());
             move |p: &yo3_proto::Packet| session.handle(p)
         }))
     };
     // The duel connection (DuelManager 0x50F690): a client duels the server as the CPU, or another client at a table.
-    let duel_task = tokio::spawn(net::accept_loop(duel, "duel", packets.clone(), move |_peer, outbox| {
+    let duel_task = tokio::spawn(net::accept_loop(duel, "duel", packets.clone(), move |_peer, _local, outbox| {
         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
         let mut session = duel::DuelSession::new(world.clone(), hub.clone(), seed).with_outbox(outbox);
         move |p: &yo3_proto::Packet| session.handle(p)
@@ -172,7 +192,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         addrs.1,
         addrs.2,
         addrs.3,
-        cfg.advertise,
+        cfg.advertise.as_deref().unwrap_or("the address each client reached"),
         packets.path().display()
     );
     let tasks = vec![gate_task, front_task, duel_task, http_task];

@@ -77,3 +77,29 @@ async fn patch_index_is_served_over_http() {
     let game_has_idx = yo3_data::default_game_dir().join("yo3.idx").is_file();
     assert!(resp.starts_with(if game_has_idx { "HTTP/1.1 200" } else { "HTTP/1.1 404" }), "{resp}");
 }
+
+/// The gate's redirect (0x21FE {host, port}) to the front server for a client that reached the gate at `at`.
+async fn redirect(cfg: Config, at: [u8; 4]) -> (String, u16) {
+    let server = start(cfg).await.unwrap();
+    let mut gate = TcpStream::connect(SocketAddr::from((at, server.gate.port()))).await.unwrap();
+    send(&mut gate, &version()).await;
+    let r = recv(&mut gate).await;
+    (r.get("host").and_then(Value::as_str).unwrap(), r.get("port").and_then(Value::as_u32).unwrap() as u16)
+}
+
+#[tokio::test]
+async fn the_gate_sends_clients_back_to_the_address_they_reached() {
+    // Without --advertise, a client is sent to the front server at the address it reached the gate on, so one server
+    // works on loopback, a LAN and a VPN at once.
+    let mut cfg = Config::ephemeral(std::env::temp_dir().join("yo3-gate"));
+    cfg.bind = "127.0.0.2".parse().unwrap();
+    cfg.advertise = None;
+    assert_eq!(redirect(cfg, [127, 0, 0, 2]).await.0, "127.0.0.2");
+}
+
+#[tokio::test]
+async fn an_advertised_address_wins() {
+    let mut cfg = Config::ephemeral(std::env::temp_dir().join("yo3-gate"));
+    cfg.advertise = Some("10.9.8.7".into());
+    assert_eq!(redirect(cfg, [127, 0, 0, 1]).await.0, "10.9.8.7");
+}

@@ -513,7 +513,14 @@ only. Next: the card map, so decks, hands and draws show.
 The client never sends a user id or password. `0x1F47` is a bare request; the credentials typed at login are copied
 onto the front connection object (`+0x118`/`+0x134`, on `0x219F`) and never serialized. The server therefore tells
 accounts apart by the client's address and lets the player pick one of up to four players at Select Player
-(`0x1F4C {player_id}`).
+(`0x1F4C {player_id}`). Players can't be made from the client: `CharMake.cpp` (`0x2CF5`/`0x2CF6`, reached from the
+map's `GoCharMake`) edits an existing player's appearance, and the original made players on Konami's website. So
+the host names them (see `docs/friends.md`).
+
+The gate's redirect (`0x21FE {host, port}`) and the duel server's `0x22C4 duelData {host, port}` carry the address
+each client reached the server at (the connection's own address), unless the server is told one: one server then
+answers on loopback, a LAN and a VPN at once. Live: a client whose `yo3.ini` named the LAN address got the LAN
+address for the front and duel servers, another on `127.0.0.1` got loopback.
 
 ## Fields the client reads that we leave out
 

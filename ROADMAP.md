@@ -145,12 +145,21 @@ Stop finding missing fields one crash at a time.
 - **Exit:** two clients play a full duel with real decks to a finish (met 2026-11-07: two headless clients matched
   through Auto Duel and played their starter decks to a win)
 
-## M6: Play with friends
+## ▶ M6: Play with friends
 
-- [ ] Run on a LAN or VPN (`--advertise`), firewall notes (TCP 5730, 1213, 1214, 8080)
-- [ ] Release builds (Linux, Windows), a one-page setup guide for friends (`yo3.ini`, Wine or Windows)
-- [ ] Backups and a few admin commands
-- **Exit:** friends connect from their own machines and duel
+- [x] Run on a LAN or VPN: `--bind 0.0.0.0`; the gate and the front send each client to the address it reached
+      (`--advertise` only for port forwarding); firewall notes (TCP 5730, 1213, 1214, 8080). Live: a client through
+      the LAN address and one through loopback, two accounts, a duel to a win between them
+- [x] Accounts kept in `data/accounts.json` and duel records in `data/records.json`, backed up at each start; new
+      players' names made unique (Duelist, Duelist2…)
+- [x] Admin commands: `accounts`, `add-player ADDRESS NAME` (name a friend's player before they connect), `rename`
+- [x] Linux release bundle (`tools/release.sh`: server, engine sources, `run.sh`) and the setup guide for the host
+      and the players (`docs/friends.md`: `yo3.ini`, Windows or Wine, LAN / VPN / port forwarding)
+- [ ] A native Windows server build (needs `rustup target add x86_64-pc-windows-gnu`; a Windows host can use WSL)
+- [ ] The chain question for Quick-Play Spells in hand comes at every timing that fits; follow the client's own
+      `invoke_conf` duel option (Effect dialog levels below 4)
+- **Exit:** friends connect from their own machines and duel (the network path is verified on one machine: a client
+  through the LAN address against one through loopback, 2026-11-07; real friends' machines not tried yet)
 
 ## Open questions and guesses (revisit)
 
@@ -201,6 +210,7 @@ Stop finding missing fields one crash at a time.
 | Result screen counts | `win`/`lose`/`draw` = totals against this opponent including this duel, `*_add` = this duel's change; kept in memory | The client only shows them ("Wins 1 (+001)") |
 | Duel port | 1214 | The original's port is unknown; the client takes whatever `duelData` says |
 | Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
+| Player names | the starting names (`--players`, default Duelist) made unique with a number; the host names players with `add-player` / `rename` | The original made players on Konami's website; the client can't create one (CharMake is the appearance editor) |
 
 ## Leads (outside the code)
 

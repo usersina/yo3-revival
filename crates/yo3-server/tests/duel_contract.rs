@@ -198,3 +198,27 @@ fn the_hub_keeps_each_players_record_against_each_opponent() {
     assert_eq!(hub.record_result(1002, 125, 3), [0, 0, 1]);
     assert_eq!(hub.record_result(1003, 124, 1), [1, 0, 0]);
 }
+
+#[test]
+fn the_duel_server_is_announced_at_the_address_the_client_reached() {
+    // Without an advertised host, 0x22C4's duelData host is the front connection's own address.
+    let world = World { duel_server: (String::new(), 4321), ..world() };
+    let mut c = Server::with_world(world).join(1001, "Yugi");
+    c.session.set_reached_at("192.168.1.2".parse().unwrap());
+    let duel_id = start_npc_duel(&mut c);
+    let r = c.send(req_with(0x17D4, &[("duel_id", Value::U32(duel_id))]));
+    let data = r[1].items.iter().find(|i| i.get("name").and_then(Value::as_str).as_deref() == Some("duelData")).unwrap();
+    assert_eq!(data.get("host").and_then(Value::as_str).as_deref(), Some("192.168.1.2"));
+}
+
+#[test]
+fn records_are_kept_across_restarts() {
+    let dir = std::env::temp_dir().join(format!("yo3-records-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let path = dir.join("records.json");
+    let mut hub = yo3_server::front::Hub::with_records(&path);
+    hub.record_result(1001, 1002, 1);
+    let mut hub = yo3_server::front::Hub::with_records(&path);
+    assert_eq!(hub.record_result(1001, 1002, 1), [2, 0, 0]);
+    assert_eq!(hub.record_result(1002, 1001, 2), [0, 1, 0]);
+}
