@@ -111,11 +111,13 @@ Stop finding missing fields one crash at a time.
       (LP 8000 → 7350; it went to the graveyard pile)
 - [x] Field stats: a monster entering a monster zone gets its record (data commands `0x3E9`–`0x3EB`) with CARD_Prop's
       ATK/DEF, level, attribute and race; the field label and card info show them
+- [ ] The duel's end on screen: command 2 {result, reason} reaches DuelScene and its DuelEndEffect, but the win/lose
+      movie never shows and the client stays on the field (docs/protocol.md); then the result screen and the results
+      to the front server
 - [ ] Translator: the client's own target and effect choices (ocgcore SELECT_CARD and co. are answered for it now),
       attack and summon animations (DuelBattle `0xA`–`0xE`, DuelSummon `0x2A`–`0x32`), position changes, stat changes
-      from effects (engine queries), chains, the duel's end on screen (command 2, not seen live), results to the front
-      server
-- [ ] Deck piles on the field (the deck count alone shows none); phase buttons (client `duelRequestName` 3)
+      from effects (engine queries), chains
+- [ ] Deck piles on the field (the deck count alone shows none)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)
 - [x] Online 3's duel stream is Konami's engine family but renumbered (turn change 6, LP set `0xF`; docs/protocol.md)
