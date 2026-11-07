@@ -2,6 +2,7 @@
 //! hands and runs one rules engine for both. Each client sees itself as player 0 through its own translator; an engine
 //! prompt goes to the client it asks, and each client's commands reach the other through that connection's outbox.
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use serde_json::Value as Json;
 use yo3_proto::Message;
@@ -10,14 +11,18 @@ use crate::duel::{
     CLIENT, CPU, CardCommand, DUEL_START, FIRST, FIRST_BEGIN, FIRST_RESOLVE, JANKEN_BEGIN, JANKEN_RESOLVE, SECOND, SET_LP,
     command, setup, shuffle,
 };
+use crate::clock::{Clocks, DEFAULT_TOTAL, DEFAULT_TURN};
 use crate::engine::{Answer, Engine};
 use crate::front::{DuelEntry, Hub, Outbox, World, duel_over};
 use crate::translate::{DUEL_END, LOST, Prompt, Translator, WON};
 
 /// The usual starting LP (the server's own unless --duel-lp changes it).
 const DEFAULT_LP: u32 = 8000;
-/// The duel-end reason "has disconnected" (text 1999 + 14).
+/// The duel-end reasons "has ran out of time" and "has disconnected" (text 1999 + 11, + 14).
+const TIME_OUT: u32 = 11;
 const DISCONNECTED: u32 = 14;
+/// The engine's MSG_NEW_TURN {player}.
+const MSG_NEW_TURN: u64 = 40;
 
 struct Seat {
     player_id: u32,
@@ -43,6 +48,9 @@ pub struct Table {
     /// Duels won so far in the match, by seat, and how many it takes.
     wins: [u32; 2],
     best_of: u32,
+    /// The seat of the engine's first player, and this duel's clocks (none: no time limits).
+    first: usize,
+    clocks: Option<Clocks>,
     over: bool,
     rng: u64,
 }
@@ -60,6 +68,8 @@ impl Table {
             translators: vec![],
             wins: [0; 2],
             best_of: 1,
+            first: 0,
+            clocks: None,
             over: false,
             rng: seed | 1,
         }
@@ -144,6 +154,10 @@ impl Table {
         let lp = hosted.filter(|_| self.world.start_lp == DEFAULT_LP).unwrap_or(self.world.start_lp);
         let answer = engine.new_duel(crate::duel::next(&mut self.rng), lp, [(&m0, &e0), (&m1, &e1)]);
         self.engine = Some(engine);
+        // A hosted duel's time_turn and time_total, else Create Duel's defaults.
+        let (turn, total) = self.seats.iter().find_map(|s| s.entry.times).unwrap_or((DEFAULT_TURN, DEFAULT_TOTAL));
+        self.first = first;
+        self.clocks = Clocks::new(turn, total);
         let mut out = Out::default();
         for (s, part) in out.iter_mut().enumerate() {
             let (mine, theirs) = (&self.seats[s].entry.deck, &self.seats[1 - s].entry.deck);
@@ -162,10 +176,13 @@ impl Table {
     }
 
     /// Runs the engine from `answer`: its events go to both clients, each prompt to the client it asks (or is answered
-    /// when that client has no window for it), until a client must choose or the duel ends.
+    /// when that client has no window for it), until a client must choose or the duel ends. The clocks follow: a new
+    /// turn fills its player's turn clock, and the client waited on has its clocks run (0x14 to both).
     fn advance(&mut self, mut answer: std::io::Result<Answer>) -> Out {
         let mut out = Out::default();
-        let Table { engine: Some(engine), translators, .. } = self else { return out };
+        let now = Instant::now();
+        let mut waiting = None;
+        let Table { engine: Some(engine), translators, clocks, first, .. } = self else { return out };
         for _ in 0..10_000 {
             let a = match answer {
                 Ok(a) => a,
@@ -180,6 +197,12 @@ impl Table {
             for (part, t) in out.iter_mut().zip(translators.iter_mut()) {
                 part.extend(t.events(&a.messages));
             }
+            if let Some(c) = clocks.as_mut() {
+                for m in a.messages.iter().filter(|m| m["type"].as_u64() == Some(MSG_NEW_TURN)) {
+                    let seat = if m["player"].as_u64() == Some(0) { *first } else { 1 - *first };
+                    c.new_turn(seat, now);
+                }
+            }
             let last = a.messages.last();
             let (true, Some(last)) = (a.status == "await", last) else { break };
             let Some(s) = translators.iter().position(|t| t.prompted(last)) else { break };
@@ -187,17 +210,46 @@ impl Table {
                 Prompt::Answer(response) => answer = engine.respond(response),
                 Prompt::Client(messages) => {
                     out[s].extend(messages);
+                    waiting = Some(s);
                     break;
                 }
             }
         }
         let results: Vec<Option<u32>> = self.translators.iter().map(Translator::result).collect();
         if let [Some(r0), Some(r1)] = results[..] {
+            self.clocks = None;
             for (part, more) in out.iter_mut().zip(self.duel_over([r0, r1])) {
                 part.extend(more);
             }
         }
+        if let Some(c) = self.clocks.as_mut() {
+            c.wait_on(waiting, now);
+            for (view, part) in out.iter_mut().enumerate() {
+                part.push(c.message(view, now));
+            }
+        }
         out
+    }
+
+    /// The server's clock check: once the player waited on is out of time, the duel ends with them losing by time out
+    /// (command 2 {result, 11}), and the match goes on or ends as after any duel.
+    pub fn tick(&mut self, now: Instant) {
+        let Some(seat) = self.clocks.as_ref().and_then(|c| c.expired(now)) else { return };
+        self.clocks = None;
+        if self.over || self.seats.len() < 2 {
+            return;
+        }
+        let mut results = [WON; 2];
+        results[seat] = LOST;
+        let mut out: Out = results.map(|r| vec![command(DUEL_END, [r, TIME_OUT, 0, 0])]);
+        for (part, more) in out.iter_mut().zip(self.duel_over(results)) {
+            part.extend(more);
+        }
+        for (s, part) in out.into_iter().enumerate() {
+            for m in part {
+                let _ = self.seats[s].outbox.send(m);
+            }
+        }
     }
 
     /// A duel's end: the match's end once someone has won the majority of `best_of` (the result screens), else the

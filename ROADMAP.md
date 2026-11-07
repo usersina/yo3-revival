@@ -100,7 +100,11 @@ Stop finding missing fields one crash at a time.
       duel starts with the host's LP. Live: Kaiba challenged Yugi's hosted duel and both reached the janken
 - [x] Match Mode: best of three on one duel connection (1500 starts the next duel's janken, `0x2009` carries the
       match result); Auto Duel's Both matches either rule format. Live: Kaiba won a hosted match 2–0
-- [ ] Card Swap between a match's duels (1504, side deck); Create Duel's time limits; its Friend/Team limits; watching
+- [x] Duel clocks between players: the timers message (`0x14`) drives each side's turn and total clocks; the server
+      runs them while the engine waits on a player and ends the duel when one runs out (reason 11). Live: in an Auto
+      Duel Kaiba's clock ran down from 180 while Yugi's stood still, and an idle player lost: "Yugi has ran out of
+      time.", then the match went on to its next duel
+- [ ] Card Swap between a match's duels (1504, side deck); Create Duel's Friend/Team limits; watching
       duels (mode 4, `0x1838`)
 - [x] NPC roster and duel start: 26 NPCs (ids 120–197 from the NPC deck presets) listed by name with their
       levels; picking one runs `0x1784` → `0x17AC` → Select Deck (`0x1F4F`) → `0x17D4`, and the duel screen opens
@@ -245,6 +249,7 @@ Stop finding missing fields one crash at a time.
 | Destruction by effects | CardVanish (`0x1F`, the shatter) before the move; CardBreak (`0x20`) never sent | Which of the two the original sent, and when, is unknown; CardVanish is the one with an effect |
 | MSG_MOVE's reason | read back by a query at the card's new place after each processing step | A card that moves again within the same step reports its later reason |
 | Stat changes | level, ATK, DEF, base ATK, base DEF from the engine; race and attribute stay CARD_Prop's | The client's race and attribute numbering isn't ocgcore's; type-changing effects are rare in the card pool |
+| Duel clocks | turn clock full again at each of the player's turns, both clocks running while the engine waits on that player (also during client animations), a time-out 5 s after 0; Auto Duel 180 s / 600 s, hosted duels their `time_turn` / `time_total` (0: off), NPC duels none | The original's clock rules and Auto Duel's limits are unknown; the clocks follow Create Duel's own defaults |
 | Option labels | EDOPro's system strings 60/61 and 70–72 mapped to the client's labels; a card's own strings take the first option | The original server's label per card option is unknown |
 | Chain chances | level 3 after an event (summon, attack, damage… or during a chain), 1 at a phase or step, 0 when no card fits (`spe_count` 0); the player's Activation Message option decides; messages 7/8 (Spell/Trap zone)/269 | The original server's levels and which windows it judged "low priority" are unknown |
 | Rules | EDOPro's `MODE_MR2` | Online 3 (2010) ran Master Rule 2; EDOPro's preset may differ in details |

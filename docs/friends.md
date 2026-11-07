@@ -72,7 +72,10 @@ account starts with 5000 BOOSTERPASS Points (100 a pack), duels earn more (100 f
 loss; the shop shows them after your next login or purchase), and the cards you pull are kept on the server. A
 structure deck you buy shows up in Edit Deck's deck list, ready to duel with.
 
-Not yet: changing the side deck between a match's duels, duel timers, watching duels, effects that make you choose between a
+Duels between players have clocks: 3 minutes a turn and 10 minutes a duel (or the host's choice in Create Duel), and
+running out loses the duel.
+
+Not yet: changing the side deck between a match's duels, watching duels, effects that make you choose between a
 card's own options (the first is taken), protectors, avatar items, trading and rental in the shop. Players' decks stay on their own machines (in `Documents\Yu-Gi-Oh! ONLINE 3`).
 
 ## When something goes wrong

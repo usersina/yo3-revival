@@ -230,3 +230,25 @@ fn a_match_goes_on_to_its_next_duel_until_someone_wins_two() {
     assert_eq!(ends(&to_a), [(2, [2, 1, 0, 0])], "duel 2: 1002 has won two");
     assert_eq!(ends(&to_b), [(2, [1, 1, 0, 0])]);
 }
+
+#[test]
+fn a_player_who_runs_out_of_time_loses() {
+    // The first player is waited on: both clients get the clocks (0x14), the first player's running (timerKind 0 for
+    // its client, 1 for the opponent's). Once its time is out (the server's clock check), it loses with reason 11
+    // ("has ran out of time"), the other wins, and the hub counts it.
+    let Some((mut a, mut b, hub)) = after_janken(true) else { return };
+    let to_a = a.send(0xD, &[("choice", 1)]);
+    let to_b = b.pushed();
+    let timers = |out: &[Message]| -> Vec<(u32, u32)> {
+        out.iter()
+            .filter(|m| m.get("duelRequestName") == Some(&Value::U32(0x14)))
+            .map(|m| (m.get("timerKind").and_then(Value::as_u32).unwrap(), m.get("start").and_then(Value::as_u32).unwrap()))
+            .collect()
+    };
+    assert_eq!(timers(&to_a).last(), Some(&(0, 1)), "1001's clocks run on its own client");
+    assert_eq!(timers(&to_b).last(), Some(&(1, 1)), "and as the opponent's on 1002's");
+    yo3_server::duel::tick_tables(&hub, std::time::Instant::now() + std::time::Duration::from_secs(1000));
+    assert_eq!(commands(&a.pushed()).last(), Some(&(2, [2, 11, 0, 0])));
+    assert_eq!(commands(&b.pushed()).last(), Some(&(2, [1, 11, 0, 0])));
+    assert_eq!(hub.lock().unwrap().record_result(1002, 1001, 0), [1, 0, 0], "1002's win is counted");
+}

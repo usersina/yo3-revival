@@ -7,6 +7,7 @@ pub mod engine;
 pub mod translate;
 pub mod front;
 pub mod shop;
+pub mod clock;
 mod log;
 mod net;
 
@@ -204,6 +205,17 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
             move |p: &yo3_proto::Packet| session.handle(p)
         }))
     };
+    // Duel clocks between players run out on the server's side: checked once a second.
+    let clock_task = {
+        let hub = hub.clone();
+        tokio::spawn(async move {
+            let mut every = tokio::time::interval(std::time::Duration::from_secs(1));
+            loop {
+                every.tick().await;
+                duel::tick_tables(&hub, std::time::Instant::now());
+            }
+        })
+    };
     // The duel connection (DuelManager 0x50F690): a client duels the server as the CPU, or another client at a table.
     let duel_task = tokio::spawn(net::accept_loop(duel, "duel", packets.clone(), move |_peer, _local, outbox| {
         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
@@ -221,6 +233,6 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         cfg.advertise.as_deref().unwrap_or("the address each client reached"),
         packets.path().display()
     );
-    let tasks = vec![gate_task, front_task, duel_task, http_task];
+    let tasks = vec![gate_task, front_task, duel_task, http_task, clock_task];
     Ok(Running { gate: addrs.0, front: addrs.1, duel: addrs.2, http: addrs.3, tasks })
 }

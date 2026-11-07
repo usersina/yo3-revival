@@ -158,6 +158,8 @@ pub struct DuelEntry {
     pub lp: Option<u32>,
     /// Duels in the match: 3 for Match Mode, else one (0 counts as one).
     pub best_of: u32,
+    /// The duel's time limits in seconds (turn, total; 0: off), when the match set them (a hosted duel's).
+    pub times: Option<(u32, u32)>,
 }
 
 /// The rule's match_type (DuelMenu's table 0x790C50 by Rule Format button): Single Mode, Match Mode (best of three),
@@ -208,6 +210,8 @@ struct Waiting {
 struct Match {
     players: [u32; 2],
     rule: Vec<(String, Value)>,
+    /// A hosted duel's time_turn and time_total.
+    times: Option<(u32, u32)>,
 }
 
 /// How long the second player's match push waits after its 0x1799, so the agent has read that first (**guess**: it
@@ -479,7 +483,7 @@ impl Hub {
             Message::reply(0x1978).item(vs.clone().with("name", Value::text("vsPlayerData"))).item(data.with("duel_id", Value::U32(duel_id)))
         };
         let pushes = [(other.player_id, push(&me.record)), (me.player_id, push(&other.record))];
-        self.matches.insert(duel_id, Match { players: [other.player_id, me.player_id], rule });
+        self.matches.insert(duel_id, Match { players: [other.player_id, me.player_id], rule, times: None });
         Some((duel_id, pushes))
     }
 
@@ -762,7 +766,8 @@ impl FrontSession {
                         let rule = |k: &str| m.rule.iter().find(|(n, _)| n == k).and_then(|(_, v)| v.as_u32());
                         let lp = rule("lp_start").filter(|&lp| lp > 0);
                         let best_of = if rule("match_type") == Some(MATCH_MODE) { 3 } else { 1 };
-                        hub.enter_duel(player_id, DuelEntry { deck, duel_id: Some(id), opponent, lp, best_of, ..DuelEntry::default() });
+                        let times = m.times;
+                        hub.enter_duel(player_id, DuelEntry { deck, duel_id: Some(id), opponent, lp, best_of, times, ..DuelEntry::default() });
                     }
                 }
                 Message::reply(0x22CA)
@@ -1036,7 +1041,9 @@ impl FrontSession {
             if let Some(record) = challenger_record {
                 pushes.push((player_id, push(&record)));
             }
-            hub.matches.insert(duel_id, Match { players: [player_id, challenger], rule });
+            let setting = |k| host.setting(k).and_then(Value::as_u32).unwrap_or(0);
+            let times = Some((setting("time_turn"), setting("time_total")));
+            hub.matches.insert(duel_id, Match { players: [player_id, challenger], rule, times });
             let outboxes: Vec<(Outbox, Message)> = pushes
                 .into_iter()
                 .filter_map(|(to, m)| hub.online.values().find(|o| o.player_id == to).map(|o| (o.outbox.clone(), m)))

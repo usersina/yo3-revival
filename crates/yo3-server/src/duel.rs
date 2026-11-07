@@ -86,6 +86,14 @@ pub(crate) fn move_place(player: u32, zone: u32, index: usize) -> u32 {
 }
 
 /// An engine command, as pump case 0x11 reads it.
+/// The server's clock check for every duel between players (once a second, and in tests at any `now`).
+pub fn tick_tables(hub: &Arc<Mutex<Hub>>, now: std::time::Instant) {
+    let tables: Vec<_> = hub.lock().expect("hub lock").tables.values().cloned().collect();
+    for table in tables {
+        table.lock().expect("table lock").tick(now);
+    }
+}
+
 pub fn command(id: u32, params: [u32; 4]) -> Message {
     let m = Message::reply(SERVER_DUEL).with("duelRequestName", Value::U32(ENGINE_COMMAND)).with("id", Value::U32(id));
     params.iter().zip(["param1", "param2", "param3", "param4"]).fold(m, |m, (v, k)| m.with(k, Value::U32(*v)))

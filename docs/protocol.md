@@ -327,7 +327,7 @@ We send request `0x200D` (**guess**: no reader).
 | `0x10` | `BusyEffectID` | `0x520AB0` | shape |
 | `0x11` engine command | `id`, `param1`…`param4` | queued as `{id, request, param1..param4}` (`0x523541`) on the engine (`0x82D2C0` `+0x54`); scenes pop one when their queued states (animations) are done (`0x522A50`, `0x4D3220`) | confirmed (live) |
 | `0x12` | `comIDsize`, `helpIDsize`, `otherFlagSize`, `COMIDDATA` (raw, u32 BE) | command ids per card, help ids, flags | shape |
-| `0x14` timers | `timerKind`, `start`, `count1`, `total1`, `count2`, `total2`, `other` and their `_max` | `0x520A00` | shape |
+| `0x14` timers | `timerKind`, `start`, `count1`, `total1`, `count2`, `total2`, `other` and their `_max` | sets the engine's five clock slots (`0x520A00`: value, now, stopped, max) — 0 `count1`, 1 `count2`, 2 `total1`, 3 `total2`, 4 `other` — then `timerKind` 0 or 2 runs (`start` ≠ 0) or stops slots 0 and 2, 1 or 3 slots 1 and 3, 4 runs slot 4 (pump case `0x52396A`). See "Duel clocks" | confirmed (live below) |
 | `0x15` duel setup | `FirstPlayer`, `PlayerNum`, `PlayerType001/002`, `MainDeckNum001/002`, `ExtraDeckNum001/002` | stored on the engine (`+0x1AC`…`+0x1E4`) | shape |
 
 | Client `duelRequestName` | Fields | Sender |
@@ -425,6 +425,21 @@ sends it for MSG_POS_CHANGE (a Set card activated, an attacked monster flipped, 
 MSG_FLIPSUMMONING, without the defense bit for a Spell/Trap; the opponent's card turning face-up gets its row (1000)
 and field record first. Live: Giant Orc turned sideways at the end of its Battle Phase (`0x1C 0xC000`); a Set Trap
 Hole turned face-up as it was activated.
+
+**Duel clocks** (DuelCockpit's update `0x502660`). Each side shows a turn clock (Flash `setTime`, with `setTimeGauge`
+against its max) and a total clock (`setTotalTime`, mm:ss): slot (`PlayerNum` ≠ side) for the turn clock and that + 2
+for the total, so with `PlayerNum` 0 slots 0 and 2 are the client's, 1 and 3 the opponent's. A running slot counts
+down by wall-clock seconds (`_time32`) to 0; nothing in the client acts when it gets there, so the server decides.
+Running out of time ends a duel with reason 11, text 2010 "@@s has ran out of time.". The server runs a chess
+clock in duels between players: each player has a turn clock, full again at the start of each of their turns, and a
+total clock for the duel; both run while the engine waits on that player, and the first to empty loses (command 2
+{result, 11}). Each client gets `0x14` with its own clocks as 1 whenever the waited-on player changes. A hosted duel
+takes its `time_turn` and `time_total` (0: that clock off); Auto Duel takes Create Duel's defaults, 180 s and 600 s
+(**guess**); NPC duels have none. A client starts counting when it takes `0x14` off its queue, after the animations
+before it, so the server calls a time-out 5 s after 0. Live (Auto Duel, Match Mode): Yugi's clock ran (TIME 169, 09:49)
+while Kaiba's stood at 180 and 10:00, each mirrored on the other client with "Now Thinking"; Kaiba, left idle, lost
+duel 1 by time out (his total down to 07:00), the match went on, and in duel 2 Yugi's screen read "YOU LOSE — Yugi
+has ran out of time." with its turn clock at 3 (hence the grace).
 
 **Battles** (DuelBattle `0x4F8A90`; its caller `0x4F840E` passes `param1` in ECX, `param3` in EDX and `param2` on the
 stack; DuelScene's busy check `0x515300` holds the queue while its state `+0x74` runs):
