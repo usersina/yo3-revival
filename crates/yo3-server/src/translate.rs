@@ -46,7 +46,13 @@ const MSG_DAMAGE: u64 = 91;
 const MSG_RECOVER: u64 = 92;
 const MSG_LPUPDATE: u64 = 94;
 const MSG_POS_CHANGE: u64 = 53;
+const MSG_SUMMONING: u64 = 60;
+const MSG_SPSUMMONING: u64 = 62;
 const MSG_FLIPSUMMONING: u64 = 64;
+const MSG_ATTACK: u64 = 110;
+const MSG_BATTLE: u64 = 111;
+const MSG_ATTACK_DISABLED: u64 = 112;
+const MSG_DAMAGE_STEP_END: u64 = 114;
 const MSG_CHAINING: u64 = 70;
 const MSG_CHAIN_END: u64 = 74;
 const MSG_PAY_LPCOST: u64 = 100;
@@ -99,6 +105,18 @@ const GRAVE: u32 = 0xE;
 const REMOVED: u32 = 0xF;
 /// A field card's new face and position in place {place as moves give it} (CardFlipTurn, DuelCardManager 0x4FF000).
 const FLIP_TURN: u32 = 0x1C;
+/// A battle (DuelBattle 0x4F8A90): start; the attack {attacker's player | zone << 8, target's player, target's zone or
+/// NO_TARGET}; the battle's outcome per player {damage figure on the client's card, on the opponent's, flags: DESTROYED
+/// for the client's card, << 8 for the opponent's} (the effect at a card ends hiding it when DESTROYED); end.
+const VIEW_BATTLE_INIT: u32 = 0xA;
+const VIEW_BATTLE_ATTACK: u32 = 0xC;
+const VIEW_BATTLE_RUN: u32 = 0xD;
+const VIEW_BATTLE_END: u32 = 0xE;
+const NO_TARGET: u32 = 0xFFFF_FFFF;
+const DESTROYED: u32 = 2;
+/// The summon effects at a card {player, uid} (DuelScene 0x514290): Normal (or the player's ace), Special.
+const RUN_SUMMON: u32 = 0x38;
+const RUN_SP_SUMMON: u32 = 0x39;
 /// Data commands that build a field card's record (pop 0x522A50).
 const RECORD_BEGIN: u32 = 0x3E9;
 const RECORD_MORE: u32 = 0x3EA;
@@ -253,6 +271,8 @@ pub struct Translator {
     chain_list: bool,
     /// The chain's last link (MSG_CHAINING) until the chain ends.
     chaining: Option<Json>,
+    /// A battle shown on the client and not ended yet.
+    in_battle: bool,
     /// The last selection hint (HINTMSG_*) and the client's picks in the card list so far.
     hint: u64,
     picks: Vec<usize>,
@@ -296,6 +316,7 @@ impl Translator {
             pending: None,
             chain_list: false,
             chaining: None,
+            in_battle: false,
             hint: 0,
             picks: vec![],
             result: None,
@@ -348,6 +369,7 @@ impl Translator {
                     }
                 }
                 Some(MSG_NEW_PHASE) => {
+                    out.extend(self.end_battle());
                     if let Some(phase) = m["phase"].as_u64().and_then(client_phase) {
                         out.push(command(PHASE, [self.turn_player, phase, 0, 0]));
                     }
@@ -359,6 +381,19 @@ impl Translator {
                 // Also a Set Spell/Trap turning face-up as it is activated.
                 Some(MSG_POS_CHANGE | MSG_FLIPSUMMONING) => out.extend(self.turn(m, m["position"].as_u64().unwrap_or(0))),
                 Some(MSG_CHAINING) => self.chaining = Some(m.clone()),
+                Some(MSG_ATTACK) => {
+                    out.extend(self.end_battle());
+                    out.extend(self.attack(m));
+                }
+                Some(MSG_BATTLE) => out.extend(self.battle(m)),
+                Some(MSG_DAMAGE_STEP_END | MSG_ATTACK_DISABLED) => out.extend(self.end_battle()),
+                Some(kind @ (MSG_SUMMONING | MSG_SPSUMMONING)) => {
+                    let id = if kind == MSG_SUMMONING { RUN_SUMMON } else { RUN_SP_SUMMON };
+                    let card = self.engine_place(m).and_then(|p| Some((p.player, self.sides[p.player as usize].zones.get(&p.zone)?.first()?.uid)));
+                    if let Some((player, uid)) = card {
+                        out.push(command(id, [player, uid, 0, 0]));
+                    }
+                }
                 Some(MSG_CHAIN_END) => self.chaining = None,
                 Some(MSG_WIN) => {
                     let result = match m["player"].as_u64() {
@@ -439,6 +474,46 @@ impl Translator {
             }
         }
         out
+    }
+
+    /// MSG_ATTACK {card, target}: the battle's start and the attack, at the target or directly.
+    fn attack(&mut self, m: &Json) -> Vec<Message> {
+        let Some(attacker) = self.engine_place(&m["card"]) else { return vec![] };
+        let (player, zone) = self.engine_place(&m["target"]).map_or((0, NO_TARGET), |t| (t.player, t.zone));
+        self.in_battle = true;
+        vec![command(VIEW_BATTLE_INIT, [0; 4]), command(VIEW_BATTLE_ATTACK, [attacker.player | attacker.zone << 8, player, zone, 0])]
+    }
+
+    /// MSG_BATTLE {card, target: {attack, defense, position, destroyed}}: per player, the battle damage they take, by
+    /// ATK against ATK, or DEF when the target defends (effects that change it aren't followed), and whether their card
+    /// is destroyed. The client pairs the values with the cards by player (DuelBattle states 5 and 6). A direct
+    /// attack's target is an empty place (location 0; ocgcore-wasm parses it like any card): no figures, since there
+    /// is no target card to show them at (the LP change shows the damage).
+    fn battle(&self, m: &Json) -> Vec<Message> {
+        let (card, target) = (&m["card"], &m["target"]);
+        if target["location"].as_u64().unwrap_or(0) == 0 {
+            return vec![command(VIEW_BATTLE_RUN, [0; 4])];
+        }
+        let n = |c: &Json, k: &str| c[k].as_i64().unwrap_or(0);
+        let destroyed = |c: &Json| if c["destroyed"] == true { DESTROYED } else { 0 };
+        let (to_attacker, to_target) = if target["position"].as_u64().unwrap_or(0) & (POS_FACEUP_ATTACK | POS_FACEDOWN_ATTACK) != 0 {
+            let diff = n(card, "attack") - n(target, "attack");
+            (-diff.min(0), diff.max(0))
+        } else {
+            ((n(target, "defense") - n(card, "attack")).max(0), 0)
+        };
+        let (mut damage, mut flags) = ([0u32; 2], [0u32; 2]);
+        let attacker = self.player(&card["controller"]) as usize;
+        damage[attacker] = to_attacker as u32;
+        damage[1 - attacker] = to_target as u32;
+        flags[attacker] = destroyed(card);
+        flags[1 - attacker] = destroyed(target);
+        vec![command(VIEW_BATTLE_RUN, [damage[0], damage[1], flags[0] | flags[1] << 8, 0])]
+    }
+
+    /// The end of the battle shown on the client, if one is.
+    fn end_battle(&mut self) -> Vec<Message> {
+        if std::mem::take(&mut self.in_battle) { vec![command(VIEW_BATTLE_END, [0; 4])] } else { vec![] }
     }
 
     /// A field card turns in place to `position`: 0x1C with its new face and position, after its table entry and record

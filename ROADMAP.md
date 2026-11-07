@@ -132,9 +132,11 @@ Stop finding missing fields one crash at a time.
 - [x] Position changes and flips on the field: command `0x1C` (CardFlipTurn) for MSG_POS_CHANGE and flip summons; the
       command ids named after Konami's view types (Master Duel's `DuelViewType`). Live: Giant Orc to defense after
       attacking, a Set Trap Hole turning face-up
-- [ ] Translator: attack, summon and chain animations (DuelBattle `0xA`–`0xE`, RunSummon `0x38`/`0x39`, DuelChain
-      `0x33`/`0x34`), destruction (`0x20` CardBreak), stat changes from effects (engine queries); attack targets on
-      the field instead of the list
+- [x] Battle and summon animations: BattleInit/Attack/Run/End (`0xA`–`0xE`, figures and destruction per player)
+      and RunSummon/RunSpSummon (`0x38`/`0x39`). Live: the NPC's attack cut-in, the hit, the destroyed card going,
+      summon sparkles
+- [ ] Chain link animations (DuelChain `0x33`/`0x34`: which card each link is on), destruction by effects (`0x20`
+      CardBreak), stat changes from effects (engine queries); attack targets on the field instead of the list
 - [ ] Deck piles on the field (the deck count alone shows none)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)

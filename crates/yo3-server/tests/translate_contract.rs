@@ -631,3 +631,70 @@ fn an_activated_set_card_turns_face_up() {
         "prev_position": 10, "position": 5 });
     assert_eq!(flips(&t.events(&[flip])), [5 << 1 | 1 << 14]);
 }
+
+/// The battle and summon commands among `out` (0xA-0xE, 0x38, 0x39).
+fn shows(out: &[Message]) -> Vec<(u32, [u32; 4])> {
+    out.iter().map(cmd).filter(|(id, _)| matches!(id, 0xA..=0xE | 0x38 | 0x39)).collect()
+}
+
+fn loc(controller: u32, location: u32, sequence: u32, position: u32) -> serde_json::Value {
+    json!({ "controller": controller, "location": location, "sequence": sequence, "position": position })
+}
+
+#[test]
+fn an_attack_plays_on_the_field() {
+    // DuelBattle (0x4F8A90; the call at 0x4F840E passes param1 in ECX, param3 in EDX, param2 on the stack):
+    // BattleInit 0xA, BattleAttack 0xC {attacker's player | its zone << 8, the target's player, the target's zone or
+    // 0xFFFFFFFF for a direct attack}, BattleRun 0xD {per player: the damage figure on the client's card, on the
+    // opponent's, flags: bit 1 the client's card destroyed, bit 9 the opponent's}, which shows the figures at the cards
+    // (0x4F8920; states 5 and 6 pair the values with the cards by player, and a destroyed card's effect ends hiding
+    // it), and BattleEnd 0xE once the damage step ends or the attack is stopped. A direct attack shows no figures.
+    // Live: with the values by attacker and target instead, the CPU's attack hid the client's card.
+    let mut t = with_cards();
+    t.events(&[json!({ "type": 50, "cid": 4101,
+        "from": { "controller": 0, "location": 2, "sequence": 1, "position": 10 },
+        "to": { "controller": 0, "location": 4, "sequence": 0, "position": 1 } })]);
+    let attack = json!({ "type": 110, "card": loc(0, 4, 0, 1), "target": loc(1, 4, 1, 1) });
+    assert_eq!(shows(&t.events(&[attack])), [(0xA, [0; 4]), (0xC, [0, 1, 1, 0])]);
+    let battle = json!({ "type": 111,
+        "card": { "controller": 0, "location": 4, "sequence": 0, "position": 1, "attack": 1700, "defense": 1000, "destroyed": false },
+        "target": { "controller": 1, "location": 4, "sequence": 1, "position": 1, "attack": 1400, "defense": 1200, "destroyed": true } });
+    assert_eq!(shows(&t.events(&[battle])), [(0xD, [0, 300, 2 << 8, 0])]);
+    assert_eq!(shows(&t.events(&[json!({ "type": 114 })])), [(0xE, [0; 4])]);
+    // The CPU's direct attack from its zone 1.
+    let direct = json!({ "type": 110, "card": loc(1, 4, 1, 1), "target": null });
+    assert_eq!(shows(&t.events(&[direct]))[1], (0xC, [1 | 1 << 8, 0, 0xFFFF_FFFF, 0]));
+    let battle = json!({ "type": 111,
+        "card": { "controller": 1, "location": 4, "sequence": 1, "position": 1, "attack": 1400, "defense": 1200, "destroyed": false },
+        "target": { "controller": 0, "location": 0, "sequence": 0, "position": 0, "attack": 0, "defense": 0, "destroyed": false } });
+    assert_eq!(shows(&t.events(&[battle])), [(0xD, [0; 4])]);
+    // A stopped attack ends its battle too.
+    assert_eq!(shows(&t.events(&[json!({ "type": 112 })])), [(0xE, [0; 4])]);
+    // A defending monster: damage only when its DEF is higher.
+    t.events(&[json!({ "type": 110, "card": loc(0, 4, 0, 1), "target": loc(1, 4, 1, 4) })]);
+    let battle = json!({ "type": 111,
+        "card": { "controller": 0, "location": 4, "sequence": 0, "position": 1, "attack": 1000, "defense": 1000, "destroyed": false },
+        "target": { "controller": 1, "location": 4, "sequence": 1, "position": 4, "attack": 0, "defense": 1500, "destroyed": false } });
+    assert_eq!(shows(&t.events(&[battle])), [(0xD, [500, 0, 0, 0])]);
+    // The CPU's 1400 attacks the client's 1700: the CPU's card is destroyed and the CPU takes 300.
+    t.events(&[json!({ "type": 114 }), json!({ "type": 110, "card": loc(1, 4, 1, 1), "target": loc(0, 4, 0, 1) })]);
+    let battle = json!({ "type": 111,
+        "card": { "controller": 1, "location": 4, "sequence": 1, "position": 1, "attack": 1400, "defense": 1200, "destroyed": true },
+        "target": { "controller": 0, "location": 4, "sequence": 0, "position": 1, "attack": 1700, "defense": 1000, "destroyed": false } });
+    assert_eq!(shows(&t.events(&[battle])), [(0xD, [0, 300, 2 << 8, 0])]);
+}
+
+#[test]
+fn a_summon_plays_its_effect() {
+    // DuelScene (0x514290) RunSummon 0x38 {the player, the summoned card's uid} plays the summon effect at the card
+    // (0x21, or 0x23 when it is the player's "ace_monster"); RunSpSummon 0x39 {player, uid} the Special Summon effect
+    // (0x19). The engine reports MSG_SUMMONING (60) / MSG_SPSUMMONING (62) once the card is in its zone.
+    let mut t = with_cards();
+    t.events(&[json!({ "type": 50, "cid": 4101,
+        "from": { "controller": 0, "location": 2, "sequence": 1, "position": 10 },
+        "to": { "controller": 0, "location": 4, "sequence": 2, "position": 1 } })]);
+    let summoning = json!({ "type": 60, "code": 4101, "cid": 4101, "controller": 0, "location": 4, "sequence": 2, "position": 1 });
+    assert_eq!(shows(&t.events(&[summoning])), [(0x38, [0, 2, 0, 0])]);
+    let special = json!({ "type": 62, "code": 4200, "cid": 4200, "controller": 1, "location": 4, "sequence": 1, "position": 1 });
+    assert_eq!(shows(&t.events(&[special])), [(0x39, [1, 11, 0, 0])]);
+}

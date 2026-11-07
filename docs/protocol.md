@@ -366,6 +366,26 @@ MSG_FLIPSUMMONING, without the defense bit for a Spell/Trap; the opponent's card
 and field record first. Live: Giant Orc turned sideways at the end of its Battle Phase (`0x1C 0xC000`); a Set Trap
 Hole turned face-up as it was activated.
 
+**Battles** (DuelBattle `0x4F8A90`; its caller `0x4F840E` passes `param1` in ECX, `param3` in EDX and `param2` on the
+stack; DuelScene's busy check `0x515300` holds the queue while its state `+0x74` runs):
+
+| Command | Params | What the client does | Status |
+|---|---|---|---|
+| `0xA` BattleInit | none | battle mode `+0x78` = 1 | shape |
+| `0xC` BattleAttack | `param1` attacker's player \| its zone << 8, `param2` the target's player, `param3` the target's zone or `0xFFFFFFFF` (direct) | at a target: the attack, with the attacker's duelist cut-in (the NPC's line, or the player's `ace_monster`), and the hit on the target | confirmed (live: "I shall obliterate you!", the hit on Giant Orc) |
+| `0xD` BattleRun | **per player**: `param1` the damage figure on the client's card, `param2` on the opponent's; `param3` flags, low byte the client's card, high byte the opponent's: bit 1 destroyed | states 5–6 (`0x4F8430`) play a damage or destroy effect at each side's card (`0x4F8920`, size by damage / 500); a destroyed card's effect ends hiding it (`0x4FB220` mode 0), before the server moves it | confirmed (live: values by attacker/target hid the wrong card when the CPU attacked) |
+| `0xE` BattleEnd | none | battle mode off | shape |
+
+The server sends Init and Attack for MSG_ATTACK, Run for MSG_BATTLE (damage by ATK against ATK or DEF, destroyed from
+the message; a direct attack, whose target ocgcore-wasm reports as an empty place, gets no figures since there's no
+card to show them at), End at DAMAGE_STEP_END, ATTACK_DISABLED, the next attack or a new phase. LP still change
+through `0x10`.
+
+**Summons** (DuelScene): `0x38` RunSummon {player, the summoned card's uid} plays the summon effect at the card (`0x21`,
+or `0x23` for the player's `ace_monster`); `0x39` RunSpSummon {player, uid} the Special Summon effect (`0x19`). The
+server sends them for MSG_SUMMONING / MSG_SPSUMMONING, which come once the card is in its zone. Live: sparkles around
+a summoned Giant Orc. Confirmed.
+
 **Player actions** (confirmed live with a test build that gave every hand card all command bits, then sent phase 2 and
 command 4):
 
