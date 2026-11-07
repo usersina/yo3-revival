@@ -17,6 +17,8 @@ use crate::store;
 
 /// The client shows four player slots.
 pub const MAX_PLAYERS: usize = 4;
+/// The BOOSTERPASS Points (the shop's BP, the account's dpoint) a new account starts with: 50 packs (**guess**).
+pub const START_BP: u32 = 5000;
 
 pub struct Directory {
     player_names: Vec<String>,
@@ -56,17 +58,24 @@ impl Directory {
                 player.speeches = lines("speeches", SPEECHES);
                 player.comments = lines("comments", COMMENTS);
                 player.title = p["title"].as_u64().unwrap_or(0) as u32;
+                for pair in p["cards"].as_array().into_iter().flatten() {
+                    if let (Some(row), Some(count)) = (pair[0].as_u64(), pair[1].as_u64()) {
+                        player.cards.insert(row as u16, count as u32);
+                    }
+                }
                 d.next_player = d.next_player.max(player.player_id + 1);
                 players.push(player);
             }
             d.next_user = d.next_user.max(user_id + 1);
-            d.by_address.insert(address, Directory::account(user_id, players));
+            let mut account = Directory::account(user_id, players);
+            account.dpoint = a["dpoint"].as_u64().map_or(START_BP, |n| n as u32);
+            d.by_address.insert(address, account);
         }
         Ok(d)
     }
 
     fn account(user_id: u32, players: Vec<Player>) -> Account {
-        Account { user_id, name: format!("user{user_id}"), dpoint: 0, regulation_id: LOGIN_REGULATION, players }
+        Account { user_id, name: format!("user{user_id}"), dpoint: START_BP, regulation_id: LOGIN_REGULATION, players }
     }
 
     /// The account of an address, made with the starting players (their names made unique) on first contact.
@@ -146,6 +155,14 @@ impl Directory {
         }
     }
 
+    /// Changes an account (its BP) and saves the accounts.
+    pub fn update_account(&mut self, user_id: u32, change: impl FnOnce(&mut Account)) {
+        if let Some(a) = self.by_address.values_mut().find(|a| a.user_id == user_id) {
+            change(a);
+            self.save();
+        }
+    }
+
     /// Every account with its address, by address.
     pub fn accounts(&self) -> impl Iterator<Item = (IpAddr, &Account)> {
         let mut all: Vec<_> = self.by_address.iter().map(|(addr, a)| (*addr, a)).collect();
@@ -163,11 +180,12 @@ impl Directory {
                     .iter()
                     .map(|p| {
                         let avatar: String = p.avatar.iter().map(|b| format!("{b:02x}")).collect();
+                        let cards: Vec<[u32; 2]> = p.cards.iter().map(|(&row, &n)| [row as u32, n]).collect();
                         json!({ "player_id": p.player_id, "name": p.name, "level": p.level, "avatar": avatar,
-                            "speeches": p.speeches, "comments": p.comments, "title": p.title })
+                            "speeches": p.speeches, "comments": p.comments, "title": p.title, "cards": cards })
                     })
                     .collect();
-                json!({ "address": addr.to_string(), "user_id": a.user_id, "players": players })
+                json!({ "address": addr.to_string(), "user_id": a.user_id, "dpoint": a.dpoint, "players": players })
             })
             .collect();
         if let Err(e) = store::write(file, &json!({ "accounts": accounts })) {

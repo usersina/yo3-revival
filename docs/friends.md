@@ -67,10 +67,11 @@ You need Linux (on Windows, use WSL), the game installed (the server reads its c
 
 Working: chat rooms and whispers, player search, NPC duels, Auto Duel and Create Duel between players (Single
 and Match Mode), choosing targets, tributes, positions, coin calls and chains in the game's own dialogs, attack, summon,
-chain-link and destruction animations, the result screens, avatar settings.
+chain-link and destruction animations, the result screens, avatar settings, and the shop's booster packs: every
+account starts with 5000 BOOSTERPASS Points (100 a pack), and the cards you pull are kept on the server.
 
 Not yet: changing the side deck between a match's duels, duel timers, watching duels, effects that make you choose between a
-card's own options (the first is taken), packs and an economy. Players' decks stay on their own machines (in `Documents\Yu-Gi-Oh! ONLINE 3`).
+card's own options (the first is taken), earning BP, structure decks and the rest of the shop. Players' decks stay on their own machines (in `Documents\Yu-Gi-Oh! ONLINE 3`).
 
 ## When something goes wrong
 

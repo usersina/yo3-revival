@@ -6,6 +6,7 @@ mod table;
 pub mod engine;
 pub mod translate;
 pub mod front;
+pub mod shop;
 mod log;
 mod net;
 
@@ -117,6 +118,16 @@ fn world(cfg: &Config, duel_port: u16) -> World {
                 })
                 .collect(),
             duel_server,
+            // Booster packs (pack_type 1), their cards read as rarity tiers.
+            packs: data
+                .packs
+                .iter()
+                .filter(|p| p.kind == 1 && !p.cards.is_empty())
+                .map(|p| {
+                    let date = |k: &str| p.record.get(k).and_then(Value::as_str).unwrap_or_default();
+                    shop::ShopPack { id: p.id, released: date("created"), modified: date("modified"), tiers: shop::tiers(&p.cards) }
+                })
+                .collect(),
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
         },
         Err(e) => {

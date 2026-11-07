@@ -2,7 +2,7 @@
 //!
 //! The request/reply catalog, with the client evidence and status of every pair, is
 //! `docs/protocol.md`. Keep it, this file and the contract tests in step.
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use yo3_proto::{Message, Packet, Value};
@@ -38,6 +38,8 @@ pub struct Player {
     pub speeches: Vec<String>,
     pub comments: Vec<String>,
     pub title: u32,
+    /// The cards the player got beyond the starter deck (bought packs): CARD_Prop row -> count.
+    pub cards: BTreeMap<u16, u32>,
 }
 
 /// Speech lines and comments a player has (CharMake's update 0x51C960).
@@ -56,6 +58,7 @@ impl Player {
             speeches: vec![String::new(); SPEECHES],
             comments: vec![String::new(); COMMENTS],
             title: 0,
+            cards: BTreeMap::new(),
         }
     }
 
@@ -269,6 +272,8 @@ pub struct World {
     pub duel_server: (String, u16),
     pub news: Vec<(String, String)>,
     pub rooms: Vec<Room>,
+    /// The booster packs on the shop's shelves (from the client's pack files).
+    pub packs: Vec<crate::shop::ShopPack>,
 }
 
 impl World {
@@ -294,6 +299,7 @@ impl World {
                 Room::new(3, "Trading"),
                 Room::new(4, "Duel Recruiting"),
             ],
+            packs: vec![],
         }
     }
 }
@@ -510,6 +516,10 @@ pub struct FrontSession {
     reached_at: Option<std::net::IpAddr>,
     /// The accounts, where a player's saved settings are kept (none: this session's copy only).
     directory: Option<Arc<Mutex<crate::accounts::Directory>>>,
+    /// Bought packs not shown yet (pack id, cards), and the last present id given.
+    presents: VecDeque<(u32, Vec<u16>)>,
+    last_present: u32,
+    rng: u64,
 }
 
 impl Drop for FrontSession {
@@ -524,7 +534,22 @@ impl Drop for FrontSession {
 
 impl FrontSession {
     pub fn new(account: Account, world: Arc<World>, hub: Arc<Mutex<Hub>>, outbox: Outbox) -> FrontSession {
-        FrontSession { account, world, hub, outbox, opened: false, selected: None, online: None, duels: HashMap::new(), reached_at: None, directory: None }
+        let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
+        FrontSession {
+            account,
+            world,
+            hub,
+            outbox,
+            opened: false,
+            selected: None,
+            online: None,
+            duels: HashMap::new(),
+            reached_at: None,
+            directory: None,
+            presents: VecDeque::new(),
+            last_present: 0,
+            rng: seed | 1,
+        }
     }
 
     /// The server address this client connected to.
@@ -558,6 +583,36 @@ impl FrontSession {
             d.lock().expect("directory lock").update_player(self.account.players[at].player_id, apply);
         }
         Message::reply(0x2CF5)
+    }
+
+    /// A purchase 0x1B68 {sale_id, item_num, end_time} -> 0x1C24 {dpoint}: the BP left (shown as user_bp), or 0x1C25
+    /// (shop buy error) for a pack not on sale, a count of 0 or beyond item_max, or too few BP. Each pack's cards join
+    /// the player's collection at once and wait as a present (0x2775) for the client to show.
+    fn buy(&mut self, msg: &Message) -> Message {
+        let int = |k| msg.get(k).and_then(Value::as_u32).unwrap_or(0);
+        let (sale_id, count) = (int("sale_id"), int("item_num"));
+        let Some(pack) = self.world.packs.iter().find(|p| p.id == sale_id).cloned() else { return Message::reply(0x1C25) };
+        let cost = crate::shop::PACK_COST * count;
+        let Some(at) = self.selected else { return Message::reply(0x1C25) };
+        if count == 0 || count > crate::shop::PACK_MAX || cost > self.account.dpoint {
+            return Message::reply(0x1C25);
+        }
+        let packs: Vec<Vec<u16>> = (0..count).map(|_| crate::shop::open(&pack, &mut self.rng)).collect();
+        let add = |p: &mut Player| {
+            for &row in packs.iter().flatten() {
+                *p.cards.entry(row).or_default() += 1;
+            }
+        };
+        self.account.dpoint -= cost;
+        add(&mut self.account.players[at]);
+        if let Some(d) = &self.directory {
+            let mut d = d.lock().expect("directory lock");
+            let dpoint = self.account.dpoint;
+            d.update_account(self.account.user_id, |a| a.dpoint = dpoint);
+            d.update_player(self.account.players[at].player_id, add);
+        }
+        self.presents.extend(packs.into_iter().map(|cards| (pack.id, cards)));
+        Message::reply(0x1C24).with("dpoint", Value::U32(self.account.dpoint))
     }
 
     fn hub(&self) -> std::sync::MutexGuard<'_, Hub> {
@@ -609,11 +664,13 @@ impl FrontSession {
                 }
                 // Copied wholesale into the trunk dataset (and kept in slot 18). cards / noTrade: owned
                 // and untradeable count per card at row - 1 (0x410DB0); the NPC duel writes into both
-                // unchecked (0x4F6A82). Players own exactly the cards of their starter deck.
+                // unchecked (0x4F6A82). Players own their starter deck's cards and the cards they bought.
                 let mut cards = vec![0u8; self.world.card_rows];
-                for row in self.world.starter_deck.iter().flat_map(Deck::cards) {
+                let bought = self.selected.map(|at| self.account.players[at].cards.clone()).unwrap_or_default();
+                let starter = self.world.starter_deck.iter().flat_map(Deck::cards).map(|row| (row, 1));
+                for (row, count) in starter.chain(bought) {
                     if let Some(n) = (row as usize).checked_sub(1).and_then(|i| cards.get_mut(i)) {
-                        *n += 1;
+                        *n = n.saturating_add(count.min(255) as u8);
                     }
                 }
                 let no_trade = Value::Bin(vec![0; self.world.card_rows]);
@@ -627,10 +684,11 @@ impl FrontSession {
                 return vec![trunk, Message::reply(0x251C), Message::reply(0x252A), Message::reply(0x2D6C)];
             }
             // Shop (handler 0x48AA60): its text, then a chain where each reply asks for the next:
-            // items, exchange items, protectors, event items, perks, rental terms, avatar items (the
-            // last clears isLoading). The stock comes with the economy (M4).
-            0x1B66 => Message::reply(0x1C20).with("text", Value::text("Welcome! The shelves are empty for now.")),
-            0x1B67 => Message::reply(0x1C22),
+            // items (the booster packs), exchange items, protectors, event items, perks, rental terms, avatar
+            // items (the last clears isLoading).
+            0x1B66 => Message::reply(0x1C20).with("text", Value::text("Welcome! Take a look at the packs.")),
+            0x1B67 => self.world.packs.iter().map(crate::shop::shelf_item).fold(Message::reply(0x1C22), Message::item),
+            0x1B68 => self.buy(msg),
             0x1B6F => Message::reply(0x1C26),
             0x1B6B => Message::reply(0x1C32),
             0x1B6D => Message::reply(0x1C2E),
@@ -780,7 +838,13 @@ impl FrontSession {
             0x2CF0 => self.player_search(msg),
             // Next present: 0x2777 would carry one; 0x2778 = none, which closes PresentWindow
             // (0x4783C9) and lets the main screen unlock its facilities and menu (0x473B87).
-            0x2775 => Message::reply(0x2778),
+            0x2775 => match self.presents.pop_front() {
+                Some((pack_id, cards)) => {
+                    self.last_present += 1;
+                    crate::shop::present(self.last_present, pack_id, &cards)
+                }
+                None => Message::reply(0x2778),
+            },
             0x2135 => self.room_list(),
             0x2136 => self.enter_room(msg),
             0x2137 => {

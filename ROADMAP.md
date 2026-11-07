@@ -68,13 +68,17 @@ Stop finding missing fields one crash at a time.
 
 - [ ] Real accounts: user id and password, several accounts; persistence (SQLite)
 - [ ] Player creation and deletion (`CharMake.cpp`, `0x2CF5/0x2CF6`)
-- [ ] Trunk contents: the card collection
+- [x] Trunk contents: the card collection (the starter deck's cards and the player's bought cards, `0x1FA4` → `9000`)
 - [ ] Deck list, deck editor saves (`HolderSelect.cpp` "deck list")
   - [x] Every player owns a starter deck's cards and gets it in the deck list (`0x1F4E` → `0x22C8`, tag-6
         items); Edit Deck saves it locally and the NPC duel accepts it
   - [x] Deleting a deck (`0x1F50` → `0x22CC`); saving never reaches the server (local files only)
   - [ ] Decks on the server, so they follow a player to another machine (the client only uploads deletes)
-- [ ] Shop: booster packs and structure decks from the client's own pack/deck files, BP economy
+- [x] Shop: every booster pack of the client's pack files on the shelves (`0x1C22`), bought with BOOSTERPASS Points
+      (`0x1B68` → `0x1C24`), opened as presents (`0x2775` → `0x2777` with the cards); BP and bought cards kept per
+      account and player in `data/accounts.json`. Live: three Collection Pack vol.1 opened card by card, and after a
+      server restart the shop showed 4700 BP and the pack 21.4% collected
+- [ ] Structure decks, protectors, avatar items, card trade and rental; BP from duels (only the starting BP now)
 - [ ] Presents, card trade and rental, if wanted
 - **Exit:** create a player, open packs, build a deck, restart the server, everything is still there
 
@@ -198,7 +202,10 @@ Stop finding missing fields one crash at a time.
 | Player search paging | skip `base_point`, return at most `front_num` | Only page 1 (`0, 100`) was seen |
 | Player search by name | case-insensitive substring | Konami's matching rule is unknown |
 | Friend and black list pushes | sent once, right after `9000` | The original timing is unknown; the client only needs them before it lists a player |
-| Shop lists, `perk_num`, rental terms | all empty or 0 | Real stock comes with the economy (M4); `perk_num`'s meaning is unknown |
+| Shop lists besides packs, `perk_num`, rental terms | all empty or 0 | Only booster packs are stocked; `perk_num`'s meaning is unknown |
+| Pack prices and contents | 100 BP a pack, at most 10 per purchase; 5 cards: 4 of the pack list's first ascending run, 1 of a later run (each run half as likely as the one before), read as rarity tiers | The original's prices, pack size and odds are unknown; the runs match the OCG's rarity split (44/18/9/9) |
+| Starting BP | 5000 per account (`START_BP`); nothing earns more yet | The original's amounts are unknown |
+| Pack presents | one per pack, `present_id` counting from 1 per session, `level`/`form` 0, `item_img` and `end_time` empty; the cards join the collection at purchase | Only the fields the window reads; presents aren't kept across reconnects (the cards are) |
 | Event lists (`0x177B`), own user event (`0x33FE`) | empty, 0 | No events are held; paging by `base_point`/`front_num` like player search is assumed |
 | Rental records push (`0x2D6C`) | sent once after `9000`, empty | The original timing is unknown; the shop only needs it before it opens |
 | NPC roster `npc_type`, `need_ex` | every NPC on tab 0; `need_ex` = the level (0, 1, 2) | No client file gives the tabs (probably the series) or the experience each level needs; `need_ex` can't all be 0 (`0x4BFDC4`) |

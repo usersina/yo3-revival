@@ -53,9 +53,17 @@ impl Server {
         self.join_as(Player::new(player_id, name))
     }
 
+    /// A client of an account with `dpoint` BOOSTERPASS Points.
+    pub fn join_with_bp(&self, player_id: u32, name: &str, dpoint: u32) -> Client {
+        self.join_account(Account { players: vec![Player::new(player_id, name)], dpoint, ..Account::test() })
+    }
+
     pub fn join_as(&self, player: Player) -> Client {
-        let player_id = player.player_id;
-        let account = Account { players: vec![player], ..Account::test() };
+        self.join_account(Account { players: vec![player], ..Account::test() })
+    }
+
+    fn join_account(&self, account: Account) -> Client {
+        let player_id = account.players[0].player_id;
         let (tx, inbox) = unbounded_channel();
         let mut c = Client { session: FrontSession::new(account, self.world.clone(), self.hub.clone(), tx), inbox };
         c.send(Packet::Version("2010.03.23 skelton".into()));

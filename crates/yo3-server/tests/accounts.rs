@@ -91,3 +91,28 @@ fn the_host_names_a_friends_player_ahead_and_renames_players() {
     let listed: Vec<_> = d.accounts().map(|(addr, a)| (addr, names(a).join(","))).collect();
     assert_eq!(listed, [(ip(1), "Joey".to_string()), (ip(7), "Anis".to_string())]);
 }
+
+#[test]
+fn bp_and_bought_cards_are_kept_with_the_account() {
+    // New accounts start with BOOSTERPASS Points (the shop's BP, the account's dpoint); BP and a player's bought cards
+    // (CARD_Prop row -> count) survive a restart.
+    let dir = std::env::temp_dir().join(format!("yo3-bp-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let file = dir.join("accounts.json");
+    let addr = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 7));
+    let (user_id, player_id) = {
+        let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
+        let a = d.account_for(addr);
+        assert_eq!(a.dpoint, yo3_server::accounts::START_BP);
+        d.update_account(a.user_id, |a| a.dpoint = 123);
+        d.update_player(a.players[0].player_id, |p| {
+            p.cards.insert(38, 2);
+        });
+        (a.user_id, a.players[0].player_id)
+    };
+    let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
+    let a = d.account_for(addr);
+    assert_eq!((a.user_id, a.dpoint), (user_id, 123));
+    let p = a.players.into_iter().find(|p| p.player_id == player_id).unwrap();
+    assert_eq!(p.cards.get(&38), Some(&2));
+}

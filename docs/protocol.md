@@ -133,21 +133,34 @@ clicks do nothing. Every reply also passes through the global front dispatcher; 
 
 The map's top-left facility. Opening it re-requests the trunk (`0x1FA4`), and each reply below asks for the next, in
 this order; the last one clears `isLoading`. Success and error replies are pairs (`0x1C20`/`0x1C21`, …); none of
-them has a global case. The lists are empty until the economy exists (M4); every list case checks its item count
-(`0x410D90`) before reading.
+them has a global case. Every list case checks its item count (`0x410D90`) before reading. The shop's BP
+(BOOSTERPASS Points, `user_bp`) is the account's `dpoint` from the login replies.
 
 | Request | Reply (error) | Fields | Evidence | Status |
 |---|---|---|---|---|
 | `0x1B66` text (bare, sent from the `9000` case, `0x48BEDD`) | `0x1C20` (`0x1C21`) | `text`: the shopkeeper's line. The case also reads `evalnum`, `evaltotal`, `evallevel`, but from the player record; they pick a stock line (`$33003`–`$33007`) when `text` is empty | "shop text success" L286 | confirmed |
-| `0x1B67` items (bare, `0x48ACC5`) | `0x1C22` (`0x1C23`) | items `{item_type, item_param}`; `item_type` < 3 are packs | "shop item success" L331 | confirmed (empty) |
+| `0x1B67` items (bare, `0x48ACC5`) | `0x1C22` (`0x1C23`) | items `{item_type, item_id, item_cost, item_max, sale_id, sale, item_trade, modified, rel_time}` (`0x485E50`; dates are text); `item_type` < 3 go on the shelves, others are kept only when `item_param` isn't owned (a bit set at the player data's `+0x68`). The kept list (`+0xD4`, 0xD8 bytes each) fills the Purchase screen (`0x48E0A0`): kinds 0 and 3 call the Flash `AddPack(id, name, comment, image, date, cost, max, trade)` (`0x48C790`) with the name, description, image and date from the client's own pack file `item_id`, 1 and 4 `AddStruct`, 6 `AddProtector`, 10 and 11 `AddEventPack` | tracer: all nine found; live: three packs on the Booster Packs shelf with their own art, then "Pack 1", "A rearranged pack comprising of season 1 Cards.", 100 BP | confirmed |
 | `0x1B6F` (bare, `0x48AE5F`) | `0x1C26` (`0x1C27`) | items `{item_id, item_cost, item_trade, item_type, modified, rel_time, sale_id}` | "shop exchange item success" L360 | confirmed (empty) |
 | `0x1B6B` (bare, `0x48B3B8`) | `0x1C32` (`0x1C33`) | items `{item_id}` | "shop protector item success" L409 | confirmed (empty) |
 | `0x1B6D` (bare, `0x48B4C3`) | `0x1C2E` (`0x1C2F`) | items; toggles `_root.spac_btn_disable` (Special Packs) | "shop event item success" case; the client moves on to `0x1B72` | shape (empty) |
 | `0x1B72` (bare, `0x48B64D`) | `0x1C36` | `perk_num` u32, compared with 500 to show `_root.expack_del` | tracer: found at `0x48B6CD` | shape (value **guess** 0) |
 | `0x2C40` rental terms (bare, `0x48B777`) | `0x2D75` (`0x2D76`) | `rental_cardnum`, `rental_point`, `rental_term` u32 | read at `0x48C20E`; the case then sends `0x1B69` | shape (values **guess** 0) |
 | `0x1B69` (bare, `0x48C391`) | `0x1C2A` (`0x1C2B`) | items `{item_type, item_param}`: avatar items; clears `isLoading` | "shop avatar item success"; the Shop Menu opens | confirmed (empty) |
-| `0x1B68` buy `{sale_id, item_num, end_time, ex_pack}` | `0x1C24` (`0x1C25`) | `dpoint` | "shop buy succes" | open |
+| `0x1B68` buy `{sale_id, item_num, end_time}` (live: `end_time` the text `""`) | `0x1C24` (`0x1C25`) | `dpoint`: the BP left, shown as `user_bp`; then the client asks for presents (`0x2775`, builder `0x4F3A00`, through `0x47C4A0`) | "shop buy succes"; live: the purchase dialog's "BP After Purchase", then the pack opening | confirmed |
 | `0x1B6A` exchange `{sale_id, item_id, kaban}` | `0x1C28` (`0x1C29`) | | "shop exchange succes" | open |
+
+**Bought packs arrive as presents.** After `0x1C24` the client asks for the next present (`0x2775`) until there is
+none (`0x2778`), then reloads the shelves (`0x1B67`…). PresentWindow (`0x476DE0`, cases `0x2777`/`0x2779`) reads
+`present_id`, `type`, `level`, `form`, `item_img`, `end_time`, `item` and, for `type` 0 or 9 (a pack), `pack_id`, whose
+name and description it takes from its own pack file. `item` is binary: big-endian u16 CARD_Prop rows
+(EasyMultiPlayDataBinary's `0x407ED0`), here the pack's cards, which the window shows one by one (marked NEW! when the
+trunk has none) with a SKIP button. The client doesn't add them to its trunk itself (the shop's `0x2777` case acts
+only on `type` 6): the server keeps them, and the next trunk request (`0x1FA4`) brings them. Live: Pack 1 opened
+showing "Power of Kaishin" NEW!, and SKIP returned to the Shop Menu.
+
+Each pack file's card list is ascending runs: 44, 18, 9, 9 for an 80-card pack, the OCG split of Normal, Rare, Super
+and Ultra Rares. The server reads the runs as rarity tiers (**guess**) and puts four cards of the first tier and one of
+a higher one in a pack (**guess**: the original's pack size and odds are unknown); a pack of one run gives five of it.
 
 ### Events (TournamentScene, UserEventScene)
 

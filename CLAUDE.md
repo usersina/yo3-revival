@@ -30,7 +30,7 @@ addresses and data formats: [docs/client-internals.md](docs/client-internals.md)
 |---|---|
 | `crates/yo3-proto` | Wire codec: frame, Blowfish (`BlowfishLE`), key/value messages, the version-string opener |
 | `crates/yo3-data` | Client data: `.ypk` archives, card table, regulations, preset decks, packs (golden tests skip without the game) |
-| `crates/yo3-server` | Gate / front / duel / patch-HTTP servers. `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `table.rs` = a duel between two players' connections, `translate.rs` = engine messages to duel commands, `accounts.rs` = accounts by client address, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
+| `crates/yo3-server` | Gate / front / duel / patch-HTTP servers. `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `table.rs` = a duel between two players' connections, `shop.rs` = packs on sale and what a pack holds, `translate.rs` = engine messages to duel commands, `accounts.rs` = accounts by client address, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
 | `engine/` | Rules engine sidecar: `duelcore.ts` (EDOPro's core via ocgcore-wasm, under Node), `fetch.sh` (packages, card scripts, card database, Konami ids into the ignored `engine/vendor/`) |
 | `tools/client/vclient.sh` | Headless client: `xvfb`, `start [--trace]`, `login [SLOT]`, `check`, `shot`, `click`, `pixel`, `key`, `type`, `stop`, `prefix` |
 | `tools/tracer/` | Field-read tracer: `yo3trace.dll` + injector (C, mingw-w64), `summarize.py` |
@@ -65,6 +65,8 @@ tools/client/vclient.sh xvfb && tools/client/vclient.sh prefix  # once: its disp
 tools/client/vclient.sh start && tools/client/vclient.sh login 1   # log in as the second player (slot 1)
 #   a duel between them: on each, the menu bar's duel button (195,752) → Auto Duel (503,401) → Confirm (420,522), then
 #   Select Deck OK (393,533). A player needs a local deck first: open Main Menu → Edit Deck once (it saves the starter)
+#   the shop: map (370,190) → greeting (540,150) → Purchase Pack (510,216) → a pack (348,225) → Confirm and Purchase
+#   (430,485 twice) → SKIP (636,530) per pack
 
 tools/client/vclient.sh start --trace                          # same, logging every field lookup -> logs/fields.tsv
 YO3_TRACE_HITS=0x473ae0,0x4725b0 tools/client/vclient.sh start --trace   # also log when these addresses run (H lines)
