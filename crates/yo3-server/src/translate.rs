@@ -37,6 +37,7 @@ const MSG_SELECT_UNSELECT_CARD: u64 = 26;
 const MSG_ROCK_PAPER_SCISSORS: u64 = 132;
 const MSG_ANNOUNCE_RACE: u64 = 140;
 const MSG_ANNOUNCE_ATTRIB: u64 = 141;
+const MSG_ANNOUNCE_CARD: u64 = 142;
 const MSG_ANNOUNCE_NUMBER: u64 = 143;
 const MSG_MOVE: u64 = 50;
 const MSG_NEW_TURN: u64 = 40;
@@ -76,6 +77,7 @@ const RESP_COUNTER: u64 = 13;
 const RESP_SORT: u64 = 15;
 const RESP_RACE: u64 = 16;
 const RESP_ATTRIB: u64 = 17;
+const RESP_CARD_NAME: u64 = 18;
 const RESP_NUMBER: u64 = 19;
 const RESP_RPS: u64 = 20;
 const IDLE_SUMMON: u64 = 0;
@@ -250,6 +252,29 @@ const QUIET_TIMINGS: u64 = 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x20 | 0x8000 | 0x1000
 const SELECT: u32 = 4;
 const LISTED: u32 = 0x8000;
 const SELECT_MAX: usize = 4;
+/// The declaration dialogs (factory 0x4C8CD0): Type {_, message, allowed types} (DuelSelectTypeDialog, dlg_seltype.swf:
+/// bit k for type k, one pick, DLGResult k), Attribute {_, message, allowed << 16 | picks} (DuelSelectAttrDialog,
+/// dlg_selattr.swf: DLGResult the picks as bits), Number {_, message, max << 24 | step << 20 | min << 16 | format}
+/// (DuelSelectNumberDialog 0x4C6430, dlg_selnum.swf: in thousands for format 302 "%d000LP", hundreds for 303
+/// "%d00LP", else ones; DLGResult the number in those units).
+const TYPE_DIALOG: u32 = 5;
+const ATTRIBUTE_DIALOG: u32 = 7;
+const NUMBER_DIALOG: u32 = 11;
+const NUMBER_FORMATS: [(u64, u32); 3] = [(1000, 302), (100, 303), (1, 283)];
+/// "Select @3Type(s)@0.", "Select @3Attribute(s)@0.", "Declare @3monster@0 level."
+const TYPE_TEXT: u32 = 241;
+const ATTRIBUTE_TEXT: u32 = 242;
+const LEVEL_TEXT: u32 = 280;
+/// The client's types (UI texts 1031-1052) and attributes (1061-1067) in its order, as EDOPro's RACE_* and
+/// ATTRIBUTE_* bits.
+const TYPES: [u64; 22] = [
+    0x2000, 0x10, 0x8, 0x80, 0x40000, 0x100, 0x20, 0x20000, 0x10000, 0x800, 0x4000, 0x8000, 0x400, 0x40, 0x1, 0x200, 0x4,
+    0x2, 0x1000, 0x80000, 0x100000, 0x200000,
+];
+const ATTRIBUTES: [u64; 7] = [0x10, 0x20, 0x2, 0x4, 0x1, 0x8, 0x40];
+/// The card list's extended kind that lists the client's own card database with a name search (DuelCardListDialogEx
+/// 0x5131E0, dlg_cardlistex.swf; CardDuelFilter 0x4976A0 mode 0: any card); DLGResult the card's Konami id.
+const CARD_SEARCH: u32 = 0x4C;
 /// The position dialog {_, message, uid | face-up defense << 16} (DuelSelectStandDialog 0x4C5E50, dlg_selstand.swf):
 /// button 0 attack, 1 defense, face-down unless the flag is set.
 const POSITION: u32 = 8;
@@ -350,6 +375,9 @@ pub struct Translator {
     records: HashMap<(u32, u32), [u32; 5]>,
     /// The counts the client holds on each card, by uid and counter kind.
     counters: HashMap<(u32, u32), u32>,
+    /// How many card names the CPU has declared: each try names the next card of the duel's (the core asks again
+    /// when a name doesn't fit).
+    declared: usize,
 }
 
 impl Translator {
@@ -415,6 +443,7 @@ impl Translator {
             hidden,
             records: HashMap::new(),
             counters: HashMap::new(),
+            declared: 0,
         };
         (t, out)
     }
@@ -769,6 +798,9 @@ impl Translator {
     pub fn prompt(&mut self, m: &Json) -> Prompt {
         let kind = m["type"].as_u64().unwrap_or(0);
         if self.player(&m["player"]) == CPU {
+            if kind == MSG_ANNOUNCE_CARD {
+                return Prompt::Answer(self.cpu_card_name());
+            }
             return Prompt::Answer(cpu_answer(kind, m));
         }
         match kind {
@@ -818,9 +850,27 @@ impl Translator {
                 None => Prompt::Answer(cpu_answer(kind, m)),
             },
             MSG_SELECT_CHAIN => self.chain_chance(m),
+            MSG_ANNOUNCE_RACE | MSG_ANNOUNCE_ATTRIB | MSG_ANNOUNCE_NUMBER | MSG_ANNOUNCE_CARD => match declaration(m) {
+                Some(out) => {
+                    self.pending = Some(m.clone());
+                    Prompt::Client(out)
+                }
+                None => Prompt::Answer(cpu_answer(kind, m)),
+            },
             // No window for these yet.
             _ => Prompt::Answer(cpu_answer(kind, m)),
         }
+    }
+
+    /// The CPU's card name declaration: the cards in the duel by turns, a new one each time it is asked.
+    fn cpu_card_name(&mut self) -> Json {
+        let mut cids: Vec<u16> =
+            self.sides.iter().flat_map(|s| s.zones.values()).flatten().filter_map(|c| self.cards.get(&c.row)).map(|c| c.cid).collect();
+        cids.sort_unstable();
+        cids.dedup();
+        let cid = cids.get(self.declared % cids.len().max(1)).copied().unwrap_or(0);
+        self.declared += 1;
+        json!({ "type": RESP_CARD_NAME, "cid": cid })
     }
 
     /// The position dialog for MSG_SELECT_POSITION {cid, positions}, with the card's image (any uid with its id) and
@@ -932,7 +982,7 @@ impl Translator {
     /// the default.
     pub fn dialog_result(&mut self, count: u32) -> Option<Prompt> {
         let kind = self.pending.as_ref()?["type"].as_u64()?;
-        const DIALOGS: [u64; 7] = [
+        const DIALOGS: [u64; 11] = [
             MSG_SELECT_CARD,
             MSG_SELECT_TRIBUTE,
             MSG_SELECT_EFFECTYN,
@@ -940,6 +990,10 @@ impl Translator {
             MSG_SELECT_POSITION,
             MSG_SELECT_OPTION,
             MSG_SELECT_CHAIN,
+            MSG_ANNOUNCE_RACE,
+            MSG_ANNOUNCE_ATTRIB,
+            MSG_ANNOUNCE_NUMBER,
+            MSG_ANNOUNCE_CARD,
         ];
         if !DIALOGS.contains(&kind) {
             return None;
@@ -982,6 +1036,27 @@ impl Translator {
                 _ => json!({ "type": RESP_CHAIN, "index": null }),
             },
             MSG_SELECT_CARD | MSG_SELECT_TRIBUTE => self.card_choice(&m, count),
+            MSG_ANNOUNCE_RACE => match TYPES.get((count as usize).wrapping_sub(1)) {
+                Some(&race) if m["available"].as_u64().unwrap_or(0) & race != 0 => json!({ "type": RESP_RACE, "races": [race] }),
+                _ => cpu_answer(kind, &m),
+            },
+            MSG_ANNOUNCE_ATTRIB => {
+                let picked: Vec<u64> = ATTRIBUTES.iter().enumerate().filter(|(i, _)| count >> (i + 1) & 1 != 0).map(|(_, &a)| a).collect();
+                let allowed = m["available"].as_u64().unwrap_or(0);
+                match picked.len() as u64 == m["count"].as_u64().unwrap_or(1) && picked.iter().all(|a| allowed & a != 0) {
+                    true => json!({ "type": RESP_ATTRIB, "attributes": picked }),
+                    false => cpu_answer(kind, &m),
+                }
+            }
+            MSG_ANNOUNCE_NUMBER => {
+                let options: Vec<u64> = m["options"].as_array().into_iter().flatten().filter_map(Json::as_u64).collect();
+                let unit = number_unit(&options).map_or(1, |(unit, _)| unit);
+                let value = count as u64 * unit;
+                // The first option at least as large (the dialog's steps may pass between uneven options).
+                let index = options.iter().position(|&o| o >= value).unwrap_or(options.len().saturating_sub(1));
+                json!({ "type": RESP_NUMBER, "value": index })
+            }
+            MSG_ANNOUNCE_CARD => json!({ "type": RESP_CARD_NAME, "cid": count }),
             _ => cpu_answer(kind, &m),
         };
         Some(Prompt::Answer(answer))
@@ -1104,6 +1179,48 @@ fn message(entries: &[u32]) -> Vec<Message> {
     let mut params = [0; 4];
     params[..entries.len()].copy_from_slice(entries);
     vec![command(MESSAGE_LENGTH, [entries.len() as u32, 0, 0, 0]), command(MESSAGE, params)]
+}
+
+/// The client's dialog for a declaration (MSG_ANNOUNCE_RACE / ATTRIB {count, available}, NUMBER {options}, CARD):
+/// None when it can't ask it (several types at once, numbers outside the number dialog's range).
+fn declaration(m: &Json) -> Option<Vec<Message>> {
+    let kind = m["type"].as_u64()?;
+    let allowed = m["available"].as_u64().unwrap_or(0);
+    let bits = |table: &[u64]| table.iter().enumerate().filter(|(_, b)| allowed & **b != 0).fold(0u32, |f, (i, _)| f | 1 << (i + 1));
+    let (dialog, text, param3) = match kind {
+        MSG_ANNOUNCE_RACE if m["count"].as_u64() == Some(1) => (TYPE_DIALOG, TYPE_TEXT, bits(&TYPES)),
+        MSG_ANNOUNCE_ATTRIB => (ATTRIBUTE_DIALOG, ATTRIBUTE_TEXT, bits(&ATTRIBUTES) << 16 | m["count"].as_u64().unwrap_or(1) as u32),
+        MSG_ANNOUNCE_NUMBER => {
+            let options: Vec<u64> = m["options"].as_array()?.iter().filter_map(Json::as_u64).collect();
+            let (unit, format) = number_unit(&options)?;
+            let (min, max) = (options.iter().min()? / unit, options.iter().max()? / unit);
+            let step = options.windows(2).map(|w| w[1].abs_diff(w[0]) / unit).filter(|&d| d > 0).min().unwrap_or(1);
+            if min > 15 || step > 15 || max > 255 {
+                return None;
+            }
+            let param3 = (max as u32) << 24 | (step as u32) << 20 | (min as u32) << 16 | format;
+            // Levels get "Declare monster level."; other numbers no message.
+            if options.iter().all(|o| (1..=12).contains(o)) {
+                let mut out = message(&[TEXT | LEVEL_TEXT]);
+                out.push(command(DIALOG, [NUMBER_DIALOG, FROM_ENTRIES, param3, 0]));
+                return Some(out);
+            }
+            return Some(vec![command(DIALOG, [NUMBER_DIALOG, 0, param3, 0])]);
+        }
+        MSG_ANNOUNCE_CARD => return Some(vec![command(LIST_BEGIN, [0, 1, 0, 0]), command(CARD_LIST, [CLIENT, CARD_SEARCH, 0, 0])]),
+        _ => return None,
+    };
+    let mut out = message(&[TEXT | text]);
+    out.push(command(DIALOG, [dialog, FROM_ENTRIES, param3, 0]));
+    Some(out)
+}
+
+/// The number dialog's unit and format for these options: the largest unit all of them are multiples of.
+fn number_unit(options: &[u64]) -> Option<(u64, u32)> {
+    if options.is_empty() {
+        return None;
+    }
+    NUMBER_FORMATS.iter().copied().find(|(unit, _)| options.iter().all(|o| o % unit == 0))
 }
 
 /// The duel prompt table's text for an EDOPro selection hint (HINTMSG_*), where one says the same thing.

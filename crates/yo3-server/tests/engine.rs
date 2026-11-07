@@ -110,3 +110,51 @@ fn the_field_report_follows_the_monsters_stats() {
     }
     assert!(seen >= 2, "no monster reported");
 }
+
+#[test]
+fn declarations_reach_the_core_in_its_own_terms() {
+    // Abyssal Designator (6132) asks for an Attribute and a Type (MSG_ANNOUNCE_ATTRIB 141, MSG_ANNOUNCE_RACE 140),
+    // Prohibition (4968) for a card name (MSG_ANNOUNCE_CARD 142). The answers come as the translator gives them:
+    // attributes as numbers, races as numbers (the core's are 64-bit: the sidecar makes them BigInts), a card by its
+    // Konami id (the sidecar finds its passcode).
+    let Some(mut engine) = engine() else { return };
+    // With monsters (Giant Orc, 5586) for Abyssal Designator to name; interleaved, as the core deals the cards last
+    // added first.
+    let deck: Vec<u16> = [5586u16, 4968, 6132].into_iter().cycle().take(40).collect();
+    let mut answer = engine.new_duel(7, 8000, [(&deck, &[]), (&deck, &[])]).expect("a duel");
+    let mut asked = std::collections::BTreeSet::new();
+    for _ in 0..200 {
+        assert!(answer.errors.is_empty(), "{:?}", answer.errors);
+        assert_ne!(answer.status, "error", "{answer:?}");
+        if answer.status != "await" || asked.len() == 3 {
+            break;
+        }
+        let prompt = answer.messages.last().expect("a prompt").clone();
+        let first_bit = |k: &str| 1u64 << prompt[k].as_u64().unwrap_or(1).trailing_zeros();
+        let response = match prompt["type"].as_u64() {
+            // Abyssal Designator first, then Prohibition.
+            Some(11) if prompt["activates"].as_array().is_some_and(|a| !a.is_empty()) => {
+                let activates = prompt["activates"].as_array().unwrap();
+                let wanted = if asked.contains(&140) { 4968 } else { 6132 };
+                let index = activates.iter().position(|a| a["cid"] == wanted).unwrap_or(0);
+                serde_json::json!({ "type": 1, "action": 5, "index": index })
+            }
+            Some(kind @ 140) => {
+                asked.insert(kind);
+                serde_json::json!({ "type": 16, "races": [first_bit("available")] })
+            }
+            Some(kind @ 141) => {
+                asked.insert(kind);
+                serde_json::json!({ "type": 17, "attributes": [first_bit("available")] })
+            }
+            Some(kind @ 142) => {
+                asked.insert(kind);
+                serde_json::json!({ "type": 18, "cid": 4007 })
+            }
+            _ => yo3_server::translate::bot_answer(&prompt),
+        };
+        answer = engine.respond(response).expect("the engine answers");
+    }
+    assert!(answer.errors.is_empty(), "{:?}", answer.errors);
+    assert_eq!(asked.into_iter().collect::<Vec<_>>(), [140, 141, 142]);
+}

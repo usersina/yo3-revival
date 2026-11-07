@@ -908,3 +908,47 @@ fn extra_decks_go_into_the_card_table_and_move_from_there() {
     assert_eq!(moved.1[0], 22 | 151 << 16, "uid 22, the card asked for");
     assert_eq!((moved.1[1] >> 1) & 0x1F, 0xC, "from the extra deck");
 }
+
+#[test]
+fn type_attribute_and_number_declarations_open_the_clients_dialogs() {
+    // Dialog command 0x36 {kind, message, param3} (factory 0x4C8CD0, kinds by the table 0x4C9178):
+    // - kind 5, DuelSelectTypeDialog (dlg_seltype.swf): param3 the allowed types as bits 1-22 in the client's order (UI
+    //   texts 1031-1052: Dragon, Zombie, Fiend, Pyro, Sea Serpent, Rock, Machine, Fish, Dinosaur, Insect, Beast,
+    //   Beast-Warrior, Plant, Aqua, Warrior, Winged Beast, Fairy, Spellcaster, Thunder, Reptile, Psychic, Divine-Beast),
+    //   one pick; DLGResult the type's number.
+    // - kind 7, DuelSelectAttrDialog (dlg_selattr.swf): param3 the allowed attributes (bits 1-7: LIGHT, DARK, WATER,
+    //   FIRE, EARTH, WIND, DIVINE, texts 1061-1067) << 16 | how many to pick; DLGResult the picks as bits.
+    // - kind 11, DuelSelectNumberDialog (dlg_selnum.swf, 0x4C6430): param3 max << 24 | step << 20 | min << 16 | its
+    //   format text (302 "%d000LP" counts in thousands, 303 "%d00LP" in hundreds, others in ones: 283 "%d"); DLGResult the
+    //   number in those units (0x4C66D0).
+    // The answers carry EDOPro's race and attribute bits, and the number's index among the options.
+    let mut t = with_cards();
+    let race = json!({ "type": 140, "player": 0, "count": 1, "available": 0x2001 });
+    let out = client_commands(t.prompt(&race));
+    assert_eq!(out.last(), Some(&(0x36, [5, 1, 1 << 1 | 1 << 15, 0])), "Dragon and Warrior");
+    assert!(out.contains(&(0x3ED, [1 << 28 | 241, 0, 0, 0])), "Select Type(s).");
+    assert_eq!(t.dialog_result(15), Some(Prompt::Answer(json!({ "type": 16, "races": [1] }))), "Warrior");
+    let attribute = json!({ "type": 141, "player": 0, "count": 1, "available": 0x30 });
+    assert_eq!(client_commands(t.prompt(&attribute)).last(), Some(&(0x36, [7, 1, 0b110 << 16 | 1, 0])), "LIGHT and DARK");
+    assert_eq!(t.dialog_result(1 << 2), Some(Prompt::Answer(json!({ "type": 17, "attributes": [0x20] }))), "DARK");
+    let levels = json!({ "type": 143, "player": 0, "options": (1..=12).collect::<Vec<u32>>() });
+    let out = client_commands(t.prompt(&levels));
+    assert_eq!(out.last(), Some(&(0x36, [11, 1, 12 << 24 | 1 << 20 | 1 << 16 | 283, 0])));
+    assert!(out.contains(&(0x3ED, [1 << 28 | 280, 0, 0, 0])), "Declare monster level.");
+    assert_eq!(t.dialog_result(7), Some(Prompt::Answer(json!({ "type": 19, "value": 6 }))));
+    let lp = json!({ "type": 143, "player": 0, "options": [500, 1000, 1500, 2000] });
+    assert_eq!(client_commands(t.prompt(&lp)).last(), Some(&(0x36, [11, 0, 20 << 24 | 5 << 20 | 5 << 16 | 303, 0])));
+    assert_eq!(t.dialog_result(15), Some(Prompt::Answer(json!({ "type": 19, "value": 2 }))), "1500 LP");
+}
+
+#[test]
+fn a_card_name_declaration_searches_the_clients_own_card_database() {
+    // The card list's extended kinds (0x4C-0x4F, DuelCardListDialogEx 0x5131E0, dlg_cardlistex.swf) list the client's
+    // own card database with a name search (CardDuelFilter 0x4976A0: 0x4C any card), not the server's rows; DLGResult is
+    // the picked card's Konami id (0x4C8290, id & 0x3FFF). The answer names it by Konami id (the sidecar turns it into
+    // a passcode); the core asks again if the card doesn't fit.
+    let mut t = with_cards();
+    let declare = json!({ "type": 142, "player": 0, "opcodes": [0x40000001_u64] });
+    assert_eq!(client_commands(t.prompt(&declare)).last(), Some(&(0x37, [0, 0x4C, 0, 0])));
+    assert_eq!(t.dialog_result(4007), Some(Prompt::Answer(json!({ "type": 18, "cid": 4007 }))));
+}

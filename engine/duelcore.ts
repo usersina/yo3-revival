@@ -184,7 +184,14 @@ for await (const line of createInterface({ input: process.stdin })) {
     const req = JSON.parse(line);
     if (req.op === "new") answer = newDuel(req);
     else if (req.op === "respond") {
-      lib.duelSetResponse(handle!, req.response);
+      // A declared card comes as a Konami id (the client's DLGResult); the core wants its passcode. Races are 64-bit
+      // values in the core (BigInts), JSON numbers here.
+      const r = req.response;
+      const response =
+        r.type === 18 && "cid" in r ? { type: 18, card: passcodeOf.get(r.cid) ?? 0 }
+        : r.type === 16 ? { ...r, races: r.races.map((x: number) => BigInt(x)) }
+        : r;
+      lib.duelSetResponse(handle!, response);
       answer = run();
     } else throw new Error(`unknown op ${req.op}`);
     answer = { ...answer, messages: withCids(answer.messages) };

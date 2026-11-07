@@ -709,6 +709,26 @@ summoning Marauding Captain asked 'Activate the effect of "Marauding Captain"?';
 followed with "Select the monster(s) to Special Summon." and the hand's monsters, and the picked Giant Orc was Special
 Summoned.
 
+**Declarations.** The dialog command `0x36 {kind, message, param3}` has a window for three of EDOPro's declarations
+(factory `0x4C8CD0`, kinds by the table `0x4C9178`), and the card list one for the fourth:
+
+| Declaration | Client window | `param3` | DLGResult | Status |
+|---|---|---|---|---|
+| MSG_ANNOUNCE_RACE {count 1, available} | kind 5, DuelSelectTypeDialog (`dlg_seltype.swf`), "Select @3Type(s)@0." (241) | the allowed types as bits 1–22 in the client's order (UI texts 1031–1052: Dragon, Zombie, Fiend, Pyro, Sea Serpent, Rock, Machine, Fish, Dinosaur, Insect, Beast, Beast-Warrior, Plant, Aqua, Warrior, Winged Beast, Fairy, Spellcaster, Thunder, Reptile, Psychic, Divine-Beast), one pick (`dialog.typeFlag`, `dialog.selMax` 1) | the type's number | confirmed (live) |
+| MSG_ANNOUNCE_ATTRIB {count, available} | kind 7, DuelSelectAttrDialog (`dlg_selattr.swf`), "Select @3Attribute(s)@0." (242) | allowed (bits 1–7: LIGHT, DARK, WATER, FIRE, EARTH, WIND, DIVINE, texts 1061–1067) << 16 \| picks | the picks as bits | confirmed (live) |
+| MSG_ANNOUNCE_NUMBER {options} | kind 11, DuelSelectNumberDialog (`0x4C6430`, `dlg_selnum.swf`), "Declare @3monster@0 level." (280) for levels, else none | max << 24 \| step << 20 \| min << 16 \| format: 302 "%d000LP" counts in thousands, 303 "%d00LP" in hundreds, other formats (283 "%d") in ones (`dialog.numMin`, `numMax`, `step`) | the number in those units (`0x4C66D0`) | confirmed (live) |
+| MSG_ANNOUNCE_CARD {opcodes} | the card list `0x37 {player, 0x4C, 0}`: DuelCardListDialogEx (`0x5131E0`, `dlg_cardlistex.swf`) lists the client's own card database with a name search ("Input text.", Filter); kinds `0x4C`–`0x4F` pick its filter (CardDuelFilter `0x4976A0`: any card, no extra deck monsters, main deck monsters, monsters) | — | the card's Konami id (`0x4C8290`, id & `0x3FFF`) | confirmed (live) |
+
+The answers carry EDOPro's terms: the type's and attributes' RACE_/ATTRIBUTE_ bits, the number's index among the
+options (the first at least as large as the one picked), and a card by Konami id, which the sidecar turns into a
+passcode; races go to the core as BigInts (64-bit in ocgcore-wasm; a plain number threw "Cannot mix BigInt and other
+types"). Several types at once and numbers out of the dialog's range keep the automatic answer; the CPU names the
+duel's cards in turn (the core asks again when a name doesn't fit). The client has no other card name window
+(DuelIidInputDialog is a debug key on the field). Live (`--duel-deck 1933,229,3609,1449`): Abyssal Designator asked
+for an Attribute (DARK, `DLGResult` 4) and a Type (Fiend, 3), and Kaiba had to send a Giant Orc; Prohibition opened
+the card search, "Giant Orc" filtered it to one card and `DLGResult` 5586 named it; Star Blast offered 500–1500 LP in
+steps of 500 (`param3` 15 << 24 \| 5 << 20 \| 5 << 16 \| 303) and 1000 LP was paid.
+
 Positions: the client's MSG_SELECT_POSITION {code, positions} opens the position dialog with 'Select position for
 "%s".' (327), any uid holding the card's id, and the flag when face-up defense is allowed; button 0 answers face-up
 attack (else face-down attack), button 1 face-up defense (else face-down). Without an attack position the first

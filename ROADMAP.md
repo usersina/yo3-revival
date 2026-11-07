@@ -9,9 +9,9 @@ Goal: finish what the client can use, then hand over for the real friend test. E
 (evidence, failing test, code, live check on the headless clients, docs, its own commit fast-forwarded into `main`),
 most valuable first. Research for the later slices runs ahead in parallel (read-only).
 
-1. [ ] Duels: an extra deck summon seen live (Synchro or Fusion); the Number, Type and Attribute declarations
-       (dialog kinds 11, 5–6, 7) and card name declarations; options that are a card's own strings (the prompt
-       table's 400–490 labels)
+1. [ ] Duels: an extra deck summon seen live (Synchro or Fusion); [x] the Number, Type and Attribute declarations
+       (dialog kinds 11, 5, 7) and card name declarations (the card list's searchable kind `0x4C`); options that are a
+       card's own strings (the prompt table's 400–490 labels)
 2. [ ] Duels: chain chances outside timely ones ("always chain"), a spectator through a match's later duels, the
        deck check against the duel's regulation on the server
 3. [ ] NPC experience (`npcbin`): wins against an NPC unlock its higher levels
@@ -187,9 +187,11 @@ Stop finding missing fields one crash at a time.
 - [x] Positions, options and chains: the position dialog (kind 8), the option list (kind 4) for options the client has
       labels for (coin calls, card types), and the chain question (kind 3, with the cards) then the card list. Live:
       Marauding Captain's Special Summon in Defence, Time Wizard's coin call, two Trap Holes chained to the CPU's summon
+- [x] Declarations: types, attributes and numbers in their dialogs, card names in the card list's searchable kind.
+      Live: Abyssal Designator (DARK, Fiend), Prohibition (Giant Orc), Star Blast (1000 LP)
 - [ ] Options that are a card's own strings (51 of the client's cards; the prompt table's 400–490 are the original
-      per-card labels, but EDOPro's strings don't pair with them reliably), places, number/race/attribute declarations
-      (the Number, Type and Attribute dialogs); chains outside timely chances (EDOPro's "always chain")
+      per-card labels, but EDOPro's strings don't pair with them reliably), places; chains outside timely chances
+      (EDOPro's "always chain")
 - [x] Position changes and flips on the field: command `0x1C` (CardFlipTurn) for MSG_POS_CHANGE and flip summons; the
       command ids named after Konami's view types (Master Duel's `DuelViewType`). Live: Giant Orc to defense after
       attacking, a Set Trap Hole turning face-up
@@ -300,6 +302,7 @@ Stop finding missing fields one crash at a time.
 | Friends | a request needs the other player online with no request waiting for them; no limit on friends (110 "The Player List is full." never sent); declining tells the requester; the team tab lists nobody | The original's limits and offline requests are unknown |
 | Watching | from seat 0's side (the first player to enter); the decisive janken round only; NPC duels can't be watched | The original's spectator view and opening are unknown; a spectator's view of a match's later duels wasn't tried live |
 | Login banlist | regulation 1 ("Beta Forbidden/Limited") unless `--regulation` names another | Which list the original used for Auto Duel at each date is unknown; the client calls the login one "Latest Regulation" |
+| Declarations | several types at once and numbers outside the number dialog (min or step above 15 units, max above 255) answered automatically; the CPU names the duel's cards in turn | The client's dialogs pick one type and a range of numbers; the original server's handling of the rest is unknown |
 | Option labels | EDOPro's system strings 60/61 and 70–72 mapped to the client's labels; a card's own strings take the first option | The original server's label per card option is unknown |
 | Chain chances | level 3 after an event (summon, attack, damage… or during a chain), 1 at a phase or step, 0 when no card fits (`spe_count` 0); the player's Activation Message option decides; messages 7/8 (Spell/Trap zone)/269 | The original server's levels and which windows it judged "low priority" are unknown |
 | Rules | EDOPro's `MODE_MR2` | Online 3 (2010) ran Master Rule 2; EDOPro's preset may differ in details |
