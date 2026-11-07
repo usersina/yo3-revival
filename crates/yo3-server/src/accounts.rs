@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value as Json, json};
 
-use crate::front::{Account, COMMENTS, LOGIN_REGULATION, Player, SPEECHES};
+use crate::front::{Account, COMMENTS, Player, SPEECHES};
 use crate::store;
 
 /// The client shows four player slots.
@@ -76,7 +76,7 @@ impl Directory {
     }
 
     fn account(user_id: u32, players: Vec<Player>) -> Account {
-        Account { user_id, name: format!("user{user_id}"), dpoint: START_BP, regulation_id: LOGIN_REGULATION, players }
+        Account { user_id, name: format!("user{user_id}"), dpoint: START_BP, players }
     }
 
     /// The account of an address, made with the starting players (their names made unique) on first contact.

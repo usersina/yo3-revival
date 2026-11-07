@@ -199,3 +199,27 @@ fn heartbeat_and_unknown_requests_get_no_reply() {
     assert!(s.handle(&req(0x2724)).is_empty());
     assert!(s.handle(&req(0x7777)).is_empty());
 }
+
+#[test]
+fn the_login_carries_the_servers_banlist() {
+    // Auto Duel's and the NPC duel's deck check (0x51AB00) uses the login's regulation_id (0x219A, and 0x2201's top
+    // level, read by 0x469C00): the server's --regulation, e.g. 3 "unlimited".
+    let world = Arc::new(World { login_regulation: 3, ..World::new((1..=20).collect()) });
+    let auth = one(fresh_in(world.clone()).handle(&req(0x1F47)));
+    assert_eq!(auth.get("regulation_id"), Some(&Value::U32(3)));
+    let login = one(fresh_in(world).handle(&req(0x1F48)));
+    assert_eq!(login.get("regulation_id"), Some(&Value::U32(3)));
+}
+
+#[test]
+fn a_banlist_is_named_by_id_or_name() {
+    // --regulation takes a regulation id or its name in the client's text table, ignoring case.
+    let known = [(1, "Beta Forbidden/Limited".to_string()), (3, "unlimited".to_string()), (20, "Season 16".to_string())];
+    assert_eq!(yo3_server::regulation_by("unlimited", &known), Ok(3));
+    assert_eq!(yo3_server::regulation_by("UNLIMITED", &known), Ok(3));
+    assert_eq!(yo3_server::regulation_by("season 16", &known), Ok(20));
+    assert_eq!(yo3_server::regulation_by("1", &known), Ok(1));
+    let err = yo3_server::regulation_by("no such list", &known).unwrap_err();
+    assert!(err.contains("unlimited") && err.contains("Season 16"), "lists the choices: {err}");
+    assert!(yo3_server::regulation_by("7", &known).is_err(), "an id the client lacks");
+}

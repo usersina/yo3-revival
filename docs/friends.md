@@ -24,6 +24,11 @@ You need Linux (on Windows, use WSL), the game installed (the server reads its c
 
    The server sends each client to the address it used to reach the server, so one server answers on all of these at
    once. `--advertise` is only needed when the address clients dial isn't one of the machine's own (port forwarding).
+
+   To play without a banlist, start it with `./run.sh --regulation unlimited` (any card, up to 3 copies each). Auto
+   Duel and Kaiba Corporation check decks against this banlist; it shows as "Latest Regulation" in Create Duel, where
+   a host can still pick another (Create Duel → Customize → Regulations → Select). Others: `--regulation "Season 16"`,
+   `"OCG 2006-09-01"` and so on; an unknown name lists them all.
 3. Name your friends' players. There's no sign-up: the server tells players apart by the address they connect from,
    and each address gets its own account with up to four players. A new address starts with a player called
    "Duelist" (then "Duelist2", "Duelist3"...). With the server stopped:

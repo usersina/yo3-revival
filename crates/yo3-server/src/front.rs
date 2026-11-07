@@ -11,7 +11,8 @@ use yo3_proto::{Message, Packet, Value};
 pub type Outbox = tokio::sync::mpsc::UnboundedSender<Message>;
 
 pub const VERSION_VALID: u32 = 0x219F;
-/// The banlist every account logs in with (0x2201 regulation_id); the NPC duel checks decks against it.
+/// The default banlist every account logs in with (0x2201 regulation_id), which Auto Duel's and the NPC duel's deck
+/// check uses (`World::login_regulation`, set by --regulation); also the one the starter deck must pass.
 pub const LOGIN_REGULATION: u32 = 1;
 pub const HEARTBEAT: u32 = 0x2724;
 
@@ -96,13 +97,12 @@ pub struct Account {
     pub user_id: u32,
     pub name: String,
     pub dpoint: u32,
-    pub regulation_id: u32,
     pub players: Vec<Player>,
 }
 
 impl Account {
     pub fn test() -> Account {
-        Account { user_id: 1001, name: "test".into(), dpoint: 0, regulation_id: LOGIN_REGULATION, players: vec![Player::new(1001, "test")] }
+        Account { user_id: 1001, name: "test".into(), dpoint: 0, players: vec![Player::new(1001, "test")] }
     }
 }
 
@@ -259,6 +259,8 @@ impl Room {
 /// Server-wide state shared by all sessions.
 pub struct World {
     pub regulation_ids: Vec<u16>,
+    /// The banlist accounts log in with (0x219A, 0x2201 regulation_id): Auto Duel's and the NPC duel's deck check.
+    pub login_regulation: u32,
     /// The highest CARD_Prop row: the client's per-card arrays have one byte per row (row 0 is a dummy).
     pub card_rows: usize,
     /// Every player's deck until decks are stored per player (from the client's preset decks).
@@ -288,6 +290,7 @@ impl World {
     pub fn new(regulation_ids: Vec<u16>) -> World {
         World {
             regulation_ids,
+            login_regulation: LOGIN_REGULATION,
             card_rows: 0,
             starter_deck: None,
             npcs: vec![],
@@ -668,11 +671,11 @@ impl FrontSession {
         let a = &self.account;
         let reply = match id {
             0x1F47 => Message::reply(0x219A)
-                .with("regulation_id", Value::U32(a.regulation_id))
+                .with("regulation_id", Value::U32(self.world.login_regulation))
                 .with("user_id", Value::U32(a.user_id))
                 .with("uname", Value::text(&a.name))
                 .with("dpoint", Value::U32(a.dpoint)),
-            0x1F48 => Message::reply(0x2201).with("regulation_id", Value::U32(a.regulation_id)).item(
+            0x1F48 => Message::reply(0x2201).with("regulation_id", Value::U32(self.world.login_regulation)).item(
                 Message::record()
                     .with("user_id", Value::U32(a.user_id))
                     .with("uname", Value::text(&a.name))

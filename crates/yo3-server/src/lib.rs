@@ -44,6 +44,9 @@ pub struct Config {
     pub duel_deck: Vec<u16>,
     /// Where accounts and duel records are kept (none: in memory only).
     pub data_dir: Option<PathBuf>,
+    /// The banlist players log in with (Auto Duel and NPC duels), as a regulation id or name ("unlimited"); none:
+    /// regulation 1.
+    pub regulation: Option<String>,
 }
 
 impl Config {
@@ -62,6 +65,7 @@ impl Config {
             duel_lp: 8000,
             duel_deck: vec![],
             data_dir: None,
+            regulation: None,
         }
     }
 }
@@ -85,9 +89,21 @@ impl Running {
 
 /// Banlist ids, card rows and NPCs from the client's own files, or ids 1-20 and nothing else if the
 /// game is absent.
-fn world(cfg: &Config, duel_port: u16) -> World {
+/// A regulation by its id or its name (ignoring case), among the client's (id, name) pairs; else what there is.
+pub fn regulation_by(arg: &str, known: &[(u32, String)]) -> Result<u32, String> {
+    let found = match arg.trim().parse::<u32>() {
+        Ok(id) => known.iter().find(|(k, _)| *k == id),
+        Err(_) => known.iter().find(|(_, name)| name.eq_ignore_ascii_case(arg.trim())),
+    };
+    found.map(|(id, _)| *id).ok_or_else(|| {
+        let choices: Vec<String> = known.iter().map(|(id, name)| format!("{id} \"{name}\"")).collect();
+        format!("no regulation {arg:?}; the client has {}", choices.join(", "))
+    })
+}
+
+fn world(cfg: &Config, duel_port: u16) -> anyhow::Result<World> {
     let duel_server = (cfg.advertise.clone().unwrap_or_default(), duel_port);
-    match yo3_data::GameData::load(&cfg.game_dir) {
+    let world = match yo3_data::GameData::load(&cfg.game_dir) {
         Ok(data) => World {
             card_rows: data.cards.iter().map(|c| c.row as usize).max().unwrap_or(0),
             // The first deck_type 1 preset (they look like starter decks) the login regulation allows.
@@ -141,13 +157,28 @@ fn world(cfg: &Config, duel_port: u16) -> World {
                     shop::ShopDeck { released: date("created"), modified: date("modified"), deck }
                 })
                 .collect(),
+            login_regulation: match &cfg.regulation {
+                Some(arg) => {
+                    let known: Vec<(u32, String)> =
+                        data.regulations.iter().map(|r| (r.id, data.text(r.name_id).unwrap_or_default().to_string())).collect();
+                    regulation_by(arg, &known).map_err(anyhow::Error::msg)?
+                }
+                None => LOGIN_REGULATION,
+            },
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
         },
         Err(e) => {
             tracing::warn!("game data not loaded ({e}); using regulation ids 1-20");
-            World { duel_server, ..World::new((1..=20).collect()) }
+            let login_regulation = match cfg.regulation.as_deref().map(str::parse::<u32>) {
+                Some(Ok(id)) => id,
+                Some(Err(_)) => anyhow::bail!("--regulation by name needs the game's data"),
+                None => LOGIN_REGULATION,
+            };
+            World { duel_server, login_regulation, ..World::new((1..=20).collect()) }
         }
-    }
+    };
+    tracing::info!("players log in with regulation {}", world.login_regulation);
+    Ok(world)
 }
 
 pub async fn start(cfg: Config) -> anyhow::Result<Running> {
@@ -158,7 +189,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let http = TcpListener::bind((cfg.bind, cfg.http_port)).await?;
     let addrs = (gate.local_addr()?, front.local_addr()?, duel.local_addr()?, http.local_addr()?);
     let front_port = addrs.1.port();
-    let world = Arc::new(world(&cfg, addrs.2.port()));
+    let world = Arc::new(world(&cfg, addrs.2.port())?);
     match &world.engine_dir {
         Some(dir) => tracing::info!("rules engine: {}", dir.display()),
         None => tracing::warn!("rules engine not fetched (run engine/fetch.sh): duels open but can't be played"),

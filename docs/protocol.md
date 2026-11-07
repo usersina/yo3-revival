@@ -81,6 +81,20 @@ clicks do nothing. Every reply also passes through the global front dispatcher; 
 | Request | Reply (error) | Fields | Evidence | Status |
 |---|---|---|---|---|
 | `0x2072` regulations | `0x2398` (`0x2399`) | `regulations`: binary u16 BE regulation ids | read unchecked at `0x4F545B` | confirmed field; list contents **guess** (all 20) |
+
+**Banlists.** The client ships 20 regulations (`data/regulation/*.y3r`, named in the text table): 1 "Beta
+Forbidden/Limited", 2 "Pre-Season", 3 "unlimited" (no lists: every card 3 times), 4–15 the OCG lists of 2004-03 to
+2009-09 (which also limit the card pool to the cards out by then: `addition_card` 0 and the pool as `card3`), 16–20
+"Season 12" to "Season 16". Only the client enforces them: its deck check (`0x51AB00`) before Auto Duel and NPC duels
+uses the login's `regulation_id` (`0x219A`, `0x2201`), and a hosted duel uses the host's choice. The server sends the
+one its `--regulation` setting names (an id, or a name such as "unlimited"; default 1, the Beta list, a **guess**);
+the starter deck is still the first preset regulation 1 allows. Live: the Starter Deck breaks regulation 4 (six cards
+newer than March 2004); with `--regulation 4` Kaiba Corporation answered "There are no valid Decks available.", with
+`--regulation unlimited` the same deck reached the janken. Create Duel → Customize → Regulations shows the login
+regulation as "Latest Regulation" (with "unlimited": no Forbidden cards, "Cards not listed are Unlimited.") and Select
+lists the others by name with their Forbidden / Limited / Semi-Limited tabs (an OCG list: Limited, Semi-Limited and
+"Any", "Cards not listed are Forbidden."). The same screen offers Wait Time Per Turn (Standard, Any, 2, 3, 5 minutes)
+and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 600 s the clocks use.
 | `0x27D8` | `0x27D9` (`0x27DA`) | one record (copied into a 0xC4-byte object) | item[0] read unchecked at `0x4F5BE9` | shape |
 | `0x2CEE` player refresh `{player_id, type}` | `0x2CF3` (`0x2CF4`) | item = the selected player's record; its `player_id` must match | `0x47378A`, `0x4F5FC2` | confirmed |
 | `0x2583` | `0x2588` (`0x2589`) | `count` u32 | `0x4730B0` | shape (unread mail or presents?) |
