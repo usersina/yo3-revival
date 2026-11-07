@@ -29,6 +29,10 @@ const COMMAND_DATA: u32 = 0x12;
 /// Client duelRequestName of a card command (0x520FD0) and of a phase button {phase} (0x521180).
 const CARD_COMMAND: u32 = 2;
 const PHASE_BUTTON: u32 = 3;
+/// Client duelRequestNames of a closing dialog: its result {DLGResult, debug} (0x521A70), and for the card list
+/// (0x4C74F0) first the first pick {SetIndex} (0x521BC0) and each pick {index, data: its order} (0x521CC0).
+const DIALOG_RESULT: u32 = 4;
+const PICK: u32 = 7;
 /// Client duelRequestNames: the janken hand {selectHand} (0x4F1330), first or second {choice}
 /// (0x4F1430).
 const SELECT_HAND: u32 = 0xC;
@@ -168,6 +172,21 @@ impl DuelSession {
             (Some(CLIENT_DUEL), Some(PHASE_BUTTON)) => {
                 let answer = int("phase")
                     .and_then(|phase| self.engine.as_mut().and_then(|(_, t)| t.phase(phase)))
+                    .and_then(|r| self.engine.as_mut().map(|(e, _)| e.respond(r)));
+                match answer {
+                    Some(answer) => self.advance(answer),
+                    None => vec![],
+                }
+            }
+            (Some(CLIENT_DUEL), Some(PICK)) => {
+                if let (Some((_, t)), Some(index)) = (self.engine.as_mut(), int("index")) {
+                    t.pick(index);
+                }
+                vec![]
+            }
+            (Some(CLIENT_DUEL), Some(DIALOG_RESULT)) => {
+                let answer = int("DLGResult")
+                    .and_then(|n| self.engine.as_mut().and_then(|(_, t)| t.dialog_result(n)))
                     .and_then(|r| self.engine.as_mut().map(|(e, _)| e.respond(r)));
                 match answer {
                     Some(answer) => self.advance(answer),

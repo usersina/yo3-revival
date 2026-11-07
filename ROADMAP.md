@@ -115,9 +115,12 @@ Stop finding missing fields one crash at a time.
       push `0x2009` (duel data, tag 7) ends the match, so the result screen shows the record against this opponent and
       Next returns to the map. Live: "YOU LOSE", LOSER/WINNER panels, back at Kaiba Corporation
 - [ ] Players kept across server restarts (records against each opponent are in memory only)
-- [ ] Translator: the client's own target and effect choices (ocgcore SELECT_CARD and co. are answered for it now),
-      attack and summon animations (DuelBattle `0xA`–`0xE`, DuelSummon `0x2A`–`0x32`), position changes, stat changes
-      from effects (engine queries), chains
+- [x] The client's own card choices: targets, tributes, attack targets and other card selections open the card list
+      (command `0x37` and its data commands) with a message from the client's duel prompts. Live: an attack target
+- [ ] The client's other choices: yes/no and effect questions, options, positions, chains (dialog command `0x36`;
+      answered for the player now)
+- [ ] Translator: attack and summon animations (DuelBattle `0xA`–`0xE`, DuelSummon `0x2A`–`0x32`), position changes,
+      stat changes from effects (engine queries); attack targets on the field instead of the list
 - [ ] Deck piles on the field (the deck count alone shows none)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)
@@ -163,6 +166,10 @@ Stop finding missing fields one crash at a time.
 | Card table entries (1000) | param3 0, flag byte 0; uids 1.. in table order | Meanings of param3 and the flag unknown |
 | Hidden cards | the CPU's real rows are sent | Online 2 used placeholders; needed before PvP |
 | Menu bits for Set | 6 monster set, 7 Spell/Trap set | Both entries read "Set" |
+| Card list kind | 1 for min 0, `0x27` for min 1, else 6 with max = min | The kinds' other meanings (title, sounds) are unknown; a choice between 2 and more picks is narrowed to exactly min |
+| Card list marks | `0x8000` for the CPU's cards, no icons | The low bits draw icons whose meaning is unknown |
+| Choice messages | EDOPro's hint mapped to the client's text for 7 hints; none otherwise | The original server's message per choice is unknown |
+| Attack targets | chosen in the card list | The original probably picked them on the field (DuelBattle) |
 | Rules | EDOPro's `MODE_MR2` | Online 3 (2010) ran Master Rule 2; EDOPro's preset may differ in details |
 | CPU play | first summonable monster, attack with all, never chain | The original NPCs' AI is unknown |
 | Duel end reason | EDOPro's reason mapped to the client's texts (LP 0, deck out, surrender, Exodia...; others "won with a card") | The original server's values are unknown (100 takes another path) |

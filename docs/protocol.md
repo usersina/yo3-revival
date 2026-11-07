@@ -245,10 +245,10 @@ We send request `0x200D` (**guess**: no reader).
 | 1 | `size` … | `0x520C20` |
 | 2 | `CommandID`, `index`, `player`, `position` (a card command) | `0x520FD0` |
 | 3 | `phase` | `0x521180` |
-| 4 | `DLGResult`, `debug` (a dialog answer) | `0x521A70` |
+| 4 | `DLGResult`, `debug` (a dialog answer; the card list's number of picks) | `0x521A70`, from each dialog's close |
 | 5 | | `0x5212B0` |
-| 6 | `SetIndex` | `0x521BC0` |
-| 7 | `data`, `index` | `0x521CC0` |
+| 6 | `SetIndex` (the card list's first pick) | `0x521BC0`, from the card list `0x4C74F0` |
+| 7 | `index` (a card list position), `data` (its pick order, also kept in the high byte of the `0x3F1` entry) | `0x521CC0`, once per pick |
 | 8 | `player` | `0x521980` |
 | 9 / 0xA / 0xB | debug: `DebugID`; `wCardID`, `fFace`, `fTurn`; `id`, `type` (with `index`, `player`, `position`) | `0x5213C0`, `0x521560`, `0x5217C0` |
 | 0xC | `selectHand` (janken: 0 rock, 1 scissors, 2 paper) | `0x4F1330` |
@@ -349,6 +349,31 @@ index s), and the client sends Attack as `{CommandID 0, position 0, index s}`. L
 signed change}` (DuelCockpit, clamped to 0–99999; param3 non-zero adds a pop-up) for ocgcore's DAMAGE, PAY_LPCOST
 (negative) and RECOVER, and `0xF` for LPUPDATE. Live: a direct attack took the CPU from 8000 to 5700 LP. The attack has
 no animation yet (DuelBattle's commands `0xA`–`0xE` are unmapped).
+
+**Choices.** DuelScene opens dialogs with two commands (both popped like any other):
+
+- `0x36 {kind, param2, param3}` (`0x514C0C`) builds a dialog by kind through the factory `0x4C8CD0` (kind table at
+  `0x4C9178`): 0 OK, 1 Info, 2 Yes/No, 3 Effect, 4 Select, 5–6 Type, 7 Attribute, 8 Position ("Stand"), 9 Coin, 10
+  Dice, 11 Number, 13 Discard, 14 Ritual (12 and above 14 build nothing). Each answers `duelRequestName 4 {DLGResult}`.
+  Online 2's notes give the same kinds; **not used yet**.
+- `0x37 {player, kind, message}` (`0x514CCB`) opens the card list (`DuelCardListDialog`, `0x4C72D0`; kinds `0x4C`–`0x4F`
+  the extended one, `0x5131E0`), `dlg_cardlist.swf`. It shows the list the data commands left in the engine state
+  (pop `0x522A50`): `0x3EF {count, max picks, _}` (`+0x2A8`, `+0x9B8`; max 0 = view only) resets the lists, `0x3F2`
+  gives CARD_Prop rows four at a time (`+0x9BC`, read by getCardInfo `0x4C78A0`), `0x3F3` a mark per card four at a
+  time (`+0xE6C`: bit 15 the opponent's card, low bits icons whose meaning is open). The kind sets how many picks
+  OK needs (`0x4C72D0`): 1–5, `0x48`, `0x4B` none; 6–`0x26` all of max; `0x27`–`0x47`, `0x4A` one. A non-zero message
+  builds the dialog's text from `0x3EC {entries}` and `0x3ED {entry ×4}` (`0x519870`); an entry is kind << 28 | value,
+  kind 1 = a text of the duel prompt table (2 a line break, 3 and 4 formatted). Closing it sends `6 {SetIndex}`, a
+  `7 {index, data}` per pick and `4 {DLGResult: picks}` (`0x4C74F0`).
+
+The server uses the card list for the client's MSG_SELECT_CARD and MSG_SELECT_TRIBUTE (targets, tributes, attack
+targets, discards…): the rows from its mirror, the opponent's cards marked, kind 1 for min 0, `0x27` for min 1, else 6
+with max lowered to min (**guess**). EDOPro's hint before the choice (MSG_HINT type 3, HINTMSG_*) picks the message
+when a text says the same thing: 500 → 18 Tribute, 503 → 70 remove from play, 504 → 58 Graveyard, 506 → 88 add to
+hand, 509 → 25 Special Summon, 549 → 222 attack target, 551 → 94 target; otherwise none. The picks answer the engine;
+no pick cancels when it allows. Live: Giant Orc's attack opened the list with "Select an attack target monster." and
+the CPU's monster marked as the opponent's; picking it sent `6`, `7 {index 0, data 1}`, `4 {DLGResult 1}` and the
+attack dealt 1200. Other prompts (yes/no, options, positions, chains, places) are still answered for the player.
 
 The duel's end: ocgcore's WIN {winning team, reason} becomes command 2 {result, reason}. DuelScene keeps the result at
 MainGamen `+0x81C` and its 1 ↔ 2 swap as the opponent's, and adds a DuelEndEffect (`0x5083A0`) that plays

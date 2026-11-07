@@ -57,6 +57,10 @@ export, see [CLAUDE.md](../CLAUDE.md)).
 | `0x5083A0` / `0x5084D0` | `DuelEndEffect` constructor `(result, reason, …)` / update: plays `duel_win/lose/draw.swf`, done when the movie ends |
 | `0x510950` / `0x510B70` / `0x510D50` | `DuelResult` constructor / its nine steps (`0x512070` waits for 1500/1504 or front flag `0x20000`, `0x512430` match movie…) / Flash callbacks (`requestData`, `getResult` `0x511200`, `requestStarCount`, `finish`) |
 | `0x50FC00` / `0x50FDF0` / `0x510220` | `DuelManager` after a duel: match result set → leave (`0x510220`), else 1504 → Card Swap (`0x50FDF0`), 1500 → next duel (`0x50F690`) |
+| `0x4C8CD0` | duel dialog factory by kind (command `0x36`): OK, Info, Yes/No, Effect, Select, Type, Attribute, Position, Coin, Dice, Number, Discard, Ritual |
+| `0x4C72D0` / `0x4C73A0` / `0x4C74F0` | `DuelCardListDialog` (command `0x37`) init (kind → picks OK needs) / show (`dlg_cardlist.swf`, message `0x519870`) / close: sends `6`, `7` per pick, `4` |
+| `0x4C76B0` / `0x4C78A0` | the card list's Flash callbacks `getListInfo` (count, max, accept) / `getCardInfo(i)` (row from `+0x9BC`, mark from `+0xE6C`, image id, attribute, ATK/DEF) |
+| `0x50B700` | DuelFieldManager mouse handler: left click on a card → its menu / card command (`0x4F9510`); right click with other-flag 6 set → `duelRequestName 5` |
 | `0x531B90` | item factory by tag: 3 record, 4 request, 5 `YO3PasswordKey`, 6 deck, 7 `YO3DuelData` (children by name: `gameServer`, `regulation`, `rule`, `players`, `result`; `0x5315C0`) |
 | `0x4EEB90` | object factory by id: `0xFFFFD8F5` FrontServerConnection, `0xFFFFD8F6` DuelServerConnection, `0xFFFFD8F7` DuelMatchingAgent, `0xFFFFD8F8` AutoMatchingAgent, `0xFFFFD8F9` CommunicationAgent, `0xFFFFD8FD` DuelManager |
 | `0x4A523F`, `0x4A551E`, `0x4A5D05` | `CommunicationAgent` switches (195/106/102 cases) |

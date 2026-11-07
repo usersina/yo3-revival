@@ -203,6 +203,9 @@ fn a_player_without_a_duel_entry_gets_no_opening() {
 fn other_duel_messages_get_no_answer_yet() {
     let mut s = session();
     enter(&mut s);
+    // A card list's picks (6 SetIndex, 7 {index, data}) and its close (4 DLGResult) with no choice pending.
+    assert!(s.handle(&duel_msg(6, &[("SetIndex", 0)])).is_empty());
+    assert!(s.handle(&duel_msg(7, &[("index", 0), ("data", 1)])).is_empty());
     assert!(s.handle(&duel_msg(4, &[("DLGResult", 1)])).is_empty());
     assert!(s.handle(&Packet::Message(Message::reply(0x2724))).is_empty());
 }

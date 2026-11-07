@@ -17,6 +17,7 @@ use crate::duel::{
 };
 
 /// ocgcore message types (OcgMessageType).
+const MSG_HINT: u64 = 2;
 const MSG_WIN: u64 = 5;
 const MSG_SELECT_BATTLECMD: u64 = 10;
 const MSG_SELECT_IDLECMD: u64 = 11;
@@ -72,6 +73,9 @@ const BATTLE_CHAIN: u64 = 0;
 const BATTLE_ATTACK: u64 = 1;
 const BATTLE_TO_M2: u64 = 2;
 const BATTLE_TO_EP: u64 = 3;
+/// MSG_HINT's hint_type for "what the next selection is for" (HINTMSG_* in the card scripts' constant.lua).
+const HINT_SELECTMSG: u64 = 3;
+const HINTMSG_RELEASE: u64 = 500;
 /// ocgcore locations.
 const LOC_DECK: u64 = 1;
 const LOC_HAND: u64 = 2;
@@ -90,6 +94,25 @@ const RECORD_MORE: u32 = 0x3EA;
 const RECORD_COMMIT: u32 = 0x3EB;
 /// The Field Spell slot.
 const FIELD_SPELL: u32 = 10;
+/// The card list dialog: DuelScene command 0x37 {player, kind, message} (DuelCardListDialog 0x4C72D0), filled by
+/// data commands the pop keeps (0x522A50): 0x3EF {count, max picks}, 0x3F2 CARD_Prop rows and 0x3F3 marks, four at a
+/// time, and a message of 0x3EC {entries} and 0x3ED {entry, ...} (built by 0x519870).
+const CARD_LIST: u32 = 0x37;
+const LIST_BEGIN: u32 = 0x3EF;
+const LIST_ROWS: u32 = 0x3F2;
+const LIST_MARKS: u32 = 0x3F3;
+const MESSAGE_LENGTH: u32 = 0x3EC;
+const MESSAGE: u32 = 0x3ED;
+/// A list mark: the opponent's card (dlg_cardlist.swf). The low bits add icons, meaning unknown.
+const OPPONENTS: u32 = 0x8000;
+/// Card list kinds by the picks OK needs (0x4C72D0): none, all `max`, one.
+const PICK_ANY: u32 = 1;
+const PICK_ALL: u32 = 6;
+const PICK_ONE: u32 = 0x27;
+/// A message entry naming a text of the duel prompt table.
+const TEXT: u32 = 1 << 28;
+/// "Select the @3monster(s)@0 as @3Tribute@0." in the duel prompt table.
+const TRIBUTE_TEXT: u32 = 18;
 /// Duel end {result for this client: 1 won, 2 lost, 3 draw; reason} (DuelScene 0x514290).
 const DUEL_END: u32 = 2;
 const WON: u32 = 1;
@@ -166,8 +189,11 @@ pub struct Translator {
     cards: HashMap<u16, CardStats>,
     turn_player: u32,
     turns: u32,
-    /// The client's pending prompt (idle or battle command).
+    /// The client's pending prompt (idle or battle command, card choice).
     pending: Option<Json>,
+    /// The last selection hint (HINTMSG_*) and the client's picks in the card list so far.
+    hint: u64,
+    picks: Vec<usize>,
     /// The duel's result for the client (1 won, 2 lost, 3 draw), once it ended.
     result: Option<u32>,
 }
@@ -186,7 +212,8 @@ impl Translator {
                 out.push(command(CARD, [uid, row as u32, 0, table_place(p as u32, DECK, i)]));
             }
         }
-        (Translator { first, sides, cards, turn_player: first, turns: 0, pending: None, result: None }, out)
+        let t = Translator { first, sides, cards, turn_player: first, turns: 0, pending: None, hint: 0, picks: vec![], result: None };
+        (t, out)
     }
 
     /// The duel's result for the client (1 won, 2 lost, 3 draw), once the engine ended the duel.
@@ -224,6 +251,9 @@ impl Translator {
                     }
                 }
                 Some(MSG_MOVE) => out.extend(self.move_card(m)),
+                Some(MSG_HINT) if m["hint_type"].as_u64() == Some(HINT_SELECTMSG) => {
+                    self.hint = m["hint"].as_u64().unwrap_or(0);
+                }
                 Some(MSG_WIN) => {
                     let result = match m["player"].as_u64() {
                         Some(TEAM_DRAW) => DRAW,
@@ -355,9 +385,86 @@ impl Translator {
                 self.pending = Some(m.clone());
                 Prompt::Client(vec![command_data(&map, &flags), command(INPUT, [mode, CLIENT, 0, 0])])
             }
+            MSG_SELECT_CARD | MSG_SELECT_TRIBUTE => {
+                let hint = if kind == MSG_SELECT_TRIBUTE { HINTMSG_RELEASE } else { std::mem::take(&mut self.hint) };
+                let out = self.card_list(m, hint_text(hint));
+                self.pending = Some(m.clone());
+                self.picks.clear();
+                Prompt::Client(out)
+            }
             // No window for these yet: never chain, end the battle (temporary).
             _ => Prompt::Answer(cpu_answer(kind, m)),
         }
+    }
+
+    /// The card list for a card choice: its rows and marks, the message, then the dialog. The kind gives the picks OK
+    /// needs: none for min 0, one for min 1, else exactly min (the list's max is lowered to it).
+    fn card_list(&self, m: &Json, text: Option<u32>) -> Vec<Message> {
+        let selects = m["selects"].as_array().map_or(&[][..], Vec::as_slice);
+        let (min, max) = (m["min"].as_u64().unwrap_or(1) as u32, m["max"].as_u64().unwrap_or(1) as u32);
+        let (kind, max) = match min {
+            0 => (PICK_ANY, max),
+            1 => (PICK_ONE, max),
+            _ => (PICK_ALL, min),
+        };
+        let rows: Vec<u32> = selects.iter().map(|loc| self.row_of(loc) as u32).collect();
+        let marks: Vec<u32> = selects.iter().map(|loc| if self.player(&loc["controller"]) == CPU { OPPONENTS } else { 0 }).collect();
+        let mut out = vec![command(LIST_BEGIN, [selects.len() as u32, max, 0, 0])];
+        for (id, values) in [(LIST_ROWS, rows), (LIST_MARKS, marks)] {
+            for four in values.chunks(4) {
+                let mut params = [0; 4];
+                params[..four.len()].copy_from_slice(four);
+                out.push(command(id, params));
+            }
+        }
+        if let Some(text) = text {
+            out.push(command(MESSAGE_LENGTH, [1, 0, 0, 0]));
+            out.push(command(MESSAGE, [TEXT | text, 0, 0, 0]));
+        }
+        out.push(command(CARD_LIST, [CLIENT, kind, text.is_some() as u32, 0]));
+        out
+    }
+
+    /// A card's CARD_Prop row: from the mirror at its place (any deck card with its id for the deck), else the
+    /// first row with its id.
+    fn row_of(&self, loc: &Json) -> u16 {
+        let cid = loc["cid"].as_u64().unwrap_or(0) as u16;
+        let has_cid = |c: &&Card| self.cards.get(&c.row).map(|s| s.cid) == Some(cid);
+        let at_place = self.engine_place(loc).and_then(|p| {
+            let zone = self.sides[p.player as usize].zones.get(&p.zone)?;
+            if p.zone == DECK { zone.iter().find(has_cid) } else { zone.get(p.index).filter(has_cid) }.map(|c| c.row)
+        });
+        at_place.or_else(|| self.cards.iter().find(|(_, s)| s.cid == cid).map(|(&row, _)| row)).unwrap_or(0)
+    }
+
+    /// A pick in the card list (duelRequestName 7 {index: the list position}).
+    pub fn pick(&mut self, index: u32) {
+        self.picks.push(index as usize);
+    }
+
+    /// The card list closed with `count` picks (duelRequestName 4 {DLGResult}): the engine response for a pending
+    /// card choice. No pick cancels when the engine allows it; picks that don't fit the choice get the default.
+    pub fn dialog_result(&mut self, count: u32) -> Option<Json> {
+        let kind = self.pending.as_ref()?["type"].as_u64();
+        let response = match kind {
+            Some(MSG_SELECT_CARD) => RESP_CARD,
+            Some(MSG_SELECT_TRIBUTE) => RESP_TRIBUTE,
+            _ => return None,
+        };
+        let m = self.pending.take()?;
+        let picks = std::mem::take(&mut self.picks);
+        let len = m["selects"].as_array().map_or(0, Vec::len);
+        let (min, max) = (m["min"].as_u64().unwrap_or(1) as usize, m["max"].as_u64().unwrap_or(1) as usize);
+        if count == 0 && picks.is_empty() && m["can_cancel"] == true {
+            return Some(json!({ "type": response, "indicies": null }));
+        }
+        let mut seen = vec![];
+        let fits = picks.iter().all(|&i| i < len && !seen.contains(&i) && { seen.push(i); true });
+        if fits && (min..=max).contains(&picks.len()) {
+            return Some(json!({ "type": response, "indicies": picks }));
+        }
+        tracing::warn!("card list: picks {picks:?} don't fit min {min} max {max} of {len}");
+        Some(cpu_answer(kind.unwrap_or(0), &m))
     }
 
     /// The command map of a prompt: each listed card's place and menu bits.
@@ -424,6 +531,20 @@ impl Translator {
         }
         None
     }
+}
+
+/// The duel prompt table's text for an EDOPro selection hint (HINTMSG_*), where one says the same thing.
+fn hint_text(hint: u64) -> Option<u32> {
+    Some(match hint {
+        HINTMSG_RELEASE => TRIBUTE_TEXT,
+        503 => 70,  // HINTMSG_REMOVE: "Select @3card(s)@0 to @3remove from play@0."
+        504 => 58,  // HINTMSG_TOGRAVE: "Select the @3card@0 to send to the @2Graveyard@0."
+        506 => 88,  // HINTMSG_ATOHAND: "Select the @3card(s)@0 to add to your @2hand@0."
+        509 => 25,  // HINTMSG_SPSUMMON: "Select the @3monster(s)@0 to @3Special Summon@0."
+        549 => 222, // HINTMSG_ATTACKTARGET: "Select an attack target @3monster@0."
+        551 => 94,  // HINTMSG_TARGET: "Select the @3card(s)@0 to target."
+        _ => return None,
+    })
 }
 
 /// The client's duel-end reason (text 1999 + reason, 0x508650) for an EDOPro win reason.
