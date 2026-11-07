@@ -30,7 +30,7 @@ addresses and data formats: [docs/client-internals.md](docs/client-internals.md)
 |---|---|
 | `crates/yo3-proto` | Wire codec: frame, Blowfish (`BlowfishLE`), key/value messages, the version-string opener |
 | `crates/yo3-data` | Client data: `.ypk` archives, card table, UI text table, regulations, preset decks, packs (golden tests skip without the game) |
-| `crates/yo3-server` | Gate / front / duel / patch-HTTP servers. `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `table.rs` = a duel between two players' connections, `shop.rs` = packs on sale and what a pack holds, `translate.rs` = engine messages to duel commands, `accounts.rs` = accounts by client address, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
+| `crates/yo3-server` | Gate / front / duel / patch-HTTP servers. `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `table.rs` = a duel between two players' connections, `shop.rs` = packs on sale and what a pack holds, `social.rs` = friends and ignore lists, `translate.rs` = engine messages to duel commands, `accounts.rs` = accounts by client address, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
 | `engine/` | Rules engine sidecar: `duelcore.ts` (EDOPro's core via ocgcore-wasm, under Node), `fetch.sh` (packages, card scripts, card database, Konami ids into the ignored `engine/vendor/`) |
 | `tools/client/vclient.sh` | Headless client: `xvfb`, `start [--trace]`, `login [SLOT]`, `check`, `shot`, `click`, `pixel`, `key`, `type`, `stop`, `prefix` |
 | `tools/tracer/` | Field-read tracer: `yo3trace.dll` + injector (C, mingw-w64), `summarize.py` |

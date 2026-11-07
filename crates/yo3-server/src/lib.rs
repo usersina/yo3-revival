@@ -7,6 +7,7 @@ pub mod engine;
 pub mod translate;
 pub mod front;
 pub mod shop;
+mod social;
 pub mod clock;
 mod log;
 mod net;
@@ -224,6 +225,9 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         Some(dir) => Hub::with_records(&dir.join("records.json")),
         None => Hub::default(),
     };
+    if let Some(dir) = &cfg.data_dir {
+        hub.keep_social(&dir.join("friends.json"));
+    }
     hub.set_directory(directory.clone());
     let hub = Arc::new(Mutex::new(hub));
     let front_task = {

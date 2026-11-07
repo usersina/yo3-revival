@@ -7,6 +7,8 @@ use std::sync::{Arc, Mutex};
 
 use yo3_proto::{Message, Packet, Value};
 
+use crate::social::Social;
+
 /// Where a session's outgoing messages go: its connection's writer task.
 pub type Outbox = tokio::sync::mpsc::UnboundedSender<Message>;
 
@@ -340,7 +342,16 @@ pub struct Hub {
     hosts: HashMap<u32, Host>,
     /// The duel server's tables of the matched duels, by duel_id.
     pub(crate) tables: HashMap<u32, Arc<Mutex<crate::table::Table>>>,
+    /// Friends, ignore lists and friend requests.
+    social: Social,
 }
+
+/// 0x251F's error codes for a friend request (0x4A522E): "This player cannot receive another request.", " The
+/// opponent has left the lobby."; 0 is "A transmission error has occurred.".
+const REQUEST_WAITING: u32 = 106;
+const NOT_ONLINE: u32 = 112;
+/// 0x24BB's answer that accepts a friend request (else 1, declined).
+const ACCEPTED: u32 = 2;
 
 struct Online {
     player_id: u32,
@@ -414,7 +425,105 @@ impl Hub {
         self.next_id += 1;
         let online = Online { player_id: player.player_id, name: player.name.clone(), level: player.level, room: None, outbox, record: player.record() };
         self.online.insert(self.next_id, online);
+        self.social.seen(player.player_id, &player.name);
+        self.tell_friends(player.player_id);
         self.next_id
+    }
+
+    /// Friends and ignore lists are kept in `file` (read now if it exists, written after each change).
+    pub fn keep_social(&mut self, file: &std::path::Path) {
+        self.social = Social::load(file);
+    }
+
+    /// Makes two players friends (as an accepted request does).
+    pub fn befriend(&mut self, (a, a_name): (u32, &str), (b, b_name): (u32, &str)) {
+        self.social.seen(a, a_name);
+        self.social.seen(b, b_name);
+        self.social.befriend(a, b);
+    }
+
+    /// A player's friends, with their names.
+    pub fn friends_of(&self, player_id: u32) -> Vec<(u32, String)> {
+        self.social.friends(player_id).into_iter().map(|id| (id, self.social.name(id))).collect()
+    }
+
+    fn is_online(&self, player_id: u32) -> bool {
+        self.online.values().any(|o| o.player_id == player_id)
+    }
+
+    /// The friend list 0x251C and ignore list 0x252A a player logs in with.
+    fn social_lists(&self, player_id: u32) -> [Message; 2] {
+        let online = |id| self.is_online(id);
+        [self.social.friend_list(player_id, online), self.social.ignore_list(player_id, online)]
+    }
+
+    /// A player came or went: their online friends get their friend list again, with the new login_flag.
+    fn tell_friends(&self, player_id: u32) {
+        for friend in self.social.friends(player_id) {
+            self.push(friend, &self.social.friend_list(friend, |id| self.is_online(id)));
+        }
+    }
+
+    /// 0x24B9 {to_id}: a friend request, pushed to that player as 0x24BA {from_id, from_name} (their bell's
+    /// notification) -> 0x251E; 0x251F {error_code} when they are not online or a request already waits for them.
+    fn ask_friend(&mut self, me: u32, to: u32) -> Message {
+        let error = |code| Message::reply(0x251F).with("error_code", Value::U32(code));
+        if !self.is_online(to) {
+            return error(NOT_ONLINE);
+        }
+        if self.social.requests.contains_key(&to) || self.social.are_friends(me, to) || to == me {
+            return error(REQUEST_WAITING);
+        }
+        self.social.requests.insert(to, me);
+        let ask = Message::reply(0x24BA).with("from_id", Value::U32(me)).with("from_name", Value::text(&self.social.name(me)));
+        self.push(to, &ask);
+        Message::reply(0x251E)
+    }
+
+    /// 0x24BB {to_id, answer}: the answer to `from`'s request -> 0x2522 {answer, friend_id, friend_name}, and `from`'s
+    /// waiting dialog gets 0x24BC with this player as the friend; answer 2 makes them friends. 0x2523 when no request
+    /// waits (it was withdrawn).
+    fn answer_friend(&mut self, me: u32, from: u32, answer: u32) -> Message {
+        if self.social.requests.get(&me) != Some(&from) {
+            return Message::reply(0x2523).with("error_code", Value::U32(0));
+        }
+        self.social.requests.remove(&me);
+        if answer == ACCEPTED {
+            self.social.befriend(me, from);
+        }
+        let told = |reply, friend: u32| {
+            Message::reply(reply)
+                .with("answer", Value::U32(answer))
+                .with("friend_id", Value::U32(friend))
+                .with("friend_name", Value::text(&self.social.name(friend)))
+        };
+        self.push(from, &told(0x24BC, me));
+        told(0x2522, from)
+    }
+
+    /// 0x24BD: the player's waiting request is withdrawn -> 0x2524; the player asked gets 0x24BE (their dialog says so).
+    fn withdraw_friend_request(&mut self, me: u32) -> Message {
+        let asked: Vec<u32> = self.social.requests.iter().filter(|(_, from)| **from == me).map(|(to, _)| *to).collect();
+        for to in asked {
+            self.social.requests.remove(&to);
+            self.push(to, &Message::reply(0x24BE).with("from_id", Value::U32(me)));
+        }
+        Message::reply(0x2524)
+    }
+
+    /// 0x24BF {to_id}: the friendship ends -> 0x2528 {to_id}, and the other player gets 0x2528 {to_id: this player}.
+    fn unfriend(&mut self, me: u32, other: u32) -> Message {
+        self.social.unfriend(me, other);
+        self.push(other, &Message::reply(0x2528).with("to_id", Value::U32(me)));
+        Message::reply(0x2528).with("to_id", Value::U32(other))
+    }
+
+    /// 0x24C2 / 0x24C3 {to_id}: onto the ignore list -> 0x252C {to_id, to_name}, or off it -> 0x252E {to_id}.
+    fn ignore(&mut self, me: u32, other: u32, add: bool) -> Message {
+        self.social.ignore(me, other, add);
+        let reply = if add { 0x252C } else { 0x252E };
+        let m = Message::reply(reply).with("to_id", Value::U32(other));
+        if add { m.with("to_name", Value::text(&self.social.name(other))) } else { m }
     }
 
     /// A matched duel is over: its match and table go.
@@ -425,6 +534,14 @@ impl Hub {
 
     fn leave(&mut self, id: u64) {
         if let Some(o) = self.online.remove(&id) {
+            // Friend requests end with them: one they made is withdrawn, one waiting for them fails (they left).
+            if !self.is_online(o.player_id) {
+                self.withdraw_friend_request(o.player_id);
+                if let Some(from) = self.social.requests.remove(&o.player_id) {
+                    self.push(from, &Message::reply(0x24C0).with("error_code", Value::U32(NOT_ONLINE)));
+                }
+                self.tell_friends(o.player_id);
+            }
             self.waiting.retain(|w| w.player_id != o.player_id);
             self.hosts.retain(|_, h| h.player_id != o.player_id);
             let withdrawn: Vec<(u32, u32)> = self.hosts.iter().filter(|(_, h)| h.offer == Some(o.player_id)).map(|(&d, h)| (d, h.player_id)).collect();
@@ -726,10 +843,10 @@ impl FrontSession {
                     .item(Message::record().with("cards", Value::Bin(cards)).with("noTrade", no_trade));
                 // The client never asks for its friend and black lists; the global dispatcher stores
                 // 0x251C in dataset slot 6 and 0x252A in slot 7, and listing any player reads both
-                // without a NULL check (0x45E6D0, 0x45E810). Items would be {friend_id, friend_name,
-                // login_flag} and {black_id, black_name, login_flag} (0x475A20 modes 2 and 3).
-                // Likewise the rental records 0x2D6C (slot 8), which opening the shop reads (0x48F080).
-                return vec![trunk, Message::reply(0x251C), Message::reply(0x252A), Message::reply(0x2D6C)];
+                // without a NULL check (0x45E6D0, 0x45E810). Likewise the rental records 0x2D6C (slot 8),
+                // which opening the shop reads (0x48F080).
+                let [friends, ignored] = self.hub().social_lists(self.player().player_id);
+                return vec![trunk, friends, ignored, Message::reply(0x2D6C)];
             }
             // Shop (handler 0x48AA60): its text, then a chain where each reply asks for the next:
             // items (the booster packs), exchange items, protectors, event items, perks, rental terms, avatar
@@ -894,6 +1011,24 @@ impl FrontSession {
                 Message::reply(0x21FC).item(lang)
             }
             0x2CF0 => self.player_search(msg),
+            // The left panel's friend and ignore list views (0x4F2FB0, 0x4F3090) ask for their lists.
+            0x24B8 | 0x24C1 => {
+                let [friends, ignored] = self.hub().social_lists(self.player().player_id);
+                if id == 0x24B8 { friends } else { ignored }
+            }
+            // Friends and the ignore list (the community agent 0x4A4EE0).
+            0x24B9 | 0x24BB | 0x24BD | 0x24BF | 0x24C2 | 0x24C3 => {
+                let me = self.player().player_id;
+                let to = msg.get("to_id").and_then(Value::as_u32).unwrap_or(0);
+                let mut hub = self.hub();
+                match id {
+                    0x24B9 => hub.ask_friend(me, to),
+                    0x24BB => hub.answer_friend(me, to, msg.get("answer").and_then(Value::as_u32).unwrap_or(0)),
+                    0x24BD => hub.withdraw_friend_request(me),
+                    0x24BF => hub.unfriend(me, to),
+                    _ => hub.ignore(me, to, id == 0x24C2),
+                }
+            }
             0x1838 => self.watch(msg),
             // Next present: 0x2777 would carry one; 0x2778 = none, which closes PresentWindow
             // (0x4783C9) and lets the main screen unlock its facilities and menu (0x473B87).
@@ -1021,17 +1156,26 @@ impl FrontSession {
         const BY_NAME: u32 = 0x2;
         const BY_LEVEL: u32 = 0x10;
         const BY_ID: u32 = 0x40000;
+        // The community bits (the preset tabs): friends ("Display online friends."), the ignore list, the team (no
+        // teams yet: nobody).
+        const FRIENDS: u32 = 0x40;
+        const IGNORED: u32 = 0x80;
+        const TEAM: u32 = 0x20;
         let uint = |k| msg.get(k).and_then(Value::as_u32);
         let flags = uint("search_flag").unwrap_or(0);
         // Guess: case-insensitive part of the name. Other criteria (lang, country, eval_level,
-        // the preset tabs) are not stored yet, so they match everyone.
+        // the status and event bits) are not stored yet, so they match everyone.
         let name = msg.get("pname").and_then(Value::as_str).unwrap_or_default().to_lowercase();
         let levels = uint("min_level").unwrap_or(0)..=uint("max_level").unwrap_or(u32::MAX);
+        let me = self.player().player_id;
         let hub = self.hub();
         let mut found: Vec<&Online> = hub
             .online
             .values()
             .filter(|o| flags & BY_NAME == 0 || o.name.to_lowercase().contains(&name))
+            .filter(|o| flags & FRIENDS == 0 || o.player_id == me || hub.social.are_friends(me, o.player_id))
+            .filter(|o| flags & IGNORED == 0 || o.player_id == me || hub.social.ignores(me, o.player_id))
+            .filter(|o| flags & TEAM == 0 || o.player_id == me)
             .filter(|o| flags & BY_LEVEL == 0 || levels.contains(&o.level))
             .filter(|o| flags & BY_ID == 0 || Some(o.player_id) == uint("player_id"))
             .collect();

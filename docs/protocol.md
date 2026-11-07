@@ -55,7 +55,7 @@ The contract tests in `crates/yo3-server/tests/front_contract.rs` enforce the co
 | `0x1F49` player list | `0x2260` | items = player records (below) | "MyPlayerList" L509, loader `0x51C260` | confirmed |
 | `0x1F4C` select `{player_id}` | `0x2266` | none | "my player use success" L577 | confirmed |
 | `0x1FA4` trunk `{player_id}` | `9000` (`0x2328`) | exactly one record; item[0] is copied wholesale into `UserData+0x8C8`, and the global dispatcher keeps the reply in slot 18. The record holds `cards` and `noTrade` (binary): owned and untradeable count per card, one byte at index row − 1 (CARD_Prop rows, row 0 a dummy, so 4,833 bytes). `0x410DB0` reads them bounds-checked; the collection builder `0x4F6340` writes into both unchecked (crash at `0x4F6A82`, opening the NPC duel) | "trunk data success" L666, `0x46AFA8`, `0x410DB0` | confirmed; `cards` = one copy per card of the starter deck (**guess**: a real collection comes with the economy); other contents **guess** |
-| (server push after `9000`) | `0x251C` friend list, `0x252A` black list | items `{friend_id, friend_name, login_flag}` / `{black_id, black_name, login_flag}` (`0x475A20` modes 2 and 3); we send none | the global dispatcher stores them in dataset slots 6 and 7; the client never asks, and listing any player crashes without them (`0x45E734`) | shape (empty); push timing **guess** |
+| (server push after `9000`) | `0x251C` friend list, `0x252A` black list | items `{friend_id, friend_name, login_flag}` / `{black_id, black_name, login_flag}` (`0x475A20` modes 2 and 3); see "Friends and the ignore list" | the global dispatcher stores them in dataset slots 6 and 7; the client never asks, and listing any player crashes without them (`0x45E734`) | shape; push timing **guess** |
 | (server push after `9000`) | `0x2D6C` rental records | items carry `from_type` (the shop checks for 1); we send none | the global dispatcher stores it in slot 8 (`0x4F5FBA`); opening the shop reads slot 8 unchecked (`0x48F0F6`). `RentalRecord`/`CardRental` ask for it with `0x2C34` (bare), but not before the shop opens | shape (empty); push timing **guess** |
 
 **Player record** (read by `0x46C1E4` and `0x51C260`):
@@ -130,8 +130,9 @@ and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 
 - Reply items, read by `0x475A20` in player mode (ECX = 0): `player_id` (int; 0 is skipped), `pname`, `dlv`,
   `duel_id`, `event_score`, `duel_status`, `tprank`, `duel_match_type`, `world_evid`, `official_evid`, `user_evid`,
   `userevent_remain`. The handler skips the searcher's own `player_id`, so a server may list everyone.
-- We filter on name (case-insensitive substring, a **guess**), level range and player id, and ignore the other
-  criteria. Paging is a **guess**: skip `base_point`, return at most `front_num`.
+- We filter on name (case-insensitive substring, a **guess**), level range, player id and the community bits
+  (`0x40` the searcher's friends, `0x80` their ignore list, `0x20` the team: nobody, there are no teams), and ignore
+  the other criteria. Paging is a **guess**: skip `base_point`, return at most `front_num`.
 
 ### Chat (ChatWindow dispatcher `0x435950`)
 
@@ -142,6 +143,44 @@ and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 
 | `0x2137` leave | `0x245C` | none | "chat room exit" | shape |
 | `0x2134` send | `0x2456` (`0x2457`) | fields sit in **one item (tag 10)**: `chat_str`, `chat_type`, and `to_id` or `to_name`. Room chat = `chat_type` 1 with `to_id` = the room id; whisper = `to_name` | captured packets; builders `0x4F3E00` (to_id) and `0x4F4030` (to_name) | confirmed (room); whisper shape |
 | (server push) | `0x2455` | items `{from_id, pname, chat_type, chat_str}`; the handler also checks `friend_id`/`member_id` | two clients see each other's lines; the client shows nothing on `0x2456`, so the sender needs the echo | confirmed |
+
+### Friends and the ignore list (community agent `0x4A4EE0`)
+
+PlayerInfoWindow (`0x4B6060`) looks the player up in the friend list (dataset slot 6, items by `friend_id`) and the
+ignore list (slot 7, by `black_id`), matching the player's id as text (`0x531EB0`), and offers "Send Friend Request" /
+"Add to Ignore List" (or their opposites). Its buttons start the community agent (`0x4B9D00` → `0x4A4EE0`), whose
+mode picks a state: 0 send a friend request (`0x4A50D0`, then `0x4A5390` waits for the answer), 1 answer one
+(`0x4A5B70`), 2 remove a friend (`0x4A5880`), 3 / 4 add to / remove from the ignore list (`0x4A6290`), 5 and up teams.
+The global dispatcher keeps both lists: `0x251C` and `0x252A` replace them (the left panel's lists redraw, InfoWindow
+`0x458410`), and the replies below add or remove one entry by themselves. Errors carry `error_code` (`0x43D4F0`).
+
+| Request | Reply (error) | Fields | Evidence | Status |
+|---|---|---|---|---|
+| `0x24B9 {to_id}` friend request (top level) | `0x251E` (`0x251F {error_code}`: 106 "This player cannot receive another request.", 110 "The Player List is full.", 112 " The opponent has left the lobby.", else "A transmission error has occurred.") | none | `0x4A50D0`, switch `0x4A522E`; live packet `{request 0x24B9, to_id 1002}` | confirmed (request); replies code |
+| (push to the other player) | `0x24BA {from_id, from_name}` | kept in slot 24, sets flag `0x100`: the bell's notification, whose answer runs mode 1 (`0x450460` case 5) with this message: a dialog naming `from_name` | dispatcher `0x4F54D7`, `0x4A5B70` | code |
+| `0x24BB {to_id: from_id, answer}` (2 accept, 1 decline) | `0x2522 {answer, friend_id, friend_name}` (`0x2523 {error_code}`) | `answer` 2 adds `{friend_id, friend_name, login_flag 1}` to the list (dispatcher `0x4F55AA`) and the agent says so; else the flag `0x100` clears | `0x4A5F5D`, `0x4A5B70` state 1 | code |
+| (push to the requester) | `0x24BC {answer, friend_id, friend_name}` | the same list update; the waiting agent (`0x4A5390`) shows accepted or declined | `0x4F55AA`, `0x4A5390` | code |
+| `0x24BD` cancel the request (bare; the waiting dialog's button) | `0x2524` (`0x2525 {error_code}`) | the other player gets `0x24BE` (their answer dialog says the request was withdrawn; flag `0x100` clears); `0x24C0` clears it too, as an error | `0x4A578E`, `0x4A5B70` | code |
+| `0x24BF {to_id}` remove a friend | `0x2528 {to_id}` (`0x2529`) | the dispatcher drops the entry whose `friend_id` matches `to_id` | `0x4A5A60`, `0x4F57CE` | code |
+| `0x24C2 {to_id}` / `0x24C3 {to_id}` add to / remove from the ignore list | `0x252C {to_id, to_name}` / `0x252E {to_id}` (`0x252D {error_code}`) | `0x252C` adds `{black_id, black_name, login_flag}`, `0x252E` drops it | `0x4A6290`, `0x4F58DD`, `0x4F5A54` | code |
+| (login push) | `0x251C` friends `{friend_id, friend_name, login_flag}`, `0x252A` ignored `{black_id, black_name, login_flag}` | `login_flag` 1 = online (the dispatcher's own entries use 1); both lists are read unchecked when listing a player, so they are always sent | `0x475A20` modes 2 and 3, `0x45E734` | shape |
+| `0x24B8` / `0x24C1` (bare) | `0x251C` / `0x252A` | the left panel's friend and ignore list views ask for their list (`0x4F2FB0`, `0x4F3090`, sent by `0x459690` / `0x459760`) | tracer: `friend_id`, `friend_name`, `login_flag` found (`0x475A20`) | confirmed |
+
+Main Menu → Friend List opens the panel's list view (tab 9, `+0xCE`): it sends `0x24B8` and a search `0x2CF0
+{search_flag 0x40, search_type 1}` (`0x45B920`, which sets `+0xD4`, so a `0x2CF7` answer is ignored, and repeats it
+every 60 s). `0x251C` then fills the tab and updates its count ("Friend List(1)", `0x45BED0`), but no row is drawn:
+rows are drawn only by `0x459480` → `0x474D70` (a search answer or a cached page), which tab 9 never reaches. What the
+original server sent there is **open**. The search tab's "Display online friends." preset (`search_flag 0x40` with
+paging) is an ordinary search and lists the online friends, each with the friend icon.
+
+The server keeps friendships (both ways) and ignore lists, with the players' names, in the hub and saves them in
+`friends.json` next to the accounts. A request needs the other player online and with no request waiting (106 else,
+112 when offline); answering, cancelling and removing reach the other player as the pushes above, and whenever a player
+logs in or out their online friends get their friend list again (`0x251C`) with the new `login_flag`. Live: Yugi's
+Send Friend Request showed "Sending Friend Request to Kaiba...", Kaiba's bar showed a friends icon whose dialog read
+"You have received a Friend Request from Yugi. Add to Friend List?"; Yes gave both "… has been added to your Friend
+List."; after a server restart Kaiba still had the friend icon in Yugi's search, "Display online friends." listed him
+but not Joey, and Player Information offered "Remove from Friend List", whose Yes sent `0x24BF` and emptied the tab.
 
 ### Shop (`shopmain.cpp`, handler `0x48AA60`)
 

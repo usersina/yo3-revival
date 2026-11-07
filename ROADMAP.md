@@ -53,9 +53,14 @@ Stop finding missing fields one crash at a time.
         41 entries); saving changes is not handled yet
   - [x] Official Event (Stadium) and Championship (tournament map): open, report no valid decks, return
   - [x] User event (Satellite Plaza): lists no events; creating one is not handled yet
-- [ ] Friends, mail and teams (as far as the main screen needs). The friend and black lists are pushed empty;
-      adding friends needs their requests mapped (`0x2528`, `0x252C`, `0x252E` carry `to_id`)
-- [ ] Player search criteria we ignore: language, country, manner level, status, community, event
+- [x] Friends and the ignore list: friend requests through the bell, accepting or declining, withdrawing, removing,
+      the ignore list, both lists at login and on request, friends' online state pushed as they come and go, kept in
+      `friends.json`; player search's friend, ignore and team tabs. Live: Yugi and Kaiba became friends, stayed so
+      after a restart, and Yugi removed Kaiba
+- [ ] Main Menu → Friend List draws no rows (its count is right; the online-friends tab works): what the original
+      sent for its tab is open
+- [ ] Mail and teams
+- [ ] Player search criteria we ignore: language, country, manner level, status, event
 - [ ] Main menu screens (the menu opens now): Card Album, Rental Card List, My Profile, D-Mail, Duel Log, Team,
       Friend List, Ignore List, Leaderboard, BOOSTERPASS, Duel Options (Edit Deck is M4)
 - [x] Saving character settings: Avatar Settings' Confirm sends `0x2CEF` {avatar1, speech00–22, comment00–01,
@@ -262,6 +267,7 @@ Stop finding missing fields one crash at a time.
 | Duel clocks | turn clock full again at each of the player's turns, both clocks running while the engine waits on that player (also during client animations), a time-out 5 s after 0; Auto Duel 180 s / 600 s, hosted duels their `time_turn` / `time_total` (0: off), NPC duels none | The original's clock rules and Auto Duel's limits are unknown; the clocks follow Create Duel's own defaults |
 | Counter kinds | EDOPro ids mapped by name to the client's kinds (texts 200 + kind); Spellstone as "Magical Stone", Des as "Death", unnamed ones as 38 "Counter"; Mechanical (23) unused | The original's kind per card is unknown; EDOPro's and Konami's names differ for a few |
 | Card Swap | offered (1504) only to a player whose deck has a side deck; no time limit (the clock slot 4 the screen counts down also drives the janken's); a swapped deck with other cards is refused | Who the original offered it to, and its time limit, are unknown |
+| Friends | a request needs the other player online with no request waiting for them; no limit on friends (110 "The Player List is full." never sent); declining tells the requester; the team tab lists nobody | The original's limits and offline requests are unknown |
 | Watching | from seat 0's side (the first player to enter); the decisive janken round only; NPC duels can't be watched | The original's spectator view and opening are unknown; a spectator's view of a match's later duels wasn't tried live |
 | Login banlist | regulation 1 ("Beta Forbidden/Limited") unless `--regulation` names another | Which list the original used for Auto Duel at each date is unknown; the client calls the login one "Latest Regulation" |
 | Option labels | EDOPro's system strings 60/61 and 70–72 mapped to the client's labels; a card's own strings take the first option | The original server's label per card option is unknown |
