@@ -456,10 +456,22 @@ DECLTYPE_MONSTER/SPELL/TRAP 70–72 → "Monster Cards", "Spell Cards", "Trap Ca
 "Coin Toss Selection:" listed Heads and Tails; Tails sent `DLGResult 1`, the coin came up heads, and Time Wizard was
 destroyed with 250 LP lost.
 
-Chains: the client's MSG_SELECT_CHAIN {spe_count, forced, selects} is asked, as EDOPro's own client does, only when a
-card fits the timing (`spe_count` > 0) or the chain is forced; otherwise no chain. The question is the Effect dialog
-at level 4 (**guess**: it skips the player's `invoke_conf` option) with the cards that may chain, and names the chain's
-last link (MSG_CHAINING, until CHAIN_END): 'The effect of "%s" is activated. Chain another card or effect?' (7), '"%s"
+Chains: the client's MSG_SELECT_CHAIN {spe_count, forced, hint_timing, selects} with cards to chain becomes the Effect
+dialog with those cards, at a level that lets the player's **Activation Message** duel option (`duelOption
+invoke_conf`, DUEL OPTIONS) decide whether it shows (`0x4C5560`; the mouse-button flags are the game object's `+0x770`
+input state, per the option's help texts):
+
+| Activation Message (`invoke_conf`) | Shows the question |
+|---|---|
+| Manual (0) | always, unless the right mouse button is held |
+| Semi Auto Cancel (1, the default) | at level 2 and up ("low priority" below), or while the left button is held; never while the right one is |
+| Auto Cancel (2) | only while the left button is held |
+| (any) | always at level 4 and up |
+
+Unshown, the dialog answers `DLGResult 0` (No) by itself (constructor `0x4C5120`). The server sends level 3 when
+something happened (EDOPro's `hint_timing` of either player has a timing other than a phase or step, or a chain is in
+progress), 1 at a phase or step, and 0 when no card fits the timing (`spe_count` 0, which EDOPro's own client skips)
+(**guess**: the original server's levels are unknown). The question names the chain's last link (MSG_CHAINING, until CHAIN_END): 'The effect of "%s" is activated. Chain another card or effect?' (7), '"%s"
 is activated. ...' (8) for a card in the Spell/Trap zone (**guess**), else "Activate the effect of a card?" (269). No
 answers no chain; Yes chains the only card, or opens the card list (one pick) with "Select effect to activate." (276),
 where no pick is no chain. A forced chain of several goes straight to the list; of one needs no choice. Live (two Set

@@ -146,11 +146,18 @@ const DIALOG: u32 = 0x36;
 const YES_NO: u32 = 2;
 const FROM_ENTRIES: u32 = 1;
 /// The chain question {_, message, level} (DuelEffectDialog 0x4C5120): buttons as Yes/No's, with the list's rows
-/// (dlg_yesno_card.swf, at most five) when 0x3EF's param3 is 0xFF (0x4C51A0). Level 4 shows it whatever the player's
-/// "invoke_conf" duel option (0x4C5560); unshown it answers No.
+/// (dlg_yesno_card.swf, at most five) when 0x3EF's param3 is 0xFF (0x4C51A0). Whether it shows depends on the level
+/// and the player's Activation Message option (invoke_conf, 0x4C5560): Manual shows every level, Semi Auto Cancel (the
+/// default) levels 2 and up, Auto Cancel none (unless a mouse button is held; level 4+ always shows). Unshown, it
+/// answers No. The levels sent: something happened, a phase or step, and no card fitting the timing.
 const EFFECT: u32 = 3;
 const WITH_CARDS: u32 = 0xFF;
-const ALWAYS_ASK: u32 = 4;
+const LEVEL_EVENT: u32 = 3;
+const LEVEL_PHASE: u32 = 1;
+const LEVEL_UNFIT: u32 = 0;
+/// EDOPro's timings (TIMING_* in constant.lua) that only mark a phase or step: draw, standby and end phases, the
+/// main phase's end, the battle's start, steps and end, a chain's end, a draw.
+const QUIET_TIMINGS: u64 = 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x20 | 0x8000 | 0x10000 | 0x100_0000 | 0x400_0000;
 /// The option list (DuelSelectDialog 0x4C5750): the 0x3F0 values up to 0x3EF's count, each a duel prompt text listed
 /// with bit 15, at most four (0x4C5880); DLGResult the value's index (0x4C5B20).
 const SELECT: u32 = 4;
@@ -535,13 +542,13 @@ impl Translator {
         Some(out)
     }
 
-    /// MSG_SELECT_CHAIN {spe_count, forced, selects}: asked, as EDOPro's own client does, only when a card fits the
-    /// timing or the chain is forced. The question shows the cards and names the chain's last link; a forced chain of
-    /// several goes straight to the card list, of one needs no choice.
+    /// MSG_SELECT_CHAIN {spe_count, forced, hint_timing, selects}: the question shows the cards, names the chain's last
+    /// link, and says how much it matters, so the player's Activation Message option decides whether it shows. A forced
+    /// chain of several goes straight to the card list, of one needs no choice.
     fn chain_chance(&mut self, m: &Json) -> Prompt {
         let selects = m["selects"].as_array().map_or(&[][..], Vec::as_slice);
         let forced = m["forced"] == true;
-        if selects.is_empty() || !forced && m["spe_count"].as_u64().unwrap_or(0) == 0 {
+        if selects.is_empty() {
             return Prompt::Answer(json!({ "type": RESP_CHAIN, "index": null }));
         }
         if forced && selects.len() == 1 {
@@ -565,7 +572,15 @@ impl Translator {
             None => vec![TEXT | ACTIVATE_CARD_TEXT],
         };
         out.extend(message(&entries));
-        out.push(command(DIALOG, [EFFECT, FROM_ENTRIES, ALWAYS_ASK, 0]));
+        let timing = m["hint_timing"].as_u64().unwrap_or(0) | m["hint_timing_other"].as_u64().unwrap_or(0);
+        let level = if m["spe_count"].as_u64().unwrap_or(0) == 0 {
+            LEVEL_UNFIT
+        } else if self.chaining.is_some() || timing & !QUIET_TIMINGS != 0 {
+            LEVEL_EVENT
+        } else {
+            LEVEL_PHASE
+        };
+        out.push(command(DIALOG, [EFFECT, FROM_ENTRIES, level, 0]));
         Prompt::Client(out)
     }
 

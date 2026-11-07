@@ -458,16 +458,14 @@ fn select_chain(spe_count: u32, forced: bool, selects: serde_json::Value) -> ser
 
 #[test]
 fn a_timely_chain_chance_asks_with_the_cards_that_may_chain() {
-    // MSG_SELECT_CHAIN (16) {spe_count, forced, selects}: EDOPro's own client asks only when a card fits the timing
-    // (spe_count > 0) or the chain is forced; otherwise no chain (index null). The question is dialog command 0x36
-    // {kind 3} (DuelEffectDialog 0x4C5120): Yes/No (buttons 0 "No", 1 "Yes"), as dlg_yesno_card.swf with the 0x3F2 rows
-    // (five at most) when 0x3EF's param3 is 0xFF (0x4C51A0). param3 4 shows it whatever the player's "invoke_conf" duel
-    // option (0x4C5560); unshown, it would answer No at once. In a chain the message names the last link (MSG_CHAINING
+    // MSG_SELECT_CHAIN (16) {spe_count, forced, hint_timing, selects}: the question is dialog command 0x36 {kind 3, message,
+    // level} (DuelEffectDialog 0x4C5120): Yes/No (buttons 0 "No", 1 "Yes"), as dlg_yesno_card.swf with the 0x3F2 rows
+    // (five at most) when 0x3EF's param3 is 0xFF (0x4C51A0). In a chain the message names the last link (MSG_CHAINING
     // 70): 7 'The effect of "%s" is activated. Chain another card or effect?', or 8 '"%s" is activated. ...' for a
-    // Spell/Trap Card; else 269 "Activate the effect of a card?".
+    // Spell/Trap Card; else 269 "Activate the effect of a card?". No cards: no chain, nothing asked.
     let mut t = with_cards();
     let trap = card_at(0, 8, 0, 4101);
-    assert_eq!(t.prompt(&select_chain(0, false, json!([trap]))), Prompt::Answer(json!({ "type": 8, "index": null })));
+    assert_eq!(t.prompt(&select_chain(0, false, json!([]))), Prompt::Answer(json!({ "type": 8, "index": null })));
     t.events(&[json!({ "type": 70, "code": 4200, "cid": 4200, "controller": 1, "location": 4, "sequence": 1,
         "position": 1, "triggering_controller": 1, "triggering_location": 4, "triggering_sequence": 1,
         "description": 0, "chain_size": 1 })]);
@@ -478,7 +476,7 @@ fn a_timely_chain_chance_asks_with_the_cards_that_may_chain() {
             (0x3F2, [101, 0, 0, 0]),
             (0x3EC, [2, 0, 0, 0]),
             (0x3ED, [1 << 28 | 7, 5 << 28 | 4200, 0, 0]),
-            (0x36, [3, 1, 4, 0]),
+            (0x36, [3, 1, 3, 0]),
         ]
     );
     assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 8, "index": null }))));
@@ -551,4 +549,36 @@ fn against_a_player_the_opponents_hidden_cards_carry_no_row() {
     let face_down: Vec<_> = t.events(&[set]).iter().map(cmd).collect();
     assert_eq!(face_down[0], (1000, [12, 0, 0, 1 | 2 << 8]));
     assert!(!face_down.iter().any(|(id, _)| *id == 0x3EB), "no field record");
+}
+
+/// A chain chance's level: the Effect dialog's param3.
+fn chain_level(t: &mut Translator, m: serde_json::Value) -> u32 {
+    client_commands(t.prompt(&m)).last().map(|&(_, p)| p[2]).expect("the question")
+}
+
+#[test]
+fn a_chain_chance_says_how_much_it_matters() {
+    // The Effect dialog decides by its level and the player's Activation Message option (duelOption invoke_conf,
+    // 0x4C5560; the DUEL OPTIONS screen): level 4+ always shows; Manual (0) shows all unless the right mouse button is
+    // held; Semi Auto Cancel (1, the default) answers No by itself below level 2 ("low priority"); Auto Cancel (2) only
+    // shows while the left button is held. Unshown, it answers DLGResult 0 at once (0x4C5120). The levels sent: 3 when
+    // something happened (a summon, an attack, damage... or a chain in progress), 1 at a phase or step, 0 when no card
+    // fits the timing (spe_count 0, which EDOPro's own client skips).
+    let mut t = with_cards();
+    let trap = json!([card_at(0, 8, 0, 4101)]);
+    let at = |spe: u32, timing: u32, other: u32| {
+        json!({ "type": 16, "player": 0, "spe_count": spe, "forced": false, "hint_timing": timing, "hint_timing_other": other,
+            "selects": trap.clone() })
+    };
+    assert_eq!(chain_level(&mut t, at(0, 0x20, 0)), 0, "nothing fits: Manual only");
+    t.dialog_result(0);
+    assert_eq!(chain_level(&mut t, at(1, 0x20, 0)), 1, "the End Phase: Semi answers No");
+    t.dialog_result(0);
+    assert_eq!(chain_level(&mut t, at(1, 0, 0x1000)), 3, "the opponent's attack");
+    t.dialog_result(0);
+    assert_eq!(chain_level(&mut t, at(1, 0x40, 0)), 3, "a summon");
+    t.dialog_result(0);
+    t.events(&[json!({ "type": 70, "code": 4200, "cid": 4200, "controller": 1, "location": 4, "sequence": 1, "position": 1,
+        "description": 0, "chain_size": 1 })]);
+    assert_eq!(chain_level(&mut t, at(1, 0, 0)), 3, "a chain in progress");
 }

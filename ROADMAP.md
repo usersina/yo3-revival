@@ -118,7 +118,7 @@ Stop finding missing fields one crash at a time.
 - [x] The duel's end on screen: command 2 {result, reason} plays the win/lose/draw movie with its reason; the front
       push `0x2009` (duel data, tag 7) ends the match, so the result screen shows the record against this opponent and
       Next returns to the map. Live: "YOU LOSE", LOSER/WINNER panels, back at Kaiba Corporation
-- [ ] Players kept across server restarts (records against each opponent are in memory only)
+- [x] Players kept across server restarts (accounts and records in `data/`, M6)
 - [x] The client's own card choices: targets, tributes, attack targets and other card selections open the card list
       (command `0x37` and its data commands) with a message from the client's duel prompts. Live: an attack target
 - [x] Yes/no and effect questions: the Yes/No dialog (command `0x36` kind 2) with the card's name. Live: Marauding
@@ -141,7 +141,7 @@ Stop finding missing fields one crash at a time.
       the winner's turn order, one engine with a translator per client (each sees itself as player 0), each prompt to
       the client it asks, the opponent's hidden cards without rows, a player leaving loses. Results reach both front
       connections. Live: Yugi against Kaiba, Giant Orc's direct attack, WINNER / LOSER screens, both back on the map
-- [ ] Players' records written back (they live in memory until a restart, like the rest of the players' data)
+- [x] Players' records written back (`data/records.json`, M6)
 - **Exit:** two clients play a full duel with real decks to a finish (met 2026-11-07: two headless clients matched
   through Auto Duel and played their starter decks to a win)
 
@@ -156,8 +156,9 @@ Stop finding missing fields one crash at a time.
 - [x] Linux release bundle (`tools/release.sh`: server, engine sources, `run.sh`) and the setup guide for the host
       and the players (`docs/friends.md`: `yo3.ini`, Windows or Wine, LAN / VPN / port forwarding)
 - [ ] A native Windows server build (needs `rustup target add x86_64-pc-windows-gnu`; a Windows host can use WSL)
-- [ ] The chain question for Quick-Play Spells in hand comes at every timing that fits; follow the client's own
-      `invoke_conf` duel option (Effect dialog levels below 4)
+- [x] Chain questions follow the player's Activation Message option (Manual / Semi Auto Cancel / Auto Cancel): the
+      server sends a level per chance (3 after an event, 1 at a phase, 0 when nothing fits). Live: no question at the
+      CPU's phases, the question at its summon
 - **Exit:** friends connect from their own machines and duel (the network path is verified on one machine: a client
   through the LAN address against one through loopback, 2026-11-07; real friends' machines not tried yet)
 
@@ -202,7 +203,7 @@ Stop finding missing fields one crash at a time.
 | Attack targets | chosen in the card list | The original probably picked them on the field (DuelBattle) |
 | Position dialog | button 0 face-up attack (face-down if only that), button 1 face-up defense when allowed, else face-down; the flag shows the face-up defense picture | The dialog has two buttons; ocgcore allows any mix of four positions |
 | Option labels | EDOPro's system strings 60/61 and 70–72 mapped to the client's labels; a card's own strings take the first option | The original server's label per card option is unknown |
-| Chain chances | asked only when `spe_count` > 0 or forced, at level 4 (always shown); messages 7/8 (Spell/Trap zone)/269 | The `invoke_conf` option and the levels below 4 are not followed; the original server's levels are unknown |
+| Chain chances | level 3 after an event (summon, attack, damage… or during a chain), 1 at a phase or step, 0 when no card fits (`spe_count` 0); the player's Activation Message option decides; messages 7/8 (Spell/Trap zone)/269 | The original server's levels and which windows it judged "low priority" are unknown |
 | Rules | EDOPro's `MODE_MR2` | Online 3 (2010) ran Master Rule 2; EDOPro's preset may differ in details |
 | CPU play | first summonable monster, attack with all, never chain | The original NPCs' AI is unknown |
 | Duel end reason | EDOPro's reason mapped to the client's texts (LP 0, deck out, surrender, Exodia...; others "won with a card") | The original server's values are unknown (100 takes another path) |
