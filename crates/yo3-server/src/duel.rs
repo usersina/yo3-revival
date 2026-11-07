@@ -39,6 +39,8 @@ const PICK: u32 = 7;
 /// (0x4F1430).
 const SELECT_HAND: u32 = 0xC;
 const SELECT_FIRST: u32 = 0xD;
+/// Client duelRequestName (bare) of Card Swap's end, once the front took the swapped deck (DuelManager 0x50FDF0).
+const SWAPPED: u32 = 0xE;
 
 /// JankenScene commands (0x518400): begin, resolve, who chooses, chosen (its step leaves the scene by itself,
 /// 0x519230). 1505 there is the match's end {match result, ...} (0x5185A3), not part of the janken.
@@ -259,6 +261,7 @@ impl DuelSession {
                 Default::default()
             }
             (Some(CLIENT_DUEL), Some(DIALOG_RESULT)) => t.dialog_result(seat, int("DLGResult").unwrap_or(0)),
+            (Some(CLIENT_DUEL), Some(SWAPPED)) => t.swapped(seat),
             _ => Default::default(),
         };
         t.deliver(seat, out)

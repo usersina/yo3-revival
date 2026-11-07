@@ -151,6 +151,8 @@ the knowledge.
   with `login SLOT`. A player already online can still be chosen twice (no guard yet).
 - The Ghidra C export drops the client's log strings, so a log line ("chat room list success") can't be grepped
   there. Use `yodis.py` on the handler to see which case prints it.
+- Card drags (Edit Deck, Card Swap) need a hover before the press: `xdotool` on the client's display, moving onto the
+  card's left edge, pausing, then `mousedown`, moving in steps and `mouseup`. `vclient.sh click` alone can't drag.
 - Chat request fields arrive nested in one item (tag 10), not at the top level. Check a real packet before assuming
   a request's layout.
 - The tracer's reply attribution is a 300 ms window after each `request` read, so local data read just after a reply

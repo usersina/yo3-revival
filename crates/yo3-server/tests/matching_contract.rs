@@ -8,7 +8,7 @@ mod common;
 use std::time::{Duration, Instant};
 
 use common::{Client, Server, one, req_with};
-use yo3_proto::{Message, Value};
+use yo3_proto::{Message, Packet, Value};
 use yo3_server::front::World;
 
 fn world() -> World {
@@ -114,8 +114,8 @@ fn a_matched_duel_keeps_both_decks_and_announces_the_duel_server() {
     let deck = Message::record().with("main", Value::u16_be_array(&[100, 101, 102]));
     for c in [&mut a, &mut b] {
         let pick = req_with(0x1F4F, &[("duel_id", Value::U32(duel_id)), ("event_id", Value::U32(0)), ("update_type", Value::U32(1))]);
-        let yo3_proto::Packet::Message(m) = pick else { unreachable!() };
-        assert_eq!(one(c.send(yo3_proto::Packet::Message(m.item(deck.clone())))).request(), Some(0x22CA));
+        let Packet::Message(m) = pick else { unreachable!() };
+        assert_eq!(one(c.send(Packet::Message(m.item(deck.clone())))).request(), Some(0x22CA));
     }
     let hub = server.hub.lock().unwrap();
     let (ea, eb) = (hub.duel_entry(1001).expect("entry"), hub.duel_entry(1002).expect("entry"));
@@ -124,6 +124,12 @@ fn a_matched_duel_keeps_both_decks_and_announces_the_duel_server() {
     assert_eq!((ea.opponent, eb.opponent), (Some(1002), Some(1001)));
     assert_eq!(ea.deck.main, [100, 101, 102]);
     drop(hub);
+    // Card Swap between a match's duels (0x50FDF0) sends the swapped deck the same way, with update_type 2.
+    let swapped = Message::record().with("main", Value::u16_be_array(&[100, 101])).with("side", Value::u16_be_array(&[102]));
+    let Packet::Message(m) = req_with(0x1F4F, &[("duel_id", Value::U32(duel_id)), ("event_id", Value::U32(0)), ("update_type", Value::U32(2))]) else { unreachable!() };
+    assert_eq!(one(a.send(Packet::Message(m.item(swapped)))).request(), Some(0x22CA));
+    let entry = server.hub.lock().unwrap().duel_entry(1001).expect("entry");
+    assert_eq!((entry.deck.main, entry.deck.side, entry.opponent), (vec![100, 101], vec![102], Some(1002)));
     let r = a.send(req_with(0x17D4, &[("duel_id", Value::U32(duel_id))]));
     assert_eq!(r.iter().map(Message::request).collect::<Vec<_>>(), [Some(0x17D5), Some(0x22C4)]);
     let data = named(&r[1], "duelData");

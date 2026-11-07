@@ -225,7 +225,7 @@ default's index is skipped; cards 5280, 5434 and 6276 are never allowed.
 |---|---|---|---|---|
 | `0x1F4E` deck list (bare, `0x440C43`; also re-sent after save and delete) | `0x22C8` (`0x22C9`) | items **tag 6**: `deck_id` (int), `deck_name`, `discription` (string), `card_protector` (int), `main`, `extra`, `side` (binary u16 BE CARD_Prop rows, read by `0x414410`); at most 10 are used | tracer: all found; "Starter Deck.y3d" written; the NPC duel opens | confirmed |
 | `0x1F50` delete `{delete_type, deck_name}` (`0x4449A9`, after deleting the local file `0x52F0C0`) | `0x22CC` (`0x22CD` shows an error) | none | "deck delete succes"; live: the deck leaves the Load Deck list | confirmed |
-| `0x1F4F` update `{duel_id, event_id, update_type}` + the deck (tag 6) | `0x22CA` (`0x22CB`) | none | Saving in the editor only writes the local file (`0x4442E0` → `0x4159B0` → `0x52EE60`) and `cursor_deck_name`, though the editor has a "deck add or update succes" case for `0x22CA`. The request comes from a duel's Select Deck (DuelManager `0x50ECF0`, see below); live: the duel scene loads | confirmed; nothing is stored yet |
+| `0x1F4F` update `{duel_id, event_id, update_type}` + the deck (tag 6) | `0x22CA` (`0x22CB`) | none | Saving in the editor only writes the local file (`0x4442E0` → `0x4159B0` → `0x52EE60`) and `cursor_deck_name`, though the editor has a "deck add or update succes" case for `0x22CA`. The request comes from a duel's Select Deck (DuelManager `0x50ECF0`, see below); live: the duel scene loads ; Card Swap between a match's duels (`0x50FDF0` state 3) sends `update_type` 2 with the swapped deck (MainGamen `+0x838`), and the server keeps it as the player's entry for the match | confirmed (live: update_type 2 after Card Swap); a deck-editor save is not stored |
 
 Every player gets one deck, "Starter Deck": the first `deck_type` 1 preset (`data/recipe`, ids 1–6, 501, 502; they
 look like the starter decks) that the login regulation allows. Preset 1 holds a card regulation 1 forbids (4966), so
@@ -380,7 +380,7 @@ We send request `0x200D` (**guess**: no reader).
 | 9 / 0xA / 0xB | debug: `DebugID`; `wCardID`, `fFace`, `fTurn`; `id`, `type` (with `index`, `player`, `position`) | `0x5213C0`, `0x521560`, `0x5217C0` |
 | 0xC | `selectHand` (janken: 0 rock, 1 scissors, 2 paper) | `0x4F1330` |
 | 0xD | `choice` (1 first, 2 second) | `0x4F1430` |
-| 0xE | | `0x50FDF0` (DuelManager) |
+| 0xE | none: Card Swap is done (state 4, once the front answered its `0x1F4F` with `0x22CA` or `0x22CB`); then the next janken (`0x50F690`), so the server answers 1500 | `0x50FDF0` (DuelManager) |
 | 0xF | `player`, `autoSet` (duel options; live on entering the duel field: `{player 0, autoSet 1}`) | `0x515790`, `0x4A0390` |
 
 **Janken** (who goes first; JankenScene `0x518400`, `duel_janken.swf`). Engine commands, all confirmed live:
@@ -689,7 +689,8 @@ After the movie DuelScene (`0x515A30`, flag `+0xD8` set by command 2) opens Duel
 `0x13`), a Flash screen run by nine steps (`0x510B70`). Its first step (`0x512070`) waits for one of:
 
 - duel command 1500 or 1504 at the head of the queue (peeked, not taken): the match goes on. DuelManager (`0x50FC00`)
-  then takes 1504 to Card Swap (`0x50FDF0`, side deck, then `0x1F4F` again) or 1500 to the next duel (`0x50F690`);
+  then takes 1504 to Card Swap (`0x50FDF0`, below) or leaves 1500 for the next duel's janken (`0x50F690`); a
+  watching client goes to `0x50F690` either way;
 - an empty queue and front flag `0x20000` (or MainGamen `+0x8BC`): the match is over. It reads the result below, and
   DuelManager leaves the duel (`0x510220`, scene `0xFFFFD901`) because the match result (MainGamen `+0x820`) is set;
 - watching (`+0x8BC`): 1505 at the head is taken, its param1 is the match result (`+0x820`, the other's by
@@ -703,9 +704,23 @@ the `0x22C4` wait because the duel connection is still open) or, once a player h
 the match result (`duel_result` is the match's, not the last duel's). Auto Duel pairs the same Rule Format, and Both
 with either (two Both players get a Single duel, **guess**); a hosted duel's `match_type` goes into the match push.
 Live (Create Duel in Match Mode, `--duel-lp 1000`): Kaiba won duel 1, both clients went from the result screen
-straight to duel 2's janken, Kaiba won again, and the WINNER / LOSER panels closed the match. Not served: 1504 (Card
-Swap with the side deck between duels), and the loser's choice of who goes first (each duel has its own janken,
-**guess**).
+straight to duel 2's janken, Kaiba won again, and the WINNER / LOSER panels closed the match. Not served: the loser's
+choice of who goes first (each duel has its own janken, **guess**).
+
+**Card Swap** (side decking between a match's duels). 1504 instead of 1500 takes the client to `0x50FDF0`: state 1
+opens DeckReplace (`0x448EA0`, `data/gfx/cardchange.swf`) on the player's own deck (MainGamen `+0x838`); cards move
+between the main or extra deck and the side deck by dragging (`CardDrag`, then `cardmove.swf`), and the exit button
+(`ExitReplace`) ends it. State 3 sends the front `0x1F4F {update_type 2, event_id, duel_id}` with the deck as swapped,
+state 4 waits for `0x22CA` or `0x22CB` and, with the duel connection open, sends a bare `0xE` on it, then opens the next
+janken (`0x50F690`), which needs 1500. The server sends 1504 to a player whose deck has a side deck and 1500 to the
+other (**guess**: who the original sent 1504 to is unknown), keeps the swapped deck as the player's entry for the match,
+and answers `0xE` with 1500; the next duel uses the swapped deck if it holds the same cards (else the deck as it was).
+Card Swap's countdown (`0x4496C0` → `timeSet`) reads the engine's clock slot 4 (`0x448E50`, the timers message's
+`other`); at 0 the swap ends by itself. The janken scene shows the same slot (`0x518446`) and at 0 clears a flag of its
+movie (`+0x41`), so the server leaves slot 4 at 0: no time limit, and the screen shows 00:00. Live (`--duel-lp 1000`,
+Yugi with a 2-card side deck): Yugi lost duel 1 on time, got Card Swap while Kaiba went to the janken, swapped Danipon
+in for Crass Clown, the client sent `0x1F4F` update_type 2 → `0x22CA` → `0xE` → 1500, and duel 2 was dealt from the
+swapped deck.
 
 Other commands at the head are taken and dropped. The match is over when the **front** server pushes `0x2009`
 (dispatcher `0x4F4C9E`), sent as soon as the engine ends the duel:

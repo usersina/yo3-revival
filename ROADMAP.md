@@ -108,7 +108,10 @@ Stop finding missing fields one crash at a time.
       server and both players (`0x1838` → `0x1839`), the duel server catches the spectator up from seat 0's side
       (janken, setup, the duel so far, both hands hidden) and then sends every event, and at the match's end 1505
       with the result. Live: Joey watched Yugi and Kaiba's Auto Duel and went back to the map when Kaiba quit
-- [ ] Card Swap between a match's duels (1504, side deck); Create Duel's Friend/Team limits
+- [x] Card Swap between a match's duels: a player with a side deck gets 1504 (DeckReplace), the swapped deck comes
+      back through the front (`0x1F4F` update_type 2) and the duel connection's `0xE` starts the next janken. Live:
+      Yugi swapped Danipon in for Crass Clown and duel 2 was dealt from the swapped deck
+- [ ] Create Duel's Friend/Team limits
 - [x] NPC roster and duel start: 26 NPCs (ids 120–197 from the NPC deck presets) listed by name with their
       levels; picking one runs `0x1784` → `0x17AC` → Select Deck (`0x1F4F`) → `0x17D4`, and the duel screen opens
       with both players. The client builds NPC duels itself (DuelManager `0x50ECF0`); no duel server is involved
@@ -235,7 +238,7 @@ Stop finding missing fields one crash at a time.
 | Card table entries (1000) | param3 0, flag byte 0; uids 1.. in table order | Meanings of param3 and the flag unknown |
 | Hidden cards | against another player, the opponent's deck, hand, extra deck and face-down cards go with row 0 and face-down monsters get no field record; against the CPU, real rows | Online 2 used placeholders, whose value is unknown; a hidden card that flips without moving keeps row 0 until it moves (position changes aren't translated yet) |
 | Automatic matching | the first two players waiting for the same `match_type`, Both (6) with either and two Both players in a Single duel; the level choice is ignored; the second player's `0x1978` goes a second after its `0x1799` | Konami's matching rules are unknown; the delay assumes the agent reads one message per step |
-| Match Mode | best of three; every duel opens with a janken; a drawn duel counts for neither; no Card Swap (1504) between duels; the records count the match once | Online 3's rules for who goes first in later duels, draws and the side deck are unknown |
+| Match Mode | best of three; every duel opens with a janken; a drawn duel counts for neither; the records count the match once | Online 3's rules for who goes first in later duels, draws and the side deck are unknown |
 | Hosted LP and `--duel-lp` | the testing aid wins over a hosted `lp_start` when it isn't 8000 | A testing convenience, not the original's |
 | Duel Menu counts | `duel_playing` = 2 × matched duels, `duel_ready` = hosted duels, `duel_auto` = players waiting | Whether they count players or duels is unknown |
 | Hosted duels | `duel_status` 1 while hosting, 3 while in a duel between players; time limits and Friend/Team limits not applied; `0x17C0` answered `0x17C1` | The original values and the limits' rules are unknown |
@@ -253,6 +256,7 @@ Stop finding missing fields one crash at a time.
 | MSG_MOVE's reason | read back by a query at the card's new place after each processing step | A card that moves again within the same step reports its later reason |
 | Stat changes | level, ATK, DEF, base ATK, base DEF from the engine; race and attribute stay CARD_Prop's | The client's race and attribute numbering isn't ocgcore's; type-changing effects are rare in the card pool |
 | Duel clocks | turn clock full again at each of the player's turns, both clocks running while the engine waits on that player (also during client animations), a time-out 5 s after 0; Auto Duel 180 s / 600 s, hosted duels their `time_turn` / `time_total` (0: off), NPC duels none | The original's clock rules and Auto Duel's limits are unknown; the clocks follow Create Duel's own defaults |
+| Card Swap | offered (1504) only to a player whose deck has a side deck; no time limit (the clock slot 4 the screen counts down also drives the janken's); a swapped deck with other cards is refused | Who the original offered it to, and its time limit, are unknown |
 | Watching | from seat 0's side (the first player to enter); the decisive janken round only; NPC duels can't be watched | The original's spectator view and opening are unknown; a spectator's view of a match's later duels wasn't tried live |
 | Login banlist | regulation 1 ("Beta Forbidden/Limited") unless `--regulation` names another | Which list the original used for Auto Duel at each date is unknown; the client calls the login one "Latest Regulation" |
 | Option labels | EDOPro's system strings 60/61 and 70–72 mapped to the client's labels; a card's own strings take the first option | The original server's label per card option is unknown |

@@ -23,6 +23,8 @@ const TIME_OUT: u32 = 11;
 const DISCONNECTED: u32 = 14;
 /// The engine's MSG_NEW_TURN {player}.
 const MSG_NEW_TURN: u64 = 40;
+/// Card Swap between a match's duels (DuelManager 0x50FC00 takes it to 0x50FDF0), instead of the next janken's 1500.
+const CARD_SWAP: u32 = 1504;
 /// A match's end for a spectator {match result: 1 won, 2 lost, 3 draw}: its DuelResult (0x512070) reads it at the
 /// head of its queue (MainGamen +0x820) where a player's reads the front's 0x2009.
 const MATCH_END: u32 = 1505;
@@ -66,6 +68,8 @@ pub struct Table {
     history: Vec<Json>,
     /// Seat 0's decisive janken {result, opponent's hand, own hand}, which a spectator's pre-duel screen plays first.
     janken: [u32; 3],
+    /// Seats in Card Swap between a match's duels, until they are done (0xE).
+    swapping: [bool; 2],
     over: bool,
     rng: u64,
 }
@@ -89,6 +93,7 @@ impl Table {
             lp: DEFAULT_LP,
             history: vec![],
             janken: [0; 3],
+            swapping: [false; 2],
             over: false,
             rng: seed | 1,
         }
@@ -359,8 +364,9 @@ impl Table {
     }
 
     /// A duel's end: the match's end once someone has won the majority of `best_of` (the result screens), else the
-    /// next duel's janken (1500; DuelResult 0x512070 sees it at the head of the queue and the match goes on). A drawn
-    /// duel counts for neither.
+    /// next duel's janken (1500; DuelResult 0x512070 sees it at the head of the queue and the match goes on), or Card
+    /// Swap (1504, which DuelResult lets through the same way) for a player with a side deck. A drawn duel counts for
+    /// neither.
     fn duel_over(&mut self, results: [u32; 2]) -> Out {
         for (wins, result) in self.wins.iter_mut().zip(results) {
             *wins += (result == WON) as u32;
@@ -381,7 +387,34 @@ impl Table {
         self.translators.clear();
         self.hands = [None; 2];
         self.picker = None;
-        [vec![command(JANKEN_BEGIN, [0; 4])], vec![command(JANKEN_BEGIN, [0; 4])]]
+        let mut out = Out::default();
+        for (s, part) in out.iter_mut().enumerate() {
+            self.swapping[s] = !self.seats[s].entry.deck.side.is_empty();
+            part.push(command(if self.swapping[s] { CARD_SWAP } else { JANKEN_BEGIN }, [0; 4]));
+        }
+        out
+    }
+
+    /// A seat's Card Swap is done (0xE, after the front kept the swapped deck as its match entry, 0x1F4F update_type
+    /// 2): the next duel uses that deck when it holds the same cards (a swap only moves cards between the side deck and
+    /// the others), and the seat's janken begins (1500).
+    pub fn swapped(&mut self, seat: usize) -> Out {
+        let mut out = Out::default();
+        if !std::mem::take(&mut self.swapping[seat]) || self.over {
+            return out;
+        }
+        let entry = self.hub.lock().expect("hub lock").duel_entry(self.seats[seat].player_id);
+        let sorted = |d: &crate::front::Deck| {
+            let mut cards: Vec<u16> = d.cards().collect();
+            cards.sort_unstable();
+            cards
+        };
+        match entry.filter(|e| e.duel_id == Some(self.duel_id)) {
+            Some(e) if sorted(&e.deck) == sorted(&self.seats[seat].entry.deck) => self.seats[seat].entry.deck = e.deck,
+            _ => tracing::warn!("duel {}: seat {seat}'s swapped deck isn't its deck; kept the one it had", self.duel_id),
+        }
+        out[seat].push(command(JANKEN_BEGIN, [0; 4]));
+        out
     }
 
     /// The match's end on both front connections (the result screen), counted against each other, and seat 0's

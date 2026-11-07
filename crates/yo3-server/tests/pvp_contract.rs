@@ -45,14 +45,19 @@ fn table(engine: bool) -> Option<(Seat, Seat, Arc<Mutex<Hub>>)> {
 
 /// The same, as a match of `best_of` duels starting with `lp` each.
 fn table_of(engine: bool, best_of: u32, lp: u32) -> Option<(Seat, Seat, Arc<Mutex<Hub>>)> {
+    let deck = |row| Deck { main: vec![row; 40], ..Deck::default() };
+    table_with(engine, best_of, lp, [deck(1), deck(2)])
+}
+
+/// The same with these decks for 1001 and 1002.
+fn table_with(engine: bool, best_of: u32, lp: u32, decks: [Deck; 2]) -> Option<(Seat, Seat, Arc<Mutex<Hub>>)> {
     let world = Arc::new(World { start_lp: lp, ..world(engine) });
     if engine && world.engine_dir.is_none() {
         eprintln!("engine not fetched; skipping");
         return None;
     }
     let hub = Arc::new(Mutex::new(Hub::default()));
-    for (me, them, row) in [(1001, 1002, 1), (1002, 1001, 2)] {
-        let deck = Deck { main: vec![row; 40], ..Deck::default() };
+    for ((me, them), deck) in [(1001, 1002), (1002, 1001)].into_iter().zip(decks) {
         let entry = DuelEntry { deck, duel_id: Some(DUEL), opponent: Some(them), best_of, ..DuelEntry::default() };
         hub.lock().unwrap().enter_duel(me, entry);
     }
@@ -229,6 +234,60 @@ fn a_match_goes_on_to_its_next_duel_until_someone_wins_two() {
     let (to_a, to_b) = second_wins(&mut a, &mut b);
     assert_eq!(ends(&to_a), [(2, [2, 1, 0, 0])], "duel 2: 1002 has won two");
     assert_eq!(ends(&to_b), [(2, [1, 1, 0, 0])]);
+}
+
+/// The rows of the client's own deck in a duel's opening card table (commands 1000 before the duel start, command 1):
+/// player 0's deck places, row 0 for the opponent's hidden cards.
+fn own_deck(out: &[Message]) -> Vec<u32> {
+    let opening = commands(out).into_iter().skip_while(|(id, _)| *id != 1000).take_while(|(id, _)| *id == 1000);
+    opening.map(|(_, p)| p[1]).filter(|&row| row != 0).collect()
+}
+
+/// 1001 with a side deck (rows 1, side five of row 2) and 1002 without one, in a match of three at 100 LP.
+fn side_decked_match() -> Option<(Seat, Seat, Arc<Mutex<Hub>>)> {
+    let decks = [Deck { main: vec![1; 40], side: vec![2; 5], ..Deck::default() }, Deck { main: vec![2; 40], ..Deck::default() }];
+    let (mut a, mut b, hub) = table_with(true, 3, 100, decks)?;
+    enter(&mut a, 1001);
+    enter(&mut b, 1002);
+    a.pushed();
+    Some((a, b, hub))
+}
+
+/// 1001's deck for the match changes, as the front's 0x1F4F does (Card Swap's update_type 2 keeps the match's entry).
+fn swap(hub: &Arc<Mutex<Hub>>, main: Vec<u16>, side: Vec<u16>) {
+    let entry = hub.lock().unwrap().duel_entry(1001).expect("1001's entry");
+    hub.lock().unwrap().enter_duel(1001, DuelEntry { deck: Deck { main, side, ..entry.deck.clone() }, ..entry });
+}
+
+#[test]
+fn a_player_with_a_side_deck_swaps_cards_between_a_matchs_duels() {
+    // Between a match's duels DuelResult (0x512070) lets 1504 at the head of the queue through like 1500, and
+    // DuelManager (0x50FC00) takes it to Card Swap (0x50FDF0: DeckReplace, cardchange.swf), which sends the swapped
+    // deck to the front (0x1F4F update_type 2) and then a bare 0xE on the duel connection before the next janken
+    // (0x50F690). So 1001, who has a side deck, gets 1504 and 1002 gets 1500; 1001's 0xE is answered with 1500, and
+    // the next duel is played with the swapped deck.
+    let Some((mut a, mut b, hub)) = side_decked_match() else { return };
+    let ends = |out: &[Message]| commands(out).into_iter().filter(|(id, _)| matches!(id, 2 | 1500 | 1504)).collect::<Vec<_>>();
+    let (to_a, to_b) = second_wins(&mut a, &mut b);
+    assert_eq!(ends(&to_a), [(2, [2, 1, 0, 0]), (1504, [0; 4])], "1001 goes to Card Swap");
+    assert_eq!(ends(&to_b), [(2, [1, 1, 0, 0]), (1500, [0; 4])], "1002 has no side deck: straight to the janken");
+    assert!(own_deck(&to_a).iter().all(|&row| row == 1));
+    swap(&hub, [vec![1; 35], vec![2; 5]].concat(), vec![1; 5]);
+    assert_eq!(commands(&a.send(0xE, &[])), [(1500, [0; 4])]);
+    let (to_a, _) = second_wins(&mut a, &mut b);
+    assert_eq!(own_deck(&to_a).iter().filter(|&&row| row == 2).count(), 5, "the five swapped in");
+}
+
+#[test]
+fn a_swap_that_changes_the_cards_keeps_the_deck_as_it_was() {
+    // Card Swap only moves cards between the main (or extra) deck and the side deck: a deck with other cards is
+    // refused and the player duels with the deck they had.
+    let Some((mut a, mut b, hub)) = side_decked_match() else { return };
+    second_wins(&mut a, &mut b);
+    swap(&hub, vec![2; 40], vec![]);
+    assert_eq!(commands(&a.send(0xE, &[])), [(1500, [0; 4])]);
+    let (to_a, _) = second_wins(&mut a, &mut b);
+    assert!(own_deck(&to_a).iter().all(|&row| row == 1), "still 1001's own deck");
 }
 
 #[test]
