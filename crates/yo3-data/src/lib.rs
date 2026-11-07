@@ -310,4 +310,30 @@ impl GameData {
         let cids = |d: &Deck| d.cards().filter_map(|row| self.cards.by_row(row)).map(|c| c.cid).collect::<Vec<_>>();
         self.decks.iter().filter(|d| d.kind == 1).find(|d| regulation.allows(cids(d)))
     }
+
+    /// The NPC opponents the NPC duel lists, three levels each (ids 120 + 3k .. 120 + 3k + 2, the
+    /// k-th NPC's name being text 0x5208 + 2k, 0x4BFE34). Each has a preset deck (deck_type 3)
+    /// titled text 0x5FB4 + 2 * npc_id (the deck title the NPC screen shows, 0x4BFE05); NPCs
+    /// without all three decks are left out.
+    pub fn npc_ids(&self) -> Vec<u32> {
+        let has = |id: u32| self.npc_deck(id).is_some();
+        let firsts = (FIRST_NPC..).step_by(3).take_while(|&id| has(id));
+        firsts.filter(|&id| has(id + 1) && has(id + 2)).flat_map(|id| id..id + 3).collect()
+    }
+
+    /// The preset deck an NPC plays.
+    pub fn npc_deck(&self, npc_id: u32) -> Option<&Deck> {
+        let name_id = NPC_DECK_TITLE + 2 * npc_id;
+        self.decks.iter().filter(|d| d.kind == 3).find(|d| text_int(&d.record, "name_id") == Some(name_id))
+    }
+}
+
+/// The lowest selectable NPC id (0x4BFE34, DuelManager 0x50F4F0).
+const FIRST_NPC: u32 = 120;
+/// Text id of NPC 0's deck title (0x4BFE05).
+const NPC_DECK_TITLE: u32 = 0x5FB4;
+
+/// A number the client's data files store as text (preset decks' name_id).
+fn text_int(msg: &Message, name: &str) -> Option<u32> {
+    msg.get(name).and_then(Value::as_str).and_then(|s| s.parse().ok())
 }

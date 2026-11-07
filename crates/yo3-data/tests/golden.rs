@@ -100,3 +100,13 @@ fn the_starter_deck_is_the_first_preset_the_regulation_allows() {
     assert_eq!((starter.id, starter.kind), (2, 1));
     assert!(first.allows(cids(starter)));
 }
+
+#[test]
+fn npc_ids_come_from_the_npc_preset_decks() {
+    let dir = need_game!();
+    let data = GameData::load(&dir).unwrap();
+    // 26 NPCs, three levels each: Yami Yugi (120-122) to the last one (195-197), whose English name
+    // is empty. Deck 19 is titled "Attack of the Ancients", text 0x5FB4 + 2 * 120.
+    assert_eq!(data.npc_ids(), (120..=197).collect::<Vec<_>>());
+    assert_eq!(data.npc_deck(120).map(|d| d.id), Some(19));
+}
