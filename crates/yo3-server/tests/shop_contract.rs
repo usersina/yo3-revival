@@ -159,3 +159,28 @@ fn a_pack_holds_four_of_its_first_tier_and_one_rarer_card() {
     let one_tier = ShopPack { tiers: vec![vec![5, 6]], ..pack };
     assert!(shop::open(&one_tier, &mut rng).iter().all(|r| [5, 6].contains(r)));
 }
+
+#[test]
+fn duels_earn_bp_that_the_next_purchase_spends() {
+    // The client's BP (UserData +0x76C) is set only by the login's dpoint, 0x1C24, 0x2D77 (rental) and 0x23F0 (the
+    // BOOSTERPASS code window): nothing after a duel. The server pays each counted duel result into the account (win
+    // 100, draw 50, loss 30, a guess) and re-reads the account for each purchase, whose 0x1C24 brings the new total.
+    use std::sync::{Arc, Mutex};
+    use yo3_server::accounts::{Directory, START_BP};
+    let server = shop();
+    let directory = Arc::new(Mutex::new(Directory::new(vec!["Yugi".into(), "Kaiba".into()])));
+    server.hub.lock().unwrap().set_directory(directory.clone());
+    let mut c = server.join_from(&directory, std::net::IpAddr::from([10, 0, 0, 3]));
+    let players: Vec<u32> = directory.lock().unwrap().accounts().flat_map(|(_, a)| a.players.iter().map(|p| p.player_id)).collect();
+    let (yugi, kaiba) = (players[0], players[1]);
+    let mut hub = server.hub.lock().unwrap();
+    hub.record_result(yugi, kaiba, 1);
+    hub.record_result(kaiba, yugi, 2);
+    hub.record_result(yugi, kaiba, 3);
+    drop(hub);
+    let bp = || directory.lock().unwrap().accounts().next().map(|(_, a)| a.dpoint);
+    assert_eq!(bp(), Some(START_BP + 100 + 30 + 50));
+    let buy = req_with(0x1B68, &[("sale_id", Value::U32(1)), ("item_num", Value::U32(1))]);
+    assert_eq!(one(c.send(buy)).get("dpoint"), Some(&Value::U32(START_BP + 180 - 100)));
+    assert_eq!(bp(), Some(START_BP + 80));
+}

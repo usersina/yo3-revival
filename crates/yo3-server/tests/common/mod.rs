@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use yo3_proto::{Message, Packet, Value};
+use yo3_server::accounts::Directory;
 use yo3_server::front::{Account, FrontSession, Hub, Player, World};
 
 pub fn req(id: u32) -> Packet {
@@ -62,10 +63,25 @@ impl Server {
         self.join_account(Account { players: vec![player], ..Account::test() })
     }
 
+    /// A client of the account at `addr` in `directory` (made on first contact), as the server's front makes them,
+    /// logged in as its first player.
+    pub fn join_from(&self, directory: &Arc<Mutex<Directory>>, addr: std::net::IpAddr) -> Client {
+        let account = directory.lock().unwrap().account_for(addr);
+        self.join_with(account, Some(directory.clone()))
+    }
+
     fn join_account(&self, account: Account) -> Client {
+        self.join_with(account, None)
+    }
+
+    fn join_with(&self, account: Account, directory: Option<Arc<Mutex<Directory>>>) -> Client {
         let player_id = account.players[0].player_id;
         let (tx, inbox) = unbounded_channel();
-        let mut c = Client { session: FrontSession::new(account, self.world.clone(), self.hub.clone(), tx), inbox };
+        let mut session = FrontSession::new(account, self.world.clone(), self.hub.clone(), tx);
+        if let Some(d) = directory {
+            session.set_directory(d);
+        }
+        let mut c = Client { session, inbox };
         c.send(Packet::Version("2010.03.23 skelton".into()));
         c.send(req_with(0x1F4C, &[("player_id", Value::U32(player_id))]));
         c.send(req_with(0x1FA4, &[("player_id", Value::U32(player_id))]));

@@ -317,6 +317,8 @@ pub struct Hub {
     /// Wins, losses and draws by (player_id, opponent id), and the file they are kept in (none: since the start).
     records: HashMap<(u32, u32), [u32; 3]>,
     records_file: Option<std::path::PathBuf>,
+    /// The accounts, which each counted duel pays BP into (none: no pay).
+    directory: Option<Arc<Mutex<crate::accounts::Directory>>>,
     /// Players waiting for an automatic match, in order, and the matched duels.
     waiting: Vec<Waiting>,
     matches: HashMap<u32, Match>,
@@ -356,6 +358,11 @@ impl Hub {
         hub
     }
 
+    /// The accounts duel results pay BP into.
+    pub fn set_directory(&mut self, directory: Arc<Mutex<crate::accounts::Directory>>) {
+        self.directory = Some(directory);
+    }
+
     pub fn enter_duel(&mut self, player_id: u32, entry: DuelEntry) {
         self.duel_entries.insert(player_id, entry);
     }
@@ -364,9 +371,12 @@ impl Hub {
         self.duel_entries.get(&player_id).cloned()
     }
 
-    /// Counts a duel's `result` (1 won, 2 lost, 3 draw) and returns the player's wins, losses and draws against
-    /// this opponent.
+    /// Counts a duel's `result` (1 won, 2 lost, 3 draw), pays its BP into the player's account (`shop::duel_bp`), and
+    /// returns the player's wins, losses and draws against this opponent.
     pub fn record_result(&mut self, player_id: u32, opponent: u32, result: u32) -> [u32; 3] {
+        if let Some(d) = &self.directory {
+            d.lock().expect("directory lock").reward(player_id, crate::shop::duel_bp(result));
+        }
         let record = self.records.entry((player_id, opponent)).or_default();
         if let Some(n) = record.get_mut(result.wrapping_sub(1) as usize) {
             *n += 1;
@@ -629,6 +639,13 @@ impl FrontSession {
         let Some(id) = msg.request() else { return vec![] };
         if let Some(&(_, reply)) = BARE_REPLIES.iter().find(|(req, _)| *req == id) {
             return vec![Message::reply(reply)];
+        }
+        // The login replies and purchases read the BP, which may have grown since this session began (duels pay
+        // into the account).
+        if matches!(id, 0x1F47 | 0x1F48 | 0x1B68)
+            && let Some(bp) = self.directory.as_ref().and_then(|d| d.lock().expect("directory lock").dpoint(self.account.user_id))
+        {
+            self.account.dpoint = bp;
         }
         let a = &self.account;
         let reply = match id {

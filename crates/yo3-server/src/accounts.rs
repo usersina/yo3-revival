@@ -155,6 +155,20 @@ impl Directory {
         }
     }
 
+    /// Pays `bp` into the account of a player; its new BP, if the player has an account.
+    pub fn reward(&mut self, player_id: u32, bp: u32) -> Option<u32> {
+        let account = self.by_address.values_mut().find(|a| a.players.iter().any(|p| p.player_id == player_id))?;
+        account.dpoint = account.dpoint.saturating_add(bp);
+        let total = account.dpoint;
+        self.save();
+        Some(total)
+    }
+
+    /// An account's BP.
+    pub fn dpoint(&self, user_id: u32) -> Option<u32> {
+        self.by_address.values().find(|a| a.user_id == user_id).map(|a| a.dpoint)
+    }
+
     /// Changes an account (its BP) and saves the accounts.
     pub fn update_account(&mut self, user_id: u32, change: impl FnOnce(&mut Account)) {
         if let Some(a) = self.by_address.values_mut().find(|a| a.user_id == user_id) {

@@ -171,17 +171,19 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     if let Some(dir) = &cfg.data_dir {
         store::back_up(dir)?;
     }
-    let hub = Arc::new(Mutex::new(match &cfg.data_dir {
+    let directory = Arc::new(Mutex::new(match &cfg.data_dir {
+        Some(dir) => Directory::open(cfg.players.clone(), &dir.join("accounts.json"))?,
+        None => Directory::new(cfg.players.clone()),
+    }));
+    // Locks are taken hub first, then accounts (duel results pay BP), never the other way.
+    let mut hub = match &cfg.data_dir {
         Some(dir) => Hub::with_records(&dir.join("records.json")),
         None => Hub::default(),
-    }));
+    };
+    hub.set_directory(directory.clone());
+    let hub = Arc::new(Mutex::new(hub));
     let front_task = {
         let (world, hub) = (world.clone(), hub.clone());
-        let directory = match &cfg.data_dir {
-            Some(dir) => Directory::open(cfg.players.clone(), &dir.join("accounts.json"))?,
-            None => Directory::new(cfg.players.clone()),
-        };
-        let directory = Arc::new(Mutex::new(directory));
         tokio::spawn(net::accept_loop(front, "front", packets.clone(), move |peer: SocketAddr, local: SocketAddr, outbox| {
             let account = directory.lock().expect("directory lock").account_for(peer.ip());
             let mut session = FrontSession::new(account, world.clone(), hub.clone(), outbox);

@@ -9,6 +9,16 @@ pub const PACK_MAX: u32 = 10;
 /// A pack holds this many cards of its first rarity tier, then one of a higher tier (**guess**).
 const COMMONS: usize = 4;
 
+/// The BP a duel's result (1 won, 2 lost, 3 draw) pays into the player's account. The original's duels paid none (no
+/// reply after a duel sets the client's BP); a server choice, so friends can keep buying packs.
+pub fn duel_bp(result: u32) -> u32 {
+    match result {
+        1 => 100,
+        3 => 50,
+        _ => 30,
+    }
+}
+
 /// A pack on sale: its id (the client's pack file, which gives the name, description and image), its dates, and its
 /// cards (CARD_Prop rows) by rarity tier.
 #[derive(Clone, Debug)]

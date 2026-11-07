@@ -158,6 +158,15 @@ trunk has none) with a SKIP button. The client doesn't add them to its trunk its
 only on `type` 6): the server keeps them, and the next trunk request (`0x1FA4`) brings them. Live: Pack 1 opened
 showing "Power of Kaishin" NEW!, and SKIP returned to the Shop Menu.
 
+**Where the client's BP comes from.** The client keeps its BP at UserData `+0x76C`, which the shop and the avatar
+shop (`0x4963E0`) check before they send a purchase ("You do not have enough BOOSTERPASS Points."). Four replies set
+it: the login's `dpoint` (`0x469C00`), the purchase `0x1C24` and the rental `0x2D77` (both shop cases read `dpoint`),
+and BpInputWindow's `0x23F0 {dpauth_result, dpPoints, dpGetPoints, premium, premium_expire}`, the BOOSTERPASS code
+window, which adds the points got (`0x40F7B0`; the global case `0x4F5349` keeps only `premium`). Nothing after a duel
+touches it, so the original's duels earned no BP. The server pays BP for duels anyway (each result counted by the
+hub: win 100, draw 50, loss 30; **guess**, a server choice), keeps it with the account, and re-reads it for the
+login replies and each purchase: the client sees the new total at its next login or in the next `0x1C24`.
+
 Each pack file's card list is ascending runs: 44, 18, 9, 9 for an 80-card pack, the OCG split of Normal, Rare, Super
 and Ultra Rares. The server reads the runs as rarity tiers (**guess**) and puts four cards of the first tier and one of
 a higher one in a pack (**guess**: the original's pack size and odds are unknown); a pack of one run gives five of it.
