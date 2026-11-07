@@ -56,18 +56,21 @@ You need Linux (on Windows, use WSL), the game installed (the server reads its c
 3. Start the game and log in with any name and password (they aren't checked), then pick your player.
 4. Once: open **Main Menu → Edit Deck** and leave it again. That saves your starter deck; without a deck the duel
    button says "There are no valid Decks available."
-5. To duel a friend: press the duel button on the bottom bar, then **Auto Duel → Confirm**. When two players wait for
-   the same Rule Format you're matched, pick your deck, and play. Kaiba Corporation on the map has the computer
-   opponents.
+5. To duel a friend, press the duel button on the bottom bar, then either:
+   - **Auto Duel → Confirm**: when two players wait for the same Rule Format they're matched;
+   - **Create Duel → Confirm** (with a password if you like): your friend opens the player list (the first tab of
+     the panel on the left), clicks your name, and presses **Send Duel Request**; you accept.
+
+   Then pick your deck and play. Kaiba Corporation on the map has the computer opponents.
 
 ## What works and what doesn't yet
 
-Working: chat rooms and whispers, player search, NPC duels, Auto Duel between players (single duels), choosing
-targets, tributes, positions, coin calls and chains in the game's own dialogs, the result screens.
+Working: chat rooms and whispers, player search, NPC duels, Auto Duel and Create Duel between players (single
+duels), choosing targets, tributes, positions, coin calls and chains in the game's own dialogs, attack and summon
+animations, the result screens, avatar settings.
 
-Not yet: Create Duel (hosted duels with passwords and timers) and Match Mode, duel animations (attacks and summons
-just happen), effects that make you choose between a card's own options (the first is taken), packs and an
-economy. Players' decks stay on their own machines (in `Documents\Yu-Gi-Oh! ONLINE 3`).
+Not yet: Match Mode, duel timers, watching duels, chain-link animations, effects that make you choose between a
+card's own options (the first is taken), packs and an economy. Players' decks stay on their own machines (in `Documents\Yu-Gi-Oh! ONLINE 3`).
 
 ## When something goes wrong
 
