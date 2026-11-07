@@ -285,6 +285,8 @@ pub struct World {
     pub start_lp: u32,
     /// Testing aid: every player's main deck in a duel, as CARD_Prop rows repeated to 40 cards.
     pub test_deck: Option<Vec<u16>>,
+    /// Testing aid: every player's extra deck in a duel, as CARD_Prop rows.
+    pub test_extra: Option<Vec<u16>>,
     /// The rules engine's directory (engine/, once fetched); without it the server deals the opening itself.
     pub engine_dir: Option<std::path::PathBuf>,
     /// Where clients connect for their duels (0x22C4 duelData host and port).
@@ -309,6 +311,7 @@ impl World {
             engine_dir: None,
             start_lp: 8000,
             test_deck: None,
+            test_extra: None,
             duel_server: ("127.0.0.1".into(), 0),
             news: vec![(
                 "Welcome back to Yu-Gi-Oh! ONLINE".into(),

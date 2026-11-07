@@ -354,6 +354,36 @@ fn a_cancelled_or_optional_choice() {
 }
 
 #[test]
+fn materials_are_picked_one_at_a_time_in_the_card_list() {
+    // MSG_SELECT_UNSELECT_CARD (26) {can_finish, can_cancel, select_cards, unselect_cards}, EDOPro's Synchro and
+    // Fusion material choice, asked again after each pick: the card list of `select_cards` with one pick (kind 0x27),
+    // or kind 1 (OK with no pick) when the engine lets the player finish or cancel. A pick answers its index; no pick
+    // finishes (index null). HINTMSG_FMATERIAL (511) → "Select monsters to use as Fusion Material." (92); the client
+    // has no Synchro material text (**guess**: the list without a message).
+    let mut t = with_cards();
+    t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 512 })]);
+    let first = json!({ "type": 26, "player": 0, "can_finish": false, "can_cancel": false, "min": 1, "max": 2,
+        "select_cards": [card_at(0, 4, 0, 4100), card_at(0, 4, 1, 4101)], "unselect_cards": [] });
+    let out = client_commands(t.prompt(&first));
+    assert_eq!(out[0], (0x3EF, [2, 1, 0, 0]));
+    assert!(!out.iter().any(|(id, _)| *id == 0x3ED));
+    assert_eq!(out.last(), Some(&(0x37, [0, 0x27, 0, 0])));
+    t.pick(1);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 7, "index": 1 }))));
+    t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 511 })]);
+    let next = json!({ "type": 26, "player": 0, "can_finish": true, "can_cancel": false, "min": 1, "max": 2,
+        "select_cards": [card_at(0, 4, 0, 4100)], "unselect_cards": [card_at(0, 4, 1, 4101)] });
+    let out = client_commands(t.prompt(&next));
+    assert_eq!(out[0], (0x3EF, [1, 1, 0, 0]));
+    assert_eq!(out[out.len() - 2..], [(0x3ED, [1 << 28 | 92, 0, 0, 0]), (0x37, [0, 1, 1, 0])]);
+    assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 7, "index": null }))));
+    // Nothing left to pick: finished without asking.
+    let done = json!({ "type": 26, "player": 0, "can_finish": true, "can_cancel": false, "min": 1, "max": 2,
+        "select_cards": [], "unselect_cards": [card_at(0, 4, 0, 4100), card_at(0, 4, 1, 4101)] });
+    assert_eq!(t.prompt(&done), Prompt::Answer(json!({ "type": 7, "index": null })));
+}
+
+#[test]
 fn an_attack_target_is_a_card_choice_with_its_message() {
     // ocgcore asks for an attack target as MSG_SELECT_CARD after hint 549 (HINTMSG_ATTACKTARGET): "Select an attack
     // target @3monster@0." (222). Live: Goblin Elite's attack listed the CPU's monster; picking it dealt 1200.
@@ -916,6 +946,25 @@ fn extra_decks_go_into_the_card_table_and_move_from_there() {
     let moved = out.iter().find(|(id, _)| *id == 0x1A).expect("the move");
     assert_eq!(moved.1[0], 22 | 151 << 16, "uid 22, the card asked for");
     assert_eq!((moved.1[1] >> 1) & 0x1F, 0xC, "from the extra deck");
+}
+
+#[test]
+fn an_extra_deck_summon_is_offered_on_the_extra_deck_pile() {
+    // An idle prompt's Special Summon from the extra deck (location 64) gets its menu bit at the extra deck's place
+    // (zone 0xC), at the card's index there, found by its id: the engine's sequence in its extra deck isn't ours.
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).chain([150, 151]).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
+    t.extra_decks([&[150, 151][..], &[][..]]);
+    let extra = json!({ "controller": 0, "location": 64, "sequence": 0, "cid": 4151 });
+    let idle = json!({ "type": 11, "player": 0, "summons": [], "special_summons": [extra], "pos_changes": [],
+        "monster_sets": [], "spell_sets": [], "activates": [], "to_bp": false, "to_ep": true });
+    let Prompt::Client(out) = t.prompt(&idle) else { panic!("the client chooses") };
+    let data = [0x00, 0x01, 0x0C, 0x00, 0, 0, 0, 0x04, 5, 1];
+    assert_eq!(out[0].get("COMIDDATA"), Some(&Value::Bin(data.to_vec())));
+    let summon = CardCommand { command: 2, player: 0, zone: 0xC, index: 1 };
+    assert_eq!(t.answer(summon), Some(json!({ "type": 1, "action": 1, "index": 0 })));
 }
 
 #[test]

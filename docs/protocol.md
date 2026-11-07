@@ -593,8 +593,17 @@ bit 14 and defence bit 15 on field slots (`0x5000E0`); field slots are zones 0â€
 (Field Spell) at index 0, then hand `0xB`, extra `0xC`, deck `0xD`, graveyard `0xE`, banished `0xF`. Cards behind a
 removed list card get their table entry again. Both extra decks are in the card table too (zone `0xC`, uids after
 both main decks, the opponent's with row 0 against a player); a card leaving the deck or the extra deck is found by its
-id, so an extra deck summon moves the right card from zone `0xC` and the extra deck pile counts down (**not seen live
-yet**: the test decks summon nothing from it). The client has no window for ocgcore's place prompt, so the server
+id, so an extra deck summon moves the right card from zone `0xC` and the extra deck pile counts down. Commands on
+cards in the extra deck, Graveyard or banished pile (an idle prompt's Special Summon from the extra deck, an effect
+activated from the Graveyard) go in the command map at that pile's zone and the index of a card with the listed `cid`
+(the engine's extra deck order isn't the card table's); clicking the pile runs it. EDOPro asks for Synchro and Fusion
+materials one at a time (MSG_SELECT_UNSELECT_CARD {can_finish, can_cancel, select_cards, unselect_cards}: the Tuner
+first); each round is the card list of `select_cards` with one pick (kind `0x27`, or 1 when the engine lets the player
+finish or cancel, where no pick answers index null), "Select monsters to use as Fusion Material." (92) for
+HINTMSG_FMATERIAL and no message for Synchro materials (the client has no such text; **guess**). Live
+(`--duel-deck 3339,1449 --duel-extra 3745`): with Junk Synchron and Giant Orc on the field, clicking the extra deck
+listed Junk Synchron, then Giant Orc; both went to the Graveyard, the position dialog asked for Ancient Fairy Dragon,
+and it stood in attack position on both clients with the extra deck pile down to 1. The client has no window for ocgcore's place prompt, so the server
 takes the first free zone (positions: see Choices). Live: Summon from the hand put the monster in the
 first monster zone, the hand closed up, and the next prompt offered only the Spell card.
 

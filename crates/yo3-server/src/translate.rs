@@ -836,6 +836,16 @@ impl Translator {
                 self.picks.clear();
                 Prompt::Client(out)
             }
+            // Materials, one at a time: the card list until the engine lets the player finish and nothing is left.
+            MSG_SELECT_UNSELECT_CARD if m["select_cards"].as_array().is_some_and(|s| !s.is_empty()) => {
+                let open = m["can_finish"] == true || m["can_cancel"] == true;
+                let list = json!({ "selects": m["select_cards"], "min": if open { 0 } else { 1 }, "max": 1 });
+                let text = hint_text(std::mem::take(&mut self.hint));
+                let out = self.card_list(&list, text);
+                self.pending = Some(m.clone());
+                self.picks.clear();
+                Prompt::Client(out)
+            }
             MSG_SELECT_POSITION => match self.position_dialog(m) {
                 Some(out) => {
                     self.pending = Some(m.clone());
@@ -983,8 +993,9 @@ impl Translator {
     /// the default.
     pub fn dialog_result(&mut self, count: u32) -> Option<Prompt> {
         let kind = self.pending.as_ref()?["type"].as_u64()?;
-        const DIALOGS: [u64; 11] = [
+        const DIALOGS: [u64; 12] = [
             MSG_SELECT_CARD,
+            MSG_SELECT_UNSELECT_CARD,
             MSG_SELECT_TRIBUTE,
             MSG_SELECT_EFFECTYN,
             MSG_SELECT_YESNO,
@@ -1000,7 +1011,7 @@ impl Translator {
             return None;
         }
         let m = self.pending.take()?;
-        let selects = m["selects"].as_array().map_or(0, Vec::len);
+        let selects = m["selects"].as_array().or(m["select_cards"].as_array()).map_or(0, Vec::len);
         let answer = match kind {
             MSG_SELECT_EFFECTYN => json!({ "type": RESP_EFFECTYN, "yes": count == 1 }),
             MSG_SELECT_YESNO => json!({ "type": RESP_YESNO, "yes": count == 1 }),
@@ -1037,6 +1048,11 @@ impl Translator {
                 _ => json!({ "type": RESP_CHAIN, "index": null }),
             },
             MSG_SELECT_CARD | MSG_SELECT_TRIBUTE => self.card_choice(&m, count),
+            MSG_SELECT_UNSELECT_CARD => match std::mem::take(&mut self.picks)[..] {
+                [index] if index < selects => json!({ "type": RESP_UNSELECT_CARD, "index": index }),
+                _ if m["can_finish"] == true || m["can_cancel"] == true => json!({ "type": RESP_UNSELECT_CARD, "index": null }),
+                _ => cpu_answer(kind, &m),
+            },
             MSG_ANNOUNCE_RACE => match TYPES.get((count as usize).wrapping_sub(1)) {
                 Some(&race) if m["available"].as_u64().unwrap_or(0) & race != 0 => json!({ "type": RESP_RACE, "races": [race] }),
                 _ => cpu_answer(kind, &m),
@@ -1098,7 +1114,8 @@ impl Translator {
     }
 
     /// The card-table place of an engine card location: hand (0xB, index), monster zone (0, slot), Spell/Trap
-    /// zone (5, slot).
+    /// zone (5, slot), and the extra deck, Graveyard and banished cards (0xC, 0xE, 0xF) at the index of a card with
+    /// the location's `cid` (the engine's extra deck order isn't ours).
     fn place(&self, loc: &Json) -> Option<u32> {
         let p = self.player(&loc["controller"]);
         let seq = loc["sequence"].as_u64()? as usize;
@@ -1106,8 +1123,20 @@ impl Translator {
             LOC_HAND => HAND,
             LOC_MZONE => 0,
             LOC_SZONE => 5,
+            LOC_EXTRA => EXTRA,
+            LOC_GRAVE => GRAVE,
+            LOC_REMOVED => REMOVED,
             _ => return None,
         };
+        if zone >= EXTRA {
+            let cid = |c: &Card| self.cards.get(&c.row).map(|s| s.cid as u64);
+            let cards = self.sides[p as usize].zones.get(&zone)?;
+            let index = match cards.get(seq) {
+                Some(c) if cid(c) == loc["cid"].as_u64() => seq,
+                _ => cards.iter().position(|c| cid(c) == loc["cid"].as_u64())?,
+            };
+            return Some(table_place(p, zone, index));
+        }
         Some(table_place(p, zone, seq))
     }
 
@@ -1233,6 +1262,7 @@ fn hint_text(hint: u64) -> Option<u32> {
         504 => 58,  // HINTMSG_TOGRAVE: "Select the @3card@0 to send to the @2Graveyard@0."
         506 => 88,  // HINTMSG_ATOHAND: "Select the @3card(s)@0 to add to your @2hand@0."
         509 => 25,  // HINTMSG_SPSUMMON: "Select the @3monster(s)@0 to @3Special Summon@0."
+        511 => 92,  // HINTMSG_FMATERIAL: "Select @3monsters@0 to use as @3Fusion Material@0."
         549 => 222, // HINTMSG_ATTACKTARGET: "Select an attack target @3monster@0."
         551 => 94,  // HINTMSG_TARGET: "Select the @3card(s)@0 to target."
         _ => return None,

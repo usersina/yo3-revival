@@ -46,6 +46,9 @@ struct Args {
     /// Every player's main deck in a duel, as CARD_Prop rows repeated to 40 cards (to test a card's prompts).
     #[arg(long, value_delimiter = ',')]
     duel_deck: Vec<u16>,
+    /// Every player's extra deck in a duel, as CARD_Prop rows (to test an extra deck summon).
+    #[arg(long, value_delimiter = ',')]
+    duel_extra: Vec<u16>,
     /// The banlist players log in with, for Auto Duel and NPC duels: a regulation id or name, e.g. "unlimited" (no
     /// banned or limited cards) or "Season 16". Hosted duels use the host's choice.
     #[arg(long)]
@@ -101,6 +104,7 @@ async fn main() -> anyhow::Result<()> {
         players: a.players,
         duel_lp: a.duel_lp,
         duel_deck: a.duel_deck,
+        duel_extra: a.duel_extra,
         data_dir: Some(a.data_dir),
         regulation: a.regulation,
     };

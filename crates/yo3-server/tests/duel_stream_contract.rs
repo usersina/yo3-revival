@@ -246,16 +246,20 @@ fn a_card_command_names_the_command_and_the_card() {
 
 #[test]
 fn a_test_deck_replaces_the_players_main_deck() {
-    // Testing aid (--duel-deck): the player's main deck becomes the given rows repeated to 40 cards, so a live check
-    // can count on a card being drawn.
+    // Testing aids (--duel-deck, --duel-extra): the player's main deck becomes the given rows repeated to 40 cards, so
+    // a live check can count on a card being drawn, and the extra deck the given rows.
     let mut world = World::new((1..=20).collect());
     world.npc_decks.insert(124, deck(1000, 41, 2));
     world.test_deck = Some(vec![7, 8]);
+    world.test_extra = Some(vec![9, 9, 9]);
     let mut hub = Hub::default();
     hub.enter_duel(1002, DuelEntry { deck: deck(100, 40, 0), npc_id: Some(124), ..DuelEntry::default() });
     let mut s = DuelSession::new(Arc::new(world), Arc::new(Mutex::new(hub)), 7);
     enter(&mut s);
-    let cmds = commands(&s.handle(&duel_msg(0xD, &[("choice", 1)])));
+    let replies = s.handle(&duel_msg(0xD, &[("choice", 1)]));
+    let setup = replies.iter().find(|m| m.get("duelRequestName") == Some(&Value::U32(0x15))).expect("setup");
+    assert_eq!(setup.get("ExtraDeckNum001"), Some(&Value::U32(3)));
+    let cmds = commands(&replies);
     let table = cmds.iter().take_while(|(id, _)| *id != 1);
     let mut rows: Vec<_> = table.filter(|(id, p)| *id == 1000 && p[3] & 0xFF == 0).map(|(_, p)| p[1]).collect();
     rows.sort();

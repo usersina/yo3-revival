@@ -299,6 +299,9 @@ impl DuelSession {
                 if let (Some(entry), Some(rows)) = (entry.as_mut(), &self.world.test_deck) {
                     entry.deck.main = rows.iter().copied().cycle().take(40).collect();
                 }
+                if let (Some(entry), Some(rows)) = (entry.as_mut(), &self.world.test_extra) {
+                    entry.deck.extra = rows.clone();
+                }
                 if let Some(entry) = entry.clone()
                     && let Some(duel_id) = entry.duel_id
                 {

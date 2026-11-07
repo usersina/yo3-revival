@@ -186,3 +186,49 @@ fn a_cards_own_options_are_its_script_strings() {
     }
     panic!("Card Shuffle never asked");
 }
+
+#[test]
+fn a_synchro_summon_is_offered_from_the_extra_deck() {
+    // Junk Synchron (7687, a Level 3 Tuner) and Giant Orc (5586, Level 4) on the field: the idle prompt lists Ancient
+    // Fairy Dragon (8090, a Level 7 Synchro for any Tuner) among its Special Summons, from the extra deck (location 64).
+    let Some(mut engine) = engine() else { return };
+    let deck: Vec<u16> = [7687u16, 5586].into_iter().cycle().take(40).collect();
+    let mut answer = engine.new_duel(7, 8000, [(&deck, &[8090]), (&deck, &[])]).expect("a duel");
+    for _ in 0..60 {
+        let prompt = answer.messages.last().expect("a prompt").clone();
+        if prompt["type"] == 11 && prompt["player"] == 0 {
+            let extra = prompt["special_summons"].as_array().unwrap().iter().find(|c| c["location"] == 64).cloned();
+            if let Some(extra) = extra {
+                assert_eq!(extra["cid"], 8090);
+                // Chosen: the core asks for the materials (MSG_SELECT_UNSELECT_CARD, 26: the Tuner first, then the
+                // rest), sends both to the Graveyard and moves the Synchro from the extra deck to a monster zone.
+                let index = prompt["special_summons"].as_array().unwrap().iter().position(|c| c["location"] == 64);
+                let mut answer = engine.respond(serde_json::json!({ "type": 1, "action": 1, "index": index })).expect("the engine answers");
+                let mut seen = vec![];
+                for _ in 0..20 {
+                    seen.extend(answer.messages.clone());
+                    let prompt = answer.messages.last().expect("a prompt").clone();
+                    if prompt["type"] == 11 {
+                        break;
+                    }
+                    answer = engine.respond(yo3_server::translate::bot_answer(&prompt)).expect("the engine answers");
+                }
+                let materials = seen.iter().find(|m| m["type"] == 26).expect("the materials are chosen");
+                assert_eq!(materials["select_cards"][0]["cid"], 7687, "the Tuner first");
+                let summoned = |m: &&serde_json::Value| m["type"] == 50 && m["from"]["location"] == 64 && m["to"]["location"] == 4;
+                assert_eq!(seen.iter().find(summoned).map(|m| m["cid"].clone()), Some(8090.into()));
+                return;
+            }
+        }
+        // The first player summons a monster a turn; both end their turns without attacking.
+        let response = match prompt["type"].as_u64() {
+            Some(11) if prompt["player"] == 0 && prompt["summons"].as_array().is_some_and(|a| !a.is_empty()) => {
+                serde_json::json!({ "type": 1, "action": 0, "index": 0 })
+            }
+            Some(11) => serde_json::json!({ "type": 1, "action": 7, "index": null }),
+            _ => yo3_server::translate::bot_answer(&prompt),
+        };
+        answer = engine.respond(response).expect("the engine answers");
+    }
+    panic!("Ancient Fairy Dragon was never offered");
+}

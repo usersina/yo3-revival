@@ -44,6 +44,8 @@ pub struct Config {
     pub duel_lp: u32,
     /// Testing aid: every player's main deck in a duel, as CARD_Prop rows repeated to 40 cards (empty: their own).
     pub duel_deck: Vec<u16>,
+    /// Testing aid: every player's extra deck in a duel, as CARD_Prop rows (empty: their own).
+    pub duel_extra: Vec<u16>,
     /// Where accounts and duel records are kept (none: in memory only).
     pub data_dir: Option<PathBuf>,
     /// The banlist players log in with (Auto Duel and NPC duels), as a regulation id or name ("unlimited"); none:
@@ -66,6 +68,7 @@ impl Config {
             players: vec!["test".into()],
             duel_lp: 8000,
             duel_deck: vec![],
+            duel_extra: vec![],
             data_dir: None,
             regulation: None,
         }
@@ -127,6 +130,7 @@ fn world(cfg: &Config, duel_port: u16) -> anyhow::Result<World> {
             engine_dir: engine::Engine::dir(),
             start_lp: cfg.duel_lp,
             test_deck: (!cfg.duel_deck.is_empty()).then(|| cfg.duel_deck.clone()),
+            test_extra: (!cfg.duel_extra.is_empty()).then(|| cfg.duel_extra.clone()),
             npcs: data.npc_ids(),
             npc_decks: data
                 .npc_ids()
