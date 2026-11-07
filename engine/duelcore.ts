@@ -88,7 +88,7 @@ const errors: string[] = [];
 const MSG_WIN = 5;
 const MSG_MOVE = 50;
 
-type Move = { type: number; to?: { controller: 0 | 1; location: number; sequence: number }; reason?: number };
+type Move = { type: number | string; to?: { controller: 0 | 1; location: number; sequence: number }; reason?: number };
 
 /** MSG_MOVE's `reason`, which ocgcore-wasm doesn't parse: read back from the card at its new place (0 when there is
  * none to ask, as for an Xyz material). */
@@ -103,13 +103,40 @@ function addReasons(batch: Move[]) {
   }
 }
 
+const MONSTER_STATS = OcgQueryFlags.POSITION | OcgQueryFlags.LEVEL | OcgQueryFlags.ATTACK | OcgQueryFlags.DEFENSE |
+  OcgQueryFlags.BASE_ATTACK | OcgQueryFlags.BASE_DEFENSE;
+let lastField = "";
+
+/** Both players' monsters as they are now, `{type: "field", monsters: [{controller, sequence, position, level, attack,
+ * defense, base_attack, base_defense}]}`, or null if nothing changed since the last report: effects change stats
+ * without a message of their own. */
+function fieldReport() {
+  const monsters: Record<string, number>[] = [];
+  for (const controller of [0, 1] as const) {
+    lib.duelQueryLocation(handle!, { flags: MONSTER_STATS, controller, location: OcgLocation.MZONE }).forEach((card, sequence) => {
+      if (!card) return;
+      const { position, level, attack, defense, baseAttack, baseDefense } = card;
+      monsters.push({ controller, sequence, position: Number(position), level: Number(level), attack: Number(attack),
+        defense: Number(defense), base_attack: Number(baseAttack), base_defense: Number(baseDefense) });
+    });
+  }
+  const json = JSON.stringify(monsters);
+  if (json === lastField) return null;
+  lastField = json;
+  return { type: "field", monsters };
+}
+
 /** Runs the duel until it needs an answer or ends. The core keeps prompting after a win, so a win ends it here. */
 function run() {
-  const messages: { type: number }[] = [];
+  const messages: { type: number | string }[] = [];
   for (;;) {
     const status = lib.duelProcess(handle!);
-    const batch = lib.duelGetMessage(handle!) as { type: number }[];
-    addReasons(batch);
+    const batch = lib.duelGetMessage(handle!) as { type: number | string }[];
+    addReasons(batch as Move[]);
+    const waiting = status === OcgProcessResult.WAITING;
+    // Before the prompt, which stays last.
+    const field = waiting && !batch.length ? null : fieldReport();
+    if (field) batch.splice(waiting ? batch.length - 1 : batch.length, 0, field);
     const win = batch.findIndex((m) => m.type === MSG_WIN);
     if (win >= 0) return { messages: [...messages, ...batch.slice(0, win + 1)], status: "end" };
     messages.push(...batch);
@@ -131,6 +158,7 @@ function newDuel(req: { seed: number; lp?: number; decks: { main: number[]; extr
     errorHandler: (type, text) => void errors.push(`${type}: ${text}`),
   });
   if (!handle) throw new Error("the core refused the duel");
+  lastField = "";
   for (const name of ["constant.lua", "utility.lua"]) lib.loadScript(handle, name, readScript(name) ?? "");
   req.decks.forEach((deck, t) => {
     const put = (cids: number[], location: number) =>

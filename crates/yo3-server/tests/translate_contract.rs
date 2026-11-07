@@ -773,3 +773,46 @@ fn a_card_destroyed_by_an_effect_shatters_before_it_moves() {
     t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 2, 5) })]);
     assert_eq!(vanishes(&t.events(&[destroyed(loc(0, 8, 2, 5), 0x400)])), []);
 }
+
+/// The monster record commands among `out` (0x3E9-0x3EB).
+fn records(out: &[Message]) -> Vec<(u32, [u32; 4])> {
+    out.iter().map(cmd).filter(|(id, _)| matches!(id, 0x3E9..=0x3EB)).collect()
+}
+
+fn monster(controller: u32, sequence: u32, position: u32, level: u32, attack: u32) -> serde_json::Value {
+    json!({ "controller": controller, "sequence": sequence, "position": position, "level": level, "attack": attack,
+        "defense": 1000, "base_attack": 2000, "base_defense": 1000 })
+}
+
+#[test]
+fn a_monsters_changed_stats_go_to_the_client_as_its_record() {
+    // DuelCardManager re-reads the monster-zone records after every command (0x4FFF14) and redraws the label of a
+    // face-up monster whose record changed. The sidecar's {"type": "field"} report after an engine step gives the
+    // engine's stats; a face-up monster whose level, ATK, DEF, base ATK or base DEF differ from those last sent gets
+    // its record again: 0x3E9 {_, cid, race, attribute}, 0x3EA {_, level, ATK, DEF}, 0x3EB {player | zone << 8,
+    // base ATK, base DEF, cid}.
+    let mut t = with_cards();
+    let field = |monsters: Vec<serde_json::Value>| json!({ "type": "field", "monsters": monsters });
+    // The CPU's monster (row 200: 2000/1000, level 4) as it entered: nothing to send.
+    assert_eq!(records(&t.events(&[field(vec![monster(1, 1, 1, 4, 2000)])])), []);
+    // An effect raised its ATK by 500.
+    assert_eq!(
+        records(&t.events(&[field(vec![monster(1, 1, 1, 4, 2500)])])),
+        [(0x3E9, [0, 4200, 12, 2]), (0x3EA, [0, 4, 2500, 1000]), (0x3EB, [1 | 1 << 8, 2000, 1000, 4200])]
+    );
+    // The same again, or a level of 0 (an Xyz monster's: CARD_Prop's level stays): nothing new.
+    assert_eq!(records(&t.events(&[field(vec![monster(1, 1, 1, 4, 2500)])])), []);
+    assert_eq!(records(&t.events(&[field(vec![monster(1, 1, 1, 0, 2500)])])), []);
+    // The client's face-down monster: no record (its label isn't shown).
+    t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 0, 8) })]);
+    assert_eq!(records(&t.events(&[field(vec![monster(0, 0, 8, 4, 3000), monster(1, 1, 1, 4, 2500)])])), []);
+    // Its zone emptied and filled again: the new monster's record comes with its move, and a report of the same
+    // values sends nothing more.
+    t.events(&[json!({ "type": 50, "cid": 4200, "from": loc(1, 4, 1, 1), "to": loc(1, 16, 0, 5) })]);
+    t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4201 }] })]);
+    let entered = t.events(&[json!({ "type": 50, "cid": 4201, "from": loc(1, 2, 0, 10), "to": loc(1, 4, 1, 1) })]);
+    assert_eq!(records(&entered)[1], (0x3EA, [0, 4, 2010, 1000]));
+    let same = json!({ "controller": 1, "sequence": 1, "position": 1, "level": 4, "attack": 2010, "defense": 1000,
+        "base_attack": 2010, "base_defense": 1000 });
+    assert_eq!(records(&t.events(&[field(vec![same])])), []);
+}

@@ -80,3 +80,33 @@ fn moves_carry_their_reason() {
     }
     assert!(destroyed > 0, "no monster was destroyed");
 }
+
+#[test]
+fn the_field_report_follows_the_monsters_stats() {
+    // The engine reports no stat changes: after each step the sidecar reports both monster zones when they changed,
+    // {"type": "field", monsters: [{controller, sequence, position, level, attack, defense, base_attack,
+    // base_defense}]}, before the step's prompt. 6960 = Gene-Warped Warwolf (level 4, 2000/100).
+    let Some(mut engine) = engine() else { return };
+    let deck = [6960u16; 40];
+    let mut answer = engine.new_duel(11, 8000, [(&deck, &[]), (&deck, &[])]).expect("a duel");
+    let mut seen = 0;
+    for _ in 0..200 {
+        if answer.status == "await" {
+            assert!(answer.messages.last().unwrap()["type"].is_u64(), "the prompt stays last");
+        }
+        for m in answer.messages.iter().filter(|m| m["type"] == "field") {
+            for w in m["monsters"].as_array().unwrap() {
+                let stats = ["level", "attack", "defense", "base_attack", "base_defense"].map(|k| w[k].as_u64());
+                assert_eq!(stats, [Some(4), Some(2000), Some(100), Some(2000), Some(100)], "{w}");
+                assert!(w["sequence"].as_u64().unwrap() < 5 && w["position"].is_u64(), "{w}");
+                seen += 1;
+            }
+        }
+        if answer.status != "await" || seen >= 2 {
+            break;
+        }
+        let prompt = answer.messages.last().expect("a prompt").clone();
+        answer = engine.respond(yo3_server::translate::bot_answer(&prompt)).expect("the engine answers");
+    }
+    assert!(seen >= 2, "no monster reported");
+}

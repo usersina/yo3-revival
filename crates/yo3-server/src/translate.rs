@@ -295,6 +295,8 @@ pub struct Translator {
     result: Option<u32>,
     /// Whether the opponent's hidden cards (deck, hand, extra deck, face-down) go to the client without their rows.
     hide: bool,
+    /// The values each monster zone's record last went with (level, ATK, DEF, base ATK, base DEF), by player and zone.
+    records: HashMap<(u32, u32), [u32; 5]>,
 }
 
 impl Translator {
@@ -336,6 +338,7 @@ impl Translator {
             picks: vec![],
             result: None,
             hide,
+            records: HashMap::new(),
         };
         (t, out)
     }
@@ -368,6 +371,10 @@ impl Translator {
     pub fn events(&mut self, messages: &[Json]) -> Vec<Message> {
         let mut out = vec![];
         for m in messages {
+            if m["type"] == "field" {
+                out.extend(self.field(m));
+                continue;
+            }
             match m["type"].as_u64() {
                 Some(MSG_DRAW) => {
                     let p = self.player(&m["player"]);
@@ -545,7 +552,7 @@ impl Translator {
 
     /// A field card turns in place to `position`: 0x1C with its new face and position, after its table entry and record
     /// when it shows a row it didn't before (the opponent's face-down card turning face-up when hiding).
-    fn turn(&self, loc: &Json, position: u64) -> Vec<Message> {
+    fn turn(&mut self, loc: &Json, position: u64) -> Vec<Message> {
         let Some(place) = self.engine_place(loc) else { return vec![] };
         if place.zone > FIELD_SPELL {
             return vec![];
@@ -553,7 +560,7 @@ impl Translator {
         // A Spell/Trap has no battle position.
         let place = Place { face_up: position & 5 != 0, defense: place.zone < 5 && position & 12 != 0, ..place };
         let mut out = vec![];
-        let card = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first());
+        let card = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied();
         if let Some(card) = card
             && self.hide
             && place.player == CPU
@@ -571,15 +578,46 @@ impl Translator {
     /// The record the card info and the field label show for a monster zone (0x523F00, keyed player | zone << 8):
     /// shown id, second id, race, attribute, level, ATK, DEF, base ATK, base DEF. Data commands 0x3E9 {_, values 0,
     /// 2, 3}, 0x3EA {_, values 4, 5, 6}, 0x3EB {key, values 7, 8, 1} (which commits it; the pop 0x522A50).
-    /// Stats from CARD_Prop: effects that change them are not followed yet.
-    fn monster_record(&self, player: u32, zone: u32, row: u16) -> Vec<Message> {
+    /// Stats from CARD_Prop as the monster enters; the sidecar's field report brings later changes (`field`).
+    fn monster_record(&mut self, player: u32, zone: u32, row: u16) -> Vec<Message> {
+        let s = self.cards.get(&row).copied().unwrap_or_default();
+        self.record(player, zone, row, [s.level, s.atk, s.def, s.atk, s.def])
+    }
+
+    /// A monster zone's record with these values (level, ATK, DEF, base ATK, base DEF); race and attribute are
+    /// CARD_Prop's.
+    fn record(&mut self, player: u32, zone: u32, row: u16, values: [u32; 5]) -> Vec<Message> {
+        self.records.insert((player, zone), values);
         let s = self.cards.get(&row).copied().unwrap_or_default();
         let cid = s.cid as u32;
+        let [level, atk, def, base_atk, base_def] = values;
         vec![
             command(RECORD_BEGIN, [0, cid, s.race, s.attribute]),
-            command(RECORD_MORE, [0, s.level, s.atk, s.def]),
-            command(RECORD_COMMIT, [player | zone << 8, s.atk, s.def, cid]),
+            command(RECORD_MORE, [0, level, atk, def]),
+            command(RECORD_COMMIT, [player | zone << 8, base_atk, base_def, cid]),
         ]
+    }
+
+    /// The sidecar's report of the monsters' stats after an engine step ({"type": "field", monsters: [{controller,
+    /// sequence, position, level, attack, defense, base_attack, base_defense}]}): a face-up monster whose values
+    /// differ from those its record last went with gets the record again, which DuelCardManager picks up after the
+    /// next command (0x4FFF14) and shows on its label. A level of 0 (an Xyz monster's) keeps CARD_Prop's.
+    fn field(&mut self, m: &Json) -> Vec<Message> {
+        let mut out = vec![];
+        for s in m["monsters"].as_array().into_iter().flatten() {
+            let int = |k: &str| s[k].as_u64().unwrap_or(0) as u32;
+            if int("position") as u64 & (POS_FACEUP_ATTACK | POS_FACEUP_DEFENSE) == 0 || int("sequence") >= 5 {
+                continue;
+            }
+            let (player, zone) = (self.player(&s["controller"]), int("sequence"));
+            let Some(card) = self.sides[player as usize].zones.get(&zone).and_then(|z| z.first()).copied() else { continue };
+            let level = Some(int("level")).filter(|&l| l > 0).unwrap_or(self.cards.get(&card.row).map_or(0, |c| c.level));
+            let values = [level, int("attack"), int("defense"), int("base_attack"), int("base_defense")];
+            if self.records.get(&(player, zone)) != Some(&values) {
+                out.extend(self.record(player, zone, card.row, values));
+            }
+        }
+        out
     }
 
     /// The client place of an engine location {controller, location, sequence, position}.

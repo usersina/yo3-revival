@@ -372,14 +372,15 @@ which DuelScene `0x514140` sends for every popped command):
 **Command names.** The ids follow Konami's view-type vocabulary as Master Duel's `DuelViewType` lists it (YgoMaster
 `Enums/Duel.cs`) up to `CardUpdate` (`0x27`), and one below it after that (Master Duel added `ManaSet`): 1 DuelStart, 2
 DuelEnd, 4 WaitInput, 5 PhaseChange, 6 TurnChange, `0xA`–`0xE` BattleInit / BattleSelect / BattleAttack / BattleRun /
-BattleEnd, `0xF` LifeSet, `0x10` LifeDamage, `0x12`–`0x14` HandShuffle / HandShow / HandOpen, `0x15` DeckShuffle,
-`0x16` DeckReset, `0x17` DeckFlipTop, `0x18` GraveTop, `0x19` CardLockon, `0x1A` CardMove, `0x1B` CardSwap, `0x1C`
+BattleEnd, `0xF` LifeSet, `0x10` LifeDamage, `0x12`–`0x14` HandShuffle / HandShow / HandOpen, `0x15` DeckShuffle, `0x16`
+DeckReset, `0x17` DeckFlipTop, `0x18` GraveTop, `0x19` CardLockon, `0x1A` CardMove, `0x1B` CardSwap, `0x1C`
 CardFlipTurn, `0x1D` CardCheat, `0x1E` CardSet, `0x1F` CardVanish, `0x20` CardBreak, `0x25` CardEquip, `0x26`
-CardIncTurn, `0x27` CardUpdate, `0x28` MonstDeathTurn, `0x29` MonstShuffle, `0x2A`–`0x32` Tribute / Material /
-Tuning Set, Reset, Run, `0x33` ChainSet, `0x34` ChainRun, `0x35` RunSurrender, `0x36` RunDialog, `0x37` RunList,
-`0x38` RunSummon, `0x39` RunSpSummon, `0x3A` RunFusion, `0x3B` RunDetail, `0x3C` RunCoin, `0x3D` RunDice, `0x43`…
-Cutin*. Every component above handles exactly its family, and the known ones match (5, 6, `0xA`–`0xE`, `0xF`, `0x10`,
-`0x1A`, `0x36`, `0x37`): the names are **shape**, each command's parameters still need their handler read.
+CardIncTurn, `0x27` CardUpdate (counters in Online 3, see Stat changes), `0x28` MonstDeathTurn, `0x29` MonstShuffle,
+`0x2A`–`0x32` Tribute / Material / Tuning Set, Reset, Run, `0x33` ChainSet, `0x34` ChainRun, `0x35` RunSurrender, `0x36`
+RunDialog, `0x37` RunList, `0x38` RunSummon, `0x39` RunSpSummon, `0x3A` RunFusion, `0x3B` RunDetail, `0x3C` RunCoin,
+`0x3D` RunDice, `0x43`… Cutin*. Every component above handles exactly its family, and the known ones match (5, 6,
+`0xA`–`0xE`, `0xF`, `0x10`, `0x1A`, `0x36`, `0x37`): the names are **shape**, each command's parameters still need their
+handler read.
 
 `0x1C` CardFlipTurn {place as moves give it, with face up bit 14 and defense bit 15} (DuelCardManager `0x4FF000`): the
 field card at that place takes the new face and position (`+0x82`), is redrawn, and sound `0x3B` plays. The server
@@ -460,6 +461,23 @@ red, above in blue, `0xFFFF` = "?"). Data commands build it: `0x3E9 {_, values 0
 CARD_Prop's second word bits 12–15, 8–11 and 19–23. The server sends it when a monster enters a monster zone, with the
 CARD_Prop stats. Live: Giant Orc's label reads 2200 and its info "ATK 2200/DEF 0" with its icons and level 4. A
 per-place 3-value map (`0x3F5`, `0x523F50`…) holds a typed counter for the same panel.
+
+**Stat changes.** DuelCardManager receives every command (event `0x2001`, entry `0x4FEE70`, whatever the id), and
+after each one its common tail (`0x4FFF14`) re-reads both players' monster-zone records (`0x5222D0`, key `zone<<8 |
+player`): a face-up monster (`+0x44` bit 0, face-up bit `0x4000`) whose record differs from its copy (`+0xA8`) takes
+the new one and has its label redrawn (`+0xD5` → `0x4FBAA0`: label fields 6 ATK, 7 DEF, 4 and 5 from values 7 and 8).
+So a changed record shows at the next command, and needs no command of its own. The rules engine reports no stat
+changes, so the sidecar queries both players' monster zones (position, level, ATK, DEF, base ATK, base DEF) after each
+processing step and, when they changed, adds `{type: "field", monsters: [{controller, sequence, position, level,
+attack, defense, base_attack, base_defense}]}` before the step's prompt. The server re-sends the record of a face-up
+monster whose values differ from those it last sent (level from CARD_Prop when the engine has none, as for Xyz
+monsters); race and attribute stay CARD_Prop's. Live: Axe of Despair equipped to Giant Orc sent its record again
+(`0x3EA {_, 4, 3200, 0}`, `0x3EB {0, 2200, 0, cid}`), and at the next prompt its label and card info read ATK 3200,
+in blue.
+
+`0x27` (named CardUpdate above) is a card's counters: `param1` byte 0 the player, byte 1 the zone, `param2` a change
+added to the count of counter kind `param3` (`0x4FB6C0`/`0x4FB730`, a map at `+0x114`), then effect mode 5 and sound
+`0x58` (up) or `0x57` (down) (DuelCardManager `0x4FFD8E`). Not sent yet.
 
 Battle: the engine's battle prompt becomes a command map with bit 0 (Attack) on each attacker and bit 3 on chainable
 cards, the M2 and EP buttons as allowed, and command 4 mode 3. A monster in slot s sits at command-map place (zone 0,
