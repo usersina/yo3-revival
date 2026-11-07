@@ -81,10 +81,13 @@ fn a_hand_is_answered_with_both_hands_and_the_result() {
             // Won: 1502 with param1 != 0 lets this player choose (selectFirst, 0x5191A0).
             1 => assert_eq!(cmds[1..], [(1502, [1, 0, 0, 0])]),
             // Lost: the CPU goes first. 1502 with 0 (beginFirst: wait), 1503 resolveFirst(isFirst =
-            // param1 == 1, 0x519230), then 1505 ends the janken (0x5185A3): param1 is this player's
-            // turn order (MainGamen+0x820, the other one at +0x84C), and param2 100 would take
-            // another path.
-            _ => assert_eq!(cmds[1..4], [(1502, [0; 4]), (1503, [2, 0, 0, 0]), (1505, [2, 0, 0, 0])]),
+            // param1 == 1, 0x519230), whose step plays Janken.resolveFirst and leaves the scene by
+            // itself (0x519370). No 1505: in JankenScene it is the match's end (0x5185A3: the match
+            // result at MainGamen+0x820, then a DuelResult and the exit; traced, it never ran here).
+            _ => {
+                assert_eq!(cmds[1..3], [(1502, [0; 4]), (1503, [2, 0, 0, 0])]);
+                assert!(!cmds.iter().any(|(id, _)| *id == 1505), "{cmds:?}");
+            }
         }
     }
 }
@@ -96,7 +99,8 @@ fn the_winner_picks_first_or_second() {
         let mut s = session();
         enter(&mut s);
         let replies = s.handle(&duel_msg(0xD, &[("choice", choice)]));
-        assert_eq!(commands(&replies)[..2], [(1503, [choice, 0, 0, 0]), (1505, [choice, 0, 0, 0])]);
+        assert_eq!(commands(&replies)[0], (1503, [choice, 0, 0, 0]));
+        assert!(!commands(&replies).iter().any(|(id, _)| *id == 1505));
     }
 }
 
@@ -121,7 +125,7 @@ fn the_duel_opens_after_the_janken() {
             assert_eq!(setup.get(k), Some(&Value::U32(v)), "{k}");
         }
         assert!(setup.get("PlayerType001").is_some() && setup.get("PlayerType002").is_some());
-        let others: Vec<_> = commands(&replies)[2..].iter().filter(|(id, _)| ![1000, 0x1A].contains(id)).copied().collect();
+        let others: Vec<_> = commands(&replies)[1..].iter().filter(|(id, _)| ![1000, 0x1A].contains(id)).copied().collect();
         let opening = [(1, [0; 4]), (0xF, [0, 8000, 0, 0]), (0xF, [1, 8000, 0, 0]), (5, [first, 0, 0, 0])];
         assert_eq!(others, opening);
     }
@@ -192,7 +196,7 @@ fn a_player_without_a_duel_entry_gets_no_opening() {
     let mut s = DuelSession::new(Arc::new(World::new(vec![])), Arc::new(Mutex::new(Hub::default())), 7);
     enter(&mut s);
     let replies = s.handle(&duel_msg(0xD, &[("choice", 1)]));
-    assert_eq!(commands(&replies), [(1503, [1, 0, 0, 0]), (1505, [1, 0, 0, 0])]);
+    assert_eq!(commands(&replies), [(1503, [1, 0, 0, 0])]);
 }
 
 #[test]

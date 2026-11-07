@@ -263,12 +263,12 @@ We send request `0x200D` (**guess**: no reader).
 | 1500 | none | `beginJanken`, then the hands (`0x518D80`); sent after `0x200A` |
 | 1501 | param1 result (0 draw, 1 win, 2 lose), param2 the opponent's hand, param3 this player's hand | `resolveJanken(myHand, yourHand, result)` (`0x518F50`); after a draw the scene asks for a new hand by itself (`selectJanken` `0x518ED0`), so the server sends nothing more |
 | 1502 | param1 ≠ 0: this player chooses | `selectFirst` (FIRST TO GO / SECOND TO GO), else `beginFirst` (wait) (`0x5191A0`) |
-| 1503 | param1 1 = this player goes first | `resolveFirst(isFirst)` (`0x519230`) |
-| 1505 | param1 this player's turn order (MainGamen `+0x820`; the other at `+0x84C`, `0x504D00`); param2 100 takes another path; param3 3 too | ends the janken (`0x5185A3`); the duel field opens with LP 0, Turn 1 |
+| 1503 | param1 1 = this player goes first | `resolveFirst(isFirst)` (`0x519230`); once the movie is done the step leaves the scene (`0x519370`) and the duel field opens |
+| 1505 | param1 the match result (MainGamen `+0x820`; the other's at `+0x84C`, `0x504D00`); param2 100 or param3 3 take other paths | **not part of the janken**: the match's end before another duel (`0x5185A3`): a DuelResult, or with param3 3 text `0x2918`, then the scene leaves. DuelScene drops it unless param3 is 3 (`0x515183`). We sent it after 1503 until traced: `0x5185A3` never ran, DuelScene took it |
 
 The server plays the CPU: a random hand; when the CPU wins it goes first (**guess**).
 
-**Opening** (sent right after 1505; live: LP 8000 on both sides, Turn 1, the first player's DP lit in their colour):
+**Opening** (sent right after 1503; live: LP 8000 on both sides, Turn 1, the first player's DP lit in their colour):
 
 | Message | Fields | Evidence | Status |
 |---|---|---|---|

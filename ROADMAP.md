@@ -86,7 +86,7 @@ Stop finding missing fields one crash at a time.
 - [x] Duel server handoff: after `0x17D4` the server pushes `0x22C4` (`duelData {host, port}` + `rule`), the
       client connects to our duel listener (port 1214, logged only) and sends `0x200A {player_id, autoSet}`
 - [x] Duel connection mapped (both directions' `duelRequestName`s, the engine command pump) and the janken played
-      against the server as the CPU (commands 1500–1505): the duel field opens, Turn 1
+      against the server as the CPU (commands 1500–1503): the duel field opens, Turn 1
 - [x] Duel opening: setup `0x15` with both decks' sizes, duel start, LP 8000 (`0xF`), the first player's Draw Phase
       (5); the engine commands are mapped to the components that handle them (docs/protocol.md)
 - [x] Cards: both shuffled decks go into the engine's card table (command 1000) and each player draws five (1000 +
@@ -158,7 +158,7 @@ Stop finding missing fields one crash at a time.
 | `0x17D4` | answered `0x17D5`, nothing kept | Sent once the duel object is ready; may also carry results later |
 | `0x22C4` push | right after `0x17D5`; `rule` = the fields of the duel's `0x17AC` item | The original timing and rule contents are unknown; only `match_type` is read so far |
 | Server duel messages | request `0x200D` | The pump reads only `duelRequestName` (and needs the id non-negative) |
-| CPU janken | random hand; the CPU goes first when it wins; `1505` param2/param3 0 | The original CPU's choices are unknown |
+| CPU janken | random hand; the CPU goes first when it wins | The original CPU's choices are unknown |
 | Duel setup `PlayerType001/002` | 0 (client) / 1 (CPU) | Meaning unknown |
 | Card table entries (1000) | param3 0, flag byte 0; uids 1.. in table order | Meanings of param3 and the flag unknown |
 | Hidden cards | the CPU's real rows are sent | Online 2 used placeholders; needed before PvP |

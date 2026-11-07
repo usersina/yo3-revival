@@ -34,12 +34,12 @@ const PHASE_BUTTON: u32 = 3;
 const SELECT_HAND: u32 = 0xC;
 const SELECT_FIRST: u32 = 0xD;
 
-/// JankenScene commands (0x518400): begin, resolve, who chooses, chosen, end.
+/// JankenScene commands (0x518400): begin, resolve, who chooses, chosen (its step leaves the scene by itself,
+/// 0x519230). 1505 there is the match's end {match result, ...} (0x5185A3), not part of the janken.
 const JANKEN_BEGIN: u32 = 1500;
 const JANKEN_RESOLVE: u32 = 1501;
 const FIRST_BEGIN: u32 = 1502;
 const FIRST_RESOLVE: u32 = 1503;
-const JANKEN_END: u32 = 1505;
 
 /// Turn order as the janken commands give it: 1 first, 2 second.
 const FIRST: u32 = 1;
@@ -201,9 +201,9 @@ impl DuelSession {
         out
     }
 
-    /// The player's turn order, the end of the janken, then the duel's opening.
+    /// The player's turn order, then the duel's opening.
     fn turn_order(&mut self, order: u32) -> Vec<Message> {
-        let mut out = vec![command(FIRST_RESOLVE, [order, 0, 0, 0]), command(JANKEN_END, [order, 0, 0, 0])];
+        let mut out = vec![command(FIRST_RESOLVE, [order, 0, 0, 0])];
         let first = if order == FIRST { CLIENT } else { CPU };
         let opening = match self.world.engine_dir.clone() {
             Some(dir) => self.engine_opening(first, &dir),
