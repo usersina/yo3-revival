@@ -165,6 +165,8 @@ fn world(cfg: &Config, duel_port: u16) -> anyhow::Result<World> {
                     shop::ShopDeck { released: date("created"), modified: date("modified"), deck }
                 })
                 .collect(),
+            protectors: data.protectors().iter().map(|e| e.id).collect(),
+            avatar_items: data.avatar_items_for_sale().iter().map(|e| (e.id, e.b)).collect(),
             login_regulation: match &cfg.regulation {
                 Some(arg) => {
                     let known: Vec<(u32, String)> =

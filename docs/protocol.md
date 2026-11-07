@@ -244,6 +244,17 @@ in `data/teams.json`. Live: Yugi formed Millennium in the Team window (Lv1, foun
 Player Information, Kaiba accepted from his bell, Kaiba's "gg team" reached Yugi's Team tab, and after a server
 restart Player Information showed Kaiba in Millennium with Remove from Team and Set as subleader.
 
+**Protectors and avatar items** come from the item catalogue `data/extra/yo3pbininfo.bin` (a u32 count, 4096, then
+`{u16 id, u8 sub, u8 kind, u16 a, u16 b}` per pbin id): kind 1 and 2 avatar items (male, female; `b` the name text;
+`sub` 2 the default part, 1 the parts any new player can pick, 0 the ones to acquire), kind 11 protectors (`a` the
+name text, `b` "Card Protector"). Buying one is `0x1B68 {sale_id, item_num 1}` → `0x1C24 {dpoint}` like a pack (sale
+ids 30000 + the pbin id), then the present: `type` 7 for a protector (PresentWindow case 7, "Protector") and 6 for an
+avatar item with `name_id` its name text (the shop's case: "You have acquired %s!"), `item` the pbin id as a
+big-endian u16. The client sets the pbin bit itself; the server keeps the owned ids with the player and sets their
+bits in every record's `pbin` (the deck editor's protector list `0x47E490` and Avatar Settings read them). A second
+purchase of one fails (`0x1C25`). Live: P-01K for 200 BP showed "P-01K Card Protector"; Domino: Red for 100 BP
+showed "You have acquired Domino: Red!".
+
 ### Main Menu screens (MainGamen's menu `0x46FA60`)
 
 | Screen | Request | Reply (error) | Fields | Evidence | Status |
@@ -267,11 +278,11 @@ them has a global case. Every list case checks its item count (`0x410D90`) befor
 | `0x1B66` text (bare, sent from the `9000` case, `0x48BEDD`) | `0x1C20` (`0x1C21`) | `text`: the shopkeeper's line. The case also reads `evalnum`, `evaltotal`, `evallevel`, but from the player record; they pick a stock line (`$33003`–`$33007`) when `text` is empty | "shop text success" L286 | confirmed |
 | `0x1B67` items (bare, `0x48ACC5`) | `0x1C22` (`0x1C23`) | items `{item_type, item_id, item_cost, item_max, sale_id, sale, item_trade, modified, rel_time}` (`0x485E50`; dates are text); `item_type` < 3 go on the shelves, others are kept only when `item_param` isn't owned (a bit set at the player data's `+0x68`). The kept list (`+0xD4`, 0xD8 bytes each) fills the Purchase screen (`0x48E0A0`): kinds 0 and 3 call the Flash `AddPack(id, name, comment, image, date, cost, max, trade)` (`0x48C790`) with the name, description, image and date from the client's own pack file `item_id`, 1 and 4 `AddStruct`, 6 `AddProtector`, 10 and 11 `AddEventPack` | tracer: all nine found; live: three packs on the Booster Packs shelf with their own art, then "Pack 1", "A rearranged pack comprising of season 1 Cards.", 100 BP | confirmed |
 | `0x1B6F` (bare, `0x48AE5F`) | `0x1C26` (`0x1C27`) | items `{item_id, item_cost, item_trade, item_type, modified, rel_time, sale_id}` | "shop exchange item success" L360 | confirmed (empty) |
-| `0x1B6B` (bare, `0x48B3B8`) | `0x1C32` (`0x1C33`) | items `{item_id}` | "shop protector item success" L409 | confirmed (empty) |
+| `0x1B6B` (bare, `0x48B3B8`) | `0x1C32` (`0x1C33`) | Purchase Protectors: items like the packs' (`0x485E50`) with `item_type` 6 (AddProtector `0x48D520`) and `item_id` the protector's pbin id (2305–2512, the catalogue's kind 11; the client leaves out the ones the player's pbin owns, images `data/protector/p%04d.png`) | "shop protector item success" L409; live: ten protectors a page with their art | confirmed; 200 BP each (**guess**) |
 | `0x1B6D` (bare, `0x48B4C3`) | `0x1C2E` (`0x1C2F`) | items; toggles `_root.spac_btn_disable` (Special Packs) | "shop event item success" case; the client moves on to `0x1B72` | shape (empty) |
 | `0x1B72` (bare, `0x48B64D`) | `0x1C36` | `perk_num` u32, compared with 500 to show `_root.expack_del` | tracer: found at `0x48B6CD` | shape (value **guess** 0) |
 | `0x2C40` rental terms (bare, `0x48B777`) | `0x2D75` (`0x2D76`) | `rental_cardnum`, `rental_point`, `rental_term` u32 | read at `0x48C20E`; the case then sends `0x1B69` | shape (values **guess** 0) |
-| `0x1B69` (bare, `0x48C391`) | `0x1C2A` (`0x1C2B`) | items `{item_type, item_param}`: avatar items; clears `isLoading` | "shop avatar item success"; the Shop Menu opens | confirmed (empty) |
+| `0x1B69` (bare, `0x48C391`) | `0x1C2A` (`0x1C2B`) | Purchase Avatar Items: items with `item_type` above 2 and `item_param` the item's pbin id, which the client leaves out once owned, then the packs' fields; `0x496A50` sorts them into four tabs by id (tables `0x78D2E8`, `0x7A83B0`) and by gender, skipping unknown ids. We sell the catalogue's parts to acquire (kinds 1 and 2, sub 0: 178 male, 148 female); clears `isLoading` | "shop avatar item success"; live: the Male and Female lists by tab, a preview on the avatar | confirmed; 100 BP each (**guess**) |
 | `0x1B68` buy `{sale_id, item_num, end_time}` (live: `end_time` the text `""`) | `0x1C24` (`0x1C25`) | `dpoint`: the BP left, shown as `user_bp`; then the client asks for presents (`0x2775`, builder `0x4F3A00`, through `0x47C4A0`) | "shop buy succes"; live: the purchase dialog's "BP After Purchase", then the pack opening | confirmed |
 | `0x1B6A` exchange `{sale_id, item_id, kaban}` | `0x1C28` (`0x1C29`) | | "shop exchange succes" | open |
 

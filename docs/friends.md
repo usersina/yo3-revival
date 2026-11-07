@@ -97,7 +97,10 @@ Watch Duel. You see the duel from one player's side with both hands hidden, and 
 In Match Mode, a player whose deck has a side deck gets the Card Swap screen between duels: drag cards between the
 side deck and the main or extra deck, then press the arrow at the top left to go on. Build a side deck in Edit Deck.
 
-Not yet: protectors, avatar items, trading and rental in the shop. Players' decks stay on their own machines (in `Documents\Yu-Gi-Oh! ONLINE 3`).
+The shop also sells card protectors (200 BP) and avatar items (100 BP): Avatar Settings and the deck editor offer
+them once bought.
+
+Not yet: trading and rental in the shop. Players' decks stay on their own machines (in `Documents\Yu-Gi-Oh! ONLINE 3`).
 
 ## When something goes wrong
 

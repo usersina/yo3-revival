@@ -240,3 +240,60 @@ fn a_bought_structure_deck_joins_the_deck_list() {
     let rows = |k| d.get(k).and_then(Value::as_bytes).map(<[u8]>::to_vec);
     assert_eq!((rows("main"), rows("extra")), (Some(vec![0, 40, 0, 40]), Some(vec![0, 41])));
 }
+
+/// The shop with two protectors (pbin ids 2305, 2306) and one avatar item (pbin id 6, "Bald", text 26006).
+fn item_shop() -> Server {
+    Server::with_world(World { protectors: vec![2305, 2306], avatar_items: vec![(6, 26006)], ..World::new((1..=20).collect()) })
+}
+
+fn has_bit(record: &Message, bit: usize) -> bool {
+    let pbin = record.get("pbin").and_then(Value::as_bytes).expect("pbin");
+    pbin[bit >> 3] & 1 << (bit & 7) != 0
+}
+
+#[test]
+fn protectors_and_avatar_items_sit_on_their_shelves() {
+    // 0x1B6B -> 0x1C32: card protectors, item_type 6 (AddProtector 0x48D520), item_id the pbin id (2305-2512 in the
+    // catalogue, kind 11); the client leaves out the ones the player's pbin owns. 0x1B69 -> 0x1C2A: avatar items,
+    // item_type above 2 with item_param the pbin id, which the client leaves out once owned; it sorts them into tabs by
+    // id (0x496A50). Both go through 0x485E50 like the packs. Prices are ours (**guess**).
+    let mut c = item_shop().join(1001, "Yugi");
+    let r = one(c.send(req(0x1B6B)));
+    assert_eq!((r.request(), r.items.len()), (Some(0x1C32), 2));
+    let int = |m: &Message, k| m.get(k).and_then(Value::as_u32);
+    let p = &r.items[0];
+    assert_eq!(["item_type", "item_id", "item_cost", "item_max", "sale", "item_trade"].map(|k| int(p, k)), [Some(6), Some(2305), Some(200), Some(1), Some(0), Some(0)]);
+    assert!(p.get("modified").and_then(Value::as_str).is_some() && p.get("rel_time").and_then(Value::as_str).is_some());
+    let r = one(c.send(req(0x1B69)));
+    assert_eq!((r.request(), r.items.len()), (Some(0x1C2A), 1));
+    let a = &r.items[0];
+    assert_eq!(["item_type", "item_param", "item_id", "item_cost", "item_max"].map(|k| int(a, k)), [Some(3), Some(6), Some(6), Some(100), Some(1)]);
+    assert_ne!(int(a, "sale_id"), int(p, "sale_id"));
+}
+
+#[test]
+fn a_bought_protector_or_avatar_item_is_the_players() {
+    // The purchase is 0x1B68 {sale_id, item_num 1} -> 0x1C24 {dpoint}, then the present: type 7 for a protector
+    // (PresentWindow case 7, 0x47800E: "Protector") and 6 for an avatar item (with name_id, the item's name text), item
+    // the pbin id as a big-endian u16; the client sets the pbin bit itself. The server keeps it in the player's pbin
+    // (the deck editor's protector list 0x47E490, Avatar Settings), and a second purchase fails.
+    let mut c = item_shop().join_with_bp(1001, "Yugi", 1000);
+    let sale = |c: &mut common::Client, item_type| {
+        let shelf = one(c.send(req(if item_type == 6 { 0x1B6B } else { 0x1B69 })));
+        shelf.items[0].get("sale_id").and_then(Value::as_u32).unwrap()
+    };
+    let protector = sale(&mut c, 6);
+    let r = one(c.send(req_with(0x1B68, &[("sale_id", Value::U32(protector)), ("item_num", Value::U32(1))])));
+    assert_eq!((r.request(), r.get("dpoint")), (Some(0x1C24), Some(&Value::U32(800))));
+    let p = one(c.send(req(0x2775)));
+    assert_eq!((p.get("type"), rows(&p)), (Some(&Value::U32(7)), vec![2305]));
+    let avatar = sale(&mut c, 3);
+    let r = one(c.send(req_with(0x1B68, &[("sale_id", Value::U32(avatar)), ("item_num", Value::U32(1))])));
+    assert_eq!(r.get("dpoint"), Some(&Value::U32(700)));
+    let p = one(c.send(req(0x2775)));
+    assert_eq!((p.get("type"), rows(&p), p.get("name_id")), (Some(&Value::U32(6)), vec![6], Some(&Value::U32(26006))));
+    let me = one(c.send(req(0x2CEE))).items.remove(0);
+    assert!(has_bit(&me, 2305) && has_bit(&me, 6));
+    let again = one(c.send(req_with(0x1B68, &[("sale_id", Value::U32(protector)), ("item_num", Value::U32(1))])));
+    assert_eq!(again.request(), Some(0x1C25));
+}

@@ -47,6 +47,8 @@ pub struct Player {
     pub cards: BTreeMap<u16, u32>,
     /// The structure decks the player bought (preset deck ids, in order), listed after the starter deck.
     pub decks: Vec<u32>,
+    /// The protectors and avatar items the player owns, by pbin id (their bits in the record's pbin).
+    pub items: std::collections::BTreeSet<u16>,
 }
 
 /// The client language a session starts with (0x1F48 lang 1).
@@ -81,15 +83,21 @@ impl Player {
             title: 0,
             cards: BTreeMap::new(),
             decks: vec![],
+            items: Default::default(),
         }
     }
 
     /// The pbin the client gets: the player's flags, with bits 0x250-0x253 set (pbin[74] bits 0-3), without which
-    /// Seto Kaiba, Yami Marik, Alexis Rhodes and Jack Atlas refuse to duel (0x4BDAB0 state 2).
+    /// Seto Kaiba, Yami Marik, Alexis Rhodes and Jack Atlas refuse to duel (0x4BDAB0 state 2), and the items owned.
     fn flags(&self) -> Vec<u8> {
         let mut pbin = self.pbin.clone();
         if let Some(b) = pbin.get_mut(74) {
             *b |= 0x0F;
+        }
+        for &id in &self.items {
+            if let Some(b) = pbin.get_mut(id as usize >> 3) {
+                *b |= 1 << (id & 7);
+            }
         }
         pbin
     }
@@ -329,6 +337,9 @@ pub struct World {
     /// The booster packs and structure decks on the shop's shelves (from the client's pack and recipe files).
     pub packs: Vec<crate::shop::ShopPack>,
     pub structure_decks: Vec<crate::shop::ShopDeck>,
+    /// The card protectors and avatar items (with their name text) on sale, by pbin id.
+    pub protectors: Vec<u16>,
+    pub avatar_items: Vec<(u16, u16)>,
 }
 
 impl World {
@@ -358,6 +369,8 @@ impl World {
             ],
             packs: vec![],
             structure_decks: vec![],
+            protectors: vec![],
+            avatar_items: vec![],
         }
     }
 }
@@ -1007,15 +1020,22 @@ impl FrontSession {
         let int = |k| msg.get(k).and_then(Value::as_u32).unwrap_or(0);
         let (sale_id, count) = (int("sale_id"), int("item_num"));
         let world = self.world.clone();
-        let Some(goods) = crate::shop::Goods::find(&world.packs, &world.structure_decks, sale_id) else { return Message::reply(0x1C25) };
+        let Some(goods) = crate::shop::Goods::find(&world, sale_id) else { return Message::reply(0x1C25) };
         let (price, max) = goods.price();
         let cost = price * count;
         let Some(at) = self.selected else { return Message::reply(0x1C25) };
         if count == 0 || count > max || cost > self.account.dpoint {
             return Message::reply(0x1C25);
         }
+        let item = goods.item();
+        if item.is_some_and(|id| self.account.players[at].items.contains(&id)) {
+            return Message::reply(0x1C25);
+        }
         let bought: Vec<crate::shop::Present> = (0..count).map(|_| goods.take(&mut self.rng)).collect();
         let add = |p: &mut Player| {
+            if let Some(id) = item {
+                p.items.insert(id);
+            }
             for &row in bought.iter().flat_map(crate::shop::Present::cards) {
                 *p.cards.entry(row).or_default() += 1;
             }
@@ -1139,14 +1159,14 @@ impl FrontSession {
             }
             0x1B68 => self.buy(msg),
             0x1B6F => Message::reply(0x1C26),
-            0x1B6B => Message::reply(0x1C32),
+            0x1B6B => self.world.protectors.iter().map(|&id| crate::shop::shelf_protector(id)).fold(Message::reply(0x1C32), Message::item),
             0x1B6D => Message::reply(0x1C2E),
             // perk_num is compared with 500 to show _root.expack_del; meaning unknown.
             0x1B72 => Message::reply(0x1C36).with("perk_num", Value::U32(0)),
             0x2C40 => ["rental_cardnum", "rental_point", "rental_term"]
                 .into_iter()
                 .fold(Message::reply(0x2D75), |m, k| m.with(k, Value::U32(0))),
-            0x1B69 => Message::reply(0x1C2A),
+            0x1B69 => self.world.avatar_items.iter().map(|&(id, _)| crate::shop::shelf_avatar_item(id)).fold(Message::reply(0x1C2A), Message::item),
             // Event list {event_type, status, event_id} (TournamentScene 0x4D0BB0) and event search
             // (UserEventScene 0x4D9E37): no events are held.
             0x177A | 0x1789 => Message::reply(0x177B).with("result_number", Value::U32(0)),

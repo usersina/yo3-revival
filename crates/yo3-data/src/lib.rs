@@ -266,6 +266,23 @@ pub struct Pack {
     pub record: Message,
 }
 
+/// An entry of the item catalogue (data/extra/yo3pbininfo.bin), one per pbin id: kind 1 and 2 are avatar items (male,
+/// female; `b` their name text; `sub` 2 the default part, 1 the parts a new player can pick, 0 the ones to acquire),
+/// kind 11 card protectors (`a` their name text).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CatalogueEntry {
+    pub id: u16,
+    pub sub: u8,
+    pub kind: u8,
+    pub a: u16,
+    pub b: u16,
+}
+
+/// The first protector a player can own (2304 is "No Protector") and the last; 0x47E490 lists owned ids of kind 11.
+const PROTECTORS: std::ops::RangeInclusive<u16> = 2305..=2512;
+/// Avatar item ids the client knows (0x496A50 checks id < 0x4FA).
+const AVATAR_IDS: u16 = 0x4FA;
+
 /// Everything the server serves straight from the client's own files.
 pub struct GameData {
     pub cards: CardDb,
@@ -274,6 +291,8 @@ pub struct GameData {
     pub packs: Vec<Pack>,
     /// The English UI texts (data/text/txttbl_E.bin) by id: every name_id and discription_id, and the `$NNNNN` ids.
     pub texts: HashMap<u32, String>,
+    /// The item catalogue, by pbin id.
+    pub catalogue: Vec<CatalogueEntry>,
 }
 
 impl GameData {
@@ -319,7 +338,18 @@ impl GameData {
             .collect();
         packs.sort_by_key(|p| p.id);
         let texts = parse_texts(&ypk.read_required("data/text/txttbl_E.bin")?);
-        Ok(GameData { cards, regulations, decks, packs, texts })
+        let catalogue = parse_catalogue(&ypk.read_required("data/extra/yo3pbininfo.bin")?);
+        Ok(GameData { cards, regulations, decks, packs, texts, catalogue })
+    }
+
+    /// The avatar items the shop sells: the parts to acquire (sub 0), male and female.
+    pub fn avatar_items_for_sale(&self) -> Vec<CatalogueEntry> {
+        self.catalogue.iter().filter(|e| matches!(e.kind, 1 | 2) && e.sub == 0 && e.id < AVATAR_IDS).copied().collect()
+    }
+
+    /// The card protectors a player can own.
+    pub fn protectors(&self) -> Vec<CatalogueEntry> {
+        self.catalogue.iter().filter(|e| e.kind == 11 && PROTECTORS.contains(&e.id)).copied().collect()
     }
 
     /// A UI text by its id.
@@ -358,6 +388,23 @@ const FIRST_NPC: u32 = 120;
 const NPC_NAME: u32 = 0x5208;
 /// Text id of NPC 0's deck title (0x4BFE05).
 const NPC_DECK_TITLE: u32 = 0x5FB4;
+
+/// The item catalogue: a u32 count, then an 8-byte entry per pbin id.
+fn parse_catalogue(data: &[u8]) -> Vec<CatalogueEntry> {
+    data.get(4..)
+        .unwrap_or_default()
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|e| CatalogueEntry {
+            id: u16::from_le_bytes([e[0], e[1]]),
+            sub: e[2],
+            kind: e[3],
+            a: u16::from_le_bytes([e[4], e[5]]),
+            b: u16::from_le_bytes([e[6], e[7]]),
+        })
+        .collect()
+}
 
 /// A UI text table (data/text/txttbl_<lang>.bin): u32 count, count pairs {u32 id, u32 byte offset}, 4 bytes, then
 /// UTF-16LE NUL-terminated strings from byte 8 + 8 * count. Entries pointing outside the table are left out.

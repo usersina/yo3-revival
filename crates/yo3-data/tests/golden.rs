@@ -125,3 +125,22 @@ fn the_text_table_names_packs_and_structure_decks() {
     assert_eq!(data.text(24106), Some("Equip to Win!"));
     assert_eq!(data.text(99_999), None);
 }
+
+#[test]
+fn the_item_catalogue_names_avatar_items_and_protectors() {
+    // data/extra/yo3pbininfo.bin: a u32 count (4096), then {u16 id, u8 sub, u8 kind, u16 a, u16 b} per pbin id. Avatar
+    // items are kind 1 (male) and 2 (female), b their name text, sub 2 the default part, 1 the parts a new player can
+    // pick, 0 the ones to acquire; protectors are kind 11 (2304 "No Protector"), a their name text.
+    let dir = need_game!();
+    let data = GameData::load(&dir).unwrap();
+    assert_eq!(data.catalogue.len(), 4096);
+    let long_hair = data.catalogue[1];
+    assert_eq!((long_hair.id, long_hair.sub, long_hair.kind, long_hair.b), (1, 1, 1, 26001));
+    assert_eq!(data.text(long_hair.b as u32), Some("Long Hair"));
+    let for_sale = data.avatar_items_for_sale();
+    assert_eq!(for_sale.len(), 178 + 148);
+    assert!(for_sale.iter().all(|e| matches!(e.kind, 1 | 2) && e.sub == 0 && e.id < 1274));
+    let protectors = data.protectors();
+    assert_eq!(protectors.len(), 196);
+    assert_eq!((protectors[0].id, data.text(protectors[0].a as u32)), (2305, Some("P-01K")));
+}

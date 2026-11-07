@@ -133,7 +133,9 @@ Stop finding missing fields one crash at a time.
 - [x] Bought structure decks in the deck list (`0x22C8`), under their names from the client's text table
       (`data/text/txttbl_E.bin`, now read by `yo3-data`), kept per player. Live: GADGET BOX was saved locally as
       "GADGET BOX.y3d", listed in Load Deck and loaded with its 40 + 1 cards
-- [ ] Protectors, avatar items, card trade and rental
+- [x] Protectors and avatar items for BP: their shelves from the item catalogue, presents type 7 and 6, owned ids kept
+      with the player in the record's pbin. Live: P-01K and Domino: Red bought
+- [ ] Card trade and rental between players
 - [ ] Presents, card trade and rental, if wanted
 - **Exit:** create a player, open packs, build a deck, restart the server, everything is still there
 
@@ -297,6 +299,8 @@ Stop finding missing fields one crash at a time.
 | Teams | `level` 1 and scores 0 for every team; handing over the leadership makes the old leader a member; the founding time in Japan time | No team scores or levels exist without the original's events |
 | Search status bits | `0x1000` duelling, `0x800` hosting, `0x200` hosting Single, `0x400` hosting Match | Read from the Detailed Search texts |
 | Manner level | everyone 2 (of 0–4) | No ratings are collected yet |
+| Item prices | protectors 200 BP, avatar items 100 BP, one of each | The original prices are unknown |
+| Avatar items for sale | the catalogue's parts with sub 0 (178 male, 148 female) | Read as "to acquire" next to the default (2) and starting (1) parts |
 | Wins and losses | My Profile and Player Information count duels against players only, not NPCs | The original's counting is unknown |
 | NPC experience | 100 a win, 50 a draw, 10 a loss, per NPC level id | No request reports it; the original's amounts are unknown |
 | `premium` | 1 for every account (all NPCs, Form Team, Create Event) | The original sold it (Duelist Premium); a friends' server gives it to all |
