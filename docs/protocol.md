@@ -354,7 +354,32 @@ are no valid Decks available." and OK returns to the map.
 |---|---|---|---|---|
 | `0x177A` event list (bare, `0x4D0BB0`) | `0x177B` (`0x177C`, dialog `0x4F7940`) | top `result_number`; items `{event_type, status, event_id}`. TournamentScene looks for `event_type` 10 with `status` 12; none means its no-event path | `0x4D0BB0`; the Stadium opens | shape (empty) |
 | `0x1789` event search `{search_flag, pname, status, pack_type, base_point, front_num 30, back_num}` (`0x4D9E37`) | `0x177B` (`0x177C`) | as above; the list case `0x4D66A0` reads `result_number` (tracer) and `premium` from another dataset | captured packet; User Event lists nothing, page 1/1 | shape (empty) |
-| `0x339A` own user event (bare, `0x4D9C2B`) | `0x33FE` (`0x33FF`) | `remain`, `event_id`: the scene keeps `event_id` only while `remain` ≠ 0 | `0x4D9BB0` | shape (both 0) |
+| `0x339A` own user event (bare, `0x4D9C2B`) | `0x33FE` (`0x33FF`) | `remain`, `event_id`: the scene keeps `event_id` only while `remain` ≠ 0 (its own event: relation 0 in the list, Create off) | `0x4D9BB0`; live | confirmed |
+
+**User events** (Satellite Plaza; Create needs `premium`). The list `0x1789` → `0x177B {result_number}` has a row per
+open or running event: `event_id`, `event_name`, `comment`, `status` (12 open, 13 running, 14 finished), `join_flag`
+(non-zero crosses the row out and the details offer only Close: we send 1 only for a Participation Limit above OFF,
+whose value is 1), `password1`, `prize_type`, `entry_max`, `entry_num`, `match_type`, `regulation_id`, the levels,
+`eval_level`, `lang`, the duel settings and the host's `player_id`/`pname`. The client works out `user_relation`
+itself (`0x4D6970`: 0 own, 1 open, 2 restricted, 3 running, 4 finished; the lobby 5), which with `numMenuButton`
+(`user_event_detail.swf`: bit 0 Close, 1 Participate or Start, 2 Observe or Cancel) picks the buttons.
+
+| Request | Reply (error: next id) | Fields | Evidence | Status |
+|---|---|---|---|---|
+| Create `0x339B` (bare) | `0x3400 {create_status}` (`0x3401`) | 0 opens the form; bits 4 premium needed, 8 already in another event, 2 wait, 1 full | live | confirmed |
+| the form `0x3390 {event_name, comment, entry_max, prize_type, level_min, level_max, eval_level, player_limit, password1, lang, match_type, duel_surrender, duel_watch, duel_time_turn, duel_time_total, duel_lp_start, regulation_id, join_max}` (top level, live) | `0x33F4 {event_id}` | then `0x1784 {event_id}` → `0x1785 {join_id, event_id}` (the global dispatcher keeps `event_id`, which the lobby asks with: 0 until we echoed it) and the entry `0x3397 {event_id}` → `0x33FA` | live | confirmed |
+| Participate: `0x1784`, `0x3397`; leave `0x178E {event_id}` | `0x33FA`, `0x178F` | the others get `0x3399 {entry_name, entry_type: 1 joined, else left}` | live (join), test | confirmed |
+| lobby `0x177F {event_id}` | `0x1780` item[0] | `official` 0, `player_id` the host (compared with the client's own, `0x4D0B56`: lobby `+0x2E0` 1 host, 2 entrant, 3 observer), and the row's fields, which the Event Menu (the menu bar's duel button) shows | live | confirmed |
+| `0x32CA {event_id, start_index}`, `0x32CC`, `0x32CD`, `0x32CE`, `0x32C9`, `0x32D5`, `0x32CB {block_index}` | `0x32FD {total_num, items {player_id}}`, `0x3301 {timer}`, `0x3303 {alive_num, entry_num, watch_num}`, `0x3305 {phase_block1–3, remain}`, `0x32FB {event_id, status, phase, round, total_round, winner, winner_name, second, second_name, tournament_id, championship_id, year, season}`, `0x3309 {map_data}`, `0x32FF` | `0x32FB`'s `status` is the lobby's state (`+0x2F8`; above 1 the event has begun and the host's Start/Cancel go, `0x4CE670`): we send 0 open, 2 running, 3 finished (**guess** beyond 0–1). `map_data` is a flag byte per bracket node, 0x49 of them (`0x4D0F40` copies them unchecked: without it the lobby crashed, NULL at `0x4D10A9`). `0x32FF`'s block data (the names in the bracket) is open | live | confirmed; the bracket's names **open** |
+| Start `0x3395 {event_id}` (the host) | `0x33F8` | everyone gets `0x3396` ("The event has started!"), then each pair the match push `0x1978 {vsPlayerData, duelData {duel_id, match_type, regulation_id, lp_start, surrender, time_turn, time_total}}`, which the lobby takes like the matching agent (`0x4CC60C`): Select Deck, janken, duel | live | confirmed |
+| Cancel `0x3393 {event_id}` (the host) | `0x33F6` | the others get `0x3394` ("Event cancelled.", the lobby closes) | test | shape |
+
+The server runs the event as a knockout: the first round pairs the entrants in order (an odd one goes through), each
+duel's winner (the table's report) stays in, and when a round's duels are over the next one is paired, until one
+player is left and the event is finished (it leaves the list; the host may create another). A player who left
+forfeits. Events live in memory only. Live: Yugi created "Friday Cup", Kaiba found it and pressed Participate, the
+host's Event Menu offered Start, Start opened Select Deck for both, Yugi won the duel, and Next took both back to the
+lobby.
 
 ### Decks (deck editor `DeckEditTest`, handler `0x43FC60`)
 

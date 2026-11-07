@@ -97,6 +97,10 @@ at the top left, or get it at their next login if they were away.
 Main Menu → Team forms a team; its leader invites players from their Player Information. A team has its own chat tab
 and D-Mail (Send to Team), and Create Duel's Opponent's Limits → Team takes requests only from your team.
 
+Satellite Plaza holds user events: Create User Event makes a knockout tournament, friends press Participate in its
+details, and the host starts it from the duel button's Event Menu in the lobby; the server pairs everyone and each
+pair duels, round by round, until one is left.
+
 You can watch a friend's duel: find them in player search (they show as duelling), open Player Information and press
 Watch Duel. You see the duel from one player's side with both hands hidden, and go back to the map when it's over.
 
@@ -107,7 +111,8 @@ The shop also sells card protectors (200 BP) and avatar items (100 BP): Avatar S
 them once bought.
 
 To trade cards, open a player's Player Information and press Send Trade Request; once they accept, drag cards from
-your trunk into your half of the table, press Ready to Trade., and answer Yes to "Execute Trade?".
+your trunk into your half of the table, press Ready to Trade., and answer Yes to "Execute Trade?". A deck that used a
+card you traded away no longer counts as valid until you edit it.
 
 Not yet: card rental. Players' decks stay on their own machines (in `Documents\Yu-Gi-Oh! ONLINE 3`).
 

@@ -21,7 +21,8 @@ most valuable first. Research for the later slices runs ahead in parallel (read-
 4. [x] D-Mail between players, kept for players offline
 5. [x] Main Menu screens: Card Album, Rental Card List, My Profile, Duel Log, Leaderboard, BOOSTERPASS, each with
        what the server knows (collection, records, duels played)
-6. [ ] Teams (create, join, leave, members, team chat, Create Duel's Team limit) and user events (create, join)
+6. [x] Teams (create, join, leave, members, team chat, Create Duel's Team limit) and user events (create, join, a
+       knockout of event duels)
 7. [x] Player search criteria: language, manner level, status, event, chat room (country: the client never says
        its own)
 8. [ ] Shop: protectors and avatar items for BP; card trade and rental between players
@@ -82,7 +83,7 @@ Stop finding missing fields one crash at a time.
   - [x] Character settings: Avatar Settings opens with a default avatar and returns to the map (`avatar1` needs
         41 entries); saving changes is not handled yet
   - [x] Official Event (Stadium) and Championship (tournament map): open, report no valid decks, return
-  - [x] User event (Satellite Plaza): lists no events; creating one is not handled yet
+  - [x] User event (Satellite Plaza): events created, listed, joined, started and run as a knockout
 - [x] Friends and the ignore list: friend requests through the bell, accepting or declining, withdrawing, removing,
       the ignore list, both lists at login and on request, friends' online state pushed as they come and go, kept in
       `friends.json`; player search's friend, ignore and team tabs. Live: Yugi and Kaiba became friends, stayed so
@@ -107,7 +108,10 @@ Stop finding missing fields one crash at a time.
       ours (what it records from, and when, is open)
 - [x] Saving character settings: Avatar Settings' Confirm sends `0x2CEF` {avatar1, speech00–22, comment00–01,
       title} → `0x2CF5`; kept with the account and sent back in the player record. Live: purple hair after a restart
-- [ ] Creating and joining user events
+- [x] User events: Create, the list and details, Participate and leave, the lobby and its Event Menu (Start, Cancel),
+      the event's duels paired round by round through the match push. Live: "Friday Cup", Yugi beat Kaiba in it
+- [ ] User events: the bracket's names (`0x32FF` block data), the round banner, Ready/Standby, events kept across
+      restarts
 - **Exit:** two headless clients log in as different players, find each other and chat (met 2026-11-06:
   Yugi and Kaiba chat in the Lobby; the room list shows the other player)
 
@@ -296,7 +300,8 @@ Stop finding missing fields one crash at a time.
 | Structure decks | SD001–SD005 only (the starters 1–3 have no art); 500 BP each, at most 3 per purchase, sale id 20000 + deck id; the owned-items bit (`pbin_no`) the client sets isn't kept by the server | The original's prices are unknown; nothing read so far depends on the bit for decks |
 | BP from duels | win 100, draw 50, loss 30 per counted result (NPC duels and duels between players; a match counts once) | The original's duels paid no BP (no reply after a duel sets it); the client shows the new total at its next login or purchase |
 | Pack presents | one per pack, `present_id` counting from 1 per session, `level`/`form` 0, `item_img` and `end_time` empty; the cards join the collection at purchase | Only the fields the window reads; presents aren't kept across reconnects (the cards are) |
-| Event lists (`0x177B`), own user event (`0x33FE`) | empty, 0 | No events are held; paging by `base_point`/`front_num` like player search is assumed |
+| Event lists (`0x177B`), own user event (`0x33FE`) | official events: none; user events as created; paging by `base_point`/`front_num` like player search | No official events are held |
+| User events | a knockout paired in entry order; lobby state 0/2/3; nothing lit in the bracket map | How the original drew and ran its tournaments is unknown |
 | Rental records push (`0x2D6C`) | sent once after `9000`, empty | The original timing is unknown; the shop only needs it before it opens |
 | NPC roster `npc_type`, `need_ex` | tabs by series (NPCs 0–8, 9–16, 17–24); `need_ex` 100/200/300 | No client file gives the tabs or the experience each level needs; `need_ex` can't all be 0 (`0x4BFDC4`) |
 | Teams | `level` 1 and scores 0 for every team; handing over the leadership makes the old leader a member; the founding time in Japan time | No team scores or levels exist without the original's events |

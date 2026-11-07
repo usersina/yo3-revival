@@ -413,6 +413,9 @@ pub struct Hub {
     /// Card trades under way, and the invitations waiting for an answer (the player invited -> the one inviting).
     trades: Vec<crate::trade::Trade>,
     trade_invites: HashMap<u32, u32>,
+    /// User events, and the last event id handed out.
+    events: Vec<crate::events::Event>,
+    last_event: u32,
 }
 
 /// 0x251F's error codes for a friend request (0x4A522E): "This player cannot receive another request.", " The
@@ -976,9 +979,210 @@ impl Hub {
     }
 
     /// A matched duel is over: its match and table go.
-    pub fn end_match(&mut self, duel_id: u32) {
+    /// A duel between players is over (with its winner, if it had one): an event's round goes on.
+    pub fn end_match(&mut self, duel_id: u32, winner: Option<u32>) {
         self.matches.remove(&duel_id);
         self.tables.remove(&duel_id);
+        let Some(at) = self.events.iter().position(|e| e.round.iter().any(|(d, _)| *d == duel_id)) else { return };
+        let event = &mut self.events[at];
+        let Some(i) = event.round.iter().position(|(d, _)| *d == duel_id) else { return };
+        let (_, players) = event.round.remove(i);
+        // The loser is out; without a winner (nobody started) both are.
+        event.alive.retain(|p| !players.contains(p) || Some(*p) == winner);
+        if event.round.is_empty() {
+            self.next_round(at);
+        }
+    }
+
+    /// Pairs an event's players still in for its next round, each pair getting the match push 0x1978 as the matching
+    /// agent does (TournamentScene's 0x4CC60C reads it the same way), the last one without a partner going through;
+    /// with one player left the event is finished.
+    fn next_round(&mut self, at: usize) {
+        let alive = self.events[at].alive.clone();
+        if alive.len() <= 1 {
+            self.events[at].status = crate::events::FINISHED;
+            return;
+        }
+        self.events[at].round_number += 1;
+        let event = self.events[at].clone();
+        let rule: Vec<(String, Value)> = [
+            ("match_type", "match_type"),
+            ("regulation_id", "regulation_id"),
+            ("lp_start", "duel_lp_start"),
+            ("surrender", "duel_surrender"),
+            ("time_turn", "duel_time_turn"),
+            ("time_total", "duel_time_total"),
+        ]
+        .into_iter()
+        .map(|(k, from)| (k.to_string(), Value::U32(event.int(from))))
+        .collect();
+        let times = Some((event.int("duel_time_turn"), event.int("duel_time_total"))).filter(|(turn, _)| *turn > 0);
+        let mut round = vec![];
+        for pair in alive.chunks(2) {
+            let [a, b] = pair else { continue };
+            let records = [*a, *b].map(|p| self.online.values().find(|o| o.player_id == p).map(|o| o.record.clone()));
+            let [Some(ra), Some(rb)] = records else {
+                // A player gone forfeits.
+                let gone = if records[0].is_none() { *a } else { *b };
+                self.events[at].alive.retain(|p| *p != gone);
+                continue;
+            };
+            self.last_duel += 1;
+            let duel_id = self.last_duel;
+            let push = |vs: &Message| {
+                let data = rule.iter().fold(Message::record().with("name", Value::text("duelData")), |m, (k, v)| m.with(k, v.clone()));
+                Message::reply(0x1978).item(vs.clone().with("name", Value::text("vsPlayerData"))).item(data.with("duel_id", Value::U32(duel_id)))
+            };
+            self.push(*a, &push(&rb));
+            self.push(*b, &push(&ra));
+            self.matches.insert(duel_id, Match { players: [*a, *b], rule: rule.clone(), times, watchable: event.int("duel_watch") != 0 });
+            round.push((duel_id, [*a, *b]));
+        }
+        self.events[at].round = round;
+        if self.events[at].round.is_empty() {
+            self.next_round(at);
+        }
+    }
+
+    /// The user event requests (UserEventScene 0x4D9BB0, the lobby 0x4CBD70). Each reply's error twin is the id after
+    /// it, with an error_code.
+    fn event_request(&mut self, (me, my_name): (u32, &str), id: u32, msg: &Message) -> Message {
+        use crate::events::{Event, OPEN, RUNNING};
+        let int = |k: &str| msg.get(k).and_then(|v| v.as_u32().or_else(|| v.as_str()?.trim().parse().ok())).unwrap_or(0);
+        let fail = |reply: u32, code: u32| Message::reply(reply + 1).with("error_code", Value::U32(code));
+        let event_id = int("event_id");
+        let hosted = self.events.iter().find(|e| e.host.0 == me && e.status != crate::events::FINISHED).map(|e| e.id);
+        match id {
+            // The player's own event: remain 1 keeps its id (and turns Create off).
+            0x339A => Message::reply(0x33FE).with("remain", Value::U32(hosted.is_some() as u32)).with("event_id", Value::U32(hosted.unwrap_or(0))),
+            // May the player create one: 0, or bit 8 "already in another event" (0x3E88).
+            0x339B => {
+                let busy = self.events.iter().any(|e| e.status != crate::events::FINISHED && e.entrants.iter().any(|(p, _)| *p == me));
+                Message::reply(0x3400).with("create_status", Value::U32(if busy { 8 } else { 0 }))
+            }
+            // The Create form -> 0x33F4 {event_id}; the client then enters it (0x1784, 0x3397).
+            0x3390 => {
+                let fields: Vec<(String, Value)> = msg.fields.iter().chain(msg.items.first().map(|i| &i.fields).into_iter().flatten()).filter(|(k, _)| k != "request").cloned().collect();
+                self.last_event += 1;
+                let event = Event { id: self.last_event, host: (me, my_name.into()), fields, status: OPEN, entrants: vec![], alive: vec![], round: vec![], round_number: 0 };
+                self.events.push(event);
+                Message::reply(0x33F4).with("event_id", Value::U32(self.last_event))
+            }
+            // An entry -> 0x33FA; the others get 0x3399 {entry_name, entry_type 1}.
+            0x3397 => {
+                let Some(event) = self.events.iter_mut().find(|e| e.id == event_id && e.status == OPEN) else { return fail(0x33FA, 0) };
+                if event.entrants.iter().any(|(p, _)| *p == me) {
+                    return Message::reply(0x33FA);
+                }
+                if event.entrants.len() >= event.capacity() {
+                    return fail(0x33FA, 0);
+                }
+                event.entrants.push((me, my_name.into()));
+                let others: Vec<u32> = event.entrants.iter().map(|(p, _)| *p).filter(|&p| p != me).collect();
+                let push = Message::reply(0x3399).with("entry_name", Value::text(my_name)).with("entry_type", Value::U32(1));
+                for p in others {
+                    self.push(p, &push);
+                }
+                Message::reply(0x33FA)
+            }
+            // Leaving (not the host) -> 0x178F; the others get 0x3399 {entry_type 2}.
+            0x178E => {
+                let Some(event) = self.events.iter_mut().find(|e| e.id == event_id) else { return Message::reply(0x178F) };
+                if event.host.0 == me {
+                    return fail(0x178F, 0);
+                }
+                event.entrants.retain(|(p, _)| *p != me);
+                event.alive.retain(|p| *p != me);
+                let others: Vec<u32> = event.entrants.iter().map(|(p, _)| *p).collect();
+                let push = Message::reply(0x3399).with("entry_name", Value::text(my_name)).with("entry_type", Value::U32(2));
+                for p in others {
+                    self.push(p, &push);
+                }
+                Message::reply(0x178F)
+            }
+            // The host cancels -> 0x33F6; the others get 0x3394 and leave the lobby.
+            0x3393 => {
+                let Some(at) = self.events.iter().position(|e| e.id == event_id && e.host.0 == me) else { return fail(0x33F6, 0) };
+                let event = self.events.remove(at);
+                for (p, _) in event.entrants.iter().filter(|(p, _)| *p != me) {
+                    self.push(*p, &Message::reply(0x3394));
+                }
+                Message::reply(0x33F6)
+            }
+            // The host starts it (two players at least) -> 0x33F8; everyone gets 0x3396, then the first round's pairs
+            // their match pushes.
+            0x3395 => {
+                let Some(at) = self.events.iter().position(|e| e.id == event_id && e.host.0 == me && e.status == OPEN) else { return fail(0x33F8, 0) };
+                if self.events[at].entrants.len() < 2 {
+                    return fail(0x33F8, 0);
+                }
+                let event = &mut self.events[at];
+                event.status = RUNNING;
+                event.alive = event.entrants.iter().map(|(p, _)| *p).collect();
+                for p in event.alive.clone() {
+                    self.push(p, &Message::reply(0x3396));
+                }
+                self.next_round(at);
+                Message::reply(0x33F8)
+            }
+            // The lobby: the event (official 0, its name, the host), the entries, and the official tournament's data,
+            // which a user event doesn't use.
+            // The lobby's event (0x4CBD70: official 0, the host's player_id), which its Event Menu (the menu bar's duel
+            // button) also shows: the list row's fields.
+            0x177F => match self.events.iter().find(|e| e.id == event_id) {
+                Some(e) => Message::reply(0x1780).item(e.row().with("official", Value::U32(0))),
+                None => fail(0x1780, 0),
+            },
+            0x32CA => {
+                let entrants = self.events.iter().find(|e| e.id == event_id).map(|e| e.entrants.clone()).unwrap_or_default();
+                let list = Message::reply(0x32FD).with("total_num", Value::U32(entrants.len() as u32));
+                entrants.iter().skip(int("start_index") as usize).fold(list, |m, (p, _)| m.item(Message::record().with("player_id", Value::U32(*p))))
+            }
+            // The lobby's state (0x4CC5B0): the tournament (0x32FB), its timer (0x3301), the counts (0x3303) and the
+            // blocks (0x3305). A user event has no official tournament data.
+            0x32C9 => {
+                let event = self.events.iter().find(|e| e.id == event_id);
+                let winner = event.filter(|e| e.status == crate::events::FINISHED).and_then(|e| e.alive.first().copied());
+                let winner_name = winner.and_then(|w| event?.entrants.iter().find(|(p, _)| *p == w).map(|(_, n)| n.clone())).unwrap_or_default();
+                // status is the lobby's own state (+0x2F8): above 1 the event has begun and the host's Start/Cancel go
+                // (0x4CE670); 0 open, 2 running, 3 finished (**guess** beyond that).
+                let state = match event.map(|e| e.status) {
+                    Some(crate::events::RUNNING) => 2,
+                    Some(crate::events::FINISHED) => 3,
+                    _ => 0,
+                };
+                Message::reply(0x32FB)
+                    .with("event_id", Value::U32(event_id))
+                    .with("status", Value::U32(state))
+                    .with("phase", Value::U32(0))
+                    .with("round", Value::U32(event.map_or(0, |e| e.round_number)))
+                    .with("total_round", Value::U32(event.map_or(0, |e| (e.entrants.len().max(1) as f64).log2().ceil() as u32)))
+                    .with("winner", Value::U32(winner.unwrap_or(0)))
+                    .with("winner_name", Value::text(&winner_name))
+                    .with("second", Value::U32(0))
+                    .with("second_name", Value::text(""))
+            }
+            0x32CC => Message::reply(0x3301).with("timer", Value::U32(0)),
+            0x32CD => {
+                let event = self.events.iter().find(|e| e.id == event_id);
+                Message::reply(0x3303)
+                    .with("alive_num", Value::U32(event.map_or(0, |e| if e.alive.is_empty() { e.entrants.len() } else { e.alive.len() }) as u32))
+                    .with("entry_num", Value::U32(event.map_or(0, |e| e.entrants.len()) as u32))
+                    .with("watch_num", Value::U32(0))
+            }
+            0x32CE => ["phase_block1", "phase_block2", "phase_block3", "remain"].into_iter().fold(Message::reply(0x3305), |m, k| m.with(k, Value::U32(0))),
+            // The bracket map: a flag byte per node (0x49 of them, 0x4D0F40 copies them unchecked and 0x4CF4A0 lights the
+            // non-zero ones); without it the lobby crashed (live, NULL at 0x4D10A9). Nothing lit (**guess**).
+            0x32D5 => Message::reply(0x3309).with("map_data", Value::Bin(vec![0; 0x49])),
+            0x32CB => Message::reply(0x32FF),
+            // The event list (search_flag 1 all; the other criteria aren't kept): open and running events.
+            0x1789 => {
+                let shown: Vec<&Event> = self.events.iter().filter(|e| e.status != crate::events::FINISHED).collect();
+                let page = shown.iter().skip(int("base_point") as usize).take((int("front_num") as usize).max(1));
+                page.fold(Message::reply(0x177B).with("result_number", Value::U32(shown.len() as u32)), |m, e| m.item(e.row()))
+            }
+            _ => fail(id, 0),
+        }
     }
 
     fn leave(&mut self, id: u64) {
@@ -1341,7 +1545,14 @@ impl FrontSession {
             0x1B69 => self.world.avatar_items.iter().map(|&(id, _)| crate::shop::shelf_avatar_item(id)).fold(Message::reply(0x1C2A), Message::item),
             // Event list {event_type, status, event_id} (TournamentScene 0x4D0BB0) and event search
             // (UserEventScene 0x4D9E37): no events are held.
-            0x177A | 0x1789 => Message::reply(0x177B).with("result_number", Value::U32(0)),
+            0x177A => Message::reply(0x177B).with("result_number", Value::U32(0)),
+            // User events (Satellite Plaza's list and Create, the lobby).
+            0x339A | 0x339B | 0x3390 | 0x3397 | 0x178E | 0x3393 | 0x3395 | 0x177F | 0x32C9 | 0x32CA | 0x32CC | 0x32CD | 0x32CE | 0x32D5
+            | 0x32CB | 0x1789 => {
+                let p = self.player();
+                let me = (p.player_id, p.name.clone());
+                self.hub().event_request((me.0, &me.1), id, msg)
+            }
             // Duel Log (0x499750): the championship list it asks for on opening (its server log tab waits for it), and
             // Server Duel Logs, which would list replays to download; the server keeps none.
             0x1793 => Message::reply(0x177B),
@@ -1358,7 +1569,6 @@ impl FrontSession {
                 .with("dpGetPoints", Value::U32(0))
                 .with("premium", Value::U32(1)),
             // The player's own user event (UserEventScene 0x4D9BB0): none.
-            0x339A => Message::reply(0x33FE).with("remain", Value::U32(0)).with("event_id", Value::U32(0)),
             // Deck list (deck editor 0x43FC60): it saves each deck it lacks as a local file.
             // The starter deck, then the structure decks the player bought; the client uses at most 10.
             0x1F4E => {
@@ -1410,10 +1620,12 @@ impl FrontSession {
                 )
             }),
             // Duel entry (DuelMatchingAgent step 0x4A1090): join_id comes back in 0x17AC.
+            // The global dispatcher (0x4F4AE7) keeps the reply's event_id, which a user event's lobby then asks with.
             0x1784 => {
                 let mut hub = self.hub();
                 hub.last_join += 1;
-                Message::reply(0x1785).with("join_id", Value::U32(hub.last_join))
+                let event_id = msg.get("event_id").and_then(Value::as_u32).unwrap_or(0);
+                Message::reply(0x1785).with("join_id", Value::U32(hub.last_join)).with("event_id", Value::U32(event_id))
             }
             // DuelMenu (0x49D310) opens with the number of players duelling, hosting a duel and waiting for an
             // automatic match (menu +0x58, +0x5C, +0x60).

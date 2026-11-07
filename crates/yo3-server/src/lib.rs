@@ -12,6 +12,7 @@ mod social;
 mod mail;
 mod teams;
 mod trade;
+mod events;
 pub mod clock;
 mod log;
 mod net;

@@ -434,7 +434,8 @@ impl Table {
             let record = hub.record_result(me, them, result);
             hub.push(me, &duel_over(me, result, record));
         }
-        hub.end_match(self.duel_id);
+        let winner = results.iter().position(|&r| r == WON).map(|s| self.seats[s].player_id);
+        hub.end_match(self.duel_id, winner);
         drop(hub);
         self.tell_spectators(vec![vec![command(MATCH_END, [results[0], 0, 0, 0])]; self.spectators.len()]);
     }
@@ -488,7 +489,7 @@ impl Table {
         }
         if !self.over {
             self.over = true;
-            self.hub.lock().expect("hub lock").end_match(self.duel_id);
+            self.hub.lock().expect("hub lock").end_match(self.duel_id, None);
         }
     }
 
