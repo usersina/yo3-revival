@@ -103,8 +103,10 @@ Stop finding missing fields one crash at a time.
       the client (first free zone, face-up attack). Live: a Normal Summon from the hand
 - [x] Phase buttons: Main Phase prompts enable BP and EP as the engine allows (command 4 mode 2 + other flags); a
       pressed button ends the phase. Live: summon, EP, the CPU's turn, our Turn 3 with BP and EP lit
-- [ ] Translator: battle (attacks, targets, damage, LP changes), field stats (ATK/DEF on the field read 0 / 0), chains
-      and the other prompts; a CPU that plays
+- [x] Battle: the battle prompt offers the attackers (Attack) and M2/EP; damage, costs and recovery change the LP
+      shown. Live: a direct attack, 8000 → 5700
+- [ ] Translator: attack targets (ocgcore SELECT_CARD) and animations (DuelBattle `0xA`–`0xE`), position changes,
+      field stats (ATK/DEF read 0 / 0), chains and the other prompts, the duel's end (command 2); a CPU that plays
 - [ ] Deck piles on the field (the deck count alone shows none); phase buttons (client `duelRequestName` 3)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)

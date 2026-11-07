@@ -48,7 +48,9 @@ const SECOND: u32 = 2;
 /// Duel commands: start (DuelScene 0x514290), set LP {player, LP} (DuelCockpit 0x502EB0), phase
 /// {player, phase} (DuelScene, DuelCockpit).
 const DUEL_START: u32 = 1;
-const SET_LP: u32 = 0xF;
+pub(crate) const SET_LP: u32 = 0xF;
+/// Change a player's LP {player, signed change} (DuelCockpit 0x502EB0).
+pub(crate) const CHANGE_LP: u32 = 0x10;
 pub(crate) const PHASE: u32 = 5;
 /// Turn change {the player whose turn starts} (DuelScene; the pop counts the turn).
 pub(crate) const TURN: u32 = 6;
@@ -234,7 +236,11 @@ impl DuelSession {
         let cids = |rows: &[u16]| rows.iter().filter_map(|r| self.world.cid_of_row.get(r).copied()).collect::<Vec<u16>>();
         // Engine team 0 goes first.
         let teams = if first == CLIENT { [decks[0], decks[1]] } else { [decks[1], decks[0]] };
-        let (m0, e0, m1, e1) = (cids(&teams[0].main), cids(&teams[0].extra), cids(&teams[1].main), cids(&teams[1].extra));
+        let (mut m0, e0, mut m1, e1) = (cids(&teams[0].main), cids(&teams[0].extra), cids(&teams[1].main), cids(&teams[1].extra));
+        // The core deals in the order the cards were added (each new card goes on top; live, every duel opened
+        // with the same hand), so the decks are shuffled here.
+        self.shuffle(&mut m0);
+        self.shuffle(&mut m1);
         let mut engine = Engine::start(dir).map_err(|e| tracing::warn!("rules engine not started: {e}")).ok()?;
         let seed = self.next();
         let answer = engine.new_duel(seed, [(&m0, &e0), (&m1, &e1)]);

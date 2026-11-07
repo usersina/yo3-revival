@@ -336,6 +336,13 @@ the server takes the first free zone and face-up attack when allowed. Live: Summ
 first monster zone, the hand closed up, and the next prompt offered only the Spell card. Its ATK/DEF on the field reads
 0 / 0: the card's stats come from data not sent yet.
 
+Battle: the engine's battle prompt becomes a command map with bit 0 (Attack) on each attacker and bit 3 on chainable
+cards, the M2 and EP buttons as allowed, and command 4 mode 3. A monster in slot s sits at command-map place (zone 0,
+index s), and the client sends Attack as `{CommandID 0, position 0, index s}`. LP changes: command `0x10 {player,
+signed change}` (DuelCockpit, clamped to 0–99999; param3 non-zero adds a pop-up) for ocgcore's DAMAGE, PAY_LPCOST
+(negative) and RECOVER, and `0xF` for LPUPDATE. Live: a direct attack took the CPU from 8000 to 5700 LP. The attack has
+no animation yet (DuelBattle's commands `0xA`–`0xE` are unmapped).
+
 The numbering differs from Online 2's engine (whose turn change is `0x04` and LP set `0x26`), so YO2 research is a guide
 only. Next: the card map, so decks, hands and draws show.
 

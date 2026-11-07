@@ -12,7 +12,8 @@ use serde_json::{Value as Json, json};
 use yo3_proto::Message;
 
 use crate::duel::{
-    CARD, CLIENT, CPU, CardCommand, DECK, HAND, INPUT, MOVE, PHASE, TURN, command, command_data, move_place, table_place,
+    CARD, CHANGE_LP, CLIENT, CPU, CardCommand, DECK, HAND, INPUT, MOVE, PHASE, SET_LP, TURN, command, command_data,
+    move_place, table_place,
 };
 
 /// ocgcore message types (OcgMessageType).
@@ -25,6 +26,10 @@ const MSG_MOVE: u64 = 50;
 const MSG_NEW_TURN: u64 = 40;
 const MSG_NEW_PHASE: u64 = 41;
 const MSG_DRAW: u64 = 90;
+const MSG_DAMAGE: u64 = 91;
+const MSG_RECOVER: u64 = 92;
+const MSG_LPUPDATE: u64 = 94;
+const MSG_PAY_LPCOST: u64 = 100;
 /// ocgcore response types (OcgResponseType) and actions.
 const RESP_BATTLECMD: u64 = 0;
 const RESP_IDLECMD: u64 = 1;
@@ -33,6 +38,9 @@ const RESP_PLACE: u64 = 10;
 const RESP_POSITION: u64 = 11;
 const IDLE_TO_BP: u64 = 6;
 const IDLE_TO_EP: u64 = 7;
+const BATTLE_CHAIN: u64 = 0;
+const BATTLE_ATTACK: u64 = 1;
+const BATTLE_TO_M2: u64 = 2;
 const BATTLE_TO_EP: u64 = 3;
 /// ocgcore locations.
 const LOC_DECK: u64 = 1;
@@ -50,8 +58,15 @@ const REMOVED: u32 = 0xF;
 const FIELD_SPELL: u32 = 10;
 /// Phase panel buttons (0 DP .. 5 EP) and the input mode that turns the panel on (command 4's param1).
 const BUTTON_BP: u8 = 3;
+const BUTTON_M2: u8 = 4;
 const BUTTON_EP: u8 = 5;
 const MODE_MAIN: u32 = 2;
+const MODE_BATTLE: u32 = 3;
+/// A prompt's card lists: (list name, card menu bit, response action).
+type Lists = &'static [(&'static str, u32, u64)];
+
+/// Card menu bits of the battle prompt's lists, with their actions.
+const BATTLE_LISTS: [(&str, u32, u64); 2] = [("attacks", 0, BATTLE_ATTACK), ("chains", 3, BATTLE_CHAIN)];
 
 /// Card menu bits (`CardCommand::command`) per idle-command list, with the list's action number. Set: bit 6 for
 /// monsters and 7 for Spells/Traps is a guess (both read "Set").
@@ -99,8 +114,8 @@ pub struct Translator {
     cid_of_row: HashMap<u16, u16>,
     turn_player: u32,
     turns: u32,
-    /// The client's pending idle-command prompt.
-    idle: Option<Json>,
+    /// The client's pending prompt (idle or battle command).
+    pending: Option<Json>,
 }
 
 impl Translator {
@@ -117,7 +132,7 @@ impl Translator {
                 out.push(command(CARD, [uid, row as u32, 0, table_place(p as u32, DECK, i)]));
             }
         }
-        (Translator { first, sides, cid_of_row, turn_player: first, turns: 0, idle: None }, out)
+        (Translator { first, sides, cid_of_row, turn_player: first, turns: 0, pending: None }, out)
     }
 
     /// The client's engine player of an engine team.
@@ -150,6 +165,14 @@ impl Translator {
                     }
                 }
                 Some(MSG_MOVE) => out.extend(self.move_card(m)),
+                Some(kind @ (MSG_DAMAGE | MSG_RECOVER | MSG_PAY_LPCOST)) => {
+                    let amount = m["amount"].as_i64().unwrap_or(0) as i32;
+                    let change = if kind == MSG_RECOVER { amount } else { -amount };
+                    out.push(command(CHANGE_LP, [self.player(&m["player"]), change as u32, 0, 0]));
+                }
+                Some(MSG_LPUPDATE) => {
+                    out.push(command(SET_LP, [self.player(&m["player"]), m["lp"].as_u64().unwrap_or(0) as u32, 0, 0]));
+                }
                 _ => {}
             }
         }
@@ -237,22 +260,26 @@ impl Translator {
             return Prompt::Answer(cpu_answer(kind, m));
         }
         match kind {
-            MSG_SELECT_IDLECMD => {
-                let map = self.command_map(m);
-                let flags: Vec<(u8, u8)> =
-                    [("to_bp", BUTTON_BP), ("to_ep", BUTTON_EP)].into_iter().filter(|(k, _)| m[*k] == true).map(|(_, b)| (b, 1)).collect();
-                self.idle = Some(m.clone());
-                Prompt::Client(vec![command_data(&map, &flags), command(INPUT, [MODE_MAIN, CLIENT, 0, 0])])
+            MSG_SELECT_IDLECMD | MSG_SELECT_BATTLECMD => {
+                let (lists, buttons, mode): (Lists, [(&str, u8); 2], u32) = if kind == MSG_SELECT_IDLECMD {
+                    (&IDLE_LISTS, [("to_bp", BUTTON_BP), ("to_ep", BUTTON_EP)], MODE_MAIN)
+                } else {
+                    (&BATTLE_LISTS, [("to_m2", BUTTON_M2), ("to_ep", BUTTON_EP)], MODE_BATTLE)
+                };
+                let map = self.command_map(m, lists);
+                let flags: Vec<(u8, u8)> = buttons.into_iter().filter(|(k, _)| m[*k] == true).map(|(_, b)| (b, 1)).collect();
+                self.pending = Some(m.clone());
+                Prompt::Client(vec![command_data(&map, &flags), command(INPUT, [mode, CLIENT, 0, 0])])
             }
             // No window for these yet: never chain, end the battle (temporary).
             _ => Prompt::Answer(cpu_answer(kind, m)),
         }
     }
 
-    /// The command map of an idle-command prompt: each listed card's place and menu bits.
-    fn command_map(&self, m: &Json) -> Vec<(u32, u32)> {
+    /// The command map of a prompt: each listed card's place and menu bits.
+    fn command_map(&self, m: &Json, lists: Lists) -> Vec<(u32, u32)> {
         let mut bits: Vec<(u32, u32)> = vec![];
-        for (list, bit, _) in IDLE_LISTS {
+        for &(list, bit, _) in lists {
             for loc in m[list].as_array().into_iter().flatten() {
                 let Some(place) = self.place(loc) else { continue };
                 match bits.iter_mut().find(|(p, _)| *p == place) {
@@ -280,28 +307,35 @@ impl Translator {
 
     /// The engine response for a phase button (0 DP .. 5 EP), if the pending prompt allows that phase.
     pub fn phase(&mut self, button: u32) -> Option<Json> {
-        let idle = self.idle.as_ref()?;
-        let action = match button as u8 {
-            BUTTON_BP if idle["to_bp"] == true => IDLE_TO_BP,
-            BUTTON_EP if idle["to_ep"] == true => IDLE_TO_EP,
+        let m = self.pending.as_ref()?;
+        let battle = m["type"].as_u64() == Some(MSG_SELECT_BATTLECMD);
+        let (kind, action) = match (battle, button as u8) {
+            (false, BUTTON_BP) if m["to_bp"] == true => (RESP_IDLECMD, IDLE_TO_BP),
+            (false, BUTTON_EP) if m["to_ep"] == true => (RESP_IDLECMD, IDLE_TO_EP),
+            (true, BUTTON_M2) if m["to_m2"] == true => (RESP_BATTLECMD, BATTLE_TO_M2),
+            (true, BUTTON_EP) if m["to_ep"] == true => (RESP_BATTLECMD, BATTLE_TO_EP),
             _ => return None,
         };
-        self.idle = None;
-        Some(json!({ "type": RESP_IDLECMD, "action": action, "index": null }))
+        self.pending = None;
+        Some(json!({ "type": kind, "action": action, "index": null }))
     }
 
     /// The engine response for the client's card command, if it names a listed card.
     pub fn answer(&mut self, cmd: CardCommand) -> Option<Json> {
-        let idle = self.idle.as_ref()?;
+        let m = self.pending.as_ref()?;
+        let (lists, kind): (Lists, u64) = match m["type"].as_u64() {
+            Some(MSG_SELECT_BATTLECMD) => (&BATTLE_LISTS, RESP_BATTLECMD),
+            _ => (&IDLE_LISTS, RESP_IDLECMD),
+        };
         let place = table_place(cmd.player, cmd.zone, cmd.index as usize);
-        for (list, bit, action) in IDLE_LISTS {
+        for &(list, bit, action) in lists {
             if bit != cmd.command {
                 continue;
             }
-            let at = idle[list].as_array()?.iter().position(|loc| self.place(loc) == Some(place));
+            let at = m[list].as_array()?.iter().position(|loc| self.place(loc) == Some(place));
             if let Some(index) = at {
-                self.idle = None;
-                return Some(json!({ "type": RESP_IDLECMD, "action": action, "index": index }));
+                self.pending = None;
+                return Some(json!({ "type": kind, "action": action, "index": index }));
             }
         }
         None

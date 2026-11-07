@@ -141,3 +141,43 @@ fn the_phase_buttons_end_the_main_phase() {
     assert_eq!(t.phase(3), None, "no Battle Phase on this prompt");
     assert_eq!(t.phase(5), Some(json!({ "type": 1, "action": 7, "index": null })));
 }
+
+#[test]
+fn the_battle_prompt_offers_the_attackers_and_m2_or_ep() {
+    // MSG_SELECT_BATTLECMD (10): attackers get bit 0 (Attack), chainable cards bit 3; buttons M2 (4) and EP (5) as
+    // allowed; command 4 waits with mode 3. A monster in slot s is at place (zone 0, index s) in the command map
+    // (DuelFieldManager 0x50A690 queries it so).
+    let (mut t, _) = translator();
+    let attacker = json!({ "controller": 0, "location": 4, "sequence": 1, "can_direct": true });
+    let battle = json!({ "type": 10, "player": 0, "chains": [], "attacks": [attacker], "to_m2": true, "to_ep": true });
+    let Prompt::Client(out) = t.prompt(&battle) else { panic!("the client chooses") };
+    let data = [0x00, 0x01, 0x00, 0x00, 0, 0, 0, 0x01, 4, 1, 5, 1];
+    assert_eq!(out[0].get("COMIDDATA"), Some(&Value::Bin(data.to_vec())));
+    assert_eq!(cmd(&out[1]), (4, [3, 0, 0, 0]));
+    // Attack: SELECT_BATTLE (action 1) with the attacker's index.
+    let attack = CardCommand { command: 0, player: 0, zone: 0, index: 1 };
+    assert_eq!(t.answer(attack), Some(json!({ "type": 0, "action": 1, "index": 0 })));
+    t.prompt(&battle);
+    assert_eq!(t.phase(4), Some(json!({ "type": 0, "action": 2, "index": null })));
+    t.prompt(&battle);
+    assert_eq!(t.phase(5), Some(json!({ "type": 0, "action": 3, "index": null })));
+}
+
+#[test]
+fn damage_and_lp_changes_reach_the_lp_display() {
+    // Command 0x10 {player, change} adds a signed change to the LP shown (DuelCockpit 0x502EB0, clamped to
+    // 0..99999); 0xF sets it. MSG_DAMAGE (91) and MSG_PAY_LPCOST (100) lower it, MSG_RECOVER (92) raises it,
+    // MSG_LPUPDATE (94) sets it. Team 1 is the CPU here.
+    let (mut t, _) = translator();
+    let out = t.events(&[
+        json!({ "type": 91, "player": 1, "amount": 2300 }),
+        json!({ "type": 92, "player": 0, "amount": 500 }),
+        json!({ "type": 100, "player": 0, "amount": 1000 }),
+        json!({ "type": 94, "player": 1, "lp": 5700 }),
+    ]);
+    let out: Vec<_> = out.iter().map(cmd).collect();
+    assert_eq!(
+        out,
+        [(0x10, [1, (-2300i32) as u32, 0, 0]), (0x10, [0, 500, 0, 0]), (0x10, [0, (-1000i32) as u32, 0, 0]), (0xF, [1, 5700, 0, 0])]
+    );
+}
