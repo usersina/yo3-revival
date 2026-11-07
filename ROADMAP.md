@@ -129,9 +129,12 @@ Stop finding missing fields one crash at a time.
 - [ ] Options that are a card's own strings (51 of the client's cards; the prompt table's 400–490 are the original
       per-card labels, but EDOPro's strings don't pair with them reliably), places, number/race/attribute declarations
       (the Number, Type and Attribute dialogs); chains outside timely chances (EDOPro's "always chain")
-- [ ] Translator: attack, summon and chain animations (DuelBattle `0xA`–`0xE`, DuelSummon `0x2A`–`0x32`, DuelChain
-      `0x33`/`0x34`: an activated Set card stays face-down), position changes,
-      stat changes from effects (engine queries); attack targets on the field instead of the list
+- [x] Position changes and flips on the field: command `0x1C` (CardFlipTurn) for MSG_POS_CHANGE and flip summons; the
+      command ids named after Konami's view types (Master Duel's `DuelViewType`). Live: Giant Orc to defense after
+      attacking, a Set Trap Hole turning face-up
+- [ ] Translator: attack, summon and chain animations (DuelBattle `0xA`–`0xE`, RunSummon `0x38`/`0x39`, DuelChain
+      `0x33`/`0x34`), destruction (`0x20` CardBreak), stat changes from effects (engine queries); attack targets on
+      the field instead of the list
 - [ ] Deck piles on the field (the deck count alone shows none)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)

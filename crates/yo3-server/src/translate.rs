@@ -45,6 +45,8 @@ const MSG_DRAW: u64 = 90;
 const MSG_DAMAGE: u64 = 91;
 const MSG_RECOVER: u64 = 92;
 const MSG_LPUPDATE: u64 = 94;
+const MSG_POS_CHANGE: u64 = 53;
+const MSG_FLIPSUMMONING: u64 = 64;
 const MSG_CHAINING: u64 = 70;
 const MSG_CHAIN_END: u64 = 74;
 const MSG_PAY_LPCOST: u64 = 100;
@@ -95,6 +97,8 @@ const LOC_EXTRA: u64 = 64;
 const EXTRA: u32 = 0xC;
 const GRAVE: u32 = 0xE;
 const REMOVED: u32 = 0xF;
+/// A field card's new face and position in place {place as moves give it} (CardFlipTurn, DuelCardManager 0x4FF000).
+const FLIP_TURN: u32 = 0x1C;
 /// Data commands that build a field card's record (pop 0x522A50).
 const RECORD_BEGIN: u32 = 0x3E9;
 const RECORD_MORE: u32 = 0x3EA;
@@ -352,6 +356,8 @@ impl Translator {
                 Some(MSG_HINT) if m["hint_type"].as_u64() == Some(HINT_SELECTMSG) && self.player(&m["player"]) == CLIENT => {
                     self.hint = m["hint"].as_u64().unwrap_or(0);
                 }
+                // Also a Set Spell/Trap turning face-up as it is activated.
+                Some(MSG_POS_CHANGE | MSG_FLIPSUMMONING) => out.extend(self.turn(m, m["position"].as_u64().unwrap_or(0))),
                 Some(MSG_CHAINING) => self.chaining = Some(m.clone()),
                 Some(MSG_CHAIN_END) => self.chaining = None,
                 Some(MSG_WIN) => {
@@ -432,6 +438,31 @@ impl Translator {
                 out.push(command(CARD, [c.uid, row, 0, table_place(p, zone, i)]));
             }
         }
+        out
+    }
+
+    /// A field card turns in place to `position`: 0x1C with its new face and position, after its table entry and record
+    /// when it shows a row it didn't before (the opponent's face-down card turning face-up when hiding).
+    fn turn(&self, loc: &Json, position: u64) -> Vec<Message> {
+        let Some(place) = self.engine_place(loc) else { return vec![] };
+        if place.zone > FIELD_SPELL {
+            return vec![];
+        }
+        // A Spell/Trap has no battle position.
+        let place = Place { face_up: position & 5 != 0, defense: place.zone < 5 && position & 12 != 0, ..place };
+        let mut out = vec![];
+        let card = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first());
+        if let Some(card) = card
+            && self.hide
+            && place.player == CPU
+            && place.face_up
+        {
+            out.push(command(CARD, [card.uid, card.row as u32, 0, table_place(place.player, place.zone, 0)]));
+            if place.zone < 5 {
+                out.extend(self.monster_record(place.player, place.zone, card.row));
+            }
+        }
+        out.push(command(FLIP_TURN, [place.packed(), 0, 0, 0]));
         out
     }
 

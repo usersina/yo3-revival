@@ -582,3 +582,52 @@ fn a_chain_chance_says_how_much_it_matters() {
         "description": 0, "chain_size": 1 })]);
     assert_eq!(chain_level(&mut t, at(1, 0, 0)), 3, "a chain in progress");
 }
+
+/// The cards' place words of the 0x1C commands among `out`.
+fn flips(out: &[Message]) -> Vec<u32> {
+    out.iter().map(cmd).filter(|(id, _)| *id == 0x1C).map(|(_, p)| p[0]).collect()
+}
+
+#[test]
+fn a_position_change_turns_the_card_in_place() {
+    // MSG_POS_CHANGE (53) {controller, location, sequence, position}: command 0x1C (CardFlipTurn, DuelCardManager
+    // 0x4FF000; the 28th view type in Konami's engine vocabulary) {the place as moves give it, with face up bit 14 and
+    // defense bit 15}, which sets the field card's state (+0x82) and redraws it. Here the CPU's monster in zone 1
+    // goes to face-up defense (position 4).
+    let mut t = with_cards();
+    let change = json!({ "type": 53, "code": 4200, "cid": 4200, "controller": 1, "location": 4, "sequence": 1,
+        "prev_position": 1, "position": 4 });
+    assert_eq!(flips(&t.events(&[change])), [1 | 1 << 1 | 1 << 14 | 1 << 15]);
+}
+
+#[test]
+fn a_flipped_card_of_the_opponent_shows_its_row_first() {
+    // Against a player, the opponent's face-down card has row 0 on the client; flipping it face-up in place sends its
+    // table entry (1000) with the real row and its field record before the flip. A flip summon (64) is the same.
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
+    t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4200 }] })]);
+    t.events(&[json!({ "type": 50, "cid": 4200,
+        "from": { "controller": 1, "location": 2, "sequence": 0, "position": 10 },
+        "to": { "controller": 1, "location": 4, "sequence": 2, "position": 8 } })]);
+    let flip = json!({ "type": 64, "code": 4200, "cid": 4200, "controller": 1, "location": 4, "sequence": 2, "position": 1 });
+    let out: Vec<_> = t.events(&[flip]).iter().map(cmd).collect();
+    assert_eq!(out.first(), Some(&(1000, [11, 200, 0, 1 | 2 << 8])), "{out:?}");
+    assert!(out.iter().any(|(id, _)| *id == 0x3EB), "its field record");
+    assert_eq!(out.last(), Some(&(0x1C, [1 | 2 << 1 | 1 << 14, 0, 0, 0])));
+}
+
+#[test]
+fn an_activated_set_card_turns_face_up() {
+    // A Set Spell/Trap turns face-up as it is activated: the engine sends MSG_POS_CHANGE to POS_FACEUP (5). A
+    // Spell/Trap has no battle position, so no defense bit. Live: Trap Hole flipped (0x1C 0x400A) as the CPU summoned.
+    let mut t = with_cards();
+    t.events(&[json!({ "type": 50, "cid": 4101,
+        "from": { "controller": 0, "location": 2, "sequence": 1, "position": 10 },
+        "to": { "controller": 0, "location": 8, "sequence": 0, "position": 10 } })]);
+    let flip = json!({ "type": 53, "code": 4101, "cid": 4101, "controller": 0, "location": 8, "sequence": 0,
+        "prev_position": 10, "position": 5 });
+    assert_eq!(flips(&t.events(&[flip])), [5 << 1 | 1 << 14]);
+}

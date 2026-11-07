@@ -347,6 +347,25 @@ which DuelScene `0x514140` sends for every popped command):
 | DuelCutin `0x505A70` | 6, `0x43`, `0x44`, `0x46`–`0x48`, `0x4C`, `0x4D` |
 | DuelBattle `0x4F8A90` | 4, `0xA`–`0xE`, `0x10` |
 
+**Command names.** The ids follow Konami's view-type vocabulary as Master Duel's `DuelViewType` lists it (YgoMaster
+`Enums/Duel.cs`) up to `CardUpdate` (`0x27`), and one below it after that (Master Duel added `ManaSet`): 1 DuelStart, 2
+DuelEnd, 4 WaitInput, 5 PhaseChange, 6 TurnChange, `0xA`–`0xE` BattleInit / BattleSelect / BattleAttack / BattleRun /
+BattleEnd, `0xF` LifeSet, `0x10` LifeDamage, `0x12`–`0x14` HandShuffle / HandShow / HandOpen, `0x15` DeckShuffle,
+`0x16` DeckReset, `0x17` DeckFlipTop, `0x18` GraveTop, `0x19` CardLockon, `0x1A` CardMove, `0x1B` CardSwap, `0x1C`
+CardFlipTurn, `0x1D` CardCheat, `0x1E` CardSet, `0x1F` CardVanish, `0x20` CardBreak, `0x25` CardEquip, `0x26`
+CardIncTurn, `0x27` CardUpdate, `0x28` MonstDeathTurn, `0x29` MonstShuffle, `0x2A`–`0x32` Tribute / Material /
+Tuning Set, Reset, Run, `0x33` ChainSet, `0x34` ChainRun, `0x35` RunSurrender, `0x36` RunDialog, `0x37` RunList,
+`0x38` RunSummon, `0x39` RunSpSummon, `0x3A` RunFusion, `0x3B` RunDetail, `0x3C` RunCoin, `0x3D` RunDice, `0x43`…
+Cutin*. Every component above handles exactly its family, and the known ones match (5, 6, `0xA`–`0xE`, `0xF`, `0x10`,
+`0x1A`, `0x36`, `0x37`): the names are **shape**, each command's parameters still need their handler read.
+
+`0x1C` CardFlipTurn {place as moves give it, with face up bit 14 and defense bit 15} (DuelCardManager `0x4FF000`): the
+field card at that place takes the new face and position (`+0x82`), is redrawn, and sound `0x3B` plays. The server
+sends it for MSG_POS_CHANGE (a Set card activated, an attacked monster flipped, Giant Orc's own change) and
+MSG_FLIPSUMMONING, without the defense bit for a Spell/Trap; the opponent's card turning face-up gets its row (1000)
+and field record first. Live: Giant Orc turned sideways at the end of its Battle Phase (`0x1C 0xC000`); a Set Trap
+Hole turned face-up as it was activated.
+
 **Player actions** (confirmed live with a test build that gave every hand card all command bits, then sent phase 2 and
 command 4):
 
