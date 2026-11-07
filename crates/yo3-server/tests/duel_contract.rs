@@ -6,11 +6,11 @@
 mod common;
 
 use common::{Server, one, req, req_with};
-use yo3_proto::{Message, Packet, Value};
+use yo3_proto::{Message, Packet, TAG_MESSAGE, Value};
 use yo3_server::front::World;
 
 fn world() -> World {
-    World { npcs: (120..126).collect(), ..World::new((1..=20).collect()) }
+    World { npcs: (120..126).collect(), duel_server: ("10.0.0.5".into(), 4321), ..World::new((1..=20).collect()) }
 }
 
 #[test]
@@ -89,13 +89,49 @@ fn the_duel_deck_is_acknowledged() {
 }
 
 #[test]
-fn the_duel_report_is_acknowledged() {
+fn the_duel_report_is_acknowledged_and_the_duel_server_announced() {
     // DuelManager 0x50F030: once its duel object (0x4DC320) reports state 2 or -1, it sends 0x17D4
     // {event_id, join_id, duel_id} unless MainGamen+0x8BC is set, and goes on at 0x17D5 (0x50F2B0);
     // 0x17D6 fails with text 0x2919. Neither reply is read further, nor has a global case.
     let mut c = Server::with_world(world()).join(1001, "Yugi");
-    let fields = [("event_id", Value::U32(0)), ("join_id", Value::U32(1)), ("duel_id", Value::U32(1))];
-    let r = one(c.send(req_with(0x17D4, &fields)));
-    assert_eq!(r.request(), Some(0x17D5));
-    assert!(r.fields.iter().all(|(k, _)| k == "request"), "{r:?}");
+    let duel_id = start_npc_duel(&mut c);
+    let fields = [("event_id", Value::U32(0)), ("join_id", Value::U32(1)), ("duel_id", Value::U32(duel_id))];
+    let replies = c.send(req_with(0x17D4, &fields));
+    assert_eq!(replies[0].request(), Some(0x17D5));
+    assert!(replies[0].fields.iter().all(|(k, _)| k == "request"), "{replies:?}");
+    // Its next state 0x50F690 then waits for front flag 0x8000, which the global dispatcher sets on
+    // 0x22C4 (0x4F4F34) while keeping the reply in slot 20. It reads the item named "duelData"
+    // (0x531EB0 finds items by their "name" field): host and port go to DuelServerConnection
+    // (+0x78, +0x94), which connects; its sub-item "rule" replaces MainGamen+0x88C, and match_type
+    // is read from it. (Other duel paths also read duel_id from duelData: 0x4A2D30, 0x4A3650.)
+    assert_eq!(replies.len(), 2, "{replies:?}");
+    let push = &replies[1];
+    assert_eq!(push.request(), Some(0x22C4));
+    let data = &push.items[0];
+    assert_eq!(data.get("name").and_then(Value::as_str).as_deref(), Some("duelData"));
+    assert_eq!(data.get("host").and_then(Value::as_str).as_deref(), Some("10.0.0.5"));
+    assert_eq!(data.get("port"), Some(&Value::U32(4321)));
+    let rule = &data.items[0];
+    assert_eq!(rule.get("name").and_then(Value::as_str).as_deref(), Some("rule"));
+    // The rule is the one the client asked for in 0x17AC.
+    assert_eq!(rule.get("match_type"), Some(&Value::U32(4)));
+    assert_eq!(rule.get("regulation_id"), Some(&Value::U32(1)));
+}
+
+#[test]
+fn a_report_for_an_unknown_duel_only_gets_its_ack() {
+    let mut c = Server::with_world(world()).join(1001, "Yugi");
+    let replies = c.send(req_with(0x17D4, &[("duel_id", Value::U32(99))]));
+    assert_eq!(replies.iter().map(Message::request).collect::<Vec<_>>(), [Some(0x17D5)]);
+}
+
+/// 0x1784 then 0x17AC as the NPC duel sends them (live: Seto Kaiba, level 2); returns the duel_id.
+fn start_npc_duel(c: &mut common::Client) -> u32 {
+    let join_id = one(c.send(req_with(0x1784, &[("event_id", Value::U32(1))]))).get("join_id").cloned().unwrap();
+    let rule = [("cpu_id", 124), ("duel_server_id", 0), ("match_type", 4), ("regulation_id", 1), ("surrender", 1)]
+        .into_iter()
+        .chain([("time_total", 0), ("time_turn", 0)])
+        .fold(Message { tag: TAG_MESSAGE, ..Message::default() }, |m, (k, v)| m.with(k, Value::U32(v)));
+    let duel = Message::reply(0x17AC).with("event_id", Value::U32(1)).with("join_id", join_id).item(rule);
+    one(c.send(Packet::Message(duel))).get("duel_id").and_then(Value::as_u32).unwrap()
 }

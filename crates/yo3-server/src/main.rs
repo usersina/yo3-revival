@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use yo3_server::{Config, start};
 
-/// Yu-Gi-Oh! ONLINE 3 private server (gate, front and patch HTTP).
+/// Yu-Gi-Oh! ONLINE 3 private server (gate, front, duel and patch HTTP).
 #[derive(Parser)]
 struct Args {
     #[arg(long, default_value = "127.0.0.1")]
@@ -16,6 +16,9 @@ struct Args {
     gate_port: u16,
     #[arg(long, default_value_t = 1213)]
     front_port: u16,
+    /// Duel connections (the original's port is unknown).
+    #[arg(long, default_value_t = 1214)]
+    duel_port: u16,
     #[arg(long, default_value_t = 8080)]
     http_port: u16,
     /// Game install (for the patch index and the client's own data files).
@@ -40,6 +43,7 @@ async fn main() -> anyhow::Result<()> {
         advertise: a.advertise,
         gate_port: a.gate_port,
         front_port: a.front_port,
+        duel_port: a.duel_port,
         http_port: a.http_port,
         game_dir: a.game_dir.unwrap_or_else(yo3_data::default_game_dir),
         log_dir: a.log_dir,

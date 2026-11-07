@@ -137,6 +137,8 @@ pub struct World {
     pub starter_deck: Option<Deck>,
     /// NPC opponents, every level of each (three consecutive ids per NPC, from 120).
     pub npcs: Vec<u32>,
+    /// Where clients connect for their duels (0x22C4 duelData host and port).
+    pub duel_server: (String, u16),
     pub news: Vec<(String, String)>,
     pub rooms: Vec<Room>,
 }
@@ -148,6 +150,7 @@ impl World {
             card_rows: 0,
             starter_deck: None,
             npcs: vec![],
+            duel_server: ("127.0.0.1".into(), 0),
             news: vec![(
                 "Welcome back to Yu-Gi-Oh! ONLINE".into(),
                 "This is a private revival server. Have fun duelling with your friends!".into(),
@@ -233,6 +236,8 @@ pub struct FrontSession {
     selected: Option<usize>,
     /// Hub registration once a player is selected.
     online: Option<u64>,
+    /// The rule (0x17AC item fields) of each duel this session asked for, by duel_id.
+    duels: HashMap<u32, Vec<(String, Value)>>,
 }
 
 impl Drop for FrontSession {
@@ -247,7 +252,7 @@ impl Drop for FrontSession {
 
 impl FrontSession {
     pub fn new(account: Account, world: Arc<World>, hub: Arc<Mutex<Hub>>, outbox: Outbox) -> FrontSession {
-        FrontSession { account, world, hub, outbox, opened: false, selected: None, online: None }
+        FrontSession { account, world, hub, outbox, opened: false, selected: None, online: None, duels: HashMap::new() }
     }
 
     fn hub(&self) -> std::sync::MutexGuard<'_, Hub> {
@@ -337,9 +342,7 @@ impl FrontSession {
             0x339A => Message::reply(0x33FE).with("remain", Value::U32(0)).with("event_id", Value::U32(0)),
             // Deck list (deck editor 0x43FC60): it saves each deck it lacks as a local file.
             0x1F4E => self.world.starter_deck.iter().fold(Message::reply(0x22C8), |m, d| m.item(d.record())),
-            // Duel report (DuelManager 0x50F030, {event_id, join_id, duel_id}) once its duel object is
-            // ready (state 2) or failed (-1); 0x17D5 lets it go on.
-            0x17D4 => Message::reply(0x17D5),
+            0x17D4 => return self.duel_ready(msg),
             // Deck updated: the deck editor's save, and the deck a player picks for a duel (DuelManager
             // 0x50ECF0, {duel_id, event_id, update_type 1, item: the deck}). Nothing is stored yet.
             0x1F4F => Message::reply(0x22CA),
@@ -364,11 +367,16 @@ impl FrontSession {
                 hub.last_join += 1;
                 Message::reply(0x1785).with("join_id", Value::U32(hub.last_join))
             }
-            // Duel (step 0x4A1790): for an NPC duel the client then opens DuelManager.
+            // Duel (step 0x4A1790): for an NPC duel the client then opens DuelManager. The item holds
+            // the duel's rule (cpu_id, match_type, regulation_id, surrender, time_turn, time_total...).
             0x17AC => {
-                let mut hub = self.hub();
-                hub.last_duel += 1;
-                Message::reply(0x17AD).with("duel_id", Value::U32(hub.last_duel))
+                let duel_id = {
+                    let mut hub = self.hub();
+                    hub.last_duel += 1;
+                    hub.last_duel
+                };
+                self.duels.insert(duel_id, msg.items.first().map(|i| i.fields.clone()).unwrap_or_default());
+                Message::reply(0x17AD).with("duel_id", Value::U32(duel_id))
             }
             0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_ids)),
             0x27D8 => Message::reply(0x27D9).item(Message::record()),
@@ -401,6 +409,24 @@ impl FrontSession {
             _ => return vec![],
         };
         vec![reply]
+    }
+
+    /// 0x17D4 {event_id, join_id, duel_id}, sent by DuelManager (0x50F030) once its duel object is
+    /// ready (state 2) or failed (-1) -> 0x17D5, which lets it go on, then the 0x22C4 push its next
+    /// state (0x50F690) waits for: item "duelData" {host, port} sends it to the duel server,
+    /// and its sub-item "rule" (the rule asked for in 0x17AC) becomes the duel's rule.
+    fn duel_ready(&self, msg: &Message) -> Vec<Message> {
+        let ack = Message::reply(0x17D5);
+        let duel_id = msg.get("duel_id").and_then(Value::as_u32);
+        let Some(asked) = duel_id.and_then(|id| self.duels.get(&id)) else { return vec![ack] };
+        let rule = asked.iter().fold(Message::record().with("name", Value::text("rule")), |m, (k, v)| m.with(k, v.clone()));
+        let (host, port) = &self.world.duel_server;
+        let data = Message::record()
+            .with("name", Value::text("duelData"))
+            .with("host", Value::text(host))
+            .with("port", Value::U32(*port as u32))
+            .item(rule);
+        vec![ack, Message::reply(0x22C4).item(data)]
     }
 
     /// 0x2135 -> 0x2458: top-level lang, one item per room (ChatWindow 0x435950, items via 0x434D20).

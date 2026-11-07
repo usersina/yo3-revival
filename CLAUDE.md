@@ -122,7 +122,7 @@ the knowledge.
 - Don't run `cargo fmt`: there is no `rustfmt.toml` and the code was never formatted with the defaults (lines run to
   about 120 columns), so it rewraps every file. Match the surrounding style by hand.
 - `pgrep -f` / `pkill -f` match the calling shell's own command line. Find processes by port (`ss -ltnp`) instead.
-- Ports: gate 5730, front 1213, HTTP 8080. The game's `yo3.ini` points at 127.0.0.1; Konami's original is saved
+- Ports: gate 5730, front 1213, duel 1214 (our choice), HTTP 8080. The game's `yo3.ini` points at 127.0.0.1; Konami's original is saved
   next to it as `yo3.ini.konami`.
 - Game install: `~/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3` (override with `YO3_GAME_DIR`).
 - A crashed client stays frozen in winedbg. Run `vclient.sh stop` before relaunching.

@@ -1,4 +1,4 @@
-//! Yu-Gi-Oh! ONLINE 3 private server: gate, front and patch-HTTP services.
+//! Yu-Gi-Oh! ONLINE 3 private server: gate, front, duel and patch-HTTP services.
 pub mod accounts;
 pub mod front;
 mod log;
@@ -22,6 +22,8 @@ pub struct Config {
     pub advertise: String,
     pub gate_port: u16,
     pub front_port: u16,
+    /// Where clients open their duel connection (DuelServerConnection); only logged so far.
+    pub duel_port: u16,
     pub http_port: u16,
     pub game_dir: PathBuf,
     pub log_dir: PathBuf,
@@ -37,6 +39,7 @@ impl Config {
             advertise: "127.0.0.1".into(),
             gate_port: 0,
             front_port: 0,
+            duel_port: 0,
             http_port: 0,
             game_dir: yo3_data::default_game_dir(),
             log_dir,
@@ -49,6 +52,7 @@ impl Config {
 pub struct Running {
     pub gate: SocketAddr,
     pub front: SocketAddr,
+    pub duel: SocketAddr,
     pub http: SocketAddr,
     tasks: Vec<JoinHandle<()>>,
 }
@@ -61,8 +65,10 @@ impl Running {
     }
 }
 
-/// Banlist ids and card rows from the client's own files, or ids 1-20 and no cards if the game is absent.
-fn world(cfg: &Config) -> World {
+/// Banlist ids, card rows and NPCs from the client's own files, or ids 1-20 and nothing else if the
+/// game is absent.
+fn world(cfg: &Config, duel_port: u16) -> World {
+    let duel_server = (cfg.advertise.clone(), duel_port);
     match yo3_data::GameData::load(&cfg.game_dir) {
         Ok(data) => World {
             card_rows: data.cards.iter().map(|c| c.row as usize).max().unwrap_or(0),
@@ -75,23 +81,25 @@ fn world(cfg: &Config) -> World {
                 side: d.side.clone(),
             }),
             npcs: data.npc_ids(),
+            duel_server,
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
         },
         Err(e) => {
             tracing::warn!("game data not loaded ({e}); using regulation ids 1-20");
-            World::new((1..=20).collect())
+            World { duel_server, ..World::new((1..=20).collect()) }
         }
     }
 }
 
 pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let packets = Arc::new(log::PacketLog::create(&cfg.log_dir)?);
-    let world = Arc::new(world(&cfg));
     let gate = TcpListener::bind((cfg.bind, cfg.gate_port)).await?;
     let front = TcpListener::bind((cfg.bind, cfg.front_port)).await?;
+    let duel = TcpListener::bind((cfg.bind, cfg.duel_port)).await?;
     let http = TcpListener::bind((cfg.bind, cfg.http_port)).await?;
-    let addrs = (gate.local_addr()?, front.local_addr()?, http.local_addr()?);
+    let addrs = (gate.local_addr()?, front.local_addr()?, duel.local_addr()?, http.local_addr()?);
     let front_port = addrs.1.port();
+    let world = Arc::new(world(&cfg, addrs.2.port()));
 
     let gate_task = {
         let (packets, advertise) = (packets.clone(), cfg.advertise.clone());
@@ -120,15 +128,22 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
             move |p: &yo3_proto::Packet| session.handle(p)
         }))
     };
+    // The duel connection (DuelManager 0x50F690) opens with 0x200A {player_id, autoSet}; nothing is
+    // answered yet, every packet is only logged.
+    let duel_task = tokio::spawn(net::accept_loop(duel, "duel", packets.clone(), |_peer, _outbox| {
+        |_: &yo3_proto::Packet| Vec::new()
+    }));
     let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone()));
 
     tracing::info!(
-        "gate {} front {} http {} (advertise {}); packets -> {}",
+        "gate {} front {} duel {} http {} (advertise {}); packets -> {}",
         addrs.0,
         addrs.1,
         addrs.2,
+        addrs.3,
         cfg.advertise,
         packets.path().display()
     );
-    Ok(Running { gate: addrs.0, front: addrs.1, http: addrs.2, tasks: vec![gate_task, front_task, http_task] })
+    let tasks = vec![gate_task, front_task, duel_task, http_task];
+    Ok(Running { gate: addrs.0, front: addrs.1, duel: addrs.2, http: addrs.3, tasks })
 }

@@ -215,11 +215,14 @@ DuelManager (scene `0xFFFFD8FD`, constructor `0x50E470`) picks its first state b
 | Step | Request | Reply (error) | Fields read | Evidence | Status |
 |---|---|---|---|---|---|
 | Select Deck `0x50ECF0` | `0x1F4F {duel_id, event_id 0, update_type 1}` + the chosen deck (tag 6) | `0x22CA` (`0x22CB`, text `0x2919`) | none (`0x50EFC1` compares the id; the deck editor and the shop take `0x22CA` too) | live: the duel scene loads | confirmed |
-| `0x50F030` state 2 | `0x17D4 {event_id, join_id, duel_id}`, once the duel object (`0x4DC320`, NPC side made by its vfunc `0x68`) reports state 2 or −1; skipped when MainGamen `+0x8BC` is set | `0x17D5` (`0x17D6`, text `0x2919`) | none | live: sent right after the duel scene loaded, before any play | confirmed (meaning: "duel ready" or a result report, **open**) |
+| `0x50F030` state 2 | `0x17D4 {event_id, join_id, duel_id}`, once the avatar object (`AvatarViewer` `0x4DC320`; an NPC opponent is set up by its vfunc `0x68`) reports state 2 or −1; skipped when MainGamen `+0x8BC` is set | `0x17D5` (`0x17D6`, text `0x2919`) | none | live: sent right after the duel scene loaded, before any play | confirmed (meaning: "ready", **open**) |
+| `0x50F690` state 1 | (none: waits for front flag `0x8000`) | push `0x22C4`, which the global dispatcher keeps in slot 20 and flags (`0x4F4F34`) | items found by their `name` field (`0x531EB0`): `duelData` {`host` string, `port` int}, and its sub-item `rule`, which replaces MainGamen `+0x88C` (`match_type` read from it). Host and port go to DuelServerConnection (`+0x78`, `+0x94`), which connects | tracer: `host`, `port`, `name`, `match_type` found; live: the duel connection opens | confirmed; `rule` = the item of the duel's `0x17AC` (**guess**: only `match_type` is read so far) |
+| `0x50F690` state 2 | **duel connection**: `0x200A {player_id, autoSet}` (`autoSet` from the `duelOption` `auto_place`), unless MainGamen `+0x8BC` is set; then heartbeats `0x2724` every 30 s (`0x4F1730`) | not known yet | | live: `{autoSet 1, player_id 1002}`; the screen stays on the versus panel (timer 0) | open |
 
-So an NPC duel never touches the duel server: the client builds the duel itself. After `0x17D5` the duel screen
-shows both players (the NPC's name and portrait come from its `npc_id`) and then stalls with the turn timer at 0 and
-no further request; what it waits for is the next thing to find.
+So an NPC duel does go through the duel server: the server announces it with `0x22C4`, the client connects and asks
+`0x200A`. The duel connection uses the same framing as the front but opens with no version string. Other readers of
+`duelData` (agent `0x4A2D30` for the DUEL panel: `duel_id`, `vsPlayerData`, `country`; mode 4 `0x4A3650`: `duel_id`,
+`event_type`, `official`) show the PvP shape of the same push.
 
 ## Accounts
 
@@ -252,6 +255,7 @@ NULL, which these callers check. Send them when we know what they mean.
   `type`, `level`, `form`, `item_img`, `end_time`, `item`…); `0x2778/0x277A` mean none (see `0x2775`).
   The same numbers also show up as UI text ids (`FUN_0051E6C0(table, id)`): don't confuse the two.
 - 48 more `REQUEST_` / `RESPONSE_COMMUNICATION_*` names for trade and rental (search the exe's strings).
-- `DuelServerConnection`: the third server tier, not reached yet.
+- `DuelServerConnection`: the third server tier; it opens with `0x200A` (see "NPC duels and duel start"), whose
+  reply is not known yet.
 - Official duel logs were served over HTTP (`http://download.yugioh-online.net/duellogs/last/`), alongside team and
   Online 2 downloads under `download.yugioh-online.net`.

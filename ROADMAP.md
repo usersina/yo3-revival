@@ -83,10 +83,11 @@ Stop finding missing fields one crash at a time.
 - [x] NPC roster and duel start: 26 NPCs (ids 120–197 from the NPC deck presets) listed by name with their
       levels; picking one runs `0x1784` → `0x17AC` → Select Deck (`0x1F4F`) → `0x17D4`, and the duel screen opens
       with both players. The client builds NPC duels itself (DuelManager `0x50ECF0`); no duel server is involved
-- [ ] NPC duel play: the duel screen stalls before the first turn (timer 0, no request). Find what it waits for;
-      then NPC experience (`npcbin`) so higher levels unlock, and what `0x17D4` reports
-- [ ] Map the duel server tier (`DuelServerConnection`): only agent mode 4 (`0x1838` → `{host, port}`) and
-      DuelManager state `0x50F320` use it; find which screen starts mode 4 (`0x4D3066`) and what it sends
+- [x] Duel server handoff: after `0x17D4` the server pushes `0x22C4` (`duelData {host, port}` + `rule`), the
+      client connects to our duel listener (port 1214, logged only) and sends `0x200A {player_id, autoSet}`
+- [ ] Duel connection: answer `0x200A` and map what follows (the client waits on the versus screen). Then NPC
+      experience (`npcbin`) so higher levels unlock, and what `0x17D4` reports. Mode 4 (`0x1838` → `{host,
+      port}`, started at `0x4D3066`) is still unexplored
 - [ ] Confirm in Ghidra that Online 3's duel stream is Konami's engine command set (as in Online 2)
 - [ ] Rules engine: ocgcore as a separate process (AGPL), as in YOLaucher's `duelcore`
 - [ ] Translator: ocgcore messages ↔ Online 3 duel commands and prompts (`DLG_Text` ids), card ID ↔ passcode map
@@ -96,7 +97,7 @@ Stop finding missing fields one crash at a time.
 
 ## M6: Play with friends
 
-- [ ] Run on a LAN or VPN (`--advertise`), firewall notes (TCP 5730, 1213, 8080, duel port)
+- [ ] Run on a LAN or VPN (`--advertise`), firewall notes (TCP 5730, 1213, 1214, 8080)
 - [ ] Release builds (Linux, Windows), a one-page setup guide for friends (`yo3.ini`, Wine or Windows)
 - [ ] Backups and a few admin commands
 - **Exit:** friends connect from their own machines and duel
@@ -124,6 +125,8 @@ Stop finding missing fields one crash at a time.
 | NPC roster `npc_type`, `need_ex` | every NPC on tab 0; `need_ex` = the level (0, 1, 2) | No client file gives the tabs (probably the series) or the experience each level needs; `need_ex` can't all be 0 (`0x4BFDC4`) |
 | `join_id`, `duel_id` | server-wide counters from 1 | The client only echoes them back |
 | `0x17D4` | answered `0x17D5`, nothing kept | Sent once the duel object is ready; may also carry results later |
+| `0x22C4` push | right after `0x17D5`; `rule` = the fields of the duel's `0x17AC` item | The original timing and rule contents are unknown; only `match_type` is read so far |
+| Duel port | 1214 | The original's port is unknown; the client takes whatever `duelData` says |
 | Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
 
 ## Leads (outside the code)

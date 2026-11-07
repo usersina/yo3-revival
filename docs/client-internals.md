@@ -47,10 +47,10 @@ export, see [CLAUDE.md](../CLAUDE.md)).
 | `0x4F6340` | builds the playable collection `(conn, flags)`: copies the trunk (slot 18), subtracts cards lent in rental records (slot 8, flag 4), and with flag `0x10` zeroes cards 5280, 5434 and 6276 (table `0x7878A0`) in `cards`/`noTrade` unchecked |
 | `0x4BEB40` / `0x4BFBA0` / `0x4C0C80` / `0x4BE390` | SelectNpcScene: builds the tab lists from the roster (slot 4, three items per NPC) / `getNpcInfo` / `decideNpc (tab, index, level)` / duel start step (agent mode 3) |
 | `0x4A0B50` | `DuelMatchingAgent` start (`EBX` = mode: 0 DUEL panel, 1 password, 2, 3 NPC, 4 duel server); steps `0x4A0E90` deck check, `0x4A1090` `0x1784`, `0x4A1790` `0x17AC`, `0x4A3340` `0x1838` |
-| `0x50E470` / `0x50ECF0` / `0x50F030` / `0x50F320` | `DuelManager` (scene `0xFFFFD8FD`): constructor / Select Deck (`0x1F4F`) / duel object and `0x17D4` / duel server connect and `0x1838` |
+| `0x50E470` / `0x50ECF0` / `0x50F030` / `0x50F690` / `0x50F320` | `DuelManager` (scene `0xFFFFD8FD`): constructor / Select Deck (`0x1F4F`) / avatars and `0x17D4` / waits for `0x22C4`, connects the duel server, sends `0x200A` / mode 4: connect, then `0x1838` |
 | `0x4EEB90` | object factory by id: `0xFFFFD8F5` FrontServerConnection, `0xFFFFD8F6` DuelServerConnection, `0xFFFFD8F7` DuelMatchingAgent, `0xFFFFD8F8` AutoMatchingAgent, `0xFFFFD8F9` CommunicationAgent, `0xFFFFD8FD` DuelManager |
 | `0x4A523F`, `0x4A551E`, `0x4A5D05` | `CommunicationAgent` switches (195/106/102 cases) |
-| `0x413FE0` | address of front dataset slot `EDI` (vector at `+0x16C`); the global dispatcher keeps some replies there: `0x2711` → 4, `0x251C` friend list → 6, `0x252A` black list → 7, `0x2D6C` rental records → 8, `0x21FC` news → 10, `9000` trunk → 18, `0x2774` → 23, `0x24BA` → 24 |
+| `0x413FE0` | address of front dataset slot `EDI` (vector at `+0x16C`); the global dispatcher keeps some replies there: `0x2711` → 4, `0x251C` friend list → 6, `0x252A` black list → 7, `0x2D6C` rental records → 8, `0x21FC` news → 10, `9000` trunk → 18, `0x22C4` duel data → 20 (flag `0x8000`), `0x2774` → 23, `0x24BA` → 24 |
 | `0x45E6D0` / `0x45E810` | "is this player a friend / ignored?": read slots 6 / 7 with no NULL check, for every player listed |
 | `0x45F390` | player search request builder (Detailed Search criteria → `search_flag` bits) |
 | `0x475A20` | fills a list entry (`ppInfo`) from an item; ECX picks the kind: 0 player, 1 NPC, 2 friend, 3 ignored, 4 team member |
