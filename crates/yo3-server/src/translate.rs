@@ -57,6 +57,8 @@ const MSG_CHAINING: u64 = 70;
 const MSG_CHAIN_SOLVING: u64 = 72;
 const MSG_CHAIN_END: u64 = 74;
 const MSG_PAY_LPCOST: u64 = 100;
+const MSG_ADD_COUNTER: u64 = 101;
+const MSG_REMOVE_COUNTER: u64 = 102;
 /// ocgcore response types (OcgResponseType) and actions.
 const RESP_BATTLECMD: u64 = 0;
 const RESP_IDLECMD: u64 = 1;
@@ -114,6 +116,50 @@ const REMOVED: u32 = 0xF;
 /// (effect 0x33) plays at it and it is hidden (state 0x4FC520), before its move.
 const FLIP_TURN: u32 = 0x1C;
 const CARD_VANISH: u32 = 0x1F;
+/// A field card's counters {player | zone << 8, change, kind} (DuelCardManager 0x4FFD8E): the change is added to the
+/// card's count of that kind (0 erases it; a negative count is ignored), shown on its field label with the kind's
+/// icon (table 0x789020) and named in the card info as UI text 200 + kind (0x4551DB).
+const COUNTER: u32 = 0x27;
+/// EDOPro's counter ids (strings.conf, less COUNTER_NEED_ENABLE) by the client's counter kinds of the same name:
+/// Spell, Wedge, Bushido, Psychic, Shine, Crystal, Morph, Venom, Genex, A-, Worm, Black Feather, Hyper-Venom,
+/// Spellstone ("Magical Stone", **guess**), Flower, Fog, Clock, D, Junk, Gate, Plant, Guard, Dragonic, Ocean,
+/// Chronicle, Magic Reflector's, Maiden, Speed, Earthbound Immortal, Protection, Des ("Death", **guess**). The others
+/// show as kind 38, "Counter".
+const COUNTER_KINDS: [(u64, u32); 32] = [
+    (0x1, 0),
+    (0x1002, 42),
+    (0x3, 6),
+    (0x4, 15),
+    (0x5, 8),
+    (0x6, 4),
+    (0x8, 11),
+    (0x1009, 39),
+    (0xa, 18),
+    (0x100e, 37),
+    (0xf, 10),
+    (0x10, 21),
+    (0x11, 3),
+    (0x16, 24),
+    (0x18, 12),
+    (0x1019, 40),
+    (0x1b, 2),
+    (0x1c, 7),
+    (0x1d, 17),
+    (0x1e, 9),
+    (0x20, 13),
+    (0x1021, 43),
+    (0x22, 19),
+    (0x23, 20),
+    (0x25, 5),
+    (0x102a, 36),
+    (0x90, 35),
+    (0x1090, 35),
+    (0x91, 14),
+    (0x94, 16),
+    (0x1096, 41),
+    (0x1097, 22),
+];
+const ANY_COUNTER: u32 = 38;
 /// A battle (DuelBattle 0x4F8A90): start; the attack {attacker's player | zone << 8, target's player, target's zone or
 /// NO_TARGET}; the battle's outcome per player {damage figure on the client's card, on the opponent's, flags: DESTROYED
 /// for the client's card, << 8 for the opponent's} (the effect at a card ends hiding it when DESTROYED); end.
@@ -302,6 +348,8 @@ pub struct Translator {
     hidden: [bool; 2],
     /// The values each monster zone's record last went with (level, ATK, DEF, base ATK, base DEF), by player and zone.
     records: HashMap<(u32, u32), [u32; 5]>,
+    /// The counts the client holds on each card, by uid and counter kind.
+    counters: HashMap<(u32, u32), u32>,
 }
 
 impl Translator {
@@ -349,6 +397,7 @@ impl Translator {
             result: None,
             hidden,
             records: HashMap::new(),
+            counters: HashMap::new(),
         };
         (t, out)
     }
@@ -446,6 +495,7 @@ impl Translator {
                     let change = if kind == MSG_RECOVER { amount } else { -amount };
                     out.push(command(CHANGE_LP, [self.player(&m["player"]), change as u32, 0, 0]));
                 }
+                Some(kind @ (MSG_ADD_COUNTER | MSG_REMOVE_COUNTER)) => out.extend(self.counter(m, kind == MSG_ADD_COUNTER)),
                 Some(MSG_LPUPDATE) => {
                     out.push(command(SET_LP, [self.player(&m["player"]), m["lp"].as_u64().unwrap_or(0) as u32, 0, 0]));
                 }
@@ -469,12 +519,14 @@ impl Translator {
         match (self.engine_place(&m["from"]), self.engine_place(&m["to"])) {
             (Some(from), Some(to)) => {
                 let reason = m["reason"].as_u64().unwrap_or(0);
+                let dropped = self.drop_counters(&from);
                 let moved = self.relocate(cid, from, to);
                 // Destroyed other than by battle (a battle shows it with BattleRun): the shatter first.
                 if moved.is_empty() || reason & REASON_DESTROY == 0 || reason & REASON_BATTLE != 0 || from.zone > HAND {
-                    return moved;
+                    return dropped.into_iter().chain(moved).collect();
                 }
-                std::iter::once(command(CARD_VANISH, [from.player, from.zone | (from.index as u32) << 8, 0, 0])).chain(moved).collect()
+                let vanish = command(CARD_VANISH, [from.player, from.zone | (from.index as u32) << 8, 0, 0]);
+                dropped.into_iter().chain(std::iter::once(vanish)).chain(moved).collect()
             }
             // Tokens and Xyz materials have no client place yet.
             _ => vec![],
@@ -571,6 +623,12 @@ impl Translator {
         let place = Place { face_up: position & 5 != 0, defense: place.zone < 5 && position & 12 != 0, ..place };
         let mut out = vec![];
         let card = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied();
+        // Face down, the client empties the card's counters itself (0x4FBE50); so does EDOPro.
+        if let Some(card) = card
+            && !place.face_up
+        {
+            self.counters.retain(|(uid, _), _| *uid != card.uid);
+        }
         if let Some(card) = card
             && self.hidden[place.player as usize]
             && place.face_up
@@ -582,6 +640,37 @@ impl Translator {
         }
         out.push(command(FLIP_TURN, [place.packed(), 0, 0, 0]));
         out
+    }
+
+    /// MSG_ADD_COUNTER / MSG_REMOVE_COUNTER {counter_type, controller, location, sequence, count} on a field card: the
+    /// change in the client's kind, a removal no more than the client holds.
+    fn counter(&mut self, m: &Json, add: bool) -> Vec<Message> {
+        let Some(place) = self.engine_place(m).filter(|p| p.zone <= FIELD_SPELL) else { return vec![] };
+        let Some(card) = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied() else { return vec![] };
+        let id = m["counter_type"].as_u64().unwrap_or(0);
+        let kind = COUNTER_KINDS.iter().find(|(e, _)| *e == id).map_or(ANY_COUNTER, |(_, k)| *k);
+        let count = m["count"].as_u64().unwrap_or(0) as u32;
+        let held = self.counters.entry((card.uid, kind)).or_default();
+        let change = if add { count as i32 } else { -(count.min(*held) as i32) };
+        *held = held.saturating_add_signed(change);
+        if change == 0 {
+            return vec![];
+        }
+        vec![command(COUNTER, [place.player | place.zone << 8, change as u32, kind, 0])]
+    }
+
+    /// A field card about to leave its place gives up its counters on the client, which would keep them (EDOPro drops
+    /// them without a message).
+    fn drop_counters(&mut self, place: &Place) -> Vec<Message> {
+        if place.zone > FIELD_SPELL {
+            return vec![];
+        }
+        let Some(card) = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied() else { return vec![] };
+        let mut held: Vec<(u32, u32)> =
+            self.counters.iter().filter(|((uid, _), n)| *uid == card.uid && **n > 0).map(|((_, kind), n)| (*kind, *n)).collect();
+        held.sort_unstable();
+        self.counters.retain(|(uid, _), _| *uid != card.uid);
+        held.into_iter().map(|(kind, n)| command(COUNTER, [place.player | place.zone << 8, (n as i32).wrapping_neg() as u32, kind, 0])).collect()
     }
 
     /// The record the card info and the field label show for a monster zone (0x523F00, keyed player | zone << 8):

@@ -830,3 +830,58 @@ fn a_monsters_changed_stats_go_to_the_client_as_its_record() {
         "base_attack": 2010, "base_defense": 1000 });
     assert_eq!(records(&t.events(&[field(vec![same])])), []);
 }
+
+/// MSG_ADD_COUNTER (101) / MSG_REMOVE_COUNTER (102) {counter_type, controller, location, sequence, count}.
+fn counter(add: bool, counter_type: u32, location: u32, sequence: u32, count: u32) -> serde_json::Value {
+    json!({ "type": if add { 101 } else { 102 }, "counter_type": counter_type, "controller": 0, "location": location,
+        "sequence": sequence, "count": count })
+}
+
+fn counters(out: &[Message]) -> Vec<(u32, [u32; 4])> {
+    out.iter().map(cmd).filter(|(id, _)| *id == 0x27).collect()
+}
+
+/// A translator with a monster in monster zone 2 and a Spell/Trap in Spell/Trap zone 1 (client zone 6).
+fn with_field() -> Translator {
+    let mut t = with_cards();
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4101 }, { "cid": 4101 }, { "cid": 4101 }] })]);
+    t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 2, 1) })]);
+    t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 1, 1) })]);
+    t
+}
+
+#[test]
+fn counters_show_on_the_card_as_the_clients_own_kinds() {
+    // DuelCardManager's 0x27 {player | zone << 8, change, kind} (0x4FFD8E) adds the change to the card's count of that
+    // kind (a map at +0x130; 0 erases it) and shows it on the card's field label with the kind's icon (table 0x789020,
+    // setCounter); the card info lists it as UI text 200 + kind ("Spell Counters" 0, "Wedge Counter" 42, "Counter"
+    // 38, 0x4551DB). EDOPro's counter ids (strings.conf) map by name; one the client has no name for is "Counter".
+    let mut t = with_field();
+    assert_eq!(counters(&t.events(&[counter(true, 0x1, 4, 2, 1)])), [(0x27, [2 << 8, 1, 0, 0])], "Spell Counter");
+    assert_eq!(counters(&t.events(&[counter(true, 0x1002, 8, 1, 2)])), [(0x27, [6 << 8, 2, 42, 0])], "Wedge Counter");
+    assert_eq!(counters(&t.events(&[counter(true, 0x7, 4, 2, 1)])), [(0x27, [2 << 8, 1, 38, 0])], "an unnamed one");
+    // Removing takes the change away; never below what the client holds (it keeps a negative count's entry as it was).
+    assert_eq!(counters(&t.events(&[counter(false, 0x1002, 8, 1, 1)])), [(0x27, [6 << 8, -1i32 as u32, 42, 0])]);
+    assert_eq!(counters(&t.events(&[counter(false, 0x1002, 8, 1, 5)])), [(0x27, [6 << 8, -1i32 as u32, 42, 0])]);
+    assert_eq!(counters(&t.events(&[counter(false, 0x1002, 8, 1, 1)])), []);
+}
+
+#[test]
+fn a_card_leaving_the_field_drops_its_counters_first() {
+    // EDOPro clears a card's counters without a message when it leaves the field (card::reset), but the client keeps
+    // them on the card (and shows them if it comes back face up); only landing or turning face down clears them
+    // (0x4FBF30, 0x4FBE50, 0x4FB770). So before the card moves, its counts go to 0, while it is still at its place.
+    let mut t = with_field();
+    t.events(&[counter(true, 0x1, 4, 2, 2)]);
+    let out = t.events(&[destroyed(loc(0, 4, 2, 1), 0x41)]);
+    assert_eq!(counters(&out), [(0x27, [2 << 8, -2i32 as u32, 0, 0])]);
+    let ids: Vec<u32> = out.iter().map(cmd).map(|(id, _)| id).collect();
+    assert_eq!(ids[0], 0x27, "before the shatter and the move: {ids:?}");
+    // Back on the field later: its counts start again from 0.
+    t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 16, 0, 5), "to": loc(0, 4, 2, 1) })]);
+    assert_eq!(counters(&t.events(&[counter(true, 0x1, 4, 2, 1)])), [(0x27, [2 << 8, 1, 0, 0])]);
+    // Turned face down, the client empties the card's counters itself: nothing to drop when it leaves.
+    t.events(&[json!({ "type": 53, "code": 4101, "controller": 0, "location": 4, "sequence": 2, "prev_position": 1,
+        "position": 8 })]);
+    assert_eq!(counters(&t.events(&[destroyed(loc(0, 4, 2, 8), 0x41)])), []);
+}

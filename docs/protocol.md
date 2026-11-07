@@ -564,9 +564,28 @@ monsters); race and attribute stay CARD_Prop's. Live: Axe of Despair equipped to
 (`0x3EA {_, 4, 3200, 0}`, `0x3EB {0, 2200, 0, cid}`), and at the next prompt its label and card info read ATK 3200,
 in blue.
 
-`0x27` (named CardUpdate above) is a card's counters: `param1` byte 0 the player, byte 1 the zone, `param2` a change
-added to the count of counter kind `param3` (`0x4FB6C0`/`0x4FB730`, a map at `+0x114`), then effect mode 5 and sound
-`0x58` (up) or `0x57` (down) (DuelCardManager `0x4FFD8E`). Not sent yet.
+**Counters.** `0x27` (named CardUpdate above) is a card's counters: `param1` byte 0 the player, byte 1 the zone (the
+card at index 0 there, `0x4F8240`, as CardVanish finds it), `param2` a change added to the count of counter kind
+`param3` (`0x4FB6C0`/`0x4FB730`: a map at `+0x130`; a count of 0 erases the kind, a negative one is ignored), then
+effect mode 5 (`0x4FC7E0`: on the field, the zone's label `setProp(8, kind, icon, count)` → `setCounter`, the icon
+from the table at `0x789020` by kind) and sound `0x58` (up) or `0x57` (down) (DuelCardManager `0x4FFD8E`). The card
+info lists each kind as UI text 200 + kind with its count (`0x4551DB`): the texts 200–224 and 235–243 are counter names
+exactly where the icon table has entries (0 "Spell Counters", 2 Clock, 3 Hyper-Venom, 4 Crystal, 5 Chronicle, 6
+Bushido, 7 D, 8 Shine, 9 Gate, 10 Worm, 11 Morph, 12 Flower, 13 Plant, 14 Speed, 15 Psychic, 16 Earthbound Immortal,
+17 Junk, 18 Genex, 19 Dragonic, 20 Ocean, 21 Black Feather, 22 Death, 23 Mechanical, 24 Magical Stone, 35 Maiden, 36
+Magic Reflector, 37 A-, 38 "Counter", 39 Venom, 40 Fog, 41 Protection, 42 Wedge, 43 Guard; 1 reads "counter"). The
+client empties a card's counters only when it lands or turns face down on the field (`0x4FBF30`, `0x4FBE50` →
+`0x4FB770`); a label loses its icons when its card moves (`removeAllCounter`). `0x25` (key -1) and `0x28` (key -2,
+`param3` low byte) set two special entries (meaning **open**, not sent).
+
+The server translates EDOPro's MSG_ADD_COUNTER / MSG_REMOVE_COUNTER {counter_type, controller, location, sequence,
+count} on a field card to `0x27`, the kind by name from EDOPro's counter ids (strings.conf; the id keeps
+COUNTER_WITHOUT_PERMIT `0x1000`, e.g. Wedge `0x1002`): Spellstone as Magical Stone and Des as Death (**guess**), ids
+the client has no name for as 38 "Counter". It keeps the client's counts per card: a removal never takes more than
+the client holds, and since EDOPro drops a card's counters without a message when it leaves the field, the card's
+counts go to 0 just before its move. Live (`--duel-deck 1513`, Breaker the Magical Warrior): its summon placed a Spell
+Counter, a green icon with 1 on both clients' labels, ATK 1900, and the card info read "Spell Counters 1"; when the two
+Breakers destroyed each other, each client got `-1` for both cards before the moves, and no icon stayed on the field.
 
 Battle: the engine's battle prompt becomes a command map with bit 0 (Attack) on each attacker and bit 3 on chainable
 cards, the M2 and EP buttons as allowed, and command 4 mode 3. A monster in slot s sits at command-map place (zone 0,

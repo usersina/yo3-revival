@@ -176,7 +176,9 @@ Stop finding missing fields one crash at a time.
       directly?" and the replay question; the client has no field target step), so the card list stays, and EDOPro's
       direct-attack and replay questions read as the client's own (225, 223). Live: Jinzo #7's attack asked "Attack
       your opponent directly?"
-- [ ] Counters (`0x27`)
+- [x] Counters: EDOPro's counters on a field card become `0x27` in the client's own counter kinds (the icon on
+      the card's label, "Spell Counters 1" in the card info); a card leaving the field drops its counts first. Live:
+      Breaker the Magical Warrior's Spell Counter
 - [ ] Deck piles on the field (the deck count alone shows none)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)
@@ -259,6 +261,7 @@ Stop finding missing fields one crash at a time.
 | MSG_MOVE's reason | read back by a query at the card's new place after each processing step | A card that moves again within the same step reports its later reason |
 | Stat changes | level, ATK, DEF, base ATK, base DEF from the engine; race and attribute stay CARD_Prop's | The client's race and attribute numbering isn't ocgcore's; type-changing effects are rare in the card pool |
 | Duel clocks | turn clock full again at each of the player's turns, both clocks running while the engine waits on that player (also during client animations), a time-out 5 s after 0; Auto Duel 180 s / 600 s, hosted duels their `time_turn` / `time_total` (0: off), NPC duels none | The original's clock rules and Auto Duel's limits are unknown; the clocks follow Create Duel's own defaults |
+| Counter kinds | EDOPro ids mapped by name to the client's kinds (texts 200 + kind); Spellstone as "Magical Stone", Des as "Death", unnamed ones as 38 "Counter"; Mechanical (23) unused | The original's kind per card is unknown; EDOPro's and Konami's names differ for a few |
 | Card Swap | offered (1504) only to a player whose deck has a side deck; no time limit (the clock slot 4 the screen counts down also drives the janken's); a swapped deck with other cards is refused | Who the original offered it to, and its time limit, are unknown |
 | Watching | from seat 0's side (the first player to enter); the decisive janken round only; NPC duels can't be watched | The original's spectator view and opening are unknown; a spectator's view of a match's later duels wasn't tried live |
 | Login banlist | regulation 1 ("Beta Forbidden/Limited") unless `--regulation` names another | Which list the original used for Auto Duel at each date is unknown; the client calls the login one "Latest Regulation" |
