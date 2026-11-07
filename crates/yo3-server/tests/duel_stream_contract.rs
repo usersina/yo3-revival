@@ -202,3 +202,34 @@ fn other_duel_messages_get_no_answer_yet() {
     assert!(s.handle(&duel_msg(4, &[("DLGResult", 1)])).is_empty());
     assert!(s.handle(&Packet::Message(Message::reply(0x2724))).is_empty());
 }
+
+#[test]
+fn command_data_gives_each_card_its_command_bits() {
+    // Pump case 0x12 (0x5237CE): comIDsize pairs of u32 BE (card place, command bits) fill the command
+    // map (0x520330), which the field queries by place `player | zone << 8 | index << 16` (0x5204E0;
+    // DuelFieldManager highlights cards whose bits, less 0x2000, are set); then helpIDsize u32 pairs
+    // and otherFlagSize byte pairs. Live: a hand card with bits 0-13 opens a 14-entry menu.
+    let m = yo3_server::duel::command_data(&[(0x0001_0B00, 1 << 4 | 1 << 6), (0x0000_0B00, 1 << 1)]);
+    assert_eq!(m.request(), Some(SERVER_DUEL));
+    assert_eq!(m.get("duelRequestName"), Some(&Value::U32(0x12)));
+    assert_eq!(m.get("comIDsize"), Some(&Value::U32(2)));
+    assert_eq!(m.get("helpIDsize"), Some(&Value::U32(0)));
+    assert_eq!(m.get("otherFlagSize"), Some(&Value::U32(0)));
+    let data = [0x00, 0x01, 0x0B, 0x00, 0, 0, 0, 0x50, 0x00, 0x00, 0x0B, 0x00, 0, 0, 0, 0x02];
+    assert_eq!(m.get("COMIDDATA"), Some(&Value::Bin(data.to_vec())));
+}
+
+#[test]
+fn a_card_command_names_the_command_and_the_card() {
+    // Client duelRequestName 2 (0x520FD0), sent when a menu entry is chosen ("decide"): CommandID is
+    // the bit number (0 Attack, 1 See Details, 2 Special Summon, 3 Activate Effect, 4 Summon, 5 Flip
+    // Summon, 6/7 Set, 8 to Attack, 9 to Defence Position, 10 Surrender, 11 Confirm, 12 Draw, 13
+    // Shuffle: the menu 0x4F9320 and duel_cardcmd.swf), position the zone and index the card in it.
+    // Live: Summon on hand card 1 sent {CommandID 4, player 0, position 11, index 1}.
+    let fields = [("CommandID", 4), ("player", 0), ("position", 11), ("index", 1)];
+    let Packet::Message(m) = duel_msg(2, &fields) else { unreachable!() };
+    let cmd = yo3_server::duel::CardCommand::from_message(&m).expect("a card command");
+    assert_eq!((cmd.command, cmd.player, cmd.zone, cmd.index), (4, 0, 0xB, 1));
+    let Packet::Message(other) = duel_msg(4, &[("DLGResult", 1)]) else { unreachable!() };
+    assert!(yo3_server::duel::CardCommand::from_message(&other).is_none());
+}

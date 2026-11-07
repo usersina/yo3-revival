@@ -303,6 +303,23 @@ which DuelScene `0x514140` sends for every popped command):
 | DuelCutin `0x505A70` | 6, `0x43`, `0x44`, `0x46`–`0x48`, `0x4C`, `0x4D` |
 | DuelBattle `0x4F8A90` | 4, `0xA`–`0xE`, `0x10` |
 
+**Player actions** (confirmed live with a test build that gave every hand card all command bits, then sent phase 2 and
+command 4):
+
+- Phases (command 5 param2): 0 Draw, 2 Main 1 (live: M1 lit); by the panel's order 1 Standby, 3 Battle, 4 Main 2, 5 End
+  (**shape**).
+- `0x12` command map: `comIDsize` pairs of u32 BE (card place `player | zone<<8 | index<<16`, command bits), then
+  `helpIDsize` u32 pairs and `otherFlagSize` byte pairs (both 0 so far). DuelFieldManager (command 4) highlights the
+  cards whose bits, less `0x2000`, are set.
+- Command 4 {player}: wait for that player's input (the field highlights playable cards; clicking one opens its menu).
+- The menu (`0x4F9320`, `duel_cardcmd.swf`) lists a card's bits in the order 0, 2, 3, 4, 5, 6, 7, 9, 8, 12, 1, 10, 11,
+  13: bit 0 Attack, 1 See Details, 2 Special Summon, 3 Activate Effect, 4 Summon, 5 Flip Summon, 6 and 7 Set, 8 Change
+  to Attack Position, 9 Change to Defence Position, 10 Surrender, 11 Confirm, 12 Draw, 13 Shuffle.
+- Choosing an entry sends `duelRequestName 2 {CommandID: the bit, player, position: the zone, index}`; live: Summon on
+  hand card 1 → `{CommandID 4, player 0, position 11, index 1}`.
+
+Carrying out a command needs the rules: which cards may do what, and what follows (M5's rules engine).
+
 The numbering differs from Online 2's engine (whose turn change is `0x04` and LP set `0x26`), so YO2 research is a guide
 only. Next: the card map, so decks, hands and draws show.
 

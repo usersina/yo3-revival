@@ -91,9 +91,12 @@ Stop finding missing fields one crash at a time.
       (5); the engine commands are mapped to the components that handle them (docs/protocol.md)
 - [x] Cards: both shuffled decks go into the engine's card table (command 1000) and each player draws five (1000 +
       the card move `0x1A`); the opening hand shows, the CPU's face down
-- [ ] The first turn: the Draw Phase draw, the command ids per card (`0x12` / `COMIDDATA`) and the highlight (4), the
-      player's first actions (client `duelRequestName` 2 card command, 3 phase); deck piles on the field (the deck
-      count alone shows none)
+- [x] Player actions mapped: phases, the command map `0x12`, the input wait 4, the menu's 14 command bits and the
+      client's card command (`duelRequestName` 2), confirmed live with a test build
+- [ ] Rules engine: ocgcore run by the server (YOLaucher runs it from TypeScript, `duelcore.mts`; Node and Deno are
+      installed here), fed the decks; its prompts become command maps and its events engine commands; the CPU's moves
+      from its AI or a simple bot
+- [ ] Deck piles on the field (the deck count alone shows none); phase buttons (client `duelRequestName` 3)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)
 - [ ] Confirm in Ghidra that Online 3's duel stream is Konami's engine command set (as in Online 2)

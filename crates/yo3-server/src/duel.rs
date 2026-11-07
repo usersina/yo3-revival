@@ -22,6 +22,10 @@ const CLIENT_DUEL: u32 = 0x200C;
 const ENGINE_COMMAND: u32 = 0x11;
 /// duelRequestName of the duel setup (pump case 0x15).
 const DUEL_SETUP: u32 = 0x15;
+/// duelRequestName of the command map (pump case 0x12).
+const COMMAND_DATA: u32 = 0x12;
+/// Client duelRequestName of a card command (0x520FD0).
+const CARD_COMMAND: u32 = 2;
 /// Client duelRequestNames: the janken hand {selectHand} (0x4F1330), first or second {choice}
 /// (0x4F1430).
 const SELECT_HAND: u32 = 0xC;
@@ -72,6 +76,40 @@ fn move_place(player: u32, zone: u32, index: usize) -> u32 {
 pub fn command(id: u32, params: [u32; 4]) -> Message {
     let m = Message::reply(SERVER_DUEL).with("duelRequestName", Value::U32(ENGINE_COMMAND)).with("id", Value::U32(id));
     params.iter().zip(["param1", "param2", "param3", "param4"]).fold(m, |m, (v, k)| m.with(k, Value::U32(*v)))
+}
+
+/// The commands each card offers, as {place, command bits} (pump case 0x12). Places are
+/// `player | zone << 8 | index << 16`; bit n is the menu entry n (see [`CardCommand`]).
+pub fn command_data(cards: &[(u32, u32)]) -> Message {
+    let data = cards.iter().flat_map(|(place, bits)| place.to_be_bytes().into_iter().chain(bits.to_be_bytes())).collect();
+    Message::reply(SERVER_DUEL)
+        .with("duelRequestName", Value::U32(COMMAND_DATA))
+        .with("comIDsize", Value::U32(cards.len() as u32))
+        .with("helpIDsize", Value::U32(0))
+        .with("otherFlagSize", Value::U32(0))
+        .with("COMIDDATA", Value::Bin(data))
+}
+
+/// A command the player chose from a card's menu (client duelRequestName 2). `command` is the bit
+/// number: 0 Attack, 1 See Details, 2 Special Summon, 3 Activate Effect, 4 Summon, 5 Flip Summon,
+/// 6 and 7 Set, 8 to Attack Position, 9 to Defence Position, 10 Surrender, 11 Confirm, 12 Draw,
+/// 13 Shuffle.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CardCommand {
+    pub command: u32,
+    pub player: u32,
+    pub zone: u32,
+    pub index: u32,
+}
+
+impl CardCommand {
+    pub fn from_message(m: &Message) -> Option<CardCommand> {
+        let int = |k| m.get(k).and_then(Value::as_u32);
+        if m.request() != Some(CLIENT_DUEL) || int("duelRequestName") != Some(CARD_COMMAND) {
+            return None;
+        }
+        Some(CardCommand { command: int("CommandID")?, player: int("player")?, zone: int("position")?, index: int("index")? })
+    }
 }
 
 /// One client's duel connection, against the server as the CPU.
