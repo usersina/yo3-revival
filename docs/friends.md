@@ -88,6 +88,9 @@ In Create Duel, Opponent's Limits → Friend lets only your friends send you a d
 Main Menu → D-Mail sends a friend a message (Write Mail, then the friends button to pick them); they see a mail icon
 at the top left, or get it at their next login if they were away.
 
+Main Menu → Team forms a team; its leader invites players from their Player Information. A team has its own chat tab
+and D-Mail (Send to Team), and Create Duel's Opponent's Limits → Team takes requests only from your team.
+
 You can watch a friend's duel: find them in player search (they show as duelling), open Player Information and press
 Watch Duel. You see the duel from one player's side with both hands hidden, and go back to the map when it's over.
 

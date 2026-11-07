@@ -196,13 +196,44 @@ there; the server only holds a mail until its recipient's window fetches it. All
 |---|---|---|---|---|
 | `0x2583` (bare; the window opening and the main screen's startup step `0x4730B0`) | `0x2588 {count}` (`0x2589`) | the mail waiting | live | confirmed |
 | `0x2582 {count}` (when the count isn't 0) | `0x2586` items (`0x2587 {error_code}`) | `mail_id`, `mail_type` (0 a player, 3 a team), `from_id`, `from_name`, `to_id`, `to_name`, `title`, `body`, `send_date` "YYYY-MM-DD HH:MM:SS", `team_id`, `team_name` (`0x4AD3C0`); processing it clears the bell's mail flag | live | confirmed |
-| `0x2580 {mail_type, title, body, to_id}` (Send D-mail, `0x4AE8E0`; subject 16 characters, body 255) | `0x2584 {mail_id}` (`0x2585 {error_code}`: 0 and 201 silent, 300 "This Player is currently offline.", 301 "There are no Players with this name.", 700 a transmission error) | the recipient is picked from the friend list (slot 6), offline friends too; team mail (type 3) has no `to_id` and carries `team_id`, `team_name` | live | confirmed; team mail refused (700) until teams exist |
+| `0x2580 {mail_type, title, body, to_id}` (Send D-mail, `0x4AE8E0`; subject 16 characters, body 255) | `0x2584 {mail_id}` (`0x2585 {error_code}`: 0 and 201 silent, 300 "This Player is currently offline.", 301 "There are no Players with this name.", 700 a transmission error) | the recipient is picked from the friend list (slot 6), offline friends too; team mail (type 3) has no `to_id` and carries `team_id`, `team_name`: every other member gets it | live; team mail by test | confirmed |
 | (push) `0x2581` (bare) | — | a mail came: flag `0x1000`, the mail icon on the bell, which opens the window | live | confirmed |
 
 The server keeps waiting mail in `data/mail.json` with the last mail id, so ids go on across restarts (the client
 files mail by id), and drops a mail once fetched. Live: Yugi wrote to Kaiba from Write Mail (the friends button listed
 Kaiba); Send D-mail got `0x2584 {mail_id 1}`, Kaiba's bar showed the mail icon, and his D-Mail window listed "Yugi /
 Rematch? / 2026-11-07" with the body.
+
+### Teams (the community agent's modes 5–12, Team window `0x4BBEC0`, `main_teaminfo.swf`)
+
+The global dispatcher keeps the team info `0x2B13` whole in slot 17 (non-null = in a team: the chat's Team tab,
+`0x436CA0`; Send to Team in D-Mail) and the members `0x2B17` in slot 9 (the player's own row gives their authority,
+front `+0xE4`). After every team push (`0x2B07`–`0x2B0B`) and after forming or joining, the agent asks for both again
+(`0x4A9100`). Authority: 0 member, 1 subleader, 2 leader (`0x4B6510`; Player Information shows Invite to Team to a
+subleader or leader for a player without a team, Remove from Team for a lower authority, the authority buttons to the
+leader). All request fields are top level; some ids come as text (live: `0x2B00`'s `to_id` "1001", `team_id` "1").
+
+| Request | Reply (error: the next id, `{error_code}`) | Pushes | Evidence | Status |
+|---|---|---|---|---|
+| `0x2AFB` (bare; the Team window, the main screen's startup) | `0x2B13 {team_id, team_name, level, leader_name, created, season_score, score}`, or `0x2B14 {error_code 404}`, which clears slot 17 (`0x4F5CCA`): no team. A bare `0x2B13` (ours until 2026-11-08) made an empty team: the chat's Team tab showed for everyone | — | live | confirmed; `level` 1 (above 1 opens team titles and protectors), scores 0 (**guess**) |
+| `0x2AFD` (bare) | `0x2B17` items `{member_id, member_name, login_flag, authority}`, the player's own row among them (without it the Team window stays blank), or `0x2B18` without a team (changes nothing) | — | live | confirmed |
+| Form Team `0x2AF9 {team_name}` (`0x4A6490`; needs `premium`) | `0x2B0F {team_name}` "You have formed the team" (`0x2B10`: 409 the name is taken, 808 bad characters) | — | live: "You have formed the team "Millennium"." | confirmed |
+| Invite `0x2AFE {to_id}` (`0x4A6D20`) | `0x2B19`, "Inviting %s to the team" waits (`0x2B1A`: 106 "This player cannot receive another request." for a player in a team or invited; else "A transmission error has occurred.") | `0x2AFF {from_id, from_name, team_id, team_name}` to the player: their bell, "%s has invited you to the team "%s". Accept?" | live | confirmed |
+| Cancel the invitation `0x2B02` (bare) | `0x2B1F` | `0x2B03` to the player (the invitation was cancelled) | code | shape |
+| Answer `0x2B00 {to_id: the inviter, team_id, answer: 2 yes, 1 no}` (`0x4A76F0`) | `0x2B1D` | `0x2B01 {answer}` to the inviter ("%s has joined the team "%s"." for 2, else declined), `0x2B08 {member_name}` to the members | live: Yugi saw "Kaiba has joined the team "Millennium"." | confirmed |
+| Disband `0x2AFA {player_id}` (the leader, `0x4A6880`) | `0x2B11` | `0x2B07 {team_name}` to the others (clears their slots 17 and 9) | test | shape |
+| Remove from Team `0x2B05 {to_id}` (`0x4A7F50`) | `0x2B25` | `0x2B0A {admin_name, member_name}` to everyone, the one removed too (its text has a third `%s` the client fills with nothing) | test | shape |
+| Leave `0x2B04` (bare, not the leader, `0x4A8230`) | `0x2B23` | `0x2B09 {member_name}` to the others | test | shape |
+| Authority `0x2B06 {to_id, authority}` (the leader, `0x4A84E0`): 1 subleader, 0 back to member, 2 the leadership | `0x2B27` | `0x2B0B {authority, to_name}` to everyone (dropped by a client without slot 17) | live: "Set Kaiba as subleader?", Kaiba's bell | confirmed; the old leader becomes a member on a hand-over (**guess**) |
+
+Elsewhere: the player's record carries `team_level` (1 in a team, below 1 none), `team_name`, `team_authority` (the
+icon frame, `0x46C1D0`); search entries carry `team_id` (0 none), `team_name`, `team_authority` (Player Information,
+`0x4B6AF0`/`0x4B7350`); the search's team tab (`search_flag 0x20`) lists the player's team; chat type 3 goes to the
+team (`to_id` = slot 17's `team_id`, `0x439D20`); D-Mail type 3 goes to every other member with the team's
+`team_id`/`team_name`; Create Duel's Opponent's Limits → Team takes requests only from the host's team. Teams are kept
+in `data/teams.json`. Live: Yugi formed Millennium in the Team window (Lv1, founded, leader Yugi), invited Kaiba from
+Player Information, Kaiba accepted from his bell, Kaiba's "gg team" reached Yugi's Team tab, and after a server
+restart Player Information showed Kaiba in Millennium with Remove from Team and Set as subleader.
 
 ### Main Menu screens (MainGamen's menu `0x46FA60`)
 

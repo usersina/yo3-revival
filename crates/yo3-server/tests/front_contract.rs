@@ -196,7 +196,8 @@ fn player_refresh_matches_the_selected_player() {
 #[test]
 fn main_screen_polls_are_answered() {
     let mut s = in_world();
-    for (req_id, reply) in [(0x271A, 0x271B), (0x2710, 0x2711), (0x2AFB, 0x2B13), (0x2AFD, 0x2B17)] {
+    // Without a team, 0x2AFB and 0x2AFD get their error twins (see team_contract.rs).
+    for (req_id, reply) in [(0x271A, 0x271B), (0x2710, 0x2711), (0x2AFB, 0x2B14), (0x2AFD, 0x2B18)] {
         assert_eq!(one(s.handle(&req(req_id))).request(), Some(reply), "{req_id:#x}");
     }
     assert_eq!(one(s.handle(&req(0x2583))).get("count"), Some(&Value::U32(0)));

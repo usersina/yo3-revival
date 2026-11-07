@@ -90,7 +90,9 @@ Stop finding missing fields one crash at a time.
       Live: Kaiba listed with the friend icon, online and after logging out
 - [x] D-Mail: Write Mail to a friend (`0x2580` → `0x2584`), the recipient's bell (`0x2581`), the fetch (`0x2583` →
       `0x2588`, `0x2582` → `0x2586`); mail waits in `data/mail.json` for players offline. Live: Yugi to Kaiba
-- [ ] Teams
+- [x] Teams: form, invite, answer, leave, remove, authority, disband; the team in records, search and Player
+      Information; team chat, team mail and Create Duel's Team limit; `data/teams.json`. Live: Millennium formed,
+      Kaiba invited and joined, team chat, Set as subleader
 - [ ] Player search criteria we ignore: language, country, manner level, status, event
 - [x] Main menu screens: Rental Card List (`0x2C34`/`0x2C35` chain), My Profile (wins and losses against players),
       Duel Log (`0x1793`, `0x19C8`, no server replays), BOOSTERPASS (codes refused); Card Album, Leaderboard (a Konami
@@ -286,6 +288,7 @@ Stop finding missing fields one crash at a time.
 | Event lists (`0x177B`), own user event (`0x33FE`) | empty, 0 | No events are held; paging by `base_point`/`front_num` like player search is assumed |
 | Rental records push (`0x2D6C`) | sent once after `9000`, empty | The original timing is unknown; the shop only needs it before it opens |
 | NPC roster `npc_type`, `need_ex` | tabs by series (NPCs 0–8, 9–16, 17–24); `need_ex` 100/200/300 | No client file gives the tabs or the experience each level needs; `need_ex` can't all be 0 (`0x4BFDC4`) |
+| Teams | `level` 1 and scores 0 for every team; handing over the leadership makes the old leader a member; the founding time in Japan time | No team scores or levels exist without the original's events |
 | Wins and losses | My Profile and Player Information count duels against players only, not NPCs | The original's counting is unknown |
 | NPC experience | 100 a win, 50 a draw, 10 a loss, per NPC level id | No request reports it; the original's amounts are unknown |
 | `premium` | 1 for every account (all NPCs, Form Team, Create Event) | The original sold it (Duelist Premium); a friends' server gives it to all |

@@ -7,7 +7,7 @@ mod common;
 
 use std::time::{Duration, Instant};
 
-use common::{Client, Server, one, req_with};
+use common::{Client, Server, one, req, req_with};
 use yo3_proto::{Message, Packet, Value};
 use yo3_server::front::World;
 
@@ -343,7 +343,7 @@ fn a_friends_only_duel_takes_requests_from_the_hosts_friends() {
     // Create Duel's Opponent's Limits (party: 1 off, 2 friends, 3 team) reaches challengers as duel_party, and
     // PlayerInfoWindow offers Send Duel Request for 2 only when the host is in the viewer's friend list (0x4B6510,
     // +0x49C), for 3 only to a team member (+0x49E). The server refuses the others too: 0x17B8 {error_code 201} "Duel
-    // Request was refused.". There are no teams yet, so a team-only duel takes nobody.
+    // Request was refused.".
     let server = Server::new();
     let (mut yugi, mut kaiba, mut joey) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"), server.join(1003, "Joey"));
     server.hub.lock().unwrap().befriend((1001, "Yugi"), (1002, "Kaiba"));
@@ -353,7 +353,15 @@ fn a_friends_only_duel_takes_requests_from_the_hosts_friends() {
     assert_eq!((refused.request(), refused.get("error_code").and_then(Value::as_u32)), (Some(0x17B8), Some(201)));
     assert_eq!(challenge(&mut kaiba, duel_id, "").request(), Some(0x17B7), "a friend");
     let mut seto = server.join(1004, "Seto");
+    let formed = one(seto.send(req_with(0x2AF9, &[("team_name", Value::text("KC"))])));
+    assert_eq!(formed.request(), Some(0x2B0F));
+    one(seto.send(req_with(0x2AFE, &[("to_id", Value::U32(1002))])));
+    kaiba.pushed();
+    let team_id = one(seto.send(req(0x2AFB))).get("team_id").and_then(Value::as_u32).unwrap();
+    let answer = [("to_id", Value::U32(1004)), ("team_id", Value::U32(team_id)), ("answer", Value::U32(2))];
+    one(kaiba.send(req_with(0x2B00, &answer)));
     let team_duel = host_with(&mut seto, "", 3);
     let refused = challenge(&mut joey, team_duel, "");
     assert_eq!(refused.get("error_code").and_then(Value::as_u32), Some(201));
+    assert_eq!(challenge(&mut kaiba, team_duel, "").request(), Some(0x17B7), "a teammate");
 }

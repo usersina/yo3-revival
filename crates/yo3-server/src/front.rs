@@ -9,6 +9,7 @@ use yo3_proto::{Message, Packet, Value};
 
 use crate::mail::{Mail, Mailbox};
 use crate::social::Social;
+use crate::teams::{LEADER, MEMBER, SUBLEADER, Teams};
 
 /// Where a session's outgoing messages go: its connection's writer task.
 pub type Outbox = tokio::sync::mpsc::UnboundedSender<Message>;
@@ -26,7 +27,7 @@ fn jst_now() -> chrono::DateTime<chrono::FixedOffset> {
 }
 
 /// Main-screen polls whose replies carry nothing the client reads.
-const BARE_REPLIES: [(u32, u32); 3] = [(0x271A, 0x271B), (0x2AFB, 0x2B13), (0x2AFD, 0x2B17)];
+const BARE_REPLIES: [(u32, u32); 1] = [(0x271A, 0x271B)];
 
 #[derive(Clone, Debug)]
 pub struct Player {
@@ -48,8 +49,11 @@ pub struct Player {
     pub decks: Vec<u32>,
 }
 
-/// A D-Mail's mail_type to a player (3 is to the player's team).
+/// A D-Mail's mail_type: to a player, to the sender's team.
 const MAIL_TO_PLAYER: u32 = 0;
+const MAIL_TO_TEAM: u32 = 3;
+/// 0x2B14's error_code: the player has no team.
+const NO_TEAM: u32 = 404;
 
 /// The npcbin's size: the client reads up to NPC id 197 (8 bytes each) without a check.
 const NPCBIN_LEN: usize = 2048;
@@ -87,11 +91,12 @@ impl Player {
 
     /// The record read by the player list (0x46C1E4) and the PlayerData loader (0x51C260).
     pub fn record(&self) -> Message {
-        self.record_with([0; 3])
+        self.record_with([0; 3], None)
     }
 
-    /// The record with the player's wins, losses and draws against players (My Profile, 0x4705D0; the VS screen).
-    pub fn record_with(&self, [wins, losses, draws]: [u32; 3]) -> Message {
+    /// The record with the player's wins, losses and draws against players (My Profile, 0x4705D0; the VS screen) and
+    /// their team's name and their authority in it (0x46C1D0: team_level 1, below 1 no team).
+    pub fn record_with(&self, [wins, losses, draws]: [u32; 3], team: Option<(&str, u32)>) -> Message {
         let mut m = Message::record()
             .with("pname", Value::text(&self.name))
             .with("pindex", Value::U32(self.index))
@@ -102,9 +107,9 @@ impl Player {
             .with("n_lose", Value::U32(losses))
             .with("n_draw", Value::U32(draws))
             .with("n_duelall", Value::U32(wins + losses + draws))
-            .with("team_level", Value::U32(0))
-            .with("team_name", Value::text(""))
-            .with("team_authority", Value::U32(0))
+            .with("team_level", Value::U32(team.is_some() as u32))
+            .with("team_name", Value::text(team.map_or("", |t| t.0)))
+            .with("team_authority", Value::U32(team.map_or(0, |t| t.1)))
             .with("avatar1", Value::Bin(self.avatar.clone()))
             .with("pbin", Value::Bin(self.flags()));
         for (i, line) in self.speeches.iter().enumerate() {
@@ -378,6 +383,8 @@ pub struct Hub {
     social: Social,
     /// D-Mail waiting for its recipients.
     mail: Mailbox,
+    /// Teams and the invitations waiting for an answer.
+    teams: Teams,
 }
 
 /// 0x251F's error codes for a friend request (0x4A522E): "This player cannot receive another request.", " The
@@ -478,14 +485,21 @@ impl Hub {
         against_players.fold([0; 3], |t, (_, r)| [t[0] + r[0], t[1] + r[1], t[2] + r[2]])
     }
 
-    /// A player's own record (the player list 0x2260, the refresh 0x2CF3): with their totals and NPC experience.
+    /// A player's own record (the player list 0x2260, the refresh 0x2CF3): with their totals, team and NPC experience.
     fn own_record(&self, player: &Player) -> Message {
-        player.record_with(self.totals(player.player_id)).with("npcbin", Value::Bin(self.npcbin(player.player_id)))
+        self.record(player).with("npcbin", Value::Bin(self.npcbin(player.player_id)))
+    }
+
+    /// A player's record with their totals and team.
+    fn record(&self, player: &Player) -> Message {
+        let team = self.teams.of(player.player_id);
+        let team = team.map(|t| (t.name.as_str(), t.authority(player.player_id).unwrap_or(MEMBER)));
+        player.record_with(self.totals(player.player_id), team)
     }
 
     fn join(&mut self, player: &Player, outbox: Outbox) -> u64 {
         self.next_id += 1;
-        let record = player.record_with(self.totals(player.player_id));
+        let record = self.record(player);
         let online = Online { player_id: player.player_id, name: player.name.clone(), level: player.level, room: None, outbox, record };
         self.online.insert(self.next_id, online);
         self.social.seen(player.player_id, &player.name);
@@ -503,22 +517,171 @@ impl Hub {
         self.mail = Mailbox::load(file);
     }
 
+    /// Keeps the teams in `file`.
+    pub fn keep_teams(&mut self, file: &std::path::Path) {
+        self.teams = Teams::load(file);
+    }
+
+    /// Pushes to every member of a team who is online, but `except`.
+    fn tell_team(&self, members: &[u32], except: Option<u32>, msg: &Message) {
+        for &id in members.iter().filter(|&&id| Some(id) != except) {
+            self.push(id, msg);
+        }
+    }
+
+    /// 0x2AFB: the player's team (0x2B13), or 0x2B14 {error_code 404}, which clears slot 17 (0x4F5CCA): no team.
+    fn team_info(&self, me: u32) -> Message {
+        match self.teams.of(me) {
+            Some(t) => t.info(),
+            None => Message::reply(0x2B14).with("error_code", Value::U32(NO_TEAM)),
+        }
+    }
+
+    /// 0x2AFD: the team's members (0x2B17), or 0x2B18 (which changes nothing) without a team.
+    fn team_members(&self, me: u32) -> Message {
+        match self.teams.of(me) {
+            Some(t) => t.member_list(|id| self.is_online(id)),
+            None => Message::reply(0x2B18).with("error_code", Value::U32(NO_TEAM)),
+        }
+    }
+
+    /// The team requests (the community agent's modes 5-11, 0x4A6490 on). Each reply's error twin is the id after it,
+    /// with an error_code. Members' clients ask for the team again after each push (0x2B07-0x2B0B).
+    fn team_request(&mut self, (me, my_name): (u32, &str), id: u32, msg: &Message) -> Message {
+        // Some ids come as text (live: 0x2B00's to_id and team_id).
+        let int = |k: &str| msg.get(k).and_then(|v| v.as_u32().or_else(|| v.as_str()?.trim().parse().ok())).unwrap_or(0);
+        let fail = |reply: u32, code: u32| Message::reply(reply + 1).with("error_code", Value::U32(code));
+        let mine = self.teams.of(me).cloned();
+        let my_authority = mine.as_ref().and_then(|t| t.authority(me)).unwrap_or(MEMBER);
+        match id {
+            // Form Team {team_name} -> 0x2B0F {team_name}; 409 the name is taken, 808 bad characters.
+            0x2AF9 => {
+                let name = msg.get("team_name").and_then(Value::as_str).unwrap_or_default();
+                if mine.is_some() {
+                    return fail(0x2B0F, 0);
+                }
+                let created = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
+                match self.teams.form((me, my_name), &name, created) {
+                    Ok(_) => Message::reply(0x2B0F).with("team_name", Value::text(name.trim())),
+                    Err(code) => fail(0x2B0F, code),
+                }
+            }
+            // Invite {to_id} -> 0x2B19; the player gets 0x2AFF on the bell. 106 "This player cannot receive another
+            // request." when they are in a team or invited already; any other code "A transmission error has occurred.".
+            0x2AFE => {
+                let to = int("to_id");
+                let Some(team) = mine.filter(|_| my_authority >= SUBLEADER) else { return fail(0x2B19, 0) };
+                if self.teams.of(to).is_some() || self.teams.invites.contains_key(&to) {
+                    return fail(0x2B19, REQUEST_WAITING);
+                }
+                if !self.is_online(to) {
+                    return fail(0x2B19, NOT_ONLINE);
+                }
+                self.teams.invites.insert(to, (me, team.id));
+                let invite = Message::reply(0x2AFF)
+                    .with("from_id", Value::U32(me))
+                    .with("from_name", Value::text(my_name))
+                    .with("team_id", Value::U32(team.id))
+                    .with("team_name", Value::text(&team.name));
+                self.push(to, &invite);
+                Message::reply(0x2B19)
+            }
+            // The inviter cancels -> 0x2B1F; the invited player gets 0x2B03.
+            0x2B02 => {
+                let invited: Vec<u32> = self.teams.invites.iter().filter(|(_, (from, _))| *from == me).map(|(&to, _)| to).collect();
+                for to in invited {
+                    self.teams.invites.remove(&to);
+                    self.push(to, &Message::reply(0x2B03));
+                }
+                Message::reply(0x2B1F)
+            }
+            // The answer {to_id: the inviter, team_id, answer: 2 yes, 1 no} -> 0x2B1D; the inviter gets 0x2B01
+            // {answer}, and with a yes the members 0x2B08 {member_name}.
+            0x2B00 => {
+                let Some((from, team_id)) = self.teams.invites.remove(&me) else { return fail(0x2B1D, 0) };
+                let answer = int("answer");
+                let joined = answer == ACCEPTED && mine.is_none() && self.teams.get(team_id).is_some();
+                self.push(from, &Message::reply(0x2B01).with("answer", Value::U32(if joined { ACCEPTED } else { answer })));
+                if joined {
+                    self.teams.join(team_id, (me, my_name));
+                    let members = self.teams.get(team_id).map(|t| t.ids()).unwrap_or_default();
+                    self.tell_team(&members, Some(me), &Message::reply(0x2B08).with("member_name", Value::text(my_name)));
+                }
+                Message::reply(0x2B1D)
+            }
+            // Disband (the leader) -> 0x2B11; the others get 0x2B07 {team_name}.
+            0x2AFA => {
+                let Some(team) = mine.filter(|_| my_authority == LEADER) else { return fail(0x2B11, 0) };
+                self.teams.disband(team.id);
+                self.tell_team(&team.ids(), Some(me), &Message::reply(0x2B07).with("team_name", Value::text(&team.name)));
+                Message::reply(0x2B11)
+            }
+            // Kick {to_id} (someone of lower authority) -> 0x2B25; everyone, the one kicked too, gets 0x2B0A.
+            0x2B05 => {
+                let to = int("to_id");
+                let Some(team) = mine.filter(|t| t.authority(to).is_some_and(|a| a < my_authority)) else { return fail(0x2B25, 0) };
+                let kicked = team.member(to).map(|m| m.name.clone()).unwrap_or_default();
+                self.teams.remove(to);
+                let push = Message::reply(0x2B0A).with("admin_name", Value::text(my_name)).with("member_name", Value::text(&kicked));
+                self.tell_team(&team.ids(), Some(me), &push);
+                Message::reply(0x2B25)
+            }
+            // Leave (not the leader) -> 0x2B23; the others get 0x2B09 {member_name}.
+            0x2B04 => {
+                let Some(team) = mine.filter(|_| my_authority != LEADER) else { return fail(0x2B23, 0) };
+                self.teams.remove(me);
+                self.tell_team(&team.ids(), Some(me), &Message::reply(0x2B09).with("member_name", Value::text(my_name)));
+                Message::reply(0x2B23)
+            }
+            // Authority {to_id, authority: 1 subleader, 0 member, 2 the leadership} (the leader) -> 0x2B27; everyone
+            // gets 0x2B0B {authority, to_name}. Handing over the leadership makes the old leader a member (**guess**).
+            0x2B06 => {
+                let (to, authority) = (int("to_id"), int("authority"));
+                let Some(team) = mine.filter(|t| my_authority == LEADER && to != me && t.member(to).is_some()) else {
+                    return fail(0x2B27, 0);
+                };
+                if authority > LEADER {
+                    return fail(0x2B27, 0);
+                }
+                self.teams.set_authority(team.id, to, authority);
+                if authority == LEADER {
+                    self.teams.set_authority(team.id, me, MEMBER);
+                }
+                let name = team.member(to).map(|m| m.name.clone()).unwrap_or_default();
+                let push = Message::reply(0x2B0B).with("authority", Value::U32(authority)).with("to_name", Value::text(&name));
+                self.tell_team(&team.ids(), Some(me), &push);
+                Message::reply(0x2B27)
+            }
+            _ => fail(id, 0),
+        }
+    }
+
     /// 0x2580 {mail_type, title, body, to_id} (0x4AE8E0): 0x2584 {mail_id}, the mail kept for its recipient, who gets
     /// 0x2581 if online (flag 0x1000, the bell's mail icon); or 0x2585 {error_code}: 301 "There are no Players with this
-    /// name.", 700 "A transmission error has occurred." (team mail, without teams).
+    /// name.", 700 "A transmission error has occurred.". Team mail (mail_type 3, no to_id) goes to every other member.
     fn send_mail(&mut self, from: (u32, String), kind: u32, to_id: u32, title: &str, body: &str) -> Message {
-        let to_name = self.social.name(to_id);
         let refuse = |code: u32| Message::reply(0x2585).with("error_code", Value::U32(code));
-        if kind != MAIL_TO_PLAYER {
-            return refuse(700);
-        }
-        if to_name.is_empty() {
+        let recipients: Vec<(u32, String)> = match kind {
+            MAIL_TO_PLAYER => vec![(to_id, self.social.name(to_id))],
+            MAIL_TO_TEAM => match self.teams.of(from.0) {
+                Some(t) => t.members.iter().filter(|m| m.id != from.0).map(|m| (m.id, m.name.clone())).collect(),
+                None => return refuse(700),
+            },
+            _ => return refuse(700),
+        };
+        if recipients.iter().any(|(_, name)| name.is_empty()) {
             return refuse(301);
         }
+        let team = self.teams.of(from.0).filter(|_| kind == MAIL_TO_TEAM).map(|t| (t.id, t.name.clone())).unwrap_or_default();
         let sent = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let mail = Mail { kind, from, to: (to_id, to_name), title: title.into(), body: body.into(), sent, ..Mail::default() };
-        let mail_id = self.mail.post(mail);
-        self.push(to_id, &Message::reply(0x2581));
+        let mut mail_id = 0;
+        for to in recipients {
+            let to_id = to.0;
+            let mail = Mail { kind, from: from.clone(), to, title: title.into(), body: body.into(), sent: sent.clone(), team: team.clone(), ..Mail::default() };
+            let id = self.mail.post(mail);
+            mail_id = if mail_id == 0 { id } else { mail_id };
+            self.push(to_id, &Message::reply(0x2581));
+        }
         Message::reply(0x2584).with("mail_id", Value::U32(mail_id))
     }
 
@@ -1168,6 +1331,14 @@ impl FrontSession {
                 }
             }
             0x1838 => self.watch(msg),
+            // Teams (the Team window 0x4BBEC0 asks 0x2AFB then 0x2AFD; so do the main screen's startup steps).
+            0x2AFB => self.hub().team_info(self.player().player_id),
+            0x2AFD => self.hub().team_members(self.player().player_id),
+            0x2AF9 | 0x2AFE | 0x2B02 | 0x2B00 | 0x2AFA | 0x2B05 | 0x2B04 | 0x2B06 => {
+                let p = self.player();
+                let me = (p.player_id, p.name.clone());
+                self.hub().team_request((me.0, &me.1), id, msg)
+            }
             // Next present: 0x2777 would carry one; 0x2778 = none, which closes PresentWindow
             // (0x4783C9) and lets the main screen unlock its facilities and menu (0x473B87).
             0x2775 => match self.presents.pop_front() {
@@ -1294,8 +1465,7 @@ impl FrontSession {
         const BY_NAME: u32 = 0x2;
         const BY_LEVEL: u32 = 0x10;
         const BY_ID: u32 = 0x40000;
-        // The community bits (the preset tabs): friends ("Display online friends."), the ignore list, the team (no
-        // teams yet: nobody).
+        // The community bits (the preset tabs): friends ("Display online friends."), the ignore list, the team.
         const FRIENDS: u32 = 0x40;
         const IGNORED: u32 = 0x80;
         const TEAM: u32 = 0x20;
@@ -1313,7 +1483,7 @@ impl FrontSession {
             .filter(|o| flags & BY_NAME == 0 || o.name.to_lowercase().contains(&name))
             .filter(|o| flags & FRIENDS == 0 || o.player_id == me || hub.social.are_friends(me, o.player_id))
             .filter(|o| flags & IGNORED == 0 || o.player_id == me || hub.social.ignores(me, o.player_id))
-            .filter(|o| flags & TEAM == 0 || o.player_id == me)
+            .filter(|o| flags & TEAM == 0 || hub.teams.of(me).is_some_and(|t| t.member(o.player_id).is_some()))
             .filter(|o| flags & BY_LEVEL == 0 || levels.contains(&o.level))
             .filter(|o| flags & BY_ID == 0 || Some(o.player_id) == uint("player_id"))
             .collect();
@@ -1323,13 +1493,17 @@ impl FrontSession {
         let page = found.iter().skip(skip).take(uint("front_num").unwrap_or(100) as usize);
         page.fold(Message::reply(0x2CF7).with("result_number", Value::U32(found.len() as u32)), |m, o| {
             let [wins, losses, draws] = hub.totals(o.player_id);
+            let team = hub.teams.of(o.player_id);
             let entry = Message::record()
                 .with("player_id", Value::U32(o.player_id))
                 .with("pname", Value::text(&o.name))
                 .with("dlv", Value::U32(o.level))
                 .with("n_win", Value::U32(wins))
                 .with("n_lose", Value::U32(losses))
-                .with("n_draw", Value::U32(draws));
+                .with("n_draw", Value::U32(draws))
+                .with("team_id", Value::U32(team.map_or(0, |t| t.id)))
+                .with("team_name", Value::text(team.map_or("", |t| t.name.as_str())))
+                .with("team_authority", Value::U32(team.and_then(|t| t.authority(o.player_id)).unwrap_or(0)));
             m.item(hub.duel_fields(o.player_id, entry))
         })
     }
@@ -1344,10 +1518,10 @@ impl FrontSession {
         let refuse = |code: u32| vec![Message::reply(0x17B8).with("error_code", Value::U32(code))];
         let mut hub = self.hub();
         let Some(host) = hub.hosts.get(&duel_id).filter(|h| h.player_id != me.player_id) else { return refuse(NO_DUEL) };
-        // There are no teams yet: a team-only duel takes nobody.
+        let teammates = hub.teams.of(host.player_id).is_some_and(|t| t.member(me.player_id).is_some());
         match host.setting("party").and_then(Value::as_u32) {
             Some(FRIENDS_ONLY) if !hub.social.are_friends(host.player_id, me.player_id) => return refuse(REFUSED),
-            Some(TEAM_ONLY) => return refuse(REFUSED),
+            Some(TEAM_ONLY) if !teammates => return refuse(REFUSED),
             _ => {}
         }
         let Some(host) = hub.hosts.get_mut(&duel_id) else { return refuse(NO_DUEL) };
@@ -1414,6 +1588,7 @@ impl FrontSession {
     /// on 0x2456, so the sender gets the 0x2455 echo too. 0x2455 is read by ChatWindow 0x435950.
     fn chat(&self, msg: &Message) -> Vec<Message> {
         const ROOM_CHAT: u32 = 1;
+        const TEAM_CHAT: u32 = 3;
         let Some(id) = self.online else { return vec![Message::reply(0x2457)] };
         let body = msg.items.first().unwrap_or(msg);
         let chat_type = body.get("chat_type").and_then(Value::as_u32).unwrap_or(0);
@@ -1429,6 +1604,13 @@ impl FrontSession {
         let hub = self.hub();
         let delivered = match (chat_type, to_id, to_name) {
             (_, _, Some(name)) => hub.send_player(None, Some(&name), &push),
+            (TEAM_CHAT, Some(team), None) => match hub.teams.of(player.player_id).filter(|t| t.id == team) {
+                Some(t) => {
+                    hub.tell_team(&t.ids(), Some(player.player_id), &push);
+                    true
+                }
+                None => false,
+            },
             (ROOM_CHAT, Some(room), None) => {
                 let here = hub.room_of(id) == Some(room);
                 if here {
