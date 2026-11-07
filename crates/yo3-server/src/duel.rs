@@ -188,11 +188,13 @@ impl DuelSession {
                 vec![]
             }
             (Some(CLIENT_DUEL), Some(DIALOG_RESULT)) => {
-                let answer = int("DLGResult")
-                    .and_then(|n| self.engine.as_mut().and_then(|(_, t)| t.dialog_result(n)))
-                    .and_then(|r| self.engine.as_mut().map(|(e, _)| e.respond(r)));
-                match answer {
-                    Some(answer) => self.advance(answer),
+                match int("DLGResult").and_then(|n| self.engine.as_mut().and_then(|(_, t)| t.dialog_result(n))) {
+                    Some(Prompt::Answer(r)) => match self.engine.as_mut().map(|(e, _)| e.respond(r)) {
+                        Some(answer) => self.advance(answer),
+                        None => vec![],
+                    },
+                    // The next window of the same choice.
+                    Some(Prompt::Client(out)) => out,
                     None => vec![],
                 }
             }

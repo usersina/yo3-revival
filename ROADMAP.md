@@ -99,8 +99,8 @@ Stop finding missing fields one crash at a time.
 - [x] Translator, first part: the engine drives the duel session; its draws, turns and phases become engine commands,
       the client's idle prompt a command map of the legal commands, the client's card commands its responses; the CPU
       ends its turns at once (a placeholder bot) and other prompts are answered with defaults
-- [x] Card moves: the engine's MOVE becomes a card-table entry plus `0x1A`; place and position prompts are answered for
-      the client (first free zone, face-up attack). Live: a Normal Summon from the hand
+- [x] Card moves: the engine's MOVE becomes a card-table entry plus `0x1A`; place prompts are answered for the client
+      (first free zone). Live: a Normal Summon from the hand
 - [x] Phase buttons: Main Phase prompts enable BP and EP as the engine allows (command 4 mode 2 + other flags); a
       pressed button ends the phase. Live: summon, EP, the CPU's turn, our Turn 3 with BP and EP lit
 - [x] Battle: the battle prompt offers the attackers (Attack) and M2/EP; damage, costs and recovery change the LP
@@ -119,8 +119,14 @@ Stop finding missing fields one crash at a time.
       (command `0x37` and its data commands) with a message from the client's duel prompts. Live: an attack target
 - [x] Yes/no and effect questions: the Yes/No dialog (command `0x36` kind 2) with the card's name. Live: Marauding
       Captain's optional effect, then its Special Summon choice. Testing aid `--duel-deck ROWS`
-- [ ] The client's other choices: options, positions, chains (dialog command `0x36`; answered for the player now)
-- [ ] Translator: attack and summon animations (DuelBattle `0xA`–`0xE`, DuelSummon `0x2A`–`0x32`), position changes,
+- [x] Positions, options and chains: the position dialog (kind 8), the option list (kind 4) for options the client has
+      labels for (coin calls, card types), and the chain question (kind 3, with the cards) then the card list. Live:
+      Marauding Captain's Special Summon in Defence, Time Wizard's coin call, two Trap Holes chained to the CPU's summon
+- [ ] Options that are a card's own strings (51 of the client's cards; the prompt table's 400–490 are the original
+      per-card labels, but EDOPro's strings don't pair with them reliably), places, number/race/attribute declarations
+      (the Number, Type and Attribute dialogs); chains outside timely chances (EDOPro's "always chain")
+- [ ] Translator: attack, summon and chain animations (DuelBattle `0xA`–`0xE`, DuelSummon `0x2A`–`0x32`, DuelChain
+      `0x33`/`0x34`: an activated Set card stays face-down), position changes,
       stat changes from effects (engine queries); attack targets on the field instead of the list
 - [ ] Deck piles on the field (the deck count alone shows none)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
@@ -172,6 +178,9 @@ Stop finding missing fields one crash at a time.
 | Choice messages | EDOPro's hint mapped to the client's text for 7 hints; none otherwise | The original server's message per choice is unknown |
 | Yes/no questions | 'Activate the effect of "X"?' for optional effects, 'Use the effect of "X"?' for other questions | The cards' own question strings (EDOPro's) aren't in the client |
 | Attack targets | chosen in the card list | The original probably picked them on the field (DuelBattle) |
+| Position dialog | button 0 face-up attack (face-down if only that), button 1 face-up defense when allowed, else face-down; the flag shows the face-up defense picture | The dialog has two buttons; ocgcore allows any mix of four positions |
+| Option labels | EDOPro's system strings 60/61 and 70–72 mapped to the client's labels; a card's own strings take the first option | The original server's label per card option is unknown |
+| Chain chances | asked only when `spe_count` > 0 or forced, at level 4 (always shown); messages 7/8 (Spell/Trap zone)/269 | The `invoke_conf` option and the levels below 4 are not followed; the original server's levels are unknown |
 | Rules | EDOPro's `MODE_MR2` | Online 3 (2010) ran Master Rule 2; EDOPro's preset may differ in details |
 | CPU play | first summonable monster, attack with all, never chain | The original NPCs' AI is unknown |
 | Duel end reason | EDOPro's reason mapped to the client's texts (LP 0, deck out, surrender, Exodia...; others "won with a card") | The original server's values are unknown (100 takes another path) |

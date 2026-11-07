@@ -45,6 +45,8 @@ const MSG_DRAW: u64 = 90;
 const MSG_DAMAGE: u64 = 91;
 const MSG_RECOVER: u64 = 92;
 const MSG_LPUPDATE: u64 = 94;
+const MSG_CHAINING: u64 = 70;
+const MSG_CHAIN_END: u64 = 74;
 const MSG_PAY_LPCOST: u64 = 100;
 /// ocgcore response types (OcgResponseType) and actions.
 const RESP_BATTLECMD: u64 = 0;
@@ -76,6 +78,11 @@ const BATTLE_TO_EP: u64 = 3;
 /// MSG_HINT's hint_type for "what the next selection is for" (HINTMSG_* in the card scripts' constant.lua).
 const HINT_SELECTMSG: u64 = 3;
 const HINTMSG_RELEASE: u64 = 500;
+/// ocgcore positions.
+const POS_FACEUP_ATTACK: u64 = 1;
+const POS_FACEDOWN_ATTACK: u64 = 2;
+const POS_FACEUP_DEFENSE: u64 = 4;
+const POS_FACEDOWN_DEFENSE: u64 = 8;
 /// ocgcore locations.
 const LOC_DECK: u64 = 1;
 const LOC_HAND: u64 = 2;
@@ -99,6 +106,7 @@ const FIELD_SPELL: u32 = 10;
 /// time, and a message of 0x3EC {entries} and 0x3ED {entry, ...} (built by 0x519870).
 const CARD_LIST: u32 = 0x37;
 const LIST_BEGIN: u32 = 0x3EF;
+const LIST_VALUES: u32 = 0x3F0;
 const LIST_ROWS: u32 = 0x3F2;
 const LIST_MARKS: u32 = 0x3F3;
 const MESSAGE_LENGTH: u32 = 0x3EC;
@@ -119,11 +127,39 @@ const TRIBUTE_TEXT: u32 = 18;
 const ACTIVATE_TEXT: u32 = 250;
 const USE_TEXT: u32 = 226;
 const USE_NOW_TEXT: u32 = 270;
+/// 'Select position for "@3%s@0".'
+const POSITION_TEXT: u32 = 327;
+/// 'The effect of "@3%s@0" is @3activated@0. @3Chain@0 another card or effect?', '"@3%s@0" is @3activated@0. ...' and,
+/// outside a chain, "@3Activate@0 the effect of a @3card@0?"; then "Select effect to @3activate@0.".
+const CHAIN_EFFECT_TEXT: u32 = 7;
+const CHAIN_CARD_TEXT: u32 = 8;
+const ACTIVATE_CARD_TEXT: u32 = 269;
+const SELECT_EFFECT_TEXT: u32 = 276;
+/// Option labels of the duel prompt table for EDOPro's system strings, with the list's title: SELECT_HEADS/TAILS (60,
+/// 61) "Heads", "Tails" under "Coin Toss Selection:"; DECLTYPE_MONSTER/SPELL/TRAP (70-72) "Monster Cards", "Spell
+/// Cards", "Trap Cards" under "Select @3card@0 type.".
+const OPTION_LABELS: [(u64, u32, u32); 5] =
+    [(60, 400, 56), (61, 401, 56), (70, 440, 260), (71, 441, 260), (72, 442, 260)];
 /// Dialog command {kind, message, _} (DuelScene 0x514C0C, factory 0x4C8CD0) and its Yes/No kind (buttons 0 "No", 1
 /// "Yes"); message 1 = from the message entries.
 const DIALOG: u32 = 0x36;
 const YES_NO: u32 = 2;
 const FROM_ENTRIES: u32 = 1;
+/// The chain question {_, message, level} (DuelEffectDialog 0x4C5120): buttons as Yes/No's, with the list's rows
+/// (dlg_yesno_card.swf, at most five) when 0x3EF's param3 is 0xFF (0x4C51A0). Level 4 shows it whatever the player's
+/// "invoke_conf" duel option (0x4C5560); unshown it answers No.
+const EFFECT: u32 = 3;
+const WITH_CARDS: u32 = 0xFF;
+const ALWAYS_ASK: u32 = 4;
+/// The option list (DuelSelectDialog 0x4C5750): the 0x3F0 values up to 0x3EF's count, each a duel prompt text listed
+/// with bit 15, at most four (0x4C5880); DLGResult the value's index (0x4C5B20).
+const SELECT: u32 = 4;
+const LISTED: u32 = 0x8000;
+const SELECT_MAX: usize = 4;
+/// The position dialog {_, message, uid | face-up defense << 16} (DuelSelectStandDialog 0x4C5E50, dlg_selstand.swf):
+/// button 0 attack, 1 defense, face-down unless the flag is set.
+const POSITION: u32 = 8;
+const FACE_UP_DEFENSE: u32 = 1 << 16;
 /// Duel end {result for this client: 1 won, 2 lost, 3 draw; reason} (DuelScene 0x514290).
 const DUEL_END: u32 = 2;
 const WON: u32 = 1;
@@ -200,8 +236,12 @@ pub struct Translator {
     cards: HashMap<u16, CardStats>,
     turn_player: u32,
     turns: u32,
-    /// The client's pending prompt (idle or battle command, card choice).
+    /// The client's pending prompt (idle or battle command, card choice, question), and whether its chain chance shows
+    /// the card list (after Yes).
     pending: Option<Json>,
+    chain_list: bool,
+    /// The chain's last link (MSG_CHAINING) until the chain ends.
+    chaining: Option<Json>,
     /// The last selection hint (HINTMSG_*) and the client's picks in the card list so far.
     hint: u64,
     picks: Vec<usize>,
@@ -223,7 +263,19 @@ impl Translator {
                 out.push(command(CARD, [uid, row as u32, 0, table_place(p as u32, DECK, i)]));
             }
         }
-        let t = Translator { first, sides, cards, turn_player: first, turns: 0, pending: None, hint: 0, picks: vec![], result: None };
+        let t = Translator {
+            first,
+            sides,
+            cards,
+            turn_player: first,
+            turns: 0,
+            pending: None,
+            chain_list: false,
+            chaining: None,
+            hint: 0,
+            picks: vec![],
+            result: None,
+        };
         (t, out)
     }
 
@@ -265,6 +317,8 @@ impl Translator {
                 Some(MSG_HINT) if m["hint_type"].as_u64() == Some(HINT_SELECTMSG) => {
                     self.hint = m["hint"].as_u64().unwrap_or(0);
                 }
+                Some(MSG_CHAINING) => self.chaining = Some(m.clone()),
+                Some(MSG_CHAIN_END) => self.chaining = None,
                 Some(MSG_WIN) => {
                     let result = match m["player"].as_u64() {
                         Some(TEAM_DRAW) => DRAW,
@@ -414,9 +468,74 @@ impl Translator {
                 self.picks.clear();
                 Prompt::Client(out)
             }
-            // No window for these yet: never chain, end the battle (temporary).
+            MSG_SELECT_POSITION => match self.position_dialog(m) {
+                Some(out) => {
+                    self.pending = Some(m.clone());
+                    Prompt::Client(out)
+                }
+                None => Prompt::Answer(cpu_answer(kind, m)),
+            },
+            MSG_SELECT_OPTION => match option_list(m) {
+                Some(out) => {
+                    self.pending = Some(m.clone());
+                    Prompt::Client(out)
+                }
+                None => Prompt::Answer(cpu_answer(kind, m)),
+            },
+            MSG_SELECT_CHAIN => self.chain_chance(m),
+            // No window for these yet.
             _ => Prompt::Answer(cpu_answer(kind, m)),
         }
+    }
+
+    /// The position dialog for MSG_SELECT_POSITION {cid, positions}, with the card's image (any uid with its id) and
+    /// name. None without an attack position: the first button is always attack.
+    fn position_dialog(&self, m: &Json) -> Option<Vec<Message>> {
+        let allowed = m["positions"].as_u64().unwrap_or(0);
+        if allowed & (POS_FACEUP_ATTACK | POS_FACEDOWN_ATTACK) == 0 {
+            return None;
+        }
+        let cid = m["cid"].as_u64().unwrap_or(0) as u16;
+        let has_cid = |c: &&Card| self.cards.get(&c.row).map(|s| s.cid) == Some(cid);
+        let uid = self.sides.iter().flat_map(|s| s.zones.values().flatten()).find(has_cid);
+        let face_up = if allowed & POS_FACEUP_DEFENSE != 0 { FACE_UP_DEFENSE } else { 0 };
+        let mut out = message(&[TEXT | POSITION_TEXT, CARD_NAME | cid as u32]);
+        out.push(command(DIALOG, [POSITION, FROM_ENTRIES, uid.map_or(0, |c| c.uid) | face_up, 0]));
+        Some(out)
+    }
+
+    /// MSG_SELECT_CHAIN {spe_count, forced, selects}: asked, as EDOPro's own client does, only when a card fits the
+    /// timing or the chain is forced. The question shows the cards and names the chain's last link; a forced chain of
+    /// several goes straight to the card list, of one needs no choice.
+    fn chain_chance(&mut self, m: &Json) -> Prompt {
+        let selects = m["selects"].as_array().map_or(&[][..], Vec::as_slice);
+        let forced = m["forced"] == true;
+        if selects.is_empty() || !forced && m["spe_count"].as_u64().unwrap_or(0) == 0 {
+            return Prompt::Answer(json!({ "type": RESP_CHAIN, "index": null }));
+        }
+        if forced && selects.len() == 1 {
+            return Prompt::Answer(json!({ "type": RESP_CHAIN, "index": 0 }));
+        }
+        self.pending = Some(m.clone());
+        self.picks.clear();
+        self.chain_list = forced;
+        if forced {
+            return Prompt::Client(self.card_list(m, Some(SELECT_EFFECT_TEXT)));
+        }
+        let rows: Vec<u32> = selects.iter().map(|loc| self.row_of(loc) as u32).collect();
+        let mut out = vec![command(LIST_BEGIN, [rows.len() as u32, 0, WITH_CARDS, 0])];
+        out.extend(fours(LIST_ROWS, &rows));
+        let entries = match &self.chaining {
+            Some(link) => {
+                let spell_trap = link["location"].as_u64() == Some(LOC_SZONE);
+                let text = if spell_trap { CHAIN_CARD_TEXT } else { CHAIN_EFFECT_TEXT };
+                vec![TEXT | text, CARD_NAME | link["cid"].as_u64().unwrap_or(0) as u32]
+            }
+            None => vec![TEXT | ACTIVATE_CARD_TEXT],
+        };
+        out.extend(message(&entries));
+        out.push(command(DIALOG, [EFFECT, FROM_ENTRIES, ALWAYS_ASK, 0]));
+        Prompt::Client(out)
     }
 
     /// The card list for a card choice: its rows and marks, the message, then the dialog. The kind gives the picks OK
@@ -432,13 +551,8 @@ impl Translator {
         let rows: Vec<u32> = selects.iter().map(|loc| self.row_of(loc) as u32).collect();
         let marks: Vec<u32> = selects.iter().map(|loc| if self.player(&loc["controller"]) == CPU { OPPONENTS } else { 0 }).collect();
         let mut out = vec![command(LIST_BEGIN, [selects.len() as u32, max, 0, 0])];
-        for (id, values) in [(LIST_ROWS, rows), (LIST_MARKS, marks)] {
-            for four in values.chunks(4) {
-                let mut params = [0; 4];
-                params[..four.len()].copy_from_slice(four);
-                out.push(command(id, params));
-            }
-        }
+        out.extend(fours(LIST_ROWS, &rows));
+        out.extend(fours(LIST_MARKS, &marks));
         if let Some(text) = text {
             out.extend(message(&[TEXT | text]));
         }
@@ -463,35 +577,84 @@ impl Translator {
         self.picks.push(index as usize);
     }
 
-    /// A dialog closed (duelRequestName 4 {DLGResult}): the engine response for the pending question (the button:
-    /// 1 yes) or card choice (`count` picks). No pick cancels when the engine allows it; picks that don't fit the
-    /// choice get the default.
-    pub fn dialog_result(&mut self, count: u32) -> Option<Json> {
-        let kind = self.pending.as_ref()?["type"].as_u64();
-        let response = match kind {
-            Some(MSG_SELECT_CARD) => RESP_CARD,
-            Some(MSG_SELECT_TRIBUTE) => RESP_TRIBUTE,
-            Some(question @ (MSG_SELECT_EFFECTYN | MSG_SELECT_YESNO)) => {
-                self.pending = None;
-                let response = if question == MSG_SELECT_EFFECTYN { RESP_EFFECTYN } else { RESP_YESNO };
-                return Some(json!({ "type": response, "yes": count == 1 }));
-            }
-            _ => return None,
-        };
+    /// A dialog closed (duelRequestName 4 {DLGResult}): the engine response for the pending question (the button: 1
+    /// yes, 0 attack / 1 defense), option (its index) or card choice (`count` picks), or for a chain chance's Yes with
+    /// several cards, the card list. No pick cancels when the engine allows it; picks that don't fit the choice get
+    /// the default.
+    pub fn dialog_result(&mut self, count: u32) -> Option<Prompt> {
+        let kind = self.pending.as_ref()?["type"].as_u64()?;
+        const DIALOGS: [u64; 7] = [
+            MSG_SELECT_CARD,
+            MSG_SELECT_TRIBUTE,
+            MSG_SELECT_EFFECTYN,
+            MSG_SELECT_YESNO,
+            MSG_SELECT_POSITION,
+            MSG_SELECT_OPTION,
+            MSG_SELECT_CHAIN,
+        ];
+        if !DIALOGS.contains(&kind) {
+            return None;
+        }
         let m = self.pending.take()?;
+        let selects = m["selects"].as_array().map_or(0, Vec::len);
+        let answer = match kind {
+            MSG_SELECT_EFFECTYN => json!({ "type": RESP_EFFECTYN, "yes": count == 1 }),
+            MSG_SELECT_YESNO => json!({ "type": RESP_YESNO, "yes": count == 1 }),
+            MSG_SELECT_POSITION => {
+                let allowed = m["positions"].as_u64().unwrap_or(0);
+                let position = match count {
+                    0 if allowed & POS_FACEUP_ATTACK != 0 => POS_FACEUP_ATTACK,
+                    0 => POS_FACEDOWN_ATTACK,
+                    _ if allowed & POS_FACEUP_DEFENSE != 0 => POS_FACEUP_DEFENSE,
+                    _ => POS_FACEDOWN_DEFENSE,
+                };
+                match allowed & position {
+                    0 => cpu_answer(kind, &m),
+                    _ => json!({ "type": RESP_POSITION, "position": position }),
+                }
+            }
+            MSG_SELECT_OPTION if (count as usize) < m["options"].as_array().map_or(0, Vec::len) => {
+                json!({ "type": RESP_OPTION, "index": count })
+            }
+            MSG_SELECT_CHAIN if !self.chain_list && count == 1 && selects > 1 => {
+                self.chain_list = true;
+                self.picks.clear();
+                let out = self.card_list(&m, Some(SELECT_EFFECT_TEXT));
+                self.pending = Some(m);
+                return Some(Prompt::Client(out));
+            }
+            MSG_SELECT_CHAIN if !self.chain_list => {
+                let index = if count == 1 { json!(0) } else { Json::Null };
+                json!({ "type": RESP_CHAIN, "index": index })
+            }
+            MSG_SELECT_CHAIN => match std::mem::take(&mut self.picks)[..] {
+                [index] if index < selects => json!({ "type": RESP_CHAIN, "index": index }),
+                _ if m["forced"] == true => cpu_answer(kind, &m),
+                _ => json!({ "type": RESP_CHAIN, "index": null }),
+            },
+            MSG_SELECT_CARD | MSG_SELECT_TRIBUTE => self.card_choice(&m, count),
+            _ => cpu_answer(kind, &m),
+        };
+        Some(Prompt::Answer(answer))
+    }
+
+    /// The response for a closed card list of MSG_SELECT_CARD or MSG_SELECT_TRIBUTE.
+    fn card_choice(&mut self, m: &Json, count: u32) -> Json {
+        let kind = m["type"].as_u64().unwrap_or(0);
+        let response = if kind == MSG_SELECT_TRIBUTE { RESP_TRIBUTE } else { RESP_CARD };
         let picks = std::mem::take(&mut self.picks);
         let len = m["selects"].as_array().map_or(0, Vec::len);
         let (min, max) = (m["min"].as_u64().unwrap_or(1) as usize, m["max"].as_u64().unwrap_or(1) as usize);
         if count == 0 && picks.is_empty() && m["can_cancel"] == true {
-            return Some(json!({ "type": response, "indicies": null }));
+            return json!({ "type": response, "indicies": null });
         }
         let mut seen = vec![];
         let fits = picks.iter().all(|&i| i < len && !seen.contains(&i) && { seen.push(i); true });
         if fits && (min..=max).contains(&picks.len()) {
-            return Some(json!({ "type": response, "indicies": picks }));
+            return json!({ "type": response, "indicies": picks });
         }
         tracing::warn!("card list: picks {picks:?} don't fit min {min} max {max} of {len}");
-        Some(cpu_answer(kind.unwrap_or(0), &m))
+        cpu_answer(kind, m)
     }
 
     /// The command map of a prompt: each listed card's place and menu bits.
@@ -558,6 +721,33 @@ impl Translator {
         }
         None
     }
+}
+
+/// A data command per four values, which the pop appends in order (0x522A50).
+fn fours(id: u32, values: &[u32]) -> Vec<Message> {
+    let command_of = |four: &[u32]| {
+        let mut params = [0; 4];
+        params[..four.len()].copy_from_slice(four);
+        command(id, params)
+    };
+    values.chunks(4).map(command_of).collect()
+}
+
+/// The option list for MSG_SELECT_OPTION {options}, when the client has a label for every option (at most four).
+/// A card's own strings (code << 4 | n) have none.
+fn option_list(m: &Json) -> Option<Vec<Message>> {
+    let options = m["options"].as_array()?;
+    let found: Option<Vec<(u32, u32)>> = options
+        .iter()
+        .map(|o| OPTION_LABELS.iter().find(|(d, _, _)| o.as_u64() == Some(*d)).map(|&(_, label, title)| (label, title)))
+        .collect();
+    let found = found.filter(|f| !f.is_empty() && f.len() <= SELECT_MAX)?;
+    let labels: Vec<u32> = found.iter().map(|(label, _)| label | LISTED).collect();
+    let mut out = vec![command(LIST_BEGIN, [labels.len() as u32, 0, 0, 0])];
+    out.extend(fours(LIST_VALUES, &labels));
+    out.extend(message(&[TEXT | found[0].1]));
+    out.push(command(DIALOG, [SELECT, FROM_ENTRIES, 0, 0]));
+    Some(out)
 }
 
 /// The message entries (at most four) a dialog shows: 0x3EC {count}, 0x3ED {entries}.

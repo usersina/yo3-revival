@@ -331,8 +331,8 @@ Phase 1 highlights only the legal cards, and a monster's menu reads Summon / Set
 Card moves (`MSG_MOVE`) become a card-table entry plus `0x1A`, with move places `player | zone<<1 | index<<6`, face up
 bit 14 and defence bit 15 on field slots (`0x5000E0`); field slots are zones 0–4 (monsters), 5–9 (Spell/Trap) and 10
 (Field Spell) at index 0, then hand `0xB`, extra `0xC`, deck `0xD`, graveyard `0xE`, banished `0xF`. Cards behind a
-removed list card get their table entry again. The client has no window for ocgcore's place and position prompts, so
-the server takes the first free zone and face-up attack when allowed. Live: Summon from the hand put the monster in the
+removed list card get their table entry again. The client has no window for ocgcore's place prompt, so the server
+takes the first free zone (positions: see Choices). Live: Summon from the hand put the monster in the
 first monster zone, the hand closed up, and the next prompt offered only the Spell card.
 
 A monster's field label and card info read a 9-value record per place (`0x523F00`, key `player | zone<<8`; the info
@@ -358,11 +358,22 @@ no animation yet (DuelBattle's commands `0xA`–`0xE` are unmapped).
   Online 2's notes give the same kinds. Yes/No (`DuelYesNoDialog`, `0x4C4FB0`, `dlg_yesno.swf`): param2 is its
   message (1 = the message entries below, else a duel prompt text by id), buttons 0 "No" (UI text `0x2775`) and 1
   "Yes" (`0x2774`); `DLGResult` is the pressed button (`0x4C50F0`).
+- Effect (`DuelEffectDialog`, `0x4C5120`): the same Yes/No with param2 as its message, as `dlg_yesno_card.swf` showing
+  the list's `0x3F2` rows (at most five) when `0x3EF`'s third value is `0xFF`, else `dlg_yesno.swf` (`0x4C51A0`).
+  param3 is a level: 4 or more always shows it; below, the player's duel option `invoke_conf` and two flags of the
+  game object (`+0x770`, meaning open) decide (`0x4C5560`); unshown, it answers `DLGResult 0` at once.
+- Select (`DuelSelectDialog`, `0x4C5750`, `dlg_select.swf`): a list of the `0x3F0` values up to `0x3EF`'s count
+  (`0x4C5880`): the low 14 bits a duel prompt text, listed when bit 15 is set; four labels at most. param2 is the title.
+  `DLGResult` is the chosen value's index (`0x4C5B20`).
+- Position (`DuelSelectStandDialog`, `0x4C5E50`, `dlg_selstand.swf`): param3 is a card uid (low 16 bits), whose
+  CARD_Prop row from the card table (`0x5220B0`) shows on both buttons, and a flag (bit 16): button 0 is "head_atk",
+  button 1 "head_def" with the flag, else "tail_def" (the card's back). param2 is the message. `DLGResult` is the button.
 - `0x37 {player, kind, message}` (`0x514CCB`) opens the card list (`DuelCardListDialog`, `0x4C72D0`; kinds `0x4C`–`0x4F`
   the extended one, `0x5131E0`), `dlg_cardlist.swf`. It shows the list the data commands left in the engine state
   (pop `0x522A50`): `0x3EF {count, max picks, _}` (`+0x2A8`, `+0x9B8`; max 0 = view only) resets the lists, `0x3F2`
   gives CARD_Prop rows four at a time (`+0x9BC`, read by getCardInfo `0x4C78A0`), `0x3F3` a mark per card four at a
-  time (`+0xE6C`: bit 15 the opponent's card, low bits icons whose meaning is open). The kind sets how many picks
+  time (`+0xE6C`: bit 15 the opponent's card, low bits icons whose meaning is open); `0x3F0` gives u32 values four at a
+  time (`+0x2B0`, low 31 bits kept). The kind sets how many picks
   OK needs (`0x4C72D0`): 1–5, `0x48`, `0x4B` none; 6–`0x26` all of max; `0x27`–`0x47`, `0x4A` one. A non-zero message
   builds the dialog's text from `0x3EC {entries}` and `0x3ED {entry ×4}` (`0x519870`); an entry is kind << 28 | value:
   1 a text of the duel prompt table, 2 a line break, 5 a card name by Konami id (`0x5374B0`) put into the text's
@@ -384,7 +395,34 @@ sidecar adds `description_cid` for a description `code << 4 | n`), else "Use the
 original questions are the card scripts' own strings). `DLGResult` 1 answers yes. Live (`--duel-deck 1149,1449`):
 summoning Marauding Captain asked 'Activate the effect of "Marauding Captain"?'; Yes sent `DLGResult 1`, the card list
 followed with "Select the monster(s) to Special Summon." and the hand's monsters, and the picked Giant Orc was Special
-Summoned. Options, positions, chains and places are still answered for the player.
+Summoned.
+
+Positions: the client's MSG_SELECT_POSITION {code, positions} opens the position dialog with 'Select position for
+"%s".' (327), any uid holding the card's id, and the flag when face-up defense is allowed; button 0 answers face-up
+attack (else face-down attack), button 1 face-up defense (else face-down). Without an attack position the first
+allowed one is taken. Live (`--duel-deck 1149,1151`): Marauding Captain's Special Summon asked for Warrior Dai
+Grepher's position with the card upright and sideways; Defence sent `DLGResult 1` and the card moved face-up in
+defense (`0x1A` to `0xC004`).
+
+Options: MSG_SELECT_OPTION {options} opens the Select dialog when the client has a label for every option. EDOPro's
+system strings with one: SELECT_HEADS/TAILS 60/61 → "Heads"/"Tails" (400/401) under "Coin Toss Selection:" (56), and
+DECLTYPE_MONSTER/SPELL/TRAP 70–72 → "Monster Cards", "Spell Cards", "Trap Cards" (440–442) under "Select card type."
+(260). Options that are a card's own strings (`code << 4 | n`; 51 of the client's cards) have no text on the client
+(the prompt table's 400–490 are the original server's per-card labels), so the first is taken. Live (Time Wizard):
+"Coin Toss Selection:" listed Heads and Tails; Tails sent `DLGResult 1`, the coin came up heads, and Time Wizard was
+destroyed with 250 LP lost.
+
+Chains: the client's MSG_SELECT_CHAIN {spe_count, forced, selects} is asked, as EDOPro's own client does, only when a
+card fits the timing (`spe_count` > 0) or the chain is forced; otherwise no chain. The question is the Effect dialog
+at level 4 (**guess**: it skips the player's `invoke_conf` option) with the cards that may chain, and names the chain's
+last link (MSG_CHAINING, until CHAIN_END): 'The effect of "%s" is activated. Chain another card or effect?' (7), '"%s"
+is activated. ...' (8) for a card in the Spell/Trap zone (**guess**), else "Activate the effect of a card?" (269). No
+answers no chain; Yes chains the only card, or opens the card list (one pick) with "Select effect to activate." (276),
+where no pick is no chain. A forced chain of several goes straight to the list; of one needs no choice. Live (two Set
+Trap Holes, the CPU's summon): the question showed both cards; Yes opened the list, the second pick activated it, the
+next chance read '"Trap Hole" is activated. Chain another card or effect?', and No resolved it, destroying the CPU's
+monster. The activation itself has no animation yet (DuelChain `0x33`/`0x34` are unmapped). Places are still answered
+for the player.
 
 The duel's end: ocgcore's WIN {winning team, reason} becomes command 2 {result, reason}. DuelScene keeps the result at
 MainGamen `+0x81C` and its 1 ↔ 2 swap as the opponent's, and adds a DuelEndEffect (`0x5083A0`) that plays

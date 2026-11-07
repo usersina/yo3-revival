@@ -128,7 +128,8 @@ fn a_summon_moves_the_card_from_the_hand_to_its_zone() {
 #[test]
 fn place_and_position_prompts_are_answered_for_the_player() {
     // MSG_SELECT_PLACE (18): the client has no window for it; the first free own zone is taken (field_mask bits
-    // set = unavailable: monster zones 0-4, Spell/Trap 8-12). MSG_SELECT_POSITION (19): face-up attack if allowed.
+    // set = unavailable: monster zones 0-4, Spell/Trap 8-12). MSG_SELECT_POSITION (19) without an attack position
+    // (the position dialog's first button is always attack): the first allowed one, here face-up defense.
     let (mut t, _) = translator();
     let place = json!({ "type": 18, "player": 0, "count": 1, "field_mask": 0xFFFF_E0FFu32 });
     let spell = json!({ "type": 10, "places": [{ "player": 0, "location": 8, "sequence": 0 }] });
@@ -136,7 +137,10 @@ fn place_and_position_prompts_are_answered_for_the_player() {
     let place = json!({ "type": 18, "player": 0, "count": 1, "field_mask": 0xFFFF_FFE2u32 });
     let monster = json!({ "type": 10, "places": [{ "player": 0, "location": 4, "sequence": 0 }] });
     assert_eq!(t.prompt(&place), Prompt::Answer(monster));
-    let position = json!({ "type": 19, "player": 0, "code": 1, "positions": 5 });
+    let position = json!({ "type": 19, "player": 0, "code": 1, "positions": 12 });
+    assert_eq!(t.prompt(&position), Prompt::Answer(json!({ "type": 11, "position": 4 })));
+    // The CPU takes face-up attack when allowed.
+    let position = json!({ "type": 19, "player": 1, "code": 1, "positions": 5 });
     assert_eq!(t.prompt(&position), Prompt::Answer(json!({ "type": 11, "position": 1 })));
 }
 
@@ -311,7 +315,7 @@ fn the_picks_answer_the_engine_when_the_list_closes() {
         "selects": [card_at(0, 2, 1, 4101), card_at(1, 4, 1, 4200)] });
     t.prompt(&select);
     t.pick(1);
-    assert_eq!(t.dialog_result(1), Some(json!({ "type": 5, "indicies": [1] })));
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 5, "indicies": [1] }))));
     // Nothing is pending any more.
     assert_eq!(t.dialog_result(1), None);
 }
@@ -329,7 +333,7 @@ fn tributes_use_the_card_list_too() {
     assert_eq!(out[5], (0x37, [0, 6, 1, 0]));
     t.pick(1);
     t.pick(0);
-    assert_eq!(t.dialog_result(2), Some(json!({ "type": 12, "indicies": [1, 0] })));
+    assert_eq!(t.dialog_result(2), Some(Prompt::Answer(json!({ "type": 12, "indicies": [1, 0] }))));
 }
 
 #[test]
@@ -342,11 +346,11 @@ fn a_cancelled_or_optional_choice() {
     let out = client_commands(t.prompt(&optional));
     assert_eq!(out.last(), Some(&(0x37, [0, 1, 0, 0])));
     assert!(!out.iter().any(|(id, _)| *id == 0x3ED));
-    assert_eq!(t.dialog_result(0), Some(json!({ "type": 5, "indicies": [] })));
+    assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 5, "indicies": [] }))));
     let cancelable = json!({ "type": 15, "player": 0, "can_cancel": true, "min": 1, "max": 1,
         "selects": [card_at(0, 2, 0, 4100)] });
     t.prompt(&cancelable);
-    assert_eq!(t.dialog_result(0), Some(json!({ "type": 5, "indicies": null })));
+    assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 5, "indicies": null }))));
 }
 
 #[test]
@@ -373,9 +377,9 @@ fn an_effect_question_opens_the_yes_no_dialog() {
         client_commands(t.prompt(&effect)),
         [(0x3EC, [2, 0, 0, 0]), (0x3ED, [1 << 28 | 250, 5 << 28 | 4100, 0, 0]), (0x36, [2, 1, 0, 0])]
     );
-    assert_eq!(t.dialog_result(1), Some(json!({ "type": 2, "yes": true })));
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 2, "yes": true }))));
     t.prompt(&effect);
-    assert_eq!(t.dialog_result(0), Some(json!({ "type": 2, "yes": false })));
+    assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 2, "yes": false }))));
 }
 
 #[test]
@@ -386,8 +390,138 @@ fn a_yes_no_question_names_its_card() {
     let mut t = with_cards();
     let named = json!({ "type": 13, "player": 0, "description": 65601, "description_cid": 4101 });
     assert_eq!(client_commands(t.prompt(&named))[1], (0x3ED, [1 << 28 | 226, 5 << 28 | 4101, 0, 0]));
-    assert_eq!(t.dialog_result(1), Some(json!({ "type": 3, "yes": true })));
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 3, "yes": true }))));
     let plain = json!({ "type": 13, "player": 0, "description": 30 });
     assert_eq!(client_commands(t.prompt(&plain))[..2], [(0x3EC, [1, 0, 0, 0]), (0x3ED, [1 << 28 | 270, 0, 0, 0])]);
-    assert_eq!(t.dialog_result(0), Some(json!({ "type": 3, "yes": false })));
+    assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 3, "yes": false }))));
+}
+
+#[test]
+fn a_position_choice_opens_the_position_dialog() {
+    // MSG_SELECT_POSITION (19) {code, positions: 1 face-up attack, 2 face-down attack, 4 face-up defense, 8 face-down
+    // defense}: dialog command 0x36 {kind 8, message, uid | face-up defense << 16} (factory 0x4C8CD0 →
+    // DuelSelectStandDialog 0x4C5E50: the uid's CARD_Prop row from the card table shows on both buttons;
+    // dlg_selstand.swf: button 0 "head_atk", button 1 "head_def" with the flag, else "tail_def"). Message: 327 'Select
+    // position for "%s".'. DLGResult = the button (0x4C29D0, 0x4C6410).
+    let mut t = with_cards();
+    let position = json!({ "type": 19, "player": 0, "code": 4101, "cid": 4101, "positions": 5 });
+    assert_eq!(
+        client_commands(t.prompt(&position)),
+        [(0x3EC, [2, 0, 0, 0]), (0x3ED, [1 << 28 | 327, 5 << 28 | 4101, 0, 0]), (0x36, [8, 1, 2 | 1 << 16, 0])]
+    );
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 11, "position": 4 }))));
+    t.prompt(&position);
+    assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 11, "position": 1 }))));
+    // Face-up attack or face-down defense: the defense button shows the card's back.
+    let set = json!({ "type": 19, "player": 0, "code": 4101, "cid": 4101, "positions": 9 });
+    assert_eq!(client_commands(t.prompt(&set))[2], (0x36, [8, 1, 2, 0]));
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 11, "position": 8 }))));
+}
+
+#[test]
+fn an_option_the_client_has_labels_for_opens_the_select_dialog() {
+    // MSG_SELECT_OPTION (14) {options: descriptions}: dialog command 0x36 {kind 4} (DuelSelectDialog 0x4C5750,
+    // dlg_select.swf) lists the 0x3F0 values (four per command, 0x522A50) up to 0x3EF's count (0x4C5880): a text of the
+    // duel prompt table in the low 14 bits, listed when bit 15 is set, at most four. DLGResult = the chosen value's
+    // index (0x4C5B20). EDOPro's SELECT_HEADS/TAILS (60/61) are the client's "Heads"/"Tails" (400/401), titled "Coin
+    // Toss Selection:" (56).
+    let mut t = with_cards();
+    let coin = json!({ "type": 14, "player": 0, "options": [60, 61] });
+    assert_eq!(
+        client_commands(t.prompt(&coin)),
+        [
+            (0x3EF, [2, 0, 0, 0]),
+            (0x3F0, [0x8000 | 400, 0x8000 | 401, 0, 0]),
+            (0x3EC, [1, 0, 0, 0]),
+            (0x3ED, [1 << 28 | 56, 0, 0, 0]),
+            (0x36, [4, 1, 0, 0]),
+        ]
+    );
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 4, "index": 1 }))));
+    // DECLTYPE_MONSTER/SPELL/TRAP (70-72): "Monster Cards", "Spell Cards", "Trap Cards" (440-442), "Select card type."
+    // (260).
+    let types = json!({ "type": 14, "player": 0, "options": [70, 71, 72] });
+    let out = client_commands(t.prompt(&types));
+    assert_eq!(out[1], (0x3F0, [0x8000 | 440, 0x8000 | 441, 0x8000 | 442, 0]));
+    assert_eq!(out[3], (0x3ED, [1 << 28 | 260, 0, 0, 0]));
+    assert_eq!(t.dialog_result(2), Some(Prompt::Answer(json!({ "type": 4, "index": 2 }))));
+    // A card's own strings (code << 4 | n) have no text on the client: the first option, as the CPU would.
+    let card = json!({ "type": 14, "player": 0, "options": [65600, 65601] });
+    assert_eq!(t.prompt(&card), Prompt::Answer(json!({ "type": 4, "index": 0 })));
+}
+
+/// A chain chance for the client: `selects` its cards that may chain.
+fn select_chain(spe_count: u32, forced: bool, selects: serde_json::Value) -> serde_json::Value {
+    json!({ "type": 16, "player": 0, "spe_count": spe_count, "forced": forced, "hint_timing": 0, "hint_timing_other": 0,
+        "selects": selects })
+}
+
+#[test]
+fn a_timely_chain_chance_asks_with_the_cards_that_may_chain() {
+    // MSG_SELECT_CHAIN (16) {spe_count, forced, selects}: EDOPro's own client asks only when a card fits the timing
+    // (spe_count > 0) or the chain is forced; otherwise no chain (index null). The question is dialog command 0x36
+    // {kind 3} (DuelEffectDialog 0x4C5120): Yes/No (buttons 0 "No", 1 "Yes"), as dlg_yesno_card.swf with the 0x3F2 rows
+    // (five at most) when 0x3EF's param3 is 0xFF (0x4C51A0). param3 4 shows it whatever the player's "invoke_conf" duel
+    // option (0x4C5560); unshown, it would answer No at once. In a chain the message names the last link (MSG_CHAINING
+    // 70): 7 'The effect of "%s" is activated. Chain another card or effect?', or 8 '"%s" is activated. ...' for a
+    // Spell/Trap Card; else 269 "Activate the effect of a card?".
+    let mut t = with_cards();
+    let trap = card_at(0, 8, 0, 4101);
+    assert_eq!(t.prompt(&select_chain(0, false, json!([trap]))), Prompt::Answer(json!({ "type": 8, "index": null })));
+    t.events(&[json!({ "type": 70, "code": 4200, "cid": 4200, "controller": 1, "location": 4, "sequence": 1,
+        "position": 1, "triggering_controller": 1, "triggering_location": 4, "triggering_sequence": 1,
+        "description": 0, "chain_size": 1 })]);
+    assert_eq!(
+        client_commands(t.prompt(&select_chain(1, false, json!([trap])))),
+        [
+            (0x3EF, [1, 0, 0xFF, 0]),
+            (0x3F2, [101, 0, 0, 0]),
+            (0x3EC, [2, 0, 0, 0]),
+            (0x3ED, [1 << 28 | 7, 5 << 28 | 4200, 0, 0]),
+            (0x36, [3, 1, 4, 0]),
+        ]
+    );
+    assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 8, "index": null }))));
+    // One card: Yes chains it.
+    t.prompt(&select_chain(1, false, json!([trap])));
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 8, "index": 0 }))));
+    // A Spell/Trap Card's activation, then the chain's end.
+    t.events(&[json!({ "type": 70, "code": 4101, "cid": 4101, "controller": 0, "location": 8, "sequence": 0,
+        "position": 1, "description": 0, "chain_size": 2 })]);
+    assert_eq!(client_commands(t.prompt(&select_chain(1, false, json!([trap]))))[3], (0x3ED, [1 << 28 | 8, 5 << 28 | 4101, 0, 0]));
+    t.events(&[json!({ "type": 74 })]);
+    assert_eq!(client_commands(t.prompt(&select_chain(1, false, json!([trap]))))[3], (0x3ED, [1 << 28 | 269, 0, 0, 0]));
+}
+
+#[test]
+fn with_several_cards_yes_opens_the_card_list() {
+    // After Yes, which card: the card list (one pick) with "Select effect to activate." (276); a forced chain skips the
+    // question, and a forced chain of one card needs no choice.
+    let mut t = with_cards();
+    let cards = json!([card_at(0, 8, 0, 4101), card_at(0, 2, 0, 4100)]);
+    t.prompt(&select_chain(1, false, cards.clone()));
+    let Some(list) = t.dialog_result(1) else { panic!("no card list") };
+    assert_eq!(
+        client_commands(list),
+        [
+            (0x3EF, [2, 1, 0, 0]),
+            (0x3F2, [101, 100, 0, 0]),
+            (0x3F3, [0, 0, 0, 0]),
+            (0x3EC, [1, 0, 0, 0]),
+            (0x3ED, [1 << 28 | 276, 0, 0, 0]),
+            (0x37, [0, 0x27, 1, 0]),
+        ]
+    );
+    t.pick(1);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 8, "index": 1 }))));
+    // No pick: no chain.
+    t.prompt(&select_chain(1, false, cards.clone()));
+    t.dialog_result(1);
+    assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 8, "index": null }))));
+    // Forced.
+    assert_eq!(client_commands(t.prompt(&select_chain(0, true, cards))).last(), Some(&(0x37, [0, 0x27, 1, 0])));
+    t.pick(0);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 8, "index": 0 }))));
+    let one = json!([card_at(0, 2, 0, 4100)]);
+    assert_eq!(t.prompt(&select_chain(0, true, one)), Prompt::Answer(json!({ "type": 8, "index": 0 })));
 }

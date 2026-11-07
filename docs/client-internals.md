@@ -57,7 +57,11 @@ export, see [CLAUDE.md](../CLAUDE.md)).
 | `0x5083A0` / `0x5084D0` | `DuelEndEffect` constructor `(result, reason, …)` / update: plays `duel_win/lose/draw.swf`, done when the movie ends |
 | `0x510950` / `0x510B70` / `0x510D50` | `DuelResult` constructor / its nine steps (`0x512070` waits for 1500/1504 or front flag `0x20000`, `0x512430` match movie…) / Flash callbacks (`requestData`, `getResult` `0x511200`, `requestStarCount`, `finish`) |
 | `0x50FC00` / `0x50FDF0` / `0x510220` | `DuelManager` after a duel: match result set → leave (`0x510220`), else 1504 → Card Swap (`0x50FDF0`), 1500 → next duel (`0x50F690`) |
-| `0x4C8CD0` | duel dialog factory by kind (command `0x36`): OK, Info, Yes/No, Effect, Select, Type, Attribute, Position, Coin, Dice, Number, Discard, Ritual |
+| `0x4C8CD0` | duel dialog factory by kind (command `0x36`; table `0x4C9178`): 0 OK, 1 Info, 2 Yes/No, 3 Effect, 4 Select, 5–6 Type, 7 Attribute, 8 Position, 9 Coin, 10 Dice, 11 Number, 13 Discard, 14 Ritual; ECX = param3, EDX = param2 |
+| `0x4C2090` / `0x4C29D0` / `0x4C6410` | every duel dialog's Flash `decide` → vtable 16 (keeps the Flash result at `+0x38`) → vtable 15, which sends it as `duelRequestName 4 {DLGResult}` (`0x521A70`) |
+| `0x4C5120` / `0x4C51A0` / `0x4C5560` | `DuelEffectDialog` (kind 3) constructor / show (`dlg_yesno.swf`, or `dlg_yesno_card.swf` with up to five rows from `+0x9BC` when `+0x2A0` is `0xFF`) / whether to show: level param3 ≥ 4, else the `invoke_conf` duel option |
+| `0x4C5750` / `0x4C5880` / `0x4C5B20` | `DuelSelectDialog` (kind 4) constructor / show (`dlg_select.swf`: labels from the `0x3F0` values with bit 15, text = low 14 bits, at most four) / result: the label's value index |
+| `0x4C5E50` / `0x4C5FC0` | `DuelSelectStandDialog` (kind 8) constructor (param3: uid, bit 16 face-up defense) / show (`dlg_selstand.swf`, `dialog.faceType`, `dialog.cardId` from the uid's row) |
 | `0x4C72D0` / `0x4C73A0` / `0x4C74F0` | `DuelCardListDialog` (command `0x37`) init (kind → picks OK needs) / show (`dlg_cardlist.swf`, message `0x519870`) / close: sends `6`, `7` per pick, `4` |
 | `0x4C76B0` / `0x4C78A0` | the card list's Flash callbacks `getListInfo` (count, max, accept) / `getCardInfo(i)` (row from `+0x9BC`, mark from `+0xE6C`, image id, attribute, ATK/DEF) |
 | `0x50B700` | DuelFieldManager mouse handler: left click on a card → its menu / card command (`0x4F9510`); right click with other-flag 6 set → `duelRequestName 5` |
