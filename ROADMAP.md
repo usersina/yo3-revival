@@ -144,8 +144,10 @@ Stop finding missing fields one crash at a time.
 - [x] Chain link animations: ChainSet `0x33` {player, zone, link} at each MSG_CHAINING and ChainRun `0x34` {_, _,
       link} at each MSG_CHAIN_SOLVING. Live: two Trap Holes chained to the CPU's summon showed links 1 and 2, the
       chain banner (`duel_chain.swf`), and each number fading as its link resolved
-- [ ] Destruction by effects (`0x20` CardBreak), stat changes from effects (engine queries); attack targets on the
-      field instead of the list
+- [x] Destruction by effects: CardVanish `0x1F` {player, zone | index << 8} before the card's move, for MSG_MOVE's
+      reason DESTROY without BATTLE (the sidecar reads the reason back, since ocgcore-wasm drops it). CardBreak `0x20`
+      only hides a card's label. Live: Trap Hole shattered Sangan, then the duel went on
+- [ ] Stat changes from effects (engine queries); attack targets on the field instead of the list
 - [ ] Deck piles on the field (the deck count alone shows none)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)
@@ -220,6 +222,8 @@ Stop finding missing fields one crash at a time.
 | Attack targets | chosen in the card list | The original probably picked them on the field (DuelBattle) |
 | Position dialog | button 0 face-up attack (face-down if only that), button 1 face-up defense when allowed, else face-down; the flag shows the face-up defense picture | The dialog has two buttons; ocgcore allows any mix of four positions |
 | ChainRun `param1`/`param2`, ChainSet's place for a card off the field map | 0; the field's centre (16) | DuelChain reads neither; the original's values are unknown |
+| Destruction by effects | CardVanish (`0x1F`, the shatter) before the move; CardBreak (`0x20`) never sent | Which of the two the original sent, and when, is unknown; CardVanish is the one with an effect |
+| MSG_MOVE's reason | read back by a query at the card's new place after each processing step | A card that moves again within the same step reports its later reason |
 | Option labels | EDOPro's system strings 60/61 and 70–72 mapped to the client's labels; a card's own strings take the first option | The original server's label per card option is unknown |
 | Chain chances | level 3 after an event (summon, attack, damage… or during a chain), 1 at a phase or step, 0 when no card fits (`spe_count` 0); the player's Activation Message option decides; messages 7/8 (Spell/Trap zone)/269 | The original server's levels and which windows it judged "low priority" are unknown |
 | Rules | EDOPro's `MODE_MR2` | Online 3 (2010) ran Master Rule 2; EDOPro's preset may differ in details |

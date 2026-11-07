@@ -737,3 +737,39 @@ fn a_chain_shows_its_links_and_resolves_them_last_first() {
     let out = t.events(&[solving(5), solved(5), solving(4), solved(4), solving(3)]);
     assert_eq!(links(&out), [(0x34, [0, 0, 5, 0]), (0x34, [0, 0, 4, 0]), (0x34, [0, 0, 3, 0])]);
 }
+
+/// The CardVanish commands among `out` (0x1F).
+fn vanishes(out: &[Message]) -> Vec<(u32, [u32; 4])> {
+    out.iter().map(cmd).filter(|(id, _)| *id == 0x1F).collect()
+}
+
+fn destroyed(from: serde_json::Value, reason: u32) -> serde_json::Value {
+    json!({ "type": 50, "card": 0, "cid": 4101, "from": from, "to": loc(0, 16, 0, 5), "reason": reason })
+}
+
+#[test]
+fn a_card_destroyed_by_an_effect_shatters_before_it_moves() {
+    // DuelCardManager (0x4FF000) CardVanish 0x1F {player, zone | index << 8} (zone at most 0xB) hides the card's label,
+    // plays effect 0x33 at its place (the shatter) and hides the card (state 0x4FC520); the move then flies it on.
+    // It must come before the card table entry (1000) moves the card away. Only for MSG_MOVE's reason DESTROY (1)
+    // without BATTLE (0x20): battles show their own destruction (BattleRun).
+    let mut t = with_cards();
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4101 }, { "cid": 4101 }, { "cid": 4101 }, { "cid": 4101 }] })]);
+    t.events(&[json!({ "type": 50, "cid": 4101,
+        "from": { "controller": 0, "location": 2, "sequence": 1, "position": 10 },
+        "to": { "controller": 0, "location": 4, "sequence": 2, "position": 1 } })]);
+    // REASON_DESTROY | REASON_EFFECT: the shatter, then the card table entry and the move.
+    let out = t.events(&[destroyed(loc(0, 4, 2, 1), 0x41)]);
+    let ids: Vec<u32> = out.iter().map(cmd).map(|(id, _)| id).collect();
+    assert_eq!(vanishes(&out), [(0x1F, [0, 2, 0, 0])]);
+    assert_eq!(ids.iter().position(|&id| id == 0x1F), Some(0), "{ids:?}");
+    // A Spell/Trap Card in Spell/Trap zone 1, and a card in the hand at index 2.
+    t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 1, 10) })]);
+    assert_eq!(vanishes(&t.events(&[destroyed(loc(0, 8, 1, 10), 0x41)])), [(0x1F, [0, 6, 0, 0])]);
+    assert_eq!(vanishes(&t.events(&[destroyed(loc(0, 2, 2, 10), 0x41)])), [(0x1F, [0, 0xB | 2 << 8, 0, 0])]);
+    // Destroyed by battle, or not destroyed at all (a resolved Trap going to the graveyard): no shatter.
+    t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 3, 1) })]);
+    assert_eq!(vanishes(&t.events(&[destroyed(loc(0, 4, 3, 1), 0x21)])), []);
+    t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 2, 5) })]);
+    assert_eq!(vanishes(&t.events(&[destroyed(loc(0, 8, 2, 5), 0x400)])), []);
+}

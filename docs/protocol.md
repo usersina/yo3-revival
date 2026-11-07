@@ -403,6 +403,19 @@ the message; a direct attack, whose target ocgcore-wasm reports as an empty plac
 card to show them at), End at DAMAGE_STEP_END, ATTACK_DISABLED, the next attack or a new phase. LP still change
 through `0x10`.
 
+**Destruction by effects** (DuelCardManager `0x4FF000`, its switch `0x50007C` by command id; both read `param1` from the
+command record's params like the other components):
+
+| Command | Params | What the client does | Status |
+|---|---|---|---|
+| `0x1F` CardVanish | `param1` the player, `param2` byte 0 the zone (at most `0xB`: the field or the hand), byte 1 the index in it | the card (`0x4F8240`) is marked off the field (`+0xD7`, cleared when it lands again, `0x4FBF30`) and runs effect mode 3 (`0x4FB7F0` → state `0x4FC520`): its zone's label goes (field Flash `setCurrent`, `setVisible` 0), effect `0x33` plays at its place (in the hand `0x4E5540`), and the card is hidden (`0x4FB220`). The queue waits for the card manager (busy check `0x5153CA` → `0x5004E0`) | confirmed (live: Masked Dragon, and later Sangan, shattered into shards when Trap Hole destroyed them, then went to the graveyard) |
+| `0x20` CardBreak | `param1` the player, `param2` the field zone (at most 10), `param3` the card's uid | the card (by uid, `0x500470`) is marked off the field and its zone's label goes; no effect | confirmed (code; live: nothing visible); not sent |
+
+The card's next move (`0x1A`) flies it on as usual (`0x5000E0` always runs effect mode 0). The server sends CardVanish
+before the move of a card the engine destroyed other than by battle (MSG_MOVE's `reason` has DESTROY and not BATTLE;
+battles have BattleRun's own destroy effect). ocgcore-wasm drops MSG_MOVE's `reason`, so the sidecar reads it back with
+a query (flag `REASON`) at the card's new place after each processing step.
+
 **Summons** (DuelScene): `0x38` RunSummon {player, the summoned card's uid} plays the summon effect at the card (`0x21`,
 or `0x23` for the player's `ace_monster`); `0x39` RunSpSummon {player, uid} the Special Summon effect (`0x19`). The
 server sends them for MSG_SUMMONING / MSG_SPSUMMONING, which come once the card is in its zone. Live: sparkles around

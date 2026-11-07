@@ -100,6 +100,9 @@ const LOC_SZONE: u64 = 8;
 const LOC_GRAVE: u64 = 16;
 const LOC_REMOVED: u64 = 32;
 const LOC_EXTRA: u64 = 64;
+/// ocgcore reasons (MSG_MOVE's `reason`, which the sidecar reads back).
+const REASON_DESTROY: u64 = 0x1;
+const REASON_BATTLE: u64 = 0x20;
 /// An Xyz material: or'ed with its monster's location, whose sequence it takes.
 const LOC_OVERLAY: u64 = 0x80;
 /// The client's list zones besides hand and deck.
@@ -107,7 +110,10 @@ const EXTRA: u32 = 0xC;
 const GRAVE: u32 = 0xE;
 const REMOVED: u32 = 0xF;
 /// A field card's new face and position in place {place as moves give it} (CardFlipTurn, DuelCardManager 0x4FF000).
+/// A card destroyed {player, zone | index << 8}, zone at most the hand (CardVanish): its label goes, the shatter
+/// (effect 0x33) plays at it and it is hidden (state 0x4FC520), before its move.
 const FLIP_TURN: u32 = 0x1C;
+const CARD_VANISH: u32 = 0x1F;
 /// A battle (DuelBattle 0x4F8A90): start; the attack {attacker's player | zone << 8, target's player, target's zone or
 /// NO_TARGET}; the battle's outcome per player {damage figure on the client's card, on the opponent's, flags: DESTROYED
 /// for the client's card, << 8 for the opponent's} (the effect at a card ends hiding it when DESTROYED); end.
@@ -444,7 +450,15 @@ impl Translator {
     fn move_card(&mut self, m: &Json) -> Vec<Message> {
         let cid = m["cid"].as_u64().unwrap_or(0) as u16;
         match (self.engine_place(&m["from"]), self.engine_place(&m["to"])) {
-            (Some(from), Some(to)) => self.relocate(cid, from, to),
+            (Some(from), Some(to)) => {
+                let reason = m["reason"].as_u64().unwrap_or(0);
+                let moved = self.relocate(cid, from, to);
+                // Destroyed other than by battle (a battle shows it with BattleRun): the shatter first.
+                if moved.is_empty() || reason & REASON_DESTROY == 0 || reason & REASON_BATTLE != 0 || from.zone > HAND {
+                    return moved;
+                }
+                std::iter::once(command(CARD_VANISH, [from.player, from.zone | (from.index as u32) << 8, 0, 0])).chain(moved).collect()
+            }
             // Tokens and Xyz materials have no client place yet.
             _ => vec![],
         }

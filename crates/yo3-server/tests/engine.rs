@@ -55,3 +55,28 @@ fn two_placeholder_ais_play_a_duel_to_the_end() {
     assert_eq!(answer.status, "end", "the duel finished");
     assert!(won, "someone won (MSG_WIN)");
 }
+
+#[test]
+fn moves_carry_their_reason() {
+    // ocgcore-wasm drops MSG_MOVE's reason; the sidecar reads it back with a query at the card's new place. Normal
+    // Monsters leave the field only by battle: REASON_DESTROY (1) | REASON_BATTLE (0x20).
+    let Some(mut engine) = engine() else { return };
+    let deck: Vec<u16> = [6960u16; 20].into_iter().chain([5004; 20]).collect();
+    let mut answer = engine.new_duel(11, 8000, [(&deck, &[]), (&deck, &[])]).expect("a duel");
+    let mut destroyed = 0;
+    for _ in 0..5_000 {
+        for m in answer.messages.iter().filter(|m| m["type"] == 50) {
+            assert!(m["reason"].is_u64(), "a move without its reason: {m}");
+            if m["from"]["location"] == 4 && m["to"]["location"] == 16 {
+                assert_eq!(m["reason"].as_u64().unwrap() & 0x21, 0x21, "{m}");
+                destroyed += 1;
+            }
+        }
+        if answer.status != "await" {
+            break;
+        }
+        let prompt = answer.messages.last().expect("a prompt").clone();
+        answer = engine.respond(yo3_server::translate::bot_answer(&prompt)).expect("the engine answers");
+    }
+    assert!(destroyed > 0, "no monster was destroyed");
+}

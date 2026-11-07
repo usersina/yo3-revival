@@ -5,13 +5,14 @@
 //   {"op":"respond","response":{…}}                                       an OcgResponse
 // Answer: {"messages":[…],"status":"await"|"end","errors":[…]}: the core's messages up to the next prompt.
 // Cards are given and reported by Konami card id (the client's "CID"): every `code` (or MOVE's `card`) in a
-// message gets a `cid` next to it. Needs `fetch.sh` run first (packages, card scripts, card database, Konami ids).
+// message gets a `cid` next to it. MOVE also gets its `reason`, read back from the card. Needs `fetch.sh` run first
+// (packages, card scripts, card database, Konami ids).
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { createInterface } from "node:readline";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import createCore, { OcgDuelMode, OcgLocation, OcgPosition, OcgProcessResult } from "ocgcore-wasm";
+import createCore, { OcgDuelMode, OcgLocation, OcgPosition, OcgProcessResult, OcgQueryFlags } from "ocgcore-wasm";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const vendor = join(here, "vendor");
@@ -85,6 +86,22 @@ let handle: ReturnType<typeof lib.createDuel> = null;
 const errors: string[] = [];
 
 const MSG_WIN = 5;
+const MSG_MOVE = 50;
+
+type Move = { type: number; to?: { controller: 0 | 1; location: number; sequence: number }; reason?: number };
+
+/** MSG_MOVE's `reason`, which ocgcore-wasm doesn't parse: read back from the card at its new place (0 when there is
+ * none to ask, as for an Xyz material). */
+function addReasons(batch: Move[]) {
+  for (const m of batch) {
+    if (m.type !== MSG_MOVE) continue;
+    const to = m.to;
+    const queried = to && to.location && !(to.location & OcgLocation.OVERLAY)
+      ? lib.duelQuery(handle!, { flags: OcgQueryFlags.REASON, controller: to.controller, location: to.location, sequence: to.sequence, overlaySequence: 0 })
+      : null;
+    m.reason = Number(queried?.reason ?? 0);
+  }
+}
 
 /** Runs the duel until it needs an answer or ends. The core keeps prompting after a win, so a win ends it here. */
 function run() {
@@ -92,6 +109,7 @@ function run() {
   for (;;) {
     const status = lib.duelProcess(handle!);
     const batch = lib.duelGetMessage(handle!) as { type: number }[];
+    addReasons(batch);
     const win = batch.findIndex((m) => m.type === MSG_WIN);
     if (win >= 0) return { messages: [...messages, ...batch.slice(0, win + 1)], status: "end" };
     messages.push(...batch);
