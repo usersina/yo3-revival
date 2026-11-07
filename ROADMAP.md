@@ -180,8 +180,7 @@ Stop finding missing fields one crash at a time.
       the card's label, "Spell Counters 1" in the card info); a card leaving the field drops its counts first. Live:
       Breaker the Magical Warrior's Spell Counter
 - [ ] Deck piles on the field (the deck count alone shows none)
-- [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
-      port}`, started at `0x4D3066`)
+- [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports
 - [x] Online 3's duel stream is Konami's engine family but renumbered (turn change 6, LP set `0xF`; docs/protocol.md)
 - [ ] Regulations enforced (2011-era rules; card pool limited to the client's 4,824 cards)
 - [x] PvP on the duel connection: both matched clients share one table (`table.rs`): the janken between their hands,
