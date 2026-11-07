@@ -277,6 +277,13 @@ The server plays the CPU: a random hand; when the CPU wins it goes first (**gues
 | command `0xF` | param1 player, param2 LP | DuelCockpit `0x502EB0` (`setLp`) | confirmed (live) |
 | command 5 | param1 player, param2 phase (0 draw) | DuelScene, DuelCockpit | confirmed (live: DP lit) |
 | command 6 | param1 the player whose turn starts | DuelScene; the pop adds 1 to the turn count (engine `+0x1BC`) and flips the active player | confirmed (live: Turn 2), so not sent for the first turn |
+| command 1000 (one per card, before 1) | param1 uid (low 24 bits; the top byte is a flag, meaning unknown), param2 CARD_Prop row, param3 0 (meaning unknown), param4 table place `player \| zone<<8 \| index<<16` | the pop's `0x521DF0` sets or adds the card in the engine's card table (engine `+0x90`); the scenes look cards up there by place (`0x523DF0`) or uid (`0x523D20` → param3, `0x523D40` → param2); a card object shows the row's image (`0x4FB090`, `data/card/<cid>_<n>.png`) | confirmed (live) |
+| draw = 1000 + `0x1A` | 1000 puts the card at hand index i; `0x1A` {param1 `uid \| row<<16`, param2 from, param3 to} as move places `player \| zone<<1 \| index<<6` | DuelCardManager `0x4FF6A2` creates the card object (`0x5003A0`) and moves it; deck → hand counts the draw and plays the draw sound; the pop moves the per-zone counts | confirmed (live: five cards in hand, five face down in the CPU's); the index bits are a **guess** (Online 2's packing) |
+
+The server shuffles both main decks, numbers the cards 1.. (the client's deck, then the CPU's), sends them all to the
+card table, starts the duel, sets LP, deals five cards each (the first player first) and then sends the Draw Phase. The
+CPU's cards go with their real rows; the client shows them face down. Online 2's server sent placeholders for hidden
+cards, which a PvP duel will need.
 
 The duel connection only names the player (`0x200A {player_id}`), so the front server keeps, by player, the deck sent
 with `0x1F4F` and the NPC of the duel's `0x17AC` rule (`cpu_id`).

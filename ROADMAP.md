@@ -89,8 +89,11 @@ Stop finding missing fields one crash at a time.
       against the server as the CPU (commands 1500–1505): the duel field opens, Turn 1
 - [x] Duel opening: setup `0x15` with both decks' sizes, duel start, LP 8000 (`0xF`), the first player's Draw Phase
       (5); the engine commands are mapped to the components that handle them (docs/protocol.md)
-- [ ] Cards on the field: the engine card map (data commands `0x3E9`–`0x3FA`), so decks, hands and draws show; then
-      `0x12` command ids and the player's first actions
+- [x] Cards: both shuffled decks go into the engine's card table (command 1000) and each player draws five (1000 +
+      the card move `0x1A`); the opening hand shows, the CPU's face down
+- [ ] The first turn: the Draw Phase draw, the command ids per card (`0x12` / `COMIDDATA`) and the highlight (4), the
+      player's first actions (client `duelRequestName` 2 card command, 3 phase); deck piles on the field (the deck
+      count alone shows none)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)
 - [ ] Confirm in Ghidra that Online 3's duel stream is Konami's engine command set (as in Online 2)
@@ -134,6 +137,8 @@ Stop finding missing fields one crash at a time.
 | Server duel messages | request `0x200D` | The pump reads only `duelRequestName` (and needs the id non-negative) |
 | CPU janken | random hand; the CPU goes first when it wins; `1505` param2/param3 0 | The original CPU's choices are unknown |
 | Duel setup `PlayerType001/002` | 0 (client) / 1 (CPU) | Meaning unknown |
+| Card table entries (1000) | param3 0, flag byte 0; uids 1.. in table order | Meanings of param3 and the flag unknown |
+| Hidden cards | the CPU's real rows are sent | Online 2 used placeholders; needed before PvP |
 | Duel port | 1214 | The original's port is unknown; the client takes whatever `duelData` says |
 | Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
 

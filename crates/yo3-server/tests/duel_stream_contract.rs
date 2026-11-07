@@ -12,16 +12,17 @@ use yo3_proto::{Message, Packet, Value};
 use yo3_server::duel::{DuelSession, SERVER_DUEL};
 use yo3_server::front::{Deck, DuelEntry, Hub, World};
 
-fn deck(main: usize, extra: usize) -> Deck {
-    Deck { id: 1, name: "Deck".into(), main: vec![1; main], extra: vec![2; extra], side: vec![] }
+/// A deck whose main cards are rows `first..first + main`.
+fn deck(first: u16, main: u16, extra: usize) -> Deck {
+    Deck { id: 1, name: "Deck".into(), main: (first..first + main).collect(), extra: vec![2; extra], side: vec![] }
 }
 
 /// Player 1002 brings a 40-card deck against NPC 124, whose deck has 41 cards and 2 extra.
 fn session() -> DuelSession {
     let mut world = World::new((1..=20).collect());
-    world.npc_decks.insert(124, deck(41, 2));
+    world.npc_decks.insert(124, deck(1000, 41, 2));
     let mut hub = Hub::default();
-    hub.enter_duel(1002, DuelEntry { deck: deck(40, 0), npc_id: Some(124) });
+    hub.enter_duel(1002, DuelEntry { deck: deck(100, 40, 0), npc_id: Some(124) });
     DuelSession::new(Arc::new(world), Arc::new(Mutex::new(hub)), 7)
 }
 
@@ -120,8 +121,69 @@ fn the_duel_opens_after_the_janken() {
             assert_eq!(setup.get(k), Some(&Value::U32(v)), "{k}");
         }
         assert!(setup.get("PlayerType001").is_some() && setup.get("PlayerType002").is_some());
+        let others: Vec<_> = commands(&replies)[2..].iter().filter(|(id, _)| ![1000, 0x1A].contains(id)).copied().collect();
         let opening = [(1, [0; 4]), (0xF, [0, 8000, 0, 0]), (0xF, [1, 8000, 0, 0]), (5, [first, 0, 0, 0])];
-        assert_eq!(commands(&replies)[2..], opening);
+        assert_eq!(others, opening);
+    }
+}
+
+/// Where each uid is in the card table after `cmds` (command 1000), and its row.
+fn table(cmds: &[(u32, [u32; 4])]) -> std::collections::HashMap<u32, (u32, u32)> {
+    cmds.iter().filter(|(id, _)| *id == 1000).map(|(_, [uid, row, _, place])| (*uid, (*row, *place))).collect()
+}
+
+#[test]
+fn both_decks_go_into_the_card_table_shuffled() {
+    // Command 1000 (0x521DF0) sets a card in the engine's card table {uid, CARD_Prop row, 0, player |
+    // zone << 8 | index << 16}, adding it if new; the scenes find cards there (0x523DF0 by place,
+    // 0x523D40 by uid) and the card objects show the row's image (0x4FB090: data/card/<cid>_<n>.png).
+    let mut s = session();
+    enter(&mut s);
+    let cmds = commands(&s.handle(&duel_msg(0xD, &[("choice", 1)])));
+    let first: Vec<_> = cmds.iter().take_while(|(id, _)| *id != 1).filter(|(id, _)| *id == 1000).collect();
+    assert_eq!(first.len(), 81, "every main deck card, before the duel starts");
+    let mut uids: Vec<_> = first.iter().map(|(_, p)| p[0]).collect();
+    uids.sort();
+    uids.dedup();
+    assert_eq!(uids.len(), 81);
+    for (player, rows) in [(0, 100..140), (1, 1000..1041)] {
+        let mut deck: Vec<_> = first.iter().filter(|(_, p)| p[3] & 0xFF == player).map(|(_, p)| (p[3] >> 16, p[1])).collect();
+        assert!(first.iter().filter(|(_, p)| p[3] & 0xFF == player).all(|(_, p)| p[3] >> 8 & 0xFF == 0xD));
+        deck.sort();
+        assert_eq!(deck.iter().map(|(i, _)| *i).collect::<Vec<_>>(), (0..rows.len() as u32).collect::<Vec<_>>());
+        let mut got: Vec<_> = deck.iter().map(|(_, r)| *r).collect();
+        assert_ne!(got, rows.clone().collect::<Vec<_>>(), "shuffled");
+        got.sort();
+        assert_eq!(got, rows.collect::<Vec<_>>());
+    }
+}
+
+#[test]
+fn each_player_draws_five_before_the_first_draw_phase() {
+    // A draw: the card moves to the hand in the card table (1000, zone 0xB), then command 0x1A moves
+    // it on screen {uid | row << 16, from, to} with places as player | zone << 1 | index << 6
+    // (DuelCardManager 0x4FF6A2; deck to hand plays the draw sound and counts it). Live: five cards
+    // in the player's hand, five face down in the CPU's.
+    for (choice, first) in [(1, 0), (2, 1)] {
+        let mut s = session();
+        enter(&mut s);
+        let cmds = commands(&s.handle(&duel_msg(0xD, &[("choice", choice)])));
+        let start = cmds.iter().position(|(id, _)| *id == 1).unwrap();
+        let decks = table(&cmds[..start]);
+        let moves: Vec<_> = cmds.iter().filter(|(id, _)| *id == 0x1A).collect();
+        assert_eq!(moves.len(), 10);
+        for (n, (_, [card, from, to, _])) in moves.iter().enumerate() {
+            let player = if n < 5 { first } else { 1 - first };
+            let (uid, row) = (card & 0xFFFF, card >> 16);
+            let (deck_row, deck_place) = decks[&uid];
+            assert_eq!((row, deck_place & 0xFF, deck_place >> 8 & 0xFF), (deck_row, player, 0xD));
+            assert_eq!((*from & 1, *from >> 1 & 0x1F), (player, 0xD));
+            assert_eq!((*to & 1, *to >> 1 & 0x1F, *to >> 6), (player, 0xB, n as u32 % 5));
+        }
+        let hands = table(&cmds[start..]);
+        assert_eq!(hands.len(), 10);
+        assert!(hands.values().all(|(_, place)| place >> 8 & 0xFF == 0xB));
+        assert_eq!(cmds.last().unwrap().0, 5, "the Draw Phase comes last");
     }
 }
 
