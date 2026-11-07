@@ -116,3 +116,20 @@ fn bp_and_bought_cards_are_kept_with_the_account() {
     let p = a.players.into_iter().find(|p| p.player_id == player_id).unwrap();
     assert_eq!(p.cards.get(&38), Some(&2));
 }
+
+#[test]
+fn bought_structure_decks_are_kept_with_the_player() {
+    let dir = std::env::temp_dir().join(format!("yo3-decks-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let file = dir.join("accounts.json");
+    let addr = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 8));
+    let player_id = {
+        let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
+        let id = d.account_for(addr).players[0].player_id;
+        d.update_player(id, |p| p.decks = vec![502, 4]);
+        id
+    };
+    let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
+    let p = d.account_for(addr).players.into_iter().find(|p| p.player_id == player_id).unwrap();
+    assert_eq!(p.decks, [502, 4]);
+}

@@ -1,5 +1,5 @@
 //! Readers for the Yu-Gi-Oh! ONLINE 3 client's own data: `.ypk` archives, Konami's card
-//! table, and the regulation / preset-deck / booster-pack records the server hands out.
+//! table, the UI text table, and the regulation / preset-deck / booster-pack records the server hands out.
 
 use std::collections::HashMap;
 use std::fs::File;
@@ -272,6 +272,8 @@ pub struct GameData {
     pub regulations: Vec<Regulation>,
     pub decks: Vec<Deck>,
     pub packs: Vec<Pack>,
+    /// The English UI texts (data/text/txttbl_E.bin) by id: every name_id and discription_id, and the `$NNNNN` ids.
+    pub texts: HashMap<u32, String>,
 }
 
 impl GameData {
@@ -316,7 +318,13 @@ impl GameData {
             .map(|m| Pack { id: int(&m, "pack_id"), kind: int(&m, "pack_type"), cards: u16_list(&m, "pack"), record: m })
             .collect();
         packs.sort_by_key(|p| p.id);
-        Ok(GameData { cards, regulations, decks, packs })
+        let texts = parse_texts(&ypk.read_required("data/text/txttbl_E.bin")?);
+        Ok(GameData { cards, regulations, decks, packs, texts })
+    }
+
+    /// A UI text by its id.
+    pub fn text(&self, id: u32) -> Option<&str> {
+        self.texts.get(&id).map(String::as_str)
     }
 
     /// The first starter preset (deck_type 1) that a regulation allows.
@@ -347,6 +355,29 @@ impl GameData {
 const FIRST_NPC: u32 = 120;
 /// Text id of NPC 0's deck title (0x4BFE05).
 const NPC_DECK_TITLE: u32 = 0x5FB4;
+
+/// A UI text table (data/text/txttbl_<lang>.bin): u32 count, count pairs {u32 id, u32 byte offset}, 4 bytes, then
+/// UTF-16LE NUL-terminated strings from byte 8 + 8 * count. Entries pointing outside the table are left out.
+pub fn parse_texts(table: &[u8]) -> HashMap<u32, String> {
+    let u32_at = |at: usize| table.get(at..at + 4).map(|b| u32::from_le_bytes(b.try_into().unwrap()));
+    let count = u32_at(0).unwrap_or(0) as usize;
+    let base = 8 + 8 * count;
+    let mut texts = HashMap::new();
+    for i in 0..count {
+        let (Some(id), Some(offset)) = (u32_at(4 + 8 * i), u32_at(8 + 8 * i)) else { break };
+        let Some(rest) = table.get(base + offset as usize..) else { continue };
+        let units: Vec<u16> = rest.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).take_while(|&u| u != 0).collect();
+        texts.insert(id, String::from_utf16_lossy(&units));
+    }
+    texts
+}
+
+impl Deck {
+    /// The id of its name in the UI text table (stored as text in the recipe).
+    pub fn name_id(&self) -> Option<u32> {
+        text_int(&self.record, "name_id")
+    }
+}
 
 /// A number the client's data files store as text (preset decks' name_id).
 fn text_int(msg: &Message, name: &str) -> Option<u32> {

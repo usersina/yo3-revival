@@ -113,3 +113,14 @@ fn npc_ids_come_from_the_npc_preset_decks() {
     assert_eq!(data.npc_ids(), (120..=197).collect::<Vec<_>>());
     assert_eq!(data.npc_deck(120).map(|d| d.id), Some(19));
 }
+
+#[test]
+fn the_text_table_names_packs_and_structure_decks() {
+    // data/text/txttbl_E.bin: the UI texts behind name_id / discription_id.
+    let dir = need_game!();
+    let data = GameData::load(&dir).unwrap();
+    assert_eq!(data.text(23000), Some("Pack 1"));
+    assert_eq!(data.text(24114), Some("GADGET BOX"));
+    assert_eq!(data.text(24106), Some("Equip to Win!"));
+    assert_eq!(data.text(99_999), None);
+}

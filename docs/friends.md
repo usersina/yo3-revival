@@ -69,7 +69,8 @@ Working: chat rooms and whispers, player search, NPC duels, Auto Duel and Create
 and Match Mode), choosing targets, tributes, positions, coin calls and chains in the game's own dialogs, attack, summon,
 chain-link and destruction animations, the result screens, avatar settings, and the shop's booster packs and structure decks: every
 account starts with 5000 BOOSTERPASS Points (100 a pack), duels earn more (100 for a win, 50 for a draw, 30 for a
-loss; the shop shows them after your next login or purchase), and the cards you pull are kept on the server.
+loss; the shop shows them after your next login or purchase), and the cards you pull are kept on the server. A
+structure deck you buy shows up in Edit Deck's deck list, ready to duel with.
 
 Not yet: changing the side deck between a match's duels, duel timers, watching duels, effects that make you choose between a
 card's own options (the first is taken), protectors, avatar items, trading and rental in the shop. Players' decks stay on their own machines (in `Documents\Yu-Gi-Oh! ONLINE 3`).

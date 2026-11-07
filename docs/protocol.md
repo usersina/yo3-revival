@@ -216,7 +216,9 @@ default's index is skipped; cards 5280, 5434 and 6276 are never allowed.
 Every player gets one deck, "Starter Deck": the first `deck_type` 1 preset (`data/recipe`, ids 1–6, 501, 502; they
 look like the starter decks) that the login regulation allows. Preset 1 holds a card regulation 1 forbids (4966), so
 it is preset 2 (**guess**: the original let a new player choose). The server lists it every time, so a deleted
-starter deck comes back the next time Edit Deck opens.
+starter deck comes back the next time Edit Deck opens. Structure decks a player bought are listed after it, under
+their own names from the client's text table (`name_id`, e.g. "GADGET BOX"), so they reach the editor and Select
+Deck ready to play; a deck bought twice is listed once.
 
 ### NPC duels and duel start
 

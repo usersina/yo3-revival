@@ -115,6 +115,10 @@ parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Su
 - **`CARD_Indx_<lang>`**: `{u32 name offset, u32 desc offset}` per row into `CARD_Name_<lang>` / `CARD_Desc_<lang>`
   (UTF-16LE, NUL-terminated).
 - **`DLG_Text_<lang>`**: 597 duel-engine prompt strings, indexed by `DLG_Indx_<lang>`.
+- **`data/text/txttbl_<lang>.bin`**: the UI text table (the `$NNNNN` ids and every `name_id`/`discription_id`):
+  `u32 count`, then `count` pairs `{u32 id, u32 byte offset}`, then 4 bytes, then UTF-16LE NUL-terminated strings
+  from byte `8 + 8 × count`. English has 15,863 entries; pack names are 23000+, preset deck names 24000+ (the
+  description at `name_id + 1`).
 - **`data/extra/yo3pbininfo.bin`**: 4,096 eight-byte entries (item catalogue, text ids 26000+).
 - **`data/bin#/s_cardnum.inc`**: a header left over from Konami's duel-engine source.
 - The card pool ends around Storm of Ragnarok (early 2011): no Xyz.

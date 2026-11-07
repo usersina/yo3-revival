@@ -83,8 +83,10 @@ Stop finding missing fields one crash at a time.
 - [x] Structure decks: SD001–SD005 (the art-carrying `deck_type` 1 recipes) on the STRUCTURE DECK tab, bought as
       type-1 presents with the deck id; the deck's cards join the collection. Live: GADGET BOX (deck 502) for 500 BP,
       shown as its 40-card grid, then 41 cards (with its extra deck) in the account
-- [ ] Bought structure decks in the deck list, ready to duel (`0x22C8` serves the starter deck); protectors, avatar
-      items, card trade and rental
+- [x] Bought structure decks in the deck list (`0x22C8`), under their names from the client's text table
+      (`data/text/txttbl_E.bin`, now read by `yo3-data`), kept per player. Live: GADGET BOX was saved locally as
+      "GADGET BOX.y3d", listed in Load Deck and loaded with its 40 + 1 cards
+- [ ] Protectors, avatar items, card trade and rental
 - [ ] Presents, card trade and rental, if wanted
 - **Exit:** create a player, open packs, build a deck, restart the server, everything is still there
 

@@ -33,14 +33,14 @@ pub struct ShopPack {
     pub tiers: Vec<Vec<u16>>,
 }
 
-/// A structure deck on sale: its preset deck id (the client's recipe file, which gives the name, description and
-/// art), its dates, and its cards (CARD_Prop rows: main, extra and side).
+/// A structure deck on sale: its dates and the deck itself, whose id is its preset deck (the client's recipe file,
+/// which gives the shelf its name, description and art) and whose name (from the client's text table) it takes in a
+/// buyer's deck list.
 #[derive(Clone, Debug)]
 pub struct ShopDeck {
-    pub id: u32,
     pub released: String,
     pub modified: String,
-    pub cards: Vec<u16>,
+    pub deck: crate::front::Deck,
 }
 
 /// What a sale id sells.
@@ -53,7 +53,7 @@ impl<'a> Goods<'a> {
     pub fn find(packs: &'a [ShopPack], decks: &'a [ShopDeck], sale_id: u32) -> Option<Goods<'a>> {
         match packs.iter().find(|p| p.id == sale_id) {
             Some(pack) => Some(Goods::Pack(pack)),
-            None => decks.iter().find(|d| Some(d.id) == sale_id.checked_sub(DECK_SALE)).map(Goods::Deck),
+            None => decks.iter().find(|d| Some(d.deck.id) == sale_id.checked_sub(DECK_SALE)).map(Goods::Deck),
         }
     }
 
@@ -69,7 +69,7 @@ impl<'a> Goods<'a> {
     pub fn take(&self, rng: &mut u64) -> Present {
         match self {
             Goods::Pack(pack) => Present::Pack { id: pack.id, cards: open(pack, rng) },
-            Goods::Deck(deck) => Present::Deck { id: deck.id, cards: deck.cards.clone() },
+            Goods::Deck(deck) => Present::Deck { id: deck.deck.id, cards: deck.deck.cards().collect() },
         }
     }
 }
@@ -164,10 +164,10 @@ pub fn shelf_item(pack: &ShopPack) -> Message {
 pub fn shelf_deck(deck: &ShopDeck) -> Message {
     Message::record()
         .with("item_type", Value::U32(1))
-        .with("item_id", Value::U32(deck.id))
+        .with("item_id", Value::U32(deck.deck.id))
         .with("item_cost", Value::U32(DECK_COST))
         .with("item_max", Value::U32(DECK_MAX))
-        .with("sale_id", Value::U32(DECK_SALE + deck.id))
+        .with("sale_id", Value::U32(DECK_SALE + deck.deck.id))
         .with("sale", Value::U32(0))
         .with("item_trade", Value::U32(0))
         .with("modified", Value::text(&deck.modified))

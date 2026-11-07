@@ -32,3 +32,19 @@ fn three_cards_are_never_allowed() {
         assert!(!r.allows([cid]), "{cid}");
     }
 }
+
+#[test]
+fn a_text_table_maps_ids_to_utf16_strings() {
+    // u32 count, count pairs {u32 id, u32 byte offset}, 4 bytes, then UTF-16LE NUL-terminated strings from 8 + 8 * count.
+    let strings: Vec<u8> = ["Hi", "GADGET BOX"].iter().flat_map(|s| s.encode_utf16().chain([0]).flat_map(u16::to_le_bytes)).collect();
+    let mut table = 2u32.to_le_bytes().to_vec();
+    for (id, off) in [(7u32, 0u32), (24114, 6)] {
+        table.extend(id.to_le_bytes());
+        table.extend(off.to_le_bytes());
+    }
+    table.extend([0; 4]);
+    table.extend(strings);
+    let texts = yo3_data::parse_texts(&table);
+    assert_eq!(texts.get(&7).map(String::as_str), Some("Hi"));
+    assert_eq!(texts.get(&24114).map(String::as_str), Some("GADGET BOX"));
+}

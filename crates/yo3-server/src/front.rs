@@ -40,6 +40,8 @@ pub struct Player {
     pub title: u32,
     /// The cards the player got beyond the starter deck (bought packs): CARD_Prop row -> count.
     pub cards: BTreeMap<u16, u32>,
+    /// The structure decks the player bought (preset deck ids, in order), listed after the starter deck.
+    pub decks: Vec<u32>,
 }
 
 /// Speech lines and comments a player has (CharMake's update 0x51C960).
@@ -59,6 +61,7 @@ impl Player {
             comments: vec![String::new(); COMMENTS],
             title: 0,
             cards: BTreeMap::new(),
+            decks: vec![],
         }
     }
 
@@ -616,6 +619,13 @@ impl FrontSession {
             for &row in bought.iter().flat_map(crate::shop::Present::cards) {
                 *p.cards.entry(row).or_default() += 1;
             }
+            for present in &bought {
+                if let crate::shop::Present::Deck { id, .. } = present
+                    && !p.decks.contains(id)
+                {
+                    p.decks.push(*id);
+                }
+            }
         };
         self.account.dpoint -= cost;
         add(&mut self.account.players[at]);
@@ -729,7 +739,12 @@ impl FrontSession {
             // The player's own user event (UserEventScene 0x4D9BB0): none.
             0x339A => Message::reply(0x33FE).with("remain", Value::U32(0)).with("event_id", Value::U32(0)),
             // Deck list (deck editor 0x43FC60): it saves each deck it lacks as a local file.
-            0x1F4E => self.world.starter_deck.iter().fold(Message::reply(0x22C8), |m, d| m.item(d.record())),
+            // The starter deck, then the structure decks the player bought; the client uses at most 10.
+            0x1F4E => {
+                let owned = self.selected.map(|at| self.account.players[at].decks.clone()).unwrap_or_default();
+                let bought = owned.iter().filter_map(|&id| self.world.structure_decks.iter().find(|s| s.deck.id == id)).map(|s| &s.deck);
+                self.world.starter_deck.iter().chain(bought).take(10).fold(Message::reply(0x22C8), |m, d| m.item(d.record()))
+            }
             0x17D4 => return self.duel_ready(msg),
             // Deck updated: the deck editor's save, and the deck a player picks for a duel (DuelManager
             // 0x50ECF0, {duel_id, event_id, update_type 1, item: the deck}), which is kept for the duel.

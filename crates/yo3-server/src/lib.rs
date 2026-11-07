@@ -135,7 +135,9 @@ fn world(cfg: &Config, duel_port: u16) -> World {
                 .filter(|d| d.kind == 1 && d.record.get("deck_image").and_then(Value::as_str).is_some_and(|i| i != "noImage"))
                 .map(|d| {
                     let date = |k: &str| d.record.get(k).and_then(Value::as_str).unwrap_or_default();
-                    shop::ShopDeck { id: d.id, released: date("created"), modified: date("modified"), cards: d.cards().collect() }
+                    let name = d.name_id().and_then(|id| data.text(id)).unwrap_or("Structure Deck").to_string();
+                    let deck = Deck { id: d.id, name, main: d.main.clone(), extra: d.extra.clone(), side: d.side.clone() };
+                    shop::ShopDeck { released: date("created"), modified: date("modified"), deck }
                 })
                 .collect(),
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
