@@ -6,7 +6,7 @@ mod common;
 use common::{Server, one, req, req_with};
 use yo3_proto::{Message, Value};
 use yo3_server::front::World;
-use yo3_server::shop::{self, ShopPack};
+use yo3_server::shop::{self, ShopDeck, ShopPack};
 
 #[test]
 fn shop_text_carries_the_greeting() {
@@ -57,7 +57,7 @@ fn rental_terms_are_answered() {
     }
 }
 
-/// Two packs: pack 1 in three rarity tiers, pack 271 in one.
+/// Two packs (pack 1 in three rarity tiers, pack 271 in one) and structure deck 4.
 fn shop() -> Server {
     let pack = |id, tiers: Vec<Vec<u16>>| ShopPack {
         id,
@@ -66,7 +66,8 @@ fn shop() -> Server {
         tiers,
     };
     let packs = vec![pack(1, vec![vec![10, 11, 12, 13], vec![20, 21], vec![30]]), pack(271, vec![vec![40, 41, 42]])];
-    Server::with_world(World { packs, card_rows: 50, ..World::new((1..=20).collect()) })
+    let deck = ShopDeck { id: 4, released: "2009-11-26 16:26:17".into(), modified: "2009-11-26 16:26:17".into(), cards: vec![40, 40, 41] };
+    Server::with_world(World { packs, structure_decks: vec![deck], card_rows: 50, ..World::new((1..=20).collect()) })
 }
 
 #[test]
@@ -77,7 +78,7 @@ fn the_shelves_carry_the_booster_packs() {
     let mut c = shop().join(1001, "Yugi");
     let r = one(c.send(req(0x1B67)));
     assert_eq!(r.request(), Some(0x1C22));
-    assert_eq!(r.items.len(), 2);
+    assert_eq!(r.items.iter().filter(|i| i.get("item_type") == Some(&Value::U32(0))).count(), 2);
     let item = &r.items[0];
     let int = |k| item.get(k).and_then(Value::as_u32);
     let fields = ["item_type", "item_id", "item_cost", "item_max", "sale_id", "sale", "item_trade"].map(int);
@@ -183,4 +184,38 @@ fn duels_earn_bp_that_the_next_purchase_spends() {
     let buy = req_with(0x1B68, &[("sale_id", Value::U32(1)), ("item_num", Value::U32(1))]);
     assert_eq!(one(c.send(buy)).get("dpoint"), Some(&Value::U32(START_BP + 180 - 100)));
     assert_eq!(bp(), Some(START_BP + 80));
+}
+
+#[test]
+fn structure_decks_sit_on_their_own_tab() {
+    // Kinds 1 and 4 go to the STRUCTURE DECK tab (AddStruct, 0x48CE40), which takes the name, description, art and
+    // date from the client's preset deck item_id (0x52DC10). Pack and deck ids overlap, so a deck's sale id is
+    // 20000 + its id.
+    let mut c = shop().join(1001, "Yugi");
+    let r = one(c.send(req(0x1B67)));
+    let deck = r.items.iter().find(|i| i.get("item_type") == Some(&Value::U32(1))).expect("a structure deck");
+    let int = |k| deck.get(k).and_then(Value::as_u32);
+    assert_eq!(["item_id", "item_cost", "item_max", "sale_id"].map(int), [Some(4), Some(500), Some(3), Some(20004)]);
+    assert_eq!(deck.get("rel_time").and_then(Value::as_str).as_deref(), Some("2009-11-26 16:26:17"));
+}
+
+#[test]
+fn a_bought_structure_deck_arrives_whole() {
+    // A structure deck present is type 1 (PresentWindow case 1, 0x4777D3): the deck id is item's first u16, and desc
+    // "-1" shows the deck's own description. Its cards join the collection.
+    let mut c = shop().join_with_bp(1001, "Yugi", 1000);
+    let buy = req_with(0x1B68, &[("sale_id", Value::U32(20004)), ("item_num", Value::U32(1))]);
+    assert_eq!(one(c.send(buy)).get("dpoint"), Some(&Value::U32(500)));
+    let p = one(c.send(req(0x2775)));
+    assert_eq!(p.request(), Some(0x2777));
+    assert_eq!(["present_id", "type"].map(|k| p.get(k).and_then(Value::as_u32)), [Some(1), Some(1)]);
+    assert_eq!(rows(&p), [4]);
+    assert_eq!(p.get("desc").and_then(Value::as_str).as_deref(), Some("-1"));
+    assert_eq!(one(c.send(req(0x2775))).request(), Some(0x2778));
+    let trunk = c.send(req_with(0x1FA4, &[("player_id", Value::U32(1001))]));
+    let counts = trunk[0].items[0].get("cards").and_then(Value::as_bytes).unwrap().to_vec();
+    assert_eq!((counts[39], counts[40]), (2, 1));
+    // Beyond item_max (3) or the BP: refused.
+    let four = req_with(0x1B68, &[("sale_id", Value::U32(20004)), ("item_num", Value::U32(4))]);
+    assert_eq!(one(c.send(four)).request(), Some(0x1C25));
 }

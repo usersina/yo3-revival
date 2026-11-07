@@ -1,11 +1,15 @@
-//! The shop's stock (shopmain.cpp): booster packs from the client's own pack files, what a pack holds, and the
-//! presents bought packs arrive as (PresentWindow).
+//! The shop's stock (shopmain.cpp): booster packs and structure decks from the client's own pack and recipe files,
+//! what a pack holds, and the presents bought goods arrive as (PresentWindow).
 use yo3_proto::{Message, Value};
 
 /// BOOSTERPASS Points a pack costs, and the most one purchase may take (item_cost, item_max; **guess**: the
 /// original prices are unknown).
 pub const PACK_COST: u32 = 100;
 pub const PACK_MAX: u32 = 10;
+/// The same for a structure deck (**guess**), sold under DECK_SALE + its deck id since pack and deck ids overlap.
+pub const DECK_COST: u32 = 500;
+pub const DECK_MAX: u32 = 3;
+pub const DECK_SALE: u32 = 20000;
 /// A pack holds this many cards of its first rarity tier, then one of a higher tier (**guess**).
 const COMMONS: usize = 4;
 
@@ -27,6 +31,84 @@ pub struct ShopPack {
     pub released: String,
     pub modified: String,
     pub tiers: Vec<Vec<u16>>,
+}
+
+/// A structure deck on sale: its preset deck id (the client's recipe file, which gives the name, description and
+/// art), its dates, and its cards (CARD_Prop rows: main, extra and side).
+#[derive(Clone, Debug)]
+pub struct ShopDeck {
+    pub id: u32,
+    pub released: String,
+    pub modified: String,
+    pub cards: Vec<u16>,
+}
+
+/// What a sale id sells.
+pub enum Goods<'a> {
+    Pack(&'a ShopPack),
+    Deck(&'a ShopDeck),
+}
+
+impl<'a> Goods<'a> {
+    pub fn find(packs: &'a [ShopPack], decks: &'a [ShopDeck], sale_id: u32) -> Option<Goods<'a>> {
+        match packs.iter().find(|p| p.id == sale_id) {
+            Some(pack) => Some(Goods::Pack(pack)),
+            None => decks.iter().find(|d| Some(d.id) == sale_id.checked_sub(DECK_SALE)).map(Goods::Deck),
+        }
+    }
+
+    /// Its price in BP and the most one purchase may take.
+    pub fn price(&self) -> (u32, u32) {
+        match self {
+            Goods::Pack(_) => (PACK_COST, PACK_MAX),
+            Goods::Deck(_) => (DECK_COST, DECK_MAX),
+        }
+    }
+
+    /// One of it, as the present it arrives as: a pack opened now, or the deck.
+    pub fn take(&self, rng: &mut u64) -> Present {
+        match self {
+            Goods::Pack(pack) => Present::Pack { id: pack.id, cards: open(pack, rng) },
+            Goods::Deck(deck) => Present::Deck { id: deck.id, cards: deck.cards.clone() },
+        }
+    }
+}
+
+/// A bought pack or structure deck waiting for the client to show it.
+#[derive(Clone, Debug)]
+pub enum Present {
+    Pack { id: u32, cards: Vec<u16> },
+    Deck { id: u32, cards: Vec<u16> },
+}
+
+impl Present {
+    /// The cards it puts in the collection.
+    pub fn cards(&self) -> &[u16] {
+        match self {
+            Present::Pack { cards, .. } | Present::Deck { cards, .. } => cards,
+        }
+    }
+
+    /// As a 0x2777 (PresentWindow 0x476DE0, which reads present_id, type, level, form, item_img, end_time and item):
+    /// a pack is type 0 with its cards as item (big-endian u16 rows, shown one at a time) and pack_id, whose name
+    /// comes from the client's pack file; a structure deck is type 1 with its deck id as item's first u16 (case 1,
+    /// 0x4777D3) and desc "-1" for the deck's own description.
+    pub fn message(&self, present_id: u32) -> Message {
+        let m = Message::reply(0x2777)
+            .with("present_id", Value::U32(present_id))
+            .with("level", Value::U32(0))
+            .with("form", Value::U32(0))
+            .with("item_img", Value::text(""))
+            .with("end_time", Value::text(""));
+        match self {
+            Present::Pack { id, cards } => {
+                m.with("type", Value::U32(0)).with("item", Value::u16_be_array(cards)).with("pack_id", Value::U32(*id))
+            }
+            Present::Deck { id, .. } => {
+                m.with("type", Value::U32(1)).with("item", Value::u16_be_array(&[*id as u16])).with("desc", Value::text("-1"))
+            }
+        }
+    }
 }
 
 /// A pack file's cards split into their ascending runs, read as rarity tiers: 44, 18, 9, 9 for an 80-card pack, the
@@ -78,16 +160,16 @@ pub fn shelf_item(pack: &ShopPack) -> Message {
         .with("rel_time", Value::text(&pack.released))
 }
 
-/// A bought pack as a present (0x2777, PresentWindow 0x476DE0): type 0 is a pack, whose name comes from the client's
-/// pack file pack_id; item holds its cards as big-endian u16 rows, shown one at a time.
-pub fn present(present_id: u32, pack_id: u32, cards: &[u16]) -> Message {
-    Message::reply(0x2777)
-        .with("present_id", Value::U32(present_id))
-        .with("type", Value::U32(0))
-        .with("level", Value::U32(0))
-        .with("form", Value::U32(0))
-        .with("item_img", Value::text(""))
-        .with("end_time", Value::text(""))
-        .with("item", Value::u16_be_array(cards))
-        .with("pack_id", Value::U32(pack_id))
+/// A structure deck on the shelves: item_type 1 puts it on the STRUCTURE DECK tab (AddStruct, 0x48CE40).
+pub fn shelf_deck(deck: &ShopDeck) -> Message {
+    Message::record()
+        .with("item_type", Value::U32(1))
+        .with("item_id", Value::U32(deck.id))
+        .with("item_cost", Value::U32(DECK_COST))
+        .with("item_max", Value::U32(DECK_MAX))
+        .with("sale_id", Value::U32(DECK_SALE + deck.id))
+        .with("sale", Value::U32(0))
+        .with("item_trade", Value::U32(0))
+        .with("modified", Value::text(&deck.modified))
+        .with("rel_time", Value::text(&deck.released))
 }

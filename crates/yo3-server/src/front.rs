@@ -272,8 +272,9 @@ pub struct World {
     pub duel_server: (String, u16),
     pub news: Vec<(String, String)>,
     pub rooms: Vec<Room>,
-    /// The booster packs on the shop's shelves (from the client's pack files).
+    /// The booster packs and structure decks on the shop's shelves (from the client's pack and recipe files).
     pub packs: Vec<crate::shop::ShopPack>,
+    pub structure_decks: Vec<crate::shop::ShopDeck>,
 }
 
 impl World {
@@ -300,6 +301,7 @@ impl World {
                 Room::new(4, "Duel Recruiting"),
             ],
             packs: vec![],
+            structure_decks: vec![],
         }
     }
 }
@@ -526,8 +528,8 @@ pub struct FrontSession {
     reached_at: Option<std::net::IpAddr>,
     /// The accounts, where a player's saved settings are kept (none: this session's copy only).
     directory: Option<Arc<Mutex<crate::accounts::Directory>>>,
-    /// Bought packs not shown yet (pack id, cards), and the last present id given.
-    presents: VecDeque<(u32, Vec<u16>)>,
+    /// Bought packs and decks not shown yet, and the last present id given.
+    presents: VecDeque<crate::shop::Present>,
     last_present: u32,
     rng: u64,
 }
@@ -596,20 +598,22 @@ impl FrontSession {
     }
 
     /// A purchase 0x1B68 {sale_id, item_num, end_time} -> 0x1C24 {dpoint}: the BP left (shown as user_bp), or 0x1C25
-    /// (shop buy error) for a pack not on sale, a count of 0 or beyond item_max, or too few BP. Each pack's cards join
-    /// the player's collection at once and wait as a present (0x2775) for the client to show.
+    /// (shop buy error) for goods not on sale, a count of 0 or beyond item_max, or too few BP. Each pack's or deck's
+    /// cards join the player's collection at once and wait as a present (0x2775) for the client to show.
     fn buy(&mut self, msg: &Message) -> Message {
         let int = |k| msg.get(k).and_then(Value::as_u32).unwrap_or(0);
         let (sale_id, count) = (int("sale_id"), int("item_num"));
-        let Some(pack) = self.world.packs.iter().find(|p| p.id == sale_id).cloned() else { return Message::reply(0x1C25) };
-        let cost = crate::shop::PACK_COST * count;
+        let world = self.world.clone();
+        let Some(goods) = crate::shop::Goods::find(&world.packs, &world.structure_decks, sale_id) else { return Message::reply(0x1C25) };
+        let (price, max) = goods.price();
+        let cost = price * count;
         let Some(at) = self.selected else { return Message::reply(0x1C25) };
-        if count == 0 || count > crate::shop::PACK_MAX || cost > self.account.dpoint {
+        if count == 0 || count > max || cost > self.account.dpoint {
             return Message::reply(0x1C25);
         }
-        let packs: Vec<Vec<u16>> = (0..count).map(|_| crate::shop::open(&pack, &mut self.rng)).collect();
+        let bought: Vec<crate::shop::Present> = (0..count).map(|_| goods.take(&mut self.rng)).collect();
         let add = |p: &mut Player| {
-            for &row in packs.iter().flatten() {
+            for &row in bought.iter().flat_map(crate::shop::Present::cards) {
                 *p.cards.entry(row).or_default() += 1;
             }
         };
@@ -621,7 +625,7 @@ impl FrontSession {
             d.update_account(self.account.user_id, |a| a.dpoint = dpoint);
             d.update_player(self.account.players[at].player_id, add);
         }
-        self.presents.extend(packs.into_iter().map(|cards| (pack.id, cards)));
+        self.presents.extend(bought);
         Message::reply(0x1C24).with("dpoint", Value::U32(self.account.dpoint))
     }
 
@@ -704,7 +708,11 @@ impl FrontSession {
             // items (the booster packs), exchange items, protectors, event items, perks, rental terms, avatar
             // items (the last clears isLoading).
             0x1B66 => Message::reply(0x1C20).with("text", Value::text("Welcome! Take a look at the packs.")),
-            0x1B67 => self.world.packs.iter().map(crate::shop::shelf_item).fold(Message::reply(0x1C22), Message::item),
+            0x1B67 => {
+                let packs = self.world.packs.iter().map(crate::shop::shelf_item);
+                let decks = self.world.structure_decks.iter().map(crate::shop::shelf_deck);
+                packs.chain(decks).fold(Message::reply(0x1C22), Message::item)
+            }
             0x1B68 => self.buy(msg),
             0x1B6F => Message::reply(0x1C26),
             0x1B6B => Message::reply(0x1C32),
@@ -856,9 +864,9 @@ impl FrontSession {
             // Next present: 0x2777 would carry one; 0x2778 = none, which closes PresentWindow
             // (0x4783C9) and lets the main screen unlock its facilities and menu (0x473B87).
             0x2775 => match self.presents.pop_front() {
-                Some((pack_id, cards)) => {
+                Some(present) => {
                     self.last_present += 1;
-                    crate::shop::present(self.last_present, pack_id, &cards)
+                    present.message(self.last_present)
                 }
                 None => Message::reply(0x2778),
             },

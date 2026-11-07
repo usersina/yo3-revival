@@ -128,6 +128,16 @@ fn world(cfg: &Config, duel_port: u16) -> World {
                     shop::ShopPack { id: p.id, released: date("created"), modified: date("modified"), tiers: shop::tiers(&p.cards) }
                 })
                 .collect(),
+            // Structure decks: the deck_type 1 presets with their own art (SD001-SD005; the others are starters).
+            structure_decks: data
+                .decks
+                .iter()
+                .filter(|d| d.kind == 1 && d.record.get("deck_image").and_then(Value::as_str).is_some_and(|i| i != "noImage"))
+                .map(|d| {
+                    let date = |k: &str| d.record.get(k).and_then(Value::as_str).unwrap_or_default();
+                    shop::ShopDeck { id: d.id, released: date("created"), modified: date("modified"), cards: d.cards().collect() }
+                })
+                .collect(),
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
         },
         Err(e) => {

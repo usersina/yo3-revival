@@ -80,7 +80,11 @@ Stop finding missing fields one crash at a time.
       server restart the shop showed 4700 BP and the pack 21.4% collected
 - [x] BP from duels: each counted result pays into the account (win 100, draw 50, loss 30), which the login replies
       and every purchase re-read. Live: a lost NPC duel took 5000 to 5030, shown at the next login; a pack then left 4930
-- [ ] Structure decks, protectors, avatar items, card trade and rental
+- [x] Structure decks: SD001–SD005 (the art-carrying `deck_type` 1 recipes) on the STRUCTURE DECK tab, bought as
+      type-1 presents with the deck id; the deck's cards join the collection. Live: GADGET BOX (deck 502) for 500 BP,
+      shown as its 40-card grid, then 41 cards (with its extra deck) in the account
+- [ ] Bought structure decks in the deck list, ready to duel (`0x22C8` serves the starter deck); protectors, avatar
+      items, card trade and rental
 - [ ] Presents, card trade and rental, if wanted
 - **Exit:** create a player, open packs, build a deck, restart the server, everything is still there
 
@@ -207,6 +211,7 @@ Stop finding missing fields one crash at a time.
 | Shop lists besides packs, `perk_num`, rental terms | all empty or 0 | Only booster packs are stocked; `perk_num`'s meaning is unknown |
 | Pack prices and contents | 100 BP a pack, at most 10 per purchase; 5 cards: 4 of the pack list's first ascending run, 1 of a later run (each run half as likely as the one before), read as rarity tiers | The original's prices, pack size and odds are unknown; the runs match the OCG's rarity split (44/18/9/9) |
 | Starting BP | 5000 per account (`START_BP`) | The original's amounts are unknown |
+| Structure decks | SD001–SD005 only (the starters 1–3 have no art); 500 BP each, at most 3 per purchase, sale id 20000 + deck id; the owned-items bit (`pbin_no`) the client sets isn't kept by the server | The original's prices are unknown; nothing read so far depends on the bit for decks |
 | BP from duels | win 100, draw 50, loss 30 per counted result (NPC duels and duels between players; a match counts once) | The original's duels paid no BP (no reply after a duel sets it); the client shows the new total at its next login or purchase |
 | Pack presents | one per pack, `present_id` counting from 1 per session, `level`/`form` 0, `item_img` and `end_time` empty; the cards join the collection at purchase | Only the fields the window reads; presents aren't kept across reconnects (the cards are) |
 | Event lists (`0x177B`), own user event (`0x33FE`) | empty, 0 | No events are held; paging by `base_point`/`front_num` like player search is assumed |

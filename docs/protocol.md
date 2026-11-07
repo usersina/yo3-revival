@@ -158,6 +158,19 @@ trunk has none) with a SKIP button. The client doesn't add them to its trunk its
 only on `type` 6): the server keeps them, and the next trunk request (`0x1FA4`) brings them. Live: Pack 1 opened
 showing "Power of Kaishin" NEW!, and SKIP returned to the Shop Menu.
 
+**Structure decks.** A shop item of kind 1 or 4 goes to the STRUCTURE DECK tab: `AddStruct` (`0x48CE40`) looks up the
+preset deck `item_id` in the client's own recipe files (`0x52DC10`) for its `name_id`, `discription_id`,
+`deck_image` and `modified`. The recipes of `deck_type` 1 with their own art are the structure decks SD001–SD005
+(decks 4, 5, 6, 501, 502; decks 1–3 are art-less starters). Bought, each comes as a present of `type` 1
+(PresentWindow case 1, `0x4777D3`): the deck id is the first u16 of `item` (`0x410AD0`, index 0), the deck is looked up
+again (`0x52DC10`) and handed to the deck routines `0x414410`, `0x415310`, `0x414BC0`, `0x419050`, `0x4188D0`; the window
+shows the deck's name, its description when the reply's `desc` text is `"-1"`, and sets the deck's `pbin_no` bit in
+the player's owned-items bitmap (player data `+0x68`). The server sells each structure deck under sale id 20000 + its
+deck id (pack ids overlap deck ids) and adds the deck's cards to the collection. Live: the tab showed SD001–SD005 with
+their box art, newest first; GADGET BOX (sale id 20502) cost 500 BP and came as a grid of its 40 cards, each NEW!,
+with its name and description, then OK walked through the cards and closed the window (no local deck file is
+written).
+
 **Where the client's BP comes from.** The client keeps its BP at UserData `+0x76C`, which the shop and the avatar
 shop (`0x4963E0`) check before they send a purchase ("You do not have enough BOOSTERPASS Points."). Four replies set
 it: the login's `dpoint` (`0x469C00`), the purchase `0x1C24` and the rental `0x2D77` (both shop cases read `dpoint`),
