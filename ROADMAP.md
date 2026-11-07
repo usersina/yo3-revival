@@ -85,9 +85,12 @@ Stop finding missing fields one crash at a time.
       with both players. The client builds NPC duels itself (DuelManager `0x50ECF0`); no duel server is involved
 - [x] Duel server handoff: after `0x17D4` the server pushes `0x22C4` (`duelData {host, port}` + `rule`), the
       client connects to our duel listener (port 1214, logged only) and sends `0x200A {player_id, autoSet}`
-- [ ] Duel connection: answer `0x200A` and map what follows (the client waits on the versus screen). Then NPC
-      experience (`npcbin`) so higher levels unlock, and what `0x17D4` reports. Mode 4 (`0x1838` → `{host,
-      port}`, started at `0x4D3066`) is still unexplored
+- [x] Duel connection mapped (both directions' `duelRequestName`s, the engine command pump) and the janken played
+      against the server as the CPU (commands 1500–1505): the duel field opens, Turn 1
+- [ ] Duel setup and the first engine commands: `0x15` (`FirstPlayer`, `PlayerNum`, deck sizes), `0x12` command
+      ids, LP and draws; this needs the rules engine below
+- [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
+      port}`, started at `0x4D3066`)
 - [ ] Confirm in Ghidra that Online 3's duel stream is Konami's engine command set (as in Online 2)
 - [ ] Rules engine: ocgcore as a separate process (AGPL), as in YOLaucher's `duelcore`
 - [ ] Translator: ocgcore messages ↔ Online 3 duel commands and prompts (`DLG_Text` ids), card ID ↔ passcode map
@@ -126,6 +129,8 @@ Stop finding missing fields one crash at a time.
 | `join_id`, `duel_id` | server-wide counters from 1 | The client only echoes them back |
 | `0x17D4` | answered `0x17D5`, nothing kept | Sent once the duel object is ready; may also carry results later |
 | `0x22C4` push | right after `0x17D5`; `rule` = the fields of the duel's `0x17AC` item | The original timing and rule contents are unknown; only `match_type` is read so far |
+| Server duel messages | request `0x200D` | The pump reads only `duelRequestName` (and needs the id non-negative) |
+| CPU janken | random hand; the CPU goes first when it wins; `1505` param2/param3 0 | The original CPU's choices are unknown |
 | Duel port | 1214 | The original's port is unknown; the client takes whatever `duelData` says |
 | Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
 

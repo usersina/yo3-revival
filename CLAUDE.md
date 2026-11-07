@@ -30,7 +30,7 @@ addresses and data formats: [docs/client-internals.md](docs/client-internals.md)
 |---|---|
 | `crates/yo3-proto` | Wire codec: frame, Blowfish (`BlowfishLE`), key/value messages, the version-string opener |
 | `crates/yo3-data` | Client data: `.ypk` archives, card table, regulations, preset decks, packs (golden tests skip without the game) |
-| `crates/yo3-server` | Gate / front / patch-HTTP servers. `front.rs` = the reply contract and the `Hub` of online players, `accounts.rs` = accounts by client address, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
+| `crates/yo3-server` | Gate / front / duel / patch-HTTP servers. `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `accounts.rs` = accounts by client address, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
 | `tools/client/vclient.sh` | Headless client: `xvfb`, `start [--trace]`, `login [SLOT]`, `check`, `shot`, `click`, `pixel`, `key`, `type`, `stop`, `prefix` |
 | `tools/tracer/` | Field-read tracer: `yo3trace.dll` + injector (C, mingw-w64), `summarize.py` |
 | `tools/re/` | Python reverse-engineering helpers (see Commands) |

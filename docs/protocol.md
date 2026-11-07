@@ -217,12 +217,58 @@ DuelManager (scene `0xFFFFD8FD`, constructor `0x50E470`) picks its first state b
 | Select Deck `0x50ECF0` | `0x1F4F {duel_id, event_id 0, update_type 1}` + the chosen deck (tag 6) | `0x22CA` (`0x22CB`, text `0x2919`) | none (`0x50EFC1` compares the id; the deck editor and the shop take `0x22CA` too) | live: the duel scene loads | confirmed |
 | `0x50F030` state 2 | `0x17D4 {event_id, join_id, duel_id}`, once the avatar object (`AvatarViewer` `0x4DC320`; an NPC opponent is set up by its vfunc `0x68`) reports state 2 or −1; skipped when MainGamen `+0x8BC` is set | `0x17D5` (`0x17D6`, text `0x2919`) | none | live: sent right after the duel scene loaded, before any play | confirmed (meaning: "ready", **open**) |
 | `0x50F690` state 1 | (none: waits for front flag `0x8000`) | push `0x22C4`, which the global dispatcher keeps in slot 20 and flags (`0x4F4F34`) | items found by their `name` field (`0x531EB0`): `duelData` {`host` string, `port` int}, and its sub-item `rule`, which replaces MainGamen `+0x88C` (`match_type` read from it). Host and port go to DuelServerConnection (`+0x78`, `+0x94`), which connects | tracer: `host`, `port`, `name`, `match_type` found; live: the duel connection opens | confirmed; `rule` = the item of the duel's `0x17AC` (**guess**: only `match_type` is read so far) |
-| `0x50F690` state 2 | **duel connection**: `0x200A {player_id, autoSet}` (`autoSet` from the `duelOption` `auto_place`), unless MainGamen `+0x8BC` is set; then heartbeats `0x2724` every 30 s (`0x4F1730`) | not known yet | | live: `{autoSet 1, player_id 1002}`; the screen stays on the versus panel (timer 0) | open |
+| `0x50F690` state 2 | **duel connection**: `0x200A {player_id, autoSet}` (`autoSet` from the `duelOption` `auto_place`), unless MainGamen `+0x8BC` is set; then heartbeats `0x2724` every 30 s (`0x4F1730`) | no reply: the server starts the janken (see "Duel connection") | | live: `{autoSet 1, player_id 1002}` | confirmed |
 
 So an NPC duel does go through the duel server: the server announces it with `0x22C4`, the client connects and asks
 `0x200A`. The duel connection uses the same framing as the front but opens with no version string. Other readers of
 `duelData` (agent `0x4A2D30` for the DUEL panel: `duel_id`, `vsPlayerData`, `country`; mode 4 `0x4A3650`: `duel_id`,
 `event_type`, `official`) show the PvP shape of the same push.
+
+## Duel connection
+
+Every message is key/value (tag 4) with a `duelRequestName`. The client sends request `0x200C` (header built by
+`0x49F990`), except its first message `0x200A`. The server's messages go through the pump `0x5233A0`, called every
+tick by DuelServerConnection: it pops one message, ignores any without a `request` field, switches on
+`duelRequestName` (`0x5201A0`) and returns the request id; a negative one counts as a lost connection (`0x4F1860`).
+We send request `0x200D` (**guess**: no reader).
+
+| Server `duelRequestName` | Fields | What the client does | Status |
+|---|---|---|---|
+| `0x10` | `BusyEffectID` | `0x520AB0` | shape |
+| `0x11` engine command | `id`, `param1`…`param4` | queued as `{id, request, param1..param4}` (`0x523541`) on the engine (`0x82D2C0` `+0x54`); scenes pop one when their queued states (animations) are done (`0x522A50`, `0x4D3220`) | confirmed (live) |
+| `0x12` | `comIDsize`, `helpIDsize`, `otherFlagSize`, `COMIDDATA` (raw, u32 BE) | command ids per card, help ids, flags | shape |
+| `0x14` timers | `timerKind`, `start`, `count1`, `total1`, `count2`, `total2`, `other` and their `_max` | `0x520A00` | shape |
+| `0x15` duel setup | `FirstPlayer`, `PlayerNum`, `PlayerType001/002`, `MainDeckNum001/002`, `ExtraDeckNum001/002` | stored on the engine (`+0x1AC`…`+0x1E4`) | shape |
+
+| Client `duelRequestName` | Fields | Sender |
+|---|---|---|
+| 1 | `size` … | `0x520C20` |
+| 2 | `CommandID`, `index`, `player`, `position` (a card command) | `0x520FD0` |
+| 3 | `phase` | `0x521180` |
+| 4 | `DLGResult`, `debug` (a dialog answer) | `0x521A70` |
+| 5 | | `0x5212B0` |
+| 6 | `SetIndex` | `0x521BC0` |
+| 7 | `data`, `index` | `0x521CC0` |
+| 8 | `player` | `0x521980` |
+| 9 / 0xA / 0xB | debug: `DebugID`; `wCardID`, `fFace`, `fTurn`; `id`, `type` (with `index`, `player`, `position`) | `0x5213C0`, `0x521560`, `0x5217C0` |
+| 0xC | `selectHand` (janken: 0 rock, 1 scissors, 2 paper) | `0x4F1330` |
+| 0xD | `choice` (1 first, 2 second) | `0x4F1430` |
+| 0xE | | `0x50FDF0` (DuelManager) |
+| 0xF | `player`, `autoSet` (duel options; live on entering the duel field: `{player 0, autoSet 1}`) | `0x515790`, `0x4A0390` |
+
+**Janken** (who goes first; JankenScene `0x518400`, `duel_janken.swf`). Engine commands, all confirmed live:
+
+| Command | Params | Scene |
+|---|---|---|
+| 1500 | none | `beginJanken`, then the hands (`0x518D80`); sent after `0x200A` |
+| 1501 | param1 result (0 draw, 1 win, 2 lose), param2 the opponent's hand, param3 this player's hand | `resolveJanken(myHand, yourHand, result)` (`0x518F50`); after a draw the scene asks for a new hand by itself (`selectJanken` `0x518ED0`), so the server sends nothing more |
+| 1502 | param1 ≠ 0: this player chooses | `selectFirst` (FIRST TO GO / SECOND TO GO), else `beginFirst` (wait) (`0x5191A0`) |
+| 1503 | param1 1 = this player goes first | `resolveFirst(isFirst)` (`0x519230`) |
+| 1505 | param1 this player's turn order (MainGamen `+0x820`; the other at `+0x84C`, `0x504D00`); param2 100 takes another path; param3 3 too | ends the janken (`0x5185A3`); the duel field opens with LP 0, Turn 1 |
+
+The server plays the CPU: a random hand; when the CPU wins it goes first (**guess**). Next the field waits for the
+duel itself: setup (`0x15`), command ids (`0x12`) and engine commands below 1000 (`0x522A50` handles 2, 4, 6, `0x1A`
+card moves, `0x36`, `0x37`, and 1000–1004 specially).
 
 ## Accounts
 
@@ -255,7 +301,6 @@ NULL, which these callers check. Send them when we know what they mean.
   `type`, `level`, `form`, `item_img`, `end_time`, `item`…); `0x2778/0x277A` mean none (see `0x2775`).
   The same numbers also show up as UI text ids (`FUN_0051E6C0(table, id)`): don't confuse the two.
 - 48 more `REQUEST_` / `RESPONSE_COMMUNICATION_*` names for trade and rental (search the exe's strings).
-- `DuelServerConnection`: the third server tier; it opens with `0x200A` (see "NPC duels and duel start"), whose
-  reply is not known yet.
+- `DuelServerConnection`: the third server tier; see "Duel connection".
 - Official duel logs were served over HTTP (`http://download.yugioh-online.net/duellogs/last/`), alongside team and
   Online 2 downloads under `download.yugioh-online.net`.

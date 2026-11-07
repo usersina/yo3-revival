@@ -48,6 +48,11 @@ export, see [CLAUDE.md](../CLAUDE.md)).
 | `0x4BEB40` / `0x4BFBA0` / `0x4C0C80` / `0x4BE390` | SelectNpcScene: builds the tab lists from the roster (slot 4, three items per NPC) / `getNpcInfo` / `decideNpc (tab, index, level)` / duel start step (agent mode 3) |
 | `0x4A0B50` | `DuelMatchingAgent` start (`EBX` = mode: 0 DUEL panel, 1 password, 2, 3 NPC, 4 duel server); steps `0x4A0E90` deck check, `0x4A1090` `0x1784`, `0x4A1790` `0x17AC`, `0x4A3340` `0x1838` |
 | `0x50E470` / `0x50ECF0` / `0x50F030` / `0x50F690` / `0x50F320` | `DuelManager` (scene `0xFFFFD8FD`): constructor / Select Deck (`0x1F4F`) / avatars and `0x17D4` / waits for `0x22C4`, connects the duel server, sends `0x200A` / mode 4: connect, then `0x1838` |
+| `0x5233A0` / `0x5201A0` | duel stream pump (pops a duel-connection message, switches on `duelRequestName` 0x10–0x15) / reads `duelRequestName` |
+| `0x522A50` | pops one engine command `{id, request, param1..param4}` for a scene; handles a few itself (2, 4, 6, `0x1A`, 1000…) |
+| `0x49F990` | client duel message header: `request 0x200C`, `duelRequestName` = the argument |
+| `0x517C80` / `0x518400` | `JankenScene` constructor / update (pops commands 1500–1505 when idle) |
+| `0x513370` | `DuelScene` constructor (`duel_setup.swf`) |
 | `0x4EEB90` | object factory by id: `0xFFFFD8F5` FrontServerConnection, `0xFFFFD8F6` DuelServerConnection, `0xFFFFD8F7` DuelMatchingAgent, `0xFFFFD8F8` AutoMatchingAgent, `0xFFFFD8F9` CommunicationAgent, `0xFFFFD8FD` DuelManager |
 | `0x4A523F`, `0x4A551E`, `0x4A5D05` | `CommunicationAgent` switches (195/106/102 cases) |
 | `0x413FE0` | address of front dataset slot `EDI` (vector at `+0x16C`); the global dispatcher keeps some replies there: `0x2711` → 4, `0x251C` friend list → 6, `0x252A` black list → 7, `0x2D6C` rental records → 8, `0x21FC` news → 10, `9000` trunk → 18, `0x22C4` duel data → 20 (flag `0x8000`), `0x2774` → 23, `0x24BA` → 24 |
