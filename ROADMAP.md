@@ -117,8 +117,9 @@ Stop finding missing fields one crash at a time.
 - [ ] Players kept across server restarts (records against each opponent are in memory only)
 - [x] The client's own card choices: targets, tributes, attack targets and other card selections open the card list
       (command `0x37` and its data commands) with a message from the client's duel prompts. Live: an attack target
-- [ ] The client's other choices: yes/no and effect questions, options, positions, chains (dialog command `0x36`;
-      answered for the player now)
+- [x] Yes/no and effect questions: the Yes/No dialog (command `0x36` kind 2) with the card's name. Live: Marauding
+      Captain's optional effect, then its Special Summon choice. Testing aid `--duel-deck ROWS`
+- [ ] The client's other choices: options, positions, chains (dialog command `0x36`; answered for the player now)
 - [ ] Translator: attack and summon animations (DuelBattle `0xA`–`0xE`, DuelSummon `0x2A`–`0x32`), position changes,
       stat changes from effects (engine queries); attack targets on the field instead of the list
 - [ ] Deck piles on the field (the deck count alone shows none)
@@ -169,6 +170,7 @@ Stop finding missing fields one crash at a time.
 | Card list kind | 1 for min 0, `0x27` for min 1, else 6 with max = min | The kinds' other meanings (title, sounds) are unknown; a choice between 2 and more picks is narrowed to exactly min |
 | Card list marks | `0x8000` for the CPU's cards, no icons | The low bits draw icons whose meaning is unknown |
 | Choice messages | EDOPro's hint mapped to the client's text for 7 hints; none otherwise | The original server's message per choice is unknown |
+| Yes/no questions | 'Activate the effect of "X"?' for optional effects, 'Use the effect of "X"?' for other questions | The cards' own question strings (EDOPro's) aren't in the client |
 | Attack targets | chosen in the card list | The original probably picked them on the field (DuelBattle) |
 | Rules | EDOPro's `MODE_MR2` | Online 3 (2010) ran Master Rule 2; EDOPro's preset may differ in details |
 | CPU play | first summonable monster, attack with all, never chain | The original NPCs' AI is unknown |

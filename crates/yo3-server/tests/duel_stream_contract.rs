@@ -240,3 +240,21 @@ fn a_card_command_names_the_command_and_the_card() {
     let Packet::Message(other) = duel_msg(4, &[("DLGResult", 1)]) else { unreachable!() };
     assert!(yo3_server::duel::CardCommand::from_message(&other).is_none());
 }
+
+#[test]
+fn a_test_deck_replaces_the_players_main_deck() {
+    // Testing aid (--duel-deck): the player's main deck becomes the given rows repeated to 40 cards, so a live check
+    // can count on a card being drawn.
+    let mut world = World::new((1..=20).collect());
+    world.npc_decks.insert(124, deck(1000, 41, 2));
+    world.test_deck = Some(vec![7, 8]);
+    let mut hub = Hub::default();
+    hub.enter_duel(1002, DuelEntry { deck: deck(100, 40, 0), npc_id: Some(124) });
+    let mut s = DuelSession::new(Arc::new(world), Arc::new(Mutex::new(hub)), 7);
+    enter(&mut s);
+    let cmds = commands(&s.handle(&duel_msg(0xD, &[("choice", 1)])));
+    let table = cmds.iter().take_while(|(id, _)| *id != 1);
+    let mut rows: Vec<_> = table.filter(|(id, p)| *id == 1000 && p[3] & 0xFF == 0).map(|(_, p)| p[1]).collect();
+    rows.sort();
+    assert_eq!(rows, [vec![7; 20], vec![8; 20]].concat());
+}

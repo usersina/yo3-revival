@@ -155,7 +155,10 @@ impl DuelSession {
         match (msg.request(), int("duelRequestName")) {
             (Some(ENTER), _) => {
                 self.player_id = int("player_id");
-                let entry = self.player_id.and_then(|id| self.hub.lock().expect("hub lock").duel_entry(id));
+                let mut entry = self.player_id.and_then(|id| self.hub.lock().expect("hub lock").duel_entry(id));
+                if let (Some(entry), Some(rows)) = (entry.as_mut(), &self.world.test_deck) {
+                    entry.deck.main = rows.iter().copied().cycle().take(40).collect();
+                }
                 self.entry = entry;
                 vec![command(JANKEN_BEGIN, [0; 4])]
             }

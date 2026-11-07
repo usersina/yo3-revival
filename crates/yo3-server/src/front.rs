@@ -182,6 +182,8 @@ pub struct World {
     pub cards: HashMap<u16, crate::translate::CardStats>,
     /// Each player's LP at the start of a duel (8000; lower only to test).
     pub start_lp: u32,
+    /// Testing aid: every player's main deck in a duel, as CARD_Prop rows repeated to 40 cards.
+    pub test_deck: Option<Vec<u16>>,
     /// The rules engine's directory (engine/, once fetched); without it the server deals the opening itself.
     pub engine_dir: Option<std::path::PathBuf>,
     /// Where clients connect for their duels (0x22C4 duelData host and port).
@@ -201,6 +203,7 @@ impl World {
             cards: HashMap::new(),
             engine_dir: None,
             start_lp: 8000,
+            test_deck: None,
             duel_server: ("127.0.0.1".into(), 0),
             news: vec![(
                 "Welcome back to Yu-Gi-Oh! ONLINE".into(),

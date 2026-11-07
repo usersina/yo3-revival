@@ -359,3 +359,35 @@ fn an_attack_target_is_a_card_choice_with_its_message() {
     let out = client_commands(t.prompt(&select));
     assert_eq!(out[3..], [(0x3EC, [1, 0, 0, 0]), (0x3ED, [1 << 28 | 222, 0, 0, 0]), (0x37, [0, 0x27, 1, 0])]);
 }
+
+#[test]
+fn an_effect_question_opens_the_yes_no_dialog() {
+    // MSG_SELECT_EFFECTYN (12) {code, cid, ...}: dialog command 0x36 {kind 2 Yes/No, 1 = message from the list}
+    // (factory 0x4C8CD0, DuelYesNoDialog 0x4C4FB0: buttons 0 "No", 1 "Yes"). Message entries: kind 1 a duel prompt
+    // text, kind 5 a card name by Konami id (0x5374B0) put into its %s: 250 'Activate the effect of "%s"?'. The
+    // dialog answers duelRequestName 4 {DLGResult: the button} (0x4C50F0).
+    let mut t = with_cards();
+    let effect = json!({ "type": 12, "player": 0, "code": 4100, "cid": 4100, "controller": 0, "location": 4,
+        "sequence": 0, "position": 1, "description": 0 });
+    assert_eq!(
+        client_commands(t.prompt(&effect)),
+        [(0x3EC, [2, 0, 0, 0]), (0x3ED, [1 << 28 | 250, 5 << 28 | 4100, 0, 0]), (0x36, [2, 1, 0, 0])]
+    );
+    assert_eq!(t.dialog_result(1), Some(json!({ "type": 2, "yes": true })));
+    t.prompt(&effect);
+    assert_eq!(t.dialog_result(0), Some(json!({ "type": 2, "yes": false })));
+}
+
+#[test]
+fn a_yes_no_question_names_its_card() {
+    // MSG_SELECT_YESNO (13) {description}: the question is a card script string (code << 4 | n), which the client
+    // doesn't have; the sidecar adds the card's Konami id (description_cid), so it reads 226 'Use the effect of
+    // "%s"?', else 270 "Use the effect now?".
+    let mut t = with_cards();
+    let named = json!({ "type": 13, "player": 0, "description": 65601, "description_cid": 4101 });
+    assert_eq!(client_commands(t.prompt(&named))[1], (0x3ED, [1 << 28 | 226, 5 << 28 | 4101, 0, 0]));
+    assert_eq!(t.dialog_result(1), Some(json!({ "type": 3, "yes": true })));
+    let plain = json!({ "type": 13, "player": 0, "description": 30 });
+    assert_eq!(client_commands(t.prompt(&plain))[..2], [(0x3EC, [1, 0, 0, 0]), (0x3ED, [1 << 28 | 270, 0, 0, 0])]);
+    assert_eq!(t.dialog_result(0), Some(json!({ "type": 3, "yes": false })));
+}

@@ -355,15 +355,18 @@ no animation yet (DuelBattle's commands `0xA`–`0xE` are unmapped).
 - `0x36 {kind, param2, param3}` (`0x514C0C`) builds a dialog by kind through the factory `0x4C8CD0` (kind table at
   `0x4C9178`): 0 OK, 1 Info, 2 Yes/No, 3 Effect, 4 Select, 5–6 Type, 7 Attribute, 8 Position ("Stand"), 9 Coin, 10
   Dice, 11 Number, 13 Discard, 14 Ritual (12 and above 14 build nothing). Each answers `duelRequestName 4 {DLGResult}`.
-  Online 2's notes give the same kinds; **not used yet**.
+  Online 2's notes give the same kinds. Yes/No (`DuelYesNoDialog`, `0x4C4FB0`, `dlg_yesno.swf`): param2 is its
+  message (1 = the message entries below, else a duel prompt text by id), buttons 0 "No" (UI text `0x2775`) and 1
+  "Yes" (`0x2774`); `DLGResult` is the pressed button (`0x4C50F0`).
 - `0x37 {player, kind, message}` (`0x514CCB`) opens the card list (`DuelCardListDialog`, `0x4C72D0`; kinds `0x4C`–`0x4F`
   the extended one, `0x5131E0`), `dlg_cardlist.swf`. It shows the list the data commands left in the engine state
   (pop `0x522A50`): `0x3EF {count, max picks, _}` (`+0x2A8`, `+0x9B8`; max 0 = view only) resets the lists, `0x3F2`
   gives CARD_Prop rows four at a time (`+0x9BC`, read by getCardInfo `0x4C78A0`), `0x3F3` a mark per card four at a
   time (`+0xE6C`: bit 15 the opponent's card, low bits icons whose meaning is open). The kind sets how many picks
   OK needs (`0x4C72D0`): 1–5, `0x48`, `0x4B` none; 6–`0x26` all of max; `0x27`–`0x47`, `0x4A` one. A non-zero message
-  builds the dialog's text from `0x3EC {entries}` and `0x3ED {entry ×4}` (`0x519870`); an entry is kind << 28 | value,
-  kind 1 = a text of the duel prompt table (2 a line break, 3 and 4 formatted). Closing it sends `6 {SetIndex}`, a
+  builds the dialog's text from `0x3EC {entries}` and `0x3ED {entry ×4}` (`0x519870`); an entry is kind << 28 | value:
+  1 a text of the duel prompt table, 2 a line break, 5 a card name by Konami id (`0x5374B0`) put into the text's
+  `%s`; 3 and 4 (formatted texts), 6, 7 (names through `0x5375D0`, `0x5376B0`) and 8 (a number) are not used yet. Closing it sends `6 {SetIndex}`, a
   `7 {index, data}` per pick and `4 {DLGResult: picks}` (`0x4C74F0`).
 
 The server uses the card list for the client's MSG_SELECT_CARD and MSG_SELECT_TRIBUTE (targets, tributes, attack
@@ -373,7 +376,15 @@ when a text says the same thing: 500 → 18 Tribute, 503 → 70 remove from play
 hand, 509 → 25 Special Summon, 549 → 222 attack target, 551 → 94 target; otherwise none. The picks answer the engine;
 no pick cancels when it allows. Live: Giant Orc's attack opened the list with "Select an attack target monster." and
 the CPU's monster marked as the opponent's; picking it sent `6`, `7 {index 0, data 1}`, `4 {DLGResult 1}` and the
-attack dealt 1200. Other prompts (yes/no, options, positions, chains, places) are still answered for the player.
+attack dealt 1200.
+
+The client's MSG_SELECT_EFFECTYN opens the Yes/No dialog with 'Activate the effect of "%s"?' (250) and the card's
+name, MSG_SELECT_YESNO with 'Use the effect of "%s"?' (226) naming the card whose script string the question is (the
+sidecar adds `description_cid` for a description `code << 4 | n`), else "Use the effect now?" (270) (**guess**: the
+original questions are the card scripts' own strings). `DLGResult` 1 answers yes. Live (`--duel-deck 1149,1449`):
+summoning Marauding Captain asked 'Activate the effect of "Marauding Captain"?'; Yes sent `DLGResult 1`, the card list
+followed with "Select the monster(s) to Special Summon." and the hand's monsters, and the picked Giant Orc was Special
+Summoned. Options, positions, chains and places are still answered for the player.
 
 The duel's end: ocgcore's WIN {winning team, reason} becomes command 2 {result, reason}. DuelScene keeps the result at
 MainGamen `+0x81C` and its 1 ↔ 2 swap as the opponent's, and adds a DuelEndEffect (`0x5083A0`) that plays

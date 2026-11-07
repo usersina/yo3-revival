@@ -109,10 +109,21 @@ const OPPONENTS: u32 = 0x8000;
 const PICK_ANY: u32 = 1;
 const PICK_ALL: u32 = 6;
 const PICK_ONE: u32 = 0x27;
-/// A message entry naming a text of the duel prompt table.
+/// Message entries (0x519870): a text of the duel prompt table, and a card name by Konami id (0x5374B0) put into
+/// the text's %s.
 const TEXT: u32 = 1 << 28;
-/// "Select the @3monster(s)@0 as @3Tribute@0." in the duel prompt table.
+const CARD_NAME: u32 = 5 << 28;
+/// Duel prompt texts: "Select the @3monster(s)@0 as @3Tribute@0.", 'Activate the effect of "@3%s@0"?', 'Use the
+/// effect of "@3%s@0"?', "Use the effect now?".
 const TRIBUTE_TEXT: u32 = 18;
+const ACTIVATE_TEXT: u32 = 250;
+const USE_TEXT: u32 = 226;
+const USE_NOW_TEXT: u32 = 270;
+/// Dialog command {kind, message, _} (DuelScene 0x514C0C, factory 0x4C8CD0) and its Yes/No kind (buttons 0 "No", 1
+/// "Yes"); message 1 = from the message entries.
+const DIALOG: u32 = 0x36;
+const YES_NO: u32 = 2;
+const FROM_ENTRIES: u32 = 1;
 /// Duel end {result for this client: 1 won, 2 lost, 3 draw; reason} (DuelScene 0x514290).
 const DUEL_END: u32 = 2;
 const WON: u32 = 1;
@@ -385,6 +396,17 @@ impl Translator {
                 self.pending = Some(m.clone());
                 Prompt::Client(vec![command_data(&map, &flags), command(INPUT, [mode, CLIENT, 0, 0])])
             }
+            MSG_SELECT_EFFECTYN | MSG_SELECT_YESNO => {
+                let entries = match (kind, m["cid"].as_u64(), m["description_cid"].as_u64()) {
+                    (MSG_SELECT_EFFECTYN, cid, _) => vec![TEXT | ACTIVATE_TEXT, CARD_NAME | cid.unwrap_or(0) as u32],
+                    (_, _, Some(cid)) => vec![TEXT | USE_TEXT, CARD_NAME | cid as u32],
+                    _ => vec![TEXT | USE_NOW_TEXT],
+                };
+                let mut out = message(&entries);
+                out.push(command(DIALOG, [YES_NO, FROM_ENTRIES, 0, 0]));
+                self.pending = Some(m.clone());
+                Prompt::Client(out)
+            }
             MSG_SELECT_CARD | MSG_SELECT_TRIBUTE => {
                 let hint = if kind == MSG_SELECT_TRIBUTE { HINTMSG_RELEASE } else { std::mem::take(&mut self.hint) };
                 let out = self.card_list(m, hint_text(hint));
@@ -418,8 +440,7 @@ impl Translator {
             }
         }
         if let Some(text) = text {
-            out.push(command(MESSAGE_LENGTH, [1, 0, 0, 0]));
-            out.push(command(MESSAGE, [TEXT | text, 0, 0, 0]));
+            out.extend(message(&[TEXT | text]));
         }
         out.push(command(CARD_LIST, [CLIENT, kind, text.is_some() as u32, 0]));
         out
@@ -442,13 +463,19 @@ impl Translator {
         self.picks.push(index as usize);
     }
 
-    /// The card list closed with `count` picks (duelRequestName 4 {DLGResult}): the engine response for a pending
-    /// card choice. No pick cancels when the engine allows it; picks that don't fit the choice get the default.
+    /// A dialog closed (duelRequestName 4 {DLGResult}): the engine response for the pending question (the button:
+    /// 1 yes) or card choice (`count` picks). No pick cancels when the engine allows it; picks that don't fit the
+    /// choice get the default.
     pub fn dialog_result(&mut self, count: u32) -> Option<Json> {
         let kind = self.pending.as_ref()?["type"].as_u64();
         let response = match kind {
             Some(MSG_SELECT_CARD) => RESP_CARD,
             Some(MSG_SELECT_TRIBUTE) => RESP_TRIBUTE,
+            Some(question @ (MSG_SELECT_EFFECTYN | MSG_SELECT_YESNO)) => {
+                self.pending = None;
+                let response = if question == MSG_SELECT_EFFECTYN { RESP_EFFECTYN } else { RESP_YESNO };
+                return Some(json!({ "type": response, "yes": count == 1 }));
+            }
             _ => return None,
         };
         let m = self.pending.take()?;
@@ -531,6 +558,13 @@ impl Translator {
         }
         None
     }
+}
+
+/// The message entries (at most four) a dialog shows: 0x3EC {count}, 0x3ED {entries}.
+fn message(entries: &[u32]) -> Vec<Message> {
+    let mut params = [0; 4];
+    params[..entries.len()].copy_from_slice(entries);
+    vec![command(MESSAGE_LENGTH, [entries.len() as u32, 0, 0, 0]), command(MESSAGE, params)]
 }
 
 /// The duel prompt table's text for an EDOPro selection hint (HINTMSG_*), where one says the same thing.

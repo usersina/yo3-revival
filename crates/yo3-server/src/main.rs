@@ -32,6 +32,9 @@ struct Args {
     /// Each player's LP at the start of a duel (lower it to reach a duel's end quickly when testing).
     #[arg(long, default_value_t = 8000)]
     duel_lp: u32,
+    /// Every player's main deck in a duel, as CARD_Prop rows repeated to 40 cards (to test a card's prompts).
+    #[arg(long, value_delimiter = ',')]
+    duel_deck: Vec<u16>,
 }
 
 #[tokio::main]
@@ -52,6 +55,7 @@ async fn main() -> anyhow::Result<()> {
         log_dir: a.log_dir,
         players: a.players,
         duel_lp: a.duel_lp,
+        duel_deck: a.duel_deck,
     };
     start(cfg).await?.wait().await;
     Ok(())

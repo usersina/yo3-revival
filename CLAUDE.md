@@ -47,6 +47,8 @@ engine/fetch.sh                                                 # once: the rule
 cargo nextest run --workspace                                   # all tests
 cargo clippy --workspace --all-targets                          # lints
 cargo run --release -p yo3-server -- --log-dir logs --players Yugi,Kaiba   # server (in the background); one account, up to 4 players
+#   testing aids: --duel-lp 1000 (reach a duel's end in one attack), --duel-deck 1149,1449 (the player's main deck as
+#   CARD_Prop rows repeated to 40: here Marauding Captain and Giant Orc, for a yes/no question and a card choice)
 ss -ltnp | grep ':5730 '                                        # find the server's pid to stop it
 
 tools/client/vclient.sh xvfb                                    # once per boot

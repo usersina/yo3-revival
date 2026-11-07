@@ -35,6 +35,8 @@ pub struct Config {
     pub players: Vec<String>,
     /// Each player's LP at the start of a duel (8000; lower only to test).
     pub duel_lp: u32,
+    /// Testing aid: every player's main deck in a duel, as CARD_Prop rows repeated to 40 cards (empty: their own).
+    pub duel_deck: Vec<u16>,
 }
 
 impl Config {
@@ -51,6 +53,7 @@ impl Config {
             log_dir,
             players: vec!["test".into()],
             duel_lp: 8000,
+            duel_deck: vec![],
         }
     }
 }
@@ -97,6 +100,7 @@ fn world(cfg: &Config, duel_port: u16) -> World {
                 .collect(),
             engine_dir: engine::Engine::dir(),
             start_lp: cfg.duel_lp,
+            test_deck: (!cfg.duel_deck.is_empty()).then(|| cfg.duel_deck.clone()),
             npcs: data.npc_ids(),
             npc_decks: data
                 .npc_ids()
