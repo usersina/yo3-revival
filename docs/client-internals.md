@@ -45,6 +45,10 @@ export, see [CLAUDE.md](../CLAUDE.md)).
 | `0x51AA80` / `0x51AC50` / `0x51A9A0` / `0x51A930` | validate one deck / sizes / regulation / per-card limit |
 | `0x410DB0` | a card's count from the trunk: `cards` (or `noTrade`) byte at index row − 1, bounds-checked |
 | `0x4F6340` | builds the playable collection `(conn, flags)`: copies the trunk (slot 18), subtracts cards lent in rental records (slot 8, flag 4), and with flag `0x10` zeroes cards 5280, 5434 and 6276 (table `0x7878A0`) in `cards`/`noTrade` unchecked |
+| `0x4BEB40` / `0x4BFBA0` / `0x4C0C80` / `0x4BE390` | SelectNpcScene: builds the tab lists from the roster (slot 4, three items per NPC) / `getNpcInfo` / `decideNpc (tab, index, level)` / duel start step (agent mode 3) |
+| `0x4A0B50` | `DuelMatchingAgent` start (`EBX` = mode: 0 DUEL panel, 1 password, 2, 3 NPC, 4 duel server); steps `0x4A0E90` deck check, `0x4A1090` `0x1784`, `0x4A1790` `0x17AC`, `0x4A3340` `0x1838` |
+| `0x50E470` / `0x50ECF0` / `0x50F030` / `0x50F320` | `DuelManager` (scene `0xFFFFD8FD`): constructor / Select Deck (`0x1F4F`) / duel object and `0x17D4` / duel server connect and `0x1838` |
+| `0x4EEB90` | object factory by id: `0xFFFFD8F5` FrontServerConnection, `0xFFFFD8F6` DuelServerConnection, `0xFFFFD8F7` DuelMatchingAgent, `0xFFFFD8F8` AutoMatchingAgent, `0xFFFFD8F9` CommunicationAgent, `0xFFFFD8FD` DuelManager |
 | `0x4A523F`, `0x4A551E`, `0x4A5D05` | `CommunicationAgent` switches (195/106/102 cases) |
 | `0x413FE0` | address of front dataset slot `EDI` (vector at `+0x16C`); the global dispatcher keeps some replies there: `0x2711` → 4, `0x251C` friend list → 6, `0x252A` black list → 7, `0x2D6C` rental records → 8, `0x21FC` news → 10, `9000` trunk → 18, `0x2774` → 23, `0x24BA` → 24 |
 | `0x45E6D0` / `0x45E810` | "is this player a friend / ignored?": read slots 6 / 7 with no NULL check, for every player listed |
@@ -126,4 +130,5 @@ parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Su
 | Null read at `0x48F0F6` opening the shop | rental records `0x2D6C` never pushed, so dataset slot 8 was NULL | Before shipping a screen, check which dataset slots it reads (`0x413FE0`, or `[+0x16C] + 4·slot`) |
 | CRT abort `0xC0000417` opening character settings (from `0x42923F`) | `avatar1` had 17 entries; the screen reads 17–40 | Checked-index failures show as `_invalid_parameter`: the tracer's `E` line gives the caller |
 | Write to `0x42F` at `0x4F6A82` opening the NPC duel | trunk without `cards`/`noTrade`, so the collection builder wrote through NULL | Per-card arrays are sized by CARD_Prop rows |
+| Division by zero at `0x4BFDC4`, hovering an NPC | all three levels sent with `need_ex` 0; `getNpcInfo` divides by their sum | Zero is not a safe default for a divisor: read what a field feeds before choosing a value |
 | (no crash) every click on the map ignored | `0x2775` answered with `0x2774`, so PresentWindow never closed and the main screen stayed locked | A screen that ignores input may be waiting on a reply: `YO3_TRACE_HITS` on its steps shows where |

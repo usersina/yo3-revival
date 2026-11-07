@@ -1,0 +1,101 @@
+//! Duels. Every duel goes through DuelMatchingAgent (0x4A0B50). The NPC duel (SelectNpcScene) lists
+//! the NPC roster, and once an opponent is picked (decideNpc 0x4C0C80) its duel start step
+//! (0x4BE390) hands the opponent's roster item to the agent in mode 3. The agent checks the deck
+//! (0x4A0E90), asks for an entry (0x1784, step 0x4A1090) and a duel (0x17AC, step 0x4A1790); after
+//! 0x17AD the scene opens DuelManager (0x4BE4DA).
+mod common;
+
+use common::{Server, one, req, req_with};
+use yo3_proto::{Message, Packet, Value};
+use yo3_server::front::World;
+
+fn world() -> World {
+    World { npcs: (120..126).collect(), ..World::new((1..=20).collect()) }
+}
+
+#[test]
+fn the_npc_roster_lists_every_level_of_every_npc() {
+    // 0x4BEB40 walks the 0x2711 items three at a time: the first gives npc_type (the tab, 0-2) and
+    // npc_id; each of the three gives need_ex, the experience (npcbin entry 3) its level needs.
+    // Picking level L looks up the item whose npc_id is the first id + L (0x4BE454), and that item
+    // becomes the agent's record and the opponent's PlayerData. NPC names are text 0x5208 + 2 *
+    // ((npc_id - 120) / 3) (0x4BFE34), so the first id of a triple is 120 + 3k.
+    let mut c = Server::with_world(world()).join(1001, "Yugi");
+    let r = one(c.send(req(0x2710)));
+    assert_eq!(r.request(), Some(0x2711));
+    let ids: Vec<_> = r.items.iter().map(|i| i.get("npc_id").and_then(Value::as_u32)).collect();
+    assert_eq!(ids, (120..126).map(Some).collect::<Vec<_>>());
+    for item in &r.items {
+        // DuelManager (0x50F450) makes an NPC opponent only for npc_type 0-2.
+        assert!(item.get("npc_type").and_then(Value::as_u32).is_some_and(|t| t <= 2), "{item:?}");
+    }
+    let need_ex: Vec<_> = r.items.iter().map(|i| i.get("need_ex").and_then(Value::as_u32).expect("need_ex")).collect();
+    for levels in need_ex.chunks(3) {
+        // A level is open while the player's experience (npcbin entry 3, absent = 0) reaches its
+        // need_ex, counting up from the first, so the first must be 0. Hovering an NPC divides by
+        // the three need_ex summed (0x4BFDC4, a progress per mille): crash if they are all 0.
+        assert_eq!(levels[0], 0, "{need_ex:?}");
+        assert!(levels.iter().sum::<u32>() > 0, "{need_ex:?}");
+    }
+}
+
+#[test]
+fn without_game_data_the_roster_is_empty() {
+    let mut c = Server::new().join(1001, "Yugi");
+    let r = one(c.send(req(0x2710)));
+    assert_eq!(r.request(), Some(0x2711));
+    assert!(r.items.is_empty());
+}
+
+#[test]
+fn a_duel_entry_gets_a_join_id() {
+    // 0x1785 (0x4A1090): join_id is kept (agent+0x58) and sent back in 0x17AC. The global
+    // dispatcher (0x4F4AE7) also stores event_id, join_id, server_id and event_score, all ints.
+    let mut c = Server::with_world(world()).join(1001, "Yugi");
+    let r = one(c.send(req_with(0x1784, &[("event_id", Value::U32(0))])));
+    assert_eq!(r.request(), Some(0x1785));
+    assert!(r.get("join_id").and_then(Value::as_u32).is_some_and(|id| id > 0));
+}
+
+#[test]
+fn each_duel_gets_its_own_duel_id() {
+    // 0x17AD (0x4A1B0C): duel_id is kept (agent+0x5C); for an NPC duel the reply is copied into
+    // MainGamen+0x88C with the agent's regulation_id, and the agent is done.
+    let server = Server::with_world(world());
+    let ask = |c: &mut common::Client| {
+        let fields = [("event_id", Value::U32(0)), ("join_id", Value::U32(1)), ("npc_id", Value::U32(120))];
+        let r = one(c.send(req_with(0x17AC, &fields)));
+        assert_eq!(r.request(), Some(0x17AD));
+        r.get("duel_id").and_then(Value::as_u32).expect("duel_id")
+    };
+    let (mut a, mut b) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+    let (first, second) = (ask(&mut a), ask(&mut b));
+    assert!(first > 0 && second > 0 && first != second);
+}
+
+#[test]
+fn the_duel_deck_is_acknowledged() {
+    // After 0x17AD, DuelManager's deck selection (0x50ECF0) sends the chosen deck as 0x1F4F
+    // {duel_id, event_id, update_type 1, item: the deck (tag 6)}. 0x22CA lets it go on to the duel
+    // (0x50EFC1 -> 0x50F030), 0x22CB fails with text 0x2919. Nobody reads a field of 0x22CA (the
+    // deck editor 0x43FC60 and the shop 0x48AA60 take it too).
+    let mut c = Server::with_world(world()).join(1001, "Yugi");
+    let deck = Message::deck().with("deck_name", Value::text("Starter Deck"));
+    let fields = [("duel_id", Value::U32(1)), ("event_id", Value::U32(0)), ("update_type", Value::U32(1))];
+    let update = fields.iter().fold(Message::reply(0x1F4F), |m, (k, v)| m.with(k, v.clone())).item(deck);
+    let r = one(c.send(Packet::Message(update)));
+    assert_eq!(r.request(), Some(0x22CA));
+    assert!(r.fields.iter().all(|(k, _)| k == "request"), "{r:?}");
+}
+
+#[test]
+fn the_duel_report_is_acknowledged() {
+    // DuelManager 0x50F030: once its duel object (0x4DC320) reports state 2 or -1, it sends 0x17D4
+    // {event_id, join_id, duel_id} unless MainGamen+0x8BC is set, and goes on at 0x17D5 (0x50F2B0);
+    // 0x17D6 fails with text 0x2919. Neither reply is read further, nor has a global case.
+    let mut c = Server::with_world(world()).join(1001, "Yugi");
+    let fields = [("event_id", Value::U32(0)), ("join_id", Value::U32(1)), ("duel_id", Value::U32(1))];
+    let r = one(c.send(req_with(0x17D4, &fields)));
+    assert_eq!(r.request(), Some(0x17D5));
+    assert!(r.fields.iter().all(|(k, _)| k == "request"), "{r:?}");
+}

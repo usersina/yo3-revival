@@ -74,6 +74,7 @@ fn world(cfg: &Config) -> World {
                 extra: d.extra.clone(),
                 side: d.side.clone(),
             }),
+            npcs: data.npc_ids(),
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
         },
         Err(e) => {

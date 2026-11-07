@@ -22,7 +22,7 @@ fn jst_now() -> chrono::DateTime<chrono::FixedOffset> {
 }
 
 /// Main-screen polls whose replies carry nothing the client reads.
-const BARE_REPLIES: [(u32, u32); 4] = [(0x271A, 0x271B), (0x2710, 0x2711), (0x2AFB, 0x2B13), (0x2AFD, 0x2B17)];
+const BARE_REPLIES: [(u32, u32); 3] = [(0x271A, 0x271B), (0x2AFB, 0x2B13), (0x2AFD, 0x2B17)];
 
 #[derive(Clone, Debug)]
 pub struct Player {
@@ -135,6 +135,8 @@ pub struct World {
     pub card_rows: usize,
     /// Every player's deck until decks are stored per player (from the client's preset decks).
     pub starter_deck: Option<Deck>,
+    /// NPC opponents, every level of each (three consecutive ids per NPC, from 120).
+    pub npcs: Vec<u32>,
     pub news: Vec<(String, String)>,
     pub rooms: Vec<Room>,
 }
@@ -145,6 +147,7 @@ impl World {
             regulation_ids,
             card_rows: 0,
             starter_deck: None,
+            npcs: vec![],
             news: vec![(
                 "Welcome back to Yu-Gi-Oh! ONLINE".into(),
                 "This is a private revival server. Have fun duelling with your friends!".into(),
@@ -164,6 +167,9 @@ impl World {
 pub struct Hub {
     next_id: u64,
     online: HashMap<u64, Online>,
+    /// The last join_id (0x1785) and duel_id (0x17AD) handed out.
+    last_join: u32,
+    last_duel: u32,
 }
 
 struct Online {
@@ -331,8 +337,39 @@ impl FrontSession {
             0x339A => Message::reply(0x33FE).with("remain", Value::U32(0)).with("event_id", Value::U32(0)),
             // Deck list (deck editor 0x43FC60): it saves each deck it lacks as a local file.
             0x1F4E => self.world.starter_deck.iter().fold(Message::reply(0x22C8), |m, d| m.item(d.record())),
+            // Duel report (DuelManager 0x50F030, {event_id, join_id, duel_id}) once its duel object is
+            // ready (state 2) or failed (-1); 0x17D5 lets it go on.
+            0x17D4 => Message::reply(0x17D5),
+            // Deck updated: the deck editor's save, and the deck a player picks for a duel (DuelManager
+            // 0x50ECF0, {duel_id, event_id, update_type 1, item: the deck}). Nothing is stored yet.
+            0x1F4F => Message::reply(0x22CA),
             // Deck deleted (its local file is already gone); the starter deck comes back on the next list.
             0x1F50 => Message::reply(0x22CC),
+            // NPC roster (kept in slot 4; SelectNpcScene 0x4BEB40 reads it three items per NPC). The
+            // picked item becomes the opponent's PlayerData. A level opens when the player's
+            // experience with the NPC (npcbin, not sent yet) reaches its need_ex; the three must not
+            // all be 0 (0x4BFDC4 divides by their sum). need_ex = the level (0, 1, 2) and every NPC
+            // on the first tab (npc_type 0) are guesses.
+            0x2710 => self.world.npcs.iter().fold(Message::reply(0x2711), |m, &id| {
+                m.item(
+                    Message::record()
+                        .with("npc_type", Value::U32(0))
+                        .with("npc_id", Value::U32(id))
+                        .with("need_ex", Value::U32(id % 3)),
+                )
+            }),
+            // Duel entry (DuelMatchingAgent step 0x4A1090): join_id comes back in 0x17AC.
+            0x1784 => {
+                let mut hub = self.hub();
+                hub.last_join += 1;
+                Message::reply(0x1785).with("join_id", Value::U32(hub.last_join))
+            }
+            // Duel (step 0x4A1790): for an NPC duel the client then opens DuelManager.
+            0x17AC => {
+                let mut hub = self.hub();
+                hub.last_duel += 1;
+                Message::reply(0x17AD).with("duel_id", Value::U32(hub.last_duel))
+            }
             0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_ids)),
             0x27D8 => Message::reply(0x27D9).item(Message::record()),
             0x2CEE => Message::reply(0x2CF3).item(self.player().record()),

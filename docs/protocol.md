@@ -85,7 +85,7 @@ clicks do nothing. Every reply also passes through the global front dispatcher; 
 | `0x2CEE` player refresh `{player_id, type}` | `0x2CF3` (`0x2CF4`) | item = the selected player's record; its `player_id` must match | `0x47378A`, `0x4F5FC2` | confirmed |
 | `0x2583` | `0x2588` (`0x2589`) | `count` u32 | `0x4730B0` | shape (unread mail or presents?) |
 | `0x271A` | `0x271B` (`0x271C`) | none | `0x47352F` | shape |
-| `0x2710` NPC roster | `0x2711` (`0x2712`) | items = NPCs `{npc_type (tab 0–2), npc_id}`, each with up to three sub-items `{need_ex}` (`0x4BEB40`); kept in slot 4 for the NPC duel's opponent list. We send none | `0x473646`; an experiment with one NPC listed it (two stars, no name) but picking it sent nothing: the NPC's details come from somewhere not found yet | shape (empty) |
+| `0x2710` NPC roster | `0x2711` (`0x2712`) | items `{npc_type, npc_id, need_ex}`, three per NPC (one per level), kept in slot 4; see "NPC duels and duel start" | `0x473646`, `0x4BEB40`; live: 26 NPCs listed by name | confirmed; `npc_type` 0 for all and `need_ex` = the level are **guesses** |
 | `0x2AFB` | `0x2B13` (`0x2B14`) | none | `0x4738FA` | shape |
 | `0x2AFD` | `0x2B17` (`0x2B18`) | none; the global case reads `member_id`, `authority` if present | `0x473A3A`, `0x4F5E0E` | shape (team?) |
 | `0x2775` next present (bare) | `0x2778` none (`0x2777`/`0x2779` would carry a present) | none | builder `0x4F3A00`. The `0x2201` reply sets flag `0x80` (so does a `0x2774` push), so startup step `0x473AE0` opens PresentWindow, which sends `0x2775` and holds the main screen locked until it closes. Its switch (`0x476E74`): `0x2777`/`0x2779` "PRESENT content get success", `0x2778`/`0x277A` "content get error", which retries while `+0x58` > 0 and then closes (`0x4783C9`); its `0x2774` case reads `present_count` and drops it | confirmed (live: the facilities unlock after `0x2778`) |
@@ -175,29 +175,51 @@ default's index is skipped; cards 5280, 5434 and 6276 are never allowed.
 |---|---|---|---|---|
 | `0x1F4E` deck list (bare, `0x440C43`; also re-sent after save and delete) | `0x22C8` (`0x22C9`) | items **tag 6**: `deck_id` (int), `deck_name`, `discription` (string), `card_protector` (int), `main`, `extra`, `side` (binary u16 BE CARD_Prop rows, read by `0x414410`); at most 10 are used | tracer: all found; "Starter Deck.y3d" written; the NPC duel opens | confirmed |
 | `0x1F50` delete `{delete_type, deck_name}` (`0x4449A9`, after deleting the local file `0x52F0C0`) | `0x22CC` (`0x22CD` shows an error) | none | "deck delete succes"; live: the deck leaves the Load Deck list | confirmed |
-| (none) | `0x22CA` (`0x22CB`) | | Saving in the editor only writes the local file (`0x4442E0` → `0x4159B0` → `0x52EE60`) and `cursor_deck_name`; the client never asks the server, though it has a "deck add or update succes" case | confirmed (no request) |
+| `0x1F4F` update `{duel_id, event_id, update_type}` + the deck (tag 6) | `0x22CA` (`0x22CB`) | none | Saving in the editor only writes the local file (`0x4442E0` → `0x4159B0` → `0x52EE60`) and `cursor_deck_name`, though the editor has a "deck add or update succes" case for `0x22CA`. The request comes from a duel's Select Deck (DuelManager `0x50ECF0`, see below); live: the duel scene loads | confirmed; nothing is stored yet |
 
 Every player gets one deck, "Starter Deck": the first `deck_type` 1 preset (`data/recipe`, ids 1–6, 501, 502; they
 look like the starter decks) that the login regulation allows. Preset 1 holds a card regulation 1 forbids (4966), so
 it is preset 2 (**guess**: the original let a new player choose). The server lists it every time, so a deleted
 starter deck comes back the next time Edit Deck opens.
 
-### Duel start (not implemented; static reading only)
+### NPC duels and duel start
 
-Every duel goes through one agent, `0x4A0B50`, started by the DUEL menu (`DuelMenu` `0x49DF50`: `autoMatching`,
-`match_type`, `level`), the event scenes, the NPC info window (`0x4B9D00`) and MainGamen's event path. Its steps:
+The NPC roster comes from the main screen's startup poll `0x2710`; the global dispatcher keeps `0x2711` in slot 4.
+SelectNpcScene (Kaiba Corporation) reads it three items at a time (`0x4BEB40`), one per level: the first item
+gives `npc_type` (the tab, 0–2) and `npc_id`, each of the three gives `need_ex`. A level is open while the player's
+experience with that NPC (`npcbin` entry 3 of its id; absent = 0) reaches its `need_ex`, counting from the first.
+NPC ids start at 120 (`0x78`), three per NPC: names are text `0x5208 + 2 * ((id - 120) / 3)` (`0x4BFE34`), deck
+titles text `0x5FB4 + 2 * id` (`0x4BFE05`), and each NPC deck preset (`deck_type` 3) carries that title id as
+`name_id`, which is how the server finds the 78 ids (26 NPCs; the 26th has no English name). Hovering an NPC
+computes `sum(min(ex, need_ex)) * 1000 / sum(need_ex)` over its levels (`0x4BFDC4`): all-zero `need_ex` divides
+by zero.
 
-| Step | Request | Reply (error) | Fields read | Status |
-|---|---|---|---|---|
-| `0x4A1090` | `0x1784 {event_id}` | `0x1785` (`0x1786`) | `join_id`, `duel_password_flag` | open |
-| `0x4A1790` | `0x17AC {event_id, join_id, duel_server_id, status, npc_id, match_type, cpu_id, regulation_id, time_turn, time_total, surrender}` | `0x17AD` (`0x17AE`, dialog `0x4F7940`) | `duel_id`, `regulation_id`, `country` (twice: both players?) | open |
-| `0x4A3340` | `0x1838 {duel_id}` | `0x1839` (`0x183A`) | `host`, `port`: where the client opens its third connection | open |
+Picking a level (`decideNpc` `0x4C0C80`), its speech and "Start Duel?" lead to the duel start step `0x4BE390`. It
+finds the roster item whose `npc_id` is the first id + level and hands it to `DuelMatchingAgent` (`0x4A0B50`) in mode
+3; that item becomes the agent's record and, later, the opponent's `PlayerData` (MainGamen `+0x408`). The agent
+checks the deck (`0x4A0E90`; the item may carry `regulation_id`, else the player's), then:
 
-The third connection is `DuelServerConnection` (factory id `0xFFFFD8F6`, constructor `0x4F1230`, handler
-`0x4F1510`, which only routes connect / receive / disconnect events). `cpu_id` and `npc_id` in `0x17AC` mean CPU duels
-also go through this path. What travels on the duel connection (engine commands, or player actions with the server
-running the rules) is the next thing to observe live: answer the three steps above, accept the connection, and log
-what the client sends.
+| Step | Request | Reply (error) | Fields read | Evidence | Status |
+|---|---|---|---|---|---|
+| `0x4A1090` | `0x1784 {event_id}` (1 for an NPC duel) | `0x1785` (`0x1786`) | `join_id` (agent `+0x58`); the whole reply is copied to MainGamen `+0x868`; the global dispatcher (`0x4F4AE7`) stores `event_id`, `join_id`, `server_id`, `event_score` (ints) | live: client then sends `0x17AC`, trace "event join offer notice" | confirmed; `join_id` = a server-wide counter (**guess**) |
+| `0x4A1790` | `0x17AC {event_id, join_id}` + item (tag 4) `{cpu_id, duel_server_id, match_type, regulation_id, surrender, time_total, time_turn}`; live: `cpu_id` 124 (the NPC id), `match_type` 4, `surrender` 1, the rest 0 | `0x17AD` (`0x17AE`, dialog `0x4F7940`) | `duel_id` (agent `+0x5C`); the reply is copied to MainGamen `+0x88C` with the agent's `regulation_id`; `country` is read from the player's own data | live: the scene opens DuelManager's Select Deck | confirmed; `duel_id` = a server-wide counter (**guess**) |
+
+Mode 1 then asks for a password (`duel_password_flag` from the agent's record), mode 2 goes to `0x4A1380`, mode 0
+(the DUEL panel) waits for a match in `0x4A1D10`. Mode 4 starts at `0x4A3340`: `0x1838 {duel_id}` → `0x1839
+{host (string), port (int)}` (`0x183A` = error), written into DuelServerConnection (`+0x78`, `+0x94`), and
+MainGamen `+0x8B8` = 5, `+0x8BC` = 1. Nothing we have reached uses mode 4 yet.
+
+DuelManager (scene `0xFFFFD8FD`, constructor `0x50E470`) picks its first state by MainGamen `+0x8B8`: 5 → `0x50F320`
+(connect DuelServerConnection, then `0x1838` on it), 6 → `0x50F030`, else → `0x50ECF0` (the NPC duel):
+
+| Step | Request | Reply (error) | Fields read | Evidence | Status |
+|---|---|---|---|---|---|
+| Select Deck `0x50ECF0` | `0x1F4F {duel_id, event_id 0, update_type 1}` + the chosen deck (tag 6) | `0x22CA` (`0x22CB`, text `0x2919`) | none (`0x50EFC1` compares the id; the deck editor and the shop take `0x22CA` too) | live: the duel scene loads | confirmed |
+| `0x50F030` state 2 | `0x17D4 {event_id, join_id, duel_id}`, once the duel object (`0x4DC320`, NPC side made by its vfunc `0x68`) reports state 2 or −1; skipped when MainGamen `+0x8BC` is set | `0x17D5` (`0x17D6`, text `0x2919`) | none | live: sent right after the duel scene loaded, before any play | confirmed (meaning: "duel ready" or a result report, **open**) |
+
+So an NPC duel never touches the duel server: the client builds the duel itself. After `0x17D5` the duel screen
+shows both players (the NPC's name and portrait come from its `npc_id`) and then stalls with the turn timer at 0 and
+no further request; what it waits for is the next thing to find.
 
 ## Accounts
 

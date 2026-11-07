@@ -80,14 +80,13 @@ Stop finding missing fields one crash at a time.
 ## M5: Duels
 
 - [ ] The main screen's DUEL panel (`duelbtnEnable`, `GoDuel`, `DuelWait`): duel invitations or matchmaking
-- [ ] NPC duels (Kaiba Corporation): the scene now accepts the starter deck and shows "Select an opponent". The
-      roster is `0x2711` (`{npc_type, npc_id}` + `need_ex` sub-items); about 24 NPCs have portraits
-      (`data/npc/npcsel*.png`) and 132 `deck_type` 3 presets look like their decks. Still unknown: where an NPC's
-      name and details come from (`npc_name`, NPC `PlayerData` with `npc_id` at `+0x400`, `0x51C4F0`) and what
-      choosing one sends. Whether CPU duels run inside the client would show how PvP duels work
-- [ ] Map the duel server tier (`DuelServerConnection`): how a duel is handed off, ports, handshake. Handoff read
-      statically (docs/protocol.md, "Duel start"): `0x1784` → `0x17AC` → `0x1838` → `{host, port}`. Next: answer
-      it with a stub duel listener and log what the client sends on the duel connection
+- [x] NPC roster and duel start: 26 NPCs (ids 120–197 from the NPC deck presets) listed by name with their
+      levels; picking one runs `0x1784` → `0x17AC` → Select Deck (`0x1F4F`) → `0x17D4`, and the duel screen opens
+      with both players. The client builds NPC duels itself (DuelManager `0x50ECF0`); no duel server is involved
+- [ ] NPC duel play: the duel screen stalls before the first turn (timer 0, no request). Find what it waits for;
+      then NPC experience (`npcbin`) so higher levels unlock, and what `0x17D4` reports
+- [ ] Map the duel server tier (`DuelServerConnection`): only agent mode 4 (`0x1838` → `{host, port}`) and
+      DuelManager state `0x50F320` use it; find which screen starts mode 4 (`0x4D3066`) and what it sends
 - [ ] Confirm in Ghidra that Online 3's duel stream is Konami's engine command set (as in Online 2)
 - [ ] Rules engine: ocgcore as a separate process (AGPL), as in YOLaucher's `duelcore`
 - [ ] Translator: ocgcore messages ↔ Online 3 duel commands and prompts (`DLG_Text` ids), card ID ↔ passcode map
@@ -111,7 +110,7 @@ Stop finding missing fields one crash at a time.
 | Trunk (`9000`) contents | one record: `cards` (the starter deck's), `noTrade` all zero | Other fields later screens may read are unknown |
 | `regulations` list | all 20 ids | Which banlists the UI should offer |
 | `0x21FC` `lang` | `"1"` | Read as a string; semantics unknown |
-| `0x2583/0x271A/0x2710/0x2AFB/0x2AFD/0x27D8` | minimal replies | Meanings unknown; they only stop timeouts |
+| `0x2583/0x271A/0x2AFB/0x2AFD/0x27D8` | minimal replies | Meanings unknown; they only stop timeouts |
 | `avatar1` length and slots | 41 zero entries (a default male avatar) | Slot meanings unmapped |
 | `bgm`, `icon`/`lefttime`/`maintenance`, `npc_id`, `cpuUse`/`notRelease`, `premium` | left out (read as 0 / NULL) | The tracer shows the client reads them; see "Fields the client reads that we leave out" in docs/protocol.md |
 | Chat room `region`, `status`, `type`; `0x2458.lang` | 0 / 1 | Shown fine; meanings unknown |
@@ -122,6 +121,9 @@ Stop finding missing fields one crash at a time.
 | Shop lists, `perk_num`, rental terms | all empty or 0 | Real stock comes with the economy (M4); `perk_num`'s meaning is unknown |
 | Event lists (`0x177B`), own user event (`0x33FE`) | empty, 0 | No events are held; paging by `base_point`/`front_num` like player search is assumed |
 | Rental records push (`0x2D6C`) | sent once after `9000`, empty | The original timing is unknown; the shop only needs it before it opens |
+| NPC roster `npc_type`, `need_ex` | every NPC on tab 0; `need_ex` = the level (0, 1, 2) | No client file gives the tabs (probably the series) or the experience each level needs; `need_ex` can't all be 0 (`0x4BFDC4`) |
+| `join_id`, `duel_id` | server-wide counters from 1 | The client only echoes them back |
+| `0x17D4` | answered `0x17D5`, nothing kept | Sent once the duel object is ready; may also carry results later |
 | Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
 
 ## Leads (outside the code)
