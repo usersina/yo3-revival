@@ -318,7 +318,12 @@ command 4):
 - Choosing an entry sends `duelRequestName 2 {CommandID: the bit, player, position: the zone, index}`; live: Summon on
   hand card 1 → `{CommandID 4, player 0, position 11, index 1}`.
 
-Carrying out a command needs the rules: which cards may do what, and what follows (M5's rules engine).
+Carrying out a command needs the rules: which cards may do what, and what follows. The server runs EDOPro's core for
+that (`engine/`, see ROADMAP M5); `translate.rs` maps its draws, turns and phases to the commands above (ocgcore phases
+1, 2, 4, 8–`0x80`, `0x100`, `0x200` → 0–5), its idle-command prompt to a command map (summons bit 4, special
+summons 2, position changes 8 and 9, monster sets 6, spell sets 7, activates 3; which Set bit is which is a **guess**)
+plus command 4, and the client's card command back to the prompt's entry. Live: after the CPU's turn the client's Main
+Phase 1 highlights only the legal cards, and a monster's menu reads Summon / Set.
 
 The numbering differs from Online 2's engine (whose turn change is `0x04` and LP set `0x26`), so YO2 research is a guide
 only. Next: the card map, so decks, hands and draws show.

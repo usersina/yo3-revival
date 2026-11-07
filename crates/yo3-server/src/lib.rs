@@ -2,6 +2,7 @@
 pub mod accounts;
 pub mod duel;
 pub mod engine;
+pub mod translate;
 pub mod front;
 mod log;
 mod net;
@@ -82,6 +83,8 @@ fn world(cfg: &Config, duel_port: u16) -> World {
                 extra: d.extra.clone(),
                 side: d.side.clone(),
             }),
+            cid_of_row: data.cards.iter().map(|c| (c.row, c.cid)).collect(),
+            engine_dir: engine::Engine::dir(),
             npcs: data.npc_ids(),
             npc_decks: data
                 .npc_ids()

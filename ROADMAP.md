@@ -96,8 +96,11 @@ Stop finding missing fields one crash at a time.
 - [x] Rules engine sidecar: EDOPro's core (ocgcore-wasm, rule MR2) in `engine/duelcore.ts` under Node, one process
       per duel, JSON lines, cards as Konami ids (4,702 of the client's 4,771 map to passcodes through YGOProDeck's
       `konami_id`; the rest look like tokens); `engine/fetch.sh` fetches the core, ProjectIgnis' scripts and database
-- [ ] Translator: the engine drives the duel session (its draws and moves become engine commands, its prompts command
-      maps, the client's card commands its responses); the CPU's moves from a simple bot
+- [x] Translator, first part: the engine drives the duel session; its draws, turns and phases become engine commands,
+      the client's idle prompt a command map of the legal commands, the client's card commands its responses; the CPU
+      ends its turns at once (a placeholder bot) and other prompts are answered with defaults
+- [ ] Translator: card moves (summon, set, activate, destroy…), LP changes, battle, chains and the other prompts; the
+      phase buttons; a CPU that plays
 - [ ] Deck piles on the field (the deck count alone shows none); phase buttons (client `duelRequestName` 3)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)
@@ -142,6 +145,8 @@ Stop finding missing fields one crash at a time.
 | Duel setup `PlayerType001/002` | 0 (client) / 1 (CPU) | Meaning unknown |
 | Card table entries (1000) | param3 0, flag byte 0; uids 1.. in table order | Meanings of param3 and the flag unknown |
 | Hidden cards | the CPU's real rows are sent | Online 2 used placeholders; needed before PvP |
+| Menu bits for Set | 6 monster set, 7 Spell/Trap set | Both entries read "Set" |
+| Rules | EDOPro's `MODE_MR2` | Online 3 (2010) ran Master Rule 2; EDOPro's preset may differ in details |
 | Duel port | 1214 | The original's port is unknown; the client takes whatever `duelData` says |
 | Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
 

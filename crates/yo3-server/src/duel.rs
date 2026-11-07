@@ -9,7 +9,9 @@ use std::sync::{Arc, Mutex};
 
 use yo3_proto::{Message, Packet, Value};
 
-use crate::front::{DuelEntry, Hub, World};
+use crate::engine::{Answer, Engine};
+use crate::front::{Deck, DuelEntry, Hub, World};
+use crate::translate::{Prompt, Translator};
 
 /// Request id of the server's duel messages. A guess: the pump (0x5233A0) reads only
 /// duelRequestName, and treats a negative id as a lost connection.
@@ -46,29 +48,33 @@ const SECOND: u32 = 2;
 /// {player, phase} (DuelScene, DuelCockpit).
 const DUEL_START: u32 = 1;
 const SET_LP: u32 = 0xF;
-const PHASE: u32 = 5;
+pub(crate) const PHASE: u32 = 5;
+/// Turn change {the player whose turn starts} (DuelScene; the pop counts the turn).
+pub(crate) const TURN: u32 = 6;
+/// Wait for a player's input {player} (DuelFieldManager highlights the cards in the command map).
+pub(crate) const INPUT: u32 = 4;
 const DRAW_PHASE: u32 = 0;
 const START_LP: u32 = 8000;
 /// Card commands: set a card in the engine's card table {uid, row, 0, table place} (0x521DF0), and
 /// move a card on screen {uid | row << 16, from, to} (DuelCardManager 0x4FF6A2).
-const CARD: u32 = 1000;
-const MOVE: u32 = 0x1A;
+pub(crate) const CARD: u32 = 1000;
+pub(crate) const MOVE: u32 = 0x1A;
 /// Zones (the client's numbering): 0-4 monsters, 5-9 Spell/Trap, then these.
-const HAND: u32 = 0xB;
-const DECK: u32 = 0xD;
+pub(crate) const HAND: u32 = 0xB;
+pub(crate) const DECK: u32 = 0xD;
 const OPENING_HAND: usize = 5;
 /// Engine players: the client is player 0 (setup PlayerNum), the CPU player 1.
-const CLIENT: u32 = 0;
-const CPU: u32 = 1;
+pub(crate) const CLIENT: u32 = 0;
+pub(crate) const CPU: u32 = 1;
 
 /// A place as the card table keys it (0x523DF0).
-fn table_place(player: u32, zone: u32, index: usize) -> u32 {
+pub(crate) fn table_place(player: u32, zone: u32, index: usize) -> u32 {
     player | zone << 8 | (index as u32) << 16
 }
 
 /// A place as card moves give it (0x522A50 counts by bit 0 and bits 1-5). The index bits are a guess
 /// (Online 2's packing).
-fn move_place(player: u32, zone: u32, index: usize) -> u32 {
+pub(crate) fn move_place(player: u32, zone: u32, index: usize) -> u32 {
     player | zone << 1 | (index as u32) << 6
 }
 
@@ -118,13 +124,15 @@ pub struct DuelSession {
     hub: Arc<Mutex<Hub>>,
     /// What the player brought (found by the player_id of 0x200A).
     entry: Option<DuelEntry>,
+    /// The rules engine running this duel, once it started.
+    engine: Option<(Engine, Translator)>,
     rng: u64,
 }
 
 impl DuelSession {
     /// A session whose CPU choices follow `seed`.
     pub fn new(world: Arc<World>, hub: Arc<Mutex<Hub>>, seed: u64) -> DuelSession {
-        DuelSession { world, hub, entry: None, rng: seed | 1 }
+        DuelSession { world, hub, entry: None, engine: None, rng: seed | 1 }
     }
 
     /// Handles one client packet and returns the messages to send, in order.
@@ -138,6 +146,15 @@ impl DuelSession {
                 vec![command(JANKEN_BEGIN, [0; 4])]
             }
             (Some(CLIENT_DUEL), Some(SELECT_HAND)) => self.janken(int("selectHand").unwrap_or(0) % 3),
+            (Some(CLIENT_DUEL), Some(CARD_COMMAND)) => {
+                let answer = CardCommand::from_message(msg)
+                    .and_then(|cmd| self.engine.as_mut().and_then(|(_, t)| t.answer(cmd)))
+                    .and_then(|r| self.engine.as_mut().map(|(e, _)| e.respond(r)));
+                match answer {
+                    Some(answer) => self.advance(answer),
+                    None => vec![],
+                }
+            }
             (Some(CLIENT_DUEL), Some(SELECT_FIRST)) => {
                 let order = if int("choice") == Some(SECOND) { SECOND } else { FIRST };
                 self.turn_order(order)
@@ -168,7 +185,87 @@ impl DuelSession {
     /// The player's turn order, the end of the janken, then the duel's opening.
     fn turn_order(&mut self, order: u32) -> Vec<Message> {
         let mut out = vec![command(FIRST_RESOLVE, [order, 0, 0, 0]), command(JANKEN_END, [order, 0, 0, 0])];
-        out.extend(self.opening(if order == FIRST { CLIENT } else { CPU }));
+        let first = if order == FIRST { CLIENT } else { CPU };
+        let opening = match self.world.engine_dir.clone() {
+            Some(dir) => self.engine_opening(first, &dir),
+            None => None,
+        };
+        out.extend(opening.unwrap_or_else(|| self.opening(first)));
+        out
+    }
+
+    /// The setup message: who goes first, and both decks' sizes.
+    fn setup(first: u32, mine: &Deck, theirs: &Deck) -> Message {
+        let len = |cards: &Vec<u16>| cards.len() as u32;
+        // PlayerType: 0 for the client, 1 for the CPU (meaning unknown, a guess).
+        [
+            ("FirstPlayer", first),
+            ("PlayerNum", CLIENT),
+            ("PlayerType001", 0),
+            ("PlayerType002", 1),
+            ("MainDeckNum001", len(&mine.main)),
+            ("MainDeckNum002", len(&theirs.main)),
+            ("ExtraDeckNum001", len(&mine.extra)),
+            ("ExtraDeckNum002", len(&theirs.extra)),
+        ]
+        .into_iter()
+        .fold(Message::reply(SERVER_DUEL).with("duelRequestName", Value::U32(DUEL_SETUP)), |m, (k, v)| m.with(k, Value::U32(v)))
+    }
+
+    /// The opening with the rules engine: setup, both decks in the card table, start and LP, then whatever the
+    /// engine does up to the client's first choice (its draws, turns and phases). None if the engine won't start.
+    fn engine_opening(&mut self, first: u32, dir: &std::path::Path) -> Option<Vec<Message>> {
+        let entry = self.entry.clone()?;
+        let npc = entry.npc_id.and_then(|id| self.world.npc_decks.get(&id)).cloned()?;
+        let decks = [&entry.deck, &npc];
+        let cids = |rows: &[u16]| rows.iter().filter_map(|r| self.world.cid_of_row.get(r).copied()).collect::<Vec<u16>>();
+        // Engine team 0 goes first.
+        let teams = if first == CLIENT { [decks[0], decks[1]] } else { [decks[1], decks[0]] };
+        let (m0, e0, m1, e1) = (cids(&teams[0].main), cids(&teams[0].extra), cids(&teams[1].main), cids(&teams[1].extra));
+        let mut engine = Engine::start(dir).map_err(|e| tracing::warn!("rules engine not started: {e}")).ok()?;
+        let seed = self.next();
+        let answer = engine.new_duel(seed, [(&m0, &e0), (&m1, &e1)]);
+        let (translator, table) = Translator::new(first, [&entry.deck.main, &npc.main], self.world.cid_of_row.clone());
+        self.engine = Some((engine, translator));
+        let mut out = vec![Self::setup(first, &entry.deck, &npc)];
+        out.extend(table);
+        out.extend([
+            command(DUEL_START, [0; 4]),
+            command(SET_LP, [CLIENT, START_LP, 0, 0]),
+            command(SET_LP, [CPU, START_LP, 0, 0]),
+        ]);
+        out.extend(self.advance(answer));
+        Some(out)
+    }
+
+    /// Runs the engine from `answer`: its events become client commands, the CPU's prompts (and those the client
+    /// has no window for yet) are answered, until the client must choose or the duel ends.
+    fn advance(&mut self, mut answer: std::io::Result<Answer>) -> Vec<Message> {
+        let Some((engine, translator)) = self.engine.as_mut() else { return vec![] };
+        let mut out = vec![];
+        // Each round answers one prompt; a duel needs far fewer between two of the client's choices.
+        for _ in 0..10_000 {
+            let a = match answer {
+                Ok(a) => a,
+                Err(e) => {
+                    tracing::warn!("rules engine: {e}");
+                    break;
+                }
+            };
+            for e in &a.errors {
+                tracing::warn!("rules engine: {e}");
+            }
+            out.extend(translator.events(&a.messages));
+            let last = a.messages.last();
+            let (true, Some(last)) = (a.status == "await", last) else { break };
+            match translator.prompt(last) {
+                Prompt::Answer(response) => answer = engine.respond(response),
+                Prompt::Client(messages) => {
+                    out.extend(messages);
+                    break;
+                }
+            }
+        }
         out
     }
 
@@ -178,21 +275,7 @@ impl DuelSession {
     fn opening(&mut self, first: u32) -> Vec<Message> {
         let Some(entry) = self.entry.clone() else { return vec![] };
         let Some(npc) = entry.npc_id.and_then(|id| self.world.npc_decks.get(&id)).cloned() else { return vec![] };
-        let len = |cards: &Vec<u16>| cards.len() as u32;
-        // PlayerType: 0 for the client, 1 for the CPU (meaning unknown, a guess).
-        let setup = [
-            ("FirstPlayer", first),
-            ("PlayerNum", CLIENT),
-            ("PlayerType001", 0),
-            ("PlayerType002", 1),
-            ("MainDeckNum001", len(&entry.deck.main)),
-            ("MainDeckNum002", len(&npc.main)),
-            ("ExtraDeckNum001", len(&entry.deck.extra)),
-            ("ExtraDeckNum002", len(&npc.extra)),
-        ]
-        .into_iter()
-        .fold(Message::reply(SERVER_DUEL).with("duelRequestName", Value::U32(DUEL_SETUP)), |m, (k, v)| m.with(k, Value::U32(v)));
-        let mut out = vec![setup];
+        let mut out = vec![Self::setup(first, &entry.deck, &npc)];
         // uids 1.. in table order: the client's deck, then the CPU's.
         let mut decks = [entry.deck.main.clone(), npc.main.clone()];
         let mut uids: [Vec<u32>; 2] = [vec![], vec![]];
