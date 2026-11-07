@@ -161,9 +161,9 @@ const SELECT_MAX: usize = 4;
 const POSITION: u32 = 8;
 const FACE_UP_DEFENSE: u32 = 1 << 16;
 /// Duel end {result for this client: 1 won, 2 lost, 3 draw; reason} (DuelScene 0x514290).
-const DUEL_END: u32 = 2;
-const WON: u32 = 1;
-const LOST: u32 = 2;
+pub(crate) const DUEL_END: u32 = 2;
+pub(crate) const WON: u32 = 1;
+pub(crate) const LOST: u32 = 2;
 const DRAW: u32 = 3;
 /// WIN's player for a draw.
 const TEAM_DRAW: u64 = 2;
@@ -247,12 +247,24 @@ pub struct Translator {
     picks: Vec<usize>,
     /// The duel's result for the client (1 won, 2 lost, 3 draw), once it ended.
     result: Option<u32>,
+    /// Whether the opponent's hidden cards (deck, hand, extra deck, face-down) go to the client without their rows.
+    hide: bool,
 }
 
 impl Translator {
     /// `decks[p]` is the main deck (CARD_Prop rows) of the client's engine player p; `first` goes first. Returns
     /// the translator and the card-table commands that put both decks in the client's card table (uids 1..).
     pub fn new(first: u32, decks: [&[u16]; 2], cards: HashMap<u16, CardStats>) -> (Translator, Vec<Message>) {
+        Translator::build(first, decks, cards, false)
+    }
+
+    /// The same for a duel against another player, whose hidden cards the client gets with row 0 (**guess**: Online
+    /// 2 used placeholders).
+    pub fn against_player(first: u32, decks: [&[u16]; 2], cards: HashMap<u16, CardStats>) -> (Translator, Vec<Message>) {
+        Translator::build(first, decks, cards, true)
+    }
+
+    fn build(first: u32, decks: [&[u16]; 2], cards: HashMap<u16, CardStats>, hide: bool) -> (Translator, Vec<Message>) {
         let mut sides = [Side::default(), Side::default()];
         let mut out = vec![];
         let mut uid = 0;
@@ -260,7 +272,8 @@ impl Translator {
             for (i, &row) in deck.iter().enumerate() {
                 uid += 1;
                 sides[p].zone(DECK).push(Card { uid, row });
-                out.push(command(CARD, [uid, row as u32, 0, table_place(p as u32, DECK, i)]));
+                let shown = if hide && p as u32 == CPU { 0 } else { row as u32 };
+                out.push(command(CARD, [uid, shown, 0, table_place(p as u32, DECK, i)]));
             }
         }
         let t = Translator {
@@ -275,6 +288,7 @@ impl Translator {
             hint: 0,
             picks: vec![],
             result: None,
+            hide,
         };
         (t, out)
     }
@@ -287,6 +301,20 @@ impl Translator {
     /// The client's engine player of an engine team.
     fn player(&self, team: &Json) -> u32 {
         if team.as_u64() == Some(0) { self.first } else { 1 - self.first }
+    }
+
+    /// Whether an engine prompt asks this client (not the other side).
+    pub fn prompted(&self, m: &Json) -> bool {
+        self.player(&m["player"]) == CLIENT
+    }
+
+    /// The row the client gets for a card at a place: none for the opponent's hidden cards when hiding.
+    fn shown_row(&self, place: &Place, row: u16) -> u32 {
+        let hidden = match place.zone {
+            HAND | DECK | EXTRA => true,
+            zone => zone <= FIELD_SPELL && !place.face_up,
+        };
+        if self.hide && place.player == CPU && hidden { 0 } else { row as u32 }
     }
 
     /// The client commands for the engine's events (prompts excluded).
@@ -314,7 +342,7 @@ impl Translator {
                     }
                 }
                 Some(MSG_MOVE) => out.extend(self.move_card(m)),
-                Some(MSG_HINT) if m["hint_type"].as_u64() == Some(HINT_SELECTMSG) => {
+                Some(MSG_HINT) if m["hint_type"].as_u64() == Some(HINT_SELECTMSG) && self.player(&m["player"]) == CLIENT => {
                     self.hint = m["hint"].as_u64().unwrap_or(0);
                 }
                 Some(MSG_CHAINING) => self.chaining = Some(m.clone()),
@@ -379,19 +407,22 @@ impl Translator {
             dest.clear();
         }
         dest.insert(index, card);
-        let row = card.row as u32;
+        let to = Place { index, ..to };
+        let row = self.shown_row(&to, card.row);
         let mut out = vec![command(CARD, [card.uid, row, 0, table_place(to.player, to.zone, index)])];
-        if to.zone < 5 {
+        if to.zone < 5 && row != 0 {
             out.extend(self.monster_record(to.player, to.zone, card.row));
         }
-        out.push(command(MOVE, [card.uid | row << 16, from.packed(), Place { index, ..to }.packed(), 0]));
+        out.push(command(MOVE, [card.uid | row << 16, from.packed(), to.packed(), 0]));
         // List zones renumber: re-send the shifted cards (not the face-down deck).
         for (p, zone, start) in [(from.player, from.zone, at), (to.player, to.zone, index + 1)] {
             if zone <= FIELD_SPELL || zone == DECK {
                 continue;
             }
-            for (i, c) in self.sides[p as usize].zone(zone).iter().enumerate().skip(start) {
-                out.push(command(CARD, [c.uid, c.row as u32, 0, table_place(p, zone, i)]));
+            let shifted: Vec<(usize, Card)> = self.sides[p as usize].zone(zone).iter().copied().enumerate().skip(start).collect();
+            for (i, c) in shifted {
+                let row = self.shown_row(&Place { player: p, zone, index: i, face_up: true, defense: false }, c.row);
+                out.push(command(CARD, [c.uid, row, 0, table_place(p, zone, i)]));
             }
         }
         out
@@ -548,7 +579,7 @@ impl Translator {
             1 => (PICK_ONE, max),
             _ => (PICK_ALL, min),
         };
-        let rows: Vec<u32> = selects.iter().map(|loc| self.row_of(loc) as u32).collect();
+        let rows: Vec<u32> = selects.iter().map(|loc| self.list_row(loc)).collect();
         let marks: Vec<u32> = selects.iter().map(|loc| if self.player(&loc["controller"]) == CPU { OPPONENTS } else { 0 }).collect();
         let mut out = vec![command(LIST_BEGIN, [selects.len() as u32, max, 0, 0])];
         out.extend(fours(LIST_ROWS, &rows));
@@ -558,6 +589,12 @@ impl Translator {
         }
         out.push(command(CARD_LIST, [CLIENT, kind, text.is_some() as u32, 0]));
         out
+    }
+
+    /// A card's row as a list shows it: none for the opponent's hidden cards when hiding.
+    fn list_row(&self, loc: &Json) -> u32 {
+        let row = self.row_of(loc);
+        self.engine_place(loc).map_or(row as u32, |place| self.shown_row(&place, row))
     }
 
     /// A card's CARD_Prop row: from the mirror at its place (any deck card with its id for the deck), else the

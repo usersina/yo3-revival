@@ -525,3 +525,30 @@ fn with_several_cards_yes_opens_the_card_list() {
     let one = json!([card_at(0, 2, 0, 4100)]);
     assert_eq!(t.prompt(&select_chain(0, true, one)), Prompt::Answer(json!({ "type": 8, "index": 0 })));
 }
+
+#[test]
+fn against_a_player_the_opponents_hidden_cards_carry_no_row() {
+    // Against another player the card table (1000) and the moves (0x1A uid | row << 16) give row 0 for the opponent's
+    // deck, hand and face-down cards, and a face-down monster gets no field record; a face-up card shows its row.
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, table) = Translator::against_player(0, [&client, &cpu], cids);
+    assert_eq!(cmd(&table[10]), (1000, [11, 0, 0, 1 | 0xD << 8]));
+    assert_eq!(cmd(&table[0]), (1000, [1, 100, 0, 0xD << 8]));
+    let drawn: Vec<_> = t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4200 }, { "cid": 4201 }] })]).iter().map(cmd).collect();
+    assert!(drawn.iter().all(|(id, p)| *id != 1000 || p[1] == 0), "{drawn:?}");
+    assert!(drawn.iter().all(|(id, p)| *id != 0x1A || p[0] >> 16 == 0), "{drawn:?}");
+    let summon = |position| json!({ "type": 50, "cid": 4200,
+        "from": { "controller": 1, "location": 2, "sequence": 0, "position": 10 },
+        "to": { "controller": 1, "location": 4, "sequence": 1, "position": position } });
+    let face_up: Vec<_> = t.events(&[summon(1)]).iter().map(cmd).collect();
+    assert_eq!(face_up[0], (1000, [11, 200, 0, 1 | 1 << 8]));
+    assert!(face_up.iter().any(|(id, _)| *id == 0x3EB), "the field record");
+    let set = json!({ "type": 50, "cid": 4201,
+        "from": { "controller": 1, "location": 2, "sequence": 0, "position": 10 },
+        "to": { "controller": 1, "location": 4, "sequence": 2, "position": 8 } });
+    let face_down: Vec<_> = t.events(&[set]).iter().map(cmd).collect();
+    assert_eq!(face_down[0], (1000, [12, 0, 0, 1 | 2 << 8]));
+    assert!(!face_down.iter().any(|(id, _)| *id == 0x3EB), "no field record");
+}

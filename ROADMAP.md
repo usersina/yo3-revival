@@ -77,9 +77,13 @@ Stop finding missing fields one crash at a time.
 - [ ] Presents, card trade and rental, if wanted
 - **Exit:** create a player, open packs, build a deck, restart the server, everything is still there
 
-## M5: Duels
+## ✅ M5: Duels
 
-- [ ] The main screen's DUEL panel (`duelbtnEnable`, `GoDuel`, `DuelWait`): duel invitations or matchmaking
+- [x] The main screen's DUEL panel: the menu bar's duel button opens the Duel Menu (`0x17FC` counts); Auto Duel asks
+      for a match (`0x1798`), and the server pairs two players waiting for the same rule format (push `0x1978` with
+      the opponent and the duel). Live: two clients matched and saw each other
+- [ ] Create Duel (hosted duels with a password, timers and LP: `duelMaking`, the offer `0x17B6` and answer `0x17CA`)
+      and Match Mode (best of three: 1500/1504 between duels)
 - [x] NPC roster and duel start: 26 NPCs (ids 120–197 from the NPC deck presets) listed by name with their
       levels; picking one runs `0x1784` → `0x17AC` → Select Deck (`0x1F4F`) → `0x17D4`, and the duel screen opens
       with both players. The client builds NPC duels itself (DuelManager `0x50ECF0`); no duel server is involved
@@ -133,8 +137,13 @@ Stop finding missing fields one crash at a time.
       port}`, started at `0x4D3066`)
 - [x] Online 3's duel stream is Konami's engine family but renumbered (turn change 6, LP set `0xF`; docs/protocol.md)
 - [ ] Regulations enforced (2011-era rules; card pool limited to the client's 4,824 cards)
-- [ ] PvP between two clients; results and stats written back
-- **Exit:** two clients play a full duel with real decks to a finish
+- [x] PvP on the duel connection: both matched clients share one table (`table.rs`): the janken between their hands,
+      the winner's turn order, one engine with a translator per client (each sees itself as player 0), each prompt to
+      the client it asks, the opponent's hidden cards without rows, a player leaving loses. Results reach both front
+      connections. Live: Yugi against Kaiba, Giant Orc's direct attack, WINNER / LOSER screens, both back on the map
+- [ ] Players' records written back (they live in memory until a restart, like the rest of the players' data)
+- **Exit:** two clients play a full duel with real decks to a finish (met 2026-11-07: two headless clients matched
+  through Auto Duel and played their starter decks to a win)
 
 ## M6: Play with friends
 
@@ -171,7 +180,11 @@ Stop finding missing fields one crash at a time.
 | CPU janken | random hand; the CPU goes first when it wins | The original CPU's choices are unknown |
 | Duel setup `PlayerType001/002` | 0 (client) / 1 (CPU) | Meaning unknown |
 | Card table entries (1000) | param3 0, flag byte 0; uids 1.. in table order | Meanings of param3 and the flag unknown |
-| Hidden cards | the CPU's real rows are sent | Online 2 used placeholders; needed before PvP |
+| Hidden cards | against another player, the opponent's deck, hand, extra deck and face-down cards go with row 0 and face-down monsters get no field record; against the CPU, real rows | Online 2 used placeholders, whose value is unknown; a hidden card that flips without moving keeps row 0 until it moves (position changes aren't translated yet) |
+| Automatic matching | the first two players waiting for the same `match_type` (Both is a value of its own); the level choice is ignored; the second player's `0x1978` goes a second after its `0x1799` | Konami's matching rules are unknown; the delay assumes the agent reads one message per step |
+| Duel Menu counts | `duel_playing` = 2 × matched duels, `duel_ready` 0, `duel_auto` = players waiting | Whether they count players or duels is unknown |
+| PvP setup | `PlayerType001/002` 0/1 as against the CPU | Their meaning is unknown |
+| A player leaving | the other wins (command 2 {1, 14 "disconnected"}) and both records count it | The original's handling (time-outs, `0x2724` heartbeats) is unknown |
 | Menu bits for Set | 6 monster set, 7 Spell/Trap set | Both entries read "Set" |
 | Card list kind | 1 for min 0, `0x27` for min 1, else 6 with max = min | The kinds' other meanings (title, sounds) are unknown; a choice between 2 and more picks is narrowed to exactly min |
 | Card list marks | `0x8000` for the CPU's cards, no icons | The low bits draw icons whose meaning is unknown |

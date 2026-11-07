@@ -2,15 +2,15 @@
 //!
 //! Both directions are key/value messages carrying a duelRequestName; see "Duel connection" in
 //! `docs/protocol.md`. The server drives the duel with engine commands, which the client's scenes
-//! pop one at a time. So far it plays the janken (who goes first) as the CPU opponent and opens the
-//! duel (setup, both decks, LP, the opening hands, the first phase); the duel itself needs a rules
-//! engine (M5).
+//! pop one at a time. Against an NPC it plays the janken as the CPU and runs the rules engine (see
+//! `translate.rs`); a duel between two players runs at a shared table (`table.rs`).
 use std::sync::{Arc, Mutex};
 
 use yo3_proto::{Message, Packet, Value};
 
 use crate::engine::{Answer, Engine};
-use crate::front::{Deck, DuelEntry, Hub, World};
+use crate::front::{Deck, DuelEntry, Hub, Outbox, World};
+use crate::table::Table;
 use crate::translate::{Prompt, Translator};
 
 /// Request id of the server's duel messages. A guess: the pump (0x5233A0) reads only
@@ -40,18 +40,18 @@ const SELECT_FIRST: u32 = 0xD;
 
 /// JankenScene commands (0x518400): begin, resolve, who chooses, chosen (its step leaves the scene by itself,
 /// 0x519230). 1505 there is the match's end {match result, ...} (0x5185A3), not part of the janken.
-const JANKEN_BEGIN: u32 = 1500;
-const JANKEN_RESOLVE: u32 = 1501;
-const FIRST_BEGIN: u32 = 1502;
-const FIRST_RESOLVE: u32 = 1503;
+pub(crate) const JANKEN_BEGIN: u32 = 1500;
+pub(crate) const JANKEN_RESOLVE: u32 = 1501;
+pub(crate) const FIRST_BEGIN: u32 = 1502;
+pub(crate) const FIRST_RESOLVE: u32 = 1503;
 
 /// Turn order as the janken commands give it: 1 first, 2 second.
-const FIRST: u32 = 1;
-const SECOND: u32 = 2;
+pub(crate) const FIRST: u32 = 1;
+pub(crate) const SECOND: u32 = 2;
 
 /// Duel commands: start (DuelScene 0x514290), set LP {player, LP} (DuelCockpit 0x502EB0), phase
 /// {player, phase} (DuelScene, DuelCockpit).
-const DUEL_START: u32 = 1;
+pub(crate) const DUEL_START: u32 = 1;
 pub(crate) const SET_LP: u32 = 0xF;
 /// Change a player's LP {player, signed change} (DuelCockpit 0x502EB0).
 pub(crate) const CHANGE_LP: u32 = 0x10;
@@ -127,7 +127,41 @@ impl CardCommand {
     }
 }
 
-/// One client's duel connection, against the server as the CPU.
+/// The setup message: who goes first, and both decks' sizes.
+pub(crate) fn setup(first: u32, mine: &Deck, theirs: &Deck) -> Message {
+    let len = |cards: &Vec<u16>| cards.len() as u32;
+    // PlayerType: 0 for the client, 1 for the CPU (meaning unknown, a guess).
+    [
+        ("FirstPlayer", first),
+        ("PlayerNum", CLIENT),
+        ("PlayerType001", 0),
+        ("PlayerType002", 1),
+        ("MainDeckNum001", len(&mine.main)),
+        ("MainDeckNum002", len(&theirs.main)),
+        ("ExtraDeckNum001", len(&mine.extra)),
+        ("ExtraDeckNum002", len(&theirs.extra)),
+    ]
+    .into_iter()
+    .fold(Message::reply(SERVER_DUEL).with("duelRequestName", Value::U32(DUEL_SETUP)), |m, (k, v)| m.with(k, Value::U32(v)))
+}
+
+/// Fisher-Yates.
+pub(crate) fn shuffle(rng: &mut u64, cards: &mut [u16]) {
+    for i in (1..cards.len()).rev() {
+        let j = (next(rng) % (i as u64 + 1)) as usize;
+        cards.swap(i, j);
+    }
+}
+
+/// xorshift64*
+pub(crate) fn next(rng: &mut u64) -> u64 {
+    *rng ^= *rng >> 12;
+    *rng ^= *rng << 25;
+    *rng ^= *rng >> 27;
+    rng.wrapping_mul(0x2545_F491_4F6C_DD1D)
+}
+
+/// One client's duel connection: against the server as the CPU, or at a table against another player.
 pub struct DuelSession {
     world: Arc<World>,
     hub: Arc<Mutex<Hub>>,
@@ -140,12 +174,71 @@ pub struct DuelSession {
     /// The result went to the player's front connection.
     reported: bool,
     rng: u64,
+    /// This connection's outbox, and in a duel against another player the shared table and this client's seat.
+    outbox: Option<Outbox>,
+    table: Option<(Arc<Mutex<Table>>, usize)>,
+}
+
+impl Drop for DuelSession {
+    fn drop(&mut self) {
+        if let Some((table, seat)) = self.table.take()
+            && let Ok(mut t) = table.lock()
+        {
+            t.leave(seat);
+        }
+    }
 }
 
 impl DuelSession {
     /// A session whose CPU choices follow `seed`.
     pub fn new(world: Arc<World>, hub: Arc<Mutex<Hub>>, seed: u64) -> DuelSession {
-        DuelSession { world, hub, entry: None, player_id: None, engine: None, reported: false, rng: seed | 1 }
+        DuelSession { world, hub, entry: None, player_id: None, engine: None, reported: false, rng: seed | 1, outbox: None, table: None }
+    }
+
+    /// The connection's outbox, through which the other player's commands reach this client.
+    pub fn with_outbox(mut self, outbox: Outbox) -> DuelSession {
+        self.outbox = Some(outbox);
+        self
+    }
+
+    /// Sits the player at the table of a duel against another player (made by whoever connects first).
+    fn sit(&mut self, duel_id: u32, entry: DuelEntry) -> Vec<Message> {
+        let (Some(outbox), Some(player_id)) = (self.outbox.clone(), self.player_id) else { return vec![] };
+        let seed = self.next();
+        let table = {
+            let mut hub = self.hub.lock().expect("hub lock");
+            let make = || Arc::new(Mutex::new(Table::new(self.world.clone(), self.hub.clone(), duel_id, seed)));
+            hub.tables.entry(duel_id).or_insert_with(make).clone()
+        };
+        let mut t = table.lock().expect("table lock");
+        let Some((seat, out)) = t.sit(player_id, entry, outbox) else { return vec![] };
+        let mine = t.deliver(seat, out);
+        drop(t);
+        self.table = Some((table, seat));
+        mine
+    }
+
+    /// A message at a table: routed to this client's seat, the other client's part sent on.
+    fn at_table(&mut self, msg: &Message) -> Vec<Message> {
+        let Some((table, seat)) = self.table.clone() else { return vec![] };
+        let mut t = table.lock().expect("table lock");
+        let int = |k| msg.get(k).and_then(Value::as_u32);
+        let out = match (msg.request(), int("duelRequestName")) {
+            (Some(CLIENT_DUEL), Some(SELECT_HAND)) => t.hand(seat, int("selectHand").unwrap_or(0) % 3),
+            (Some(CLIENT_DUEL), Some(SELECT_FIRST)) => t.choose(seat, if int("choice") == Some(SECOND) { SECOND } else { FIRST }),
+            (Some(CLIENT_DUEL), Some(CARD_COMMAND)) => match CardCommand::from_message(msg) {
+                Some(cmd) => t.card_command(seat, cmd),
+                None => Default::default(),
+            },
+            (Some(CLIENT_DUEL), Some(PHASE_BUTTON)) => t.phase(seat, int("phase").unwrap_or(u32::MAX)),
+            (Some(CLIENT_DUEL), Some(PICK)) => {
+                t.pick(seat, int("index").unwrap_or(u32::MAX));
+                Default::default()
+            }
+            (Some(CLIENT_DUEL), Some(DIALOG_RESULT)) => t.dialog_result(seat, int("DLGResult").unwrap_or(0)),
+            _ => Default::default(),
+        };
+        t.deliver(seat, out)
     }
 
     /// Handles one client packet and returns the messages to send, in order.
@@ -159,9 +252,15 @@ impl DuelSession {
                 if let (Some(entry), Some(rows)) = (entry.as_mut(), &self.world.test_deck) {
                     entry.deck.main = rows.iter().copied().cycle().take(40).collect();
                 }
+                if let Some(entry) = entry.clone()
+                    && let Some(duel_id) = entry.duel_id
+                {
+                    return self.sit(duel_id, entry);
+                }
                 self.entry = entry;
                 vec![command(JANKEN_BEGIN, [0; 4])]
             }
+            _ if self.table.is_some() => self.at_table(msg),
             (Some(CLIENT_DUEL), Some(SELECT_HAND)) => self.janken(int("selectHand").unwrap_or(0) % 3),
             (Some(CLIENT_DUEL), Some(CARD_COMMAND)) => {
                 let answer = CardCommand::from_message(msg)
@@ -237,24 +336,6 @@ impl DuelSession {
         out
     }
 
-    /// The setup message: who goes first, and both decks' sizes.
-    fn setup(first: u32, mine: &Deck, theirs: &Deck) -> Message {
-        let len = |cards: &Vec<u16>| cards.len() as u32;
-        // PlayerType: 0 for the client, 1 for the CPU (meaning unknown, a guess).
-        [
-            ("FirstPlayer", first),
-            ("PlayerNum", CLIENT),
-            ("PlayerType001", 0),
-            ("PlayerType002", 1),
-            ("MainDeckNum001", len(&mine.main)),
-            ("MainDeckNum002", len(&theirs.main)),
-            ("ExtraDeckNum001", len(&mine.extra)),
-            ("ExtraDeckNum002", len(&theirs.extra)),
-        ]
-        .into_iter()
-        .fold(Message::reply(SERVER_DUEL).with("duelRequestName", Value::U32(DUEL_SETUP)), |m, (k, v)| m.with(k, Value::U32(v)))
-    }
-
     /// The opening with the rules engine: setup, both decks in the card table, start and LP, then whatever the
     /// engine does up to the client's first choice (its draws, turns and phases). None if the engine won't start.
     fn engine_opening(&mut self, first: u32, dir: &std::path::Path) -> Option<Vec<Message>> {
@@ -275,7 +356,7 @@ impl DuelSession {
         let answer = engine.new_duel(seed, lp, [(&m0, &e0), (&m1, &e1)]);
         let (translator, table) = Translator::new(first, [&entry.deck.main, &npc.main], self.world.cards.clone());
         self.engine = Some((engine, translator));
-        let mut out = vec![Self::setup(first, &entry.deck, &npc)];
+        let mut out = vec![setup(first, &entry.deck, &npc)];
         out.extend(table);
         out.extend([
             command(DUEL_START, [0; 4]),
@@ -330,7 +411,7 @@ impl DuelSession {
     fn opening(&mut self, first: u32) -> Vec<Message> {
         let Some(entry) = self.entry.clone() else { return vec![] };
         let Some(npc) = entry.npc_id.and_then(|id| self.world.npc_decks.get(&id)).cloned() else { return vec![] };
-        let mut out = vec![Self::setup(first, &entry.deck, &npc)];
+        let mut out = vec![setup(first, &entry.deck, &npc)];
         // uids 1.. in table order: the client's deck, then the CPU's.
         let mut decks = [entry.deck.main.clone(), npc.main.clone()];
         let mut uids: [Vec<u32>; 2] = [vec![], vec![]];
@@ -359,19 +440,11 @@ impl DuelSession {
         out
     }
 
-    /// Fisher-Yates.
     fn shuffle(&mut self, cards: &mut [u16]) {
-        for i in (1..cards.len()).rev() {
-            let j = (self.next() % (i as u64 + 1)) as usize;
-            cards.swap(i, j);
-        }
+        shuffle(&mut self.rng, cards)
     }
 
-    /// xorshift64*
     fn next(&mut self) -> u64 {
-        self.rng ^= self.rng >> 12;
-        self.rng ^= self.rng << 25;
-        self.rng ^= self.rng >> 27;
-        self.rng.wrapping_mul(0x2545_F491_4F6C_DD1D)
+        next(&mut self.rng)
     }
 }

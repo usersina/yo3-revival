@@ -1,6 +1,7 @@
 //! Yu-Gi-Oh! ONLINE 3 private server: gate, front, duel and patch-HTTP services.
 pub mod accounts;
 pub mod duel;
+mod table;
 pub mod engine;
 pub mod translate;
 pub mod front;
@@ -157,10 +158,10 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
             move |p: &yo3_proto::Packet| session.handle(p)
         }))
     };
-    // The duel connection (DuelManager 0x50F690): every client duels the server as the CPU.
-    let duel_task = tokio::spawn(net::accept_loop(duel, "duel", packets.clone(), move |_peer, _outbox| {
+    // The duel connection (DuelManager 0x50F690): a client duels the server as the CPU, or another client at a table.
+    let duel_task = tokio::spawn(net::accept_loop(duel, "duel", packets.clone(), move |_peer, outbox| {
         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
-        let mut session = duel::DuelSession::new(world.clone(), hub.clone(), seed);
+        let mut session = duel::DuelSession::new(world.clone(), hub.clone(), seed).with_outbox(outbox);
         move |p: &yo3_proto::Packet| session.handle(p)
     }));
     let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone()));

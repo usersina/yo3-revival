@@ -254,6 +254,8 @@ pub struct Hub {
     /// Players waiting for an automatic match, in order, and the matched duels.
     waiting: Vec<Waiting>,
     matches: HashMap<u32, Match>,
+    /// The duel server's tables of the matched duels, by duel_id.
+    pub(crate) tables: HashMap<u32, Arc<Mutex<crate::table::Table>>>,
 }
 
 struct Online {
@@ -292,6 +294,12 @@ impl Hub {
         let online = Online { player_id: player.player_id, name: player.name.clone(), level: player.level, room: None, outbox };
         self.online.insert(self.next_id, online);
         self.next_id
+    }
+
+    /// A matched duel is over: its match and table go.
+    pub fn end_match(&mut self, duel_id: u32) {
+        self.matches.remove(&duel_id);
+        self.tables.remove(&duel_id);
     }
 
     fn leave(&mut self, id: u64) {

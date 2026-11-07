@@ -299,6 +299,19 @@ We send request `0x200D` (**guess**: no reader).
 
 The server plays the CPU: a random hand; when the CPU wins it goes first (**guess**).
 
+**Against another player** (a matched duel: both entries carry the `duel_id`): both duel connections sit at one table
+(`table.rs`). 1500 goes to both once the second `0x200A` arrives; with both hands in, each client gets its own 1501
+(its result, the other's hand, its own) and the winner 1502 {1}, the loser 1502 {0}; a draw lets both scenes ask
+again. The winner's `0xD {choice}` gives each client its own 1503. One engine runs the duel, and each client has its
+own translator in which it is player 0 (`PlayerNum` 0, its deck first, `FirstPlayer` from its side): the engine's
+events go to both, each prompt to the client it asks, and either client's commands reach the other through its
+connection's outbox. The opponent's hidden cards (deck, hand, extra deck, face-down) go with row 0 in 1000 and `0x1A`
+(**guess**, like Online 2's placeholders) and face-down monsters get no field record. A client that leaves loses:
+the other gets command 2 {1, 14 "has disconnected"}. Both front connections get `0x2009` with the record against
+each other. Live (Yugi against Kaiba, LP 2000): Kaiba saw Yugi's Giant Orc on the opponent's side and Yugi's hand
+face down; Kaiba's Set card showed face down on Yugi's field; the direct attack ended the duel with WINNER on Yugi's
+client and LOSER on Kaiba's, and Next took both back to the map.
+
 **Opening** (sent right after 1503; live: LP 8000 on both sides, Turn 1, the first player's DP lit in their colour):
 
 | Message | Fields | Evidence | Status |
