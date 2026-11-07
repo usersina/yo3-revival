@@ -12,8 +12,10 @@ most valuable first. Research for the later slices runs ahead in parallel (read-
 1. [x] Duels: an extra deck summon seen live (Synchro, materials picked in the card list); [x] the Number, Type and Attribute declarations
        (dialog kinds 11, 5, 7) and card name declarations (the card list's searchable kind `0x4C`); [x] options that
        are a card's own strings (the prompt table's 400–495 labels)
-2. [ ] Duels: chain chances outside timely ones ("always chain"), a spectator through a match's later duels, the
-       deck check against the duel's regulation on the server
+2. [x] Duels: a spectator through a match's later duels (live, no change needed); settled without code: chain
+       chances outside timely ones (EDOPro's "always chain" asks with no card able to respond, which this client's
+       Activation Message option has no setting for) and a server-side deck check (the client checks sizes,
+       ownership and the banlist itself; only a modified client gets past it, out of scope for friends)
 3. [ ] NPC experience (`npcbin`): wins against an NPC unlock its higher levels
 4. [ ] D-Mail between players, kept for players offline
 5. [ ] Main Menu screens: Card Album, Rental Card List, My Profile, Duel Log, Leaderboard, BOOSTERPASS, each with
@@ -138,7 +140,8 @@ Stop finding missing fields one crash at a time.
 - [x] Watching duels: Player Information's Watch Duel on a duelling player (mode 4): the front sends the duel
       server and both players (`0x1838` → `0x1839`), the duel server catches the spectator up from seat 0's side
       (janken, setup, the duel so far, both hands hidden) and then sends every event, and at the match's end 1505
-      with the result. Live: Joey watched Yugi and Kaiba's Auto Duel and went back to the map when Kaiba quit
+      with the result. Live: Joey watched Yugi and Kaiba's Auto Duel and went back to the map when Kaiba quit, and
+      watched a whole Match Mode match (the pre-duel screen between duels, the second duel, the map at the end)
 - [x] Card Swap between a match's duels: a player with a side deck gets 1504 (DeckReplace), the swapped deck comes
       back through the front (`0x1F4F` update_type 2) and the duel connection's `0xE` starts the next janken. Live:
       Yugi swapped Danipon in for Crass Clown and duel 2 was dealt from the swapped deck
@@ -191,7 +194,8 @@ Stop finding missing fields one crash at a time.
       Live: Abyssal Designator (DARK, Fiend), Prohibition (Giant Orc), Star Blast (1000 LP)
 - [x] Options that are a card's own strings: EDOPro's `code << 20 | n` paired with the prompt table's per-card labels
       (110 options of 44 cards). Live: Card Shuffle's "Your Deck" / "Opponent's Deck"
-- [ ] Places; chains outside timely chances (EDOPro's "always chain")
+- [x] Places and chains outside timely chances, settled: the client has no place window (the server takes the first
+      free zone), and EDOPro's "always chain" (asking when no card can respond) has no setting in the client
 - [x] Position changes and flips on the field: command `0x1C` (CardFlipTurn) for MSG_POS_CHANGE and flip summons; the
       command ids named after Konami's view types (Master Duel's `DuelViewType`). Live: Giant Orc to defense after
       attacking, a Set Trap Hole turning face-up
@@ -303,7 +307,7 @@ Stop finding missing fields one crash at a time.
 | Counter kinds | EDOPro ids mapped by name to the client's kinds (texts 200 + kind); Spellstone as "Magical Stone", Des as "Death", unnamed ones as 38 "Counter"; Mechanical (23) unused | The original's kind per card is unknown; EDOPro's and Konami's names differ for a few |
 | Card Swap | offered (1504) only to a player whose deck has a side deck; no time limit (the clock slot 4 the screen counts down also drives the janken's); a swapped deck with other cards is refused | Who the original offered it to, and its time limit, are unknown |
 | Friends | a request needs the other player online with no request waiting for them; no limit on friends (110 "The Player List is full." never sent); declining tells the requester; the team tab lists nobody | The original's limits and offline requests are unknown |
-| Watching | from seat 0's side (the first player to enter); the decisive janken round only; NPC duels can't be watched | The original's spectator view and opening are unknown; a spectator's view of a match's later duels wasn't tried live |
+| Watching | from seat 0's side (the first player to enter); the decisive janken round only; NPC duels can't be watched | The original's spectator view and opening are unknown |
 | Login banlist | regulation 1 ("Beta Forbidden/Limited") unless `--regulation` names another | Which list the original used for Auto Duel at each date is unknown; the client calls the login one "Latest Regulation" |
 | Declarations | several types at once and numbers outside the number dialog (min or step above 15 units, max above 255) answered automatically; the CPU names the duel's cards in turn | The client's dialogs pick one type and a range of numbers; the original server's handling of the rest is unknown |
 | Material choice | Synchro and Fusion materials one at a time in the card list (EDOPro's order: the Tuner first); Fusion materials under "Select monsters to use as Fusion Material." (92), Synchro materials without a message | The client has no Synchro material text; how the original asked is unknown |

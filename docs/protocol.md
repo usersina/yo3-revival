@@ -326,7 +326,10 @@ DuelResult takes as the match result (see below); without it the spectator went 
 even with a `0x2009` pushed to its front connection, which a watching DuelResult never reads). The front refuses
 (`0x183A`) a duel that isn't being played between two seated players, or a hosted duel whose `watch` isn't 1 (Allow
 Watch Duel ON). Live: Joey watched Yugi and Kaiba's Auto Duel from turn 1 (both hands face down, the clocks running),
-and when Kaiba quit, Joey's client went back to the map.
+and when Kaiba quit, Joey's client went back to the map. Live (Match Mode, `--duel-lp 1000`): after Yugi won the first
+duel, Joey's client went to the pre-duel screen and waited there while Yugi used Card Swap and both played the janken;
+the second duel's opening took it to the field with the match's win marks (Yugi one), and at the match's end (Yugi 2–0)
+it went back to the map.
 
 DuelManager (scene `0xFFFFD8FD`, constructor `0x50E470`) picks its first state by MainGamen `+0x8B8`: 5 → `0x50F320`
 (connect DuelServerConnection, then `0x1838` on it), 6 → `0x50F030`, else → `0x50ECF0` (the NPC duel):
