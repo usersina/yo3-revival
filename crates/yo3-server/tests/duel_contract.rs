@@ -135,3 +135,22 @@ fn start_npc_duel(c: &mut common::Client) -> u32 {
     let duel = Message::reply(0x17AC).with("event_id", Value::U32(1)).with("join_id", join_id).item(rule);
     one(c.send(Packet::Message(duel))).get("duel_id").and_then(Value::as_u32).unwrap()
 }
+
+#[test]
+fn the_duel_deck_and_the_npc_are_kept_for_the_duel_server() {
+    // The duel connection only names the player (0x200A {player_id}), so the deck picked at Select
+    // Deck and the NPC of the 0x17AC rule (cpu_id) are kept by player for the duel server.
+    let server = Server::with_world(world());
+    let mut c = server.join(1001, "Yugi");
+    let duel_id = start_npc_duel(&mut c);
+    let deck = Message::deck()
+        .with("deck_name", Value::text("Starter Deck"))
+        .with("main", Value::u16_be_array(&[10, 10, 20]))
+        .with("extra", Value::u16_be_array(&[30]))
+        .with("side", Value::u16_be_array(&[]));
+    let fields = [("duel_id", Value::U32(duel_id)), ("event_id", Value::U32(0)), ("update_type", Value::U32(1))];
+    let update = fields.iter().fold(Message::reply(0x1F4F), |m, (k, v)| m.with(k, v.clone())).item(deck);
+    one(c.send(Packet::Message(update)));
+    let entry = server.hub.lock().unwrap().duel_entry(1001).expect("entry");
+    assert_eq!((entry.deck.main, entry.deck.extra, entry.npc_id), (vec![10, 10, 20], vec![30], Some(124)));
+}

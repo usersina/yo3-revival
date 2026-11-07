@@ -82,6 +82,14 @@ fn world(cfg: &Config, duel_port: u16) -> World {
                 side: d.side.clone(),
             }),
             npcs: data.npc_ids(),
+            npc_decks: data
+                .npc_ids()
+                .into_iter()
+                .filter_map(|id| {
+                    let d = data.npc_deck(id)?;
+                    Some((id, Deck { id: d.id, name: String::new(), main: d.main.clone(), extra: d.extra.clone(), side: d.side.clone() }))
+                })
+                .collect(),
             duel_server,
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
         },
@@ -119,9 +127,9 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
             }
         }))
     };
+    let hub = Arc::new(Mutex::new(Hub::default()));
     let front_task = {
-        let world = world.clone();
-        let hub = Arc::new(Mutex::new(Hub::default()));
+        let (world, hub) = (world.clone(), hub.clone());
         let directory = Mutex::new(Directory::new(cfg.players.clone()));
         tokio::spawn(net::accept_loop(front, "front", packets.clone(), move |peer: SocketAddr, outbox| {
             let account = directory.lock().expect("directory lock").account_for(peer.ip());
@@ -130,8 +138,9 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         }))
     };
     // The duel connection (DuelManager 0x50F690): every client duels the server as the CPU.
-    let duel_task = tokio::spawn(net::accept_loop(duel, "duel", packets.clone(), |_peer, _outbox| {
-        let mut session = duel::DuelSession::default();
+    let duel_task = tokio::spawn(net::accept_loop(duel, "duel", packets.clone(), move |_peer, _outbox| {
+        let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
+        let mut session = duel::DuelSession::new(world.clone(), hub.clone(), seed);
         move |p: &yo3_proto::Packet| session.handle(p)
     }));
     let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone()));

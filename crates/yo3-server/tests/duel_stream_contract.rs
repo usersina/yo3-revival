@@ -6,11 +6,23 @@
 //! the scenes (0x522A50). A negative request id counts as a lost connection (0x4F1860). A scene
 //! pops the next command only once its queued states (animations) are done (0x4D3220, 0x517B90),
 //! so several commands can be sent at once.
+use std::sync::{Arc, Mutex};
+
 use yo3_proto::{Message, Packet, Value};
 use yo3_server::duel::{DuelSession, SERVER_DUEL};
+use yo3_server::front::{Deck, DuelEntry, Hub, World};
 
+fn deck(main: usize, extra: usize) -> Deck {
+    Deck { id: 1, name: "Deck".into(), main: vec![1; main], extra: vec![2; extra], side: vec![] }
+}
+
+/// Player 1002 brings a 40-card deck against NPC 124, whose deck has 41 cards and 2 extra.
 fn session() -> DuelSession {
-    DuelSession::with_seed(7)
+    let mut world = World::new((1..=20).collect());
+    world.npc_decks.insert(124, deck(41, 2));
+    let mut hub = Hub::default();
+    hub.enter_duel(1002, DuelEntry { deck: deck(40, 0), npc_id: Some(124) });
+    DuelSession::new(Arc::new(world), Arc::new(Mutex::new(hub)), 7)
 }
 
 fn duel_msg(name: u32, fields: &[(&str, u32)]) -> Packet {
@@ -27,6 +39,7 @@ fn enter(s: &mut DuelSession) -> Vec<Message> {
 fn commands(replies: &[Message]) -> Vec<(u32, [u32; 4])> {
     replies
         .iter()
+        .filter(|m| m.get("duelRequestName") != Some(&Value::U32(0x15)))
         .map(|m| {
             assert_eq!(m.request(), Some(SERVER_DUEL), "{m:?}");
             assert_eq!(m.get("duelRequestName"), Some(&Value::U32(0x11)), "{m:?}");
@@ -70,7 +83,7 @@ fn a_hand_is_answered_with_both_hands_and_the_result() {
             // param1 == 1, 0x519230), then 1505 ends the janken (0x5185A3): param1 is this player's
             // turn order (MainGamen+0x820, the other one at +0x84C), and param2 100 would take
             // another path.
-            _ => assert_eq!(cmds[1..], [(1502, [0; 4]), (1503, [2, 0, 0, 0]), (1505, [2, 0, 0, 0])]),
+            _ => assert_eq!(cmds[1..4], [(1502, [0; 4]), (1503, [2, 0, 0, 0]), (1505, [2, 0, 0, 0])]),
         }
     }
 }
@@ -82,8 +95,42 @@ fn the_winner_picks_first_or_second() {
         let mut s = session();
         enter(&mut s);
         let replies = s.handle(&duel_msg(0xD, &[("choice", choice)]));
-        assert_eq!(commands(&replies), [(1503, [choice, 0, 0, 0]), (1505, [choice, 0, 0, 0])]);
+        assert_eq!(commands(&replies)[..2], [(1503, [choice, 0, 0, 0]), (1505, [choice, 0, 0, 0])]);
     }
+}
+
+#[test]
+fn the_duel_opens_after_the_janken() {
+    // Pump case 0x15 stores FirstPlayer (engine+0x1AC), PlayerNum (+0x1B0, this client's player; the
+    // scenes compare players with it), and per player PlayerType, MainDeckNum and ExtraDeckNum
+    // (+0x1C4.., +0x1DC.., which command 0x1A keeps counting). Then the commands: 1 starts the duel
+    // (DuelScene 0x514290), 0xF sets a player's LP {player, LP} (DuelCockpit 0x502EB0), 5 a phase
+    // {player, phase: 0 draw} (DuelScene, DuelCockpit). Live: LP 8000 on both sides, DP lit. The
+    // first turn needs no 6 (turn change), which would count it as turn 2.
+    for (choice, first) in [(1, 0), (2, 1)] {
+        let mut s = session();
+        enter(&mut s);
+        let replies = s.handle(&duel_msg(0xD, &[("choice", choice)]));
+        let setup = replies.iter().find(|m| m.get("duelRequestName") == Some(&Value::U32(0x15))).expect("setup");
+        assert_eq!(setup.request(), Some(SERVER_DUEL));
+        let expected = [("FirstPlayer", first), ("PlayerNum", 0), ("MainDeckNum001", 40), ("MainDeckNum002", 41)]
+            .into_iter()
+            .chain([("ExtraDeckNum001", 0), ("ExtraDeckNum002", 2)]);
+        for (k, v) in expected {
+            assert_eq!(setup.get(k), Some(&Value::U32(v)), "{k}");
+        }
+        assert!(setup.get("PlayerType001").is_some() && setup.get("PlayerType002").is_some());
+        let opening = [(1, [0; 4]), (0xF, [0, 8000, 0, 0]), (0xF, [1, 8000, 0, 0]), (5, [first, 0, 0, 0])];
+        assert_eq!(commands(&replies)[2..], opening);
+    }
+}
+
+#[test]
+fn a_player_without_a_duel_entry_gets_no_opening() {
+    let mut s = DuelSession::new(Arc::new(World::new(vec![])), Arc::new(Mutex::new(Hub::default())), 7);
+    enter(&mut s);
+    let replies = s.handle(&duel_msg(0xD, &[("choice", 1)]));
+    assert_eq!(commands(&replies), [(1503, [1, 0, 0, 0]), (1505, [1, 0, 0, 0])]);
 }
 
 #[test]

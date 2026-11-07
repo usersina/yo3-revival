@@ -107,6 +107,26 @@ impl Deck {
     pub fn cards(&self) -> impl Iterator<Item = u16> + '_ {
         self.main.iter().chain(&self.extra).chain(&self.side).copied()
     }
+
+    /// A deck as the client sends it (tag 6 item of 0x1F4F).
+    pub fn from_record(m: &Message) -> Deck {
+        let rows = |k| m.get(k).and_then(Value::as_bytes).map(|b| b.as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes(*c)).collect());
+        Deck {
+            id: m.get("deck_id").and_then(Value::as_u32).unwrap_or(0),
+            name: m.get("deck_name").and_then(Value::as_str).unwrap_or_default(),
+            main: rows("main").unwrap_or_default(),
+            extra: rows("extra").unwrap_or_default(),
+            side: rows("side").unwrap_or_default(),
+        }
+    }
+}
+
+/// What a player brings to the duel they are entering: the deck picked at Select Deck (0x1F4F) and,
+/// in an NPC duel, the NPC (the 0x17AC rule's cpu_id). The duel server finds it by player_id (0x200A).
+#[derive(Clone, Debug)]
+pub struct DuelEntry {
+    pub deck: Deck,
+    pub npc_id: Option<u32>,
 }
 
 /// A chat room, as listed in 0x2458 (fields read by 0x434D20).
@@ -137,6 +157,8 @@ pub struct World {
     pub starter_deck: Option<Deck>,
     /// NPC opponents, every level of each (three consecutive ids per NPC, from 120).
     pub npcs: Vec<u32>,
+    /// Each NPC's deck (from its preset), by npc_id.
+    pub npc_decks: HashMap<u32, Deck>,
     /// Where clients connect for their duels (0x22C4 duelData host and port).
     pub duel_server: (String, u16),
     pub news: Vec<(String, String)>,
@@ -150,6 +172,7 @@ impl World {
             card_rows: 0,
             starter_deck: None,
             npcs: vec![],
+            npc_decks: HashMap::new(),
             duel_server: ("127.0.0.1".into(), 0),
             news: vec![(
                 "Welcome back to Yu-Gi-Oh! ONLINE".into(),
@@ -173,6 +196,8 @@ pub struct Hub {
     /// The last join_id (0x1785) and duel_id (0x17AD) handed out.
     last_join: u32,
     last_duel: u32,
+    /// Duel entries by player_id.
+    duel_entries: HashMap<u32, DuelEntry>,
 }
 
 struct Online {
@@ -186,6 +211,14 @@ struct Online {
 impl Hub {
     pub fn online(&self) -> usize {
         self.online.len()
+    }
+
+    pub fn enter_duel(&mut self, player_id: u32, entry: DuelEntry) {
+        self.duel_entries.insert(player_id, entry);
+    }
+
+    pub fn duel_entry(&self, player_id: u32) -> Option<DuelEntry> {
+        self.duel_entries.get(&player_id).cloned()
     }
 
     fn join(&mut self, player: &Player, outbox: Outbox) -> u64 {
@@ -344,8 +377,17 @@ impl FrontSession {
             0x1F4E => self.world.starter_deck.iter().fold(Message::reply(0x22C8), |m, d| m.item(d.record())),
             0x17D4 => return self.duel_ready(msg),
             // Deck updated: the deck editor's save, and the deck a player picks for a duel (DuelManager
-            // 0x50ECF0, {duel_id, event_id, update_type 1, item: the deck}). Nothing is stored yet.
-            0x1F4F => Message::reply(0x22CA),
+            // 0x50ECF0, {duel_id, event_id, update_type 1, item: the deck}), which is kept for the duel.
+            0x1F4F => {
+                let duel = msg.get("duel_id").and_then(Value::as_u32).and_then(|id| self.duels.get(&id));
+                if let (Some(rule), Some(item)) = (duel, msg.items.first()) {
+                    let npc_id = rule.iter().find(|(k, _)| k == "cpu_id").and_then(|(_, v)| v.as_u32()).filter(|&id| id > 0);
+                    let entry = DuelEntry { deck: Deck::from_record(item), npc_id };
+                    let player_id = self.player().player_id;
+                    self.hub().enter_duel(player_id, entry);
+                }
+                Message::reply(0x22CA)
+            }
             // Deck deleted (its local file is already gone); the starter deck comes back on the next list.
             0x1F50 => Message::reply(0x22CC),
             // NPC roster (kept in slot 4; SelectNpcScene 0x4BEB40 reads it three items per NPC). The

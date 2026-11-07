@@ -266,9 +266,38 @@ We send request `0x200D` (**guess**: no reader).
 | 1503 | param1 1 = this player goes first | `resolveFirst(isFirst)` (`0x519230`) |
 | 1505 | param1 this player's turn order (MainGamen `+0x820`; the other at `+0x84C`, `0x504D00`); param2 100 takes another path; param3 3 too | ends the janken (`0x5185A3`); the duel field opens with LP 0, Turn 1 |
 
-The server plays the CPU: a random hand; when the CPU wins it goes first (**guess**). Next the field waits for the
-duel itself: setup (`0x15`), command ids (`0x12`) and engine commands below 1000 (`0x522A50` handles 2, 4, 6, `0x1A`
-card moves, `0x36`, `0x37`, and 1000–1004 specially).
+The server plays the CPU: a random hand; when the CPU wins it goes first (**guess**).
+
+**Opening** (sent right after 1505; live: LP 8000 on both sides, Turn 1, the first player's DP lit in their colour):
+
+| Message | Fields | Evidence | Status |
+|---|---|---|---|
+| setup (`0x15`) | `FirstPlayer` (engine player 0/1), `PlayerNum` (this client's player: 0; the scenes compare players with it, engine `+0x1B0`), `PlayerType001/002` (0 / 1), `MainDeckNum001/002`, `ExtraDeckNum001/002` (the decks' sizes: the one picked at Select Deck, the NPC's preset) | pump case `0x15` | confirmed (live, no visible effect of the counts yet); `PlayerType` values **guess** |
+| command 1 | none: duel start | DuelScene `0x514290` | shape |
+| command `0xF` | param1 player, param2 LP | DuelCockpit `0x502EB0` (`setLp`) | confirmed (live) |
+| command 5 | param1 player, param2 phase (0 draw) | DuelScene, DuelCockpit | confirmed (live: DP lit) |
+| command 6 | param1 the player whose turn starts | DuelScene; the pop adds 1 to the turn count (engine `+0x1BC`) and flips the active player | confirmed (live: Turn 2), so not sent for the first turn |
+
+The duel connection only names the player (`0x200A {player_id}`), so the front server keeps, by player, the deck sent
+with `0x1F4F` and the NPC of the duel's `0x17AC` rule (`cpu_id`).
+
+**Engine commands seen so far**, by the component that handles them (a scene or a component reacts to event `0x2001`,
+which DuelScene `0x514140` sends for every popped command):
+
+| Component (handler) | Commands |
+|---|---|
+| the pop `0x522A50` (engine state) | 2, 4, 6 (turn), `0x1A` (card move: param2 from, param3 to, as `player \| zone<<1`; zones 0–4 monsters, 5–9 Spell/Trap, 0xB hand, 0xC extra, 0xD deck, 0xE graveyard, 0xF banished), `0x36`, `0x37`, 1000–1019 (data loads: per-card records `0x3E9`–`0x3EB`, `0x3F5`; arrays `0x3EF`–`0x3F3`; card map `0x3F9`/`0x3FA`) |
+| DuelScene `0x514290` | 1, 2 (duel end: param1 winner, param2 reason), 4, 5, 6, 7, `0x15`, `0x1E`, `0x22`–`0x25`, `0x36`–`0x3A`, `0x3C`, `0x3D`, `0x3F`, 1505 |
+| DuelCardManager `0x4FF000` | `0x12`–`0x14`, `0x16`–`0x1D`, `0x1F`, `0x20`, `0x25`–`0x29` (cards are looked up in the engine's card map: `0x523DF0(player, zone, index)`) |
+| DuelCockpit `0x502EB0` | 5, `0xF` (LP), `0x10` (LP change) |
+| DuelFieldManager `0x50A690` | 4 (highlight the cards with commands), `0x26` |
+| DuelSummon `0x5165A0` | `0x2A`–`0x32` |
+| DuelChain `0x501560` | `0x33`, `0x34` |
+| DuelCutin `0x505A70` | 6, `0x43`, `0x44`, `0x46`–`0x48`, `0x4C`, `0x4D` |
+| DuelBattle `0x4F8A90` | 4, `0xA`–`0xE`, `0x10` |
+
+The numbering differs from Online 2's engine (whose turn change is `0x04` and LP set `0x26`), so YO2 research is a guide
+only. Next: the card map, so decks, hands and draws show.
 
 ## Accounts
 

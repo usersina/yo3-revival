@@ -87,8 +87,10 @@ Stop finding missing fields one crash at a time.
       client connects to our duel listener (port 1214, logged only) and sends `0x200A {player_id, autoSet}`
 - [x] Duel connection mapped (both directions' `duelRequestName`s, the engine command pump) and the janken played
       against the server as the CPU (commands 1500–1505): the duel field opens, Turn 1
-- [ ] Duel setup and the first engine commands: `0x15` (`FirstPlayer`, `PlayerNum`, deck sizes), `0x12` command
-      ids, LP and draws; this needs the rules engine below
+- [x] Duel opening: setup `0x15` with both decks' sizes, duel start, LP 8000 (`0xF`), the first player's Draw Phase
+      (5); the engine commands are mapped to the components that handle them (docs/protocol.md)
+- [ ] Cards on the field: the engine card map (data commands `0x3E9`–`0x3FA`), so decks, hands and draws show; then
+      `0x12` command ids and the player's first actions
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)
 - [ ] Confirm in Ghidra that Online 3's duel stream is Konami's engine command set (as in Online 2)
@@ -131,6 +133,7 @@ Stop finding missing fields one crash at a time.
 | `0x22C4` push | right after `0x17D5`; `rule` = the fields of the duel's `0x17AC` item | The original timing and rule contents are unknown; only `match_type` is read so far |
 | Server duel messages | request `0x200D` | The pump reads only `duelRequestName` (and needs the id non-negative) |
 | CPU janken | random hand; the CPU goes first when it wins; `1505` param2/param3 0 | The original CPU's choices are unknown |
+| Duel setup `PlayerType001/002` | 0 (client) / 1 (CPU) | Meaning unknown |
 | Duel port | 1214 | The original's port is unknown; the client takes whatever `duelData` says |
 | Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
 
