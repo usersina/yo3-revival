@@ -66,10 +66,10 @@ You need Linux (on Windows, use WSL), the game installed (the server reads its c
 ## What works and what doesn't yet
 
 Working: chat rooms and whispers, player search, NPC duels, Auto Duel and Create Duel between players (Single
-and Match Mode), choosing targets, tributes, positions, coin calls and chains in the game's own dialogs, attack and summon
-animations, the result screens, avatar settings.
+and Match Mode), choosing targets, tributes, positions, coin calls and chains in the game's own dialogs, attack, summon
+and chain-link animations, the result screens, avatar settings.
 
-Not yet: changing the side deck between a match's duels, duel timers, watching duels, chain-link animations, effects that make you choose between a
+Not yet: changing the side deck between a match's duels, duel timers, watching duels, effects that make you choose between a
 card's own options (the first is taken), packs and an economy. Players' decks stay on their own machines (in `Documents\Yu-Gi-Oh! ONLINE 3`).
 
 ## When something goes wrong

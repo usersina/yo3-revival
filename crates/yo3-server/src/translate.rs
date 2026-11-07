@@ -54,6 +54,7 @@ const MSG_BATTLE: u64 = 111;
 const MSG_ATTACK_DISABLED: u64 = 112;
 const MSG_DAMAGE_STEP_END: u64 = 114;
 const MSG_CHAINING: u64 = 70;
+const MSG_CHAIN_SOLVING: u64 = 72;
 const MSG_CHAIN_END: u64 = 74;
 const MSG_PAY_LPCOST: u64 = 100;
 /// ocgcore response types (OcgResponseType) and actions.
@@ -99,6 +100,8 @@ const LOC_SZONE: u64 = 8;
 const LOC_GRAVE: u64 = 16;
 const LOC_REMOVED: u64 = 32;
 const LOC_EXTRA: u64 = 64;
+/// An Xyz material: or'ed with its monster's location, whose sequence it takes.
+const LOC_OVERLAY: u64 = 0x80;
 /// The client's list zones besides hand and deck.
 const EXTRA: u32 = 0xC;
 const GRAVE: u32 = 0xE;
@@ -117,6 +120,12 @@ const DESTROYED: u32 = 2;
 /// The summon effects at a card {player, uid} (DuelScene 0x514290): Normal (or the player's ace), Special.
 const RUN_SUMMON: u32 = 0x38;
 const RUN_SP_SUMMON: u32 = 0x39;
+/// The chain's links (DuelChain 0x501560): a new link {player, zone it shows over, link number}, link 1 starting the
+/// list; a link resolving {_, _, link number}, which must come last link first (the list's end leaves).
+const CHAIN_SET: u32 = 0x33;
+const CHAIN_RUN: u32 = 0x34;
+/// ChainSet's zone for a card with no place on the client's field: the centre (place table 0x81AE38).
+const FIELD_CENTRE: u32 = 16;
 /// Data commands that build a field card's record (pop 0x522A50).
 const RECORD_BEGIN: u32 = 0x3E9;
 const RECORD_MORE: u32 = 0x3EA;
@@ -380,7 +389,11 @@ impl Translator {
                 }
                 // Also a Set Spell/Trap turning face-up as it is activated.
                 Some(MSG_POS_CHANGE | MSG_FLIPSUMMONING) => out.extend(self.turn(m, m["position"].as_u64().unwrap_or(0))),
-                Some(MSG_CHAINING) => self.chaining = Some(m.clone()),
+                Some(MSG_CHAINING) => {
+                    out.push(self.chain_link(m));
+                    self.chaining = Some(m.clone());
+                }
+                Some(MSG_CHAIN_SOLVING) => out.push(command(CHAIN_RUN, [0, 0, m["chain_size"].as_u64().unwrap_or(0) as u32, 0])),
                 Some(MSG_ATTACK) => {
                     out.extend(self.end_battle());
                     out.extend(self.attack(m));
@@ -574,6 +587,15 @@ impl Translator {
         // field cards carry them; the client shows each list zone its own way.
         let position = if zone <= FIELD_SPELL { loc["position"].as_u64().unwrap_or(0) } else { 0 };
         Some(Place { player, zone, index, face_up: position & 5 != 0, defense: position & 12 != 0 })
+    }
+
+    /// ChainSet for MSG_CHAINING {controller, location, sequence, chain_size}: the link over its card's zone (an Xyz
+    /// material's over its monster).
+    fn chain_link(&self, m: &Json) -> Message {
+        let mut at = m.clone();
+        at["location"] = json!(m["location"].as_u64().unwrap_or(0) & !LOC_OVERLAY);
+        let zone = self.engine_place(&at).map_or(FIELD_CENTRE, |p| p.zone);
+        command(CHAIN_SET, [self.player(&m["controller"]), zone, m["chain_size"].as_u64().unwrap_or(0) as u32, 0])
     }
 
     /// What to do with the engine's prompt (the last message when it awaits).

@@ -538,8 +538,23 @@ answers no chain; Yes chains the only card, or opens the card list (one pick) wi
 where no pick is no chain. A forced chain of several goes straight to the list; of one needs no choice. Live (two Set
 Trap Holes, the CPU's summon): the question showed both cards; Yes opened the list, the second pick activated it, the
 next chance read '"Trap Hole" is activated. Chain another card or effect?', and No resolved it, destroying the CPU's
-monster. The activation itself has no animation yet (DuelChain `0x33`/`0x34` are unmapped). Places are still answered
-for the player.
+monster. Places are still answered for the player.
+
+**Chain links** (DuelChain `0x501560`, states `0x501250`; the record pump `0x523541` queues `{id, request, param1…4}` and
+the component reads from `param1`). DuelChain keeps a list of links `{opponent's, zone, link number, effect}`; the
+busy check (`0x515481`) holds the queue while it animates (`+0x58` ≠ 0):
+
+| Command | Params | What the client does | Status |
+|---|---|---|---|
+| `0x33` ChainSet | `param1` the player (compared with `PlayerNum`, engine `+0x1B0`), `param2` the zone the number shows over (0–16: the place table `0x81AE38` read by `0x4E7990`, numbered as moves give zones: 0–4 monsters, 5–9 Spell/Trap, `0xA` Field Spell, `0xB` hand, `0xC` extra deck, `0xD` deck, `0xE` graveyard, `0xF` banished, 16 the field's centre), `param3` the link number | link 1 clears the list and adds itself silently; a later link is added and played (state 1: effect `0x31` at its zone, and at link 1's too when it is link 2; state 2: then the held number `0x30`). The new link is read at index `param3 − 1` (bounds-checked: a skipped link would stop the client) | confirmed (code; live below) |
+| `0x34` ChainRun | `param3` the resolving link's number (read from the same place as ChainSet's); `param1`, `param2` unread, sent 0 | with fewer than 2 links: clears the list. Else link `param3` resolves: the last link first shows a banner (states 3–4, 400), then each plays effect `0x32` at its zone and leaves the list's end (states 5–6), so they must come last link first. Live: the link in `param1` made state 5 look up link −1, and the bounds check (`0x501620`, called at `0x5014B2`) stopped the client with `0xC0000417` | confirmed (code; live below) |
+
+The server sends ChainSet at each MSG_CHAINING {controller, location, sequence, chain_size} (an Xyz material's
+effect at its monster's zone; a place the client lacks at the centre, **guess**) and ChainRun at each
+MSG_CHAIN_SOLVING {chain_size}, which the engine sends link by link from the last. Live (two Set Trap Holes
+chained to the CPU's summon, twice): ChainSet `{0, 5, 1}` and `{0, 6, 2}` showed the numbered links 1 and 2 over
+both cards, ChainRun `{0, 0, 2}` and `{0, 0, 1}` played the chain banner and faded each number, Trap Hole destroyed
+the monster, and the duel went on.
 
 The duel's end: ocgcore's WIN {winning team, reason} becomes command 2 {result, reason}. DuelScene keeps the result at
 MainGamen `+0x81C` and its 1 ↔ 2 swap as the opponent's, and adds a DuelEndEffect (`0x5083A0`) that plays

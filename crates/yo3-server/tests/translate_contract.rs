@@ -698,3 +698,42 @@ fn a_summon_plays_its_effect() {
     let special = json!({ "type": 62, "code": 4200, "cid": 4200, "controller": 1, "location": 4, "sequence": 1, "position": 1 });
     assert_eq!(shows(&t.events(&[special])), [(0x39, [1, 11, 0, 0])]);
 }
+
+/// The chain commands among `out` (0x33, 0x34).
+fn links(out: &[Message]) -> Vec<(u32, [u32; 4])> {
+    out.iter().map(cmd).filter(|(id, _)| matches!(id, 0x33 | 0x34)).collect()
+}
+
+fn chaining(controller: u32, location: u32, sequence: u32, link: u32) -> serde_json::Value {
+    json!({ "type": 70, "code": 4200, "cid": 4200, "controller": controller, "location": location, "sequence": sequence,
+        "position": 5, "triggering_controller": controller, "triggering_location": location,
+        "triggering_sequence": sequence, "description": 0, "chain_size": link })
+}
+
+#[test]
+fn a_chain_shows_its_links_and_resolves_them_last_first() {
+    // DuelChain (0x501560): ChainSet 0x33 {player, zone, link number} adds a link over the card's zone (0x4E7990's
+    // place table 0x81AE38: zones as moves number them, 16 the field's centre); link 1 starts a new list, and the new
+    // link is read at index link - 1, so every link needs its ChainSet. ChainRun 0x34 {_, _, link number} resolves the
+    // list's last link (states 5-6 pop the end), so the engine's MSG_CHAIN_SOLVING (72) comes last link first. Both
+    // read the link from param3; live, ChainRun's link in param1 made the client look up link -1 and stop (0xC0000417
+    // from the bounds check 0x501620, called by state 5 at 0x5014B2).
+    let mut t = with_cards();
+    // The CPU's monster effect in its zone 1, the client's Set card in Spell/Trap zone 0, a hand effect, an Xyz
+    // material's (location MZONE | OVERLAY, its monster's zone 2), and a location the client has no place for.
+    let out = t.events(&[
+        chaining(1, 4, 1, 1),
+        chaining(0, 8, 0, 2),
+        chaining(0, 2, 3, 3),
+        chaining(1, 0x84, 2, 4),
+        chaining(0, 0x400, 0, 5),
+    ]);
+    assert_eq!(
+        links(&out),
+        [(0x33, [1, 1, 1, 0]), (0x33, [0, 5, 2, 0]), (0x33, [0, 0xB, 3, 0]), (0x33, [1, 2, 4, 0]), (0x33, [0, 16, 5, 0])]
+    );
+    let solving = |link: u32| json!({ "type": 72, "chain_size": link });
+    let solved = |link: u32| json!({ "type": 73, "chain_size": link });
+    let out = t.events(&[solving(5), solved(5), solving(4), solved(4), solving(3)]);
+    assert_eq!(links(&out), [(0x34, [0, 0, 5, 0]), (0x34, [0, 0, 4, 0]), (0x34, [0, 0, 3, 0])]);
+}
