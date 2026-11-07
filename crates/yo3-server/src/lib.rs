@@ -5,6 +5,7 @@ pub mod duel;
 mod table;
 pub mod engine;
 pub mod translate;
+mod card_options;
 pub mod front;
 pub mod shop;
 mod social;

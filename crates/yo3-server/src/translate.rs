@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use serde_json::{Value as Json, json};
 use yo3_proto::Message;
 
+use crate::card_options::CARD_OPTION_LABELS;
 use crate::duel::{
     CARD, CHANGE_LP, CLIENT, CPU, CardCommand, DECK, HAND, INPUT, MOVE, PHASE, SET_LP, TURN, command, command_data,
     move_place, table_place,
@@ -1158,13 +1159,14 @@ fn fours(id: u32, values: &[u32]) -> Vec<Message> {
 }
 
 /// The option list for MSG_SELECT_OPTION {options}, when the client has a label for every option (at most four).
-/// A card's own strings (code << 4 | n) have none.
+/// A card's own strings (code << 20 | n) have labels only where CARD_OPTION_LABELS pairs them.
 fn option_list(m: &Json) -> Option<Vec<Message>> {
     let options = m["options"].as_array()?;
-    let found: Option<Vec<(u32, u32)>> = options
-        .iter()
-        .map(|o| OPTION_LABELS.iter().find(|(d, _, _)| o.as_u64() == Some(*d)).map(|&(_, label, title)| (label, title)))
-        .collect();
+    let label = |d: u64| {
+        let system = OPTION_LABELS.iter().find(|(o, _, _)| *o == d).map(|&(_, label, title)| (label, title));
+        system.or_else(|| CARD_OPTION_LABELS.iter().find(|(o, _)| *o == d).map(|&(_, label)| (label, SELECT_EFFECT_TEXT)))
+    };
+    let found: Option<Vec<(u32, u32)>> = options.iter().map(|o| label(o.as_u64()?)).collect();
     let found = found.filter(|f| !f.is_empty() && f.len() <= SELECT_MAX)?;
     let labels: Vec<u32> = found.iter().map(|(label, _)| label | LISTED).collect();
     let mut out = vec![command(LIST_BEGIN, [labels.len() as u32, 0, 0, 0])];

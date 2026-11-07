@@ -384,11 +384,11 @@ fn an_effect_question_opens_the_yes_no_dialog() {
 
 #[test]
 fn a_yes_no_question_names_its_card() {
-    // MSG_SELECT_YESNO (13) {description}: the question is a card script string (code << 4 | n), which the client
+    // MSG_SELECT_YESNO (13) {description}: the question is a card script string (code << 20 | n), which the client
     // doesn't have; the sidecar adds the card's Konami id (description_cid), so it reads 226 'Use the effect of
     // "%s"?', else 270 "Use the effect now?".
     let mut t = with_cards();
-    let named = json!({ "type": 13, "player": 0, "description": 65601, "description_cid": 4101 });
+    let named = json!({ "type": 13, "player": 0, "description": 4101u64 << 20 | 1, "description_cid": 4101 });
     assert_eq!(client_commands(t.prompt(&named))[1], (0x3ED, [1 << 28 | 226, 5 << 28 | 4101, 0, 0]));
     assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 3, "yes": true }))));
     let plain = json!({ "type": 13, "player": 0, "description": 32 });
@@ -459,8 +459,17 @@ fn an_option_the_client_has_labels_for_opens_the_select_dialog() {
     assert_eq!(out[1], (0x3F0, [0x8000 | 440, 0x8000 | 441, 0x8000 | 442, 0]));
     assert_eq!(out[3], (0x3ED, [1 << 28 | 260, 0, 0, 0]));
     assert_eq!(t.dialog_result(2), Some(Prompt::Answer(json!({ "type": 4, "index": 2 }))));
-    // A card's own strings (code << 4 | n) have no text on the client: the first option, as the CPU would.
-    let card = json!({ "type": 14, "player": 0, "options": [65600, 65601] });
+    // A card's own strings (aux.Stringid: code << 20 | n) take the original server's per-card labels (the prompt table's 400-495, and
+    // 369/370 for a side of the field) where one says the same thing, under "Select effect to @3activate@0." (276):
+    // Penalty Game! (967928) "Your opponent cannot draw during their next Draw Phase" / "... activate a Spell or Trap
+    // Card during this turn" (465/466).
+    let penalty = json!({ "type": 14, "player": 0, "options": [967928u64 << 20, 967928u64 << 20 | 1] });
+    let out = client_commands(t.prompt(&penalty));
+    assert_eq!(out[1], (0x3F0, [0x8000 | 465, 0x8000 | 466, 0, 0]));
+    assert_eq!(out[3], (0x3ED, [1 << 28 | 276, 0, 0, 0]));
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 4, "index": 1 }))));
+    // Strings without a label: the first option, as the CPU would.
+    let card = json!({ "type": 14, "player": 0, "options": [4100u64 << 20, 4100u64 << 20 | 1] });
     assert_eq!(t.prompt(&card), Prompt::Answer(json!({ "type": 4, "index": 0 })));
 }
 

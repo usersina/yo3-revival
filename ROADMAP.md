@@ -10,8 +10,8 @@ Goal: finish what the client can use, then hand over for the real friend test. E
 most valuable first. Research for the later slices runs ahead in parallel (read-only).
 
 1. [ ] Duels: an extra deck summon seen live (Synchro or Fusion); [x] the Number, Type and Attribute declarations
-       (dialog kinds 11, 5, 7) and card name declarations (the card list's searchable kind `0x4C`); options that are a
-       card's own strings (the prompt table's 400–490 labels)
+       (dialog kinds 11, 5, 7) and card name declarations (the card list's searchable kind `0x4C`); [x] options that
+       are a card's own strings (the prompt table's 400–495 labels)
 2. [ ] Duels: chain chances outside timely ones ("always chain"), a spectator through a match's later duels, the
        deck check against the duel's regulation on the server
 3. [ ] NPC experience (`npcbin`): wins against an NPC unlock its higher levels
@@ -189,9 +189,9 @@ Stop finding missing fields one crash at a time.
       Marauding Captain's Special Summon in Defence, Time Wizard's coin call, two Trap Holes chained to the CPU's summon
 - [x] Declarations: types, attributes and numbers in their dialogs, card names in the card list's searchable kind.
       Live: Abyssal Designator (DARK, Fiend), Prohibition (Giant Orc), Star Blast (1000 LP)
-- [ ] Options that are a card's own strings (51 of the client's cards; the prompt table's 400–490 are the original
-      per-card labels, but EDOPro's strings don't pair with them reliably), places; chains outside timely chances
-      (EDOPro's "always chain")
+- [x] Options that are a card's own strings: EDOPro's `code << 20 | n` paired with the prompt table's per-card labels
+      (110 options of 44 cards). Live: Card Shuffle's "Your Deck" / "Opponent's Deck"
+- [ ] Places; chains outside timely chances (EDOPro's "always chain")
 - [x] Position changes and flips on the field: command `0x1C` (CardFlipTurn) for MSG_POS_CHANGE and flip summons; the
       command ids named after Konami's view types (Master Duel's `DuelViewType`). Live: Giant Orc to defense after
       attacking, a Set Trap Hole turning face-up
@@ -303,7 +303,7 @@ Stop finding missing fields one crash at a time.
 | Watching | from seat 0's side (the first player to enter); the decisive janken round only; NPC duels can't be watched | The original's spectator view and opening are unknown; a spectator's view of a match's later duels wasn't tried live |
 | Login banlist | regulation 1 ("Beta Forbidden/Limited") unless `--regulation` names another | Which list the original used for Auto Duel at each date is unknown; the client calls the login one "Latest Regulation" |
 | Declarations | several types at once and numbers outside the number dialog (min or step above 15 units, max above 255) answered automatically; the CPU names the duel's cards in turn | The client's dialogs pick one type and a range of numbers; the original server's handling of the rest is unknown |
-| Option labels | EDOPro's system strings 60/61 and 70–72 mapped to the client's labels; a card's own strings take the first option | The original server's label per card option is unknown |
+| Option labels | EDOPro's system strings 60/61 and 70–72 mapped to the client's labels; a card's own strings paired by hand with the prompt table's per-card labels (`card_options.rs`), else the first option | The original server's label per card option is unknown |
 | Chain chances | level 3 after an event (summon, attack, damage… or during a chain), 1 at a phase or step, 0 when no card fits (`spe_count` 0); the player's Activation Message option decides; messages 7/8 (Spell/Trap zone)/269 | The original server's levels and which windows it judged "low priority" are unknown |
 | Rules | EDOPro's `MODE_MR2` | Online 3 (2010) ran Master Rule 2; EDOPro's preset may differ in details |
 | CPU play | first summonable monster, attack with all, never chain | The original NPCs' AI is unknown |

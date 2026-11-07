@@ -703,7 +703,7 @@ with Yugi's Jinzo, and the two destroyed each other.
 
 The client's MSG_SELECT_EFFECTYN opens the Yes/No dialog with 'Activate the effect of "%s"?' (250) and the card's
 name, MSG_SELECT_YESNO with 'Use the effect of "%s"?' (226) naming the card whose script string the question is (the
-sidecar adds `description_cid` for a description `code << 4 | n`), else "Use the effect now?" (270) (**guess**: the
+sidecar adds `description_cid` for a description `code << 20 | n`, EDOPro's `aux.Stringid`), else "Use the effect now?" (270) (**guess**: the
 original questions are the card scripts' own strings). `DLGResult` 1 answers yes. Live (`--duel-deck 1149,1449`):
 summoning Marauding Captain asked 'Activate the effect of "Marauding Captain"?'; Yes sent `DLGResult 1`, the card list
 followed with "Select the monster(s) to Special Summon." and the hand's monsters, and the picked Giant Orc was Special
@@ -739,8 +739,12 @@ defense (`0x1A` to `0xC004`).
 Options: MSG_SELECT_OPTION {options} opens the Select dialog when the client has a label for every option. EDOPro's
 system strings with one: SELECT_HEADS/TAILS 60/61 → "Heads"/"Tails" (400/401) under "Coin Toss Selection:" (56), and
 DECLTYPE_MONSTER/SPELL/TRAP 70–72 → "Monster Cards", "Spell Cards", "Trap Cards" (440–442) under "Select card type."
-(260). Options that are a card's own strings (`code << 4 | n`; 51 of the client's cards) have no text on the client
-(the prompt table's 400–490 are the original server's per-card labels), so the first is taken. Live (Time Wizard):
+(260). Options that are a card's own strings (EDOPro's `aux.Stringid`, `code << 20 | n`, not `<< 4`) get the prompt
+table's per-card labels (400–495, 369/370 for a side of the field), which the original server listed per card and
+`card_options.rs` pairs by hand with EDOPro's strings where both say the same thing: 110 options of 44 cards
+(**guess**: the original pairing is unknown), under "Select effect to activate." (276). A card with an option the table
+lacks takes the first. Live (`--duel-deck 1404,1449`): Card Shuffle's effect from the field paid 300 LP and listed
+"Your Deck" and "Opponent's Deck"; the second sent `DLGResult 1` and the engine shuffled Kaiba's deck. Live (Time Wizard):
 "Coin Toss Selection:" listed Heads and Tails; Tails sent `DLGResult 1`, the coin came up heads, and Time Wizard was
 destroyed with 250 LP lost.
 

@@ -158,3 +158,31 @@ fn declarations_reach_the_core_in_its_own_terms() {
     assert!(answer.errors.is_empty(), "{:?}", answer.errors);
     assert_eq!(asked.into_iter().collect::<Vec<_>>(), [140, 141, 142]);
 }
+
+#[test]
+fn a_cards_own_options_are_its_script_strings() {
+    // MSG_SELECT_OPTION's options are aux.Stringid values, code << 20 | n (utility.lua): Card Shuffle (5529, passcode
+    // 12183332) asks between its strings 1 and 2 when its effect resolves.
+    let Some(mut engine) = engine() else { return };
+    let deck = [5529u16; 40];
+    let mut answer = engine.new_duel(7, 8000, [(&deck, &[]), (&deck, &[])]).expect("a duel");
+    let mut used = 0;
+    for _ in 0..40 {
+        let prompt = answer.messages.last().expect("a prompt").clone();
+        let response = match prompt["type"].as_u64() {
+            Some(14) => {
+                let options: Vec<u64> = prompt["options"].as_array().unwrap().iter().filter_map(|o| o.as_u64()).collect();
+                assert_eq!(options, [12183332 << 20 | 1, 12183332 << 20 | 2]);
+                return;
+            }
+            // Activate the last card offered (the one on the field, once there), twice.
+            Some(11) if used < 2 && prompt["activates"].as_array().is_some_and(|a| !a.is_empty()) => {
+                used += 1;
+                serde_json::json!({ "type": 1, "action": 5, "index": prompt["activates"].as_array().unwrap().len() - 1 })
+            }
+            _ => yo3_server::translate::bot_answer(&prompt),
+        };
+        answer = engine.respond(response).expect("the engine answers");
+    }
+    panic!("Card Shuffle never asked");
+}

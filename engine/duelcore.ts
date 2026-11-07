@@ -64,7 +64,7 @@ function readScript(name: string) {
 }
 
 /** Adds `cid` next to every numeric `code` (or `card`, as MOVE names it), so the server never sees passcodes, and
- * `description_cid` next to a `description` that is a card's script string (code << 4 | n). */
+ * `description_cid` next to a `description` that is a card's script string (aux.Stringid: code << 20 | n). */
 function withCids(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(withCids);
   if (value && typeof value === "object") {
@@ -73,7 +73,7 @@ function withCids(value: unknown): unknown {
     const code = typeof out.code === "number" ? out.code : out.card;
     if (typeof code === "number") out.cid = cidOf.get(code) ?? 0;
     if (typeof out.description === "bigint" || typeof out.description === "number") {
-      const owner = cidOf.get(Number(BigInt(out.description) >> 4n));
+      const owner = cidOf.get(Number(BigInt(out.description) >> 20n));
       if (owner) out.description_cid = owner;
     }
     return out;
