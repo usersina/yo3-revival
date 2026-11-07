@@ -5,3 +5,5 @@ __pycache__/
 /target/
 /tools/tracer/build/
 /.wine-*/
+/engine/vendor/
+/engine/node_modules/

@@ -1,0 +1,9 @@
+{
+  "name": "yo3-duelcore",
+  "private": true,
+  "type": "module",
+  "description": "Rules engine sidecar for the yo3-revival duel server (EDOPro's core via ocgcore-wasm)",
+  "dependencies": {
+    "ocgcore-wasm": "0.1.6"
+  }
+}

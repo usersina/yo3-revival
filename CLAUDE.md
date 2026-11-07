@@ -31,6 +31,7 @@ addresses and data formats: [docs/client-internals.md](docs/client-internals.md)
 | `crates/yo3-proto` | Wire codec: frame, Blowfish (`BlowfishLE`), key/value messages, the version-string opener |
 | `crates/yo3-data` | Client data: `.ypk` archives, card table, regulations, preset decks, packs (golden tests skip without the game) |
 | `crates/yo3-server` | Gate / front / duel / patch-HTTP servers. `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `accounts.rs` = accounts by client address, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
+| `engine/` | Rules engine sidecar: `duelcore.ts` (EDOPro's core via ocgcore-wasm, under Node), `fetch.sh` (packages, card scripts, card database, Konami ids into the ignored `engine/vendor/`) |
 | `tools/client/vclient.sh` | Headless client: `xvfb`, `start [--trace]`, `login [SLOT]`, `check`, `shot`, `click`, `pixel`, `key`, `type`, `stop`, `prefix` |
 | `tools/tracer/` | Field-read tracer: `yo3trace.dll` + injector (C, mingw-w64), `summarize.py` |
 | `tools/re/` | Python reverse-engineering helpers (see Commands) |
@@ -42,6 +43,7 @@ addresses and data formats: [docs/client-internals.md](docs/client-internals.md)
 ## Commands
 
 ```bash
+engine/fetch.sh                                                 # once: the rules engine's dependencies (engine tests skip without them)
 cargo nextest run --workspace                                   # all tests
 cargo clippy --workspace --all-targets                          # lints
 cargo run --release -p yo3-server -- --log-dir logs --players Yugi,Kaiba   # server (in the background); one account, up to 4 players

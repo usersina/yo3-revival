@@ -1,6 +1,7 @@
 //! Yu-Gi-Oh! ONLINE 3 private server: gate, front, duel and patch-HTTP services.
 pub mod accounts;
 pub mod duel;
+pub mod engine;
 pub mod front;
 mod log;
 mod net;

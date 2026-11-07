@@ -93,15 +93,15 @@ Stop finding missing fields one crash at a time.
       the card move `0x1A`); the opening hand shows, the CPU's face down
 - [x] Player actions mapped: phases, the command map `0x12`, the input wait 4, the menu's 14 command bits and the
       client's card command (`duelRequestName` 2), confirmed live with a test build
-- [ ] Rules engine: ocgcore run by the server (YOLaucher runs it from TypeScript, `duelcore.mts`; Node and Deno are
-      installed here), fed the decks; its prompts become command maps and its events engine commands; the CPU's moves
-      from its AI or a simple bot
+- [x] Rules engine sidecar: EDOPro's core (ocgcore-wasm, rule MR2) in `engine/duelcore.ts` under Node, one process
+      per duel, JSON lines, cards as Konami ids (4,702 of the client's 4,771 map to passcodes through YGOProDeck's
+      `konami_id`; the rest look like tokens); `engine/fetch.sh` fetches the core, ProjectIgnis' scripts and database
+- [ ] Translator: the engine drives the duel session (its draws and moves become engine commands, its prompts command
+      maps, the client's card commands its responses); the CPU's moves from a simple bot
 - [ ] Deck piles on the field (the deck count alone shows none); phase buttons (client `duelRequestName` 3)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)
-- [ ] Confirm in Ghidra that Online 3's duel stream is Konami's engine command set (as in Online 2)
-- [ ] Rules engine: ocgcore as a separate process (AGPL), as in YOLaucher's `duelcore`
-- [ ] Translator: ocgcore messages ↔ Online 3 duel commands and prompts (`DLG_Text` ids), card ID ↔ passcode map
+- [x] Online 3's duel stream is Konami's engine family but renumbered (turn change 6, LP set `0xF`; docs/protocol.md)
 - [ ] Regulations enforced (2011-era rules; card pool limited to the client's 4,824 cards)
 - [ ] PvP between two clients; results and stats written back
 - **Exit:** two clients play a full duel with real decks to a finish
