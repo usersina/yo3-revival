@@ -129,6 +129,25 @@ pub struct DuelEntry {
     pub npc_id: Option<u32>,
 }
 
+/// The end of a duel (`result` 1 won, 2 lost, 3 draw), pushed on the player's front connection: duel data (tag 7)
+/// "duelData" with children "result" {duel_result, duel_end} and "players" (the player's record {player_id} and its
+/// "resultData"). The dispatcher (0x4F4C9E) keeps it in slot 0x15 and sets flag 0x20000, which DuelResult's first
+/// step (0x512070) waits for. duel_end 1 = a normal end (**guess**: 2 and 3 show an abnormal-end dialog).
+/// resultData is what the result screen shows (getResult 0x511200): `record` = the player's wins, losses and draws
+/// against this opponent including this duel, and each `*_add` = this duel's change.
+pub fn duel_over(player_id: u32, result: u32, record: [u32; 3]) -> Message {
+    let name = |n: &str| Message::record().with("name", Value::text(n));
+    let counts = ["win", "lose", "draw"].iter().zip(record).enumerate().fold(name("resultData"), |m, (i, (k, n))| {
+        m.with(k, Value::U32(n)).with(&format!("{k}_add"), Value::U32((i as u32 + 1 == result) as u32))
+    });
+    let me = Message::record().with("player_id", Value::U32(player_id)).item(counts);
+    let data = Message::duel_data()
+        .with("name", Value::text("duelData"))
+        .item(name("result").with("duel_result", Value::U32(result)).with("duel_end", Value::U32(1)))
+        .item(name("players").item(me));
+    Message::reply(0x2009).item(data)
+}
+
 /// A chat room, as listed in 0x2458 (fields read by 0x434D20).
 #[derive(Clone, Debug)]
 pub struct Room {
@@ -207,6 +226,8 @@ pub struct Hub {
     last_duel: u32,
     /// Duel entries by player_id.
     duel_entries: HashMap<u32, DuelEntry>,
+    /// Wins, losses and draws by (player_id, opponent id), since the server started.
+    records: HashMap<(u32, u32), [u32; 3]>,
 }
 
 struct Online {
@@ -228,6 +249,16 @@ impl Hub {
 
     pub fn duel_entry(&self, player_id: u32) -> Option<DuelEntry> {
         self.duel_entries.get(&player_id).cloned()
+    }
+
+    /// Counts a duel's `result` (1 won, 2 lost, 3 draw) and returns the player's wins, losses and draws against
+    /// this opponent.
+    pub fn record_result(&mut self, player_id: u32, opponent: u32, result: u32) -> [u32; 3] {
+        let record = self.records.entry((player_id, opponent)).or_default();
+        if let Some(n) = record.get_mut(result.wrapping_sub(1) as usize) {
+            *n += 1;
+        }
+        *record
     }
 
     fn join(&mut self, player: &Player, outbox: Outbox) -> u64 {
@@ -260,6 +291,11 @@ impl Hub {
         for (_, o) in self.online.iter().filter(|(id, o)| **id != except && o.room == Some(room)) {
             let _ = o.outbox.send(msg.clone());
         }
+    }
+
+    /// Pushes to a player's front connection; false if they are not online.
+    pub fn push(&self, player_id: u32, msg: &Message) -> bool {
+        self.send_player(Some(player_id), None, msg)
     }
 
     /// Sends to one player by id or name; false if they are not online.

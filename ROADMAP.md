@@ -111,9 +111,10 @@ Stop finding missing fields one crash at a time.
       (LP 8000 → 7350; it went to the graveyard pile)
 - [x] Field stats: a monster entering a monster zone gets its record (data commands `0x3E9`–`0x3EB`) with CARD_Prop's
       ATK/DEF, level, attribute and race; the field label and card info show them
-- [ ] The duel's end on screen: command 2 {result, reason} reaches DuelScene and its DuelEndEffect, but the win/lose
-      movie never shows and the client stays on the field (docs/protocol.md); then the result screen and the results
-      to the front server
+- [x] The duel's end on screen: command 2 {result, reason} plays the win/lose/draw movie with its reason; the front
+      push `0x2009` (duel data, tag 7) ends the match, so the result screen shows the record against this opponent and
+      Next returns to the map. Live: "YOU LOSE", LOSER/WINNER panels, back at Kaiba Corporation
+- [ ] Players kept across server restarts (records against each opponent are in memory only)
 - [ ] Translator: the client's own target and effect choices (ocgcore SELECT_CARD and co. are answered for it now),
       attack and summon animations (DuelBattle `0xA`–`0xE`, DuelSummon `0x2A`–`0x32`), position changes, stat changes
       from effects (engine queries), chains
@@ -164,7 +165,9 @@ Stop finding missing fields one crash at a time.
 | Menu bits for Set | 6 monster set, 7 Spell/Trap set | Both entries read "Set" |
 | Rules | EDOPro's `MODE_MR2` | Online 3 (2010) ran Master Rule 2; EDOPro's preset may differ in details |
 | CPU play | first summonable monster, attack with all, never chain | The original NPCs' AI is unknown |
-| Duel end reason | 0 | Command 2's reason values are unknown (100 takes another path) |
+| Duel end reason | EDOPro's reason mapped to the client's texts (LP 0, deck out, surrender, Exodia...; others "won with a card") | The original server's values are unknown (100 takes another path) |
+| Duel's end push `0x2009` | sent when the engine ends the duel; `duel_end` 1; no `score_<id>`, no `dlogURL` | The original timing and `duel_end` values are unknown (2 and 3 show an abnormal-end dialog) |
+| Result screen counts | `win`/`lose`/`draw` = totals against this opponent including this duel, `*_add` = this duel's change; kept in memory | The client only shows them ("Wins 1 (+001)") |
 | Duel port | 1214 | The original's port is unknown; the client takes whatever `duelData` says |
 | Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
 

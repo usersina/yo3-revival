@@ -23,6 +23,9 @@ pub const TAG_MESSAGE: u8 = 4;
 pub const TAG_RECORD: u8 = 3;
 /// The client builds a deck object (YO3Deck) for items with this tag (factory 0x531B90).
 pub const TAG_DECK: u8 = 6;
+/// The client builds a YO3DuelData for items with this tag, which finds its children "gameServer", "regulation",
+/// "rule", "players" and "result" by name (0x5315C0).
+pub const TAG_DUEL_DATA: u8 = 7;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
@@ -162,6 +165,11 @@ impl Message {
     /// A deck (tag 6) for use as a list item.
     pub fn deck() -> Self {
         Message { tag: TAG_DECK, ..Default::default() }
+    }
+
+    /// Duel data (tag 7) for use as a list item.
+    pub fn duel_data() -> Self {
+        Message { tag: TAG_DUEL_DATA, ..Default::default() }
     }
 
     pub fn with(mut self, name: &str, value: Value) -> Self {

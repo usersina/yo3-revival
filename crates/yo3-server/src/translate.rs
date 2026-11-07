@@ -90,10 +90,13 @@ const RECORD_MORE: u32 = 0x3EA;
 const RECORD_COMMIT: u32 = 0x3EB;
 /// The Field Spell slot.
 const FIELD_SPELL: u32 = 10;
-/// Duel end {result for this client: 1 won, 2 lost; reason} (DuelScene 0x514290).
+/// Duel end {result for this client: 1 won, 2 lost, 3 draw; reason} (DuelScene 0x514290).
 const DUEL_END: u32 = 2;
 const WON: u32 = 1;
 const LOST: u32 = 2;
+const DRAW: u32 = 3;
+/// WIN's player for a draw.
+const TEAM_DRAW: u64 = 2;
 /// Phase panel buttons (0 DP .. 5 EP) and the input mode that turns the panel on (command 4's param1).
 const BUTTON_BP: u8 = 3;
 const BUTTON_M2: u8 = 4;
@@ -165,6 +168,8 @@ pub struct Translator {
     turns: u32,
     /// The client's pending prompt (idle or battle command).
     pending: Option<Json>,
+    /// The duel's result for the client (1 won, 2 lost, 3 draw), once it ended.
+    result: Option<u32>,
 }
 
 impl Translator {
@@ -181,7 +186,12 @@ impl Translator {
                 out.push(command(CARD, [uid, row as u32, 0, table_place(p as u32, DECK, i)]));
             }
         }
-        (Translator { first, sides, cards, turn_player: first, turns: 0, pending: None }, out)
+        (Translator { first, sides, cards, turn_player: first, turns: 0, pending: None, result: None }, out)
+    }
+
+    /// The duel's result for the client (1 won, 2 lost, 3 draw), once the engine ended the duel.
+    pub fn result(&self) -> Option<u32> {
+        self.result
     }
 
     /// The client's engine player of an engine team.
@@ -215,9 +225,14 @@ impl Translator {
                 }
                 Some(MSG_MOVE) => out.extend(self.move_card(m)),
                 Some(MSG_WIN) => {
-                    let result = if self.player(&m["player"]) == CLIENT { WON } else { LOST };
+                    let result = match m["player"].as_u64() {
+                        Some(TEAM_DRAW) => DRAW,
+                        _ if self.player(&m["player"]) == CLIENT => WON,
+                        _ => LOST,
+                    };
                     let reason = end_reason(m["reason"].as_u64().unwrap_or(1));
                     out.push(command(DUEL_END, [result, reason, 0, 0]));
+                    self.result = Some(result);
                 }
                 Some(kind @ (MSG_DAMAGE | MSG_RECOVER | MSG_PAY_LPCOST)) => {
                     let amount = m["amount"].as_i64().unwrap_or(0) as i32;

@@ -154,3 +154,47 @@ fn the_duel_deck_and_the_npc_are_kept_for_the_duel_server() {
     let entry = server.hub.lock().unwrap().duel_entry(1001).expect("entry");
     assert_eq!((entry.deck.main, entry.deck.extra, entry.npc_id), (vec![10, 10, 20], vec![30], Some(124)));
 }
+
+#[test]
+fn the_duels_end_reaches_the_front_connection_as_duel_data() {
+    // The front dispatcher (0x4F4C9E) takes push 0x2009's item named "duelData", keeps it in slot 0x15 and sets flag
+    // 0x20000 (it also reads a top-level score_<player_id>, which we leave out). The item must have tag 7: the
+    // factory (0x531B90) makes a YO3DuelData, which finds its children by name (0x5315C0): "players" at +0x78 and
+    // "result" at +0x7C. DuelScene (0x515BA3) reads result.duel_end (2 or 3: an abnormal end with a dialog);
+    // DuelResult's first step (0x512070) finds the player's record in players by player_id (0x510830), notes a
+    // child "resultData", and takes result.duel_result (1 won, 2 lost, 3 draw) as the match result (MainGamen
+    // +0x820), which lets DuelManager (0x50FC00) leave the duel.
+    let push = yo3_server::front::duel_over(1002, 2, [0, 1, 0]);
+    assert_eq!(push.request(), Some(0x2009));
+    let data = &push.items[0];
+    assert_eq!(data.tag, yo3_proto::TAG_DUEL_DATA);
+    assert_eq!(data.get("name").and_then(Value::as_str).as_deref(), Some("duelData"));
+    let child = |name: &str| data.items.iter().find(|i| i.get("name").and_then(Value::as_str).as_deref() == Some(name));
+    let result = child("result").expect("result");
+    assert_eq!(result.get("duel_result").and_then(Value::as_u32), Some(2));
+    assert_eq!(result.get("duel_end").and_then(Value::as_u32), Some(1));
+    let players = child("players").expect("players");
+    let me = players.items.iter().find(|p| p.get("player_id").and_then(Value::as_u32) == Some(1002)).expect("player");
+    assert!(me.items.iter().any(|i| i.get("name").and_then(Value::as_str).as_deref() == Some("resultData")));
+}
+
+#[test]
+fn the_result_screen_shows_the_record_against_this_opponent() {
+    // DuelResult's getResult (0x511200) reads the player's resultData: win, lose, draw and their *_add (0x511934..
+    // 0x511B19) for the player's panel "Wins 1 (+001)", then lose / win swapped for the opponent's panel.
+    let push = yo3_server::front::duel_over(1002, 2, [3, 2, 1]);
+    let players = push.items[0].items.iter().find(|i| i.get("name").and_then(Value::as_str).as_deref() == Some("players"));
+    let result = &players.expect("players").items[0].items[0];
+    let int = |k| result.get(k).and_then(Value::as_u32);
+    assert_eq!([int("win"), int("lose"), int("draw")], [Some(3), Some(2), Some(1)]);
+    assert_eq!([int("win_add"), int("lose_add"), int("draw_add")], [Some(0), Some(1), Some(0)]);
+}
+
+#[test]
+fn the_hub_keeps_each_players_record_against_each_opponent() {
+    let mut hub = yo3_server::front::Hub::default();
+    assert_eq!(hub.record_result(1002, 124, 1), [1, 0, 0]);
+    assert_eq!(hub.record_result(1002, 124, 2), [1, 1, 0]);
+    assert_eq!(hub.record_result(1002, 125, 3), [0, 0, 1]);
+    assert_eq!(hub.record_result(1003, 124, 1), [1, 0, 0]);
+}

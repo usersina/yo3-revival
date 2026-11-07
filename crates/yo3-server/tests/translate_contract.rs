@@ -233,3 +233,23 @@ fn the_engines_win_ends_the_duel_on_the_client() {
     assert_eq!(cmd(&t.events(&[json!({ "type": 5, "player": 1, "reason": 2 })])[0]), (2, [2, 2, 0, 0]));
     assert_eq!(cmd(&t.events(&[json!({ "type": 5, "player": 1, "reason": 0 })])[0]), (2, [2, 5, 0, 0]));
 }
+
+#[test]
+fn the_translator_remembers_the_result_for_the_front_server() {
+    // The result screen follows the front push 0x2009 (see duel_contract), not another duel command: 1504 would
+    // open Card Swap for the next duel of a match (DuelManager 0x50FC00 → 0x50FDF0).
+    let (mut t, _) = translator();
+    assert_eq!(t.result(), None);
+    let out: Vec<_> = t.events(&[json!({ "type": 5, "player": 1, "reason": 1 })]).iter().map(cmd).collect();
+    assert_eq!(out, [(2, [2, 1, 0, 0])]);
+    assert_eq!(t.result(), Some(2));
+}
+
+#[test]
+fn a_draw_ends_the_duel_as_a_draw() {
+    // EDOPro's WIN names player 2 for a draw; the client plays duel_draw.swf for result 3 (0x5084D0) and shows no
+    // reason text for it (0x508650).
+    let (mut t, _) = translator();
+    assert_eq!(cmd(&t.events(&[json!({ "type": 5, "player": 2, "reason": 1 })])[0]), (2, [3, 1, 0, 0]));
+    assert_eq!(t.result(), Some(3));
+}

@@ -51,11 +51,16 @@ export, see [CLAUDE.md](../CLAUDE.md)).
 | `0x5233A0` / `0x5201A0` | duel stream pump (pops a duel-connection message, switches on `duelRequestName` 0x10–0x15) / reads `duelRequestName` |
 | `0x522A50` | pops one engine command `{id, request, param1..param4}` for a scene; handles a few itself (2, 4, 6, `0x1A`, 1000…) |
 | `0x49F990` | client duel message header: `request 0x200C`, `duelRequestName` = the argument |
-| `0x517C80` / `0x518400` | `JankenScene` constructor / update (pops commands 1500–1505 when idle) |
+| `0x517C80` / `0x518400` | `JankenScene` constructor / update (pops commands 1500–1505 when idle; 1505 there is the match's end) |
 | `0x513370` | `DuelScene` constructor (`duel_setup.swf`) |
+| `0x515A30` / `0x515D30` / `0x515E10` | `DuelScene` step: pops commands until command 2, then opens the result / result step (`DuelResult` in slot `0x13`) / leaves the scene |
+| `0x5083A0` / `0x5084D0` | `DuelEndEffect` constructor `(result, reason, …)` / update: plays `duel_win/lose/draw.swf`, done when the movie ends |
+| `0x510950` / `0x510B70` / `0x510D50` | `DuelResult` constructor / its nine steps (`0x512070` waits for 1500/1504 or front flag `0x20000`, `0x512430` match movie…) / Flash callbacks (`requestData`, `getResult` `0x511200`, `requestStarCount`, `finish`) |
+| `0x50FC00` / `0x50FDF0` / `0x510220` | `DuelManager` after a duel: match result set → leave (`0x510220`), else 1504 → Card Swap (`0x50FDF0`), 1500 → next duel (`0x50F690`) |
+| `0x531B90` | item factory by tag: 3 record, 4 request, 5 `YO3PasswordKey`, 6 deck, 7 `YO3DuelData` (children by name: `gameServer`, `regulation`, `rule`, `players`, `result`; `0x5315C0`) |
 | `0x4EEB90` | object factory by id: `0xFFFFD8F5` FrontServerConnection, `0xFFFFD8F6` DuelServerConnection, `0xFFFFD8F7` DuelMatchingAgent, `0xFFFFD8F8` AutoMatchingAgent, `0xFFFFD8F9` CommunicationAgent, `0xFFFFD8FD` DuelManager |
 | `0x4A523F`, `0x4A551E`, `0x4A5D05` | `CommunicationAgent` switches (195/106/102 cases) |
-| `0x413FE0` | address of front dataset slot `EDI` (vector at `+0x16C`); the global dispatcher keeps some replies there: `0x2711` → 4, `0x251C` friend list → 6, `0x252A` black list → 7, `0x2D6C` rental records → 8, `0x21FC` news → 10, `9000` trunk → 18, `0x22C4` duel data → 20 (flag `0x8000`), `0x2774` → 23, `0x24BA` → 24 |
+| `0x413FE0` | address of front dataset slot `EDI` (vector at `+0x16C`); the global dispatcher keeps some replies there: `0x2711` → 4, `0x251C` friend list → 6, `0x252A` black list → 7, `0x2D6C` rental records → 8, `0x21FC` news → 10, `9000` trunk → 18, `0x22C4` duel data → 20 (flag `0x8000`), `0x2009` duel's end → 21 (flag `0x20000`), `0x2774` → 23, `0x24BA` → 24 |
 | `0x45E6D0` / `0x45E810` | "is this player a friend / ignored?": read slots 6 / 7 with no NULL check, for every player listed |
 | `0x45F390` | player search request builder (Detailed Search criteria → `search_flag` bits) |
 | `0x475A20` | fills a list entry (`ppInfo`) from an item; ECX picks the kind: 0 player, 1 NPC, 2 friend, 3 ignored, 4 team member |

@@ -355,10 +355,37 @@ MainGamen `+0x81C` and its 1 ↔ 2 swap as the opponent's, and adds a DuelEndEff
 `data/gfx/duel_win.swf` / `duel_lose.swf` / `duel_draw.swf` for result 1 / 2 / 3 (name table built at `0x754550`) with
 text 1999 + reason (`0x508650`): 1 LP 0, 2 deck out, 3 Exodia, 4 Destiny Board, 5 surrender, 6 Last Turn, 7 Final
 Countdown, 8 "won with" a card, 9 Vennominaga, 10 Exodius, 11 time out, 12 surrender, 13 disqualified, 14
-disconnected. Its update (`0x5084D0`) waits until the movie reports it has finished, then marks the effect done
-(`+0x28`). EDOPro's core keeps prompting after a win, so the sidecar ends the duel at the WIN message. Live (with
-`--duel-lp 1000`): both a win and a loss reached command 2, the case ran and the effect was created and updates every
-frame, but nothing shows and the client stays on the field: **open**.
+disconnected. Its update (`0x5084D0`) waits until the movie reports it has finished (about 3 s), then marks the
+effect done (`+0x28`). EDOPro's core keeps prompting after a win, so the sidecar ends the duel at the WIN message; its
+WIN player 2 is a draw (result 3, no reason text).
+
+After the movie DuelScene (`0x515A30`, flag `+0xD8` set by command 2) opens DuelResult (`0x515D30`, component slot
+`0x13`), a Flash screen run by nine steps (`0x510B70`). Its first step (`0x512070`) waits for one of:
+
+- duel command 1500 or 1504 at the head of the queue (peeked, not taken): the match goes on. DuelManager (`0x50FC00`)
+  then takes 1504 to Card Swap (`0x50FDF0`, side deck, then `0x1F4F` again) or 1500 to the next duel (`0x50F690`);
+- an empty queue and front flag `0x20000` (or MainGamen `+0x8BC`): the match is over. It reads the result below, and
+  DuelManager leaves the duel (`0x510220`, scene `0xFFFFD901`) because the match result (MainGamen `+0x820`) is set.
+
+Other commands at the head are taken and dropped. The match is over when the **front** server pushes `0x2009`
+(dispatcher `0x4F4C9E`), sent as soon as the engine ends the duel:
+
+| Field | Where | Read by | Status |
+|---|---|---|---|
+| item `duelData` (by `name`), **tag 7** | `0x2009` | the dispatcher keeps it in front slot `0x15` and sets flag `0x20000`; tag 7 makes a `YO3DuelData` (factory `0x531B90`), which finds its children `gameServer`, `regulation`, `rule`, `players` (`+0x78`) and `result` (`+0x7C`) by name (`0x5315C0`) | confirmed (tracer, live) |
+| `score_<player_id>` int | `0x2009` top level | the dispatcher, copied as `event_score` | shape; left out |
+| `duel_end` int | `result` | DuelScene (`0x515BD3`): 2 or 3 show text `0x2918` and leave | shape; we send 1 (**guess**) |
+| `duel_result` int | `result` | DuelResult step 1 (`0x5122B0`): the match result (1 won, 2 lost, 3 draw) at MainGamen `+0x820` | confirmed |
+| `dlogURL` string | `result` | step 1, only when MainGamen `+0x804` is 0: opens a component (`0xFFFFD90B`) on that URL | left out |
+| `player_id` int | each item of `players` | `0x510830` finds this player's record | confirmed |
+| item `resultData` (by `name`) | the player's record | step 1 sets DuelResult `+0x60` | confirmed |
+| `win`, `lose`, `draw` and `win_add`, `lose_add`, `draw_add` ints | `resultData` | getResult (`0x511200`, `0x511934`–`0x511D2D`): the player's panel "Wins 1 (+001)", then lose and win swapped for the opponent's panel | confirmed (live); totals and deltas are our reading |
+
+Without `0x2009` the result screen waits forever. Live (`--duel-lp 1000`): "YOU LOSE" with "Kaiba's Life Points
+have been reduced to 0", then LOSER / WINNER panels (Kaiba / Seto Kaiba) with Wins, Losses, Draws and a Next button;
+Next leaves to Kaiba Corporation, where the NPC says his after-duel line. The client then refreshes its player
+(`0x2CEE`). 1504 instead opened Card Swap. Command 1506 is taken inside the queue pop (`0x522A50`) and makes the
+client send a bare `0x1842` on the duel connection (meaning **open**).
 
 The numbering differs from Online 2's engine (whose turn change is `0x04` and LP set `0x26`), so YO2 research is a guide
 only. Next: the card map, so decks, hands and draws show.

@@ -129,15 +129,19 @@ pub struct DuelSession {
     hub: Arc<Mutex<Hub>>,
     /// What the player brought (found by the player_id of 0x200A).
     entry: Option<DuelEntry>,
+    /// The player, from 0x200A.
+    player_id: Option<u32>,
     /// The rules engine running this duel, once it started.
     engine: Option<(Engine, Translator)>,
+    /// The result went to the player's front connection.
+    reported: bool,
     rng: u64,
 }
 
 impl DuelSession {
     /// A session whose CPU choices follow `seed`.
     pub fn new(world: Arc<World>, hub: Arc<Mutex<Hub>>, seed: u64) -> DuelSession {
-        DuelSession { world, hub, entry: None, engine: None, rng: seed | 1 }
+        DuelSession { world, hub, entry: None, player_id: None, engine: None, reported: false, rng: seed | 1 }
     }
 
     /// Handles one client packet and returns the messages to send, in order.
@@ -146,7 +150,8 @@ impl DuelSession {
         let int = |k| msg.get(k).and_then(Value::as_u32);
         match (msg.request(), int("duelRequestName")) {
             (Some(ENTER), _) => {
-                let entry = int("player_id").and_then(|id| self.hub.lock().expect("hub lock").duel_entry(id));
+                self.player_id = int("player_id");
+                let entry = self.player_id.and_then(|id| self.hub.lock().expect("hub lock").duel_entry(id));
                 self.entry = entry;
                 vec![command(JANKEN_BEGIN, [0; 4])]
             }
@@ -284,6 +289,13 @@ impl DuelSession {
                     break;
                 }
             }
+        }
+        if let (Some(result), Some(player_id), false) = (translator.result(), self.player_id, self.reported) {
+            self.reported = true;
+            let opponent = self.entry.as_ref().and_then(|e| e.npc_id).unwrap_or(0);
+            let mut hub = self.hub.lock().expect("hub lock");
+            let record = hub.record_result(player_id, opponent, result);
+            hub.push(player_id, &crate::front::duel_over(player_id, result, record));
         }
         out
     }
