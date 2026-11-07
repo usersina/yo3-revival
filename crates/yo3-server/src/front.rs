@@ -148,7 +148,40 @@ pub struct DuelEntry {
     pub npc_id: Option<u32>,
     pub duel_id: Option<u32>,
     pub opponent: Option<u32>,
+    /// The duel's starting LP, when the match set it (a hosted duel's lp_start).
+    pub lp: Option<u32>,
 }
+
+/// A duel a player hosts (Create Duel, 0x17AC with its settings), waiting for a challenger (0x17B6).
+struct Host {
+    player_id: u32,
+    record: Message,
+    settings: Vec<(String, Value)>,
+    /// The challenger whose offer the host is answering.
+    offer: Option<u32>,
+}
+
+impl Host {
+    fn setting(&self, k: &str) -> Option<&Value> {
+        self.settings.iter().find(|(n, _)| n == k).map(|(_, v)| v)
+    }
+
+    fn password(&self) -> String {
+        self.setting("password").and_then(Value::as_str).unwrap_or_default()
+    }
+}
+
+/// The player search fields of a hosted duel (read by PlayerInfoWindow 0x4B6060, 0x4B8730, 0x4B8F30): duel_status 1
+/// enables the Duel button. Players in a duel between players get duel_status DUELLING (**guess**: any other value
+/// shows them as duelling).
+const HOSTING: u32 = 1;
+const DUELLING: u32 = 3;
+/// The challenge errors (0x17B8 error_code, 0x4A28F0): the host answers someone else, the duel is gone, the password.
+const BUSY: u32 = 3000;
+const NO_DUEL: u32 = 3001;
+const WRONG_PASSWORD: u32 = 4006;
+/// The host's answer (0x17CA).
+const ACCEPT: u32 = 2;
 
 /// A player waiting for an automatic match (0x1798): the kind of duel and the record the opponent will see.
 struct Waiting {
@@ -273,6 +306,8 @@ pub struct Hub {
     /// Players waiting for an automatic match, in order, and the matched duels.
     waiting: Vec<Waiting>,
     matches: HashMap<u32, Match>,
+    /// Hosted duels by duel_id.
+    hosts: HashMap<u32, Host>,
     /// The duel server's tables of the matched duels, by duel_id.
     pub(crate) tables: HashMap<u32, Arc<Mutex<crate::table::Table>>>,
 }
@@ -283,6 +318,8 @@ struct Online {
     level: u32,
     room: Option<u32>,
     outbox: Outbox,
+    /// The player's record as others get it (an opponent's vsPlayerData).
+    record: Message,
 }
 
 impl Hub {
@@ -337,7 +374,7 @@ impl Hub {
 
     fn join(&mut self, player: &Player, outbox: Outbox) -> u64 {
         self.next_id += 1;
-        let online = Online { player_id: player.player_id, name: player.name.clone(), level: player.level, room: None, outbox };
+        let online = Online { player_id: player.player_id, name: player.name.clone(), level: player.level, room: None, outbox, record: player.record() };
         self.online.insert(self.next_id, online);
         self.next_id
     }
@@ -351,7 +388,43 @@ impl Hub {
     fn leave(&mut self, id: u64) {
         if let Some(o) = self.online.remove(&id) {
             self.waiting.retain(|w| w.player_id != o.player_id);
+            self.hosts.retain(|_, h| h.player_id != o.player_id);
+            let withdrawn: Vec<(u32, u32)> = self.hosts.iter().filter(|(_, h)| h.offer == Some(o.player_id)).map(|(&d, h)| (d, h.player_id)).collect();
+            for (duel_id, host) in withdrawn {
+                self.withdraw(duel_id, host);
+            }
         }
+    }
+
+    /// A challenger's offer is gone: the host's offer dialog closes (0x17C0) and it waits again.
+    fn withdraw(&mut self, duel_id: u32, host: u32) {
+        if let Some(h) = self.hosts.get_mut(&duel_id) {
+            h.offer = None;
+        }
+        self.push(host, &Message::reply(0x17C0).with("duel_id", Value::U32(duel_id)));
+    }
+
+    /// A player search entry with the player's duel: a hosted duel's settings, or the duel they play.
+    fn duel_fields(&self, player_id: u32, entry: Message) -> Message {
+        if let Some((&duel_id, host)) = self.hosts.iter().find(|(_, h)| h.player_id == player_id) {
+            let setting = |k: &str| host.setting(k).and_then(Value::as_u32).unwrap_or(0);
+            let entry = ["match_type", "regulation_id", "watch", "party", "level", "lang_mask", "surrender", "lp_start", "time_turn", "time_total"]
+                .into_iter()
+                .fold(entry, |m, k| m.with(&format!("duel_{k}"), Value::U32(setting(k))));
+            return entry
+                .with("duel_status", Value::U32(HOSTING))
+                .with("duel_id", Value::U32(duel_id))
+                .with("duel_password_flag", Value::U32(!host.password().is_empty() as u32));
+        }
+        match self.in_match(player_id) {
+            Some(duel_id) => entry.with("duel_status", Value::U32(DUELLING)).with("duel_id", Value::U32(duel_id)),
+            None => entry,
+        }
+    }
+
+    /// Whether a player is in a duel between players.
+    fn in_match(&self, player_id: u32) -> Option<u32> {
+        self.matches.iter().find(|(_, m)| m.players.contains(&player_id)).map(|(&d, _)| d)
     }
 
     /// Queues a player for an automatic match, or matches them with the first player waiting for the same kind of
@@ -574,7 +647,8 @@ impl FrontSession {
                         hub.enter_duel(player_id, DuelEntry { deck, npc_id, ..DuelEntry::default() });
                     } else if let Some(m) = hub.matches.get(&id) {
                         let opponent = m.players.into_iter().find(|&p| p != player_id);
-                        hub.enter_duel(player_id, DuelEntry { deck, duel_id: Some(id), opponent, ..DuelEntry::default() });
+                        let lp = m.rule.iter().find(|(k, _)| k == "lp_start").and_then(|(_, v)| v.as_u32()).filter(|&lp| lp > 0);
+                        hub.enter_duel(player_id, DuelEntry { deck, duel_id: Some(id), opponent, lp, ..DuelEntry::default() });
                     }
                 }
                 Message::reply(0x22CA)
@@ -606,9 +680,28 @@ impl FrontSession {
                 let hub = self.hub();
                 Message::reply(0x17FD)
                     .with("duel_playing", Value::U32(2 * hub.matches.len() as u32))
-                    .with("duel_ready", Value::U32(0))
+                    .with("duel_ready", Value::U32(hub.hosts.len() as u32))
                     .with("duel_auto", Value::U32(hub.waiting.len() as u32))
             }
+            // Create Duel's Cancel (0x4A2500): {event_id, duel_id}.
+            0x17F2 => {
+                let player_id = self.player().player_id;
+                let duel_id = msg.get("duel_id").and_then(Value::as_u32).unwrap_or(0);
+                self.hub().hosts.retain(|&d, h| !(d == duel_id && h.player_id == player_id));
+                Message::reply(0x17F3)
+            }
+            0x17B6 => return self.challenge(msg),
+            // The challenger's Cancel while the host decides (0x4A28F0): {event_id, join_id, duel_id}.
+            0x17C0 => {
+                let player_id = self.player().player_id;
+                let duel_id = msg.get("duel_id").and_then(Value::as_u32).unwrap_or(0);
+                let mut hub = self.hub();
+                if let Some(host) = hub.hosts.get(&duel_id).filter(|h| h.offer == Some(player_id)).map(|h| h.player_id) {
+                    hub.withdraw(duel_id, host);
+                }
+                Message::reply(0x17C1)
+            }
+            0x17CA => return self.answer_challenge(msg),
             // Automatic matching (DuelMenu's decideAuto, agent mode 2, step 0x4A1380): 0x1799 reads nothing, then the
             // agent waits (0x4A1D10) for the match push 0x1978 (0x4A2D30).
             0x1798 => {
@@ -640,7 +733,16 @@ impl FrontSession {
                     hub.last_duel += 1;
                     hub.last_duel
                 };
-                self.duels.insert(duel_id, msg.items.first().map(|i| i.fields.clone()).unwrap_or_default());
+                let rule = msg.items.first().map(|i| i.fields.clone()).unwrap_or_default();
+                // Create Duel (agent mode 0) sends its settings with a status and no cpu_id; it then waits for
+                // challengers (0x4A1D10).
+                if rule.iter().any(|(k, _)| k == "status") && !rule.iter().any(|(k, _)| k == "cpu_id") {
+                    let player = self.player();
+                    let host = Host { player_id: player.player_id, record: player.record(), settings: rule, offer: None };
+                    self.hub().hosts.insert(duel_id, host);
+                } else {
+                    self.duels.insert(duel_id, rule);
+                }
                 Message::reply(0x17AD).with("duel_id", Value::U32(duel_id))
             }
             0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_ids)),
@@ -757,13 +859,74 @@ impl FrontSession {
         let skip = uint("base_point").unwrap_or(0) as usize;
         let page = found.iter().skip(skip).take(uint("front_num").unwrap_or(100) as usize);
         page.fold(Message::reply(0x2CF7).with("result_number", Value::U32(found.len() as u32)), |m, o| {
-            m.item(
-                Message::record()
-                    .with("player_id", Value::U32(o.player_id))
-                    .with("pname", Value::text(&o.name))
-                    .with("dlv", Value::U32(o.level)),
-            )
+            let entry = Message::record()
+                .with("player_id", Value::U32(o.player_id))
+                .with("pname", Value::text(&o.name))
+                .with("dlv", Value::U32(o.level));
+            m.item(hub.duel_fields(o.player_id, entry))
         })
+    }
+
+    /// 0x17B6 {event_id, join_id, duel_id, password}: a challenger's offer for a hosted duel (agent mode 1,
+    /// 0x4A28F0). 0x17B7 tells it the offer went ("Requesting Duel"); the host gets the offer as 0x17B6 with item
+    /// "playerInfo" (the challenger's record, 0x4A1D10). 0x17B8 {error_code} when it can't go through.
+    fn challenge(&mut self, msg: &Message) -> Vec<Message> {
+        let me = self.player().clone();
+        let duel_id = msg.get("duel_id").and_then(Value::as_u32).unwrap_or(0);
+        let password = msg.get("password").and_then(Value::as_str).unwrap_or_default();
+        let refuse = |code: u32| vec![Message::reply(0x17B8).with("error_code", Value::U32(code))];
+        let mut hub = self.hub();
+        let Some(host) = hub.hosts.get_mut(&duel_id).filter(|h| h.player_id != me.player_id) else { return refuse(NO_DUEL) };
+        if host.password() != password {
+            return refuse(WRONG_PASSWORD);
+        }
+        if host.offer.is_some_and(|p| p != me.player_id) {
+            return refuse(BUSY);
+        }
+        host.offer = Some(me.player_id);
+        let host_id = host.player_id;
+        let offer = Message::reply(0x17B6).with("duel_id", Value::U32(duel_id)).item(me.record().with("name", Value::text("playerInfo")));
+        hub.push(host_id, &offer);
+        vec![Message::reply(0x17B7)]
+    }
+
+    /// 0x17CA {event_id, join_id, duel_id, answer}: the host's answer (0x4A1D10) -> 0x17CB. The challenger gets it as
+    /// 0x17CA {answer} (0x4A28F0); on ACCEPT both then get the match 0x1978, a second later each (**guess**, as for an
+    /// automatic match: the agents read one message per step, and the challenger's must take the answer first).
+    fn answer_challenge(&mut self, msg: &Message) -> Vec<Message> {
+        let player_id = self.player().player_id;
+        let duel_id = msg.get("duel_id").and_then(Value::as_u32).unwrap_or(0);
+        let accepted = msg.get("answer").and_then(Value::as_u32) == Some(ACCEPT);
+        let mut hub = self.hub();
+        let Some(host) = hub.hosts.get_mut(&duel_id).filter(|h| h.player_id == player_id) else { return vec![Message::reply(0x17CB)] };
+        let Some(challenger) = host.offer.take() else { return vec![Message::reply(0x17CB)] };
+        let answer = Message::reply(0x17CA).with("duel_id", Value::U32(duel_id)).with("answer", Value::U32(if accepted { ACCEPT } else { 1 }));
+        hub.push(challenger, &answer);
+        if accepted {
+            let host = hub.hosts.remove(&duel_id).expect("the host");
+            let challenger_record = hub.online.values().find(|o| o.player_id == challenger).map(|o| o.record.clone());
+            let rule: Vec<(String, Value)> = host.settings.iter().filter(|(k, _)| matches!(k.as_str(), "match_type" | "lp_start")).cloned().collect();
+            let push = |vs: &Message| {
+                let data = rule.iter().fold(Message::record().with("name", Value::text("duelData")), |m, (k, v)| m.with(k, v.clone()));
+                Message::reply(0x1978).item(vs.clone().with("name", Value::text("vsPlayerData"))).item(data.with("duel_id", Value::U32(duel_id)))
+            };
+            let mut pushes = vec![(challenger, push(&host.record))];
+            if let Some(record) = challenger_record {
+                pushes.push((player_id, push(&record)));
+            }
+            hub.matches.insert(duel_id, Match { players: [player_id, challenger], rule });
+            let outboxes: Vec<(Outbox, Message)> = pushes
+                .into_iter()
+                .filter_map(|(to, m)| hub.online.values().find(|o| o.player_id == to).map(|o| (o.outbox.clone(), m)))
+                .collect();
+            std::thread::spawn(move || {
+                std::thread::sleep(MATCH_PUSH_DELAY);
+                for (outbox, m) in outboxes {
+                    let _ = outbox.send(m);
+                }
+            });
+        }
+        vec![Message::reply(0x17CB)]
     }
 
     /// 0x2134 -> 0x2456 to the sender, and the line as a 0x2455 push to the room (or the whisper

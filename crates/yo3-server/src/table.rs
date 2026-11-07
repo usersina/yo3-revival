@@ -120,7 +120,8 @@ impl Table {
                 return Out::default();
             }
         };
-        let lp = self.world.start_lp;
+        // A hosted duel's starting LP (Create Duel's lp_start), else the server's.
+        let lp = self.seats.iter().find_map(|s| s.entry.lp).unwrap_or(self.world.start_lp);
         let answer = engine.new_duel(crate::duel::next(&mut self.rng), lp, [(&m0, &e0), (&m1, &e1)]);
         self.engine = Some(engine);
         let mut out = Out::default();
