@@ -99,8 +99,10 @@ Stop finding missing fields one crash at a time.
 - [x] Translator, first part: the engine drives the duel session; its draws, turns and phases become engine commands,
       the client's idle prompt a command map of the legal commands, the client's card commands its responses; the CPU
       ends its turns at once (a placeholder bot) and other prompts are answered with defaults
-- [ ] Translator: card moves (summon, set, activate, destroy…), LP changes, battle, chains and the other prompts; the
-      phase buttons; a CPU that plays
+- [x] Card moves: the engine's MOVE becomes a card-table entry plus `0x1A`; place and position prompts are answered for
+      the client (first free zone, face-up attack). Live: a Normal Summon from the hand
+- [ ] Translator: field stats (ATK/DEF on the field read 0 / 0), the phase buttons (client `duelRequestName` 3), LP
+      changes, battle, chains and the other prompts; a CPU that plays
 - [ ] Deck piles on the field (the deck count alone shows none); phase buttons (client `duelRequestName` 3)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)

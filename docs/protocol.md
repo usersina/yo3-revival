@@ -325,6 +325,14 @@ summons 2, position changes 8 and 9, monster sets 6, spell sets 7, activates 3; 
 plus command 4, and the client's card command back to the prompt's entry. Live: after the CPU's turn the client's Main
 Phase 1 highlights only the legal cards, and a monster's menu reads Summon / Set.
 
+Card moves (`MSG_MOVE`) become a card-table entry plus `0x1A`, with move places `player | zone<<1 | index<<6`, face up
+bit 14 and defence bit 15 on field slots (`0x5000E0`); field slots are zones 0–4 (monsters), 5–9 (Spell/Trap) and 10
+(Field Spell) at index 0, then hand `0xB`, extra `0xC`, deck `0xD`, graveyard `0xE`, banished `0xF`. Cards behind a
+removed list card get their table entry again. The client has no window for ocgcore's place and position prompts, so
+the server takes the first free zone and face-up attack when allowed. Live: Summon from the hand put the monster in the
+first monster zone, the hand closed up, and the next prompt offered only the Spell card. Its ATK/DEF on the field reads
+0 / 0: the card's stats come from data not sent yet.
+
 The numbering differs from Online 2's engine (whose turn change is `0x04` and LP set `0x26`), so YO2 research is a guide
 only. Next: the card map, so decks, hands and draws show.
 

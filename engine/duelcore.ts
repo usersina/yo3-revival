@@ -4,8 +4,8 @@
 //   {"op":"new","seed":7,"decks":[{"main":[cid…],"extra":[cid…]},{…}]}  team 0 goes first
 //   {"op":"respond","response":{…}}                                       an OcgResponse
 // Answer: {"messages":[…],"status":"await"|"end","errors":[…]}: the core's messages up to the next prompt.
-// Cards are given and reported by Konami card id (the client's "CID"): every `code` in a message gets a `cid`
-// next to it. Needs `fetch.sh` run first (packages, card scripts, card database, Konami ids).
+// Cards are given and reported by Konami card id (the client's "CID"): every `code` (or MOVE's `card`) in a
+// message gets a `cid` next to it. Needs `fetch.sh` run first (packages, card scripts, card database, Konami ids).
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { createInterface } from "node:readline";
@@ -62,13 +62,14 @@ function readScript(name: string) {
   }
 }
 
-/** Adds `cid` next to every numeric `code`, so the server never sees passcodes. */
+/** Adds `cid` next to every numeric `code` (or `card`, as MOVE names it), so the server never sees passcodes. */
 function withCids(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(withCids);
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) out[k] = withCids(v);
-    if (typeof out.code === "number") out.cid = cidOf.get(out.code as number) ?? 0;
+    const code = typeof out.code === "number" ? out.code : out.card;
+    if (typeof code === "number") out.cid = cidOf.get(code) ?? 0;
     return out;
   }
   return value;

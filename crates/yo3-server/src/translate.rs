@@ -2,8 +2,10 @@
 //! (engine commands, command maps; see "Duel connection" in `docs/protocol.md`).
 //!
 //! Players: the engine's team 0 goes first; the client's engine players are 0 (the client) and 1 (the CPU).
-//! The server mirrors each side's deck and hand as client uids with their CARD_Prop rows. The client's deck
-//! is a face-down bag, so a draw takes any deck card with the drawn card's id.
+//! The server mirrors every zone of each side as client uids with their CARD_Prop rows, in the client's zone
+//! numbering: field slots 0-4 (monsters), 5-9 (Spells/Traps), 10 (Field Spell), each holding one card at index 0;
+//! then the lists hand 0xB, extra 0xC, deck 0xD, graveyard 0xE, banished 0xF. The client's deck is a face-down
+//! bag, so a card leaving it is any deck card with that card's id.
 use std::collections::HashMap;
 
 use serde_json::{Value as Json, json};
@@ -17,6 +19,9 @@ use crate::duel::{
 const MSG_SELECT_BATTLECMD: u64 = 10;
 const MSG_SELECT_IDLECMD: u64 = 11;
 const MSG_SELECT_CHAIN: u64 = 16;
+const MSG_SELECT_PLACE: u64 = 18;
+const MSG_SELECT_POSITION: u64 = 19;
+const MSG_MOVE: u64 = 50;
 const MSG_NEW_TURN: u64 = 40;
 const MSG_NEW_PHASE: u64 = 41;
 const MSG_DRAW: u64 = 90;
@@ -24,13 +29,25 @@ const MSG_DRAW: u64 = 90;
 const RESP_BATTLECMD: u64 = 0;
 const RESP_IDLECMD: u64 = 1;
 const RESP_CHAIN: u64 = 8;
+const RESP_PLACE: u64 = 10;
+const RESP_POSITION: u64 = 11;
 const IDLE_TO_BP: u64 = 6;
 const IDLE_TO_EP: u64 = 7;
 const BATTLE_TO_EP: u64 = 3;
 /// ocgcore locations.
+const LOC_DECK: u64 = 1;
 const LOC_HAND: u64 = 2;
 const LOC_MZONE: u64 = 4;
 const LOC_SZONE: u64 = 8;
+const LOC_GRAVE: u64 = 16;
+const LOC_REMOVED: u64 = 32;
+const LOC_EXTRA: u64 = 64;
+/// The client's list zones besides hand and deck.
+const EXTRA: u32 = 0xC;
+const GRAVE: u32 = 0xE;
+const REMOVED: u32 = 0xF;
+/// The Field Spell slot.
+const FIELD_SPELL: u32 = 10;
 
 /// Card menu bits (`CardCommand::command`) per idle-command list, with the list's action number. Set: bit 6 for
 /// monsters and 7 for Spells/Traps is a guess (both read "Set").
@@ -50,10 +67,16 @@ struct Card {
     row: u16,
 }
 
+/// One side's zones: field slots (0..=10) hold at most one card, list zones (0xB..=0xF) any number.
 #[derive(Default)]
 struct Side {
-    deck: Vec<Card>,
-    hand: Vec<Card>,
+    zones: HashMap<u32, Vec<Card>>,
+}
+
+impl Side {
+    fn zone(&mut self, zone: u32) -> &mut Vec<Card> {
+        self.zones.entry(zone).or_default()
+    }
 }
 
 /// What to do with an engine prompt.
@@ -86,7 +109,7 @@ impl Translator {
         for (p, deck) in decks.iter().enumerate() {
             for (i, &row) in deck.iter().enumerate() {
                 uid += 1;
-                sides[p].deck.push(Card { uid, row });
+                sides[p].zone(DECK).push(Card { uid, row });
                 out.push(command(CARD, [uid, row as u32, 0, table_place(p as u32, DECK, i)]));
             }
         }
@@ -122,27 +145,85 @@ impl Translator {
                         out.push(command(PHASE, [self.turn_player, phase, 0, 0]));
                     }
                 }
+                Some(MSG_MOVE) => out.extend(self.move_card(m)),
                 _ => {}
             }
         }
         out
     }
 
-    /// A deck card with that id moves to the hand: card table, then on screen.
+    /// A deck card with that id moves to the end of the hand.
     fn draw(&mut self, p: u32, cid: u16) -> Vec<Message> {
-        let side = &mut self.sides[p as usize];
-        let at = side.deck.iter().position(|c| self.cid_of_row.get(&c.row) == Some(&cid)).unwrap_or(0);
-        if side.deck.is_empty() {
-            return vec![];
+        let hand = self.sides[p as usize].zone(HAND).len();
+        let from = Place { player: p, zone: DECK, index: 0, face_up: false, defense: false };
+        let to = Place { player: p, zone: HAND, index: hand, face_up: false, defense: false };
+        self.relocate(cid, from, to)
+    }
+
+    /// MSG_MOVE {card, cid, from, to}: the card leaves its place for the new one.
+    fn move_card(&mut self, m: &Json) -> Vec<Message> {
+        let cid = m["cid"].as_u64().unwrap_or(0) as u16;
+        match (self.engine_place(&m["from"]), self.engine_place(&m["to"])) {
+            (Some(from), Some(to)) => self.relocate(cid, from, to),
+            // Tokens and Xyz materials have no client place yet.
+            _ => vec![],
         }
-        let c = side.deck.remove(at);
-        let i = side.hand.len();
-        side.hand.push(c);
-        let row = c.row as u32;
-        vec![
-            command(CARD, [c.uid, row, 0, table_place(p, HAND, i)]),
-            command(MOVE, [c.uid | row << 16, move_place(p, DECK, 0), move_place(p, HAND, i), 0]),
-        ]
+    }
+
+    /// Moves a card in the mirror and on the client: the card table entry (1000), then on screen (0x1A); the
+    /// cards whose index shifted in a list zone get their table entry again.
+    fn relocate(&mut self, cid: u16, from: Place, to: Place) -> Vec<Message> {
+        let rows = &self.cid_of_row;
+        let source = self.sides[from.player as usize].zone(from.zone);
+        let at = if from.zone == DECK {
+            source.iter().position(|c| rows.get(&c.row) == Some(&cid)).or(if source.is_empty() { None } else { Some(0) })
+        } else {
+            (!source.is_empty()).then(|| from.index.min(source.len() - 1))
+        };
+        let Some(at) = at else { return vec![] };
+        let card = source.remove(at);
+        let dest = self.sides[to.player as usize].zone(to.zone);
+        let index = if to.zone > FIELD_SPELL { to.index.min(dest.len()) } else { 0 };
+        if to.zone <= FIELD_SPELL {
+            dest.clear();
+        }
+        dest.insert(index, card);
+        let row = card.row as u32;
+        let mut out = vec![
+            command(CARD, [card.uid, row, 0, table_place(to.player, to.zone, index)]),
+            command(MOVE, [card.uid | row << 16, from.packed(), Place { index, ..to }.packed(), 0]),
+        ];
+        // List zones renumber: re-send the shifted cards (not the face-down deck).
+        for (p, zone, start) in [(from.player, from.zone, at), (to.player, to.zone, index + 1)] {
+            if zone <= FIELD_SPELL || zone == DECK {
+                continue;
+            }
+            for (i, c) in self.sides[p as usize].zone(zone).iter().enumerate().skip(start) {
+                out.push(command(CARD, [c.uid, c.row as u32, 0, table_place(p, zone, i)]));
+            }
+        }
+        out
+    }
+
+    /// The client place of an engine location {controller, location, sequence, position}.
+    fn engine_place(&self, loc: &Json) -> Option<Place> {
+        let player = self.player(&loc["controller"]);
+        let seq = loc["sequence"].as_u64()? as usize;
+        let (zone, index) = match loc["location"].as_u64()? {
+            LOC_DECK => (DECK, 0),
+            LOC_HAND => (HAND, seq),
+            LOC_MZONE => (seq as u32, 0),
+            LOC_SZONE if seq == 5 => (FIELD_SPELL, 0),
+            LOC_SZONE => (5 + seq as u32, 0),
+            LOC_GRAVE => (GRAVE, seq),
+            LOC_REMOVED => (REMOVED, seq),
+            LOC_EXTRA => (EXTRA, seq),
+            _ => return None,
+        };
+        // ocgcore positions: 1 face-up attack, 2 face-down attack, 4 face-up defense, 8 face-down defense. Only
+        // field cards carry them; the client shows each list zone its own way.
+        let position = if zone <= FIELD_SPELL { loc["position"].as_u64().unwrap_or(0) } else { 0 };
+        Some(Place { player, zone, index, face_up: position & 5 != 0, defense: position & 12 != 0 })
     }
 
     /// What to do with the engine's prompt (the last message when it awaits).
@@ -209,6 +290,23 @@ impl Translator {
     }
 }
 
+/// A place on the client's board.
+#[derive(Clone, Copy, Debug)]
+struct Place {
+    player: u32,
+    zone: u32,
+    index: usize,
+    face_up: bool,
+    defense: bool,
+}
+
+impl Place {
+    /// As card moves give it: player | zone << 1 | index << 6, face up bit 14, defense bit 15 (0x5000E0).
+    fn packed(&self) -> u32 {
+        move_place(self.player, self.zone, self.index) | (self.face_up as u32) << 14 | (self.defense as u32) << 15
+    }
+}
+
 /// The panel's phase (command 5) for an ocgcore phase: 0 Draw, 1 Standby, 2 Main 1, 3 Battle (all its steps),
 /// 4 Main 2, 5 End.
 fn client_phase(phase: u64) -> Option<u32> {
@@ -234,6 +332,19 @@ fn cpu_answer(kind: u64, m: &Json) -> Json {
         MSG_SELECT_CHAIN => {
             let index = if m["forced"].as_bool() == Some(true) { json!(0) } else { Json::Null };
             json!({ "type": RESP_CHAIN, "index": index })
+        }
+        // The first free own zone (field_mask bits set = unavailable; own monster zones bits 0-4, Spell/Trap 8-12).
+        MSG_SELECT_PLACE => {
+            let mask = m["field_mask"].as_u64().unwrap_or(0);
+            let free = (0..5).map(|s| (LOC_MZONE, s, s)).chain((0..5).map(|s| (LOC_SZONE, s, s + 8)));
+            let (location, sequence) = free.into_iter().find(|(_, _, bit)| mask & 1 << bit == 0).map_or((LOC_MZONE, 0), |(l, s, _)| (l, s));
+            json!({ "type": RESP_PLACE, "places": [{ "player": m["player"], "location": location, "sequence": sequence }] })
+        }
+        // Face-up attack when allowed, else the first allowed position.
+        MSG_SELECT_POSITION => {
+            let allowed = m["positions"].as_u64().unwrap_or(1);
+            let position = if allowed & 1 != 0 { 1 } else { 1 << allowed.trailing_zeros() };
+            json!({ "type": RESP_POSITION, "position": position })
         }
         _ => json!({ "type": RESP_CHAIN, "index": null }),
     }

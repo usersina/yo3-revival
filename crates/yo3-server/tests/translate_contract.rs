@@ -88,3 +88,41 @@ fn the_cpu_ends_its_turn_and_never_chains() {
     let chain = json!({ "type": 16, "player": 1, "forced": false, "selects": [] });
     assert_eq!(t.prompt(&chain), Prompt::Answer(json!({ "type": 8, "index": null })));
 }
+
+#[test]
+fn a_summon_moves_the_card_from_the_hand_to_its_zone() {
+    // MSG_MOVE (50) {card, cid, from, to: {controller, location, sequence, position}}. Hand 2 → monster zone 4
+    // (sequence = slot), face-up attack (position 1). Move places: player | zone << 1 | index << 6, face up bit
+    // 14, defense bit 15 (0x5000E0); field slots are zones 0-10 with index 0. The card left behind in the hand
+    // moves up and gets its table entry again.
+    let (mut t, _) = translator();
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }, { "cid": 4101 }] })]);
+    let out = t.events(&[json!({ "type": 50, "cid": 4100,
+        "from": { "controller": 0, "location": 2, "sequence": 0, "position": 10 },
+        "to": { "controller": 0, "location": 4, "sequence": 2, "position": 1 } })]);
+    let out: Vec<_> = out.iter().map(cmd).collect();
+    assert_eq!(
+        out,
+        [(1000, [1, 100, 0, 2 << 8]), (0x1A, [1 | 100 << 16, 0xB << 1, 2 << 1 | 1 << 14, 0]), (1000, [2, 101, 0, 0xB << 8])]
+    );
+    // A face-down defense Set to the Spell/Trap zone 1 (zone 6).
+    let out = t.events(&[json!({ "type": 50, "cid": 4101,
+        "from": { "controller": 0, "location": 2, "sequence": 0, "position": 10 },
+        "to": { "controller": 0, "location": 8, "sequence": 1, "position": 8 } })]);
+    assert_eq!(cmd(&out[1]), (0x1A, [2 | 101 << 16, 0xB << 1, 6 << 1 | 1 << 15, 0]));
+}
+
+#[test]
+fn place_and_position_prompts_are_answered_for_the_player() {
+    // MSG_SELECT_PLACE (18): the client has no window for it; the first free own zone is taken (field_mask bits
+    // set = unavailable: monster zones 0-4, Spell/Trap 8-12). MSG_SELECT_POSITION (19): face-up attack if allowed.
+    let (mut t, _) = translator();
+    let place = json!({ "type": 18, "player": 0, "count": 1, "field_mask": 0xFFFF_E0FFu32 });
+    let spell = json!({ "type": 10, "places": [{ "player": 0, "location": 8, "sequence": 0 }] });
+    assert_eq!(t.prompt(&place), Prompt::Answer(spell));
+    let place = json!({ "type": 18, "player": 0, "count": 1, "field_mask": 0xFFFF_FFE2u32 });
+    let monster = json!({ "type": 10, "places": [{ "player": 0, "location": 4, "sequence": 0 }] });
+    assert_eq!(t.prompt(&place), Prompt::Answer(monster));
+    let position = json!({ "type": 19, "player": 0, "code": 1, "positions": 5 });
+    assert_eq!(t.prompt(&position), Prompt::Answer(json!({ "type": 11, "position": 1 })));
+}
