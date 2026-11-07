@@ -3,6 +3,32 @@
 Goal: play Yu-Gi-Oh! ONLINE 3 with friends on our own server. Each milestone ends in something checked against the
 real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in the same commit as the work.
 
+## ▶ Overnight plan (2026-11-07): everything left, end to end
+
+Goal: finish what the client can use, then hand over for the real friend test. Each slice goes the usual way
+(evidence, failing test, code, live check on the headless clients, docs, its own commit fast-forwarded into `main`),
+most valuable first. Research for the later slices runs ahead in parallel (read-only).
+
+1. [ ] Duels: an extra deck summon seen live (Synchro or Fusion); the Number, Type and Attribute declarations
+       (dialog kinds 11, 5–6, 7) and card name declarations; options that are a card's own strings (the prompt
+       table's 400–490 labels)
+2. [ ] Duels: chain chances outside timely ones ("always chain"), a spectator through a match's later duels, the
+       deck check against the duel's regulation on the server
+3. [ ] NPC experience (`npcbin`): wins against an NPC unlock its higher levels
+4. [ ] D-Mail between players, kept for players offline
+5. [ ] Main Menu screens: Card Album, Rental Card List, My Profile, Duel Log, Leaderboard, BOOSTERPASS, each with
+       what the server knows (collection, records, duels played)
+6. [ ] Teams (create, join, leave, members, team chat, Create Duel's Team limit) and user events (create, join)
+7. [ ] Player search criteria: language, country, manner level, status, event
+8. [ ] Shop: protectors and avatar items for BP; card trade and rental between players
+9. [ ] A Windows server build (cross-compiled) in the release bundle, with the friends' guide updated
+10. [ ] Final: full test run, a live smoke test of every flow (login, chat, friends, mail, shop, NPC duel, Auto
+        Duel, hosted match, watching), the release bundle rebuilt; then the real friend test (M6 exit)
+
+Not possible with this client, so left out: logins with a user id and password (the client never sends
+credentials), creating players in the game (the client has no such screen; the host uses `add-player`), decks kept on
+the server (the client saves decks only to its own files and uploads only deletions).
+
 ## ✅ M0: Research and tooling
 
 - [x] Feasibility study ([docs/research.md](docs/research.md))
@@ -62,7 +88,7 @@ Stop finding missing fields one crash at a time.
 - [ ] Mail and teams
 - [ ] Player search criteria we ignore: language, country, manner level, status, event
 - [ ] Main menu screens (the menu opens now): Card Album, Rental Card List, My Profile, D-Mail, Duel Log, Team,
-      Friend List, Ignore List, Leaderboard, BOOSTERPASS, Duel Options (Edit Deck is M4)
+      Leaderboard, BOOSTERPASS, Duel Options (Edit Deck is M4; Friend List and Ignore List work)
 - [x] Saving character settings: Avatar Settings' Confirm sends `0x2CEF` {avatar1, speech00–22, comment00–01,
       title} → `0x2CF5`; kept with the account and sent back in the player record. Live: purple hair after a restart
 - [ ] Creating and joining user events
