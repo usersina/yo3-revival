@@ -391,9 +391,23 @@ fn a_yes_no_question_names_its_card() {
     let named = json!({ "type": 13, "player": 0, "description": 65601, "description_cid": 4101 });
     assert_eq!(client_commands(t.prompt(&named))[1], (0x3ED, [1 << 28 | 226, 5 << 28 | 4101, 0, 0]));
     assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 3, "yes": true }))));
-    let plain = json!({ "type": 13, "player": 0, "description": 30 });
+    let plain = json!({ "type": 13, "player": 0, "description": 32 });
     assert_eq!(client_commands(t.prompt(&plain))[..2], [(0x3EC, [1, 0, 0, 0]), (0x3ED, [1 << 28 | 270, 0, 0, 0])]);
     assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 3, "yes": false }))));
+}
+
+#[test]
+fn the_battles_questions_read_as_the_clients_own() {
+    // EDOPro's core asks the attacking player two battle questions by system string (processor.cpp): 31 when the
+    // attacker could attack directly or a monster (yes: directly), 30 when a replay happens (yes: attack again). The
+    // client's dialog texts have both: 225 "Attack your opponent directly?" and 223 "Replay happens. Continue to
+    // attack?" (the target itself is the card list's, hint 549 → 222 "Select an attack target monster.").
+    let mut t = with_cards();
+    for (description, text) in [(31, 225), (30, 223)] {
+        let question = json!({ "type": 13, "player": 0, "description": description });
+        assert_eq!(client_commands(t.prompt(&question))[1], (0x3ED, [1 << 28 | text, 0, 0, 0]), "{description}");
+        assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 3, "yes": true }))));
+    }
 }
 
 #[test]

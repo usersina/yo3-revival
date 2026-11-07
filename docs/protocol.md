@@ -614,6 +614,19 @@ no pick cancels when it allows. Live: Giant Orc's attack opened the list with "S
 the CPU's monster marked as the opponent's; picking it sent `6`, `7 {index 0, data 1}`, `4 {DLGResult 1}` and the
 attack dealt 1200.
 
+**Attack targets are a dialog, as in the original.** The client has no way to pick a target on the field: DuelBattle
+(`0x4F8A90`) handles command 4 only in battle mode 3, to highlight the client's own attackers (bit 0), and `0xA`–`0xE`
+are the battle's animations; DuelFieldManager's command 4 (`0x50A690`) highlights cards of either side that have
+command bits, and a click runs the hovered card's menu entry (`0x50B700` → `0x4F9510`), with no target step; modes 4
+and 5 are "Checking the Field. Right-click to finish." (UI text `0x2214`; the right click, with other-flag 6, sends
+`duelRequestName 5`). The dialog text table (`DLG_Text_E.bin`, the duel prompts) holds the original server's battle
+dialogs instead: 222 "Select an attack target monster.", 225 "Attack your opponent directly?", 223 "Replay happens.
+Continue to attack?", 265 "Switch the attack target to another monster?", 154 "An attack target was selected.". So the
+server keeps the card list for targets, and words EDOPro's battle questions (processor.cpp: `SelectYesNo` 31 when the
+attacker could attack directly or a monster, 30 at a replay) with 225 and 223. Live (`--duel-deck 429`, Jinzo #7
+against Jinzo #7): Kaiba's attack asked "Attack your opponent directly?"; No opened "Select an attack target monster."
+with Yugi's Jinzo, and the two destroyed each other.
+
 The client's MSG_SELECT_EFFECTYN opens the Yes/No dialog with 'Activate the effect of "%s"?' (250) and the card's
 name, MSG_SELECT_YESNO with 'Use the effect of "%s"?' (226) naming the card whose script string the question is (the
 sidecar adds `description_cid` for a description `code << 4 | n`), else "Use the effect now?" (270) (**guess**: the

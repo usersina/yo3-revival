@@ -164,6 +164,10 @@ const TRIBUTE_TEXT: u32 = 18;
 const ACTIVATE_TEXT: u32 = 250;
 const USE_TEXT: u32 = 226;
 const USE_NOW_TEXT: u32 = 270;
+/// The battle questions EDOPro's core asks by system string (processor.cpp: 31 attack directly instead of a monster,
+/// 30 a replay), as the client's dialog texts 225 "@3Attack@0 your opponent directly?" and 223 "Replay happens.
+/// Continue to @3attack@0?".
+const BATTLE_QUESTIONS: [(u64, u32); 2] = [(31, 225), (30, 223)];
 /// 'Select position for "@3%s@0".'
 const POSITION_TEXT: u32 = 327;
 /// 'The effect of "@3%s@0" is @3activated@0. @3Chain@0 another card or effect?', '"@3%s@0" is @3activated@0. ...' and,
@@ -674,9 +678,11 @@ impl Translator {
                 Prompt::Client(vec![command_data(&map, &flags), command(INPUT, [mode, CLIENT, 0, 0])])
             }
             MSG_SELECT_EFFECTYN | MSG_SELECT_YESNO => {
-                let entries = match (kind, m["cid"].as_u64(), m["description_cid"].as_u64()) {
-                    (MSG_SELECT_EFFECTYN, cid, _) => vec![TEXT | ACTIVATE_TEXT, CARD_NAME | cid.unwrap_or(0) as u32],
-                    (_, _, Some(cid)) => vec![TEXT | USE_TEXT, CARD_NAME | cid as u32],
+                let battle = BATTLE_QUESTIONS.iter().find(|(d, _)| m["description"].as_u64() == Some(*d)).map(|(_, text)| *text);
+                let entries = match (kind, m["cid"].as_u64(), m["description_cid"].as_u64(), battle) {
+                    (MSG_SELECT_EFFECTYN, cid, _, _) => vec![TEXT | ACTIVATE_TEXT, CARD_NAME | cid.unwrap_or(0) as u32],
+                    (_, _, _, Some(text)) => vec![TEXT | text],
+                    (_, _, Some(cid), _) => vec![TEXT | USE_TEXT, CARD_NAME | cid as u32],
                     _ => vec![TEXT | USE_NOW_TEXT],
                 };
                 let mut out = message(&entries);

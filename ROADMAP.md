@@ -172,7 +172,11 @@ Stop finding missing fields one crash at a time.
 - [x] Stat changes from effects: the sidecar reports the monster zones after each engine step when they changed, and
       a face-up monster's record (`0x3E9`–`0x3EB`) goes again, which the client re-reads after every command. Live: Axe
       of Despair took Giant Orc's label and card info to ATK 3200 (in blue)
-- [ ] Attack targets on the field instead of the list; counters (`0x27`)
+- [x] Attack targets: the original used dialogs too (its dialog texts have the target list, "Attack your opponent
+      directly?" and the replay question; the client has no field target step), so the card list stays, and EDOPro's
+      direct-attack and replay questions read as the client's own (225, 223). Live: Jinzo #7's attack asked "Attack
+      your opponent directly?"
+- [ ] Counters (`0x27`)
 - [ ] Deck piles on the field (the deck count alone shows none)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)
@@ -249,7 +253,6 @@ Stop finding missing fields one crash at a time.
 | Card list marks | `0x8000` for the CPU's cards, no icons | The low bits draw icons whose meaning is unknown |
 | Choice messages | EDOPro's hint mapped to the client's text for 7 hints; none otherwise | The original server's message per choice is unknown |
 | Yes/no questions | 'Activate the effect of "X"?' for optional effects, 'Use the effect of "X"?' for other questions | The cards' own question strings (EDOPro's) aren't in the client |
-| Attack targets | chosen in the card list | The original probably picked them on the field (DuelBattle) |
 | Position dialog | button 0 face-up attack (face-down if only that), button 1 face-up defense when allowed, else face-down; the flag shows the face-up defense picture | The dialog has two buttons; ocgcore allows any mix of four positions |
 | ChainRun `param1`/`param2`, ChainSet's place for a card off the field map | 0; the field's centre (16) | DuelChain reads neither; the original's values are unknown |
 | Destruction by effects | CardVanish (`0x1F`, the shatter) before the move; CardBreak (`0x20`) never sent | Which of the two the original sent, and when, is unknown; CardVanish is the one with an effect |
