@@ -72,7 +72,13 @@ pub(crate) const CARD: u32 = 1000;
 pub(crate) const MOVE: u32 = 0x1A;
 /// Zones (the client's numbering): 0-4 monsters, 5-9 Spell/Trap, then these.
 pub(crate) const HAND: u32 = 0xB;
+const EXTRA: u32 = 0xC;
 pub(crate) const DECK: u32 = 0xD;
+/// DeckReset {player, pile zone 0xC-0xF} (DuelCardManager 0x4FF3A5): the pile takes its count from the engine's
+/// per-zone count (0x5240F0, the setup's MainDeckNum and ExtraDeckNum at first) and shows it, with the count on its
+/// label. After that each pile counts itself (a card landing +1, 0x4FBF30; leaving -1, 0x5000E0), so without it the
+/// deck pile starts at 0 and never shows.
+const DECK_RESET: u32 = 0x16;
 const OPENING_HAND: usize = 5;
 /// Engine players: the client is player 0 (setup PlayerNum), the CPU player 1.
 pub(crate) const CLIENT: u32 = 0;
@@ -155,6 +161,11 @@ pub(crate) fn setup(first: u32, mine: &Deck, theirs: &Deck) -> Message {
     ]
     .into_iter()
     .fold(Message::reply(SERVER_DUEL).with("duelRequestName", Value::U32(DUEL_SETUP)), |m, (k, v)| m.with(k, Value::U32(v)))
+}
+
+/// The deck and extra deck piles of both players, from the setup's counts: after the setup and before any draw.
+pub(crate) fn piles() -> [Message; 4] {
+    [(CLIENT, DECK), (CPU, DECK), (CLIENT, EXTRA), (CPU, EXTRA)].map(|(player, zone)| command(DECK_RESET, [player, zone, 0, 0]))
 }
 
 /// Fisher-Yates.
@@ -390,7 +401,8 @@ impl DuelSession {
         let seed = self.next();
         let lp = self.world.start_lp;
         let answer = engine.new_duel(seed, lp, [(&m0, &e0), (&m1, &e1)]);
-        let (translator, table) = Translator::new(first, [&entry.deck.main, &npc.main], self.world.cards.clone());
+        let (mut translator, mut table) = Translator::new(first, [&entry.deck.main, &npc.main], self.world.cards.clone());
+        table.extend(translator.extra_decks([&entry.deck.extra, &npc.extra]));
         self.engine = Some((engine, translator));
         let mut out = vec![setup(first, &entry.deck, &npc)];
         out.extend(table);
@@ -399,6 +411,7 @@ impl DuelSession {
             command(SET_LP, [CLIENT, lp, 0, 0]),
             command(SET_LP, [CPU, lp, 0, 0]),
         ]);
+        out.extend(piles());
         out.extend(self.advance(answer));
         Some(out)
     }
@@ -464,6 +477,7 @@ impl DuelSession {
             command(SET_LP, [CLIENT, self.world.start_lp, 0, 0]),
             command(SET_LP, [CPU, self.world.start_lp, 0, 0]),
         ]);
+        out.extend(piles());
         for player in [first, 1 - first] {
             let p = player as usize;
             for i in 0..OPENING_HAND.min(decks[p].len()) {

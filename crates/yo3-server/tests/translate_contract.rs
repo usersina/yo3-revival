@@ -885,3 +885,26 @@ fn a_card_leaving_the_field_drops_its_counters_first() {
         "position": 8 })]);
     assert_eq!(counters(&t.events(&[destroyed(loc(0, 4, 2, 8), 0x41)])), []);
 }
+
+#[test]
+fn extra_decks_go_into_the_card_table_and_move_from_there() {
+    // Each side's extra deck joins the card table at zone 0xC (uids after both main decks), the opponent's with row
+    // 0 against a player. A card leaving the extra deck (a Fusion or Synchro Summon) is found by its id, wherever the
+    // engine keeps it, and moves from zone 0xC: the client's extra deck pile counts it down (0x5000E0).
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).chain([150, 151, 250]).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
+    let table: Vec<_> = t.extra_decks([&[150, 151][..], &[250][..]]).iter().map(cmd).collect();
+    assert_eq!(table, [(1000, [21, 150, 0, 0xC << 8]), (1000, [22, 151, 0, 0xC << 8 | 1 << 16]), (1000, [23, 0, 0, 1 | 0xC << 8])]);
+    let out: Vec<_> = t
+        .events(&[json!({ "type": 50, "cid": 4151,
+            "from": { "controller": 0, "location": 64, "sequence": 0, "position": 10 },
+            "to": { "controller": 0, "location": 4, "sequence": 2, "position": 1 } })])
+        .iter()
+        .map(cmd)
+        .collect();
+    let moved = out.iter().find(|(id, _)| *id == 0x1A).expect("the move");
+    assert_eq!(moved.1[0], 22 | 151 << 16, "uid 22, the card asked for");
+    assert_eq!((moved.1[1] >> 1) & 0x1F, 0xC, "from the extra deck");
+}

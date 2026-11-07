@@ -184,7 +184,9 @@ Stop finding missing fields one crash at a time.
 - [x] Counters: EDOPro's counters on a field card become `0x27` in the client's own counter kinds (the icon on
       the card's label, "Spell Counters 1" in the card info); a card leaving the field drops its counts first. Live:
       Breaker the Magical Warrior's Spell Counter
-- [ ] Deck piles on the field (the deck count alone shows none)
+- [x] Deck piles on the field: DeckReset (`0x16`) for each deck and extra deck after the opening's LP; extra decks
+      join the card table so their summons move from the pile. Live: deck piles of 34 and 35 counting down with the
+      draws, and a one-card extra deck pile on both clients
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports
 - [x] Online 3's duel stream is Konami's engine family but renumbered (turn change 6, LP set `0xF`; docs/protocol.md)
 - [ ] Regulations enforced (2011-era rules; card pool limited to the client's 4,824 cards)

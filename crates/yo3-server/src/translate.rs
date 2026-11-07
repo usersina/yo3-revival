@@ -365,6 +365,23 @@ impl Translator {
         Translator::build(first, decks, cards, [false, true])
     }
 
+    /// Adds each side's extra deck (CARD_Prop rows) to the card table at the extra deck zone, after the main decks:
+    /// the card table commands. Its cards are found by id when they leave (the engine keeps its own order).
+    pub fn extra_decks(&mut self, extras: [&[u16]; 2]) -> Vec<Message> {
+        let mut uid = self.sides.iter().flat_map(|s| s.zones.values()).flatten().map(|c| c.uid).max().unwrap_or(0);
+        let mut out = vec![];
+        for (p, extra) in extras.iter().enumerate() {
+            for &row in extra.iter() {
+                uid += 1;
+                let zone = self.sides[p].zone(EXTRA);
+                zone.push(Card { uid, row });
+                let shown = if self.hidden[p] { 0 } else { row as u32 };
+                out.push(command(CARD, [uid, shown, 0, table_place(p as u32, EXTRA, zone.len() - 1)]));
+            }
+        }
+        out
+    }
+
     /// The same for a spectator watching from player 0's side, who sees neither player's hidden cards.
     pub fn spectating(first: u32, decks: [&[u16]; 2], cards: HashMap<u16, CardStats>) -> (Translator, Vec<Message>) {
         Translator::build(first, decks, cards, [true, true])
@@ -538,7 +555,7 @@ impl Translator {
     fn relocate(&mut self, cid: u16, from: Place, to: Place) -> Vec<Message> {
         let cards = &self.cards;
         let source = self.sides[from.player as usize].zone(from.zone);
-        let at = if from.zone == DECK {
+        let at = if from.zone == DECK || from.zone == EXTRA {
             source.iter().position(|c| cards.get(&c.row).map(|s| s.cid) == Some(cid)).or(if source.is_empty() { None } else { Some(0) })
         } else {
             (!source.is_empty()).then(|| from.index.min(source.len() - 1))

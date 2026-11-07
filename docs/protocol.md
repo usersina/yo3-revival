@@ -456,12 +456,13 @@ client and LOSER on Kaiba's, and Next took both back to the map.
 
 | Message | Fields | Evidence | Status |
 |---|---|---|---|
-| setup (`0x15`) | `FirstPlayer` (engine player 0/1), `PlayerNum` (this client's player: 0; the scenes compare players with it, engine `+0x1B0`), `PlayerType001/002` (0 / 1), `MainDeckNum001/002`, `ExtraDeckNum001/002` (the decks' sizes: the one picked at Select Deck, the NPC's preset) | pump case `0x15` | confirmed (live, no visible effect of the counts yet); `PlayerType` values **guess** |
+| setup (`0x15`) | `FirstPlayer` (engine player 0/1), `PlayerNum` (this client's player: 0; the scenes compare players with it, engine `+0x1B0`), `PlayerType001/002` (0 / 1), `MainDeckNum001/002`, `ExtraDeckNum001/002` (the decks' sizes: the one picked at Select Deck, the NPC's preset) | pump case `0x15`; the counts are the engine's per-zone counts (`+0x1C8`, `+0x1CC`, …) that DeckReset shows | confirmed (live: the deck piles below); `PlayerType` values **guess** |
 | command 1 | none: duel start | DuelScene `0x514290` | shape |
 | command `0xF` | param1 player, param2 LP | DuelCockpit `0x502EB0` (`setLp`) | confirmed (live) |
 | command 5 | param1 player, param2 phase (0 draw) | DuelScene, DuelCockpit | confirmed (live: DP lit) |
 | command 6 | param1 the player whose turn starts | DuelScene; the pop adds 1 to the turn count (engine `+0x1BC`) and flips the active player | confirmed (live: Turn 2), so not sent for the first turn |
 | command 1000 (one per card, before 1) | param1 uid (low 24 bits; the top byte is a flag, meaning unknown), param2 CARD_Prop row, param3 0 (meaning unknown), param4 table place `player \| zone<<8 \| index<<16` | the pop's `0x521DF0` sets or adds the card in the engine's card table (engine `+0x90`); the scenes look cards up there by place (`0x523DF0`) or uid (`0x523D20` → param3, `0x523D40` → param2); a card object shows the row's image (`0x4FB090`, `data/card/<cid>_<n>.png`) | confirmed (live) |
+| deck piles = `0x16` DeckReset ×4 | {`param1` the player (compared with `PlayerNum`), `param2` the pile zone `0xC`–`0xF`}, for each player's deck (`0xD`) and extra deck (`0xC`), after the LP and before the first draw | DuelCardManager `0x4FF3A5`: the pile (`+0x4C + (side × 0x11 + zone) × 4`) takes the engine's count for that zone (`0x5240F0`: the setup's `MainDeckNum`/`ExtraDeckNum` at first) and is shown with its count on the field label (`0x4FE4D0` → `0x50BED0`), or hidden at 0. After that each pile counts itself: a card landing on the extra deck, deck or graveyard adds 1 (`0x4FBF30`), one leaving subtracts 1 (`0x5000E0`). Without DeckReset the deck pile starts at 0 and never shows (it was so until 2026-11-07) | confirmed (live: Yugi's deck pile 34 and Kaiba's 35 after the opening and Yugi's draw, then Kaiba's 34 after his; Yugi's one-card extra deck showed a pile of 1 on both clients) |
 | draw = 1000 + `0x1A` | 1000 puts the card at hand index i; `0x1A` {param1 `uid \| row<<16`, param2 from, param3 to} as move places `player \| zone<<1 \| index<<6` | DuelCardManager `0x4FF6A2` creates the card object (`0x5003A0`) and moves it; deck → hand counts the draw and plays the draw sound; the pop moves the per-zone counts | confirmed (live: five cards in hand, five face down in the CPU's); the index bits are a **guess** (Online 2's packing) |
 
 The server shuffles both main decks, numbers the cards 1.. (the client's deck, then the CPU's), sends them all to the
@@ -583,7 +584,10 @@ Phase 1 highlights only the legal cards, and a monster's menu reads Summon / Set
 Card moves (`MSG_MOVE`) become a card-table entry plus `0x1A`, with move places `player | zone<<1 | index<<6`, face up
 bit 14 and defence bit 15 on field slots (`0x5000E0`); field slots are zones 0–4 (monsters), 5–9 (Spell/Trap) and 10
 (Field Spell) at index 0, then hand `0xB`, extra `0xC`, deck `0xD`, graveyard `0xE`, banished `0xF`. Cards behind a
-removed list card get their table entry again. The client has no window for ocgcore's place prompt, so the server
+removed list card get their table entry again. Both extra decks are in the card table too (zone `0xC`, uids after
+both main decks, the opponent's with row 0 against a player); a card leaving the deck or the extra deck is found by its
+id, so an extra deck summon moves the right card from zone `0xC` and the extra deck pile counts down (**not seen live
+yet**: the test decks summon nothing from it). The client has no window for ocgcore's place prompt, so the server
 takes the first free zone (positions: see Choices). Live: Summon from the hand put the monster in the
 first monster zone, the hand closed up, and the next prompt offered only the Spell card.
 

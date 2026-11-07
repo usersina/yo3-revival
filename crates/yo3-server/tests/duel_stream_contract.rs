@@ -126,8 +126,11 @@ fn the_duel_opens_after_the_janken() {
         }
         assert!(setup.get("PlayerType001").is_some() && setup.get("PlayerType002").is_some());
         let others: Vec<_> = commands(&replies)[1..].iter().filter(|(id, _)| ![1000, 0x1A].contains(id)).copied().collect();
-        let opening = [(1, [0; 4]), (0xF, [0, 8000, 0, 0]), (0xF, [1, 8000, 0, 0]), (5, [first, 0, 0, 0])];
-        assert_eq!(others, opening);
+        // DeckReset 0x16 {player, pile zone} (DuelCardManager 0x4FF3A5) sets each deck (0xD) and extra deck (0xC) pile
+        // from the setup's counts and shows it; the piles count themselves from there (0x4FBF30, 0x5000E0).
+        let piles = [(0x16, [0, 0xD, 0, 0]), (0x16, [1, 0xD, 0, 0]), (0x16, [0, 0xC, 0, 0]), (0x16, [1, 0xC, 0, 0])];
+        let opening = [(1, [0; 4]), (0xF, [0, 8000, 0, 0]), (0xF, [1, 8000, 0, 0])].into_iter().chain(piles).chain([(5, [first, 0, 0, 0])]);
+        assert_eq!(others, opening.collect::<Vec<_>>());
     }
 }
 

@@ -157,6 +157,8 @@ fn each_client_sees_its_own_side_and_the_first_player_gets_the_prompt() {
     assert!(own_rows(&to_b, 2) >= 35, "1002's own cards as player 0");
     let waits = |out: &[Message]| commands(out).iter().filter(|(id, p)| *id == 4 && p[1] == 0).count();
     assert_eq!((waits(&to_a), waits(&to_b)), (0, 1), "1002 goes first");
+    let piles = |out: &[Message]| commands(out).into_iter().filter(|(id, _)| *id == 0x16).collect::<Vec<_>>();
+    assert_eq!(piles(&to_a), [(0x16, [0, 0xD, 0, 0]), (0x16, [1, 0xD, 0, 0]), (0x16, [0, 0xC, 0, 0]), (0x16, [1, 0xC, 0, 0])]);
 }
 
 #[test]

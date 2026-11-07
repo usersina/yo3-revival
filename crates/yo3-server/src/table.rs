@@ -9,7 +9,7 @@ use yo3_proto::Message;
 
 use crate::duel::{
     CLIENT, CPU, CardCommand, DUEL_START, FIRST, FIRST_BEGIN, FIRST_RESOLVE, JANKEN_BEGIN, JANKEN_RESOLVE, SECOND, SET_LP,
-    command, setup, shuffle,
+    command, piles, setup, shuffle,
 };
 use crate::clock::{Clocks, DEFAULT_TOTAL, DEFAULT_TURN};
 use crate::engine::{Answer, Engine};
@@ -191,11 +191,13 @@ impl Table {
         for (s, part) in out.iter_mut().enumerate() {
             let (mine, theirs) = (&self.seats[s].entry.deck, &self.seats[1 - s].entry.deck);
             let order = if s == first { CLIENT } else { CPU };
-            let (translator, table) = Translator::against_player(order, [&mine.main, &theirs.main], self.world.cards.clone());
+            let (mut translator, mut table) = Translator::against_player(order, [&mine.main, &theirs.main], self.world.cards.clone());
+            table.extend(translator.extra_decks([&mine.extra, &theirs.extra]));
             self.translators.push(translator);
             part.push(setup(order, mine, theirs));
             part.extend(table);
             part.extend([command(DUEL_START, [0; 4]), command(SET_LP, [CLIENT, lp, 0, 0]), command(SET_LP, [CPU, lp, 0, 0])]);
+            part.extend(piles());
         }
         for i in 0..self.spectators.len() {
             let (translator, opening) = self.spectator_opening();
@@ -224,7 +226,8 @@ impl Table {
     fn spectator_opening(&self) -> (Translator, Vec<Message>) {
         let (mine, theirs) = (&self.seats[0].entry.deck, &self.seats[1].entry.deck);
         let order = if self.first == 0 { CLIENT } else { CPU };
-        let (translator, table) = Translator::spectating(order, [&mine.main, &theirs.main], self.world.cards.clone());
+        let (mut translator, mut table) = Translator::spectating(order, [&mine.main, &theirs.main], self.world.cards.clone());
+        table.extend(translator.extra_decks([&mine.extra, &theirs.extra]));
         let [result, their_hand, my_hand] = self.janken;
         let mut out = vec![
             command(JANKEN_BEGIN, [0; 4]),
@@ -235,6 +238,7 @@ impl Table {
         ];
         out.extend(table);
         out.extend([command(DUEL_START, [0; 4]), command(SET_LP, [CLIENT, self.lp, 0, 0]), command(SET_LP, [CPU, self.lp, 0, 0])]);
+        out.extend(piles());
         (translator, out)
     }
 
