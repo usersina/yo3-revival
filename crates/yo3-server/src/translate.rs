@@ -216,7 +216,8 @@ impl Translator {
                 Some(MSG_MOVE) => out.extend(self.move_card(m)),
                 Some(MSG_WIN) => {
                     let result = if self.player(&m["player"]) == CLIENT { WON } else { LOST };
-                    out.push(command(DUEL_END, [result, 0, 0, 0]));
+                    let reason = end_reason(m["reason"].as_u64().unwrap_or(1));
+                    out.push(command(DUEL_END, [result, reason, 0, 0]));
                 }
                 Some(kind @ (MSG_DAMAGE | MSG_RECOVER | MSG_PAY_LPCOST)) => {
                     let amount = m["amount"].as_i64().unwrap_or(0) as i32;
@@ -407,6 +408,24 @@ impl Translator {
             }
         }
         None
+    }
+}
+
+/// The client's duel-end reason (text 1999 + reason, 0x508650) for an EDOPro win reason.
+fn end_reason(reason: u64) -> u32 {
+    match reason {
+        0 => 5,     // "has surrendered"
+        1 => 1,     // "Life Points have been reduced to 0"
+        2 => 2,     // "has run out of cards in the Deck"
+        3 => 11,    // "has ran out of time"
+        4 => 14,    // "has disconnected"
+        0x10 => 3,  // Exodia the Forbidden One
+        0x11 => 7,  // Final Countdown
+        0x12 => 9,  // Vennominaga the Deity of Poisonous Snakes
+        0x14 => 10, // Exodius the Ultimate Forbidden Lord
+        0x15 => 4,  // Destiny Board
+        0x16 => 6,  // Last Turn
+        _ => 8,     // "has won with" a card
     }
 }
 

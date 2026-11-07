@@ -1,7 +1,7 @@
 // Rules engine sidecar for the yo3-revival duel server: EDOPro's core (ocgcore-wasm) behind JSON lines.
 //
 // One duel per process. Each request is one line on stdin, each answer one line on stdout:
-//   {"op":"new","seed":7,"decks":[{"main":[cid…],"extra":[cid…]},{…}]}  team 0 goes first
+//   {"op":"new","seed":7,"lp":8000,"decks":[{"main":[cid…],"extra":[cid…]},{…}]}  team 0 goes first
 //   {"op":"respond","response":{…}}                                       an OcgResponse
 // Answer: {"messages":[…],"status":"await"|"end","errors":[…]}: the core's messages up to the next prompt.
 // Cards are given and reported by Konami card id (the client's "CID"): every `code` (or MOVE's `card`) in a
@@ -95,8 +95,8 @@ function run() {
   }
 }
 
-function newDuel(req: { seed: number; decks: { main: number[]; extra: number[] }[] }) {
-  const team = { startingLP: 8000, startingDrawCount: 5, drawCountPerTurn: 1 };
+function newDuel(req: { seed: number; lp?: number; decks: { main: number[]; extra: number[] }[] }) {
+  const team = { startingLP: req.lp ?? 8000, startingDrawCount: 5, drawCountPerTurn: 1 };
   const seed = BigInt(req.seed);
   handle = lib.createDuel({
     flags: OcgDuelMode.MODE_MR2,

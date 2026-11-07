@@ -44,10 +44,10 @@ impl Engine {
         Ok(Engine { child, stdin, stdout })
     }
 
-    /// Starts a duel; team 0 goes first. Decks are (main, extra) as Konami card ids.
-    pub fn new_duel(&mut self, seed: u64, decks: [(&[u16], &[u16]); 2]) -> io::Result<Answer> {
+    /// Starts a duel with `lp` each; team 0 goes first. Decks are (main, extra) as Konami card ids.
+    pub fn new_duel(&mut self, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2]) -> io::Result<Answer> {
         let decks: Vec<Json> = decks.iter().map(|(main, extra)| json!({ "main": main, "extra": extra })).collect();
-        self.call(json!({ "op": "new", "seed": seed, "decks": decks }))
+        self.call(json!({ "op": "new", "seed": seed, "lp": lp, "decks": decks }))
     }
 
     /// Answers the core's prompt (an OcgResponse object).

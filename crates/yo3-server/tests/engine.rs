@@ -17,7 +17,7 @@ fn a_duel_deals_five_each_and_asks_the_first_player() {
     let Some(mut engine) = engine() else { return };
     // 4007 = Blue-Eyes White Dragon, a Normal Monster (no script needed).
     let deck = [4007u16; 40];
-    let answer = engine.new_duel(7, [(&deck, &[]), (&deck, &[])]).expect("a duel");
+    let answer = engine.new_duel(7, 8000, [(&deck, &[]), (&deck, &[])]).expect("a duel");
     assert_eq!(answer.status, "await", "{answer:?}");
     assert!(answer.errors.is_empty(), "{:?}", answer.errors);
     // MSG_DRAW (90) for both players, with the client's card ids.
@@ -37,7 +37,7 @@ fn two_placeholder_ais_play_a_duel_to_the_end() {
     // Warwolf (level 4, 2000 ATK), 5004 = Vorse Raider (level 4, 1900 ATK), both Normal Monsters.
     let Some(mut engine) = engine() else { return };
     let deck: Vec<u16> = [6960u16; 20].into_iter().chain([5004; 20]).collect();
-    let mut answer = engine.new_duel(11, [(&deck, &[]), (&deck, &[])]).expect("a duel");
+    let mut answer = engine.new_duel(11, 8000, [(&deck, &[]), (&deck, &[])]).expect("a duel");
     let mut won = false;
     for _ in 0..5_000 {
         won |= answer.messages.iter().any(|m| m["type"] == 5);

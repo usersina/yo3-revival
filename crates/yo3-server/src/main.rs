@@ -29,6 +29,9 @@ struct Args {
     /// Players each new account starts with, comma separated (at most 4; one account per address).
     #[arg(long, value_delimiter = ',', default_value = "test")]
     players: Vec<String>,
+    /// Each player's LP at the start of a duel (lower it to reach a duel's end quickly when testing).
+    #[arg(long, default_value_t = 8000)]
+    duel_lp: u32,
 }
 
 #[tokio::main]
@@ -48,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
         game_dir: a.game_dir.unwrap_or_else(yo3_data::default_game_dir),
         log_dir: a.log_dir,
         players: a.players,
+        duel_lp: a.duel_lp,
     };
     start(cfg).await?.wait().await;
     Ok(())

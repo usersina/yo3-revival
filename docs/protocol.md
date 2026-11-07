@@ -350,9 +350,15 @@ signed change}` (DuelCockpit, clamped to 0–99999; param3 non-zero adds a pop-u
 (negative) and RECOVER, and `0xF` for LPUPDATE. Live: a direct attack took the CPU from 8000 to 5700 LP. The attack has
 no animation yet (DuelBattle's commands `0xA`–`0xE` are unmapped).
 
-The duel's end: ocgcore's WIN {winning team, reason} becomes command 2 {result: 1 this client won, 2 lost; reason 0}
-(DuelScene keeps the result at MainGamen `+0x81C`, its 1 ↔ 2 swap as the opponent's; the reason value is a **guess**).
-EDOPro's core keeps prompting after a win, so the sidecar ends the duel at the WIN message. Not yet seen live.
+The duel's end: ocgcore's WIN {winning team, reason} becomes command 2 {result, reason}. DuelScene keeps the result at
+MainGamen `+0x81C` and its 1 ↔ 2 swap as the opponent's, and adds a DuelEndEffect (`0x5083A0`) that plays
+`data/gfx/duel_win.swf` / `duel_lose.swf` / `duel_draw.swf` for result 1 / 2 / 3 (name table built at `0x754550`) with
+text 1999 + reason (`0x508650`): 1 LP 0, 2 deck out, 3 Exodia, 4 Destiny Board, 5 surrender, 6 Last Turn, 7 Final
+Countdown, 8 "won with" a card, 9 Vennominaga, 10 Exodius, 11 time out, 12 surrender, 13 disqualified, 14
+disconnected. Its update (`0x5084D0`) waits until the movie reports it has finished, then marks the effect done
+(`+0x28`). EDOPro's core keeps prompting after a win, so the sidecar ends the duel at the WIN message. Live (with
+`--duel-lp 1000`): both a win and a loss reached command 2, the case ran and the effect was created and updates every
+frame, but nothing shows and the client stays on the field: **open**.
 
 The numbering differs from Online 2's engine (whose turn change is `0x04` and LP set `0x26`), so YO2 research is a guide
 only. Next: the card map, so decks, hands and draws show.

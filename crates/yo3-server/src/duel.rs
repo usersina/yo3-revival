@@ -58,7 +58,6 @@ pub(crate) const TURN: u32 = 6;
 /// and modes 2 and 3 turn the phase panel on (0x504890).
 pub(crate) const INPUT: u32 = 4;
 const DRAW_PHASE: u32 = 0;
-const START_LP: u32 = 8000;
 /// Card commands: set a card in the engine's card table {uid, row, 0, table place} (0x521DF0), and
 /// move a card on screen {uid | row << 16, from, to} (DuelCardManager 0x4FF6A2).
 pub(crate) const CARD: u32 = 1000;
@@ -243,15 +242,16 @@ impl DuelSession {
         self.shuffle(&mut m1);
         let mut engine = Engine::start(dir).map_err(|e| tracing::warn!("rules engine not started: {e}")).ok()?;
         let seed = self.next();
-        let answer = engine.new_duel(seed, [(&m0, &e0), (&m1, &e1)]);
+        let lp = self.world.start_lp;
+        let answer = engine.new_duel(seed, lp, [(&m0, &e0), (&m1, &e1)]);
         let (translator, table) = Translator::new(first, [&entry.deck.main, &npc.main], self.world.cards.clone());
         self.engine = Some((engine, translator));
         let mut out = vec![Self::setup(first, &entry.deck, &npc)];
         out.extend(table);
         out.extend([
             command(DUEL_START, [0; 4]),
-            command(SET_LP, [CLIENT, START_LP, 0, 0]),
-            command(SET_LP, [CPU, START_LP, 0, 0]),
+            command(SET_LP, [CLIENT, lp, 0, 0]),
+            command(SET_LP, [CPU, lp, 0, 0]),
         ]);
         out.extend(self.advance(answer));
         Some(out)
@@ -308,8 +308,8 @@ impl DuelSession {
         }
         out.extend([
             command(DUEL_START, [0; 4]),
-            command(SET_LP, [CLIENT, START_LP, 0, 0]),
-            command(SET_LP, [CPU, START_LP, 0, 0]),
+            command(SET_LP, [CLIENT, self.world.start_lp, 0, 0]),
+            command(SET_LP, [CPU, self.world.start_lp, 0, 0]),
         ]);
         for player in [first, 1 - first] {
             let p = player as usize;

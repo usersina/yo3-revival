@@ -33,6 +33,8 @@ pub struct Config {
     pub log_dir: PathBuf,
     /// Players every new account starts with (one account per client address).
     pub players: Vec<String>,
+    /// Each player's LP at the start of a duel (8000; lower only to test).
+    pub duel_lp: u32,
 }
 
 impl Config {
@@ -48,6 +50,7 @@ impl Config {
             game_dir: yo3_data::default_game_dir(),
             log_dir,
             players: vec!["test".into()],
+            duel_lp: 8000,
         }
     }
 }
@@ -93,6 +96,7 @@ fn world(cfg: &Config, duel_port: u16) -> World {
                 })
                 .collect(),
             engine_dir: engine::Engine::dir(),
+            start_lp: cfg.duel_lp,
             npcs: data.npc_ids(),
             npc_decks: data
                 .npc_ids()
