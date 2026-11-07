@@ -343,6 +343,10 @@ signed change}` (DuelCockpit, clamped to 0–99999; param3 non-zero adds a pop-u
 (negative) and RECOVER, and `0xF` for LPUPDATE. Live: a direct attack took the CPU from 8000 to 5700 LP. The attack has
 no animation yet (DuelBattle's commands `0xA`–`0xE` are unmapped).
 
+The duel's end: ocgcore's WIN {winning team, reason} becomes command 2 {result: 1 this client won, 2 lost; reason 0}
+(DuelScene keeps the result at MainGamen `+0x81C`, its 1 ↔ 2 swap as the opponent's; the reason value is a **guess**).
+EDOPro's core keeps prompting after a win, so the sidecar ends the duel at the WIN message. Not yet seen live.
+
 The numbering differs from Online 2's engine (whose turn change is `0x04` and LP set `0x26`), so YO2 research is a guide
 only. Next: the card map, so decks, hands and draws show.
 

@@ -17,11 +17,26 @@ use crate::duel::{
 };
 
 /// ocgcore message types (OcgMessageType).
+const MSG_WIN: u64 = 5;
 const MSG_SELECT_BATTLECMD: u64 = 10;
 const MSG_SELECT_IDLECMD: u64 = 11;
+const MSG_SELECT_EFFECTYN: u64 = 12;
+const MSG_SELECT_YESNO: u64 = 13;
+const MSG_SELECT_OPTION: u64 = 14;
+const MSG_SELECT_CARD: u64 = 15;
 const MSG_SELECT_CHAIN: u64 = 16;
 const MSG_SELECT_PLACE: u64 = 18;
 const MSG_SELECT_POSITION: u64 = 19;
+const MSG_SELECT_TRIBUTE: u64 = 20;
+const MSG_SORT_CHAIN: u64 = 21;
+const MSG_SELECT_COUNTER: u64 = 22;
+const MSG_SELECT_DISFIELD: u64 = 24;
+const MSG_SORT_CARD: u64 = 25;
+const MSG_SELECT_UNSELECT_CARD: u64 = 26;
+const MSG_ROCK_PAPER_SCISSORS: u64 = 132;
+const MSG_ANNOUNCE_RACE: u64 = 140;
+const MSG_ANNOUNCE_ATTRIB: u64 = 141;
+const MSG_ANNOUNCE_NUMBER: u64 = 143;
 const MSG_MOVE: u64 = 50;
 const MSG_NEW_TURN: u64 = 40;
 const MSG_NEW_PHASE: u64 = 41;
@@ -33,9 +48,24 @@ const MSG_PAY_LPCOST: u64 = 100;
 /// ocgcore response types (OcgResponseType) and actions.
 const RESP_BATTLECMD: u64 = 0;
 const RESP_IDLECMD: u64 = 1;
+const RESP_EFFECTYN: u64 = 2;
+const RESP_YESNO: u64 = 3;
+const RESP_OPTION: u64 = 4;
+const RESP_CARD: u64 = 5;
+const RESP_UNSELECT_CARD: u64 = 7;
 const RESP_CHAIN: u64 = 8;
+const RESP_DISFIELD: u64 = 9;
 const RESP_PLACE: u64 = 10;
 const RESP_POSITION: u64 = 11;
+const RESP_TRIBUTE: u64 = 12;
+const RESP_COUNTER: u64 = 13;
+const RESP_SORT: u64 = 15;
+const RESP_RACE: u64 = 16;
+const RESP_ATTRIB: u64 = 17;
+const RESP_NUMBER: u64 = 19;
+const RESP_RPS: u64 = 20;
+const IDLE_SUMMON: u64 = 0;
+const IDLE_MONSTER_SET: u64 = 3;
 const IDLE_TO_BP: u64 = 6;
 const IDLE_TO_EP: u64 = 7;
 const BATTLE_CHAIN: u64 = 0;
@@ -56,6 +86,10 @@ const GRAVE: u32 = 0xE;
 const REMOVED: u32 = 0xF;
 /// The Field Spell slot.
 const FIELD_SPELL: u32 = 10;
+/// Duel end {result for this client: 1 won, 2 lost; reason} (DuelScene 0x514290).
+const DUEL_END: u32 = 2;
+const WON: u32 = 1;
+const LOST: u32 = 2;
 /// Phase panel buttons (0 DP .. 5 EP) and the input mode that turns the panel on (command 4's param1).
 const BUTTON_BP: u8 = 3;
 const BUTTON_M2: u8 = 4;
@@ -165,6 +199,10 @@ impl Translator {
                     }
                 }
                 Some(MSG_MOVE) => out.extend(self.move_card(m)),
+                Some(MSG_WIN) => {
+                    let result = if self.player(&m["player"]) == CLIENT { WON } else { LOST };
+                    out.push(command(DUEL_END, [result, 0, 0, 0]));
+                }
                 Some(kind @ (MSG_DAMAGE | MSG_RECOVER | MSG_PAY_LPCOST)) => {
                     let amount = m["amount"].as_i64().unwrap_or(0) as i32;
                     let change = if kind == MSG_RECOVER { amount } else { -amount };
@@ -373,24 +411,62 @@ fn client_phase(phase: u64) -> Option<u32> {
     })
 }
 
-/// The CPU's answer: end its turn as soon as it may, never chain. (Placeholder until an AI.)
+/// The placeholder AI's answer to any prompt (see [`cpu_answer`]).
+pub fn bot_answer(m: &Json) -> Json {
+    cpu_answer(m["type"].as_u64().unwrap_or(0), m)
+}
+
+/// The CPU's answer, and the default for the client's prompts that have no window yet. A placeholder AI: Normal
+/// Summon (or Set) the first monster it may, attack with every attacker, never chain; card selections take the first
+/// `min` cards, questions are answered yes, lists their first entry.
 fn cpu_answer(kind: u64, m: &Json) -> Json {
+    let list_len = |k: &str| m[k].as_array().map_or(0, Vec::len);
+    let first = |min: &Json, max: &Json, len: usize| {
+        let n = (min.as_u64().unwrap_or(1) as usize).max(1).min(max.as_u64().unwrap_or(1) as usize).min(len);
+        (0..n).collect::<Vec<_>>()
+    };
     match kind {
         MSG_SELECT_IDLECMD => {
-            let action = if m["to_ep"].as_bool() == Some(true) { IDLE_TO_EP } else { IDLE_TO_BP };
-            json!({ "type": RESP_IDLECMD, "action": action, "index": null })
+            let (action, index) = if list_len("summons") > 0 {
+                (IDLE_SUMMON, json!(0))
+            } else if list_len("monster_sets") > 0 {
+                (IDLE_MONSTER_SET, json!(0))
+            } else if m["to_bp"] == true {
+                (IDLE_TO_BP, Json::Null)
+            } else {
+                (IDLE_TO_EP, Json::Null)
+            };
+            json!({ "type": RESP_IDLECMD, "action": action, "index": index })
         }
+        MSG_SELECT_BATTLECMD if list_len("attacks") > 0 => json!({ "type": RESP_BATTLECMD, "action": BATTLE_ATTACK, "index": 0 }),
         MSG_SELECT_BATTLECMD => json!({ "type": RESP_BATTLECMD, "action": BATTLE_TO_EP, "index": null }),
         MSG_SELECT_CHAIN => {
             let index = if m["forced"].as_bool() == Some(true) { json!(0) } else { Json::Null };
             json!({ "type": RESP_CHAIN, "index": index })
         }
+        MSG_SELECT_CARD => json!({ "type": RESP_CARD, "indicies": first(&m["min"], &m["max"], list_len("selects")) }),
+        MSG_SELECT_TRIBUTE => json!({ "type": RESP_TRIBUTE, "indicies": first(&m["min"], &m["max"], list_len("selects")) }),
+        MSG_SELECT_UNSELECT_CARD => {
+            let index = if m["can_finish"] == true { Json::Null } else { json!(0) };
+            json!({ "type": RESP_UNSELECT_CARD, "index": index })
+        }
+        MSG_SELECT_EFFECTYN => json!({ "type": RESP_EFFECTYN, "yes": true }),
+        MSG_SELECT_YESNO => json!({ "type": RESP_YESNO, "yes": true }),
+        MSG_SELECT_OPTION => json!({ "type": RESP_OPTION, "index": 0 }),
+        MSG_SORT_CHAIN | MSG_SORT_CARD => json!({ "type": RESP_SORT, "order": null }),
+        MSG_SELECT_COUNTER => {
+            // Every counter from the first card.
+            let mut counters = vec![0; list_len("cards").max(1)];
+            counters[0] = m["count"].as_u64().unwrap_or(0);
+            json!({ "type": RESP_COUNTER, "counters": counters })
+        }
         // The first free own zone (field_mask bits set = unavailable; own monster zones bits 0-4, Spell/Trap 8-12).
-        MSG_SELECT_PLACE => {
+        MSG_SELECT_PLACE | MSG_SELECT_DISFIELD => {
             let mask = m["field_mask"].as_u64().unwrap_or(0);
             let free = (0..5).map(|s| (LOC_MZONE, s, s)).chain((0..5).map(|s| (LOC_SZONE, s, s + 8)));
             let (location, sequence) = free.into_iter().find(|(_, _, bit)| mask & 1 << bit == 0).map_or((LOC_MZONE, 0), |(l, s, _)| (l, s));
-            json!({ "type": RESP_PLACE, "places": [{ "player": m["player"], "location": location, "sequence": sequence }] })
+            let kind = if kind == MSG_SELECT_PLACE { RESP_PLACE } else { RESP_DISFIELD };
+            json!({ "type": kind, "places": [{ "player": m["player"], "location": location, "sequence": sequence }] })
         }
         // Face-up attack when allowed, else the first allowed position.
         MSG_SELECT_POSITION => {
@@ -398,6 +474,18 @@ fn cpu_answer(kind: u64, m: &Json) -> Json {
             let position = if allowed & 1 != 0 { 1 } else { 1 << allowed.trailing_zeros() };
             json!({ "type": RESP_POSITION, "position": position })
         }
-        _ => json!({ "type": RESP_CHAIN, "index": null }),
+        // The lowest `count` of the available bits.
+        MSG_ANNOUNCE_RACE | MSG_ANNOUNCE_ATTRIB => {
+            let available = m["available"].as_u64().unwrap_or(1);
+            let picked: Vec<u64> = (0..64).map(|b| 1u64 << b).filter(|b| available & b != 0).take(m["count"].as_u64().unwrap_or(1) as usize).collect();
+            let (kind, key) = if kind == MSG_ANNOUNCE_RACE { (RESP_RACE, "races") } else { (RESP_ATTRIB, "attributes") };
+            json!({ "type": kind, key: picked })
+        }
+        MSG_ANNOUNCE_NUMBER => json!({ "type": RESP_NUMBER, "value": 0 }),
+        MSG_ROCK_PAPER_SCISSORS => json!({ "type": RESP_RPS, "value": 1 }),
+        _ => {
+            tracing::warn!("rules engine: no answer for prompt {kind}");
+            json!({ "type": RESP_CHAIN, "index": null })
+        }
     }
 }

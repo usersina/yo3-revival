@@ -30,3 +30,28 @@ fn a_duel_deals_five_each_and_asks_the_first_player() {
         assert!(drawn.iter().all(|c| c["cid"] == 4007 && c["code"] == 89631139));
     }
 }
+
+#[test]
+fn two_placeholder_ais_play_a_duel_to_the_end() {
+    // Both players answered by the placeholder AI: the engine and the AI must never stall. 6960 = Gene-Warped
+    // Warwolf (level 4, 2000 ATK), 5004 = Vorse Raider (level 4, 1900 ATK), both Normal Monsters.
+    let Some(mut engine) = engine() else { return };
+    let deck: Vec<u16> = [6960u16; 20].into_iter().chain([5004; 20]).collect();
+    let mut answer = engine.new_duel(11, [(&deck, &[]), (&deck, &[])]).expect("a duel");
+    let mut won = false;
+    for _ in 0..5_000 {
+        won |= answer.messages.iter().any(|m| m["type"] == 5);
+        if answer.status != "await" {
+            break;
+        }
+        let prompt = answer.messages.last().expect("a prompt").clone();
+        answer = engine.respond(yo3_server::translate::bot_answer(&prompt)).expect("the engine answers");
+    }
+    if answer.status != "end" {
+        for m in answer.messages.iter().rev().take(3) {
+            eprintln!("last: {m}");
+        }
+    }
+    assert_eq!(answer.status, "end", "the duel finished");
+    assert!(won, "someone won (MSG_WIN)");
+}

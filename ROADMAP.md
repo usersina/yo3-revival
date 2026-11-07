@@ -105,8 +105,13 @@ Stop finding missing fields one crash at a time.
       pressed button ends the phase. Live: summon, EP, the CPU's turn, our Turn 3 with BP and EP lit
 - [x] Battle: the battle prompt offers the attackers (Attack) and M2/EP; damage, costs and recovery change the LP
       shown. Live: a direct attack, 8000 → 5700
-- [ ] Translator: attack targets (ocgcore SELECT_CARD) and animations (DuelBattle `0xA`–`0xE`), position changes,
-      field stats (ATK/DEF read 0 / 0), chains and the other prompts, the duel's end (command 2); a CPU that plays
+- [x] A placeholder CPU: it Normal Summons (or Sets) the first monster it may, attacks with everything, never chains;
+      other prompts get simple answers (first cards, yes, first option), also for the client's prompts without a window.
+      Two such AIs play a full engine duel to a win (test). Live: the CPU summoned, attacked and destroyed our monster
+      (LP 8000 → 7350; it went to the graveyard pile)
+- [ ] Translator: the client's own target and effect choices (ocgcore SELECT_CARD and co. are answered for it now),
+      attack and summon animations (DuelBattle `0xA`–`0xE`, DuelSummon `0x2A`–`0x32`), position changes, field stats
+      (ATK/DEF read 0 / 0), chains, the duel's end on screen (command 2, not seen live), results to the front server
 - [ ] Deck piles on the field (the deck count alone shows none); phase buttons (client `duelRequestName` 3)
 - [ ] NPC experience (`npcbin`) so higher levels unlock; what `0x17D4` reports; mode 4 (`0x1838` → `{host,
       port}`, started at `0x4D3066`)
@@ -153,6 +158,8 @@ Stop finding missing fields one crash at a time.
 | Hidden cards | the CPU's real rows are sent | Online 2 used placeholders; needed before PvP |
 | Menu bits for Set | 6 monster set, 7 Spell/Trap set | Both entries read "Set" |
 | Rules | EDOPro's `MODE_MR2` | Online 3 (2010) ran Master Rule 2; EDOPro's preset may differ in details |
+| CPU play | first summonable monster, attack with all, never chain | The original NPCs' AI is unknown |
+| Duel end reason | 0 | Command 2's reason values are unknown (100 takes another path) |
 | Duel port | 1214 | The original's port is unknown; the client takes whatever `duelData` says |
 | Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
 

@@ -79,12 +79,17 @@ const lib = await createCore({ sync: true });
 let handle: ReturnType<typeof lib.createDuel> = null;
 const errors: string[] = [];
 
-/** Runs the duel until it needs an answer or ends. */
+const MSG_WIN = 5;
+
+/** Runs the duel until it needs an answer or ends. The core keeps prompting after a win, so a win ends it here. */
 function run() {
-  const messages: unknown[] = [];
+  const messages: { type: number }[] = [];
   for (;;) {
     const status = lib.duelProcess(handle!);
-    messages.push(...lib.duelGetMessage(handle!));
+    const batch = lib.duelGetMessage(handle!) as { type: number }[];
+    const win = batch.findIndex((m) => m.type === MSG_WIN);
+    if (win >= 0) return { messages: [...messages, ...batch.slice(0, win + 1)], status: "end" };
+    messages.push(...batch);
     if (status === OcgProcessResult.END) return { messages, status: "end" };
     if (status === OcgProcessResult.WAITING) return { messages, status: "await" };
   }

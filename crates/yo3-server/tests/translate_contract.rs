@@ -86,7 +86,7 @@ fn the_clients_idle_prompt_becomes_a_command_map_and_an_input_wait() {
 #[test]
 fn the_cpu_ends_its_turn_and_never_chains() {
     let (mut t, _) = translator();
-    let idle = json!({ "type": 11, "player": 1, "summons": [], "to_bp": true, "to_ep": true });
+    let idle = json!({ "type": 11, "player": 1, "summons": [], "to_bp": false, "to_ep": true });
     assert_eq!(t.prompt(&idle), Prompt::Answer(json!({ "type": 1, "action": 7, "index": null })));
     let chain = json!({ "type": 16, "player": 1, "forced": false, "selects": [] });
     assert_eq!(t.prompt(&chain), Prompt::Answer(json!({ "type": 8, "index": null })));
@@ -180,4 +180,44 @@ fn damage_and_lp_changes_reach_the_lp_display() {
         out,
         [(0x10, [1, (-2300i32) as u32, 0, 0]), (0x10, [0, 500, 0, 0]), (0x10, [0, (-1000i32) as u32, 0, 0]), (0xF, [1, 5700, 0, 0])]
     );
+}
+
+#[test]
+fn the_cpu_summons_then_attacks_with_everything_then_ends_its_turn() {
+    // A placeholder AI: Normal Summon (or Set) the first monster it may, go to battle, attack with each attacker,
+    // end the turn.
+    let (mut t, _) = translator();
+    let card = json!({ "controller": 1, "location": 2, "sequence": 0 });
+    let idle = |summons: &serde_json::Value, bp| json!({ "type": 11, "player": 1, "summons": summons, "special_summons": [],
+        "pos_changes": [], "monster_sets": [], "spell_sets": [], "activates": [], "to_bp": bp, "to_ep": true });
+    assert_eq!(t.prompt(&idle(&json!([card]), true)), Prompt::Answer(json!({ "type": 1, "action": 0, "index": 0 })));
+    assert_eq!(t.prompt(&idle(&json!([]), true)), Prompt::Answer(json!({ "type": 1, "action": 6, "index": null })));
+    assert_eq!(t.prompt(&idle(&json!([]), false)), Prompt::Answer(json!({ "type": 1, "action": 7, "index": null })));
+    let battle = |attacks: serde_json::Value| json!({ "type": 10, "player": 1, "chains": [], "attacks": attacks, "to_m2": true, "to_ep": true });
+    assert_eq!(t.prompt(&battle(json!([card]))), Prompt::Answer(json!({ "type": 0, "action": 1, "index": 0 })));
+    assert_eq!(t.prompt(&battle(json!([]))), Prompt::Answer(json!({ "type": 0, "action": 3, "index": null })));
+}
+
+#[test]
+fn other_prompts_get_simple_answers() {
+    // Card selections (15 SELECT_CARD, 20 SELECT_TRIBUTE) take the first `min` cards (at least one), yes/no
+    // questions (12, 13) are answered yes, options (14) the first.
+    let (mut t, _) = translator();
+    let select = json!({ "type": 15, "player": 1, "can_cancel": false, "min": 2, "max": 3, "selects": [{}, {}, {}] });
+    assert_eq!(t.prompt(&select), Prompt::Answer(json!({ "type": 5, "indicies": [0, 1] })));
+    let tribute = json!({ "type": 20, "player": 1, "can_cancel": false, "min": 1, "max": 1, "selects": [{}, {}] });
+    assert_eq!(t.prompt(&tribute), Prompt::Answer(json!({ "type": 12, "indicies": [0] })));
+    assert_eq!(t.prompt(&json!({ "type": 13, "player": 1 })), Prompt::Answer(json!({ "type": 3, "yes": true })));
+    assert_eq!(t.prompt(&json!({ "type": 12, "player": 1 })), Prompt::Answer(json!({ "type": 2, "yes": true })));
+    assert_eq!(t.prompt(&json!({ "type": 14, "player": 1, "options": [5, 6] })), Prompt::Answer(json!({ "type": 4, "index": 0 })));
+}
+
+#[test]
+fn the_engines_win_ends_the_duel_on_the_client() {
+    // MSG_WIN (5) {player: the winning team, reason} → command 2 {result, reason}: DuelScene 0x514290 keeps the
+    // result at MainGamen+0x81C and its swap (1 ↔ 2, 0x504D00) as the opponent's, so 1 = this client won, 2 = lost.
+    // The reason (0) is a guess; 100 takes another path.
+    let (mut t, _) = translator();
+    assert_eq!(cmd(&t.events(&[json!({ "type": 5, "player": 0, "reason": 1 })])[0]), (2, [1, 0, 0, 0]));
+    assert_eq!(cmd(&t.events(&[json!({ "type": 5, "player": 1, "reason": 1 })])[0]), (2, [2, 0, 0, 0]));
 }
