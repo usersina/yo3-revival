@@ -57,8 +57,8 @@ Stop finding missing fields one crash at a time.
       the ignore list, both lists at login and on request, friends' online state pushed as they come and go, kept in
       `friends.json`; player search's friend, ignore and team tabs. Live: Yugi and Kaiba became friends, stayed so
       after a restart, and Yugi removed Kaiba
-- [ ] Main Menu → Friend List draws no rows (its count is right; the online-friends tab works): what the original
-      sent for its tab is open
+- [x] Main Menu's Friend List and Ignore List views: their search reply comes before their list, so the rows draw.
+      Live: Kaiba listed with the friend icon, online and after logging out
 - [ ] Mail and teams
 - [ ] Player search criteria we ignore: language, country, manner level, status, event
 - [ ] Main menu screens (the menu opens now): Card Album, Rental Card List, My Profile, D-Mail, Duel Log, Team,

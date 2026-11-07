@@ -81,8 +81,8 @@ Duels between players have clocks: 3 minutes a turn and 10 minutes a duel (or th
 running out loses the duel.
 
 To add a friend, open their Player Information (click them in player search) and press Send Friend Request; they
-get a friends icon at the top left, and accepting adds you to each other's lists. The search tab's two-people button
-shows your friends who are online. Friends are kept by the host's server.
+get a friends icon at the top left, and accepting adds you to each other's lists. Main Menu → Friend List shows all your
+friends; the search tab's two-people button shows the ones who are online. Friends are kept by the host's server.
 
 You can watch a friend's duel: find them in player search (they show as duelling), open Player Information and press
 Watch Duel. You see the duel from one player's side with both hands hidden, and go back to the map when it's over.

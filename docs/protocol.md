@@ -166,12 +166,17 @@ The global dispatcher keeps both lists: `0x251C` and `0x252A` replace them (the 
 | (login push) | `0x251C` friends `{friend_id, friend_name, login_flag}`, `0x252A` ignored `{black_id, black_name, login_flag}` | `login_flag` 1 = online (the dispatcher's own entries use 1); both lists are read unchecked when listing a player, so they are always sent | `0x475A20` modes 2 and 3, `0x45E734` | shape |
 | `0x24B8` / `0x24C1` (bare) | `0x251C` / `0x252A` | the left panel's friend and ignore list views ask for their list (`0x4F2FB0`, `0x4F3090`, sent by `0x459690` / `0x459760`) | tracer: `friend_id`, `friend_name`, `login_flag` found (`0x475A20`) | confirmed |
 
-Main Menu → Friend List opens the panel's list view (tab 9, `+0xCE`): it sends `0x24B8` and a search `0x2CF0
-{search_flag 0x40, search_type 1}` (`0x45B920`, which sets `+0xD4`, so a `0x2CF7` answer is ignored, and repeats it
-every 60 s). `0x251C` then fills the tab and updates its count ("Friend List(1)", `0x45BED0`), but no row is drawn:
-rows are drawn only by `0x459480` → `0x474D70` (a search answer or a cached page), which tab 9 never reaches. What the
-original server sent there is **open**. The search tab's "Display online friends." preset (`search_flag 0x40` with
-paging) is an ordinary search and lists the online friends, each with the friend icon.
+Main Menu → Friend List opens the panel's list view (tab 9, `+0xCE`, `0x459690`): it sends `0x24B8` and a search
+`0x2CF0 {search_flag 0x40, search_type 1}` with no paging (`0x45B920`, repeated every 60 s), which marks a reply
+pending (`+0xD7`) and the tab as a list (`+0xD4`). A `0x251C` fills the tab and refreshes the Flash list
+(`0x45BED0`: `setDuelInfoCount`, `DuelInfoUpdate`), whose rows come one by one from `setDuelInfo` (`0x459BA0`), which
+draws nothing while a reply is pending; a `0x2CF7` clears the pending reply but, on a `+0xD4` tab, redraws nothing. So
+the server answers the view's search with `0x2CF7` and then `0x251C`; Main Menu → Ignore List (tab 10, `0x45BA70`,
+`search_flag 0x80`) the same with `0x252A`. The team view (tab 11, `0x45BBD0`, `0x20`) sets `+0xD5` instead, so its
+`0x2CF7` redraws the tab itself. The search tab's "Display online friends." preset (`search_flag 0x40` with paging) is
+an ordinary search and lists the online friends, each with the friend icon. Live: Friend List showed Kaiba with the
+friend icon, and kept him after he logged out (`login_flag` 0 changes nothing visible in the row); Ignore List showed
+"Ignore List(0)".
 
 The server keeps friendships (both ways) and ignore lists, with the players' names, in the hub and saves them in
 `friends.json` next to the accounts. A request needs the other player online and with no request waiting (106 else,

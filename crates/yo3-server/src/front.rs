@@ -1010,7 +1010,19 @@ impl FrontSession {
                 let lang = entries.fold(Message::record().with("lang", Value::text("1")), Message::item);
                 Message::reply(0x21FC).item(lang)
             }
-            0x2CF0 => self.player_search(msg),
+            0x2CF0 => {
+                let found = self.player_search(msg);
+                // The left panel's friend and ignore list views (tabs 9 and 10, 0x45B920 / 0x45BA70) search with no
+                // paging and mark a reply pending (+0xD7), and their rows are drawn only once none is (0x459BA0): the
+                // search reply clears it, then the list fills the tab and draws it (0x458410).
+                let view = if msg.get("base_point").is_none() { msg.get("search_flag").and_then(Value::as_u32) } else { None };
+                let [friends, ignored] = self.hub().social_lists(self.player().player_id);
+                return match view {
+                    Some(0x40) => vec![found, friends],
+                    Some(0x80) => vec![found, ignored],
+                    _ => vec![found],
+                };
+            }
             // The left panel's friend and ignore list views (0x4F2FB0, 0x4F3090) ask for their lists.
             0x24B8 | 0x24C1 => {
                 let [friends, ignored] = self.hub().social_lists(self.player().player_id);

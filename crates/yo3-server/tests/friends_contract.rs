@@ -189,3 +189,24 @@ fn the_online_friends_tab_lists_only_friends() {
     assert_eq!(listed(&mut yugi, 0x20), Vec::<u32>::new(), "team");
     assert_eq!(listed(&mut yugi, 0x1), [1002, 1003], "everyone");
 }
+
+#[test]
+fn the_friend_list_view_gets_its_list_after_the_search_reply() {
+    // Main Menu's Friend List view (tab 9) sends 0x24B8 and a search 0x2CF0 {search_flag 0x40, search_type 1} with no
+    // paging (0x45B920), which marks a reply pending (+0xD7) and the tab as a list (+0xD4). The row handler (0x459BA0)
+    // draws nothing while a reply is pending, and a 0x2CF7 only clears it, so the list must follow the search reply:
+    // [0x2CF7, 0x251C]. The ignore list view (tab 10, 0x45BA70) is the same with 0x80 and 0x252A. The search tab's
+    // presets send paging fields and get the search reply alone.
+    let (_server, mut yugi, mut kaiba) = asked();
+    send(&mut kaiba, 0x24BB, &[("to_id", 1001), ("answer", 2)]);
+    let ids = |r: &[Message]| r.iter().map(|m| m.request().unwrap()).collect::<Vec<_>>();
+    let view = |c: &mut Client, flag: u32| {
+        c.send(req_with(0x2CF0, &[("search_flag", Value::U32(flag)), ("search_type", Value::U32(1))]))
+    };
+    let friends = view(&mut yugi, 0x40);
+    assert_eq!(ids(&friends), [0x2CF7, 0x251C]);
+    assert_eq!(int(&friends[1].items[0], "friend_id"), Some(1002));
+    assert_eq!(ids(&view(&mut yugi, 0x80)), [0x2CF7, 0x252A]);
+    let tab = yugi.send(req_with(0x2CF0, &[("search_flag", Value::U32(0x40)), ("search_type", Value::U32(1)), ("base_point", Value::U32(0))]));
+    assert_eq!(ids(&tab), [0x2CF7]);
+}
