@@ -83,7 +83,7 @@ impl Account {
 }
 
 /// A deck as the deck list 0x22C8 carries it (read by 0x43FC60 and 0x414410). Cards are CARD_Prop rows.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Deck {
     pub id: u32,
     pub name: String,
@@ -122,12 +122,32 @@ impl Deck {
 }
 
 /// What a player brings to the duel they are entering: the deck picked at Select Deck (0x1F4F) and,
-/// in an NPC duel, the NPC (the 0x17AC rule's cpu_id). The duel server finds it by player_id (0x200A).
-#[derive(Clone, Debug)]
+/// in an NPC duel, the NPC (the 0x17AC rule's cpu_id), in a duel between players the match's duel_id and the
+/// opponent. The duel server finds it by player_id (0x200A).
+#[derive(Clone, Debug, Default)]
 pub struct DuelEntry {
     pub deck: Deck,
     pub npc_id: Option<u32>,
+    pub duel_id: Option<u32>,
+    pub opponent: Option<u32>,
 }
+
+/// A player waiting for an automatic match (0x1798): the kind of duel and the record the opponent will see.
+struct Waiting {
+    player_id: u32,
+    match_type: u32,
+    record: Message,
+}
+
+/// Two matched players (0x1978) and their duel's rule, by duel_id.
+struct Match {
+    players: [u32; 2],
+    rule: Vec<(String, Value)>,
+}
+
+/// How long the second player's match push waits after its 0x1799, so the agent has read that first (**guess**: it
+/// takes one message per step).
+const MATCH_PUSH_DELAY: std::time::Duration = std::time::Duration::from_millis(1000);
 
 /// The end of a duel (`result` 1 won, 2 lost, 3 draw), pushed on the player's front connection: duel data (tag 7)
 /// "duelData" with children "result" {duel_result, duel_end} and "players" (the player's record {player_id} and its
@@ -231,6 +251,9 @@ pub struct Hub {
     duel_entries: HashMap<u32, DuelEntry>,
     /// Wins, losses and draws by (player_id, opponent id), since the server started.
     records: HashMap<(u32, u32), [u32; 3]>,
+    /// Players waiting for an automatic match, in order, and the matched duels.
+    waiting: Vec<Waiting>,
+    matches: HashMap<u32, Match>,
 }
 
 struct Online {
@@ -272,7 +295,30 @@ impl Hub {
     }
 
     fn leave(&mut self, id: u64) {
-        self.online.remove(&id);
+        if let Some(o) = self.online.remove(&id) {
+            self.waiting.retain(|w| w.player_id != o.player_id);
+        }
+    }
+
+    /// Queues a player for an automatic match, or matches them with the first player waiting for the same kind of
+    /// duel: then the new duel's id, the opponent, and both match pushes (the opponent's first).
+    fn wait_for_match(&mut self, me: Waiting) -> Option<(u32, [(u32, Message); 2])> {
+        self.waiting.retain(|w| w.player_id != me.player_id);
+        let Some(at) = self.waiting.iter().position(|w| w.match_type == me.match_type) else {
+            self.waiting.push(me);
+            return None;
+        };
+        let other = self.waiting.remove(at);
+        self.last_duel += 1;
+        let duel_id = self.last_duel;
+        let rule = vec![("match_type".to_string(), Value::U32(me.match_type))];
+        let push = |vs: &Message| {
+            let data = rule.iter().fold(Message::record().with("name", Value::text("duelData")), |m, (k, v)| m.with(k, v.clone()));
+            Message::reply(0x1978).item(vs.clone().with("name", Value::text("vsPlayerData"))).item(data.with("duel_id", Value::U32(duel_id)))
+        };
+        let pushes = [(other.player_id, push(&me.record)), (me.player_id, push(&other.record))];
+        self.matches.insert(duel_id, Match { players: [other.player_id, me.player_id], rule });
+        Some((duel_id, pushes))
     }
 
     fn set_room(&mut self, id: u64, room: Option<u32>) {
@@ -427,12 +473,18 @@ impl FrontSession {
             // Deck updated: the deck editor's save, and the deck a player picks for a duel (DuelManager
             // 0x50ECF0, {duel_id, event_id, update_type 1, item: the deck}), which is kept for the duel.
             0x1F4F => {
-                let duel = msg.get("duel_id").and_then(Value::as_u32).and_then(|id| self.duels.get(&id));
-                if let (Some(rule), Some(item)) = (duel, msg.items.first()) {
-                    let npc_id = rule.iter().find(|(k, _)| k == "cpu_id").and_then(|(_, v)| v.as_u32()).filter(|&id| id > 0);
-                    let entry = DuelEntry { deck: Deck::from_record(item), npc_id };
-                    let player_id = self.player().player_id;
-                    self.hub().enter_duel(player_id, entry);
+                let duel_id = msg.get("duel_id").and_then(Value::as_u32);
+                let player_id = self.player().player_id;
+                if let (Some(id), Some(item)) = (duel_id, msg.items.first()) {
+                    let deck = Deck::from_record(item);
+                    let mut hub = self.hub();
+                    if let Some(rule) = self.duels.get(&id) {
+                        let npc_id = rule.iter().find(|(k, _)| k == "cpu_id").and_then(|(_, v)| v.as_u32()).filter(|&id| id > 0);
+                        hub.enter_duel(player_id, DuelEntry { deck, npc_id, ..DuelEntry::default() });
+                    } else if let Some(m) = hub.matches.get(&id) {
+                        let opponent = m.players.into_iter().find(|&p| p != player_id);
+                        hub.enter_duel(player_id, DuelEntry { deck, duel_id: Some(id), opponent, ..DuelEntry::default() });
+                    }
                 }
                 Message::reply(0x22CA)
             }
@@ -456,6 +508,38 @@ impl FrontSession {
                 let mut hub = self.hub();
                 hub.last_join += 1;
                 Message::reply(0x1785).with("join_id", Value::U32(hub.last_join))
+            }
+            // DuelMenu (0x49D310) opens with the number of players duelling, hosting a duel and waiting for an
+            // automatic match (menu +0x58, +0x5C, +0x60).
+            0x17FC => {
+                let hub = self.hub();
+                Message::reply(0x17FD)
+                    .with("duel_playing", Value::U32(2 * hub.matches.len() as u32))
+                    .with("duel_ready", Value::U32(0))
+                    .with("duel_auto", Value::U32(hub.waiting.len() as u32))
+            }
+            // Automatic matching (DuelMenu's decideAuto, agent mode 2, step 0x4A1380): 0x1799 reads nothing, then the
+            // agent waits (0x4A1D10) for the match push 0x1978 (0x4A2D30).
+            0x1798 => {
+                let player = self.player();
+                let match_type = msg.get("match_type").and_then(Value::as_u32).unwrap_or(0);
+                let me = Waiting { player_id: player.player_id, match_type, record: player.record() };
+                let matched = self.hub().wait_for_match(me);
+                if let Some((_, [(other, to_other), (_, to_me)])) = matched {
+                    self.hub().push(other, &to_other);
+                    let outbox = self.outbox.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(MATCH_PUSH_DELAY);
+                        let _ = outbox.send(to_me);
+                    });
+                }
+                Message::reply(0x1799)
+            }
+            // The wait cancelled (0x4A15D0).
+            0x17A2 => {
+                let player_id = self.player().player_id;
+                self.hub().waiting.retain(|w| w.player_id != player_id);
+                Message::reply(0x17A3)
             }
             // Duel (step 0x4A1790): for an NPC duel the client then opens DuelManager. The item holds
             // the duel's rule (cpu_id, match_type, regulation_id, surrender, time_turn, time_total...).
@@ -508,7 +592,8 @@ impl FrontSession {
     fn duel_ready(&self, msg: &Message) -> Vec<Message> {
         let ack = Message::reply(0x17D5);
         let duel_id = msg.get("duel_id").and_then(Value::as_u32);
-        let Some(asked) = duel_id.and_then(|id| self.duels.get(&id)) else { return vec![ack] };
+        let matched = duel_id.and_then(|id| self.hub().matches.get(&id).map(|m| m.rule.clone()));
+        let Some(asked) = duel_id.and_then(|id| self.duels.get(&id).cloned()).or(matched) else { return vec![ack] };
         let rule = asked.iter().fold(Message::record().with("name", Value::text("rule")), |m, (k, v)| m.with(k, v.clone()));
         let (host, port) = &self.world.duel_server;
         let data = Message::record()

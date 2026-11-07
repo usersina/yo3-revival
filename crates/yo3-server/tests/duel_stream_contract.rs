@@ -22,7 +22,7 @@ fn session() -> DuelSession {
     let mut world = World::new((1..=20).collect());
     world.npc_decks.insert(124, deck(1000, 41, 2));
     let mut hub = Hub::default();
-    hub.enter_duel(1002, DuelEntry { deck: deck(100, 40, 0), npc_id: Some(124) });
+    hub.enter_duel(1002, DuelEntry { deck: deck(100, 40, 0), npc_id: Some(124), ..DuelEntry::default() });
     DuelSession::new(Arc::new(world), Arc::new(Mutex::new(hub)), 7)
 }
 
@@ -249,7 +249,7 @@ fn a_test_deck_replaces_the_players_main_deck() {
     world.npc_decks.insert(124, deck(1000, 41, 2));
     world.test_deck = Some(vec![7, 8]);
     let mut hub = Hub::default();
-    hub.enter_duel(1002, DuelEntry { deck: deck(100, 40, 0), npc_id: Some(124) });
+    hub.enter_duel(1002, DuelEntry { deck: deck(100, 40, 0), npc_id: Some(124), ..DuelEntry::default() });
     let mut s = DuelSession::new(Arc::new(world), Arc::new(Mutex::new(hub)), 7);
     enter(&mut s);
     let cmds = commands(&s.handle(&duel_msg(0xD, &[("choice", 1)])));

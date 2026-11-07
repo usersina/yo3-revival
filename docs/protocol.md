@@ -219,6 +219,37 @@ DuelManager (scene `0xFFFFD8FD`, constructor `0x50E470`) picks its first state b
 | `0x50F690` state 1 | (none: waits for front flag `0x8000`) | push `0x22C4`, which the global dispatcher keeps in slot 20 and flags (`0x4F4F34`) | items found by their `name` field (`0x531EB0`): `duelData` {`host` string, `port` int}, and its sub-item `rule`, which replaces MainGamen `+0x88C` (`match_type` read from it). Host and port go to DuelServerConnection (`+0x78`, `+0x94`), which connects | tracer: `host`, `port`, `name`, `match_type` found; live: the duel connection opens | confirmed; `rule` = the item of the duel's `0x17AC` (**guess**: only `match_type` is read so far) |
 | `0x50F690` state 2 | **duel connection**: `0x200A {player_id, autoSet}` (`autoSet` from the `duelOption` `auto_place`), unless MainGamen `+0x8BC` is set; then heartbeats `0x2724` every 30 s (`0x4F1730`) | no reply: the server starts the janken (see "Duel connection") | | live: `{autoSet 1, player_id 1002}` | confirmed |
 
+### Duels between players (automatic matching)
+
+The menu bar's duel button (`go_duel` in `main_menubar.swf`, enabled once the main screen unlocks) calls `GoDuel`
+(`0x46FEB0`): with the matching agent idle it opens DuelMenu (`0x49D070`, component `0xFFFFD908`,
+`duel_kind_menu.swf`); while the agent waits for a match it cancels the wait (`0x4A0BD0`). DuelMenu's callbacks
+(`0x49D8F0`): `requestDataPlayers`, `requestDataAuto`, `decideAuto`, `requestDataDuel`, `decideDataDuel`, `cancelMenu`,
+`openRegSelect`. Auto Duel offers Rule Format (Single, Match, Both) and Opponent's Level (Any, About the Same, Strong,
+Very Strong), kept in the client's own option store as `autoMatching {match_type, level}` (like `duelOption`);
+Create Duel (`duelMaking`: password, watch, lang_mask, detail, lp_start, time_turn, time_total, regulation, party…)
+is not served yet. Confirm starts the agent in mode 2, whose deck check (`0x4A0E90`) needs a local deck: a new
+player has none until Edit Deck has opened once ("There are no valid Decks available.", `0x51AB00` → 5).
+
+| Step | Request | Reply (error) | Fields read | Evidence | Status |
+|---|---|---|---|---|---|
+| DuelMenu `0x49D310` | `0x17FC` (bare) | `0x17FD` (`0x17FE`) | `duel_playing`, `duel_ready`, `duel_auto` (menu `+0x58`, `+0x5C`, `+0x60`), shown as "Duel in Progress", "Create Duel" and "Auto Duel" counts | live: the Duel Menu opens with the counts | confirmed; counts = players (**guess**) |
+| `0x4A1090` | `0x1784 {event_id 2}` | `0x1785` | `join_id` | live | confirmed |
+| `0x4A1380` | `0x1798 {event_id, join_id, match_type, level}` (the menu's choices) | `0x1799` (`0x179A`) | none | live: "Waiting for opponent." with Cancel | confirmed |
+| `0x4A15D0` (Cancel) | `0x17A2 {event_id, join_id}` | `0x17A3` (`0x17A4`) | none | code | shape |
+| `0x4A1D10` (waiting) | push `0x1978` | | goes to `0x4A2D30` at once | live | confirmed |
+| `0x4A2D30` | | push `0x1978` (`0x17CC` fails) | item `vsPlayerData` (by `name`): loaded into the opponent's PlayerData (MainGamen `+0x408`) like the player list's records; item `duelData` (by `name`): copied into MainGamen `+0x88C` as the duel's rule, its `duel_id` kept | live: "LV1 Kaiba / Default / Starting Duel / Single Mode", then the duel starts as an NPC duel does (Select Deck with a 30 s timer and an Opponent chat tab, `0x17D4`, `0x22C4`, the duel connection) | confirmed |
+
+The wait step also takes `0x17B6` (another player's offer: `playerInfo {name, player_id, pname, dlv, title}`; a
+player on the black list is declined at once, else a dialog asks) and answers `0x17CA {event_id, join_id, duel_id,
+answer}` (2 accept, 1 decline); accepting goes to `0x4A2D30`. That is how hosted duels (mode 1, `0x4A28F0`:
+`0x17B6`–`0x17B8`, `0x17C0`, `0x17CA`) meet; not served yet.
+
+The server pairs the first two players waiting for the same `match_type`, gives the duel a `duel_id`, and pushes
+`0x1978 {vsPlayerData: the opponent's record, duelData {duel_id, match_type}}` to the one who waited at once and to the
+other a second after its `0x1799` (**guess**: the agent takes one message per step). Select Deck's `0x1F4F` then
+keeps each player's deck with the opponent for the duel server, and `0x17D4` announces it as for an NPC duel.
+
 So an NPC duel does go through the duel server: the server announces it with `0x22C4`, the client connects and asks
 `0x200A`. The duel connection uses the same framing as the front but opens with no version string. Other readers of
 `duelData` (agent `0x4A2D30` for the DUEL panel: `duel_id`, `vsPlayerData`, `country`; mode 4 `0x4A3650`: `duel_id`,
