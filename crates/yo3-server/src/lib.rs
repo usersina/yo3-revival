@@ -11,6 +11,7 @@ pub mod shop;
 mod social;
 mod mail;
 mod teams;
+mod trade;
 pub mod clock;
 mod log;
 mod net;

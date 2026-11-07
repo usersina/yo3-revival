@@ -255,6 +255,29 @@ bits in every record's `pbin` (the deck editor's protector list `0x47E490` and A
 purchase of one fails (`0x1C25`). Live: P-01K for 200 BP showed "P-01K Card Protector"; Domino: Red for 100 BP
 showed "You have acquired Domino: Red!".
 
+### Card trade between players (agent step `0x4A91D0`, trade scene `CardTrade.cpp`, handler `0x4248F0`)
+
+Player Information's Send Trade Request invites; the other player answers from their bell (the global dispatcher
+keeps the invitation in slot 25, flag `0x400`); a yes opens the trade scene on both, which lists the player's trunk
+and the two offers. The scene's replies and pushes (ids from its jump table at `0x425140`, named by its log lines):
+
+| Request | Reply (error: next id, `{error_code}`) | Pushes | Evidence | Status |
+|---|---|---|---|---|
+| `0x2BC0 {to_id}` | `0x2BD7 {pname}` "Sending Trade Request to %s..." (`0x2BD8`: 106 "This player cannot receive another request.") | `0x2BC1 {from_id, from_name}` to the player: "You have received a Trade Request from %s. Accept?" | live | confirmed |
+| cancel `0x2BC4` | `0x2BDD` | `0x2BC5` to the player | research | shape |
+| answer `0x2BC2 {to_id (text, live), answer: 2 yes, 1 no}` | `0x2BDB` (OFFER_REPLY_SUCCESS, in the scene) | `0x2BC3 {answer}` to the inviter (OFFER_NOTICE): 2 opens its scene | live | confirmed |
+| ready `0x2BD5` (each scene on opening) | `0x2BED` | once both: `0x2BD6` (NOTICE_START) to both | live | confirmed |
+| offer `0x2BC6 {main_list}` (the cards dragged from the trunk, big-endian u16 rows) | `0x2BE1` "card list send ok" (`0x2BE2`: 502 offer player illegal, 503 trade error, 504 card number illegal, 505 status, 700 server error) | `0x2BCF {main_list}` to the partner (NOTICE_OTHER, read unchecked) | live: Tainted Wisdom `main_list 0011` | confirmed |
+| `0x2BC7` (the partner's scene has the offer) | `0x2BE3` | `0x2BCE` (NOTICE_OWN) and `0x2BD0` (NOTICE_CHANGE_ARRIVE) to the offerer | live | confirmed |
+| Ready to Trade. `0x2BC8 {status: 1 on, 0 off}` | `0x2BE5` | `0x2BD1 {status}` to the partner; both on: `0x2BD2` (ALLREADY) to both, which shows "Execute Trade?" | live | confirmed |
+| "Execute Trade?" `0x2BC9 {answer: 2 yes, 1 no}` (`0x427640`) | `0x2BE7` | once both answered: `0x2BCA {error_code, own_status, other_status, trade_result}` to both (LAST_CONFIRM_NOTICE; `trade_result` 1 "Trade Completed"), then a new trunk `9000` (no request asks for one there) | live: Yes sent 2; "Trade Completed", the cards changed sides | confirmed; `trade_result` 0 (a No) left the scene waiting (live, with our first guess of the Yes value), what the original sent then is open |
+| leave `0x2BCB` | `0x2BE9` | `0x2BCD` to the partner: "The trade partner has cancelled." (also when a player goes offline) | research, test | shape |
+
+The server checks each offer against what the player owns (their starter deck's cards, the ones bought or got, less
+the ones given away) and moves both offers when both said yes, in the accounts (`data/accounts.json`: `cards` and
+`given` per player). A session refreshes its player's collection from there on each trunk request, so the partner's
+next shop visit shows it too. Live: Yugi's Tainted Wisdom for Kaiba's Windstorm of Etaqua.
+
 ### Main Menu screens (MainGamen's menu `0x46FA60`)
 
 | Screen | Request | Reply (error) | Fields | Evidence | Status |

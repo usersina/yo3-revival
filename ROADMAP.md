@@ -135,7 +135,9 @@ Stop finding missing fields one crash at a time.
       "GADGET BOX.y3d", listed in Load Deck and loaded with its 40 + 1 cards
 - [x] Protectors and avatar items for BP: their shelves from the item catalogue, presents type 7 and 6, owned ids kept
       with the player in the record's pbin. Live: P-01K and Domino: Red bought
-- [ ] Card trade and rental between players
+- [x] Card trade between players: invitation, the trade scene's offers, OKs and confirmation; ownership checked and
+      the cards moved in the accounts; a new trunk after. Live: Tainted Wisdom for Windstorm of Etaqua
+- [ ] Card rental between players
 - [ ] Presents, card trade and rental, if wanted
 - **Exit:** create a player, open packs, build a deck, restart the server, everything is still there
 
@@ -299,6 +301,7 @@ Stop finding missing fields one crash at a time.
 | Teams | `level` 1 and scores 0 for every team; handing over the leadership makes the old leader a member; the founding time in Japan time | No team scores or levels exist without the original's events |
 | Search status bits | `0x1000` duelling, `0x800` hosting, `0x200` hosting Single, `0x400` hosting Match | Read from the Detailed Search texts |
 | Manner level | everyone 2 (of 0–4) | No ratings are collected yet |
+| Trade end | a refused trade sends `0x2BCA {trade_result 0}`; the trunk is pushed after a trade | The original's reply to a No, and how it refreshed the trunk, are unknown |
 | Item prices | protectors 200 BP, avatar items 100 BP, one of each | The original prices are unknown |
 | Avatar items for sale | the catalogue's parts with sub 0 (178 male, 148 female) | Read as "to acquire" next to the default (2) and starting (1) parts |
 | Wins and losses | My Profile and Player Information count duels against players only, not NPCs | The original's counting is unknown |

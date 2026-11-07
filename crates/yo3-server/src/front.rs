@@ -49,12 +49,18 @@ pub struct Player {
     pub decks: Vec<u32>,
     /// The protectors and avatar items the player owns, by pbin id (their bits in the record's pbin).
     pub items: std::collections::BTreeSet<u16>,
+    /// Cards traded away from the starter deck: CARD_Prop row -> count.
+    pub given: BTreeMap<u16, u32>,
 }
 
 /// The client language a session starts with (0x1F48 lang 1).
 const ENGLISH: u32 = 1;
 /// Everyone's manner level (evallevel 0-4, 4 the best; 0x45F786) while there are no ratings.
 const MANNER: u32 = 2;
+
+/// 0x2BE2's error codes for an offer: ERRORCODE_TRADE_CARD_NUM_ILLEGAL, ERRORCODE_TRADE_ERROR.
+const CARD_NUM_ILLEGAL: u32 = 504;
+const TRADE_ERROR: u32 = 503;
 
 /// A D-Mail's mail_type: to a player, to the sender's team.
 const MAIL_TO_PLAYER: u32 = 0;
@@ -84,6 +90,7 @@ impl Player {
             cards: BTreeMap::new(),
             decks: vec![],
             items: Default::default(),
+            given: BTreeMap::new(),
         }
     }
 
@@ -403,6 +410,9 @@ pub struct Hub {
     mail: Mailbox,
     /// Teams and the invitations waiting for an answer.
     teams: Teams,
+    /// Card trades under way, and the invitations waiting for an answer (the player invited -> the one inviting).
+    trades: Vec<crate::trade::Trade>,
+    trade_invites: HashMap<u32, u32>,
 }
 
 /// 0x251F's error codes for a friend request (0x4A522E): "This player cannot receive another request.", " The
@@ -546,6 +556,169 @@ impl Hub {
     /// Keeps the teams in `file`.
     pub fn keep_teams(&mut self, file: &std::path::Path) {
         self.teams = Teams::load(file);
+    }
+
+    /// A player as the accounts keep them (none without accounts).
+    fn saved_player(&self, player_id: u32) -> Option<Player> {
+        let d = self.directory.as_ref()?.lock().expect("directory lock");
+        d.accounts().flat_map(|(_, a)| &a.players).find(|p| p.player_id == player_id).cloned()
+    }
+
+    /// The trade a player is in, and their seat in it.
+    fn trade_of(&mut self, player_id: u32) -> Option<(&mut crate::trade::Trade, usize)> {
+        self.trades.iter_mut().find_map(|t| t.seat(player_id).map(|s| (t, s)))
+    }
+
+    /// Ends a player's trade (they left the scene or the server): the partner gets 0x2BCD ("The trade partner has
+    /// cancelled.").
+    fn end_trade(&mut self, player_id: u32) {
+        let Some(at) = self.trades.iter().position(|t| t.seat(player_id).is_some()) else { return };
+        let trade = self.trades.remove(at);
+        for p in trade.players.into_iter().filter(|&p| p != player_id) {
+            self.push(p, &Message::reply(0x2BCD));
+        }
+    }
+
+    /// The card trade requests (agent step 0x4A91D0 and the trade scene, handler 0x4248F0). Each reply's error twin is
+    /// the id after it, with an error_code.
+    fn trade_request(&mut self, (me, my_name): (u32, &str), id: u32, msg: &Message, world: &World) -> Message {
+        let int = |k: &str| msg.get(k).and_then(|v| v.as_u32().or_else(|| v.as_str()?.trim().parse().ok())).unwrap_or(0);
+        let fail = |reply: u32, code: u32| Message::reply(reply + 1).with("error_code", Value::U32(code));
+        match id {
+            // Invite {to_id} -> 0x2BD7 {pname}; the player gets 0x2BC1 {from_id, from_name} on the bell. 106 when
+            // they are away, invited, or trading.
+            0x2BC0 => {
+                let to = int("to_id");
+                let busy = self.trade_invites.contains_key(&to) || self.trades.iter().any(|t| t.seat(to).is_some());
+                let Some(name) = self.online.values().find(|o| o.player_id == to).map(|o| o.name.clone()) else {
+                    return fail(0x2BD7, REQUEST_WAITING);
+                };
+                if busy || to == me {
+                    return fail(0x2BD7, REQUEST_WAITING);
+                }
+                self.trade_invites.insert(to, me);
+                self.push(to, &Message::reply(0x2BC1).with("from_id", Value::U32(me)).with("from_name", Value::text(my_name)));
+                Message::reply(0x2BD7).with("pname", Value::text(&name))
+            }
+            // The inviter cancels -> 0x2BDD; the player gets 0x2BC5.
+            0x2BC4 => {
+                let invited: Vec<u32> = self.trade_invites.iter().filter(|(_, from)| **from == me).map(|(&to, _)| to).collect();
+                for to in invited {
+                    self.trade_invites.remove(&to);
+                    self.push(to, &Message::reply(0x2BC5));
+                }
+                Message::reply(0x2BDD)
+            }
+            // The answer {to_id: the inviter, answer: 2 yes, 1 no} -> 0x2BDB; the inviter gets 0x2BC3 {answer}, and a
+            // yes opens both scenes.
+            0x2BC2 => {
+                let Some(from) = self.trade_invites.remove(&me) else { return fail(0x2BDB, 0) };
+                let answer = int("answer");
+                self.push(from, &Message::reply(0x2BC3).with("answer", Value::U32(answer)));
+                if answer == ACCEPTED {
+                    self.trades.push(crate::trade::Trade::new([from, me]));
+                }
+                Message::reply(0x2BDB)
+            }
+            // The scene is ready -> 0x2BED; once both are, both get 0x2BD6 (NOTICE_START).
+            0x2BD5 => {
+                let Some((trade, seat)) = self.trade_of(me) else { return fail(0x2BED, 0) };
+                trade.ready[seat] = true;
+                if trade.ready == [true; 2] {
+                    let players = trade.players;
+                    for p in players {
+                        self.push(p, &Message::reply(0x2BD6));
+                    }
+                }
+                Message::reply(0x2BED)
+            }
+            // An offer {main_list} -> 0x2BE1; the partner gets 0x2BCF {main_list}. 504 for cards the player doesn't
+            // have. A new offer takes back both OKs.
+            0x2BC6 => {
+                let rows: Vec<u16> = msg.get("main_list").and_then(Value::as_bytes).unwrap_or_default().as_chunks::<2>().0.iter().map(|b| u16::from_be_bytes(*b)).collect();
+                let player = self.saved_player(me);
+                if player.is_some_and(|p| !crate::trade::owns(world, &p, &rows)) {
+                    return fail(0x2BE1, CARD_NUM_ILLEGAL);
+                }
+                let Some((trade, seat)) = self.trade_of(me) else { return fail(0x2BE1, TRADE_ERROR) };
+                trade.offers[seat] = rows.clone();
+                trade.ok = [false; 2];
+                let partner = trade.players[1 - seat];
+                self.push(partner, &Message::reply(0x2BCF).with("main_list", Value::u16_be_array(&rows)));
+                Message::reply(0x2BE1)
+            }
+            // The partner saw the offer -> 0x2BE3; the offerer gets 0x2BCE and 0x2BD0.
+            0x2BC7 => {
+                let Some((trade, seat)) = self.trade_of(me) else { return fail(0x2BE3, TRADE_ERROR) };
+                let partner = trade.players[1 - seat];
+                self.push(partner, &Message::reply(0x2BCE));
+                self.push(partner, &Message::reply(0x2BD0));
+                Message::reply(0x2BE3)
+            }
+            // OK {status: 1 on, 0 off} -> 0x2BE5; the partner gets 0x2BD1 {status}, and with both on both get 0x2BD2.
+            0x2BC8 => {
+                let status = int("status");
+                let Some((trade, seat)) = self.trade_of(me) else { return fail(0x2BE5, TRADE_ERROR) };
+                trade.ok[seat] = status == 1;
+                trade.answers = [None; 2];
+                let (players, both) = (trade.players, trade.ok == [true; 2]);
+                self.push(players[1 - seat], &Message::reply(0x2BD1).with("status", Value::U32(status)));
+                if both {
+                    for p in players {
+                        self.push(p, &Message::reply(0x2BD2));
+                    }
+                }
+                Message::reply(0x2BE5)
+            }
+            // "Execute Trade?" {answer: 2 yes, 1 no (live: Yes sent 2)} -> 0x2BE7; once both answered, both get 0x2BCA
+            // {error_code, own_status, other_status, trade_result: 1 done}, and with two yeses the cards change hands
+            // and both get a new trunk.
+            0x2BC9 => {
+                let yes = int("answer") == ACCEPTED;
+                let Some((trade, seat)) = self.trade_of(me) else { return fail(0x2BE7, TRADE_ERROR) };
+                trade.answers[seat] = Some(yes);
+                let [Some(first), Some(second)] = trade.answers else { return Message::reply(0x2BE7) };
+                let at = self.trades.iter().position(|t| t.seat(me).is_some()).expect("the trade");
+                let trade = self.trades.remove(at);
+                let done = first && second && self.exchange(&trade, world);
+                let answers = [first, second];
+                for (s, &p) in trade.players.iter().enumerate() {
+                    let result = Message::reply(0x2BCA)
+                        .with("error_code", Value::U32(0))
+                        .with("own_status", Value::U32(answers[s] as u32))
+                        .with("other_status", Value::U32(answers[1 - s] as u32))
+                        .with("trade_result", Value::U32(done as u32));
+                    self.push(p, &result);
+                    if done && let Some(player) = self.saved_player(p) {
+                        self.push(p, &crate::trade::trunk(world, &player));
+                    }
+                }
+                Message::reply(0x2BE7)
+            }
+            // Leaving the scene -> 0x2BE9; the partner gets 0x2BCD.
+            0x2BCB => {
+                self.end_trade(me);
+                Message::reply(0x2BE9)
+            }
+            _ => fail(id, 0),
+        }
+    }
+
+    /// Hands a trade's offers over, both still owned; whether it happened.
+    fn exchange(&mut self, trade: &crate::trade::Trade, world: &World) -> bool {
+        let Some(d) = self.directory.clone() else { return false };
+        let mut d = d.lock().expect("directory lock");
+        let saved = |d: &crate::accounts::Directory, id: u32| d.accounts().flat_map(|(_, a)| &a.players).find(|p| p.player_id == id).cloned();
+        let owned = trade.players.iter().zip(&trade.offers).all(|(&p, offer)| saved(&d, p).is_some_and(|p| crate::trade::owns(world, &p, offer)));
+        if !owned {
+            return false;
+        }
+        for s in 0..2 {
+            let (giver, offer, taker) = (trade.players[s], trade.offers[s].clone(), trade.players[1 - s]);
+            d.update_player(giver, |p| crate::trade::give(p, &offer));
+            d.update_player(taker, |p| crate::trade::receive(p, &offer));
+        }
+        true
     }
 
     /// Pushes to every member of a team who is online, but `except`.
@@ -820,6 +993,8 @@ impl Hub {
             }
             self.waiting.retain(|w| w.player_id != o.player_id);
             self.hosts.retain(|_, h| h.player_id != o.player_id);
+            self.trade_invites.retain(|to, from| *to != o.player_id && *from != o.player_id);
+            self.end_trade(o.player_id);
             let withdrawn: Vec<(u32, u32)> = self.hosts.iter().filter(|(_, h)| h.offer == Some(o.player_id)).map(|(&d, h)| (d, h.player_id)).collect();
             for (duel_id, host) in withdrawn {
                 self.withdraw(duel_id, host);
@@ -1127,20 +1302,17 @@ impl FrontSession {
                 if self.find_player(msg).or(self.selected).is_none() {
                     return vec![];
                 }
-                // Copied wholesale into the trunk dataset (and kept in slot 18). cards / noTrade: owned
-                // and untradeable count per card at row - 1 (0x410DB0); the NPC duel writes into both
-                // unchecked (0x4F6A82). Players own their starter deck's cards and the cards they bought.
-                let mut cards = vec![0u8; self.world.card_rows];
-                let bought = self.selected.map(|at| self.account.players[at].cards.clone()).unwrap_or_default();
-                let starter = self.world.starter_deck.iter().flat_map(Deck::cards).map(|row| (row, 1));
-                for (row, count) in starter.chain(bought) {
-                    if let Some(n) = (row as usize).checked_sub(1).and_then(|i| cards.get_mut(i)) {
-                        *n = n.saturating_add(count.min(255) as u8);
+                // Players own their starter deck's cards and the cards they bought or got in trades, less the ones
+                // traded away. A trade changes the partner's collection in the accounts, so take it from there.
+                if let (Some(at), Some(d)) = (self.selected, &self.directory) {
+                    let id = self.account.players[at].player_id;
+                    let saved = d.lock().expect("directory lock").accounts().flat_map(|(_, a)| &a.players).find(|p| p.player_id == id).cloned();
+                    if let Some(saved) = saved {
+                        let me = &mut self.account.players[at];
+                        (me.cards, me.given) = (saved.cards, saved.given);
                     }
                 }
-                let no_trade = Value::Bin(vec![0; self.world.card_rows]);
-                let trunk = Message::reply(9000)
-                    .item(Message::record().with("cards", Value::Bin(cards)).with("noTrade", no_trade));
+                let trunk = crate::trade::trunk(&self.world, self.player());
                 // The client never asks for its friend and black lists; the global dispatcher stores
                 // 0x251C in dataset slot 6 and 0x252A in slot 7, and listing any player reads both
                 // without a NULL check (0x45E6D0, 0x45E810). Likewise the rental records 0x2D6C (slot 8),
@@ -1376,6 +1548,13 @@ impl FrontSession {
                 }
             }
             0x1838 => self.watch(msg),
+            // Card trades (Player Information's Send Trade Request, then the trade scene).
+            0x2BC0 | 0x2BC4 | 0x2BC2 | 0x2BD5 | 0x2BC6 | 0x2BC7 | 0x2BC8 | 0x2BC9 | 0x2BCB => {
+                let p = self.player();
+                let me = (p.player_id, p.name.clone());
+                let world = self.world.clone();
+                self.hub().trade_request((me.0, &me.1), id, msg, &world)
+            }
             // Teams (the Team window 0x4BBEC0 asks 0x2AFB then 0x2AFD; so do the main screen's startup steps).
             0x2AFB => self.hub().team_info(self.player().player_id),
             0x2AFD => self.hub().team_members(self.player().player_id),

@@ -100,7 +100,10 @@ side deck and the main or extra deck, then press the arrow at the top left to go
 The shop also sells card protectors (200 BP) and avatar items (100 BP): Avatar Settings and the deck editor offer
 them once bought.
 
-Not yet: trading and rental in the shop. Players' decks stay on their own machines (in `Documents\Yu-Gi-Oh! ONLINE 3`).
+To trade cards, open a player's Player Information and press Send Trade Request; once they accept, drag cards from
+your trunk into your half of the table, press Ready to Trade., and answer Yes to "Execute Trade?".
+
+Not yet: card rental. Players' decks stay on their own machines (in `Documents\Yu-Gi-Oh! ONLINE 3`).
 
 ## When something goes wrong
 

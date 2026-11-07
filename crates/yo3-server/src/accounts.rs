@@ -60,6 +60,11 @@ impl Directory {
                 player.title = p["title"].as_u64().unwrap_or(0) as u32;
                 player.decks = p["decks"].as_array().into_iter().flatten().filter_map(|d| d.as_u64()).map(|d| d as u32).collect();
                 player.items = p["items"].as_array().into_iter().flatten().filter_map(|i| i.as_u64()).map(|i| i as u16).collect();
+                for pair in p["given"].as_array().into_iter().flatten() {
+                    if let (Some(row), Some(count)) = (pair[0].as_u64(), pair[1].as_u64()) {
+                        player.given.insert(row as u16, count as u32);
+                    }
+                }
                 for pair in p["cards"].as_array().into_iter().flatten() {
                     if let (Some(row), Some(count)) = (pair[0].as_u64(), pair[1].as_u64()) {
                         player.cards.insert(row as u16, count as u32);
@@ -197,9 +202,10 @@ impl Directory {
                     .map(|p| {
                         let avatar: String = p.avatar.iter().map(|b| format!("{b:02x}")).collect();
                         let cards: Vec<[u32; 2]> = p.cards.iter().map(|(&row, &n)| [row as u32, n]).collect();
+                        let given: Vec<[u32; 2]> = p.given.iter().map(|(&row, &n)| [row as u32, n]).collect();
                         json!({ "player_id": p.player_id, "name": p.name, "level": p.level, "avatar": avatar,
                             "speeches": p.speeches, "comments": p.comments, "title": p.title, "cards": cards, "decks": p.decks,
-                            "items": p.items })
+                            "items": p.items, "given": given })
                     })
                     .collect();
                 json!({ "address": addr.to_string(), "user_id": a.user_id, "dpoint": a.dpoint, "players": players })
