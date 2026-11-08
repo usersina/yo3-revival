@@ -49,6 +49,17 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
 
    Two friends behind the same router (the same public address) share one account; a VPN gives each their own.
 
+   If a friend's address changes (a new VPN address, another network), they arrive as a new, empty account. Move
+   their old one to the new address, with the server stopped; their players, cards, BP, decks and records go along:
+
+   ```sh
+   ./yo3-server move-account 100.64.0.7 100.64.0.9            # the old address, then the new one
+   ./yo3-server move-account 100.64.0.7 100.64.0.9 --replace  # if they already connected from the new address
+   ```
+
+   Without `--replace` the server refuses to overwrite the account it made at the new address, and names its players
+   (`--replace` discards that one, so check it's the empty newcomer).
+
    The flag next to a player's name (Player Information, player search, the tournament bracket) is a setting of the
    account, because the game never tells the server where its player lives. Left alone it follows the game's language
    (English shows the UK flag, Japanese Japan, and so on); to give a friend's account another one:

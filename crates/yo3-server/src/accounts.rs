@@ -167,6 +167,28 @@ impl Directory {
         Ok(())
     }
 
+    /// Moves the account at `from` to `to`, for a friend whose address changed (everything else keys players and
+    /// accounts by id). An account already at `to` (made when the friend first connected from there) is discarded
+    /// only with `replace`.
+    pub fn move_account(&mut self, from: IpAddr, to: IpAddr, replace: bool) -> Result<(), String> {
+        if from == to {
+            return Err(format!("{from} is already the account's address"));
+        }
+        if !self.by_address.contains_key(&from) {
+            return Err(format!("no account at {from}"));
+        }
+        if let Some(there) = self.by_address.get(&to)
+            && !replace
+        {
+            let names: Vec<&str> = there.players.iter().map(|p| p.name.as_str()).collect();
+            return Err(format!("{to} already has an account ({}); pass --replace to discard it", names.join(", ")));
+        }
+        let account = self.by_address.remove(&from).expect("checked above");
+        self.by_address.insert(to, account);
+        self.save();
+        Ok(())
+    }
+
     /// Sets the country flag of the account at `addr` (an ISO code of the client's `countrytbl.bin`, two letters in
     /// any case); an empty code clears it, so the flag follows the client's language again.
     pub fn set_country(&mut self, addr: IpAddr, code: &str) -> Result<(), String> {

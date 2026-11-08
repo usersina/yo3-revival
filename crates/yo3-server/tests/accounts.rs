@@ -200,3 +200,36 @@ fn several_players_change_together_or_not_at_all() {
     assert!(!d.update_players(with_a_ghost));
     assert_eq!(d.player(a).unwrap().level, 5, "the first was not changed either");
 }
+
+#[test]
+fn the_host_moves_an_account_to_a_friends_new_address() {
+    // Accounts are keyed by address only (friends, mail, records and rentals by player and user id), so a friend whose
+    // address changed gets their account back by moving it: players, BP and cards go along, kept in the file.
+    let file = accounts_file("move");
+    let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
+    let old = d.account_for(ip(1));
+    d.update_player(old.players[0].player_id, |p| {
+        p.cards.insert(10, 2);
+    });
+    d.move_account(ip(1), ip(9), false).unwrap();
+    let d = Directory::open(vec!["Yugi".into()], &file).unwrap();
+    let moved: Vec<_> = d.accounts().map(|(addr, a)| (addr, a.user_id, a.players[0].player_id)).collect();
+    assert_eq!(moved, [(ip(9), old.user_id, old.players[0].player_id)]);
+    assert_eq!(d.player(old.players[0].player_id).unwrap().cards.get(&10), Some(&2));
+}
+
+#[test]
+fn moving_onto_an_address_with_an_account_needs_replace() {
+    // The friend may have connected from the new address first, which made a fresh account there: refused unless the
+    // host says to discard it. Moving from an address with no account, or onto itself, is refused.
+    let mut d = Directory::new(vec!["Yugi".into()]);
+    let old = d.account_for(ip(1));
+    let fresh = d.account_for(ip(2));
+    assert!(d.move_account(ip(1), ip(2), false).unwrap_err().contains("--replace"));
+    assert!(d.move_account(ip(3), ip(4), false).is_err());
+    assert!(d.move_account(ip(1), ip(1), true).is_err());
+    d.move_account(ip(1), ip(2), true).unwrap();
+    let left: Vec<_> = d.accounts().map(|(addr, a)| (addr, a.user_id)).collect();
+    assert_eq!(left, [(ip(2), old.user_id)]);
+    assert!(d.player(fresh.players[0].player_id).is_none(), "the discarded account's players are gone");
+}

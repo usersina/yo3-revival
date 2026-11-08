@@ -577,7 +577,7 @@ Stop finding missing fields one crash at a time.
 | Duel's end push `0x2009` | sent when the engine ends the duel; `duel_end` 1 (normal: no effect) or 3 (cancelled before it began); no `score_<id>`; `dlogURL` for duels between players | The original timing is unknown. Values settled by `0x515BD3`/`0x518631`: 2, 3 dialog `0x2918`; 4 "has disconnected" (we don't send it); 5 opens the result |
 | Result screen counts | `win`/`lose`/`draw` = totals against this opponent including this duel, `*_add` = this duel's change; kept in memory | The client only shows them ("Wins 1 (+001)") |
 | Duel port | 1214 | The original's port is unknown; the client takes whatever `duelData` says |
-| Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
+| Accounts | one per client address; the host moves one to a new address with `move-account` | The client sends no credentials; friends behind one address share an account |
 | Uploaded decks | the decks a duel's Select Deck sent, ten per player by name, listed after the starter and bought decks | The client has no other upload; the original server's deck storage is unknown |
 | Deck check | sizes, ownership per Konami id, the duel's regulation, refused with `0x22CB` (client text `0x2919`: settled, `0x50ECF0` compares only `0x22CA`/`0x22CB` and never uses `error_code`) | The rules of the check are ours |
 | Player names | the starting names (`--players`, default Duelist) made unique with a number; players make more at Select Player (at most 16 characters, unique ignoring case: **guess**), the host can still `add-player` / `rename` | The original's name rules are unknown; a team's leader can't be deleted and an account keeps one player (ours) |

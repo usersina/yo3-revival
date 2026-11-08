@@ -71,6 +71,15 @@ enum Admin {
     AddPlayer { address: IpAddr, name: String },
     /// Rename a player.
     Rename { old: String, new: String },
+    /// Move the account at OLD to NEW, for a friend whose address changed: players, cards, BP, decks and records go
+    /// along. An account already at NEW (made when the friend first connected from there) is only discarded with
+    /// --replace.
+    MoveAccount {
+        old: IpAddr,
+        new: IpAddr,
+        #[arg(long)]
+        replace: bool,
+    },
     /// Set the country flag the account at ADDRESS shows to others (a code from the client's table, such as FR or
     /// JP: `countries` lists them); "auto" goes back to the one the client's language implies.
     SetCountry { address: IpAddr, code: String },
@@ -91,6 +100,7 @@ fn admin(command: Admin, data_dir: &std::path::Path, players: Vec<String>, game_
         }
         Admin::AddPlayer { address, name } => d.add_player(address, &name).map_err(anyhow::Error::msg)?,
         Admin::Rename { old, new } => d.rename(&old, &new).map_err(anyhow::Error::msg)?,
+        Admin::MoveAccount { old, new, replace } => d.move_account(old, new, replace).map_err(anyhow::Error::msg)?,
         Admin::SetCountry { address, code } => {
             let code = if code.eq_ignore_ascii_case("auto") { String::new() } else { code.to_ascii_uppercase() };
             let known = yo3_data::countries(&game_dir)?;

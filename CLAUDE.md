@@ -57,7 +57,8 @@ cargo run --release -p yo3-server -- --log-dir logs --players Yugi,Kaiba   # ser
 ss -ltnp | grep ':5730 '                                        # find the server's pid to stop it
 #   state: accounts and records persist in data/ (ignored; --data-dir), backed up into data/backups/ at each start
 target/release/yo3-server accounts                              # admin (server stopped): list, add-player ADDR NAME, rename OLD NEW,
-#   set-country ADDR CODE|auto (the flag others see; `countries` lists the client's codes)
+#   set-country ADDR CODE|auto (the flag others see; `countries` lists the client's codes), move-account OLD NEW
+#   [--replace] (a friend's address changed: the account goes along; --replace discards one already at NEW)
 tools/release.sh                                                # the host's bundles in dist/ (Linux, Windows); the friends' guide is docs/friends.md
 #   once: rustup target add x86_64-pc-windows-gnu (mingw-w64 links it). A Windows build under Wine needs its own prefix
 #   (WINEPREFIX=.wine-c): vclient.sh stop kills every process of the default prefix
