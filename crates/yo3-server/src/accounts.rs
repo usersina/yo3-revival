@@ -22,6 +22,9 @@ pub const MAX_NAME: usize = 16;
 /// The BOOSTERPASS Points (the shop's BP, the account's dpoint) a new account starts with: 50 packs (**guess**).
 pub const START_BP: u32 = 5000;
 
+/// A change to one player (`Directory::update_players`).
+pub type PlayerChange<'a> = (u32, Box<dyn FnOnce(&mut Player) + 'a>);
+
 pub struct Directory {
     player_names: Vec<String>,
     by_address: HashMap<IpAddr, Account>,
@@ -270,7 +273,7 @@ impl Directory {
 
     /// Changes several players in one step and one save (a trade hands cards both ways): all of them or, when one is
     /// not there, none. Whether it was done.
-    pub fn update_players(&mut self, changes: Vec<(u32, Box<dyn FnOnce(&mut Player) + '_>)>) -> bool {
+    pub fn update_players(&mut self, changes: Vec<PlayerChange<'_>>) -> bool {
         if changes.iter().any(|(id, _)| self.player(*id).is_none()) {
             return false;
         }

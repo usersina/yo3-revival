@@ -191,11 +191,11 @@ fn several_players_change_together_or_not_at_all() {
     let mut d = Directory::new(vec!["Yugi".into(), "Kaiba".into()]);
     let players = d.account_for(ip(1)).players;
     let (a, b) = (players[0].player_id, players[1].player_id);
-    let both: Vec<(u32, Box<dyn FnOnce(&mut yo3_server::front::Player)>)> =
+    let both: Vec<yo3_server::accounts::PlayerChange> =
         vec![(a, Box::new(|p| p.level = 5)), (b, Box::new(|p| p.level = 6))];
     assert!(d.update_players(both));
     assert_eq!((d.player(a).unwrap().level, d.player(b).unwrap().level), (5, 6));
-    let with_a_ghost: Vec<(u32, Box<dyn FnOnce(&mut yo3_server::front::Player)>)> =
+    let with_a_ghost: Vec<yo3_server::accounts::PlayerChange> =
         vec![(a, Box::new(|p| p.level = 9)), (4242, Box::new(|p| p.level = 9))];
     assert!(!d.update_players(with_a_ghost));
     assert_eq!(d.player(a).unwrap().level, 5, "the first was not changed either");

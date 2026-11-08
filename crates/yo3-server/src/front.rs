@@ -1277,7 +1277,7 @@ impl Hub {
             return false;
         }
         // Both directions in one step and one save: a crash between four saves would leave half a trade.
-        let mut changes: Vec<(u32, Box<dyn FnOnce(&mut Player) + '_>)> = vec![];
+        let mut changes: Vec<crate::accounts::PlayerChange> = vec![];
         for s in 0..2 {
             let (giver, taker) = (trade.players[s], trade.players[1 - s]);
             let offer = &trade.offers[s];
