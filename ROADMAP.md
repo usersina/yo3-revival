@@ -202,6 +202,43 @@ from `127.0.0.2` and `127.0.0.3`, the real clients being busy in the duel) invit
 for the inviter (`0x2BD8` 106), both OK, both yes, `0x2BCA` and the trunks. Not done live: the trade scene on the real
 client (unchanged by this work), a sidecar that really hangs (covered by the engine test).
 
+## ▶ Monkey testing (2026-11-08): two monkeys, what they covered and found
+
+Tools: `crates/yo3-monkey` (protocol monkey, run through `tools/monkey/protocol-monkey.sh`) and
+`tools/monkey/ui-monkey.py` (the two real headless clients); how to run them is in CLAUDE.md (Commands).
+
+Protocol monkey (a supervised server on a scratch data dir; plans from a seed and the packet logs' real requests,
+replayed in order and shuffled, fields mutated, random and garbage frames, drips, reconnects, plans as the clients of
+four accounts, floods, HTTP junk; a canary logging in and listing players; rss/fds/threads/data-dir sampling; panic and
+ERROR scan; Auto Duel pairs and NPC duels played with random commands, picks, dialog results, phase buttons, leaving at
+random moments; SIGKILL and restart on the same data):
+- fuzz seeds 1-1500: 49,464 messages; http-only 400 plans; 1500 client addresses (`addrs`); a flood of 400 connections
+  every 12 s in every soak.
+- soaks (24 or 20 connections plus duel pairs): 300 s x2 (about 0.9 M messages each), 600 s multi-account (79,423 plans,
+  3.1 M messages, 99 duel pairs, 58 duel results), 2400 s (131,160 plans, 5.1 M messages, 237 duel pairs, 81 results),
+  180 s with 7 SIGKILLs (1.2 M messages). Duel-only: 40 pairs (71 duel connections, 54 began, 33 results, 4,207 random
+  actions). Peak server rss 205 MB, 455 fds, which fall back to 14 fds; canary p99 under 175 ms (a 24-connection load).
+- Result: no panic, no ERROR, no death, no stall, no fd leak, no corrupt data file after crashes, clean restarts.
+
+UI monkey: 40 min (seed 3): 4,845 actions (clicks, random clicks, right clicks, drags, keys, typing), 6 Auto Duel rounds,
+12 duel connections, 8 duel results, clients killed mid-duel and logged in again; no crash, no dialog, no server
+trouble, no stall. A second pass of 20 min is recorded below. The Documents folder was restored and verified identical.
+
+Findings:
+- [x] 1 The packet log grew without limit (2.6 GB in five minutes of a client that only sends). It now rotates at
+      128 MB and keeps four files per run. Test: `log.rs` `the_packet_log_rotates_and_keeps_only_its_newest_files`.
+- Monkey-side, not server bugs: Delete Player and Create Player (`0x1F4A/B`) changed the account the canary logged in
+      as (a deleted Kaiba: no reply to `0x1F4C`, as designed), so the monkey leaves them out; a canary refused while the
+      monkey itself kills the server is expected.
+- Open, by design: one account per client address means new addresses keep making accounts (about 2 KB of file and 40 KB
+  of memory each; 1500 addresses were fine). Only a spoofing client could do this over TCP. Rotation is per run: a
+  server restarted often keeps four files each time.
+- Open, client: with the server frozen (SIGSTOP) the client goes to a black screen and shows no "no response" dialog
+  within 60 s; the UI monkey's OCR check for that dialog was not exercised live because the server answered every
+  request. OCR itself reads the client's text (tested on the Duel Menu).
+- Real-client requests the server answers with nothing: duel `0x200A` (the first seat waits for the second, by design)
+  and `0x200C` (duel messages that only produce commands). Nothing else was UNHANDLED.
+
 ## ✅ M0: Research and tooling
 
 - [x] Feasibility study ([docs/research.md](docs/research.md))
