@@ -20,13 +20,7 @@ impl Social {
     /// The friends and ignore lists kept in `file` (read now if it exists, written after each change).
     pub fn load(file: &Path) -> Social {
         let mut social = Social { file: Some(file.to_path_buf()), ..Social::default() };
-        let saved = match crate::store::read(file) {
-            Ok(saved) => saved.unwrap_or(Json::Null),
-            Err(e) => {
-                tracing::warn!("friends not read: {e}");
-                Json::Null
-            }
-        };
+        let saved = crate::store::read_or_keep(file, "friends");
         let pairs = |k: &str| -> Vec<(u32, u32)> {
             let pair = |p: &Json| Some((p[0].as_u64()? as u32, p[1].as_u64()? as u32));
             saved[k].as_array().into_iter().flatten().filter_map(pair).collect()

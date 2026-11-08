@@ -69,13 +69,7 @@ impl Mailbox {
     /// The mail kept in `file` (read now if it exists, written after each change).
     pub fn load(file: &Path) -> Mailbox {
         let mut mailbox = Mailbox { file: Some(file.to_path_buf()), ..Mailbox::default() };
-        let saved = match crate::store::read(file) {
-            Ok(saved) => saved.unwrap_or(Json::Null),
-            Err(e) => {
-                tracing::warn!("mail not read: {e}");
-                Json::Null
-            }
-        };
+        let saved = crate::store::read_or_keep(file, "mail");
         mailbox.last_id = saved["last_id"].as_u64().unwrap_or(0) as u32;
         for mail in saved["waiting"].as_array().into_iter().flatten().filter_map(Mail::from_json) {
             mailbox.waiting.entry(mail.to.0).or_default().push(mail);

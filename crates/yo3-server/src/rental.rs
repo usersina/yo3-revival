@@ -120,13 +120,7 @@ impl Rentals {
     /// The rentals kept in `file` (read now if it exists, written after each change).
     pub fn load(file: &Path) -> Rentals {
         let mut rentals = Rentals { file: Some(file.to_path_buf()), ..Rentals::default() };
-        let saved = match crate::store::read(file) {
-            Ok(saved) => saved.unwrap_or(Json::Null),
-            Err(e) => {
-                tracing::warn!("rentals not read: {e}");
-                Json::Null
-            }
-        };
+        let saved = crate::store::read_or_keep(file, "rentals");
         rentals.all = saved["rentals"].as_array().into_iter().flatten().filter_map(Rental::from_json).collect();
         rentals.last_id = rentals.all.iter().map(|r| r.id).max().unwrap_or(0).max(saved["last_id"].as_u64().unwrap_or(0) as u32);
         rentals

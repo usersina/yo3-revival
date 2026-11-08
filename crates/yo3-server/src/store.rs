@@ -18,6 +18,26 @@ pub fn read(path: &Path) -> io::Result<Option<Json>> {
     }
 }
 
+/// The file's JSON for a side file that may start empty (`Json::Null` when it doesn't exist yet). A file that won't
+/// parse is not thrown away: the next save would overwrite it, and the docs invite hand-editing. It is renamed to
+/// `NAME.corrupt-<time>` and said so loudly, and the caller starts empty.
+pub fn read_or_keep(path: &Path, what: &str) -> Json {
+    match read(path) {
+        Ok(saved) => saved.unwrap_or(Json::Null),
+        Err(e) => {
+            let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S%.3f");
+            let mut kept = path.as_os_str().to_owned();
+            kept.push(format!(".corrupt-{stamp}"));
+            let kept = std::path::PathBuf::from(kept);
+            match fs::rename(path, &kept) {
+                Ok(()) => tracing::error!("{what} NOT LOADED: {e}. The file was kept as {} (fix it and put it back); starting empty", kept.display()),
+                Err(re) => tracing::error!("{what} NOT LOADED: {e}. It could not be moved aside either ({re}); the next save overwrites it"),
+            }
+            Json::Null
+        }
+    }
+}
+
 /// Writes the whole file (pretty, so the host can read and edit it).
 pub fn write(path: &Path, value: &Json) -> io::Result<()> {
     if let Some(dir) = path.parent() {
@@ -30,8 +50,21 @@ pub fn write(path: &Path, value: &Json) -> io::Result<()> {
 
 /// Copies the data directory's JSON files into `backups/<time>/`, keeping the newest few.
 pub fn back_up(dir: &Path) -> io::Result<()> {
+    // Only files that parse are backed up: a damaged file must not rotate the last good copy out.
+    let parses = |p: &std::path::PathBuf| match fs::read(p).map(|b| serde_json::from_slice::<Json>(&b)) {
+        Ok(Ok(_)) => true,
+        _ => {
+            tracing::error!("{} does not parse; it is not backed up", p.display());
+            false
+        }
+    };
     let files: Vec<_> = match fs::read_dir(dir) {
-        Ok(entries) => entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).collect(),
+        Ok(entries) => entries
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == "json"))
+            .filter(parses)
+            .collect(),
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(e),
     };
@@ -52,4 +85,47 @@ pub fn back_up(dir: &Path) -> io::Result<()> {
         fs::remove_dir_all(old)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dir(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("yo3-store-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn a_file_that_does_not_parse_is_kept_not_overwritten() {
+        let d = dir("corrupt");
+        let file = d.join("friends.json");
+        fs::write(&file, "{ \"friends\": [[1, 2]").unwrap();
+        assert_eq!(read_or_keep(&file, "friends"), Json::Null);
+        assert!(!file.exists(), "moved aside");
+        let kept: Vec<_> = fs::read_dir(&d).unwrap().filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        assert_eq!(kept.len(), 1);
+        assert!(kept[0].starts_with("friends.json.corrupt-"), "{kept:?}");
+        assert_eq!(fs::read_to_string(d.join(&kept[0])).unwrap(), "{ \"friends\": [[1, 2]");
+        // A missing file is simply new.
+        assert_eq!(read_or_keep(&d.join("none.json"), "none"), Json::Null);
+    }
+
+    #[test]
+    fn a_damaged_file_is_not_backed_up() {
+        let d = dir("backup");
+        write(&d.join("good.json"), &serde_json::json!({ "a": 1 })).unwrap();
+        fs::write(d.join("bad.json"), "{{{").unwrap();
+        back_up(&d).unwrap();
+        let backup = fs::read_dir(d.join("backups")).unwrap().next().unwrap().unwrap().path();
+        assert!(backup.join("good.json").is_file());
+        assert!(!backup.join("bad.json").exists());
+        // With nothing sound to copy no backup directory is made, so none of the good ones is rotated out.
+        let d = dir("backup-none");
+        fs::write(d.join("bad.json"), "{{{").unwrap();
+        back_up(&d).unwrap();
+        assert!(!d.join("backups").exists());
+    }
 }

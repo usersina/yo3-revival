@@ -578,14 +578,10 @@ impl Hub {
     /// A hub whose duel records are kept in `file` (read now if it exists, written after each duel).
     pub fn with_records(file: &std::path::Path) -> Hub {
         let mut hub = Hub { records_file: Some(file.to_path_buf()), ..Hub::default() };
-        match crate::store::read(file) {
-            Ok(saved) => {
-                for r in saved.iter().flat_map(|s| s["records"].as_array()).flatten() {
-                    let n = |k: &str| r[k].as_u64().unwrap_or(0) as u32;
-                    hub.records.insert((n("player_id"), n("opponent")), [n("win"), n("lose"), n("draw")]);
-                }
-            }
-            Err(e) => tracing::warn!("records not read: {e}"),
+        let saved = crate::store::read_or_keep(file, "records");
+        for r in saved["records"].as_array().into_iter().flatten() {
+            let n = |k: &str| r[k].as_u64().unwrap_or(0) as u32;
+            hub.records.insert((n("player_id"), n("opponent")), [n("win"), n("lose"), n("draw")]);
         }
         hub
     }
@@ -839,13 +835,7 @@ impl Hub {
     /// duels die with the server, and its players are no longer in the lobby), so it ends there without a winner.
     pub fn keep_events(&mut self, file: &std::path::Path) {
         self.events_file = Some(file.to_path_buf());
-        let saved = match crate::store::read(file) {
-            Ok(saved) => saved.unwrap_or(serde_json::Value::Null),
-            Err(e) => {
-                tracing::warn!("events not read: {e}");
-                serde_json::Value::Null
-            }
-        };
+        let saved = crate::store::read_or_keep(file, "events");
         self.last_event = self.last_event.max(saved["last_event"].as_u64().unwrap_or(0) as u32);
         let kept = saved["events"].as_array().into_iter().flatten().filter_map(crate::events::Event::from_json);
         self.events = kept.filter(|e| e.status == crate::events::OPEN).collect();

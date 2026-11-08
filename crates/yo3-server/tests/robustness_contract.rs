@@ -392,3 +392,25 @@ fn a_matched_player_whose_client_dies_before_the_duel_frees_the_match() {
     let pushed = b.pushed();
     assert!(pushed.iter().any(|m| m.request() == Some(0x2009)), "{pushed:?}");
 }
+
+#[test]
+fn a_corrupt_side_file_is_kept_aside_and_not_overwritten_by_the_next_save() {
+    // friends.json (and mail, teams, rentals, records, events) that wouldn't parse logged a warning, started empty and
+    // was overwritten by the next save, though the docs invite hand-editing it.
+    let dir = std::env::temp_dir().join(format!("yo3-corrupt-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let broken = "{ \"friends\": [[1001, 1002]], oops";
+    std::fs::write(dir.join("friends.json"), broken).unwrap();
+    let mut hub = Hub::default();
+    hub.keep_social(&dir.join("friends.json"));
+    hub.befriend((1001, "Yugi"), (1003, "Joey"));
+    let kept: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_name().to_string_lossy().starts_with("friends.json.corrupt-"))
+        .collect();
+    assert_eq!(kept.len(), 1, "the bad file is still there");
+    assert_eq!(std::fs::read_to_string(kept[0].path()).unwrap(), broken);
+    assert!(dir.join("friends.json").is_file(), "and the new one holds the new friendship");
+}
