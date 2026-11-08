@@ -3,7 +3,19 @@
 Research date: 2026-11-06. Client examined: `yo3.exe` built 2011-07-01, last patch `p11070600`.
 
 > Snapshot from before any server code existed. Its tool paths are out of date (`tools/re/` now), and the plan in
-> §5 continues in [ROADMAP.md](../ROADMAP.md). Protocol facts found since then live in [protocol.md](protocol.md).
+> §5 continues in [roadmap.md](roadmap.md). Protocol facts found since then live in [protocol.md](protocol.md).
+
+**Contents**
+
+- [Verdict](#verdict)
+- [1. What's inside your install (verified locally)](#1-whats-inside-your-install-verified-locally)
+- [2. Wire format (from ygo3-research source, consistent with the file codec)](#2-wire-format-from-ygo3-research-source-consistent-with-the-file-codec)
+- [3. Konami's duel engine vocabulary is stable from 2008 to 2022](#3-konamis-duel-engine-vocabulary-is-stable-from-2008-to-2022)
+- [4. Existing projects to build on](#4-existing-projects-to-build-on)
+- [5. Plan](#5-plan)
+- [6. Leads worth chasing](#6-leads-worth-chasing)
+- [7. Legal hygiene (not legal advice)](#7-legal-hygiene-not-legal-advice)
+- [Tools in tools/](#tools-in-tools)
 
 ## Verdict
 

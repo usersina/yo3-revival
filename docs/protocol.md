@@ -11,6 +11,35 @@ of:
 
 The contract tests in `crates/yo3-server/tests/front_contract.rs` enforce the confirmed shapes.
 
+**Contents**
+
+- [Wire format](#wire-format)
+- [Gate (TCP 5730)](#gate-tcp-5730)
+- [Front (TCP 1213)](#front-tcp-1213)
+  - [Login (dispatcher 0x469C00, LoginWindow.cpp)](#login-dispatcher-0x469c00-loginwindowcpp)
+  - [Main screen (MainGamen polls 0x472EDC…, global dispatcher 0x4F4A00)](#main-screen-maingamen-polls-0x472edc-global-dispatcher-0x4f4a00)
+  - [Info and chat windows](#info-and-chat-windows)
+  - [Chat (ChatWindow dispatcher 0x435950)](#chat-chatwindow-dispatcher-0x435950)
+  - [Friends and the ignore list (community agent 0x4A4EE0)](#friends-and-the-ignore-list-community-agent-0x4a4ee0)
+  - [D-Mail (MailWindow 0x4AC6B0, dmail_main.swf)](#d-mail-mailwindow-0x4ac6b0-dmail_mainswf)
+  - [Teams (the community agent's modes 5–12, Team window 0x4BBEC0, main_teaminfo.swf)](#teams-the-community-agents-modes-512-team-window-0x4bbec0-main_teaminfoswf)
+  - [Card trade between players (agent step 0x4A91D0, trade scene CardTrade.cpp, handler 0x4248F0)](#card-trade-between-players-agent-step-0x4a91d0-trade-scene-cardtradecpp-handler-0x4248f0)
+  - [Card rental between players (agent steps 0x4A9D80 and 0x4AA430, rental scene CardRental.cpp, handler 0x41C7E0)](#card-rental-between-players-agent-steps-0x4a9d80-and-0x4aa430-rental-scene-cardrentalcpp-handler-0x41c7e0)
+  - [Country (flags)](#country-flags)
+  - [Manner ratings (dlg_manner.swf, DuelResult 0x512A40, dialog 0x4C2A10/0x4C3F20)](#manner-ratings-dlg_mannerswf-duelresult-0x512a40-dialog-0x4c2a100x4c3f20)
+  - [Main Menu screens (MainGamen's menu 0x46FA60)](#main-menu-screens-maingamens-menu-0x46fa60)
+  - [Shop (shopmain.cpp, handler 0x48AA60)](#shop-shopmaincpp-handler-0x48aa60)
+  - [Events (TournamentScene, UserEventScene)](#events-tournamentscene-usereventscene)
+  - [Decks (deck editor DeckEditTest, handler 0x43FC60)](#decks-deck-editor-deckedittest-handler-0x43fc60)
+  - [NPC duels and duel start](#npc-duels-and-duel-start)
+  - [Duels between players (automatic matching)](#duels-between-players-automatic-matching)
+- [Duel connection](#duel-connection)
+  - [Duel log files (0x512070, 0x498700, 0x498B10, duellog.rs)](#duel-log-files-0x512070-0x498700-0x498b10-duellogrs)
+- [Accounts](#accounts)
+- [Fields the client reads that we leave out](#fields-the-client-reads-that-we-leave-out)
+- [Requests with a timeout](#requests-with-a-timeout)
+- [Families seen in the client, not mapped yet](#families-seen-in-the-client-not-mapped-yet)
+
 ## Wire format
 
 - Frame: `u32 BE (len(body) ^ 0x77777777)` + body.
@@ -928,7 +957,7 @@ command 4):
   hand card 1 → `{CommandID 4, player 0, position 11, index 1}`.
 
 Carrying out a command needs the rules: which cards may do what, and what follows. The server runs EDOPro's core for
-that (`engine/`, see ROADMAP M5); `translate.rs` maps its draws, turns and phases to the commands above (ocgcore phases
+that (`engine/`, see roadmap.md, M5); `translate.rs` maps its draws, turns and phases to the commands above (ocgcore phases
 1, 2, 4, 8–`0x80`, `0x100`, `0x200` → 0–5), its idle-command prompt to a command map (summons bit 4, special
 summons 2, position changes 5, 8 or 9 by the card's position as last shown (Flip Summon face down, to Attack
 Position in face-up defense, to Defence Position in attack: offering both showed "to Attack Position" on an attack
@@ -1322,7 +1351,7 @@ onto the front connection object (`+0x118`/`+0x134`, on `0x219F`) and never seri
 accounts apart by an account key in the patch URL (below), else by the client's address, and lets the player pick
 one of up to four players at Select Player
 (`0x1F4C {player_id}`). Select Player also makes and deletes players (`0x1F4A`, `0x1F4B`, above), by slot (`pindex`
-0-3, kept with the account); the host can name them ahead too (see `docs/friends.md`). `CharMake.cpp`
+0-3, kept with the account); the host can name them ahead too (see `docs/guide.md`). `CharMake.cpp`
 (`0x2CF5`/`0x2CF6`, the map's `GoCharMake`) is the appearance editor. The Delete Player dialog's "Enter your Password"
 is not sent: `0x1F4B` carries `player_id` only (live packet), and `0x1F47` is bare, `0x1F48` carries `lang` only, so
 the client has no user id or password field to answer.

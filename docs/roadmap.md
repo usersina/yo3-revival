@@ -3,6 +3,39 @@
 Goal: play Yu-Gi-Oh! ONLINE 3 with friends on our own server. Each milestone ends in something checked against the
 real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in the same commit as the work.
 
+**Contents**
+
+- [Status](#status)
+- [▶ Overnight plan (2026-11-07): everything left, end to end](#-overnight-plan-2026-11-07-everything-left-end-to-end)
+- [▶ Windows VM test (2026-11-08): what a real Windows client turned up](#-windows-vm-test-2026-11-08-what-a-real-windows-client-turned-up)
+- [▶ Robustness review (2026-11-08): what three code reviews found, and the fixes](#-robustness-review-2026-11-08-what-three-code-reviews-found-and-the-fixes)
+- [▶ Monkey testing (2026-11-08): two monkeys, what they covered and found](#-monkey-testing-2026-11-08-two-monkeys-what-they-covered-and-found)
+- [▶ Screenshot session (2026-11-08): two things seen playing NPC duels](#-screenshot-session-2026-11-08-two-things-seen-playing-npc-duels)
+- [✅ M0: Research and tooling](#-m0-research-and-tooling)
+- [✅ M1: Stable world](#-m1-stable-world)
+- [✅ M2: An instrumented client](#-m2-an-instrumented-client)
+- [▶ M3: A social world](#-m3-a-social-world)
+- [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
+- [✅ M5: Duels](#-m5-duels)
+- [▶ M6: Play with friends](#-m6-play-with-friends)
+- [Open questions and guesses (revisit)](#open-questions-and-guesses-revisit)
+  - [Settled by the client's own code (no longer guesses)](#settled-by-the-clients-own-code-no-longer-guesses)
+- [Leads (outside the code)](#leads-outside-the-code)
+
+## Status
+
+As of 2026-11-08 the server covers every feature the client uses: M0 to M2 (research, a stable world, an instrumented
+client) and M5 (duels) are done, M3 (social) and M6 (play with friends) are done apart from checking on real friends'
+machines, and M4 (accounts, collection and economy) has one open item, the deck list's own save. Two duel problems found since are open (screenshot session). What is left is
+tracked as `[ ]` boxes in the sections below and in "Open questions and guesses".
+
+| Where | What it is |
+|---|---|
+| The dated sections (overnight plan, Windows VM test, robustness review, monkey testing, screenshot session) | What each work session did and found |
+| M0 to M6 | The milestones, each ending in something checked against the real client |
+| Open questions and guesses | Every value we picked without client evidence, to revisit |
+| Leads | Ideas outside the code |
+
 ## ▶ Overnight plan (2026-11-07): everything left, end to end
 
 Goal: finish what the client can use, then hand over for the real friend test. Each slice goes the usual way
@@ -254,9 +287,24 @@ Findings:
 - Real-client requests the server answers with nothing: duel `0x200A` (the first seat waits for the second, by design)
   and `0x200C` (duel messages that only produce commands). Nothing else was UNHANDLED.
 
+## ▶ Screenshot session (2026-11-08): two things seen playing NPC duels
+
+Found while playing Kaiba Corporation duels on the headless client for the README's screenshots (Elemental Heroes
+and Miracle Magic official decks). Neither is fixed or traced yet.
+
+- [ ] Magical Hats (a Trap, chained to an attack) stalls the duel: after "Yes", the target pick works, then a
+      "Select the monster(s) to Special Summon" list shows five or more Spell/Trap cards. Picking one only marks it (1);
+      no OK button shows, Return and a right click do nothing, and the server logs no further request, so the client
+      waits forever. The prompt's wording and card kind don't fit the card, so the select message's kind or min/max for
+      this card is probably wrong.
+- [ ] A card's art went wrong once: after Mystical Space Typhoon was activated from the hand in a chain with Call of the
+      Haunted, a Normal Summon from the hand (Elemental Hero Sparkman, 1600/1400) landed on the field with Mystical
+      Space Typhoon's art, and the hand showed the Typhoon's art for a card that was not one. Stats were right, so the
+      card id sent for that hand slot or table entry is stale. Seen once; not reproduced.
+
 ## ✅ M0: Research and tooling
 
-- [x] Feasibility study ([docs/research.md](docs/research.md))
+- [x] Feasibility study ([research.md](research.md))
 - [x] Wire crypto and message format; the client's data files decode with the same codec
 - [x] Headless client on Xvfb with a virtual mouse; the client's own debug trace captured
 - [x] Annotated disassembly, RTTI map, reply-dispatch router, Ghidra headless export
@@ -527,7 +575,7 @@ Stop finding missing fields one crash at a time.
       players' names made unique (Duelist, Duelist2…)
 - [x] Admin commands: `accounts`, `add-player ADDRESS NAME` (name a friend's player before they connect), `rename`
 - [x] Linux release bundle (`tools/release.sh`: server, engine sources, `run.sh`) and the setup guide for the host
-      and the players (`docs/friends.md`: `yo3.ini`, Windows or Wine, LAN / VPN / port forwarding)
+      and the players (`docs/guide.md`: `yo3.ini`, Windows or Wine, LAN / VPN / port forwarding)
 - [x] A native Windows server build: `tools/release.sh` cross-compiles `yo3-server.exe` (x86_64-pc-windows-gnu,
       mingw-w64) into a zip with `run.cmd` and `engine\fetch.cmd`. Live: under Wine, a client logged in through it
 - [x] Chain questions follow the player's Activation Message option (Manual / Semi Auto Cancel / Auto Cancel): the

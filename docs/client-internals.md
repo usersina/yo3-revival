@@ -4,6 +4,15 @@ What we know about `yo3.exe` and its data. Addresses are virtual addresses in th
 `0x400000`). Decompiled C for every function is in `re/yo3_decompiled.c` (git-ignored; regenerate with the Ghidra
 export, see [CLAUDE.md](../CLAUDE.md)).
 
+**Contents**
+
+- [The binary](#the-binary)
+- [Key objects and functions](#key-objects-and-functions)
+- [The field tracer](#the-field-tracer)
+- [Data formats](#data-formats)
+- [Behaviours worth knowing](#behaviours-worth-knowing)
+- [Crash history (and the rule each one taught)](#crash-history-and-the-rule-each-one-taught)
+
 ## The binary
 
 - Window title "Yu-Gi-Oh! ONLINE 3 ver.1.153". Built 2011-07-01 with MSVC 2008, 32-bit, unpacked, no anti-cheat.

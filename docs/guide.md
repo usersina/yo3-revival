@@ -1,8 +1,15 @@
-# Playing Yu-Gi-Oh! ONLINE 3 with friends
+# Hosting and joining: playing Yu-Gi-Oh! ONLINE 3 with friends
 
 One person (the host) runs the server; everyone, the host included, plays with the original game client pointed at
 it. This server is unofficial and has nothing to do with Konami. It ships no game files: every player needs their own
 install of the client (the last version, from 2012).
+
+**Contents**
+
+- [For the host](#for-the-host)
+- [For every player](#for-every-player)
+- [What works and what doesn't yet](#what-works-and-what-doesnt-yet)
+- [When something goes wrong](#when-something-goes-wrong)
 
 ## For the host
 
