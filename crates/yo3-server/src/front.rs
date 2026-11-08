@@ -512,6 +512,8 @@ pub struct Hub {
     /// Players waiting for an automatic match, in order, and the matched duels.
     waiting: Vec<Waiting>,
     matches: HashMap<u32, Match>,
+    /// The latest duel ids whose match is over, so a duel connection arriving late finds out instead of making a table.
+    ended: std::collections::VecDeque<u32>,
     /// Hosted duels by duel_id.
     hosts: HashMap<u32, Host>,
     /// The duel server's tables of the matched duels, by duel_id.
@@ -1491,6 +1493,12 @@ impl Hub {
     pub fn end_match(&mut self, duel_id: u32, winner: Option<u32>) {
         self.matches.remove(&duel_id);
         self.tables.remove(&duel_id);
+        if !self.ended.contains(&duel_id) {
+            self.ended.push_back(duel_id);
+            if self.ended.len() > 4096 {
+                self.ended.pop_front();
+            }
+        }
         let Some(at) = self.events.iter().position(|e| e.round.iter().any(|(d, _)| *d == duel_id)) else { return };
         let event = &mut self.events[at];
         let Some(i) = event.round.iter().position(|(d, _)| *d == duel_id) else { return };
@@ -1506,6 +1514,18 @@ impl Hub {
         } else {
             self.save_events();
         }
+    }
+
+    /// Whether the match of this duel is over (its table is gone for good).
+    pub fn ended(&self, duel_id: u32) -> bool {
+        self.ended.contains(&duel_id)
+    }
+
+    /// The opponent left before the duel began: `winner` gets the result screen's `0x2009` as a win, with the records
+    /// as they were (nothing is counted for a duel that never started).
+    pub fn walkover(&self, winner: u32, loser: u32) {
+        let record = self.records.get(&(winner, loser)).copied().unwrap_or_default();
+        self.push(winner, &duel_over(winner, 1, record));
     }
 
     /// The duels of an event's round under way (tests).

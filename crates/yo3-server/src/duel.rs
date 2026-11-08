@@ -252,6 +252,10 @@ pub struct DuelSession {
     table: Option<(Arc<Mutex<Table>>, usize)>,
     /// Watching a duel between players: nothing it sends matters after 0x1838.
     watching: bool,
+    /// The turn order was taken (against the CPU, once per duel): no second engine for a repeated 0xD or janken.
+    ordered: bool,
+    /// The duel this connection came for is over (its match ended before it sat): nothing it sends matters.
+    closed: bool,
 }
 
 impl Drop for DuelSession {
@@ -276,6 +280,8 @@ impl DuelSession {
             outbox: None,
             table: None,
             watching: false,
+            ordered: false,
+            closed: false,
         }
     }
 
@@ -291,6 +297,13 @@ impl DuelSession {
         let seed = self.next();
         let table = {
             let mut hub = self.hub.locked();
+            // The match is over already (the other player left before this one connected): no table to make for a
+            // partner who isn't coming; this player is told and sent to the result.
+            if hub.ended(duel_id) {
+                hub.walkover(player_id, entry.opponent.unwrap_or(0));
+                self.closed = true;
+                return vec![command(DUEL_END, [crate::translate::WON, 14, 0, 0])];
+            }
             let make = || Arc::new(Mutex::new(Table::new(self.world.clone(), self.hub.clone(), duel_id, seed)));
             let table = hub.tables.entry(duel_id).or_insert_with(make).clone();
             hub.duel_began(duel_id);
@@ -332,7 +345,7 @@ impl DuelSession {
     pub fn handle(&mut self, packet: &Packet) -> Vec<Message> {
         let Packet::Message(msg) = packet else { return vec![] };
         let int = |k| msg.get(k).and_then(Value::as_u32);
-        if self.watching {
+        if self.watching || self.closed {
             return vec![];
         }
         match (msg.request(), int("duelRequestName")) {
@@ -361,7 +374,7 @@ impl DuelSession {
                 vec![command(JANKEN_BEGIN, [0; 4])]
             }
             _ if self.table.is_some() => self.at_table(msg),
-            (Some(CLIENT_DUEL), Some(SELECT_HAND)) => self.janken(int("selectHand").unwrap_or(0) % 3),
+            (Some(CLIENT_DUEL), Some(SELECT_HAND)) if !self.ordered => self.janken(int("selectHand").unwrap_or(0) % 3),
             (Some(CLIENT_DUEL), Some(CARD_COMMAND)) => {
                 let prompt = CardCommand::from_message(msg).and_then(|cmd| self.engine.as_mut().and_then(|(_, t)| t.command(cmd)));
                 self.prompted(prompt)
@@ -385,7 +398,7 @@ impl DuelSession {
                 let prompt = int("DLGResult").and_then(|n| self.engine.as_mut().and_then(|(_, t)| t.dialog_result(n)));
                 self.prompted(prompt)
             }
-            (Some(CLIENT_DUEL), Some(SELECT_FIRST)) => {
+            (Some(CLIENT_DUEL), Some(SELECT_FIRST)) if !self.ordered => {
                 let order = if int("choice") == Some(SECOND) { SECOND } else { FIRST };
                 self.turn_order(order)
             }
@@ -414,6 +427,7 @@ impl DuelSession {
 
     /// The player's turn order, then the duel's opening.
     fn turn_order(&mut self, order: u32) -> Vec<Message> {
+        self.ordered = true;
         let mut out = vec![command(FIRST_RESOLVE, [order, 0, 0, 0])];
         let first = if order == FIRST { CLIENT } else { CPU };
         let opening = match self.world.engine_dir.clone() {

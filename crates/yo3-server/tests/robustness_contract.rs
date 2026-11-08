@@ -60,7 +60,7 @@ impl Seat {
     }
 }
 
-fn table(world: World) -> (Seat, Seat, Arc<Mutex<Hub>>) {
+fn table_for(world: World) -> (Seat, Seat, Arc<Mutex<Hub>>) {
     let world = Arc::new(world);
     let hub = Arc::new(Mutex::new(Hub::default()));
     for (me, them, row) in [(1001, 1002, 1), (1002, 1001, 2)] {
@@ -92,7 +92,7 @@ fn commands(replies: &[Message]) -> Vec<(u32, [u32; 4])> {
 
 /// Both seated, 1001 won the janken (rock against scissors).
 fn after_janken(world: World) -> (Seat, Seat, Arc<Mutex<Hub>>) {
-    let (mut a, mut b, hub) = table(world);
+    let (mut a, mut b, hub) = table_for(world);
     enter(&mut a, 1001);
     enter(&mut b, 1002);
     a.pushed();
@@ -274,4 +274,67 @@ fn the_same_goes_for_an_npc_duel() {
     let out = session.handle(&Packet::Message(m));
     assert_eq!(commands(&out).last(), Some(&NO_RESULT));
     assert!(std::fs::read_to_string(calls).unwrap().len() < 50);
+}
+
+#[test]
+fn a_player_leaving_before_the_duel_started_sends_the_opponent_out() {
+    // Left in the janken, the opponent waited forever: only a started duel notified it. Now it gets the end at once
+    // (command 2 {1 won, 14 disconnected}), and nothing is counted for a duel that never began.
+    let (mut a, mut b, hub) = table_for(world(None));
+    enter(&mut a, 1001);
+    enter(&mut b, 1002);
+    b.pushed();
+    drop(a);
+    assert_eq!(commands(&b.pushed()), [(2, [1, 14, 0, 0])]);
+    assert_eq!(hub.lock().unwrap().record_result(1002, 1001, 0), [0, 0, 0], "nothing counted");
+}
+
+#[test]
+fn a_player_leaving_in_the_turn_order_choice_sends_the_opponent_out_too() {
+    let (mut a, mut b, hub) = after_janken(world(None));
+    b.pushed();
+    drop(a);
+    assert_eq!(commands(&b.pushed()), [(2, [1, 14, 0, 0])]);
+    let _ = hub;
+}
+
+#[test]
+fn a_second_player_arriving_after_the_first_left_is_not_given_an_orphan_table() {
+    let (mut a, mut b, hub) = table_for(world(None));
+    enter(&mut a, 1001);
+    drop(a);
+    // The match is over: 1002 is told, and nothing waits for a partner who never comes.
+    assert_eq!(commands(&enter(&mut b, 1002)), [(2, [1, 14, 0, 0])]);
+    assert!(b.send(0xC, &[("selectHand", 1)]).is_empty());
+    assert!(hub.lock().unwrap().ended(DUEL));
+}
+
+#[test]
+fn the_turn_order_is_taken_once() {
+    // A second 0xD (a replayed or hostile client) opened another engine process each time.
+    let (dir, calls) = nagging_engine("once-table");
+    let (mut a, _b, _hub) = after_janken(world(Some(dir)));
+    a.send(0xD, &[("choice", 1)]);
+    let asked = std::fs::read_to_string(&calls).unwrap().len();
+    assert!(asked > 0);
+    assert!(a.send(0xD, &[("choice", 1)]).is_empty());
+    assert!(a.send(0xD, &[("choice", 2)]).is_empty());
+    assert_eq!(std::fs::read_to_string(&calls).unwrap().len(), asked, "no new engine");
+
+    let (dir, calls) = nagging_engine("once-npc");
+    let mut world = world(Some(dir));
+    world.npc_decks.insert(124, Deck { main: vec![2; 40], ..Deck::default() });
+    let mut hub = Hub::default();
+    hub.enter_duel(1001, DuelEntry { deck: Deck { main: vec![1; 40], ..Deck::default() }, npc_id: Some(124), ..DuelEntry::default() });
+    let mut session = DuelSession::new(Arc::new(world), Arc::new(Mutex::new(hub)), 9);
+    enter_session(&mut session, 1001);
+    let choose = |s: &mut DuelSession| {
+        let m = Message::reply(0x200C).with("duelRequestName", Value::U32(0xD)).with("choice", Value::U32(1));
+        s.handle(&Packet::Message(m))
+    };
+    choose(&mut session);
+    let asked = std::fs::read_to_string(&calls).unwrap().len();
+    assert!(asked > 0);
+    assert!(choose(&mut session).is_empty());
+    assert_eq!(std::fs::read_to_string(&calls).unwrap().len(), asked, "no new engine");
 }

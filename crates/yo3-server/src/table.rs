@@ -73,6 +73,10 @@ pub struct Table {
     janken: [u32; 3],
     /// Seats in Card Swap between a match's duels, until they are done (0xE).
     swapping: [bool; 2],
+    /// Duels of the match that ended so far (drawn ones too).
+    played: u32,
+    /// The turn order was taken for the duel to come (once per janken).
+    ordered: bool,
     over: bool,
     rng: u64,
 }
@@ -97,6 +101,8 @@ impl Table {
             history: vec![],
             janken: [0; 3],
             swapping: [false; 2],
+            played: 0,
+            ordered: false,
             over: false,
             rng: seed | 1,
         }
@@ -149,9 +155,10 @@ impl Table {
     /// The janken winner's choice (1 first, 2 second): the order from each side, then the duel's opening.
     pub fn choose(&mut self, seat: usize, choice: u32) -> Out {
         let mut out = Out::default();
-        if self.picker != Some(seat) || self.engine.is_some() {
+        if self.picker != Some(seat) || self.ordered || self.over {
             return out;
         }
+        self.ordered = true;
         let first = if choice == SECOND { 1 - seat } else { seat };
         for (s, part) in out.iter_mut().enumerate() {
             part.push(command(FIRST_RESOLVE, [if s == first { FIRST } else { SECOND }, 0, 0, 0]));
@@ -430,6 +437,7 @@ impl Table {
     /// Swap (1504, which DuelResult lets through the same way) for a player with a side deck. A drawn duel counts for
     /// neither.
     fn duel_over(&mut self, results: [u32; 2]) -> Out {
+        self.played += 1;
         for (wins, result) in self.wins.iter_mut().zip(results) {
             *wins += (result == WON) as u32;
         }
@@ -449,6 +457,7 @@ impl Table {
         self.translators.clear();
         self.hands = [None; 2];
         self.picker = None;
+        self.ordered = false;
         let mut out = Out::default();
         for (s, part) in out.iter_mut().enumerate() {
             self.swapping[s] = !self.seats[s].entry.deck.side.is_empty();
@@ -543,20 +552,26 @@ impl Table {
         }
     }
 
-    /// A client left: during the duel, or between a match's duels, the other wins by disconnection.
+    /// A client left. With both seats taken and the match not over, the other one is told at once (it wins by
+    /// disconnection) wherever the match stood: in the janken, the turn order choice, Card Swap, a duel. Only a duel that
+    /// began is counted; before that the other client gets its result screen with the records unchanged.
     pub fn leave(&mut self, seat: usize) {
-        let started = self.engine.is_some() || self.wins.iter().any(|&w| w > 0);
-        if started && !self.over && self.seats.len() == 2 {
+        if !self.over && self.seats.len() == 2 {
             let other = 1 - seat;
             let _ = self.seats[other].outbox.send(command(DUEL_END, [WON, DISCONNECTED, 0, 0]));
             let seat0 = if seat == 0 { LOST } else { WON };
             self.tell_spectators(vec![vec![command(DUEL_END, [seat0, DISCONNECTED, 0, 0])]; self.spectators.len()]);
-            let mut results = [WON; 2];
-            results[seat] = LOST;
-            self.report(results);
+            if self.engine.is_some() || self.played > 0 {
+                let mut results = [WON; 2];
+                results[seat] = LOST;
+                self.report(results);
+            } else {
+                self.hub.locked().walkover(self.seats[other].player_id, self.seats[seat].player_id);
+            }
         }
         if !self.over {
             self.over = true;
+            self.engine = None;
             self.hub.locked().end_match(self.duel_id, None);
         }
     }
