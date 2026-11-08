@@ -380,15 +380,11 @@ Stop finding missing fields one crash at a time.
 
 | Item | Current choice | Why it's uncertain |
 |---|---|---|
-| `pbin` size | 512 zero bytes | Guessed from the 4,096 entries of `yo3pbininfo.bin` |
 | Starter deck and collection | the first preset of type 1 that regulation 1 allows (preset 2); one copy of each of its cards | The original let new players choose; a real collection comes with the economy |
 | Trunk (`9000`) contents | one record: `cards` (the starter deck's), `noTrade` all zero | Other fields later screens may read are unknown |
 | `regulations` list | all 20 ids | Which banlists the UI should offer |
-| `0x21FC` `lang` | `"1"` | Read as a string; semantics unknown |
 | `0x271A/0x2AFB/0x2AFD/0x27D8` | minimal replies | Meanings unknown; they only stop timeouts |
-| `avatar1` length and slots | 41 zero entries (a default male avatar) | Slot meanings unmapped |
-| `bgm`, `icon`/`lefttime`/`maintenance`, `npc_id`, `cpuUse`/`notRelease` | left out (read as 0 / NULL) | The tracer shows the client reads them; see "Fields the client reads that we leave out" in docs/protocol.md |
-| Chat room `region`, `status`, `type`; `0x2458.lang` | 0 / 1 | Shown fine; meanings unknown |
+| `avatar1` slots | 41 zero entries (a default male avatar); the length is the client's own (settled) | Which slot holds which part category is not mapped (`0x42CA60` copies slots 0, 1, 2, 4–10 into separate fields, `0x429210` slots 17–40; 11–16 unread there) |
 | Whisper `chat_type` values | any type with `to_name` is a whisper | Only room chat (type 1) was seen live |
 | Player search paging | skip `base_point`, return at most `front_num` | Only page 1 (`0, 100`) was seen |
 | Player search by name | case-insensitive substring | Konami's matching rule is unknown |
@@ -402,36 +398,30 @@ Stop finding missing fields one crash at a time.
 | Event lists (`0x177B`), own user event (`0x33FE`) | official events: none; user events as created; paging by `base_point`/`front_num` like player search | No official events are held |
 | User events | a knockout paired in entry order; lobby status 0/4/6/7/8 as the round goes; a 20 s wait between rounds; the bracket's blocks above 8 seats built the same way (not seen live); a restart ends a running event | How the original drew and ran its tournaments is unknown (the statuses and texts are the client's) |
 | Rental records push (`0x2D6C`) | sent after `9000`, when a rental starts and when one ends (only the rentals not over) | The original timing is unknown; the shop only needs it before it opens |
-| Card rental | the ready request `0x2C3E` is answered `0x2D68`; error codes 504 (cards) and 503 (no scene, wrong seat) as the trade's; terms 1, 3, 7, 14 days (the dialog's); a No keeps the scene; `trade_result` 0 for it; a rental ends exactly at its term, checked each second; a lender can't put up cards they have lent | The original's reply id for ready, its error codes and its rules (rental list limits, early return) are unknown |
-| Country | the account's setting, else GB/JP/DE/FR/IT/ES/KR/CN from the login's language | The original took the player's country from their registration; ours has none |
-| NPC roster `npc_type`, `need_ex` | tabs by series (NPCs 0–8, 9–16, 17–24); `need_ex` 100/200/300 | No client file gives the tabs or the experience each level needs; `need_ex` can't all be 0 (`0x4BFDC4`) |
+| Card rental | the ready request `0x2C3E` is answered `0x2D68` (the client reads no reply: settled); error codes 504/503 are never read by the rental handler (settled; every error shows "Rental Cancelled."); terms 1, 3, 7, 14 days (the dialog's); a No keeps the scene with `trade_result` 0 (settled, `0x41CAB1`); a rental ends exactly at its term, checked each second; a lender can't put up cards they have lent | The original's rental rules (list limits, early return: the client has none) are unknown |
+| Country | the account's setting, else GB/JP/DE/FR/IT/ES/KR/CN from the login's language | The client has no language-to-country table (it derives `lang` from the Windows language, `0x40DE50`); `country` is server data |
+| NPC roster `need_ex` | 100/200/300 (the tabs follow the series: settled by the NPC name texts) | No client file or script holds the thresholds; it can't all be 0 (`0x4BFDC4`) |
 | Teams | `level` 1 and scores 0 for every team; handing over the leadership makes the old leader a member; the founding time in Japan time | No team scores or levels exist without the original's events |
 | Search status bits | `0x1000` duelling, `0x800` hosting, `0x200` hosting Single, `0x400` hosting Match | Read from the Detailed Search texts |
 | Manner level | the average of a player's ratings (-10..10) mapped onto 0–4, (average + 10) / 5 rounded; 2 with no ratings; `evaltotal` the sum, 0 when negative | The original's thresholds and `evaltotal`'s sign are unknown |
-| Trade end | a refused trade sends `0x2BCA {trade_result 0}`; the trunk is pushed after a trade | The original's reply to a No, and how it refreshed the trunk, are unknown |
+| Trade end | a refused trade sends `0x2BCA {trade_result 0, error_code 503}` ("Trade Cancelled", the scene closes: settled by `0x424F71`); the trunk is pushed after a trade | How the original refreshed the trunk is unknown |
 | Item prices | protectors 200 BP, avatar items 100 BP, one of each | The original prices are unknown |
 | Avatar items for sale | the catalogue's parts with sub 0 (178 male, 148 female) | Read as "to acquire" next to the default (2) and starting (1) parts |
 | Wins and losses | My Profile and Player Information count duels against players only, not NPCs | The original's counting is unknown |
 | NPC experience | 100 a win, 50 a draw, 10 a loss, per NPC level id | No request reports it; the original's amounts are unknown |
 | `premium` | 1 for every account (all NPCs, Form Team, Create Event) | The original sold it (Duelist Premium); a friends' server gives it to all |
-| `join_id`, `duel_id` | server-wide counters from 1 | The client only echoes them back |
 | `0x17D4` | answered `0x17D5`, nothing kept | Sent once the duel object is ready; may also carry results later |
 | `0x22C4` push | right after `0x17D5`; `rule` = the fields of the duel's `0x17AC` item | The original timing and rule contents are unknown; only `match_type` is read so far |
 | Server duel messages | request `0x200D` | The pump reads only `duelRequestName` (and needs the id non-negative) |
 | CPU janken | random hand; the CPU goes first when it wins | The original CPU's choices are unknown |
-| Duel setup `PlayerType001/002` | 0 (client) / 1 (CPU) | Meaning unknown |
-| Card table entries (1000) | param3 0, flag byte 0; uids 1.. in table order | Meanings of param3 and the flag unknown |
+| Card table entries (1000) | param3 0 (it is only a hover-help text id for command 100, `0x523D20`), flag byte 0 (stored, no consumer found); uids 1.. in table order | The flag byte's use is unverified |
 | Hidden cards | against another player, the opponent's deck, hand, extra deck and face-down cards go with row 0 and face-down monsters get no field record; against the CPU, real rows | Online 2 used placeholders, whose value is unknown; a hidden card that flips without moving keeps row 0 until it moves (position changes aren't translated yet) |
 | Automatic matching | the first two players waiting for the same `match_type`, Both (6) with either and two Both players in a Single duel; the level choice is ignored; the second player's `0x1978` goes a second after its `0x1799` | Konami's matching rules are unknown; the delay assumes the agent reads one message per step |
 | Match Mode | best of three; every duel opens with a janken; a drawn duel counts for neither; the records count the match once | Online 3's rules for who goes first in later duels, draws and the side deck are unknown |
 | Hosted LP and `--duel-lp` | the testing aid wins over a hosted `lp_start` when it isn't 8000 | A testing convenience, not the original's |
 | Duel Menu counts | `duel_playing` = 2 × matched duels, `duel_ready` = hosted duels, `duel_auto` = players waiting | Whether they count players or duels is unknown |
 | Hosted duels | `duel_status` 1 while hosting, 3 while in a duel between players; Team-only duels take nobody (no teams); `0x17C0` answered `0x17C1` | The original values and the limits' rules are unknown |
-| PvP setup | `PlayerType001/002` 0/1 as against the CPU | Their meaning is unknown |
 | A player leaving | the other wins (command 2 {1, 14 "disconnected"}) and both records count it | The original's handling (time-outs, `0x2724` heartbeats) is unknown |
-| Menu bits for Set | 6 monster set, 7 Spell/Trap set | Both entries read "Set" |
-| Card list kind | 1 for min 0, `0x27` for min 1, else 6 with max = min | The kinds' other meanings (title, sounds) are unknown; a choice between 2 and more picks is narrowed to exactly min |
-| Card list marks | `0x8000` for the CPU's cards, no icons | The low bits draw icons whose meaning is unknown |
 | Choice messages | EDOPro's hint mapped to the client's text for 7 hints; none otherwise | The original server's message per choice is unknown |
 | Yes/no questions | 'Activate the effect of "X"?' for optional effects, 'Use the effect of "X"?' for other questions | The cards' own question strings (EDOPro's) aren't in the client |
 | Position dialog | button 0 face-up attack (face-down if only that), button 1 face-up defense when allowed, else face-down; the flag shows the face-up defense picture | The dialog has two buttons; ocgcore allows any mix of four positions |
@@ -448,17 +438,26 @@ Stop finding missing fields one crash at a time.
 | Declarations | several types at once and numbers outside the number dialog (min or step above 15 units, max above 255) answered automatically; the CPU names the duel's cards in turn | The client's dialogs pick one type and a range of numbers; the original server's handling of the rest is unknown |
 | Material choice | Synchro and Fusion materials one at a time in the card list (EDOPro's order: the Tuner first); Fusion materials under "Select monsters to use as Fusion Material." (92), Synchro materials without a message | The client has no Synchro material text; how the original asked is unknown |
 | Option labels | EDOPro's system strings 60/61 and 70–72 mapped to the client's labels; a card's own strings paired by hand with the prompt table's per-card labels (`card_options.rs`), else the first option | The original server's label per card option is unknown |
-| Chain chances | level 3 after an event (summon, attack, damage… or during a chain), 1 at a phase or step, 0 when no card fits (`spe_count` 0); the player's Activation Message option decides; messages 7/8 (Spell/Trap zone)/269 | The original server's levels and which windows it judged "low priority" are unknown |
+| Chain chances | level 3 after an event, 1 at a phase or step, 0 when no card fits; messages 7/8 (Spell/Trap zone)/269 | Client side settled (`0x4C5560`: bands below 2, 2–3, 4+; Activation Message decides below 4); which windows the original judged low priority, and its message choice, are Konami-only |
 | Rules | EDOPro's `MODE_MR2` | Online 3 (2010) ran Master Rule 2; EDOPro's preset may differ in details |
 | CPU play | first summonable monster, attack with all, never chain | The original NPCs' AI is unknown |
 | Duel end reason | EDOPro's reason mapped to the client's texts (LP 0, deck out, surrender, Exodia...; others "won with a card") | The original server's values are unknown (100 takes another path) |
-| Duel's end push `0x2009` | sent when the engine ends the duel; `duel_end` 1; no `score_<id>`, no `dlogURL` | The original timing and `duel_end` values are unknown (2 and 3 show an abnormal-end dialog) |
+| Duel's end push `0x2009` | sent when the engine ends the duel; `duel_end` 1 (normal: no effect) or 3 (cancelled before it began); no `score_<id>`; `dlogURL` for duels between players | The original timing is unknown. Values settled by `0x515BD3`/`0x518631`: 2, 3 dialog `0x2918`; 4 "has disconnected" (we don't send it); 5 opens the result |
 | Result screen counts | `win`/`lose`/`draw` = totals against this opponent including this duel, `*_add` = this duel's change; kept in memory | The client only shows them ("Wins 1 (+001)") |
 | Duel port | 1214 | The original's port is unknown; the client takes whatever `duelData` says |
 | Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
 | Uploaded decks | the decks a duel's Select Deck sent, ten per player by name, listed after the starter and bought decks | The client has no other upload; the original server's deck storage is unknown |
-| Deck check | sizes, ownership per Konami id, the duel's regulation, refused with `0x22CB` | The client's own refusal reply for a deck is unknown; this one only shows text `0x2919` |
+| Deck check | sizes, ownership per Konami id, the duel's regulation, refused with `0x22CB` (client text `0x2919`: settled, `0x50ECF0` compares only `0x22CA`/`0x22CB` and never uses `error_code`) | The rules of the check are ours |
 | Player names | the starting names (`--players`, default Duelist) made unique with a number; players make more at Select Player (at most 16 characters, unique ignoring case: **guess**), the host can still `add-player` / `rename` | The original's name rules are unknown; a team's leader can't be deleted and an account keeps one player (ours) |
+
+### Settled by the client's own code (no longer guesses)
+
+Evidence for each is in docs/protocol.md: `pbin` 512 bytes (`0x47E490`); `avatar1` length 41; `0x21FC lang`, chat room
+`region`/`status`/`type`, `0x2458.lang`, `PlayerType001/002`, `join_id`/`duel_id` (opaque echoes), ChainRun
+`param1`/`param2`; `bgm`, `icon`/`lefttime`/`maintenance`, `npc_id` (omitted is right); menu bits 6/7 for Set (the icons
+and `0x520F00`); card list kinds and marks (`0x4C72D0`, `CardAttr`); the NPC tabs; the `0x17C1` and `0x2D68` ids (no
+reader). `cpuUse`/`notRelease` (`0x27D9`) are real but only drive the main screen's completion percentages: left out
+(every card counts) because the key type isn't verified.
 
 ## Leads (outside the code)
 

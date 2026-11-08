@@ -65,9 +65,16 @@ The contract tests in `crates/yo3-server/tests/front_contract.rs` enforce the co
   `team_authority`.
 - `avatar1`: **binary**, BE u16 entries copied into PlayerData+`0x28`. Sent as text, it crashes at `0x46C750`. Character
   settings read entries 17–40 through a checked index (`0x429210`; with only 17 entries the CRT aborts from
-  `0x42923F`), so we send 41 zero entries (82 bytes): a default male avatar. The real length is unknown (**guess**).
+  `0x42923F`), so we send 41 zero entries (82 bytes): a default male avatar. 41 is the client's own length (its update `0x2CEF` sends 82
+  bytes; CharMake reads entries 0–40 through checked indexes), settled. `0x42CA60` copies entries 0, 1, 2, 4–10 into ten
+  separate selection fields and `0x429210` entries 17–40 into a second table; 11–16 are not read there. The catalogue
+  (`yo3pbininfo.bin` kinds 1 and 2) has nine part categories per sex in its `a` field (hair, face mark, nose, eyes,
+  mouth, top, hair back, bottom, glasses); which slot holds which is not mapped, and all zero is what the client starts
+  from.
 - `pbin`: **binary**, required. The main screen reads byte `0x4B` at `0x4727DE`; without it the client crashes.
-  We send 512 bytes, a **guess** based on the 4,096 entries of `yo3pbininfo.bin`.
+  We send 512 bytes: the deck editor's protector loop (`0x47E490`) tests `pbin[id >> 3] & (1 << (id & 7))` for ids
+  1 to 4096 (the count in `yo3pbininfo.bin`) with no length check (`0x51C260`), so 4096 bits = 512 bytes is exactly the
+  size read (confirmed).
 - `speech00`–`speech22` and `comment00`–`comment01`: text.
 
 ### Main screen (MainGamen polls `0x472EDC…`, global dispatcher `0x4F4A00`)
@@ -102,7 +109,7 @@ and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 
 | `0x2CEE` player refresh `{player_id, type}` | `0x2CF3` (`0x2CF4`) | item = the selected player's record; its `player_id` must match | `0x47378A`, `0x4F5FC2` | confirmed |
 | `0x2583` | `0x2588` (`0x2589`) | `count` u32: D-Mail waiting (see D-Mail); a count sets flag `0x1000`, the bell's mail icon | `0x4730B0` | confirmed |
 | `0x271A` | `0x271B` (`0x271C`) | none | `0x47352F` | shape |
-| `0x2710` NPC roster | `0x2711` (`0x2712`) | items `{npc_type, npc_id, need_ex}`, three per NPC (one per level), kept in slot 4; see "NPC duels and duel start" | `0x473646`, `0x4BEB40`; live: 25 NPCs on three tabs | confirmed; the tabs by series and `need_ex` 100/200/300 are **guesses** |
+| `0x2710` NPC roster | `0x2711` (`0x2712`) | items `{npc_type, npc_id, need_ex}`, three per NPC (one per level), kept in slot 4; see "NPC duels and duel start" | `0x473646`, `0x4BEB40`; live: 25 NPCs on three tabs; the NPC names are text `0x5208 + 2n`: 0–8 Yu-Gi-Oh!, 9–16 GX, 17–24 5D's, matching the tab texts 15504–15506 | confirmed (the tabs follow the series); `need_ex` 100/200/300 is a server choice: no client file or script holds the thresholds, it only feeds the stars and the friendship bar (`0x4BFDC4`, a divisor, so non-zero) |
 | `0x2AFB` | `0x2B13` (`0x2B14`) | none | `0x4738FA` | shape |
 | `0x2AFD` | `0x2B17` (`0x2B18`) | none; the global case reads `member_id`, `authority` if present | `0x473A3A`, `0x4F5E0E` | shape (team?) |
 | `0x2775` next present (bare) | `0x2778` none (`0x2777`/`0x2779` would carry a present) | none | builder `0x4F3A00`. The `0x2201` reply sets flag `0x80` (so does a `0x2774` push), so startup step `0x473AE0` opens PresentWindow, which sends `0x2775` and holds the main screen locked until it closes. Its switch (`0x476E74`): `0x2777`/`0x2779` "PRESENT content get success", `0x2778`/`0x277A` "content get error", which retries while `+0x58` > 0 and then closes (`0x4783C9`); its `0x2774` case reads `present_count` and drops it | confirmed (live: the facilities unlock after `0x2778`) |
@@ -111,7 +118,7 @@ and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 
 
 | Request | Reply (error) | Fields | Evidence | Status |
 |---|---|---|---|---|
-| `0x1F41` info list | `0x21FC` | item[0] `{lang}` whose items are `{starttime "%Y-%m-%d %H:%M:%S" JST, title, body}` | "information recv success!" `InfoWindow.cpp L1547`, `0x458A64` | confirmed (`lang` value **guess** "1") |
+| `0x1F41` info list | `0x21FC` | item[0] `{lang}` whose items are `{starttime "%Y-%m-%d %H:%M:%S" JST, title, body}` | "information recv success!" `InfoWindow.cpp L1547`, `0x458A64` | confirmed; `lang` is read as a string and discarded by both readers (`0x458410`, `0x44E130`), so "1" is harmless (settled) |
 | `0x2CEF` player update (Avatar Settings' Confirm, built by `0x51C960`): top-level `avatar1` (binary, 82 bytes live), `speech00`–`speech22`, `comment00`–`comment01` (text), `title` (int) | `0x2CF5` (`0x2CF6`) | none ("avatar update success", CharMake `0x42AC70`); the client then reads its player again | live: Confirm sent it with the new hair colour in `avatar1`; after a restart the player record brought it back | confirmed; we answer `0x2CF6` when `avatar1` isn't binary |
 | `0x2CF0` player search (below) | `0x2CF7` (`0x2CF8`) | `result_number` u32: the total, the client shows pages of 100 (`/100 + 1`); items = players `{player_id, pname, dlv}` | InfoWindow `0x458410` (`0x2CF7` case), item reader `0x475A20`; `RESPONSE_PLAYER_SEARCH_SUCCESS` `ChatWindow.cpp L651` | confirmed (fields); paging and name matching **guess** |
 | `0x2724` heartbeat | none | none | builders `0x4F17DF` (every 30 s) and `0x4F45A5` (after 120 s); no reply is checked | confirmed |
@@ -150,7 +157,7 @@ and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 
 
 | Request | Reply (error) | Fields | Evidence | Status |
 |---|---|---|---|---|
-| `0x2135` room list | `0x2458` (`0x2459`) | top `lang`; items = rooms `{id, name, capacity, num, region, status, type}` (read by `0x434D20`); `id` ≥ 1 | "chat room list success!" `ChatWindow.cpp L339`; the room chooser lists them with `[num/capacity]` | confirmed (`region`/`status`/`type` **guess** 0) |
+| `0x2135` room list | `0x2458` (`0x2459`) | top `lang`; items = rooms `{id, name, capacity, num, region, status, type}` (read by `0x434D20`); `id` ≥ 1 | "chat room list success!" `ChatWindow.cpp L339`; the room chooser lists them with `[num/capacity]` | confirmed; `type` (+0x30) is tested `== 0` at `0x4364F0`: a room is listed only when it is 0 (required); `region` (+0x28) and `status` (+0x2C) are only copied between vector slots, never read; `lang` is read once at `0x4362FF` and dropped (settled) |
 | `0x2136` enter `{room_id}` | `0x245A {room_id}` (`0x245B {error_code}`) | the client ignores `room_id` < 1 | "In>>Lobby" printed, tab renamed | confirmed |
 | `0x2137` leave | `0x245C` | none | "chat room exit" | shape |
 | `0x2134` send | `0x2456` (`0x2457`) | fields sit in **one item (tag 10)**: `chat_str`, `chat_type`, and `to_id` or `to_name`. Room chat = `chat_type` 1 with `to_id` = the room id; whisper = `to_name` | captured packets; builders `0x4F3E00` (to_id) and `0x4F4030` (to_name) | confirmed (room); whisper shape |
@@ -273,7 +280,7 @@ and the two offers. The scene's replies and pushes (ids from its jump table at `
 | offer `0x2BC6 {main_list}` (the cards dragged from the trunk, big-endian u16 rows) | `0x2BE1` "card list send ok" (`0x2BE2`: 502 offer player illegal, 503 trade error, 504 card number illegal, 505 status, 700 server error) | `0x2BCF {main_list}` to the partner (NOTICE_OTHER, read unchecked) | live: Tainted Wisdom `main_list 0011` | confirmed |
 | `0x2BC7` (the partner's scene has the offer) | `0x2BE3` | `0x2BCE` (NOTICE_OWN) and `0x2BD0` (NOTICE_CHANGE_ARRIVE) to the offerer | live | confirmed |
 | Ready to Trade. `0x2BC8 {status: 1 on, 0 off}` | `0x2BE5` | `0x2BD1 {status}` to the partner; both on: `0x2BD2` (ALLREADY) to both, which shows "Execute Trade?" | live | confirmed |
-| "Execute Trade?" `0x2BC9 {answer: 2 yes, 1 no}` (`0x427640`) | `0x2BE7` | once both answered: `0x2BCA {error_code, own_status, other_status, trade_result}` to both (LAST_CONFIRM_NOTICE; `trade_result` 1 "Trade Completed"), then a new trunk `9000` (no request asks for one there) | live: Yes sent 2; "Trade Completed", the cards changed sides | confirmed; `trade_result` 0 (a No) left the scene waiting (live, with our first guess of the Yes value), what the original sent then is open |
+| "Execute Trade?" `0x2BC9 {answer: 2 yes, 1 no}` (`0x427640`) | `0x2BE7` | once both answered: `0x2BCA {error_code, own_status, other_status, trade_result}` to both (LAST_CONFIRM_NOTICE; `trade_result` 1 "Trade Completed"), then a new trunk `9000` (no request asks for one there) | live: Yes sent 2; "Trade Completed", the cards changed sides | confirmed. `0x2BCA` (`0x424F71`): `trade_result` 1 plays "TradeSucess"; otherwise with `error_code` 0 the scene stays with both Ready marks on (`0x427730`), with `error_code` non-zero `0x427400` shows `$14313` "Trade Cancelled" and leaves (no other use of that text). So a No sends a non-zero `error_code` (503, `TRADE_ERROR`; the client only tests for 0). `own_status`/`other_status` are read and unused. The Yes/No buttons are 1/0 in the dialog and `answer` 2/1 (No inferred) |
 | leave `0x2BCB` | `0x2BE9` | `0x2BCD` to the partner: "The trade partner has cancelled." (also when a player goes offline) | research, test | shape |
 
 The server checks each offer against what the player owns (their starter deck's cards, the ones bought or got, less
@@ -294,13 +301,13 @@ request is the lender**: the scene is opened with `for_rent` 1 for them (`0x4AA3
 | `0x2C24 {to_id}` (`0x4A9E1C`) | `0x2D50 {pname}` "Sending Rental Request to %s..." (`0x2D51`: 106 "This player cannot receive another request.") | `0x2C25 {from_id, from_name}` to the player: "You have received a Rental Request from %s. Accept?" | live | confirmed |
 | cancel `0x2C28` (`0x4AA2B9`) | `0x2D56` (`0x2D57`) | `0x2C29` to the player (the global dispatcher clears flag `0x800`, as `0x2C37` does) | code | shape |
 | answer `0x2C26 {to_id (text, live), answer: 2 yes, 1 no}` (`0x4AA611`) | `0x2D54` (`0x2D55`) | `0x2C27 {answer}` to the lender: 2 opens its scene | live | confirmed |
-| ready `0x2C3E` (each scene on opening, `0x41C6AF`) | none read by the scene (we send `0x2D68`, **guess**) | once both: `0x2C3F` (NOTICE_START) to both | live | confirmed; reply id **guess** |
+| ready `0x2C3E` (each scene on opening, `0x41C6AF`) | none read: the handler compares `0x2D5A`–`0x2D61`, `0x2D64`–`0x2D67`, `0x2D6A`/`0x2D6B` only (`0x2D62`, `0x2D63`, `0x2D68`, `0x2D69` fall to its default) and the global dispatcher sends `0x2D68` to its empty arm (`0x4F6057`); `0x2D68` is the free slot in the reply numbering, so the id is immaterial | once both: `0x2C3F` (NOTICE_START) to both | live | confirmed (no reply is read; no "no response" timer exists for it, see "Requests with a timeout") |
 | conditions `0x2C2B {type 0 Free / 1 Deck, days}` (the lender's Rental Conditions dialog, `0x41ED74`) | `0x2D5C` (`0x2D5D`) | `0x2C39 {type, days}` to the borrower (`SetType`) | live: 3 days, Free sent `days 3`, `type 0` (the term is the number of days: 1, 3, 7 or 14, texts 14212-14215) | confirmed |
-| cards `0x2C2A {main_list, extra_list, side_list}` (`0x4211F1`; a Free rental sends `main_list` only, the cards as big-endian u16 CARD_Prop rows; double-clicking a trunk card puts it up) | `0x2D5A` (`0x2D5B`: 504 as the trade's "card number illegal", our code) | `0x2C38 {main_list, extra_list, side_list}` to the borrower | live | confirmed; error codes **guess** |
+| cards `0x2C2A {main_list, extra_list, side_list}` (`0x4211F1`; a Free rental sends `main_list` only, the cards as big-endian u16 CARD_Prop rows; double-clicking a trunk card puts it up) | `0x2D5A` (`0x2D5B`) | `0x2C38 {main_list, extra_list, side_list}` to the borrower | live | confirmed; `0x2D5B` only logs; no `error_code` is read by the rental handler (the arms `0x2D5D`, `0x2D5F`, `0x2D61`, `0x2D65`, `0x2D67` all show `$14225` "Rental Cancelled." through `0x41D46B`), so 504 is unread (settled) |
 | the partner's scene has the cards or conditions `0x2C2C` (`0x41EFC6`) | `0x2D5E` (`0x2D5F`) | `0x2C3A` to the partner (unlocks the lender's next send, `+0x8A`) | live | confirmed |
 | the lender's Confirm `0x2C2D` (`0x421586`) | `0x2D60` (`0x2D61`) | `0x2C2E` to the borrower: "Borrow these cards?" | live | confirmed |
 | the lender takes it back `0x2C31` (`0x421646`) | `0x2D66` (`0x2D67`) | `0x2C32` to the borrower | code | shape |
-| the borrower's answer `0x2C2F {answer: 2 yes, 1 no}` (`0x421704`) | `0x2D64` (`0x2D65`) | `0x2C30 {trade_result: 1 done, 0 not}` to both: 1 "Rental Completed."; 0 "Rental Cancelled." and the scene stays | live: Yes sent 2, "Rental Completed." on both | confirmed; the No value and the 0 result **guess** (as the trade's) |
+| the borrower's answer `0x2C2F {answer: 2 yes, 1 no}` (`0x421704`) | `0x2D64` (`0x2D65`) | `0x2C30 {trade_result: 1 done, 0 not}` to both: 1 "Rental Completed."; 0 "Rental Cancelled." and the scene stays | live: Yes sent 2, "Rental Completed." on both | confirmed: `0x2C30` (`0x41CAB1`) shows "Rental Completed." only for `trade_result` 1; anything else "Rental Cancelled." (`$14225`), clears `+0x8A`/`+0xA0` and the scene stays, which is what we send for a No (settled; the No's `answer` 1 is inferred as the trade's) |
 | exit `0x2C33` (ExitRental) | `0x2D6A` (`0x2D6B`) | `0x2C37` to the partner: "The Borrower has cancelled." / "The Lender has cancelled." (also when a player goes offline) | code | shape |
 
 **Records and collections.** The client counts the cards itself. The collection builder `0x4F6340` copies the trunk
@@ -331,7 +338,7 @@ The client reads `country` (text, an ISO code it looks up in `data/text/countryt
 search entries (`0x2CF7`) and the bracket's seats (`0x32FD`, `0x4CEBE0`). No request carries the client's country, so the host
 sets one per account (`yo3-server set-country ADDRESS CODE`, `countries` lists the codes, `auto` clears it), kept in
 `accounts.json`; without a setting it follows the language the client gives at login (`0x1F48 {lang}`): Japanese JP,
-English GB, German DE, French FR, Italian IT, Spanish ES, Korean KR, Chinese CN (**guess**). A missing or unknown `country`
+English GB, German DE, French FR, Italian IT, Spanish ES, Korean KR, Chinese CN (**guess**: the client has no language-to-country table. It derives `lang` itself in `0x40DE50` from the Windows primary language id: ja 0, de 2, fr 3, it 4, es 5, ko 6, zh 7, else 1, which confirms our numbering; `country` is always server data and `countrytbl.bin` is only an id lookup). A missing or unknown `country`
 shows the Germany flag (what every player showed until 2026-11-08). The search's country criterion (`0x8`) compares the code.
 Live: Player Information showed the UK flag for an English client, the Japanese flag once the account was set to JP.
 
@@ -517,7 +524,7 @@ otherwise. Live: "Dragon Test" (a copy of the starter made with New) was picked 
 traded cards, rentals; counted per Konami id, so a bit more lenient than the client's per row), and the duel's
 regulation (`0x51A9A0`): the rule's `regulation_id` (an NPC duel's `0x17AC` item, a hosted duel's or event's rule),
 else the login one. A refused deck gets `0x22CB`: the client shows "You have been disconnected from the Duel Server."
-(text `0x2919`, the only text that path has) and, at OK, leaves the duel scene for the map; nothing is kept for the
+(text `0x2919`, the only text that path has; `0x50ECF0` state 2 compares only `0x22CA` and `0x22CB`, stores `error_code` at `+0x90` and `0x510610` never uses it, and the texts "Invalid Deck" `0x2940`, "This Deck can not be used." `0x2942` and `0x295C` have no code that shows them: settled, no other reply or code is expected) and, at OK, leaves the duel scene for the map; nothing is kept for the
 duel. A stock client can't send a deck the check refuses (it checks first, even the host before Create Duel: "There
 are no valid Decks available."), so this is for modified clients; live with the testing aid `--duel-regulation 4` (the
 starter deck breaks it): both Auto Duel players got `0x22CB`, the dialog, and the map. The opponent of a refused
@@ -655,7 +662,7 @@ Watch button → mode 4):
 | host | push `0x17B6 {duel_id}` + item `playerInfo` (the challenger's record) | | the wait step reads `player_id` (a player on the black list is declined at once), `pname`, `dlv`, `title` | live: "LV1 Kaiba / Default / You have a Duel Request! Will you accept?" | confirmed |
 | host | `0x17CA {event_id, join_id, duel_id, answer}` (2 Yes, 1 No) | `0x17CB` (`0x17CC` fails, `0x4A2D30`) | | live | confirmed |
 | challenger | push `0x17CA {answer}` | | 2: on to `0x4A2D30`; else refused | live | confirmed |
-| challenger | `0x17C0 {event_id, join_id, duel_id}` (its Cancel) | `0x17C1` (**guess**); the host gets push `0x17C0`, closes the offer and waits again | | code | shape |
+| challenger | `0x17C0 {event_id, join_id, duel_id}` (its Cancel) | `0x17C1` (no `0x17C1`/`0x17C2` is compared anywhere and the global dispatcher ignores both: the id is free); the host gets push `0x17C0`, closes the offer and waits again | | code | shape |
 
 **Opponent's Limits** (Create Duel: OFF, Friend, Team) is the host's `party`: 1 off, 2 friends, 3 team. Challengers see
 it as `duel_party` ("Opponent's Limits Friend" in Duel Conditions), and PlayerInfoWindow (`0x4B6510`, button 0) offers
@@ -739,7 +746,7 @@ client and LOSER on Kaiba's, and Next took both back to the map.
 
 | Message | Fields | Evidence | Status |
 |---|---|---|---|
-| setup (`0x15`) | `FirstPlayer` (engine player 0/1), `PlayerNum` (this client's player: 0; the scenes compare players with it, engine `+0x1B0`), `PlayerType001/002` (0 / 1), `MainDeckNum001/002`, `ExtraDeckNum001/002` (the decks' sizes: the one picked at Select Deck, the NPC's preset) | pump case `0x15`; the counts are the engine's per-zone counts (`+0x1C8`, `+0x1CC`, …) that DeckReset shows | confirmed (live: the deck piles below); `PlayerType` values **guess** |
+| setup (`0x15`) | `FirstPlayer` (engine player 0/1), `PlayerNum` (this client's player: 0; the scenes compare players with it, engine `+0x1B0`), `PlayerType001/002` (0 / 1), `MainDeckNum001/002`, `ExtraDeckNum001/002` (the decks' sizes: the one picked at Select Deck, the NPC's preset) | pump case `0x15`; the counts are the engine's per-zone counts (`+0x1C8`, `+0x1CC`, …) that DeckReset shows | confirmed (live: the deck piles below); `PlayerType001/002` are stored at engine `+0x1C4`/`+0x1DC` (`0x523635`, `0x523676`) and no reader of either offset exists, so their values are immaterial (settled) |
 | command 1 | none: duel start | DuelScene `0x514290` | shape |
 | command `0xF` | param1 player, param2 LP | DuelCockpit `0x502EB0` (`setLp`) | confirmed (live) |
 | command 5 | param1 player, param2 phase (0 draw) | DuelScene, DuelCockpit | confirmed (live: DP lit) |
@@ -887,7 +894,7 @@ that (`engine/`, see ROADMAP M5); `translate.rs` maps its draws, turns and phase
 1, 2, 4, 8–`0x80`, `0x100`, `0x200` → 0–5), its idle-command prompt to a command map (summons bit 4, special
 summons 2, position changes 5, 8 or 9 by the card's position as last shown (Flip Summon face down, to Attack
 Position in face-up defense, to Defence Position in attack: offering both showed "to Attack Position" on an attack
-position monster, live), monster sets 6, spell sets 7, activates 3; which Set bit is which is a **guess**)
+position monster, live), monster sets 6, spell sets 7, activates 3; the Set bits are confirmed: the entry index is the bit number, `duel_cardcmd.swf` draws item 6 as a horizontal face-down card (a monster Set in defence) and item 7 as a vertical one (a Spell/Trap Set), both labelled text 19 "Set", and a click is accepted only if `1 << CommandID` is in the card's mask, `0x520F00`)
 plus command 4, and the client's card command back to the prompt's entry. Live: after the CPU's turn the client's Main
 Phase 1 highlights only the legal cards, and a monster's menu reads Summon / Set.
 
@@ -1035,7 +1042,7 @@ no animation yet (DuelBattle's commands `0xA`–`0xE` are unmapped).
 
 The server uses the card list for the client's MSG_SELECT_CARD and MSG_SELECT_TRIBUTE (targets, tributes, attack
 targets, discards…): the rows from its mirror, the opponent's cards marked, kind 1 for min 0, `0x27` for min 1, else 6
-with max lowered to min (**guess**). The list draws each card from `data/mini/` by its row's Konami id ("%4d_%d",
+with max lowered to min. Settled by the client: only `0x4C72D0` reads the kind, as the number of picks OK needs (`acceptCount`): kinds 1–5, `0x48`, `0x4B` 0; `0x27`–`0x47`, `0x4A` 1; 6–`0x26` all of max (`+0x58`); the Flash decides as soon as the picks reach `selMax` and `acceptCount` can only be 0, 1 or max, so a min of 2 or more with a larger max cannot be asked and max is lowered to min. Titles come from the `0x37` message, not the kind; no per-kind sound code exists. Marks: the whole mark goes to the Flash (`0x4C78A0`); `0x8000` selects the owner frame (`mcOwner`) and every other set bit k draws the `CardAttr` icon `e<k>` (k 0–14, 16 px apart: decorative status icons no client code ties to a meaning), so no icons is right. The list draws each card from `data/mini/` by its row's Konami id ("%4d_%d",
 getCardInfo `0x4C78A0`), so an opponent's hidden card (row 0) drew nothing and could not be clicked (live: Mystical
 Space Typhoon could not target a Set card). Only kind `0x4A` (all cards, marked the
 opponent's, one pick, no way out) and kind 4 (see Pile views) draw `0000.png`, the card back. Kind 4 draws it only for
@@ -1144,8 +1151,8 @@ input state, per the option's help texts):
 Unshown, the dialog answers `DLGResult 0` (No) by itself (constructor `0x4C5120`). The server sends level 3 when
 something happened (EDOPro's `hint_timing` of either player has a timing other than a phase or step, or a chain is in
 progress), 1 at a phase or step, and 0 when no card fits the timing (`spe_count` 0, which EDOPro's own client skips)
-(**guess**: the original server's levels are unknown). The question names the chain's last link (MSG_CHAINING, until CHAIN_END): 'The effect of "%s" is activated. Chain another card or effect?' (7), '"%s"
-is activated. ...' (8) for a card in the Spell/Trap zone (**guess**), else "Activate the effect of a card?" (269). No
+(client behaviour confirmed: only three bands are observable, below 2 (0 and 1 act the same), 2–3 (the same), 4 and up; which windows the original judged "low priority" is Konami-server-only; `spe_count` is not a client field). The question names the chain's last link (MSG_CHAINING, until CHAIN_END): 'The effect of "%s" is activated. Chain another card or effect?' (7), '"%s"
+is activated. ...' (8) for a card in the Spell/Trap zone (**guess**: no client code chooses between 7, 8 and 269, they are the dialog body's text), else "Activate the effect of a card?" (269). No
 answers no chain; Yes chains the only card, or opens the card list (one pick) with "Select effect to activate." (276),
 where no pick is no chain. A forced chain of several goes straight to the list; of one needs no choice. Live (two Set
 Trap Holes, the CPU's summon): the question showed both cards; Yes opened the list, the second pick activated it, the
@@ -1221,7 +1228,7 @@ Other commands at the head are taken and dropped. The match is over when the **f
 |---|---|---|---|
 | item `duelData` (by `name`), **tag 7** | `0x2009` | the dispatcher keeps it in front slot `0x15` and sets flag `0x20000`; tag 7 makes a `YO3DuelData` (factory `0x531B90`), which finds its children `gameServer`, `regulation`, `rule`, `players` (`+0x78`) and `result` (`+0x7C`) by name (`0x5315C0`) | confirmed (tracer, live) |
 | `score_<player_id>` int | `0x2009` top level | the dispatcher, copied as `event_score` | shape; left out |
-| `duel_end` int | `result` | DuelScene (`0x515BD3`): 2 or 3 show text `0x2918` and leave | shape; we send 1 (**guess**) |
+| `duel_end` int | `result` | DuelScene (`0x515BD3`): 2 or 3 show text `0x2918` and leave; JankenScene (`0x518631`): 2 and 3 the same, 4 text `0x291B` "%s has disconnected." (the opponent's name from its own data) and leave, 5 opens DuelResult (`0x5196D0`); 1 and anything else do nothing | confirmed; we send 1 (nothing happens) for a normal end and 3 for a duel cancelled before it began; 4 would suit a player leaving before the janken (not sent) |
 | `duel_result` int | `result` | DuelResult step 1 (`0x5122B0`): the match result (1 won, 2 lost, 3 draw) at MainGamen `+0x820` | confirmed |
 | `dlogURL` string | `result` | step 1, only when MainGamen `+0x804` is 0: opens a component (`0xFFFFD90B`) on that URL | sent for duels between players (see "Duel log files") |
 | `player_id` int | each item of `players` | `0x510830` finds this player's record | confirmed |
@@ -1300,6 +1307,31 @@ NULL, which these callers check. Send them when we know what they mean.
 | `0x27D9` | `cpuUse`, `notRelease` (raw) in its record | `0x4F2080`, `0x4F20BA` | meaning open (CPU duels? unreleased cards?) |
 | (around `0x2CF7`) | `premium` uint, from **another dataset**, not the reply | `0x44F3E7` | probably the account's Duelist Premium flag |
 | `0x2CF7` items | `duel_id`, `event_score`, `duel_status`, `tprank`, `duel_match_type`, `world_evid`, `official_evid`, `user_evid` (int) | `0x475A20` | 0 = not duelling, no rank, no event; they pick the list icon |
+
+Settled from the client's code (no value to send):
+
+- `0x2201` `bgm` is stored at `UserData+0xCC` (`0x4F506A`); no read of that field was found (heuristic sweep): omit.
+- `0x21FC` `icon`, `lefttime`, `maintenance` (`0x4F4700`, `0x44E130`): `lefttime` > 0 sets flag 2; `icon` 1 or 2 with `endtime`
+  sets bell flag 4 or 8 until then; InfoIcon shows the maintenance notice only when `maintenance` is non-empty, not
+  "-1", and `lefttime` > 0. Absent = no badge, no notice, which is right.
+- player record `npc_id`: `0x51BF90` picks the loader: 0 the human one (`0x51C260`), non-zero the NPC one (`0x51C4F0`).
+  Omitted = 0 = right for players.
+- `0x27D9` `cpuUse` / `notRelease`: raw lists of u16 card keys in the class built by `0x4F2010`; `notRelease` keys map to
+  0, `cpuUse` keys to 2, ids `0x430` and `0x530` to 3, and the predicate `0x410EA0` counts a card only when it is absent
+  from the map or 3. The main screen (`0x4705F0`) uses it for the collection-completion percentages. Sending neither
+  makes every card count, the neutral choice; the key type and byte order were not verified, so we leave them out.
+- `PlayerType001/002` (pump case `0x15`): stored, never read. Card table `param3`: only the hover help of command 100
+  (`0x523D20`, a text id; 0 shows nothing); the flag byte (top byte of the uid) is stored (`0x5000E0`), no consumer found.
+
+## Requests with a timeout
+
+Only eight poll state machines have a timer: on expiry they show text `0x2910` "There is no response from the server."
+with the request id in decimal. Each sends one request and waits for its reply or error id: `0x2072` (`0x2398`/`0x2399`,
+`0x472DA0`), `0x2583` (`0x2588`/`0x2589`, `0x472F70`), `0x27D8` (`0x27D9`/`0x27DA`, `0x4731A0`), `0x271A`
+(`0x271B`/`0x271C`) and `0x2710` (`0x2711`/`0x2712`) (both `0x4733C0`), `0x2CEE` (`0x2CF3`/`0x2CF4`, `0x4736C0`), `0x2AFB`
+(`0x2B13`/`0x2B14`, `0x473830`), `0x2AFD` (`0x2B17`/`0x2B18`, `0x473970`). The check is `0x4038C0` (a start tick plus a
+duration). Every other request has no timer: scenes read specific reply ids or ignore the reply, so a missing reply to
+a trade or rental ready or cancel hangs nothing visible.
 
 ## Families seen in the client, not mapped yet
 
