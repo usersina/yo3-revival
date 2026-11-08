@@ -53,7 +53,10 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
 
 1. Install Yu-Gi-Oh! ONLINE 3. On Windows it runs as it is; on Linux it runs under Wine.
 2. Open `yo3.ini` in the install folder (`C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3`), keep a copy of the
-   original, and point it at the host (here `100.64.0.5`; the host itself can use `127.0.0.1`):
+   original, and point **all five lines** at the host (here `100.64.0.5`; the host itself can use `127.0.0.1`). The
+   game checks for updates at `PatchUpdateUrl` before it connects at all, and Konami's addresses are gone, so
+   changing only the first line isn't enough. Windows protects Program Files: edit the file with Notepad run as
+   administrator, or give your user write permission on `yo3.ini` first.
 
    ```ini
    [Yo3]
@@ -64,7 +67,7 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
    InfoURL=http://100.64.0.5:8080/app/
    ```
 
-3. Start the game and log in with any name and password (they aren't checked), then pick your player.
+3. Start the game, press ONLINE, log in with any name and password (they aren't checked), then pick your player.
 4. Once: open **Main Menu → Edit Deck** and leave it again. That saves your starter deck; without a deck the duel
    button says "There are no valid Decks available."
 5. To duel a friend, press the duel button on the bottom bar, then either:
@@ -119,7 +122,11 @@ Not yet: card rental. Players' decks stay on their own machines (in `Documents\Y
 ## When something goes wrong
 
 - **"There is no response from the server."** Check the address in `yo3.ini`, that the server runs, and that the four
-  ports are open (`nc -vz HOST 5730` from the player's machine).
+  ports are open (`nc -vz HOST 5730` from the player's machine). A quick test from any browser on the player's
+  machine: `http://HOST:8080/yo3/yo3.idx` shows lines of dated text when the host is reachable; a page that only
+  keeps loading means a firewall in between.
+- **The game can't find the server although the address is right:** the three `http://` lines in `yo3.ini` still
+  point at Konami (see step 2).
 - **Stuck right after logging in, or after the duel's janken:** the duel port 1214 is blocked, or the host needs
   `--advertise`.
 - **Both friends get the same players:** they reach the server from the same address (one router, port forwarding).

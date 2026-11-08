@@ -154,6 +154,10 @@ the knowledge.
   with `login SLOT`. A player already online can still be chosen twice (no guard yet).
 - The Ghidra C export drops the client's log strings, so a log line ("chat room list success") can't be grepped
   there. Use `yodis.py` on the handler to see which case prints it.
+- A Windows 11 VM (libvirt `win11`, 192.168.122.71, shared folder `/data/shared`) runs the real client natively: it
+  reaches the host at 192.168.122.1 once firewalld's `libvirt` zone allows the four ports (its catch-all reject blocks
+  them; the user runs `sudo firewall-cmd --zone=libvirt --add-port={5730,1213,1214,8080}/tcp`). `virsh -c
+  qemu:///system screenshot win11 FILE` shows its display without touching it; the user drives it.
 - Card drags (Edit Deck, Card Swap) need a hover before the press: `xdotool` on the client's display, moving onto the
   card's left edge, pausing, then `mousedown`, moving in steps and `mouseup`. `vclient.sh click` alone can't drag.
 - Chat request fields arrive nested in one item (tag 10), not at the top level. Check a real packet before assuming
