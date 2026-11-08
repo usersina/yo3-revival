@@ -233,3 +233,150 @@ fn moving_onto_an_address_with_an_account_needs_replace() {
     assert_eq!(left, [(ip(2), old.user_id)]);
     assert!(d.player(fresh.players[0].player_id).is_none(), "the discarded account's players are gone");
 }
+
+// Accounts by key: the key rides in the patch URL (`/yo3/<key>/yo3.idx`), which the client fetches before connecting.
+
+use std::time::{Duration, Instant};
+use yo3_server::accounts::{KEY_LEN, KEY_WINDOW};
+
+#[test]
+fn a_key_is_random_and_url_safe() {
+    let mut d = Directory::new(vec!["Yugi".into()]);
+    let keys: Vec<String> = (0..20).map(|i| d.add_account(&[format!("P{i}")]).unwrap()).collect();
+    for k in &keys {
+        assert_eq!(k.len(), KEY_LEN);
+        assert!(k.bytes().all(|b| b.is_ascii_alphanumeric()), "{k}");
+    }
+    let mut unique = keys.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), keys.len());
+}
+
+#[test]
+fn the_account_follows_the_key_to_any_address() {
+    let mut d = Directory::new(vec!["Yugi".into()]);
+    let key = d.add_account(&["Anis".into()]).unwrap();
+    let now = Instant::now();
+    assert!(d.present_key(ip(1), &key, now));
+    let a = d.login(ip(1), now);
+    assert_eq!(names(&a), ["Anis"]);
+    // The same friend from another address: the same account, not a new one.
+    assert!(d.present_key(ip(2), &key, now));
+    assert_eq!(d.login(ip(2), now).user_id, a.user_id);
+    assert_eq!(d.entries().count(), 1, "no address account was made");
+}
+
+#[test]
+fn friends_behind_one_address_get_their_own_accounts() {
+    // Each starts the game (fetching its key) just before connecting, so the most recent key wins.
+    let mut d = Directory::new(vec!["Yugi".into()]);
+    let (ka, kb) = (d.add_account(&["Anis".into()]).unwrap(), d.add_account(&["Joey".into()]).unwrap());
+    let now = Instant::now();
+    d.present_key(ip(1), &ka, now);
+    assert_eq!(names(&d.login(ip(1), now)), ["Anis"]);
+    d.present_key(ip(1), &kb, now + Duration::from_secs(5));
+    assert_eq!(names(&d.login(ip(1), now + Duration::from_secs(6))), ["Joey"]);
+}
+
+#[test]
+fn an_unknown_key_or_none_falls_back_to_the_address_account() {
+    let mut d = Directory::new(vec!["Yugi".into()]);
+    let now = Instant::now();
+    let by_address = d.account_for(ip(1));
+    assert!(!d.present_key(ip(1), "notAKeyOfAnyAccount1", now));
+    assert_eq!(d.login(ip(1), now).user_id, by_address.user_id, "unknown key");
+    assert_eq!(d.login(ip(3), now).user_id, d.account_for(ip(3)).user_id, "no key: today's behaviour, made on first contact");
+    assert_eq!(d.entries().count(), 2);
+}
+
+#[test]
+fn a_presented_key_counts_for_ten_minutes_and_a_login_renews_it() {
+    let mut d = Directory::new(vec!["Yugi".into()]);
+    let key = d.add_account(&["Anis".into()]).unwrap();
+    let by_address = d.account_for(ip(1));
+    let t0 = Instant::now();
+    d.present_key(ip(1), &key, t0);
+    let almost = t0 + KEY_WINDOW - Duration::from_secs(1);
+    assert_eq!(names(&d.login(ip(1), almost)), ["Anis"]);
+    // The login renewed it: a reconnect another nine minutes on still finds the key.
+    assert_eq!(names(&d.login(ip(1), almost + KEY_WINDOW - Duration::from_secs(1))), ["Anis"]);
+    // Left alone past the window it lapses to the address account.
+    let late = almost + KEY_WINDOW - Duration::from_secs(1) + KEY_WINDOW + Duration::from_secs(1);
+    assert_eq!(d.login(ip(1), late).user_id, by_address.user_id);
+    assert_eq!(d.login(ip(1), late).user_id, by_address.user_id, "and stays lapsed");
+}
+
+#[test]
+fn keys_are_kept_in_the_file_and_old_files_without_keys_load() {
+    let file = accounts_file("keys");
+    let (key, user) = {
+        let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
+        let by_address = d.account_for(ip(1));
+        let key = d.add_account(&["Anis".into()]).unwrap();
+        (key, by_address.user_id)
+    };
+    let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
+    assert!(d.present_key(ip(5), &key, Instant::now()));
+    assert_eq!(names(&d.login(ip(5), Instant::now())), ["Anis"]);
+    assert_eq!(d.account_for(ip(1)).user_id, user, "the address account is untouched");
+    // An old file: addresses only.
+    let old = serde_json::json!({ "next_user": 1002, "next_player": 1002, "accounts": [
+        { "address": "10.0.0.1", "user_id": 1001, "dpoint": 5000, "players": [{ "player_id": 1001, "name": "Old" }] }] });
+    std::fs::write(&file, old.to_string()).unwrap();
+    let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
+    assert_eq!(names(&d.login(ip(1), Instant::now())), ["Old"]);
+    assert_eq!(d.entries().next().unwrap().1, None);
+}
+
+#[test]
+fn the_host_gives_an_address_account_a_key_without_losing_anything() {
+    let file = accounts_file("key-of");
+    let mut d = Directory::open(vec!["Duelist".into()], &file).unwrap();
+    let before = d.account_for(ip(1));
+    d.update_player(before.players[0].player_id, |p| {
+        p.cards.insert(10, 2);
+    });
+    let key = d.key_of("10.0.0.1").unwrap();
+    assert_eq!(d.key_of("duelist").unwrap(), key, "by a player's name, ignoring case; the same key again");
+    assert!(d.key_of("10.0.0.9").is_err() && d.key_of("Nobody").is_err());
+    let mut d = Directory::open(vec!["Duelist".into()], &file).unwrap();
+    d.present_key(ip(7), &key, Instant::now());
+    let after = d.login(ip(7), Instant::now());
+    assert_eq!((after.user_id, after.players[0].player_id), (before.user_id, before.players[0].player_id));
+    assert_eq!(d.player(after.players[0].player_id).unwrap().cards.get(&10), Some(&2));
+    assert_eq!(d.account_for(ip(1)).user_id, before.user_id, "and the address still works without the key");
+}
+
+#[test]
+fn add_account_takes_one_to_four_unique_players() {
+    let mut d = Directory::new(vec!["Yugi".into(), "Kaiba".into()]);
+    d.account_for(ip(1));
+    d.add_account(&[]).unwrap();
+    let starters: Vec<_> = d.entries().map(|(_, _, a)| names(a).join("+")).collect();
+    assert_eq!(starters, ["Yugi+Kaiba", "Yugi2+Kaiba2"], "no names: the starting players, made unique");
+    assert!(d.add_account(&["yugi".into()]).is_err(), "taken, ignoring case");
+    assert!(d.add_account(&["A".into(), "a".into()]).is_err(), "twice in one account");
+    assert!(d.add_account(&(1..=5).map(|i| format!("Q{i}")).collect::<Vec<_>>()).is_err());
+    assert!(d.add_account(&["".into()]).is_err());
+    assert!(d.add_account(&["A".into(), "B".into(), "C".into(), "D".into()]).is_ok());
+}
+
+#[test]
+fn admin_commands_work_on_key_accounts_by_player_name() {
+    let mut d = Directory::new(vec!["Yugi".into()]);
+    d.add_account(&["Anis".into()]).unwrap();
+    let user = d.user_of("anis").unwrap();
+    assert_eq!(d.user_of("Nobody"), None);
+    d.add_player_to(user, "Anis2").unwrap();
+    assert!(d.add_player_to(user, "Anis").is_err(), "taken");
+    d.set_country_of(user, "tn").unwrap();
+    let account = d.account_of(user).unwrap();
+    assert_eq!(names(&account), ["Anis", "Anis2"]);
+    assert_eq!(account.country, "TN");
+    assert!(account.players.iter().all(|p| p.country == "TN"));
+    d.rename("Anis2", "Joey").unwrap();
+    assert_eq!(names(&d.account_of(user).unwrap()), ["Anis", "Joey"]);
+    assert!(d.set_country_of(user, "Tunisia").is_err());
+    assert_eq!(d.accounts().count(), 0, "move-account and the address listing only see address accounts");
+}

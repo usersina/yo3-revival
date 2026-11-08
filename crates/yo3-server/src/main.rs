@@ -20,16 +20,17 @@ struct Args {
     bind: IpAddr,
     /// The address clients are sent to for the front and duel servers (default: the address each client reached;
     /// set it when clients reach the server through a forwarded port or a different name).
-    #[arg(long)]
+    /// With `add-account` and `key`: the address friends reach the server at, written into the `yo3.ini` lines.
+    #[arg(long, global = true)]
     advertise: Option<String>,
-    #[arg(long, default_value_t = 5730)]
+    #[arg(long, default_value_t = 5730, global = true)]
     gate_port: u16,
     #[arg(long, default_value_t = 1213)]
     front_port: u16,
     /// Duel connections (the original's port is unknown).
     #[arg(long, default_value_t = 1214)]
     duel_port: u16,
-    #[arg(long, default_value_t = 8080)]
+    #[arg(long, default_value_t = 8080, global = true)]
     http_port: u16,
     /// Game install (for the patch index and the client's own data files).
     #[arg(long)]
@@ -64,50 +65,96 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Admin {
-    /// List every account: its address and players.
+    /// List every account: its address (or none), key and players.
     Accounts,
-    /// Give the account at ADDRESS (a friend's LAN or VPN address) a player named NAME; a new address gets an account
+    /// Make an account found by a secret key, not an address: NAME is its first player (the starting players when
+    /// omitted), --also adds up to three more. Prints the key and the `yo3.ini` lines to send the friend (the host in
+    /// them is `--advertise`, or the placeholder HOST).
+    AddAccount {
+        name: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        also: Vec<String>,
+    },
+    /// Print the key of an existing account, ADDRESS or one of its PLAYER names (making a key if it has none; the
+    /// account keeps its address too), with the `yo3.ini` lines.
+    Key { who: String },
+    /// Give an account (its ADDRESS or one of its PLAYER names) a player named NAME; a new address gets an account
     /// with only that player.
-    AddPlayer { address: IpAddr, name: String },
+    AddPlayer { who: String, name: String },
     /// Rename a player.
     Rename { old: String, new: String },
-    /// Move the account at OLD to NEW, for a friend whose address changed: players, cards, BP, decks and records go
-    /// along. An account already at NEW (made when the friend first connected from there) is only discarded with
-    /// --replace.
+    /// Move the account at OLD to NEW, for a friend whose address changed (an account with a key needs no move: the
+    /// key follows the friend): players, cards, BP, decks and records go along. An account already at NEW (made
+    /// when the friend first connected from there) is only discarded with --replace.
     MoveAccount {
         old: IpAddr,
         new: IpAddr,
         #[arg(long)]
         replace: bool,
     },
-    /// Set the country flag the account at ADDRESS shows to others (a code from the client's table, such as FR or
-    /// JP: `countries` lists them); "auto" goes back to the one the client's language implies.
-    SetCountry { address: IpAddr, code: String },
+    /// Set the country flag the account at WHO (an address or a player's name) shows to others (a code from the
+    /// client's table, such as FR or JP: `countries` lists them); "auto" goes back to the one the client's language
+    /// implies.
+    SetCountry { who: String, code: String },
     /// List the country codes the client has flags for.
     Countries,
 }
 
+/// The `yo3.ini` a friend with `key` pastes: every line points at the host (`HOST` when not given).
+fn ini_lines(a: &Args, key: &str) -> String {
+    let host = a.advertise.as_deref().unwrap_or("HOST");
+    format!(
+        "GateServerAddress={host}\nGateServerPort={}\nPatchUpdateUrl=http://{host}:{}/yo3/{key}/\nPatchDataUrl=http://{host}:{}/ygoda/patch/\nInfoURL=http://{host}:{}/app/",
+        a.gate_port, a.http_port, a.http_port, a.http_port
+    )
+}
+
+fn print_key(a: &Args, key: &str) {
+    println!("key: {key}\n\nThe friend's yo3.ini (the [Yo3] section; the key is the secret in PatchUpdateUrl, keep it to them):\n\n{}", ini_lines(a, key));
+    if a.advertise.is_none() {
+        println!("\nReplace HOST with the address friends reach the server at (or pass --advertise ADDRESS).");
+    }
+}
+
 /// Runs an admin command against the accounts file.
-fn admin(command: Admin, data_dir: &std::path::Path, players: Vec<String>, game_dir: PathBuf) -> anyhow::Result<()> {
-    let mut d = Directory::open(players, &data_dir.join("accounts.json"))?;
+fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
+    let mut d = Directory::open(a.players.clone(), &a.data_dir.join("accounts.json"))?;
+    let err = anyhow::Error::msg;
     match command {
         Admin::Accounts => {
-            for (addr, a) in d.accounts() {
-                let names: Vec<_> = a.players.iter().map(|p| format!("{} (#{})", p.name, p.player_id)).collect();
-                let country = if a.country.is_empty() { "auto".to_string() } else { a.country.clone() };
-                println!("{addr}\tuser {}\tcountry {country}\t{}", a.user_id, names.join(", "));
+            for (addr, key, acc) in d.entries() {
+                let names: Vec<_> = acc.players.iter().map(|p| format!("{} (#{})", p.name, p.player_id)).collect();
+                let country = if acc.country.is_empty() { "auto".to_string() } else { acc.country.clone() };
+                let addr = addr.map_or("no address".to_string(), |a| a.to_string());
+                println!("{addr}\tuser {}\tkey {}\tcountry {country}\t{}", acc.user_id, key.unwrap_or("none"), names.join(", "));
             }
         }
-        Admin::AddPlayer { address, name } => d.add_player(address, &name).map_err(anyhow::Error::msg)?,
-        Admin::Rename { old, new } => d.rename(&old, &new).map_err(anyhow::Error::msg)?,
-        Admin::MoveAccount { old, new, replace } => d.move_account(old, new, replace).map_err(anyhow::Error::msg)?,
-        Admin::SetCountry { address, code } => {
+        Admin::AddAccount { name, also } => {
+            let names: Vec<String> = name.into_iter().chain(also).collect();
+            let key = d.add_account(&names).map_err(err)?;
+            print_key(a, &key);
+        }
+        Admin::Key { who } => {
+            let key = d.key_of(&who).map_err(err)?;
+            print_key(a, &key);
+        }
+        Admin::AddPlayer { who, name } => match who.parse::<IpAddr>() {
+            Ok(address) => d.add_player(address, &name).map_err(err)?,
+            Err(_) => {
+                let user = d.user_of(&who).ok_or_else(|| err(format!("no player named {who:?}")))?;
+                d.add_player_to(user, &name).map_err(err)?
+            }
+        },
+        Admin::Rename { old, new } => d.rename(&old, &new).map_err(err)?,
+        Admin::MoveAccount { old, new, replace } => d.move_account(old, new, replace).map_err(err)?,
+        Admin::SetCountry { who, code } => {
             let code = if code.eq_ignore_ascii_case("auto") { String::new() } else { code.to_ascii_uppercase() };
             let known = yo3_data::countries(&game_dir)?;
             if !code.is_empty() && !known.contains(&code) {
                 anyhow::bail!("{code} is not in the client's country table; `countries` lists them");
             }
-            d.set_country(address, &code).map_err(anyhow::Error::msg)?
+            let user = d.user_of(&who).ok_or_else(|| err(format!("no account at or with a player named {who:?}")))?;
+            d.set_country_of(user, &code).map_err(err)?
         }
         Admin::Countries => println!("{}", yo3_data::countries(&game_dir)?.join(" ")),
     }
@@ -120,9 +167,10 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .with_target(false)
         .init();
-    let a = Args::parse();
-    if let Some(command) = a.admin {
-        return admin(command, &a.data_dir, a.players, a.game_dir.unwrap_or_else(yo3_data::default_game_dir));
+    let mut a = Args::parse();
+    if let Some(command) = a.admin.take() {
+        let game_dir = a.game_dir.clone().unwrap_or_else(yo3_data::default_game_dir);
+        return admin(&a, command, game_dir);
     }
     let cfg = Config {
         bind: a.bind,

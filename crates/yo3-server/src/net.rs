@@ -1,7 +1,7 @@
 //! Connection loops: framing, decryption, logging, and the patch-HTTP endpoint.
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -10,7 +10,9 @@ use tokio::net::TcpListener;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use yo3_proto::{MAX_FRAME, Message, Packet, decrypt, frame, frame_len};
 
+use crate::accounts::{Directory, KEY_LEN};
 use crate::front::Outbox;
+use crate::lock::Locked;
 use crate::log::PacketLog;
 
 /// How long a connection may stay silent before it is closed: before its first message on every port (a socket that
@@ -160,10 +162,13 @@ where
 }
 
 /// Minimal HTTP: serves the client's own patch index so it sees itself as up to date.
-pub async fn http_loop(listener: TcpListener, game_dir: PathBuf, duel_logs: Option<PathBuf>) {
+///
+/// An account's key rides in the patch URL (`/yo3/<key>/yo3.idx`): the client fetches it before every connection to
+/// the gate, so the address that presented a known key is remembered for its next login (`Directory::login`).
+pub async fn http_loop(listener: TcpListener, game_dir: PathBuf, duel_logs: Option<PathBuf>, accounts: Arc<Mutex<Directory>>) {
     let mut backoff = Duration::from_millis(50);
     loop {
-        let (mut stream, _) = match listener.accept().await {
+        let (mut stream, peer) = match listener.accept().await {
             Ok(accepted) => {
                 backoff = Duration::from_millis(50);
                 accepted
@@ -175,7 +180,7 @@ pub async fn http_loop(listener: TcpListener, game_dir: PathBuf, duel_logs: Opti
                 continue;
             }
         };
-        let (game_dir, duel_logs) = (game_dir.clone(), duel_logs.clone());
+        let (game_dir, duel_logs, accounts) = (game_dir.clone(), duel_logs.clone(), accounts.clone());
         tokio::spawn(async move {
             let mut buf = Vec::new();
             let mut chunk = [0u8; 1024];
@@ -189,6 +194,13 @@ pub async fn http_loop(listener: TcpListener, game_dir: PathBuf, duel_logs: Opti
             let request = String::from_utf8_lossy(&buf);
             let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
             let (status, body) = if path.trim_end_matches('/').ends_with("/yo3.idx") {
+                if let Some(key) = key_in(&path) {
+                    if accounts.locked().present_key(peer.ip(), key, std::time::Instant::now()) {
+                        tracing::info!("[http] {} presented an account key", peer.ip());
+                    } else if key.len() >= KEY_LEN {
+                        tracing::warn!("[http] {} presented an unknown key; its login stays with its address", peer.ip());
+                    }
+                }
                 match tokio::fs::read(game_dir.join("yo3.idx")).await {
                     Ok(b) => ("200 OK", b),
                     Err(_) => ("404 Not Found", vec![]),
@@ -210,4 +222,12 @@ pub async fn http_loop(listener: TcpListener, game_dir: PathBuf, duel_logs: Opti
             let _ = stream.shutdown().await;
         });
     }
+}
+
+/// The account key in a patch URL path: the segment before `yo3.idx` (`/yo3/<key>/yo3.idx`), if there is one besides
+/// the stock `yo3`.
+fn key_in(path: &str) -> Option<&str> {
+    let path = path.split('?').next().unwrap_or_default().trim_end_matches('/');
+    let key = path.strip_suffix("/yo3.idx")?.rsplit('/').next()?;
+    (!key.is_empty() && key != "yo3").then_some(key)
 }

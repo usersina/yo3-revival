@@ -275,10 +275,11 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     hub.set_round_delay(EVENT_ROUND_DELAY);
     hub.set_directory(directory.clone());
     let hub = Arc::new(Mutex::new(hub));
+    let directory_http = directory.clone();
     let front_task = {
         let (world, hub) = (world.clone(), hub.clone());
         tokio::spawn(net::accept_loop(front, "front", packets.clone(), quiet, move |peer: SocketAddr, local: SocketAddr, outbox| {
-            let account = directory.locked().account_for(peer.ip());
+            let account = directory.locked().login(peer.ip(), std::time::Instant::now());
             let mut session = FrontSession::new(account, world.clone(), hub.clone(), outbox);
             session.set_reached_at(local.ip());
             session.set_peer(peer.ip());
@@ -314,7 +315,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         let mut session = duel::DuelSession::new(world.clone(), hub.clone(), seed).with_outbox(outbox).with_peer(peer.ip());
         move |p: &yo3_proto::Packet| session.handle(p)
     }));
-    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs"))));
+    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs")), directory_http));
 
     tracing::info!(
         "gate {} front {} duel {} http {} (advertise {}); packets -> {}",

@@ -103,3 +103,37 @@ async fn an_advertised_address_wins() {
     cfg.advertise = Some("10.9.8.7".into());
     assert_eq!(redirect(cfg, [127, 0, 0, 1]).await.0, "10.9.8.7");
 }
+
+#[tokio::test]
+async fn a_key_in_the_patch_url_picks_the_account_of_the_next_login() {
+    // The client fetches PatchUpdateUrl + yo3.idx before it connects to the gate: with /yo3/<key>/ the front login
+    // that follows lands in the key's account. Without a (known) key it is the address account.
+    let dir = std::env::temp_dir().join(format!("yo3-keyflow-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let key = yo3_server::accounts::Directory::open(vec!["Duelist".into()], &dir.join("accounts.json"))
+        .map(|mut d| d.add_account(&["Keyed".into()]).unwrap())
+        .unwrap();
+    let cfg = Config { data_dir: Some(dir.clone()), ..Config::ephemeral(dir.join("logs")) };
+    let server = start(cfg).await.unwrap();
+
+    async fn players(server: &yo3_server::Running) -> Vec<String> {
+        let mut front = TcpStream::connect(server.front).await.unwrap();
+        send(&mut front, &version()).await;
+        recv(&mut front).await;
+        let list = rpc(&mut front, Message::reply(0x1F49)).await;
+        list.items.iter().map(|i| i.get("pname").and_then(Value::as_str).unwrap_or_default()).collect()
+    }
+    async fn fetch(server: &yo3_server::Running, path: &str) {
+        let mut s = TcpStream::connect(server.http).await.unwrap();
+        s.write_all(format!("GET {path} HTTP/1.1\r\nHost: x\r\n\r\n").as_bytes()).await.unwrap();
+        let mut resp = String::new();
+        s.read_to_string(&mut resp).await.unwrap();
+    }
+    let at_first = players(&server).await;
+    assert!(at_first.iter().all(|p| !p.contains("Keyed")) && !at_first.is_empty(), "no key: the address account {at_first:?}");
+    fetch(&server, "/yo3/NotAKeyNotAKeyNotAKey/yo3.idx").await;
+    assert_eq!(players(&server).await, at_first, "an unknown key: the address account");
+    fetch(&server, &format!("/yo3/{key}/yo3.idx")).await;
+    let keyed = players(&server).await;
+    assert!(keyed.len() == 1 && keyed[0].contains("Keyed"), "{keyed:?}");
+}
