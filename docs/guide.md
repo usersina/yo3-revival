@@ -2,7 +2,7 @@
 
 One person (the host) runs the server; everyone, the host included, plays with the original game client pointed at
 it. This server is unofficial and has nothing to do with Konami. It ships no game files: every player needs their own
-install of the client (the last version, from 2012).
+install of the client (the last released version, ver. 1.153).
 
 **Contents**
 

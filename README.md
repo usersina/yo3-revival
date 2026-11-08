@@ -10,7 +10,7 @@ engine.
 </p>
 
 <p align="center">
-  <sub>The unmodified 2011 client, mid-duel on this server (screenshot of Konami's game).</sub>
+  <sub>The unmodified game client (ver. 1.153), mid-duel on this server (screenshot of Konami's game).</sub>
 </p>
 
 **Contents:** [What works](#what-works) · [Play](#play) · [Host](#host) · [Documentation](#documentation) ·
@@ -38,7 +38,7 @@ What is left is in the [roadmap](docs/roadmap.md).
 
 ## Play
 
-You need your own copy of the game (the final 2012 version, installed on Windows or under Wine on Linux) and a host
+You need your own copy of the game (the last released client, ver. 1.153, installed on Windows or under Wine on Linux) and a host
 running this server. The host sends you an address; then:
 
 1. Open **`http://HOST:8080/join`** in a browser, type the player name you want and press **Join**.
