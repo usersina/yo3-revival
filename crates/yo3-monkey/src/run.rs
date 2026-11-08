@@ -489,7 +489,16 @@ enum Stage {
 
 /// One player's side of a duel, played at random: Auto Duel against another client, or an NPC duel against the server's
 /// CPU (`npc`). Returns the furthest stage reached.
-async fn duel_client(ports: Ports, corpus: Arc<Corpus>, stats: Arc<DuelStats>, pid: u32, seed: u64, play_secs: f64, npc: bool, match_type: u32) -> Stage {
+struct Seat {
+    pid: u32,
+    seed: u64,
+    play_secs: f64,
+    npc: bool,
+    match_type: u32,
+}
+
+async fn duel_client(ports: Ports, corpus: Arc<Corpus>, stats: Arc<DuelStats>, seat: Seat) -> Stage {
+    let Seat { pid, seed, play_secs, npc, match_type } = seat;
     let mut rng = Rng::new(seed);
     let mut stage = Stage::Login;
     let Ok(mut front) = login_front(&ports, pid).await else { return stage };
@@ -630,13 +639,13 @@ pub async fn duel_pair(ports: &Ports, corpus: &Arc<Corpus>, stats: &Arc<DuelStat
     // One in three: a duel against the CPU instead.
     if rng.chance(0.33) {
         let pid = *rng.pick(&ports.pids);
-        let a = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), pid, rng.next(), secs, true, 4)).await;
+        let a = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), Seat { pid, seed: rng.next(), play_secs: secs, npc: true, match_type: 4 })).await;
         return (a.unwrap_or(Stage::Login) as usize, 0);
     }
     let match_type = *rng.pick(&[1u32, 1, 1, 3, 6]);
-    let a = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), ports.pids[0], rng.next(), secs, false, match_type));
+    let a = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), Seat { pid: ports.pids[0], seed: rng.next(), play_secs: secs, npc: false, match_type }));
     tokio::time::sleep(Duration::from_millis(rng.range(0, 400) as u64)).await;
-    let b = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), ports.pids[1], rng.next(), secs, false, match_type));
+    let b = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), Seat { pid: ports.pids[1], seed: rng.next(), play_secs: secs, npc: false, match_type }));
     let (a, b) = (a.await.unwrap_or(Stage::Login), b.await.unwrap_or(Stage::Login));
     (a as usize, b as usize)
 }
