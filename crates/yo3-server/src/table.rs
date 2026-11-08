@@ -355,6 +355,9 @@ impl Table {
                 }
             }
         }
+        for part in out.iter_mut().chain(watched.iter_mut()) {
+            crate::translate::settle_positions(part);
+        }
         if failed {
             // The engine died or hung: nobody could be asked anything again, so the duel ends here as a draw.
             self.tell_spectators(watched);

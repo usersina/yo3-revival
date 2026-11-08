@@ -885,7 +885,12 @@ only by `0x22`–`0x25`, `0x38`, `0x39` (`0x5153D9`, `0x5153F9`, `0x515445`: whe
 the summon's sparkles still play. Live, with Stumbling (a continuous Spell that changes every summoned monster to
 Defense Position, so the summon is followed by ChainSet, ChainRun and `0x1C` in one burst), the summoner's monster and the
 other player's both turned in three tries (the summoner's own Stumbling and the opponent's, with and without a
-question in between); the failure seen on the Windows VM was not reproduced, see ROADMAP.
+question in between); the failure seen on the Windows VM was not reproduced there. It was on the VM round (Yugi
+headless against the VM's Stumbling: both of Yugi's summoned monsters stayed upright on his own screen, and later turns
+of them didn't show either; `0x4FB7F0` keeps a pending effect mode per card at `+0xDC`). So within one batch a summon
+move onto a monster zone, followed by its summon effect and then a `0x1C` of that zone, gets the turn's position on
+the move itself (`settle_positions`, applied to every batch): the card lands in its final position and nothing turns
+while the effect plays. **shape**: the live check is pending.
 
 **Summons** (DuelScene): `0x38` RunSummon {player, the summoned card's uid} plays the summon effect at the card (`0x21`,
 or `0x23` for the player's `ace_monster`); `0x39` RunSpSummon {player, uid} the Special Summon effect (`0x19`). The

@@ -539,6 +539,7 @@ impl DuelSession {
                 }
             }
         }
+        crate::translate::settle_positions(&mut out);
         // An engine that died or hung can't be asked again: the duel ends as a draw (a no-result end the client shows).
         let result = if failed {
             out.push(command(DUEL_END, [DRAW, 0, 0, 0]));

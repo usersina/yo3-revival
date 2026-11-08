@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use serde_json::{Value as Json, json};
-use yo3_proto::Message;
+use yo3_proto::{Message, Value};
 
 use crate::card_options::CARD_OPTION_LABELS;
 use crate::duel::{
@@ -1551,6 +1551,42 @@ const FIRST_TOKEN_UID: u32 = 0x4000;
 /// The table entry flag of a card in this zone: open in the Graveyard and among the banished cards.
 fn open(zone: u32) -> u32 {
     if zone == GRAVE || zone == REMOVED { OPEN } else { 0 }
+}
+
+/// A monster turned right after its summon lands in its new position: within one batch to the client, a summon move
+/// onto a monster zone followed by its summon effect (RunSummon / RunSpSummon) and then a turn (CardFlipTurn) of that
+/// zone gets the turn's position on the move itself. CardFlipTurn waits only for the card manager, so it could run
+/// while the summoner's longer summon effect still played and the monster stayed upright there (live: Stumbling, on
+/// the Windows VM test; the other client, with a shorter effect, showed it right).
+pub fn settle_positions(out: &mut [Message]) {
+    let param = |m: &Message, k: &str| m.get(k).and_then(Value::as_u32).unwrap_or(0);
+    // By slot (player | zone << 1): the summon move's index, and whether its summon effect has come since.
+    let mut moved: HashMap<u32, (usize, bool)> = HashMap::new();
+    for i in 0..out.len() {
+        let id = param(&out[i], "id");
+        let slot = |p: u32| ((p >> 1) & 0x1F < 5).then_some(p & 0x3F);
+        match id {
+            MOVE => {
+                if let Some(from) = slot(param(&out[i], "param2")) {
+                    moved.remove(&from);
+                }
+                if let Some(to) = slot(param(&out[i], "param3")) {
+                    moved.insert(to, (i, false));
+                }
+            }
+            RUN_SUMMON | RUN_SP_SUMMON => moved.values_mut().for_each(|(_, effect)| *effect = true),
+            FLIP_TURN => {
+                let place = param(&out[i], "param1");
+                if let Some((at, true)) = slot(place).and_then(|s| moved.remove(&s)) {
+                    let to = param(&out[at], "param3") & !0xC000 | place & 0xC000;
+                    if let Some((_, v)) = out[at].fields.iter_mut().find(|(k, _)| k == "param3") {
+                        *v = Value::U32(to);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// A data command per four values, which the pop appends in order (0x522A50).

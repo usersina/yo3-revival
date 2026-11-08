@@ -1459,3 +1459,33 @@ fn a_sum_prompt_is_answered_with_cards_that_make_the_sum() {
     // The client, with no window for it, gets the same answer.
     assert_eq!(answer(&mut t, sum(0, 1, 8, &[], &[4, 4, 4])), json!({ "type": 14, "indicies": [0, 1] }));
 }
+
+#[test]
+fn a_monster_turned_right_after_its_summon_lands_in_its_new_position() {
+    // Live (Windows VM, Stumbling): the summoner's client got the summon move in attack position, RunSummon 0x38, the
+    // chain, then CardFlipTurn 0x1C to defense, all in one batch. 0x1C waits only for the card manager, so it ran while
+    // the summoner's longer summon effect still played, and the monster stood upright on that screen (the opponent's,
+    // with a shorter effect, lay it down). Within a batch the summon move carries the position the card turns to.
+    let cmd = |id: u32, p: [u32; 4]| yo3_server::duel::command(id, p);
+    let mut out = vec![
+        cmd(0x1A, [19 | 0x5A9 << 16, 0x116, 0x4002, 0]),
+        cmd(0x38, [0, 19, 0, 0]),
+        cmd(0x33, [1, 5, 1, 0]),
+        cmd(0x34, [0, 0, 1, 0]),
+        cmd(0x1C, [0xC002, 0, 0, 0]),
+    ];
+    yo3_server::translate::settle_positions(&mut out);
+    assert_eq!(cmd_of(&out[0]), (0x1A, [19 | 0x5A9 << 16, 0x116, 0xC002, 0]));
+    assert_eq!(cmd_of(&out[4]), (0x1C, [0xC002, 0, 0, 0]), "the turn stays (it changes nothing now)");
+    // A turn with no summon effect in between, or of another slot, leaves the move as it was.
+    let mut out = vec![cmd(0x1A, [19, 0x116, 0x4002, 0]), cmd(0x1C, [0xC002, 0, 0, 0])];
+    yo3_server::translate::settle_positions(&mut out);
+    assert_eq!(cmd_of(&out[0]).1[2], 0x4002);
+    let mut out = vec![cmd(0x1A, [19, 0x116, 0x4002, 0]), cmd(0x38, [0, 19, 0, 0]), cmd(0x1C, [0xC004, 0, 0, 0])];
+    yo3_server::translate::settle_positions(&mut out);
+    assert_eq!(cmd_of(&out[0]).1[2], 0x4002);
+}
+
+fn cmd_of(m: &Message) -> (u32, [u32; 4]) {
+    cmd(m)
+}
