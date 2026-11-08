@@ -28,6 +28,20 @@ pub const MAX_NAME: usize = 16;
 /// The BOOSTERPASS Points (the shop's BP, the account's dpoint) a new account starts with: 50 packs (**guess**).
 pub const START_BP: u32 = 5000;
 
+/// How many accounts one address may make on the join page.
+pub const JOIN_PER_ADDRESS: usize = 4;
+/// How many accounts the join page makes per hour in all (**guess**: a stop to abuse, a group of friends is far below).
+pub const JOIN_PER_HOUR: usize = 20;
+
+/// What the join page shows an address: the accounts it has (key and player names) and whether an address-only
+/// account could be given a key.
+pub struct JoinState {
+    pub accounts: Vec<(String, Vec<String>)>,
+    pub keepable: bool,
+    /// Whether the address may still make an account (`JOIN_PER_ADDRESS`).
+    pub can_join: bool,
+}
+
 /// A change to one player (`Directory::update_players`).
 pub type PlayerChange<'a> = (u32, Box<dyn FnOnce(&mut Player) + 'a>);
 
@@ -43,6 +57,8 @@ pub const KEY_LEN: usize = 20;
 struct Entry {
     address: Option<IpAddr>,
     key: Option<String>,
+    /// The address that made it on the join page (for the page's per-address cap).
+    joined_from: Option<IpAddr>,
     account: Account,
 }
 
@@ -71,6 +87,8 @@ pub struct Directory {
     accounts: Vec<Entry>,
     /// The key each address presented last, and when (not saved: a client presents it again at every start).
     presented: HashMap<IpAddr, (String, Instant)>,
+    /// When the join page made its accounts, for the hourly cap (not saved).
+    joins: Vec<Instant>,
     next_user: u32,
     next_player: u32,
     /// Where the accounts are kept (none: in memory only).
@@ -80,7 +98,7 @@ pub struct Directory {
 impl Directory {
     /// `player_names`: the players every new account starts with (at most four are used).
     pub fn new(player_names: Vec<String>) -> Directory {
-        Directory { player_names, accounts: Vec::new(), presented: HashMap::new(), next_user: 1001, next_player: 1001, file: None }
+        Directory { player_names, accounts: Vec::new(), presented: HashMap::new(), joins: Vec::new(), next_user: 1001, next_player: 1001, file: None }
     }
 
     /// The accounts kept in `file` (none yet if it doesn't exist); changes are written back to it.
@@ -149,7 +167,8 @@ impl Directory {
             for p in &mut account.players {
                 p.country.clone_from(&account.country);
             }
-            d.accounts.push(Entry { address, key, account });
+            let joined_from = a["joined_from"].as_str().and_then(|s| s.parse().ok());
+            d.accounts.push(Entry { address, key, joined_from, account });
         }
         Ok(d)
     }
@@ -172,7 +191,7 @@ impl Directory {
 
     fn create(&mut self, addr: IpAddr, names: &[String]) -> Account {
         let account = self.create_account(names);
-        self.accounts.push(Entry { address: Some(addr), key: None, account: account.clone() });
+        self.accounts.push(Entry { address: Some(addr), key: None, joined_from: None, account: account.clone() });
         account
     }
 
@@ -227,9 +246,56 @@ impl Directory {
         }
         let account = self.create_account(&names);
         let key = new_key();
-        self.accounts.push(Entry { address: None, key: Some(key.clone()), account });
+        self.accounts.push(Entry { address: None, key: Some(key.clone()), joined_from: None, account });
         self.save();
         Ok(key)
+    }
+
+    /// Whether `key` is an account's.
+    pub fn has_key(&self, key: &str) -> bool {
+        !key.is_empty() && self.accounts.iter().any(|e| e.key.as_deref() == Some(key))
+    }
+
+    /// The join page's view of `addr`: the accounts with a key it made or has, and whether an address-only account
+    /// could be given a key.
+    pub fn join_state(&self, addr: IpAddr) -> JoinState {
+        let mine = |e: &&Entry| e.key.is_some() && (e.joined_from == Some(addr) || e.address == Some(addr));
+        let accounts = self.accounts.iter().filter(mine).filter_map(|e| Some((e.key.clone()?, e.account.players.iter().map(|p| p.name.clone()).collect()))).collect();
+        let keepable = self.accounts.iter().any(|e| e.address == Some(addr) && e.key.is_none());
+        let can_join = self.accounts.iter().filter(|e| e.joined_from == Some(addr)).count() < JOIN_PER_ADDRESS;
+        JoinState { accounts, keepable, can_join }
+    }
+
+    /// The join page makes an account with one player `name` for `addr` at `now`; its key. Refused for a bad or
+    /// taken name (the rules of Create Player), more than `JOIN_PER_ADDRESS` accounts for the address or
+    /// `JOIN_PER_HOUR` in the last hour.
+    pub fn join(&mut self, addr: IpAddr, name: &str, now: Instant) -> Result<String, String> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > MAX_NAME || name.chars().any(char::is_control) {
+            return Err(format!("a name is 1 to {MAX_NAME} characters, with no control characters"));
+        }
+        if self.taken(name) {
+            return Err(format!("the name {name:?} is taken, pick another"));
+        }
+        if self.accounts.iter().filter(|e| e.joined_from == Some(addr)).count() >= JOIN_PER_ADDRESS {
+            return Err(format!("this address already made {JOIN_PER_ADDRESS} accounts"));
+        }
+        self.joins.retain(|t| now.saturating_duration_since(*t) < Duration::from_secs(3600));
+        if self.joins.len() >= JOIN_PER_HOUR {
+            return Err("too many accounts were made in the last hour, try again later".to_string());
+        }
+        let key = self.add_account(&[name.to_string()])?;
+        if let Some(e) = self.accounts.last_mut() {
+            e.joined_from = Some(addr);
+        }
+        self.joins.push(now);
+        self.save();
+        Ok(key)
+    }
+
+    /// The key of the address-only account at `addr` ("keep my account"), made if it has none.
+    pub fn keep(&mut self, addr: IpAddr) -> Result<String, String> {
+        self.key_of(&addr.to_string())
     }
 
     /// The key of the account at `who` (an address, or a player's name), made if the account has none.
@@ -526,6 +592,9 @@ impl Directory {
                 }
                 if let Some(key) = key {
                     account["key"] = json!(key);
+                }
+                if let Some(from) = self.accounts.iter().find(|e| e.account.user_id == a.user_id).and_then(|e| e.joined_from) {
+                    account["joined_from"] = json!(from.to_string());
                 }
                 if !a.country.is_empty() {
                     account["country"] = json!(a.country);

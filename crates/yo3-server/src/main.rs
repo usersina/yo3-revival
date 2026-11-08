@@ -32,6 +32,10 @@ struct Args {
     duel_port: u16,
     #[arg(long, default_value_t = 8080, global = true)]
     http_port: u16,
+    /// Turn the self-service join page (`http://HOST:8080/join`) off, for a server reachable from the internet: its
+    /// keys travel in plain HTTP. Hosts then make accounts with `add-account`.
+    #[arg(long)]
+    no_join: bool,
     /// Game install (for the patch index and the client's own data files).
     #[arg(long)]
     game_dir: Option<PathBuf>,
@@ -179,6 +183,7 @@ async fn main() -> anyhow::Result<()> {
         front_port: a.front_port,
         duel_port: a.duel_port,
         http_port: a.http_port,
+        join: !a.no_join,
         game_dir: a.game_dir.unwrap_or_else(yo3_data::default_game_dir),
         log_dir: a.log_dir,
         players: a.players,

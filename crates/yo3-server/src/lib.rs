@@ -20,6 +20,7 @@ mod events;
 pub mod clock;
 mod log;
 mod net;
+mod join;
 pub use net::IDLE_TIMEOUT;
 
 use crate::lock::Locked;
@@ -61,6 +62,8 @@ pub struct Config {
     /// Where clients open their duel connection (DuelServerConnection); only logged so far.
     pub duel_port: u16,
     pub http_port: u16,
+    /// Serve the join page (`/join`) on the HTTP port; off for a server open to the internet (`--no-join`).
+    pub join: bool,
     pub game_dir: PathBuf,
     pub log_dir: PathBuf,
     /// Players every new account starts with (one account per client address).
@@ -94,6 +97,7 @@ impl Config {
             front_port: 0,
             duel_port: 0,
             http_port: 0,
+            join: true,
             game_dir: yo3_data::default_game_dir(),
             log_dir,
             players: vec!["test".into()],
@@ -339,7 +343,8 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         let mut session = duel::DuelSession::new(world.clone(), hub.clone(), seed).with_outbox(outbox).with_peer(peer.ip());
         move |p: &yo3_proto::Packet| session.handle(p)
     }));
-    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs")), directory_http));
+    let join_info = cfg.join.then(|| join::JoinInfo { gate_port: addrs.0.port(), http_port: addrs.3.port(), advertise: cfg.advertise.clone() });
+    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs")), directory_http, join_info));
 
     tracing::info!(
         "gate {} front {} duel {} http {} (advertise {}); packets -> {}",
