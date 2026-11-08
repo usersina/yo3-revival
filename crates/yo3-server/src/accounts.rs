@@ -78,13 +78,17 @@ impl Directory {
             d.next_user = d.next_user.max(user_id + 1);
             let mut account = Directory::account(user_id, players);
             account.dpoint = a["dpoint"].as_u64().map_or(START_BP, |n| n as u32);
+            account.country = a["country"].as_str().unwrap_or_default().to_string();
+            for p in &mut account.players {
+                p.country.clone_from(&account.country);
+            }
             d.by_address.insert(address, account);
         }
         Ok(d)
     }
 
     fn account(user_id: u32, players: Vec<Player>) -> Account {
-        Account { user_id, name: format!("user{user_id}"), dpoint: START_BP, players }
+        Account { user_id, name: format!("user{user_id}"), dpoint: START_BP, players, country: String::new() }
     }
 
     /// The account of an address, made with the starting players (their names made unique) on first contact.
@@ -139,6 +143,22 @@ impl Directory {
                 self.next_player += 1;
                 a.players.push(p);
             }
+        }
+        self.save();
+        Ok(())
+    }
+
+    /// Sets the country flag of the account at `addr` (an ISO code of the client's `countrytbl.bin`, two letters in
+    /// any case); an empty code clears it, so the flag follows the client's language again.
+    pub fn set_country(&mut self, addr: IpAddr, code: &str) -> Result<(), String> {
+        let code = code.trim().to_ascii_uppercase();
+        if !code.is_empty() && !(code.len() == 2 && code.bytes().all(|b| b.is_ascii_uppercase())) {
+            return Err(format!("{code:?} is not a two-letter country code"));
+        }
+        let Some(account) = self.by_address.get_mut(&addr) else { return Err(format!("no account at {addr}")) };
+        account.country = code;
+        for p in &mut account.players {
+            p.country.clone_from(&account.country);
         }
         self.save();
         Ok(())
@@ -215,7 +235,11 @@ impl Directory {
                             "items": p.items, "given": given, "eval_num": p.eval_num, "eval_total": p.eval_total })
                     })
                     .collect();
-                json!({ "address": addr.to_string(), "user_id": a.user_id, "dpoint": a.dpoint, "players": players })
+                let mut account = json!({ "address": addr.to_string(), "user_id": a.user_id, "dpoint": a.dpoint, "players": players });
+                if !a.country.is_empty() {
+                    account["country"] = json!(a.country);
+                }
+                account
             })
             .collect();
         if let Err(e) = store::write(file, &json!({ "accounts": accounts })) {

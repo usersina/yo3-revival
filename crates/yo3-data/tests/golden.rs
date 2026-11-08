@@ -144,3 +144,13 @@ fn the_item_catalogue_names_avatar_items_and_protectors() {
     assert_eq!(protectors.len(), 196);
     assert_eq!((protectors[0].id, data.text(protectors[0].a as u32)), (2305, Some("P-01K")));
 }
+
+#[test]
+fn the_client_has_flags_for_two_hundred_countries() {
+    // data/text/countrytbl.bin: id 1 Albania ... 16 Germany ... 144 Japan ... 171 United States.
+    let dir = need_game!();
+    let codes = yo3_data::countries(&dir).unwrap();
+    assert_eq!(codes.len(), 200);
+    assert_eq!((codes[0].as_str(), codes[15].as_str(), codes[143].as_str(), codes[170].as_str()), ("AL", "DE", "JP", "US"));
+    assert_eq!(codes[110], "TN");
+}

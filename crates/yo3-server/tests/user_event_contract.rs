@@ -218,6 +218,16 @@ fn the_bracket_names_its_entrants_and_their_wins() {
 }
 
 #[test]
+fn the_bracket_entries_carry_each_players_flag() {
+    // 0x4CEBE0 reads each seat's `country` from the entries (0x32FD) as well as the name and face: the flag of the
+    // account, or the one its language implies (players without a setting here: none sent, Germany shown).
+    let server = Server::new();
+    let (mut yugi, _kaiba, _joey, event_id) = started_three(&server);
+    let entries = ask(&mut yugi, 0x32CA, event_id, &[("start_index", Value::U32(0))]);
+    assert!(entries.items.iter().all(|i| text(i, "country") == "GB"), "{entries:?}");
+}
+
+#[test]
 fn the_lobby_shows_the_round_and_the_status() {
     // 0x32FB {status, round, total_round}: status 6 "Prepare to Duel" (0x3BDF) once the round is paired, 7 "Duel in
     // Progress" when a player sat at a duel's table, 8 "Event Completed" at the end (0x4CE670); total_round names the

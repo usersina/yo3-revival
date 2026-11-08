@@ -67,20 +67,35 @@ enum Admin {
     AddPlayer { address: IpAddr, name: String },
     /// Rename a player.
     Rename { old: String, new: String },
+    /// Set the country flag the account at ADDRESS shows to others (a code from the client's table, such as FR or
+    /// JP: `countries` lists them); "auto" goes back to the one the client's language implies.
+    SetCountry { address: IpAddr, code: String },
+    /// List the country codes the client has flags for.
+    Countries,
 }
 
 /// Runs an admin command against the accounts file.
-fn admin(command: Admin, data_dir: &std::path::Path, players: Vec<String>) -> anyhow::Result<()> {
+fn admin(command: Admin, data_dir: &std::path::Path, players: Vec<String>, game_dir: PathBuf) -> anyhow::Result<()> {
     let mut d = Directory::open(players, &data_dir.join("accounts.json"))?;
     match command {
         Admin::Accounts => {
             for (addr, a) in d.accounts() {
                 let names: Vec<_> = a.players.iter().map(|p| format!("{} (#{})", p.name, p.player_id)).collect();
-                println!("{addr}\tuser {}\t{}", a.user_id, names.join(", "));
+                let country = if a.country.is_empty() { "auto".to_string() } else { a.country.clone() };
+                println!("{addr}\tuser {}\tcountry {country}\t{}", a.user_id, names.join(", "));
             }
         }
         Admin::AddPlayer { address, name } => d.add_player(address, &name).map_err(anyhow::Error::msg)?,
         Admin::Rename { old, new } => d.rename(&old, &new).map_err(anyhow::Error::msg)?,
+        Admin::SetCountry { address, code } => {
+            let code = if code.eq_ignore_ascii_case("auto") { String::new() } else { code.to_ascii_uppercase() };
+            let known = yo3_data::countries(&game_dir)?;
+            if !code.is_empty() && !known.contains(&code) {
+                anyhow::bail!("{code} is not in the client's country table; `countries` lists them");
+            }
+            d.set_country(address, &code).map_err(anyhow::Error::msg)?
+        }
+        Admin::Countries => println!("{}", yo3_data::countries(&game_dir)?.join(" ")),
     }
     Ok(())
 }
@@ -93,7 +108,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
     let a = Args::parse();
     if let Some(command) = a.admin {
-        return admin(command, &a.data_dir, a.players);
+        return admin(command, &a.data_dir, a.players, a.game_dir.unwrap_or_else(yo3_data::default_game_dir));
     }
     let cfg = Config {
         bind: a.bind,

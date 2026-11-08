@@ -409,6 +409,21 @@ fn parse_catalogue(data: &[u8]) -> Vec<CatalogueEntry> {
         .collect()
 }
 
+/// The country codes the client has flags for, in its table's order (`data/text/countrytbl.bin`: the same layout as a
+/// text table, a two-letter ISO code per id; the client looks a `country` field up in it, and finds nothing, -1, for a
+/// code it doesn't have).
+pub fn parse_countries(table: &[u8]) -> Vec<String> {
+    let mut codes: Vec<_> = parse_texts(table).into_iter().collect();
+    codes.sort();
+    codes.into_iter().map(|(_, code)| code).collect()
+}
+
+/// The client's country codes, from the game install.
+pub fn countries(game_dir: &Path) -> Result<Vec<String>> {
+    let ypk = Ypk::open(game_dir.join("package/data002.ypk"))?;
+    Ok(parse_countries(&ypk.read_required("data/text/countrytbl.bin")?))
+}
+
 /// A UI text table (data/text/txttbl_<lang>.bin): u32 count, count pairs {u32 id, u32 byte offset}, 4 bytes, then
 /// UTF-16LE NUL-terminated strings from byte 8 + 8 * count. Entries pointing outside the table are left out.
 pub fn parse_texts(table: &[u8]) -> HashMap<u32, String> {

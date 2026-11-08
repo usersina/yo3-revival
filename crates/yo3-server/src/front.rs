@@ -57,10 +57,30 @@ pub struct Player {
     /// The manner ratings other players gave after duels (0x2CED eval_data, -10 to 10): how many, and their sum.
     pub eval_num: u32,
     pub eval_total: i32,
+    /// The country flag others see (`country`, an ISO code of the client's `countrytbl.bin`): the account's setting,
+    /// or the one its session derives from the client's language. Empty: none sent (the client then shows Germany).
+    pub country: String,
 }
 
 /// The client language a session starts with (0x1F48 lang 1).
 const ENGLISH: u32 = 1;
+
+/// The country a client of a language gets when its account sets none: no request carries the client's country, so
+/// this is a **guess** from the login's language (0 Japanese, 1 English, then German, French, Italian, Spanish,
+/// Korean, Chinese; the table `countrytbl.bin` has European countries first, so English is GB, not US).
+pub fn country_for_lang(lang: u32) -> &'static str {
+    match lang {
+        0 => "JP",
+        1 => "GB",
+        2 => "DE",
+        3 => "FR",
+        4 => "IT",
+        5 => "ES",
+        6 => "KR",
+        7 => "CN",
+        _ => "DE",
+    }
+}
 /// The manner level (evallevel 0-4, 4 the best; 0x45F786) of a player nobody rated.
 const MANNER: u32 = 2;
 /// The values `dlg_manner.swf`'s five buttons send as `eval_data` (the table at `0x790004`), worst first.
@@ -114,6 +134,7 @@ impl Player {
             given: BTreeMap::new(),
             eval_num: 0,
             eval_total: 0,
+            country: String::new(),
         }
     }
 
@@ -155,6 +176,9 @@ impl Player {
             .with("team_authority", Value::U32(team.map_or(0, |t| t.1)))
             .with("avatar1", Value::Bin(self.avatar.clone()))
             .with("pbin", Value::Bin(self.flags()));
+        if !self.country.is_empty() {
+            m = m.with("country", Value::text(&self.country));
+        }
         for (i, line) in self.speeches.iter().enumerate() {
             m = m.with(&format!("speech{i:02}"), Value::text(line));
         }
@@ -171,11 +195,13 @@ pub struct Account {
     pub name: String,
     pub dpoint: u32,
     pub players: Vec<Player>,
+    /// The country the host set for the account (empty: derived from the client's language at login).
+    pub country: String,
 }
 
 impl Account {
     pub fn test() -> Account {
-        Account { user_id: 1001, name: "test".into(), dpoint: 0, players: vec![Player::new(1001, "test")] }
+        Account { user_id: 1001, name: "test".into(), dpoint: 0, players: vec![Player::new(1001, "test")], country: String::new() }
     }
 }
 
@@ -1496,12 +1522,11 @@ impl Hub {
                 let seats = event.seats();
                 let list = Message::reply(0x32FD).with("total_num", Value::U32(seats.len() as u32));
                 seats.iter().skip(int("start_index") as usize).fold(list, |m, (p, name)| {
-                    let avatar = self.online.values().find(|o| o.player_id == *p).and_then(|o| o.record.get("avatar1").cloned());
+                    let online = self.online.values().find(|o| o.player_id == *p);
+                    let field = |k: &str| online.and_then(|o| o.record.get(k).cloned());
                     let item = Message::record().with("player_id", Value::U32(*p)).with("player_name", Value::text(name)).with("remain", Value::U32(0));
-                    m.item(match avatar {
-                        Some(a) => item.with("avatar1", a),
-                        None => item,
-                    })
+                    let item = field("avatar1").into_iter().fold(item, |i, a| i.with("avatar1", a));
+                    m.item(field("country").into_iter().fold(item, |i, c| i.with("country", c)))
                 })
             }
             // The lobby's state (0x4CC5B0): the tournament (0x32FB), its timer (0x3301), the counts (0x3303) and the
@@ -1719,7 +1744,7 @@ impl Drop for FrontSession {
 impl FrontSession {
     pub fn new(account: Account, world: Arc<World>, hub: Arc<Mutex<Hub>>, outbox: Outbox) -> FrontSession {
         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
-        FrontSession {
+        let mut session = FrontSession {
             account,
             world,
             hub,
@@ -1734,6 +1759,16 @@ impl FrontSession {
             last_present: 0,
             rng: seed | 1,
             lang: ENGLISH,
+        };
+        session.apply_country();
+        session
+    }
+
+    /// Gives the account's players their country: the account's own setting, else the one the language implies.
+    fn apply_country(&mut self) {
+        let country = if self.account.country.is_empty() { country_for_lang(self.lang).to_string() } else { self.account.country.clone() };
+        for p in &mut self.account.players {
+            p.country.clone_from(&country);
         }
     }
 
@@ -1836,6 +1871,7 @@ impl FrontSession {
             && let Some(lang) = msg.get("lang").and_then(Value::as_u32)
         {
             self.lang = lang;
+            self.apply_country();
             if let Some(online) = self.online {
                 self.hub().set_lang(online, lang);
             }
@@ -1860,7 +1896,8 @@ impl FrontSession {
                     .with("user_id", Value::U32(a.user_id))
                     .with("uname", Value::text(&a.name))
                     .with("dpoint", Value::U32(a.dpoint))
-                    .with("premium", Value::U32(1)),
+                    .with("premium", Value::U32(1))
+                    .with("country", Value::text(a.players.first().map_or("", |p| p.country.as_str()))),
             ),
             0x1F49 => {
                 let hub = self.hub.lock().expect("hub lock");
@@ -2293,6 +2330,7 @@ impl FrontSession {
     fn player_search(&self, msg: &Message) -> Message {
         const BY_NAME: u32 = 0x2;
         const BY_LANGUAGE: u32 = 0x4;
+        const BY_COUNTRY: u32 = 0x8;
         const BY_LEVEL: u32 = 0x10;
         const BY_MANNER: u32 = 0x100;
         // The status bits (Detailed Search 0x45F84A): waiting for a Single Mode duel, a Match Mode one, any, and a duel
@@ -2310,8 +2348,7 @@ impl FrontSession {
         const TEAM: u32 = 0x20;
         let uint = |k| msg.get(k).and_then(Value::as_u32);
         let flags = uint("search_flag").unwrap_or(0);
-        // Guess: case-insensitive part of the name. The country criterion matches everyone (the client never says its
-        // country); nobody is in an event.
+        // Guess: case-insensitive part of the name. Nobody is in an event.
         let name = msg.get("pname").and_then(Value::as_str).unwrap_or_default().to_lowercase();
         let levels = uint("min_level").unwrap_or(0)..=uint("max_level").unwrap_or(u32::MAX);
         let me = self.player().player_id;
@@ -2324,6 +2361,7 @@ impl FrontSession {
             .filter(|o| flags & IGNORED == 0 || o.player_id == me || hub.social.ignores(me, o.player_id))
             .filter(|o| flags & TEAM == 0 || hub.teams.of(me).is_some_and(|t| t.member(o.player_id).is_some()))
             .filter(|o| flags & BY_LEVEL == 0 || levels.contains(&o.level))
+            .filter(|o| flags & BY_COUNTRY == 0 || o.record.get("country").and_then(Value::as_str) == msg.get("country").and_then(Value::as_str))
             .filter(|o| flags & BY_LANGUAGE == 0 || uint("lang").unwrap_or(0) >> o.lang & 1 != 0)
             .filter(|o| flags & BY_MANNER == 0 || uint("eval_level").unwrap_or(0) >> hub.manner(o.player_id) & 1 != 0)
             .filter(|o| {
@@ -2357,6 +2395,10 @@ impl FrontSession {
                 .with("team_name", Value::text(team.map_or("", |t| t.name.as_str())))
                 .with("team_authority", Value::U32(team.and_then(|t| t.authority(o.player_id)).unwrap_or(0)))
                 .with("evallevel", Value::U32(hub.manner(o.player_id)));
+            let entry = match o.record.get("country") {
+                Some(country) => entry.with("country", country.clone()),
+                None => entry,
+            };
             m.item(hub.duel_fields(o.player_id, entry))
         })
     }
