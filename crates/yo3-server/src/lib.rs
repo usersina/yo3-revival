@@ -26,7 +26,7 @@ use tokio::task::JoinHandle;
 use yo3_proto::{Message, Value};
 
 use accounts::Directory;
-use front::{Deck, FrontSession, Hub, LOGIN_REGULATION, World};
+use front::{Deck, FrontSession, Hub, LOGIN_REGULATION, STARTER_REGULATION, World};
 use translate::CardStats;
 
 #[derive(Clone, Debug)]
@@ -116,7 +116,7 @@ fn world(cfg: &Config, duel_port: u16) -> anyhow::Result<World> {
         Ok(data) => World {
             card_rows: data.cards.iter().map(|c| c.row as usize).max().unwrap_or(0),
             // The first deck_type 1 preset (they look like starter decks) the login regulation allows.
-            starter_deck: data.starter_deck(LOGIN_REGULATION).map(|d| Deck {
+            starter_deck: data.starter_deck(STARTER_REGULATION).map(|d| Deck {
                 id: 1,
                 name: "Starter Deck".into(),
                 main: d.main.clone(),

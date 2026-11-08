@@ -16,8 +16,11 @@ pub type Outbox = tokio::sync::mpsc::UnboundedSender<Message>;
 
 pub const VERSION_VALID: u32 = 0x219F;
 /// The default banlist every account logs in with (0x2201 regulation_id), which Auto Duel's and the NPC duel's deck
-/// check uses (`World::login_regulation`, set by --regulation); also the one the starter deck must pass.
-pub const LOGIN_REGULATION: u32 = 1;
+/// check uses (`World::login_regulation`, set by --regulation): 3, "unlimited", no banned or limited cards.
+pub const LOGIN_REGULATION: u32 = 3;
+/// The banlist the starter deck must pass: the client's first (the Beta list), so the starter stays legal whatever
+/// --regulation a host picks.
+pub const STARTER_REGULATION: u32 = 1;
 pub const HEARTBEAT: u32 = 0x2724;
 
 /// Server clock in Japan time: the client treats server timestamps as JST (UTC+9) and
@@ -367,10 +370,18 @@ impl World {
             test_deck: None,
             test_extra: None,
             duel_server: ("127.0.0.1".into(), 0),
-            news: vec![(
-                "Welcome back to Yu-Gi-Oh! ONLINE".into(),
-                "This is a private revival server. Have fun duelling with your friends!".into(),
-            )],
+            news: vec![
+                (
+                    "Welcome back to Yu-Gi-Oh! ONLINE".into(),
+                    "This is a private revival server. Have fun duelling with your friends!".into(),
+                ),
+                // The client keeps decks in its own files and only Edit Deck writes them (its Flash calls
+                // SaveDeckData), so a new player needs that one visit before any duel.
+                (
+                    "New here?".into(),
+                    "Open Main Menu > Edit Deck once: it saves your starter deck, which every duel needs.".into(),
+                ),
+            ],
             rooms: vec![
                 Room::new(1, "Lobby"),
                 Room::new(2, "Free Talk"),

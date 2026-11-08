@@ -49,8 +49,8 @@ struct Args {
     /// Every player's extra deck in a duel, as CARD_Prop rows (to test an extra deck summon).
     #[arg(long, value_delimiter = ',')]
     duel_extra: Vec<u16>,
-    /// The banlist players log in with, for Auto Duel and NPC duels: a regulation id or name, e.g. "unlimited" (no
-    /// banned or limited cards) or "Season 16". Hosted duels use the host's choice.
+    /// The banlist players log in with, for Auto Duel and NPC duels: a regulation id or name, e.g. "Season 16" or 1
+    /// (the Beta list). Default: "unlimited" (no banned or limited cards). Hosted duels use the host's choice.
     #[arg(long)]
     regulation: Option<String>,
 }

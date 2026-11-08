@@ -87,8 +87,8 @@ Forbidden/Limited", 2 "Pre-Season", 3 "unlimited" (no lists: every card 3 times)
 2009-09 (which also limit the card pool to the cards out by then: `addition_card` 0 and the pool as `card3`), 16–20
 "Season 12" to "Season 16". Only the client enforces them: its deck check (`0x51AB00`) before Auto Duel and NPC duels
 uses the login's `regulation_id` (`0x219A`, `0x2201`), and a hosted duel uses the host's choice. The server sends the
-one its `--regulation` setting names (an id, or a name such as "unlimited"; default 1, the Beta list, a **guess**);
-the starter deck is still the first preset regulation 1 allows. Live: the Starter Deck breaks regulation 4 (six cards
+one its `--regulation` setting names (an id, or a name such as "Season 16"; default 3, "unlimited", the user's
+choice since 2026-11-08); the starter deck is still the first preset regulation 1 allows, so it passes any list. Live: the Starter Deck breaks regulation 4 (six cards
 newer than March 2004); with `--regulation 4` Kaiba Corporation answered "There are no valid Decks available.", with
 `--regulation unlimited` the same deck reached the janken. Create Duel → Customize → Regulations shows the login
 regulation as "Latest Regulation" (with "unlimited": no Forbidden cards, "Cards not listed are Unlimited.") and Select

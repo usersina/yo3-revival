@@ -47,7 +47,7 @@ engine/fetch.sh                                                 # once: the rule
 cargo nextest run --workspace                                   # all tests
 cargo clippy --workspace --all-targets                          # lints
 cargo run --release -p yo3-server -- --log-dir logs --players Yugi,Kaiba   # server (in the background); one account, up to 4 players
-#   --regulation unlimited: the login banlist (an id or a name from the client's 20; default 1, the Beta list)
+#   --regulation 1: the login banlist (an id or a name from the client's 20; default 3, "unlimited", no banlist)
 #   testing aids: --duel-lp 1000 (reach a duel's end in one attack), --duel-deck 1149,1449 (the player's main deck as
 #   CARD_Prop rows repeated to 40: here Marauding Captain and Giant Orc, for a yes/no question and a card choice),
 #   --duel-extra 3437 (the extra deck as rows: Goyo Guardian, a Synchro for Krebons 3397 and Giant Orc)
