@@ -254,6 +254,8 @@ pub struct DuelSession {
     watching: bool,
     /// The turn order was taken (against the CPU, once per duel): no second engine for a repeated 0xD or janken.
     ordered: bool,
+    /// The address this connection comes from, which must be the one of the front connection that brought the deck.
+    peer: Option<std::net::IpAddr>,
     /// The duel this connection came for is over (its match ended before it sat): nothing it sends matters.
     closed: bool,
 }
@@ -281,8 +283,16 @@ impl DuelSession {
             table: None,
             watching: false,
             ordered: false,
+            peer: None,
             closed: false,
         }
+    }
+
+    /// The address this connection comes from: a duel entry brought by a front connection from another address is not
+    /// claimed by it (0x200A names the player, and anyone can name anyone).
+    pub fn with_peer(mut self, peer: std::net::IpAddr) -> DuelSession {
+        self.peer = Some(peer);
+        self
     }
 
     /// The connection's outbox, through which the other player's commands reach this client.
@@ -357,8 +367,15 @@ impl DuelSession {
                 table.locked().watch(outbox)
             }
             (Some(ENTER), _) => {
+                let mut entry = int("player_id").and_then(|id| self.hub.locked().duel_entry(id));
+                if let (Some(e), Some(peer)) = (&entry, self.peer)
+                    && e.peer.is_some_and(|brought_by| brought_by != peer)
+                {
+                    tracing::warn!("duel connection from {peer} named player {:?}, whose deck came from {:?}; closed", int("player_id"), e.peer);
+                    self.closed = true;
+                    return vec![];
+                }
                 self.player_id = int("player_id");
-                let mut entry = self.player_id.and_then(|id| self.hub.locked().duel_entry(id));
                 if let (Some(entry), Some(rows)) = (entry.as_mut(), &self.world.test_deck) {
                     entry.deck.main = rows.iter().copied().cycle().take(40).collect();
                 }

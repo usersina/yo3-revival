@@ -414,3 +414,55 @@ fn a_corrupt_side_file_is_kept_aside_and_not_overwritten_by_the_next_save() {
     assert_eq!(std::fs::read_to_string(kept[0].path()).unwrap(), broken);
     assert!(dir.join("friends.json").is_file(), "and the new one holds the new friendship");
 }
+
+#[test]
+fn a_failed_reselect_drops_the_old_registration_and_player_requests_wait_for_a_player() {
+    // A failed 0x1F4C left the old registration online (a ghost in searches and matching), and player() fell back to
+    // the first player, so requests with no selection acted as them. Now both are refused.
+    let server = common::Server::with_world(front::world());
+    let mut a = server.join(1001, "Yugi");
+    assert_eq!(server.hub.lock().unwrap().online(), 1);
+    let bad = a.send(common::req_with(0x1F4C, &[("player_id", Value::U32(4242))]));
+    assert!(bad.is_empty());
+    assert_eq!(server.hub.lock().unwrap().online(), 0, "the old registration is gone");
+    // Matching, hosting, trade, mail and the like act for nobody.
+    let auto = [("event_id", Value::U32(2)), ("join_id", Value::U32(1)), ("match_type", Value::U32(1)), ("level", Value::U32(0))];
+    for id in [0x1784, 0x1798, 0x17AC, 0x2BC0, 0x2C24, 0x2AFE, 0x2CF0] {
+        assert!(a.send(common::req_with(id, &auto)).is_empty(), "{id:#x} answered with no player selected");
+    }
+    // A client that never selected anyone gets nothing from them either.
+    let mut c = {
+        let (tx, _inbox) = tokio::sync::mpsc::unbounded_channel();
+        let session = yo3_server::front::FrontSession::new(yo3_server::front::Account::test(), std::sync::Arc::new(front::world()), server.hub.clone(), tx);
+        common::Client { session, inbox: _inbox }
+    };
+    c.send(Packet::Version("2010.03.23 skelton".into()));
+    assert!(c.send(common::req_with(0x1798, &auto)).is_empty());
+    assert_eq!(server.hub.lock().unwrap().online(), 0);
+    // The login and Select Player's own requests still answer.
+    assert_eq!(c.send(common::req(0x1F49)).len(), 1);
+}
+
+#[test]
+fn a_duel_entry_is_claimed_only_from_the_address_that_brought_it() {
+    // 0x200A {player_id} is taken as sent: anyone could name a player and play (or spoil) their duel. The entry now
+    // remembers the front connection's address and the duel connection must come from the same one.
+    let peer = |last: u8| std::net::IpAddr::from([10, 0, 0, last]);
+    let world = Arc::new(world(None));
+    let hub = Arc::new(Mutex::new(Hub::default()));
+    let entry = DuelEntry { duel_id: Some(DUEL), opponent: Some(1002), best_of: 1, peer: Some(peer(1)), ..DuelEntry::default() };
+    hub.lock().unwrap().enter_duel(1001, entry);
+    let (tx, _rx) = unbounded_channel();
+    let mut thief = DuelSession::new(world.clone(), hub.clone(), 3).with_outbox(tx).with_peer(peer(9));
+    assert!(enter_session(&mut thief, 1001).is_empty());
+    assert!(thief.handle(&Packet::Message(Message::reply(0x200C).with("duelRequestName", Value::U32(0xC)).with("selectHand", Value::U32(0)))).is_empty());
+    let (tx, _rx) = unbounded_channel();
+    let (owner_world, owner_hub) = (world.clone(), hub.clone());
+    let mut owner = DuelSession::new(world, hub, 3).with_outbox(tx).with_peer(peer(1));
+    assert!(enter_session(&mut owner, 1001).is_empty(), "seated, waiting for the opponent");
+    let theirs = DuelEntry { duel_id: Some(DUEL), opponent: Some(1001), best_of: 1, peer: Some(peer(2)), ..DuelEntry::default() };
+    owner_hub.lock().unwrap().enter_duel(1002, theirs);
+    let (tx, _rx) = unbounded_channel();
+    let mut other = DuelSession::new(owner_world, owner_hub, 5).with_outbox(tx).with_peer(peer(2));
+    assert_eq!(commands(&enter_session(&mut other, 1002)), [(1500, [0; 4])], "the janken begins: the thief took no seat");
+}

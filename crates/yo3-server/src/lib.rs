@@ -280,6 +280,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
             let account = directory.locked().account_for(peer.ip());
             let mut session = FrontSession::new(account, world.clone(), hub.clone(), outbox);
             session.set_reached_at(local.ip());
+            session.set_peer(peer.ip());
             session.set_directory(directory.clone());
             move |p: &yo3_proto::Packet| session.handle(p)
         }))
@@ -307,9 +308,9 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         })
     };
     // The duel connection (DuelManager 0x50F690): a client duels the server as the CPU, or another client at a table.
-    let duel_task = tokio::spawn(net::accept_loop(duel, "duel", packets.clone(), idle, move |_peer, _local, outbox| {
+    let duel_task = tokio::spawn(net::accept_loop(duel, "duel", packets.clone(), idle, move |peer, _local, outbox| {
         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
-        let mut session = duel::DuelSession::new(world.clone(), hub.clone(), seed).with_outbox(outbox);
+        let mut session = duel::DuelSession::new(world.clone(), hub.clone(), seed).with_outbox(outbox).with_peer(peer.ip());
         move |p: &yo3_proto::Packet| session.handle(p)
     }));
     let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs"))));

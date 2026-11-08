@@ -31,6 +31,10 @@ fn jst_now() -> chrono::DateTime<chrono::FixedOffset> {
 }
 
 /// Main-screen polls whose replies carry nothing the client reads.
+/// The requests a client makes before it has selected a player: the login and Select Player's list, create, delete and
+/// select.
+const BEFORE_SELECT: [u32; 6] = [0x1F47, 0x1F48, 0x1F49, 0x1F4A, 0x1F4B, 0x1F4C];
+
 const BARE_REPLIES: [(u32, u32); 1] = [(0x271A, 0x271B)];
 
 #[derive(Clone, Debug)]
@@ -270,6 +274,9 @@ pub struct DuelEntry {
     pub best_of: u32,
     /// The duel's time limits in seconds (turn, total; 0: off), when the match set them (a hosted duel's).
     pub times: Option<(u32, u32)>,
+    /// The address of the front connection that picked the deck: only a duel connection from there may claim it
+    /// (none: any, as in tests).
+    pub peer: Option<std::net::IpAddr>,
 }
 
 /// The rule's match_type (DuelMenu's table 0x790C50 by Rule Format button): Single Mode, Match Mode (best of three),
@@ -2034,6 +2041,8 @@ pub struct FrontSession {
     duels: HashMap<u32, Vec<(String, Value)>>,
     /// The server address this client reached, announced as the duel server's when none is advertised.
     reached_at: Option<std::net::IpAddr>,
+    /// The client's own address, which its duel connection must come from too.
+    peer: Option<std::net::IpAddr>,
     /// The accounts, where a player's saved settings are kept (none: this session's copy only).
     directory: Option<Arc<Mutex<crate::accounts::Directory>>>,
     /// Bought packs and decks not shown yet, and the last present id given.
@@ -2065,6 +2074,7 @@ impl FrontSession {
             online: None,
             duels: HashMap::new(),
             reached_at: None,
+            peer: None,
             directory: None,
             presents: VecDeque::new(),
             last_present: 0,
@@ -2084,6 +2094,11 @@ impl FrontSession {
     }
 
     /// The server address this client connected to.
+    /// The address this client connected from.
+    pub fn set_peer(&mut self, ip: std::net::IpAddr) {
+        self.peer = Some(ip);
+    }
+
     pub fn set_reached_at(&mut self, ip: std::net::IpAddr) {
         self.reached_at = Some(ip);
     }
@@ -2314,6 +2329,12 @@ impl FrontSession {
         {
             self.account.dpoint = bp;
         }
+        // Until a player is selected only the login and Select Player's own requests mean anything: the rest acts for a
+        // player (matching, hosting, trade, rental, mail...), and with none it would act for the first one.
+        if self.selected.is_none() && !BEFORE_SELECT.contains(&id) && id != HEARTBEAT {
+            tracing::debug!("request {id:#x} before a player was selected; ignored");
+            return vec![];
+        }
         let a = &self.account;
         let reply = match id {
             0x1F47 => Message::reply(0x219A)
@@ -2340,6 +2361,11 @@ impl FrontSession {
             0x1F4C => {
                 self.selected = self.find_player(msg);
                 if self.selected.is_none() {
+                    // No such player: whoever they were before is no longer online either (no ghost in searches or
+                    // matching).
+                    if let Some(old) = self.online.take() {
+                        self.hub.locked().leave(old);
+                    }
                     return vec![];
                 }
                 let mut hub = self.hub.locked();
@@ -2475,14 +2501,14 @@ impl FrontSession {
                     let mut hub = self.hub();
                     if let Some(rule) = self.duels.get(&id) {
                         let npc_id = rule.iter().find(|(k, _)| k == "cpu_id").and_then(|(_, v)| v.as_u32()).filter(|&id| id > 0);
-                        hub.enter_duel(player_id, DuelEntry { deck, npc_id, ..DuelEntry::default() });
+                        hub.enter_duel(player_id, DuelEntry { deck, npc_id, peer: self.peer, ..DuelEntry::default() });
                     } else if let Some(m) = hub.matches.get(&id) {
                         let opponent = m.players.into_iter().find(|&p| p != player_id);
                         let rule = |k: &str| m.rule.iter().find(|(n, _)| n == k).and_then(|(_, v)| v.as_u32());
                         let lp = rule("lp_start").filter(|&lp| lp > 0);
                         let best_of = if rule("match_type") == Some(MATCH_MODE) { 3 } else { 1 };
                         let times = m.times;
-                        hub.enter_duel(player_id, DuelEntry { deck, duel_id: Some(id), opponent, lp, best_of, times, ..DuelEntry::default() });
+                        hub.enter_duel(player_id, DuelEntry { deck, duel_id: Some(id), opponent, lp, best_of, times, peer: self.peer, ..DuelEntry::default() });
                     }
                 }
                 Message::reply(0x22CA)
