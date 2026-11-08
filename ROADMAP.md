@@ -277,7 +277,8 @@ Stop finding missing fields one crash at a time.
 - [x] Chat rooms (the chat panel's top-left button) and chat messages: room list, enter, leave, room chat
       with echo, whispers
 - [x] Sessions registry: who is online, in which room (`Hub`); sessions leave on disconnect
-- [x] Accounts by client address (the client never sends credentials), up to four players each
+- [x] Accounts by client address (the client never sends credentials), up to four players each; since then also by key
+      (see M4 "Real accounts")
 - [x] Two clients at once: `YO3_INSTANCE=b` with its own display and reflinked Wine prefix
 - [x] Player search returns the players online, filtered by name, level or id; both clients list each other
       (needed the friend and black list pushes, `0x251C`/`0x252A`)
@@ -330,11 +331,15 @@ Stop finding missing fields one crash at a time.
 
 ## M4: Accounts, collection and economy
 
-- [x] Real accounts: not applicable. The login path has no id or password field: `0x1F47` is bare, `0x1F48` carries
-      only `lang`, the opener only the version string, and Delete Player's "Enter your Password" prompt sends nothing
-      (`0x1F4B {player_id}`, live packet log; no call of the connection's `+0x118`/`+0x134` copies is serialized).
-      Several accounts exist by client address; persistence stays JSON (`data/accounts.json`) with no concrete need
-      for SQLite
+- [x] Real accounts, through the patch URL. The login path has no id or password field: `0x1F47` is bare, `0x1F48`
+      carries only `lang`, the opener only the version string, and Delete Player's "Enter your Password" prompt sends
+      nothing (`0x1F4B {player_id}`, live packet log; no call of the connection's `+0x118`/`+0x134` copies is
+      serialized). But the client fetches `PatchUpdateUrl` + `yo3.idx` before every connection, so an account's
+      secret key rides in it (`/yo3/<key>/yo3.idx`): the patch server notes the address that presented it and that
+      address's next login gets the key's account, on any address (`Directory::present_key`/`login`; tests in
+      `accounts.rs` and `flow.rs`). No key: the address account, as before. Host: `add-account`, `key ADDRESS|PLAYER`.
+      Live: Yugi's headless client with a key in `yo3.ini` listed the key account's players, the same client without
+      it the address account's. Persistence stays JSON (`data/accounts.json`) with no concrete need for SQLite
 - [x] Player creation and deletion: Select Player's Create Player and Delete (`0x1F4A {pindex, pname}` → `0x2262`/`0x2263`,
       `0x1F4B {player_id}` → `0x2264`/`0x2265`; `CharMake.cpp`'s `0x2CF5/6` is only the appearance editor), within four
       slots kept with the account. Live: Joey made in slot 3 (name, then Avatar Settings, then the main screen), deleted
@@ -577,7 +582,7 @@ Stop finding missing fields one crash at a time.
 | Duel's end push `0x2009` | sent when the engine ends the duel; `duel_end` 1 (normal: no effect) or 3 (cancelled before it began); no `score_<id>`; `dlogURL` for duels between players | The original timing is unknown. Values settled by `0x515BD3`/`0x518631`: 2, 3 dialog `0x2918`; 4 "has disconnected" (we don't send it); 5 opens the result |
 | Result screen counts | `win`/`lose`/`draw` = totals against this opponent including this duel, `*_add` = this duel's change; kept in memory | The client only shows them ("Wins 1 (+001)") |
 | Duel port | 1214 | The original's port is unknown; the client takes whatever `duelData` says |
-| Accounts | one per client address; the host moves one to a new address with `move-account` | The client sends no credentials; friends behind one address share an account |
+| Accounts | by the key in the patch URL (`/yo3/<key>/yo3.idx`, fetched before every login: the address that fetched it last, within 10 minutes, logs in to the key's account); no key: one per client address (`move-account` for a changed address) | The client sends no credentials; the key rides in the one request it makes with a configurable path. Two friends behind one address starting within the same moment can swap; keyless friends behind one address share an account |
 | Uploaded decks | the decks a duel's Select Deck sent, ten per player by name, listed after the starter and bought decks | The client has no other upload; the original server's deck storage is unknown |
 | Deck check | sizes, ownership per Konami id, the duel's regulation, refused with `0x22CB` (client text `0x2919`: settled, `0x50ECF0` compares only `0x22CA`/`0x22CB` and never uses `error_code`) | The rules of the check are ours |
 | Player names | the starting names (`--players`, default Duelist) made unique with a number; players make more at Select Player (at most 16 characters, unique ignoring case: **guess**), the host can still `add-player` / `rename` | The original's name rules are unknown; a team's leader can't be deleted and an account keeps one player (ours) |

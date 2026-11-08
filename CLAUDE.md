@@ -30,7 +30,7 @@ addresses and data formats: [docs/client-internals.md](docs/client-internals.md)
 |---|---|
 | `crates/yo3-proto` | Wire codec: frame, Blowfish (`BlowfishLE`), key/value messages, the version-string opener |
 | `crates/yo3-data` | Client data: `.ypk` archives, card table, UI text table, regulations, preset decks, packs (golden tests skip without the game) |
-| `crates/yo3-server` | Gate / front / duel / patch-HTTP servers. `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `table.rs` = a duel between two players' connections, `shop.rs` = packs on sale and what a pack holds, `social.rs` = friends and ignore lists, `translate.rs` = engine messages to duel commands, `accounts.rs` = accounts by client address, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
+| `crates/yo3-server` | Gate / front / duel / patch-HTTP servers. `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `table.rs` = a duel between two players' connections, `shop.rs` = packs on sale and what a pack holds, `social.rs` = friends and ignore lists, `translate.rs` = engine messages to duel commands, `accounts.rs` = accounts by key (the patch URL) or client address, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
 | `engine/` | Rules engine sidecar: `duelcore.ts` (EDOPro's core via ocgcore-wasm, under Node), `fetch.sh` (packages, card scripts, card database, Konami ids into the ignored `engine/vendor/`) |
 | `tools/client/vclient.sh` | Headless client: `xvfb`, `start [--trace]`, `login [SLOT]`, `check`, `shot`, `click`, `pixel`, `key`, `type`, `stop`, `prefix` |
 | `tools/tracer/` | Field-read tracer: `yo3trace.dll` + injector (C, mingw-w64), `summarize.py` |
@@ -56,8 +56,11 @@ cargo run --release -p yo3-server -- --log-dir logs --players Yugi,Kaiba   # ser
 #   --duel-time 0,0 (the turn and total clocks of duels between players off: live checks are slower than 180 s a turn)
 ss -ltnp | grep ':5730 '                                        # find the server's pid to stop it
 #   state: accounts and records persist in data/ (ignored; --data-dir), backed up into data/backups/ at each start
-target/release/yo3-server accounts                              # admin (server stopped): list, add-player ADDR NAME, rename OLD NEW,
-#   set-country ADDR CODE|auto (the flag others see; `countries` lists the client's codes), move-account OLD NEW
+target/release/yo3-server accounts                              # admin (server stopped): list (address, key, players), add-player ADDR|PLAYER NAME,
+#   rename OLD NEW, set-country ADDR|PLAYER CODE|auto (the flag others see; `countries` lists the client's codes),
+#   move-account OLD NEW (address accounts only), add-account NAME [--also B,C] [--advertise HOST] (a key account: prints the key and
+#   the friend's yo3.ini), key ADDR|PLAYER (prints, or makes, an existing account's key). An account's key is the secret in
+#   PatchUpdateUrl (`/yo3/<key>/`): the client fetches it before every login, see docs/protocol.md "Accounts"
 #   [--replace] (a friend's address changed: the account goes along; --replace discards one already at NEW)
 tools/release.sh                                                # the host's bundles in dist/ (Linux, Windows); the friends' guide is docs/friends.md
 #   once: rustup target add x86_64-pc-windows-gnu (mingw-w64 links it). A Windows build under Wine needs its own prefix
@@ -167,7 +170,8 @@ the knowledge.
   can lag. `logs/fields.tsv` is written straight away. Wine's `winepath` prints startup noise on stderr; silence it.
 - Wine assumes one X display per prefix: two clients in one prefix on two displays die with X `BadWindow`. Each extra
   client gets its own prefix (`vclient.sh prefix`, a btrfs reflink copy of `~/.wine`, so near-instant).
-- The server keys accounts by client address, so every local client shares one account; pick different players
+- The server keys accounts by the key in the client's `PatchUpdateUrl`, else by client address, so every local client
+  without a key shares one account; pick different players
   with `login SLOT`. A player already online can still be chosen twice (no guard yet).
 - The Ghidra C export drops the client's log strings, so a log line ("chat room list success") can't be grepped
   there. Use `yodis.py` on the handler to see which case prints it.

@@ -33,24 +33,36 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
    `--regulation`, e.g. `./run.sh --regulation "Season 16"`, `"OCG 2006-09-01"` or `1` (the game's first list); an
    unknown name lists them all. Auto Duel and Kaiba Corporation check decks against it; it shows as "Latest
    Regulation" in Create Duel, where a host can still pick another (Create Duel → Customize → Regulations → Select).
-3. Name your friends' players. There's no sign-up: the server tells players apart by the address they connect from,
-   and each address gets its own account with up to four players. A new address starts with a player called
-   "Duelist" (then "Duelist2", "Duelist3"...). Your friends can make their own at Select Player (an empty slot says
-   "Create Player": a name, then the avatar) and delete one (Delete; the password it asks for can be anything), so
-   this step is optional. To name them yourself, with the server stopped:
+3. Make an account for each friend. The game never sends a name or password, so an account is found by a secret
+   **key** that rides in the friend's `PatchUpdateUrl` (the game fetches that address before every login). With the
+   server stopped:
 
    ```sh
-   ./yo3-server add-player 100.64.0.7 Anis   # before Anis first connects: their account gets just this player
-   ./yo3-server rename Duelist2 Joey         # or rename one afterwards
-   ./yo3-server accounts                     # who's who
+   ./yo3-server add-account Anis --advertise 100.64.0.5   # Anis's account, first player "Anis"; --also Alt,Spare adds more
    ```
 
-   On Windows it is `yo3-server.exe add-player ...` and so on, in a terminal in the server's folder.
+   It prints the key and the `yo3.ini` lines to send Anis (`--advertise` is the address friends reach you at; without it
+   the lines say `HOST`, which you replace). A friend pastes those lines (their step 2 below) and logs in to their own
+   account from any address or network, and friends behind the same router each get their own. Keep the key to its
+   friend: whoever has it can play as them. Players can also be made by the friends themselves at Select Player (an
+   empty slot says "Create Player": a name, then the avatar) and deleted (Delete; the password it asks for can be
+   anything).
 
-   Two friends behind the same router (the same public address) share one account; a VPN gives each their own.
+   ```sh
+   ./yo3-server accounts                     # who's who: address, key, players
+   ./yo3-server add-player Anis Spare        # another player for Anis's account (an address works too)
+   ./yo3-server rename Duelist2 Joey         # rename a player
+   ./yo3-server key Anis --advertise 100.64.0.5   # print an account's key and lines again (by a player's name or address)
+   ```
 
-   If a friend's address changes (a new VPN address, another network), they arrive as a new, empty account. Move
-   their old one to the new address, with the server stopped; their players, cards, BP, decks and records go along:
+   On Windows it is `yo3-server.exe add-account ...` and so on, in a terminal in the server's folder.
+
+   **Without a key** (a `yo3.ini` that points at the server with no key in `PatchUpdateUrl`), the server falls back to
+   one account per address, made on first contact with a player called "Duelist" (then "Duelist2", "Duelist3"...). A
+   VPN gives each friend their own address; friends behind one router share that account. If such a friend's address
+   changes they arrive as a new, empty account; either give them a key for their old account
+   (`./yo3-server key 100.64.0.7` prints it, nothing is lost), or move the old one to the new address, with the
+   server stopped (players, cards, BP, decks and records go along):
 
    ```sh
    ./yo3-server move-account 100.64.0.7 100.64.0.9            # the old address, then the new one
@@ -60,14 +72,20 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
    Without `--replace` the server refuses to overwrite the account it made at the new address, and names its players
    (`--replace` discards that one, so check it's the empty newcomer).
 
+   A key counts for the login that follows the game's start: it is looked up when the game fetches the patch address,
+   remembered for that source address for 10 minutes (each login renews it), and the most recent fetch from an address
+   wins. Two friends behind one router who start the game in the same moment can therefore swap accounts; start one
+   after the other. The key shows up in the server's log lines as `presented an account key`, and an unknown key as
+   a warning (that login then goes to the address account).
+
    The flag next to a player's name (Player Information, player search, the tournament bracket) is a setting of the
    account, because the game never tells the server where its player lives. Left alone it follows the game's language
    (English shows the UK flag, Japanese Japan, and so on); to give a friend's account another one:
 
    ```sh
    ./yo3-server countries                    # the codes the game has flags for (FR, JP, US, TN...)
-   ./yo3-server set-country 100.64.0.7 TN    # that address's players show the Tunisian flag
-   ./yo3-server set-country 100.64.0.7 auto  # back to following the game's language
+   ./yo3-server set-country Anis TN          # that account's players show the Tunisian flag (a player's name or an address)
+   ./yo3-server set-country Anis auto        # back to following the game's language
    ```
 4. Accounts and win/loss records live in `data/` (`accounts.json`, `records.json`), backed up into `data/backups/` at
    every start (the last 10 are kept). Back up `data/` to keep them.
@@ -76,7 +94,9 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
 
 1. Install Yu-Gi-Oh! ONLINE 3. On Windows it runs as it is; on Linux it runs under Wine.
 2. Open `yo3.ini` in the install folder (`C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3`), keep a copy of the
-   original, and point **all five lines** at the host (here `100.64.0.5`; the host itself can use `127.0.0.1`). The
+   original, and point **all five lines** at the host (here `100.64.0.5`; the host itself can use `127.0.0.1`). If
+   the host sent you your lines, paste them over the `[Yo3]` section as they are: the secret in your `PatchUpdateUrl`
+   (the part after `/yo3/`) is what makes the server give you your own account, wherever you connect from. The
    game checks for updates at `PatchUpdateUrl` before it connects at all, and Konami's addresses are gone, so
    changing only the first line isn't enough. Windows protects Program Files: edit the file with Notepad run as
    administrator, or give your user write permission on `yo3.ini` first.
@@ -89,6 +109,8 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
    PatchDataUrl=http://100.64.0.5:8080/ygoda/patch/
    InfoURL=http://100.64.0.5:8080/app/
    ```
+
+   With a key, your `PatchUpdateUrl` reads `http://100.64.0.5:8080/yo3/<your key>/`.
 
 3. Start the game, press ONLINE, log in with any name and password (they aren't checked), then pick your player.
 4. Once: open **Main Menu → Edit Deck** and leave it again. That saves your starter deck; without a deck the duel
@@ -158,6 +180,8 @@ Main Menu > Rental Card List shows what they lent and borrowed. Players' decks s
   point at Konami (see step 2).
 - **Stuck right after logging in, or after the duel's janken:** the duel port 1214 is blocked, or the host needs
   `--advertise`.
-- **Both friends get the same players:** they reach the server from the same address (one router, port forwarding).
-  Use a VPN, or have them pick different players of the one account.
+- **Both friends get the same players, or a friend lands in an empty "Duelist" account:** the server didn't see their
+  key. Check that `PatchUpdateUrl` in their `yo3.ini` has the key (`.../yo3/<key>/`), that the host made the account
+  with `add-account` or `key`, and that the server's log shows `presented an account key` when they start the game.
+  Without a key, friends behind one router share one account (make keys for them).
 - The server's log is in the terminal; every packet is also written to `logs/packets-*.jsonl`.

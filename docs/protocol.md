@@ -1302,12 +1302,27 @@ the body other than the four named; the hands show as white boxes in a replay (a
 
 The client never sends a user id or password. `0x1F47` is a bare request; the credentials typed at login are copied
 onto the front connection object (`+0x118`/`+0x134`, on `0x219F`) and never serialized. The server therefore tells
-accounts apart by the client's address and lets the player pick one of up to four players at Select Player
+accounts apart by an account key in the patch URL (below), else by the client's address, and lets the player pick
+one of up to four players at Select Player
 (`0x1F4C {player_id}`). Select Player also makes and deletes players (`0x1F4A`, `0x1F4B`, above), by slot (`pindex`
 0-3, kept with the account); the host can name them ahead too (see `docs/friends.md`). `CharMake.cpp`
 (`0x2CF5`/`0x2CF6`, the map's `GoCharMake`) is the appearance editor. The Delete Player dialog's "Enter your Password"
 is not sent: `0x1F4B` carries `player_id` only (live packet), and `0x1F47` is bare, `0x1F48` carries `lang` only, so
 the client has no user id or password field to answer.
+
+**The patch URL as the account key** (status: confirmed live). Before it connects to the gate, at every start, the
+client fetches `PatchUpdateUrl` + `yo3.idx` from its `yo3.ini` over HTTP, and the path is whatever the ini says. The
+server puts a secret key in it: with `PatchUpdateUrl=http://127.0.0.1:8080/yo3/k7Qx2mZ/` the HTTP log showed
+`GET /yo3/k7Qx2mZ/yo3.idx -> 200`, and the login went through as usual (the index is served for any path ending in
+`yo3.idx`). The patch server records "this source address presented this key" (`Directory::present_key`); a gate or
+front connection from that address then logs in to the key's account (`Directory::login`, within 10 minutes of the
+fetch; each login renews the window, so a reconnect in a long session still finds it), whatever address the friend
+connects from, and keeps it for the connection's life. The most recent fetch from an address decides: a second
+key replaces the first, and a fetch with no key or an unknown one clears it (that login goes to the address
+account, as before; an unknown key is logged). Edge: two friends behind one address who start the game within the
+same moment can swap (the connections carry nothing but the address); the key is checked only by the fetch that
+precedes a login. The key is a bearer secret in a URL, so use it over a VPN or a trusted network (the gate and front
+carry no password either). Not seen: the client does not re-fetch the index between its own gate and front connections.
 
 The gate's redirect (`0x21FE {host, port}`) and the duel server's `0x22C4 duelData {host, port}` carry the address
 each client reached the server at (the connection's own address), unless the server is told one: one server then
