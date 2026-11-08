@@ -20,6 +20,7 @@ mod events;
 pub mod clock;
 mod log;
 mod net;
+pub use net::IDLE_TIMEOUT;
 
 use crate::lock::Locked;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -64,6 +65,8 @@ pub struct Config {
     /// The banlist players log in with (Auto Duel and NPC duels), as a regulation id or name ("unlimited"); none:
     /// regulation 1.
     pub regulation: Option<String>,
+    /// How long a connection may stay silent before it is closed (the client heartbeats every 30 s).
+    pub idle_timeout: std::time::Duration,
 }
 
 impl Config {
@@ -86,6 +89,7 @@ impl Config {
             duel_time: None,
             data_dir: None,
             regulation: None,
+            idle_timeout: net::IDLE_TIMEOUT,
         }
     }
 }
@@ -229,9 +233,10 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         None => tracing::warn!("rules engine not fetched (run engine/fetch.sh): duels open but can't be played"),
     }
 
+    let idle = cfg.idle_timeout;
     let gate_task = {
         let (packets, advertise) = (packets.clone(), cfg.advertise.clone());
-        tokio::spawn(net::accept_loop(gate, "gate", packets, move |_peer, local: SocketAddr, _outbox| {
+        tokio::spawn(net::accept_loop(gate, "gate", packets, idle, move |_peer, local: SocketAddr, _outbox| {
             let advertise = advertise.clone().unwrap_or_else(|| local.ip().to_string());
             let mut sent = false;
             move |_: &yo3_proto::Packet| {
@@ -271,7 +276,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let hub = Arc::new(Mutex::new(hub));
     let front_task = {
         let (world, hub) = (world.clone(), hub.clone());
-        tokio::spawn(net::accept_loop(front, "front", packets.clone(), move |peer: SocketAddr, local: SocketAddr, outbox| {
+        tokio::spawn(net::accept_loop(front, "front", packets.clone(), idle, move |peer: SocketAddr, local: SocketAddr, outbox| {
             let account = directory.locked().account_for(peer.ip());
             let mut session = FrontSession::new(account, world.clone(), hub.clone(), outbox);
             session.set_reached_at(local.ip());
@@ -286,15 +291,23 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
             let mut every = tokio::time::interval(std::time::Duration::from_secs(1));
             loop {
                 every.tick().await;
-                duel::tick_tables(&hub, std::time::Instant::now());
-                let mut hub = hub.locked();
-                hub.tick_events(std::time::Instant::now());
-                hub.tick_rentals(chrono::Utc::now().timestamp());
+                // On a blocking thread (a table's engine call may take a while), and a panic in one pass is logged,
+                // not the end of the clock.
+                let hub = hub.clone();
+                let pass = tokio::task::spawn_blocking(move || {
+                    duel::tick_tables(&hub, std::time::Instant::now());
+                    let mut hub = hub.locked();
+                    hub.tick_events(std::time::Instant::now());
+                    hub.tick_rentals(chrono::Utc::now().timestamp());
+                });
+                if let Err(e) = pass.await {
+                    tracing::error!("clock pass failed: {e}");
+                }
             }
         })
     };
     // The duel connection (DuelManager 0x50F690): a client duels the server as the CPU, or another client at a table.
-    let duel_task = tokio::spawn(net::accept_loop(duel, "duel", packets.clone(), move |_peer, _local, outbox| {
+    let duel_task = tokio::spawn(net::accept_loop(duel, "duel", packets.clone(), idle, move |_peer, _local, outbox| {
         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
         let mut session = duel::DuelSession::new(world.clone(), hub.clone(), seed).with_outbox(outbox);
         move |p: &yo3_proto::Packet| session.handle(p)

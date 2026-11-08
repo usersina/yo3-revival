@@ -131,6 +131,7 @@ async fn main() -> anyhow::Result<()> {
         duel_time: a.duel_time.map(|t| (t.first().copied().unwrap_or(0), t.get(1).copied().unwrap_or(0))),
         data_dir: Some(a.data_dir),
         regulation: a.regulation,
+        idle_timeout: yo3_server::IDLE_TIMEOUT,
     };
     start(cfg).await?.wait().await;
     Ok(())

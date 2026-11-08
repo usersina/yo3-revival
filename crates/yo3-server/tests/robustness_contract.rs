@@ -1,0 +1,227 @@
+//! What keeps one failure from stalling or killing the server (the 2026-11-08 robustness review): an engine that
+//! dies mid-duel, a panic under a lock, a player leaving before the duel started, a crafted connection.
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
+use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+use yo3_proto::{Message, Packet, Value};
+use yo3_server::duel::{DuelSession, SERVER_DUEL};
+use yo3_server::front::{Deck, DuelEntry, Hub, World};
+use yo3_server::translate::CardStats;
+
+const DUEL: u32 = 7;
+
+fn real_engine() -> Option<PathBuf> {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../engine");
+    dir.join("vendor/cardinfo.json").is_file().then_some(dir)
+}
+
+/// An engine directory whose sidecar is the real one behind a proxy that dies on its next call once the returned
+/// flag file exists.
+fn dying_engine(name: &str) -> Option<(PathBuf, PathBuf)> {
+    let real = real_engine()?;
+    let dir = std::env::temp_dir().join(format!("yo3-dying-engine-{name}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let flag = dir.join("die");
+    let _ = std::fs::remove_file(&flag);
+    let script = format!(
+        "import {{ spawn }} from 'node:child_process';\n\
+         import {{ existsSync }} from 'node:fs';\n\
+         const real = spawn('node', [{:?}], {{ stdio: ['pipe', 'inherit', 'inherit'] }});\n\
+         process.stdin.on('data', (d) => {{ if (existsSync({:?})) process.exit(1); real.stdin.write(d); }});\n\
+         process.stdin.on('end', () => real.kill());\n",
+        real.join("duelcore.ts").display().to_string(),
+        flag.display().to_string()
+    );
+    std::fs::write(dir.join("duelcore.ts"), script).unwrap();
+    Some((dir, flag))
+}
+
+fn world(engine_dir: Option<PathBuf>) -> World {
+    let stats = |cid, atk| CardStats { cid, atk, def: 0, level: 4, attribute: 1, race: 1 };
+    let cards: HashMap<u16, CardStats> = [(1, stats(6960, 2000)), (2, stats(5004, 1900))].into_iter().collect();
+    World { cards, engine_dir, ..World::new((1..=20).collect()) }
+}
+
+struct Seat {
+    session: DuelSession,
+    inbox: UnboundedReceiver<Message>,
+}
+
+impl Seat {
+    fn send(&mut self, name: u32, fields: &[(&str, u32)]) -> Vec<Message> {
+        let m = Message::reply(0x200C).with("duelRequestName", Value::U32(name));
+        self.session.handle(&Packet::Message(fields.iter().fold(m, |m, (k, v)| m.with(k, Value::U32(*v)))))
+    }
+
+    fn pushed(&mut self) -> Vec<Message> {
+        std::iter::from_fn(|| self.inbox.try_recv().ok()).collect()
+    }
+}
+
+fn table(world: World) -> (Seat, Seat, Arc<Mutex<Hub>>) {
+    let world = Arc::new(world);
+    let hub = Arc::new(Mutex::new(Hub::default()));
+    for (me, them, row) in [(1001, 1002, 1), (1002, 1001, 2)] {
+        let deck = Deck { main: vec![row; 40], ..Deck::default() };
+        hub.lock().unwrap().enter_duel(me, DuelEntry { deck, duel_id: Some(DUEL), opponent: Some(them), best_of: 1, ..DuelEntry::default() });
+    }
+    let seat = |seed| {
+        let (tx, inbox) = unbounded_channel();
+        Seat { session: DuelSession::new(world.clone(), hub.clone(), seed).with_outbox(tx), inbox }
+    };
+    (seat(3), seat(5), hub)
+}
+
+fn enter(seat: &mut Seat, player_id: u32) -> Vec<Message> {
+    let m = Message::reply(0x200A).with("player_id", Value::U32(player_id)).with("autoSet", Value::U32(1));
+    seat.session.handle(&Packet::Message(m))
+}
+
+fn commands(replies: &[Message]) -> Vec<(u32, [u32; 4])> {
+    replies
+        .iter()
+        .filter(|m| m.request() == Some(SERVER_DUEL) && m.get("duelRequestName") == Some(&Value::U32(0x11)))
+        .map(|m| {
+            let int = |k| m.get(k).and_then(Value::as_u32).unwrap();
+            (int("id"), [int("param1"), int("param2"), int("param3"), int("param4")])
+        })
+        .collect()
+}
+
+/// Both seated, 1001 won the janken (rock against scissors).
+fn after_janken(world: World) -> (Seat, Seat, Arc<Mutex<Hub>>) {
+    let (mut a, mut b, hub) = table(world);
+    enter(&mut a, 1001);
+    enter(&mut b, 1002);
+    a.pushed();
+    a.send(0xC, &[("selectHand", 0)]);
+    b.send(0xC, &[("selectHand", 1)]);
+    a.pushed();
+    (a, b, hub)
+}
+
+/// A draw with no reason (DuelScene 0x514290 shows duel_draw.swf, no reason text).
+const NO_RESULT: (u32, [u32; 4]) = (2, [3, 0, 0, 0]);
+
+#[test]
+fn an_engine_that_dies_mid_duel_ends_it_as_a_draw_for_both() {
+    // The sidecar answers the opening, then dies on its next call (a phase button): both clients get a draw end
+    // instead of waiting forever, the match is over and counted once.
+    let Some((dir, flag)) = dying_engine("mid") else { return };
+    let (mut a, mut b, hub) = after_janken(world(Some(dir)));
+    a.send(0xD, &[("choice", 1)]);
+    b.pushed();
+    std::fs::write(flag, "").unwrap();
+    let out = a.send(3, &[("phase", 5)]);
+    assert_eq!(commands(&out).last(), Some(&NO_RESULT), "{out:?}");
+    assert_eq!(commands(&b.pushed()).last(), Some(&NO_RESULT));
+    assert_eq!(hub.lock().unwrap().record_result(1001, 1002, 0), [0, 0, 1], "counted once, as a draw");
+    assert!(a.send(3, &[("phase", 5)]).is_empty(), "nothing more once it ended");
+}
+
+#[test]
+fn an_engine_that_cannot_open_the_duel_ends_it_as_a_draw_too() {
+    let Some((dir, flag)) = dying_engine("open") else { return };
+    std::fs::write(flag, "").unwrap();
+    let (mut a, mut b, hub) = after_janken(world(Some(dir)));
+    let out = a.send(0xD, &[("choice", 1)]);
+    assert_eq!(commands(&out).last(), Some(&NO_RESULT), "{out:?}");
+    assert_eq!(commands(&b.pushed()).last(), Some(&NO_RESULT));
+    assert_eq!(hub.lock().unwrap().record_result(1001, 1002, 0), [0, 0, 1]);
+}
+
+#[test]
+fn an_engine_that_dies_in_an_npc_duel_ends_it_as_a_draw() {
+    let Some((dir, flag)) = dying_engine("npc") else { return };
+    let mut world = world(Some(dir));
+    world.npc_decks.insert(124, Deck { main: vec![2; 40], ..Deck::default() });
+    let mut hub = Hub::default();
+    hub.enter_duel(1001, DuelEntry { deck: Deck { main: vec![1; 40], ..Deck::default() }, npc_id: Some(124), ..DuelEntry::default() });
+    let mut session = DuelSession::new(Arc::new(world), Arc::new(Mutex::new(hub)), 9);
+    enter_session(&mut session, 1001);
+    let send = |s: &mut DuelSession, name: u32, fields: &[(&str, u32)]| {
+        let m = Message::reply(0x200C).with("duelRequestName", Value::U32(name));
+        s.handle(&Packet::Message(fields.iter().fold(m, |m, (k, v)| m.with(k, Value::U32(*v)))))
+    };
+    send(&mut session, 0xD, &[("choice", 1)]);
+    std::fs::write(flag, "").unwrap();
+    let out = send(&mut session, 3, &[("phase", 5)]);
+    assert_eq!(commands(&out).last(), Some(&NO_RESULT), "{out:?}");
+    assert!(send(&mut session, 3, &[("phase", 5)]).is_empty(), "nothing more once it ended");
+}
+
+fn enter_session(s: &mut DuelSession, player_id: u32) -> Vec<Message> {
+    let m = Message::reply(0x200A).with("player_id", Value::U32(player_id)).with("autoSet", Value::U32(1));
+    s.handle(&Packet::Message(m))
+}
+
+mod wire {
+    use std::net::SocketAddr;
+    use std::time::Duration;
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpStream;
+    use yo3_proto::{Message, Packet, decrypt, frame, frame_len};
+    use yo3_server::{Config, start};
+
+    pub async fn recv(s: &mut TcpStream) -> std::io::Result<Message> {
+        let mut head = [0; 4];
+        s.read_exact(&mut head).await?;
+        let mut body = vec![0; frame_len(head)];
+        s.read_exact(&mut body).await?;
+        match Packet::decode(&decrypt(&body).unwrap()).unwrap() {
+            Packet::Message(m) => Ok(m),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    fn version() -> Vec<u8> {
+        [b"\x00\x122010.03.23 skelton".as_slice(), &[0; 4]].concat()
+    }
+
+    pub async fn front(server: &yo3_server::Running) -> TcpStream {
+        let mut s = TcpStream::connect(SocketAddr::from(([127, 0, 0, 1], server.front.port()))).await.unwrap();
+        s.write_all(&frame(&version())).await.unwrap();
+        s
+    }
+
+    pub async fn running(idle: Duration) -> yo3_server::Running {
+        let log_dir = std::env::temp_dir().join(format!("yo3-robust-{}-{idle:?}", std::process::id()));
+        start(Config { idle_timeout: idle, ..Config::ephemeral(log_dir) }).await.unwrap()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_crafted_deeply_nested_frame_does_not_kill_the_server() {
+        let server = running(Duration::from_secs(30)).await;
+        // 200,000 nested empty messages in one frame just under the 1 MiB limit: a stack overflow, once, for a
+        // decoder that recursed without a limit, and the Blowfish key is public.
+        let plain: Vec<u8> = (0..200_000).flat_map(|_| [4u8, 0, 0, 0, 1]).collect();
+        let mut evil = front(&server).await;
+        assert_eq!(recv(&mut evil).await.unwrap().request(), Some(0x219F));
+        evil.write_all(&frame(&plain)).await.unwrap();
+        // Still alive: a second client logs in as usual.
+        let mut ok = front(&server).await;
+        assert_eq!(recv(&mut ok).await.unwrap().request(), Some(0x219F));
+        ok.write_all(&frame(&Message::reply(0x1F47).encode())).await.unwrap();
+        assert_eq!(recv(&mut ok).await.unwrap().request(), Some(0x219A));
+    }
+
+    #[tokio::test]
+    async fn a_connection_that_goes_silent_is_closed_but_a_heartbeating_one_stays() {
+        let server = running(Duration::from_millis(400)).await;
+        let mut silent = front(&server).await;
+        let mut beating = front(&server).await;
+        assert_eq!(recv(&mut silent).await.unwrap().request(), Some(0x219F));
+        assert_eq!(recv(&mut beating).await.unwrap().request(), Some(0x219F));
+        for _ in 0..4 {
+            tokio::time::sleep(Duration::from_millis(250)).await;
+            beating.write_all(&frame(&Message::reply(0x2724).encode())).await.unwrap();
+        }
+        let closed = tokio::time::timeout(Duration::from_secs(5), recv(&mut silent)).await.expect("closed in time");
+        assert!(closed.is_err(), "the silent connection was closed");
+        beating.write_all(&frame(&Message::reply(0x1F47).encode())).await.unwrap();
+        assert_eq!(recv(&mut beating).await.unwrap().request(), Some(0x219A));
+    }
+}

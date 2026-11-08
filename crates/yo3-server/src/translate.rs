@@ -308,7 +308,7 @@ const FACE_UP_DEFENSE: u32 = 1 << 16;
 pub(crate) const DUEL_END: u32 = 2;
 pub(crate) const WON: u32 = 1;
 pub(crate) const LOST: u32 = 2;
-const DRAW: u32 = 3;
+pub(crate) const DRAW: u32 = 3;
 /// WIN's player for a draw.
 const TEAM_DRAW: u64 = 2;
 /// Phase panel buttons (0 DP .. 5 EP) and the input mode that turns the panel on (command 4's param1).

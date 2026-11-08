@@ -2,6 +2,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
@@ -12,17 +13,34 @@ use yo3_proto::{MAX_FRAME, Message, Packet, decrypt, frame, frame_len};
 use crate::front::Outbox;
 use crate::log::PacketLog;
 
+/// How long a connection may stay silent before it is closed. The real client heartbeats every 30 s (`0x2724`) on the
+/// front and the duel connection, so this is generous; the gate's only message comes at once.
+pub const IDLE_TIMEOUT: Duration = Duration::from_secs(180);
+
+/// Frame bodies are read in pieces of this size, so a frame's buffer grows only as its bytes really arrive.
+const READ_CHUNK: usize = 16 * 1024;
+
+/// Runs blocking work (a handler may wait on the rules engine) without holding up the runtime's other tasks.
+pub(crate) fn blocking<R>(work: impl FnOnce() -> R) -> R {
+    match tokio::runtime::Handle::try_current().map(|h| h.runtime_flavor()) {
+        Ok(tokio::runtime::RuntimeFlavor::MultiThread) => tokio::task::block_in_place(work),
+        _ => work(),
+    }
+}
+
 /// Accepts connections. `make` builds a fresh packet handler for each one; it gets the peer's address, the
 /// address the peer reached (this end), and the connection's outbox, through which anything (replies, pushes
 /// from other sessions) is sent.
-pub async fn accept_loop<M, H>(listener: TcpListener, who: &'static str, log: Arc<PacketLog>, make: M)
+pub async fn accept_loop<M, H>(listener: TcpListener, who: &'static str, log: Arc<PacketLog>, idle: Duration, make: M)
 where
     M: Fn(SocketAddr, SocketAddr, Outbox) -> H,
     H: FnMut(&Packet) -> Vec<Message> + Send + 'static,
 {
+    let mut backoff = Duration::from_millis(50);
     loop {
         match listener.accept().await {
             Ok((stream, peer)) => {
+                backoff = Duration::from_millis(50);
                 tracing::info!("[{who}] connected {peer}");
                 let (outbox, queue) = unbounded_channel();
                 let local = stream.local_addr().unwrap_or(peer);
@@ -31,13 +49,18 @@ where
                 tokio::spawn(write_loop(writer, queue, who, log.clone()));
                 let log = log.clone();
                 tokio::spawn(async move {
-                    match serve(reader, who, &log, handler, outbox).await {
+                    match serve(reader, who, &log, idle, handler, outbox).await {
                         Ok(()) => tracing::info!("[{who}] {peer} closed"),
                         Err(e) => tracing::warn!("[{who}] {peer}: {e}"),
                     }
                 });
             }
-            Err(e) => tracing::warn!("[{who}] accept failed: {e}"),
+            Err(e) => {
+                // A persistent error (out of file descriptors) would otherwise spin this loop at full speed.
+                tracing::warn!("[{who}] accept failed: {e}");
+                tokio::time::sleep(backoff).await;
+                backoff = (backoff * 2).min(Duration::from_secs(2));
+            }
         }
     }
 }
@@ -53,22 +76,39 @@ async fn write_loop(mut stream: OwnedWriteHalf, mut queue: UnboundedReceiver<Mes
     }
 }
 
-async fn serve<H>(mut stream: OwnedReadHalf, who: &str, log: &PacketLog, mut handler: H, outbox: Outbox) -> std::io::Result<()>
+async fn serve<H>(mut stream: OwnedReadHalf, who: &str, log: &PacketLog, idle: Duration, mut handler: H, outbox: Outbox) -> std::io::Result<()>
 where
     H: FnMut(&Packet) -> Vec<Message>,
 {
     let mut head = [0u8; 4];
     loop {
-        if let Err(e) = stream.read_exact(&mut head).await {
-            return if e.kind() == std::io::ErrorKind::UnexpectedEof { Ok(()) } else { Err(e) };
+        match tokio::time::timeout(idle, stream.read_exact(&mut head)).await {
+            Err(_) => {
+                tracing::warn!("[{who}] idle for {idle:?}; closing");
+                return Ok(());
+            }
+            Ok(Err(e)) => return if e.kind() == std::io::ErrorKind::UnexpectedEof { Ok(()) } else { Err(e) },
+            Ok(Ok(_)) => {}
         }
         let n = frame_len(head);
         if n == 0 || n > MAX_FRAME {
             tracing::warn!("[{who}] bad frame length {n}; closing");
             return Ok(());
         }
-        let mut body = vec![0; n];
-        stream.read_exact(&mut body).await?;
+        let mut body = Vec::with_capacity(n.min(READ_CHUNK));
+        let mut chunk = [0u8; READ_CHUNK];
+        while body.len() < n {
+            let want = (n - body.len()).min(READ_CHUNK);
+            match tokio::time::timeout(idle, stream.read(&mut chunk[..want])).await {
+                Err(_) => {
+                    tracing::warn!("[{who}] stalled inside a frame for {idle:?}; closing");
+                    return Ok(());
+                }
+                Ok(Ok(0)) => return Err(std::io::ErrorKind::UnexpectedEof.into()),
+                Ok(Ok(k)) => body.extend_from_slice(&chunk[..k]),
+                Ok(Err(e)) => return Err(e),
+            }
+        }
         let plain = match decrypt(&body) {
             Ok(p) => p,
             Err(e) => {
@@ -87,7 +127,7 @@ where
                 Packet::Message(Message::default())
             }
         };
-        let replies = handler(&packet);
+        let replies = blocking(|| handler(&packet));
         if replies.is_empty()
             && let Packet::Message(m) = &packet
             && let Some(id) = m.request()
@@ -103,16 +143,29 @@ where
 
 /// Minimal HTTP: serves the client's own patch index so it sees itself as up to date.
 pub async fn http_loop(listener: TcpListener, game_dir: PathBuf, duel_logs: Option<PathBuf>) {
+    let mut backoff = Duration::from_millis(50);
     loop {
-        let Ok((mut stream, _)) = listener.accept().await else { continue };
+        let (mut stream, _) = match listener.accept().await {
+            Ok(accepted) => {
+                backoff = Duration::from_millis(50);
+                accepted
+            }
+            Err(e) => {
+                tracing::warn!("[http] accept failed: {e}");
+                tokio::time::sleep(backoff).await;
+                backoff = (backoff * 2).min(Duration::from_secs(2));
+                continue;
+            }
+        };
         let (game_dir, duel_logs) = (game_dir.clone(), duel_logs.clone());
         tokio::spawn(async move {
             let mut buf = Vec::new();
             let mut chunk = [0u8; 1024];
             while !buf.windows(4).any(|w| w == b"\r\n\r\n") && buf.len() < 8192 {
-                match stream.read(&mut chunk).await {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                // A client that never finishes its request line is let go after a while.
+                match tokio::time::timeout(Duration::from_secs(10), stream.read(&mut chunk)).await {
+                    Ok(Ok(n)) if n > 0 => buf.extend_from_slice(&chunk[..n]),
+                    _ => break,
                 }
             }
             let request = String::from_utf8_lossy(&buf);

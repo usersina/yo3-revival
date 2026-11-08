@@ -15,7 +15,7 @@ use crate::duel::{
 use crate::clock::{Clocks, DEFAULT_TOTAL, DEFAULT_TURN};
 use crate::engine::{Answer, Engine};
 use crate::front::{DuelEntry, Ended, Hub, MATCH_MODE, Outbox, SINGLE_MODE, World};
-use crate::translate::{DUEL_END, LOST, Prompt, Translator, WON};
+use crate::translate::{DRAW, DUEL_END, LOST, Prompt, Translator, WON};
 
 /// The usual starting LP (the server's own unless --duel-lp changes it).
 const DEFAULT_LP: u32 = 8000;
@@ -173,8 +173,8 @@ impl Table {
         let mut engine = match Engine::start(&dir) {
             Ok(engine) => engine,
             Err(e) => {
-                tracing::warn!("rules engine not started: {e}");
-                return Out::default();
+                tracing::warn!("duel {}: rules engine not started: {e}", self.duel_id);
+                return self.abandon();
             }
         };
         // A hosted duel's starting LP (Create Duel's lp_start), unless the server's was set to test (--duel-lp).
@@ -295,6 +295,7 @@ impl Table {
         let mut out = Out::default();
         let now = Instant::now();
         let mut waiting = None;
+        let mut failed = false;
         let mut watched: Vec<Vec<Message>> = vec![vec![]; self.spectators.len()];
         let Table { engine: Some(engine), translators, clocks, first, spectators, history, .. } = self else { return out };
         for _ in 0..10_000 {
@@ -302,6 +303,7 @@ impl Table {
                 Ok(a) => a,
                 Err(e) => {
                     tracing::warn!("rules engine: {e}");
+                    failed = true;
                     break;
                 }
             };
@@ -335,6 +337,14 @@ impl Table {
                 }
             }
         }
+        if failed {
+            // The engine died or hung: nobody could be asked anything again, so the duel ends here as a draw.
+            self.tell_spectators(watched);
+            for (part, more) in out.iter_mut().zip(self.abandon()) {
+                part.extend(more);
+            }
+            return out;
+        }
         let results: Vec<Option<u32>> = self.translators.iter().map(Translator::result).collect();
         let ended = results.iter().all(Option::is_some);
         if ended {
@@ -357,6 +367,28 @@ impl Table {
             }
         }
         out
+    }
+
+    /// The engine failed (it died, hung or could not start): the duel and the match end as a draw for both seats (a
+    /// no-result end the client shows), counted once, and the engine is dropped. Returns each seat's end command; the
+    /// spectators are told here.
+    fn abandon(&mut self) -> Out {
+        self.engine = None;
+        self.clocks = None;
+        let end = || command(DUEL_END, [DRAW, 0, 0, 0]);
+        self.tell_spectators(vec![vec![end()]; self.spectators.len()]);
+        self.report([DRAW; 2]);
+        [vec![end()], vec![end()]]
+    }
+
+    /// The table broke (a panic): its duel ends as a draw on both seats, as after an engine failure.
+    pub fn abort(&mut self) {
+        let out = self.abandon();
+        for (seat, part) in self.seats.iter().zip(out) {
+            for m in part {
+                let _ = seat.outbox.send(m);
+            }
+        }
     }
 
     /// The server's clock check: once the player waited on is out of time, the duel ends with them losing by time out
@@ -454,6 +486,8 @@ impl Table {
         let winner = results.iter().position(|&r| r == WON).map(|s| self.seats[s].player_id);
         hub.end_match(self.duel_id, winner);
         drop(hub);
+        // The duel is over: its engine process goes too.
+        self.engine = None;
         self.tell_spectators(vec![vec![command(MATCH_END, [results[0], 0, 0, 0])]; self.spectators.len()]);
     }
 

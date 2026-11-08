@@ -12,7 +12,7 @@ use yo3_proto::{Message, Packet, Value};
 use crate::engine::{Answer, Engine};
 use crate::front::{Deck, DuelEntry, Ended, Hub, Outbox, SINGLE_MODE, World};
 use crate::table::{MATCH_END, Table};
-use crate::translate::{Prompt, Translator};
+use crate::translate::{DRAW, DUEL_END, Prompt, Translator};
 
 /// Request id of the server's duel messages. A guess: the pump (0x5233A0) reads only
 /// duelRequestName, and treats a negative id as a lost connection.
@@ -96,15 +96,35 @@ pub(crate) fn move_place(player: u32, zone: u32, index: usize) -> u32 {
     player | zone << 1 | (index as u32) << 6
 }
 
-/// An engine command, as pump case 0x11 reads it.
-/// The server's clock check for every duel between players (once a second, and in tests at any `now`).
+/// The server's clock check for every duel between players (once a second, and in tests at any `now`). A table that
+/// is busy (its lock is held, say by an engine call) is skipped until the next second; one that panicked, under its
+/// lock or in this very check, ends its duel as a draw and goes, so one bad table never stops the others' clocks.
 pub fn tick_tables(hub: &Arc<Mutex<Hub>>, now: std::time::Instant) {
-    let tables: Vec<_> = hub.locked().tables.values().cloned().collect();
-    for table in tables {
-        table.locked().tick(now);
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use std::sync::TryLockError;
+    let tables: Vec<_> = hub.locked().tables.iter().map(|(id, t)| (*id, t.clone())).collect();
+    let mut broken = vec![];
+    for (id, table) in tables {
+        match table.try_lock() {
+            Ok(mut t) => {
+                if catch_unwind(AssertUnwindSafe(|| t.tick(now))).is_err() {
+                    broken.push((id, table.clone()));
+                }
+            }
+            Err(TryLockError::WouldBlock) => {}
+            Err(TryLockError::Poisoned(_)) => broken.push((id, table.clone())),
+        }
+    }
+    for (id, table) in broken {
+        tracing::error!("duel {id}: its table panicked; the duel ends as a draw");
+        let mut t = table.locked();
+        let _ = catch_unwind(AssertUnwindSafe(|| t.abort()));
+        drop(t);
+        hub.locked().end_match(id, None);
     }
 }
 
+/// An engine command, as pump case 0x11 reads it.
 pub fn command(id: u32, params: [u32; 4]) -> Message {
     let m = Message::reply(SERVER_DUEL).with("duelRequestName", Value::U32(ENGINE_COMMAND)).with("id", Value::U32(id));
     params.iter().zip(["param1", "param2", "param3", "param4"]).fold(m, |m, (v, k)| m.with(k, Value::U32(*v)))
@@ -455,12 +475,14 @@ impl DuelSession {
     fn advance(&mut self, mut answer: std::io::Result<Answer>) -> Vec<Message> {
         let Some((engine, translator)) = self.engine.as_mut() else { return vec![] };
         let mut out = vec![];
+        let mut failed = false;
         // Each round answers one prompt; a duel needs far fewer between two of the client's choices.
         for _ in 0..10_000 {
             let a = match answer {
                 Ok(a) => a,
                 Err(e) => {
                     tracing::warn!("rules engine: {e}");
+                    failed = true;
                     break;
                 }
             };
@@ -478,7 +500,17 @@ impl DuelSession {
                 }
             }
         }
-        if let (Some(result), Some(player_id), false) = (translator.result(), self.player_id, self.reported) {
+        // An engine that died or hung can't be asked again: the duel ends as a draw (a no-result end the client shows).
+        let result = if failed {
+            out.push(command(DUEL_END, [DRAW, 0, 0, 0]));
+            Some(DRAW)
+        } else {
+            translator.result()
+        };
+        if failed {
+            self.engine = None;
+        }
+        if let (Some(result), Some(player_id), false) = (result, self.player_id, self.reported) {
             self.reported = true;
             let opponent = self.entry.as_ref().and_then(|e| e.npc_id).unwrap_or(0);
             let duel_id = self.entry.as_ref().and_then(|e| e.duel_id).unwrap_or(0);
@@ -530,5 +562,79 @@ impl DuelSession {
 
     fn next(&mut self) -> u64 {
         next(&mut self.rng)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::mpsc::unbounded_channel;
+
+    fn message(id: u32, fields: &[(&str, u32)]) -> Packet {
+        Packet::Message(fields.iter().fold(Message::reply(id), |m, (k, v)| m.with(k, Value::U32(*v))))
+    }
+
+    /// 1001 and 1002 seated at the table of duel 7, with what each was pushed.
+    type Seat = (DuelSession, tokio::sync::mpsc::UnboundedReceiver<Message>);
+
+    fn seated() -> (Arc<Mutex<Hub>>, [Seat; 2]) {
+        let world = Arc::new(World::new((1..=20).collect()));
+        let hub = Arc::new(Mutex::new(Hub::default()));
+        let seats = [(1001, 1002), (1002, 1001)].map(|(me, them)| {
+            let entry = DuelEntry { duel_id: Some(7), opponent: Some(them), best_of: 1, ..DuelEntry::default() };
+            hub.locked().enter_duel(me, entry);
+            let (tx, rx) = unbounded_channel();
+            let mut session = DuelSession::new(world.clone(), hub.clone(), 3).with_outbox(tx);
+            session.handle(&message(ENTER, &[("player_id", me), ("autoSet", 1)]));
+            (session, rx)
+        });
+        (hub, seats)
+    }
+
+    fn ended_as_draw(rx: &mut tokio::sync::mpsc::UnboundedReceiver<Message>) -> bool {
+        std::iter::from_fn(|| rx.try_recv().ok())
+            .any(|m| m.get("id") == Some(&Value::U32(DUEL_END)) && m.get("param1") == Some(&Value::U32(DRAW)))
+    }
+
+    #[test]
+    fn a_poisoned_hub_does_not_stop_the_clock() {
+        let (hub, _seats) = seated();
+        let h = hub.clone();
+        let _ = std::thread::spawn(move || {
+            let _held = h.lock().unwrap();
+            panic!("a bug under the hub lock");
+        })
+        .join();
+        assert!(hub.is_poisoned());
+        tick_tables(&hub, std::time::Instant::now());
+        tick_tables(&hub, std::time::Instant::now());
+    }
+
+    #[test]
+    fn a_table_that_panicked_ends_its_duel_and_the_others_keep_running() {
+        let (hub, [(_a, mut rx_a), (_b, mut rx_b)]) = seated();
+        let table = hub.locked().tables.get(&7).cloned().expect("the table");
+        let t = table.clone();
+        let _ = std::thread::spawn(move || {
+            let _held = t.lock().unwrap();
+            panic!("a bug under the table lock");
+        })
+        .join();
+        assert!(table.is_poisoned());
+        tick_tables(&hub, std::time::Instant::now());
+        assert!(hub.locked().tables.is_empty(), "the broken table is dropped");
+        assert!(ended_as_draw(&mut rx_a) && ended_as_draw(&mut rx_b), "both seats are told");
+        // The clock task goes on.
+        tick_tables(&hub, std::time::Instant::now());
+    }
+
+    #[test]
+    fn a_table_that_is_busy_is_skipped_not_waited_for() {
+        let (hub, _seats) = seated();
+        let table = hub.locked().tables.get(&7).cloned().expect("the table");
+        let _busy = table.lock().unwrap();
+        // Would block forever on a plain lock (this thread holds it).
+        tick_tables(&hub, std::time::Instant::now());
+        assert!(hub.locked().tables.contains_key(&7));
     }
 }
