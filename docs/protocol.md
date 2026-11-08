@@ -54,6 +54,8 @@ The contract tests in `crates/yo3-server/tests/front_contract.rs` enforce the co
 | `0x1F48` login `{lang}` | `0x2201` | top: `regulation_id`; item[0]: `user_id`, `uname`, `dpoint`, `premium` (copied into UserData by `0x51B570`; non-zero opens every NPC, `0x4BF520`, and Form Team and Create Event) | L449, `uid : [1001]` L457; live: all 25 NPCs enabled with `premium` 1 | confirmed; `premium` 1 for everyone is our choice |
 | `0x1F49` player list | `0x2260` | items = player records (below) | "MyPlayerList" L509, loader `0x51C260` | confirmed |
 | `0x1F4C` select `{player_id}` | `0x2266` | none | "my player use success" L577 | confirmed |
+| `0x1F4A` create `{pindex, pname}` (an empty slot's Create Player: name dialog, builder `0x4F2D50`) | `0x2262` (`0x2263`) | none | "my player sub success" `LoginWindow.cpp L608`: the client asks `0x1F49` again, finds the new player and selects it (`0x1F4C`), then opens Avatar Settings; `0x2263` shows `$10525` and returns to the avatar screen; live: Joey in slot 3 | confirmed; name rules (unique ignoring case, 1-16 characters, no control characters) and the full-account/slot-taken errors **guess** |
+| `0x1F4B` delete `{player_id}` (Delete, after a warning and a password prompt; builder `0x4F2EB0`) | `0x2264` (`0x2265`) | none | "my player unsub success" L626: the client lists again (`0x1F49`) and shows "Player Deleted."; `0x2265` is "Login Error!!"; live: the slot is empty again | confirmed; we refuse (`0x2265`) a player the account lacks, its last player and a team's leader (**guess**), a member leaves their team |
 | `0x1FA4` trunk `{player_id}` | `9000` (`0x2328`) | exactly one record; item[0] is copied wholesale into `UserData+0x8C8`, and the global dispatcher keeps the reply in slot 18. The record holds `cards` and `noTrade` (binary): owned and untradeable count per card, one byte at index row − 1 (CARD_Prop rows, row 0 a dummy, so 4,833 bytes). `0x410DB0` reads them bounds-checked; the collection builder `0x4F6340` writes into both unchecked (crash at `0x4F6A82`, opening the NPC duel) | "trunk data success" L666, `0x46AFA8`, `0x410DB0` | confirmed; `cards` = one copy per card of the starter deck (**guess**: a real collection comes with the economy); other contents **guess** |
 | (server push after `9000`) | `0x251C` friend list, `0x252A` black list | items `{friend_id, friend_name, login_flag}` / `{black_id, black_name, login_flag}` (`0x475A20` modes 2 and 3); see "Friends and the ignore list" | the global dispatcher stores them in dataset slots 6 and 7; the client never asks, and listing any player crashes without them (`0x45E734`) | shape; push timing **guess** |
 | (server push after `9000`) | `0x2D6C` rental records | one item per rental not over that the player lent or borrowed (fields in "Card rental" below); the shop checks `from_type` for 1 (we send 0) | the global dispatcher stores it in slot 8 (`0x4F5FBA`); opening the shop reads slot 8 unchecked (`0x48F0F6`); the collection builder `0x4F6340` reads it. `RentalRecord`/`CardRental` ask for it with `0x2C34` (bare), but not before the shop opens | live; push timing **guess** |
@@ -1239,9 +1241,11 @@ the body other than the four named; the hands show as white boxes in a replay (a
 The client never sends a user id or password. `0x1F47` is a bare request; the credentials typed at login are copied
 onto the front connection object (`+0x118`/`+0x134`, on `0x219F`) and never serialized. The server therefore tells
 accounts apart by the client's address and lets the player pick one of up to four players at Select Player
-(`0x1F4C {player_id}`). Players can't be made from the client: `CharMake.cpp` (`0x2CF5`/`0x2CF6`, reached from the
-map's `GoCharMake`) edits an existing player's appearance, and the original made players on Konami's website. So
-the host names them (see `docs/friends.md`).
+(`0x1F4C {player_id}`). Select Player also makes and deletes players (`0x1F4A`, `0x1F4B`, above), by slot (`pindex`
+0-3, kept with the account); the host can name them ahead too (see `docs/friends.md`). `CharMake.cpp`
+(`0x2CF5`/`0x2CF6`, the map's `GoCharMake`) is the appearance editor. The Delete Player dialog's "Enter your Password"
+is not sent: `0x1F4B` carries `player_id` only (live packet), and `0x1F47` is bare, `0x1F48` carries `lang` only, so
+the client has no user id or password field to answer.
 
 The gate's redirect (`0x21FE {host, port}`) and the duel server's `0x22C4 duelData {host, port}` carry the address
 each client reached the server at (the connection's own address), unless the server is told one: one server then

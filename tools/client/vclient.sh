@@ -5,7 +5,7 @@
 #   tools/client/vclient.sh xvfb            start the virtual display (:77) if it is not running
 #   tools/client/vclient.sh start [--trace] launch yo3.exe on it (trace -> logs/client-stdout.log);
 #                                           --trace also logs every field lookup -> logs/fields.tsv
-#   tools/client/vclient.sh login [SLOT]    title -> ONLINE -> OK (saved credentials) -> player SLOT (0-3, default 0)
+#   tools/client/vclient.sh login [SLOT]    title -> ONLINE -> OK (saved credentials) -> player SLOT (0-3, default 0); `login select` stops at Select Player
 #   tools/client/vclient.sh shot NAME       screenshot the game window -> logs/shots/NAME.png
 #   tools/client/vclient.sh click X Y       left click at game-window coordinates (1024x768)
 #   tools/client/vclient.sh key KEY...      xdotool key names, e.g. Return Escape
@@ -99,6 +99,7 @@ case "${1:-}" in
     wait_for login 30 500 210 12 93 117                       # login dialog header bar
     "$0" click 402 459                                        # OK (saved credentials)
     wait_for players 30 600 231 38 60 116                     # first player slot
+    [ "${2:-}" = select ] && { "$0" shot select; exit 0; }       # `login select` stops at Select Player
     "$0" click 656 $((231 + ${2:-0} * 46))                     # slot rows are 46 px apart
     sleep "${YO3_MAIN_WAIT:-10}"
     "$0" shot login ;;

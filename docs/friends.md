@@ -35,7 +35,9 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
    Regulation" in Create Duel, where a host can still pick another (Create Duel → Customize → Regulations → Select).
 3. Name your friends' players. There's no sign-up: the server tells players apart by the address they connect from,
    and each address gets its own account with up to four players. A new address starts with a player called
-   "Duelist" (then "Duelist2", "Duelist3"...). With the server stopped:
+   "Duelist" (then "Duelist2", "Duelist3"...). Your friends can make their own at Select Player (an empty slot says
+   "Create Player": a name, then the avatar) and delete one (Delete; the password it asks for can be anything), so
+   this step is optional. To name them yourself, with the server stopped:
 
    ```sh
    ./yo3-server add-player 100.64.0.7 Anis   # before Anis first connects: their account gets just this player

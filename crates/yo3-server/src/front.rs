@@ -1818,6 +1818,18 @@ impl Hub {
         }
     }
 
+    /// A player is about to be deleted: they leave their team (a team's leader can't be deleted: false).
+    fn forget_player(&mut self, player_id: u32) -> bool {
+        if self.teams.of(player_id).and_then(|t| t.authority(player_id)).is_some_and(|a| a == LEADER) {
+            return false;
+        }
+        if let Some(team) = self.teams.remove(player_id) {
+            let name = self.social.name(player_id);
+            self.tell_team(&team.ids(), Some(player_id), &Message::reply(0x2B09).with("member_name", Value::text(&name)));
+        }
+        true
+    }
+
     /// A challenger's offer is gone: the host's offer dialog closes (0x17C0) and it waits again.
     fn withdraw(&mut self, duel_id: u32, host: u32) {
         if let Some(h) = self.hosts.get_mut(&duel_id) {
@@ -1991,6 +2003,57 @@ impl FrontSession {
         self.directory = Some(directory);
     }
 
+    /// Takes the account's players as the accounts keep them now (a player another session made or deleted), the
+    /// selected one still selected if it exists.
+    fn refresh_players(&mut self) {
+        let Some(fresh) = self.directory.as_ref().and_then(|d| d.lock().expect("directory lock").account_of(self.account.user_id)) else {
+            return;
+        };
+        let chosen = self.selected.map(|at| self.account.players[at].player_id);
+        self.account.players = fresh.players;
+        self.apply_country();
+        self.selected = chosen.and_then(|id| self.account.players.iter().position(|p| p.player_id == id));
+        if self.selected.is_none()
+            && let Some(old) = self.online.take()
+        {
+            self.hub().leave(old);
+        }
+    }
+
+    /// Select Player's create 0x1F4A {pindex, pname} (builder 0x4F2D50) -> 0x2262, after which the client lists its
+    /// players again; 0x2263 for a slot taken, a name taken, empty or too long, or a full account.
+    fn create_player(&mut self, msg: &Message) -> Message {
+        let index = msg.get("pindex").and_then(Value::as_u32).unwrap_or(u32::MAX);
+        let name = msg.get("pname").and_then(Value::as_str).unwrap_or_default().to_string();
+        let made = self.directory.as_ref().map(|d| d.lock().expect("directory lock").create_player(self.account.user_id, index, &name));
+        match made {
+            Some(Ok(())) => {
+                self.refresh_players();
+                Message::reply(0x2262)
+            }
+            _ => Message::reply(0x2263),
+        }
+    }
+
+    /// Select Player's delete 0x1F4B {player_id} (builder 0x4F2EB0) -> 0x2264, after which the client lists its players
+    /// again; 0x2265 for a player the account doesn't have, its last player, or the leader of a team (who disbands it
+    /// first: **guess**, the original's rules are unknown). A member leaves their team.
+    fn delete_player(&mut self, msg: &Message) -> Message {
+        let Some(id) = msg.get("player_id").and_then(Value::as_u32) else { return Message::reply(0x2265) };
+        let Some(d) = self.directory.clone() else { return Message::reply(0x2265) };
+        if !self.account.players.iter().any(|p| p.player_id == id) || !self.hub().forget_player(id) {
+            return Message::reply(0x2265);
+        }
+        let deleted = d.lock().expect("directory lock").delete_player(self.account.user_id, id);
+        match deleted {
+            Ok(()) => {
+                self.refresh_players();
+                Message::reply(0x2264)
+            }
+            Err(_) => Message::reply(0x2265),
+        }
+    }
+
     /// The player update 0x2CEF (CharMake's Confirm, 0x51C960): {avatar1 (binary), speech00-22, comment00-01,
     /// title} -> 0x2CF5, or 0x2CF6 without a binary avatar1 (as text it would crash the PlayerData loader).
     fn update_player(&mut self, msg: &Message) -> Message {
@@ -2109,9 +2172,12 @@ impl FrontSession {
                     .with("country", Value::text(a.players.first().map_or("", |p| p.country.as_str()))),
             ),
             0x1F49 => {
+                self.refresh_players();
                 let hub = self.hub.lock().expect("hub lock");
-                a.players.iter().fold(Message::reply(0x2260), |m, p| m.item(hub.own_record(p)))
+                self.account.players.iter().fold(Message::reply(0x2260), |m, p| m.item(hub.own_record(p)))
             }
+            0x1F4A => self.create_player(msg),
+            0x1F4B => self.delete_player(msg),
             0x1F4C => {
                 self.selected = self.find_player(msg);
                 if self.selected.is_none() {

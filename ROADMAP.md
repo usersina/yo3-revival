@@ -31,8 +31,8 @@ most valuable first. Research for the later slices runs ahead in parallel (read-
         (Linux and Windows); [ ] then the real friend test (M6 exit)
 
 Not possible with this client, so left out: logins with a user id and password (the client never sends
-credentials), creating players in the game (the client has no such screen; the host uses `add-player`), decks kept on
-the server (the client saves decks only to its own files and uploads only deletions).
+credentials; the delete dialog's password prompt is local too). (Corrected later: the client does have Create Player and
+Delete on Select Player, `0x1F4A`/`0x1F4B`, now answered.)
 
 ## ▶ Windows VM test (2026-11-08): what a real Windows client turned up
 
@@ -198,8 +198,15 @@ Stop finding missing fields one crash at a time.
 
 ## M4: Accounts, collection and economy
 
-- [ ] Real accounts: user id and password, several accounts; persistence (SQLite)
-- [ ] Player creation and deletion (`CharMake.cpp`, `0x2CF5/0x2CF6`)
+- [x] Real accounts: not applicable. The login path has no id or password field: `0x1F47` is bare, `0x1F48` carries
+      only `lang`, the opener only the version string, and Delete Player's "Enter your Password" prompt sends nothing
+      (`0x1F4B {player_id}`, live packet log; no call of the connection's `+0x118`/`+0x134` copies is serialized).
+      Several accounts exist by client address; persistence stays JSON (`data/accounts.json`) with no concrete need
+      for SQLite
+- [x] Player creation and deletion: Select Player's Create Player and Delete (`0x1F4A {pindex, pname}` → `0x2262`/`0x2263`,
+      `0x1F4B {player_id}` → `0x2264`/`0x2265`; `CharMake.cpp`'s `0x2CF5/6` is only the appearance editor), within four
+      slots kept with the account. Live: Joey made in slot 3 (name, then Avatar Settings, then the main screen), deleted
+      with its password prompt (local, nothing sent), the slot empty again
 - [x] Trunk contents: the card collection (the starter deck's cards and the player's bought cards, `0x1FA4` → `9000`)
 - [ ] Deck list, deck editor saves (`HolderSelect.cpp` "deck list")
   - [x] Every player owns a starter deck's cards and gets it in the deck list (`0x1F4E` → `0x22C8`, tag-6
@@ -441,7 +448,7 @@ Stop finding missing fields one crash at a time.
 | Result screen counts | `win`/`lose`/`draw` = totals against this opponent including this duel, `*_add` = this duel's change; kept in memory | The client only shows them ("Wins 1 (+001)") |
 | Duel port | 1214 | The original's port is unknown; the client takes whatever `duelData` says |
 | Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
-| Player names | the starting names (`--players`, default Duelist) made unique with a number; the host names players with `add-player` / `rename` | The original made players on Konami's website; the client can't create one (CharMake is the appearance editor) |
+| Player names | the starting names (`--players`, default Duelist) made unique with a number; players make more at Select Player (at most 16 characters, unique ignoring case: **guess**), the host can still `add-player` / `rename` | The original's name rules are unknown; a team's leader can't be deleted and an account keeps one player (ours) |
 
 ## Leads (outside the code)
 

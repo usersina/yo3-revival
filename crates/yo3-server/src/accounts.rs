@@ -17,6 +17,8 @@ use crate::store;
 
 /// The client shows four player slots.
 pub const MAX_PLAYERS: usize = 4;
+/// The longest player name the server takes, in characters (**guess**: the client's name field has its own limit).
+pub const MAX_NAME: usize = 16;
 /// The BOOSTERPASS Points (the shop's BP, the account's dpoint) a new account starts with: 50 packs (**guess**).
 pub const START_BP: u32 = 5000;
 
@@ -46,7 +48,7 @@ impl Directory {
             let mut players = vec![];
             for (slot, p) in a["players"].as_array().into_iter().flatten().take(MAX_PLAYERS).enumerate() {
                 let mut player = Player::new(p["player_id"].as_u64().ok_or_else(bad)? as u32, p["name"].as_str().ok_or_else(bad)?);
-                player.index = slot as u32;
+                player.index = p["index"].as_u64().filter(|&i| i < MAX_PLAYERS as u64).map_or(slot as u32, |i| i as u32);
                 player.level = p["level"].as_u64().unwrap_or(1) as u32;
                 if let Some(avatar) = p["avatar"].as_str().and_then(from_hex) {
                     player.avatar = avatar;
@@ -139,7 +141,7 @@ impl Directory {
             Some(a) if a.players.len() >= MAX_PLAYERS => return Err(format!("{addr} already has {MAX_PLAYERS} players")),
             Some(a) => {
                 let mut p = Player::new(self.next_player, name);
-                p.index = a.players.len() as u32;
+                p.index = free_slot(&a.players).unwrap_or_default();
                 self.next_player += 1;
                 a.players.push(p);
             }
@@ -160,6 +162,45 @@ impl Directory {
         for p in &mut account.players {
             p.country.clone_from(&account.country);
         }
+        self.save();
+        Ok(())
+    }
+
+    /// The account `user_id`, as kept now.
+    pub fn account_of(&self, user_id: u32) -> Option<Account> {
+        self.by_address.values().find(|a| a.user_id == user_id).cloned()
+    }
+
+    /// Makes a player named `name` in slot `index` (0-3, free) of account `user_id` (Select Player's 0x1F4A). Names
+    /// are unique, ignoring case, printable and at most `MAX_NAME` characters; an account holds `MAX_PLAYERS`.
+    pub fn create_player(&mut self, user_id: u32, index: u32, name: &str) -> Result<(), String> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > MAX_NAME || name.chars().any(char::is_control) || self.taken(name) {
+            return Err(format!("the name {name:?} is empty, too long or taken"));
+        }
+        let id = self.next_player;
+        let Some(a) = self.by_address.values_mut().find(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
+        if a.players.len() >= MAX_PLAYERS || index >= MAX_PLAYERS as u32 || a.players.iter().any(|p| p.index == index) {
+            return Err(format!("slot {index} of account {user_id} is not free"));
+        }
+        let mut p = Player::new(id, name);
+        p.index = index;
+        p.country.clone_from(&a.country);
+        a.players.push(p);
+        self.next_player += 1;
+        self.save();
+        Ok(())
+    }
+
+    /// Deletes a player of account `user_id` (Select Player's 0x1F4B), whose slot is then free. An account keeps at
+    /// least one player.
+    pub fn delete_player(&mut self, user_id: u32, player_id: u32) -> Result<(), String> {
+        let Some(a) = self.by_address.values_mut().find(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
+        let Some(at) = a.players.iter().position(|p| p.player_id == player_id) else { return Err(format!("no player {player_id}")) };
+        if a.players.len() == 1 {
+            return Err("an account keeps at least one player".into());
+        }
+        a.players.remove(at);
         self.save();
         Ok(())
     }
@@ -230,7 +271,7 @@ impl Directory {
                         let avatar: String = p.avatar.iter().map(|b| format!("{b:02x}")).collect();
                         let cards: Vec<[u32; 2]> = p.cards.iter().map(|(&row, &n)| [row as u32, n]).collect();
                         let given: Vec<[u32; 2]> = p.given.iter().map(|(&row, &n)| [row as u32, n]).collect();
-                        json!({ "player_id": p.player_id, "name": p.name, "level": p.level, "avatar": avatar,
+                        json!({ "player_id": p.player_id, "name": p.name, "index": p.index, "level": p.level, "avatar": avatar,
                             "speeches": p.speeches, "comments": p.comments, "title": p.title, "cards": cards, "decks": p.decks,
                             "items": p.items, "given": given, "eval_num": p.eval_num, "eval_total": p.eval_total })
                     })
@@ -246,6 +287,11 @@ impl Directory {
             tracing::warn!("accounts not saved to {}: {e}", file.display());
         }
     }
+}
+
+/// The first slot of the Select Player screen no player has.
+fn free_slot(players: &[Player]) -> Option<u32> {
+    (0..MAX_PLAYERS as u32).find(|i| players.iter().all(|p| p.index != *i))
 }
 
 /// Bytes from their hex digits (the saved avatar).
