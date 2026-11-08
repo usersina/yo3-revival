@@ -16,8 +16,9 @@ install of the client (the last released version, ver. 1.153).
 You need Linux or Windows, the game installed (the server reads its card data from your install), Node.js 22.18 or
 newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and later have it).
 
-1. Unpack the release for your system (or build both with `tools/release.sh`) and start it: `./run.sh` on Linux,
-   `run.cmd` on Windows (double-click it, or run it in a terminal to pass options). The first start downloads what
+1. Unpack the [release](https://github.com/usersina/yo3-revival/releases/latest) for your system (or build both with
+   `tools/release.sh`) and start it: `./run.sh` on Linux, `run.cmd` on Windows (double-click it, or run it in a
+   terminal to pass options). The first start downloads what
    the rules engine needs (EDOPro's core, card scripts and card database, about 160 MB). Your game install is found in
    `~/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3` on Linux and `C:\Program Files
    (x86)\Konami\Yu-Gi-Oh! ONLINE 3` on Windows; pass `--game-dir DIR` otherwise.

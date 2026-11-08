@@ -57,9 +57,10 @@ The full player guide, with troubleshooting, is [docs/guide.md](docs/guide.md#fo
 You need Linux or Windows, the game installed (the server reads its card data from it), Node.js 22.18 or newer, Git
 and curl.
 
-1. Get a release bundle: build one with `tools/release.sh` (it fills `dist/` with a Linux `.tar.gz` and a Windows
-   `.zip`), unpack it, and run `./run.sh` (Linux) or `run.cmd` (Windows). The first start downloads the rules engine's
-   packages, card scripts and card database (about 160 MB).
+1. Download the bundle for your system from the [latest release](https://github.com/usersina/yo3-revival/releases/latest)
+   (Linux `.tar.gz`, Windows `.zip`; or build both with `tools/release.sh`), unpack it, and run `./run.sh` (Linux) or
+   `run.cmd` (Windows). The first start downloads the rules engine's packages, card scripts and card database (about
+   160 MB).
 2. Open TCP ports **5730**, **1213**, **1214** and **8080**, or put everyone on one VPN (Tailscale, ZeroTier) so
    nothing needs forwarding.
 3. Share `http://YOUR-ADDRESS:8080/join` with your friends. On a server reachable from the internet, start it with

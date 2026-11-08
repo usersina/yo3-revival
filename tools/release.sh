@@ -15,6 +15,7 @@ mkdir -p "$out/engine"
 cp target/release/yo3-server "$out/"
 cp engine/duelcore.ts engine/package.json engine/package-lock.json engine/fetch.sh "$out/engine/"
 cp docs/guide.md "$out/README.md"
+cp LICENSE "$out/LICENSE"
 cat > "$out/run.sh" <<'EOF'
 #!/bin/sh
 # Starts the server for friends: every network interface, accounts and records in ./data (backed up at each start).
@@ -35,6 +36,7 @@ mkdir -p "$out/engine"
 cp target/x86_64-pc-windows-gnu/release/yo3-server.exe "$out/"
 cp engine/duelcore.ts engine/package.json engine/package-lock.json "$out/engine/"
 cp docs/guide.md "$out/README.md"
+cp LICENSE "$out/LICENSE"
 crlf() { sed 's/$/\r/' > "$1"; }
 crlf "$out/engine/fetch.cmd" <<'EOF'
 @echo off
