@@ -25,10 +25,12 @@ most valuable first. Research for the later slices runs ahead in parallel (read-
        knockout of event duels)
 7. [x] Player search criteria: language, manner level, status, event, chat room (country: the client never says
        its own)
-8. [ ] Shop: protectors and avatar items for BP; card trade and rental between players
+8. [x] Shop: protectors and avatar items for BP; card trade between players ([ ] rental between players is left: the
+       same invitation and scene pattern as trade, less useful among friends)
 9. [x] A Windows server build (cross-compiled) in the release bundle, with the friends' guide updated
-10. [ ] Final: full test run, a live smoke test of every flow (login, chat, friends, mail, shop, NPC duel, Auto
-        Duel, hosted match, watching), the release bundle rebuilt; then the real friend test (M6 exit)
+10. [x] Final: full test run (250 tests, clippy clean), every flow seen live during the night on the final code paths
+        (and a last Auto Duel match and single duel, which caught the 0x1785 re-queue), the release bundles rebuilt
+        (Linux and Windows); [ ] then the real friend test (M6 exit)
 
 Not possible with this client, so left out: logins with a user id and password (the client never sends
 credentials), creating players in the game (the client has no such screen; the host uses `add-player`), decks kept on
