@@ -258,6 +258,31 @@ impl Directory {
         self.by_address.values().find(|a| a.user_id == user_id).map(|a| a.dpoint)
     }
 
+    /// Takes `cost` BP from the account's stored BP (not a copy a session cached, which duel rewards may have outgrown)
+    /// if it has them; its BP left.
+    pub fn charge(&mut self, user_id: u32, cost: u32) -> Option<u32> {
+        let account = self.by_address.values_mut().find(|a| a.user_id == user_id)?;
+        account.dpoint = account.dpoint.checked_sub(cost)?;
+        let left = account.dpoint;
+        self.save();
+        Some(left)
+    }
+
+    /// Changes several players in one step and one save (a trade hands cards both ways): all of them or, when one is
+    /// not there, none. Whether it was done.
+    pub fn update_players(&mut self, changes: Vec<(u32, Box<dyn FnOnce(&mut Player) + '_>)>) -> bool {
+        if changes.iter().any(|(id, _)| self.player(*id).is_none()) {
+            return false;
+        }
+        for (id, change) in changes {
+            if let Some(p) = self.by_address.values_mut().flat_map(|a| &mut a.players).find(|p| p.player_id == id) {
+                change(p);
+            }
+        }
+        self.save();
+        true
+    }
+
     /// Changes an account (its BP) and saves the accounts.
     pub fn update_account(&mut self, user_id: u32, change: impl FnOnce(&mut Account)) {
         if let Some(a) = self.by_address.values_mut().find(|a| a.user_id == user_id) {

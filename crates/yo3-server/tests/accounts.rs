@@ -170,3 +170,33 @@ fn player_ids_are_never_reused_after_a_delete_and_a_restart() {
     let next = d.account_for(ip(2));
     assert!(next.user_id > account.user_id);
 }
+
+#[test]
+fn a_charge_takes_from_the_stored_bp_not_from_a_copy() {
+    // A purchase wrote the session's cached BP back as an absolute amount, undoing a reward paid since (a duel). The
+    // debit now runs on the stored value, under the lock, and refuses what is not there.
+    let mut d = Directory::new(vec!["Yugi".into()]);
+    let account = d.account_for(ip(1));
+    let stale = account.dpoint;
+    assert_eq!(d.reward(account.players[0].player_id, 180), Some(stale + 180));
+    assert_eq!(d.charge(account.user_id, 100), Some(stale + 80));
+    assert_eq!(d.dpoint(account.user_id), Some(stale + 80));
+    assert_eq!(d.charge(account.user_id, stale + 81), None, "not enough left");
+    assert_eq!(d.dpoint(account.user_id), Some(stale + 80), "and nothing was taken");
+}
+
+#[test]
+fn several_players_change_together_or_not_at_all() {
+    // A trade hands cards both ways: four saves meant a crash or a missing player left it half done.
+    let mut d = Directory::new(vec!["Yugi".into(), "Kaiba".into()]);
+    let players = d.account_for(ip(1)).players;
+    let (a, b) = (players[0].player_id, players[1].player_id);
+    let both: Vec<(u32, Box<dyn FnOnce(&mut yo3_server::front::Player)>)> =
+        vec![(a, Box::new(|p| p.level = 5)), (b, Box::new(|p| p.level = 6))];
+    assert!(d.update_players(both));
+    assert_eq!((d.player(a).unwrap().level, d.player(b).unwrap().level), (5, 6));
+    let with_a_ghost: Vec<(u32, Box<dyn FnOnce(&mut yo3_server::front::Player)>)> =
+        vec![(a, Box::new(|p| p.level = 9)), (4242, Box::new(|p| p.level = 9))];
+    assert!(!d.update_players(with_a_ghost));
+    assert_eq!(d.player(a).unwrap().level, 5, "the first was not changed either");
+}

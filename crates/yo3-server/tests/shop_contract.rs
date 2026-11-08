@@ -139,6 +139,9 @@ fn a_purchase_beyond_the_bp_or_the_shelves_fails() {
     assert_eq!(one(c.send(buy(1, 2))).request(), Some(0x1C25));
     assert_eq!(one(c.send(buy(99, 1))).request(), Some(0x1C25));
     assert_eq!(one(c.send(buy(1, 0))).request(), Some(0x1C25));
+    // A count whose price overflows u32 (a panic in a debug build) is just refused.
+    assert_eq!(one(c.send(buy(1, u32::MAX))).request(), Some(0x1C25));
+    assert_eq!(one(c.send(buy(271, u32::MAX / 2))).request(), Some(0x1C25));
     assert_eq!(one(c.send(req(0x2775))).request(), Some(0x2778));
     assert_eq!(one(c.send(buy(271, 1))).get("dpoint"), Some(&Value::U32(50)));
 }

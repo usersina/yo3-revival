@@ -555,6 +555,8 @@ const REQUEST_WAITING: u32 = 106;
 const NOT_ONLINE: u32 = 112;
 /// 0x24BB's answer that accepts a friend request (else 1, declined).
 const ACCEPTED: u32 = 2;
+/// The same answers' no (an invitation's answer 1).
+const DECLINED: u32 = 1;
 
 struct Online {
     player_id: u32,
@@ -855,6 +857,11 @@ impl Hub {
         d.accounts().flat_map(|(_, a)| &a.players).find(|p| p.player_id == player_id).cloned()
     }
 
+    /// Whether a player is in a trade or a rental scene (one scene at a time).
+    fn in_scene(&self, player_id: u32) -> bool {
+        self.trades.iter().any(|t| t.seat(player_id).is_some()) || self.rental_sessions.iter().any(|s| s.seat(player_id).is_some())
+    }
+
     /// The trade a player is in, and their seat in it.
     fn trade_of(&mut self, player_id: u32) -> Option<(&mut crate::trade::Trade, usize)> {
         self.trades.iter_mut().find_map(|t| t.seat(player_id).map(|s| (t, s)))
@@ -863,10 +870,12 @@ impl Hub {
     /// Ends a player's trade (they left the scene or the server): the partner gets 0x2BCD ("The trade partner has
     /// cancelled.").
     fn end_trade(&mut self, player_id: u32) {
-        let Some(at) = self.trades.iter().position(|t| t.seat(player_id).is_some()) else { return };
-        let trade = self.trades.remove(at);
-        for p in trade.players.into_iter().filter(|&p| p != player_id) {
-            self.push(p, &Message::reply(0x2BCD));
+        // Every trade of theirs (there is one now, but a stranded partner is worse than a loop).
+        while let Some(at) = self.trades.iter().position(|t| t.seat(player_id).is_some()) {
+            let trade = self.trades.remove(at);
+            for p in trade.players.into_iter().filter(|&p| p != player_id) {
+                self.push(p, &Message::reply(0x2BCD));
+            }
         }
     }
 
@@ -880,7 +889,7 @@ impl Hub {
             // they are away, invited, or trading.
             0x2BC0 => {
                 let to = int("to_id");
-                let busy = self.trade_invites.contains_key(&to) || self.trades.iter().any(|t| t.seat(to).is_some());
+                let busy = self.trade_invites.contains_key(&to) || self.in_scene(to) || self.in_scene(me);
                 let Some(name) = self.online.values().find(|o| o.player_id == to).map(|o| o.name.clone()) else {
                     return fail(0x2BD7, REQUEST_WAITING);
                 };
@@ -904,6 +913,11 @@ impl Hub {
             // yes opens both scenes.
             0x2BC2 => {
                 let Some(from) = self.trade_invites.remove(&me) else { return fail(0x2BDB, 0) };
+                // Either of them may be in a scene by now (the inviter had several invitations out): then it is a no.
+                if self.in_scene(me) || self.in_scene(from) {
+                    self.push(from, &Message::reply(0x2BC3).with("answer", Value::U32(DECLINED)));
+                    return fail(0x2BDB, REQUEST_WAITING);
+                }
                 let answer = int("answer");
                 self.push(from, &Message::reply(0x2BC3).with("answer", Value::U32(answer)));
                 if answer == ACCEPTED {
@@ -1028,10 +1042,11 @@ impl Hub {
     /// Ends a player's rental scene (they left it or the server): the partner gets 0x2C37 ("The Borrower has
     /// cancelled." or "The Lender has cancelled.").
     fn end_rental_scene(&mut self, player_id: u32) {
-        let Some(at) = self.rental_sessions.iter().position(|t| t.seat(player_id).is_some()) else { return };
-        let session = self.rental_sessions.remove(at);
-        for (p, _) in session.players.into_iter().filter(|(p, _)| *p != player_id) {
-            self.push(p, &Message::reply(0x2C37));
+        while let Some(at) = self.rental_sessions.iter().position(|t| t.seat(player_id).is_some()) {
+            let session = self.rental_sessions.remove(at);
+            for (p, _) in session.players.into_iter().filter(|(p, _)| *p != player_id) {
+                self.push(p, &Message::reply(0x2C37));
+            }
         }
     }
 
@@ -1047,7 +1062,7 @@ impl Hub {
             // are away, invited, or in a rental.
             0x2C24 => {
                 let to = int("to_id");
-                let busy = self.rental_invites.contains_key(&to) || self.rental_sessions.iter().any(|t| t.seat(to).is_some());
+                let busy = self.rental_invites.contains_key(&to) || self.in_scene(to) || self.in_scene(me);
                 let Some(name) = self.online.values().find(|o| o.player_id == to).map(|o| o.name.clone()) else {
                     return fail(0x2D50, REQUEST_WAITING);
                 };
@@ -1071,6 +1086,10 @@ impl Hub {
             // yes opens both scenes.
             0x2C26 => {
                 let Some(from) = self.rental_invites.remove(&me) else { return fail(0x2D54, 0) };
+                if self.in_scene(me) || self.in_scene(from) {
+                    self.push(from, &Message::reply(0x2C27).with("answer", Value::U32(DECLINED)));
+                    return fail(0x2D54, REQUEST_WAITING);
+                }
                 let answer = int("answer");
                 self.push(from, &Message::reply(0x2C27).with("answer", Value::U32(answer)));
                 if answer == ACCEPTED {
@@ -1207,12 +1226,15 @@ impl Hub {
         if !owned {
             return false;
         }
+        // Both directions in one step and one save: a crash between four saves would leave half a trade.
+        let mut changes: Vec<(u32, Box<dyn FnOnce(&mut Player) + '_>)> = vec![];
         for s in 0..2 {
-            let (giver, offer, taker) = (trade.players[s], trade.offers[s].clone(), trade.players[1 - s]);
-            d.update_player(giver, |p| crate::trade::give(p, &offer));
-            d.update_player(taker, |p| crate::trade::receive(p, &offer));
+            let (giver, taker) = (trade.players[s], trade.players[1 - s]);
+            let offer = &trade.offers[s];
+            changes.push((giver, Box::new(move |p| crate::trade::give(p, offer))));
+            changes.push((taker, Box::new(move |p| crate::trade::receive(p, offer))));
         }
-        true
+        d.update_players(changes)
     }
 
     /// Pushes to every member of a team who is online, but `except`.
@@ -2212,7 +2234,8 @@ impl FrontSession {
         let world = self.world.clone();
         let Some(goods) = crate::shop::Goods::find(&world, sale_id) else { return Message::reply(0x1C25) };
         let (price, max) = goods.price();
-        let cost = price * count;
+        // A count from the client: its price must not overflow (a panic in a debug build, a cheap bargain in release).
+        let Some(cost) = price.checked_mul(count) else { return Message::reply(0x1C25) };
         let Some(at) = self.selected else { return Message::reply(0x1C25) };
         if count == 0 || count > max || cost > self.account.dpoint {
             return Message::reply(0x1C25);
@@ -2221,6 +2244,14 @@ impl FrontSession {
         if item.is_some_and(|id| self.account.players[at].items.contains(&id)) {
             return Message::reply(0x1C25);
         }
+        // The BP are taken from the stored amount under the accounts' lock, so duel rewards paid since this session last
+        // looked are neither lost nor spent twice.
+        let left = match &self.directory {
+            Some(d) => d.locked().charge(self.account.user_id, cost),
+            None => Some(self.account.dpoint - cost),
+        };
+        let Some(left) = left else { return Message::reply(0x1C25) };
+        self.account.dpoint = left;
         let bought: Vec<crate::shop::Present> = (0..count).map(|_| goods.take(&mut self.rng)).collect();
         let add = |p: &mut Player| {
             if let Some(id) = item {
@@ -2237,13 +2268,9 @@ impl FrontSession {
                 }
             }
         };
-        self.account.dpoint -= cost;
         add(&mut self.account.players[at]);
         if let Some(d) = &self.directory {
-            let mut d = d.locked();
-            let dpoint = self.account.dpoint;
-            d.update_account(self.account.user_id, |a| a.dpoint = dpoint);
-            d.update_player(self.account.players[at].player_id, add);
+            d.locked().update_player(self.account.players[at].player_id, add);
         }
         self.presents.extend(bought);
         Message::reply(0x1C24).with("dpoint", Value::U32(self.account.dpoint))

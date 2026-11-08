@@ -342,3 +342,35 @@ fn rentals_survive_a_restart() {
     let mut lender = third.join_from(&t.dir, "10.0.0.1".parse().unwrap());
     assert!(one(lender.send(req(0x2C34))).items.is_empty());
 }
+
+/// A third player, on an account of their own.
+fn third(t: &Table) -> (Client, u32) {
+    let addr = "10.0.0.3".parse().unwrap();
+    let id = t.dir.lock().unwrap().account_for(addr).players[0].player_id;
+    (t.server.join_from(&t.dir, addr), id)
+}
+
+#[test]
+fn a_player_in_a_rental_scene_cannot_start_another() {
+    let mut t = table();
+    let (mut c, c_id) = third(&t);
+    in_scene(&mut t);
+    let r = send(&mut t.a, 0x2C24, &[("to_id", c_id)]);
+    assert_eq!((r.request(), int(&r, "error_code")), (Some(0x2D51), Some(106)));
+    assert!(c.pushed().is_empty());
+}
+
+#[test]
+fn a_rental_invitation_accepted_after_the_lender_started_another_is_refused() {
+    let mut t = table();
+    let (mut c, c_id) = third(&t);
+    assert_eq!(send(&mut t.a, 0x2C24, &[("to_id", t.b_id)]).request(), Some(0x2D50));
+    assert_eq!(send(&mut t.a, 0x2C24, &[("to_id", c_id)]).request(), Some(0x2D50));
+    assert_eq!(send(&mut t.b, 0x2C26, &[("to_id", t.a_id), ("answer", 2)]).request(), Some(0x2D54));
+    c.pushed();
+    assert_eq!(send(&mut c, 0x2C26, &[("to_id", t.a_id), ("answer", 2)]).request(), Some(0x2D55));
+    assert_eq!(send(&mut c, 0x2C3E, &[]).request(), Some(0x2D69), "no scene for the third player");
+    t.b.pushed();
+    assert_eq!(one(t.a.send(req(0x2C33))).request(), Some(0x2D6A));
+    assert_eq!(requests(&t.b.pushed()), [0x2C37]);
+}

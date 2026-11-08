@@ -29,6 +29,7 @@ fn count(trunk: &Message, row: usize) -> u8 {
 }
 
 struct Table {
+    server: Server,
     dir: Arc<Mutex<Directory>>,
     a: Client,
     b: Client,
@@ -51,7 +52,7 @@ fn table() -> Table {
     let server = Server::with_world(World { card_rows: 50, ..World::new((1..=20).collect()) });
     server.hub.lock().unwrap().set_directory(dir.clone());
     let (a, b) = (server.join_from(&dir, a_addr), server.join_from(&dir, b_addr));
-    Table { dir, a, b, a_id, b_id }
+    Table { server, dir, a, b, a_id, b_id }
 }
 
 /// The invitation and both scenes ready: 0x2BC0 -> 0x2BD7, 0x2BC2 answer 2 -> 0x2BDB, 0x2BD5 each -> 0x2BED.
@@ -176,4 +177,41 @@ fn leaving_the_scene_tells_the_partner() {
     let d = t.dir.lock().unwrap();
     let a = d.accounts().flat_map(|(_, a)| a.players.clone()).find(|p| p.player_id == t.a_id).unwrap();
     assert_eq!(a.cards.get(&10), Some(&2));
+}
+
+/// A third player, on an account of their own.
+fn third(t: &Table) -> (Client, u32) {
+    let addr = "10.0.0.3".parse().unwrap();
+    let id = t.dir.lock().unwrap().account_for(addr).players[0].player_id;
+    (t.server.join_from(&t.dir, addr), id)
+}
+
+#[test]
+fn a_player_in_a_trade_cannot_start_another() {
+    // The busy check looked only at the invitee: a player in a scene could invite someone else and end up in two.
+    let mut t = table();
+    let (mut c, c_id) = third(&t);
+    in_scene(&mut t);
+    let r = send(&mut t.a, 0x2BC0, &[("to_id", c_id)]);
+    assert_eq!((r.request(), int(&r, "error_code")), (Some(0x2BD8), Some(106)));
+    assert!(c.pushed().is_empty(), "the third player was not bothered");
+}
+
+#[test]
+fn an_invitation_accepted_after_the_inviter_started_another_trade_is_refused() {
+    // Two invitations out, both accepted: the acceptance checked only the invitee's own state, so the inviter sat in
+    // two trades and each end stranded a partner.
+    let mut t = table();
+    let (mut c, c_id) = third(&t);
+    assert_eq!(send(&mut t.a, 0x2BC0, &[("to_id", t.b_id)]).request(), Some(0x2BD7));
+    assert_eq!(send(&mut t.a, 0x2BC0, &[("to_id", c_id)]).request(), Some(0x2BD7));
+    assert_eq!(send(&mut t.b, 0x2BC2, &[("to_id", t.a_id), ("answer", 2)]).request(), Some(0x2BDB));
+    c.pushed();
+    let r = send(&mut c, 0x2BC2, &[("to_id", t.a_id), ("answer", 2)]);
+    assert_eq!(r.request(), Some(0x2BDC), "refused: the lender is trading already");
+    assert_eq!(send(&mut c, 0x2BD5, &[]).request(), Some(0x2BEE), "no scene for the third player");
+    // The inviter's own trade is the one with b, and leaving it tells b alone.
+    t.b.pushed();
+    assert_eq!(one(t.a.send(req(0x2BCB))).request(), Some(0x2BE9));
+    assert_eq!(requests(&t.b.pushed()), [0x2BCD]);
 }
