@@ -34,10 +34,20 @@ use yo3_proto::{Message, Value};
 use accounts::Directory;
 use front::{Deck, FrontSession, Hub, LOGIN_REGULATION, STARTER_REGULATION, World};
 
-/// The official character decks every player gets: the client's NPC decks of Yami Yugi ("Miracle Magic", NPC 121),
-/// Jaden Yuki ("Elemental Heroes on parade!", 147) and Yusei Fudo ("Power of Bonds", 171), named after their duelist.
-/// One each: the deck list holds at most 10 decks.
-const OFFICIAL_DECKS: [(u32, &str); 3] = [(121, "Yugi"), (147, "Jaden"), (171, "Yusei")];
+/// The official character decks every player gets: the client's NPC decks of Yami Yugi (NPCs 120-122: "Attack of the
+/// Ancients", "Miracle Magic", "Slifer the Lightning"), Jaden Yuki (147-149) and Yusei Fudo (171-173), named after
+/// their duelist. The deck list sends each once, in the room its 10 decks leave.
+const OFFICIAL_DECKS: [(u32, &str); 9] = [
+    (121, "Yugi"),
+    (147, "Jaden"),
+    (171, "Yusei"),
+    (120, "Yugi"),
+    (148, "Jaden"),
+    (172, "Yusei"),
+    (122, "Yugi"),
+    (149, "Jaden"),
+    (173, "Yusei"),
+];
 use translate::CardStats;
 
 #[derive(Clone, Debug)]

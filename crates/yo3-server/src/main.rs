@@ -83,6 +83,8 @@ enum Admin {
     AddPlayer { who: String, name: String },
     /// Rename a player.
     Rename { old: String, new: String },
+    /// Send PLAYER the official character decks again at their next Edit Deck (for a new PC: each is sent once).
+    Redeliver { player: String },
     /// Move the account at OLD to NEW, for a friend whose address changed (an account with a key needs no move: the
     /// key follows the friend): players, cards, BP, decks and records go along. An account already at NEW (made
     /// when the friend first connected from there) is only discarded with --replace.
@@ -146,6 +148,7 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
             }
         },
         Admin::Rename { old, new } => d.rename(&old, &new).map_err(err)?,
+        Admin::Redeliver { player } => d.redeliver(&player).map_err(err)?,
         Admin::MoveAccount { old, new, replace } => d.move_account(old, new, replace).map_err(err)?,
         Admin::SetCountry { who, code } => {
             let code = if code.eq_ignore_ascii_case("auto") { String::new() } else { code.to_ascii_uppercase() };

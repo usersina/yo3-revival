@@ -116,6 +116,7 @@ impl Directory {
                 player.comments = lines("comments", COMMENTS);
                 player.title = p["title"].as_u64().unwrap_or(0) as u32;
                 player.decks = p["decks"].as_array().into_iter().flatten().filter_map(|d| d.as_u64()).map(|d| d as u32).collect();
+                player.official = p["official"].as_array().into_iter().flatten().filter_map(|d| d.as_u64()).map(|d| d as u32).collect();
                 for deck in p["uploaded"].as_array().into_iter().flatten() {
                     let rows = |k: &str| -> Vec<u16> { deck[k].as_array().into_iter().flatten().filter_map(|r| r.as_u64()).map(|r| r as u16).collect() };
                     player.uploaded.push(Deck {
@@ -430,6 +431,16 @@ impl Directory {
     }
 
     /// Changes a player (their saved character settings) and saves the accounts.
+    /// Forgets which official decks a player (by name, any case) was sent, so the deck list sends them again.
+    pub fn redeliver(&mut self, name: &str) -> Result<(), String> {
+        let players = self.accounts.iter().map(|e| &e.account).flat_map(|a| &a.players);
+        let Some(player_id) = players.clone().find(|p| p.name.eq_ignore_ascii_case(name)).map(|p| p.player_id) else {
+            return Err(format!("no player named {name:?}"));
+        };
+        self.update_player(player_id, |p| p.official.clear());
+        Ok(())
+    }
+
     pub fn update_player(&mut self, player_id: u32, change: impl FnOnce(&mut Player)) {
         if let Some(p) = self.accounts.iter_mut().map(|e| &mut e.account).flat_map(|a| &mut a.players).find(|p| p.player_id == player_id) {
             change(p);
@@ -516,7 +527,7 @@ impl Directory {
                             .map(|d| json!({ "id": d.id, "name": d.name, "main": d.main, "extra": d.extra, "side": d.side }))
                             .collect();
                         json!({ "player_id": p.player_id, "uploaded": uploaded, "name": p.name, "index": p.index, "level": p.level, "avatar": avatar,
-                            "speeches": p.speeches, "comments": p.comments, "title": p.title, "cards": cards, "decks": p.decks,
+                            "speeches": p.speeches, "comments": p.comments, "title": p.title, "cards": cards, "decks": p.decks, "official": p.official,
                             "items": p.items, "given": given, "eval_num": p.eval_num, "eval_total": p.eval_total })
                     })
                     .collect();

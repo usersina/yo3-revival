@@ -127,6 +127,11 @@ fn the_main_characters_decks_are_npc_decks() {
     assert_eq!(deck(147), Some((28, 42, 15)));
     assert_eq!(data.npc_deck_title(171), Some("Power of Bonds"));
     assert_eq!(deck(171), Some((261, 40, 7)));
+    // Their other two decks each.
+    let titles: Vec<_> = [120, 122, 148, 149, 172, 173].iter().map(|&n| data.npc_deck_title(n)).collect();
+    let expected = ["Attack of the Ancients", "Slifer the Lightning", "Solidarity of the Elemental Heroes", "New Powers"];
+    assert_eq!(titles[..4], expected.map(Some));
+    assert_eq!(titles[4..], [Some("Regained Bonds"), Some("Evolving Bonds")]);
 }
 
 #[test]

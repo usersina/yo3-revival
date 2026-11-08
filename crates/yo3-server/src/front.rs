@@ -58,6 +58,9 @@ pub struct Player {
     /// The decks the player's clients uploaded at Select Deck (0x1F4F update_type 1), oldest first: the deck list
     /// hands them to a client that lacks a deck of that name, so decks follow the player to another machine.
     pub uploaded: Vec<Deck>,
+    /// The official character decks (preset deck ids) this player's deck list has sent: the client keeps every listed
+    /// deck it lacks, so each goes once, in the room the 10-deck list leaves.
+    pub official: Vec<u32>,
     /// The protectors and avatar items the player owns, by pbin id (their bits in the record's pbin).
     pub items: std::collections::BTreeSet<u16>,
     /// Cards traded away from the starter deck: CARD_Prop row -> count.
@@ -138,6 +141,7 @@ impl Player {
             title: 0,
             cards: BTreeMap::new(),
             decks: vec![],
+            official: vec![],
             uploaded: vec![],
             items: Default::default(),
             given: BTreeMap::new(),
@@ -218,6 +222,8 @@ impl Account {
 /// Limits on what a client can make the server keep (a text is cut at a character boundary): one list of a deck's
 /// rows, a deck's name, an avatar blob, a speech line or comment, a user event's form, a hosted duel's settings.
 pub const MAX_DECK_NAME: usize = 64;
+/// The decks of a deck list the client uses (0x43FC60).
+const MAX_LISTED_DECKS: usize = 10;
 const MAX_AVATAR: usize = 256;
 const MAX_LINE: usize = 200;
 const MAX_FORM_FIELDS: usize = 64;
@@ -2209,6 +2215,29 @@ impl FrontSession {
         saved.unwrap_or_else(|| me.uploaded.clone())
     }
 
+    /// The official decks the selected player's deck list has sent (the newest account state).
+    fn official_sent(&self) -> Vec<u32> {
+        let Some(at) = self.selected else { return vec![] };
+        let me = &self.account.players[at];
+        let saved = self.directory.as_ref().and_then(|d| d.locked().player(me.player_id).map(|p| p.official.clone()));
+        saved.unwrap_or_else(|| me.official.clone())
+    }
+
+    /// Records official decks as sent to the selected player, here and in the accounts.
+    fn mark_official_sent(&mut self, ids: impl Iterator<Item = u32>) {
+        let Some(at) = self.selected else { return };
+        let mut sent = self.official_sent();
+        let before = sent.len();
+        sent.extend(ids);
+        if sent.len() == before {
+            return;
+        }
+        self.account.players[at].official.clone_from(&sent);
+        if let Some(d) = &self.directory {
+            d.locked().update_player(self.account.players[at].player_id, |p| p.official = sent);
+        }
+    }
+
     /// Changes the selected player's uploaded decks, here and in the accounts.
     fn change_uploaded(&mut self, change: impl Fn(&mut Vec<Deck>)) {
         let Some(at) = self.selected else { return };
@@ -2507,14 +2536,21 @@ impl FrontSession {
             // The starter deck, the official character decks, then the structure decks the player bought; the client
             // uses at most 10.
             0x1F4E => {
+                let world = self.world.clone();
                 let owned = self.selected.map(|at| self.account.players[at].decks.clone()).unwrap_or_default();
-                let bought = owned.iter().filter_map(|&id| self.world.structure_decks.iter().find(|s| s.deck.id == id)).map(|s| &s.deck);
-                let listed: Vec<&Deck> = self.world.starter_deck.iter().chain(&self.world.official_decks).chain(bought).collect();
+                let bought = owned.iter().filter_map(|&id| world.structure_decks.iter().find(|s| s.deck.id == id)).map(|s| &s.deck);
+                let listed: Vec<&Deck> = world.starter_deck.iter().chain(bought).collect();
                 // Then the decks this player's clients uploaded, unless a listed deck has the name (the client would
                 // keep its own copy anyway). The newest account state: another machine may have uploaded since.
                 let uploaded = self.uploaded_decks();
                 let kept: Vec<&Deck> = uploaded.iter().filter(|u| !listed.iter().any(|l| l.name == u.name)).collect();
-                listed.into_iter().chain(kept).take(10).fold(Message::reply(0x22C8), |m, d| m.item(d.record()))
+                // The official decks not sent yet, in the room left.
+                let room = MAX_LISTED_DECKS.saturating_sub(listed.len() + kept.len());
+                let sent = self.official_sent();
+                let fresh: Vec<&Deck> = world.official_decks.iter().filter(|d| !sent.contains(&d.id)).take(room).collect();
+                self.mark_official_sent(fresh.iter().map(|d| d.id));
+                let decks = listed.iter().take(1).chain(&fresh).chain(listed.iter().skip(1)).chain(&kept);
+                decks.take(MAX_LISTED_DECKS).fold(Message::reply(0x22C8), |m, d| m.item(d.record()))
             }
             0x17D4 => return self.duel_ready(msg),
             // Deck updated: the deck editor's save, and the deck a player picks for a duel (DuelManager

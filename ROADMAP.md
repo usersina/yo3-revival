@@ -362,10 +362,11 @@ Stop finding missing fields one crash at a time.
 - [ ] Deck list, deck editor saves (`HolderSelect.cpp` "deck list")
   - [x] Every player owns a starter deck's cards and gets it in the deck list (`0x1F4E` → `0x22C8`, tag-6
         items); Edit Deck saves it locally and the NPC duel accepts it
-  - [x] Official character decks: every player also gets Yami Yugi's "Miracle Magic", Jaden's "Elemental Heroes on
-        parade!" and Yusei's "Power of Bonds" (the client's own NPC decks 121, 147, 171) after the starter deck, and
-        owns their cards. One each, since the deck list holds 10. Live: Load Deck listed the three, Yugi's loaded with
-        its 42 + 3 cards, the trunk owning them. (The Load Deck window's Official tab reads recipes from the client's
+  - [x] Official character decks: every player also gets Yami Yugi's, Jaden's and Yusei's three decks each (the
+        client's own NPC decks 120-122, 147-149, 171-173) and owns their cards. The deck list holds 10 and the client
+        keeps every listed deck it lacks, so each official deck is sent once, in the room the starter deck and the
+        player's own decks leave (kept per player; `redeliver PLAYER` sends them again, for a new PC). Live: Load Deck
+        listed them, Yugi's "Miracle Magic" loaded with its 42 + 3 cards, the trunk owning them. (The Load Deck window's Official tab reads recipes from the client's
         own `data/recipe/` files, not from the server.)
   - [x] Deleting a deck (`0x1F50` → `0x22CC`); saving never reaches the server (local files only)
   - [x] Decks on the server, so they follow a player to another machine: the editor never uploads a save, but a duel's

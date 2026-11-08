@@ -173,9 +173,9 @@ mod follow {
 
 #[test]
 fn every_player_gets_the_official_character_decks() {
-    // The client's own NPC decks (deck_type 3 presets) include the main characters': Yami Yugi's "Miracle Magic",
-    // Jaden's "Elemental Heroes on parade!", Yusei's "Power of Bonds". Every player gets them in the deck list after
-    // the starter deck, and owns their cards on top of the starter deck's, so they pass the deck check.
+    // The client's own NPC decks (deck_type 3 presets) include the main characters', three each: Yami Yugi's, Jaden's,
+    // Yusei's. Every player owns their cards on top of the starter deck's, so they pass the deck check, and gets them
+    // in the deck list after the starter deck.
     let yugi = Deck { id: 20, name: "Yugi - Miracle Magic".into(), main: vec![10, 40], extra: vec![], side: vec![] };
     let yusei = Deck { id: 261, name: "Yusei - Power of Bonds".into(), main: vec![50], extra: vec![60], side: vec![] };
     let mut c = Server::with_world(World { official_decks: vec![yugi, yusei], ..world() }).join(1001, "Yugi");
@@ -186,4 +186,21 @@ fn every_player_gets_the_official_character_decks() {
     let Some(Value::Bin(cards)) = trunk(&mut c).get("cards").cloned() else { panic!("no cards") };
     // Row 10: twice in the starter deck and once in Yugi's; rows 40, 50, 60 once each.
     assert_eq!((cards[9], cards[39], cards[49], cards[59]), (3, 1, 1, 1));
+}
+
+#[test]
+fn the_official_decks_come_once_each_in_the_room_the_list_has() {
+    // The client uses at most 10 decks of a list, and keeps every listed deck it lacks as a local file. So the official
+    // decks fill only the room the starter deck and the player's own decks leave, each listed until it was sent once
+    // (kept with the player); the next list brings the rest. Twelve here: nine fit beside the starter deck.
+    let official: Vec<Deck> = (0..12).map(|i| Deck { id: 100 + i, name: format!("Official {i}"), main: vec![10], extra: vec![], side: vec![] }).collect();
+    let mut c = Server::with_world(World { official_decks: official, ..world() }).join(1001, "Yugi");
+    let names = |c: &mut common::Client| -> Vec<String> {
+        one(c.send(req(0x1F4E))).items.iter().filter_map(|d| d.get("deck_name").and_then(Value::as_str)).collect()
+    };
+    let first = names(&mut c);
+    assert_eq!(first.len(), 10);
+    assert_eq!((first[0].as_str(), first[1].as_str(), first[9].as_str()), ("Starter Deck", "Official 0", "Official 8"));
+    assert_eq!(names(&mut c), ["Starter Deck", "Official 9", "Official 10", "Official 11"]);
+    assert_eq!(names(&mut c), ["Starter Deck"]);
 }
