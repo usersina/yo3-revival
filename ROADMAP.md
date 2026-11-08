@@ -108,6 +108,100 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
 - [ ] Card preview on hover needs a held button on the VM (the client shows it on hover under Wine): likely the VM's
       PS/2 mouse or window focus, not the server.
 
+## ▶ Robustness review (2026-11-08): what three code reviews found, and the fixes
+
+Three reviews of the server looked for what one client (or one bug) could do to everyone. Each item was checked against
+the code first, then fixed test first (`crates/yo3-server/tests/robustness_contract.rs` and the unit tests beside the
+code); the evidence is the test named in each line.
+
+P0, crashes and stalls:
+- [x] 1 Nesting depth: `Message::decode` stops at 16 levels (`Error::TooDeep`); one 1 MB frame of 200,000 nested
+      messages overflowed the stack and aborted the process before login. Tests: `codec.rs`
+      `deeply_nested_messages_are_refused_not_a_stack_overflow`, `robustness_contract` `wire::a_crafted_…`. Live: the
+      crafted frame sent to the running server, which went on answering a login.
+- [x] 2 Poisoned locks: every hub, table and directory lock goes through `lock.rs` (`Locked::locked`, recovering from a
+      panic). The clock pass runs in `spawn_blocking` (a panic in a pass is logged, not the end of the clock) and a table
+      that panicked, under its lock or in its tick, ends its duel as a draw and goes. Tests: `duel.rs`
+      `a_poisoned_hub_…`, `a_table_that_panicked_…`.
+- [x] 3 Engine failure: when the sidecar dies, hangs or can't start, both seats (and the NPC duel's player) get a draw
+      end (command 2 {3, 0}), the match is reported once as a draw and the engine is dropped. Tests:
+      `an_engine_that_dies_mid_duel_…`, `…cannot_open_the_duel…`, `…in_an_npc_duel…` (a proxy sidecar that dies on
+      cue).
+- [x] 4 Blocking: engine calls time out after 30 s (`engine.rs`, a reader thread; the hung sidecar is killed, then 3
+      applies); connection handlers run under `block_in_place`, the clock on a blocking thread, and a table whose lock
+      is busy is skipped (`try_lock`). Tests: `engine.rs` `a_sidecar_that_never_answers_…`, `duel.rs`
+      `a_table_that_is_busy_is_skipped_…`.
+- [x] 5 Prompts with no answer: `MSG_SELECT_SUM` is answered (the smallest set of cards that makes the sum, exact or
+      "at least with none to spare", counting a card's two levels; the client's card list for it is not made: it takes the
+      automatic answer), and a client's card name declaration with no dialog is answered; the other prompt types all
+      had answers. A prompt that comes back identical 8 times, or more than 10,000 answers between two client choices,
+      ends the duel as in 3. Tests: `translate_contract` `a_sum_prompt_is_answered_…`, `robustness_contract`
+      `a_prompt_the_core_keeps_refusing_…`, `the_same_goes_for_an_npc_duel`.
+- [x] 6 A player leaving before the engine started (janken, turn order, deck select, between a match's duels after a
+      draw) now sends the other seat command 2 {1 won, 14 disconnected} and its result screen (`0x2009`) with the records
+      unchanged; only a duel that began is counted. Tests: `a_player_leaving_before_the_duel_started_…`,
+      `…in_the_turn_order_choice_…`.
+- [x] 7 A duel connection arriving after its match ended gets no table: it is told (command 2) and closed
+      (`Hub::ended`). Test: `a_second_player_arriving_after_the_first_left_…`.
+- [x] 8 `Hub::leave` ends a match of the leaving player that has no table (the other player is sent out as at a
+      refused deck, `0x2009` duel_end 3, and an event's round goes on with them as the winner). Test:
+      `a_matched_player_whose_client_dies_before_the_duel_frees_the_match`. Not done: removing an offline entrant from an
+      event's list on leave (the round start already forfeits a player who is gone).
+- [x] 9 The turn order (0xD) is taken once per janken, at the table and against the CPU (a second 0xD, or a janken
+      after it, opened another node process each time). Test: `the_turn_order_is_taken_once`.
+
+P1, data integrity and stuck state:
+- [x] 10 A side file that doesn't parse (friends, mail, teams, rentals, records, events) is renamed
+      `NAME.corrupt-<time>` and logged as an error, and the server starts empty; the start-up backup skips files that don't
+      parse (so repeated bad starts never rotate the last good copy out). `accounts.json` still stops the start with the
+      parse error, as before. Tests: `store.rs`, `a_corrupt_side_file_is_kept_aside_…`.
+- [x] 11 `next_player` and `next_user` are saved with the accounts; deleting a player also clears them from the friend,
+      ignore and request lists, waiting mail, rentals (as lender or borrower), team invites and the team. Tests:
+      `accounts.rs` `player_ids_are_never_reused_…`, `player_contract` `a_deleted_player_leaves_the_friends_…`.
+- [x] 12 Team invitations (made and received) end when the player disconnects. Test: `team_contract`
+      `a_team_invitation_ends_with_a_player_who_disconnects`.
+- [x] 13 Trade and rental: a player in either scene can't invite or be invited, an acceptance refuses (a "no" to the
+      inviter, `0x2BDC`/`0x2D55`) when either side is in a scene now, and ending a scene removes every one of the
+      player's. Tests in `trade_contract` and `rental_contract`.
+- [x] 14 A trade's four updates are one `Directory::update_players` (one save, all or none). Test: `accounts.rs`
+      `several_players_change_together_or_not_at_all`.
+- [x] 15 A purchase debits the stored BP under the directory lock (`Directory::charge`). Test: `accounts.rs`
+      `a_charge_takes_from_the_stored_bp_…` (the race itself can't be made in a single thread).
+- [x] 16 The engine is dropped when a duel is reported, abandoned, left or timed out (also covered by 3 and 6).
+
+P1, network hygiene:
+- [x] 17 Accept loops back off (50 ms doubling to 2 s) after an error; a connection silent for 180 s is closed (the
+      client heartbeats every 30 s; `Config::idle_timeout`) and so is one that stalls inside a frame; a frame's buffer
+      grows 16 KiB at a time as its bytes arrive (at most the 1 MiB frame cap per connection). The HTTP endpoint gives
+      a request line 10 s. Test: `wire::a_connection_that_goes_silent_…`. Not done: a limit on the number of connections.
+- [x] 18 The packet log writes at most 2048 bytes of a packet in hex (plus `raw_len`), 256 characters of a text, 64
+      fields and 32 items per message. Test: `log.rs` `a_huge_packet_is_logged_in_part`.
+- [x] 19 `0x1F4F`: any update that names a duel passes the deck check; update_type 1 is refused as before, any other is
+      ignored (nothing kept, answer `0x22CA`) so a Card Swap can't bring a deck the check refuses (it only takes a deck of
+      the same cards in the match anyway). Each deck list is cut at 100 rows and a deck name at 64 bytes. Tests:
+      `regulation_contract` `the_deck_check_applies_to_every_update_that_names_a_duel`, `a_decks_row_counts_are_capped`.
+- [x] 20 A failed `0x1F4C` takes the old registration offline, and until a player is selected only the login and
+      Select Player requests (`0x1F47`-`0x1F4C`) and the heartbeat are answered. Test:
+      `a_failed_reselect_drops_the_old_registration_…`.
+- [x] 21 A deck entry remembers the address of the front connection that brought it and a duel connection from another
+      address that names the player is closed (`DuelSession::with_peer`). Test: `a_duel_entry_is_claimed_only_from_…`.
+      Friends behind one NAT share an address, but each entry still belongs to its own player id.
+- [x] 22 Caps: an avatar blob 256 bytes (else `0x2CF6`), speech lines and comments 200 bytes, a mail's title 128 and
+      body 2048, a form's fields (user event, hosted duel, NPC duel rule) 64 fields of 256 bytes, one unfinished event per
+      host (`0x33F5` for a second) and 100 on the server, one hosted duel per player, 32 rule sets per session, 256 card
+      list picks. Tests: `what_a_client_can_make_the_server_keep_is_capped`, `mail_contract`,
+      `translate.rs` `the_picks_of_a_card_list_are_capped`.
+- [x] 23 `price * count` is `checked_mul` (refused with `0x1C25`); the language and manner level shifts in player search
+      are `checked_shr`. Tests: `shop_contract`, `search_contract`.
+
+Skipped as the review allowed: mail deleted before the client fetched it; accounts made for any address (how friends
+join). Live (release build, two headless clients, scratch data directory): the crafted nested frame left the server
+answering; an Auto Duel between the two clients went from the match through Select Deck and the janken to the result
+screens and the evaluation dialog (Chiron's direct attack at 1000 LP); a trade between two more accounts (raw protocol
+from `127.0.0.2` and `127.0.0.3`, the real clients being busy in the duel) invited, accepted, refused a second scene
+for the inviter (`0x2BD8` 106), both OK, both yes, `0x2BCA` and the trunks. Not done live: the trade scene on the real
+client (unchanged by this work), a sidecar that really hangs (covered by the engine test).
+
 ## ✅ M0: Research and tooling
 
 - [x] Feasibility study ([docs/research.md](docs/research.md))

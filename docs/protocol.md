@@ -43,7 +43,16 @@ The contract tests in `crates/yo3-server/tests/front_contract.rs` enforce the co
 |---|---|---|---|---|
 | opener | `0x21FE` | `host` text, `port` u32 (front server) | `LoginWindow.cpp L303/L314` | confirmed |
 
+Every connection (gate, front, duel) is closed after 180 s without a packet: the client heartbeats `0x2724` every 30 s
+on the front and duel connections, and the gate's only message comes at once (**guess**: the client never idles longer;
+the limit is `Config::idle_timeout`). Messages nest at most 16 levels deep (the client's own go about 3); a deeper one
+is an undecodable packet (`Error::TooDeep`).
+
 ## Front (TCP 1213)
+
+Until a player is selected (`0x1F4C`), the front answers only the login and Select Player requests (`0x1F47`–`0x1F4C`)
+and the heartbeat; every other request is ignored (nothing in the client sends one earlier: seen in the packet logs). A
+`0x1F4C` for a player the account doesn't have takes the old selection offline (no reply, as before).
 
 ### Login (dispatcher `0x469C00`, `LoginWindow.cpp`)
 
@@ -288,6 +297,10 @@ the ones given away) and moves both offers when both said yes, in the accounts (
 `given` per player). A session refreshes its player's collection from there on each trunk request, so the partner's
 next shop visit shows it too. Live: Yugi's Tainted Wisdom for Kaiba's Windstorm of Etaqua.
 
+One scene at a time (a **server choice**): a player in a trade or rental scene can neither invite nor be invited, and an
+answer that finds either side in a scene by now is sent to the inviter as a "no" (`0x2BC3 {answer 1}`, `0x2C27` for
+rentals) with `0x2BDC` (`0x2D55`) `{error_code 106}` for the answerer; leaving a scene ends every scene of the player.
+
 ### Card rental between players (agent steps `0x4A9D80` and `0x4AA430`, rental scene `CardRental.cpp`, handler `0x41C7E0`)
 
 Player Information's Send Rental Request (text 12267) invites; the other player answers from their bell (the global
@@ -506,7 +519,7 @@ default's index is skipped; cards 5280, 5434 and 6276 are never allowed.
 |---|---|---|---|---|
 | `0x1F4E` deck list (bare, `0x440C43`; also re-sent after save and delete) | `0x22C8` (`0x22C9`) | items **tag 6**: `deck_id` (int), `deck_name`, `discription` (string), `card_protector` (int), `main`, `extra`, `side` (binary u16 BE CARD_Prop rows, read by `0x414410`); at most 10 are used | tracer: all found; "Starter Deck.y3d" written; the NPC duel opens | confirmed |
 | `0x1F50` delete `{delete_type, deck_name}` (`0x4449A9`, after deleting the local file `0x52F0C0`) | `0x22CC` (`0x22CD` shows an error) | none | "deck delete succes"; live: the deck leaves the Load Deck list | confirmed; the server also forgets its uploaded copy of that name (below) |
-| `0x1F4F` update `{duel_id, event_id, update_type}` + the deck (tag 6) | `0x22CA` (`0x22CB`) | none | Saving in the editor only writes the local file (`0x4442E0` → `0x4159B0` → `0x52EE60`) and `cursor_deck_name`, though the editor has a "deck add or update succes" case for `0x22CA`. The request comes from a duel's Select Deck (DuelManager `0x50ECF0`, see below); live: the duel scene loads ; Card Swap between a match's duels (`0x50FDF0` state 3) sends `update_type` 2 with the swapped deck (MainGamen `+0x838`), and the server keeps it as the player's entry for the match | confirmed (live: update_type 2 after Card Swap); a deck-editor save is not sent |
+| `0x1F4F` update `{duel_id, event_id, update_type}` + the deck (tag 6) (every list is read up to 100 rows, the name up to 64 bytes; an update that names a duel passes the deck check, and one other than `update_type` 1 that fails it is ignored, answered `0x22CA`) | `0x22CA` (`0x22CB`) | none | Saving in the editor only writes the local file (`0x4442E0` → `0x4159B0` → `0x52EE60`) and `cursor_deck_name`, though the editor has a "deck add or update succes" case for `0x22CA`. The request comes from a duel's Select Deck (DuelManager `0x50ECF0`, see below); live: the duel scene loads ; Card Swap between a match's duels (`0x50FDF0` state 3) sends `update_type` 2 with the swapped deck (MainGamen `+0x838`), and the server keeps it as the player's entry for the match | confirmed (live: update_type 2 after Card Swap); a deck-editor save is not sent |
 
 **Decks follow the player.** The editor's Save and New only write the local file (live: nothing reached the server),
 and the editor refuses to save a deck of the wrong size itself ("Your Deck must hold between 40 and 60 Cards. Side
@@ -686,6 +699,14 @@ So an NPC duel does go through the duel server: the server announces it with `0x
 `event_type`, `official`) show the PvP shape of the same push.
 
 ## Duel connection
+
+What the server does when a duel can't go on (all **server choices**, none of it seen from the original): a player
+leaving or a client disconnecting at any point before the match is over (the janken and turn order included) sends the
+other seat command 2 {1, 14} (won, disconnected) and its `0x2009`; only a duel that had begun is counted. An engine
+that dies, hangs for 30 s or keeps refusing the answer to one prompt ends the duel for both seats with command 2 {3, 0}
+(a draw, no reason text), counted once as a draw. A duel connection that arrives after its match ended is sent command 2
+{1, 14} and ignored. `0x200A {player_id}` is claimed only from the address of the front connection that picked the deck.
+The turn order `0xD` counts once per janken.
 
 Every message is key/value (tag 4) with a `duelRequestName`. The client sends request `0x200C` (header built by
 `0x49F990`), except its first message `0x200A`. The server's messages go through the pump `0x5233A0`, called every
