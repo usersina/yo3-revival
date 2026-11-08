@@ -56,18 +56,34 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
       attack and the monster could still attack.
 - [x] The opponent's Set Spell/Trap showed blank white once activated: it now moves onto its own slot with its row.
       Live: Spellbinding Circle and Magic Drain showed their art on the other client.
-- [x] The Graveyard pile showed a card back on both clients: cards went there face down. Now face up (so do face-up
-      banished cards). Not yet checked live.
+- [x] The Graveyard pile showed a card back on both clients, even with cards moved in face up: a card landing on a
+      pile is removed, and only GraveTop (`0x18`) puts a face-up card on top. The server sends it after each move into
+      a Graveyard. Live: both Graveyards showed their top card on both clients.
 - [x] An attack position monster offered "to Attack Position" too: a position change now offers only the entry that
       fits (to Defence in attack, to Attack in face-up defense, Flip Summon face down). Not yet checked live.
 - [x] An attack on an empty field asked nothing (EDOPro asks only when a monster could be attacked instead): a direct
-      attack now asks the original's "Attack your opponent directly?" first, No going back to the battle commands
-      (**guess**: the original asked every time). Not yet checked live.
-- [ ] The Graveyard pile can't be opened (to view its cards). Lead: the pile highlights when its (zone, index 0)
-      carries the Activate Effect or Confirm bit (0x808, `0x50A690`), so Confirm on the pile is likely how it was
-      viewed, with a list allowing no picks (the list script ignores clicks then).
-- [ ] Card target lists have no message ("Select the monster to equip", Spellbinding Circle's target): a hint the
-      server doesn't word yet.
+      attack now asks the original's "Attack your opponent directly?" first (**guess**: the original asked every
+      time). Live: No went back to the battle commands (the question came again on the next click), Yes dealt 2700.
+- [x] The Graveyard couldn't be opened. Now Confirm (the menu's bit 11, which highlights a pile) sits on both
+      players' Graveyards and banished piles and the player's own extra deck, and opens a view-only card list under
+      the original's own titles ("Opponent's Graveyard", "Your Extra Deck", ...); a right-click closes it and gives
+      the field back. Live on both clients.
+- [x] Card target lists had no message: EDOPro's HINTMSG_* hints for destroy, equip, face-up (Spellbinding Circle's
+      target), discard, return, Set, control, show and position changes now read as the client's own prompts. Live:
+      "Select card to destroy." (MST), "Select a monster to equip." (Gravity Axe).
+- [x] Found while checking: an opponent's Set card in a target list drew nothing and couldn't be clicked (MST couldn't
+      hit a Set card; an attack on a Set monster would have been stuck the same way). Such lists now open as the
+      client's card-back kind (`0x4A`). Live: MST listed and destroyed a Set Spellbinding Circle. **Limitation**: that
+      kind shows every card of the list as a back and can't be backed out of, so in a list of face-up and Set cards
+      the player can't tell them apart.
+- [x] Found while checking: a pile's commands were looked up at index 0 only, so an extra deck summon or Graveyard
+      effect of any card but the pile's first was unreachable. They now sit at index 0, and with several cards able the
+      card list asks which (the original's "Select the monster(s) to Special Summon from your Extra Deck.").
+- [x] Testing aid: `--duel-time 0,0` turns the clocks of duels between players off (live checks run slower than
+      180 s a turn).
+- [ ] Open: a monster whose position an effect changes right after its summon (Stumbling) stayed upright on its
+      owner's screen when no prompt came in between (the other client turned it; with a chain question in between both
+      did). Client-side timing, not understood yet.
 - [ ] Card preview on hover needs a held button on the VM (the client shows it on hover under Wine): likely the VM's
       PS/2 mouse or window focus, not the server.
 

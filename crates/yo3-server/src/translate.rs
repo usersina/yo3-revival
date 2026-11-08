@@ -119,6 +119,10 @@ const REMOVED: u32 = 0xF;
 /// (effect 0x33) plays at it and it is hidden (state 0x4FC520), before its move.
 const FLIP_TURN: u32 = 0x1C;
 const CARD_VANISH: u32 = 0x1F;
+/// The Graveyard's top card {player, zone 0xE, uid} (GraveTop, DuelCardManager 0x4FF501): a face-up card object at the
+/// top of that pile, unless one for the uid already exists. A card landing on a pile is removed and only adds to the
+/// pile's count (0x4FC0AD), so without it the pile shows a card back (live).
+const GRAVE_TOP: u32 = 0x18;
 /// A field card's counters {player | zone << 8, change, kind} (DuelCardManager 0x4FFD8E): the change is added to the
 /// card's count of that kind (0 erases it; a negative count is ignored), shown on its field label with the kind's
 /// icon (table 0x789020) and named in the card info as UI text 200 + kind (0x4551DB).
@@ -203,6 +207,10 @@ const OPPONENTS: u32 = 0x8000;
 const PICK_ANY: u32 = 1;
 const PICK_ALL: u32 = 6;
 const PICK_ONE: u32 = 0x27;
+/// The kind that draws every card as a back (data/mini/0000.png) and marks it the opponent's, one pick (getCardInfo
+/// 0x4C78A0): the others draw a card's image from its row's id, so a hidden card (row 0) drew nothing and couldn't be
+/// clicked (live).
+const PICK_ONE_HIDDEN: u32 = 0x4A;
 /// Message entries (0x519870): a text of the duel prompt table, and a card name by Konami id (0x5374B0) put into
 /// the text's %s.
 const TEXT: u32 = 1 << 28;
@@ -218,6 +226,15 @@ const USE_NOW_TEXT: u32 = 270;
 /// Continue to @3attack@0?".
 const BATTLE_QUESTIONS: [(u64, u32); 2] = [(31, 225), (30, 223)];
 const DIRECT_TEXT: u32 = 225;
+/// "Select the @3monster(s)@0 to @3Special Summon@0 from your @2Extra Deck@0." and "Select the @3monster(s)@0 to
+/// @3Special Summon@0.".
+const SPSUMMON_EXTRA_TEXT: u32 = 26;
+const SPSUMMON_TEXT: u32 = 25;
+/// The pile views' titles (the duel prompts): 582/583 "Your/Opponent's Extra Deck", 586/587 "Your/Opponent's
+/// Graveyard", 588/589 "Your/Opponent's Removed Cards", by zone, the opponent's one more.
+const PILE_TITLES: [(u32, u32); 3] = [(EXTRA, 582), (GRAVE, 586), (REMOVED, 588)];
+/// The card menu's Confirm (bit 11): on a pile, its view.
+const CONFIRM: u32 = 11;
 /// 'Select position for "@3%s@0".'
 const POSITION_TEXT: u32 = 327;
 /// 'The effect of "@3%s@0" is @3activated@0. @3Chain@0 another card or effect?', '"@3%s@0" is @3activated@0. ...' and,
@@ -380,6 +397,11 @@ pub struct Translator {
     positions: HashMap<(u32, u32), (bool, bool)>,
     /// A direct attack waiting for the client's Yes: its engine response.
     direct: Option<Json>,
+    /// A pile's view is open: closing it sends the pending prompt again.
+    viewing: bool,
+    /// Which card of a pile a command is for, asked in the card list: the response's type and action, and the
+    /// candidates' indices in the prompt's list.
+    choosing: Option<(u64, u64, Vec<usize>)>,
     /// The counts the client holds on each card, by uid and counter kind.
     counters: HashMap<(u32, u32), u32>,
     /// How many card names the CPU has declared: each try names the next card of the duel's (the core asks again
@@ -451,6 +473,8 @@ impl Translator {
             records: HashMap::new(),
             positions: HashMap::new(),
             direct: None,
+            viewing: false,
+            choosing: None,
             counters: HashMap::new(),
             declared: 0,
         };
@@ -616,6 +640,9 @@ impl Translator {
             out.extend(self.monster_record(to.player, to.zone, card.row));
         }
         out.push(command(MOVE, [card.uid | row << 16, from.packed(), to.packed(), 0]));
+        if to.zone == GRAVE {
+            out.push(command(GRAVE_TOP, [to.player, GRAVE, card.uid, 0]));
+        }
         // List zones renumber: re-send the shifted cards (not the face-down deck).
         for (p, zone, start) in [(from.player, from.zone, at), (to.player, to.zone, index + 1)] {
             if zone <= FIELD_SPELL || zone == DECK {
@@ -838,7 +865,8 @@ impl Translator {
                 } else {
                     (&BATTLE_LISTS, [("to_m2", BUTTON_M2), ("to_ep", BUTTON_EP)], MODE_BATTLE)
                 };
-                let map = self.command_map(m, lists);
+                let mut map = self.command_map(m, lists);
+                self.add_pile_views(&mut map);
                 let flags: Vec<(u8, u8)> = buttons.into_iter().filter(|(k, _)| m[*k] == true).map(|(_, b)| (b, 1)).collect();
                 self.pending = Some(m.clone());
                 Prompt::Client(vec![command_data(&map, &flags), command(INPUT, [mode, CLIENT, 0, 0])])
@@ -984,6 +1012,9 @@ impl Translator {
             _ => (PICK_ALL, min),
         };
         let rows: Vec<u32> = selects.iter().map(|loc| self.list_row(loc)).collect();
+        // A hidden card is reachable only as a back, which loses the backing out (one pick) and shows the other cards
+        // as backs too (the card info still names them as the pointer passes).
+        let (kind, max) = if rows.contains(&0) && min <= 1 { (PICK_ONE_HIDDEN, max) } else { (kind, max) };
         let marks: Vec<u32> = selects.iter().map(|loc| if self.player(&loc["controller"]) == CPU { OPPONENTS } else { 0 }).collect();
         let mut out = vec![command(LIST_BEGIN, [selects.len() as u32, max, 0, 0])];
         out.extend(fours(LIST_ROWS, &rows));
@@ -1023,6 +1054,23 @@ impl Translator {
     /// several cards, the card list. No pick cancels when the engine allows it; picks that don't fit the choice get
     /// the default.
     pub fn dialog_result(&mut self, count: u32) -> Option<Prompt> {
+        if let Some((kind, action, candidates)) = self.choosing.take() {
+            // Which card of the pile: the pick answers the engine; none goes back to the prompt.
+            let pick = (count == 1).then(|| self.picks.first().and_then(|&i| candidates.get(i).copied())).flatten();
+            self.picks.clear();
+            if let Some(index) = pick {
+                self.pending = None;
+                return Some(Prompt::Answer(json!({ "type": kind, "action": action, "index": index })));
+            }
+            let m = self.pending.clone()?;
+            return Some(self.prompt(&m));
+        }
+        if std::mem::take(&mut self.viewing) {
+            // A pile's view closed: the prompt it was opened from, again.
+            self.picks.clear();
+            let m = self.pending.clone()?;
+            return Some(self.prompt(&m));
+        }
         if let Some(response) = self.direct.take() {
             // Yes attacks; No goes back to the battle commands.
             let m = self.pending.take()?;
@@ -1143,6 +1191,8 @@ impl Translator {
                 if list == "pos_changes" && bit != self.position_change(place) {
                     continue;
                 }
+                // The client looks a pile's commands up at index 0 only (0x50B510, 0x5204E0).
+                let place = if place >> 8 & 0xFF >= EXTRA { place & 0xFFFF } else { place };
                 match bits.iter_mut().find(|(p, _)| *p == place) {
                     Some((_, b)) => *b |= 1 << bit,
                     None => bits.push((place, 1 << bit)),
@@ -1209,6 +1259,15 @@ impl Translator {
     /// live, an attack on an empty field just went through), anything else answers the engine.
     pub fn command(&mut self, cmd: CardCommand) -> Option<Prompt> {
         let m = self.pending.clone()?;
+        if cmd.command == CONFIRM
+            && let Some(out) = self.pile_view(cmd.player, cmd.zone)
+        {
+            self.viewing = true;
+            return Some(Prompt::Client(out));
+        }
+        if cmd.zone >= EXTRA && cmd.zone != DECK {
+            return self.pile_command(&m, cmd);
+        }
         let response = self.answer(cmd)?;
         let attack = &m["attacks"][response["index"].as_u64().unwrap_or(u64::MAX) as usize];
         let opponent = 1 - self.player(&attack["controller"]) as usize;
@@ -1221,6 +1280,81 @@ impl Translator {
         let mut out = message(&[TEXT | DIRECT_TEXT]);
         out.push(command(DIALOG, [YES_NO, FROM_ENTRIES, 0, 0]));
         Some(Prompt::Client(out))
+    }
+
+    /// A command on a pile (sent at index 0, where the client found it): the one card of the pile it fits, or with
+    /// several, the card list asks which (the original's "Select the monster(s) to Special Summon from your Extra
+    /// Deck.", 26).
+    fn pile_command(&mut self, m: &Json, cmd: CardCommand) -> Option<Prompt> {
+        let (lists, kind): (Lists, u64) = match m["type"].as_u64() {
+            Some(MSG_SELECT_BATTLECMD) => (&BATTLE_LISTS, RESP_BATTLECMD),
+            _ => (&IDLE_LISTS, RESP_IDLECMD),
+        };
+        let &(list, _, action) = lists.iter().find(|(_, bit, _)| *bit == cmd.command)?;
+        let pile = table_place(cmd.player, cmd.zone, 0);
+        let candidates: Vec<(usize, &Json)> = m[list]
+            .as_array()?
+            .iter()
+            .enumerate()
+            .filter(|(_, loc)| self.place(loc).is_some_and(|p| p & 0xFFFF == pile))
+            .collect();
+        match candidates[..] {
+            [] => None,
+            [(index, _)] => {
+                self.pending = None;
+                Some(Prompt::Answer(json!({ "type": kind, "action": action, "index": index })))
+            }
+            _ => {
+                let text = match (cmd.command, cmd.zone) {
+                    (2, EXTRA) => SPSUMMON_EXTRA_TEXT,
+                    (2, _) => SPSUMMON_TEXT,
+                    _ => SELECT_EFFECT_TEXT,
+                };
+                let selects: Vec<Json> = candidates.iter().map(|(_, loc)| (*loc).clone()).collect();
+                let out = self.card_list(&json!({ "selects": selects, "min": 0, "max": 1 }), Some(text));
+                self.choosing = Some((kind, action, candidates.iter().map(|(i, _)| *i).collect()));
+                self.picks.clear();
+                Some(Prompt::Client(out))
+            }
+        }
+    }
+
+    /// Confirm (bit 11) at index 0 of each pile that can be looked through: both players' Graveyards and banished
+    /// piles and the player's own extra deck, when not empty. The field highlights a pile of either player whose
+    /// bits there have Activate Effect or Confirm (0x808, 0x50A690).
+    fn add_pile_views(&self, map: &mut Vec<(u32, u32)>) {
+        for (player, zone) in [(CLIENT, GRAVE), (CPU, GRAVE), (CLIENT, REMOVED), (CPU, REMOVED), (CLIENT, EXTRA)] {
+            if self.sides[player as usize].zones.get(&zone).is_none_or(Vec::is_empty) {
+                continue;
+            }
+            let place = table_place(player, zone, 0);
+            match map.iter_mut().find(|(p, _)| *p == place) {
+                Some((_, bits)) => *bits |= 1 << CONFIRM,
+                None => map.push((place, 1 << CONFIRM)),
+            }
+        }
+    }
+
+    /// A pile's view: its cards from the bottom in a card list with no picks (max 0: dlg_cardlist.swf ignores card
+    /// clicks, and a right-click closes it), under the pile's title.
+    fn pile_view(&self, player: u32, zone: u32) -> Option<Vec<Message>> {
+        let title = PILE_TITLES.iter().find(|(z, _)| *z == zone)?.1 + (player != CLIENT) as u32;
+        if zone == EXTRA && player != CLIENT {
+            return None;
+        }
+        let cards = self.sides.get(player as usize)?.zones.get(&zone).filter(|c| !c.is_empty())?;
+        let rows: Vec<u32> = cards
+            .iter()
+            .enumerate()
+            .map(|(index, c)| self.shown_row(&Place { player, zone, index, face_up: true, defense: false }, c.row))
+            .collect();
+        let mark = if player == CLIENT { 0 } else { OPPONENTS };
+        let mut out = vec![command(LIST_BEGIN, [rows.len() as u32, 0, 0, 0])];
+        out.extend(fours(LIST_ROWS, &rows));
+        out.extend(fours(LIST_MARKS, &vec![mark; rows.len()]));
+        out.extend(message(&[TEXT | title]));
+        out.push(command(CARD_LIST, [CLIENT, PICK_ANY, 1, 0]));
+        Some(out)
     }
 
     /// The engine response for the client's card command, if it names a listed card.
@@ -1335,11 +1469,23 @@ fn number_unit(options: &[u64]) -> Option<(u64, u32)> {
 fn hint_text(hint: u64) -> Option<u32> {
     Some(match hint {
         HINTMSG_RELEASE => TRIBUTE_TEXT,
+        501 => 347, // HINTMSG_DISCARD: "Select the @2card(s)@0 in your hand you want to discard."
+        502 => 281, // HINTMSG_DESTROY: "Select @3card@0 to @3destroy@0."
         503 => 70,  // HINTMSG_REMOVE: "Select @3card(s)@0 to @3remove from play@0."
         504 => 58,  // HINTMSG_TOGRAVE: "Select the @3card@0 to send to the @2Graveyard@0."
+        505 => 348, // HINTMSG_RTOHAND: "Select the @3card(s)@0 to return to the @2hand@0."
         506 => 88,  // HINTMSG_ATOHAND: "Select the @3card(s)@0 to add to your @2hand@0."
+        507 => 78,  // HINTMSG_TODECK: "Select a @3card@0 to be returned the owner's @2Deck@0."
+        508 => 39,  // HINTMSG_SUMMON: "Select a @3monster@0 to @3Normal Summon or Set@0."
         509 => 25,  // HINTMSG_SPSUMMON: "Select the @3monster(s)@0 to @3Special Summon@0."
+        510 => 46,  // HINTMSG_SET: "Select a @3Spell or Trap Card@0 to @3Set@0 on the field."
         511 => 92,  // HINTMSG_FMATERIAL: "Select @3monsters@0 to use as @3Fusion Material@0."
+        // HINTMSG_FACEUP: the client has no "face-up card" prompt; EDOPro asks it for targets (Spellbinding Circle).
+        514 => 94,
+        518 => 101, // HINTMSG_EQUIP: "Select a @3monster@0 to @3equip@0."
+        520 => 119, // HINTMSG_CONTROL: "Select the @3monster(s)@0 your opponent controls to take control."
+        526 => 341, // HINTMSG_CONFIRM: "Select the @3card(s)@0 to show your opponent."
+        528 => 357, // HINTMSG_POSCHANGE: "Select the @3monster@0 to change its battle position."
         549 => 222, // HINTMSG_ATTACKTARGET: "Select an attack target @3monster@0."
         551 => 94,  // HINTMSG_TARGET: "Select the @3card(s)@0 to target."
         _ => return None,

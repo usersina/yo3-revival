@@ -135,6 +135,60 @@ fn a_direct_attack_asks_first() {
     assert_eq!(t.command(attack), Some(Prompt::Answer(json!({ "type": 0, "action": 1, "index": 0 }))));
 }
 
+/// The command map's (place, bits) pairs.
+fn command_bits(out: &[Message]) -> Vec<(u32, u32)> {
+    let data = out[0].get("COMIDDATA").and_then(Value::as_bytes).expect("a command map");
+    let n = out[0].get("comIDsize").and_then(Value::as_u32).expect("its size") as usize;
+    (0..n).map(|i| {
+        let word = |at: usize| u32::from_be_bytes(data[at..at + 4].try_into().unwrap());
+        (word(8 * i), word(8 * i + 4))
+    }).collect()
+}
+
+#[test]
+fn the_piles_can_be_looked_through() {
+    // The field highlights a pile of either player (zones 0xC-0xF at index 0) whose bits have Activate Effect or
+    // Confirm (0x808, 0x50A690), and the menu's bit 11 reads "Confirm". The duel prompts hold the original's pile
+    // titles: 582 "Your Extra Deck", 586/587 "Your/Opponent's Graveyard", 588/589 "Your/Opponent's Removed Cards".
+    // So every non-empty Graveyard and banished pile, and the player's own extra deck, carry Confirm in the idle
+    // and battle command maps; Confirm opens a list of the pile with no picks (max 0: the list script ignores card
+    // clicks and a right-click closes it), and closing it sends the prompt again without answering the engine.
+    let mut t = with_cards();
+    t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 0, 10), "to": loc(0, 16, 0, 1) })]);
+    t.events(&[json!({ "type": 50, "cid": 4200, "from": loc(1, 4, 1, 1), "to": loc(1, 16, 0, 1) })]);
+    let idle = json!({ "type": 11, "player": 0, "summons": [], "special_summons": [], "pos_changes": [],
+        "monster_sets": [], "spell_sets": [], "activates": [], "to_bp": false, "to_ep": true });
+    let Prompt::Client(out) = t.prompt(&idle) else { panic!("the client chooses") };
+    let bits = command_bits(&out);
+    assert!(bits.contains(&(0xE << 8, 1 << 11)) && bits.contains(&(1 | 0xE << 8, 1 << 11)), "{bits:?}");
+    assert!(!bits.iter().any(|(p, _)| p >> 8 & 0xFF == 0xF), "an empty pile has nothing to show: {bits:?}");
+    // Confirm on the opponent's Graveyard: its cards, marked the opponent's, under its title; no pick.
+    let confirm = CardCommand { command: 11, player: 1, zone: 0xE, index: 0 };
+    let Some(Prompt::Client(out)) = t.command(confirm) else { panic!("the list") };
+    assert_eq!(
+        out.iter().map(cmd).collect::<Vec<_>>(),
+        [
+            (0x3EF, [1, 0, 0, 0]),
+            (0x3F2, [200, 0, 0, 0]),
+            (0x3F3, [0x8000, 0, 0, 0]),
+            (0x3EC, [1, 0, 0, 0]),
+            (0x3ED, [1 << 28 | 587, 0, 0, 0]),
+            (0x37, [0, 1, 1, 0]),
+        ]
+    );
+    // Closed: the same prompt again; the engine was not answered.
+    let Some(Prompt::Client(again)) = t.dialog_result(0) else { panic!("the prompt again") };
+    assert_eq!(command_bits(&again), bits);
+    assert_eq!(again.last().map(cmd), Some((4, [2, 0, 0, 0])));
+    // In battle too, and the player's own Graveyard reads as theirs.
+    let battle = json!({ "type": 10, "player": 0, "attacks": [], "chains": [], "to_m2": true, "to_ep": true });
+    let Prompt::Client(out) = t.prompt(&battle) else { panic!("the client chooses") };
+    assert!(command_bits(&out).contains(&(0xE << 8, 1 << 11)));
+    let Some(Prompt::Client(out)) = t.command(CardCommand { command: 11, player: 0, zone: 0xE, index: 0 }) else { panic!("the list") };
+    assert!(out.iter().map(cmd).any(|c| c == (0x3ED, [1 << 28 | 586, 0, 0, 0])), "{out:?}");
+    assert!(matches!(t.dialog_result(0), Some(Prompt::Client(_))));
+}
+
 #[test]
 fn a_card_sent_to_the_graveyard_lies_face_up() {
     // The Graveyard pile shows its top card's face (GraveTop 0x18 draws it at 0x401C: zone 0xE, face up bit 14;
@@ -143,10 +197,32 @@ fn a_card_sent_to_the_graveyard_lies_face_up() {
     t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 0, 1) })]);
     let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 4, 0, 1), "to": loc(0, 16, 0, 1) })])
         .iter().map(cmd).collect();
-    assert_eq!(out.last().map(|(id, p)| (*id, p[2])), Some((0x1A, 0xE << 1 | 1 << 14)), "{out:?}");
+    let moved = out.iter().position(|(id, _)| *id == 0x1A).expect("the move");
+    assert_eq!(out[moved].1[2], 0xE << 1 | 1 << 14, "{out:?}");
     let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 32, 0, 5) })])
         .iter().map(cmd).collect();
     assert_eq!(out.last().map(|(id, p)| (*id, p[2])), Some((0x1A, 0xF << 1 | 1 << 14)), "{out:?}");
+}
+
+#[test]
+fn the_graveyards_top_card_shows_on_its_pile() {
+    // A card landing on a pile is removed (0x4FC0AD: the pile's count goes up, +0xD8); GraveTop 0x18 {player, 0xE,
+    // uid} makes a face-up card at the top of that Graveyard (0x4FF501). Without it the pile showed a back (live).
+    let mut t = with_cards();
+    t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 0, 1) })]);
+    let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 4, 0, 1), "to": loc(0, 16, 0, 1) })])
+        .iter().map(cmd).collect();
+    let moved = out.iter().position(|(id, _)| *id == 0x1A).expect("the move");
+    let uid = out[moved].1[0] & 0xFFFF;
+    assert_eq!(out[moved + 1..].iter().find(|(id, _)| *id == 0x18), Some(&(0x18, [0, 0xE, uid, 0])), "{out:?}");
+    // The opponent's card goes on the opponent's pile.
+    let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4200, "from": loc(1, 4, 1, 1), "to": loc(1, 16, 0, 1) })])
+        .iter().map(cmd).collect();
+    assert!(out.iter().any(|(id, p)| *id == 0x18 && p[0] == 1 && p[1] == 0xE), "{out:?}");
+    // Not for other places.
+    let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 32, 0, 5) })])
+        .iter().map(cmd).collect();
+    assert!(!out.iter().any(|(id, _)| *id == 0x18), "{out:?}");
 }
 
 #[test]
@@ -391,6 +467,24 @@ fn the_clients_card_choice_opens_the_card_list() {
             (0x37, [0, 0x27, 1, 0]),
         ]
     );
+}
+
+#[test]
+fn selection_hints_read_as_the_clients_own_prompts() {
+    // EDOPro's HINTMSG_* before a card choice, worded with the duel prompt table (DLG_Text_E) where a text says the
+    // same: 502 destroy (Mystical Space Typhoon) → 281 "Select card to destroy.", 514 face-up (Spellbinding Circle's
+    // target) → 94 "Select the card(s) to target.", 518 equip (an Equip Spell's monster) → 101 "Select a monster to
+    // equip.", and the others listed in hint_text. Live, these lists opened with no message.
+    let pairs = [(501, 347), (502, 281), (505, 348), (507, 78), (508, 39), (510, 46), (514, 94), (518, 101), (520, 119),
+        (526, 341), (528, 357)];
+    let mut t = with_cards();
+    for (hint, text) in pairs {
+        t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": hint })]);
+        let select = json!({ "type": 15, "player": 0, "can_cancel": false, "min": 1, "max": 1,
+            "selects": [card_at(0, 2, 1, 4101), card_at(1, 4, 1, 4200)] });
+        let out = client_commands(t.prompt(&select));
+        assert!(out.contains(&(0x3ED, [1 << 28 | text, 0, 0, 0])), "hint {hint}: {out:?}");
+    }
 }
 
 #[test]
@@ -715,6 +809,32 @@ fn against_a_player_the_opponents_hidden_cards_carry_no_row() {
     let face_down: Vec<_> = t.events(&[set]).iter().map(cmd).collect();
     assert_eq!(face_down[0], (1000, [12, 0, 0, 1 | 2 << 8]));
     assert!(!face_down.iter().any(|(id, _)| *id == 0x3EB), "no field record");
+}
+
+#[test]
+fn a_list_with_the_opponents_hidden_card_shows_card_backs() {
+    // The list draws a card's image from its row's id ("%4d_%d", getCardInfo 0x4C78A0), so a hidden card's row 0 drew
+    // nothing and couldn't be clicked (live: Mystical Space Typhoon couldn't target a Set card). Only kind 0x4A (and a
+    // banished-pile kind 4) draws data/mini/0000.png, the card back, for every card, marked the opponent's; it needs
+    // one pick (0x4C72D0).
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
+    t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4200 }, { "cid": 4201 }] })]);
+    t.events(&[json!({ "type": 50, "cid": 4200, "from": loc(1, 2, 0, 10), "to": loc(1, 8, 0, 10) })]);
+    t.events(&[json!({ "type": 50, "cid": 4201, "from": loc(1, 2, 0, 10), "to": loc(1, 8, 1, 5) })]);
+    let target = |cancel: bool| json!({ "type": 15, "player": 0, "can_cancel": cancel, "min": 1, "max": 1,
+        "selects": [json!({ "code": 4200, "cid": 4200, "controller": 1, "location": 8, "sequence": 0, "position": 10 }),
+            card_at(1, 8, 1, 4201)] });
+    let out = client_commands(t.prompt(&target(false)));
+    assert!(out.contains(&(0x3F2, [0, 201, 0, 0])), "{out:?}");
+    assert_eq!(out.last().map(|&(id, p)| (id, p[1])), Some((0x37, 0x4A)), "{out:?}");
+    // Even a choice the player could back out of: the card is reachable only this way.
+    assert_eq!(client_commands(t.prompt(&target(true))).last().map(|&(id, p)| (id, p[1])), Some((0x37, 0x4A)));
+    // All cards shown: the usual kind.
+    let face_up = json!({ "type": 15, "player": 0, "can_cancel": false, "min": 1, "max": 1, "selects": [card_at(1, 8, 1, 4201)] });
+    assert_eq!(client_commands(t.prompt(&face_up)).last().map(|&(id, p)| (id, p[1])), Some((0x37, 0x27)));
 }
 
 /// A chain chance's level: the Effect dialog's param3.
@@ -1095,10 +1215,48 @@ fn an_extra_deck_summon_is_offered_on_the_extra_deck_pile() {
     let idle = json!({ "type": 11, "player": 0, "summons": [], "special_summons": [extra], "pos_changes": [],
         "monster_sets": [], "spell_sets": [], "activates": [], "to_bp": false, "to_ep": true });
     let Prompt::Client(out) = t.prompt(&idle) else { panic!("the client chooses") };
-    let data = [0x00, 0x01, 0x0C, 0x00, 0, 0, 0, 0x04, 5, 1];
+    // The client looks a pile's commands up at index 0 only (0x50B510 gives a pile index 0; 0x5204E0 is an exact
+    // lookup), so the card at index 1 is offered there, with Confirm (the pile's view).
+    let data = [0x00, 0x00, 0x0C, 0x00, 0, 0, 0x08, 0x04, 5, 1];
     assert_eq!(out[0].get("COMIDDATA"), Some(&Value::Bin(data.to_vec())));
-    let summon = CardCommand { command: 2, player: 0, zone: 0xC, index: 1 };
-    assert_eq!(t.answer(summon), Some(json!({ "type": 1, "action": 1, "index": 0 })));
+    let summon = CardCommand { command: 2, player: 0, zone: 0xC, index: 0 };
+    assert_eq!(t.command(summon), Some(Prompt::Answer(json!({ "type": 1, "action": 1, "index": 0 }))));
+}
+
+#[test]
+fn with_several_cards_able_a_piles_command_asks_which() {
+    // Two extra deck monsters can be Special Summoned: the pile's Special Summon opens a card list of them with the
+    // original's "Select the monster(s) to Special Summon from your Extra Deck." (26), one pick or none (back out).
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).chain([150, 151]).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
+    t.extra_decks([&[150, 151][..], &[][..]]);
+    let extra = |seq, cid| json!({ "controller": 0, "location": 64, "sequence": seq, "cid": cid });
+    let idle = json!({ "type": 11, "player": 0, "summons": [], "special_summons": [extra(0, 4151), extra(1, 4150)],
+        "pos_changes": [], "monster_sets": [], "spell_sets": [], "activates": [], "to_bp": false, "to_ep": true });
+    let Prompt::Client(out) = t.prompt(&idle) else { panic!("the client chooses") };
+    assert_eq!(command_bits(&out), [(0xC << 8, 1 << 2 | 1 << 11)]);
+    let summon = CardCommand { command: 2, player: 0, zone: 0xC, index: 0 };
+    let Some(Prompt::Client(list)) = t.command(summon) else { panic!("which one") };
+    assert_eq!(
+        list.iter().map(cmd).collect::<Vec<_>>(),
+        [
+            (0x3EF, [2, 1, 0, 0]),
+            (0x3F2, [151, 150, 0, 0]),
+            (0x3F3, [0, 0, 0, 0]),
+            (0x3EC, [1, 0, 0, 0]),
+            (0x3ED, [1 << 28 | 26, 0, 0, 0]),
+            (0x37, [0, 1, 1, 0]),
+        ]
+    );
+    t.pick(1);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 1, "action": 1, "index": 1 }))));
+    // No pick: back to the prompt, nothing answered.
+    t.prompt(&idle);
+    t.command(summon);
+    let Some(Prompt::Client(again)) = t.dialog_result(0) else { panic!("the prompt again") };
+    assert_eq!(again.last().map(cmd), Some((4, [2, 0, 0, 0])));
 }
 
 #[test]

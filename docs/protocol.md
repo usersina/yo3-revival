@@ -739,15 +739,27 @@ Phase 1 highlights only the legal cards, and a monster's menu reads Summon / Set
 
 Card moves (`MSG_MOVE`) become a card-table entry plus `0x1A`, with move places `player | zone<<1 | index<<6`, face up
 bit 14 and defence bit 15 on field slots (`0x5000E0`), and face up into the Graveyard and, when face up, the banished
-pile: the Graveyard pile shows its top card's face (GraveTop `0x18` {player, zone `0xE`, uid} draws a card there at
-`0x401C`, face up, `0x4FF000`), and cards moved in face down showed a back on both clients (live); field slots are zones 0–4 (monsters), 5–9 (Spell/Trap) and 10
+pile. A card landing on a pile is removed and only adds to the pile's count (landing state `0x4FBF30`, case
+`0x4FC0AD`: count + 1, `+0xD8` set), so each Graveyard pile showed a card back on both clients (live, even moved face
+up). GraveTop `0x18` {param1 player, param2 zone `0xE` (any other zone is ignored), param3 uid} (`0x4FF501`) makes a
+face-up card object for that uid at the top of that Graveyard (`0x401C | side`, the pile's count in bits 6–13, effect
+mode 8), unless one exists for the uid already; the server sends it after every move into a Graveyard. A card leaving
+from under it finds its own object or gets a new one, as before. Live (Mystical Space Typhoon on a Set Spellbinding
+Circle): each Graveyard showed its top card's art with its count on both clients, and the next card sent there took
+the top; field slots are zones 0–4 (monsters), 5–9 (Spell/Trap) and 10
 (Field Spell) at index 0, then hand `0xB`, extra `0xC`, deck `0xD`, graveyard `0xE`, banished `0xF`. Cards behind a
 removed list card get their table entry again. Both extra decks are in the card table too (zone `0xC`, uids after
 both main decks, the opponent's with row 0 against a player); a card leaving the deck or the extra deck is found by its
 id, so an extra deck summon moves the right card from zone `0xC` and the extra deck pile counts down. Commands on
 cards in the extra deck, Graveyard or banished pile (an idle prompt's Special Summon from the extra deck, an effect
-activated from the Graveyard) go in the command map at that pile's zone and the index of a card with the listed `cid`
-(the engine's extra deck order isn't the card table's); clicking the pile runs it. EDOPro asks for Synchro and Fusion
+activated from the Graveyard) go in the command map at that pile's zone, index 0: the pointer over a pile gives the
+place (pile zone, index 0) (`0x50B510`), and the menu and the highlight look bits up by that exact key (`0x5204E0`),
+so a command at the index of a card other than the pile's first was unreachable. The client sends the command at index
+0; the server finds the listed cards of that pile with that command (by `cid`: the engine's extra deck order isn't the
+card table's): one answers at once, several open the card list (one pick or none, kind 1) with the original's "Select
+the monster(s) to Special Summon from your Extra Deck." (26; 25 elsewhere, "Select effect to activate." 276 for
+effects), whose pick answers the engine and whose right-click goes back to the prompt (**shape**: the original's
+flow is unknown, the text is its own). EDOPro asks for Synchro and Fusion
 materials one at a time (MSG_SELECT_UNSELECT_CARD {can_finish, can_cancel, select_cards, unselect_cards}: the Tuner
 first); each round is the card list of `select_cards` with one pick (kind `0x27`, or 1 when the engine lets the player
 finish or cancel, where no pick answers index null), "Select monsters to use as Fusion Material." (92) for
@@ -757,6 +769,20 @@ listed Junk Synchron, then Giant Orc; both went to the Graveyard, the position d
 and it stood in attack position on both clients with the extra deck pile down to 1. The client has no window for ocgcore's place prompt, so the server
 takes the first free zone (positions: see Choices). Live: Summon from the hand put the monster in the
 first monster zone, the hand closed up, and the next prompt offered only the Spell card.
+
+**Pile views.** The field highlights a pile of either player (zones `0xC`–`0xF`, index 0) whose command bits there
+include Activate Effect or Confirm (`0x808`, DuelFieldManager `0x50A690`), and the card menu's bit 11 reads "Confirm".
+The duel prompts keep the original's pile titles: 582/583 "Your/Opponent's Extra Deck", 584/585 Deck, 586/587
+Graveyard, 588/589 "Removed Cards", next to 590 "Confirm". So the server puts Confirm on both players' Graveyards and
+banished piles and the player's own extra deck, when not empty, in every idle and battle command map. Confirm
+(`2 {CommandID 11, player, position: the pile zone, index 0}`) opens the card list of the pile, bottom card first, with
+max 0 (view only: `dlg_cardlist.swf` adds no click handler when `selMax` is 0, and with no picks required a right-click
+calls `decide`), kind 1, the opponent's cards marked, under the pile's title. Closing it sends `4 {DLGResult 0}`; the
+engine is not answered and the pending prompt (command map and command 4) goes again. Kind 4 lists read a
+per-card flag (the card table entry's byte from 1000's uid top byte, `0x521DF0`) at the opponent's banished place
+of the same index and draw the card back where it is clear (`0x4C7A13`): the original's view of face-down banished
+cards, not used. Live: "Your Extra Deck" listed the three Synchros with ATK/DEF, Kaiba's "Opponent's Graveyard"
+listed Yugi's Spellbinding Circle, and a right-click closed each and gave the field back.
 
 A monster's field label and card info read a 9-value record per place (`0x523F00`, key `player | zone<<8`; the info
 panel `0x453740`): shown Konami id, a second id, race, attribute, level, ATK, DEF, base ATK, base DEF (ATK below base in
@@ -841,9 +867,20 @@ no animation yet (DuelBattle's commands `0xA`–`0xE` are unmapped).
 
 The server uses the card list for the client's MSG_SELECT_CARD and MSG_SELECT_TRIBUTE (targets, tributes, attack
 targets, discards…): the rows from its mirror, the opponent's cards marked, kind 1 for min 0, `0x27` for min 1, else 6
-with max lowered to min (**guess**). EDOPro's hint before the choice (MSG_HINT type 3, HINTMSG_*) picks the message
-when a text says the same thing: 500 → 18 Tribute, 503 → 70 remove from play, 504 → 58 Graveyard, 506 → 88 add to
-hand, 509 → 25 Special Summon, 549 → 222 attack target, 551 → 94 target; otherwise none. The picks answer the engine;
+with max lowered to min (**guess**). The list draws each card from `data/mini/` by its row's Konami id ("%4d_%d",
+getCardInfo `0x4C78A0`), so an opponent's hidden card (row 0) drew nothing and could not be clicked (live: Mystical
+Space Typhoon could not target a Set card). Only kind `0x4A` (all cards) and kind 4 (see Pile views) draw
+`0000.png`, the card back; `0x4A` also marks every card the opponent's and needs one pick. A list holding a hidden card
+with min ≤ 1 opens as `0x4A`: the card can be picked, but the list can't be backed out of, and the other cards show as
+backs too, the card preview included (**limitation**: in a list of face-up and Set cards the player can't tell them
+apart). Live: Kaiba's MST listed Yugi's Set Spellbinding Circle as a back, the pick destroyed it. EDOPro's hint
+before the choice (MSG_HINT type 3, HINTMSG_*) picks the message when a text says the same thing: 500 → 18 Tribute,
+501 → 347 discard, 502 → 281 "Select card to destroy.", 503 → 70 remove from play, 504 → 58 Graveyard, 505 → 348
+return to the hand, 506 → 88 add to hand, 507 → 78 return to the Deck, 508 → 39 Normal Summon, 509 → 25 Special
+Summon, 510 → 46 Set, 514 (face-up, which EDOPro asks for targets such as Spellbinding Circle's) → 94 target, 518 →
+101 "Select a monster to equip.", 520 → 119 take control, 526 → 341 show, 528 → 357 change position, 549 → 222 attack
+target, 551 → 94 target; otherwise none. Live: MST read "Select card to destroy.", Gravity Axe - Grarl "Select a
+monster to equip.". The picks answer the engine;
 no pick cancels when it allows: a choice the player may back out of (`can_cancel`, or a chain list that isn't forced)
 opens as kind 1 whatever its min. The list's own script (`dlg_cardlist.swf`) then cancels on a right-click: with
 `_cancelable` (always set, `0x4C73A0`) and no picks required (kind 1–5 → `+0x5C` 0, `0x4C72D0`) it calls `decide`
