@@ -479,6 +479,8 @@ pub struct Hub {
     /// User events, and the last event id handed out.
     events: Vec<crate::events::Event>,
     last_event: u32,
+    /// Where the events are kept (none: they end with the server).
+    events_file: Option<std::path::PathBuf>,
     /// Where the duel logs are kept, and the HTTP port clients download them from (none: no logs).
     duel_logs: Option<std::path::PathBuf>,
     http_port: u16,
@@ -755,6 +757,30 @@ impl Hub {
     /// Keeps the teams in `file`.
     pub fn keep_teams(&mut self, file: &std::path::Path) {
         self.teams = Teams::load(file);
+    }
+
+    /// Keeps the user events in `file`: the ones still open come back at the next start. A running event cannot (its
+    /// duels die with the server, and its players are no longer in the lobby), so it ends there without a winner.
+    pub fn keep_events(&mut self, file: &std::path::Path) {
+        self.events_file = Some(file.to_path_buf());
+        let saved = match crate::store::read(file) {
+            Ok(saved) => saved.unwrap_or(serde_json::Value::Null),
+            Err(e) => {
+                tracing::warn!("events not read: {e}");
+                serde_json::Value::Null
+            }
+        };
+        self.last_event = self.last_event.max(saved["last_event"].as_u64().unwrap_or(0) as u32);
+        let kept = saved["events"].as_array().into_iter().flatten().filter_map(crate::events::Event::from_json);
+        self.events = kept.filter(|e| e.status == crate::events::OPEN).collect();
+    }
+
+    fn save_events(&self) {
+        let Some(file) = &self.events_file else { return };
+        let events: Vec<serde_json::Value> = self.events.iter().filter(|e| e.status != crate::events::FINISHED).map(|e| e.to_json()).collect();
+        if let Err(e) = crate::store::write(file, &serde_json::json!({ "last_event": self.last_event, "events": events })) {
+            tracing::warn!("events not saved to {}: {e}", file.display());
+        }
     }
 
     /// A player as the accounts keep them (none without accounts).
@@ -1174,8 +1200,8 @@ impl Hub {
         if add { m.with("to_name", Value::text(&self.social.name(other))) } else { m }
     }
 
-    /// A matched duel is over: its match and table go.
-    /// A duel between players is over (with its winner, if it had one): an event's round goes on.
+    /// A duel between players is over (with its winner, if it had one): its match and table go, and an event's round
+    /// goes on.
     pub fn end_match(&mut self, duel_id: u32, winner: Option<u32>) {
         self.matches.remove(&duel_id);
         self.tables.remove(&duel_id);
@@ -1185,21 +1211,79 @@ impl Hub {
         let (_, players) = event.round.remove(i);
         // The loser is out; without a winner (nobody started) both are.
         event.alive.retain(|p| !players.contains(p) || Some(*p) == winner);
+        if let Some(w) = winner {
+            event.advance(w);
+            event.second = players.into_iter().find(|p| *p != w);
+        }
         if event.round.is_empty() {
             self.next_round(at);
+        } else {
+            self.save_events();
+        }
+    }
+
+    /// The duels of an event's round under way (tests).
+    pub fn event_duels(&self, event_id: u32) -> Vec<u32> {
+        self.events.iter().find(|e| e.id == event_id).map(|e| e.round.iter().map(|(d, _)| *d).collect()).unwrap_or_default()
+    }
+
+    /// A duel of an event's round has begun (a player sat at its table): the lobby's status goes to "Duel in Progress".
+    pub fn duel_began(&mut self, duel_id: u32) {
+        let Some(at) = self.events.iter().position(|e| e.round.iter().any(|(d, _)| *d == duel_id)) else { return };
+        if !self.events[at].dueling {
+            self.events[at].dueling = true;
+            self.refresh_lobby(at, &[6]);
+        }
+    }
+
+    /// Tells an event's players to ask the lobby again (`0x32D4 {flag}`, `0x4CC5B0`): 2 the entries and phase blocks,
+    /// 3 the bracket, 4 the timer, 5 the counts, 6 the state.
+    fn refresh_lobby(&self, at: usize, flags: &[u32]) {
+        for p in self.events[at].players() {
+            for flag in flags {
+                self.push(p, &Message::reply(0x32D4).with("flag", Value::U32(*flag)));
+            }
+        }
+    }
+
+    /// An entry or a leaving while the event is open: the others' lobbies ask for the entries, the bracket and the counts
+    /// again.
+    fn refresh_others(&self, at: usize, me: u32) {
+        for p in self.events[at].players().into_iter().filter(|p| *p != me) {
+            for flag in [2, 3, 5] {
+                self.push(p, &Message::reply(0x32D4).with("flag", Value::U32(flag)));
+            }
+        }
+    }
+
+    /// The round banner (`0x32D3 {round, total_round, status}`: 1 "Starting ...", 0 "... has now finished"; the lobby
+    /// reads `total_round` as the round's name, see `Event::round_label`).
+    fn round_banner(&self, at: usize, starting: bool) {
+        let event = &self.events[at];
+        let label = Value::U32(event.round_label());
+        let banner = Message::reply(0x32D3)
+            .with("round", label.clone())
+            .with("total_round", label)
+            .with("status", Value::U32(starting as u32));
+        for p in event.players() {
+            self.push(p, &banner);
         }
     }
 
     /// Pairs an event's players still in for its next round, each pair getting the match push 0x1978 as the matching
     /// agent does (TournamentScene's 0x4CC60C reads it the same way), the last one without a partner going through;
-    /// with one player left the event is finished.
+    /// with one player left the event is finished. The lobby is told: the round's banner, the bracket, the state.
     fn next_round(&mut self, at: usize) {
         let alive = self.events[at].alive.clone();
+        if self.events[at].round_number > 0 {
+            self.round_banner(at, false);
+        }
         if alive.len() <= 1 {
-            self.events[at].status = crate::events::FINISHED;
+            self.finish_event(at);
             return;
         }
         self.events[at].round_number += 1;
+        self.events[at].dueling = false;
         let event = self.events[at].clone();
         let rule: Vec<(String, Value)> = [
             ("match_type", "match_type"),
@@ -1215,12 +1299,17 @@ impl Hub {
         let times = Some((event.int("duel_time_turn"), event.int("duel_time_total"))).filter(|(turn, _)| *turn > 0);
         let mut round = vec![];
         for pair in alive.chunks(2) {
-            let [a, b] = pair else { continue };
+            let [a, b] = pair else {
+                // The one without a partner goes through.
+                self.events[at].advance(pair[0]);
+                continue;
+            };
             let records = [*a, *b].map(|p| self.online.values().find(|o| o.player_id == p).map(|o| o.record.clone()));
             let [Some(ra), Some(rb)] = records else {
-                // A player gone forfeits.
-                let gone = if records[0].is_none() { *a } else { *b };
+                // A player gone forfeits; the other goes through.
+                let (gone, stays) = if records[0].is_none() { (*a, *b) } else { (*b, *a) };
                 self.events[at].alive.retain(|p| *p != gone);
+                self.events[at].advance(stays);
                 continue;
             };
             self.last_duel += 1;
@@ -1237,7 +1326,29 @@ impl Hub {
         self.events[at].round = round;
         if self.events[at].round.is_empty() {
             self.next_round(at);
+            return;
         }
+        self.round_banner(at, true);
+        self.refresh_lobby(at, &[6, 5, 2, 3]);
+        self.save_events();
+    }
+
+    /// The last player is left: the winner and the runner-up (`0x3307`), and the lobby's final state.
+    fn finish_event(&mut self, at: usize) {
+        self.events[at].status = crate::events::FINISHED;
+        self.events[at].round = vec![];
+        let event = &self.events[at];
+        let (winner, second) = (event.alive.first().copied().unwrap_or(0), event.second.unwrap_or(0));
+        let push = Message::reply(0x3307)
+            .with("winner", Value::U32(winner))
+            .with("winner_name", Value::text(&event.name(winner)))
+            .with("second", Value::U32(second))
+            .with("second_name", Value::text(&event.name(second)));
+        for p in event.players() {
+            self.push(p, &push);
+        }
+        self.refresh_lobby(at, &[6, 5, 3]);
+        self.save_events();
     }
 
     /// The user event requests (UserEventScene 0x4D9BB0, the lobby 0x4CBD70). Each reply's error twin is the id after
@@ -1261,8 +1372,8 @@ impl Hub {
                 let fields: Vec<(String, Value)> = msg.fields.iter().chain(msg.items.first().map(|i| &i.fields).into_iter().flatten()).filter(|(k, _)| k != "request").cloned().collect();
                 // User event ids start above the built-in ones (Create Duel and NPC duels 1, Auto Duel 2).
                 self.last_event = self.last_event.max(FIRST_USER_EVENT - 1) + 1;
-                let event = Event { id: self.last_event, host: (me, my_name.into()), fields, status: OPEN, entrants: vec![], alive: vec![], round: vec![], round_number: 0 };
-                self.events.push(event);
+                self.events.push(Event::new(self.last_event, (me, my_name.into()), fields));
+                self.save_events();
                 Message::reply(0x33F4).with("event_id", Value::U32(self.last_event))
             }
             // An entry -> 0x33FA; the others get 0x3399 {entry_name, entry_type 1}.
@@ -1280,6 +1391,10 @@ impl Hub {
                 for p in others {
                     self.push(p, &push);
                 }
+                if let Some(at) = self.events.iter().position(|e| e.id == event_id) {
+                    self.refresh_others(at, me);
+                }
+                self.save_events();
                 Message::reply(0x33FA)
             }
             // Leaving (not the host) -> 0x178F; the others get 0x3399 {entry_type 2}.
@@ -1295,6 +1410,10 @@ impl Hub {
                 for p in others {
                     self.push(p, &push);
                 }
+                if let Some(at) = self.events.iter().position(|e| e.id == event_id) {
+                    self.refresh_others(at, me);
+                }
+                self.save_events();
                 Message::reply(0x178F)
             }
             // The host cancels -> 0x33F6; the others get 0x3394 and leave the lobby.
@@ -1304,6 +1423,7 @@ impl Hub {
                 for (p, _) in event.entrants.iter().filter(|(p, _)| *p != me) {
                     self.push(*p, &Message::reply(0x3394));
                 }
+                self.save_events();
                 Message::reply(0x33F6)
             }
             // The host starts it (two players at least) -> 0x33F8; everyone gets 0x3396, then the first round's pairs
@@ -1316,6 +1436,8 @@ impl Hub {
                 let event = &mut self.events[at];
                 event.status = RUNNING;
                 event.alive = event.entrants.iter().map(|(p, _)| *p).collect();
+                event.slots = event.entrants.clone();
+                event.wins.clear();
                 for p in event.alive.clone() {
                     self.push(p, &Message::reply(0x3396));
                 }
@@ -1330,48 +1452,65 @@ impl Hub {
                 Some(e) => Message::reply(0x1780).item(e.row().with("official", Value::U32(0))),
                 None => fail(0x1780, 0),
             },
+            // The entries (0x4D13F0): the seats of the bracket, each with what 0x4CEBE0 shows of them (name, face).
             0x32CA => {
-                let entrants = self.events.iter().find(|e| e.id == event_id).map(|e| e.entrants.clone()).unwrap_or_default();
-                let list = Message::reply(0x32FD).with("total_num", Value::U32(entrants.len() as u32));
-                entrants.iter().skip(int("start_index") as usize).fold(list, |m, (p, _)| m.item(Message::record().with("player_id", Value::U32(*p))))
+                let Some(event) = self.events.iter().find(|e| e.id == event_id) else { return Message::reply(0x32FD).with("total_num", Value::U32(0)) };
+                let seats = event.seats();
+                let list = Message::reply(0x32FD).with("total_num", Value::U32(seats.len() as u32));
+                seats.iter().skip(int("start_index") as usize).fold(list, |m, (p, name)| {
+                    let avatar = self.online.values().find(|o| o.player_id == *p).and_then(|o| o.record.get("avatar1").cloned());
+                    let item = Message::record().with("player_id", Value::U32(*p)).with("player_name", Value::text(name)).with("remain", Value::U32(0));
+                    m.item(match avatar {
+                        Some(a) => item.with("avatar1", a),
+                        None => item,
+                    })
+                })
             }
             // The lobby's state (0x4CC5B0): the tournament (0x32FB), its timer (0x3301), the counts (0x3303) and the
             // blocks (0x3305). A user event has no official tournament data.
             0x32C9 => {
                 let event = self.events.iter().find(|e| e.id == event_id);
-                let winner = event.filter(|e| e.status == crate::events::FINISHED).and_then(|e| e.alive.first().copied());
-                let winner_name = winner.and_then(|w| event?.entrants.iter().find(|(p, _)| *p == w).map(|(_, n)| n.clone())).unwrap_or_default();
+                let winner = event.and_then(|e| e.winner());
+                let second = event.filter(|_| winner.is_some()).and_then(|e| e.second);
+                let name = |p: Option<u32>| p.and_then(|p| event.map(|e| e.name(p))).unwrap_or_default();
                 // status is the lobby's own state (+0x2F8): above 1 the event has begun and the host's Start/Cancel go
-                // (0x4CE670); 0 open, 2 running, 3 finished (**guess** beyond that).
-                let state = match event.map(|e| e.status) {
-                    Some(crate::events::RUNNING) => 2,
-                    Some(crate::events::FINISHED) => 3,
-                    _ => 0,
-                };
+                // (0x4CE670); 0 open, 6 "Prepare to Duel", 7 "Duel in Progress", 8 "Event Completed". `total_round` is the
+                // round's name (0x3BCD + n, see Event::round_label), shown beside the status.
+                let label = event.map_or(0, |e| e.round_label());
                 Message::reply(0x32FB)
                     .with("event_id", Value::U32(event_id))
-                    .with("status", Value::U32(state))
+                    .with("status", Value::U32(event.map_or(0, |e| e.lobby_status())))
                     .with("phase", Value::U32(0))
-                    .with("round", Value::U32(event.map_or(0, |e| e.round_number)))
-                    .with("total_round", Value::U32(event.map_or(0, |e| (e.entrants.len().max(1) as f64).log2().ceil() as u32)))
+                    .with("round", Value::U32(label))
+                    .with("total_round", Value::U32(label))
                     .with("winner", Value::U32(winner.unwrap_or(0)))
-                    .with("winner_name", Value::text(&winner_name))
-                    .with("second", Value::U32(0))
-                    .with("second_name", Value::text(""))
+                    .with("winner_name", Value::text(&name(winner)))
+                    .with("second", Value::U32(second.unwrap_or(0)))
+                    .with("second_name", Value::text(&name(second)))
             }
             0x32CC => Message::reply(0x3301).with("timer", Value::U32(0)),
             0x32CD => {
                 let event = self.events.iter().find(|e| e.id == event_id);
                 Message::reply(0x3303)
                     .with("alive_num", Value::U32(event.map_or(0, |e| if e.alive.is_empty() { e.entrants.len() } else { e.alive.len() }) as u32))
-                    .with("entry_num", Value::U32(event.map_or(0, |e| e.entrants.len()) as u32))
+                    .with("entry_num", Value::U32(event.map_or(0, |e| e.seats().len()) as u32))
                     .with("watch_num", Value::U32(0))
             }
-            0x32CE => ["phase_block1", "phase_block2", "phase_block3", "remain"].into_iter().fold(Message::reply(0x3305), |m, k| m.with(k, Value::U32(0))),
-            // The bracket map: a flag byte per node (0x49 of them, 0x4D0F40 copies them unchecked and 0x4CF4A0 lights the
-            // non-zero ones); without it the lobby crashed (live, NULL at 0x4D10A9). Nothing lit (**guess**).
-            0x32D5 => Message::reply(0x3309).with("map_data", Value::Bin(vec![0; 0x49])),
-            0x32CB => Message::reply(0x32FF),
+            // The blocks the round plays in (0x3305, lit on the bracket map by 0x4CF4A0; -1 for none).
+            0x32CE => {
+                let blocks = self.events.iter().find(|e| e.id == event_id).map_or([u32::MAX; 3], |e| e.phase_blocks());
+                let reply = Message::reply(0x3305).with("remain", Value::U32(0));
+                ["phase_block1", "phase_block2", "phase_block3"].into_iter().zip(blocks).fold(reply, |m, (k, b)| m.with(k, Value::U32(b)))
+            }
+            // The bracket map: a flag byte per block (0x49 of them, 0x4D0F40 copies them unchecked and 0x4CF4A0 lights the
+            // non-zero ones; the lobby shows block 0 first when its flag is set); without it the lobby crashed (live,
+            // NULL at 0x4D10A9).
+            0x32D5 => Message::reply(0x3309).with("map_data", Value::Bin(self.events.iter().find(|e| e.id == event_id).map_or(vec![0; crate::events::MAP_BLOCKS], |e| e.map_data()))),
+            // A block of the bracket (0x4D10F0 asks for the one at its index, 0x4CEBE0 draws it): item `block_number`.
+            0x32CB => {
+                let block = self.events.iter().find(|e| e.id == event_id).and_then(|e| e.block(int("block_index")));
+                block.into_iter().fold(Message::reply(0x32FF), |m, b| m.item(b))
+            }
             // The event list (search_flag 1 all; the other criteria aren't kept): open and running events.
             0x1789 => {
                 let shown: Vec<&Event> = self.events.iter().filter(|e| e.status != crate::events::FINISHED).collect();

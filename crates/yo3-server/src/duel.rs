@@ -273,7 +273,9 @@ impl DuelSession {
         let table = {
             let mut hub = self.hub.lock().expect("hub lock");
             let make = || Arc::new(Mutex::new(Table::new(self.world.clone(), self.hub.clone(), duel_id, seed)));
-            hub.tables.entry(duel_id).or_insert_with(make).clone()
+            let table = hub.tables.entry(duel_id).or_insert_with(make).clone();
+            hub.duel_began(duel_id);
+            table
         };
         let mut t = table.lock().expect("table lock");
         let Some((seat, out)) = t.sit(player_id, entry, outbox) else { return vec![] };

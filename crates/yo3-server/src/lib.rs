@@ -250,6 +250,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         hub.keep_social(&dir.join("friends.json"));
         hub.keep_mail(&dir.join("mail.json"));
         hub.keep_teams(&dir.join("teams.json"));
+        hub.keep_events(&dir.join("events.json"));
         hub.keep_duel_logs(&dir.join("duellogs"), addrs.3.port());
     }
     hub.set_directory(directory.clone());
