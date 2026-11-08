@@ -225,6 +225,11 @@ const STAGED_UID: u32 = 0xF0_0000;
 /// the text's %s.
 const TEXT: u32 = 1 << 28;
 const CARD_NAME: u32 = 5 << 28;
+/// Message entry kinds 2 (a line break) and 8 (a number put into the text's `%d`, `0x519D60`), and the duel prompt
+/// text "Select %d card(s)."
+const LINE_BREAK: u32 = 2 << 28;
+const NUMBER: u32 = 8 << 28;
+const SELECT_COUNT_TEXT: u32 = 592;
 /// Duel prompt texts: "Select the @3monster(s)@0 as @3Tribute@0.", 'Activate the effect of "@3%s@0"?', 'Use the
 /// effect of "@3%s@0"?', "Use the effect now?".
 const TRIBUTE_TEXT: u32 = 18;
@@ -737,8 +742,20 @@ impl Translator {
         let source = self.sides[from.player as usize].zone(from.zone);
         let at = if from.zone == DECK || from.zone == EXTRA {
             source.iter().position(|c| cards.get(&c.row).map(|s| s.cid) == Some(cid)).or(if source.is_empty() { None } else { Some(0) })
+        } else if source.is_empty() {
+            None
         } else {
-            (!source.is_empty()).then(|| from.index.min(source.len() - 1))
+            // The engine's sequence, unless the mirror holds another card there: a list zone that fell out of step
+            // with the engine would move (and show) the wrong card, so the card with the id is taken instead.
+            let at = from.index.min(source.len() - 1);
+            let id_at = |i: usize| cards.get(&source[i].row).map(|s| s.cid);
+            let known = cid != 0 && !self.tokens.contains(&source[at].uid);
+            if known && id_at(at) != Some(cid) && let Some(found) = (0..source.len()).find(|&i| id_at(i) == Some(cid)) {
+                tracing::warn!("mirror out of step: card {cid} not at {from:?}, found at {found}");
+                Some(found)
+            } else {
+                Some(at)
+            }
         };
         let Some(at) = at else { return vec![] };
         let card = source.remove(at);
@@ -1173,10 +1190,19 @@ impl Translator {
         out.push(command(LIST_BEGIN, [selects.len() as u32, max, 0, 0]));
         out.extend(fours(LIST_ROWS, &rows));
         out.extend(fours(LIST_MARKS, &marks));
-        if let Some(text) = text {
-            out.extend(message(&[TEXT | text]));
+        // A list that needs several picks says how many (min == max here): the hint alone left a player of Magical Hats
+        // with one card marked and no hint that a second one decides.
+        let several = m["min"].as_u64().unwrap_or(1) >= 2 && max >= 2 && kind != PICK_MIXED;
+        let entries: Vec<u32> = match (text, several) {
+            (Some(text), true) => vec![TEXT | text, LINE_BREAK, TEXT | SELECT_COUNT_TEXT, NUMBER | max],
+            (None, true) => vec![TEXT | SELECT_COUNT_TEXT, NUMBER | max],
+            (Some(text), false) => vec![TEXT | text],
+            (None, false) => vec![],
+        };
+        if !entries.is_empty() {
+            out.extend(message(&entries));
         }
-        out.push(command(CARD_LIST, [player, kind, text.is_some() as u32, 0]));
+        out.push(command(CARD_LIST, [player, kind, !entries.is_empty() as u32, 0]));
         out
     }
 

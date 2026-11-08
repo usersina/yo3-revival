@@ -1106,6 +1106,17 @@ no animation yet (DuelBattle's commands `0xA`–`0xE` are unmapped).
   1 a text of the duel prompt table, 2 a line break, 5 a card name by Konami id (`0x5374B0`) put into the text's
   `%s`; 3 and 4 (formatted texts), 6, 7 (names through `0x5375D0`, `0x5376B0`) and 8 (a number) are not used yet. Closing it sends `6 {SetIndex}`, a
   `7 {index, data}` per pick and `4 {DLGResult: picks}` (`0x4C74F0`).
+  Entry kind 8 is a number put into the previous text's `%d` (`0x519D60`; shape, live: "Select 2 card(s)." read
+  right). A list that needs two or more picks (the engine's min, even when the list opens as kind 1 because it can be
+  cancelled) ends its message with a line break and duel prompt text 592, "Select %d card(s).", with the list's max
+  as the number. Live (Magical Hats, `--duel-deck` of Hats and Captains): the Deck's Spell/Traps list is a plain
+  MSG_SELECT_CARD min 2 max 2 (17 cards, kind 6): one pick only marks (1), the second decides at once (the Flash has
+  no OK button to show, `onCardClick`), and the hint alone ("Select the monster(s) to Special Summon.", which is
+  EDOPro's hint and right for the card) never said a second pick was needed, so the stall in the screenshot session
+  was a player waiting for an OK that this list never has. Live after the change: Gaia The Fierce Knight over two
+  Marauding Captains read "Select the monster(s) as Tribute. / Select 2 card(s)." and two picks summoned it. The
+  server, like the original, waits for the player on an open list (between players the duel clocks end it, see
+  Clocks).
 
 The server uses the card list for the client's MSG_SELECT_CARD and MSG_SELECT_TRIBUTE (targets, tributes, attack
 targets, discards…): the rows from its mirror, the opponent's cards marked, kind 1 for min 0, `0x27` for min 1, else 6

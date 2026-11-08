@@ -10,7 +10,7 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 - [▶ Windows VM test (2026-11-08): what a real Windows client turned up](#-windows-vm-test-2026-11-08-what-a-real-windows-client-turned-up)
 - [▶ Robustness review (2026-11-08): what three code reviews found, and the fixes](#-robustness-review-2026-11-08-what-three-code-reviews-found-and-the-fixes)
 - [▶ Monkey testing (2026-11-08): two monkeys, what they covered and found](#-monkey-testing-2026-11-08-two-monkeys-what-they-covered-and-found)
-- [▶ Screenshot session (2026-11-08): two things seen playing NPC duels](#-screenshot-session-2026-11-08-two-things-seen-playing-npc-duels)
+- [✅ Screenshot session (2026-11-08): two things seen playing NPC duels](#-screenshot-session-2026-11-08-two-things-seen-playing-npc-duels)
 - [✅ M0: Research and tooling](#-m0-research-and-tooling)
 - [✅ M1: Stable world](#-m1-stable-world)
 - [✅ M2: An instrumented client](#-m2-an-instrumented-client)
@@ -26,7 +26,7 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 
 As of 2026-11-08 the server covers every feature the client uses: M0 to M2 (research, a stable world, an instrumented
 client) and M5 (duels) are done, M3 (social) and M6 (play with friends) are done apart from checking on real friends'
-machines, and M4 (accounts, collection and economy) has one open item, the deck list's own save. Two duel problems found since are open (screenshot session). What is left is
+machines, and M4 (accounts, collection and economy) has one open item, the deck list's own save. Two duel problems found in the screenshot session are settled (one fixed, one hardened and watched). What is left is
 tracked as `[ ]` boxes in the sections below and in "Open questions and guesses".
 
 | Where | What it is |
@@ -287,20 +287,23 @@ Findings:
 - Real-client requests the server answers with nothing: duel `0x200A` (the first seat waits for the second, by design)
   and `0x200C` (duel messages that only produce commands). Nothing else was UNHANDLED.
 
-## ▶ Screenshot session (2026-11-08): two things seen playing NPC duels
+## ✅ Screenshot session (2026-11-08): two things seen playing NPC duels
 
 Found while playing Kaiba Corporation duels on the headless client for the README's screenshots (Elemental Heroes
-and Miracle Magic official decks). Neither is fixed or traced yet.
+and Miracle Magic official decks). Both are traced below.
 
-- [ ] Magical Hats (a Trap, chained to an attack) stalls the duel: after "Yes", the target pick works, then a
-      "Select the monster(s) to Special Summon" list shows five or more Spell/Trap cards. Picking one only marks it (1);
-      no OK button shows, Return and a right click do nothing, and the server logs no further request, so the client
-      waits forever. The prompt's wording and card kind don't fit the card, so the select message's kind or min/max for
-      this card is probably wrong.
-- [ ] A card's art went wrong once: after Mystical Space Typhoon was activated from the hand in a chain with Call of the
-      Haunted, a Normal Summon from the hand (Elemental Hero Sparkman, 1600/1400) landed on the field with Mystical
-      Space Typhoon's art, and the hand showed the Typhoon's art for a card that was not one. Stats were right, so the
-      card id sent for that hand slot or table entry is stale. Seen once; not reproduced.
+- [x] Magical Hats (a Trap, chained to an attack) "stalled" the duel: after "Yes", the target pick works, then a
+      list of 17 Spell/Traps shows; picking one only marked it and no OK button showed. Traced live (2026-11-08):
+      the engine asks MSG_SELECT_CARD min 2 max 2, the list is right (kind 6, max 2) and the second pick decides at
+      once; the hint never says two picks are needed. Fixed by naming the count on every list that needs two or more
+      picks ("Select 2 card(s)."). See "Card lists" in the protocol notes.
+- [x] A card's art went wrong once (Mystical Space Typhoon with Call of the Haunted, then a Normal Summon of
+      Elemental Hero Sparkman showing the Typhoon's art). Not reproduced: the move streams of this chain replay
+      consistently in a contract test and the packet logs of the session show no move whose row differs from its
+      table entry. One way the mirror can go wrong was closed anyway: a card leaving a hand, Graveyard or banished
+      pile was taken at the engine's sequence without checking its id; it is now taken by its id when another card
+      sits there (a warning logs "mirror out of step" if it ever happens). If the art goes wrong again, look for
+      that line in the server log.
 
 ## ✅ M0: Research and tooling
 

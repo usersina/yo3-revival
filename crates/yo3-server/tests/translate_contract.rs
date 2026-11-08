@@ -556,7 +556,8 @@ fn tributes_use_the_card_list_too() {
         "selects": [card_at(0, 2, 0, 4100), card_at(0, 2, 1, 4101)] });
     let out = client_commands(t.prompt(&tribute));
     assert_eq!(out[0], (0x3EF, [2, 2, 0, 0]));
-    assert_eq!(out[4], (0x3ED, [1 << 28 | 18, 0, 0, 0]));
+    // A list that needs two picks names the count (text 592 "Select %d card(s)." and the number entry 8).
+    assert_eq!(out[4], (0x3ED, [1 << 28 | 18, 2 << 28, 1 << 28 | 592, 8 << 28 | 2]));
     assert_eq!(out[5], (0x37, [0, 6, 1, 0]));
     t.pick(1);
     t.pick(0);
@@ -1525,4 +1526,52 @@ fn leaving_the_battle_phase_takes_the_swords_down() {
     assert_eq!(ids(t.events(&[json!({ "type": 41, "phase": 0x100 })])), [0xE, 5]);
     // Main Phase 2 to the End Phase: no battle to end.
     assert_eq!(ids(t.events(&[json!({ "type": 41, "phase": 0x200 })])), [5]);
+}
+
+#[test]
+fn magical_hats_list_of_two_says_how_many_and_two_picks_answer() {
+    // Magical Hats (HINTMSG_SPSUMMON, then MSG_SELECT_CARD min 2 max 2 over the Spell/Traps of the Deck): the card
+    // list opens as kind 6 (OK needs both picks; the Flash decides at the second, `dlg_cardlist.swf` onCardClick).
+    // Live, with one card marked the list showed nothing about a second pick, so the dialog's text now ends with
+    // "Select 2 card(s)." (duel prompt text 592, a line break, and the number entry 8, `0x519D60`).
+    let (mut t, _) = translator();
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }] })]);
+    t.events(&[json!({ "type": 2, "player": 0, "hint_type": 3, "hint": 509 })]);
+    let deck = |seq, cid| card_at(0, 1, seq, cid);
+    let select = json!({ "type": 15, "player": 0, "can_cancel": false, "min": 2, "max": 2,
+        "selects": [deck(0, 4101), deck(1, 4102), deck(2, 4103), deck(3, 4104), deck(4, 4105), deck(5, 4106)] });
+    let out = client_commands(t.prompt(&select));
+    assert_eq!(out.iter().find(|c| c.0 == 0x3EF), Some(&(0x3EF, [6, 2, 0, 0])));
+    assert!(out.contains(&(0x3ED, [1 << 28 | 25, 2 << 28, 1 << 28 | 592, 8 << 28 | 2])), "{out:x?}");
+    assert_eq!(out.last(), Some(&(0x37, [0, 6, 1, 0])));
+    t.pick(4);
+    t.pick(1);
+    assert_eq!(t.dialog_result(2), Some(Prompt::Answer(json!({ "type": 5, "indicies": [4, 1] }))));
+}
+
+#[test]
+fn a_card_leaving_a_list_zone_is_taken_by_its_id_when_the_mirror_is_out_of_step() {
+    // The mirror takes the card at the engine's sequence; if another card sits there (the zones fell out of step),
+    // the move must carry the card the engine named, not the stale one (a wrong card's art on the field).
+    let (mut t, _) = translator();
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }, { "cid": 4101 }, { "cid": 4102 }] })]);
+    // The engine says the Spell (4100) leaves hand sequence 1 (the mirror holds 4101 there).
+    let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 1, 10), "to": loc(0, 8, 1, 1) })]).iter().map(cmd).collect();
+    // uid 1 holds row 100; its table entry and its move.
+    assert_eq!(out[0], (1000, [1, 100, 0, 0x600]));
+    assert_eq!(out[1], (0x1A, [1 | 100 << 16, 0x56, 0x400C, 0]));
+}
+
+#[test]
+fn a_cancelable_list_of_two_names_the_count_too() {
+    // A Tribute Summon of a Level 7 can be cancelled (can_cancel), so its list opens as kind 1 (OK needs none) with
+    // max 2 (live: Gaia The Fierce Knight over two Marauding Captains showed only "Select the monster(s) as Tribute."):
+    // the count line goes on whenever the engine needs two or more picks.
+    let mut t = with_cards();
+    let tribute = json!({ "type": 20, "player": 0, "can_cancel": true, "min": 2, "max": 2,
+        "selects": [card_at(0, 2, 0, 4100), card_at(0, 2, 1, 4101)] });
+    let out = client_commands(t.prompt(&tribute));
+    assert_eq!(out[0], (0x3EF, [2, 2, 0, 0]));
+    assert_eq!(out[4], (0x3ED, [1 << 28 | 18, 2 << 28, 1 << 28 | 592, 8 << 28 | 2]));
+    assert_eq!(out[5], (0x37, [0, 1, 1, 0]));
 }
