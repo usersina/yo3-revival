@@ -1341,6 +1341,16 @@ same moment can swap (the connections carry nothing but the address); the key is
 precedes a login. The key is a bearer secret in a URL, so use it over a VPN or a trusted network (the gate and front
 carry no password either). Not seen: the client does not re-fetch the index between its own gate and front connections.
 
+**The patch HTTP server's endpoints** (port 8080; our own, not the client's): `GET /yo3/<anything>/yo3.idx` (the client's
+index, and where a key is presented, above), `GET /duellogs/NAME.dlog`, `GET /app/` (empty 200, `InfoURL`), and the join
+page (`crates/yo3-server/src/join.rs`, off with `--no-join`, then 404): `GET /join` (the form; for an address that
+has accounts, their keys and lines again, and "Keep my account" for an address-only account), `GET /join?name=NAME`
+(makes a key account with that one player, the rules of Create Player: 1 to 16 characters, no control characters,
+unique ignoring case; at most 4 accounts per address, 20 an hour in all; 400 with a message otherwise), `GET
+/join?keep=1` (gives the address-only account a key, as `yo3-server key ADDR`) and `GET /join/yo3.ini?key=KEY` (the
+five lines as `[Yo3]`, CRLF, `Content-Disposition: attachment; filename="yo3.ini"`). The host in the lines is the
+request's `Host` header without its port. The key is a bearer secret in plain HTTP: VPN or LAN only.
+
 The gate's redirect (`0x21FE {host, port}`) and the duel server's `0x22C4 duelData {host, port}` carry the address
 each client reached the server at (the connection's own address), unless the server is told one: one server then
 answers on loopback, a LAN and a VPN at once. Live: a client whose `yo3.ini` named the LAN address got the LAN

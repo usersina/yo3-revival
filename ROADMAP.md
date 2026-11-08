@@ -293,6 +293,9 @@ Stop finding missing fields one crash at a time.
 - [x] Sessions registry: who is online, in which room (`Hub`); sessions leave on disconnect
 - [x] Accounts by client address (the client never sends credentials), up to four players each; since then also by key
       (see M4 "Real accounts")
+- [x] Self-service join page (`http://HOST:8080/join`, `--no-join` to turn it off): a friend picks a player name and gets
+      a key account with a downloadable `yo3.ini`; a repeat visit shows the same key, an address-only account can be
+      kept with a key; at most 4 accounts per address and 20 an hour (a guess). Tests: `tests/join.rs`.
 - [x] Two clients at once: `YO3_INSTANCE=b` with its own display and reflinked Wine prefix
 - [x] Player search returns the players online, filtered by name, level or id; both clients list each other
       (needed the friend and black list pushes, `0x251C`/`0x252A`)

@@ -61,6 +61,7 @@ target/release/yo3-server accounts                              # admin (server 
 #   move-account OLD NEW (address accounts only), add-account NAME [--also B,C] [--advertise HOST] (a key account: prints the key and
 #   the friend's yo3.ini), key ADDR|PLAYER (prints, or makes, an existing account's key). An account's key is the secret in
 #   PatchUpdateUrl (`/yo3/<key>/`): the client fetches it before every login, see docs/protocol.md "Accounts"
+#   the join page: http://HOST:8080/join makes a friend's key account (no host step; `--no-join` turns it off, for servers open to the internet)
 #   [--replace] (a friend's address changed: the account goes along; --replace discards one already at NEW)
 tools/release.sh                                                # the host's bundles in dist/ (Linux, Windows); the friends' guide is docs/friends.md
 #   once: rustup target add x86_64-pc-windows-gnu (mingw-w64 links it). A Windows build under Wine needs its own prefix

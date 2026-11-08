@@ -33,20 +33,31 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
    `--regulation`, e.g. `./run.sh --regulation "Season 16"`, `"OCG 2006-09-01"` or `1` (the game's first list); an
    unknown name lists them all. Auto Duel and Kaiba Corporation check decks against it; it shows as "Latest
    Regulation" in Create Duel, where a host can still pick another (Create Duel → Customize → Regulations → Select).
-3. Make an account for each friend. The game never sends a name or password, so an account is found by a secret
-   **key** that rides in the friend's `PatchUpdateUrl` (the game fetches that address before every login). With the
-   server stopped:
+3. Share the join page. Friends make their own account at **`http://HOST:8080/join`** (HOST is the address they reach
+   you at: your LAN or VPN address, or your public name). Nothing else to run, and the server can stay up. The game
+   never sends a name or password, so an account is found by a secret **key** that rides in the friend's
+   `PatchUpdateUrl` (the game fetches that address before every login); the page makes the account (one player with
+   the name the friend picks, the starter deck, the starting BP), shows the friend their five `yo3.ini` lines (the host
+   in them is the address the friend typed, from the request's `Host` header) and a download of a ready `yo3.ini`.
+   Whoever has the key can play as that friend, and it travels in a plain HTTP address, so use the page over a VPN or
+   a LAN. **On a server reachable from the internet start it with `--no-join`** (`./run.sh --no-join`): `/join` then
+   answers 404 and you make accounts by hand, below.
+
+   Limits: a friend's address gets its account back when it visits `/join` again (its key and lines are shown again),
+   may make up to four accounts (a second name, for a second person behind the same router), and the page makes at
+   most 20 accounts per hour in all. A friend who already played here without a key (an account found by their
+   address alone) sees a "Keep my account" button: it gives that account a key, so nothing is lost. Players can also
+   be made by the friends themselves at Select Player (an empty slot says "Create Player": a name, then the avatar) and
+   deleted (Delete; the password it asks for can be anything).
+
+   **By hand instead**, for hosts who prefer it (or with `--no-join`), with the server stopped:
 
    ```sh
    ./yo3-server add-account Anis --advertise 100.64.0.5   # Anis's account, first player "Anis"; --also Alt,Spare adds more
    ```
 
    It prints the key and the `yo3.ini` lines to send Anis (`--advertise` is the address friends reach you at; without it
-   the lines say `HOST`, which you replace). A friend pastes those lines (their step 2 below) and logs in to their own
-   account from any address or network, and friends behind the same router each get their own. Keep the key to its
-   friend: whoever has it can play as them. Players can also be made by the friends themselves at Select Player (an
-   empty slot says "Create Player": a name, then the avatar) and deleted (Delete; the password it asks for can be
-   anything).
+   the lines say `HOST`, which you replace). Friends behind the same router each get their own account.
 
    ```sh
    ./yo3-server accounts                     # who's who: address, key, players
@@ -93,24 +104,27 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
 ## For every player
 
 1. Install Yu-Gi-Oh! ONLINE 3. On Windows it runs as it is; on Linux it runs under Wine.
-2. Open `yo3.ini` in the install folder (`C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3`), keep a copy of the
-   original, and point **all five lines** at the host (here `100.64.0.5`; the host itself can use `127.0.0.1`). If
-   the host sent you your lines, paste them over the `[Yo3]` section as they are: the secret in your `PatchUpdateUrl`
-   (the part after `/yo3/`) is what makes the server give you your own account, wherever you connect from. The
-   game checks for updates at `PatchUpdateUrl` before it connects at all, and Konami's addresses are gone, so
-   changing only the first line isn't enough. Windows protects Program Files: edit the file with Notepad run as
-   administrator, or give your user write permission on `yo3.ini` first.
+2. Open the host's join page, `http://HOST:8080/join` (the host tells you HOST), type the player name you want and
+   press Join. The page shows your `yo3.ini`: press **Download yo3.ini** and put the file in the install folder
+   (`C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3`), replacing the one there (keep a copy of the original). Windows
+   protects Program Files: copy the file in with Explorer and accept the administrator prompt, or give your user write
+   permission on `yo3.ini` first. The secret in your `PatchUpdateUrl` (the part after `/yo3/`) is what makes the server
+   give you your own account, wherever you connect from, so keep the file to yourself. If you lose it, open the join
+   page again from the same address and it shows your lines again.
+
+   Without the page (the host made your account, or turned the page off), paste the lines the host sent over the
+   `[Yo3]` section by hand. All five lines must point at the host (here `100.64.0.5`; the host itself can use
+   `127.0.0.1`): the game checks for updates at `PatchUpdateUrl` before it connects at all, and Konami's addresses are
+   gone, so changing only the first line isn't enough.
 
    ```ini
    [Yo3]
    GateServerAddress=100.64.0.5
    GateServerPort=5730
-   PatchUpdateUrl=http://100.64.0.5:8080/yo3/
+   PatchUpdateUrl=http://100.64.0.5:8080/yo3/<your key>/
    PatchDataUrl=http://100.64.0.5:8080/ygoda/patch/
    InfoURL=http://100.64.0.5:8080/app/
    ```
-
-   With a key, your `PatchUpdateUrl` reads `http://100.64.0.5:8080/yo3/<your key>/`.
 
 3. Start the game, press ONLINE, log in with any name and password (they aren't checked), then pick your player.
 4. Once: open **Main Menu → Edit Deck** and leave it again. That saves your starter deck and three official
@@ -184,6 +198,6 @@ Main Menu > Rental Card List shows what they lent and borrowed. Players' decks s
   `--advertise`.
 - **Both friends get the same players, or a friend lands in an empty "Duelist" account:** the server didn't see their
   key. Check that `PatchUpdateUrl` in their `yo3.ini` has the key (`.../yo3/<key>/`), that the host made the account
-  with `add-account` or `key`, and that the server's log shows `presented an account key` when they start the game.
+  with the join page, `add-account` or `key`, and that the server's log shows `presented an account key` when they start the game.
   Without a key, friends behind one router share one account (make keys for them).
 - The server's log is in the terminal; every packet is also written to `logs/packets-*.jsonl`.
