@@ -49,6 +49,9 @@ struct Args {
     /// Every player's extra deck in a duel, as CARD_Prop rows (to test an extra deck summon).
     #[arg(long, value_delimiter = ',')]
     duel_extra: Vec<u16>,
+    /// Every duel between players' turn and total clocks in seconds, 0 for off: `--duel-time 0,0` (to test slowly).
+    #[arg(long, value_delimiter = ',')]
+    duel_time: Option<Vec<u32>>,
     /// The banlist players log in with, for Auto Duel and NPC duels: a regulation id or name, e.g. "Season 16" or 1
     /// (the Beta list). Default: "unlimited" (no banned or limited cards). Hosted duels use the host's choice.
     #[arg(long)]
@@ -105,6 +108,7 @@ async fn main() -> anyhow::Result<()> {
         duel_lp: a.duel_lp,
         duel_deck: a.duel_deck,
         duel_extra: a.duel_extra,
+        duel_time: a.duel_time.map(|t| (t.first().copied().unwrap_or(0), t.get(1).copied().unwrap_or(0))),
         data_dir: Some(a.data_dir),
         regulation: a.regulation,
     };

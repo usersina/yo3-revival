@@ -50,6 +50,8 @@ pub struct Config {
     pub duel_deck: Vec<u16>,
     /// Testing aid: every player's extra deck in a duel, as CARD_Prop rows (empty: their own).
     pub duel_extra: Vec<u16>,
+    /// Testing aid: every duel between players' turn and total clocks in seconds, 0 for off (none: the duel's own).
+    pub duel_time: Option<(u32, u32)>,
     /// Where accounts and duel records are kept (none: in memory only).
     pub data_dir: Option<PathBuf>,
     /// The banlist players log in with (Auto Duel and NPC duels), as a regulation id or name ("unlimited"); none:
@@ -73,6 +75,7 @@ impl Config {
             duel_lp: 8000,
             duel_deck: vec![],
             duel_extra: vec![],
+            duel_time: None,
             data_dir: None,
             regulation: None,
         }
@@ -135,6 +138,7 @@ fn world(cfg: &Config, duel_port: u16) -> anyhow::Result<World> {
             start_lp: cfg.duel_lp,
             test_deck: (!cfg.duel_deck.is_empty()).then(|| cfg.duel_deck.clone()),
             test_extra: (!cfg.duel_extra.is_empty()).then(|| cfg.duel_extra.clone()),
+            test_times: cfg.duel_time,
             npcs: data.npc_ids(),
             npc_decks: data
                 .npc_ids()

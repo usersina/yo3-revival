@@ -341,6 +341,8 @@ pub struct World {
     pub test_deck: Option<Vec<u16>>,
     /// Testing aid: every player's extra deck in a duel, as CARD_Prop rows.
     pub test_extra: Option<Vec<u16>>,
+    /// Testing aid: every duel between players' turn and total clocks in seconds (0: off), over a hosted duel's.
+    pub test_times: Option<(u32, u32)>,
     /// The rules engine's directory (engine/, once fetched); without it the server deals the opening itself.
     pub engine_dir: Option<std::path::PathBuf>,
     /// Where clients connect for their duels (0x22C4 duelData host and port).
@@ -369,6 +371,7 @@ impl World {
             start_lp: 8000,
             test_deck: None,
             test_extra: None,
+            test_times: None,
             duel_server: ("127.0.0.1".into(), 0),
             news: vec![
                 (

@@ -181,8 +181,9 @@ impl Table {
         let lp = hosted.filter(|_| self.world.start_lp == DEFAULT_LP).unwrap_or(self.world.start_lp);
         let answer = engine.new_duel(crate::duel::next(&mut self.rng), lp, [(&m0, &e0), (&m1, &e1)]);
         self.engine = Some(engine);
-        // A hosted duel's time_turn and time_total, else Create Duel's defaults.
-        let (turn, total) = self.seats.iter().find_map(|s| s.entry.times).unwrap_or((DEFAULT_TURN, DEFAULT_TOTAL));
+        // A hosted duel's time_turn and time_total, else Create Duel's defaults, unless the server's were set to test.
+        let hosted = self.seats.iter().find_map(|s| s.entry.times);
+        let (turn, total) = self.world.test_times.or(hosted).unwrap_or((DEFAULT_TURN, DEFAULT_TOTAL));
         self.first = first;
         self.clocks = Clocks::new(turn, total);
         self.lp = lp;

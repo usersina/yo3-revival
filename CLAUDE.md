@@ -50,7 +50,8 @@ cargo run --release -p yo3-server -- --log-dir logs --players Yugi,Kaiba   # ser
 #   --regulation 1: the login banlist (an id or a name from the client's 20; default 3, "unlimited", no banlist)
 #   testing aids: --duel-lp 1000 (reach a duel's end in one attack), --duel-deck 1149,1449 (the player's main deck as
 #   CARD_Prop rows repeated to 40: here Marauding Captain and Giant Orc, for a yes/no question and a card choice),
-#   --duel-extra 3437 (the extra deck as rows: Goyo Guardian, a Synchro for Krebons 3397 and Giant Orc)
+#   --duel-extra 3437 (the extra deck as rows: Goyo Guardian, a Synchro for Krebons 3397 and Giant Orc),
+#   --duel-time 0,0 (the turn and total clocks of duels between players off: live checks are slower than 180 s a turn)
 ss -ltnp | grep ':5730 '                                        # find the server's pid to stop it
 #   state: accounts and records persist in data/ (ignored; --data-dir), backed up into data/backups/ at each start
 target/release/yo3-server accounts                              # admin (server stopped): list, add-player ADDR NAME, rename OLD NEW
