@@ -31,11 +31,15 @@ pub struct Event {
     pub second: Option<u32>,
     /// A duel of the round has begun (a player sat at its table): the lobby says "Duel in Progress".
     pub dueling: bool,
+    /// The wait between rounds: the lobby says "Match-ups coming up", and the next round starts at `next_at`.
+    pub waiting: bool,
+    pub next_at: Option<std::time::Instant>,
 }
 
 /// The lobby's own status (`0x32FB`'s `status`, TournamentScene `+0x2F8`; texts at `0x4CE670`): 0 and 1 the event
-/// coming up, 6 "Prepare to Duel", 7 "Duel in Progress", 8 "Event Completed". Above 1 the host's Start and Cancel go.
+/// coming up, 4 "Match-ups coming up", 6 "Prepare to Duel", 7 "Duel in Progress", 8 "Event Completed". Above 1 the host's Start and Cancel go.
 pub const LOBBY_OPEN: u32 = 0;
+pub const LOBBY_MATCHUPS: u32 = 4;
 pub const LOBBY_PREPARE: u32 = 6;
 pub const LOBBY_DUELING: u32 = 7;
 pub const LOBBY_COMPLETED: u32 = 8;
@@ -49,13 +53,14 @@ const LAST_LEVEL: u32 = 0x48;
 
 impl Event {
     pub fn new(id: u32, host: (u32, String), fields: Vec<(String, Value)>) -> Event {
-        Event { id, host, fields, status: OPEN, entrants: vec![], alive: vec![], round: vec![], round_number: 0, slots: vec![], wins: vec![], second: None, dueling: false }
+        Event { id, host, fields, status: OPEN, entrants: vec![], alive: vec![], round: vec![], round_number: 0, slots: vec![], wins: vec![], second: None, dueling: false, waiting: false, next_at: None }
     }
 
     /// The lobby's status.
     pub fn lobby_status(&self) -> u32 {
         match self.status {
             OPEN => LOBBY_OPEN,
+            RUNNING if self.waiting => LOBBY_MATCHUPS,
             RUNNING if self.dueling => LOBBY_DUELING,
             RUNNING => LOBBY_PREPARE,
             _ => LOBBY_COMPLETED,
@@ -101,12 +106,14 @@ impl Event {
     /// The round as the lobby names it: `0x4CE670` shows the text `0x3BCD + n` ("1st Round" ... "6th Round", 7 Quarter-Final,
     /// 8 Semi-Finals, 9 Final) and the banners `0x32D3` the matching "Starting ..." and "... has now finished" (`0x4CC5B0`).
     pub fn round_label(&self) -> u32 {
-        match self.total_rounds().saturating_sub(self.round_number) {
-            _ if self.round_number == 0 => 0,
+        // While the lobby waits it names the round to come.
+        let round = self.round_number + self.waiting as u32;
+        match self.total_rounds().saturating_sub(round) {
+            _ if round == 0 => 0,
             0 => 9,
             1 if self.total_rounds() > 1 => 8,
             2 if self.total_rounds() > 2 => 7,
-            _ => self.round_number.min(6),
+            _ => round.min(6),
         }
     }
 

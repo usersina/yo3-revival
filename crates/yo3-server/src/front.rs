@@ -481,6 +481,8 @@ pub struct Hub {
     last_event: u32,
     /// Where the events are kept (none: they end with the server).
     events_file: Option<std::path::PathBuf>,
+    /// How long the lobby waits between an event's rounds (the winners go through the result screens first).
+    round_delay: std::time::Duration,
     /// Where the duel logs are kept, and the HTTP port clients download them from (none: no logs).
     duel_logs: Option<std::path::PathBuf>,
     http_port: u16,
@@ -757,6 +759,24 @@ impl Hub {
     /// Keeps the teams in `file`.
     pub fn keep_teams(&mut self, file: &std::path::Path) {
         self.teams = Teams::load(file);
+    }
+
+    /// How long an event waits between two rounds (none by default).
+    pub fn set_round_delay(&mut self, delay: std::time::Duration) {
+        self.round_delay = delay;
+    }
+
+    /// Starts the rounds whose wait is over (called every second).
+    pub fn tick_events(&mut self, now: std::time::Instant) {
+        let due: Vec<usize> = (0..self.events.len()).filter(|&at| self.events[at].next_at.is_some_and(|t| t <= now)).collect();
+        for at in due {
+            self.events[at].next_at = None;
+            self.events[at].waiting = false;
+            for p in self.events[at].players() {
+                self.push(p, &Message::reply(0x3302));
+            }
+            self.start_round(at);
+        }
     }
 
     /// Keeps the user events in `file`: the ones still open come back at the next start. A running event cannot (its
@@ -1216,7 +1236,7 @@ impl Hub {
             event.second = players.into_iter().find(|p| *p != w);
         }
         if event.round.is_empty() {
-            self.next_round(at);
+            self.next_round(at, false);
         } else {
             self.save_events();
         }
@@ -1270,10 +1290,9 @@ impl Hub {
         }
     }
 
-    /// Pairs an event's players still in for its next round, each pair getting the match push 0x1978 as the matching
-    /// agent does (TournamentScene's 0x4CC60C reads it the same way), the last one without a partner going through;
-    /// with one player left the event is finished. The lobby is told: the round's banner, the bracket, the state.
-    fn next_round(&mut self, at: usize) {
+    /// A round is over, or the event has just started: the winner if one player is left, else the next round after
+    /// the wait (the lobby shows "Match-ups coming up" and the timer `0x3301` meanwhile; `immediate` skips it).
+    fn next_round(&mut self, at: usize, immediate: bool) {
         let alive = self.events[at].alive.clone();
         if self.events[at].round_number > 0 {
             self.round_banner(at, false);
@@ -1282,6 +1301,25 @@ impl Hub {
             self.finish_event(at);
             return;
         }
+        if self.events[at].round_number > 0 && !immediate && !self.round_delay.is_zero() {
+            let event = &mut self.events[at];
+            event.waiting = true;
+            event.dueling = false;
+            event.next_at = Some(std::time::Instant::now() + self.round_delay);
+            for p in self.events[at].players() {
+                self.push(p, &Message::reply(0x3301).with("timer", Value::U32(self.round_delay.as_secs() as u32)));
+            }
+            self.refresh_lobby(at, &[6, 5, 3]);
+            return;
+        }
+        self.start_round(at);
+    }
+
+    /// Pairs an event's players still in for the next round, each pair getting the match push 0x1978 as the matching
+    /// agent does (TournamentScene's 0x4CC60C reads it the same way), the last one without a partner going through.
+    /// The lobby is told: the round's banner, the bracket, the state.
+    fn start_round(&mut self, at: usize) {
+        let alive = self.events[at].alive.clone();
         self.events[at].round_number += 1;
         self.events[at].dueling = false;
         let event = self.events[at].clone();
@@ -1325,7 +1363,7 @@ impl Hub {
         }
         self.events[at].round = round;
         if self.events[at].round.is_empty() {
-            self.next_round(at);
+            self.next_round(at, true);
             return;
         }
         self.round_banner(at, true);
@@ -1441,7 +1479,7 @@ impl Hub {
                 for p in event.alive.clone() {
                     self.push(p, &Message::reply(0x3396));
                 }
-                self.next_round(at);
+                self.next_round(at, true);
                 Message::reply(0x33F8)
             }
             // The lobby: the event (official 0, its name, the host), the entries, and the official tournament's data,
@@ -1488,7 +1526,11 @@ impl Hub {
                     .with("second", Value::U32(second.unwrap_or(0)))
                     .with("second_name", Value::text(&name(second)))
             }
-            0x32CC => Message::reply(0x3301).with("timer", Value::U32(0)),
+            // The time to the next round (0x3301, shown as the lobby's TIME by 0x4CEAD0).
+            0x32CC => {
+                let left = self.events.iter().find(|e| e.id == event_id).and_then(|e| e.next_at).map_or(0, |t| t.saturating_duration_since(std::time::Instant::now()).as_secs());
+                Message::reply(0x3301).with("timer", Value::U32(left as u32))
+            }
             0x32CD => {
                 let event = self.events.iter().find(|e| e.id == event_id);
                 Message::reply(0x3303)

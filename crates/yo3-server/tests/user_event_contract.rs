@@ -300,3 +300,33 @@ fn open_events_are_kept_across_restarts() {
     assert_eq!(one(yugi.send(req_with(0x3395, &[("event_id", Value::U32(open))]))).request(), Some(0x33F8));
     assert_eq!(requests(&kaiba.pushed())[..2], [0x3396, 0x1978]);
 }
+
+#[test]
+fn the_lobby_waits_between_rounds() {
+    // Between rounds the winners are still on their result screens: the lobby says "Match-ups coming up" (status 4,
+    // 0x4CE670) with the time to the next round (0x3301 {timer}, 0x32CC; 0x4CEAD0 shows it), and the next round's
+    // banner and match push follow when the time is up (0x3302 clears the timer).
+    let server = Server::new();
+    let delay = std::time::Duration::from_secs(20);
+    server.hub.lock().unwrap().set_round_delay(delay);
+    let (mut yugi, mut kaiba, _joey, event_id) = started_three(&server);
+    let duel_id = server.hub.lock().unwrap().event_duels(event_id)[0];
+    yugi.pushed();
+    kaiba.pushed();
+    server.hub.lock().unwrap().end_match(duel_id, Some(1001));
+    let pushed = yugi.pushed();
+    let timer = pushed.iter().find(|m| m.request() == Some(0x3301)).expect("timer");
+    assert_eq!(int(timer, "timer"), Some(20));
+    assert!(!requests(&pushed).contains(&0x1978));
+    let state = ask(&mut kaiba, 0x32C9, event_id, &[]);
+    // The round to come is named: the final.
+    assert_eq!((int(&state, "status"), int(&state, "total_round")), (Some(4), Some(9)));
+    assert!(int(&ask(&mut kaiba, 0x32CC, event_id, &[]), "timer").is_some_and(|t| (1..=20).contains(&t)));
+    // Nothing happens early; when the time is up the final is paired.
+    server.hub.lock().unwrap().tick_events(std::time::Instant::now());
+    assert!(!requests(&yugi.pushed()).contains(&0x1978));
+    server.hub.lock().unwrap().tick_events(std::time::Instant::now() + delay);
+    let pushed = yugi.pushed();
+    assert_eq!(requests(&pushed)[..3], [0x3302, 0x1978, 0x32D3]);
+    assert_eq!(int(&ask(&mut kaiba, 0x32C9, event_id, &[]), "status"), Some(6));
+}

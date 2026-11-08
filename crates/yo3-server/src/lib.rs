@@ -203,6 +203,9 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
     Ok(world)
 }
 
+/// How long a user event waits between two of its rounds: the winners get through the result screens to the lobby.
+const EVENT_ROUND_DELAY: std::time::Duration = std::time::Duration::from_secs(20);
+
 pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let packets = Arc::new(log::PacketLog::create(&cfg.log_dir)?);
     let gate = TcpListener::bind((cfg.bind, cfg.gate_port)).await?;
@@ -253,6 +256,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         hub.keep_events(&dir.join("events.json"));
         hub.keep_duel_logs(&dir.join("duellogs"), addrs.3.port());
     }
+    hub.set_round_delay(EVENT_ROUND_DELAY);
     hub.set_directory(directory.clone());
     let hub = Arc::new(Mutex::new(hub));
     let front_task = {
@@ -273,6 +277,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
             loop {
                 every.tick().await;
                 duel::tick_tables(&hub, std::time::Instant::now());
+                hub.lock().expect("hub lock").tick_events(std::time::Instant::now());
             }
         })
     };
