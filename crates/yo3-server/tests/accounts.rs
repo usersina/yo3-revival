@@ -380,3 +380,19 @@ fn admin_commands_work_on_key_accounts_by_player_name() {
     assert!(d.set_country_of(user, "Tunisia").is_err());
     assert_eq!(d.accounts().count(), 0, "move-account and the address listing only see address accounts");
 }
+
+#[test]
+fn a_fetch_without_a_known_key_forgets_the_previous_key_of_that_address() {
+    // A friend who removes the key from yo3.ini, or a second friend behind the same address without one, must not
+    // land in the account of the key presented minutes ago.
+    let mut d = Directory::new(vec!["Yugi".into()]);
+    let key = d.add_account(&["Anis".into()]).unwrap();
+    let by_address = d.account_for(ip(1));
+    let now = Instant::now();
+    d.present_key(ip(1), &key, now);
+    d.present_no_key(ip(1));
+    assert_eq!(d.login(ip(1), now).user_id, by_address.user_id);
+    d.present_key(ip(1), &key, now);
+    assert!(!d.present_key(ip(1), "wrongwrongwrongwrong", now));
+    assert_eq!(d.login(ip(1), now).user_id, by_address.user_id);
+}

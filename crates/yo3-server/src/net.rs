@@ -200,6 +200,8 @@ pub async fn http_loop(listener: TcpListener, game_dir: PathBuf, duel_logs: Opti
                     } else if key.len() >= KEY_LEN {
                         tracing::warn!("[http] {} presented an unknown key; its login stays with its address", peer.ip());
                     }
+                } else {
+                    accounts.locked().present_no_key(peer.ip());
                 }
                 match tokio::fs::read(game_dir.join("yo3.idx")).await {
                     Ok(b) => ("200 OK", b),

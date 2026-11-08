@@ -177,13 +177,21 @@ impl Directory {
     }
 
     /// Notes that `addr` presented `key` (the patch server saw `/yo3/<key>/yo3.idx`) at `now`; whether the key is
-    /// an account's. An unknown key is not kept: the address's login stays with its address account.
+    /// an account's. An unknown key counts as none: it forgets what the address presented before, so its login
+    /// goes to its address account (the most recent fetch decides, and a client without a key is the most recent).
     pub fn present_key(&mut self, addr: IpAddr, key: &str, now: Instant) -> bool {
         let known = self.accounts.iter().any(|e| e.key.as_deref() == Some(key));
         if known {
             self.presented.insert(addr, (key.to_string(), now));
+        } else {
+            self.presented.remove(&addr);
         }
         known
+    }
+
+    /// A fetch of the patch index from `addr` with no key in the URL: see `present_key`.
+    pub fn present_no_key(&mut self, addr: IpAddr) {
+        self.presented.remove(&addr);
     }
 
     /// The account a client connecting from `addr` logs in to at `now`: that of the key the address presented most
