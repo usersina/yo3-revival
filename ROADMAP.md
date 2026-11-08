@@ -87,6 +87,14 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
       attack shattered and left the field.
 - [x] Testing aid: `--duel-time 0,0` turns the clocks of duels between players off (live checks run slower than
       180 s a turn).
+- [x] Checked live in three more duels between the headless clients (to the end at 4000 LP): Pot of Greed, Change of
+      Heart on a Set monster (it moved to the taker's side; its menu offered only Flip Summon), Man-Eater Bug's flip
+      effect, Book of Moon, an attack on a Set monster (the card-back list), Dark Hole, Black Rose Dragon's wipe with a
+      chained Spellbinding Circle, Monster Reborn from either Graveyard, Mirror Force, Witch of the Black Forest's
+      deck search, a three-link chain, and WINNER / LOSER with the records on both clients.
+- [ ] Open: cards an effect reveals (EDOPro's MSG_CONFIRM_CARDS, e.g. Witch of the Black Forest's "show it to your
+      opponent") aren't shown to the opponent; the client's HandShow / HandOpen (`0x13`, `0x14`) are the likely way,
+      not read yet.
 - [ ] Open: a monster whose position an effect changes right after its summon (Stumbling) stayed upright on its
       owner's screen when no prompt came in between (the other client turned it; with a chain question in between both
       did). Client-side timing, not understood yet.
