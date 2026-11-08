@@ -50,6 +50,9 @@ pub struct Player {
     pub cards: BTreeMap<u16, u32>,
     /// The structure decks the player bought (preset deck ids, in order), listed after the starter deck.
     pub decks: Vec<u32>,
+    /// The decks the player's clients uploaded at Select Deck (0x1F4F update_type 1), oldest first: the deck list
+    /// hands them to a client that lacks a deck of that name, so decks follow the player to another machine.
+    pub uploaded: Vec<Deck>,
     /// The protectors and avatar items the player owns, by pbin id (their bits in the record's pbin).
     pub items: std::collections::BTreeSet<u16>,
     /// Cards traded away from the starter deck: CARD_Prop row -> count.
@@ -130,6 +133,7 @@ impl Player {
             title: 0,
             cards: BTreeMap::new(),
             decks: vec![],
+            uploaded: vec![],
             items: Default::default(),
             given: BTreeMap::new(),
             eval_num: 0,
@@ -389,6 +393,9 @@ impl Room {
 /// Server-wide state shared by all sessions.
 pub struct World {
     pub regulation_ids: Vec<u16>,
+    /// The client's banlists by id (`regulation_ids` with their cards), which a duel's deck is checked against. Empty
+    /// without the game's data: then no deck is checked.
+    pub regulations: HashMap<u32, yo3_data::Regulation>,
     /// The banlist accounts log in with (0x219A, 0x2201 regulation_id): Auto Duel's and the NPC duel's deck check.
     pub login_regulation: u32,
     /// The highest CARD_Prop row: the client's per-card arrays have one byte per row (row 0 is a dummy).
@@ -405,6 +412,8 @@ pub struct World {
     pub token_rows: HashMap<String, Vec<u16>>,
     /// Each player's LP at the start of a duel (8000; lower only to test).
     pub start_lp: u32,
+    /// Testing aid: the regulation every duel's deck is checked against, over the duel's own.
+    pub test_regulation: Option<u32>,
     /// Testing aid: every player's main deck in a duel, as CARD_Prop rows repeated to 40 cards.
     pub test_deck: Option<Vec<u16>>,
     /// Testing aid: every player's extra deck in a duel, as CARD_Prop rows.
@@ -431,6 +440,7 @@ impl World {
     pub fn new(regulation_ids: Vec<u16>) -> World {
         World {
             regulation_ids,
+            regulations: HashMap::new(),
             login_regulation: LOGIN_REGULATION,
             card_rows: 0,
             starter_deck: None,
@@ -440,6 +450,7 @@ impl World {
             token_rows: HashMap::new(),
             engine_dir: None,
             start_lp: 8000,
+            test_regulation: None,
             test_deck: None,
             test_extra: None,
             test_times: None,
@@ -2020,6 +2031,70 @@ impl FrontSession {
         }
     }
 
+    /// The regulation a duel is played under (its rule's `regulation_id`; 0 means the login one).
+    fn duel_regulation(&self, duel_id: Option<u32>) -> u32 {
+        let find = |rule: &[(String, Value)]| rule.iter().find(|(k, _)| k == "regulation_id").and_then(|(_, v)| v.as_u32());
+        if let Some(id) = self.world.test_regulation {
+            return id;
+        }
+        let Some(id) = duel_id else { return 0 };
+        match self.duels.get(&id) {
+            Some(rule) => find(rule),
+            None => self.hub().matches.get(&id).and_then(|m| find(&m.rule)),
+        }
+        .unwrap_or(0)
+    }
+
+    /// Whether the selected player may bring `deck` to the duel: sizes, cards owned (with the ones they borrowed) and
+    /// the duel's regulation, as the client checks them itself.
+    fn check_deck(&self, duel_id: Option<u32>, deck: &Deck) -> Result<(), crate::deckcheck::Refusal> {
+        let me = self.player();
+        let saved = self.directory.as_ref().and_then(|d| d.lock().expect("directory lock").player(me.player_id).cloned());
+        let mut owned = crate::trade::collection(&self.world, saved.as_ref().unwrap_or(me));
+        for row in self.hub().rentals.borrowed_by(me.player_id) {
+            *owned.entry(row).or_default() += 1;
+        }
+        crate::deckcheck::check(&self.world, self.duel_regulation(duel_id), &owned, deck)
+    }
+
+    /// The decks the selected player's clients uploaded, as the accounts keep them now.
+    fn uploaded_decks(&self) -> Vec<Deck> {
+        let Some(at) = self.selected else { return vec![] };
+        let me = &self.account.players[at];
+        let saved = self.directory.as_ref().and_then(|d| d.lock().expect("directory lock").player(me.player_id).map(|p| p.uploaded.clone()));
+        saved.unwrap_or_else(|| me.uploaded.clone())
+    }
+
+    /// Changes the selected player's uploaded decks, here and in the accounts.
+    fn change_uploaded(&mut self, change: impl Fn(&mut Vec<Deck>)) {
+        let Some(at) = self.selected else { return };
+        let mut decks = self.uploaded_decks();
+        change(&mut decks);
+        self.account.players[at].uploaded.clone_from(&decks);
+        if let Some(d) = &self.directory {
+            d.lock().expect("directory lock").update_player(self.account.players[at].player_id, |p| p.uploaded = decks);
+        }
+    }
+
+    /// A deck the player picked at Select Deck: kept by name (a newer upload replaces it; the oldest goes when ten are
+    /// kept), unless the starter deck's name or an empty deck.
+    fn keep_deck(&mut self, deck: Deck) {
+        if deck.name.is_empty() || deck.main.is_empty() || self.world.starter_deck.as_ref().is_some_and(|s| s.name == deck.name) {
+            return;
+        }
+        self.change_uploaded(|decks| {
+            decks.retain(|d| d.name != deck.name);
+            decks.push(deck.clone());
+            let extra = decks.len().saturating_sub(10);
+            decks.drain(..extra);
+        });
+    }
+
+    /// The editor deleted a deck: the server forgets its copy.
+    fn forget_deck(&mut self, name: &str) {
+        self.change_uploaded(|decks| decks.retain(|d| d.name != name));
+    }
+
     /// Select Player's create 0x1F4A {pindex, pname} (builder 0x4F2D50) -> 0x2262, after which the client lists its
     /// players again; 0x2263 for a slot taken, a name taken, empty or too long, or a full account.
     fn create_player(&mut self, msg: &Message) -> Message {
@@ -2269,7 +2344,12 @@ impl FrontSession {
             0x1F4E => {
                 let owned = self.selected.map(|at| self.account.players[at].decks.clone()).unwrap_or_default();
                 let bought = owned.iter().filter_map(|&id| self.world.structure_decks.iter().find(|s| s.deck.id == id)).map(|s| &s.deck);
-                self.world.starter_deck.iter().chain(bought).take(10).fold(Message::reply(0x22C8), |m, d| m.item(d.record()))
+                let listed: Vec<&Deck> = self.world.starter_deck.iter().chain(bought).collect();
+                // Then the decks this player's clients uploaded, unless a listed deck has the name (the client would
+                // keep its own copy anyway). The newest account state: another machine may have uploaded since.
+                let uploaded = self.uploaded_decks();
+                let kept: Vec<&Deck> = uploaded.iter().filter(|u| !listed.iter().any(|l| l.name == u.name)).collect();
+                listed.into_iter().chain(kept).take(10).fold(Message::reply(0x22C8), |m, d| m.item(d.record()))
             }
             0x17D4 => return self.duel_ready(msg),
             // Deck updated: the deck editor's save, and the deck a player picks for a duel (DuelManager
@@ -2277,6 +2357,21 @@ impl FrontSession {
             0x1F4F => {
                 let duel_id = msg.get("duel_id").and_then(Value::as_u32);
                 let player_id = self.player().player_id;
+                // Select Deck (update_type 1): the deck must pass the check the client makes itself. 0x22CB shows
+                // text 0x2919 and leaves the duel scene (0x50EFD5).
+                if msg.get("update_type").and_then(Value::as_u32) == Some(1)
+                    && let Some(item) = msg.items.first()
+                    && let Err(why) = self.check_deck(duel_id, &Deck::from_record(item))
+                {
+                    tracing::info!("player {player_id}'s deck refused for duel {duel_id:?}: {why:?}");
+                    return vec![Message::reply(0x22CB)];
+                }
+                // Select Deck (update_type 1) sends the whole deck: keep it for the player's other machines.
+                if msg.get("update_type").and_then(Value::as_u32) == Some(1)
+                    && let Some(item) = msg.items.first()
+                {
+                    self.keep_deck(Deck::from_record(item));
+                }
                 if let (Some(id), Some(item)) = (duel_id, msg.items.first()) {
                     let deck = Deck::from_record(item);
                     let mut hub = self.hub();
@@ -2295,7 +2390,11 @@ impl FrontSession {
                 Message::reply(0x22CA)
             }
             // Deck deleted (its local file is already gone); the starter deck comes back on the next list.
-            0x1F50 => Message::reply(0x22CC),
+            0x1F50 => {
+                let name = msg.get("deck_name").and_then(Value::as_str).unwrap_or_default();
+                self.forget_deck(&name);
+                Message::reply(0x22CC)
+            }
             // NPC roster (kept in slot 4; SelectNpcScene 0x4BEB40 reads it three items per NPC, ids 120 + 3k on).
             // The picked item becomes the opponent's PlayerData. Level j is mastered once the experience with its id
             // (the record's npcbin) reaches its need_ex (0: mastered from the start; 0x4BFDC4 divides by the three

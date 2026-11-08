@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value as Json, json};
 
-use crate::front::{Account, COMMENTS, Player, SPEECHES};
+use crate::front::{Account, COMMENTS, Deck, Player, SPEECHES};
 use crate::store;
 
 /// The client shows four player slots.
@@ -61,6 +61,16 @@ impl Directory {
                 player.comments = lines("comments", COMMENTS);
                 player.title = p["title"].as_u64().unwrap_or(0) as u32;
                 player.decks = p["decks"].as_array().into_iter().flatten().filter_map(|d| d.as_u64()).map(|d| d as u32).collect();
+                for deck in p["uploaded"].as_array().into_iter().flatten() {
+                    let rows = |k: &str| -> Vec<u16> { deck[k].as_array().into_iter().flatten().filter_map(|r| r.as_u64()).map(|r| r as u16).collect() };
+                    player.uploaded.push(Deck {
+                        id: deck["id"].as_u64().unwrap_or(0) as u32,
+                        name: deck["name"].as_str().unwrap_or_default().to_string(),
+                        main: rows("main"),
+                        extra: rows("extra"),
+                        side: rows("side"),
+                    });
+                }
                 player.items = p["items"].as_array().into_iter().flatten().filter_map(|i| i.as_u64()).map(|i| i as u16).collect();
                 for pair in p["given"].as_array().into_iter().flatten() {
                     if let (Some(row), Some(count)) = (pair[0].as_u64(), pair[1].as_u64()) {
@@ -271,7 +281,12 @@ impl Directory {
                         let avatar: String = p.avatar.iter().map(|b| format!("{b:02x}")).collect();
                         let cards: Vec<[u32; 2]> = p.cards.iter().map(|(&row, &n)| [row as u32, n]).collect();
                         let given: Vec<[u32; 2]> = p.given.iter().map(|(&row, &n)| [row as u32, n]).collect();
-                        json!({ "player_id": p.player_id, "name": p.name, "index": p.index, "level": p.level, "avatar": avatar,
+                        let uploaded: Vec<Json> = p
+                            .uploaded
+                            .iter()
+                            .map(|d| json!({ "id": d.id, "name": d.name, "main": d.main, "extra": d.extra, "side": d.side }))
+                            .collect();
+                        json!({ "player_id": p.player_id, "uploaded": uploaded, "name": p.name, "index": p.index, "level": p.level, "avatar": avatar,
                             "speeches": p.speeches, "comments": p.comments, "title": p.title, "cards": cards, "decks": p.decks,
                             "items": p.items, "given": given, "eval_num": p.eval_num, "eval_total": p.eval_total })
                     })

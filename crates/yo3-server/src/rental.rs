@@ -174,6 +174,11 @@ impl Rentals {
         self.active().filter(|r| r.lender.0 == player_id).flat_map(|r| r.lists.iter().flatten().copied()).collect()
     }
 
+    /// The cards a player has borrowed now: the client adds them to the player's collection (0x4F6340).
+    pub fn borrowed_by(&self, player_id: u32) -> Vec<u16> {
+        self.active().filter(|r| r.borrower.0 == player_id).flat_map(|r| r.lists.iter().flatten().copied()).collect()
+    }
+
     /// The records pushed to a player (0x2D6C, kept in dataset slot 8): the rentals not over that they lent or
     /// borrowed. The client works its collection out from them.
     pub fn records_for(&self, player_id: u32) -> Message {

@@ -65,3 +65,108 @@ fn deleting_a_deck_is_acknowledged() {
     assert_eq!(r.request(), Some(0x22CC));
     assert_eq!(r.fields.len(), 1);
 }
+
+// Decks follow a player to another machine. The deck editor never uploads a save (the local file only), but a duel's
+// Select Deck sends the whole deck it picked (0x1F4F update_type 1, DuelManager 0x50ECF0), so the server keeps those
+// and lists them in 0x22C8, where a client that lacks a deck of that name saves it (0x43E550).
+mod follow {
+    use std::net::{IpAddr, Ipv4Addr};
+    use std::sync::{Arc, Mutex};
+
+    use super::*;
+    use yo3_proto::Packet;
+    use yo3_server::accounts::Directory;
+
+    const ADDR: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5));
+
+    fn upload(c: &mut common::Client, update_type: u32, name: &str, main: &[u16]) {
+        let deck = Message::deck()
+            .with("deck_id", Value::U32(7))
+            .with("deck_name", Value::text(name))
+            .with("discription", Value::text(""))
+            .with("card_protector", Value::U32(0))
+            .with("main", Value::u16_be_array(main))
+            .with("extra", Value::u16_be_array(&[]))
+            .with("side", Value::u16_be_array(&[]));
+        let Packet::Message(m) = req_with(0x1F4F, &[("duel_id", Value::U32(1)), ("event_id", Value::U32(0)), ("update_type", Value::U32(update_type))])
+        else {
+            unreachable!()
+        };
+        assert_eq!(one(c.send(Packet::Message(m.item(deck)))).request(), Some(0x22CA));
+    }
+
+    fn names(c: &mut common::Client) -> Vec<String> {
+        one(c.send(req(0x1F4E))).items.iter().map(|d| d.get("deck_name").and_then(Value::as_str).unwrap()).collect()
+    }
+
+    fn setup() -> (Server, Arc<Mutex<Directory>>) {
+        (Server::with_world(world()), Arc::new(Mutex::new(Directory::new(vec!["Yugi".into()]))))
+    }
+
+    #[test]
+    fn a_deck_picked_for_a_duel_is_listed_on_another_machine() {
+        let (server, d) = setup();
+        let mut here = server.join_from(&d, ADDR);
+        upload(&mut here, 1, "Dragons", &[10, 11, 12]);
+        let mut there = server.join_from(&d, ADDR);
+        assert_eq!(names(&mut there), ["Starter Deck", "Dragons"]);
+        let list = one(there.send(req(0x1F4E)));
+        assert_eq!(list.items[1].tag, 6);
+        assert_eq!(list.items[1].get("main"), Some(&Value::u16_be_array(&[10, 11, 12])));
+        // the same name again updates it rather than adding one
+        upload(&mut here, 1, "Dragons", &[10]);
+        let list = one(there.send(req(0x1F4E)));
+        assert_eq!(list.items.len(), 2);
+        assert_eq!(list.items[1].get("main"), Some(&Value::u16_be_array(&[10])));
+    }
+
+    #[test]
+    fn a_card_swap_and_the_starters_name_are_not_kept() {
+        let (server, d) = setup();
+        let mut c = server.join_from(&d, ADDR);
+        upload(&mut c, 2, "Swapped", &[10]);
+        upload(&mut c, 1, "Starter Deck", &[99]);
+        let list = one(c.send(req(0x1F4E)));
+        assert_eq!(list.items.len(), 1);
+        assert_eq!(list.items[0].get("main"), Some(&Value::u16_be_array(&[10, 10, 20])));
+    }
+
+    #[test]
+    fn deleting_a_deck_forgets_it_and_players_do_not_share_decks() {
+        let (server, d) = setup();
+        let mut c = server.join_from(&d, ADDR);
+        upload(&mut c, 1, "Dragons", &[10]);
+        upload(&mut c, 1, "Zombies", &[11]);
+        let delete = req_with(0x1F50, &[("delete_type", Value::U32(0)), ("deck_name", Value::text("Dragons"))]);
+        assert_eq!(one(c.send(delete)).request(), Some(0x22CC));
+        assert_eq!(names(&mut c), ["Starter Deck", "Zombies"]);
+        let mut other = server.join_from(&d, IpAddr::V4(Ipv4Addr::new(10, 0, 0, 6)));
+        assert_eq!(names(&mut other), ["Starter Deck"]);
+    }
+
+    #[test]
+    fn the_client_uses_ten_decks_at_most() {
+        let (server, d) = setup();
+        let mut c = server.join_from(&d, ADDR);
+        for i in 0..12 {
+            upload(&mut c, 1, &format!("Deck {i}"), &[10]);
+        }
+        assert_eq!(names(&mut c).len(), 10);
+    }
+
+    #[test]
+    fn kept_decks_survive_a_restart() {
+        let dir = std::env::temp_dir().join(format!("yo3-decks-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let file = dir.join("accounts.json");
+        let server = Server::with_world(world());
+        {
+            let d = Arc::new(Mutex::new(Directory::open(vec!["Yugi".into()], &file).unwrap()));
+            let mut c = server.join_from(&d, ADDR);
+            upload(&mut c, 1, "Dragons", &[10, 11]);
+        }
+        let d = Arc::new(Mutex::new(Directory::open(vec!["Yugi".into()], &file).unwrap()));
+        let mut c = server.join_from(&d, ADDR);
+        assert_eq!(names(&mut c), ["Starter Deck", "Dragons"]);
+    }
+}

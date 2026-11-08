@@ -14,7 +14,7 @@ most valuable first. Research for the later slices runs ahead in parallel (read-
        are a card's own strings (the prompt table's 400–495 labels)
 2. [x] Duels: a spectator through a match's later duels (live, no change needed); settled without code: chain
        chances outside timely ones (EDOPro's "always chain" asks with no card able to respond, which this client's
-       Activation Message option has no setting for) and a server-side deck check (the client checks sizes,
+       Activation Message option has no setting for) and a server-side deck check (done later, see M5; the client checks sizes,
        ownership and the banlist itself; only a modified client gets past it, out of scope for friends)
 3. [x] NPC experience (`npcbin`): wins against an NPC unlock its higher levels; every NPC enabled (`premium`), on
        its series tab, the four gated ones willing to duel
@@ -212,7 +212,10 @@ Stop finding missing fields one crash at a time.
   - [x] Every player owns a starter deck's cards and gets it in the deck list (`0x1F4E` → `0x22C8`, tag-6
         items); Edit Deck saves it locally and the NPC duel accepts it
   - [x] Deleting a deck (`0x1F50` → `0x22CC`); saving never reaches the server (local files only)
-  - [ ] Decks on the server, so they follow a player to another machine (the client only uploads deletes)
+  - [x] Decks on the server, so they follow a player to another machine: the editor never uploads a save, but a duel's
+        Select Deck sends the whole deck (`0x1F4F` update_type 1), which the server keeps per player and lists in
+        `0x22C8`. Live: a deck used in a duel came back after its local file was deleted. A deck never used in a duel
+        can't reach the server (the client has no other upload)
 - [x] Shop: every booster pack of the client's pack files on the shelves (`0x1C22`), bought with BOOSTERPASS Points
       (`0x1B68` → `0x1C24`), opened as presents (`0x2775` → `0x2777` with the cards); BP and bought cards kept per
       account and player in `data/accounts.json`. Live: three Collection Pack vol.1 opened card by card, and after a
@@ -341,7 +344,10 @@ Stop finding missing fields one crash at a time.
       the duel records; `need_ex` 100/200/300, the series tabs, `premium` and the gated NPCs' pbin bits. `0x17D4` only
       signals ready. Live: beating Seto Kaiba opened his level 2 and showed "Wins 1 / Losses 0"
 - [x] Online 3's duel stream is Konami's engine family but renumbered (turn change 6, LP set `0xF`; docs/protocol.md)
-- [ ] Regulations enforced (2011-era rules; card pool limited to the client's 4,824 cards)
+- [x] Regulations enforced: Select Deck's deck is checked for sizes, cards owned (rentals counted) and the duel's
+      regulation (`deckcheck.rs`), refused with `0x22CB`. Live (testing aid `--duel-regulation 4`): both Auto Duel
+      players saw "You have been disconnected from the Duel Server." and the map; a legal deck reached the janken. A
+      stock client checks first, so only a modified one gets refused. Open: the refused player's opponent isn't told
 - [x] PvP on the duel connection: both matched clients share one table (`table.rs`): the janken between their hands,
       the winner's turn order, one engine with a translator per client (each sees itself as player 0), each prompt to
       the client it asks, the opponent's hidden cards without rows, a player leaving loses. Results reach both front
@@ -448,6 +454,8 @@ Stop finding missing fields one crash at a time.
 | Result screen counts | `win`/`lose`/`draw` = totals against this opponent including this duel, `*_add` = this duel's change; kept in memory | The client only shows them ("Wins 1 (+001)") |
 | Duel port | 1214 | The original's port is unknown; the client takes whatever `duelData` says |
 | Accounts | one per client address | The client sends no credentials; friends behind one address share an account |
+| Uploaded decks | the decks a duel's Select Deck sent, ten per player by name, listed after the starter and bought decks | The client has no other upload; the original server's deck storage is unknown |
+| Deck check | sizes, ownership per Konami id, the duel's regulation, refused with `0x22CB` | The client's own refusal reply for a deck is unknown; this one only shows text `0x2919` |
 | Player names | the starting names (`--players`, default Duelist) made unique with a number; players make more at Select Player (at most 16 characters, unique ignoring case: **guess**), the host can still `add-player` / `rename` | The original's name rules are unknown; a team's leader can't be deleted and an account keeps one player (ours) |
 
 ## Leads (outside the code)

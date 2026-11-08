@@ -13,6 +13,7 @@ mod social;
 mod mail;
 mod teams;
 mod trade;
+mod deckcheck;
 mod rental;
 mod events;
 pub mod clock;
@@ -48,6 +49,8 @@ pub struct Config {
     pub players: Vec<String>,
     /// Each player's LP at the start of a duel (8000; lower only to test).
     pub duel_lp: u32,
+    /// Testing aid: every duel's deck is checked against this regulation, not the duel's own.
+    pub duel_regulation: Option<u32>,
     /// Testing aid: every player's main deck in a duel, as CARD_Prop rows repeated to 40 cards (empty: their own).
     pub duel_deck: Vec<u16>,
     /// Testing aid: every player's extra deck in a duel, as CARD_Prop rows (empty: their own).
@@ -75,6 +78,7 @@ impl Config {
             log_dir,
             players: vec!["test".into()],
             duel_lp: 8000,
+            duel_regulation: None,
             duel_deck: vec![],
             duel_extra: vec![],
             duel_time: None,
@@ -142,6 +146,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             }),
             engine_dir: engine::Engine::dir(),
             start_lp: cfg.duel_lp,
+            test_regulation: cfg.duel_regulation,
             test_deck: (!cfg.duel_deck.is_empty()).then(|| cfg.duel_deck.clone()),
             test_extra: (!cfg.duel_extra.is_empty()).then(|| cfg.duel_extra.clone()),
             test_times: cfg.duel_time,
@@ -188,6 +193,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                 }
                 None => LOGIN_REGULATION,
             },
+            regulations: data.regulations.iter().map(|r| (r.id, r.clone())).collect(),
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
         },
         Err(e) => {

@@ -54,7 +54,7 @@ The contract tests in `crates/yo3-server/tests/front_contract.rs` enforce the co
 | `0x1F48` login `{lang}` | `0x2201` | top: `regulation_id`; item[0]: `user_id`, `uname`, `dpoint`, `premium` (copied into UserData by `0x51B570`; non-zero opens every NPC, `0x4BF520`, and Form Team and Create Event) | L449, `uid : [1001]` L457; live: all 25 NPCs enabled with `premium` 1 | confirmed; `premium` 1 for everyone is our choice |
 | `0x1F49` player list | `0x2260` | items = player records (below) | "MyPlayerList" L509, loader `0x51C260` | confirmed |
 | `0x1F4C` select `{player_id}` | `0x2266` | none | "my player use success" L577 | confirmed |
-| `0x1F4A` create `{pindex, pname}` (an empty slot's Create Player: name dialog, builder `0x4F2D50`) | `0x2262` (`0x2263`) | none | "my player sub success" `LoginWindow.cpp L608`: the client asks `0x1F49` again, finds the new player and selects it (`0x1F4C`), then opens Avatar Settings; `0x2263` shows `$10525` and returns to the avatar screen; live: Joey in slot 3 | confirmed; name rules (unique ignoring case, 1-16 characters, no control characters) and the full-account/slot-taken errors **guess** |
+| `0x1F4A` create `{pindex, pname}` (an empty slot's Create Player: name dialog, builder `0x4F2D50`) | `0x2262` (`0x2263`) | none | "my player sub success" `LoginWindow.cpp L608`: the client asks `0x1F49` again, finds the new player and selects it (`0x1F4C`), then opens Avatar Settings; `0x2263` shows `$10525` ("This Player Name is already in use. Please create another.") and returns to the avatar screen; live: Joey in slot 3 | confirmed; name rules (unique ignoring case, 1-16 characters, no control characters) and the full-account/slot-taken errors **guess** |
 | `0x1F4B` delete `{player_id}` (Delete, after a warning and a password prompt; builder `0x4F2EB0`) | `0x2264` (`0x2265`) | none | "my player unsub success" L626: the client lists again (`0x1F49`) and shows "Player Deleted."; `0x2265` is "Login Error!!"; live: the slot is empty again | confirmed; we refuse (`0x2265`) a player the account lacks, its last player and a team's leader (**guess**), a member leaves their team |
 | `0x1FA4` trunk `{player_id}` | `9000` (`0x2328`) | exactly one record; item[0] is copied wholesale into `UserData+0x8C8`, and the global dispatcher keeps the reply in slot 18. The record holds `cards` and `noTrade` (binary): owned and untradeable count per card, one byte at index row − 1 (CARD_Prop rows, row 0 a dummy, so 4,833 bytes). `0x410DB0` reads them bounds-checked; the collection builder `0x4F6340` writes into both unchecked (crash at `0x4F6A82`, opening the NPC duel) | "trunk data success" L666, `0x46AFA8`, `0x410DB0` | confirmed; `cards` = one copy per card of the starter deck (**guess**: a real collection comes with the economy); other contents **guess** |
 | (server push after `9000`) | `0x251C` friend list, `0x252A` black list | items `{friend_id, friend_name, login_flag}` / `{black_id, black_name, login_flag}` (`0x475A20` modes 2 and 3); see "Friends and the ignore list" | the global dispatcher stores them in dataset slots 6 and 7; the client never asks, and listing any player crashes without them (`0x45E734`) | shape; push timing **guess** |
@@ -87,8 +87,9 @@ clicks do nothing. Every reply also passes through the global front dispatcher; 
 **Banlists.** The client ships 20 regulations (`data/regulation/*.y3r`, named in the text table): 1 "Beta
 Forbidden/Limited", 2 "Pre-Season", 3 "unlimited" (no lists: every card 3 times), 4–15 the OCG lists of 2004-03 to
 2009-09 (which also limit the card pool to the cards out by then: `addition_card` 0 and the pool as `card3`), 16–20
-"Season 12" to "Season 16". Only the client enforces them: its deck check (`0x51AB00`) before Auto Duel and NPC duels
-uses the login's `regulation_id` (`0x219A`, `0x2201`), and a hosted duel uses the host's choice. The server sends the
+"Season 12" to "Season 16". The client's deck check (`0x51AB00`) before Auto Duel and NPC duels
+uses the login's `regulation_id` (`0x219A`, `0x2201`), and a hosted duel uses the host's choice; the server repeats it
+at Select Deck (`0x1F4F`, below: sizes, cards owned, the duel's regulation), so a modified client gets no further. The server sends the
 one its `--regulation` setting names (an id, or a name such as "Season 16"; default 3, "unlimited", the user's
 choice since 2026-11-08); the starter deck is still the first preset regulation 1 allows, so it passes any list. Live: the Starter Deck breaks regulation 4 (six cards
 newer than March 2004); with `--regulation 4` Kaiba Corporation answered "There are no valid Decks available.", with
@@ -490,8 +491,30 @@ default's index is skipped; cards 5280, 5434 and 6276 are never allowed.
 | Request | Reply (error) | Fields | Evidence | Status |
 |---|---|---|---|---|
 | `0x1F4E` deck list (bare, `0x440C43`; also re-sent after save and delete) | `0x22C8` (`0x22C9`) | items **tag 6**: `deck_id` (int), `deck_name`, `discription` (string), `card_protector` (int), `main`, `extra`, `side` (binary u16 BE CARD_Prop rows, read by `0x414410`); at most 10 are used | tracer: all found; "Starter Deck.y3d" written; the NPC duel opens | confirmed |
-| `0x1F50` delete `{delete_type, deck_name}` (`0x4449A9`, after deleting the local file `0x52F0C0`) | `0x22CC` (`0x22CD` shows an error) | none | "deck delete succes"; live: the deck leaves the Load Deck list | confirmed |
-| `0x1F4F` update `{duel_id, event_id, update_type}` + the deck (tag 6) | `0x22CA` (`0x22CB`) | none | Saving in the editor only writes the local file (`0x4442E0` → `0x4159B0` → `0x52EE60`) and `cursor_deck_name`, though the editor has a "deck add or update succes" case for `0x22CA`. The request comes from a duel's Select Deck (DuelManager `0x50ECF0`, see below); live: the duel scene loads ; Card Swap between a match's duels (`0x50FDF0` state 3) sends `update_type` 2 with the swapped deck (MainGamen `+0x838`), and the server keeps it as the player's entry for the match | confirmed (live: update_type 2 after Card Swap); a deck-editor save is not stored |
+| `0x1F50` delete `{delete_type, deck_name}` (`0x4449A9`, after deleting the local file `0x52F0C0`) | `0x22CC` (`0x22CD` shows an error) | none | "deck delete succes"; live: the deck leaves the Load Deck list | confirmed; the server also forgets its uploaded copy of that name (below) |
+| `0x1F4F` update `{duel_id, event_id, update_type}` + the deck (tag 6) | `0x22CA` (`0x22CB`) | none | Saving in the editor only writes the local file (`0x4442E0` → `0x4159B0` → `0x52EE60`) and `cursor_deck_name`, though the editor has a "deck add or update succes" case for `0x22CA`. The request comes from a duel's Select Deck (DuelManager `0x50ECF0`, see below); live: the duel scene loads ; Card Swap between a match's duels (`0x50FDF0` state 3) sends `update_type` 2 with the swapped deck (MainGamen `+0x838`), and the server keeps it as the player's entry for the match | confirmed (live: update_type 2 after Card Swap); a deck-editor save is not sent |
+
+**Decks follow the player.** The editor's Save and New only write the local file (live: nothing reached the server),
+and the editor refuses to save a deck of the wrong size itself ("Your Deck must hold between 40 and 60 Cards. Side
+Decks must be 15 cards or less in size."). But a duel's Select Deck sends the whole deck it picked (`0x1F4F`
+`update_type` 1: `deck_id`, `deck_name`, `main`, `extra`, `side`, `card_protector`), so the server keeps those per
+player, by name (a newer upload replaces it, ten at most, the oldest goes), and lists them after the starter and
+bought decks in `0x22C8`; a client that lacks a deck of the name saves it (`0x43E550`), so a deck used in a duel on
+one machine appears on another. Not kept: a Card Swap's deck (`update_type` 2), the starter deck's name (the server's
+own copy wins), an empty deck. A deck never used in a duel never reaches the server: the client can't upload one
+otherwise. Live: "Dragon Test" (a copy of the starter made with New) was picked for a duel, its local file deleted
+(another machine), and Edit Deck → Load Deck listed it again, with its 40 cards, and wrote the file back.
+
+**Decks checked on the server.** At Select Deck (`update_type` 1) the server checks the deck as the client does
+(`0x51AB00`): main 40-60 cards, extra and side under 16 (`0x51AC50`), every card owned (the starter deck, bought and
+traded cards, rentals; counted per Konami id, so a bit more lenient than the client's per row), and the duel's
+regulation (`0x51A9A0`): the rule's `regulation_id` (an NPC duel's `0x17AC` item, a hosted duel's or event's rule),
+else the login one. A refused deck gets `0x22CB`: the client shows "You have been disconnected from the Duel Server."
+(text `0x2919`, the only text that path has) and, at OK, leaves the duel scene for the map; nothing is kept for the
+duel. A stock client can't send a deck the check refuses (it checks first, even the host before Create Duel: "There
+are no valid Decks available."), so this is for modified clients; live with the testing aid `--duel-regulation 4` (the
+starter deck breaks it): both Auto Duel players got `0x22CB`, the dialog, and the map. The opponent of a refused
+player is not told (**open**: they wait at the janken). Card Swaps (`update_type` 2) aren't checked.
 
 Every player gets one deck, "Starter Deck": the first `deck_type` 1 preset (`data/recipe`, ids 1–6, 501, 502; they
 look like the starter decks) that the login regulation allows. Preset 1 holds a card regulation 1 forbids (4966), so
