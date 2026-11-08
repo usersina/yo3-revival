@@ -232,3 +232,22 @@ fn a_synchro_summon_is_offered_from_the_extra_deck() {
     }
     panic!("Ancient Fairy Dragon was never offered");
 }
+
+#[test]
+fn a_sidecar_that_never_answers_times_out_and_is_killed() {
+    // A call must not block forever (it would hold a table's lock and stall its clock): `sleep` never answers.
+    let mut sleeper = std::process::Command::new("sleep");
+    sleeper.arg("60");
+    let mut engine = Engine::spawn(sleeper, std::time::Duration::from_millis(300)).expect("sleep runs");
+    let started = std::time::Instant::now();
+    let err = engine.respond(serde_json::json!({})).unwrap_err();
+    assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    assert!(matches!(err.kind(), std::io::ErrorKind::TimedOut | std::io::ErrorKind::BrokenPipe), "{err}");
+}
+
+#[test]
+fn a_sidecar_that_exits_fails_the_call() {
+    let engine_cmd = std::process::Command::new("true");
+    let mut engine = Engine::spawn(engine_cmd, std::time::Duration::from_secs(5)).expect("true runs");
+    assert!(engine.respond(serde_json::json!({})).is_err());
+}

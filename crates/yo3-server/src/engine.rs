@@ -1,10 +1,13 @@
 //! The rules engine: EDOPro's core run by `engine/duelcore.ts` under Node, one process per duel, spoken to in
 //! JSON lines. Cards go in and come back as Konami card ids. `engine/fetch.sh` fetches what it needs.
 //!
-//! The calls block (a step of the core takes milliseconds).
+//! The calls block (a step of the core takes milliseconds), but never for longer than [`CALL_TIMEOUT`]: a sidecar that
+//! hangs is killed and the call fails, like one that died.
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
+use std::time::Duration;
 
 use serde_json::{Value as Json, json};
 
@@ -18,10 +21,15 @@ pub struct Answer {
     pub errors: Vec<String>,
 }
 
+/// How long one call may take (a duel's first call loads the card database, a step takes milliseconds).
+pub const CALL_TIMEOUT: Duration = Duration::from_secs(30);
+
 pub struct Engine {
     child: Child,
     stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
+    /// The sidecar's output lines, read by a thread of their own so a call can time out.
+    lines: Receiver<io::Result<String>>,
+    timeout: Duration,
 }
 
 impl Engine {
@@ -33,15 +41,26 @@ impl Engine {
     }
 
     pub fn start(dir: &Path) -> io::Result<Engine> {
-        let mut child = Command::new("node")
-            .arg(dir.join("duelcore.ts"))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()?;
+        let mut node = Command::new("node");
+        node.arg(dir.join("duelcore.ts"));
+        Engine::spawn(node, CALL_TIMEOUT)
+    }
+
+    /// Runs `command` as the sidecar (JSON lines on its stdin and stdout), each call allowed `timeout`.
+    pub fn spawn(mut command: Command, timeout: Duration) -> io::Result<Engine> {
+        let mut child = command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn()?;
         let stdin = child.stdin.take().expect("piped stdin");
         let stdout = BufReader::new(child.stdout.take().expect("piped stdout"));
-        Ok(Engine { child, stdin, stdout })
+        let (tx, lines) = channel();
+        std::thread::spawn(move || {
+            for line in stdout.lines() {
+                let failed = line.is_err();
+                if tx.send(line).is_err() || failed {
+                    break;
+                }
+            }
+        });
+        Ok(Engine { child, stdin, lines, timeout })
     }
 
     /// Starts a duel with `lp` each; team 0 goes first. Decks are (main, extra) as Konami card ids.
@@ -58,10 +77,14 @@ impl Engine {
     fn call(&mut self, request: Json) -> io::Result<Answer> {
         writeln!(self.stdin, "{request}")?;
         self.stdin.flush()?;
-        let mut line = String::new();
-        if self.stdout.read_line(&mut line)? == 0 {
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "the engine exited"));
-        }
+        let line = match self.lines.recv_timeout(self.timeout) {
+            Ok(line) => line?,
+            Err(RecvTimeoutError::Timeout) => {
+                let _ = self.child.kill();
+                return Err(io::Error::new(io::ErrorKind::TimedOut, "the engine did not answer in time"));
+            }
+            Err(RecvTimeoutError::Disconnected) => return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "the engine exited")),
+        };
         let mut v: Json = serde_json::from_str(&line).map_err(io::Error::other)?;
         let mut take_list = |k: &str| match v.get_mut(k).map(Json::take) {
             Some(Json::Array(items)) => items,

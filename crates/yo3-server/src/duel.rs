@@ -4,6 +4,7 @@
 //! `docs/protocol.md`. The server drives the duel with engine commands, which the client's scenes
 //! pop one at a time. Against an NPC it plays the janken as the CPU and runs the rules engine (see
 //! `translate.rs`); a duel between two players runs at a shared table (`table.rs`).
+use crate::lock::Locked;
 use std::sync::{Arc, Mutex};
 
 use yo3_proto::{Message, Packet, Value};
@@ -98,9 +99,9 @@ pub(crate) fn move_place(player: u32, zone: u32, index: usize) -> u32 {
 /// An engine command, as pump case 0x11 reads it.
 /// The server's clock check for every duel between players (once a second, and in tests at any `now`).
 pub fn tick_tables(hub: &Arc<Mutex<Hub>>, now: std::time::Instant) {
-    let tables: Vec<_> = hub.lock().expect("hub lock").tables.values().cloned().collect();
+    let tables: Vec<_> = hub.locked().tables.values().cloned().collect();
     for table in tables {
-        table.lock().expect("table lock").tick(now);
+        table.locked().tick(now);
     }
 }
 
@@ -235,10 +236,8 @@ pub struct DuelSession {
 
 impl Drop for DuelSession {
     fn drop(&mut self) {
-        if let Some((table, seat)) = self.table.take()
-            && let Ok(mut t) = table.lock()
-        {
-            t.leave(seat);
+        if let Some((table, seat)) = self.table.take() {
+            table.locked().leave(seat);
         }
     }
 }
@@ -271,13 +270,13 @@ impl DuelSession {
         let (Some(outbox), Some(player_id)) = (self.outbox.clone(), self.player_id) else { return vec![] };
         let seed = self.next();
         let table = {
-            let mut hub = self.hub.lock().expect("hub lock");
+            let mut hub = self.hub.locked();
             let make = || Arc::new(Mutex::new(Table::new(self.world.clone(), self.hub.clone(), duel_id, seed)));
             let table = hub.tables.entry(duel_id).or_insert_with(make).clone();
             hub.duel_began(duel_id);
             table
         };
-        let mut t = table.lock().expect("table lock");
+        let mut t = table.locked();
         let Some((seat, out)) = t.sit(player_id, entry, outbox) else { return vec![] };
         let mine = t.deliver(seat, out);
         drop(t);
@@ -288,7 +287,7 @@ impl DuelSession {
     /// A message at a table: routed to this client's seat, the other client's part sent on.
     fn at_table(&mut self, msg: &Message) -> Vec<Message> {
         let Some((table, seat)) = self.table.clone() else { return vec![] };
-        let mut t = table.lock().expect("table lock");
+        let mut t = table.locked();
         let int = |k| msg.get(k).and_then(Value::as_u32);
         let out = match (msg.request(), int("duelRequestName")) {
             (Some(CLIENT_DUEL), Some(SELECT_HAND)) => t.hand(seat, int("selectHand").unwrap_or(0) % 3),
@@ -319,14 +318,14 @@ impl DuelSession {
         match (msg.request(), int("duelRequestName")) {
             // A spectator: the table's catch-up, then (through the outbox) every event of the duel.
             (Some(WATCH), _) => {
-                let table = int("duel_id").and_then(|id| self.hub.lock().expect("hub lock").tables.get(&id).cloned());
+                let table = int("duel_id").and_then(|id| self.hub.locked().tables.get(&id).cloned());
                 let (Some(table), Some(outbox)) = (table, self.outbox.clone()) else { return vec![] };
                 self.watching = true;
-                table.lock().expect("table lock").watch(outbox)
+                table.locked().watch(outbox)
             }
             (Some(ENTER), _) => {
                 self.player_id = int("player_id");
-                let mut entry = self.player_id.and_then(|id| self.hub.lock().expect("hub lock").duel_entry(id));
+                let mut entry = self.player_id.and_then(|id| self.hub.locked().duel_entry(id));
                 if let (Some(entry), Some(rows)) = (entry.as_mut(), &self.world.test_deck) {
                     entry.deck.main = rows.iter().copied().cycle().take(40).collect();
                 }
@@ -484,7 +483,7 @@ impl DuelSession {
             let opponent = self.entry.as_ref().and_then(|e| e.npc_id).unwrap_or(0);
             let duel_id = self.entry.as_ref().and_then(|e| e.duel_id).unwrap_or(0);
             let ended = Ended { player_id, opponent, npc: true, duel_id, match_type: SINGLE_MODE, result, replay: None };
-            self.hub.lock().expect("hub lock").finish_duel(&ended);
+            self.hub.locked().finish_duel(&ended);
         }
         out
     }

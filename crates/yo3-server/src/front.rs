@@ -2,6 +2,7 @@
 //!
 //! The request/reply catalog, with the client evidence and status of every pair, is
 //! `docs/protocol.md`. Keep it, this file and the contract tests in step.
+use crate::lock::Locked;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
@@ -605,7 +606,7 @@ impl Hub {
         if let Some(&r) = self.ratings.get(&player_id) {
             return r;
         }
-        let saved = self.directory.as_ref().and_then(|d| d.lock().expect("directory lock").player(player_id).map(|p| (p.eval_num, p.eval_total)));
+        let saved = self.directory.as_ref().and_then(|d| d.locked().player(player_id).map(|p| (p.eval_num, p.eval_total)));
         saved.unwrap_or_default()
     }
 
@@ -635,7 +636,7 @@ impl Hub {
         let (num, total) = (num + 1, total + value);
         self.ratings.insert(target, (num, total));
         if let Some(d) = &self.directory {
-            d.lock().expect("directory lock").update_player(target, |p| (p.eval_num, p.eval_total) = (num, total));
+            d.locked().update_player(target, |p| (p.eval_num, p.eval_total) = (num, total));
         }
         true
     }
@@ -722,7 +723,7 @@ impl Hub {
     /// returns the player's wins, losses and draws against this opponent.
     pub fn record_result(&mut self, player_id: u32, opponent: u32, result: u32) -> [u32; 3] {
         if let Some(d) = &self.directory {
-            d.lock().expect("directory lock").reward(player_id, crate::shop::duel_bp(result));
+            d.locked().reward(player_id, crate::shop::duel_bp(result));
         }
         let record = self.records.entry((player_id, opponent)).or_default();
         if let Some(n) = record.get_mut(result.wrapping_sub(1) as usize) {
@@ -858,7 +859,7 @@ impl Hub {
 
     /// A player as the accounts keep them (none without accounts).
     fn saved_player(&self, player_id: u32) -> Option<Player> {
-        let d = self.directory.as_ref()?.lock().expect("directory lock");
+        let d = self.directory.as_ref()?.locked();
         d.accounts().flat_map(|(_, a)| &a.players).find(|p| p.player_id == player_id).cloned()
     }
 
@@ -1208,7 +1209,7 @@ impl Hub {
     /// Hands a trade's offers over, both still owned; whether it happened.
     fn exchange(&mut self, trade: &crate::trade::Trade, world: &World) -> bool {
         let Some(d) = self.directory.clone() else { return false };
-        let mut d = d.lock().expect("directory lock");
+        let mut d = d.locked();
         let saved = |d: &crate::accounts::Directory, id: u32| d.accounts().flat_map(|(_, a)| &a.players).find(|p| p.player_id == id).cloned();
         let owned = trade.players.iter().zip(&trade.offers).all(|(&p, offer)| saved(&d, p).is_some_and(|s| crate::trade::owns(world, &s, &self.rentals.lent_by(p), offer)));
         if !owned {
@@ -1986,10 +1987,8 @@ pub struct FrontSession {
 
 impl Drop for FrontSession {
     fn drop(&mut self) {
-        if let Some(id) = self.online
-            && let Ok(mut hub) = self.hub.lock()
-        {
-            hub.leave(id);
+        if let Some(id) = self.online {
+            self.hub.locked().leave(id);
         }
     }
 }
@@ -2038,7 +2037,7 @@ impl FrontSession {
     /// Takes the account's players as the accounts keep them now (a player another session made or deleted), the
     /// selected one still selected if it exists.
     fn refresh_players(&mut self) {
-        let Some(fresh) = self.directory.as_ref().and_then(|d| d.lock().expect("directory lock").account_of(self.account.user_id)) else {
+        let Some(fresh) = self.directory.as_ref().and_then(|d| d.locked().account_of(self.account.user_id)) else {
             return;
         };
         let chosen = self.selected.map(|at| self.account.players[at].player_id);
@@ -2070,7 +2069,7 @@ impl FrontSession {
     /// the duel's regulation, as the client checks them itself.
     fn check_deck(&self, duel_id: Option<u32>, deck: &Deck) -> Result<(), crate::deckcheck::Refusal> {
         let me = self.player();
-        let saved = self.directory.as_ref().and_then(|d| d.lock().expect("directory lock").player(me.player_id).cloned());
+        let saved = self.directory.as_ref().and_then(|d| d.locked().player(me.player_id).cloned());
         let mut owned = crate::trade::collection(&self.world, saved.as_ref().unwrap_or(me));
         for row in self.hub().rentals.borrowed_by(me.player_id) {
             *owned.entry(row).or_default() += 1;
@@ -2082,7 +2081,7 @@ impl FrontSession {
     fn uploaded_decks(&self) -> Vec<Deck> {
         let Some(at) = self.selected else { return vec![] };
         let me = &self.account.players[at];
-        let saved = self.directory.as_ref().and_then(|d| d.lock().expect("directory lock").player(me.player_id).map(|p| p.uploaded.clone()));
+        let saved = self.directory.as_ref().and_then(|d| d.locked().player(me.player_id).map(|p| p.uploaded.clone()));
         saved.unwrap_or_else(|| me.uploaded.clone())
     }
 
@@ -2093,7 +2092,7 @@ impl FrontSession {
         change(&mut decks);
         self.account.players[at].uploaded.clone_from(&decks);
         if let Some(d) = &self.directory {
-            d.lock().expect("directory lock").update_player(self.account.players[at].player_id, |p| p.uploaded = decks);
+            d.locked().update_player(self.account.players[at].player_id, |p| p.uploaded = decks);
         }
     }
 
@@ -2121,7 +2120,7 @@ impl FrontSession {
     fn create_player(&mut self, msg: &Message) -> Message {
         let index = msg.get("pindex").and_then(Value::as_u32).unwrap_or(u32::MAX);
         let name = msg.get("pname").and_then(Value::as_str).unwrap_or_default().to_string();
-        let made = self.directory.as_ref().map(|d| d.lock().expect("directory lock").create_player(self.account.user_id, index, &name));
+        let made = self.directory.as_ref().map(|d| d.locked().create_player(self.account.user_id, index, &name));
         match made {
             Some(Ok(())) => {
                 self.refresh_players();
@@ -2140,7 +2139,7 @@ impl FrontSession {
         if !self.account.players.iter().any(|p| p.player_id == id) || !self.hub().forget_player(id) {
             return Message::reply(0x2265);
         }
-        let deleted = d.lock().expect("directory lock").delete_player(self.account.user_id, id);
+        let deleted = d.locked().delete_player(self.account.user_id, id);
         match deleted {
             Ok(()) => {
                 self.refresh_players();
@@ -2168,7 +2167,7 @@ impl FrontSession {
         let Some(at) = self.selected else { return Message::reply(0x2CF6) };
         apply(&mut self.account.players[at]);
         if let Some(d) = &self.directory {
-            d.lock().expect("directory lock").update_player(self.account.players[at].player_id, apply);
+            d.locked().update_player(self.account.players[at].player_id, apply);
         }
         Message::reply(0x2CF5)
     }
@@ -2210,7 +2209,7 @@ impl FrontSession {
         self.account.dpoint -= cost;
         add(&mut self.account.players[at]);
         if let Some(d) = &self.directory {
-            let mut d = d.lock().expect("directory lock");
+            let mut d = d.locked();
             let dpoint = self.account.dpoint;
             d.update_account(self.account.user_id, |a| a.dpoint = dpoint);
             d.update_player(self.account.players[at].player_id, add);
@@ -2220,7 +2219,7 @@ impl FrontSession {
     }
 
     fn hub(&self) -> std::sync::MutexGuard<'_, Hub> {
-        self.hub.lock().expect("hub lock")
+        self.hub.locked()
     }
 
     /// Handles one client packet and returns the replies to send, in order.
@@ -2247,7 +2246,7 @@ impl FrontSession {
         // The login replies and purchases read the BP, which may have grown since this session began (duels pay
         // into the account).
         if matches!(id, 0x1F47 | 0x1F48 | 0x1B68)
-            && let Some(bp) = self.directory.as_ref().and_then(|d| d.lock().expect("directory lock").dpoint(self.account.user_id))
+            && let Some(bp) = self.directory.as_ref().and_then(|d| d.locked().dpoint(self.account.user_id))
         {
             self.account.dpoint = bp;
         }
@@ -2269,7 +2268,7 @@ impl FrontSession {
             ),
             0x1F49 => {
                 self.refresh_players();
-                let hub = self.hub.lock().expect("hub lock");
+                let hub = self.hub.locked();
                 self.account.players.iter().fold(Message::reply(0x2260), |m, p| m.item(hub.own_record(p)))
             }
             0x1F4A => self.create_player(msg),
@@ -2279,7 +2278,7 @@ impl FrontSession {
                 if self.selected.is_none() {
                     return vec![];
                 }
-                let mut hub = self.hub.lock().expect("hub lock");
+                let mut hub = self.hub.locked();
                 if let Some(old) = self.online {
                     hub.leave(old);
                 }
@@ -2297,7 +2296,7 @@ impl FrontSession {
                 // traded away. A trade changes the partner's collection in the accounts, so take it from there.
                 if let (Some(at), Some(d)) = (self.selected, &self.directory) {
                     let id = self.account.players[at].player_id;
-                    let saved = d.lock().expect("directory lock").accounts().flat_map(|(_, a)| &a.players).find(|p| p.player_id == id).cloned();
+                    let saved = d.locked().accounts().flat_map(|(_, a)| &a.players).find(|p| p.player_id == id).cloned();
                     if let Some(saved) = saved {
                         let me = &mut self.account.players[at];
                         (me.cards, me.given) = (saved.cards, saved.given);
@@ -2678,7 +2677,7 @@ impl FrontSession {
         };
         let (Some(table), true) = (table, allowed) else { return refused };
         // The hub is free while the table is locked (the table locks the hub when a duel ends).
-        let Some(players) = table.lock().expect("table lock").players() else { return refused };
+        let Some(players) = table.locked().players() else { return refused };
         let hub = self.hub();
         let record = |id: u32| hub.online.values().find(|o| o.player_id == id).map(|o| o.record.clone());
         let (Some(first), Some(second)) = (record(players[0]), record(players[1])) else { return refused };

@@ -1,6 +1,7 @@
 //! Yu-Gi-Oh! ONLINE 3 private server: gate, front, duel and patch-HTTP services.
 pub mod accounts;
 mod store;
+pub(crate) mod lock;
 pub mod duel;
 mod duellog;
 mod table;
@@ -20,6 +21,7 @@ pub mod clock;
 mod log;
 mod net;
 
+use crate::lock::Locked;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -270,7 +272,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let front_task = {
         let (world, hub) = (world.clone(), hub.clone());
         tokio::spawn(net::accept_loop(front, "front", packets.clone(), move |peer: SocketAddr, local: SocketAddr, outbox| {
-            let account = directory.lock().expect("directory lock").account_for(peer.ip());
+            let account = directory.locked().account_for(peer.ip());
             let mut session = FrontSession::new(account, world.clone(), hub.clone(), outbox);
             session.set_reached_at(local.ip());
             session.set_directory(directory.clone());
@@ -285,7 +287,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
             loop {
                 every.tick().await;
                 duel::tick_tables(&hub, std::time::Instant::now());
-                let mut hub = hub.lock().expect("hub lock");
+                let mut hub = hub.locked();
                 hub.tick_events(std::time::Instant::now());
                 hub.tick_rentals(chrono::Utc::now().timestamp());
             }

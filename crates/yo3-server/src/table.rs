@@ -1,6 +1,7 @@
 //! A duel between two players: both clients' duel connections share one table, which plays the janken between their
 //! hands and runs one rules engine for both. Each client sees itself as player 0 through its own translator; an engine
 //! prompt goes to the client it asks, and each client's commands reach the other through that connection's outbox.
+use crate::lock::Locked;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -421,7 +422,7 @@ impl Table {
         if !std::mem::take(&mut self.swapping[seat]) || self.over {
             return out;
         }
-        let entry = self.hub.lock().expect("hub lock").duel_entry(self.seats[seat].player_id);
+        let entry = self.hub.locked().duel_entry(self.seats[seat].player_id);
         let sorted = |d: &crate::front::Deck| {
             let mut cards: Vec<u16> = d.cards().collect();
             cards.sort_unstable();
@@ -442,7 +443,7 @@ impl Table {
             return;
         }
         self.over = true;
-        let mut hub = self.hub.lock().expect("hub lock");
+        let mut hub = self.hub.locked();
         let replay = self.replay(&hub);
         for (s, result) in results.into_iter().enumerate() {
             let (me, them) = (self.seats[s].player_id, self.seats[1 - s].player_id);
@@ -511,7 +512,7 @@ impl Table {
         }
         if !self.over {
             self.over = true;
-            self.hub.lock().expect("hub lock").end_match(self.duel_id, None);
+            self.hub.locked().end_match(self.duel_id, None);
         }
     }
 
