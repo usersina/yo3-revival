@@ -36,6 +36,28 @@ Not possible with this client, so left out: logins with a user id and password (
 credentials), creating players in the game (the client has no such screen; the host uses `add-player`), decks kept on
 the server (the client saves decks only to its own files and uploads only deletions).
 
+## ▶ Windows VM test (2026-11-08): what a real Windows client turned up
+
+The user played the real client natively on a Windows 11 VM (its own address, its own account) against a headless
+client, through the Linux release bundle's `run.sh`. Findings, in the order they came:
+
+- [x] `yo3.ini`: only the gate line was changed, so the patch check went to Konami and the game never connected. The
+      friends' guide now says all five lines change, how to edit a file in Program Files, and a browser check.
+- [x] The host's firewall (firewalld's `libvirt` zone) blocked the VM; friends over the VPN (trusted zone) aren't
+      affected. Noted in CLAUDE.md.
+- [x] No banlist by default (the user's choice); `--regulation` picks one.
+- [x] A new player needs Edit Deck once before any duel (the client alone writes deck files): the login news says so.
+- [x] Attacks and activations from any field slot but the first were ignored and the duel stalled: the client sends
+      a field card's command as (zone slot, index 0).
+- [x] Set Spells/Traps lay sideways like set monsters (ocgcore's face-down defense position).
+- [x] No way back from an attack's or a card's target, or a chain list: right-click cancel is an empty hook in this
+      client, so cancelable lists now open with OK, and OK with no pick cancels. Not yet checked live.
+- [ ] The opponent's Set Spell/Trap shows blank white once activated: its row is sent before the flip, but a Spell/Trap
+      has no field record to carry its face.
+- [ ] The Graveyard pile can't be opened (to view its cards).
+- [ ] Card preview on hover needs a held button on the VM (the client shows it on hover under Wine): likely the VM's
+      PS/2 mouse or window focus, not the server.
+
 ## ✅ M0: Research and tooling
 
 - [x] Feasibility study ([docs/research.md](docs/research.md))
