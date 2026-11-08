@@ -172,10 +172,11 @@ Stop finding missing fields one crash at a time.
       Information; team chat, team mail and Create Duel's Team limit; `data/teams.json`. Live: Millennium formed,
       Kaiba invited and joined, team chat, Set as subleader
 - [x] Player search criteria: language (from the login), status (duelling, hosting by rule), chat room, manner level
-      (everyone 2 without ratings), events (nobody). Live: the waiting tab listed only the host
-- [ ] Manner ratings: the evaluation dialog after a duel or trade (`0x2CEC {eval_id}` → `0x2CED {eval_id,
-      eval_data}`), whose average would give each player's `evallevel`; when the dialog opens and whose name it
-      shows is open
+      (from the manner ratings), events (nobody). Live: the waiting tab listed only the host
+- [x] Manner ratings: after a duel between players the server pushes `0x2CEC {eval_id}`, DuelResult opens "Please
+      evaluate NAME." (`dlg_manner.swf`), the answer `0x2CED {eval_id, eval_data}` (-10..10) is kept in the accounts
+      and the average sets `evallevel` (search entries, Player Information, the player records). The client has no
+      ratings for trades. Live: Yugi rated Kaiba +10, Kaiba rated Yugi -10; each saw the other's face icon change
 - [ ] Country: no request carries the client's country; a host setting per account could
 - [x] Main menu screens: Rental Card List (`0x2C34`/`0x2C35` chain), My Profile (wins and losses against players),
       Duel Log (`0x1793`, `0x19C8`, no server replays), BOOSTERPASS (codes refused); Card Album, Leaderboard (a Konami
@@ -382,7 +383,7 @@ Stop finding missing fields one crash at a time.
 | NPC roster `npc_type`, `need_ex` | tabs by series (NPCs 0–8, 9–16, 17–24); `need_ex` 100/200/300 | No client file gives the tabs or the experience each level needs; `need_ex` can't all be 0 (`0x4BFDC4`) |
 | Teams | `level` 1 and scores 0 for every team; handing over the leadership makes the old leader a member; the founding time in Japan time | No team scores or levels exist without the original's events |
 | Search status bits | `0x1000` duelling, `0x800` hosting, `0x200` hosting Single, `0x400` hosting Match | Read from the Detailed Search texts |
-| Manner level | everyone 2 (of 0–4) | No ratings are collected yet |
+| Manner level | the average of a player's ratings (-10..10) mapped onto 0–4, (average + 10) / 5 rounded; 2 with no ratings; `evaltotal` the sum, 0 when negative | The original's thresholds and `evaltotal`'s sign are unknown |
 | Trade end | a refused trade sends `0x2BCA {trade_result 0}`; the trunk is pushed after a trade | The original's reply to a No, and how it refreshed the trunk, are unknown |
 | Item prices | protectors 200 BP, avatar items 100 BP, one of each | The original prices are unknown |
 | Avatar items for sale | the catalogue's parts with sub 0 (178 male, 148 female) | Read as "to acquire" next to the default (2) and starting (1) parts |

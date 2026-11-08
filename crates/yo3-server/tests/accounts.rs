@@ -133,3 +133,16 @@ fn bought_structure_decks_are_kept_with_the_player() {
     let p = d.account_for(addr).players.into_iter().find(|p| p.player_id == player_id).unwrap();
     assert_eq!(p.decks, [502, 4]);
 }
+
+#[test]
+fn manner_ratings_are_kept_across_restarts() {
+    let dir = std::env::temp_dir().join(format!("yo3-ratings-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let file = dir.join("accounts.json");
+    let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
+    let id = d.account_for(ip(1)).players[0].player_id;
+    d.update_player(id, |p| (p.eval_num, p.eval_total) = (3, -15));
+    let d = Directory::open(vec!["Yugi".into()], &file).unwrap();
+    let p = d.player(id).unwrap();
+    assert_eq!((p.eval_num, p.eval_total), (3, -15));
+}

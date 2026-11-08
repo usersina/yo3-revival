@@ -137,8 +137,8 @@ and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 
   `userevent_remain`. The handler skips the searcher's own `player_id`, so a server may list everyone.
 - We filter on name (case-insensitive substring, a **guess**), level range, player id, language, the status bits
   (duelling: in a match; waiting: hosting a Create Duel of that rule), the community bits (`0x40` the searcher's
-  friends, `0x80` their ignore list, `0x20` their team, `0x20000` their chat room), the manner level (everyone has
-  level 2, the middle, while there are no ratings: entries carry `evallevel` 2) and the event bits (nobody is in an
+  friends, `0x80` their ignore list, `0x20` their team, `0x20000` their chat room), the manner level (the player's own,
+  from the ratings below: 2, the middle, while nobody rated them; entries carry `evallevel`) and the event bits (nobody is in an
   event). The country matches everyone: the client never tells the server its country, so entries carry none (Player
   Information then shows the first flag). Paging is a **guess**: skip `base_point`, return at most `front_num`.
   Live: with Kaiba hosting, the waiting tab listed only him with the hosting icon.
@@ -277,6 +277,22 @@ The server checks each offer against what the player owns (their starter deck's 
 the ones given away) and moves both offers when both said yes, in the accounts (`data/accounts.json`: `cards` and
 `given` per player). A session refreshes its player's collection from there on each trunk request, so the partner's
 next shop visit shows it too. Live: Yugi's Tainted Wisdom for Kaiba's Windstorm of Etaqua.
+
+### Manner ratings (`dlg_manner.swf`, DuelResult `0x512A40`, dialog `0x4C2A10`/`0x4C3F20`)
+
+| Message | Fields | Evidence | Status |
+|---|---|---|---|
+| push `0x2CEC` (after the duel's `0x2009`, to each player of a duel between players, at the match's end) | `eval_id` | the global dispatcher keeps it in slot 22 and sets front flag `0x40` (`0x4F6024`); DuelResult state 0 (`0x512A40`) sees the flag once the duel's result is known (MainGamen `+0x820`), clears it and opens the dialog "Please evaluate NAME." with the **opponent's name** (the client's own). The `0x2CEC` arms of CardRental (`0x41D164`) and CardTrade (`0x425114`) only set a flag: a trade never opens the dialog, so the client has no trade ratings | live: both players got the dialog | confirmed |
+| `0x2CED {eval_id, eval_data}` | `eval_data` is the chosen button's value from the table at `0x790004`: -10, -5, 0, 5, 10 (sent as a u32, so -10 arrives as 4294967286); top row (five stars) +10, bottom row (one star) -10 | `0x4C3F20`; live | confirmed |
+| reply `0x2CF1` (error `0x2CF2 {error_code}`) | none | DuelResult state 2 (`0x512A40`) waits for an id above `0x2CF0` and below `0x2CF3`; the global dispatcher ignores both | live: the dialog closed, no "no response" | confirmed (`error_code` 0 **guess**) |
+
+The server keeps the evaluations it asked for (`eval_id` -> rater, player rated; ours count up from 1): an answer counts once, from
+the rater, with one of the five values. Each player's ratings (count and sum) are in `data/accounts.json`
+(`eval_num`, `eval_total`). `evallevel` (0-4) is the average mapped onto the buttons' scale, (average + 10) / 5 rounded
+(a **guess**: the original's thresholds are unknown), 2 without ratings. It is in the search entries (Player
+Information's face icon: live, a blue smile for Kaiba after a +10, a dead red face for Yugi after a -10 and the star
+icons between) and, with `evalnum` and `evaltotal` (the sum, 0 when negative: **guess**, only the level is read), in the
+player records.
 
 ### Main Menu screens (MainGamen's menu `0x46FA60`)
 

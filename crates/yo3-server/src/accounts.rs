@@ -70,6 +70,8 @@ impl Directory {
                         player.cards.insert(row as u16, count as u32);
                     }
                 }
+                player.eval_num = p["eval_num"].as_u64().unwrap_or(0) as u32;
+                player.eval_total = p["eval_total"].as_i64().unwrap_or(0) as i32;
                 d.next_player = d.next_player.max(player.player_id + 1);
                 players.push(player);
             }
@@ -154,6 +156,11 @@ impl Directory {
         Ok(())
     }
 
+    /// A player by id.
+    pub fn player(&self, player_id: u32) -> Option<&Player> {
+        self.by_address.values().flat_map(|a| &a.players).find(|p| p.player_id == player_id)
+    }
+
     /// Changes a player (their saved character settings) and saves the accounts.
     pub fn update_player(&mut self, player_id: u32, change: impl FnOnce(&mut Player)) {
         if let Some(p) = self.by_address.values_mut().flat_map(|a| &mut a.players).find(|p| p.player_id == player_id) {
@@ -205,7 +212,7 @@ impl Directory {
                         let given: Vec<[u32; 2]> = p.given.iter().map(|(&row, &n)| [row as u32, n]).collect();
                         json!({ "player_id": p.player_id, "name": p.name, "level": p.level, "avatar": avatar,
                             "speeches": p.speeches, "comments": p.comments, "title": p.title, "cards": cards, "decks": p.decks,
-                            "items": p.items, "given": given })
+                            "items": p.items, "given": given, "eval_num": p.eval_num, "eval_total": p.eval_total })
                     })
                     .collect();
                 json!({ "address": addr.to_string(), "user_id": a.user_id, "dpoint": a.dpoint, "players": players })

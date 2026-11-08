@@ -54,12 +54,27 @@ pub struct Player {
     pub items: std::collections::BTreeSet<u16>,
     /// Cards traded away from the starter deck: CARD_Prop row -> count.
     pub given: BTreeMap<u16, u32>,
+    /// The manner ratings other players gave after duels (0x2CED eval_data, -10 to 10): how many, and their sum.
+    pub eval_num: u32,
+    pub eval_total: i32,
 }
 
 /// The client language a session starts with (0x1F48 lang 1).
 const ENGLISH: u32 = 1;
-/// Everyone's manner level (evallevel 0-4, 4 the best; 0x45F786) while there are no ratings.
+/// The manner level (evallevel 0-4, 4 the best; 0x45F786) of a player nobody rated.
 const MANNER: u32 = 2;
+/// The values `dlg_manner.swf`'s five buttons send as `eval_data` (the table at `0x790004`), worst first.
+const RATINGS: [i32; 5] = [-10, -5, 0, 5, 10];
+
+/// The manner level of `eval_num` ratings adding up to `eval_total`: their average mapped onto the buttons' values
+/// (-10 level 0 ... 10 level 4, rounded). A **guess**: the original server's thresholds are unknown.
+pub fn manner_level(eval_num: u32, eval_total: i32) -> u32 {
+    if eval_num == 0 {
+        return MANNER;
+    }
+    let average = eval_total as f64 / eval_num as f64;
+    ((average + 10.0) / 5.0).round().clamp(0.0, 4.0) as u32
+}
 
 /// 0x2BE2's error codes for an offer: ERRORCODE_TRADE_CARD_NUM_ILLEGAL, ERRORCODE_TRADE_ERROR.
 const CARD_NUM_ILLEGAL: u32 = 504;
@@ -97,6 +112,8 @@ impl Player {
             decks: vec![],
             items: Default::default(),
             given: BTreeMap::new(),
+            eval_num: 0,
+            eval_total: 0,
         }
     }
 
@@ -463,6 +480,11 @@ pub struct Hub {
     /// Where the duel logs are kept, and the HTTP port clients download them from (none: no logs).
     duel_logs: Option<std::path::PathBuf>,
     http_port: u16,
+    /// Evaluations asked for and not answered yet (0x2CEC eval_id -> the rater, the player rated), and the last id.
+    evals: HashMap<u32, (u32, u32)>,
+    last_eval: u32,
+    /// Each player's manner ratings (count, sum) as far as this run knows; the accounts have the saved ones.
+    ratings: HashMap<u32, (u32, i32)>,
 }
 
 /// 0x251F's error codes for a friend request (0x4A522E): "This player cannot receive another request.", " The
@@ -519,6 +541,46 @@ impl Hub {
         self.duel_entries.get(&player_id).cloned()
     }
 
+    /// A player's manner ratings: how many and their sum.
+    pub fn ratings(&self, player_id: u32) -> (u32, i32) {
+        if let Some(&r) = self.ratings.get(&player_id) {
+            return r;
+        }
+        let saved = self.directory.as_ref().and_then(|d| d.lock().expect("directory lock").player(player_id).map(|p| (p.eval_num, p.eval_total)));
+        saved.unwrap_or_default()
+    }
+
+    /// A player's manner level, the `evallevel` of their records.
+    pub fn manner(&self, player_id: u32) -> u32 {
+        let (num, total) = self.ratings(player_id);
+        manner_level(num, total)
+    }
+
+    /// Asks `rater` to rate `target` (0x2CEC {eval_id}): DuelResult opens the manner dialog once it has the push.
+    fn ask_to_rate(&mut self, rater: u32, target: u32) {
+        self.last_eval += 1;
+        self.evals.insert(self.last_eval, (rater, target));
+        self.push(rater, &Message::reply(0x2CEC).with("eval_id", Value::U32(self.last_eval)));
+    }
+
+    /// `rater`'s answer to an evaluation (0x2CED {eval_id, eval_data}): the rating counts once, for the player it asked
+    /// about, and goes into the accounts. False for an unknown or already answered evaluation, somebody else's, or a
+    /// value that no button sends.
+    pub fn rate(&mut self, rater: u32, eval_id: u32, value: i32) -> bool {
+        let Some(&(who, target)) = self.evals.get(&eval_id) else { return false };
+        if who != rater || !RATINGS.contains(&value) {
+            return false;
+        }
+        self.evals.remove(&eval_id);
+        let (num, total) = self.ratings(target);
+        let (num, total) = (num + 1, total + value);
+        self.ratings.insert(target, (num, total));
+        if let Some(d) = &self.directory {
+            d.lock().expect("directory lock").update_player(target, |p| (p.eval_num, p.eval_total) = (num, total));
+        }
+        true
+    }
+
     /// Keeps each duel's log in `dir`, which the HTTP server on `http_port` serves (`/duellogs/NAME`).
     pub fn keep_duel_logs(&mut self, dir: &std::path::Path, http_port: u16) {
         self.duel_logs = Some(dir.to_path_buf());
@@ -561,6 +623,9 @@ impl Hub {
         };
         let url = file.as_ref().map(|f| format!("http://{host}:{}/duellogs/{f}", self.http_port));
         self.push(ended.player_id, &duel_over_with_log(ended.player_id, ended.result, record, url.as_deref()));
+        if !ended.npc {
+            self.ask_to_rate(ended.player_id, ended.opponent);
+        }
         file
     }
 
@@ -627,7 +692,12 @@ impl Hub {
     fn record(&self, player: &Player) -> Message {
         let team = self.teams.of(player.player_id);
         let team = team.map(|t| (t.name.as_str(), t.authority(player.player_id).unwrap_or(MEMBER)));
-        player.record_with(self.totals(player.player_id), team)
+        let (eval_num, eval_total) = self.ratings(player.player_id);
+        player
+            .record_with(self.totals(player.player_id), team)
+            .with("evalnum", Value::U32(eval_num))
+            .with("evaltotal", Value::U32(eval_total.max(0) as u32))
+            .with("evallevel", Value::U32(manner_level(eval_num, eval_total)))
     }
 
     fn join(&mut self, player: &Player, outbox: Outbox, lang: u32, host: String) -> u64 {
@@ -1805,6 +1875,16 @@ impl FrontSession {
                 Message::reply(0x2CF3).item(record)
             }
             0x2CEF => self.update_player(msg),
+            // The manner dialog's answer (see "Manner ratings" in docs/protocol.md): 0x2CF1, or 0x2CF2 {error_code}.
+            0x2CED => {
+                let int = |k: &str| msg.get(k).and_then(Value::as_u32).unwrap_or(0);
+                let me = self.player().player_id;
+                if self.hub().rate(me, int("eval_id"), int("eval_data") as i32) {
+                    Message::reply(0x2CF1)
+                } else {
+                    Message::reply(0x2CF2).with("error_code", Value::U32(0))
+                }
+            }
             // D-Mail (MailWindow 0x4AC6B0): the count waiting (also the startup step 0x4730B0's, which lights the bell),
             // the fetch (the client files each mail by its id), and a send.
             0x2583 => Message::reply(0x2588).with("count", Value::U32(self.hub().mail.count(self.player().player_id))),
@@ -2032,7 +2112,7 @@ impl FrontSession {
             .filter(|o| flags & TEAM == 0 || hub.teams.of(me).is_some_and(|t| t.member(o.player_id).is_some()))
             .filter(|o| flags & BY_LEVEL == 0 || levels.contains(&o.level))
             .filter(|o| flags & BY_LANGUAGE == 0 || uint("lang").unwrap_or(0) >> o.lang & 1 != 0)
-            .filter(|_| flags & BY_MANNER == 0 || uint("eval_level").unwrap_or(0) >> MANNER & 1 != 0)
+            .filter(|o| flags & BY_MANNER == 0 || uint("eval_level").unwrap_or(0) >> hub.manner(o.player_id) & 1 != 0)
             .filter(|o| {
                 let status = flags & (WAITING_SINGLE | WAITING_MATCH | WAITING | DUELLING_NOW);
                 let hosted = hub.hosts.values().find(|h| h.player_id == o.player_id).map(|h| h.setting("match_type").and_then(Value::as_u32).unwrap_or(SINGLE_MODE));
@@ -2063,7 +2143,7 @@ impl FrontSession {
                 .with("team_id", Value::U32(team.map_or(0, |t| t.id)))
                 .with("team_name", Value::text(team.map_or("", |t| t.name.as_str())))
                 .with("team_authority", Value::U32(team.and_then(|t| t.authority(o.player_id)).unwrap_or(0)))
-                .with("evallevel", Value::U32(MANNER));
+                .with("evallevel", Value::U32(hub.manner(o.player_id)));
             m.item(hub.duel_fields(o.player_id, entry))
         })
     }
