@@ -502,6 +502,11 @@ pub struct Hub {
     /// Card trades under way, and the invitations waiting for an answer (the player invited -> the one inviting).
     trades: Vec<crate::trade::Trade>,
     trade_invites: HashMap<u32, u32>,
+    /// Card rentals: the scenes under way, the invitations waiting for an answer (the player invited -> the lender),
+    /// and the rentals made.
+    rental_sessions: Vec<crate::rental::Session>,
+    rental_invites: HashMap<u32, u32>,
+    rentals: crate::rental::Rentals,
     /// User events, and the last event id handed out.
     events: Vec<crate::events::Event>,
     last_event: u32,
@@ -908,7 +913,7 @@ impl Hub {
             0x2BC6 => {
                 let rows: Vec<u16> = msg.get("main_list").and_then(Value::as_bytes).unwrap_or_default().as_chunks::<2>().0.iter().map(|b| u16::from_be_bytes(*b)).collect();
                 let player = self.saved_player(me);
-                if player.is_some_and(|p| !crate::trade::owns(world, &p, &rows)) {
+                if player.is_some_and(|p| !crate::trade::owns(world, &p, &self.rentals.lent_by(me), &rows)) {
                     return fail(0x2BE1, CARD_NUM_ILLEGAL);
                 }
                 let Some((trade, seat)) = self.trade_of(me) else { return fail(0x2BE1, TRADE_ERROR) };
@@ -975,12 +980,214 @@ impl Hub {
         }
     }
 
+    /// Keeps the rentals in `file`: they come back at the next start, and end when their time is up.
+    pub fn keep_rentals(&mut self, file: &std::path::Path) {
+        self.rentals = crate::rental::Rentals::load(file);
+    }
+
+    /// Ends the rentals whose time is up at `now` (unix seconds): their players get the records again, so their
+    /// collections go back to what they own.
+    pub fn tick_rentals(&mut self, now: i64) {
+        for (lender, borrower) in self.rentals.expire(now) {
+            for p in [lender, borrower] {
+                self.push(p, &self.rentals.records_for(p));
+            }
+        }
+    }
+
+    /// The rental records of a player (0x2D6C), and their history lists (0x2D6E for kind 0 borrowed, 1 lent).
+    pub fn rental_records(&self, player_id: u32) -> Message {
+        self.rentals.records_for(player_id)
+    }
+
+    pub fn rental_history(&self, player_id: u32, kind: u32) -> Message {
+        self.rentals.history_for(player_id, kind)
+    }
+
+    /// The rental scene a player is in, and their seat in it (0 the lender).
+    fn rental_of(&mut self, player_id: u32) -> Option<(&mut crate::rental::Session, usize)> {
+        self.rental_sessions.iter_mut().find_map(|t| t.seat(player_id).map(|s| (t, s)))
+    }
+
+    /// Ends a player's rental scene (they left it or the server): the partner gets 0x2C37 ("The Borrower has
+    /// cancelled." or "The Lender has cancelled.").
+    fn end_rental_scene(&mut self, player_id: u32) {
+        let Some(at) = self.rental_sessions.iter().position(|t| t.seat(player_id).is_some()) else { return };
+        let session = self.rental_sessions.remove(at);
+        for (p, _) in session.players.into_iter().filter(|(p, _)| *p != player_id) {
+            self.push(p, &Message::reply(0x2C37));
+        }
+    }
+
+    /// The card rental requests (agent steps 0x4A9D80 and 0x4AA430, the rental scene CardRental.cpp, handler
+    /// 0x41C7E0). Each reply's error twin is the id after it, with an error_code. The player who sends the request is
+    /// the lender: the scene opens with `for_rent` 1 for them (0x4AA3BB) and 0 for the one who accepts.
+    fn rental_request(&mut self, (me, my_name): (u32, &str), id: u32, msg: &Message, world: &World, now: i64) -> Message {
+        let int = |k: &str| msg.get(k).and_then(|v| v.as_u32().or_else(|| v.as_str()?.trim().parse().ok())).unwrap_or(0);
+        let fail = |reply: u32, code: u32| Message::reply(reply + 1).with("error_code", Value::U32(code));
+        let list = |k: &str| -> Vec<u16> { msg.get(k).and_then(Value::as_bytes).unwrap_or_default().as_chunks::<2>().0.iter().map(|b| u16::from_be_bytes(*b)).collect() };
+        match id {
+            // Invite {to_id} -> 0x2D50 {pname}; the player gets 0x2C25 {from_id, from_name} on the bell. 106 when they
+            // are away, invited, or in a rental.
+            0x2C24 => {
+                let to = int("to_id");
+                let busy = self.rental_invites.contains_key(&to) || self.rental_sessions.iter().any(|t| t.seat(to).is_some());
+                let Some(name) = self.online.values().find(|o| o.player_id == to).map(|o| o.name.clone()) else {
+                    return fail(0x2D50, REQUEST_WAITING);
+                };
+                if busy || to == me {
+                    return fail(0x2D50, REQUEST_WAITING);
+                }
+                self.rental_invites.insert(to, me);
+                self.push(to, &Message::reply(0x2C25).with("from_id", Value::U32(me)).with("from_name", Value::text(my_name)));
+                Message::reply(0x2D50).with("pname", Value::text(&name))
+            }
+            // The inviter cancels -> 0x2D56; the player gets 0x2C29.
+            0x2C28 => {
+                let invited: Vec<u32> = self.rental_invites.iter().filter(|(_, from)| **from == me).map(|(&to, _)| to).collect();
+                for to in invited {
+                    self.rental_invites.remove(&to);
+                    self.push(to, &Message::reply(0x2C29));
+                }
+                Message::reply(0x2D56)
+            }
+            // The answer {to_id: the lender, answer: 2 yes, 1 no} -> 0x2D54; the lender gets 0x2C27 {answer}, and a
+            // yes opens both scenes.
+            0x2C26 => {
+                let Some(from) = self.rental_invites.remove(&me) else { return fail(0x2D54, 0) };
+                let answer = int("answer");
+                self.push(from, &Message::reply(0x2C27).with("answer", Value::U32(answer)));
+                if answer == ACCEPTED {
+                    let lender = self.online.values().find(|o| o.player_id == from).map(|o| o.name.clone()).unwrap_or_default();
+                    self.rental_sessions.push(crate::rental::Session::new((from, lender), (me, my_name.to_string())));
+                }
+                Message::reply(0x2D54)
+            }
+            // The scene is ready -> a reply the scene ignores (meaning of its id unknown); once both are, both get
+            // 0x2C3F (NOTICE_START).
+            0x2C3E => {
+                let Some((session, seat)) = self.rental_of(me) else { return fail(0x2D68, 0) };
+                session.ready[seat] = true;
+                if session.ready == [true; 2] {
+                    let players = [session.players[0].0, session.players[1].0];
+                    for p in players {
+                        self.push(p, &Message::reply(0x2C3F));
+                    }
+                }
+                Message::reply(0x2D68)
+            }
+            // The lender's cards {main_list, extra_list, side_list: big-endian u16 rows} -> 0x2D5A; the borrower gets
+            // them as 0x2C38. 504 for cards the lender doesn't own (or has lent already) or too many. A new offer
+            // withdraws the confirmation.
+            0x2C2A => {
+                let lists = [list("main_list"), list("extra_list"), list("side_list")];
+                let Some((session, seat)) = self.rental_of(me) else { return fail(0x2D5A, TRADE_ERROR) };
+                let limits = if session.kind == 0 { [90, 0, 0] } else { [60, 15, 15] };
+                if seat != 0 || lists.iter().zip(limits).any(|(l, max)| l.len() > max) {
+                    return fail(0x2D5A, CARD_NUM_ILLEGAL);
+                }
+                let all: Vec<u16> = lists.iter().flatten().copied().collect();
+                let player = self.saved_player(me);
+                if player.is_some_and(|p| !crate::trade::owns(world, &p, &self.rentals.lent_by(me), &all)) {
+                    return fail(0x2D5A, CARD_NUM_ILLEGAL);
+                }
+                let (session, _) = self.rental_of(me).expect("the scene");
+                session.lists = lists;
+                session.offered = false;
+                let (borrower, push) = (session.players[1].0, session.lists.clone());
+                let [main, extra, side] = push;
+                self.push(
+                    borrower,
+                    &Message::reply(0x2C38)
+                        .with("main_list", Value::u16_be_array(&main))
+                        .with("extra_list", Value::u16_be_array(&extra))
+                        .with("side_list", Value::u16_be_array(&side)),
+                );
+                Message::reply(0x2D5A)
+            }
+            // The conditions {type 0 Free / 1 Deck, days} -> 0x2D5C; the borrower gets them as 0x2C39. A change of
+            // type clears the cards (their places differ).
+            0x2C2B => {
+                let (kind, days) = (int("type"), int("days"));
+                let Some((session, seat)) = self.rental_of(me) else { return fail(0x2D5C, TRADE_ERROR) };
+                if seat != 0 || kind > 1 || !crate::rental::TERMS.contains(&days) {
+                    return fail(0x2D5C, TRADE_ERROR);
+                }
+                if session.kind != kind {
+                    session.lists = Default::default();
+                }
+                (session.kind, session.days, session.offered) = (kind, days, false);
+                let borrower = session.players[1].0;
+                self.push(borrower, &Message::reply(0x2C39).with("type", Value::U32(kind)).with("days", Value::U32(days)));
+                Message::reply(0x2D5C)
+            }
+            // The partner's scene has the cards or conditions -> 0x2D5E; the partner gets 0x2C3A.
+            0x2C2C => {
+                let Some((session, seat)) = self.rental_of(me) else { return fail(0x2D5E, TRADE_ERROR) };
+                let partner = session.players[1 - seat].0;
+                self.push(partner, &Message::reply(0x2C3A));
+                Message::reply(0x2D5E)
+            }
+            // The lender's Confirm (cards put up) -> 0x2D60; the borrower gets 0x2C2E and is asked "Borrow these
+            // cards?". 504 with no cards.
+            0x2C2D => {
+                let Some((session, seat)) = self.rental_of(me) else { return fail(0x2D60, TRADE_ERROR) };
+                if seat != 0 || session.cards().next().is_none() {
+                    return fail(0x2D60, CARD_NUM_ILLEGAL);
+                }
+                session.offered = true;
+                let borrower = session.players[1].0;
+                self.push(borrower, &Message::reply(0x2C2E));
+                Message::reply(0x2D60)
+            }
+            // The lender withdraws the confirmation -> 0x2D66; the borrower gets 0x2C32.
+            0x2C31 => {
+                let Some((session, seat)) = self.rental_of(me) else { return fail(0x2D66, TRADE_ERROR) };
+                session.offered = false;
+                let partner = session.players[1 - seat].0;
+                self.push(partner, &Message::reply(0x2C32));
+                Message::reply(0x2D66)
+            }
+            // The borrower's answer {answer: 2 yes, 1 no} -> 0x2D64; both get 0x2C30 {trade_result: 1 done, 0 not}.
+            // With a yes the rental starts (the cards are still the lender's to lend) and both get the records.
+            0x2C2F => {
+                let yes = int("answer") == ACCEPTED;
+                let Some((session, seat)) = self.rental_of(me) else { return fail(0x2D64, TRADE_ERROR) };
+                if seat != 1 || !session.offered {
+                    return fail(0x2D64, TRADE_ERROR);
+                }
+                session.offered = false;
+                let (players, cards) = ([session.players[0].0, session.players[1].0], session.cards().collect::<Vec<_>>());
+                let still = self.saved_player(players[0]).is_none_or(|p| crate::trade::owns(world, &p, &self.rentals.lent_by(players[0]), &cards));
+                let done = yes && still;
+                if done {
+                    let at = self.rental_sessions.iter().position(|t| t.seat(me).is_some()).expect("the scene");
+                    let session = self.rental_sessions.remove(at);
+                    self.rentals.start(&session, now);
+                }
+                for p in players {
+                    self.push(p, &Message::reply(0x2C30).with("trade_result", Value::U32(done as u32)));
+                    if done {
+                        self.push(p, &self.rentals.records_for(p));
+                    }
+                }
+                Message::reply(0x2D64)
+            }
+            // Leaving the scene -> 0x2D6A; the partner gets 0x2C37.
+            0x2C33 => {
+                self.end_rental_scene(me);
+                Message::reply(0x2D6A)
+            }
+            _ => fail(id, 0),
+        }
+    }
+
     /// Hands a trade's offers over, both still owned; whether it happened.
     fn exchange(&mut self, trade: &crate::trade::Trade, world: &World) -> bool {
         let Some(d) = self.directory.clone() else { return false };
         let mut d = d.lock().expect("directory lock");
         let saved = |d: &crate::accounts::Directory, id: u32| d.accounts().flat_map(|(_, a)| &a.players).find(|p| p.player_id == id).cloned();
-        let owned = trade.players.iter().zip(&trade.offers).all(|(&p, offer)| saved(&d, p).is_some_and(|p| crate::trade::owns(world, &p, offer)));
+        let owned = trade.players.iter().zip(&trade.offers).all(|(&p, offer)| saved(&d, p).is_some_and(|s| crate::trade::owns(world, &s, &self.rentals.lent_by(p), offer)));
         if !owned {
             return false;
         }
@@ -1602,6 +1809,8 @@ impl Hub {
             self.hosts.retain(|_, h| h.player_id != o.player_id);
             self.trade_invites.retain(|to, from| *to != o.player_id && *from != o.player_id);
             self.end_trade(o.player_id);
+            self.rental_invites.retain(|to, from| *to != o.player_id && *from != o.player_id);
+            self.end_rental_scene(o.player_id);
             let withdrawn: Vec<(u32, u32)> = self.hosts.iter().filter(|(_, h)| h.offer == Some(o.player_id)).map(|(&d, h)| (d, h.player_id)).collect();
             for (duel_id, host) in withdrawn {
                 self.withdraw(duel_id, host);
@@ -1938,7 +2147,8 @@ impl FrontSession {
                 // without a NULL check (0x45E6D0, 0x45E810). Likewise the rental records 0x2D6C (slot 8),
                 // which opening the shop reads (0x48F080).
                 let [friends, ignored] = self.hub().social_lists(self.player().player_id);
-                return vec![trunk, friends, ignored, Message::reply(0x2D6C)];
+                let rentals = self.hub().rental_records(self.player().player_id);
+                return vec![trunk, friends, ignored, rentals];
             }
             // Shop (handler 0x48AA60): its text, then a chain where each reply asks for the next:
             // items (the booster packs), exchange items, protectors, event items, perks, rental terms, avatar
@@ -1975,8 +2185,11 @@ impl FrontSession {
             0x19C8 => Message::reply(0x19C9),
             // Rental Card List (0x481A30) opens once all three come: the rental records, then the borrowed (rental_kind
             // 0) and lent (1) lists. Nobody rents yet.
-            0x2C34 => Message::reply(0x2D6C),
-            0x2C35 => Message::reply(0x2D6E),
+            0x2C34 => self.hub().rental_records(self.player().player_id),
+            0x2C35 => {
+                let kind = msg.get("rental_kind").and_then(Value::as_u32).unwrap_or(0);
+                self.hub().rental_history(self.player().player_id, kind)
+            }
             // A BOOSTERPASS code (BpInputWindow, 0x40F7B0): Konami's codes are gone, so every one is refused (the "ng"
             // frame). The global dispatcher keeps premium from it (0x4F5349), so it stays 1.
             0x20D0 => Message::reply(0x23F0)
@@ -2196,6 +2409,13 @@ impl FrontSession {
                 let me = (p.player_id, p.name.clone());
                 let world = self.world.clone();
                 self.hub().trade_request((me.0, &me.1), id, msg, &world)
+            }
+            // Card rentals (Player Information's Send Rental Request, then the rental scene).
+            0x2C24 | 0x2C28 | 0x2C26 | 0x2C3E | 0x2C2A | 0x2C2B | 0x2C2C | 0x2C2D | 0x2C31 | 0x2C2F | 0x2C33 => {
+                let p = self.player();
+                let me = (p.player_id, p.name.clone());
+                let world = self.world.clone();
+                self.hub().rental_request((me.0, &me.1), id, msg, &world, chrono::Utc::now().timestamp())
             }
             // Teams (the Team window 0x4BBEC0 asks 0x2AFB then 0x2AFD; so do the main screen's startup steps).
             0x2AFB => self.hub().team_info(self.player().player_id),

@@ -13,6 +13,7 @@ mod social;
 mod mail;
 mod teams;
 mod trade;
+mod rental;
 mod events;
 pub mod clock;
 mod log;
@@ -254,6 +255,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         hub.keep_mail(&dir.join("mail.json"));
         hub.keep_teams(&dir.join("teams.json"));
         hub.keep_events(&dir.join("events.json"));
+        hub.keep_rentals(&dir.join("rentals.json"));
         hub.keep_duel_logs(&dir.join("duellogs"), addrs.3.port());
     }
     hub.set_round_delay(EVENT_ROUND_DELAY);
@@ -277,7 +279,9 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
             loop {
                 every.tick().await;
                 duel::tick_tables(&hub, std::time::Instant::now());
-                hub.lock().expect("hub lock").tick_events(std::time::Instant::now());
+                let mut hub = hub.lock().expect("hub lock");
+                hub.tick_events(std::time::Instant::now());
+                hub.tick_rentals(chrono::Utc::now().timestamp());
             }
         })
     };

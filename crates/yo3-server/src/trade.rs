@@ -47,9 +47,16 @@ pub fn collection(world: &World, player: &Player) -> BTreeMap<u16, u32> {
     owned
 }
 
-/// Whether a player owns every card of an offer (copies counted).
-pub fn owns(world: &World, player: &Player, offer: &[u16]) -> bool {
-    let owned = collection(world, player);
+/// Whether a player owns every card of an offer (copies counted), less the cards they have lent out (`lent`: the
+/// trade and rental scenes' collection takes them away, flag 8 of 0x4F6340). Borrowed cards are not in the player's
+/// collection here: the client adds them itself and keeps them out of offers (`noTrade`).
+pub fn owns(world: &World, player: &Player, lent: &[u16], offer: &[u16]) -> bool {
+    let mut owned = collection(world, player);
+    for row in lent {
+        if let Some(n) = owned.get_mut(row) {
+            *n = n.saturating_sub(1);
+        }
+    }
     let mut wanted: BTreeMap<u16, u32> = BTreeMap::new();
     for &row in offer {
         *wanted.entry(row).or_default() += 1;
