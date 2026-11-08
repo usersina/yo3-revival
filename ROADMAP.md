@@ -189,8 +189,10 @@ Stop finding missing fields one crash at a time.
       title} → `0x2CF5`; kept with the account and sent back in the player record. Live: purple hair after a restart
 - [x] User events: Create, the list and details, Participate and leave, the lobby and its Event Menu (Start, Cancel),
       the event's duels paired round by round through the match push. Live: "Friday Cup", Yugi beat Kaiba in it
-- [ ] User events: the bracket's names (`0x32FF` block data), the round banner, Ready/Standby, events kept across
-      restarts
+- [x] User events, the lobby: the bracket's names, faces and advances (`0x32FF` blocks, `0x32FD` entries), the round
+      banner and status, a wait between rounds with the TIME countdown, the winner; open events kept across restarts
+      (`events.json`; a running event ends at a restart). Live with three players, a bye and a final. Ready/Standby:
+      the client builds no such request (docs/protocol.md), so none exists to answer
 - **Exit:** two headless clients log in as different players, find each other and chat (met 2026-11-06:
   Yugi and Kaiba chat in the Lobby; the room list shows the other player)
 
@@ -380,7 +382,7 @@ Stop finding missing fields one crash at a time.
 | BP from duels | win 100, draw 50, loss 30 per counted result (NPC duels and duels between players; a match counts once) | The original's duels paid no BP (no reply after a duel sets it); the client shows the new total at its next login or purchase |
 | Pack presents | one per pack, `present_id` counting from 1 per session, `level`/`form` 0, `item_img` and `end_time` empty; the cards join the collection at purchase | Only the fields the window reads; presents aren't kept across reconnects (the cards are) |
 | Event lists (`0x177B`), own user event (`0x33FE`) | official events: none; user events as created; paging by `base_point`/`front_num` like player search | No official events are held |
-| User events | a knockout paired in entry order; lobby state 0/2/3; nothing lit in the bracket map | How the original drew and ran its tournaments is unknown |
+| User events | a knockout paired in entry order; lobby status 0/4/6/7/8 as the round goes; a 20 s wait between rounds; `country` left out of the entries; the bracket's blocks above 8 seats built the same way (not seen live); a restart ends a running event | How the original drew and ran its tournaments is unknown (the statuses and texts are the client's) |
 | Rental records push (`0x2D6C`) | sent once after `9000`, empty | The original timing is unknown; the shop only needs it before it opens |
 | NPC roster `npc_type`, `need_ex` | tabs by series (NPCs 0–8, 9–16, 17–24); `need_ex` 100/200/300 | No client file gives the tabs or the experience each level needs; `need_ex` can't all be 0 (`0x4BFDC4`) |
 | Teams | `level` 1 and scores 0 for every team; handing over the leadership makes the old leader a member; the founding time in Japan time | No team scores or levels exist without the original's events |
