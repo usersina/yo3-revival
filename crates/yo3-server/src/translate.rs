@@ -32,6 +32,7 @@ const MSG_SELECT_POSITION: u64 = 19;
 const MSG_SELECT_TRIBUTE: u64 = 20;
 const MSG_SORT_CHAIN: u64 = 21;
 const MSG_SELECT_COUNTER: u64 = 22;
+const MSG_SELECT_SUM: u64 = 23;
 const MSG_SELECT_DISFIELD: u64 = 24;
 const MSG_SORT_CARD: u64 = 25;
 const MSG_SELECT_UNSELECT_CARD: u64 = 26;
@@ -76,6 +77,7 @@ const RESP_PLACE: u64 = 10;
 const RESP_POSITION: u64 = 11;
 const RESP_TRIBUTE: u64 = 12;
 const RESP_COUNTER: u64 = 13;
+const RESP_SUM: u64 = 14;
 const RESP_SORT: u64 = 15;
 const RESP_RACE: u64 = 16;
 const RESP_ATTRIB: u64 = 17;
@@ -1041,6 +1043,7 @@ impl Translator {
                     self.pending = Some(m.clone());
                     Prompt::Client(out)
                 }
+                None if kind == MSG_ANNOUNCE_CARD => Prompt::Answer(self.cpu_card_name()),
                 None => Prompt::Answer(cpu_answer(kind, m)),
             },
             // No window for these yet.
@@ -1705,6 +1708,78 @@ pub fn bot_answer(m: &Json) -> Json {
     cpu_answer(m["type"].as_u64().unwrap_or(0), m)
 }
 
+/// Indices into MSG_SELECT_SUM's `selects` that make its sum: `amount` is the target, `selects_must` cards count
+/// without being picked, `select_max` 0 asks for exactly the amount and 1 for at least it with no card to spare
+/// (Ritual Summons), `min`..`max` bound how many cards are picked. A card's `amount` is its level, or two levels
+/// (low and high 16 bits) it may count as. The smallest set that fits is picked; none that fits: every card, which
+/// the core refuses and the caller's repeated-prompt check then ends.
+fn sum_choice(m: &Json) -> Vec<usize> {
+    let level = |c: &Json| c["amount"].as_u64().unwrap_or(0);
+    let must: Vec<u64> = m["selects_must"].as_array().into_iter().flatten().map(level).collect();
+    let selects: Vec<u64> = m["selects"].as_array().into_iter().flatten().map(level).collect();
+    let target = m["amount"].as_u64().unwrap_or(0);
+    let greater = m["select_max"].as_u64().unwrap_or(0) != 0;
+    let (min, max) = (m["min"].as_u64().unwrap_or(0) as usize, m["max"].as_u64().unwrap_or(u32::MAX as u64) as usize);
+    let values = |a: u64| -> Vec<u64> { [a & 0xFFFF, a >> 16].into_iter().filter(|v| *v > 0).collect() };
+    // Whether these cards (the must ones included) can count to the target.
+    let fits = |chosen: &[u64]| -> bool {
+        let all: Vec<u64> = must.iter().chain(chosen).copied().collect();
+        let mut sums = vec![0u64];
+        for a in &all {
+            let vs = values(*a);
+            sums = sums.iter().flat_map(|s| if vs.is_empty() { vec![*s] } else { vs.iter().map(|v| s + v).collect() }).collect();
+            sums.sort_unstable();
+            sums.dedup();
+        }
+        if !greater {
+            return sums.contains(&target);
+        }
+        // At least the target, and dropping the smallest card would leave less than it.
+        let smallest = all.iter().map(|a| values(*a).into_iter().min().unwrap_or(0)).min().unwrap_or(0);
+        sums.iter().any(|s| *s >= target && (all.is_empty() || s - smallest.min(*s) < target))
+    };
+    let n = selects.len();
+    if n <= 16 {
+        let mut masks: Vec<u32> = (0..1u32 << n).collect();
+        masks.sort_by_key(|k| k.count_ones());
+        for mask in masks {
+            let count = mask.count_ones() as usize;
+            if count < min.min(n) || count > max {
+                continue;
+            }
+            let chosen: Vec<u64> = (0..n).filter(|i| mask >> i & 1 == 1).map(|i| selects[i]).collect();
+            if fits(&chosen) {
+                return (0..n).filter(|i| mask >> i & 1 == 1).collect();
+            }
+        }
+    }
+    (0..n.min(max)).collect()
+}
+
+/// Spots an engine that keeps asking the same prompt after it was answered (the core refuses an answer it can't use and
+/// asks again; an answer the server can't give would then loop under the table's lock).
+#[derive(Default)]
+pub struct Repeats {
+    last: Option<Json>,
+    times: u32,
+}
+
+/// How many times the same prompt may come back in a row before the duel is given up.
+const MAX_REPEATS: u32 = 8;
+
+impl Repeats {
+    /// Whether `prompt` was just asked too many times in a row.
+    pub fn stuck(&mut self, prompt: &Json) -> bool {
+        if self.last.as_ref() == Some(prompt) {
+            self.times += 1;
+        } else {
+            self.last = Some(prompt.clone());
+            self.times = 0;
+        }
+        self.times >= MAX_REPEATS
+    }
+}
+
 /// The CPU's answer, and the default for the client's prompts that have no window yet. A placeholder AI: Normal
 /// Summon (or Set) the first monster it may, attack with every attacker, never chain; card selections take the first
 /// `min` cards, questions are answered yes, lists their first entry.
@@ -1772,6 +1847,7 @@ fn cpu_answer(kind: u64, m: &Json) -> Json {
         }
         MSG_ANNOUNCE_NUMBER => json!({ "type": RESP_NUMBER, "value": 0 }),
         MSG_ROCK_PAPER_SCISSORS => json!({ "type": RESP_RPS, "value": 1 }),
+        MSG_SELECT_SUM => json!({ "type": RESP_SUM, "indicies": sum_choice(m) }),
         _ => {
             tracing::warn!("rules engine: no answer for prompt {kind}");
             json!({ "type": RESP_CHAIN, "index": null })

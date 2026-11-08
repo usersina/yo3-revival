@@ -12,7 +12,7 @@ use yo3_proto::{Message, Packet, Value};
 use crate::engine::{Answer, Engine};
 use crate::front::{Deck, DuelEntry, Ended, Hub, Outbox, SINGLE_MODE, World};
 use crate::table::{MATCH_END, Table};
-use crate::translate::{DRAW, DUEL_END, Prompt, Translator};
+use crate::translate::{DRAW, DUEL_END, Prompt, Repeats, Translator};
 
 /// Request id of the server's duel messages. A guess: the pump (0x5233A0) reads only
 /// duelRequestName, and treats a negative id as a lost connection.
@@ -476,6 +476,7 @@ impl DuelSession {
         let Some((engine, translator)) = self.engine.as_mut() else { return vec![] };
         let mut out = vec![];
         let mut failed = false;
+        let mut repeats = Repeats::default();
         // Each round answers one prompt; a duel needs far fewer between two of the client's choices.
         for _ in 0..10_000 {
             let a = match answer {
@@ -493,7 +494,14 @@ impl DuelSession {
             let last = a.messages.last();
             let (true, Some(last)) = (a.status == "await", last) else { break };
             match translator.prompt(last) {
-                Prompt::Answer(response) => answer = engine.respond(response),
+                Prompt::Answer(response) => {
+                    if repeats.stuck(last) {
+                        tracing::warn!("rules engine: the same prompt again and again ({last}); giving the duel up");
+                        failed = true;
+                        break;
+                    }
+                    answer = engine.respond(response)
+                }
                 Prompt::Client(messages) => {
                     out.extend(messages);
                     break;

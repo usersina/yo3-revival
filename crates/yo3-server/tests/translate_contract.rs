@@ -1428,3 +1428,34 @@ fn a_card_name_declaration_searches_the_clients_own_card_database() {
     assert_eq!(client_commands(t.prompt(&declare)).last(), Some(&(0x37, [0, 0x4C, 0, 0])));
     assert_eq!(t.dialog_result(4007), Some(Prompt::Answer(json!({ "type": 18, "cid": 4007 }))));
 }
+
+/// MSG_SELECT_SUM from the CPU (team 1) or the client (team 0): `select_max` 0 asks for exactly `amount`, 1 for at
+/// least it with no card to spare; each card's `amount` is its level.
+fn sum(team: u32, select_max: u32, amount: u32, must: &[u32], selects: &[u32]) -> serde_json::Value {
+    let cards = |levels: &[u32]| levels.iter().map(|l| json!({ "code": 1, "controller": 0, "location": 2, "sequence": 0, "amount": l })).collect::<Vec<_>>();
+    json!({ "type": 23, "player": team, "select_max": select_max, "amount": amount, "min": 1, "max": selects.len(),
+            "selects_must": cards(must), "selects": cards(selects) })
+}
+
+#[test]
+fn a_sum_prompt_is_answered_with_cards_that_make_the_sum() {
+    // MSG_SELECT_SUM (23, a Ritual Summon's tributes) had no answer: the placeholder replied "no chain", the core asked
+    // again, and the server looped. Response type 14 {indicies} indexes `selects`; the must cards count unpicked.
+    let (mut t, _) = translator();
+    let answer = |t: &mut Translator, m| match t.prompt(&m) {
+        Prompt::Answer(r) => r,
+        other => panic!("{other:?}"),
+    };
+    // At least 8 with no card to spare: two level 4s.
+    assert_eq!(answer(&mut t, sum(1, 1, 8, &[], &[4, 4, 4])), json!({ "type": 14, "indicies": [0, 1] }));
+    // A level 8 alone is enough, and the smallest set wins.
+    assert_eq!(answer(&mut t, sum(1, 1, 8, &[], &[4, 4, 8])), json!({ "type": 14, "indicies": [2] }));
+    // Exactly 7 from 3, 4 and 5.
+    assert_eq!(answer(&mut t, sum(1, 0, 7, &[], &[3, 4, 5])), json!({ "type": 14, "indicies": [0, 1] }));
+    // A must card counts: 4 of the 8 is already there.
+    assert_eq!(answer(&mut t, sum(1, 1, 8, &[4], &[2, 4, 6])), json!({ "type": 14, "indicies": [1] }));
+    // A card that counts as 1 or 2 (low and high 16 bits): 1 + 4 = 5 in a sum of exactly 6 needs the 2.
+    assert_eq!(answer(&mut t, sum(1, 0, 6, &[], &[1 | 2 << 16, 4])), json!({ "type": 14, "indicies": [0, 1] }));
+    // The client, with no window for it, gets the same answer.
+    assert_eq!(answer(&mut t, sum(0, 1, 8, &[], &[4, 4, 4])), json!({ "type": 14, "indicies": [0, 1] }));
+}

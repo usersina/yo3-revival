@@ -15,13 +15,15 @@ use crate::duel::{
 use crate::clock::{Clocks, DEFAULT_TOTAL, DEFAULT_TURN};
 use crate::engine::{Answer, Engine};
 use crate::front::{DuelEntry, Ended, Hub, MATCH_MODE, Outbox, SINGLE_MODE, World};
-use crate::translate::{DRAW, DUEL_END, LOST, Prompt, Translator, WON};
+use crate::translate::{DRAW, DUEL_END, LOST, Prompt, Repeats, Translator, WON};
 
 /// The usual starting LP (the server's own unless --duel-lp changes it).
 const DEFAULT_LP: u32 = 8000;
 /// The duel-end reasons "has ran out of time" and "has disconnected" (text 1999 + 11, + 14).
 const TIME_OUT: u32 = 11;
 const DISCONNECTED: u32 = 14;
+/// The most prompts the server answers by itself between two of a client's choices (a duel needs far fewer).
+const MAX_ANSWERS: u32 = 10_000;
 /// The engine's MSG_NEW_TURN {player}.
 const MSG_NEW_TURN: u64 = 40;
 /// Card Swap between a match's duels (DuelManager 0x50FC00 takes it to 0x50FDF0), instead of the next janken's 1500.
@@ -296,6 +298,7 @@ impl Table {
         let now = Instant::now();
         let mut waiting = None;
         let mut failed = false;
+        let (mut repeats, mut answered) = (Repeats::default(), 0);
         let mut watched: Vec<Vec<Message>> = vec![vec![]; self.spectators.len()];
         let Table { engine: Some(engine), translators, clocks, first, spectators, history, .. } = self else { return out };
         for _ in 0..10_000 {
@@ -329,7 +332,15 @@ impl Table {
             let (true, Some(last)) = (a.status == "await", last) else { break };
             let Some(s) = translators.iter().position(|t| t.prompted(last)) else { break };
             match translators[s].prompt(last) {
-                Prompt::Answer(response) => answer = engine.respond(response),
+                Prompt::Answer(response) => {
+                    answered += 1;
+                    if repeats.stuck(last) || answered >= MAX_ANSWERS {
+                        tracing::warn!("rules engine: the same prompt again and again ({last}); giving the duel up");
+                        failed = true;
+                        break;
+                    }
+                    answer = engine.respond(response)
+                }
                 Prompt::Client(messages) => {
                     out[s].extend(messages);
                     waiting = Some(s);

@@ -225,3 +225,53 @@ mod wire {
         assert_eq!(recv(&mut beating).await.unwrap().request(), Some(0x219A));
     }
 }
+
+/// An engine directory whose sidecar answers every call with the same prompt (a MSG_SELECT_SUM no card can satisfy),
+/// as a core does that keeps refusing the server's answer; and the file counting its calls.
+fn nagging_engine(name: &str) -> (PathBuf, PathBuf) {
+    let dir = std::env::temp_dir().join(format!("yo3-nagging-engine-{name}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let calls = dir.join("calls");
+    let _ = std::fs::remove_file(&calls);
+    let card = serde_json::json!({ "code": 1, "controller": 0, "location": 2, "sequence": 0, "amount": 1 });
+    let prompt = serde_json::json!({ "type": 23, "player": 0, "select_max": 1, "amount": 100, "min": 1, "max": 1,
+                                     "selects_must": [], "selects": [card] });
+    let answer = serde_json::json!({ "status": "await", "messages": [prompt], "errors": [] });
+    let script = format!(
+        "import {{ appendFileSync }} from 'node:fs';\n\
+         process.stdin.on('data', () => {{ appendFileSync({:?}, 'x'); process.stdout.write({:?} + '\\n'); }});\n",
+        calls.display().to_string(),
+        answer.to_string()
+    );
+    std::fs::write(dir.join("duelcore.ts"), script).unwrap();
+    (dir, calls)
+}
+
+#[test]
+fn a_prompt_the_core_keeps_refusing_ends_the_duel_instead_of_looping() {
+    let (dir, calls) = nagging_engine("table");
+    let (mut a, mut b, hub) = after_janken(world(Some(dir)));
+    let started = std::time::Instant::now();
+    let out = a.send(0xD, &[("choice", 1)]);
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    assert_eq!(commands(&out).last(), Some(&NO_RESULT), "{:?}", commands(&out).len());
+    assert_eq!(commands(&b.pushed()).last(), Some(&NO_RESULT));
+    assert_eq!(hub.lock().unwrap().record_result(1001, 1002, 0), [0, 0, 1]);
+    let asked = std::fs::read_to_string(calls).unwrap().len();
+    assert!(asked < 50, "the core was asked {asked} times");
+}
+
+#[test]
+fn the_same_goes_for_an_npc_duel() {
+    let (dir, calls) = nagging_engine("npc");
+    let mut world = world(Some(dir));
+    world.npc_decks.insert(124, Deck { main: vec![2; 40], ..Deck::default() });
+    let mut hub = Hub::default();
+    hub.enter_duel(1001, DuelEntry { deck: Deck { main: vec![1; 40], ..Deck::default() }, npc_id: Some(124), ..DuelEntry::default() });
+    let mut session = DuelSession::new(Arc::new(world), Arc::new(Mutex::new(hub)), 9);
+    enter_session(&mut session, 1001);
+    let m = Message::reply(0x200C).with("duelRequestName", Value::U32(0xD)).with("choice", Value::U32(1));
+    let out = session.handle(&Packet::Message(m));
+    assert_eq!(commands(&out).last(), Some(&NO_RESULT));
+    assert!(std::fs::read_to_string(calls).unwrap().len() < 50);
+}
