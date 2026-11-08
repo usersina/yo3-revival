@@ -313,13 +313,8 @@ impl DuelSession {
             _ if self.table.is_some() => self.at_table(msg),
             (Some(CLIENT_DUEL), Some(SELECT_HAND)) => self.janken(int("selectHand").unwrap_or(0) % 3),
             (Some(CLIENT_DUEL), Some(CARD_COMMAND)) => {
-                let answer = CardCommand::from_message(msg)
-                    .and_then(|cmd| self.engine.as_mut().and_then(|(_, t)| t.answer(cmd)))
-                    .and_then(|r| self.engine.as_mut().map(|(e, _)| e.respond(r)));
-                match answer {
-                    Some(answer) => self.advance(answer),
-                    None => vec![],
-                }
+                let prompt = CardCommand::from_message(msg).and_then(|cmd| self.engine.as_mut().and_then(|(_, t)| t.command(cmd)));
+                self.prompted(prompt)
             }
             (Some(CLIENT_DUEL), Some(PHASE_BUTTON)) => {
                 let answer = int("phase")
@@ -337,15 +332,8 @@ impl DuelSession {
                 vec![]
             }
             (Some(CLIENT_DUEL), Some(DIALOG_RESULT)) => {
-                match int("DLGResult").and_then(|n| self.engine.as_mut().and_then(|(_, t)| t.dialog_result(n))) {
-                    Some(Prompt::Answer(r)) => match self.engine.as_mut().map(|(e, _)| e.respond(r)) {
-                        Some(answer) => self.advance(answer),
-                        None => vec![],
-                    },
-                    // The next window of the same choice.
-                    Some(Prompt::Client(out)) => out,
-                    None => vec![],
-                }
+                let prompt = int("DLGResult").and_then(|n| self.engine.as_mut().and_then(|(_, t)| t.dialog_result(n)));
+                self.prompted(prompt)
             }
             (Some(CLIENT_DUEL), Some(SELECT_FIRST)) => {
                 let order = if int("choice") == Some(SECOND) { SECOND } else { FIRST };
@@ -421,6 +409,18 @@ impl DuelSession {
 
     /// Runs the engine from `answer`: its events become client commands, the CPU's prompts (and those the client
     /// has no window for yet) are answered, until the client must choose or the duel ends.
+    /// A translator's answer to the client: the engine onwards, or the next window of the same choice.
+    fn prompted(&mut self, prompt: Option<Prompt>) -> Vec<Message> {
+        match prompt {
+            Some(Prompt::Answer(r)) => match self.engine.as_mut().map(|(e, _)| e.respond(r)) {
+                Some(answer) => self.advance(answer),
+                None => vec![],
+            },
+            Some(Prompt::Client(out)) => out,
+            None => vec![],
+        }
+    }
+
     fn advance(&mut self, mut answer: std::io::Result<Answer>) -> Vec<Message> {
         let Some((engine, translator)) = self.engine.as_mut() else { return vec![] };
         let mut out = vec![];

@@ -448,8 +448,8 @@ impl Table {
     }
 
     pub fn card_command(&mut self, seat: usize, cmd: CardCommand) -> Out {
-        let response = self.translators.get_mut(seat).and_then(|t| t.answer(cmd));
-        self.respond(response)
+        let prompt = self.translators.get_mut(seat).and_then(|t| t.command(cmd));
+        self.prompted(seat, prompt)
     }
 
     pub fn phase(&mut self, seat: usize, button: u32) -> Out {
@@ -464,7 +464,13 @@ impl Table {
     }
 
     pub fn dialog_result(&mut self, seat: usize, n: u32) -> Out {
-        match self.translators.get_mut(seat).and_then(|t| t.dialog_result(n)) {
+        let prompt = self.translators.get_mut(seat).and_then(|t| t.dialog_result(n));
+        self.prompted(seat, prompt)
+    }
+
+    /// A translator's answer to a client: the engine onwards, or more for that client.
+    fn prompted(&mut self, seat: usize, prompt: Option<Prompt>) -> Out {
+        match prompt {
             Some(Prompt::Answer(response)) => self.respond(Some(response)),
             Some(Prompt::Client(messages)) => {
                 let mut out = Out::default();

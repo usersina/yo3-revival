@@ -203,7 +203,7 @@ fn a_player_leaving_loses_the_duel() {
 }
 
 /// One duel of a match from its janken: `first` wins the janken and goes first, ends its turn; `second` summons and
-/// attacks directly for the win (the LP are lower than the monster's ATK). What each client got.
+/// attacks directly for the win (the LP are lower than the monster's ATK), saying Yes to the question. What each client got.
 fn second_wins(first: &mut Seat, second: &mut Seat) -> (Vec<Message>, Vec<Message>) {
     let (mut to_first, mut to_second) = (vec![], vec![]);
     first.send(0xC, &[("selectHand", 0)]);
@@ -215,6 +215,8 @@ fn second_wins(first: &mut Seat, second: &mut Seat) -> (Vec<Message>, Vec<Messag
     to_second.extend(second.send(2, &[("CommandID", 4), ("player", 0), ("position", 0xB), ("index", 0)]));
     to_second.extend(second.send(3, &[("phase", 3)]));
     to_second.extend(second.send(2, &[("CommandID", 0), ("player", 0), ("position", 0), ("index", 0)]));
+    // "Attack your opponent directly?" Yes.
+    to_second.extend(second.send(4, &[("DLGResult", 1)]));
     to_first.extend(first.pushed());
     (to_first, to_second)
 }

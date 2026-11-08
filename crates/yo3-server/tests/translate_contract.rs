@@ -86,6 +86,70 @@ fn the_clients_idle_prompt_becomes_a_command_map_and_an_input_wait() {
 }
 
 #[test]
+fn a_position_change_offers_only_the_other_position() {
+    // pos_changes lists a monster whose position can change, not which one it is in. The menu shows the entry that
+    // fits it: bit 9 "to Defence Position" in attack, bit 8 "to Attack Position" in face-up defense, bit 5 "Flip
+    // Summon" face down (live: an attack position monster offered "to Attack Position" too). Each answers action 2.
+    let (mut t, _) = translator();
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }, { "cid": 4101 }, { "cid": 4102 }] })]);
+    for (seq, position) in [(0, 1), (1, 4), (2, 8)] {
+        t.events(&[json!({ "type": 50, "cid": 4100 + seq, "from": loc(0, 2, 0, 10), "to": loc(0, 4, seq, position) })]);
+    }
+    let monster = |seq| json!({ "controller": 0, "location": 4, "sequence": seq });
+    let idle = json!({ "type": 11, "player": 0, "summons": [], "special_summons": [],
+        "pos_changes": [monster(0), monster(1), monster(2)], "monster_sets": [], "spell_sets": [], "activates": [],
+        "to_bp": false, "to_ep": true });
+    let Prompt::Client(out) = t.prompt(&idle) else { panic!("the client chooses") };
+    // Places are big-endian player | zone << 8 | slot << 16, in list order: Flip Summon, to Attack, to Defence.
+    let data = [0, 2, 0, 0, 0, 0, 0, 0x20, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 5, 1];
+    assert_eq!(out[0].get("COMIDDATA"), Some(&Value::Bin(data.to_vec())));
+    let to_defense = CardCommand { command: 9, player: 0, zone: 0, index: 0 };
+    assert_eq!(t.answer(to_defense), Some(json!({ "type": 1, "action": 2, "index": 0 })));
+    // After it turns (MSG_POS_CHANGE to face-up defense), the menu offers attack.
+    t.events(&[json!({ "type": 53, "cid": 4100, "controller": 0, "location": 4, "sequence": 0, "prev_position": 1,
+        "position": 4 })]);
+    let Prompt::Client(out) = t.prompt(&idle) else { panic!("the client chooses") };
+    assert_eq!(out[0].get("COMIDDATA").and_then(Value::as_bytes).map(|b| b[8..24].to_vec()), Some(vec![0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0]));
+}
+
+#[test]
+fn a_direct_attack_asks_first() {
+    // The original asked "Attack your opponent directly?" (dialog text 225) before a direct attack; EDOPro attacks an
+    // empty field straight away (live: no question). So the attack command of an attacker that can_direct, with no
+    // monster on the other side, opens the Yes/No dialog: Yes (DLGResult 1) attacks, No sends the battle commands again.
+    let (mut t, _) = translator();
+    let attacker = json!({ "controller": 0, "location": 4, "sequence": 0, "can_direct": true });
+    let battle = json!({ "type": 10, "player": 0, "attacks": [attacker], "chains": [], "to_m2": true, "to_ep": true });
+    t.prompt(&battle);
+    let attack = CardCommand { command: 0, player: 0, zone: 0, index: 0 };
+    let Some(Prompt::Client(out)) = t.command(attack) else { panic!("the client is asked") };
+    let out: Vec<_> = out.iter().map(cmd).collect();
+    assert_eq!(out, [(0x3EC, [1, 0, 0, 0]), (0x3ED, [1 << 28 | 225, 0, 0, 0]), (0x36, [2, 1, 0, 0])]);
+    let Some(Prompt::Client(out)) = t.dialog_result(0) else { panic!("No: the battle commands again") };
+    assert_eq!(out.last().map(cmd), Some((4, [3, 0, 0, 0])));
+    t.command(attack);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 0, "action": 1, "index": 0 }))));
+    // With a monster on the other side the engine itself asks when it should (string 31): no question here.
+    let mut t = with_cards();
+    t.prompt(&battle);
+    assert_eq!(t.command(attack), Some(Prompt::Answer(json!({ "type": 0, "action": 1, "index": 0 }))));
+}
+
+#[test]
+fn a_card_sent_to_the_graveyard_lies_face_up() {
+    // The Graveyard pile shows its top card's face (GraveTop 0x18 draws it at 0x401C: zone 0xE, face up bit 14;
+    // 0x4FF000). Moved there face down, it showed a card back on both clients (live). So does a face-up banished card.
+    let mut t = with_cards();
+    t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 0, 1) })]);
+    let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 4, 0, 1), "to": loc(0, 16, 0, 1) })])
+        .iter().map(cmd).collect();
+    assert_eq!(out.last().map(|(id, p)| (*id, p[2])), Some((0x1A, 0xE << 1 | 1 << 14)), "{out:?}");
+    let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 32, 0, 5) })])
+        .iter().map(cmd).collect();
+    assert_eq!(out.last().map(|(id, p)| (*id, p[2])), Some((0x1A, 0xF << 1 | 1 << 14)), "{out:?}");
+}
+
+#[test]
 fn a_command_on_a_field_card_comes_with_its_slot() {
     // The client looks a field card's commands up at (zone 0, index slot), or (zone 5, index slot) for a Spell/Trap
     // (0x50A690), but the card command it sends names the card by its own place: {CommandID, player, position: the

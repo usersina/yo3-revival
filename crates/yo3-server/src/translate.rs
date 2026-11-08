@@ -217,6 +217,7 @@ const USE_NOW_TEXT: u32 = 270;
 /// 30 a replay), as the client's dialog texts 225 "@3Attack@0 your opponent directly?" and 223 "Replay happens.
 /// Continue to @3attack@0?".
 const BATTLE_QUESTIONS: [(u64, u32); 2] = [(31, 225), (30, 223)];
+const DIRECT_TEXT: u32 = 225;
 /// 'Select position for "@3%s@0".'
 const POSITION_TEXT: u32 = 327;
 /// 'The effect of "@3%s@0" is @3activated@0. @3Chain@0 another card or effect?', '"@3%s@0" is @3activated@0. ...' and,
@@ -301,9 +302,10 @@ const BATTLE_LISTS: [(&str, u32, u64); 2] = [("attacks", 0, BATTLE_ATTACK), ("ch
 
 /// Card menu bits (`CardCommand::command`) per idle-command list, with the list's action number. Set: bit 6 for
 /// monsters and 7 for Spells/Traps is a guess (both read "Set").
-const IDLE_LISTS: [(&str, u32, u64); 7] = [
+const IDLE_LISTS: [(&str, u32, u64); 8] = [
     ("summons", 4, 0),
     ("special_summons", 2, 1),
+    ("pos_changes", 5, 2),
     ("pos_changes", 8, 2),
     ("pos_changes", 9, 2),
     ("monster_sets", 6, 3),
@@ -374,6 +376,10 @@ pub struct Translator {
     hidden: [bool; 2],
     /// The values each monster zone's record last went with (level, ATK, DEF, base ATK, base DEF), by player and zone.
     records: HashMap<(u32, u32), [u32; 5]>,
+    /// Each monster zone's position as last shown (face up, defense), by player and zone.
+    positions: HashMap<(u32, u32), (bool, bool)>,
+    /// A direct attack waiting for the client's Yes: its engine response.
+    direct: Option<Json>,
     /// The counts the client holds on each card, by uid and counter kind.
     counters: HashMap<(u32, u32), u32>,
     /// How many card names the CPU has declared: each try names the next card of the duel's (the core asks again
@@ -443,6 +449,8 @@ impl Translator {
             result: None,
             hidden,
             records: HashMap::new(),
+            positions: HashMap::new(),
+            direct: None,
             counters: HashMap::new(),
             declared: 0,
         };
@@ -599,6 +607,9 @@ impl Translator {
         }
         dest.insert(index, card);
         let to = Place { index, ..to };
+        if to.zone < 5 {
+            self.positions.insert((to.player, to.zone), (to.face_up, to.defense));
+        }
         let row = self.shown_row(&to, card.row);
         let mut out = vec![command(CARD, [card.uid, row, 0, table_place(to.player, to.zone, index)])];
         if to.zone < 5 && row != 0 {
@@ -668,6 +679,9 @@ impl Translator {
         }
         // A Spell/Trap has no battle position.
         let place = Place { face_up: position & 5 != 0, defense: place.zone < 5 && position & 12 != 0, ..place };
+        if place.zone < 5 {
+            self.positions.insert((place.player, place.zone), (place.face_up, place.defense));
+        }
         let mut out = vec![];
         let card = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied();
         // Face down, the client empties the card's counters itself (0x4FBE50); so does EDOPro.
@@ -789,7 +803,13 @@ impl Translator {
         // ocgcore positions: 1 face-up attack, 2 face-down attack, 4 face-up defense, 8 face-down defense. Only
         // field cards carry them; the client shows each list zone its own way. Only monsters lie sideways: a set
         // Spell/Trap comes face-down defense, which drew it like a set monster (live).
-        let position = if zone <= FIELD_SPELL { loc["position"].as_u64().unwrap_or(0) } else { 0 };
+        // The Graveyard is face up: face down, its top card showed only its back (live).
+        let position = match zone {
+            GRAVE => POS_FACEUP_ATTACK,
+            REMOVED => loc["position"].as_u64().unwrap_or(POS_FACEUP_ATTACK),
+            zone if zone <= FIELD_SPELL => loc["position"].as_u64().unwrap_or(0),
+            _ => 0,
+        };
         Some(Place { player, zone, index, face_up: position & 5 != 0, defense: zone < 5 && position & 12 != 0 })
     }
 
@@ -1003,6 +1023,11 @@ impl Translator {
     /// several cards, the card list. No pick cancels when the engine allows it; picks that don't fit the choice get
     /// the default.
     pub fn dialog_result(&mut self, count: u32) -> Option<Prompt> {
+        if let Some(response) = self.direct.take() {
+            // Yes attacks; No goes back to the battle commands.
+            let m = self.pending.take()?;
+            return Some(if count == 1 { Prompt::Answer(response) } else { self.prompt(&m) });
+        }
         let kind = self.pending.as_ref()?["type"].as_u64()?;
         const DIALOGS: [u64; 12] = [
             MSG_SELECT_CARD,
@@ -1115,6 +1140,9 @@ impl Translator {
         for &(list, bit, _) in lists {
             for loc in m[list].as_array().into_iter().flatten() {
                 let Some(place) = self.place(loc) else { continue };
+                if list == "pos_changes" && bit != self.position_change(place) {
+                    continue;
+                }
                 match bits.iter_mut().find(|(p, _)| *p == place) {
                     Some((_, b)) => *b |= 1 << bit,
                     None => bits.push((place, 1 << bit)),
@@ -1122,6 +1150,16 @@ impl Translator {
             }
         }
         bits
+    }
+
+    /// The menu entry a monster's position change shows (`table_place`): Flip Summon face down, to Attack Position in
+    /// defense, to Defence Position in attack (live: an attack position monster offered both positions).
+    fn position_change(&self, place: u32) -> u32 {
+        match self.positions.get(&(place & 1, place >> 16 & 0xFF)) {
+            Some((false, _)) => 5,
+            Some((true, true)) => 8,
+            _ => 9,
+        }
     }
 
     /// The card-table place of an engine card location: hand (0xB, index), monster zone (0, slot), Spell/Trap
@@ -1164,6 +1202,25 @@ impl Translator {
         };
         self.pending = None;
         Some(json!({ "type": kind, "action": action, "index": null }))
+    }
+
+    /// What the client's card command leads to: an attack with no monster to target asks "Attack your opponent
+    /// directly?" first (225, the original's dialog: EDOPro asks only when the attacker could also target a monster;
+    /// live, an attack on an empty field just went through), anything else answers the engine.
+    pub fn command(&mut self, cmd: CardCommand) -> Option<Prompt> {
+        let m = self.pending.clone()?;
+        let response = self.answer(cmd)?;
+        let attack = &m["attacks"][response["index"].as_u64().unwrap_or(u64::MAX) as usize];
+        let opponent = 1 - self.player(&attack["controller"]) as usize;
+        let no_target = (0..5).all(|zone| self.sides[opponent].zones.get(&zone).is_none_or(Vec::is_empty));
+        if response["type"] != RESP_BATTLECMD || response["action"] != BATTLE_ATTACK || attack["can_direct"] != true || !no_target {
+            return Some(Prompt::Answer(response));
+        }
+        self.pending = Some(m);
+        self.direct = Some(response);
+        let mut out = message(&[TEXT | DIRECT_TEXT]);
+        out.push(command(DIALOG, [YES_NO, FROM_ENTRIES, 0, 0]));
+        Some(Prompt::Client(out))
     }
 
     /// The engine response for the client's card command, if it names a listed card.

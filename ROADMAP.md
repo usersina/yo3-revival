@@ -50,11 +50,24 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
 - [x] Attacks and activations from any field slot but the first were ignored and the duel stalled: the client sends
       a field card's command as (zone slot, index 0).
 - [x] Set Spells/Traps lay sideways like set monsters (ocgcore's face-down defense position).
-- [x] No way back from an attack's or a card's target, or a chain list: right-click cancel is an empty hook in this
-      client, so cancelable lists now open with OK, and OK with no pick cancels. Not yet checked live.
-- [ ] The opponent's Set Spell/Trap shows blank white once activated: its row is sent before the flip, but a Spell/Trap
-      has no field record to carry its face.
-- [ ] The Graveyard pile can't be opened (to view its cards).
+- [x] No way back from an attack's or a card's target, or a chain list: cancelable lists now need no pick (kind 1),
+      and the list's own script then takes a right-click as "decide with nothing picked", which cancels (its OK
+      button never shows; a click on a card still decides at once when one is allowed). Live: right-click withdrew an
+      attack and the monster could still attack.
+- [x] The opponent's Set Spell/Trap showed blank white once activated: it now moves onto its own slot with its row.
+      Live: Spellbinding Circle and Magic Drain showed their art on the other client.
+- [x] The Graveyard pile showed a card back on both clients: cards went there face down. Now face up (so do face-up
+      banished cards). Not yet checked live.
+- [x] An attack position monster offered "to Attack Position" too: a position change now offers only the entry that
+      fits (to Defence in attack, to Attack in face-up defense, Flip Summon face down). Not yet checked live.
+- [x] An attack on an empty field asked nothing (EDOPro asks only when a monster could be attacked instead): a direct
+      attack now asks the original's "Attack your opponent directly?" first, No going back to the battle commands
+      (**guess**: the original asked every time). Not yet checked live.
+- [ ] The Graveyard pile can't be opened (to view its cards). Lead: the pile highlights when its (zone, index 0)
+      carries the Activate Effect or Confirm bit (0x808, `0x50A690`), so Confirm on the pile is likely how it was
+      viewed, with a list allowing no picks (the list script ignores clicks then).
+- [ ] Card target lists have no message ("Select the monster to equip", Spellbinding Circle's target): a hint the
+      server doesn't word yet.
 - [ ] Card preview on hover needs a held button on the VM (the client shows it on hover under Wine): likely the VM's
       PS/2 mouse or window focus, not the server.
 

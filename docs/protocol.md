@@ -731,12 +731,16 @@ command 4):
 Carrying out a command needs the rules: which cards may do what, and what follows. The server runs EDOPro's core for
 that (`engine/`, see ROADMAP M5); `translate.rs` maps its draws, turns and phases to the commands above (ocgcore phases
 1, 2, 4, 8–`0x80`, `0x100`, `0x200` → 0–5), its idle-command prompt to a command map (summons bit 4, special
-summons 2, position changes 8 and 9, monster sets 6, spell sets 7, activates 3; which Set bit is which is a **guess**)
+summons 2, position changes 5, 8 or 9 by the card's position as last shown (Flip Summon face down, to Attack
+Position in face-up defense, to Defence Position in attack: offering both showed "to Attack Position" on an attack
+position monster, live), monster sets 6, spell sets 7, activates 3; which Set bit is which is a **guess**)
 plus command 4, and the client's card command back to the prompt's entry. Live: after the CPU's turn the client's Main
 Phase 1 highlights only the legal cards, and a monster's menu reads Summon / Set.
 
 Card moves (`MSG_MOVE`) become a card-table entry plus `0x1A`, with move places `player | zone<<1 | index<<6`, face up
-bit 14 and defence bit 15 on field slots (`0x5000E0`); field slots are zones 0–4 (monsters), 5–9 (Spell/Trap) and 10
+bit 14 and defence bit 15 on field slots (`0x5000E0`), and face up into the Graveyard and, when face up, the banished
+pile: the Graveyard pile shows its top card's face (GraveTop `0x18` {player, zone `0xE`, uid} draws a card there at
+`0x401C`, face up, `0x4FF000`), and cards moved in face down showed a back on both clients (live); field slots are zones 0–4 (monsters), 5–9 (Spell/Trap) and 10
 (Field Spell) at index 0, then hand `0xB`, extra `0xC`, deck `0xD`, graveyard `0xE`, banished `0xF`. Cards behind a
 removed list card get their table entry again. Both extra decks are in the card table too (zone `0xC`, uids after
 both main decks, the opponent's with row 0 against a player); a card leaving the deck or the extra deck is found by its
@@ -840,7 +844,13 @@ targets, discards…): the rows from its mirror, the opponent's cards marked, ki
 with max lowered to min (**guess**). EDOPro's hint before the choice (MSG_HINT type 3, HINTMSG_*) picks the message
 when a text says the same thing: 500 → 18 Tribute, 503 → 70 remove from play, 504 → 58 Graveyard, 506 → 88 add to
 hand, 509 → 25 Special Summon, 549 → 222 attack target, 551 → 94 target; otherwise none. The picks answer the engine;
-no pick cancels when it allows. Live: Giant Orc's attack opened the list with "Select an attack target monster." and
+no pick cancels when it allows: a choice the player may back out of (`can_cancel`, or a chain list that isn't forced)
+opens as kind 1 whatever its min. The list's own script (`dlg_cardlist.swf`) then cancels on a right-click: with
+`_cancelable` (always set, `0x4C73A0`) and no picks required (kind 1–5 → `+0x5C` 0, `0x4C72D0`) it calls `decide`
+with what is picked, here nothing, so `4 {DLGResult 0}`; a card click still decides as soon as the picks reach the
+list's max, and its OK button never showed. Live (Windows VM): right-click withdrew Dream Clown's attack, which could
+then attack again. Kinds `0x4C`–`0x4F` open DuelCardListDialogEx (`dlg_cardlistex.swf`, `0x514290` case `0x37`), a
+list with Search and Revert. Live: Giant Orc's attack opened the list with "Select an attack target monster." and
 the CPU's monster marked as the opponent's; picking it sent `6`, `7 {index 0, data 1}`, `4 {DLGResult 1}` and the
 attack dealt 1200.
 
@@ -855,7 +865,9 @@ Continue to attack?", 265 "Switch the attack target to another monster?", 154 "A
 server keeps the card list for targets, and words EDOPro's battle questions (processor.cpp: `SelectYesNo` 31 when the
 attacker could attack directly or a monster, 30 at a replay) with 225 and 223. Live (`--duel-deck 429`, Jinzo #7
 against Jinzo #7): Kaiba's attack asked "Attack your opponent directly?"; No opened "Select an attack target monster."
-with Yugi's Jinzo, and the two destroyed each other.
+with Yugi's Jinzo, and the two destroyed each other. With no monster to attack EDOPro asks nothing, so the server
+asks 225 itself before the attack of a card that `can_direct` on an empty field: Yes answers the engine, No sends the
+battle commands again (**guess**: the original asked before every direct attack).
 
 The client's MSG_SELECT_EFFECTYN opens the Yes/No dialog with 'Activate the effect of "%s"?' (250) and the card's
 name, MSG_SELECT_YESNO with 'Use the effect of "%s"?' (226) naming the card whose script string the question is (the
