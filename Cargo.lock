@@ -1210,6 +1210,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "yo3-monkey"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde_json",
+ "tokio",
+ "yo3-proto",
+]
+
+[[package]]
 name = "yo3-proto"
 version = "0.1.0"
 dependencies = [
