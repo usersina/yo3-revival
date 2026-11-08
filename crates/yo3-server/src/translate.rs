@@ -948,6 +948,10 @@ impl Translator {
     fn card_list(&self, m: &Json, text: Option<u32>) -> Vec<Message> {
         let selects = m["selects"].as_array().map_or(&[][..], Vec::as_slice);
         let (min, max) = (m["min"].as_u64().unwrap_or(1) as u32, m["max"].as_u64().unwrap_or(1) as u32);
+        // A choice the player may back out of (can_cancel, or a chain list that isn't forced) opens with OK, where no
+        // pick cancels: the list's right-click cancel reaches no code in this client (0x4C20C0 calls an empty hook).
+        let cancelable = m["can_cancel"] == true || (m["type"] == MSG_SELECT_CHAIN && m["forced"] != true);
+        let min = if cancelable { 0 } else { min };
         let (kind, max) = match min {
             0 => (PICK_ANY, max),
             1 => (PICK_ONE, max),

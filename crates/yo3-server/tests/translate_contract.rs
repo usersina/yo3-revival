@@ -372,8 +372,33 @@ fn a_cancelled_or_optional_choice() {
     assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 5, "indicies": [] }))));
     let cancelable = json!({ "type": 15, "player": 0, "can_cancel": true, "min": 1, "max": 1,
         "selects": [card_at(0, 2, 0, 4100)] });
-    t.prompt(&cancelable);
+    // A cancelable choice (an attack's target, a card's target while it activates) opens as kind 1 too, so OK with no
+    // pick can cancel: the list's right-click cancel reaches no code in this client (its "canceled" hook is empty,
+    // 0x4C20C0 → vtable +0x48, 0x4741F0), and kind 0x27 decides on the first pick (live: no way back from an attack).
+    let out = client_commands(t.prompt(&cancelable));
+    assert_eq!(out.last(), Some(&(0x37, [0, 1, 0, 0])));
     assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 5, "indicies": null }))));
+    // Picked and OK'd, it is a choice as before.
+    t.prompt(&cancelable);
+    t.pick(0);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 5, "indicies": [0] }))));
+}
+
+#[test]
+fn a_chain_list_can_be_left_without_chaining() {
+    // After Yes to a chain chance with several cards, the list opens with OK (kind 1): OK with no pick chains nothing.
+    // A forced chain keeps the one-pick list.
+    let mut t = with_cards();
+    let chain = json!({ "type": 16, "player": 0, "forced": false, "spe_count": 1,
+        "selects": [card_at(0, 8, 0, 4100), card_at(0, 8, 1, 4101)] });
+    t.prompt(&chain);
+    let Some(Prompt::Client(out)) = t.dialog_result(1) else { panic!("the list") };
+    assert_eq!(cmd(out.last().unwrap()), (0x37, [0, 1, 1, 0]));
+    assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 8, "index": null }))));
+    let forced = json!({ "type": 16, "player": 0, "forced": true, "spe_count": 1,
+        "selects": [card_at(0, 8, 0, 4100), card_at(0, 8, 1, 4101)] });
+    let Prompt::Client(out) = t.prompt(&forced) else { panic!("the list") };
+    assert_eq!(cmd(out.last().unwrap()), (0x37, [0, 0x27, 1, 0]));
 }
 
 #[test]
@@ -409,12 +434,13 @@ fn materials_are_picked_one_at_a_time_in_the_card_list() {
 #[test]
 fn an_attack_target_is_a_card_choice_with_its_message() {
     // ocgcore asks for an attack target as MSG_SELECT_CARD after hint 549 (HINTMSG_ATTACKTARGET): "Select an attack
-    // target @3monster@0." (222). Live: Goblin Elite's attack listed the CPU's monster; picking it dealt 1200.
+    // target @3monster@0." (222), cancelable, so with OK (kind 1): OK with no pick takes the attack back. Live:
+    // Goblin Elite's attack listed the CPU's monster; picking it dealt 1200.
     let mut t = with_cards();
     t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 549 })]);
     let select = json!({ "type": 15, "player": 0, "can_cancel": true, "min": 1, "max": 1, "selects": [card_at(1, 4, 1, 4200)] });
     let out = client_commands(t.prompt(&select));
-    assert_eq!(out[3..], [(0x3EC, [1, 0, 0, 0]), (0x3ED, [1 << 28 | 222, 0, 0, 0]), (0x37, [0, 0x27, 1, 0])]);
+    assert_eq!(out[3..], [(0x3EC, [1, 0, 0, 0]), (0x3ED, [1 << 28 | 222, 0, 0, 0]), (0x37, [0, 1, 1, 0])]);
 }
 
 #[test]
@@ -569,8 +595,8 @@ fn a_timely_chain_chance_asks_with_the_cards_that_may_chain() {
 
 #[test]
 fn with_several_cards_yes_opens_the_card_list() {
-    // After Yes, which card: the card list (one pick) with "Select effect to activate." (276); a forced chain skips the
-    // question, and a forced chain of one card needs no choice.
+    // After Yes, which card: the card list with "Select effect to activate." (276), with OK (kind 1) so no pick leaves
+    // without chaining; a forced chain skips the question, and a forced chain of one card needs no choice.
     let mut t = with_cards();
     let cards = json!([card_at(0, 8, 0, 4101), card_at(0, 2, 0, 4100)]);
     t.prompt(&select_chain(1, false, cards.clone()));
@@ -583,7 +609,7 @@ fn with_several_cards_yes_opens_the_card_list() {
             (0x3F3, [0, 0, 0, 0]),
             (0x3EC, [1, 0, 0, 0]),
             (0x3ED, [1 << 28 | 276, 0, 0, 0]),
-            (0x37, [0, 0x27, 1, 0]),
+            (0x37, [0, 1, 1, 0]),
         ]
     );
     t.pick(1);
