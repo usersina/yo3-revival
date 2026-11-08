@@ -116,8 +116,9 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
       first value is the card's place (`player | zone << 1`, `0x514E5A`), not only the player.
 - [x] The swords over the possible attackers stayed after a Battle Phase with no attack: BattleEnd now goes whenever a
       Battle Phase ends (`0x4F8E40` takes them down).
-- [ ] The opponent's attack shows no sword (the user, VM round): after BattleAttack at a target the client plays the
-      attacker's cut-in, then the strike effect `0xCB`; a direct attack plays neither. To check live which is missing.
+- [x] A direct attack showed no sword (the user, VM round): BattleAttack's target zone `0xFFFFFFFF` plays nothing, while
+      any zone from 5 plays the direct cut-in and the strike `0xCB` (`0x4F8430` state 3). Direct attacks now go at the
+      defending player, zone 16. Live check pending; an attack on a monster plays the cut-in and strike already.
 - [ ] Card preview on hover needs a held button on the VM (the client shows it on hover under Wine): likely the VM's
       PS/2 mouse or window focus, not the server.
 

@@ -173,13 +173,15 @@ const COUNTER_KINDS: [(u64, u32); 32] = [
 ];
 const ANY_COUNTER: u32 = 38;
 /// A battle (DuelBattle 0x4F8A90): start; the attack {attacker's player | zone << 8, target's player, target's zone or
-/// NO_TARGET}; the battle's outcome per player {damage figure on the client's card, on the opponent's, flags: DESTROYED
+/// DIRECT_TARGET}; the battle's outcome per player {damage figure on the client's card, on the opponent's, flags: DESTROYED
 /// for the client's card, << 8 for the opponent's} (the effect at a card ends hiding it when DESTROYED); end.
 const VIEW_BATTLE_INIT: u32 = 0xA;
 const VIEW_BATTLE_ATTACK: u32 = 0xC;
 const VIEW_BATTLE_RUN: u32 = 0xD;
 const VIEW_BATTLE_END: u32 = 0xE;
-const NO_TARGET: u32 = 0xFFFF_FFFF;
+/// A direct attack's target zone: any zone from 5 plays as one (the direct cut-in and strike, 0x4F8430 state 3);
+/// 0xFFFFFFFF plays nothing. 16 is the field's centre, as ChainSet's.
+const DIRECT_TARGET: u32 = 16;
 const DESTROYED: u32 = 2;
 /// The summon effects at a card {player, uid} (DuelScene 0x514290): Normal (or the player's ace), Special.
 const RUN_SUMMON: u32 = 0x38;
@@ -777,7 +779,7 @@ impl Translator {
     /// MSG_ATTACK {card, target}: the battle's start and the attack, at the target or directly.
     fn attack(&mut self, m: &Json) -> Vec<Message> {
         let Some(attacker) = self.engine_place(&m["card"]) else { return vec![] };
-        let (player, zone) = self.engine_place(&m["target"]).map_or((0, NO_TARGET), |t| (t.player, t.zone));
+        let (player, zone) = self.engine_place(&m["target"]).map_or((1 - attacker.player, DIRECT_TARGET), |t| (t.player, t.zone));
         self.in_battle = true;
         vec![command(VIEW_BATTLE_INIT, [0; 4]), command(VIEW_BATTLE_ATTACK, [attacker.player | attacker.zone << 8, player, zone, 0])]
     }

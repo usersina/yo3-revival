@@ -1036,7 +1036,7 @@ fn loc(controller: u32, location: u32, sequence: u32, position: u32) -> serde_js
 fn an_attack_plays_on_the_field() {
     // DuelBattle (0x4F8A90; the call at 0x4F840E passes param1 in ECX, param3 in EDX, param2 on the stack):
     // BattleInit 0xA, BattleAttack 0xC {attacker's player | its zone << 8, the target's player, the target's zone or
-    // 0xFFFFFFFF for a direct attack}, BattleRun 0xD {per player: the damage figure on the client's card, on the
+    // 16 for a direct attack}, BattleRun 0xD {per player: the damage figure on the client's card, on the
     // opponent's, flags: bit 1 the client's card destroyed, bit 9 the opponent's}, which shows the figures at the cards
     // (0x4F8920; states 5 and 6 pair the values with the cards by player, and a destroyed card's effect ends hiding
     // it), and BattleEnd 0xE once the damage step ends or the attack is stopped. A direct attack shows no figures.
@@ -1052,9 +1052,12 @@ fn an_attack_plays_on_the_field() {
         "target": { "controller": 1, "location": 4, "sequence": 1, "position": 1, "attack": 1400, "defense": 1200, "destroyed": true } });
     assert_eq!(shows(&t.events(&[battle])), [(0xD, [0, 300, 2 << 8, 0])]);
     assert_eq!(shows(&t.events(&[json!({ "type": 114 })])), [(0xE, [0; 4])]);
-    // The CPU's direct attack from its zone 1.
+    // The CPU's direct attack from its zone 1: at the defending player, zone 16 (the field's centre, as ChainSet's). The
+    // client plays an attack at any target zone of 5 and above as a direct one (0x4F8430 state 3: the direct cut-in,
+    // "finishing" when the LP don't cover the ATK, then the strike effect 0xCB), but none at all for 0xFFFFFFFF
+    // (0x4F8A90 case 0xC), so a direct attack showed nothing (live, the VM round).
     let direct = json!({ "type": 110, "card": loc(1, 4, 1, 1), "target": null });
-    assert_eq!(shows(&t.events(&[direct]))[1], (0xC, [1 | 1 << 8, 0, 0xFFFF_FFFF, 0]));
+    assert_eq!(shows(&t.events(&[direct]))[1], (0xC, [1 | 1 << 8, 0, 16, 0]));
     let battle = json!({ "type": 111,
         "card": { "controller": 1, "location": 4, "sequence": 1, "position": 1, "attack": 1400, "defense": 1200, "destroyed": false },
         "target": { "controller": 0, "location": 0, "sequence": 0, "position": 0, "attack": 0, "defense": 0, "destroyed": false } });

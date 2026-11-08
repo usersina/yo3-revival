@@ -840,7 +840,7 @@ stack; DuelScene's busy check `0x515300` holds the queue while its state `+0x74`
 | Command | Params | What the client does | Status |
 |---|---|---|---|
 | `0xA` BattleInit | none | battle mode `+0x78` = 1 | shape |
-| `0xC` BattleAttack | `param1` attacker's player \| its zone << 8, `param2` the target's player, `param3` the target's zone or `0xFFFFFFFF` (direct) | at a target: the attack, with the attacker's duelist cut-in (the NPC's line, or the player's `ace_monster`), and the hit on the target | confirmed (live: "I shall obliterate you!", the hit on Giant Orc) |
+| `0xC` BattleAttack | `param1` attacker's player \| its zone << 8, `param2` the target's player, `param3` the target's zone, or from 5 a direct attack (we send 16; `0xFFFFFFFF` plays nothing) | at a target: the attack, with the attacker's duelist cut-in (the NPC's line, or the player's `ace_monster`), and the hit on the target | confirmed (live: "I shall obliterate you!", the hit on Giant Orc) |
 | `0xD` BattleRun | **per player**: `param1` the damage figure on the client's card, `param2` on the opponent's; `param3` flags, low byte the client's card, high byte the opponent's: bit 1 destroyed | states 5–6 (`0x4F8430`) play a damage or destroy effect at each side's card (`0x4F8920`, size by damage / 500); a destroyed card's effect ends hiding it (`0x4FB220` mode 0), before the server moves it | confirmed (live: values by attacker/target hid the wrong card when the CPU attacked) |
 | `0xE` BattleEnd | none | battle mode off; takes down the swords the battle input wait drew (`0x4F8E40`, as `0xB` and `0xC` do) | confirmed (code) |
 
@@ -850,7 +850,10 @@ card to show them at), End at DAMAGE_STEP_END, ATTACK_DISABLED, the next attack 
 Battle Phase ends: in battle mode the input wait (command 4 mode 3, `0x4F8A90` case 4) draws swords over the player's
 possible attackers (effect `0x3C`, kept at `+0x64`) that only `0xB`, `0xC` and `0xE` take down, so a Battle Phase with
 no attack left them up (live, the VM round). After `0xC` at a target the client plays the attacker's cut-in, then the
-strike effect `0xCB` toward the target (states 3, 4, 1, 2 of `0x4F8430`); a direct attack (`0xFFFFFFFF`) plays neither. LP still change
+strike effect `0xCB` toward the target (states 3, 4, 1, 2 of `0x4F8430`). Any target zone from 5 is a direct attack
+there (state 3: the direct cut-in, or the finishing one when the defender's LP don't cover the ATK, then the strike),
+while `0xFFFFFFFF` plays nothing at all (case `0xC`), which a direct attack showed (live, the VM round): the server
+sends the defending player and zone 16 (the field's centre, as ChainSet's; any value from 5 reads the same). LP still change
 through `0x10`.
 
 **Destruction by effects** (DuelCardManager `0x4FF000`, its switch `0x50007C` by command id; both read `param1` from the
