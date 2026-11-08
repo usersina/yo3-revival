@@ -222,7 +222,8 @@ random moments; SIGKILL and restart on the same data):
 
 UI monkey: 40 min (seed 3): 4,845 actions (clicks, random clicks, right clicks, drags, keys, typing), 6 Auto Duel rounds,
 12 duel connections, 8 duel results, clients killed mid-duel and logged in again; no crash, no dialog, no server
-trouble, no stall. A second pass of 20 min is recorded below. The Documents folder was restored and verified identical.
+trouble, no stall. A second pass of 20 min (seed 4): 2,249 actions, 3 Auto Duel rounds, 6 duel results, no failure. The
+Documents folder was restored and verified identical after each run.
 
 Findings:
 - [x] 1 The packet log grew without limit (2.6 GB in five minutes of a client that only sends). It now rotates at
