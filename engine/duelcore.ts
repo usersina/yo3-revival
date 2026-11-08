@@ -31,6 +31,12 @@ for (const card of JSON.parse(readFileSync(join(vendor, "cardinfo.json"), "utf-8
 
 const db = new DatabaseSync(join(vendor, "BabelCDB", "cards.cdb"), { readOnly: true });
 const cardQuery = db.prepare("select * from datas where id = ?");
+const nameQuery = db.prepare("select name from texts where id = ?");
+
+/** A card's English name, for the cards with no Konami id (tokens), which the server finds among the client's own. */
+function nameOf(code: number): string | undefined {
+  return (nameQuery.get(code) as { name?: string } | undefined)?.name;
+}
 
 function readCard(code: number) {
   const row = cardQuery.get(code) as Record<string, number> | undefined;
@@ -63,8 +69,8 @@ function readScript(name: string) {
   }
 }
 
-/** Adds `cid` next to every numeric `code` (or `card`, as MOVE names it), so the server never sees passcodes, and
- * `description_cid` next to a `description` that is a card's script string (aux.Stringid: code << 20 | n). */
+/** Adds `cid` next to every numeric `code` (or `card`, as MOVE names it), so the server never sees passcodes (and
+ * `name` when there is no Konami id, as for tokens), and `description_cid` next to a `description` that is a card's script string (aux.Stringid: code << 20 | n). */
 function withCids(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(withCids);
   if (value && typeof value === "object") {
@@ -72,6 +78,10 @@ function withCids(value: unknown): unknown {
     for (const [k, v] of Object.entries(value)) out[k] = withCids(v);
     const code = typeof out.code === "number" ? out.code : out.card;
     if (typeof code === "number") out.cid = cidOf.get(code) ?? 0;
+    if (typeof code === "number" && code && !out.cid) {
+      const name = nameOf(code);
+      if (name) out.name = name;
+    }
     if (typeof out.description === "bigint" || typeof out.description === "number") {
       const owner = cidOf.get(Number(BigInt(out.description) >> 20n));
       if (owner) out.description_cid = owner;

@@ -335,6 +335,8 @@ pub struct World {
     pub npc_decks: HashMap<u32, Deck>,
     /// Each CARD_Prop row's Konami id and stats, for the rules engine and the duel's card info.
     pub cards: HashMap<u16, crate::translate::CardStats>,
+    /// The client's token cards (CARD_Prop rows with ids 3900-3999) by name, for the rules engine's tokens.
+    pub token_rows: HashMap<String, Vec<u16>>,
     /// Each player's LP at the start of a duel (8000; lower only to test).
     pub start_lp: u32,
     /// Testing aid: every player's main deck in a duel, as CARD_Prop rows repeated to 40 cards.
@@ -367,6 +369,7 @@ impl World {
             npcs: vec![],
             npc_decks: HashMap::new(),
             cards: HashMap::new(),
+            token_rows: HashMap::new(),
             engine_dir: None,
             start_lp: 8000,
             test_deck: None,

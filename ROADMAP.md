@@ -81,6 +81,10 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
 - [x] Found while checking: a pile's commands were looked up at index 0 only, so an extra deck summon or Graveyard
       effect of any card but the pile's first was unreachable. They now sit at index 0, and with several cards able the
       card list asks which (the original's "Select the monster(s) to Special Summon from your Extra Deck.").
+- [x] Found while checking: tokens never showed (Scapegoat's Sheep Tokens were invisible, so they couldn't be seen,
+      attacked knowingly or used). EDOPro's tokens have no Konami id; the sidecar now names them and the server shows
+      the client's own token card of that name. Live: four coloured Sheep Tokens on both clients; one destroyed by an
+      attack shattered and left the field.
 - [x] Testing aid: `--duel-time 0,0` turns the clocks of duels between players off (live checks run slower than
       180 s a turn).
 - [ ] Open: a monster whose position an effect changes right after its summon (Stumbling) stayed upright on its

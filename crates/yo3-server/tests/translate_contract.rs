@@ -230,6 +230,48 @@ fn the_graveyards_top_card_shows_on_its_pile() {
 }
 
 #[test]
+fn tokens_show_as_the_clients_own_token_cards() {
+    // EDOPro's tokens have passcodes with no Konami id; the sidecar names them (cards.cdb), and the client has its own
+    // token cards (CARD_Prop ids 3900-3999, e.g. four "Sheep Token"). A token comes from nowhere (MSG_MOVE from
+    // location 0): it gets a card table entry, its field record and a move onto its own slot, which makes the card
+    // object (0x1A, 0x5003A0). Live, Scapegoat's tokens never showed. It leaves to nowhere (or a pile): CardVanish.
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let mut cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    cids.insert(300, CardStats { cid: 3902, atk: 0, def: 0, level: 1, attribute: 5, race: 11 });
+    cids.insert(301, CardStats { cid: 3903, atk: 0, def: 0, level: 1, attribute: 5, race: 11 });
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
+    t.tokens(HashMap::from([("Sheep Token".to_string(), vec![300, 301])]));
+    let nowhere = json!({ "controller": 0, "location": 0, "sequence": 0, "position": 0 });
+    let token = |seq| json!({ "type": 50, "code": 73915052, "cid": 0, "name": "Sheep Token", "from": nowhere.clone(),
+        "to": loc(0, 4, seq, 4) });
+    let out: Vec<_> = t.events(&[token(2)]).iter().map(cmd).collect();
+    let (id, entry) = out[0];
+    assert_eq!((id, entry[1], entry[3]), (1000, 300, 2 << 8), "{out:?}");
+    let uid = entry[0];
+    assert!(uid > 20, "a uid of its own: {out:?}");
+    assert!(out.iter().any(|(id, _)| *id == 0x3EB), "its record: {out:?}");
+    let place = 2 << 1 | 1 << 14 | 1 << 15;
+    assert_eq!(out.last(), Some(&(0x1A, [uid | 300 << 16, place, place, 0])), "{out:?}");
+    // The next one takes the next Sheep Token card; the opponent sees it too (face up).
+    let out: Vec<_> = t.events(&[token(3)]).iter().map(cmd).collect();
+    assert_eq!(out[0].1[1], 301, "{out:?}");
+    // A list shows it as its token card (it has no Konami id to find it by), not as a hidden card.
+    let target = json!({ "type": 15, "player": 0, "can_cancel": true, "min": 1, "max": 1,
+        "selects": [{ "code": 73915052, "cid": 0, "controller": 0, "location": 4, "sequence": 2, "position": 4 }] });
+    let out = client_commands(t.prompt(&target));
+    assert!(out.contains(&(0x3F2, [300, 0, 0, 0])) && out.last().is_some_and(|c| c.1[1] == 1), "{out:?}");
+    t.dialog_result(0);
+    // Destroyed: it goes to nowhere, or the core sends it to the Graveyard first; either way it vanishes.
+    let gone = json!({ "type": 50, "code": 73915052, "cid": 0, "name": "Sheep Token", "from": loc(0, 4, 2, 4),
+        "to": { "controller": 0, "location": 0, "sequence": 0, "position": 0 } });
+    assert_eq!(t.events(&[gone]).iter().map(cmd).collect::<Vec<_>>(), [(0x1F, [0, 2, 0, 0])]);
+    let to_grave = json!({ "type": 50, "code": 73915052, "cid": 0, "name": "Sheep Token", "from": loc(0, 4, 3, 4),
+        "to": loc(0, 16, 0, 1) });
+    assert_eq!(t.events(&[to_grave]).iter().map(cmd).collect::<Vec<_>>(), [(0x1F, [0, 3, 0, 0])]);
+}
+
+#[test]
 fn a_command_on_a_field_card_comes_with_its_slot() {
     // The client looks a field card's commands up at (zone 0, index slot), or (zone 5, index slot) for a Spell/Trap
     // (0x50A690), but the card command it sends names the card by its own place: {CommandID, player, position: the

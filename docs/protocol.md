@@ -774,6 +774,16 @@ and it stood in attack position on both clients with the extra deck pile down to
 takes the first free zone (positions: see Choices). Live: Summon from the hand put the monster in the
 first monster zone, the hand closed up, and the next prompt offered only the Spell card.
 
+**Tokens.** EDOPro's tokens have passcodes with no Konami id (YGOProDeck lists none for Scapegoat's Sheep Tokens), so
+the sidecar adds the card's `name` from `cards.cdb` where it finds no id. The client has its own token cards: CARD_Prop
+ids 3900–3999 (75 rows, e.g. four "Sheep Token", 3902–3905, one per colour). A token comes from nowhere (MSG_MOVE
+from location 0): the server takes the client's token card of that name (in turn when there are several), gives it a
+uid of its own (from `0x4000`), and sends its card table entry, its field record and a move from its slot onto
+itself (`0x1A` finds no object by uid and makes one, `0x5003A0`). A token leaving the field (to location 0, or to a
+pile) gets CardVanish and leaves the mirror. A card list finds a token at its place (it has no id to find it by).
+Live (Scapegoat): four Sheep Tokens in four colours, in defense, on both clients; Witch of the Black Forest's attack
+listed them as their own cards and the one destroyed shattered and left no Graveyard card.
+
 **Pile views.** The field highlights a pile of either player (zones `0xC`–`0xF`, index 0) whose command bits there
 include Activate Effect or Confirm (`0x808`, DuelFieldManager `0x50A690`), and the card menu's bit 11 reads "Confirm".
 The duel prompts keep the original's pile titles: 582/583 "Your/Opponent's Extra Deck", 584/585 Deck, 586/587

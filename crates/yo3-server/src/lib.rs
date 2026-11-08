@@ -134,6 +134,10 @@ fn world(cfg: &Config, duel_port: u16) -> anyhow::Result<World> {
                     (c.row, stats)
                 })
                 .collect(),
+            token_rows: data.cards.iter().filter(|c| (3900..4000).contains(&c.cid)).fold(std::collections::HashMap::new(), |mut m, c| {
+                m.entry(c.name.clone()).or_insert_with(Vec::new).push(c.row);
+                m
+            }),
             engine_dir: engine::Engine::dir(),
             start_lp: cfg.duel_lp,
             test_deck: (!cfg.duel_deck.is_empty()).then(|| cfg.duel_deck.clone()),

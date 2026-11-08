@@ -404,6 +404,10 @@ pub struct Translator {
     choosing: Option<(u64, u64, Vec<usize>)>,
     /// The counts the client holds on each card, by uid and counter kind.
     counters: HashMap<(u32, u32), u32>,
+    /// The client's token cards (CARD_Prop rows) by name, the tokens on the field (uids), and the next token's uid.
+    token_rows: HashMap<String, Vec<u16>>,
+    tokens: Vec<u32>,
+    next_token: u32,
     /// How many card names the CPU has declared: each try names the next card of the duel's (the core asks again
     /// when a name doesn't fit).
     declared: usize,
@@ -437,6 +441,12 @@ impl Translator {
             }
         }
         out
+    }
+
+    /// The client's token cards (CARD_Prop rows, ids 3900-3999) by name: EDOPro's tokens have no Konami id, so the
+    /// sidecar names them.
+    pub fn tokens(&mut self, rows: HashMap<String, Vec<u16>>) {
+        self.token_rows = rows;
     }
 
     /// The same for a spectator watching from player 0's side, who sees neither player's hidden cards.
@@ -475,6 +485,9 @@ impl Translator {
             direct: None,
             viewing: false,
             choosing: None,
+            token_rows: HashMap::new(),
+            tokens: vec![],
+            next_token: FIRST_TOKEN_UID,
             counters: HashMap::new(),
             declared: 0,
         };
@@ -595,6 +608,20 @@ impl Translator {
     /// MSG_MOVE {card, cid, from, to}: the card leaves its place for the new one.
     fn move_card(&mut self, m: &Json) -> Vec<Message> {
         let cid = m["cid"].as_u64().unwrap_or(0) as u16;
+        if m["from"]["location"].as_u64() == Some(0) {
+            return self.engine_place(&m["to"]).map(|to| self.token(m, to)).unwrap_or_default();
+        }
+        if let Some(from) = self.engine_place(&m["from"]).filter(|f| f.zone < 5)
+            && let Some(card) = self.sides[from.player as usize].zones.get(&from.zone).and_then(|z| z.first()).copied()
+            && self.tokens.contains(&card.uid)
+        {
+            // A token leaving the field is gone (EDOPro may send it to a pile first): it shatters off the field.
+            let mut out = self.drop_counters(&from);
+            self.sides[from.player as usize].zone(from.zone).clear();
+            self.tokens.retain(|&t| t != card.uid);
+            out.push(command(CARD_VANISH, [from.player, from.zone, 0, 0]));
+            return out;
+        }
         match (self.engine_place(&m["from"]), self.engine_place(&m["to"])) {
             (Some(from), Some(to)) => {
                 let reason = m["reason"].as_u64().unwrap_or(0);
@@ -610,6 +637,31 @@ impl Translator {
             // Tokens and Xyz materials have no client place yet.
             _ => vec![],
         }
+    }
+
+    /// A token appears on a monster zone: the client's token card of its name (in turn when it has several, as for
+    /// the four Sheep Tokens), a card table entry, its record and a move onto its own slot, which makes the card
+    /// object (0x1A finds none by uid, 0x5003A0). A token with no card of its name isn't shown.
+    fn token(&mut self, m: &Json, to: Place) -> Vec<Message> {
+        let Some(rows) = m["name"].as_str().and_then(|n| self.token_rows.get(n)).filter(|r| !r.is_empty()) else {
+            tracing::warn!("a token the client has no card for: {}", m["name"]);
+            return vec![];
+        };
+        if to.zone >= 5 {
+            return vec![];
+        }
+        let row = rows[(self.next_token - FIRST_TOKEN_UID) as usize % rows.len()];
+        let uid = self.next_token;
+        self.next_token += 1;
+        self.tokens.push(uid);
+        let zone = self.sides[to.player as usize].zone(to.zone);
+        zone.clear();
+        zone.push(Card { uid, row });
+        self.positions.insert((to.player, to.zone), (to.face_up, to.defense));
+        let mut out = vec![command(CARD, [uid, row as u32, 0, table_place(to.player, to.zone, 0)])];
+        out.extend(self.monster_record(to.player, to.zone, row));
+        out.push(command(MOVE, [uid | (row as u32) << 16, to.packed(), to.packed(), 0]));
+        out
     }
 
     /// Moves a card in the mirror and on the client: the card table entry (1000), then on screen (0x1A); the
@@ -1037,7 +1089,8 @@ impl Translator {
     /// first row with its id.
     fn row_of(&self, loc: &Json) -> u16 {
         let cid = loc["cid"].as_u64().unwrap_or(0) as u16;
-        let has_cid = |c: &&Card| self.cards.get(&c.row).map(|s| s.cid) == Some(cid);
+        // A token has no Konami id: the one at its place.
+        let has_cid = |c: &&Card| self.cards.get(&c.row).map(|s| s.cid) == Some(cid) || (cid == 0 && self.tokens.contains(&c.uid));
         let at_place = self.engine_place(loc).and_then(|p| {
             let zone = self.sides[p.player as usize].zones.get(&p.zone)?;
             if p.zone == DECK { zone.iter().find(has_cid) } else { zone.get(p.index).filter(has_cid) }.map(|c| c.row)
@@ -1388,6 +1441,9 @@ impl Translator {
         None
     }
 }
+
+/// Tokens' uids, after any deck's (a move carries the uid in 16 bits).
+const FIRST_TOKEN_UID: u32 = 0x4000;
 
 /// The table entry flag of a card in this zone: open in the Graveyard and among the banished cards.
 fn open(zone: u32) -> u32 {

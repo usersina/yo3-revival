@@ -393,6 +393,7 @@ impl DuelSession {
         let lp = self.world.start_lp;
         let answer = engine.new_duel(seed, lp, [(&m0, &e0), (&m1, &e1)]);
         let (mut translator, mut table) = Translator::new(first, [&entry.deck.main, &npc.main], self.world.cards.clone());
+        translator.tokens(self.world.token_rows.clone());
         table.extend(translator.extra_decks([&entry.deck.extra, &npc.extra]));
         self.engine = Some((engine, translator));
         let mut out = vec![setup(first, &entry.deck, &npc)];
