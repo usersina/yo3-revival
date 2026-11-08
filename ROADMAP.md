@@ -112,6 +112,12 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
       arrives by a move is drawn in its position. A monster's turn now also moves it onto its own slot in the new
       position (with its row) before the 0x1C. Test: `a_monster_that_changes_position_moves_onto_its_own_slot`.
       Live check pending.
+- [x] The summon effect played at the leftmost monster zone, not the summoned monster's: RunSummon / RunSpSummon's
+      first value is the card's place (`player | zone << 1`, `0x514E5A`), not only the player.
+- [x] The swords over the possible attackers stayed after a Battle Phase with no attack: BattleEnd now goes whenever a
+      Battle Phase ends (`0x4F8E40` takes them down).
+- [ ] The opponent's attack shows no sword (the user, VM round): after BattleAttack at a target the client plays the
+      attacker's cut-in, then the strike effect `0xCB`; a direct attack plays neither. To check live which is missing.
 - [ ] Card preview on hover needs a held button on the VM (the client shows it on hover under Wine): likely the VM's
       PS/2 mouse or window focus, not the server.
 

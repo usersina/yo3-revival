@@ -842,11 +842,15 @@ stack; DuelScene's busy check `0x515300` holds the queue while its state `+0x74`
 | `0xA` BattleInit | none | battle mode `+0x78` = 1 | shape |
 | `0xC` BattleAttack | `param1` attacker's player \| its zone << 8, `param2` the target's player, `param3` the target's zone or `0xFFFFFFFF` (direct) | at a target: the attack, with the attacker's duelist cut-in (the NPC's line, or the player's `ace_monster`), and the hit on the target | confirmed (live: "I shall obliterate you!", the hit on Giant Orc) |
 | `0xD` BattleRun | **per player**: `param1` the damage figure on the client's card, `param2` on the opponent's; `param3` flags, low byte the client's card, high byte the opponent's: bit 1 destroyed | states 5–6 (`0x4F8430`) play a damage or destroy effect at each side's card (`0x4F8920`, size by damage / 500); a destroyed card's effect ends hiding it (`0x4FB220` mode 0), before the server moves it | confirmed (live: values by attacker/target hid the wrong card when the CPU attacked) |
-| `0xE` BattleEnd | none | battle mode off | shape |
+| `0xE` BattleEnd | none | battle mode off; takes down the swords the battle input wait drew (`0x4F8E40`, as `0xB` and `0xC` do) | confirmed (code) |
 
 The server sends Init and Attack for MSG_ATTACK, Run for MSG_BATTLE (damage by ATK against ATK or DEF, destroyed from
 the message; a direct attack, whose target ocgcore-wasm reports as an empty place, gets no figures since there's no
-card to show them at), End at DAMAGE_STEP_END, ATTACK_DISABLED, the next attack or a new phase. LP still change
+card to show them at), End at DAMAGE_STEP_END, ATTACK_DISABLED, the next attack or a new phase, and always when a
+Battle Phase ends: in battle mode the input wait (command 4 mode 3, `0x4F8A90` case 4) draws swords over the player's
+possible attackers (effect `0x3C`, kept at `+0x64`) that only `0xB`, `0xC` and `0xE` take down, so a Battle Phase with
+no attack left them up (live, the VM round). After `0xC` at a target the client plays the attacker's cut-in, then the
+strike effect `0xCB` toward the target (states 3, 4, 1, 2 of `0x4F8430`); a direct attack (`0xFFFFFFFF`) plays neither. LP still change
 through `0x10`.
 
 **Destruction by effects** (DuelCardManager `0x4FF000`, its switch `0x50007C` by command id; both read `param1` from the
@@ -896,7 +900,8 @@ summoned monster doesn't follow `0x1C` on its owner's screen. So a monster's tur
 slot, from the old position to the new one with its row, before the `0x1C` (a moved card is drawn in its position).
 **shape**: the live check is pending.
 
-**Summons** (DuelScene): `0x38` RunSummon {player, the summoned card's uid} plays the summon effect at the card (`0x21`,
+**Summons** (DuelScene): `0x38` RunSummon {the card's place `player | zone << 1` (`0x514E5A`: the effect plays at that
+zone; the player alone played every summon's effect at the leftmost zone, live on the VM round), the summoned card's uid} plays the summon effect at the card (`0x21`,
 or `0x23` for the player's `ace_monster`); `0x39` RunSpSummon {player, uid} the Special Summon effect (`0x19`). The
 server sends them for MSG_SUMMONING / MSG_SPSUMMONING, which come once the card is in its zone. Live: sparkles around
 a summoned Giant Orc. Confirmed.

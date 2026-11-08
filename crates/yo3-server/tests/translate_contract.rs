@@ -1077,17 +1077,19 @@ fn an_attack_plays_on_the_field() {
 
 #[test]
 fn a_summon_plays_its_effect() {
-    // DuelScene (0x514290) RunSummon 0x38 {the player, the summoned card's uid} plays the summon effect at the card
-    // (0x21, or 0x23 when it is the player's "ace_monster"); RunSpSummon 0x39 {player, uid} the Special Summon effect
-    // (0x19). The engine reports MSG_SUMMONING (60) / MSG_SPSUMMONING (62) once the card is in its zone.
+    // DuelScene (0x514290) RunSummon 0x38 {the card's place: player | zone << 1, the summoned card's uid} plays the
+    // summon effect (0x21, or 0x23 when it is the player's "ace_monster") at that zone (0x514E5A: bits 1-5 the zone,
+    // bit 0 the side); RunSpSummon 0x39 the same with the Special Summon effect (0x19, 0x514F09). Sending only the
+    // player played every summon's effect at the leftmost zone (live, the VM round). The engine reports MSG_SUMMONING
+    // (60) / MSG_SPSUMMONING (62) once the card is in its zone.
     let mut t = with_cards();
     t.events(&[json!({ "type": 50, "cid": 4101,
         "from": { "controller": 0, "location": 2, "sequence": 1, "position": 10 },
         "to": { "controller": 0, "location": 4, "sequence": 2, "position": 1 } })]);
     let summoning = json!({ "type": 60, "code": 4101, "cid": 4101, "controller": 0, "location": 4, "sequence": 2, "position": 1 });
-    assert_eq!(shows(&t.events(&[summoning])), [(0x38, [0, 2, 0, 0])]);
+    assert_eq!(shows(&t.events(&[summoning])), [(0x38, [2 << 1, 2, 0, 0])]);
     let special = json!({ "type": 62, "code": 4200, "cid": 4200, "controller": 1, "location": 4, "sequence": 1, "position": 1 });
-    assert_eq!(shows(&t.events(&[special])), [(0x39, [1, 11, 0, 0])]);
+    assert_eq!(shows(&t.events(&[special])), [(0x39, [1 | 1 << 1, 11, 0, 0])]);
 }
 
 #[test]
@@ -1505,4 +1507,19 @@ fn a_monster_that_changes_position_moves_onto_its_own_slot() {
     let moved: Vec<_> = out.iter().filter(|(id, _)| *id == 0x1A).map(|(_, p)| (p[0] >> 16, p[1], p[2])).collect();
     assert_eq!(moved, [(100, 1 << 14, 1 << 14 | 1 << 15)], "{out:?}");
     assert_eq!(out.last(), Some(&(0x1C, [1 << 14 | 1 << 15, 0, 0, 0])));
+}
+
+#[test]
+fn leaving_the_battle_phase_takes_the_swords_down() {
+    // In battle mode the input wait (command 4 mode 3) draws swords over the player's possible attackers (effect
+    // 0x3C, DuelBattle 0x4F8A90 keeps it at +0x64); only BattleSelect, BattleAttack and BattleEnd take it down
+    // (0x4F8E40). A Battle Phase with no attack left them up into Main Phase 2 and the opponent's turn (live, the VM
+    // round): a new phase after a battle phase sends BattleEnd, attack or not.
+    let (mut t, _) = translator();
+    let ids = |out: Vec<Message>| out.iter().map(cmd).map(|(id, _)| id).collect::<Vec<_>>();
+    t.events(&[json!({ "type": 41, "phase": 4 })]);
+    assert!(!ids(t.events(&[json!({ "type": 41, "phase": 8 })])).contains(&0xE));
+    assert_eq!(ids(t.events(&[json!({ "type": 41, "phase": 0x100 })])), [0xE, 5]);
+    // Main Phase 2 to the End Phase: no battle to end.
+    assert_eq!(ids(t.events(&[json!({ "type": 41, "phase": 0x200 })])), [5]);
 }

@@ -389,8 +389,9 @@ pub struct Translator {
     chain_list: bool,
     /// The chain's last link (MSG_CHAINING) until the chain ends.
     chaining: Option<Json>,
-    /// A battle shown on the client and not ended yet.
+    /// A battle shown on the client and not ended yet, and whether the duel is in a Battle Phase.
     in_battle: bool,
+    battle_phase: bool,
     /// The last selection hint (HINTMSG_*) and the client's picks in the card list so far.
     hint: u64,
     picks: Vec<usize>,
@@ -489,6 +490,7 @@ impl Translator {
             chain_list: false,
             chaining: None,
             in_battle: false,
+            battle_phase: false,
             hint: 0,
             picks: vec![],
             result: None,
@@ -559,7 +561,15 @@ impl Translator {
                     }
                 }
                 Some(MSG_NEW_PHASE) => {
-                    out.extend(self.end_battle());
+                    // Leaving a Battle Phase ends its battle mode even with no attack: the swords the client drew over
+                    // the possible attackers (effect 0x3C) go only with BattleSelect, BattleAttack or BattleEnd.
+                    let battle = (0x08..=0x80).contains(&m["phase"].as_u64().unwrap_or(0));
+                    let ended = self.end_battle();
+                    if ended.is_empty() && self.battle_phase && !battle {
+                        out.push(command(VIEW_BATTLE_END, [0; 4]));
+                    }
+                    out.extend(ended);
+                    self.battle_phase = battle;
                     if let Some(phase) = m["phase"].as_u64().and_then(client_phase) {
                         out.push(command(PHASE, [self.turn_player, phase, 0, 0]));
                     }
@@ -583,9 +593,10 @@ impl Translator {
                 Some(MSG_DAMAGE_STEP_END | MSG_ATTACK_DISABLED) => out.extend(self.end_battle()),
                 Some(kind @ (MSG_SUMMONING | MSG_SPSUMMONING)) => {
                     let id = if kind == MSG_SUMMONING { RUN_SUMMON } else { RUN_SP_SUMMON };
-                    let card = self.engine_place(m).and_then(|p| Some((p.player, self.sides[p.player as usize].zones.get(&p.zone)?.first()?.uid)));
-                    if let Some((player, uid)) = card {
-                        out.push(command(id, [player, uid, 0, 0]));
+                    // The effect plays at the place's zone (0x514E5A), so the place, not only the player.
+                    let card = self.engine_place(m).and_then(|p| Some((p, self.sides[p.player as usize].zones.get(&p.zone)?.first()?.uid)));
+                    if let Some((place, uid)) = card {
+                        out.push(command(id, [place.player | place.zone << 1, uid, 0, 0]));
                     }
                 }
                 Some(MSG_CONFIRM_CARDS) => out.extend(self.confirm(m)),
