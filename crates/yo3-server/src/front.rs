@@ -62,6 +62,9 @@ const MANNER: u32 = 2;
 const CARD_NUM_ILLEGAL: u32 = 504;
 const TRADE_ERROR: u32 = 503;
 
+/// The first user event's id: above the client's own event ids (1 for Create Duel and NPC duels, 2 for Auto Duel).
+const FIRST_USER_EVENT: u32 = 100;
+
 /// A D-Mail's mail_type: to a player, to the sender's team.
 const MAIL_TO_PLAYER: u32 = 0;
 const MAIL_TO_TEAM: u32 = 3;
@@ -1063,7 +1066,8 @@ impl Hub {
             // The Create form -> 0x33F4 {event_id}; the client then enters it (0x1784, 0x3397).
             0x3390 => {
                 let fields: Vec<(String, Value)> = msg.fields.iter().chain(msg.items.first().map(|i| &i.fields).into_iter().flatten()).filter(|(k, _)| k != "request").cloned().collect();
-                self.last_event += 1;
+                // User event ids start above the built-in ones (Create Duel and NPC duels 1, Auto Duel 2).
+                self.last_event = self.last_event.max(FIRST_USER_EVENT - 1) + 1;
                 let event = Event { id: self.last_event, host: (me, my_name.into()), fields, status: OPEN, entrants: vec![], alive: vec![], round: vec![], round_number: 0 };
                 self.events.push(event);
                 Message::reply(0x33F4).with("event_id", Value::U32(self.last_event))
@@ -1620,12 +1624,16 @@ impl FrontSession {
                 )
             }),
             // Duel entry (DuelMatchingAgent step 0x4A1090): join_id comes back in 0x17AC.
-            // The global dispatcher (0x4F4AE7) keeps the reply's event_id, which a user event's lobby then asks with.
+            // The global dispatcher (0x4F4AE7) keeps the reply's event_id, which a user event's lobby then asks with. Only
+            // a user event's goes back: with Auto Duel's (2) the client queued itself again after every match (live).
             0x1784 => {
                 let mut hub = self.hub();
                 hub.last_join += 1;
-                let event_id = msg.get("event_id").and_then(Value::as_u32).unwrap_or(0);
-                Message::reply(0x1785).with("join_id", Value::U32(hub.last_join)).with("event_id", Value::U32(event_id))
+                let reply = Message::reply(0x1785).with("join_id", Value::U32(hub.last_join));
+                match msg.get("event_id").and_then(Value::as_u32).filter(|id| hub.events.iter().any(|e| e.id == *id)) {
+                    Some(event_id) => reply.with("event_id", Value::U32(event_id)),
+                    None => reply,
+                }
             }
             // DuelMenu (0x49D310) opens with the number of players duelling, hosting a duel and waiting for an
             // automatic match (menu +0x58, +0x5C, +0x60).

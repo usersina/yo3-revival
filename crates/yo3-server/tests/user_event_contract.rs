@@ -86,6 +86,11 @@ fn the_lobby_names_the_event_and_its_entrants() {
     // 0x3305 {phase_block1-3, remain}, 0x32C9 -> 0x32FB {event_id, status, phase, round, total_round, winner...}.
     let joined = one(yugi.send(req_with(0x1784, &[("event_id", Value::U32(event_id))])));
     assert_eq!(int(&joined, "event_id"), Some(event_id));
+    // Only a user event's id goes back, and theirs start above the client's own (1, 2): echoing Auto Duel's 2 made
+    // both clients queue again after their match (live).
+    assert!(event_id >= 100);
+    let auto = one(yugi.send(req_with(0x1784, &[("event_id", Value::U32(2))])));
+    assert_eq!(auto.get("event_id"), None);
     let ask = |c: &mut Client, id: u32| one(c.send(req_with(id, &[("event_id", Value::U32(event_id))])));
     assert_eq!(ask(&mut yugi, 0x32CC).request(), Some(0x3301));
     let counts = ask(&mut yugi, 0x32CD);
