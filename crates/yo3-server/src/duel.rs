@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use yo3_proto::{Message, Packet, Value};
 
 use crate::engine::{Answer, Engine};
-use crate::front::{Deck, DuelEntry, Hub, Outbox, World};
+use crate::front::{Deck, DuelEntry, Ended, Hub, Outbox, SINGLE_MODE, World};
 use crate::table::Table;
 use crate::translate::{Prompt, Translator};
 
@@ -451,9 +451,9 @@ impl DuelSession {
         if let (Some(result), Some(player_id), false) = (translator.result(), self.player_id, self.reported) {
             self.reported = true;
             let opponent = self.entry.as_ref().and_then(|e| e.npc_id).unwrap_or(0);
-            let mut hub = self.hub.lock().expect("hub lock");
-            let record = hub.record_result(player_id, opponent, result);
-            hub.push(player_id, &crate::front::duel_over(player_id, result, record));
+            let duel_id = self.entry.as_ref().and_then(|e| e.duel_id).unwrap_or(0);
+            let ended = Ended { player_id, opponent, npc: true, duel_id, match_type: SINGLE_MODE, result };
+            self.hub.lock().expect("hub lock").finish_duel(&ended);
         }
         out
     }

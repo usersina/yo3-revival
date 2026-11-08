@@ -13,7 +13,7 @@ use crate::duel::{
 };
 use crate::clock::{Clocks, DEFAULT_TOTAL, DEFAULT_TURN};
 use crate::engine::{Answer, Engine};
-use crate::front::{DuelEntry, Hub, Outbox, World, duel_over};
+use crate::front::{DuelEntry, Ended, Hub, MATCH_MODE, Outbox, SINGLE_MODE, World};
 use crate::translate::{DUEL_END, LOST, Prompt, Translator, WON};
 
 /// The usual starting LP (the server's own unless --duel-lp changes it).
@@ -434,8 +434,9 @@ impl Table {
         let mut hub = self.hub.lock().expect("hub lock");
         for (s, result) in results.into_iter().enumerate() {
             let (me, them) = (self.seats[s].player_id, self.seats[1 - s].player_id);
-            let record = hub.record_result(me, them, result);
-            hub.push(me, &duel_over(me, result, record));
+            let match_type = if self.best_of > 1 { MATCH_MODE } else { SINGLE_MODE };
+            let ended = Ended { player_id: me, opponent: them, npc: false, duel_id: self.duel_id, match_type, result };
+            hub.finish_duel(&ended);
         }
         let winner = results.iter().position(|&r| r == WON).map(|s| self.seats[s].player_id);
         hub.end_match(self.duel_id, winner);

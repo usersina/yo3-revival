@@ -102,10 +102,10 @@ where
 }
 
 /// Minimal HTTP: serves the client's own patch index so it sees itself as up to date.
-pub async fn http_loop(listener: TcpListener, game_dir: PathBuf) {
+pub async fn http_loop(listener: TcpListener, game_dir: PathBuf, duel_logs: Option<PathBuf>) {
     loop {
         let Ok((mut stream, _)) = listener.accept().await else { continue };
-        let game_dir = game_dir.clone();
+        let (game_dir, duel_logs) = (game_dir.clone(), duel_logs.clone());
         tokio::spawn(async move {
             let mut buf = Vec::new();
             let mut chunk = [0u8; 1024];
@@ -119,6 +119,11 @@ pub async fn http_loop(listener: TcpListener, game_dir: PathBuf) {
             let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
             let (status, body) = if path.trim_end_matches('/').ends_with("/yo3.idx") {
                 match tokio::fs::read(game_dir.join("yo3.idx")).await {
+                    Ok(b) => ("200 OK", b),
+                    Err(_) => ("404 Not Found", vec![]),
+                }
+            } else if let Some(file) = path.strip_prefix("/duellogs/").and_then(|n| crate::duellog::path_of(duel_logs.as_deref()?, n)) {
+                match tokio::fs::read(file).await {
                     Ok(b) => ("200 OK", b),
                     Err(_) => ("404 Not Found", vec![]),
                 }

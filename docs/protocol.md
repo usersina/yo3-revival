@@ -284,7 +284,7 @@ next shop visit shows it too. Live: Yugi's Tainted Wisdom for Kaiba's Windstorm 
 |---|---|---|---|---|---|
 | Rental Card List (RentalRecord `0x481A30`, `rentalrecord.swf`) | `0x2C34` (bare), then `0x2C35 {rental_kind 0, base_id}` and `0x2C35 {rental_kind 1}` | `0x2D6C` (`0x2D6D`), `0x2D6E` (`0x2D6F`) twice | the screen is built only after all three (`0x482250`); `0x2D6C` also replaces slot 8. Borrowed items `{from_name, from_type, rent_end, deck_type, confirm_to}`, lent `{to_name, rent_end, deck_type, confirm_from}`, decks `main`/`extra`/`side`; empty lists are safe. Without the replies the screen stays black | live | confirmed (empty) |
 | My Profile (`profile.swf`) | `0x1F49` (bare) | `0x2260` | the item whose `pindex` is the player's; ProfileGet (`0x4705D0`) reads `pname`, `title`, `dlv`, `tp`, `n_win`, `n_lose`, `dscore`, `n_duelall`, `turns`, `n_a_win/lose/draw`, `n_nogame`, `isurrender`, `usurrender`, `lpleft`, `n_m_win/lose`, `n_s_win/lose`, `sidedeck`, `sacrifice1..3`, `fusion`, `synchro`, `gravesummon`, `spsummon`, `itrap`, `utrap`, `imagic`, `umagic`, `iefmon`, `uefmon`, `reversalwin`, `reversallose` (absent = 0). We send `n_win`, `n_lose`, `n_draw`, `n_duelall` from the duel records against players (also in the search entries, which Player Information's "Number of Wins" reads) | live: Wins 4, Losses 2 | confirmed; NPC duels not counted (**guess**) |
-| Duel Log (DuelLogWindow `0x499750`, `duel_log.swf`) | `0x1793` (bare) on opening; Server Duel Logs `0x19C8 {pname, offset}` | `0x177B` (`0x177C`), `0x19C9` (`0x1790`) | `0x177B` is the championship list, items `{year, season, event_id}`; the server log tab queues behind it. `0x19C9` items `{end_time (epoch), match_type, dlv_1, dlv_2, pname_1, pname_2, dlog_comment, duel_id, filename, dlogURL}` (`0x49ADF0`) would be replays to download; we keep none. Latest Duel Logs and Duel Log Collection are local files | live: both lists empty | confirmed (empty) |
+| Duel Log (DuelLogWindow `0x499750`, `duel_log.swf`) | `0x1793` (bare) on opening; Server Duel Logs `0x19C8 {pname, offset}` | `0x177B` (`0x177C`), `0x19C9` (`0x1790`) | `0x177B` is the championship list, items `{year, season, event_id}`; the server log tab queues behind it. `0x19C9` items `{end_time (epoch), match_type, dlv_1, dlv_2, pname_1, pname_2, dlog_comment, duel_id, filename, dlogURL}` (`0x49ADF0`) would be replays to download; we keep none. **Latest Duel Logs** lists the `*.dlog` files of `players\<name>\duellogs\myduels\` (`0x49A950`: each loaded by `0x524CA0`, whose header fields are the `0x19C9` item's; the row prints `end_time` through `_localtime32`, so the client's own time zone, `dlv_1`/`dlv_2` as `Lv%d`, `pname_1 V.S. pname_2`); Duel Log Collection is `favorites\`. Those files are **downloaded by the client after each duel**, see "Duel log files" | live: both lists empty without logs; with them Latest Duel Logs lists the duel | confirmed |
 | BOOSTERPASS (BpInputWindow, `boosterpass.swf`) | `0x20D0 {dpcode}` (a 16-character code) | `0x23F0 {dpauth_result, dpPoints, dpGetPoints, premium, premium_expire}`, no error reply | 0 adds `dpGetPoints` and shows the points; anything else "Incorrect BOOSTERPASS CODE.". The global dispatcher keeps `premium` from it (`0x4F5349`), so it goes with 1 | live: "Incorrect BOOSTERPASS CODE." | confirmed; every code refused (Konami's are gone) |
 | Leaderboard | none | — | ShellExecute on Konami's dead ranking page with the login item's `country` | code | nothing to serve |
 | DUEL OPTIONS | none | — | local options file | code | nothing to serve |
@@ -1107,6 +1107,23 @@ client send a bare `0x1842` on the duel connection (meaning **open**).
 
 The numbering differs from Online 2's engine (whose turn change is `0x04` and LP set `0x26`), so YO2 research is a guide
 only. Next: the card map, so decks, hands and draws show.
+
+### Duel log files (`0x512070`, `0x498700`, `0x498B10`, `duellog.rs`)
+
+After a duel the client records it itself from the `0x2009` it gets (front slot 21, flag `0x20000`). DuelResult's tick
+(`0x512070`, state 1) finds the player's item in `players`, reads `duel_result` and the text `dlogURL` from the
+`result` item, and, unless MainGamen `+0x804` is set and the text is empty, starts the duel log task (`0x498700 (url)`):
+`0x498B10` makes a connection object (`0x4EF4B0`, id `-9973`: an HTTP download of the URL) writing to
+`duellogs\<temp>\<file name>`, and when it is done (state 10) copies the file into `myduels\` (`0x4980A0`) and deletes
+the oldest beyond 100 (`0x498510`). So the log is a file the **server** serves: `dlogURL` is `http://<host>:8080/duellogs/NAME.dlog`
+(the host is the address the client reached), and our patch HTTP server serves it from `data/duellogs/`. The file name
+is the URL's; ours is `END_TIME-DUEL_ID-PLAYER_ID.dlog`, one file per player. Live: both clients fetched theirs and
+Latest Duel Logs listed it ("Lv1 Yugi V.S. Lv1 Kaiba").
+
+The file (readers `0x538AB0` header, `0x5384F0` all, `0x538BD0` comment rewrite; little endian): u16 `0x09E7`, u16 1,
+then u32s at 4 (unknown, we send 0), 8 `duel_id`, 12 `player_1`, 16 `player_2`, 20 `match_type`, 24 `dlv_1`, 28 `dlv_2`,
+32 `end_time`; 36 `pname_1` (32 bytes), 68 `pname_2` (32), 100 `dlog_comment` (256), 356 a u32 the rewrite keeps, and from
+360 the body, run-length coded as (value, count) byte pairs (`0x538360`).
 
 ## Accounts
 

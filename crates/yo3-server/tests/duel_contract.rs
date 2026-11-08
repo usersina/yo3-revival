@@ -236,3 +236,35 @@ fn records_are_kept_across_restarts() {
     assert_eq!(hub.record_result(1001, 1002, 1), [2, 0, 0]);
     assert_eq!(hub.record_result(1002, 1001, 2), [0, 1, 0]);
 }
+
+#[test]
+fn a_duels_result_carries_the_url_of_its_log() {
+    // DuelResult (0x512070) reads dlogURL from the same item as duel_result, and a non-empty text starts the client's
+    // duel log download (0x498700) into players\<name>\duellogs\myduels (0x498B10).
+    let push = yo3_server::front::duel_over_with_log(1002, 1, [1, 0, 0], Some("http://127.0.0.1:8080/duellogs/a.dlog"));
+    let data = &push.items[0];
+    let result = data.items.iter().find(|i| i.get("name").and_then(Value::as_str).as_deref() == Some("result")).unwrap();
+    assert_eq!(result.get("dlogURL").and_then(Value::as_str).as_deref(), Some("http://127.0.0.1:8080/duellogs/a.dlog"));
+    assert_eq!(result.get("duel_result").and_then(Value::as_u32), Some(1));
+}
+
+#[test]
+fn a_finished_duel_leaves_a_log_the_duel_log_screen_reads() {
+    // The .dlog header the screen's loader (0x538AB0, then 0x524CA0) reads: magic 0x9E7, version 1, duel_id, player_1,
+    // player_2, match_type, dlv_1, dlv_2, end_time, pname_1, pname_2, dlog_comment.
+    use yo3_server::front::Ended;
+    let dir = std::env::temp_dir().join(format!("yo3-dlogs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut hub = yo3_server::front::Hub::default();
+    hub.keep_duel_logs(&dir, 8080);
+    let ended = Ended { player_id: 1001, opponent: 125, npc: true, duel_id: 9, match_type: 1, result: 1 };
+    let name = hub.finish_duel(&ended).expect("a log file");
+    let bytes = std::fs::read(dir.join(&name)).unwrap();
+    let int = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+    assert_eq!(&bytes[..4], [0xE7, 0x09, 1, 0]);
+    assert_eq!([int(8), int(12), int(16), int(20)], [9, 1001, 125, 1]);
+    assert_eq!(&bytes[68..71], b"CPU");
+    assert_eq!(bytes[100], 0);
+    assert!(bytes.len() >= 360);
+    assert_eq!(hub.record_result(1001, 125, 1), [2, 0, 0], "the duel was counted");
+}

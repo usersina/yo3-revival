@@ -289,6 +289,13 @@ const MATCH_PUSH_DELAY: std::time::Duration = std::time::Duration::from_millis(1
 /// resultData is what the result screen shows (getResult 0x511200): `record` = the player's wins, losses and draws
 /// against this opponent including this duel, and each `*_add` = this duel's change.
 pub fn duel_over(player_id: u32, result: u32, record: [u32; 3]) -> Message {
+    duel_over_with_log(player_id, result, record, None)
+}
+
+/// The same with the duel's log: its `dlogURL` in the result item, which DuelResult (`0x512070`, once the `0x2009` is in
+/// slot 21) reads with `duel_result` and, when the text isn't empty, hands to the client's duel log downloader
+/// (`0x498700`) to keep under Duel Log > Latest Duel Logs.
+pub fn duel_over_with_log(player_id: u32, result: u32, record: [u32; 3], dlog_url: Option<&str>) -> Message {
     let name = |n: &str| Message::record().with("name", Value::text(n));
     let counts = ["win", "lose", "draw"].iter().zip(record).enumerate().fold(name("resultData"), |m, (i, (k, n))| {
         m.with(k, Value::U32(n)).with(&format!("{k}_add"), Value::U32((i as u32 + 1 == result) as u32))
@@ -296,9 +303,23 @@ pub fn duel_over(player_id: u32, result: u32, record: [u32; 3]) -> Message {
     let me = Message::record().with("player_id", Value::U32(player_id)).item(counts);
     let data = Message::duel_data()
         .with("name", Value::text("duelData"))
-        .item(name("result").with("duel_result", Value::U32(result)).with("duel_end", Value::U32(1)))
+        .item(match dlog_url {
+            Some(url) => name("result").with("duel_result", Value::U32(result)).with("duel_end", Value::U32(1)).with("dlogURL", Value::text(url)),
+            None => name("result").with("duel_result", Value::U32(result)).with("duel_end", Value::U32(1)),
+        })
         .item(name("players").item(me));
     Message::reply(0x2009).item(data)
+}
+
+/// A duel that ended for one player (`Hub::finish_duel`). `opponent` is the player's id, or the NPC's id for the duel records.
+pub struct Ended {
+    pub player_id: u32,
+    pub opponent: u32,
+    /// Whether the opponent is an NPC (its id is not a player's).
+    pub npc: bool,
+    pub duel_id: u32,
+    pub match_type: u32,
+    pub result: u32,
 }
 
 /// A chat room, as listed in 0x2458 (fields read by 0x434D20).
@@ -349,6 +370,8 @@ pub struct World {
     pub engine_dir: Option<std::path::PathBuf>,
     /// Where clients connect for their duels (0x22C4 duelData host and port).
     pub duel_server: (String, u16),
+    /// The patch server's port, which also serves the duel logs.
+    pub http_port: u16,
     pub news: Vec<(String, String)>,
     pub rooms: Vec<Room>,
     /// The booster packs and structure decks on the shop's shelves (from the client's pack and recipe files).
@@ -376,6 +399,7 @@ impl World {
             test_extra: None,
             test_times: None,
             duel_server: ("127.0.0.1".into(), 0),
+            http_port: 0,
             news: vec![
                 (
                     "Welcome back to Yu-Gi-Oh! ONLINE".into(),
@@ -436,6 +460,9 @@ pub struct Hub {
     /// User events, and the last event id handed out.
     events: Vec<crate::events::Event>,
     last_event: u32,
+    /// Where the duel logs are kept, and the HTTP port clients download them from (none: no logs).
+    duel_logs: Option<std::path::PathBuf>,
+    http_port: u16,
 }
 
 /// 0x251F's error codes for a friend request (0x4A522E): "This player cannot receive another request.", " The
@@ -455,6 +482,8 @@ struct Online {
     record: Message,
     /// The client's language (0x1F48 lang: 0 Japanese, 1 English, then German, French, Italian, Spanish, Korean, Chinese).
     lang: u32,
+    /// The server address this client reached: where it downloads its duel logs from.
+    host: String,
 }
 
 impl Hub {
@@ -488,6 +517,51 @@ impl Hub {
 
     pub fn duel_entry(&self, player_id: u32) -> Option<DuelEntry> {
         self.duel_entries.get(&player_id).cloned()
+    }
+
+    /// Keeps each duel's log in `dir`, which the HTTP server on `http_port` serves (`/duellogs/NAME`).
+    pub fn keep_duel_logs(&mut self, dir: &std::path::Path, http_port: u16) {
+        self.duel_logs = Some(dir.to_path_buf());
+        self.http_port = http_port;
+    }
+
+    /// A duel's end for one player: counts the result, saves the duel's log and pushes the `0x2009` that makes the
+    /// client download it. Returns the log's file name (none without a log directory).
+    pub fn finish_duel(&mut self, ended: &Ended) -> Option<String> {
+        let record = self.record_result(ended.player_id, ended.opponent, ended.result);
+        let me = self.online.values().find(|o| o.player_id == ended.player_id);
+        let (host, name, level) = me.map(|o| (o.host.clone(), o.name.clone(), o.level)).unwrap_or_default();
+        let (opponent_name, opponent_level) = match self.online.values().find(|o| !ended.npc && o.player_id == ended.opponent) {
+            Some(o) => (o.name.clone(), o.level),
+            None => ("CPU".to_string(), 0),
+        };
+        let saved = self.duel_logs.as_ref().map(|dir| {
+            let log = crate::duellog::Log {
+                duel_id: ended.duel_id,
+                player_1: ended.player_id,
+                player_2: ended.opponent,
+                match_type: ended.match_type,
+                dlv_1: level,
+                dlv_2: opponent_level,
+                end_time: chrono::Utc::now().timestamp() as u32,
+                pname_1: name,
+                pname_2: opponent_name,
+                comment: String::new(),
+                body: vec![],
+            };
+            (log.save(dir), log)
+        });
+        let file = match saved {
+            Some((Ok(file), _)) => Some(file),
+            Some((Err(e), _)) => {
+                tracing::warn!("duel log not saved: {e}");
+                None
+            }
+            None => None,
+        };
+        let url = file.as_ref().map(|f| format!("http://{host}:{}/duellogs/{f}", self.http_port));
+        self.push(ended.player_id, &duel_over_with_log(ended.player_id, ended.result, record, url.as_deref()));
+        file
     }
 
     /// Counts a duel's `result` (1 won, 2 lost, 3 draw), pays its BP into the player's account (`shop::duel_bp`), and
@@ -556,10 +630,10 @@ impl Hub {
         player.record_with(self.totals(player.player_id), team)
     }
 
-    fn join(&mut self, player: &Player, outbox: Outbox, lang: u32) -> u64 {
+    fn join(&mut self, player: &Player, outbox: Outbox, lang: u32, host: String) -> u64 {
         self.next_id += 1;
         let record = self.record(player);
-        let online = Online { player_id: player.player_id, name: player.name.clone(), level: player.level, room: None, outbox, record, lang };
+        let online = Online { player_id: player.player_id, name: player.name.clone(), level: player.level, room: None, outbox, record, lang, host };
         self.online.insert(self.next_id, online);
         self.social.seen(player.player_id, &player.name);
         self.tell_friends(player.player_id);
@@ -1518,7 +1592,8 @@ impl FrontSession {
                 if let Some(old) = self.online {
                     hub.leave(old);
                 }
-                let id = hub.join(self.player(), self.outbox.clone(), self.lang);
+                let host = self.duel_server().0;
+                let id = hub.join(self.player(), self.outbox.clone(), self.lang, host);
                 drop(hub);
                 self.online = Some(id);
                 Message::reply(0x2266)

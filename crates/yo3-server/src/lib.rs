@@ -2,6 +2,7 @@
 pub mod accounts;
 mod store;
 pub mod duel;
+mod duellog;
 mod table;
 pub mod engine;
 pub mod translate;
@@ -113,7 +114,7 @@ pub fn regulation_by(arg: &str, known: &[(u32, String)]) -> Result<u32, String> 
     })
 }
 
-fn world(cfg: &Config, duel_port: u16) -> anyhow::Result<World> {
+fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> {
     let duel_server = (cfg.advertise.clone().unwrap_or_default(), duel_port);
     let world = match yo3_data::GameData::load(&cfg.game_dir) {
         Ok(data) => World {
@@ -153,6 +154,7 @@ fn world(cfg: &Config, duel_port: u16) -> anyhow::Result<World> {
                 })
                 .collect(),
             duel_server,
+            http_port,
             // Booster packs (pack_type 1), their cards read as rarity tiers.
             packs: data
                 .packs
@@ -194,7 +196,7 @@ fn world(cfg: &Config, duel_port: u16) -> anyhow::Result<World> {
                 Some(Err(_)) => anyhow::bail!("--regulation by name needs the game's data"),
                 None => LOGIN_REGULATION,
             };
-            World { duel_server, login_regulation, ..World::new((1..=20).collect()) }
+            World { duel_server, http_port, login_regulation, ..World::new((1..=20).collect()) }
         }
     };
     tracing::info!("players log in with regulation {}", world.login_regulation);
@@ -209,7 +211,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let http = TcpListener::bind((cfg.bind, cfg.http_port)).await?;
     let addrs = (gate.local_addr()?, front.local_addr()?, duel.local_addr()?, http.local_addr()?);
     let front_port = addrs.1.port();
-    let world = Arc::new(world(&cfg, addrs.2.port())?);
+    let world = Arc::new(world(&cfg, addrs.2.port(), addrs.3.port())?);
     match &world.engine_dir {
         Some(dir) => tracing::info!("rules engine: {}", dir.display()),
         None => tracing::warn!("rules engine not fetched (run engine/fetch.sh): duels open but can't be played"),
@@ -248,6 +250,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         hub.keep_social(&dir.join("friends.json"));
         hub.keep_mail(&dir.join("mail.json"));
         hub.keep_teams(&dir.join("teams.json"));
+        hub.keep_duel_logs(&dir.join("duellogs"), addrs.3.port());
     }
     hub.set_directory(directory.clone());
     let hub = Arc::new(Mutex::new(hub));
@@ -278,7 +281,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         let mut session = duel::DuelSession::new(world.clone(), hub.clone(), seed).with_outbox(outbox);
         move |p: &yo3_proto::Packet| session.handle(p)
     }));
-    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone()));
+    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs"))));
 
     tracing::info!(
         "gate {} front {} duel {} http {} (advertise {}); packets -> {}",
