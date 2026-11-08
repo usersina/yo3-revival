@@ -382,6 +382,13 @@ them has a global case. Every list case checks its item count (`0x410D90`) befor
 | `0x1B68` buy `{sale_id, item_num, end_time}` (live: `end_time` the text `""`) | `0x1C24` (`0x1C25`) | `dpoint`: the BP left, shown as `user_bp`; then the client asks for presents (`0x2775`, builder `0x4F3A00`, through `0x47C4A0`) | "shop buy succes"; live: the purchase dialog's "BP After Purchase", then the pack opening | confirmed |
 | `0x1B6A` exchange `{sale_id, item_id, kaban}` | `0x1C28` (`0x1C29`) | | "shop exchange succes" | open |
 
+**No presents between players.** PresentWindow (`PresentWindow.cpp`, `0x476240`-`0x4784F0`) only ever builds `0x2775`
+(`0x4F3A00`, "give me the next present"): it receives presents and sends none. No other screen has a send-present
+request: the client's text table has no "send present" string (the "gift" lines are NPC speech), and the player menus
+offer only D-Mail (no attachment), friend request, trade (cards) and rental. So presents come from the server alone
+(bought packs, decks, protectors and avatar items, and anything a prize would be); cards move between players only
+through trade and rental. Nothing to answer.
+
 **Bought packs arrive as presents.** After `0x1C24` the client asks for the next present (`0x2775`) until there is
 none (`0x2778`), then reloads the shelves (`0x1B67`…). PresentWindow (`0x476DE0`, cases `0x2777`/`0x2779`) reads
 `present_id`, `type`, `level`, `form`, `item_img`, `end_time`, `item` and, for `type` 0 or 9 (a pack), `pack_id`, whose

@@ -236,7 +236,9 @@ Stop finding missing fields one crash at a time.
       client counts its trunk from, the Rental Card List, terms of 1/3/7/14 days that end by themselves, kept in
       `data/rentals.json`. Live: Yugi lent two cards to Kaiba, both trunks changed, a restart kept it and the term's end
       gave the cards back with both online. Not seen live: a Deck rental (three lists); the client has no early return
-- [ ] Presents between players, if wanted (trade and rental are done)
+- [x] Presents between players: not possible, the client has no way to send one. PresentWindow only asks for the next
+      present (`0x2775`); no screen builds a send request (docs/protocol.md, "No presents between players"). Cards
+      move between players by trade and rental, both done
 - **Exit:** create a player, open packs, build a deck, restart the server, everything is still there
 
 ## ✅ M5: Duels
