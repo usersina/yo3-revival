@@ -683,6 +683,12 @@ impl Translator {
             out.push(command(CARD, [card.uid, card.row as u32, 0, table_place(place.player, place.zone, 0)]));
             if place.zone < 5 {
                 out.extend(self.monster_record(place.player, place.zone, card.row));
+            } else {
+                // The field card takes its face from a move (a flip only turns it over), and a Spell/Trap has no
+                // record to carry its id: it moves onto its own slot with its row, face up.
+                let down = Place { face_up: false, ..place };
+                out.push(command(MOVE, [card.uid | (card.row as u32) << 16, down.packed(), place.packed(), 0]));
+                return out;
             }
         }
         out.push(command(FLIP_TURN, [place.packed(), 0, 0, 0]));

@@ -722,6 +722,27 @@ fn a_flipped_card_of_the_opponent_shows_its_row_first() {
 }
 
 #[test]
+fn the_opponents_activated_set_card_shows_its_face() {
+    // The field card object takes its face from a move (CardMove's uid | row << 16); a flip only turns the object over
+    // (+0x82), and a Spell/Trap has no field record to carry its id. So the opponent's Set card, row 0 on the client,
+    // turned up blank white when activated (live, on the Windows VM). It moves onto its own slot with its row, face up.
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 0, def: 0, level: 0, attribute: 0, race: 0 };
+    let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
+    t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4200 }] })]);
+    t.events(&[json!({ "type": 50, "cid": 4200,
+        "from": { "controller": 1, "location": 2, "sequence": 0, "position": 10 },
+        "to": { "controller": 1, "location": 8, "sequence": 1, "position": 8 } })]);
+    let up = json!({ "type": 53, "code": 4200, "cid": 4200, "controller": 1, "location": 8, "sequence": 1,
+        "prev_position": 8, "position": 5 });
+    let out: Vec<_> = t.events(&[up]).iter().map(cmd).collect();
+    assert_eq!(out.first(), Some(&(1000, [11, 200, 0, 1 | 6 << 8])), "{out:?}");
+    assert_eq!(out.last(), Some(&(0x1A, [11 | 200 << 16, 1 | 6 << 1, 1 | 6 << 1 | 1 << 14, 0])), "{out:?}");
+    assert!(!out.iter().any(|(id, _)| *id == 0x1C), "no flip: the move turns it");
+}
+
+#[test]
 fn an_activated_set_card_turns_face_up() {
     // A Set Spell/Trap turns face-up as it is activated: the engine sends MSG_POS_CHANGE to POS_FACEUP (5). A
     // Spell/Trap has no battle position, so no defense bit. Live: Trap Hole flipped (0x1C 0x400A) as the CPU summoned.
