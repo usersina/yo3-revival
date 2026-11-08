@@ -1,7 +1,7 @@
 //! Codec behaviour pinned against vectors produced by the original Python implementation,
 //! which the real client accepts.
 use proptest::prelude::*;
-use yo3_proto::{Error, Message, Packet, Value, decrypt, encrypt, frame, frame_len};
+use yo3_proto::{Error, MAX_DEPTH, Message, Packet, Value, decrypt, encrypt, frame, frame_len};
 
 fn hex(s: &str) -> Vec<u8> {
     (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
@@ -143,4 +143,22 @@ proptest! {
     fn decoding_garbage_never_panics(bytes in prop::collection::vec(any::<u8>(), 0..200)) {
         let _ = Packet::decode(&bytes);
     }
+}
+
+#[test]
+fn deeply_nested_messages_are_refused_not_a_stack_overflow() {
+    // 200,000 nested empty messages (tag 4, no fields, one item): one frame under MAX_FRAME, a stack overflow
+    // for an unbounded recursive decoder.
+    let mut plain = Vec::new();
+    for _ in 0..200_000 {
+        plain.extend([4, 0, 0, 0, 1]);
+    }
+    assert_eq!(Message::decode(&plain).unwrap_err(), Error::TooDeep);
+    // A depth the client could really send still decodes.
+    let mut m = Message::record();
+    for _ in 0..(MAX_DEPTH - 2) {
+        m = Message::record().item(m);
+    }
+    let bytes = m.encode();
+    assert_eq!(Message::decode(&bytes).unwrap().0, m);
 }

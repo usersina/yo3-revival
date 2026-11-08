@@ -37,7 +37,13 @@ pub enum Error {
     BadBodyLength(usize),
     #[error("version string is not valid text")]
     BadVersion,
+    #[error("messages nested deeper than {MAX_DEPTH} levels")]
+    TooDeep,
 }
+
+/// How deep messages may nest on decode (the client's real ones nest about 3 deep). Decoding recurses, and so do
+/// `Drop` and the packet log, so an unbounded depth lets one frame overflow the stack.
+pub const MAX_DEPTH: usize = 16;
 
 fn cipher() -> BlowfishLE {
     BlowfishLE::new_from_slice(KEY).expect("8-byte key is valid")
@@ -220,7 +226,7 @@ impl Message {
     /// Decodes one message; returns it and the number of bytes used.
     pub fn decode(data: &[u8]) -> Result<(Message, usize), Error> {
         let mut r = Reader { data, pos: 0 };
-        let msg = r.message()?;
+        let msg = r.message(0)?;
         Ok((msg, r.pos))
     }
 }
@@ -281,7 +287,10 @@ impl<'a> Reader<'a> {
         Ok(u32::from_be_bytes(self.take(4)?.try_into().unwrap()))
     }
 
-    fn message(&mut self) -> Result<Message, Error> {
+    fn message(&mut self, depth: usize) -> Result<Message, Error> {
+        if depth >= MAX_DEPTH {
+            return Err(Error::TooDeep);
+        }
         let tag = self.u8()?;
         let nfields = self.u16()?;
         let mut fields = Vec::with_capacity(nfields.min(64) as usize);
@@ -308,7 +317,7 @@ impl<'a> Reader<'a> {
         let nitems = self.u16()?;
         let mut items = Vec::with_capacity(nitems.min(64) as usize);
         for _ in 0..nitems {
-            items.push(self.message()?);
+            items.push(self.message(depth + 1)?);
         }
         Ok(Message { tag, fields, items })
     }
