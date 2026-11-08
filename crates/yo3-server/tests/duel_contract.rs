@@ -257,14 +257,42 @@ fn a_finished_duel_leaves_a_log_the_duel_log_screen_reads() {
     let _ = std::fs::remove_dir_all(&dir);
     let mut hub = yo3_server::front::Hub::default();
     hub.keep_duel_logs(&dir, 8080);
-    let ended = Ended { player_id: 1001, opponent: 125, npc: true, duel_id: 9, match_type: 1, result: 1 };
+    let ended = Ended { player_id: 1001, opponent: 1002, npc: false, duel_id: 9, match_type: 1, result: 1, replay: None };
     let name = hub.finish_duel(&ended).expect("a log file");
     let bytes = std::fs::read(dir.join(&name)).unwrap();
     let int = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
     assert_eq!(&bytes[..4], [0xE7, 0x09, 1, 0]);
-    assert_eq!([int(8), int(12), int(16), int(20)], [9, 1001, 125, 1]);
-    assert_eq!(&bytes[68..71], b"CPU");
+    assert_eq!([int(8), int(12), int(16), int(20)], [9, 1001, 1002, 1]);
     assert_eq!(bytes[100], 0);
     assert!(bytes.len() >= 360);
-    assert_eq!(hub.record_result(1001, 125, 1), [2, 0, 0], "the duel was counted");
+    assert_eq!(hub.record_result(1001, 1002, 1), [2, 0, 0], "the duel was counted");
+    // A duel against an NPC leaves no log: the client downloads none of those (DuelResult 0x512070, MainGamen +0x804).
+    let npc = Ended { player_id: 1001, opponent: 125, npc: true, duel_id: 10, match_type: 1, result: 1, replay: None };
+    assert_eq!(hub.finish_duel(&npc), None);
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+}
+
+#[test]
+fn a_replay_runs_from_the_janken_to_the_matchs_end() {
+    // The commands of a duel log (duellog.rs): a watcher's pre-duel screen first (1500-1503, which take it to the
+    // field), then the card table, the duel's start and LP, the engine's events, the duel's end (command 2) and 1505,
+    // which takes a watching client's DuelResult out of the duel.
+    use serde_json::json;
+    use yo3_server::duel::{lead_janken, replay_commands};
+    use yo3_server::front::Deck;
+    let deck = |first: u16| Deck { main: (first..first + 5).collect(), ..Deck::default() };
+    let world = yo3_server::front::World::new(vec![]);
+    let history = [json!({ "type": 5, "player": 0, "reason": 1 })];
+    let commands = replay_commands(&world, [&deck(100), &deck(200)], [1, 2, 0], 8000, &history);
+    let ids: Vec<u32> = commands.iter().map(|c| c[0]).collect();
+    assert_eq!(&ids[..4], [1500, 1501, 1502, 1503]);
+    assert_eq!(commands[1][2..5], [1, 2, 0], "the janken as the first player saw it: won with rock against scissors... ");
+    assert!(ids.contains(&1) && ids.iter().filter(|&&i| i == 1000).count() >= 10, "the card table and the duel's start");
+    assert_eq!(&ids[ids.len() - 2..], [2, 1505]);
+    assert_eq!(commands[commands.len() - 2][2], 1, "player 0 won");
+    assert_eq!(commands[commands.len() - 1][2], 1, "the match too");
+    // A janken that the other seat's player saw: the result and the hands swap.
+    assert_eq!(lead_janken([1, 2, 0], true), [1, 2, 0]);
+    assert_eq!(lead_janken([1, 2, 0], false), [2, 0, 2]);
+    assert_eq!(lead_janken([0, 1, 1], false), [0, 1, 1]);
 }

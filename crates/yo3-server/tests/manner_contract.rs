@@ -21,7 +21,7 @@ fn evaluation(pushed: &[Message]) -> Option<u32> {
 }
 
 fn finish(s: &Server, player_id: u32, opponent: u32) {
-    let ended = Ended { player_id, opponent, npc: false, duel_id: 3, match_type: 1, result: 1 };
+    let ended = Ended { player_id, opponent, npc: false, duel_id: 3, match_type: 1, result: 1, replay: None };
     s.hub.lock().unwrap().finish_duel(&ended);
 }
 
@@ -42,7 +42,7 @@ fn a_duel_against_an_npc_asks_for_no_rating() {
     let s = Server::new();
     let mut a = s.join(1001, "Yugi");
     a.pushed();
-    let ended = Ended { player_id: 1001, opponent: 125, npc: true, duel_id: 3, match_type: 1, result: 1 };
+    let ended = Ended { player_id: 1001, opponent: 125, npc: true, duel_id: 3, match_type: 1, result: 1, replay: None };
     s.hub.lock().unwrap().finish_duel(&ended);
     assert_eq!(evaluation(&a.pushed()), None);
 }

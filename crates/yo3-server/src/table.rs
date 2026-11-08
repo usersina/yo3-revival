@@ -27,7 +27,7 @@ const MSG_NEW_TURN: u64 = 40;
 const CARD_SWAP: u32 = 1504;
 /// A match's end for a spectator {match result: 1 won, 2 lost, 3 draw}: its DuelResult (0x512070) reads it at the
 /// head of its queue (MainGamen +0x820) where a player's reads the front's 0x2009.
-const MATCH_END: u32 = 1505;
+pub(crate) const MATCH_END: u32 = 1505;
 
 struct Seat {
     player_id: u32,
@@ -245,6 +245,17 @@ impl Table {
         (translator, out)
     }
 
+    /// The last duel as a replay (`duellog::Replay`): what a spectator of the player who went first would have seen,
+    /// from the card table to the duel's end (the janken left out), with that player first.
+    fn replay(&self, hub: &Hub) -> Option<crate::duellog::Replay> {
+        self.engine.as_ref()?;
+        let [lead, other] = [self.first, 1 - self.first].map(|s| &self.seats[s]);
+        let janken = crate::duel::lead_janken(self.janken, self.first == 0);
+        let commands = crate::duel::replay_commands(&self.world, [&lead.entry.deck, &other.entry.deck], janken, self.lp, &self.history);
+        let sides = [(lead, 0), (other, 1)].map(|(seat, kind)| hub.side(seat.player_id, &seat.entry.deck, kind));
+        Some(crate::duellog::Replay { sides, commands })
+    }
+
     /// A spectator joins (0x1838 on the duel connection): it watches from seat 0's side, and if the duel is on it gets
     /// seat 0's opening and the duel so far, replayed through its own translator, and the clocks. Returns those.
     pub fn watch(&mut self, outbox: Outbox) -> Vec<Message> {
@@ -432,10 +443,11 @@ impl Table {
         }
         self.over = true;
         let mut hub = self.hub.lock().expect("hub lock");
+        let replay = self.replay(&hub);
         for (s, result) in results.into_iter().enumerate() {
             let (me, them) = (self.seats[s].player_id, self.seats[1 - s].player_id);
             let match_type = if self.best_of > 1 { MATCH_MODE } else { SINGLE_MODE };
-            let ended = Ended { player_id: me, opponent: them, npc: false, duel_id: self.duel_id, match_type, result };
+            let ended = Ended { player_id: me, opponent: them, npc: false, duel_id: self.duel_id, match_type, result, replay: replay.clone() };
             hub.finish_duel(&ended);
         }
         let winner = results.iter().position(|&r| r == WON).map(|s| self.seats[s].player_id);

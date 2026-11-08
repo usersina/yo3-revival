@@ -1110,7 +1110,7 @@ Other commands at the head are taken and dropped. The match is over when the **f
 | `score_<player_id>` int | `0x2009` top level | the dispatcher, copied as `event_score` | shape; left out |
 | `duel_end` int | `result` | DuelScene (`0x515BD3`): 2 or 3 show text `0x2918` and leave | shape; we send 1 (**guess**) |
 | `duel_result` int | `result` | DuelResult step 1 (`0x5122B0`): the match result (1 won, 2 lost, 3 draw) at MainGamen `+0x820` | confirmed |
-| `dlogURL` string | `result` | step 1, only when MainGamen `+0x804` is 0: opens a component (`0xFFFFD90B`) on that URL | left out |
+| `dlogURL` string | `result` | step 1, only when MainGamen `+0x804` is 0: opens a component (`0xFFFFD90B`) on that URL | sent for duels between players (see "Duel log files") |
 | `player_id` int | each item of `players` | `0x510830` finds this player's record | confirmed |
 | item `resultData` (by `name`) | the player's record | step 1 sets DuelResult `+0x60` | confirmed |
 | `win`, `lose`, `draw` and `win_add`, `lose_add`, `draw_add` ints | `resultData` | getResult (`0x511200`, `0x511934`–`0x511D2D`): the player's panel "Wins 1 (+001)", then lose and win swapped for the opponent's panel | confirmed (live); totals and deltas are our reading |
@@ -1128,18 +1128,34 @@ only. Next: the card map, so decks, hands and draws show.
 
 After a duel the client records it itself from the `0x2009` it gets (front slot 21, flag `0x20000`). DuelResult's tick
 (`0x512070`, state 1) finds the player's item in `players`, reads `duel_result` and the text `dlogURL` from the
-`result` item, and, unless MainGamen `+0x804` is set and the text is empty, starts the duel log task (`0x498700 (url)`):
-`0x498B10` makes a connection object (`0x4EF4B0`, id `-9973`: an HTTP download of the URL) writing to
-`duellogs\<temp>\<file name>`, and when it is done (state 10) copies the file into `myduels\` (`0x4980A0`) and deletes
-the oldest beyond 100 (`0x498510`). So the log is a file the **server** serves: `dlogURL` is `http://<host>:8080/duellogs/NAME.dlog`
-(the host is the address the client reached), and our patch HTTP server serves it from `data/duellogs/`. The file name
-is the URL's; ours is `END_TIME-DUEL_ID-PLAYER_ID.dlog`, one file per player. Live: both clients fetched theirs and
-Latest Duel Logs listed it ("Lv1 Yugi V.S. Lv1 Kaiba").
+`result` item, and, **only when MainGamen `+0x804` is 0** (a duel against a player: the flag is set for NPC duels, whose
+result screen takes the other branch of `0x511200`) and the text isn't empty, starts the duel log task
+(`0x498700 (url)`): `0x498B10` makes a connection object (`0x4EF4B0`, id `-9973`: an HTTP download of the URL) writing
+to `duellogs\<temp>\<file name>`, and when it is done (state 10) copies the file into `myduels\` (`0x4980A0`) and
+deletes the oldest beyond 100 (`0x498510`). So the log is a file the **server** serves, and **a duel against an NPC
+leaves none** (the only other caller of `0x498700` is the Server Duel Logs tab's download). `dlogURL` is
+`http://<host>:8080/duellogs/NAME.dlog` (the host is the address the client reached), served by our patch HTTP server from
+`data/duellogs/`; the file name is the URL's, ours `END_TIME-DUEL_ID-PLAYER_ID.dlog`, one file per player. The log is
+that of the match's last duel. Live: both clients fetched theirs, Latest Duel Logs listed it ("Lv1 Yugi V.S. Lv1
+Kaiba"), Play replayed the duel on the field from the janken to the duel's end, then asked "Save this duel log?"
+(No) and returned to the main screen.
 
 The file (readers `0x538AB0` header, `0x5384F0` all, `0x538BD0` comment rewrite; little endian): u16 `0x09E7`, u16 1,
 then u32s at 4 (unknown, we send 0), 8 `duel_id`, 12 `player_1`, 16 `player_2`, 20 `match_type`, 24 `dlv_1`, 28 `dlv_2`,
-32 `end_time`; 36 `pname_1` (32 bytes), 68 `pname_2` (32), 100 `dlog_comment` (256), 356 a u32 the rewrite keeps, and from
-360 the body, run-length coded as (value, count) byte pairs (`0x538360`).
+32 `end_time`; 36 `pname_1` (32 bytes), 68 `pname_2` (32), 100 `dlog_comment` (256), 356 a u32 the rewrite keeps (we send
+the body's length), and from 360 the body, run-length coded as (value, count) byte pairs (`0x538360`). The body
+(`0x5384F0`, then `0x524330`, which builds from it the match push `0x1978` of a watched duel, a `duelData` and the
+setup): 20 u32s (`duel_id` third, the end time fourth (`0x17C`), `match_type` fifth, `event_type` seventh, `official`
+eighth), two player blocks of 8656 bytes, then a u32 count and that many commands of six u32s `{id, 0, param1..param4}`
+(`0x522A50`: the engine commands; entries whose second u32's low byte is negative are skipped). A block: 11 u32s
+`{player_id, dlv, MainDeckNum, ExtraDeckNum, title, ?, PlayerType, card_protector, n_win, n_lose, n_draw}`, `pname` (32
+bytes), the avatar (128), `country` (4), 32 speech lines of 256 bytes and a 256-byte deck name. The setup is not in
+the file: `0x524330` makes it from the blocks (FirstPlayer and PlayerNum are 0). So a replay is what a spectator of
+the player who went first sees: our commands are the janken as that player saw it (1500-1503, which take the pre-duel
+screen to the field; without them the replay waits on it), the card table, the duel's start and LP, the engine's events
+and 1505 (the match's end for that player; without it the replay ends on the pre-duel screen). The first player's
+block comes first, so `player_1` is whoever went first. Unknown: the u32 at 4, the blocks' sixth u32, the first u32s of
+the body other than the four named; the hands show as white boxes in a replay (a spectator sees none).
 
 ## Accounts
 

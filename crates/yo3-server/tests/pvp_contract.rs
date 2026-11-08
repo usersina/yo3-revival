@@ -419,3 +419,32 @@ fn a_spectator_learns_who_won_when_a_player_leaves() {
     let ends: Vec<_> = commands(&s.pushed()).into_iter().filter(|(id, _)| matches!(id, 2 | 1505)).collect();
     assert_eq!(ends, [(2, [1, 14, 0, 0]), (1505, [1, 0, 0, 0])], "1001 won, by disconnection");
 }
+
+#[test]
+fn a_duel_between_players_leaves_a_replay_in_the_log() {
+    // The duel log file the client replays (duellog.rs, 0x5384F0/0x524330): after the header, the body holds the
+    // players' two blocks and the commands of what a spectator of the player who went first sees. Here 1001 goes
+    // first, so its block comes first.
+    let Some((mut a, mut b, hub)) = table_of(true, 1, 100) else { return };
+    let dir = std::env::temp_dir().join(format!("yo3-replay-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    hub.lock().unwrap().keep_duel_logs(&dir, 8080);
+    enter(&mut a, 1001);
+    enter(&mut b, 1002);
+    second_wins(&mut a, &mut b);
+    let file = std::fs::read_dir(&dir).unwrap().filter_map(Result::ok).find(|f| f.file_name().to_string_lossy().contains("-1001")).expect("1001's log");
+    let bytes = std::fs::read(file.path()).unwrap();
+    assert_eq!(u32::from_le_bytes(bytes[12..16].try_into().unwrap()), 1001, "player_1 is the first player");
+    assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 1002);
+    // The body, unpacked from the (value, count) pairs.
+    let body: Vec<u8> = bytes[360..].chunks(2).flat_map(|p| std::iter::repeat_n(p[0], p[1] as usize)).collect();
+    let body_len = u32::from_le_bytes(bytes[356..360].try_into().unwrap()) as usize;
+    assert_eq!(body.len(), body_len);
+    let count = u32::from_le_bytes(body[80 + 2 * 0x21D0..][..4].try_into().unwrap()) as usize;
+    assert!(count > 100, "the card table, the opening and the duel: {count} commands");
+    assert_eq!(body.len(), 80 + 2 * 0x21D0 + 4 + 24 * count);
+    // The last commands are the duel's end and the match's (1505), won by the player who went first.
+    let id = |from_end: usize| u32::from_le_bytes(body[body.len() - 24 * from_end..][..4].try_into().unwrap());
+    assert_eq!((id(2), id(1)), (2, 1505), "command 2 ends the duel, 1505 the match");
+    assert_eq!(u32::from_le_bytes(body[body.len() - 16..][..4].try_into().unwrap()), 2);
+}

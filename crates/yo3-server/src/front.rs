@@ -337,6 +337,8 @@ pub struct Ended {
     pub duel_id: u32,
     pub match_type: u32,
     pub result: u32,
+    /// The duel to replay, when the duel server kept it (a duel between players).
+    pub replay: Option<crate::duellog::Replay>,
 }
 
 /// A chat room, as listed in 0x2458 (fields read by 0x434D20).
@@ -581,6 +583,25 @@ impl Hub {
         true
     }
 
+    /// A player as a replay shows them (`duellog::Side`): their record as the opponent's client gets it.
+    pub fn side(&self, player_id: u32, deck: &Deck, player_type: u32) -> crate::duellog::Side {
+        let record = self.online.values().find(|o| o.player_id == player_id).map(|o| &o.record);
+        let int = |k: &str| record.and_then(|r| r.get(k)).and_then(Value::as_u32).unwrap_or(0);
+        crate::duellog::Side {
+            player_id,
+            level: int("dlv"),
+            title: int("title"),
+            main: deck.main.len() as u32,
+            extra: deck.extra.len() as u32,
+            player_type,
+            protector: 0,
+            record: self.totals(player_id),
+            name: record.and_then(|r| r.get("pname")).and_then(Value::as_str).unwrap_or_default(),
+            avatar: record.and_then(|r| r.get("avatar1")).and_then(Value::as_bytes).unwrap_or_default().to_vec(),
+            speeches: (0..SPEECHES).map(|i| record.and_then(|r| r.get(&format!("speech{i:02}"))).and_then(Value::as_str).unwrap_or_default()).collect(),
+        }
+    }
+
     /// Keeps each duel's log in `dir`, which the HTTP server on `http_port` serves (`/duellogs/NAME`).
     pub fn keep_duel_logs(&mut self, dir: &std::path::Path, http_port: u16) {
         self.duel_logs = Some(dir.to_path_buf());
@@ -597,20 +618,31 @@ impl Hub {
             Some(o) => (o.name.clone(), o.level),
             None => ("CPU".to_string(), 0),
         };
-        let saved = self.duel_logs.as_ref().map(|dir| {
-            let log = crate::duellog::Log {
+        // Only a duel against a player is kept: the client downloads no log of one against an NPC (DuelResult
+        // `0x512070`: MainGamen `+0x804` is set, and the `dlogURL` step is skipped).
+        let saved = self.duel_logs.as_ref().filter(|_| !ended.npc).map(|dir| {
+            let end_time = chrono::Utc::now().timestamp() as u32;
+            let mut log = crate::duellog::Log {
                 duel_id: ended.duel_id,
                 player_1: ended.player_id,
                 player_2: ended.opponent,
                 match_type: ended.match_type,
                 dlv_1: level,
                 dlv_2: opponent_level,
-                end_time: chrono::Utc::now().timestamp() as u32,
+                end_time,
                 pname_1: name,
                 pname_2: opponent_name,
                 comment: String::new(),
+                owner: ended.player_id,
                 body: vec![],
             };
+            if let Some(replay) = &ended.replay {
+                // The replay shows the player who went first first.
+                let [a, b] = &replay.sides;
+                (log.player_1, log.player_2, log.dlv_1, log.dlv_2) = (a.player_id, b.player_id, a.level, b.level);
+                (log.pname_1, log.pname_2) = (a.name.clone(), b.name.clone());
+                log.body = replay.body(ended.duel_id, ended.match_type, end_time);
+            }
             (log.save(dir), log)
         });
         let file = match saved {

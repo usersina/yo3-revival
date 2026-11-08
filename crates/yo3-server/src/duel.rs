@@ -10,7 +10,7 @@ use yo3_proto::{Message, Packet, Value};
 
 use crate::engine::{Answer, Engine};
 use crate::front::{Deck, DuelEntry, Ended, Hub, Outbox, SINGLE_MODE, World};
-use crate::table::Table;
+use crate::table::{MATCH_END, Table};
 use crate::translate::{Prompt, Translator};
 
 /// Request id of the server's duel messages. A guess: the pump (0x5233A0) reads only
@@ -166,6 +166,35 @@ pub(crate) fn setup(first: u32, mine: &Deck, theirs: &Deck) -> Message {
 /// The deck and extra deck piles of both players, from the setup's counts: after the setup and before any draw.
 pub(crate) fn piles() -> [Message; 4] {
     [(CLIENT, DECK), (CPU, DECK), (CLIENT, EXTRA), (CPU, EXTRA)].map(|(player, zone)| command(DECK_RESET, [player, zone, 0, 0]))
+}
+
+/// The janken {result, the opponent's hand, own hand} as the player who went first saw it, given as seat 0's (or the
+/// player's) was: `lead_saw_it` when that player is the one who went first.
+pub fn lead_janken([result, theirs, mine]: [u32; 3], lead_saw_it: bool) -> [u32; 3] {
+    if lead_saw_it { [result, theirs, mine] } else { [[0, 2, 1][result as usize % 3], mine, theirs] }
+}
+
+/// The commands of a duel's replay (`duellog.rs`): what a spectator would have seen of the player who went first (the
+/// first deck), from the janken through the card table and the duel's events to the match's end. `history` is every
+/// engine message of the duel.
+pub fn replay_commands(world: &World, decks: [&Deck; 2], janken: [u32; 3], lp: u32, history: &[serde_json::Value]) -> Vec<[u32; 6]> {
+    let (mut translator, table) = Translator::spectating(CLIENT, [&decks[0].main, &decks[1].main], world.cards.clone());
+    translator.tokens(world.token_rows.clone());
+    let [result, theirs, mine] = janken;
+    let mut messages = vec![
+        command(JANKEN_BEGIN, [0; 4]),
+        command(JANKEN_RESOLVE, [result, theirs, mine, 0]),
+        command(FIRST_BEGIN, [0; 4]),
+        command(FIRST_RESOLVE, [FIRST, 0, 0, 0]),
+    ];
+    messages.extend(table);
+    messages.extend(translator.extra_decks([&decks[0].extra, &decks[1].extra]));
+    messages.extend([command(DUEL_START, [0; 4]), command(SET_LP, [CLIENT, lp, 0, 0]), command(SET_LP, [CPU, lp, 0, 0])]);
+    messages.extend(piles());
+    messages.extend(translator.events(history));
+    // The match's end for the leading player, which takes a watching client's DuelResult out of the duel.
+    messages.push(command(MATCH_END, [translator.result().unwrap_or(3), 0, 0, 0]));
+    crate::duellog::commands(&messages)
 }
 
 /// Fisher-Yates.
@@ -452,7 +481,7 @@ impl DuelSession {
             self.reported = true;
             let opponent = self.entry.as_ref().and_then(|e| e.npc_id).unwrap_or(0);
             let duel_id = self.entry.as_ref().and_then(|e| e.duel_id).unwrap_or(0);
-            let ended = Ended { player_id, opponent, npc: true, duel_id, match_type: SINGLE_MODE, result };
+            let ended = Ended { player_id, opponent, npc: true, duel_id, match_type: SINGLE_MODE, result, replay: None };
             self.hub.lock().expect("hub lock").finish_duel(&ended);
         }
         out

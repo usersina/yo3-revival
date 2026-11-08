@@ -179,10 +179,12 @@ Stop finding missing fields one crash at a time.
       ratings for trades. Live: Yugi rated Kaiba +10, Kaiba rated Yugi -10; each saw the other's face icon change
 - [ ] Country: no request carries the client's country; a host setting per account could
 - [x] Main menu screens: Rental Card List (`0x2C34`/`0x2C35` chain), My Profile (wins and losses against players),
-      Duel Log (`0x1793`, `0x19C8`, no server replays), BOOSTERPASS (codes refused); Card Album, Leaderboard (a Konami
+      Duel Log (`0x1793`, `0x19C8`), BOOSTERPASS (codes refused); Card Album, Leaderboard (a Konami
       web page) and Duel Options need nothing. Live: each opened; Team is with teams
-- [ ] Local duel logs: the client says it saves a Duel Log after each duel, but Latest Duel Logs stays empty after
-      ours (what it records from, and when, is open)
+- [x] Local duel logs: the client keeps no log by itself: after a duel against a player it downloads the `dlogURL`
+      of the `0x2009` result (`0x512070`; never against an NPC), a `.dlog` the server builds (`duellog.rs`: header,
+      both players, the spectator's command stream). Latest Duel Logs lists it and Play replays the duel. Live: Yugi
+      and Kaiba's duel, listed, replayed to "Save this duel log?"; a match keeps its last duel only
 - [x] Saving character settings: Avatar Settings' Confirm sends `0x2CEF` {avatar1, speech00–22, comment00–01,
       title} → `0x2CF5`; kept with the account and sent back in the player record. Live: purple hair after a restart
 - [x] User events: Create, the list and details, Participate and leave, the lobby and its Event Menu (Start, Cancel),
