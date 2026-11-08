@@ -56,11 +56,13 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
       attack and the monster could still attack.
 - [x] The opponent's Set Spell/Trap showed blank white once activated: it now moves onto its own slot with its row.
       Live: Spellbinding Circle and Magic Drain showed their art on the other client.
-- [x] The Graveyard pile showed a card back on both clients, even with cards moved in face up: a card landing on a
-      pile is removed, and only GraveTop (`0x18`) puts a face-up card on top. The server sends it after each move into
-      a Graveyard. Live: both Graveyards showed their top card on both clients.
+- [x] The Graveyard pile showed a card back on both clients, even with cards moved in face up: a pile draws its top
+      card's face only when that card's table entry has the flag of command 1000's uid top byte. Graveyard and
+      banished cards now carry it. Live: both Graveyards showed their top card on both clients, also after a card left
+      from under the top, and hovering one previews it.
 - [x] An attack position monster offered "to Attack Position" too: a position change now offers only the entry that
-      fits (to Defence in attack, to Attack in face-up defense, Flip Summon face down). Not yet checked live.
+      fits (to Defence in attack, to Attack in face-up defense, Flip Summon face down). Live: Giant Orc in attack
+      position offered only "Change to Defence Position".
 - [x] An attack on an empty field asked nothing (EDOPro asks only when a monster could be attacked instead): a direct
       attack now asks the original's "Attack your opponent directly?" first (**guess**: the original asked every
       time). Live: No went back to the battle commands (the question came again on the next click), Yes dealt 2700.

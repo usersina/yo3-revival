@@ -119,10 +119,10 @@ const REMOVED: u32 = 0xF;
 /// (effect 0x33) plays at it and it is hidden (state 0x4FC520), before its move.
 const FLIP_TURN: u32 = 0x1C;
 const CARD_VANISH: u32 = 0x1F;
-/// The Graveyard's top card {player, zone 0xE, uid} (GraveTop, DuelCardManager 0x4FF501): a face-up card object at the
-/// top of that pile, unless one for the uid already exists. A card landing on a pile is removed and only adds to the
-/// pile's count (0x4FC0AD), so without it the pile shows a card back (live).
-const GRAVE_TOP: u32 = 0x18;
+/// A card table entry's flag (command 1000's uid top byte, kept as `!= 0` by 0x521DF0): a pile whose count changes
+/// draws its top card's face when its entry has it, else a back (0x4FE4D0 → 0x523DA0), and the pointer over the pile
+/// previews that card (0x50B9C0). Set for the open piles: the Graveyard and the banished cards.
+const OPEN: u32 = 1 << 24;
 /// A field card's counters {player | zone << 8, change, kind} (DuelCardManager 0x4FFD8E): the change is added to the
 /// card's count of that kind (0 erases it; a negative count is ignored), shown on its field label with the kind's
 /// icon (table 0x789020) and named in the card info as UI text 200 + kind (0x4551DB).
@@ -635,15 +635,13 @@ impl Translator {
             self.positions.insert((to.player, to.zone), (to.face_up, to.defense));
         }
         let row = self.shown_row(&to, card.row);
-        let mut out = vec![command(CARD, [card.uid, row, 0, table_place(to.player, to.zone, index)])];
+        let mut out = vec![command(CARD, [card.uid | open(to.zone), row, 0, table_place(to.player, to.zone, index)])];
         if to.zone < 5 && row != 0 {
             out.extend(self.monster_record(to.player, to.zone, card.row));
         }
-        out.push(command(MOVE, [card.uid | row << 16, from.packed(), to.packed(), 0]));
-        if to.zone == GRAVE {
-            out.push(command(GRAVE_TOP, [to.player, GRAVE, card.uid, 0]));
-        }
-        // List zones renumber: re-send the shifted cards (not the face-down deck).
+        // List zones renumber: re-send the shifted cards (not the face-down deck). A pile's go before the move, whose
+        // count change redraws the pile from the table's top entry (0x4FE4D0); the hand's after.
+        let mut hand = vec![];
         for (p, zone, start) in [(from.player, from.zone, at), (to.player, to.zone, index + 1)] {
             if zone <= FIELD_SPELL || zone == DECK {
                 continue;
@@ -651,9 +649,12 @@ impl Translator {
             let shifted: Vec<(usize, Card)> = self.sides[p as usize].zone(zone).iter().copied().enumerate().skip(start).collect();
             for (i, c) in shifted {
                 let row = self.shown_row(&Place { player: p, zone, index: i, face_up: true, defense: false }, c.row);
-                out.push(command(CARD, [c.uid, row, 0, table_place(p, zone, i)]));
+                let entry = command(CARD, [c.uid | open(zone), row, 0, table_place(p, zone, i)]);
+                if zone == HAND { hand.push(entry) } else { out.push(entry) }
             }
         }
+        out.push(command(MOVE, [card.uid | row << 16, from.packed(), to.packed(), 0]));
+        out.extend(hand);
         out
     }
 
@@ -1386,6 +1387,11 @@ impl Translator {
         }
         None
     }
+}
+
+/// The table entry flag of a card in this zone: open in the Graveyard and among the banished cards.
+fn open(zone: u32) -> u32 {
+    if zone == GRAVE || zone == REMOVED { OPEN } else { 0 }
 }
 
 /// A data command per four values, which the pop appends in order (0x522A50).

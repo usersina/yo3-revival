@@ -206,23 +206,27 @@ fn a_card_sent_to_the_graveyard_lies_face_up() {
 
 #[test]
 fn the_graveyards_top_card_shows_on_its_pile() {
-    // A card landing on a pile is removed (0x4FC0AD: the pile's count goes up, +0xD8); GraveTop 0x18 {player, 0xE,
-    // uid} makes a face-up card at the top of that Graveyard (0x4FF501). Without it the pile showed a back (live).
+    // A pile whose count changes (0x4FE4D0) draws its top card's face when that card's table entry has the flag that
+    // command 1000's uid top byte sets (0x521DF0 keeps `top byte != 0`; 0x523DA0 reads it), else a card back; the
+    // pointer over it previews that card the same way (0x50B9C0). Without the flag both Graveyards showed backs (live).
+    // So Graveyard and banished cards go into the table flagged, and when a card leaves from under the top, the cards
+    // behind it are renumbered before the move, so the count change finds the right top.
     let mut t = with_cards();
     t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 0, 1) })]);
     let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 4, 0, 1), "to": loc(0, 16, 0, 1) })])
         .iter().map(cmd).collect();
     let moved = out.iter().position(|(id, _)| *id == 0x1A).expect("the move");
     let uid = out[moved].1[0] & 0xFFFF;
-    assert_eq!(out[moved + 1..].iter().find(|(id, _)| *id == 0x18), Some(&(0x18, [0, 0xE, uid, 0])), "{out:?}");
-    // The opponent's card goes on the opponent's pile.
-    let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4200, "from": loc(1, 4, 1, 1), "to": loc(1, 16, 0, 1) })])
+    assert!(out[..moved].contains(&(1000, [uid | 1 << 24, 100, 0, 0xE << 8])), "{out:?}");
+    // A second card on top, then the first leaves from under it: the top is renumbered to index 0 before the move.
+    t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 16, 1, 1) })]);
+    let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 16, 0, 1), "to": loc(0, 2, 0, 1) })])
         .iter().map(cmd).collect();
-    assert!(out.iter().any(|(id, p)| *id == 0x18 && p[0] == 1 && p[1] == 0xE), "{out:?}");
-    // Not for other places.
-    let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 32, 0, 5) })])
-        .iter().map(cmd).collect();
-    assert!(!out.iter().any(|(id, _)| *id == 0x18), "{out:?}");
+    let moved = out.iter().position(|(id, _)| *id == 0x1A).expect("the move");
+    assert!(out[..moved].iter().any(|(id, p)| *id == 1000 && p[1] == 101 && p[0] >> 24 == 1 && p[3] == 0xE << 8), "{out:?}");
+    assert!(!out[moved..].iter().any(|(id, _)| *id == 1000), "{out:?}");
+    // The hand isn't flagged.
+    assert!(out.iter().any(|(id, p)| *id == 1000 && p[1] == 100 && p[0] >> 24 == 0), "{out:?}");
 }
 
 #[test]

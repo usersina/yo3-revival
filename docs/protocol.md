@@ -740,13 +740,17 @@ Phase 1 highlights only the legal cards, and a monster's menu reads Summon / Set
 Card moves (`MSG_MOVE`) become a card-table entry plus `0x1A`, with move places `player | zone<<1 | index<<6`, face up
 bit 14 and defence bit 15 on field slots (`0x5000E0`), and face up into the Graveyard and, when face up, the banished
 pile. A card landing on a pile is removed and only adds to the pile's count (landing state `0x4FBF30`, case
-`0x4FC0AD`: count + 1, `+0xD8` set), so each Graveyard pile showed a card back on both clients (live, even moved face
-up). GraveTop `0x18` {param1 player, param2 zone `0xE` (any other zone is ignored), param3 uid} (`0x4FF501`) makes a
-face-up card object for that uid at the top of that Graveyard (`0x401C | side`, the pile's count in bits 6–13, effect
-mode 8), unless one exists for the uid already; the server sends it after every move into a Graveyard. A card leaving
-from under it finds its own object or gets a new one, as before. Live (Mystical Space Typhoon on a Set Spellbinding
-Circle): each Graveyard showed its top card's art with its count on both clients, and the next card sent there took
-the top; field slots are zones 0–4 (monsters), 5–9 (Spell/Trap) and 10
+`0x4FC0AD`); the pile then redraws (`0x4FE4D0`, also on a card leaving, `0x5000E0`): it shows its top card's face
+(top = index count − 1 for the extra deck and Graveyard, 0 for the deck) when that card's table entry has the flag
+that 1000's uid top byte sets (`0x521DF0` keeps `top byte != 0`, read by `0x523DA0`), else a back. The pointer over a
+pile previews that card on the same condition (`0x50B9C0`). So each Graveyard showed a back on both clients (live,
+even moved face up). The server sets the flag (`uid | 1 << 24`) on Graveyard and banished cards, and when a card
+leaves a pile from under its top, sends the renumbered entries before the move, so the redraw finds the new top.
+GraveTop `0x18` {player, zone `0xE`, uid} (`0x4FF501`) instead makes a separate face-up card object at the top of a
+Graveyard; tried first, it went stale (live: a back once a card left from under the top), so it is not sent. Live
+(the flag): MST on a Set Spellbinding Circle, Black Rose Dragon's wipe and Monster Reborn taking Junk Synchron from
+under Spellbinding Circle left each Graveyard showing its top card with its count on both clients, and hovering one
+previewed it; field slots are zones 0–4 (monsters), 5–9 (Spell/Trap) and 10
 (Field Spell) at index 0, then hand `0xB`, extra `0xC`, deck `0xD`, graveyard `0xE`, banished `0xF`. Cards behind a
 removed list card get their table entry again. Both extra decks are in the card table too (zone `0xC`, uids after
 both main decks, the opponent's with row 0 against a player); a card leaving the deck or the extra deck is found by its
