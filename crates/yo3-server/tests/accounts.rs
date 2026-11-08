@@ -396,17 +396,3 @@ fn a_fetch_without_a_known_key_forgets_the_previous_key_of_that_address() {
     assert!(!d.present_key(ip(1), "wrongwrongwrongwrong", now));
     assert_eq!(d.login(ip(1), now).user_id, by_address.user_id);
 }
-
-#[test]
-fn the_official_decks_sent_are_kept_and_the_host_can_send_them_again() {
-    // Which official decks a player's deck list sent is kept across restarts; `redeliver` forgets it, for a new PC.
-    let file = accounts_file("official");
-    let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
-    let id = d.account_for(ip(1)).players[0].player_id;
-    d.update_player(id, |p| p.official = vec![20, 28]);
-    let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
-    assert_eq!(d.player(id).unwrap().official, [20, 28]);
-    d.redeliver("yugi").unwrap();
-    assert!(Directory::open(vec!["Yugi".into()], &file).unwrap().player(id).unwrap().official.is_empty());
-    assert!(d.redeliver("Nobody").is_err());
-}

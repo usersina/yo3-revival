@@ -189,18 +189,19 @@ fn every_player_gets_the_official_character_decks() {
 }
 
 #[test]
-fn the_official_decks_come_once_each_in_the_room_the_list_has() {
-    // The client uses at most 10 decks of a list, and keeps every listed deck it lacks as a local file. So the official
-    // decks fill only the room the starter deck and the player's own decks leave, each listed until it was sent once
-    // (kept with the player); the next list brings the rest. Twelve here: nine fit beside the starter deck.
+fn the_official_decks_take_turns_in_the_room_the_list_has() {
+    // The client uses at most 10 decks of a list and keeps every listed deck it lacks (by name) as a local file, so
+    // listing one it has costs nothing. The official decks fill the room the starter deck and the player's own decks
+    // leave, each list going on where the last stopped: any PC gets them all over a few lists, with nothing kept
+    // per player. Twelve here: nine fit beside the starter deck.
     let official: Vec<Deck> = (0..12).map(|i| Deck { id: 100 + i, name: format!("Official {i}"), main: vec![10], extra: vec![], side: vec![] }).collect();
     let mut c = Server::with_world(World { official_decks: official, ..world() }).join(1001, "Yugi");
-    let names = |c: &mut common::Client| -> Vec<String> {
-        one(c.send(req(0x1F4E))).items.iter().filter_map(|d| d.get("deck_name").and_then(Value::as_str)).collect()
+    let numbers = |c: &mut common::Client| -> Vec<u32> {
+        let names: Vec<String> = one(c.send(req(0x1F4E))).items.iter().filter_map(|d| d.get("deck_name").and_then(Value::as_str)).collect();
+        assert_eq!(names[0], "Starter Deck");
+        names[1..].iter().map(|n| n.trim_start_matches("Official ").parse().unwrap()).collect()
     };
-    let first = names(&mut c);
-    assert_eq!(first.len(), 10);
-    assert_eq!((first[0].as_str(), first[1].as_str(), first[9].as_str()), ("Starter Deck", "Official 0", "Official 8"));
-    assert_eq!(names(&mut c), ["Starter Deck", "Official 9", "Official 10", "Official 11"]);
-    assert_eq!(names(&mut c), ["Starter Deck"]);
+    assert_eq!(numbers(&mut c), (0..9).collect::<Vec<_>>());
+    assert_eq!(numbers(&mut c), [9, 10, 11, 0, 1, 2, 3, 4, 5]);
+    assert_eq!(numbers(&mut c), [6, 7, 8, 9, 10, 11, 0, 1, 2]);
 }

@@ -364,9 +364,9 @@ Stop finding missing fields one crash at a time.
         items); Edit Deck saves it locally and the NPC duel accepts it
   - [x] Official character decks: every player also gets Yami Yugi's, Jaden's and Yusei's three decks each (the
         client's own NPC decks 120-122, 147-149, 171-173) and owns their cards. The deck list holds 10 and the client
-        keeps every listed deck it lacks, so each official deck is sent once, in the room the starter deck and the
-        player's own decks leave (kept per player; `redeliver PLAYER` sends them again, for a new PC). Live: Load Deck
-        listed them, Yugi's "Miracle Magic" loaded with its 42 + 3 cards, the trunk owning them. (The Load Deck window's Official tab reads recipes from the client's
+        keeps every listed deck it lacks (by name), so the official decks take turns in the room the starter deck and
+        the player's own decks leave, each list going on where the last stopped: any PC gets them all, with nothing for
+        the host to run. Live: Load Deck listed the nine, Yugi's "Miracle Magic" loaded with its 42 + 3 cards. (The Load Deck window's Official tab reads recipes from the client's
         own `data/recipe/` files, not from the server.)
   - [x] Deleting a deck (`0x1F50` → `0x22CC`); saving never reaches the server (local files only)
   - [x] Decks on the server, so they follow a player to another machine: the editor never uploads a save, but a duel's

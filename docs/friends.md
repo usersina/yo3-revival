@@ -114,9 +114,9 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
 
 3. Start the game, press ONLINE, log in with any name and password (they aren't checked), then pick your player.
 4. Once: open **Main Menu → Edit Deck** and leave it again. That saves your starter deck and three official
-   official character decks: Yugi's, Jaden's and Yusei's, three each (Edit Deck's folder icon loads them; a full list
-   brings the rest the next time you open Edit Deck). Without a deck the duel button says "There are no valid Decks
-   available." A friend on a new PC gets them again after the host runs `./yo3-server redeliver PLAYERNAME`.
+   official character decks: Yugi's, Jaden's and Yusei's, three each (Edit Deck's folder icon loads them; if your own
+   decks fill the list, the rest come the next times you open Edit Deck, on any PC). Without a deck the duel button
+   says "There are no valid Decks available."
 5. To duel a friend, press the duel button on the bottom bar, then either:
    - **Auto Duel → Confirm**: when two players wait for the same Rule Format they're matched;
    - **Create Duel → Confirm** (with a password if you like): your friend opens the player list (the first tab of

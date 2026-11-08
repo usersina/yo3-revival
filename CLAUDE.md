@@ -57,7 +57,7 @@ cargo run --release -p yo3-server -- --log-dir logs --players Yugi,Kaiba   # ser
 ss -ltnp | grep ':5730 '                                        # find the server's pid to stop it
 #   state: accounts and records persist in data/ (ignored; --data-dir), backed up into data/backups/ at each start
 target/release/yo3-server accounts                              # admin (server stopped): list (address, key, players), add-player ADDR|PLAYER NAME,
-#   rename OLD NEW, redeliver PLAYER (the official decks again, for a new PC), set-country ADDR|PLAYER CODE|auto (the flag others see; `countries` lists the client's codes),
+#   rename OLD NEW, set-country ADDR|PLAYER CODE|auto (the flag others see; `countries` lists the client's codes),
 #   move-account OLD NEW (address accounts only), add-account NAME [--also B,C] [--advertise HOST] (a key account: prints the key and
 #   the friend's yo3.ini), key ADDR|PLAYER (prints, or makes, an existing account's key). An account's key is the secret in
 #   PatchUpdateUrl (`/yo3/<key>/`): the client fetches it before every login, see docs/protocol.md "Accounts"
