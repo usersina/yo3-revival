@@ -267,7 +267,8 @@ pub struct Outcome {
 pub async fn run_plan(ports: &Ports, plan: &Plan) -> Outcome {
     let addr = ports.addr(plan.target);
     let mut out = Outcome::default();
-    let mut conn = match Conn::open(&addr).await {
+    let from = (plan.from > 0).then(|| std::net::IpAddr::from([127, 0, 0, plan.from]));
+    let mut conn = match Conn::open_from(&addr, from).await {
         Ok(c) => c,
         Err(e) => {
             out.error = Some(format!("connect: {e}"));
@@ -308,7 +309,7 @@ pub async fn run_plan(ports: &Ports, plan: &Plan) -> Outcome {
             }
             Step::Reconnect => {
                 out.received += conn.received;
-                match Conn::open(&addr).await {
+                match Conn::open_from(&addr, from).await {
                     Ok(c) => {
                         conn = c;
                         dead = false;

@@ -76,6 +76,9 @@ enum Cmd {
         /// A canary round trip slower than this is a stall (milliseconds).
         #[arg(long, default_value_t = 2000)]
         stall_ms: u64,
+        /// Kill -9 the server every this many seconds (0: never) to see what a crash leaves in the data dir.
+        #[arg(long, default_value_t = 0)]
+        kill_every: u64,
     },
     Duel {
         #[arg(long, default_value_t = 1)]
@@ -102,6 +105,8 @@ enum Cmd {
 }
 
 struct Env {
+    /// The monkey killed the server itself (crash recovery): its death is no failure, what it leaves behind is checked.
+    killed: std::sync::atomic::AtomicBool,
     ports: Ports,
     corpus: Arc<Corpus>,
     sup: std::sync::Mutex<Supervisor>,
@@ -115,15 +120,36 @@ impl Env {
     async fn revive(&self, plans: &[Arc<plans::Plan>]) -> bool {
         let died = lock(&self.sup).exited();
         let Some(status) = died else { return false };
+        let expected = self.killed.swap(false, Ordering::Relaxed);
         let tail = lock(&self.log).tail(40);
-        self.reporter.fail("server died", &format!("exit status {status}"), plans, &tail);
+        if !expected {
+            self.reporter.fail("server died", &format!("exit status {status}"), plans, &tail);
+        }
         let _ = lock(&self.log).trouble();
         let started = lock(&self.sup).start();
         if started.is_ok() {
             let ready = lock(&self.sup).wait_ready_handle();
             ready.await;
         }
+        if expected {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            self.look(plans);
+            self.check_data();
+        }
         true
+    }
+
+    /// A data file that did not parse after a restart is renamed `NAME.corrupt-<time>` by the server.
+    fn check_data(&self) {
+        let dir = lock(&self.sup).data_dir();
+        let Ok(rd) = std::fs::read_dir(&dir) else { return };
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.contains(".corrupt-") {
+                self.reporter.fail("data corrupted by a crash", &format!("{name} in the data dir after a restart"), &[], &lock(&self.log).tail(20));
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
     }
 
     /// Panics and ERRORs since the last look, reported with `plans`.
@@ -156,9 +182,11 @@ fn self_ports(s: &Supervisor) -> Ports {
     s.ports().clone()
 }
 
-/// The ids of the first two players of this machine's account (Select Player's list, 0x2260).
-async fn discover_players(ports: &Ports) -> Option<[u32; 2]> {
-    let mut c = wire::Conn::open(&ports.addr(Target::Front)).await.ok()?;
+/// The ids of the first two players of the account at 127.0.0.`from` (Select Player's list, 0x2260); the account is
+/// made by this first contact, so the accounts are asked for in order.
+async fn discover_players(ports: &Ports, from: u8) -> Option<[u32; 2]> {
+    let ip = std::net::IpAddr::from([127, 0, 0, from]);
+    let mut c = wire::Conn::open_from(&ports.addr(Target::Front), Some(ip)).await.ok()?;
     c.send_version().await.ok()?;
     c.send(&wire::req(0x1F49)).await.ok()?;
     let (list, _) = c.expect(0x2260, Duration::from_secs(5)).await;
@@ -173,7 +201,7 @@ async fn setup(a: &Args) -> anyhow::Result<Arc<Env>> {
         "--scratch must not be the repo's data/"
     );
     std::fs::create_dir_all(&scratch)?;
-    let corpus = Corpus::load(&a.corpus, a.corpus_files);
+    let mut corpus = Corpus::load(&a.corpus, a.corpus_files);
     println!(
         "corpus: {} sessions, {} request ids, {} field names, deck update: {}",
         corpus.sessions.len(),
@@ -187,7 +215,12 @@ async fn setup(a: &Args) -> anyhow::Result<Arc<Env>> {
     let mut sup = Supervisor::new(a.server_bin.clone(), cwd, scratch.clone(), ports.clone(), a.server_arg.clone());
     sup.start()?;
     anyhow::ensure!(sup.wait_ready().await, "the server did not come up (see {})", sup.log_path().display());
-    ports.pids = discover_players(&ports).await.unwrap_or(ports.pids);
+    let mut accounts = vec![];
+    for from in 1..=4u8 {
+        accounts.extend(discover_players(&ports, from).await);
+    }
+    ports.pids = accounts.first().copied().unwrap_or(ports.pids);
+    corpus.accounts = accounts;
     let log = LogWatch::new(sup.log_path());
     println!("server pid {} (scratch {})", sup.pid().unwrap_or(0), scratch.display());
     Ok(Arc::new(Env {
@@ -195,6 +228,7 @@ async fn setup(a: &Args) -> anyhow::Result<Arc<Env>> {
         corpus: Arc::new(corpus),
         sup: std::sync::Mutex::new(sup),
         log: std::sync::Mutex::new(log),
+        killed: std::sync::atomic::AtomicBool::new(false),
         reporter: Reporter::new(scratch.join("failures")),
         scratch,
     }))
@@ -234,6 +268,23 @@ async fn finish(env: &Env, base: Sample, canary: &CanaryStats) -> usize {
     match canary_round(&env.ports, env.ports.pids[1]).await {
         Ok(d) => println!("final canary round: {d:?}"),
         Err(e) => env.reporter.fail("canary", &format!("final round: {e}"), &[], &tail),
+    }
+    // A clean restart on what the run left in the data dir (and the server's own graceful stop first).
+    lock(&env.sup).stop();
+    let _ = lock(&env.log).trouble();
+    if lock(&env.sup).start().is_ok() {
+        let ready = lock(&env.sup).wait_ready_handle();
+        if ready.await {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            env.look(&[]);
+            env.check_data();
+            match canary_round(&env.ports, env.ports.pids[1]).await {
+                Ok(d) => println!("restart on the run's data dir: up, canary round {d:?}"),
+                Err(e) => env.reporter.fail("restart", &format!("after a graceful stop, on the run's data: {e}"), &[], &lock(&env.log).tail(20)),
+            }
+        } else {
+            env.reporter.fail("restart", "the server did not come up again on the run's data dir", &[], &lock(&env.log).tail(30));
+        }
     }
     println!(
         "canary: {} rounds, {} failed, {} stalls; p50 {} ms, p99 {} ms, max {} ms",
@@ -365,7 +416,7 @@ async fn main() -> anyhow::Result<()> {
             }
             finish(&env, base, &canary).await
         }
-        Cmd::Soak { seed, secs, conns, duel_pairs, stall_ms } => soak(&env, base, canary.clone(), seed, secs, conns, duel_pairs, stall_ms).await,
+        Cmd::Soak { seed, secs, conns, duel_pairs, stall_ms, kill_every } => soak(&env, base, canary.clone(), seed, secs, conns, duel_pairs, stall_ms, kill_every).await,
         Cmd::Repro { file } => {
             let plan = plans::Plan::from_text(&std::fs::read_to_string(&file)?).ok_or_else(|| anyhow::anyhow!("not a plan file"))?;
             let plan = Arc::new(plan);
@@ -406,7 +457,7 @@ fn print_duel(s: &DuelStats) {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn soak(env: &Arc<Env>, base: Sample, canary: Arc<CanaryStats>, seed: u64, secs: u64, conns: usize, duel_pairs: usize, stall_ms: u64) -> usize {
+async fn soak(env: &Arc<Env>, base: Sample, canary: Arc<CanaryStats>, seed: u64, secs: u64, conns: usize, duel_pairs: usize, stall_ms: u64, kill_every: u64) -> usize {
     let stop = stop_flag();
     let recent = Arc::new(Recent::default());
     let duel_stats = Arc::new(DuelStats::default());
@@ -474,8 +525,17 @@ async fn soak(env: &Arc<Env>, base: Sample, canary: Arc<CanaryStats>, seed: u64,
     let mut rows = String::from("secs,rss_kb,fds,threads,data_bytes,log_bytes,plans,canary_p99_ms\n");
     let end = started_plus(secs);
     let (mut max, mut last_data) = (Sample::default(), base.data_bytes);
+    let (mut last_kill, mut kills) = (Instant::now(), 0u32);
     while Instant::now() < end {
         tokio::time::sleep(Duration::from_secs(2)).await;
+        if kill_every > 0 && last_kill.elapsed() > Duration::from_secs(kill_every) {
+            last_kill = Instant::now();
+            env.killed.store(true, Ordering::Relaxed);
+            if let Some(pid) = lock(&env.sup).pid() {
+                let _ = std::process::Command::new("kill").args(["-9", &pid.to_string()]).status();
+            }
+            kills += 1;
+        }
         let ctx = recent.since(5, 40);
         if env.revive(&ctx).await {
             continue;
@@ -516,6 +576,9 @@ async fn soak(env: &Arc<Env>, base: Sample, canary: Arc<CanaryStats>, seed: u64,
     );
     println!("peak: rss {} MB, {} fds, {} threads", max.rss_kb / 1024, max.fds, max.threads);
     print_duel(&duel_stats);
+    if kills > 0 {
+        println!("the server was killed (SIGKILL) {kills} times and restarted on the same data dir");
+    }
     finish(env, base, &canary).await
 }
 
@@ -562,7 +625,7 @@ async fn minimize(env: &Arc<Env>, plan: plans::Plan, sig: Option<String>, file: 
             let mut cand = steps.clone();
             cand.drain(i..(i + chunk).min(steps.len()));
             trials += 1;
-            let p = Arc::new(plans::Plan { seed: plan.seed, target: plan.target, steps: cand.clone() });
+            let p = Arc::new(plans::Plan { seed: plan.seed, from: plan.from, target: plan.target, steps: cand.clone() });
             if trouble(env, p).await.is_some_and(|t| t.contains(&want)) {
                 steps = cand;
                 shrunk = true;
@@ -578,7 +641,7 @@ async fn minimize(env: &Arc<Env>, plan: plans::Plan, sig: Option<String>, file: 
         }
     }
     let out = file.with_extension("min.txt");
-    let min = plans::Plan { seed: plan.seed, target: plan.target, steps };
+    let min = plans::Plan { seed: plan.seed, from: plan.from, target: plan.target, steps };
     std::fs::write(&out, min.to_text())?;
     println!("{} steps -> {} steps in {trials} trials: {}", plan.steps.len(), min.steps.len(), out.display());
     lock(&env.sup).stop();

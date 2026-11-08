@@ -20,13 +20,15 @@ pub enum Step {
 #[derive(Clone, Debug)]
 pub struct Plan {
     pub seed: u64,
+    /// The plan's client is 127.0.0.`from` (0: whatever the OS picks, 127.0.0.1).
+    pub from: u8,
     pub target: Target,
     pub steps: Vec<Step>,
 }
 
 impl Plan {
     pub fn to_text(&self) -> String {
-        let mut s = format!("# yo3-monkey plan, seed {}\ntarget {}\n", self.seed, self.target.name());
+        let mut s = format!("# yo3-monkey plan, seed {}\ntarget {}\nfrom {}\n", self.seed, self.target.name(), self.from);
         for step in &self.steps {
             match step {
                 Step::Plain(b) => s += &format!("plain {}\n", hex(b)),
@@ -40,7 +42,7 @@ impl Plan {
     }
 
     pub fn from_text(text: &str) -> Option<Plan> {
-        let mut plan = Plan { seed: 0, target: Target::Front, steps: vec![] };
+        let mut plan = Plan { seed: 0, from: 0, target: Target::Front, steps: vec![] };
         for line in text.lines() {
             if let Some(rest) = line.strip_prefix("# yo3-monkey plan, seed ") {
                 plan.seed = rest.trim().parse().unwrap_or(0);
@@ -48,6 +50,7 @@ impl Plan {
             let (word, arg) = line.split_once(' ').unwrap_or((line, ""));
             match word {
                 "target" => plan.target = Target::parse(arg.trim())?,
+                "from" => plan.from = arg.trim().parse().ok()?,
                 "plain" => plan.steps.push(Step::Plain(unhex(arg)?)),
                 "wire" => plan.steps.push(Step::Wire(unhex(arg)?)),
                 "drip" => plan.steps.push(Step::Drip(unhex(arg)?)),
@@ -376,7 +379,15 @@ pub fn plan(seed: u64, c: &Corpus, only: Option<Target>) -> Plan {
     let dup_p = *rng.pick(&[0.0, 0.0, 0.05, 0.2]);
     let garbage_p = *rng.pick(&[0.0, 0.0, 0.0, 0.05, 0.3, 1.0]);
     let logged_in = target == Target::Front && rng.chance(0.75);
-    let pid = *rng.pick(&[1001u32, 1001, 1002, 1002, 1003, 1004, 999, 0, 0xFFFF_FFFF]);
+    // Another account's client now and then (its players' ids are in the corpus); mostly its own players.
+    let accounts = if c.accounts.is_empty() { vec![[1001, 1002]] } else { c.accounts.clone() };
+    let from = if rng.chance(0.4) { 1 + rng.below(accounts.len()) as u8 } else { 1 };
+    let mine = accounts[from as usize - 1];
+    let pid = match rng.below(12) {
+        0 => *rng.pick(&[999u32, 0, 0xFFFF_FFFF]),
+        1 | 2 => *rng.pick(&accounts.concat()),
+        _ => *rng.pick(&mine),
+    };
     let mut msgs: Vec<Message> = vec![];
     let real_only = |m: &Message| !m.request().is_some_and(|id| CHANGES_THE_ACCOUNT.contains(&id));
     if logged_in {
@@ -454,7 +465,7 @@ pub fn plan(seed: u64, c: &Corpus, only: Option<Target>) -> Plan {
         };
         bytes < 4 << 20
     });
-    Plan { seed, target, steps }
+    Plan { seed, from, target, steps }
 }
 
 fn http_steps(rng: &mut Rng) -> Vec<Step> {
@@ -515,7 +526,7 @@ mod tests {
             let b = plan(seed, &c, None);
             assert_eq!(a.steps, b.steps, "seed {seed} is not repeatable");
             let back = Plan::from_text(&a.to_text()).expect("a plan file reads back");
-            assert_eq!((back.target, back.steps), (a.target, a.steps));
+            assert_eq!((back.from, back.target, back.steps), (a.from, a.target, a.steps));
         }
     }
 

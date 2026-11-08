@@ -248,6 +248,9 @@ pub struct Corpus {
     pub ids: Vec<u32>,
     /// A real deck update (0x1F4F, update_type 1) with its deck item, for the duel monkeys.
     pub deck_update: Option<Message>,
+    /// The player ids of the accounts at 127.0.0.1, 127.0.0.2, ... (the server keeps one account per client address),
+    /// so a plan can be another account's client: friends, trades, mail and teams between accounts.
+    pub accounts: Vec<[u32; 2]>,
 }
 
 impl Corpus {
