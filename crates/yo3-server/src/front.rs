@@ -358,6 +358,17 @@ pub fn duel_over_with_log(player_id: u32, result: u32, record: [u32; 3], dlog_ur
     Message::reply(0x2009).item(data)
 }
 
+/// The `0x2009` of a duel that was cancelled before it began (the other player's deck was refused): `duel_end` 3, which
+/// DuelScene (`0x515BD3`) answers with text `0x2918` ("Time is up! This Duel will be deemed a non-Result.") and leaves,
+/// with a draw's empty counts.
+pub fn duel_cancelled(player_id: u32) -> Message {
+    let name = |n: &str| Message::record().with("name", Value::text(n));
+    let counts = ["win", "lose", "draw"].iter().fold(name("resultData"), |m, k| m.with(k, Value::U32(0)).with(&format!("{k}_add"), Value::U32(0)));
+    let me = Message::record().with("player_id", Value::U32(player_id)).item(counts);
+    let result = name("result").with("duel_result", Value::U32(3)).with("duel_end", Value::U32(3));
+    Message::reply(0x2009).item(Message::duel_data().with("name", Value::text("duelData")).item(result).item(name("players").item(me)))
+}
+
 /// A duel that ended for one player (`Hub::finish_duel`). `opponent` is the player's id, or the NPC's id for the duel records.
 pub struct Ended {
     pub player_id: u32,
@@ -1464,6 +1475,15 @@ impl Hub {
         if add { m.with("to_name", Value::text(&self.social.name(other))) } else { m }
     }
 
+    /// `player_id`'s deck was refused at Select Deck for the matched duel `duel_id`: their client leaves for the map and
+    /// never reaches the duel server, so the opponent is sent out too (`duel_cancelled`) and the match is over, won by
+    /// the opponent (an event's round goes on). Nothing is counted in their records.
+    pub fn refuse_deck(&mut self, duel_id: u32, player_id: u32) {
+        let Some(opponent) = self.matches.get(&duel_id).and_then(|m| m.players.into_iter().find(|&p| p != player_id)) else { return };
+        self.push(opponent, &duel_cancelled(opponent));
+        self.end_match(duel_id, Some(opponent));
+    }
+
     /// A duel between players is over (with its winner, if it had one): its match and table go, and an event's round
     /// goes on.
     pub fn end_match(&mut self, duel_id: u32, winner: Option<u32>) {
@@ -2364,6 +2384,9 @@ impl FrontSession {
                     && let Err(why) = self.check_deck(duel_id, &Deck::from_record(item))
                 {
                     tracing::info!("player {player_id}'s deck refused for duel {duel_id:?}: {why:?}");
+                    if let Some(id) = duel_id {
+                        self.hub().refuse_deck(id, player_id);
+                    }
                     return vec![Message::reply(0x22CB)];
                 }
                 // Select Deck (update_type 1) sends the whole deck: keep it for the player's other machines.

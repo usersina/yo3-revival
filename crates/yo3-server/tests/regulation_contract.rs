@@ -176,3 +176,38 @@ fn the_testing_aid_overrides_the_duels_regulation() {
     let id = npc_duel(&mut c, 3);
     assert_eq!(pick(&mut c, id, &starter(), &[], &[]), 0x22CB);
 }
+
+#[test]
+fn the_opponent_of_a_refused_player_is_sent_out_of_the_duel() {
+    // 1001's deck is refused (0x22CB; its client goes back to the map), so 1002 would wait at the janken for good: its
+    // front gets a 0x2009 with duel_end 3, which DuelScene (0x515BD3) answers with text 0x2918 and leaves.
+    let server = Server::with_world(World { test_regulation: Some(5), ..world(3) });
+    let (mut a, mut b) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+    let auto = |c: &mut Client| {
+        let join = one(c.send(req_with(0x1784, &[("event_id", Value::U32(2))])));
+        let fields = [("event_id", Value::U32(2)), ("join_id", join.get("join_id").cloned().unwrap()), ("match_type", Value::U32(1)), ("level", Value::U32(0))];
+        c.send(req_with(0x1798, &fields));
+    };
+    auto(&mut a);
+    auto(&mut b);
+    let wait = |c: &mut Client| {
+        let start = std::time::Instant::now();
+        let mut out = c.pushed();
+        while out.is_empty() && start.elapsed() < std::time::Duration::from_secs(3) {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            out = c.pushed();
+        }
+        out
+    };
+    let push = one(wait(&mut a));
+    let duel_id = push.items.iter().find_map(|i| i.get("duel_id").and_then(Value::as_u32)).expect("duel_id");
+    wait(&mut b);
+    assert_eq!(pick(&mut a, duel_id, &starter(), &[], &[]), 0x22CB);
+    let cancel = one(b.pushed());
+    assert_eq!(cancel.request(), Some(0x2009));
+    let result = &cancel.items[0].items.iter().find(|i| i.get("name").and_then(Value::as_str).as_deref() == Some("result")).unwrap();
+    assert_eq!(result.get("duel_end"), Some(&Value::U32(3)));
+    // the match is over: a second refusal sends nothing more
+    assert_eq!(pick(&mut a, duel_id, &starter(), &[], &[]), 0x22CB);
+    assert!(b.pushed().is_empty());
+}

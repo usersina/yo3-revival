@@ -349,7 +349,7 @@ Stop finding missing fields one crash at a time.
 - [x] Regulations enforced: Select Deck's deck is checked for sizes, cards owned (rentals counted) and the duel's
       regulation (`deckcheck.rs`), refused with `0x22CB`. Live (testing aid `--duel-regulation 4`): both Auto Duel
       players saw "You have been disconnected from the Duel Server." and the map; a legal deck reached the janken. A
-      stock client checks first, so only a modified one gets refused. Open: the refused player's opponent isn't told
+      stock client checks first, so only a modified one gets refused. The refused player's opponent gets a non-result `0x2009` (`duel_end` 3) and leaves for the map, live
 - [x] PvP on the duel connection: both matched clients share one table (`table.rs`): the janken between their hands,
       the winner's turn order, one engine with a translator per client (each sees itself as player 0), each prompt to
       the client it asks, the opponent's hidden cards without rows, a player leaving loses. Results reach both front

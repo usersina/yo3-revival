@@ -521,7 +521,11 @@ else the login one. A refused deck gets `0x22CB`: the client shows "You have bee
 duel. A stock client can't send a deck the check refuses (it checks first, even the host before Create Duel: "There
 are no valid Decks available."), so this is for modified clients; live with the testing aid `--duel-regulation 4` (the
 starter deck breaks it): both Auto Duel players got `0x22CB`, the dialog, and the map. The opponent of a refused
-player is not told (**open**: they wait at the janken). Card Swaps (`update_type` 2) aren't checked.
+player gets a `0x2009` with `duel_end` 3 (no counts): DuelScene shows text `0x2918` ("Time is up! This Duel will be
+deemed a non-Result.") and, at OK, leaves for the map; the match ends, won by the opponent for an event's round. (A
+duel-connection command 2 {1, 14} is ignored before the janken; a janken command first doesn't make it work either.)
+Live with the asymmetric check (only Yugi's deck refused): Kaiba, at the pre-janken screen, got that dialog and went
+back to the map. Card Swaps (`update_type` 2) aren't checked.
 
 Every player gets one deck, "Starter Deck": the first `deck_type` 1 preset (`data/recipe`, ids 1–6, 501, 502; they
 look like the starter decks) that the login regulation allows. Preset 1 holds a card regulation 1 forbids (4966), so
