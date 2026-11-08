@@ -226,6 +226,22 @@ mod wire {
         beating.write_all(&frame(&Message::reply(0x1F47).encode())).await.unwrap();
         assert_eq!(recv(&mut beating).await.unwrap().request(), Some(0x219A));
     }
+
+    #[tokio::test]
+    async fn a_front_client_that_has_spoken_may_stay_quiet() {
+        // The real client sends nothing on the front connection while it idles on the map: gaps of 650 s and 3000 s
+        // in the Windows VM test's packet logs (the duel connection heartbeats every 30 s). A 180 s idle limit closed
+        // it ("You have been disconnected from the server." on an idle map, live). Only silence before the first
+        // message closes a front connection.
+        let server = running(Duration::from_millis(400)).await;
+        let mut client = front(&server).await;
+        assert_eq!(recv(&mut client).await.unwrap().request(), Some(0x219F));
+        client.write_all(&frame(&Message::reply(0x1F47).encode())).await.unwrap();
+        assert_eq!(recv(&mut client).await.unwrap().request(), Some(0x219A));
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        client.write_all(&frame(&Message::reply(0x1F47).encode())).await.unwrap();
+        assert_eq!(recv(&mut client).await.unwrap().request(), Some(0x219A), "still open after three idle limits");
+    }
 }
 
 /// An engine directory whose sidecar answers every call with the same prompt (a MSG_SELECT_SUM no card can satisfy),

@@ -13,9 +13,19 @@ use yo3_proto::{MAX_FRAME, Message, Packet, decrypt, frame, frame_len};
 use crate::front::Outbox;
 use crate::log::PacketLog;
 
-/// How long a connection may stay silent before it is closed. The real client heartbeats every 30 s (`0x2724`) on the
-/// front and the duel connection, so this is generous; the gate's only message comes at once.
+/// How long a connection may stay silent before it is closed: before its first message on every port (a socket that
+/// never speaks), inside a frame, and between messages on the duel connection, where the real client heartbeats every
+/// 30 s (`0x2724`). On the gate and front connections a client that has spoken may stay quiet: it sends nothing while
+/// it idles on the map (gaps of 650 s and 3000 s in the Windows VM test's packet logs).
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(180);
+
+/// How long a connection may stay silent: `limit` until its first message and inside a frame, and between messages
+/// only when `heartbeats` (the duel connection).
+#[derive(Clone, Copy, Debug)]
+pub struct Idle {
+    pub limit: Duration,
+    pub heartbeats: bool,
+}
 
 /// Frame bodies are read in pieces of this size, so a frame's buffer grows only as its bytes really arrive.
 const READ_CHUNK: usize = 16 * 1024;
@@ -31,7 +41,7 @@ pub(crate) fn blocking<R>(work: impl FnOnce() -> R) -> R {
 /// Accepts connections. `make` builds a fresh packet handler for each one; it gets the peer's address, the
 /// address the peer reached (this end), and the connection's outbox, through which anything (replies, pushes
 /// from other sessions) is sent.
-pub async fn accept_loop<M, H>(listener: TcpListener, who: &'static str, log: Arc<PacketLog>, idle: Duration, make: M)
+pub async fn accept_loop<M, H>(listener: TcpListener, who: &'static str, log: Arc<PacketLog>, idle: Idle, make: M)
 where
     M: Fn(SocketAddr, SocketAddr, Outbox) -> H,
     H: FnMut(&Packet) -> Vec<Message> + Send + 'static,
@@ -76,15 +86,21 @@ async fn write_loop(mut stream: OwnedWriteHalf, mut queue: UnboundedReceiver<Mes
     }
 }
 
-async fn serve<H>(mut stream: OwnedReadHalf, who: &str, log: &PacketLog, idle: Duration, mut handler: H, outbox: Outbox) -> std::io::Result<()>
+async fn serve<H>(mut stream: OwnedReadHalf, who: &str, log: &PacketLog, idle: Idle, mut handler: H, outbox: Outbox) -> std::io::Result<()>
 where
     H: FnMut(&Packet) -> Vec<Message>,
 {
     let mut head = [0u8; 4];
+    let mut spoken = false;
     loop {
-        match tokio::time::timeout(idle, stream.read_exact(&mut head)).await {
+        let read = if spoken && !idle.heartbeats {
+            Ok(stream.read_exact(&mut head).await)
+        } else {
+            tokio::time::timeout(idle.limit, stream.read_exact(&mut head)).await
+        };
+        match read {
             Err(_) => {
-                tracing::warn!("[{who}] idle for {idle:?}; closing");
+                tracing::warn!("[{who}] idle for {:?}; closing", idle.limit);
                 return Ok(());
             }
             Ok(Err(e)) => return if e.kind() == std::io::ErrorKind::UnexpectedEof { Ok(()) } else { Err(e) },
@@ -99,9 +115,9 @@ where
         let mut chunk = [0u8; READ_CHUNK];
         while body.len() < n {
             let want = (n - body.len()).min(READ_CHUNK);
-            match tokio::time::timeout(idle, stream.read(&mut chunk[..want])).await {
+            match tokio::time::timeout(idle.limit, stream.read(&mut chunk[..want])).await {
                 Err(_) => {
-                    tracing::warn!("[{who}] stalled inside a frame for {idle:?}; closing");
+                    tracing::warn!("[{who}] stalled inside a frame for {:?}; closing", idle.limit);
                     return Ok(());
                 }
                 Ok(Ok(0)) => return Err(std::io::ErrorKind::UnexpectedEof.into()),
@@ -119,6 +135,8 @@ where
         let packet = match Packet::decode(&plain) {
             Ok(p) => {
                 log.incoming(who, &plain, Some(&p), None);
+                // The opener alone doesn't count: a socket that sends it and then nothing is still closed.
+                spoken |= matches!(p, Packet::Message(_));
                 p
             }
             Err(e) => {

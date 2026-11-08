@@ -233,10 +233,11 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         None => tracing::warn!("rules engine not fetched (run engine/fetch.sh): duels open but can't be played"),
     }
 
-    let idle = cfg.idle_timeout;
+    let quiet = net::Idle { limit: cfg.idle_timeout, heartbeats: false };
+    let heartbeats = net::Idle { limit: cfg.idle_timeout, heartbeats: true };
     let gate_task = {
         let (packets, advertise) = (packets.clone(), cfg.advertise.clone());
-        tokio::spawn(net::accept_loop(gate, "gate", packets, idle, move |_peer, local: SocketAddr, _outbox| {
+        tokio::spawn(net::accept_loop(gate, "gate", packets, quiet, move |_peer, local: SocketAddr, _outbox| {
             let advertise = advertise.clone().unwrap_or_else(|| local.ip().to_string());
             let mut sent = false;
             move |_: &yo3_proto::Packet| {
@@ -276,7 +277,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let hub = Arc::new(Mutex::new(hub));
     let front_task = {
         let (world, hub) = (world.clone(), hub.clone());
-        tokio::spawn(net::accept_loop(front, "front", packets.clone(), idle, move |peer: SocketAddr, local: SocketAddr, outbox| {
+        tokio::spawn(net::accept_loop(front, "front", packets.clone(), quiet, move |peer: SocketAddr, local: SocketAddr, outbox| {
             let account = directory.locked().account_for(peer.ip());
             let mut session = FrontSession::new(account, world.clone(), hub.clone(), outbox);
             session.set_reached_at(local.ip());
@@ -308,7 +309,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         })
     };
     // The duel connection (DuelManager 0x50F690): a client duels the server as the CPU, or another client at a table.
-    let duel_task = tokio::spawn(net::accept_loop(duel, "duel", packets.clone(), idle, move |peer, _local, outbox| {
+    let duel_task = tokio::spawn(net::accept_loop(duel, "duel", packets.clone(), heartbeats, move |peer, _local, outbox| {
         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
         let mut session = duel::DuelSession::new(world.clone(), hub.clone(), seed).with_outbox(outbox).with_peer(peer.ip());
         move |p: &yo3_proto::Packet| session.handle(p)
