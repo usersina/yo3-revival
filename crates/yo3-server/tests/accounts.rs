@@ -146,3 +146,27 @@ fn manner_ratings_are_kept_across_restarts() {
     let p = d.player(id).unwrap();
     assert_eq!((p.eval_num, p.eval_total), (3, -15));
 }
+
+#[test]
+fn player_ids_are_never_reused_after_a_delete_and_a_restart() {
+    // next_player came from the highest surviving id: delete the newest player, restart, and the next one got its id
+    // (and with it the old one's friends, mail and rentals).
+    let file = std::env::temp_dir().join(format!("yo3-ids-{}", std::process::id())).join("accounts.json");
+    let _ = std::fs::remove_dir_all(file.parent().unwrap());
+    let deleted = {
+        let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
+        let account = d.account_for(ip(1));
+        d.create_player(account.user_id, 1, "Kaiba").unwrap();
+        let kaiba = d.account_of(account.user_id).unwrap().players[1].player_id;
+        d.delete_player(account.user_id, kaiba).unwrap();
+        kaiba
+    };
+    let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
+    let account = d.account_for(ip(1));
+    d.create_player(account.user_id, 1, "Joey").unwrap();
+    let joey = d.account_of(account.user_id).unwrap().players[1].player_id;
+    assert_ne!(joey, deleted);
+    // And a new account's user id keeps counting too.
+    let next = d.account_for(ip(2));
+    assert!(next.user_id > account.user_id);
+}

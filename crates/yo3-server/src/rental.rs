@@ -144,6 +144,16 @@ impl Rentals {
         self.last_id
     }
 
+    /// A deleted player's rentals go, as lender or borrower (the other side's collection is worked out from the
+    /// records again).
+    pub fn forget(&mut self, player_id: u32) {
+        let before = self.all.len();
+        self.all.retain(|r| r.lender.0 != player_id && r.borrower.0 != player_id);
+        if self.all.len() != before {
+            self.save();
+        }
+    }
+
     /// Ends the rentals whose time is up at `now`; the players concerned (lender, borrower) of each.
     pub fn expire(&mut self, now: i64) -> Vec<(u32, u32)> {
         let mut ended = vec![];

@@ -1865,6 +1865,7 @@ impl Hub {
                     self.end_match(duel_id, Some(opponent));
                 }
             }
+            self.teams.invites.retain(|to, (from, _)| *to != o.player_id && *from != o.player_id);
             self.trade_invites.retain(|to, from| *to != o.player_id && *from != o.player_id);
             self.end_trade(o.player_id);
             self.rental_invites.retain(|to, from| *to != o.player_id && *from != o.player_id);
@@ -1885,6 +1886,11 @@ impl Hub {
             let name = self.social.name(player_id);
             self.tell_team(&team.ids(), Some(player_id), &Message::reply(0x2B09).with("member_name", Value::text(&name)));
         }
+        // Nothing of theirs stays behind for whoever gets the next player.
+        self.teams.invites.retain(|to, (from, _)| *to != player_id && *from != player_id);
+        self.social.forget(player_id);
+        self.mail.forget(player_id);
+        self.rentals.forget(player_id);
         true
     }
 

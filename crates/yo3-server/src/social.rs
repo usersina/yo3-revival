@@ -53,6 +53,21 @@ impl Social {
         }
     }
 
+    /// A deleted player leaves every list: friends of theirs, who ignores them, what they ignore, requests.
+    pub fn forget(&mut self, player_id: u32) {
+        self.friends.remove(&player_id);
+        self.friends.values_mut().for_each(|s| {
+            s.remove(&player_id);
+        });
+        self.ignored.remove(&player_id);
+        self.ignored.values_mut().for_each(|s| {
+            s.remove(&player_id);
+        });
+        self.requests.retain(|from, to| *from != player_id && *to != player_id);
+        self.names.remove(&player_id);
+        self.save();
+    }
+
     /// A player is online under this name: their friends list them by it.
     pub fn seen(&mut self, player_id: u32, name: &str) {
         if self.names.get(&player_id).map(String::as_str) != Some(name) {

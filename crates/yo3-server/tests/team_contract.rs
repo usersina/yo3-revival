@@ -214,3 +214,22 @@ fn teams_are_kept_across_restarts() {
     let info = one(server.join(1001, "Yugi").send(req(0x2AFB)));
     assert_eq!((int(&info, "team_id"), text(&info, "team_name")), (Some(team), "Millennium".into()));
 }
+
+#[test]
+fn a_team_invitation_ends_with_a_player_who_disconnects() {
+    // The invitation stayed after the invited player left, so they were "busy" (106) for good: the entry only went
+    // when they answered. A player who leaves takes the invitations they made, too.
+    let server = Server::new();
+    let (mut yugi, kaiba) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+    formed(&mut yugi);
+    assert_eq!(send(&mut yugi, 0x2AFE, &[("to_id", u(1002))]).request(), Some(0x2B19));
+    drop(kaiba);
+    let mut kaiba = server.join(1002, "Kaiba");
+    assert_eq!(send(&mut yugi, 0x2AFE, &[("to_id", u(1002))]).request(), Some(0x2B19), "not busy any more");
+    // And the other way: the inviter leaves, the invitation is gone, so the invited can be invited by another.
+    kaiba.pushed();
+    drop(yugi);
+    let mut seto = server.join(1003, "Seto");
+    assert_eq!(send(&mut seto, 0x2AF9, &[("team_name", Value::text("Duelists"))]).request(), Some(0x2B0F));
+    assert_eq!(send(&mut seto, 0x2AFE, &[("to_id", u(1002))]).request(), Some(0x2B19));
+}

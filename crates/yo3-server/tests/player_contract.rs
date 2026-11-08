@@ -133,3 +133,21 @@ fn a_second_session_sees_a_player_made_by_the_first() {
     create(&mut c, 1, "Kaiba");
     assert_eq!(list(&mut other).len(), 2);
 }
+
+#[test]
+fn a_deleted_player_leaves_the_friends_and_ignore_lists() {
+    // The deleted player's id stayed in other players' friend lists (and their own), to be inherited by whoever is
+    // given that id.
+    let (server, _d, mut c) = setup();
+    create(&mut c, 1, "Kaiba");
+    let kaiba = list(&mut c)[1].1;
+    {
+        let mut hub = server.hub.lock().unwrap();
+        hub.befriend((kaiba, "Kaiba"), (4242, "Joey"));
+        assert_eq!(hub.friends_of(4242).len(), 1);
+    }
+    assert_eq!(delete(&mut c, kaiba).request(), Some(0x2264));
+    let hub = server.hub.lock().unwrap();
+    assert!(hub.friends_of(4242).is_empty());
+    assert!(hub.friends_of(kaiba).is_empty());
+}

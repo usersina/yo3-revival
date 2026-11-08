@@ -77,6 +77,13 @@ impl Mailbox {
         mailbox
     }
 
+    /// A deleted player's mail goes (what waits for them).
+    pub fn forget(&mut self, player_id: u32) {
+        if self.waiting.remove(&player_id).is_some() {
+            self.save();
+        }
+    }
+
     fn save(&self) {
         let Some(file) = &self.file else { return };
         let waiting: Vec<Json> = self.waiting.values().flatten().map(Mail::to_json).collect();
@@ -106,5 +113,20 @@ impl Mailbox {
             self.save();
         }
         mail.iter().fold(Message::reply(0x2586), |m, mail| m.item(mail.record()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_deleted_players_waiting_mail_goes() {
+        let mut mailbox = Mailbox::default();
+        let mail = |to: u32| Mail { id: to, to: (to, "x".into()), ..Mail::default() };
+        mailbox.waiting.entry(7).or_default().push(mail(7));
+        mailbox.waiting.entry(8).or_default().push(mail(8));
+        mailbox.forget(7);
+        assert!(!mailbox.waiting.contains_key(&7) && mailbox.waiting.contains_key(&8));
     }
 }

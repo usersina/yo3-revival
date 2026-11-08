@@ -41,6 +41,10 @@ impl Directory {
     pub fn open(player_names: Vec<String>, file: &Path) -> io::Result<Directory> {
         let mut d = Directory { file: Some(file.to_path_buf()), ..Directory::new(player_names) };
         let Some(saved) = store::read(file)? else { return Ok(d) };
+        // The counters are kept: ids are never handed out twice, even after the newest player was deleted (the
+        // friends, mail and rentals of the old one would else belong to the new).
+        d.next_player = d.next_player.max(saved["next_player"].as_u64().unwrap_or(0) as u32);
+        d.next_user = d.next_user.max(saved["next_user"].as_u64().unwrap_or(0) as u32);
         for a in saved["accounts"].as_array().into_iter().flatten() {
             let bad = || io::Error::new(io::ErrorKind::InvalidData, format!("{}: bad account {a}", file.display()));
             let address: IpAddr = a["address"].as_str().and_then(|s| s.parse().ok()).ok_or_else(bad)?;
@@ -298,7 +302,7 @@ impl Directory {
                 account
             })
             .collect();
-        if let Err(e) = store::write(file, &json!({ "accounts": accounts })) {
+        if let Err(e) = store::write(file, &json!({ "next_user": self.next_user, "next_player": self.next_player, "accounts": accounts })) {
             tracing::warn!("accounts not saved to {}: {e}", file.display());
         }
     }
