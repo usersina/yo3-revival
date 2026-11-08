@@ -466,3 +466,38 @@ fn a_duel_entry_is_claimed_only_from_the_address_that_brought_it() {
     let mut other = DuelSession::new(owner_world, owner_hub, 5).with_outbox(tx).with_peer(peer(2));
     assert_eq!(commands(&enter_session(&mut other, 1002)), [(1500, [0; 4])], "the janken begins: the thief took no seat");
 }
+
+#[test]
+fn what_a_client_can_make_the_server_keep_is_capped() {
+    let server = common::Server::with_world(front::world());
+    let mut c = server.join(1001, "Yugi");
+    // An avatar blob of a megabyte is refused; a speech line of a megabyte is cut.
+    let huge = |avatar: usize, speech: usize| {
+        Packet::Message(
+            Message::reply(0x2CEF).with("avatar1", Value::Bin(vec![1; avatar])).with("speech00", Value::text(&"あ".repeat(speech))).with("title", Value::U32(0)),
+        )
+    };
+    assert_eq!(common::one(c.send(huge(1 << 20, 1))).request(), Some(0x2CF6));
+    assert_eq!(common::one(c.send(huge(82, 300_000))).request(), Some(0x2CF5));
+    let me = common::one(c.send(common::req(0x2CEE))).items.remove(0);
+    assert!(me.get("speech00").and_then(Value::as_str).unwrap().len() <= 200);
+    // A user event: one unfinished event per host, and a form's fields are cut.
+    let form = |name: &str| {
+        let mut m = Message::reply(0x3390).with("event_name", Value::text(name)).with("comment", Value::text(&"x".repeat(100_000)));
+        for i in 0..500 {
+            m = m.with(&format!("extra{i}"), Value::U32(i));
+        }
+        Packet::Message(m)
+    };
+    assert_eq!(common::one(c.send(form("First"))).request(), Some(0x33F4));
+    assert_eq!(common::one(c.send(form("Second"))).request(), Some(0x33F5), "a second event while the first is unfinished");
+    // Create Duel's settings replace the player's earlier hosted duel instead of piling up.
+    let host = || {
+        let rule = Message::record().with("status", Value::U32(1)).with("match_type", Value::U32(1));
+        Packet::Message(Message::reply(0x17AC).with("event_id", Value::U32(1)).with("join_id", Value::U32(1)).item(rule))
+    };
+    for _ in 0..5 {
+        c.send(host());
+    }
+    assert_eq!(server.hub.lock().unwrap().hosted_duels(), 1);
+}

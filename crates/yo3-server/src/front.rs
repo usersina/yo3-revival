@@ -215,6 +215,43 @@ impl Account {
 }
 
 /// A deck as the deck list 0x22C8 carries it (read by 0x43FC60 and 0x414410). Cards are CARD_Prop rows.
+/// Limits on what a client can make the server keep (a text is cut at a character boundary): one list of a deck's
+/// rows, a deck's name, an avatar blob, a speech line or comment, a user event's form, a hosted duel's settings.
+pub const MAX_DECK_NAME: usize = 64;
+const MAX_AVATAR: usize = 256;
+const MAX_LINE: usize = 200;
+const MAX_FORM_FIELDS: usize = 64;
+const MAX_FORM_TEXT: usize = 256;
+/// Unfinished user events on the server at once, and rule sets of NPC duels a session keeps.
+const MAX_EVENTS: usize = 100;
+const MAX_RULES: usize = 32;
+
+/// `text` cut to at most `max` bytes at a character boundary.
+fn clip(text: &str, max: usize) -> String {
+    let mut end = text.len().min(max);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text[..end].to_string()
+}
+
+/// A form's fields as kept: at most `MAX_FORM_FIELDS`, their texts and binaries cut to `MAX_FORM_TEXT`.
+fn clip_fields(fields: impl IntoIterator<Item = (String, Value)>) -> Vec<(String, Value)> {
+    fields
+        .into_iter()
+        .take(MAX_FORM_FIELDS)
+        .map(|(k, v)| {
+            let v = match v {
+                Value::Text(b) => Value::Text(b.into_iter().take(MAX_FORM_TEXT).collect()),
+                Value::TextAlt(b) => Value::TextAlt(b.into_iter().take(MAX_FORM_TEXT).collect()),
+                Value::Bin(b) => Value::Bin(b.into_iter().take(MAX_FORM_TEXT).collect()),
+                other => other,
+            };
+            (clip(&k, 64), v)
+        })
+        .collect()
+}
+
 /// The most rows of any one list (main, extra, side) of a deck taken from a client.
 pub const MAX_DECK_ROWS: usize = 100;
 
@@ -251,7 +288,7 @@ impl Deck {
         };
         Deck {
             id: m.get("deck_id").and_then(Value::as_u32).unwrap_or(0),
-            name: m.get("deck_name").and_then(Value::as_str).unwrap_or_default(),
+            name: clip(&m.get("deck_name").and_then(Value::as_str).unwrap_or_default(), MAX_DECK_NAME),
             main: rows("main").unwrap_or_default(),
             extra: rows("extra").unwrap_or_default(),
             side: rows("side").unwrap_or_default(),
@@ -1541,6 +1578,11 @@ impl Hub {
         }
     }
 
+    /// The duels hosted now (Create Duel, waiting for a challenger).
+    pub fn hosted_duels(&self) -> usize {
+        self.hosts.len()
+    }
+
     /// Whether the match of this duel is over (its table is gone for good).
     pub fn ended(&self, duel_id: u32) -> bool {
         self.ended.contains(&duel_id)
@@ -1718,7 +1760,11 @@ impl Hub {
             }
             // The Create form -> 0x33F4 {event_id}; the client then enters it (0x1784, 0x3397).
             0x3390 => {
-                let fields: Vec<(String, Value)> = msg.fields.iter().chain(msg.items.first().map(|i| &i.fields).into_iter().flatten()).filter(|(k, _)| k != "request").cloned().collect();
+                // One unfinished event per host (the client turns Create off for them, 0x339A), and a limit overall.
+                if hosted.is_some() || self.events.iter().filter(|e| e.status != crate::events::FINISHED).count() >= MAX_EVENTS {
+                    return fail(0x33F4, 0);
+                }
+                let fields = clip_fields(msg.fields.iter().chain(msg.items.first().map(|i| &i.fields).into_iter().flatten()).filter(|(k, _)| k != "request").cloned());
                 // User event ids start above the built-in ones (Create Duel and NPC duels 1, Auto Duel 2).
                 self.last_event = self.last_event.max(FIRST_USER_EVENT - 1) + 1;
                 self.events.push(Event::new(self.last_event, (me, my_name.into()), fields));
@@ -2228,7 +2274,10 @@ impl FrontSession {
     fn update_player(&mut self, msg: &Message) -> Message {
         let body = msg.items.first().filter(|i| i.get("avatar1").is_some()).unwrap_or(msg);
         let Some(Value::Bin(avatar)) = body.get("avatar1").cloned() else { return Message::reply(0x2CF6) };
-        let text = |k: String| body.get(&k).and_then(Value::as_str).unwrap_or_default();
+        if avatar.len() > MAX_AVATAR {
+            return Message::reply(0x2CF6);
+        }
+        let text = |k: String| clip(&body.get(&k).and_then(Value::as_str).unwrap_or_default(), MAX_LINE);
         let speeches: Vec<String> = (0..SPEECHES).map(|i| text(format!("speech{i:02}"))).collect();
         let comments: Vec<String> = (0..COMMENTS).map(|i| text(format!("comment{i:02}"))).collect();
         let title = body.get("title").and_then(Value::as_u32).unwrap_or(0);
@@ -2608,14 +2657,22 @@ impl FrontSession {
                     hub.last_duel += 1;
                     hub.last_duel
                 };
-                let rule = msg.items.first().map(|i| i.fields.clone()).unwrap_or_default();
+                let rule = clip_fields(msg.items.first().map(|i| i.fields.clone()).unwrap_or_default());
                 // Create Duel (agent mode 0) sends its settings with a status and no cpu_id; it then waits for
                 // challengers (0x4A1D10).
                 if rule.iter().any(|(k, _)| k == "status") && !rule.iter().any(|(k, _)| k == "cpu_id") {
                     let player = self.player();
                     let host = Host { player_id: player.player_id, record: player.record(), settings: rule, offer: None };
-                    self.hub().hosts.insert(duel_id, host);
+                    // One hosted duel per player: a new Create Duel replaces the old (which no challenger can reach
+                    // any more, the client having left that screen).
+                    let mut hub = self.hub();
+                    let me = host.player_id;
+                    hub.hosts.retain(|_, h| h.player_id != me);
+                    hub.hosts.insert(duel_id, host);
                 } else {
+                    if self.duels.len() >= MAX_RULES {
+                        self.duels.clear();
+                    }
                     self.duels.insert(duel_id, rule);
                 }
                 Message::reply(0x17AD).with("duel_id", Value::U32(duel_id))
@@ -2646,7 +2703,8 @@ impl FrontSession {
                 let from = (p.player_id, p.name.clone());
                 let text = |k: &str| msg.get(k).and_then(Value::as_str).unwrap_or_default();
                 let int = |k: &str| msg.get(k).and_then(Value::as_u32).unwrap_or(0);
-                let (title, body) = (text("title"), text("body"));
+                // What waits for the recipient is kept in a file: a title and a body of a sane size.
+                let (title, body) = (clip(&text("title"), 128), clip(&text("body"), 2048));
                 self.hub().send_mail(from, int("mail_type"), int("to_id"), &title, &body)
             }
             0x1F41 => {

@@ -108,3 +108,14 @@ fn waiting_mail_is_kept_across_restarts() {
     let next = int(&send(&mut server.join(1001, "Yugi"), 1002, "Hi", "again"), "mail_id").unwrap();
     assert!(next > first);
 }
+
+#[test]
+fn a_mails_title_and_body_are_cut_to_a_sane_size() {
+    // The mail waits on the server (and in mail.json) until fetched: a megabyte body would sit there for good.
+    let server = Server::new();
+    friends(&server);
+    let (mut yugi, mut kaiba) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+    assert_eq!(send(&mut yugi, 1002, &"t".repeat(100_000), &"b".repeat(1_000_000)).request(), Some(0x2584));
+    let mail = fetch(&mut kaiba).remove(0);
+    assert!(text(&mail, "title").len() <= 128 && text(&mail, "body").len() <= 2048);
+}

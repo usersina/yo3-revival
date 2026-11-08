@@ -1196,7 +1196,10 @@ impl Translator {
 
     /// A pick in the card list (duelRequestName 7 {index: the list position}).
     pub fn pick(&mut self, index: u32) {
-        self.picks.push(index as usize);
+        // A list holds a few dozen entries: more picks than that are a client making the server keep them.
+        if self.picks.len() < MAX_PICKS {
+            self.picks.push(index as usize);
+        }
     }
 
     /// A dialog closed (duelRequestName 4 {DLGResult}): the engine response for the pending question (the button: 1
@@ -1766,6 +1769,8 @@ pub struct Repeats {
 
 /// How many times the same prompt may come back in a row before the duel is given up.
 const MAX_REPEATS: u32 = 8;
+/// The most picks of a card list kept (a list holds a few dozen entries).
+const MAX_PICKS: usize = 256;
 
 impl Repeats {
     /// Whether `prompt` was just asked too many times in a row.
@@ -1852,5 +1857,19 @@ fn cpu_answer(kind: u64, m: &Json) -> Json {
             tracing::warn!("rules engine: no answer for prompt {kind}");
             json!({ "type": RESP_CHAIN, "index": null })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_picks_of_a_card_list_are_capped() {
+        let (mut t, _) = Translator::new(0, [&[], &[]], HashMap::new());
+        for i in 0..1_000_000 {
+            t.pick(i);
+        }
+        assert_eq!(t.picks.len(), MAX_PICKS);
     }
 }
