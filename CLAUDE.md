@@ -1,10 +1,26 @@
 # yo3-revival: working guide
 
 A private server for the retired Konami PC game Yu-Gi-Oh! ONLINE 3 (Duel Accelerator), so the user can play with
-friends. The server is reverse-engineered from the client: **the client binary is the spec.**
+friends. The server is reverse-engineered from the client: **the client binary is the spec.** This file is the guide
+for anyone, human or AI agent, working on the repo. The project overview is the [README](README.md).
 
-Progress and next steps: [ROADMAP.md](ROADMAP.md). Protocol facts: [docs/protocol.md](docs/protocol.md). Client
-addresses and data formats: [docs/client-internals.md](docs/client-internals.md).
+**Contents**
+
+- [Where things are documented](#where-things-are-documented)
+- [Ground rules](#ground-rules)
+- [Repo map](#repo-map)
+- [Commands](#commands)
+- [The loop: answering a new request](#the-loop-answering-a-new-request)
+- [Conventions](#conventions)
+- [Environment gotchas](#environment-gotchas)
+
+## Where things are documented
+
+The [docs index](docs/README.md) says what each document is for. The ones you will use most:
+[docs/roadmap.md](docs/roadmap.md) (progress, next steps, the guesses table),
+[docs/protocol.md](docs/protocol.md) (every request/reply pair with its client evidence),
+[docs/client-internals.md](docs/client-internals.md) (client addresses, data formats, crash history) and
+[docs/guide.md](docs/guide.md) (hosting and joining, also shipped in the release bundles).
 
 ## Ground rules
 
@@ -12,17 +28,24 @@ addresses and data formats: [docs/client-internals.md](docs/client-internals.md)
    `tools/client/vclient.sh` (display `:77`, and `:78`+ for extra clients). The user asked for this explicitly.
 2. **Evidence, not invention.** Every reply shape cites client evidence (an address, a `File.cpp Lnnn` trace line,
    or a logged packet) in `docs/protocol.md` with a status: confirmed / shape / guess / open. Send only fields the
-   client reads. Label guesses and add them to the guesses table in ROADMAP.md.
+   client reads. Label guesses and add them to the guesses table in `docs/roadmap.md`.
 3. **Test first.** New client requirement → failing contract test → implementation → green → live check. Keep
    `cargo nextest run --workspace` green and `cargo clippy --workspace --all-targets` clean before every commit.
 4. **Keep four places in step:** `docs/protocol.md`, `crates/yo3-server/src/front.rs`, the contract tests
-   (`crates/yo3-server/tests/front_contract.rs`, `chat_contract.rs`, one file per screen family) and `ROADMAP.md`.
+   (`crates/yo3-server/tests/front_contract.rs`, `chat_contract.rs`, one file per screen family) and
+   `docs/roadmap.md`. A change a host or player sees also goes in `docs/guide.md`. Run `tools/docs-check.py` after
+   moving or renaming anything in the docs: it checks every relative link and anchor.
 5. **Small, logical commits** (conventional style: `feat(server): …`, `fix(…)`, `docs: …`, `refactor(…)`,
    `chore: …`) on a feature branch per slice of work. **`main` is the source of truth:** when a slice is done, tests
    are green and the live check passes, fast-forward `main` and delete the branch (the user's standing preference).
    Ask before pushing anywhere.
 6. **Code only in git.** Never commit game files, Konami data, decompiled code or packet logs. `re/`, `logs/` and
-   `target/` are ignored. Docs may cite addresses and field names, but not paste decompiled code.
+   `target/` are ignored. Docs may cite addresses and field names, but not paste decompiled code. The one exception
+   is the screenshots in `docs/images/`: they show the game running, they are not game data. Keep them to 1024x768
+   client frames, optimised PNGs under about 600 KB, with test player names and no host paths.
+7. **Don't disturb a live setup.** The user may have a server on the default ports (5730, 1213, 1214, 8080) and a
+   client queued on display `:77`. Never stop, restart or touch them, or their `data/`. For your own checks run a
+   dev server on other ports and scratch dirs (see Commands) and the second client (`YO3_INSTANCE=b`, display `:78`).
 
 ## Repo map
 
@@ -30,75 +53,101 @@ addresses and data formats: [docs/client-internals.md](docs/client-internals.md)
 |---|---|
 | `crates/yo3-proto` | Wire codec: frame, Blowfish (`BlowfishLE`), key/value messages, the version-string opener |
 | `crates/yo3-data` | Client data: `.ypk` archives, card table, UI text table, regulations, preset decks, packs (golden tests skip without the game) |
-| `crates/yo3-server` | Gate / front / duel / patch-HTTP servers. `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `table.rs` = a duel between two players' connections, `shop.rs` = packs on sale and what a pack holds, `social.rs` = friends and ignore lists, `translate.rs` = engine messages to duel commands, `accounts.rs` = accounts by key (the patch URL) or client address, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
+| `crates/yo3-server` | Gate / front / duel / patch-HTTP servers (`main.rs` also holds the admin subcommands). `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `table.rs` = a duel between two players' connections, `shop.rs` = packs on sale and what a pack holds, `social.rs` = friends and ignore lists, `translate.rs` = engine messages to duel commands, `accounts.rs` = accounts by key (the patch URL) or client address, `join.rs` = the self-service join page (`/join`) on the HTTP port, `deckcheck.rs` = the server-side deck check, `engine.rs` = the rules engine process, `trade.rs`, `rental.rs`, `mail.rs`, `teams.rs`, `events.rs` = the player features of those names, `duellog.rs` = duel logs, `clock.rs` = turn and total clocks, `store.rs` = what is kept in `data/`, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
 | `engine/` | Rules engine sidecar: `duelcore.ts` (EDOPro's core via ocgcore-wasm, under Node), `fetch.sh` (packages, card scripts, card database, Konami ids into the ignored `engine/vendor/`) |
 | `tools/client/vclient.sh` | Headless client: `xvfb`, `start [--trace]`, `login [SLOT]`, `check`, `shot`, `click`, `pixel`, `key`, `type`, `stop`, `prefix` |
 | `tools/tracer/` | Field-read tracer: `yo3trace.dll` + injector (C, mingw-w64), `summarize.py` |
 | `tools/re/` | Python reverse-engineering helpers (see Commands) |
 | `tools/ghidra/` | Headless export script |
 | `crates/yo3-monkey`, `tools/monkey/` | The monkeys: `yo3-monkey` (protocol: replayed, mutated, random and garbage traffic, floods, a canary, Auto Duel and NPC duel clients) and `ui-monkey.py` (random input on the two headless clients) |
-| `docs/` | Protocol catalog, client internals, original research |
+| `docs/` | The documentation (index in `docs/README.md`): `guide.md`, `roadmap.md`, `protocol.md`, `client-internals.md`, `research.md`, `images/` |
+| `tools/docs-check.py` | Checks every relative link and anchor in the Markdown, prints a table of contents (`--toc FILE`) |
+| `tools/release.sh` | Builds the host's release bundles into `dist/` (ignored) |
+| `LICENSE` | MIT |
 | `re/` (ignored) | Ghidra project `re/ghidra`, `re/yo3_decompiled.c`, GhidraMCP jar |
 | `logs/` (ignored) | `packets-*.jsonl`, `client-stdout.log` (client trace), `client-wine.log`, `shots/` |
 
 ## Commands
 
+Build and test:
+
 ```bash
-engine/fetch.sh                                                 # once: the rules engine's dependencies (engine tests skip without them)
-cargo nextest run --workspace                                   # all tests
-cargo clippy --workspace --all-targets                          # lints
-cargo run --release -p yo3-server -- --log-dir logs --players Yugi,Kaiba   # server (in the background); one account, up to 4 players
-#   --regulation 1: the login banlist (an id or a name from the client's 20; default 3, "unlimited", no banlist)
-#   testing aids: --duel-lp 1000 (reach a duel's end in one attack), --duel-deck 1149,1449 (the player's main deck as
-#   CARD_Prop rows repeated to 40: here Marauding Captain and Giant Orc, for a yes/no question and a card choice),
-#   --duel-regulation 4 (check every duel's deck against that banlist, whatever the duel names: the starter deck breaks 4)
-#   --duel-extra 3437 (the extra deck as rows: Goyo Guardian, a Synchro for Krebons 3397 and Giant Orc),
-#   --duel-time 0,0 (the turn and total clocks of duels between players off: live checks are slower than 180 s a turn)
-ss -ltnp | grep ':5730 '                                        # find the server's pid to stop it
-#   state: accounts and records persist in data/ (ignored; --data-dir), backed up into data/backups/ at each start
-target/release/yo3-server accounts                              # admin (server stopped): list (address, key, players), add-player ADDR|PLAYER NAME,
-#   rename OLD NEW, set-country ADDR|PLAYER CODE|auto (the flag others see; `countries` lists the client's codes),
-#   move-account OLD NEW (address accounts only), add-account NAME [--also B,C] [--advertise HOST] (a key account: prints the key and
-#   the friend's yo3.ini), key ADDR|PLAYER (prints, or makes, an existing account's key). An account's key is the secret in
-#   PatchUpdateUrl (`/yo3/<key>/`): the client fetches it before every login, see docs/protocol.md "Accounts"
-#   the join page: http://HOST:8080/join makes a friend's key account (no host step; `--no-join` turns it off, for servers open to the internet)
-#   [--replace] (a friend's address changed: the account goes along; --replace discards one already at NEW)
-tools/release.sh                                                # the host's bundles in dist/ (Linux, Windows); the friends' guide is docs/friends.md
+engine/fetch.sh                                   # once: the rules engine's dependencies (engine tests skip without them)
+cargo nextest run --workspace                     # all tests (or: cargo test --workspace)
+cargo clippy --workspace --all-targets            # lints
+tools/docs-check.py                               # every relative link and anchor in README.md, CLAUDE.md, docs/*.md
+tools/release.sh                                  # the host's bundles in dist/ (Linux .tar.gz, Windows .zip), each with docs/guide.md as README.md
 #   once: rustup target add x86_64-pc-windows-gnu (mingw-w64 links it). A Windows build under Wine needs its own prefix
 #   (WINEPREFIX=.wine-c): vclient.sh stop kills every process of the default prefix
+```
 
-# monkey testing (a scratch dir for the server's data/logs, never the repo's data/; ports must be free; exit 1 on a failure)
-tools/monkey/protocol-monkey.sh fuzz --seed 1 --plans 2000 --par 8   # plans of recorded, mutated, random, garbage requests
-tools/monkey/protocol-monkey.sh duel --seed 1 --pairs 20             # Auto Duel pairs and NPC duels, random duel commands
-tools/monkey/protocol-monkey.sh soak --secs 300 --conns 24 --duel-pairs 4   # all at once + floods + canary + monitor
-tools/monkey/protocol-monkey.sh repro FILE                           # a saved plan ($SCRATCH/failures/*/plan-*.txt)
-tools/monkey/protocol-monkey.sh minimize FILE [--sig TEXT]           # cut a failing plan down (FILE.min.txt)
-#   SCRATCH=/tmp/yo3-monkey holds server.log, stats.csv (rss, fds, data size over time) and failures/. The corpus is the
-#   packet logs in logs/ (--corpus DIR). Add `--server-arg=--duel-lp --server-arg=1000` to end duels quickly.
-tools/monkey/ui-monkey.py --secs 1800 --seed 1                       # random clicks/drags/keys on both headless clients
-#   backs up ~/Documents/Yu-Gi-Oh! ONLINE 3 first and restores it after; failures (screenshots, packets, logs) in
-#   /tmp/yo3-ui-monkey/ui-failures/. Needs the Xvfb displays :77 and :78, both clients' prefixes, a release build.
+The server (`yo3-server --help` lists everything):
 
-tools/client/vclient.sh xvfb                                    # once per boot
-tools/client/vclient.sh start && tools/client/vclient.sh login  # cold start to main screen, about 30 s
-tools/client/vclient.sh check                                   # process, client trace, crash, last packets
-tools/client/vclient.sh shot NAME                               # logs/shots/NAME.png, then view it
-tools/client/vclient.sh stop                                    # also clears a crashed client
+```bash
+cargo run --release -p yo3-server -- --log-dir logs --players Yugi,Kaiba   # run it in the background; one account, up to 4 players
+ss -ltnp | grep ':5730 '                          # the server's pid, to stop it
+#   --bind 0.0.0.0 (default 127.0.0.1)  --advertise HOST (the address friends dial, for port forwarding)
+#   --regulation 1: the login banlist (an id or a name from the client's 20; default "unlimited", no banlist)
+#   --no-join: turn the join page (http://HOST:8080/join) off, for a server reachable from the internet
+#   --gate-port --front-port --duel-port --http-port --data-dir --log-dir --game-dir: where it listens and keeps things
+#   testing aids: --duel-lp 1000 (reach a duel's end in one attack), --duel-deck 1149,1449 (the player's main deck as
+#   CARD_Prop rows repeated to 40: here Marauding Captain and Giant Orc, for a yes/no question and a card choice),
+#   --duel-extra 3437 (the extra deck as rows: Goyo Guardian, a Synchro for Krebons 3397 and Giant Orc),
+#   --duel-regulation 4 (check every duel's deck against that banlist, whatever the duel names: the starter deck breaks 4),
+#   --duel-time 0,0 (the turn and total clocks of duels between players off: live checks are slower than 180 s a turn)
+#   state: accounts and records persist in data/ (ignored; --data-dir), backed up into data/backups/ at each start
 
-export YO3_INSTANCE=b                                           # a second client: display :78, logs/b/, prefix .wine-b/
-tools/client/vclient.sh xvfb && tools/client/vclient.sh prefix  # once: its display and reflinked Wine prefix
-tools/client/vclient.sh start && tools/client/vclient.sh login 1   # log in as the second player (slot 1)
-#   a duel between them: on each, the menu bar's duel button (195,752) → Auto Duel (503,401) → Confirm (420,522), then
-#   Select Deck OK (393,533). A player needs a local deck first: open Main Menu → Edit Deck once (it saves the starter)
-#   the shop: map (370,190) → greeting (540,150) → Purchase Pack (510,216) → a pack (348,225) → Confirm and Purchase
-#   (430,485 twice) → SKIP (636,530) per pack
+# a dev server beside a live one (never touch the live one): other ports, scratch dirs
+target/release/yo3-server --gate-port 15730 --front-port 11213 --duel-port 11214 --http-port 18080 \
+  --data-dir "$SCRATCH/data" --log-dir "$SCRATCH/logs"
+#   the client then needs all five lines of its yo3.ini on those ports (GateServerPort=15730 and the three http URLs
+#   on :18080; CRLF line ends): back the file up first and restore it afterwards
 
-tools/client/vclient.sh start --trace                          # same, logging every field lookup -> logs/fields.tsv
+# admin subcommands (run with the server stopped; each takes --data-dir)
+target/release/yo3-server accounts                # list: address, key, players
+#   add-account NAME [--also B,C] [--advertise HOST]: a key account; prints the key and the friend's yo3.ini lines
+#   key ADDR|PLAYER [--advertise HOST]: print (or make) an existing account's key and lines
+#   add-player ADDR|PLAYER NAME, rename OLD NEW, set-country ADDR|PLAYER CODE|auto (`countries` lists the codes)
+#   move-account OLD NEW [--replace]: a friend's address changed; --replace discards an account already at NEW
+#   An account's key is the secret in PatchUpdateUrl (`/yo3/<key>/`), which the client fetches before every login (see
+#   "Accounts" in docs/protocol.md). The join page makes key accounts with no host step.
+```
+
+The headless client (display `:77`; `YO3_INSTANCE=b` for display `:78`, `c` for `:79`):
+
+```bash
+tools/client/vclient.sh xvfb                      # once per boot
+tools/client/vclient.sh start && tools/client/vclient.sh login   # cold start to the main screen, about 30 s; `login SLOT` picks a player
+tools/client/vclient.sh check                     # process, client trace, crash, last packets
+tools/client/vclient.sh shot NAME                 # logs/shots/NAME.png (logs/b/shots/ for instance b), then view it
+tools/client/vclient.sh click X Y | key KEY | type TEXT | pixel X Y   # input and colour probes, game-window coordinates (1024x768)
+tools/client/vclient.sh stop                      # also clears a crashed client
+
+export YO3_INSTANCE=b                             # a second client: display :78, logs/b/, prefix .wine-b/
+tools/client/vclient.sh xvfb && tools/client/vclient.sh prefix   # once: its display and reflinked Wine prefix
+tools/client/vclient.sh start && tools/client/vclient.sh login 1 # log in as the second player (slot 1)
+#   a duel between two clients: on each, the menu bar's duel button (195,752) -> Auto Duel (503,401) -> Confirm
+#   (420,522), then Select Deck OK (393,533). A player needs a local deck first: open Main Menu -> Edit Deck once
+#   (it saves the starter deck). NPC duel: map -> Kaiba Corporation (765,275), click through the talk, Yes (270,277),
+#   pick a deck, OK (393,533), janken. In a duel a left click on a hand card does its default action (summon or set); a
+#   right click opens the menu (xdotool button 3). Phase buttons: BP (645,240), M2 (710,240), EP (795,240).
+#   the shop: map (370,190) -> greeting (540,150) -> Purchase Pack (510,216) -> a pack (348,225) -> Confirm and Purchase
+#   (430,485 twice) -> SKIP (636,530) per pack
+```
+
+The tracer (what the client reads from each reply):
+
+```bash
+tools/client/vclient.sh start --trace                          # logs every field lookup -> logs/fields.tsv
 YO3_TRACE_HITS=0x473ae0,0x4725b0 tools/client/vclient.sh start --trace   # also log when these addresses run (H lines)
-python3 tools/tracer/summarize.py --missing                     # per reply: fields the client read but didn't find
-python3 tools/tracer/summarize.py --reply 0x2398                # everything read for one reply (top/sub level, caller)
-tools/tracer/build.sh                                           # rebuild the tracer after editing it
+python3 tools/tracer/summarize.py --missing                    # per reply: fields the client read but didn't find
+python3 tools/tracer/summarize.py --reply 0x2398               # everything read for one reply (top/sub level, caller)
+tools/tracer/build.sh                                          # rebuild the tracer after editing it
+```
 
+Reverse-engineering helpers (`re/` holds the Ghidra project and the decompiled client, both ignored):
+
+```bash
 python3 tools/re/dispatch.py 0x4f4a4f 0x2398    # route a reply id through the global dispatcher; fields it reads
 python3 tools/re/handlers.py 0x435950           # a screen's handler: per case, the field names and getters
 python3 tools/re/yodis.py 0x435950 400          # annotated disassembly (shows the log strings Ghidra's C drops)
@@ -115,6 +164,23 @@ Ghidra export (stop GhidraMCP first, because Ghidra locks the project):
 GhidraMCP tools (`mcp__ghidra__*`): `decompile_function_by_address`, `get_xrefs_to`, `disassemble_function`,
 `list_strings`, `rename_function_by_address`, `set_decompiler_comment`. Name what we understand, so the project keeps
 the knowledge.
+
+Monkey testing (a scratch dir for the server's data and logs, never the repo's `data/`; the server's ports must be free,
+so never while a live server runs; exit status 1 on a failure):
+
+```bash
+tools/monkey/protocol-monkey.sh fuzz --seed 1 --plans 2000 --par 8      # plans of recorded, mutated, random, garbage requests
+tools/monkey/protocol-monkey.sh duel --seed 1 --pairs 20                # Auto Duel pairs and NPC duels, random duel commands
+tools/monkey/protocol-monkey.sh soak --secs 300 --conns 24 --duel-pairs 4   # all at once + floods + canary + monitor
+tools/monkey/protocol-monkey.sh repro FILE                              # a saved plan ($SCRATCH/failures/*/plan-*.txt)
+tools/monkey/protocol-monkey.sh minimize FILE [--sig TEXT]              # cut a failing plan down (FILE.min.txt)
+#   SCRATCH=/tmp/yo3-monkey holds server.log, stats.csv (rss, fds, data size over time) and failures/. The corpus is the
+#   packet logs in logs/ (--corpus DIR). Add `--server-arg=--duel-lp --server-arg=1000` to end duels quickly.
+tools/monkey/ui-monkey.py --secs 1800 --seed 1                          # random clicks/drags/keys on both headless clients
+#   uses displays :77 and :78 and both clients' prefixes, so not while the user's client is queued there. It backs up
+#   ~/Documents/Yu-Gi-Oh! ONLINE 3 first and restores it after; failures (screenshots, packets, logs) in
+#   /tmp/yo3-ui-monkey/ui-failures/. Needs a release build.
+```
 
 ## The loop: answering a new request
 
@@ -136,7 +202,7 @@ the knowledge.
 6. **Green:** implement in `front.rs` with the minimum the client reads.
 7. **Live:** restart the server, rerun the traced client, confirm the tracer now shows the fields as `found`, check
    the client's own trace line (e.g. `… recv success`), and take a screenshot.
-8. **Commit** test, code and docs together; tick ROADMAP.md.
+8. **Commit** test, code and docs together; tick `docs/roadmap.md`.
 
 ## Conventions
 
@@ -158,8 +224,8 @@ the knowledge.
 - Don't run `cargo fmt`: there is no `rustfmt.toml` and the code was never formatted with the defaults (lines run to
   about 120 columns), so it rewraps every file. Match the surrounding style by hand.
 - `pgrep -f` / `pkill -f` match the calling shell's own command line. Find processes by port (`ss -ltnp`) instead.
-- Ports: gate 5730, front 1213, duel 1214 (our choice), HTTP 8080. The game's `yo3.ini` points at 127.0.0.1; Konami's original is saved
-  next to it as `yo3.ini.konami`.
+- Ports: gate 5730, front 1213, duel 1214 (our choice), HTTP 8080. The game's `yo3.ini` points at 127.0.0.1; Konami's
+  original is saved next to it as `yo3.ini.konami`.
 - Game install: `~/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3` (override with `YO3_GAME_DIR`).
 - A crashed client stays frozen in winedbg. Run `vclient.sh stop` before relaunching.
 - Software rendering under Xvfb: boot takes about 20 s, and there's a "Click the screen" logo between the splash and
@@ -172,8 +238,8 @@ the knowledge.
 - Wine assumes one X display per prefix: two clients in one prefix on two displays die with X `BadWindow`. Each extra
   client gets its own prefix (`vclient.sh prefix`, a btrfs reflink copy of `~/.wine`, so near-instant).
 - The server keys accounts by the key in the client's `PatchUpdateUrl`, else by client address, so every local client
-  without a key shares one account; pick different players
-  with `login SLOT`. A player already online can still be chosen twice (no guard yet).
+  without a key shares one account; pick different players with `login SLOT`. A player already online can still be
+  chosen twice (no guard yet).
 - The Ghidra C export drops the client's log strings, so a log line ("chat room list success") can't be grepped
   there. Use `yodis.py` on the handler to see which case prints it.
 - A Windows 11 VM (libvirt `win11`, 192.168.122.71, shared folder `/data/shared`) runs the real client natively: it
