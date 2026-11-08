@@ -1489,3 +1489,20 @@ fn a_monster_turned_right_after_its_summon_lands_in_its_new_position() {
 fn cmd_of(m: &Message) -> (u32, [u32; 4]) {
     cmd(m)
 }
+
+#[test]
+fn a_monster_that_changes_position_moves_onto_its_own_slot() {
+    // Live (VM round): a player's own monster summoned and then turned (Stumbling to defense, Enemy Controller, Goblin
+    // Elite Attack Force's own change) stayed upright on that player's screen through every CardFlipTurn 0x1C, on both
+    // the Windows client and the headless one, while the other player saw it turn. A card that arrives by a move is
+    // drawn in its position (a Set monster lies sideways on its owner's screen), so a monster's turn moves it onto its
+    // own slot in the new position first, with its row, then turns it (the turn's sound).
+    let mut t = with_cards();
+    t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 0, 1) })]);
+    let turned = json!({ "type": 53, "cid": 4100, "controller": 0, "location": 4, "sequence": 0, "prev_position": 1,
+        "position": 4 });
+    let out: Vec<_> = t.events(&[turned]).iter().map(cmd).collect();
+    let moved: Vec<_> = out.iter().filter(|(id, _)| *id == 0x1A).map(|(_, p)| (p[0] >> 16, p[1], p[2])).collect();
+    assert_eq!(moved, [(100, 1 << 14, 1 << 14 | 1 << 15)], "{out:?}");
+    assert_eq!(out.last(), Some(&(0x1C, [1 << 14 | 1 << 15, 0, 0, 0])));
+}

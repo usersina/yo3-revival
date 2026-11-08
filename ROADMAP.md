@@ -106,7 +106,12 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
       waits only for the card manager, so it ran while the summoner's summon effect played (`0x4FB7F0` keeps a pending
       effect mode per card, `+0xDC`). Now, within a batch, the summon move carries the position its card turns to
       (`settle_positions`), so no turn overlaps the effect. Test: `a_monster_turned_right_after_its_summon_lands_in_its_new_position`.
-      Live check pending (needs a summon under Stumbling).
+      Then the same round showed more: the VM player's own monsters (Lily, Reflect Bounder, Giant Orc) turned by their
+      own Stumbling stayed upright on the VM too, even with a question splitting the batch, while Yugi saw them turn.
+      So a player's own summoned monster ignores in-place turns on its owner's screen, whatever the timing; a card that
+      arrives by a move is drawn in its position. A monster's turn now also moves it onto its own slot in the new
+      position (with its row) before the 0x1C. Test: `a_monster_that_changes_position_moves_onto_its_own_slot`.
+      Live check pending.
 - [ ] Card preview on hover needs a held button on the VM (the client shows it on hover under Wine): likely the VM's
       PS/2 mouse or window focus, not the server.
 

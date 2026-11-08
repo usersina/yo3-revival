@@ -890,7 +890,11 @@ headless against the VM's Stumbling: both of Yugi's summoned monsters stayed upr
 of them didn't show either; `0x4FB7F0` keeps a pending effect mode per card at `+0xDC`). So within one batch a summon
 move onto a monster zone, followed by its summon effect and then a `0x1C` of that zone, gets the turn's position on
 the move itself (`settle_positions`, applied to every batch): the card lands in its final position and nothing turns
-while the effect plays. **shape**: the live check is pending.
+while the effect plays. Later in the same round the VM player's own monsters turned by their own Stumbling stayed
+upright on the VM as well, a question splitting the batch or not, while the other client turned them: a player's own
+summoned monster doesn't follow `0x1C` on its owner's screen. So a monster's turn is now also a CardMove onto its own
+slot, from the old position to the new one with its row, before the `0x1C` (a moved card is drawn in its position).
+**shape**: the live check is pending.
 
 **Summons** (DuelScene): `0x38` RunSummon {player, the summoned card's uid} plays the summon effect at the card (`0x21`,
 or `0x23` for the player's `ace_monster`); `0x39` RunSpSummon {player, uid} the Special Summon effect (`0x19`). The

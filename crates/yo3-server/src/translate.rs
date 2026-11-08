@@ -812,9 +812,7 @@ impl Translator {
         }
         // A Spell/Trap has no battle position.
         let place = Place { face_up: position & 5 != 0, defense: place.zone < 5 && position & 12 != 0, ..place };
-        if place.zone < 5 {
-            self.positions.insert((place.player, place.zone), (place.face_up, place.defense));
-        }
+        let before = (place.zone < 5).then(|| self.positions.insert((place.player, place.zone), (place.face_up, place.defense)));
         let mut out = vec![];
         let card = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied();
         // Face down, the client empties the card's counters itself (0x4FBE50); so does EDOPro.
@@ -837,6 +835,15 @@ impl Translator {
                 out.push(command(MOVE, [card.uid | (card.row as u32) << 16, down.packed(), place.packed(), 0]));
                 return out;
             }
+        }
+        // A player's own monster turned in place stayed upright on that player's screen (live, the VM round: every
+        // 0x1C after its summon), while a card arriving by a move is drawn in its position: it moves onto its own
+        // slot in the new position first.
+        if let (Some(before), Some(card)) = (before, card) {
+            let (face_up, defense) = before.unwrap_or((!place.face_up, !place.defense));
+            let from = Place { face_up, defense, ..place };
+            let row = self.shown_row(&place, card.row);
+            out.push(command(MOVE, [card.uid | row << 16, from.packed(), place.packed(), 0]));
         }
         out.push(command(FLIP_TURN, [place.packed(), 0, 0, 0]));
         out
