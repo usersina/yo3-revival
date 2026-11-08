@@ -140,11 +140,12 @@ fn a_summon_moves_the_card_from_the_hand_to_its_zone() {
             (1000, [2, 101, 0, 0xB << 8])
         ]
     );
-    // A face-down defense Set to the Spell/Trap zone 1 (zone 6).
+    // A Set to the Spell/Trap zone 1 (zone 6): face down, but upright. ocgcore gives a set Spell/Trap a face-down
+    // defense position, and with the defense bit the client drew it sideways like a set monster (live).
     let out = t.events(&[json!({ "type": 50, "cid": 4101,
         "from": { "controller": 0, "location": 2, "sequence": 0, "position": 10 },
         "to": { "controller": 0, "location": 8, "sequence": 1, "position": 8 } })]);
-    assert_eq!(cmd(&out[1]), (0x1A, [2 | 101 << 16, 0xB << 1, 6 << 1 | 1 << 15, 0]));
+    assert_eq!(cmd(&out[1]), (0x1A, [2 | 101 << 16, 0xB << 1, 6 << 1, 0]));
 }
 
 #[test]

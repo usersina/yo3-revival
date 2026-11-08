@@ -781,9 +781,10 @@ impl Translator {
             _ => return None,
         };
         // ocgcore positions: 1 face-up attack, 2 face-down attack, 4 face-up defense, 8 face-down defense. Only
-        // field cards carry them; the client shows each list zone its own way.
+        // field cards carry them; the client shows each list zone its own way. Only monsters lie sideways: a set
+        // Spell/Trap comes face-down defense, which drew it like a set monster (live).
         let position = if zone <= FIELD_SPELL { loc["position"].as_u64().unwrap_or(0) } else { 0 };
-        Some(Place { player, zone, index, face_up: position & 5 != 0, defense: position & 12 != 0 })
+        Some(Place { player, zone, index, face_up: position & 5 != 0, defense: zone < 5 && position & 12 != 0 })
     }
 
     /// ChainSet for MSG_CHAINING {controller, location, sequence, chain_size}: the link over its card's zone (an Xyz
