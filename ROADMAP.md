@@ -404,7 +404,7 @@ Stop finding missing fields one crash at a time.
 | Teams | `level` 1 and scores 0 for every team; handing over the leadership makes the old leader a member; the founding time in Japan time | No team scores or levels exist without the original's events |
 | Search status bits | `0x1000` duelling, `0x800` hosting, `0x200` hosting Single, `0x400` hosting Match | Read from the Detailed Search texts |
 | Manner level | the average of a player's ratings (-10..10) mapped onto 0–4, (average + 10) / 5 rounded; 2 with no ratings; `evaltotal` the sum, 0 when negative | The original's thresholds and `evaltotal`'s sign are unknown |
-| Trade end | a refused trade sends `0x2BCA {trade_result 0, error_code 503}` ("Trade Cancelled", the scene closes: settled by `0x424F71`); the trunk is pushed after a trade | How the original refreshed the trunk is unknown |
+| Trade end | a refused trade sends `0x2BCA {trade_result 0, error_code 503}` ("Trade Cancelled", the scene closes: settled by `0x424F71` and seen live on both clients, with a later trade completing); the trunk is pushed after a trade | How the original refreshed the trunk is unknown |
 | Item prices | protectors 200 BP, avatar items 100 BP, one of each | The original prices are unknown |
 | Avatar items for sale | the catalogue's parts with sub 0 (178 male, 148 female) | Read as "to acquire" next to the default (2) and starting (1) parts |
 | Wins and losses | My Profile and Player Information count duels against players only, not NPCs | The original's counting is unknown |
