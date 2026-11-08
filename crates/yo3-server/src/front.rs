@@ -1860,6 +1860,21 @@ impl Hub {
             }
             self.waiting.retain(|w| w.player_id != o.player_id);
             self.hosts.retain(|_, h| h.player_id != o.player_id);
+            // A match of theirs whose duel connection never opened (no table) would stay forever, both players shown
+            // as duelling and an event's round stuck: it ends, won by the other player, who is sent out as at a
+            // refused deck. (One with a table ends through its duel connection closing.)
+            if !self.is_online(o.player_id) {
+                let stuck: Vec<(u32, u32)> = self
+                    .matches
+                    .iter()
+                    .filter(|(d, m)| m.players.contains(&o.player_id) && !self.tables.contains_key(d))
+                    .filter_map(|(&d, m)| Some((d, m.players.into_iter().find(|&p| p != o.player_id)?)))
+                    .collect();
+                for (duel_id, opponent) in stuck {
+                    self.push(opponent, &duel_cancelled(opponent));
+                    self.end_match(duel_id, Some(opponent));
+                }
+            }
             self.trade_invites.retain(|to, from| *to != o.player_id && *from != o.player_id);
             self.end_trade(o.player_id);
             self.rental_invites.retain(|to, from| *to != o.player_id && *from != o.player_id);

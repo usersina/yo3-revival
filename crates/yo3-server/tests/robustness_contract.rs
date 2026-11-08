@@ -10,6 +10,8 @@ use yo3_server::duel::{DuelSession, SERVER_DUEL};
 use yo3_server::front::{Deck, DuelEntry, Hub, World};
 use yo3_server::translate::CardStats;
 
+mod common;
+
 const DUEL: u32 = 7;
 
 fn real_engine() -> Option<PathBuf> {
@@ -291,7 +293,7 @@ fn a_player_leaving_before_the_duel_started_sends_the_opponent_out() {
 
 #[test]
 fn a_player_leaving_in_the_turn_order_choice_sends_the_opponent_out_too() {
-    let (mut a, mut b, hub) = after_janken(world(None));
+    let (a, mut b, hub) = after_janken(world(None));
     b.pushed();
     drop(a);
     assert_eq!(commands(&b.pushed()), [(2, [1, 14, 0, 0])]);
@@ -337,4 +339,56 @@ fn the_turn_order_is_taken_once() {
     assert!(asked > 0);
     assert!(choose(&mut session).is_empty());
     assert_eq!(std::fs::read_to_string(&calls).unwrap().len(), asked, "no new engine");
+}
+
+mod front {
+    use std::time::{Duration, Instant};
+    use yo3_proto::{Message, Value};
+    use yo3_server::front::World;
+
+    use super::common::{Client, Server, req_with};
+
+    pub fn world() -> World {
+        World { duel_server: ("10.0.0.5".into(), 4321), ..World::new((1..=20).collect()) }
+    }
+
+    pub fn auto(c: &mut Client) {
+        let join = c.send(req_with(0x1784, &[("event_id", Value::U32(2))])).remove(0);
+        let fields = [("event_id", Value::U32(2)), ("join_id", join.get("join_id").cloned().unwrap()), ("match_type", Value::U32(1)), ("level", Value::U32(0))];
+        c.send(req_with(0x1798, &fields));
+    }
+
+    pub fn wait(c: &mut Client) -> Vec<Message> {
+        let start = Instant::now();
+        let mut out = c.pushed();
+        while out.is_empty() && start.elapsed() < Duration::from_secs(3) {
+            std::thread::sleep(Duration::from_millis(20));
+            out = c.pushed();
+        }
+        out
+    }
+
+    pub fn matched() -> (Server, Client, Client, u32) {
+        let server = Server::with_world(world());
+        let (mut a, mut b) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+        auto(&mut a);
+        auto(&mut b);
+        let push = wait(&mut a).remove(0);
+        wait(&mut b);
+        let duel_id = push.items.iter().find_map(|i| i.get("duel_id").and_then(Value::as_u32)).expect("duel_id");
+        (server, a, b, duel_id)
+    }
+}
+
+#[test]
+fn a_matched_player_whose_client_dies_before_the_duel_frees_the_match() {
+    // Hub::leave never ended the match: a client that died between the match push and its duel connection left the
+    // match (and an event's round) stuck, both players shown as duelling for good. Now the match ends, the other
+    // player is sent back out (0x2009, duel_end 3, as for a refused deck) and a later duel connection is turned away.
+    let (server, a, mut b, duel_id) = front::matched();
+    assert!(!server.hub.lock().unwrap().ended(duel_id));
+    drop(a);
+    assert!(server.hub.lock().unwrap().ended(duel_id), "the match is over");
+    let pushed = b.pushed();
+    assert!(pushed.iter().any(|m| m.request() == Some(0x2009)), "{pushed:?}");
 }
