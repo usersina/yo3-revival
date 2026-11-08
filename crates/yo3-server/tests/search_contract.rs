@@ -153,3 +153,16 @@ fn the_chat_room_tab_lists_the_players_in_the_searchers_room() {
     room[0] = ("search_flag", Value::U32(0x20000));
     assert_eq!(names(&search(&mut yugi, &room)), ["Kaiba", "Yugi"]);
 }
+
+#[test]
+fn a_huge_language_number_does_not_overflow_the_language_search() {
+    // `lang >> o.lang` panics in a debug build once a client gives a language of 32 or more.
+    let s = Server::new();
+    let mut a = s.join(1001, "Yugi");
+    let mut b = s.join(1002, "Kaiba");
+    b.send(req_with(0x1F48, &[("lang", Value::U32(200))]));
+    let mut by_language = everyone();
+    by_language[0] = ("search_flag", Value::U32(1 | 4));
+    by_language.push(("lang", Value::U32(0xFFFF_FFFF)));
+    assert!(!names(&search(&mut a, &by_language)).contains(&"Kaiba".to_string()));
+}

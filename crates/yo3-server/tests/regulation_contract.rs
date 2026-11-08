@@ -157,8 +157,9 @@ fn the_login_regulation_applies_to_a_rule_that_names_none() {
 }
 
 #[test]
-fn a_card_swap_is_not_checked() {
-    // update_type 2 sends the deck as swapped between a match's duels; it only keeps the match's entry
+fn a_card_swap_that_fails_the_check_is_ignored_without_ending_the_match() {
+    // update_type 2 sends the deck as swapped between a match's duels; it only keeps the match's entry, so a deck
+    // that fails the check is not kept (and nothing is refused)
     let server = Server::with_world(world(3));
     let mut c = server.join(1001, "Yugi");
     let id = npc_duel(&mut c, 0);
@@ -210,4 +211,38 @@ fn the_opponent_of_a_refused_player_is_sent_out_of_the_duel() {
     // the match is over: a second refusal sends nothing more
     assert_eq!(pick(&mut a, duel_id, &starter(), &[], &[]), 0x22CB);
     assert!(b.pushed().is_empty());
+}
+
+/// The same as `pick` with any update_type (1 Select Deck, 2 the swap between a match's duels, 0 something else).
+fn pick_as(c: &mut Client, duel_id: u32, update_type: u32, main: &[u16]) -> u32 {
+    let deck = Message::deck().with("deck_name", Value::text("Mine")).with("main", Value::u16_be_array(main));
+    let update = req_with(0x1F4F, &[("duel_id", Value::U32(duel_id)), ("event_id", Value::U32(0)), ("update_type", Value::U32(update_type))]);
+    let Packet::Message(m) = update else { unreachable!() };
+    one(c.send(Packet::Message(m.item(deck)))).request().unwrap()
+}
+
+#[test]
+fn the_deck_check_applies_to_every_update_that_names_a_duel() {
+    // Only update_type 1 was checked: a modified client could name its duel with another type and bring any deck
+    // (cards it doesn't own, banned ones) to the table. Such an update is ignored (the answer is the same, the
+    // duel's deck stays what it was), not a reason to end the match: a swap only keeps a deck of the same cards.
+    let server = Server::with_world(world(3));
+    let mut c = server.join(1001, "Yugi");
+    let id = npc_duel(&mut c, 0);
+    let cheat: Vec<u16> = (41..=80).collect();
+    for update_type in [0, 2, 3] {
+        assert_eq!(pick_as(&mut c, id, update_type, &cheat), 0x22CA, "update_type {update_type}");
+    }
+    assert!(server.hub.lock().unwrap().duel_entry(1001).is_none(), "nothing was kept for the duel");
+    assert_eq!(pick_as(&mut c, id, 2, &starter()), 0x22CA);
+    assert!(server.hub.lock().unwrap().duel_entry(1001).is_some());
+}
+
+#[test]
+fn a_decks_row_counts_are_capped() {
+    // A deck as the client sends it can be half a megabyte of rows.
+    let rows: Vec<u8> = (0..400_000u32).flat_map(|i| ((i % 100) as u16 + 1).to_be_bytes()).collect();
+    let record = Message::deck().with("deck_name", Value::text("Big")).with("main", Value::Bin(rows));
+    let deck = Deck::from_record(&record);
+    assert!(deck.main.len() <= yo3_server::front::MAX_DECK_ROWS);
 }

@@ -211,6 +211,9 @@ impl Account {
 }
 
 /// A deck as the deck list 0x22C8 carries it (read by 0x43FC60 and 0x414410). Cards are CARD_Prop rows.
+/// The most rows of any one list (main, extra, side) of a deck taken from a client.
+pub const MAX_DECK_ROWS: usize = 100;
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Deck {
     pub id: u32,
@@ -236,9 +239,12 @@ impl Deck {
         self.main.iter().chain(&self.extra).chain(&self.side).copied()
     }
 
-    /// A deck as the client sends it (tag 6 item of 0x1F4F).
+    /// A deck as the client sends it (tag 6 item of 0x1F4F). Each list is cut at `MAX_DECK_ROWS` rows (a legal deck is
+    /// far smaller, and the check refuses the cut ones all the same).
     pub fn from_record(m: &Message) -> Deck {
-        let rows = |k| m.get(k).and_then(Value::as_bytes).map(|b| b.as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes(*c)).collect());
+        let rows = |k| {
+            m.get(k).and_then(Value::as_bytes).map(|b| b.as_chunks::<2>().0.iter().take(MAX_DECK_ROWS).map(|c| u16::from_be_bytes(*c)).collect())
+        };
         Deck {
             id: m.get("deck_id").and_then(Value::as_u32).unwrap_or(0),
             name: m.get("deck_name").and_then(Value::as_str).unwrap_or_default(),
@@ -2437,8 +2443,9 @@ impl FrontSession {
                 let player_id = self.player().player_id;
                 // Select Deck (update_type 1): the deck must pass the check the client makes itself. 0x22CB shows
                 // text 0x2919 and leaves the duel scene (0x50EFD5).
+                let item = msg.items.first();
                 if msg.get("update_type").and_then(Value::as_u32) == Some(1)
-                    && let Some(item) = msg.items.first()
+                    && let Some(item) = item
                     && let Err(why) = self.check_deck(duel_id, &Deck::from_record(item))
                 {
                     tracing::info!("player {player_id}'s deck refused for duel {duel_id:?}: {why:?}");
@@ -2446,6 +2453,16 @@ impl FrontSession {
                         self.hub().refuse_deck(id, player_id);
                     }
                     return vec![Message::reply(0x22CB)];
+                }
+                // Any other update that names a duel (Card Swap's, update_type 2) becomes the duel's deck too, so it
+                // passes the same check; one that fails is ignored and the deck the player had stays (the swap only
+                // takes a deck of the same cards anyway).
+                let unchecked = msg.get("update_type").and_then(Value::as_u32) != Some(1)
+                    && duel_id.is_some()
+                    && item.is_some_and(|item| self.check_deck(duel_id, &Deck::from_record(item)).is_err());
+                if unchecked {
+                    tracing::info!("player {player_id}: a deck update for duel {duel_id:?} fails the check; ignored");
+                    return vec![Message::reply(0x22CA)];
                 }
                 // Select Deck (update_type 1) sends the whole deck: keep it for the player's other machines.
                 if msg.get("update_type").and_then(Value::as_u32) == Some(1)
@@ -2828,8 +2845,8 @@ impl FrontSession {
             .filter(|o| flags & TEAM == 0 || hub.teams.of(me).is_some_and(|t| t.member(o.player_id).is_some()))
             .filter(|o| flags & BY_LEVEL == 0 || levels.contains(&o.level))
             .filter(|o| flags & BY_COUNTRY == 0 || o.record.get("country").and_then(Value::as_str) == msg.get("country").and_then(Value::as_str))
-            .filter(|o| flags & BY_LANGUAGE == 0 || uint("lang").unwrap_or(0) >> o.lang & 1 != 0)
-            .filter(|o| flags & BY_MANNER == 0 || uint("eval_level").unwrap_or(0) >> hub.manner(o.player_id) & 1 != 0)
+            .filter(|o| flags & BY_LANGUAGE == 0 || uint("lang").unwrap_or(0).checked_shr(o.lang).unwrap_or(0) & 1 != 0)
+            .filter(|o| flags & BY_MANNER == 0 || uint("eval_level").unwrap_or(0).checked_shr(hub.manner(o.player_id)).unwrap_or(0) & 1 != 0)
             .filter(|o| {
                 let status = flags & (WAITING_SINGLE | WAITING_MATCH | WAITING | DUELLING_NOW);
                 let hosted = hub.hosts.values().find(|h| h.player_id == o.player_id).map(|h| h.setting("match_type").and_then(Value::as_u32).unwrap_or(SINGLE_MODE));
