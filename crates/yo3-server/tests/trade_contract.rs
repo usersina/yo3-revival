@@ -170,7 +170,9 @@ fn leaving_the_scene_tells_the_partner() {
     send(&mut t.b, 0x2BC9, &[("answer", 1)]);
     let pushed = t.b.pushed();
     let done = pushed.iter().find(|m| m.request() == Some(0x2BCA)).expect("the result");
-    assert_eq!(int(done, "trade_result"), Some(0));
+    // A non-zero error_code: the scene shows "Trade Cancelled" ($14313) and closes (0x424F71); with 0 it would stay,
+    // both Ready marks on, after the server has forgotten the trade.
+    assert_eq!((int(done, "trade_result"), int(done, "error_code")), (Some(0), Some(503)));
     let d = t.dir.lock().unwrap();
     let a = d.accounts().flat_map(|(_, a)| a.players.clone()).find(|p| p.player_id == t.a_id).unwrap();
     assert_eq!(a.cards.get(&10), Some(&2));

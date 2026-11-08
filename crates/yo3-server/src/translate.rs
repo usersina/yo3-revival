@@ -324,7 +324,7 @@ type Lists = &'static [(&'static str, u32, u64)];
 const BATTLE_LISTS: [(&str, u32, u64); 2] = [("attacks", 0, BATTLE_ATTACK), ("chains", 3, BATTLE_CHAIN)];
 
 /// Card menu bits (`CardCommand::command`) per idle-command list, with the list's action number. Set: bit 6 for
-/// monsters and 7 for Spells/Traps is a guess (both read "Set").
+/// monsters and 7 for Spells/Traps (`duel_cardcmd.swf` draws item 6 as a card set sideways, 7 as one set upright).
 const IDLE_LISTS: [(&str, u32, u64); 8] = [
     ("summons", 4, 0),
     ("special_summons", 2, 1),

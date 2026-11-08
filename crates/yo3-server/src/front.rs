@@ -969,7 +969,8 @@ impl Hub {
                 Message::reply(0x2BE5)
             }
             // "Execute Trade?" {answer: 2 yes, 1 no (live: Yes sent 2)} -> 0x2BE7; once both answered, both get 0x2BCA
-            // {error_code, own_status, other_status, trade_result: 1 done}, and with two yeses the cards change hands
+            // {error_code, own_status, other_status, trade_result: 1 done; a No: error_code non-zero, which makes the scene
+            // show "Trade Cancelled" and close, 0x424F71}, and with two yeses the cards change hands
             // and both get a new trunk.
             0x2BC9 => {
                 let yes = int("answer") == ACCEPTED;
@@ -982,7 +983,7 @@ impl Hub {
                 let answers = [first, second];
                 for (s, &p) in trade.players.iter().enumerate() {
                     let result = Message::reply(0x2BCA)
-                        .with("error_code", Value::U32(0))
+                        .with("error_code", Value::U32(if done { 0 } else { TRADE_ERROR }))
                         .with("own_status", Value::U32(answers[s] as u32))
                         .with("other_status", Value::U32(answers[1 - s] as u32))
                         .with("trade_result", Value::U32(done as u32));
