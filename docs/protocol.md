@@ -705,6 +705,31 @@ before the move of a card the engine destroyed other than by battle (MSG_MOVE's 
 battles have BattleRun's own destroy effect). ocgcore-wasm drops MSG_MOVE's `reason`, so the sidecar reads it back with
 a query (flag `REASON`) at the card's new place after each processing step.
 
+**Revealed cards** (MSG_CONFIRM_CARDS, 31 `{player: who it is shown to, cards}`; EDOPro's ConfirmCards: Witch of the Black
+Forest's "show it to your opponent", a hand reveal). `0x13` HandShow {player, hand index} (DuelCardManager `0x4FF15C`, a
+card with the face-up bit `0x4000` clear: skipped when set; it loads the face from the card table entry's row
+(`0x523D40` → `0x4FB090`) and runs effect mode `0xB`): the hand card flips to its face for a moment, back down again by
+itself, and the card info panel takes it. Live (Auto Duel, Witch of the Black Forest's search, recorded on the
+opponent's display): the new card flipped to its face in the opponent's hand row for about a second and the info panel
+named it; the owner's info panel took the card too. The opponent's hand cards have row 0 in the table against a player, so the
+entry (1000, with the row) goes first. The client sees a card shown to it and its own cards shown to the opponent,
+not the opponent's cards shown to the opponent. A hand card shows at once; a card from the Deck (a search) shows when
+it reaches the hand: the server keeps its Konami id until the move to the hand, then sends the show at its new index.
+`0x14` HandOpen {player, open flag, uid or 0 for the whole hand} (`0x4FF1E7`: effect mode `0xD` closes, `0xC` opens, the
+card's face bit set to the flag) is the way to hold a hand open; not used. Cards revealed elsewhere (a Set card, the
+top of the Deck) are not shown: **open**. CardLockon `0x19` and RunDetail `0x3B` were not needed (`0x3B` has no case in
+DuelScene `0x514290`).
+
+**The command queue and effects** (DuelScene busy check `0x515300`). A command waits for its component before the next
+one starts: card commands `0x12`–`0x1C`, `0x1F`, `0x26`, `0x28` for the card manager (`0x5004E0`), `0x33`/`0x34` for the
+chain, `0x37` for the list dialog. The summon effect (`0x38`/`0x39`, DuelScene `+0xD4`, an effect handle) is waited for
+only by `0x22`–`0x25`, `0x38`, `0x39` (`0x5153D9`, `0x5153F9`, `0x515445`: when it has finished `+0xD4` is cleared, and
+`0x22`/`0x25` first call `0x4FB220` mode 0 on the card manager's `+0x8C` card), so a `0x1C` after a summon can run while
+the summon's sparkles still play. Live, with Stumbling (a continuous Spell that changes every summoned monster to
+Defense Position, so the summon is followed by ChainSet, ChainRun and `0x1C` in one burst), the summoner's monster and the
+other player's both turned in three tries (the summoner's own Stumbling and the opponent's, with and without a
+question in between); the failure seen on the Windows VM was not reproduced, see ROADMAP.
+
 **Summons** (DuelScene): `0x38` RunSummon {player, the summoned card's uid} plays the summon effect at the card (`0x21`,
 or `0x23` for the player's `ace_monster`); `0x39` RunSpSummon {player, uid} the Special Summon effect (`0x19`). The
 server sends them for MSG_SUMMONING / MSG_SPSUMMONING, which come once the card is in its zone. Live: sparkles around
@@ -795,7 +820,7 @@ calls `decide`), kind 1, the opponent's cards marked, under the pile's title. Cl
 engine is not answered and the pending prompt (command map and command 4) goes again. Kind 4 lists read a
 per-card flag (the card table entry's byte from 1000's uid top byte, `0x521DF0`) at the opponent's banished place
 of the same index and draw the card back where it is clear (`0x4C7A13`): the original's view of face-down banished
-cards, not used. Live: "Your Extra Deck" listed the three Synchros with ATK/DEF, Kaiba's "Opponent's Graveyard"
+cards, used for the mixed lists below. Live: "Your Extra Deck" listed the three Synchros with ATK/DEF, Kaiba's "Opponent's Graveyard"
 listed Yugi's Spellbinding Circle, and a right-click closed each and gave the field back.
 
 A monster's field label and card info read a 9-value record per place (`0x523F00`, key `player | zone<<8`; the info
@@ -883,11 +908,19 @@ The server uses the card list for the client's MSG_SELECT_CARD and MSG_SELECT_TR
 targets, discards…): the rows from its mirror, the opponent's cards marked, kind 1 for min 0, `0x27` for min 1, else 6
 with max lowered to min (**guess**). The list draws each card from `data/mini/` by its row's Konami id ("%4d_%d",
 getCardInfo `0x4C78A0`), so an opponent's hidden card (row 0) drew nothing and could not be clicked (live: Mystical
-Space Typhoon could not target a Set card). Only kind `0x4A` (all cards) and kind 4 (see Pile views) draw
-`0000.png`, the card back; `0x4A` also marks every card the opponent's and needs one pick. A list holding a hidden card
-with min ≤ 1 opens as `0x4A`: the card can be picked, but the list can't be backed out of, and the other cards show as
-backs too, the card preview included (**limitation**: in a list of face-up and Set cards the player can't tell them
-apart). Live: Kaiba's MST listed Yugi's Set Spellbinding Circle as a back, the pick destroyed it. EDOPro's hint
+Space Typhoon could not target a Set card). Only kind `0x4A` (all cards, marked the
+opponent's, one pick, no way out) and kind 4 (see Pile views) draw `0000.png`, the card back. Kind 4 draws it only for
+the cards whose table flag is clear, so a list holding a hidden card (a Set card has row 0 for the client) with min ≤ 1
+opens as kind 4 with the list's player (command `0x37` param1, `+0x48`) set to the CPU (1; with 0 the check is skipped
+and every card shows its face, `0x4C7A38`): the flag is read at the banished place of the same index on the side
+`client != player` (`0x523DA0 {side, 0xF, index}`), which is the opponent's. The server sends a table entry (1000) per
+list card there first, with a made-up uid (`0xF00000 + index`), the row and the flag (`1 << 24`) only for the cards
+shown, and sends the opponent's real banished entries again before anything else once the list has closed. Kind 4
+needs no pick (like kind 1), so a click on a card decides at once when picks reach max, a right-click closes with none,
+and a forced choice closed with nothing picked is asked again. Face-up cards keep their faces and ATK/DEF, Set cards
+are backs, all marked the opponent's. Live (Auto Duel, Giant Orc's attack on a Set Witch and a face-up Giant Orc): one
+back, one face; a right-click withdrew the attack; a click on the back attacked the Set card. (Kaiba's MST listing a
+Set Spellbinding Circle was the first use of `0x4A`; it is no longer sent.) EDOPro's hint
 before the choice (MSG_HINT type 3, HINTMSG_*) picks the message when a text says the same thing: 500 → 18 Tribute,
 501 → 347 discard, 502 → 281 "Select card to destroy.", 503 → 70 remove from play, 504 → 58 Graveyard, 505 → 348
 return to the hand, 506 → 88 add to hand, 507 → 78 return to the Deck, 508 → 39 Normal Summon, 509 → 25 Special

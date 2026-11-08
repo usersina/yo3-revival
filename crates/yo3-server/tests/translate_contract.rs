@@ -860,9 +860,11 @@ fn against_a_player_the_opponents_hidden_cards_carry_no_row() {
 #[test]
 fn a_list_with_the_opponents_hidden_card_shows_card_backs() {
     // The list draws a card's image from its row's id ("%4d_%d", getCardInfo 0x4C78A0), so a hidden card's row 0 drew
-    // nothing and couldn't be clicked (live: Mystical Space Typhoon couldn't target a Set card). Only kind 0x4A (and a
-    // banished-pile kind 4) draws data/mini/0000.png, the card back, for every card, marked the opponent's; it needs
-    // one pick (0x4C72D0).
+    // nothing and couldn't be clicked (live: Mystical Space Typhoon couldn't target a Set card). Kind 4 (0x4C7A13)
+    // draws data/mini/0000.png, the card back, where the card table's flag is clear at the banished place of the same
+    // index on the side `client != the list's player`, so the list's player is the CPU (1) and the table gets an entry
+    // per card there, the flag (command 1000's uid top byte) set for the cards shown. It needs no pick, so a forced
+    // choice closed with nothing picked asks again.
     let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
     let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
     let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
@@ -874,13 +876,49 @@ fn a_list_with_the_opponents_hidden_card_shows_card_backs() {
         "selects": [json!({ "code": 4200, "cid": 4200, "controller": 1, "location": 8, "sequence": 0, "position": 10 }),
             card_at(1, 8, 1, 4201)] });
     let out = client_commands(t.prompt(&target(false)));
+    // The entries at the opponent's banished places 0 and 1 (place 1 | 0xF << 8 | index << 16): the Set card's clear,
+    // the face-up card's with the flag and its row.
+    assert_eq!(out[0], (1000, [0xF0_0000, 0, 0, 1 | 0xF << 8]), "{out:?}");
+    assert_eq!(out[1], (1000, [0xF0_0001 | 1 << 24, 201, 0, 1 | 0xF << 8 | 1 << 16]), "{out:?}");
     assert!(out.contains(&(0x3F2, [0, 201, 0, 0])), "{out:?}");
-    assert_eq!(out.last().map(|&(id, p)| (id, p[1])), Some((0x37, 0x4A)), "{out:?}");
+    assert_eq!(out.last(), Some(&(0x37, [1, 4, 0, 0])), "{out:?}");
     // Even a choice the player could back out of: the card is reachable only this way.
-    assert_eq!(client_commands(t.prompt(&target(true))).last().map(|&(id, p)| (id, p[1])), Some((0x37, 0x4A)));
-    // All cards shown: the usual kind.
+    assert_eq!(client_commands(t.prompt(&target(true))).last().map(|&(id, p)| (id, p[1])), Some((0x37, 4)));
+    // Closed with nothing picked (a right-click), a forced choice is asked again; picking answers it.
+    t.prompt(&target(false));
+    let again = client_commands(t.dialog_result(0).expect("asked again"));
+    assert_eq!(again.last().map(|&(id, p)| (id, p[1])), Some((0x37, 4)));
+    t.pick(1);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 5, "indicies": [1] }))));
+    // The banished entries the list borrowed go back before anything else (none are banished here, so none).
+    assert!(t.events(&[]).is_empty());
+    // All cards shown: the usual kind, and no entries.
     let face_up = json!({ "type": 15, "player": 0, "can_cancel": false, "min": 1, "max": 1, "selects": [card_at(1, 8, 1, 4201)] });
-    assert_eq!(client_commands(t.prompt(&face_up)).last().map(|&(id, p)| (id, p[1])), Some((0x37, 0x27)));
+    let out = client_commands(t.prompt(&face_up));
+    assert_eq!(out.last(), Some(&(0x37, [0, 0x27, 0, 0])));
+    assert!(!out.iter().any(|(id, _)| *id == 1000));
+}
+
+#[test]
+fn a_mixed_list_gives_the_opponents_banished_entries_back() {
+    // The list borrows the opponent's banished places 0.. for its flags; once it closes the real entries (uid, row,
+    // the open flag) are sent before anything else.
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
+    t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4200 }, { "cid": 4201 }, { "cid": 4202 }] })]);
+    t.events(&[json!({ "type": 50, "cid": 4200, "from": loc(1, 2, 0, 10), "to": loc(1, 32, 0, 1) })]);
+    t.events(&[json!({ "type": 50, "cid": 4201, "from": loc(1, 2, 0, 10), "to": loc(1, 8, 0, 10) })]);
+    let target = json!({ "type": 15, "player": 0, "can_cancel": false, "min": 1, "max": 1,
+        "selects": [json!({ "code": 4201, "cid": 4201, "controller": 1, "location": 8, "sequence": 0, "position": 10 }),
+            card_at(1, 8, 1, 4202)] });
+    t.prompt(&target);
+    t.pick(0);
+    assert!(matches!(t.dialog_result(1), Some(Prompt::Answer(_))));
+    let back: Vec<_> = t.events(&[]).iter().map(cmd).collect();
+    // Uid 11 is the CPU's first deck card (cid 4200), row 200, banished face up at index 0.
+    assert_eq!(back, [(1000, [11 | 1 << 24, 200, 0, 1 | 0xF << 8])]);
 }
 
 /// A chain chance's level: the Effect dialog's param3.
@@ -1050,6 +1088,48 @@ fn a_summon_plays_its_effect() {
     assert_eq!(shows(&t.events(&[summoning])), [(0x38, [0, 2, 0, 0])]);
     let special = json!({ "type": 62, "code": 4200, "cid": 4200, "controller": 1, "location": 4, "sequence": 1, "position": 1 });
     assert_eq!(shows(&t.events(&[special])), [(0x39, [1, 11, 0, 0])]);
+}
+
+#[test]
+fn a_revealed_card_shows_its_face_when_it_is_in_the_hand() {
+    // MSG_CONFIRM_CARDS (31) {player: who sees them, cards}: HandShow 0x13 {player, index} (DuelCardManager 0x4FF15C)
+    // turns a hand card face up for a moment (live: the opponent's new hand card flipped to its face, the card info
+    // took it) and back. It reads the card's row from the table entry, which the opponent's hand card doesn't have
+    // against a player, so the entry goes first. The client sees what is shown to it and its own cards as the other
+    // side sees them, not what is shown to the opponent of a card the opponent owns.
+    let (mut t, _) = Translator::against_player(0, [&(100..110).collect::<Vec<u16>>(), &(200..210).collect::<Vec<u16>>()], {
+        let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+        (100..110).chain(200..210).map(|r| (r, stats(r))).collect()
+    });
+    t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4200 }, { "cid": 4201 }] })]);
+    // The CPU's hand card 1 shown to the client: its entry (uid 12, row 201), then the show.
+    let seen = json!({ "type": 31, "player": 0, "cards": [card_at(1, 2, 1, 4201)] });
+    let out: Vec<_> = t.events(&[seen]).iter().map(cmd).collect();
+    assert_eq!(out, [(1000, [12, 201, 0, 1 | 0xB << 8 | 1 << 16]), (0x13, [1, 1, 0, 0])]);
+    // The client's own hand card shown to the opponent: shown to the client as well.
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }] })]);
+    let shown = json!({ "type": 31, "player": 1, "cards": [card_at(0, 2, 0, 4100)] });
+    let out: Vec<_> = t.events(&[shown]).iter().map(cmd).collect();
+    assert_eq!(out.last(), Some(&(0x13, [0, 0, 0, 0])));
+    // The opponent's card shown to the opponent only (its own look at its hand): nothing for the client.
+    let own = json!({ "type": 31, "player": 1, "cards": [card_at(1, 2, 0, 4200)] });
+    assert!(t.events(&[own]).is_empty());
+}
+
+#[test]
+fn a_searched_card_shows_when_it_reaches_the_hand() {
+    // A card revealed from the Deck (Witch of the Black Forest's search) is in the hand only after its move: the
+    // show waits for it and comes after the move, at the card's hand index.
+    let (mut t, _) = translator();
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }] })]);
+    let deck_card = json!({ "code": 4105, "cid": 4105, "controller": 0, "location": 1, "sequence": 3, "position": 10 });
+    let seen = json!({ "type": 31, "player": 1, "cards": [deck_card] });
+    assert!(t.events(&[seen]).is_empty());
+    let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4105, "from": loc(0, 1, 3, 10), "to": loc(0, 2, 1, 10) })]).iter().map(cmd).collect();
+    assert_eq!(out.last(), Some(&(0x13, [0, 1, 0, 0])), "{out:?}");
+    // Once only: a later card of that id doesn't show.
+    let again: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4105, "from": loc(0, 2, 1, 10), "to": loc(0, 1, 0, 10) }), json!({ "type": 50, "cid": 4105, "from": loc(0, 1, 0, 10), "to": loc(0, 2, 1, 10) })]).iter().map(cmd).collect();
+    assert!(!again.iter().any(|(id, _)| *id == 0x13), "{again:?}");
 }
 
 /// The chain commands among `out` (0x33, 0x34).

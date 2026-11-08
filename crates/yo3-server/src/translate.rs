@@ -47,6 +47,7 @@ const MSG_DRAW: u64 = 90;
 const MSG_DAMAGE: u64 = 91;
 const MSG_RECOVER: u64 = 92;
 const MSG_LPUPDATE: u64 = 94;
+const MSG_CONFIRM_CARDS: u64 = 31;
 const MSG_POS_CHANGE: u64 = 53;
 const MSG_SUMMONING: u64 = 60;
 const MSG_SPSUMMONING: u64 = 62;
@@ -119,6 +120,8 @@ const REMOVED: u32 = 0xF;
 /// (effect 0x33) plays at it and it is hidden (state 0x4FC520), before its move.
 const FLIP_TURN: u32 = 0x1C;
 const CARD_VANISH: u32 = 0x1F;
+/// HandShow {player, index}: a hand card shows its face (DuelCardManager 0x4FF15C).
+const HAND_SHOW: u32 = 0x13;
 /// A card table entry's flag (command 1000's uid top byte, kept as `!= 0` by 0x521DF0): a pile whose count changes
 /// draws its top card's face when its entry has it, else a back (0x4FE4D0 → 0x523DA0), and the pointer over the pile
 /// previews that card (0x50B9C0). Set for the open piles: the Graveyard and the banished cards.
@@ -207,10 +210,13 @@ const OPPONENTS: u32 = 0x8000;
 const PICK_ANY: u32 = 1;
 const PICK_ALL: u32 = 6;
 const PICK_ONE: u32 = 0x27;
-/// The kind that draws every card as a back (data/mini/0000.png) and marks it the opponent's, one pick (getCardInfo
-/// 0x4C78A0): the others draw a card's image from its row's id, so a hidden card (row 0) drew nothing and couldn't be
-/// clicked (live).
-const PICK_ONE_HIDDEN: u32 = 0x4A;
+/// The kind that draws a card as a back where its flag is clear (getCardInfo 0x4C78A0, "0000" for data/mini/0000.png),
+/// by the card table's flag at the banished place of the same index on the side `(client != the list's player)`: so
+/// a list of the CPU's side (player 1) reads the opponent's banished entries. No picks needed, like kind 1 (the
+/// other kinds draw a card's image from its row's id, so a hidden card, row 0, drew nothing and couldn't be clicked).
+const PICK_MIXED: u32 = 4;
+/// The uids of the entries a mixed list puts in the table (no card has one).
+const STAGED_UID: u32 = 0xF0_0000;
 /// Message entries (0x519870): a text of the duel prompt table, and a card name by Konami id (0x5374B0) put into
 /// the text's %s.
 const TEXT: u32 = 1 << 28;
@@ -411,6 +417,11 @@ pub struct Translator {
     /// How many card names the CPU has declared: each try names the next card of the duel's (the core asks again
     /// when a name doesn't fit).
     declared: usize,
+    /// Cards an effect revealed (MSG_CONFIRM_CARDS) that wait to reach a hand, by Konami id.
+    revealing: Vec<u16>,
+    /// The card list open is a mixed one (see `card_list`), and how many table entries it staged.
+    mixed: bool,
+    staged: Option<usize>,
 }
 
 impl Translator {
@@ -490,6 +501,9 @@ impl Translator {
             next_token: FIRST_TOKEN_UID,
             counters: HashMap::new(),
             declared: 0,
+            revealing: vec![],
+            mixed: false,
+            staged: None,
         };
         (t, out)
     }
@@ -520,7 +534,8 @@ impl Translator {
 
     /// The client commands for the engine's events (prompts excluded).
     pub fn events(&mut self, messages: &[Json]) -> Vec<Message> {
-        let mut out = vec![];
+        let staged = self.staged.take();
+        let mut out = self.unstage_n(staged);
         for m in messages {
             if m["type"] == "field" {
                 out.extend(self.field(m));
@@ -571,6 +586,7 @@ impl Translator {
                         out.push(command(id, [player, uid, 0, 0]));
                     }
                 }
+                Some(MSG_CONFIRM_CARDS) => out.extend(self.confirm(m)),
                 Some(MSG_CHAIN_END) => self.chaining = None,
                 Some(MSG_WIN) => {
                     let result = match m["player"].as_u64() {
@@ -626,7 +642,12 @@ impl Translator {
             (Some(from), Some(to)) => {
                 let reason = m["reason"].as_u64().unwrap_or(0);
                 let dropped = self.drop_counters(&from);
-                let moved = self.relocate(cid, from, to);
+                let mut moved = self.relocate(cid, from, to);
+                if to.zone == HAND && let Some(at) = self.revealing.iter().position(|&c| c == cid) {
+                    self.revealing.remove(at);
+                    let index = self.sides[to.player as usize].zone(HAND).len().saturating_sub(1).min(to.index);
+                    moved.extend(self.show_hand(to.player, index));
+                }
                 // Destroyed other than by battle (a battle shows it with BattleRun): the shatter first.
                 if moved.is_empty() || reason & REASON_DESTROY == 0 || reason & REASON_BATTLE != 0 || from.zone > HAND {
                     return dropped.into_iter().chain(moved).collect();
@@ -637,6 +658,36 @@ impl Translator {
             // Tokens and Xyz materials have no client place yet.
             _ => vec![],
         }
+    }
+
+    /// MSG_CONFIRM_CARDS {player, cards}: the cards are shown to `player`. The client sees one it is shown to, and its
+    /// own as the other side sees them; a hand card shows its face at once, a card from elsewhere (the Deck, a search)
+    /// when it reaches the hand.
+    fn confirm(&mut self, m: &Json) -> Vec<Message> {
+        let viewer = self.player(&m["player"]);
+        let mut out = vec![];
+        for card in m["cards"].as_array().into_iter().flatten() {
+            let owner = self.player(&card["controller"]);
+            if viewer != CLIENT && owner != CLIENT {
+                continue;
+            }
+            let cid = card["cid"].as_u64().unwrap_or(0) as u16;
+            match card["location"].as_u64() {
+                Some(LOC_HAND) => out.extend(self.show_hand(owner, card["sequence"].as_u64().unwrap_or(0) as usize)),
+                _ if !self.revealing.contains(&cid) => self.revealing.push(cid),
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// A hand card shows its face: its table entry with the row (the opponent's hand has none), then HandShow.
+    fn show_hand(&self, player: u32, index: usize) -> Vec<Message> {
+        let Some(card) = self.sides[player as usize].zones.get(&HAND).and_then(|z| z.get(index)).copied() else { return vec![] };
+        vec![
+            command(CARD, [card.uid, card.row as u32, 0, table_place(player, HAND, index)]),
+            command(HAND_SHOW, [player, index as u32, 0, 0]),
+        ]
     }
 
     /// A token appears on a monster zone: the client's token card of its name (in turn when it has several, as for
@@ -904,6 +955,22 @@ impl Translator {
 
     /// What to do with the engine's prompt (the last message when it awaits).
     pub fn prompt(&mut self, m: &Json) -> Prompt {
+        let staged = self.staged.take();
+        let prompt = self.prompt_for(m);
+        match prompt {
+            Prompt::Client(out) => {
+                let mut all = self.unstage_n(staged);
+                all.extend(out);
+                Prompt::Client(all)
+            }
+            answer => {
+                self.staged = self.staged.or(staged);
+                answer
+            }
+        }
+    }
+
+    fn prompt_for(&mut self, m: &Json) -> Prompt {
         let kind = m["type"].as_u64().unwrap_or(0);
         if self.player(&m["player"]) == CPU {
             if kind == MSG_ANNOUNCE_CARD {
@@ -1051,8 +1118,11 @@ impl Translator {
     }
 
     /// The card list for a card choice: its rows and marks, the message, then the dialog. The kind gives the picks OK
-    /// needs: none for min 0, one for min 1, else exactly min (the list's max is lowered to it).
-    fn card_list(&self, m: &Json, text: Option<u32>) -> Vec<Message> {
+    /// needs: none for min 0, one for min 1, else exactly min (the list's max is lowered to it). A list holding a
+    /// hidden card (a Set card has no row for the client) opens as the card-back kind with a table entry per card
+    /// (flag set for the cards shown), so face-up cards keep their faces and Set cards are backs; no pick is needed
+    /// there, so the list closing with nothing picked asks again when the choice is forced.
+    fn card_list(&mut self, m: &Json, text: Option<u32>) -> Vec<Message> {
         let selects = m["selects"].as_array().map_or(&[][..], Vec::as_slice);
         let (min, max) = (m["min"].as_u64().unwrap_or(1) as u32, m["max"].as_u64().unwrap_or(1) as u32);
         // A choice the player may back out of (can_cancel, or a chain list that isn't forced) opens with OK, where no
@@ -1065,18 +1135,41 @@ impl Translator {
             _ => (PICK_ALL, min),
         };
         let rows: Vec<u32> = selects.iter().map(|loc| self.list_row(loc)).collect();
-        // A hidden card is reachable only as a back, which loses the backing out (one pick) and shows the other cards
-        // as backs too (the card info still names them as the pointer passes).
-        let (kind, max) = if rows.contains(&0) && min <= 1 { (PICK_ONE_HIDDEN, max) } else { (kind, max) };
+        let mixed = rows.contains(&0) && min <= 1;
+        self.mixed = mixed;
+        let (kind, player) = if mixed { (PICK_MIXED, CPU) } else { (kind, CLIENT) };
         let marks: Vec<u32> = selects.iter().map(|loc| if self.player(&loc["controller"]) == CPU { OPPONENTS } else { 0 }).collect();
-        let mut out = vec![command(LIST_BEGIN, [selects.len() as u32, max, 0, 0])];
+        let mut out = vec![];
+        if mixed {
+            for (i, &row) in rows.iter().enumerate() {
+                let flag = if row != 0 { OPEN } else { 0 };
+                out.push(command(CARD, [(STAGED_UID + i as u32) | flag, row, 0, table_place(CPU, REMOVED, i)]));
+            }
+            self.staged = Some(rows.len());
+        }
+        out.push(command(LIST_BEGIN, [selects.len() as u32, max, 0, 0]));
         out.extend(fours(LIST_ROWS, &rows));
         out.extend(fours(LIST_MARKS, &marks));
         if let Some(text) = text {
             out.extend(message(&[TEXT | text]));
         }
-        out.push(command(CARD_LIST, [CLIENT, kind, text.is_some() as u32, 0]));
+        out.push(command(CARD_LIST, [player, kind, text.is_some() as u32, 0]));
         out
+    }
+
+    /// The opponent's banished entries a mixed list overwrote (`n` of them), as they are: sent before anything else
+    /// once it closes.
+    fn unstage_n(&self, n: Option<usize>) -> Vec<Message> {
+        let Some(n) = n else { return vec![] };
+        let pile = self.sides[CPU as usize].zones.get(&REMOVED).map_or(&[][..], Vec::as_slice);
+        pile.iter()
+            .enumerate()
+            .take(n)
+            .map(|(i, c)| {
+                let row = self.shown_row(&Place { player: CPU, zone: REMOVED, index: i, face_up: true, defense: false }, c.row);
+                command(CARD, [c.uid | OPEN, row, 0, table_place(CPU, REMOVED, i)])
+            })
+            .collect()
     }
 
     /// A card's row as a list shows it: none for the opponent's hidden cards when hiding.
@@ -1185,6 +1278,10 @@ impl Translator {
                 _ if m["forced"] == true => cpu_answer(kind, &m),
                 _ => json!({ "type": RESP_CHAIN, "index": null }),
             },
+            // A mixed list needs no picks to close: a forced choice with nothing picked is asked again.
+            MSG_SELECT_CARD | MSG_SELECT_TRIBUTE if self.mixed && self.picks.is_empty() && m["can_cancel"] != true && m["min"].as_u64().unwrap_or(1) >= 1 => {
+                return Some(self.prompt(&m));
+            }
             MSG_SELECT_CARD | MSG_SELECT_TRIBUTE => self.card_choice(&m, count),
             MSG_SELECT_UNSELECT_CARD => match std::mem::take(&mut self.picks)[..] {
                 [index] if index < selects => json!({ "type": RESP_UNSELECT_CARD, "index": index }),

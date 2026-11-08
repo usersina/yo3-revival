@@ -92,12 +92,21 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
       effect, Book of Moon, an attack on a Set monster (the card-back list), Dark Hole, Black Rose Dragon's wipe with a
       chained Spellbinding Circle, Monster Reborn from either Graveyard, Mirror Force, Witch of the Black Forest's
       deck search, a three-link chain, and WINNER / LOSER with the records on both clients.
-- [ ] Open: cards an effect reveals (EDOPro's MSG_CONFIRM_CARDS, e.g. Witch of the Black Forest's "show it to your
-      opponent") aren't shown to the opponent; the client's HandShow / HandOpen (`0x13`, `0x14`) are the likely way,
-      not read yet.
+- [x] Cards an effect reveals (EDOPro's MSG_CONFIRM_CARDS, e.g. Witch of the Black Forest's "show it to your opponent")
+      weren't shown to the opponent: they are now, through HandShow (`0x13`): a hand card shows at once, a searched
+      card when it reaches the hand. Live: the new card flipped to its face in the opponent's hand row and the info
+      panel named it (recorded frames). Revealed Set cards and Deck tops still aren't shown (open).
+- [x] A target list of face-up and Set cards opened as the card-back kind `0x4A` (every card a back, no way out): it now
+      opens as kind 4 with per-card table flags, so face-up cards keep their faces, Set cards are backs and a right-click
+      backs out. Live: Giant Orc's attack list showed a back and a face; right-click withdrew it; a click on the back
+      attacked the Set card.
 - [ ] Open: a monster whose position an effect changes right after its summon (Stumbling) stayed upright on its
       owner's screen when no prompt came in between (the other client turned it; with a chain question in between both
-      did). Client-side timing, not understood yet.
+      did). Not reproduced headless in three tries (own and opponent's Stumbling, with and without a question): the
+      monster turned on both screens each time, after the summon effect. Found: the summon effect is waited for only
+      by `0x22`–`0x25`, `0x38`, `0x39`, so a `0x1C` runs while it plays; a safe barrier needs a command whose
+      execution is a no-op, and none is known (`0x25` would call `0x4FB220` on a card whose identity is unknown).
+      Next: reproduce on the VM with `YO3_TRACE_HITS` on `0x4FB7F0` (the card's effect modes) or a cold file cache.
 - [ ] Card preview on hover needs a held button on the VM (the client shows it on hover under Wine): likely the VM's
       PS/2 mouse or window focus, not the server.
 
