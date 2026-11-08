@@ -56,7 +56,7 @@ The contract tests in `crates/yo3-server/tests/front_contract.rs` enforce the co
 | `0x1F4C` select `{player_id}` | `0x2266` | none | "my player use success" L577 | confirmed |
 | `0x1FA4` trunk `{player_id}` | `9000` (`0x2328`) | exactly one record; item[0] is copied wholesale into `UserData+0x8C8`, and the global dispatcher keeps the reply in slot 18. The record holds `cards` and `noTrade` (binary): owned and untradeable count per card, one byte at index row − 1 (CARD_Prop rows, row 0 a dummy, so 4,833 bytes). `0x410DB0` reads them bounds-checked; the collection builder `0x4F6340` writes into both unchecked (crash at `0x4F6A82`, opening the NPC duel) | "trunk data success" L666, `0x46AFA8`, `0x410DB0` | confirmed; `cards` = one copy per card of the starter deck (**guess**: a real collection comes with the economy); other contents **guess** |
 | (server push after `9000`) | `0x251C` friend list, `0x252A` black list | items `{friend_id, friend_name, login_flag}` / `{black_id, black_name, login_flag}` (`0x475A20` modes 2 and 3); see "Friends and the ignore list" | the global dispatcher stores them in dataset slots 6 and 7; the client never asks, and listing any player crashes without them (`0x45E734`) | shape; push timing **guess** |
-| (server push after `9000`) | `0x2D6C` rental records | items carry `from_type` (the shop checks for 1); we send none | the global dispatcher stores it in slot 8 (`0x4F5FBA`); opening the shop reads slot 8 unchecked (`0x48F0F6`). `RentalRecord`/`CardRental` ask for it with `0x2C34` (bare), but not before the shop opens | shape (empty); push timing **guess** |
+| (server push after `9000`) | `0x2D6C` rental records | one item per rental not over that the player lent or borrowed (fields in "Card rental" below); the shop checks `from_type` for 1 (we send 0) | the global dispatcher stores it in slot 8 (`0x4F5FBA`); opening the shop reads slot 8 unchecked (`0x48F0F6`); the collection builder `0x4F6340` reads it. `RentalRecord`/`CardRental` ask for it with `0x2C34` (bare), but not before the shop opens | live; push timing **guess** |
 
 **Player record** (read by `0x46C1E4` and `0x51C260`):
 - `pname`, `pindex`, `player_id`, `dlv`, `title`, `n_win`, `n_lose`, `n_draw`, `team_level`, `team_name`,
@@ -139,8 +139,8 @@ and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 
   (duelling: in a match; waiting: hosting a Create Duel of that rule), the community bits (`0x40` the searcher's
   friends, `0x80` their ignore list, `0x20` their team, `0x20000` their chat room), the manner level (the player's own,
   from the ratings below: 2, the middle, while nobody rated them; entries carry `evallevel`) and the event bits (nobody is in an
-  event). The country matches everyone: the client never tells the server its country, so entries carry none (Player
-  Information then shows the first flag). Paging is a **guess**: skip `base_point`, return at most `front_num`.
+  event). The country criterion (`0x8`, `country` an ISO code) matches the flag each player shows (see "Country" below).
+  Paging is a **guess**: skip `base_point`, return at most `front_num`.
   Live: with Kaiba hosting, the waiting tab listed only him with the hosting icon.
 
 ### Chat (ChatWindow dispatcher `0x435950`)
@@ -278,6 +278,60 @@ the ones given away) and moves both offers when both said yes, in the accounts (
 `given` per player). A session refreshes its player's collection from there on each trunk request, so the partner's
 next shop visit shows it too. Live: Yugi's Tainted Wisdom for Kaiba's Windstorm of Etaqua.
 
+### Card rental between players (agent steps `0x4A9D80` and `0x4AA430`, rental scene `CardRental.cpp`, handler `0x41C7E0`)
+
+Player Information's Send Rental Request (text 12267) invites; the other player answers from their bell (the global
+dispatcher keeps the invitation, flag `0x800`); a yes opens the rental scene on both. **The player who sent the
+request is the lender**: the scene is opened with `for_rent` 1 for them (`0x4AA3BB`) and 0 for the borrower
+(`0x4AA936`), and SetUp (`cardrental.swf`) locks the borrower's controls. The ids follow the trade scene's pattern
+(requests by even ids, replies `0x2D50`..., pushes odd) and are named by the handler's log lines:
+
+| Request | Reply (error: next id, `{error_code}`) | Pushes | Evidence | Status |
+|---|---|---|---|---|
+| `0x2C24 {to_id}` (`0x4A9E1C`) | `0x2D50 {pname}` "Sending Rental Request to %s..." (`0x2D51`: 106 "This player cannot receive another request.") | `0x2C25 {from_id, from_name}` to the player: "You have received a Rental Request from %s. Accept?" | live | confirmed |
+| cancel `0x2C28` (`0x4AA2B9`) | `0x2D56` (`0x2D57`) | `0x2C29` to the player (the global dispatcher clears flag `0x800`, as `0x2C37` does) | code | shape |
+| answer `0x2C26 {to_id (text, live), answer: 2 yes, 1 no}` (`0x4AA611`) | `0x2D54` (`0x2D55`) | `0x2C27 {answer}` to the lender: 2 opens its scene | live | confirmed |
+| ready `0x2C3E` (each scene on opening, `0x41C6AF`) | none read by the scene (we send `0x2D68`, **guess**) | once both: `0x2C3F` (NOTICE_START) to both | live | confirmed; reply id **guess** |
+| conditions `0x2C2B {type 0 Free / 1 Deck, days}` (the lender's Rental Conditions dialog, `0x41ED74`) | `0x2D5C` (`0x2D5D`) | `0x2C39 {type, days}` to the borrower (`SetType`) | live: 3 days, Free sent `days 3`, `type 0` (the term is the number of days: 1, 3, 7 or 14, texts 14212-14215) | confirmed |
+| cards `0x2C2A {main_list, extra_list, side_list}` (`0x4211F1`; a Free rental sends `main_list` only, the cards as big-endian u16 CARD_Prop rows; double-clicking a trunk card puts it up) | `0x2D5A` (`0x2D5B`: 504 as the trade's "card number illegal", our code) | `0x2C38 {main_list, extra_list, side_list}` to the borrower | live | confirmed; error codes **guess** |
+| the partner's scene has the cards or conditions `0x2C2C` (`0x41EFC6`) | `0x2D5E` (`0x2D5F`) | `0x2C3A` to the partner (unlocks the lender's next send, `+0x8A`) | live | confirmed |
+| the lender's Confirm `0x2C2D` (`0x421586`) | `0x2D60` (`0x2D61`) | `0x2C2E` to the borrower: "Borrow these cards?" | live | confirmed |
+| the lender takes it back `0x2C31` (`0x421646`) | `0x2D66` (`0x2D67`) | `0x2C32` to the borrower | code | shape |
+| the borrower's answer `0x2C2F {answer: 2 yes, 1 no}` (`0x421704`) | `0x2D64` (`0x2D65`) | `0x2C30 {trade_result: 1 done, 0 not}` to both: 1 "Rental Completed."; 0 "Rental Cancelled." and the scene stays | live: Yes sent 2, "Rental Completed." on both | confirmed; the No value and the 0 result **guess** (as the trade's) |
+| exit `0x2C33` (ExitRental) | `0x2D6A` (`0x2D6B`) | `0x2C37` to the partner: "The Borrower has cancelled." / "The Lender has cancelled." (also when a player goes offline) | code | shape |
+
+**Records and collections.** The client counts the cards itself. The collection builder `0x4F6340` copies the trunk
+(`9000`), then, for every item of the records `0x2D6C` (slot 8): with `to_id` = the player and `confirm_to` 0 it adds the
+item's `main`/`extra`/`side` cards (and to `noTrade`: a borrowed card can't be traded), and with `from_id` = the player and
+`confirm_from` 0 it takes them away (flags: `0x1D` Edit Deck and the duel screens, `9` the trade and rental scenes and the
+shop, `1` the plain trunk). So the server **moves no cards between collections**: the trunk `9000` stays what each owns, and
+a rental is one record per rental, pushed to both players (`0x2D6C`) when it starts, when it ends and at login, and sent for
+`0x2C34`. Record fields: `from_id`, `from_name`, `from_type` (0; the shop's own rentals use 1), `to_id`, `to_name`,
+`rent_end` (text "%Y-%m-%d %H:%M:%S", Japan time), `deck_type` (0 Free, 1 Deck), `confirm_from`, `confirm_to` (0 while it
+runs, 1 once over) and `main`/`extra`/`side` (big-endian u16 rows). We send only the rentals not over in `0x2D6C`; the
+history `0x2D6E` has the over ones, greyed. The server keeps the rentals in `data/rentals.json`, checks the terms once a
+second and, when one ends, pushes the new records to both (live: Kaiba's Edit Deck trunk went from 42 back to 40, the two
+cards 000), and it stops a lender from putting up or trading cards they have lent (`0x2D5B`, `0x2BE2`: owned less
+lent). Live: Yugi lent Tainted Wisdom and Windstorm of Etaqua to Kaiba for 3 days; Yugi's rental scene trunk showed them as
+000, Kaiba's Edit Deck listed them (42 cards, a blue badge) and both Rental Card Lists had the row; a server restart
+kept it and an end time moved to the past ended it while both were online.
+
+Not seen: a Deck rental (`type 1`: three lists) and the Return button of `rentalrecord.swf` (`BorrowReturan`,
+`BorrowDeckSave`): the C++ registers no callbacks for them (`0x481E00`), so the client has no early return: a rental ends
+at its term. The "Lender's / Borrower's Rental List is full" texts (14205/14206) have no code we know of.
+
+### Country (flags)
+
+The client reads `country` (text, an ISO code it looks up in `data/text/countrytbl.bin`: 200 two-letter codes, ids 1-200,
+`AL`... `HN`; `0x51BC80` returns the id, -1 for a code it doesn't have) in the login item (`0x2201`, the leaderboard link
+`0x46FC14`), the player records (`0x2260`, Player Information `0x4B7350`, a duel's `vsPlayerData` `0x4A2D30`/`0x4A4460`), the
+search entries (`0x2CF7`) and the bracket's seats (`0x32FD`, `0x4CEBE0`). No request carries the client's country, so the host
+sets one per account (`yo3-server set-country ADDRESS CODE`, `countries` lists the codes, `auto` clears it), kept in
+`accounts.json`; without a setting it follows the language the client gives at login (`0x1F48 {lang}`): Japanese JP,
+English GB, German DE, French FR, Italian IT, Spanish ES, Korean KR, Chinese CN (**guess**). A missing or unknown `country`
+shows the Germany flag (what every player showed until 2026-11-08). The search's country criterion (`0x8`) compares the code.
+Live: Player Information showed the UK flag for an English client, the Japanese flag once the account was set to JP.
+
 ### Manner ratings (`dlg_manner.swf`, DuelResult `0x512A40`, dialog `0x4C2A10`/`0x4C3F20`)
 
 | Message | Fields | Evidence | Status |
@@ -298,11 +352,11 @@ player records.
 
 | Screen | Request | Reply (error) | Fields | Evidence | Status |
 |---|---|---|---|---|---|
-| Rental Card List (RentalRecord `0x481A30`, `rentalrecord.swf`) | `0x2C34` (bare), then `0x2C35 {rental_kind 0, base_id}` and `0x2C35 {rental_kind 1}` | `0x2D6C` (`0x2D6D`), `0x2D6E` (`0x2D6F`) twice | the screen is built only after all three (`0x482250`); `0x2D6C` also replaces slot 8. Borrowed items `{from_name, from_type, rent_end, deck_type, confirm_to}`, lent `{to_name, rent_end, deck_type, confirm_from}`, decks `main`/`extra`/`side`; empty lists are safe. Without the replies the screen stays black | live | confirmed (empty) |
+| Rental Card List (RentalRecord `0x481A30`, `rentalrecord.swf`) | `0x2C34` (bare), then `0x2C35 {rental_kind 0, base_id}` and `0x2C35 {rental_kind 1}` | `0x2D6C` (`0x2D6D`), `0x2D6E` (`0x2D6F`) twice | the screen is built only after all three (`0x482250`); `0x2D6C` also replaces slot 8. Kind **0 is the Lent tab, kind 1 the Borrowed one** (the first `0x2D6E` is kept in the vector at `+0x78`, which `GetLoanCount` `0x482FE0` counts, the second at `+0x90`, `GetBorrowCount` `0x482970`). Borrowed rows `{from_name, from_type, rent_end, deck_type, confirm_to}` (`0x482A90`), lent rows `{to_name, rent_end, deck_type, confirm_from}` (`0x483100`), a row's cards `deck_type`, `main`/`extra`/`side` (`0x483620`); a flag of 1 greys the row ("over"). Without the replies the screen stays black | live: Kaiba's Borrowed tab listed Yugi, "2026-11-11 19:03:35", Free, and the two cards; Yugi's Lent tab listed Kaiba; after the term the row went grey | confirmed |
 | My Profile (`profile.swf`) | `0x1F49` (bare) | `0x2260` | the item whose `pindex` is the player's; ProfileGet (`0x4705D0`) reads `pname`, `title`, `dlv`, `tp`, `n_win`, `n_lose`, `dscore`, `n_duelall`, `turns`, `n_a_win/lose/draw`, `n_nogame`, `isurrender`, `usurrender`, `lpleft`, `n_m_win/lose`, `n_s_win/lose`, `sidedeck`, `sacrifice1..3`, `fusion`, `synchro`, `gravesummon`, `spsummon`, `itrap`, `utrap`, `imagic`, `umagic`, `iefmon`, `uefmon`, `reversalwin`, `reversallose` (absent = 0). We send `n_win`, `n_lose`, `n_draw`, `n_duelall` from the duel records against players (also in the search entries, which Player Information's "Number of Wins" reads) | live: Wins 4, Losses 2 | confirmed; NPC duels not counted (**guess**) |
 | Duel Log (DuelLogWindow `0x499750`, `duel_log.swf`) | `0x1793` (bare) on opening; Server Duel Logs `0x19C8 {pname, offset}` | `0x177B` (`0x177C`), `0x19C9` (`0x1790`) | `0x177B` is the championship list, items `{year, season, event_id}`; the server log tab queues behind it. `0x19C9` items `{end_time (epoch), match_type, dlv_1, dlv_2, pname_1, pname_2, dlog_comment, duel_id, filename, dlogURL}` (`0x49ADF0`) would be replays to download; we keep none. **Latest Duel Logs** lists the `*.dlog` files of `players\<name>\duellogs\myduels\` (`0x49A950`: each loaded by `0x524CA0`, whose header fields are the `0x19C9` item's; the row prints `end_time` through `_localtime32`, so the client's own time zone, `dlv_1`/`dlv_2` as `Lv%d`, `pname_1 V.S. pname_2`); Duel Log Collection is `favorites\`. Those files are **downloaded by the client after each duel**, see "Duel log files" | live: both lists empty without logs; with them Latest Duel Logs lists the duel | confirmed |
 | BOOSTERPASS (BpInputWindow, `boosterpass.swf`) | `0x20D0 {dpcode}` (a 16-character code) | `0x23F0 {dpauth_result, dpPoints, dpGetPoints, premium, premium_expire}`, no error reply | 0 adds `dpGetPoints` and shows the points; anything else "Incorrect BOOSTERPASS CODE.". The global dispatcher keeps `premium` from it (`0x4F5349`), so it goes with 1 | live: "Incorrect BOOSTERPASS CODE." | confirmed; every code refused (Konami's are gone) |
-| Leaderboard | none | — | ShellExecute on Konami's dead ranking page with the login item's `country` | code | nothing to serve |
+| Leaderboard | none | — | ShellExecute on Konami's dead ranking page with the login item's `country` (`0x46FC14`), which we send | code | nothing to serve |
 | DUEL OPTIONS | none | — | local options file | code | nothing to serve |
 
 ### Shop (`shopmain.cpp`, handler `0x48AA60`)
@@ -386,7 +440,7 @@ itself (`0x4D6970`: 0 own, 1 open, 2 restricted, 3 running, 4 finished; the lobb
 | the form `0x3390 {event_name, comment, entry_max, prize_type, level_min, level_max, eval_level, player_limit, password1, lang, match_type, duel_surrender, duel_watch, duel_time_turn, duel_time_total, duel_lp_start, regulation_id, join_max}` (top level, live) | `0x33F4 {event_id}` | then `0x1784 {event_id}` → `0x1785 {join_id, event_id}` (the global dispatcher keeps `event_id`, which the lobby asks with: 0 until we echoed it; we echo only a user event's, numbered from 100: echoing Auto Duel's 2 made the clients queue again by themselves after each match, live) and the entry `0x3397 {event_id}` → `0x33FA` | live | confirmed |
 | Participate: `0x1784`, `0x3397`; leave `0x178E {event_id}` | `0x33FA`, `0x178F` | the others get `0x3399 {entry_name, entry_type: 1 joined, else left}` | live (join), test | confirmed |
 | lobby `0x177F {event_id}` | `0x1780` item[0] | `official` 0, `player_id` the host (compared with the client's own, `0x4D0B56`: lobby `+0x2E0` 1 host, 2 entrant, 3 observer), and the row's fields, which the Event Menu (the menu bar's duel button) shows | live | confirmed |
-| `0x32CA {event_id, start_index}` | `0x32FD {total_num, items {player_id, player_name, remain, avatar1}}` | the seats of the bracket: `0x4D13F0` keeps the list (`+0x3E8`), and `0x4CEBE0` looks each seat's `player_id` up in it for `player_name`, `country`, `remain` and `avatar1` (read by `0x531FF0`: first item whose field matches). We send name, face and `remain` 0; `country` is left out (the flag shows Germany: the default) | `0x4D13F0`, `0x4CEBE0`; live | confirmed |
+| `0x32CA {event_id, start_index}` | `0x32FD {total_num, items {player_id, player_name, remain, avatar1}}` | the seats of the bracket: `0x4D13F0` keeps the list (`+0x3E8`), and `0x4CEBE0` looks each seat's `player_id` up in it for `player_name`, `country`, `remain` and `avatar1` (read by `0x531FF0`: first item whose field matches). We send name, face and `remain` 0; `country` is the player's flag (see "Country"; left out for a player who is not online) | `0x4D13F0`, `0x4CEBE0`; live | confirmed |
 | `0x32CE` | `0x3305 {phase_block1–3, remain}` | the blocks the round plays in, lit on the bracket map (`0x4CF4A0`: -1 for none); we send the blocks of the round's duels | `0x4CF4A0`; live | confirmed (shape) |
 | `0x32CC` | `0x3301 {timer}` | seconds to the next round (`0x4CC5B0` keeps `now + timer`; `0x4CEAD0` shows it as the lobby's TIME `hh:mm:ss`); 0 none | live | confirmed |
 | `0x32CD` | `0x3303 {alive_num, entry_num, watch_num}` | the "Duelist alive/entries" counts | live | confirmed |

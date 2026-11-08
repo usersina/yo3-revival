@@ -23,10 +23,8 @@ most valuable first. Research for the later slices runs ahead in parallel (read-
        what the server knows (collection, records, duels played)
 6. [x] Teams (create, join, leave, members, team chat, Create Duel's Team limit) and user events (create, join, a
        knockout of event duels)
-7. [x] Player search criteria: language, manner level, status, event, chat room (country: the client never says
-       its own)
-8. [x] Shop: protectors and avatar items for BP; card trade between players ([ ] rental between players is left: the
-       same invitation and scene pattern as trade, less useful among friends)
+7. [x] Player search criteria: language, manner level, status, event, chat room, country (the account's setting)
+8. [x] Shop: protectors and avatar items for BP; card trade and card rental between players
 9. [x] A Windows server build (cross-compiled) in the release bundle, with the friends' guide updated
 10. [x] Final: full test run (250 tests, clippy clean), every flow seen live during the night on the final code paths
         (and a last Auto Duel match and single duel, which caught the 0x1785 re-queue), the release bundles rebuilt
@@ -177,7 +175,9 @@ Stop finding missing fields one crash at a time.
       evaluate NAME." (`dlg_manner.swf`), the answer `0x2CED {eval_id, eval_data}` (-10..10) is kept in the accounts
       and the average sets `evallevel` (search entries, Player Information, the player records). The client has no
       ratings for trades. Live: Yugi rated Kaiba +10, Kaiba rated Yugi -10; each saw the other's face icon change
-- [ ] Country: no request carries the client's country; a host setting per account could
+- [x] Country: no request carries the client's country, so it is a setting per account (`yo3-server set-country`, kept in
+      `accounts.json`; default from the login's language), sent in the login item, player records, search entries (and
+      the search's country criterion) and the bracket. Live: Player Information showed the UK flag, then Japan's
 - [x] Main menu screens: Rental Card List (`0x2C34`/`0x2C35` chain), My Profile (wins and losses against players),
       Duel Log (`0x1793`, `0x19C8`), BOOSTERPASS (codes refused); Card Album, Leaderboard (a Konami
       web page) and Duel Options need nothing. Live: each opened; Team is with teams
@@ -222,8 +222,11 @@ Stop finding missing fields one crash at a time.
       with the player in the record's pbin. Live: P-01K and Domino: Red bought
 - [x] Card trade between players: invitation, the trade scene's offers, OKs and confirmation; ownership checked and
       the cards moved in the accounts; a new trunk after. Live: Tainted Wisdom for Windstorm of Etaqua
-- [ ] Card rental between players
-- [ ] Presents, card trade and rental, if wanted
+- [x] Card rental between players: invitation, the rental scene (conditions, cards, Confirm), the records `0x2D6C` the
+      client counts its trunk from, the Rental Card List, terms of 1/3/7/14 days that end by themselves, kept in
+      `data/rentals.json`. Live: Yugi lent two cards to Kaiba, both trunks changed, a restart kept it and the term's end
+      gave the cards back with both online. Not seen live: a Deck rental (three lists); the client has no early return
+- [ ] Presents between players, if wanted (trade and rental are done)
 - **Exit:** create a player, open packs, build a deck, restart the server, everything is still there
 
 ## ✅ M5: Duels
@@ -382,8 +385,10 @@ Stop finding missing fields one crash at a time.
 | BP from duels | win 100, draw 50, loss 30 per counted result (NPC duels and duels between players; a match counts once) | The original's duels paid no BP (no reply after a duel sets it); the client shows the new total at its next login or purchase |
 | Pack presents | one per pack, `present_id` counting from 1 per session, `level`/`form` 0, `item_img` and `end_time` empty; the cards join the collection at purchase | Only the fields the window reads; presents aren't kept across reconnects (the cards are) |
 | Event lists (`0x177B`), own user event (`0x33FE`) | official events: none; user events as created; paging by `base_point`/`front_num` like player search | No official events are held |
-| User events | a knockout paired in entry order; lobby status 0/4/6/7/8 as the round goes; a 20 s wait between rounds; `country` left out of the entries; the bracket's blocks above 8 seats built the same way (not seen live); a restart ends a running event | How the original drew and ran its tournaments is unknown (the statuses and texts are the client's) |
-| Rental records push (`0x2D6C`) | sent once after `9000`, empty | The original timing is unknown; the shop only needs it before it opens |
+| User events | a knockout paired in entry order; lobby status 0/4/6/7/8 as the round goes; a 20 s wait between rounds; the bracket's blocks above 8 seats built the same way (not seen live); a restart ends a running event | How the original drew and ran its tournaments is unknown (the statuses and texts are the client's) |
+| Rental records push (`0x2D6C`) | sent after `9000`, when a rental starts and when one ends (only the rentals not over) | The original timing is unknown; the shop only needs it before it opens |
+| Card rental | the ready request `0x2C3E` is answered `0x2D68`; error codes 504 (cards) and 503 (no scene, wrong seat) as the trade's; terms 1, 3, 7, 14 days (the dialog's); a No keeps the scene; `trade_result` 0 for it; a rental ends exactly at its term, checked each second; a lender can't put up cards they have lent | The original's reply id for ready, its error codes and its rules (rental list limits, early return) are unknown |
+| Country | the account's setting, else GB/JP/DE/FR/IT/ES/KR/CN from the login's language | The original took the player's country from their registration; ours has none |
 | NPC roster `npc_type`, `need_ex` | tabs by series (NPCs 0–8, 9–16, 17–24); `need_ex` 100/200/300 | No client file gives the tabs or the experience each level needs; `need_ex` can't all be 0 (`0x4BFDC4`) |
 | Teams | `level` 1 and scores 0 for every team; handing over the leadership makes the old leader a member; the founding time in Japan time | No team scores or levels exist without the original's events |
 | Search status bits | `0x1000` duelling, `0x800` hosting, `0x200` hosting Single, `0x400` hosting Match | Read from the Detailed Search texts |

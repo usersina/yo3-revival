@@ -46,6 +46,16 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
    On Windows it is `yo3-server.exe add-player ...` and so on, in a terminal in the server's folder.
 
    Two friends behind the same router (the same public address) share one account; a VPN gives each their own.
+
+   The flag next to a player's name (Player Information, player search, the tournament bracket) is a setting of the
+   account, because the game never tells the server where its player lives. Left alone it follows the game's language
+   (English shows the UK flag, Japanese Japan, and so on); to give a friend's account another one:
+
+   ```sh
+   ./yo3-server countries                    # the codes the game has flags for (FR, JP, US, TN...)
+   ./yo3-server set-country 100.64.0.7 TN    # that address's players show the Tunisian flag
+   ./yo3-server set-country 100.64.0.7 auto  # back to following the game's language
+   ```
 4. Accounts and win/loss records live in `data/` (`accounts.json`, `records.json`), backed up into `data/backups/` at
    every start (the last 10 are kept). Back up `data/` to keep them.
 
@@ -117,7 +127,13 @@ To trade cards, open a player's Player Information and press Send Trade Request;
 your trunk into your half of the table, press Ready to Trade., and answer Yes to "Execute Trade?". A deck that used a
 card you traded away no longer counts as valid until you edit it.
 
-Not yet: card rental. Players' decks stay on their own machines (in `Documents\Yu-Gi-Oh! ONLINE 3`).
+To lend cards, open a player's Player Information and press Send Rental Request. Once they accept, the lender sets the
+conditions (a term of 1, 3, 7 or 14 days, and Free) and double-clicks cards from their trunk into the list, then presses
+Confirm; the borrower answers "Borrow these cards?" and the cards join their trunk (marked as borrowed, so they can be
+put in decks but not traded) while the lender's copies are out of theirs. When the term is over the cards are back with
+their owner, even across a server restart (they are kept in `data/rentals.json`); there is no early return. Both players'
+Main Menu > Rental Card List shows what they lent and borrowed. Players' decks stay on their own machines (in
+`Documents\Yu-Gi-Oh! ONLINE 3`): a deck that used a borrowed card is no longer valid once the rental ends.
 
 ## When something goes wrong
 
