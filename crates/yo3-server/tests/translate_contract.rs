@@ -86,6 +86,28 @@ fn the_clients_idle_prompt_becomes_a_command_map_and_an_input_wait() {
 }
 
 #[test]
+fn a_command_on_a_field_card_comes_with_its_slot() {
+    // The client looks a field card's commands up at (zone 0, index slot), or (zone 5, index slot) for a Spell/Trap
+    // (0x50A690), but the card command it sends names the card by its own place: {CommandID, player, position: the
+    // slot's zone (monsters 0-4, Spell/Trap 5-9), index 0}. Live: an attack from the second monster slot came as
+    // position 1, index 0; the server didn't match it and the duel stalled.
+    let (mut t, _) = translator();
+    let monster = |seq| json!({ "controller": 0, "location": 4, "sequence": seq });
+    let battle = json!({ "type": 10, "player": 0, "attacks": [monster(1)], "chains": [], "to_m2": true, "to_ep": true });
+    let Prompt::Client(out) = t.prompt(&battle) else { panic!("the client chooses") };
+    assert_eq!(out[0].get("COMIDDATA"), Some(&Value::Bin(vec![0x00, 0x01, 0x00, 0x00, 0, 0, 0, 0x01, 4, 1, 5, 1])));
+    let attack = CardCommand { command: 0, player: 0, zone: 1, index: 0 };
+    assert_eq!(t.answer(attack), Some(json!({ "type": 0, "action": 1, "index": 0 })));
+    // A set Spell/Trap in the third slot (zone 7), activated.
+    let spell = json!({ "controller": 0, "location": 8, "sequence": 2 });
+    let idle = json!({ "type": 11, "player": 0, "summons": [], "special_summons": [], "pos_changes": [],
+        "monster_sets": [], "spell_sets": [], "activates": [spell], "to_bp": false, "to_ep": true });
+    t.prompt(&idle);
+    let activate = CardCommand { command: 3, player: 0, zone: 7, index: 0 };
+    assert_eq!(t.answer(activate), Some(json!({ "type": 1, "action": 5, "index": 0 })));
+}
+
+#[test]
 fn the_cpu_ends_its_turn_and_never_chains() {
     let (mut t, _) = translator();
     let idle = json!({ "type": 11, "player": 1, "summons": [], "to_bp": false, "to_ep": true });

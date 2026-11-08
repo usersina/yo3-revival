@@ -1162,7 +1162,16 @@ impl Translator {
             Some(MSG_SELECT_BATTLECMD) => (&BATTLE_LISTS, RESP_BATTLECMD),
             _ => (&IDLE_LISTS, RESP_IDLECMD),
         };
-        let place = table_place(cmd.player, cmd.zone, cmd.index as usize);
+        // The client looks a card's commands up at (zone 0, index slot) for monsters and (zone 5, index slot) for
+        // Spells/Traps (0x50A690), but sends the one picked with the card's own place, (zone slot, index 0) (live: an
+        // attack from the second monster slot came as zone 1, index 0).
+        let (zone, index) = match (cmd.zone, cmd.index) {
+            (z @ 1..=4, 0) => (0, z as usize),
+            (z @ 6..=9, 0) => (5, z as usize - 5),
+            (FIELD_SPELL, 0) => (5, 5),
+            (z, i) => (z, i as usize),
+        };
+        let place = table_place(cmd.player, zone, index);
         for &(list, bit, action) in lists {
             if bit != cmd.command {
                 continue;
