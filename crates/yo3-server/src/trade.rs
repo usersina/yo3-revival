@@ -28,11 +28,11 @@ impl Trade {
     }
 }
 
-/// What a player owns, by CARD_Prop row: their starter deck's cards, the ones they bought or got, less the ones they
-/// gave away.
+/// What a player owns, by CARD_Prop row: their starter deck's and the official decks' cards, the ones they bought or
+/// got, less the ones they gave away.
 pub fn collection(world: &World, player: &Player) -> BTreeMap<u16, u32> {
     let mut owned: BTreeMap<u16, u32> = BTreeMap::new();
-    for row in world.starter_deck.iter().flat_map(Deck::cards) {
+    for row in world.starter_deck.iter().chain(&world.official_decks).flat_map(Deck::cards) {
         *owned.entry(row).or_default() += 1;
     }
     for (&row, &n) in &player.cards {

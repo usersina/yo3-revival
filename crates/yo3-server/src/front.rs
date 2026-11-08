@@ -464,6 +464,9 @@ pub struct World {
     pub card_rows: usize,
     /// Every player's deck until decks are stored per player (from the client's preset decks).
     pub starter_deck: Option<Deck>,
+    /// The main characters' decks every player gets after the starter deck (the client's own NPC decks), whose cards
+    /// they own.
+    pub official_decks: Vec<Deck>,
     /// NPC opponents, every level of each (three consecutive ids per NPC, from 120).
     pub npcs: Vec<u32>,
     /// Each NPC's deck (from its preset), by npc_id.
@@ -506,6 +509,7 @@ impl World {
             login_regulation: LOGIN_REGULATION,
             card_rows: 0,
             starter_deck: None,
+            official_decks: vec![],
             npcs: vec![],
             npc_decks: HashMap::new(),
             cards: HashMap::new(),
@@ -2219,7 +2223,8 @@ impl FrontSession {
     /// A deck the player picked at Select Deck: kept by name (a newer upload replaces it; the oldest goes when ten are
     /// kept), unless the starter deck's name or an empty deck.
     fn keep_deck(&mut self, deck: Deck) {
-        if deck.name.is_empty() || deck.main.is_empty() || self.world.starter_deck.as_ref().is_some_and(|s| s.name == deck.name) {
+        let given = self.world.starter_deck.iter().chain(&self.world.official_decks).any(|s| s.name == deck.name);
+        if deck.name.is_empty() || deck.main.is_empty() || given {
             return;
         }
         self.change_uploaded(|decks| {
@@ -2499,11 +2504,12 @@ impl FrontSession {
                 .with("premium", Value::U32(1)),
             // The player's own user event (UserEventScene 0x4D9BB0): none.
             // Deck list (deck editor 0x43FC60): it saves each deck it lacks as a local file.
-            // The starter deck, then the structure decks the player bought; the client uses at most 10.
+            // The starter deck, the official character decks, then the structure decks the player bought; the client
+            // uses at most 10.
             0x1F4E => {
                 let owned = self.selected.map(|at| self.account.players[at].decks.clone()).unwrap_or_default();
                 let bought = owned.iter().filter_map(|&id| self.world.structure_decks.iter().find(|s| s.deck.id == id)).map(|s| &s.deck);
-                let listed: Vec<&Deck> = self.world.starter_deck.iter().chain(bought).collect();
+                let listed: Vec<&Deck> = self.world.starter_deck.iter().chain(&self.world.official_decks).chain(bought).collect();
                 // Then the decks this player's clients uploaded, unless a listed deck has the name (the client would
                 // keep its own copy anyway). The newest account state: another machine may have uploaded since.
                 let uploaded = self.uploaded_decks();

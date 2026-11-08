@@ -113,8 +113,9 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
    With a key, your `PatchUpdateUrl` reads `http://100.64.0.5:8080/yo3/<your key>/`.
 
 3. Start the game, press ONLINE, log in with any name and password (they aren't checked), then pick your player.
-4. Once: open **Main Menu → Edit Deck** and leave it again. That saves your starter deck; without a deck the duel
-   button says "There are no valid Decks available."
+4. Once: open **Main Menu → Edit Deck** and leave it again. That saves your starter deck and three official
+   character decks (Yugi's "Miracle Magic", Jaden's "Elemental Heroes on parade!", Yusei's "Power of Bonds"; Edit
+   Deck's folder icon loads them); without a deck the duel button says "There are no valid Decks available."
 5. To duel a friend, press the duel button on the bottom bar, then either:
    - **Auto Duel → Confirm**: when two players wait for the same Rule Format they're matched;
    - **Create Duel → Confirm** (with a password if you like): your friend opens the player list (the first tab of

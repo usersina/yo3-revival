@@ -33,6 +33,11 @@ use yo3_proto::{Message, Value};
 
 use accounts::Directory;
 use front::{Deck, FrontSession, Hub, LOGIN_REGULATION, STARTER_REGULATION, World};
+
+/// The official character decks every player gets: the client's NPC decks of Yami Yugi ("Miracle Magic", NPC 121),
+/// Jaden Yuki ("Elemental Heroes on parade!", 147) and Yusei Fudo ("Power of Bonds", 171), named after their duelist.
+/// One each: the deck list holds at most 10 decks.
+const OFFICIAL_DECKS: [(u32, &str); 3] = [(121, "Yugi"), (147, "Jaden"), (171, "Yusei")];
 use translate::CardStats;
 
 #[derive(Clone, Debug)]
@@ -138,6 +143,15 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                 extra: d.extra.clone(),
                 side: d.side.clone(),
             }),
+            official_decks: OFFICIAL_DECKS
+                .iter()
+                .filter_map(|&(npc, who)| {
+                    let d = data.npc_deck(npc)?;
+                    let title = data.npc_deck_title(npc).unwrap_or_default();
+                    let name = format!("{who} - {title}");
+                    Some(Deck { id: d.id, name, main: d.main.clone(), extra: d.extra.clone(), side: d.side.clone() })
+                })
+                .collect(),
             cards: data
                 .cards
                 .iter()

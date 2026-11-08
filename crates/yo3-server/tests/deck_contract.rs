@@ -170,3 +170,20 @@ mod follow {
         assert_eq!(names(&mut c), ["Starter Deck", "Dragons"]);
     }
 }
+
+#[test]
+fn every_player_gets_the_official_character_decks() {
+    // The client's own NPC decks (deck_type 3 presets) include the main characters': Yami Yugi's "Miracle Magic",
+    // Jaden's "Elemental Heroes on parade!", Yusei's "Power of Bonds". Every player gets them in the deck list after
+    // the starter deck, and owns their cards on top of the starter deck's, so they pass the deck check.
+    let yugi = Deck { id: 20, name: "Yugi - Miracle Magic".into(), main: vec![10, 40], extra: vec![], side: vec![] };
+    let yusei = Deck { id: 261, name: "Yusei - Power of Bonds".into(), main: vec![50], extra: vec![60], side: vec![] };
+    let mut c = Server::with_world(World { official_decks: vec![yugi, yusei], ..world() }).join(1001, "Yugi");
+    let r = one(c.send(req(0x1F4E)));
+    let names: Vec<String> = r.items.iter().filter_map(|d| d.get("deck_name").and_then(Value::as_str)).collect();
+    assert_eq!(names, ["Starter Deck", "Yugi - Miracle Magic", "Yusei - Power of Bonds"]);
+    assert_eq!(r.items[2].get("extra"), Some(&Value::u16_be_array(&[60])));
+    let Some(Value::Bin(cards)) = trunk(&mut c).get("cards").cloned() else { panic!("no cards") };
+    // Row 10: twice in the starter deck and once in Yugi's; rows 40, 50, 60 once each.
+    assert_eq!((cards[9], cards[39], cards[49], cards[59]), (3, 1, 1, 1));
+}

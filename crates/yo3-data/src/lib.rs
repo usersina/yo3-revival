@@ -378,6 +378,11 @@ impl GameData {
         firsts.filter(|&id| has(id + 1) && has(id + 2) && named(id)).flat_map(|id| id..id + 3).collect()
     }
 
+    /// The title the NPC screen shows for an NPC's deck ("Miracle Magic").
+    pub fn npc_deck_title(&self, npc_id: u32) -> Option<&str> {
+        self.text(NPC_DECK_TITLE + 2 * npc_id)
+    }
+
     /// The preset deck an NPC plays.
     pub fn npc_deck(&self, npc_id: u32) -> Option<&Deck> {
         let name_id = NPC_DECK_TITLE + 2 * npc_id;

@@ -116,6 +116,20 @@ fn npc_ids_come_from_the_npc_preset_decks() {
 }
 
 #[test]
+fn the_main_characters_decks_are_npc_decks() {
+    // The official decks every player gets: Yami Yugi's (NPC 121), Jaden's (147), Yusei's (171).
+    let dir = need_game!();
+    let data = GameData::load(&dir).unwrap();
+    let deck = |npc: u32| data.npc_deck(npc).map(|d| (d.id, d.main.len(), d.extra.len()));
+    assert_eq!(data.npc_deck_title(121), Some("Miracle Magic"));
+    assert_eq!(deck(121), Some((20, 42, 3)));
+    assert_eq!(data.npc_deck_title(147), Some("Elemental Heroes on parade!"));
+    assert_eq!(deck(147), Some((28, 42, 15)));
+    assert_eq!(data.npc_deck_title(171), Some("Power of Bonds"));
+    assert_eq!(deck(171), Some((261, 40, 7)));
+}
+
+#[test]
 fn the_text_table_names_packs_and_structure_decks() {
     // data/text/txttbl_E.bin: the UI texts behind name_id / discription_id.
     let dir = need_game!();
