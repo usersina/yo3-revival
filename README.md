@@ -38,8 +38,11 @@ What is left is in the [roadmap](docs/roadmap.md).
 
 ## Play
 
-You need your own copy of the game (the last released client, ver. 1.153, installed on Windows or under Wine on Linux) and a host
-running this server. The host sends you an address; then:
+You need your own copy of the game (the last released client, ver. 1.153, installed on Windows or under Wine on
+Linux) and a host running this server. The original installer (the 2011-07-28 setup, about 900 MB) is preserved by a
+third party on [My Abandonware](https://www.myabandonware.com/game/yu-gi-oh-online-3-duel-accelerator-qy4); it is
+Konami's software, not part of this project, and you download it at your own discretion. The host sends you an
+address; then:
 
 1. Open **`http://HOST:8080/join`** in a browser, type the player name you want and press **Join**.
 2. Press **Download yo3.ini** and put it in the game's install folder, replacing the original (keep a copy of it).

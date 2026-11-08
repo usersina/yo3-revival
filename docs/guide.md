@@ -111,7 +111,10 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
 
 ## For every player
 
-1. Install Yu-Gi-Oh! ONLINE 3. On Windows it runs as it is; on Linux it runs under Wine.
+1. Install Yu-Gi-Oh! ONLINE 3. On Windows it runs as it is; on Linux it runs under Wine. The original installer (the
+   2011-07-28 setup, about 900 MB) is preserved by a third party on [My Abandonware](https://www.myabandonware.com/game/yu-gi-oh-online-3-duel-accelerator-qy4); it is Konami's software,
+   not part of this project, and you download it at your own discretion. Install it, then continue below (no patch
+   needed: the game checks this server for updates).
 2. Open the host's join page, `http://HOST:8080/join` (the host tells you HOST), type the player name you want and
    press Join. The page shows your `yo3.ini`: press **Download yo3.ini** and put the file in the install folder
    (`C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3`), replacing the one there (keep a copy of the original). Windows
