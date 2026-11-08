@@ -36,6 +36,7 @@ addresses and data formats: [docs/client-internals.md](docs/client-internals.md)
 | `tools/tracer/` | Field-read tracer: `yo3trace.dll` + injector (C, mingw-w64), `summarize.py` |
 | `tools/re/` | Python reverse-engineering helpers (see Commands) |
 | `tools/ghidra/` | Headless export script |
+| `crates/yo3-monkey`, `tools/monkey/` | The monkeys: `yo3-monkey` (protocol: replayed, mutated, random and garbage traffic, floods, a canary, Auto Duel and NPC duel clients) and `ui-monkey.py` (random input on the two headless clients) |
 | `docs/` | Protocol catalog, client internals, original research |
 | `re/` (ignored) | Ghidra project `re/ghidra`, `re/yo3_decompiled.c`, GhidraMCP jar |
 | `logs/` (ignored) | `packets-*.jsonl`, `client-stdout.log` (client trace), `client-wine.log`, `shots/` |
@@ -60,6 +61,18 @@ target/release/yo3-server accounts                              # admin (server 
 tools/release.sh                                                # the host's bundles in dist/ (Linux, Windows); the friends' guide is docs/friends.md
 #   once: rustup target add x86_64-pc-windows-gnu (mingw-w64 links it). A Windows build under Wine needs its own prefix
 #   (WINEPREFIX=.wine-c): vclient.sh stop kills every process of the default prefix
+
+# monkey testing (a scratch dir for the server's data/logs, never the repo's data/; ports must be free; exit 1 on a failure)
+tools/monkey/protocol-monkey.sh fuzz --seed 1 --plans 2000 --par 8   # plans of recorded, mutated, random, garbage requests
+tools/monkey/protocol-monkey.sh duel --seed 1 --pairs 20             # Auto Duel pairs and NPC duels, random duel commands
+tools/monkey/protocol-monkey.sh soak --secs 300 --conns 24 --duel-pairs 4   # all at once + floods + canary + monitor
+tools/monkey/protocol-monkey.sh repro FILE                           # a saved plan ($SCRATCH/failures/*/plan-*.txt)
+tools/monkey/protocol-monkey.sh minimize FILE [--sig TEXT]           # cut a failing plan down (FILE.min.txt)
+#   SCRATCH=/tmp/yo3-monkey holds server.log, stats.csv (rss, fds, data size over time) and failures/. The corpus is the
+#   packet logs in logs/ (--corpus DIR). Add `--server-arg=--duel-lp --server-arg=1000` to end duels quickly.
+tools/monkey/ui-monkey.py --secs 1800 --seed 1                       # random clicks/drags/keys on both headless clients
+#   backs up ~/Documents/Yu-Gi-Oh! ONLINE 3 first and restores it after; failures (screenshots, packets, logs) in
+#   /tmp/yo3-ui-monkey/ui-failures/. Needs the Xvfb displays :77 and :78, both clients' prefixes, a release build.
 
 tools/client/vclient.sh xvfb                                    # once per boot
 tools/client/vclient.sh start && tools/client/vclient.sh login  # cold start to main screen, about 30 s

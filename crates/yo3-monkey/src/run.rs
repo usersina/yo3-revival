@@ -485,27 +485,48 @@ enum Stage {
     Ended,
 }
 
-/// One player's side of an Auto Duel, played at random. Returns the furthest stage reached.
-async fn duel_client(ports: Ports, corpus: Arc<Corpus>, stats: Arc<DuelStats>, pid: u32, seed: u64, play_secs: f64) -> Stage {
+/// One player's side of a duel, played at random: Auto Duel against another client, or an NPC duel against the server's
+/// CPU (`npc`). Returns the furthest stage reached.
+async fn duel_client(ports: Ports, corpus: Arc<Corpus>, stats: Arc<DuelStats>, pid: u32, seed: u64, play_secs: f64, npc: bool, match_type: u32) -> Stage {
     let mut rng = Rng::new(seed);
     let mut stage = Stage::Login;
     let Ok(mut front) = login_front(&ports, pid).await else { return stage };
     let wait = Duration::from_secs(25);
-    if front.send(&req_with(0x1784, &[("event_id", 2)])).await.is_err() {
-        return stage;
-    }
-    // 0x1784 -> 0x1785 {join_id}
-    let (join, _) = front.expect(0x1785, Duration::from_secs(5)).await;
-    let join_id = join.and_then(|m| m.get("join_id").and_then(Value::as_u32)).unwrap_or(1);
-    let match_type = *rng.pick(&[1u32, 1, 1, 3, 6]);
-    let _ = front.send(&req_with(0x1798, &[("event_id", 2), ("join_id", join_id), ("level", 1), ("match_type", match_type)])).await;
-    stage = Stage::Queued;
-    // The match push 0x1978 holds the duel's id.
-    let (pushed, _) = front.expect(0x1978, wait).await;
-    let Some(pushed) = pushed else { return stage };
-    stats.matched.fetch_add(1, Ordering::Relaxed);
-    stage = Stage::Matched;
-    let duel_id = pushed.items.iter().find_map(|i| i.get("duel_id").and_then(Value::as_u32)).unwrap_or(1);
+    let (join_id, duel_id) = if npc {
+        // 0x17AC {event_id, join_id} with the rule as its item -> 0x17AD {duel_id}.
+        let cpu = *rng.pick(&[120u32, 120, 121, 122, 100, 1, 0, 99_999]);
+        let rule = Message::record()
+            .with("cpu_id", Value::U32(cpu))
+            .with("duel_server_id", Value::U32(0))
+            .with("match_type", Value::U32(4))
+            .with("regulation_id", Value::U32(3))
+            .with("surrender", Value::U32(1))
+            .with("time_total", Value::U32(0))
+            .with("time_turn", Value::U32(0));
+        if front.send(&req_with(0x17AC, &[("event_id", 1), ("join_id", 1)]).item(rule)).await.is_err() {
+            return stage;
+        }
+        let (r, _) = front.expect(0x17AD, Duration::from_secs(5)).await;
+        let Some(duel_id) = r.and_then(|m| m.get("duel_id").and_then(Value::as_u32)) else { return stage };
+        stats.matched.fetch_add(1, Ordering::Relaxed);
+        stage = Stage::Matched;
+        (1, duel_id)
+    } else {
+        if front.send(&req_with(0x1784, &[("event_id", 2)])).await.is_err() {
+            return stage;
+        }
+        // 0x1784 -> 0x1785 {join_id}
+        let (join, _) = front.expect(0x1785, Duration::from_secs(5)).await;
+        let join_id = join.and_then(|m| m.get("join_id").and_then(Value::as_u32)).unwrap_or(1);
+        let _ = front.send(&req_with(0x1798, &[("event_id", 2), ("join_id", join_id), ("level", 1), ("match_type", match_type)])).await;
+        stage = Stage::Queued;
+        // The match push 0x1978 holds the duel's id.
+        let (pushed, _) = front.expect(0x1978, wait).await;
+        let Some(pushed) = pushed else { return stage };
+        stats.matched.fetch_add(1, Ordering::Relaxed);
+        stage = Stage::Matched;
+        (join_id, pushed.items.iter().find_map(|i| i.get("duel_id").and_then(Value::as_u32)).unwrap_or(1))
+    };
     // Leave at a random moment: some players go before the duel opens.
     let leave_after = if rng.chance(0.25) { Some(rng.range(0, (play_secs * 1000.0) as u32) as u64) } else { None };
     let began = Instant::now();
@@ -604,9 +625,16 @@ pub async fn duel_pair(ports: &Ports, corpus: &Arc<Corpus>, stats: &Arc<DuelStat
     stats.pairs.fetch_add(1, Ordering::Relaxed);
     let mut rng = Rng::new(seed);
     let secs = rng.range(4, 30) as f64;
-    let a = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), 1001, rng.next(), secs));
+    // One in three: a duel against the CPU instead.
+    if rng.chance(0.33) {
+        let pid = *rng.pick(&[1001u32, 1002]);
+        let a = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), pid, rng.next(), secs, true, 4)).await;
+        return (a.unwrap_or(Stage::Login) as usize, 0);
+    }
+    let match_type = *rng.pick(&[1u32, 1, 1, 3, 6]);
+    let a = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), 1001, rng.next(), secs, false, match_type));
     tokio::time::sleep(Duration::from_millis(rng.range(0, 400) as u64)).await;
-    let b = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), 1002, rng.next(), secs));
+    let b = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), 1002, rng.next(), secs, false, match_type));
     let (a, b) = (a.await.unwrap_or(Stage::Login), b.await.unwrap_or(Stage::Login));
     (a as usize, b as usize)
 }
