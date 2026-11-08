@@ -117,6 +117,8 @@ pub struct LogWatch {
     path: PathBuf,
     pos: u64,
     pub warns: HashMap<String, usize>,
+    /// Lines containing this count as trouble too (minimize looking for a particular WARN, say).
+    pub also: Option<String>,
 }
 
 pub fn signature(line: &str) -> String {
@@ -127,7 +129,7 @@ pub fn signature(line: &str) -> String {
 impl LogWatch {
     pub fn new(path: PathBuf) -> LogWatch {
         let pos = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-        LogWatch { path, pos, warns: HashMap::new() }
+        LogWatch { path, pos, warns: HashMap::new(), also: None }
     }
 
     /// The troubling lines since the last call (a panic with its message line).
@@ -149,7 +151,7 @@ impl LogWatch {
         for (i, line) in lines.iter().enumerate() {
             if line.contains("panicked at") || line.contains("stack overflow") || line.contains("fatal runtime error") {
                 out.push(format!("{} | {}", line, lines.get(i + 1).unwrap_or(&"")));
-            } else if line.contains(" ERROR ") {
+            } else if line.contains(" ERROR ") || self.also.as_ref().is_some_and(|a| line.contains(a.as_str())) {
                 out.push(line.to_string());
             } else if line.contains(" WARN ") {
                 let key: String = signature(line.split(" WARN ").nth(1).unwrap_or(line));
@@ -627,14 +629,14 @@ pub async fn duel_pair(ports: &Ports, corpus: &Arc<Corpus>, stats: &Arc<DuelStat
     let secs = rng.range(4, 30) as f64;
     // One in three: a duel against the CPU instead.
     if rng.chance(0.33) {
-        let pid = *rng.pick(&[1001u32, 1002]);
+        let pid = *rng.pick(&ports.pids);
         let a = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), pid, rng.next(), secs, true, 4)).await;
         return (a.unwrap_or(Stage::Login) as usize, 0);
     }
     let match_type = *rng.pick(&[1u32, 1, 1, 3, 6]);
-    let a = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), 1001, rng.next(), secs, false, match_type));
+    let a = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), ports.pids[0], rng.next(), secs, false, match_type));
     tokio::time::sleep(Duration::from_millis(rng.range(0, 400) as u64)).await;
-    let b = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), 1002, rng.next(), secs, false, match_type));
+    let b = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), ports.pids[1], rng.next(), secs, false, match_type));
     let (a, b) = (a.await.unwrap_or(Stage::Login), b.await.unwrap_or(Stage::Login));
     (a as usize, b as usize)
 }

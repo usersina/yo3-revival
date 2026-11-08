@@ -100,6 +100,9 @@ pub struct Ports {
     pub front: u16,
     pub duel: u16,
     pub http: u16,
+    /// The ids of the account's first two players (Yugi and Kaiba), found at the start: the canary and the duel clients
+    /// play as them.
+    pub pids: [u32; 2],
 }
 
 impl Ports {
@@ -124,7 +127,22 @@ pub struct Conn {
 
 impl Conn {
     pub async fn open(addr: &str) -> std::io::Result<Conn> {
-        let stream = tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(addr))
+        Conn::open_from(addr, None).await
+    }
+
+    /// Connects from the local address `from` (any of 127.0.0.0/8 works), so the server sees another client address.
+    pub async fn open_from(addr: &str, from: Option<std::net::IpAddr>) -> std::io::Result<Conn> {
+        let connect = async {
+            match from {
+                None => TcpStream::connect(addr).await,
+                Some(ip) => {
+                    let sock = if ip.is_ipv4() { tokio::net::TcpSocket::new_v4()? } else { tokio::net::TcpSocket::new_v6()? };
+                    sock.bind(std::net::SocketAddr::new(ip, 0))?;
+                    sock.connect(addr.parse().map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{e}")))?).await
+                }
+            }
+        };
+        let stream = tokio::time::timeout(Duration::from_secs(5), connect)
             .await
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "connect timed out"))??;
         stream.set_nodelay(true).ok();

@@ -83,12 +83,19 @@ enum Cmd {
         #[arg(long, default_value_t = 10)]
         pairs: u64,
     },
+    /// Connects from many different local addresses (127.x.y.z): the server keeps one account per client address, so
+    /// this is what the accounts file does when new addresses keep arriving.
+    Addrs {
+        #[arg(long, default_value_t = 2000)]
+        n: u32,
+    },
     Repro {
         file: PathBuf,
     },
     Minimize {
         file: PathBuf,
-        /// A substring of the trouble to look for (default: any panic or ERROR, or the server dying).
+        /// A substring of the trouble to look for (default: any panic or ERROR, or the server dying); a log line with it
+        /// counts as trouble, whatever its level.
         #[arg(long)]
         sig: Option<String>,
     },
@@ -149,6 +156,16 @@ fn self_ports(s: &Supervisor) -> Ports {
     s.ports().clone()
 }
 
+/// The ids of the first two players of this machine's account (Select Player's list, 0x2260).
+async fn discover_players(ports: &Ports) -> Option<[u32; 2]> {
+    let mut c = wire::Conn::open(&ports.addr(Target::Front)).await.ok()?;
+    c.send_version().await.ok()?;
+    c.send(&wire::req(0x1F49)).await.ok()?;
+    let (list, _) = c.expect(0x2260, Duration::from_secs(5)).await;
+    let ids: Vec<u32> = list?.items.iter().filter_map(|i| i.get("player_id").and_then(yo3_proto::Value::as_u32)).collect();
+    Some([*ids.first()?, *ids.get(1).or(ids.first())?])
+}
+
 async fn setup(a: &Args) -> anyhow::Result<Arc<Env>> {
     let scratch = a.scratch.clone().ok_or_else(|| anyhow::anyhow!("--scratch DIR is required (a scratch directory, never the repo's data/)"))?;
     anyhow::ensure!(
@@ -164,11 +181,13 @@ async fn setup(a: &Args) -> anyhow::Result<Arc<Env>> {
         corpus.names.len(),
         corpus.deck_update.is_some()
     );
-    let ports = Ports { host: a.host.clone(), gate: a.gate_port, front: a.front_port, duel: a.duel_port, http: a.http_port };
+    let ports = Ports { host: a.host.clone(), gate: a.gate_port, front: a.front_port, duel: a.duel_port, http: a.http_port, pids: [1001, 1002] };
+    let mut ports = ports;
     let cwd = std::env::current_dir()?;
     let mut sup = Supervisor::new(a.server_bin.clone(), cwd, scratch.clone(), ports.clone(), a.server_arg.clone());
     sup.start()?;
     anyhow::ensure!(sup.wait_ready().await, "the server did not come up (see {})", sup.log_path().display());
+    ports.pids = discover_players(&ports).await.unwrap_or(ports.pids);
     let log = LogWatch::new(sup.log_path());
     println!("server pid {} (scratch {})", sup.pid().unwrap_or(0), scratch.display());
     Ok(Arc::new(Env {
@@ -212,7 +231,7 @@ async fn finish(env: &Env, base: Sample, canary: &CanaryStats) -> usize {
     if end.data_bytes > base.data_bytes + 64 * 1024 * 1024 {
         env.reporter.fail("data growth", &format!("data dir {} KB at start, {} KB at the end", base.data_bytes / 1024, end.data_bytes / 1024), &[], &tail);
     }
-    match canary_round(&env.ports, 1002).await {
+    match canary_round(&env.ports, env.ports.pids[1]).await {
         Ok(d) => println!("final canary round: {d:?}"),
         Err(e) => env.reporter.fail("canary", &format!("final round: {e}"), &[], &tail),
     }
@@ -285,7 +304,7 @@ async fn main() -> anyhow::Result<()> {
                 env.look(&batch);
                 if i / 20 != first / 20 {
                     let t = Instant::now();
-                    match canary_round(&env.ports, 1002).await {
+                    match canary_round(&env.ports, env.ports.pids[1]).await {
                         Ok(d) => {
                             canary.record(d.as_millis() as u32);
                             if d > Duration::from_millis(2000) {
@@ -318,11 +337,32 @@ async fn main() -> anyhow::Result<()> {
                     continue;
                 }
                 env.look(&[]);
-                if let Err(e) = canary_round(&env.ports, 1002).await {
+                if let Err(e) = canary_round(&env.ports, env.ports.pids[1]).await {
                     env.reporter.fail("canary", &format!("after duel pair seed {}: {e}", seed + i), &[], &lock(&env.log).tail(20));
                 }
             }
             print_duel(&stats);
+            finish(&env, base, &canary).await
+        }
+        Cmd::Addrs { n } => {
+            let mut slowest = Duration::ZERO;
+            for i in 0..n {
+                let ip = std::net::Ipv4Addr::new(127, 1 + (i / 65_000) as u8, ((i / 250) % 250) as u8, (i % 250) as u8 + 1);
+                let t = Instant::now();
+                let ok = async {
+                    let mut c = wire::Conn::open_from(&env.ports.addr(Target::Front), Some(ip.into())).await?;
+                    c.send_version().await?;
+                    Ok::<_, std::io::Error>(c.expect(0x219F, Duration::from_secs(10)).await.0.is_some())
+                }
+                .await;
+                slowest = slowest.max(t.elapsed());
+                if !matches!(ok, Ok(true)) {
+                    env.reporter.fail("addrs", &format!("address {ip} (#{i}): {ok:?}"), &[], &lock(&env.log).tail(10));
+                }
+                if i % 500 == 499 {
+                    print_sample(&format!("after {} addresses (slowest connect so far {slowest:?})", i + 1), &stats_line(&env));
+                }
+            }
             finish(&env, base, &canary).await
         }
         Cmd::Soak { seed, secs, conns, duel_pairs, stall_ms } => soak(&env, base, canary.clone(), seed, secs, conns, duel_pairs, stall_ms).await,
@@ -338,6 +378,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Cmd::Minimize { file, sig } => {
             let plan = plans::Plan::from_text(&std::fs::read_to_string(&file)?).ok_or_else(|| anyhow::anyhow!("not a plan file"))?;
+            lock(&env.log).also = sig.clone();
             minimize(&env, plan, sig, &file).await?;
             0
         }
@@ -398,7 +439,7 @@ async fn soak(env: &Arc<Env>, base: Sample, canary: Arc<CanaryStats>, seed: u64,
         tasks.push(tokio::spawn(async move {
             while !stop.load(Ordering::Relaxed) {
                 let t = Instant::now();
-                match canary_round(&env.ports, 1002).await {
+                match canary_round(&env.ports, env.ports.pids[1]).await {
                     Ok(d) => {
                         canary.record(d.as_millis() as u32);
                         if d > Duration::from_millis(stall_ms) {
