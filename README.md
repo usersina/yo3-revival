@@ -105,3 +105,8 @@ data). You need your own copy of the client, and the server reads your install's
 
 [MIT](LICENSE), covering this project's own code and documentation. It does not cover Konami's game or any of its
 content.
+
+---
+
+<sub>If you'd like to support the work: [Buy me a coffee](https://buymeacoffee.com/usersina) · BTC
+`bc1qawq699ewyq0vgyux6nmyyx29r4vhj573l77elj`</sub>
