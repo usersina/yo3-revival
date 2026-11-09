@@ -61,6 +61,10 @@ struct Args {
     /// can be refused (to test the server's own check; a stock client checks the duel's regulation itself first).
     #[arg(long)]
     duel_regulation: Option<u32>,
+    /// Check every duel's client view against the rules engine after each step and log an ERROR where they differ (a
+    /// testing aid: the protocol monkey's duels run with it; each step costs an extra engine query).
+    #[arg(long)]
+    duel_check: bool,
     /// The banlist players log in with, for Auto Duel and NPC duels: a regulation id or name, e.g. "Season 16" or 1
     /// (the Beta list). Default: "unlimited" (no banned or limited cards). Hosted duels use the host's choice.
     #[arg(long)]
@@ -196,6 +200,7 @@ async fn main() -> anyhow::Result<()> {
         regulation: a.regulation,
         idle_timeout: yo3_server::IDLE_TIMEOUT,
         engine_problem: None,
+        duel_check: a.duel_check,
     };
     start(cfg).await?.wait().await;
     Ok(())

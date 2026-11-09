@@ -59,6 +59,8 @@ pub struct Table {
     engine: Option<Engine>,
     /// By seat, once the duel opened.
     translators: Vec<Translator>,
+    /// The duel check (`--duel-check`): each seat's view of the duel, compared with the engine after each step.
+    checks: Vec<crate::duelcheck::ClientModel>,
     /// Duels won so far in the match, by seat, and how many it takes.
     wins: [u32; 2],
     best_of: u32,
@@ -92,6 +94,7 @@ impl Table {
             picker: None,
             engine: None,
             translators: vec![],
+            checks: vec![],
             wins: [0; 2],
             best_of: 1,
             first: 0,
@@ -199,9 +202,21 @@ impl Table {
         self.lp = lp;
         self.history.clear();
         let mut out = Out::default();
+        self.checks.clear();
         for (s, part) in out.iter_mut().enumerate() {
             let (mine, theirs) = (&self.seats[s].entry.deck, &self.seats[1 - s].entry.deck);
             let order = if s == first { CLIENT } else { CPU };
+            if self.world.duel_check {
+                // The opponent's hidden cards' rows, from a translator that hides nothing (the same uids in the same order).
+                let mut model = crate::duelcheck::ClientModel::new(order, self.world.cards.clone());
+                let (mut full, mut known) = Translator::new(order, [&mine.main, &theirs.main], self.world.cards.clone());
+                known.extend(full.extra_decks([&mine.extra, &theirs.extra]));
+                for m in &known {
+                    let int = |k: &str| m.get(k).and_then(yo3_proto::Value::as_u32).unwrap_or(0);
+                    model.know(int("param1") & 0xFF_FFFF, int("param2") as u16);
+                }
+                self.checks.push(model);
+            }
             let (mut translator, mut table) = Translator::against_player(order, [&mine.main, &theirs.main], self.world.cards.clone());
             translator.tokens(self.world.token_rows.clone());
             table.extend(translator.extra_decks([&mine.extra, &theirs.extra]));
@@ -458,6 +473,7 @@ impl Table {
         }
         self.engine = None;
         self.translators.clear();
+        self.checks.clear();
         self.hands = [None; 2];
         self.picker = None;
         self.ordered = false;
@@ -579,8 +595,30 @@ impl Table {
         }
     }
 
-    /// Sends the other seat its part and returns this seat's.
-    pub fn deliver(&self, seat: usize, out: Out) -> Vec<Message> {
+    /// Sends the other seat its part and returns this seat's. With the duel check on, each seat's view follows its part
+    /// and is compared with the engine: an ERROR names where they differ.
+    pub fn deliver(&mut self, seat: usize, out: Out) -> Vec<Message> {
+        if let (Some(engine), [c0, c1]) = (self.engine.as_mut(), &mut self.checks[..]) {
+            c0.apply_all(&out[0]);
+            c1.apply_all(&out[1]);
+            let mut failed = false;
+            match engine.state() {
+                Ok(state) => {
+                    for (s, c) in [c0, c1].into_iter().enumerate() {
+                        let problems = c.check(&state);
+                        if !problems.is_empty() {
+                            tracing::error!("duel check (duel {}, seat {s}): {}", self.duel_id, problems.join(" | "));
+                            failed = true;
+                        }
+                    }
+                }
+                Err(e) => tracing::warn!("duel check: no engine state: {e}"),
+            }
+            // Once per duel: every later step would repeat the same difference.
+            if failed {
+                self.checks.clear();
+            }
+        }
         let [mut mine, mut theirs] = out;
         if seat == 1 {
             std::mem::swap(&mut mine, &mut theirs);

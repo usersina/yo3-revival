@@ -487,6 +487,8 @@ pub struct World {
     pub test_extra: Option<Vec<u16>>,
     /// Testing aid: every duel between players' turn and total clocks in seconds (0: off), over a hosted duel's.
     pub test_times: Option<(u32, u32)>,
+    /// Testing aid: check every duel's client view against the rules engine after each step (`duelcheck.rs`).
+    pub duel_check: bool,
     /// The rules engine's directory (engine/, once fetched); without it the server deals the opening itself.
     pub engine_dir: Option<std::path::PathBuf>,
     /// Why the rules engine can't run (Node.js missing or too old, files not fetched), checked at start: players
@@ -532,6 +534,7 @@ impl World {
             test_deck: None,
             test_extra: None,
             test_times: None,
+            duel_check: false,
             duel_server: ("127.0.0.1".into(), 0),
             http_port: 0,
             news: vec![

@@ -109,7 +109,18 @@ impl Engine {
         self.call(json!({ "op": "respond", "response": response }))
     }
 
-    fn call(&mut self, request: Json) -> io::Result<Answer> {
+    /// Where every card is now, by engine team: `[{hand, mzone, szone, grave, removed, extra, deck}]` (see the sidecar's
+    /// `state()`). Read only: the duel goes on as it was. For the duel check (`crate::duelcheck`).
+    pub fn state(&mut self) -> io::Result<Json> {
+        let mut v = self.line(json!({ "op": "state" }))?;
+        match v.get("status").and_then(Json::as_str) {
+            Some("state") => Ok(v.get_mut("teams").map(Json::take).unwrap_or_default()),
+            _ => Err(io::Error::other(format!("engine: no state ({})", v.get("error").and_then(Json::as_str).unwrap_or("unknown")))),
+        }
+    }
+
+    /// Sends one request line and reads the answer line, within the timeout.
+    fn line(&mut self, request: Json) -> io::Result<Json> {
         writeln!(self.stdin, "{request}")?;
         self.stdin.flush()?;
         let line = match self.lines.recv_timeout(self.timeout) {
@@ -120,7 +131,11 @@ impl Engine {
             }
             Err(RecvTimeoutError::Disconnected) => return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "the engine exited")),
         };
-        let mut v: Json = serde_json::from_str(&line).map_err(io::Error::other)?;
+        serde_json::from_str(&line).map_err(io::Error::other)
+    }
+
+    fn call(&mut self, request: Json) -> io::Result<Answer> {
+        let mut v = self.line(request)?;
         let mut take_list = |k: &str| match v.get_mut(k).map(Json::take) {
             Some(Json::Array(items)) => items,
             _ => vec![],

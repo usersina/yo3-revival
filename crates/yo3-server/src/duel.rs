@@ -258,6 +258,8 @@ pub struct DuelSession {
     peer: Option<std::net::IpAddr>,
     /// The duel this connection came for is over (its match ended before it sat): nothing it sends matters.
     closed: bool,
+    /// The duel check (`--duel-check`): the client's view of the NPC duel, compared with the engine after each step.
+    check: Option<crate::duelcheck::ClientModel>,
 }
 
 impl Drop for DuelSession {
@@ -285,6 +287,7 @@ impl DuelSession {
             ordered: false,
             peer: None,
             closed: false,
+            check: None,
         }
     }
 
@@ -351,8 +354,28 @@ impl DuelSession {
         t.deliver(seat, out)
     }
 
-    /// Handles one client packet and returns the messages to send, in order.
+    /// Handles one client packet and returns the messages to send, in order. With the duel check on, the client's view
+    /// of an NPC duel follows them and is compared with the engine: an ERROR names where they differ.
     pub fn handle(&mut self, packet: &Packet) -> Vec<Message> {
+        let out = self.respond_to(packet);
+        if let (Some(model), Some((engine, _))) = (self.check.as_mut(), self.engine.as_mut()) {
+            model.apply_all(&out);
+            match engine.state() {
+                Ok(state) => {
+                    let problems = model.check(&state);
+                    if !problems.is_empty() {
+                        // Once per duel: every later step would repeat the same difference.
+                        tracing::error!("duel check (NPC duel, player {:?}): {}", self.player_id, problems.join(" | "));
+                        self.check = None;
+                    }
+                }
+                Err(e) => tracing::warn!("duel check: no engine state: {e}"),
+            }
+        }
+        out
+    }
+
+    fn respond_to(&mut self, packet: &Packet) -> Vec<Message> {
         let Packet::Message(msg) = packet else { return vec![] };
         let int = |k| msg.get(k).and_then(Value::as_u32);
         if self.watching || self.closed {
@@ -489,6 +512,9 @@ impl DuelSession {
         let lp = self.world.start_lp;
         let answer = engine.new_duel(seed, lp, [(&m0, &e0), (&m1, &e1)]);
         let (mut translator, mut table) = Translator::new(first, [&entry.deck.main, &npc.main], self.world.cards.clone());
+        if self.world.duel_check {
+            self.check = Some(crate::duelcheck::ClientModel::new(first, self.world.cards.clone()));
+        }
         translator.tokens(self.world.token_rows.clone());
         table.extend(translator.extra_decks([&entry.deck.extra, &npc.extra]));
         self.engine = Some((engine, translator));

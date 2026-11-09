@@ -3,6 +3,7 @@ pub mod accounts;
 mod store;
 pub(crate) mod lock;
 pub mod duel;
+pub mod duelcheck;
 mod duellog;
 mod table;
 pub mod engine;
@@ -87,6 +88,9 @@ pub struct Config {
     pub idle_timeout: std::time::Duration,
     /// Testing aid: pretend the rules engine can't run, with this reason (none: check for real at start).
     pub engine_problem: Option<String>,
+    /// Testing aid: check every duel's client view against the rules engine after each step and log an ERROR where they
+    /// differ (`duelcheck.rs`; the protocol monkey's duels run with it).
+    pub duel_check: bool,
 }
 
 impl Config {
@@ -112,6 +116,7 @@ impl Config {
             regulation: None,
             idle_timeout: net::IDLE_TIMEOUT,
             engine_problem: None,
+            duel_check: false,
         }
     }
 }
@@ -187,6 +192,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             test_deck: (!cfg.duel_deck.is_empty()).then(|| cfg.duel_deck.clone()),
             test_extra: (!cfg.duel_extra.is_empty()).then(|| cfg.duel_extra.clone()),
             test_times: cfg.duel_time,
+            duel_check: cfg.duel_check,
             npcs: data.npc_ids(),
             npc_decks: data
                 .npc_ids()
@@ -261,6 +267,9 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let mut world = world(&cfg, addrs.2.port(), addrs.3.port())?;
     world.engine_problem = cfg.engine_problem.clone().or_else(|| engine::problem(world.engine_dir.as_deref()));
     let duels_unavailable = world.engine_problem.is_some();
+    if cfg.duel_check {
+        tracing::info!("duel check on: every duel's client view is compared with the rules engine after each step");
+    }
     let world = Arc::new(world);
     match (&world.engine_problem, &world.engine_dir) {
         (Some(why), _) => tracing::error!("DUELS WON'T WORK: {why}. Duels will end at once as draws; players are told in the news and on the join page."),
