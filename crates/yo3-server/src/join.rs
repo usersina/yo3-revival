@@ -74,8 +74,9 @@ pub fn handle(path: &str, host: Option<&str>, peer: IpAddr, accounts: &Arc<Mutex
     let state = accounts.locked().join_state(peer);
     let mut body = String::new();
     if info.duels_unavailable {
-        body += "<p class=\"err\"><strong>Duels are unavailable on this server.</strong> The host needs to install \
-                 Node.js 22.18 or newer (see the guide), then restart the server. You can still join, chat and edit decks.</p>";
+        body += "<p class=\"err\"><strong>Duels are unavailable on this server.</strong> Its rules engine can't run: the \
+                 host should unpack the release bundle again, whole (an antivirus may have removed its engine), then restart \
+                 the server. You can still join, chat and edit decks.</p>";
     }
     if let Some(e) = &error {
         body += &format!("<p class=\"err\">{}</p>", esc(e));

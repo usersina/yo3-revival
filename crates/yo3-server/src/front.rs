@@ -31,6 +31,18 @@ pub const HEARTBEAT: u32 = 0x2724;
 /// without it (a null from localtime, 0x485CA1).
 const PREMIUM_EXPIRE: &str = "2037-12-31 23:59:59";
 
+/// The BOOSTERPASS reply 0x23F0 {dpauth_result, dpPoints, dpGetPoints, premium, premium_expire}: the BOOSTERPASS
+/// window's answer (result 0 adds dpGetPoints), which the global dispatcher also copies into the client's premium and
+/// premium_expire when the result is 0 (0x4F5349).
+fn premium(result: u32, dpoint: u32, got: u32) -> Message {
+    Message::reply(0x23F0)
+        .with("dpauth_result", Value::U32(result))
+        .with("dpPoints", Value::U32(dpoint))
+        .with("dpGetPoints", Value::U32(got))
+        .with("premium", Value::U32(1))
+        .with("premium_expire", Value::text(PREMIUM_EXPIRE))
+}
+
 fn jst_now() -> chrono::DateTime<chrono::FixedOffset> {
     chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(9 * 3600).expect("valid offset"))
 }
@@ -153,11 +165,17 @@ impl Player {
     }
 
     /// The pbin the client gets: the player's flags, with bits 0x250-0x253 set (pbin[74] bits 0-3), without which
-    /// Seto Kaiba, Yami Marik, Alexis Rhodes and Jack Atlas refuse to duel (0x4BDAB0 state 2), and the items owned.
+    /// Seto Kaiba, Yami Marik, Alexis Rhodes and Jack Atlas refuse to duel (0x4BDAB0 state 2), bit 0x258 (the Online 2
+    /// takeover done), and the items owned.
     fn flags(&self) -> Vec<u8> {
         let mut pbin = self.pbin.clone();
         if let Some(b) = pbin.get_mut(74) {
             *b |= 0x0F;
+        }
+        // Yu-Gi-Oh! Online 2's takeover done (pbin[0x4B] bit 0): else the main screen's first startup step (0x472780)
+        // sends the player's local friend and ignore lists (0x24C4) and waits before unlocking anything.
+        if let Some(b) = pbin.get_mut(0x4B) {
+            *b |= 1;
         }
         for &id in &self.items {
             if let Some(b) = pbin.get_mut(id as usize >> 3) {
@@ -516,7 +534,8 @@ pub struct World {
 /// The login news entry (title, body) while the rules engine can't run (`World::engine_problem`).
 pub const DUELS_UNAVAILABLE: (&str, &str) = (
     "Duels are unavailable on this server",
-    "Duels are unavailable on this server: the host needs to install Node.js 22.18 or newer (see the guide).",
+    "Duels are unavailable on this server: its rules engine can't run. The host should unpack the release bundle again, \
+     whole (an antivirus may have removed its engine).",
 );
 
 impl World {
@@ -2538,13 +2557,12 @@ impl FrontSession {
                     }
                     None => (1, 0),
                 };
-                Message::reply(0x23F0)
-                    .with("dpauth_result", Value::U32(result))
-                    .with("dpPoints", Value::U32(self.account.dpoint))
-                    .with("dpGetPoints", Value::U32(got))
-                    .with("premium", Value::U32(1))
-                    .with("premium_expire", Value::text(PREMIUM_EXPIRE))
+                premium(result, self.account.dpoint, got)
             }
+            // Yu-Gi-Oh! Online 2's takeover (the main screen's first startup step, 0x472780): the player's local friend
+            // and ignore lists, sent once while pbin[0x4B] bit 0 is clear (we set it). It waits for 0x2530/0x2531 and
+            // reads nothing from it (it notes yo2_takeover itself); there is no Online 2 account to take over.
+            0x24C4 => Message::reply(0x2530),
             // The player's own user event (UserEventScene 0x4D9BB0): none.
             // Deck list (deck editor 0x43FC60): it saves each deck it lacks as a local file.
             // The starter deck, the official character decks, then the structure decks the player bought; the client
@@ -2850,6 +2868,11 @@ impl FrontSession {
             0x2134 => return self.chat(msg),
             _ => return vec![],
         };
+        // The login also fills the client's premium_expire (only a 0x23F0 with result 0 does, 0x4F5349), which the eagle
+        // at the top left parses: empty, it crashed the client (0x485CA1).
+        if id == 0x1F48 {
+            return vec![reply, premium(0, self.account.dpoint, 0)];
+        }
         vec![reply]
     }
 

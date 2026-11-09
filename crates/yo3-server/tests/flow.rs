@@ -47,6 +47,9 @@ async fn client_reaches_the_main_screen() {
     assert_eq!(recv(&mut front).await.request(), Some(0x219F));
     for (req, reply) in [(0x1F47, 0x219A), (0x1F48, 0x2201), (0x1F49, 0x2260)] {
         assert_eq!(rpc(&mut front, Message::reply(req)).await.request(), Some(reply));
+        if req == 0x1F48 {
+            assert_eq!(recv(&mut front).await.request(), Some(0x23F0), "the premium push after the login");
+        }
     }
     let select = Message::reply(0x1F4C).with("player_id", Value::U32(1001));
     assert_eq!(rpc(&mut front, select).await.request(), Some(0x2266));

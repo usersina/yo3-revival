@@ -24,7 +24,10 @@ fn directory() -> Arc<Mutex<Directory>> {
 }
 
 fn login(c: &mut common::Client, lang: u32) -> Message {
-    one(c.send(req_with(0x1F48, &[("lang", Value::U32(lang))])))
+    // The login answers 0x2201, then pushes the 0x23F0 that fills premium_expire.
+    let replies = c.send(req_with(0x1F48, &[("lang", Value::U32(lang))]));
+    assert_eq!(replies.len(), 2, "{replies:?}");
+    replies.into_iter().next().unwrap()
 }
 
 #[test]

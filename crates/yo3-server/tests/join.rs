@@ -209,7 +209,7 @@ async fn the_page_warns_when_duels_are_unavailable() {
     .await
     .unwrap();
     let r = get(&s, "/join", "play.example:8080").await;
-    assert!(r.contains("Duels are unavailable on this server") && r.contains("Node.js 22.18"), "{r}");
+    assert!(r.contains("Duels are unavailable on this server") && r.contains("unpack the release bundle again"), "{r}");
     // A server whose engine can run says nothing of it.
     let dir = scratch("engine-ok");
     let ok = server(&dir, true).await;

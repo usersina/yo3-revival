@@ -22,6 +22,12 @@ fn one(replies: Vec<Message>) -> Message {
     replies.into_iter().next().unwrap()
 }
 
+/// The login's replies: 0x2201, then the 0x23F0 push that fills premium_expire.
+fn login(replies: Vec<Message>) -> Message {
+    assert_eq!(replies.iter().map(Message::request).collect::<Vec<_>>(), [Some(0x2201), Some(0x23F0)], "{replies:?}");
+    replies.into_iter().next().unwrap()
+}
+
 fn fresh() -> FrontSession {
     fresh_in(world())
 }
@@ -59,7 +65,7 @@ fn auth_returns_the_account() {
 #[test]
 fn login_puts_the_account_in_the_first_item() {
     // LoginWindow 0x469C00 reads user_id/uname/dpoint from item[0], regulation_id from the top.
-    let r = one(fresh().handle(&req(0x1F48)));
+    let r = login(fresh().handle(&req(0x1F48)));
     assert_eq!(r.request(), Some(0x2201));
     assert!(r.get("regulation_id").is_some());
     assert_eq!(r.items[0].get("user_id"), Some(&Value::U32(1001)));
@@ -85,7 +91,7 @@ fn player_records_carry_everything_the_loader_reads() {
 fn the_login_unlocks_every_npc() {
     // SelectNpcScene enables an NPC (0x4BF520) when UserData's premium (item[0] of 0x2201, copied by 0x51B570) isn't 0,
     // or its first id is one of the nine free ones. premium also opens Form Team and Create Event.
-    let r = one(fresh().handle(&req(0x1F48)));
+    let r = login(fresh().handle(&req(0x1F48)));
     assert_eq!(r.items[0].get("premium"), Some(&Value::U32(1)));
 }
 
@@ -96,6 +102,38 @@ fn the_record_lets_the_gated_npcs_duel() {
     let r = one(fresh().handle(&req(0x1F49)));
     let Some(Value::Bin(pbin)) = r.items[0].get("pbin") else { panic!("pbin") };
     assert_eq!(pbin[74] & 0x0F, 0x0F);
+}
+
+#[test]
+fn the_online_2_takeover_is_done_already() {
+    // The main screen's first startup step (0x472780) is Yu-Gi-Oh! Online 2's takeover: while pbin[0x4B] bit 0 is clear
+    // it reads the player's friend and ignore lists the client keeps locally and, if either has anyone, sends 0x24C4
+    // {friend_list, black_list} and waits for 0x2530/0x2531 before the next step (the unlock is the last). Unanswered,
+    // a player with a friend could click nothing but the chat (live, a player's report). With the bit set, the step
+    // is skipped; and 0x24C4 gets 0x2530 anyway, whose fields the step doesn't read (it notes yo2_takeover itself).
+    let r = one(fresh().handle(&req(0x1F49)));
+    let Some(Value::Bin(pbin)) = r.items[0].get("pbin") else { panic!("pbin") };
+    assert_eq!(pbin[0x4B] & 1, 1);
+    let mut s = fresh();
+    s.handle(&req(0x1F49));
+    s.handle(&req_with(0x1F4C, "player_id", 1001));
+    let lists = Message::reply(0x24C4).with("friend_list", Value::Bin(vec![0, 0, 3, 0xF8])).with("black_list", Value::Bin(vec![]));
+    assert_eq!(one(s.handle(&Packet::Message(lists))).request(), Some(0x2530));
+}
+
+#[test]
+fn the_login_says_when_duelist_premium_ends() {
+    // The eagle at the top left (and the BOOSTERPASS window) parse premium_expire from the client's own store
+    // ("%4d-%2d-%2d %2d:%2d:%2d", 0x485B50, then localtime at 0x485C00); only 0x23F0 with dpauth_result 0 fills it
+    // (global case 0x4F5349). Empty, the eagle showed "valid for -20767 day(s)" and the client crashed at 0x485CA1. So
+    // the login pushes one 0x23F0 (no BP got) after 0x2201.
+    let out = fresh().handle(&req(0x1F48));
+    assert_eq!(out[0].request(), Some(0x2201));
+    let push = out.iter().find(|m| m.request() == Some(0x23F0)).expect("a 0x23F0 at login");
+    assert_eq!(push.get("dpauth_result"), Some(&Value::U32(0)));
+    assert_eq!(push.get("dpGetPoints"), Some(&Value::U32(0)));
+    assert_eq!(push.get("premium"), Some(&Value::U32(1)));
+    assert!(matches!(push.get("premium_expire"), Some(Value::Text(_))), "{push:?}");
 }
 
 #[test]
@@ -265,7 +303,7 @@ fn heartbeat_and_unknown_requests_get_no_reply() {
 fn players_log_in_without_a_banlist_by_default() {
     // Regulation 3 is "unlimited" in the client's list (no banned or limited cards): the default unless --regulation
     // names another. The starter deck is still picked by the first (the Beta list), so it stays legal under any.
-    let r = one(fresh().handle(&req(0x1F48)));
+    let r = login(fresh().handle(&req(0x1F48)));
     assert_eq!(r.get("regulation_id"), Some(&Value::U32(3)));
     assert_eq!(yo3_server::front::STARTER_REGULATION, 1);
 }
@@ -277,7 +315,7 @@ fn the_login_carries_the_servers_banlist() {
     let world = Arc::new(World { login_regulation: 3, ..World::new((1..=20).collect()) });
     let auth = one(fresh_in(world.clone()).handle(&req(0x1F47)));
     assert_eq!(auth.get("regulation_id"), Some(&Value::U32(3)));
-    let login = one(fresh_in(world).handle(&req(0x1F48)));
+    let login = login(fresh_in(world).handle(&req(0x1F48)));
     assert_eq!(login.get("regulation_id"), Some(&Value::U32(3)));
 }
 
