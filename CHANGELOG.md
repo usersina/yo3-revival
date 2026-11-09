@@ -9,7 +9,11 @@ gather under "Unreleased" first.
 
 ## Unreleased
 
-Nothing yet.
+- Fixed: for a player with a friend (or someone ignored), the main screen stayed locked after login: only the chat
+  answered clicks. The game was waiting for an old Yu-Gi-Oh! Online 2 step the server didn't answer.
+- Fixed: clicking the eagle icon at the top left crashed the game. It now shows your Duelist premium.
+- The "Duels are unavailable" message now says what to do with a release bundle (unpack it again) instead of asking
+  for Node.js.
 
 ## v0.0.2 (2026-11-09)
 

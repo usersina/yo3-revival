@@ -121,6 +121,10 @@ MainGamen's constructor (`0x46D8A0`) queues startup steps that run one after ano
 (`obj+0xE8 = request id`): `0x472780` (Online 2 lists), `0x472DA0` (`0x2072`), `0x4731A0` (`0x27D8`), `0x4736C0`
 (`0x2CEE`), `0x472F70` (`0x2583`), `0x4733C0` (`0x271A`, `0x2710`), `0x473830` (`0x2AFB`), `0x473970` (`0x2AFD`),
 `0x473BE0` (a window if dataset slot 13 has items), `0x473AE0` (presents, below), `0x4725B0` (unlock), `0x473AB0`.
+The login also pushes one `0x23F0 {dpauth_result 0, …, premium_expire}` after `0x2201`: only that reply (result 0)
+fills the client's `premium` and `premium_expire` (global case `0x4F5349`), which the eagle at the top left parses
+(`0x485C00`); empty, it showed "valid for -20767 day(s)" and the client crashed at `0x485CA1`. Live with the push: the
+eagle shows "Duelist premium, Valid until 2037/12/31" and "valid for 4069 day(s)".
 Until the unlock step runs, the map's facilities, the menu and the duel button stay disabled (`0x472230(0x3F)`), so
 clicks do nothing. Every reply also passes through the global front dispatcher; `python3 tools/re/dispatch.py
 0x4f4a4f <id>` shows the case it lands in.
@@ -128,6 +132,7 @@ clicks do nothing. Every reply also passes through the global front dispatcher; 
 | Request | Reply (error) | Fields | Evidence | Status |
 |---|---|---|---|---|
 | `0x2072` regulations | `0x2398` (`0x2399`) | `regulations`: binary u16 BE regulation ids | read unchecked at `0x4F545B` | confirmed field; list contents **guess** (all 20) |
+| `0x24C4 {friend_list, black_list}` (u32 BE player ids): Yu-Gi-Oh! Online 2's takeover, the first step `0x472780`. While `pbin[0x4B]` bit 0 is clear it sets the bit in its own copy, reads the player's local lists (`friends.y3l`, `blacks.yo3l`, `0x52CEF0`) and, if either has anyone, sends this and waits | `0x2530` (`0x2531`) | none read: the step notes `yo2_takeover` 1 in its local save itself (`0x472D3C`) | live: a player with a friend sent `0x24C4 {friend_list 000003f8}`; unanswered, the startup never reached the unlock and only the chat answered clicks (a player's report). The server sets `pbin[0x4B]` bit 0, so the step is skipped (traced: `0x472832` inside the step no longer runs, `0x4725B0` does), and answers `0x24C4` with `0x2530` anyway | confirmed |
 
 **Banlists.** The client ships 20 regulations (`data/regulation/*.y3r`, named in the text table): 1 "Beta
 Forbidden/Limited", 2 "Pre-Season", 3 "unlimited" (no lists: every card 3 times), 4–15 the OCG lists of 2004-03 to
