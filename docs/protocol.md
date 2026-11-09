@@ -920,6 +920,28 @@ the card clicked at index 5 was the one the engine summoned). Missed, it put the
 engine's: see the hand-index rule under the moves above, and the crash it caused in
 [client-internals](client-internals.md#crash-history-and-the-rule-each-one-taught).
 
+**Card relations** (not sent yet). The client keeps a list of relations between field places (engine store `+0x90`,
+list at `+0xB8`/`+0xCC`) and draws them while the pointer is on a face-up field card (mouse move `0x50B700` →
+`0x50AC20` → `0x50B1C0`; command `0x26` redraws them too): every relation from the hovered card's place draws a
+marker on the related slot. Commands: 1017 (`0x3F9`) {param1 the source place `player | zone << 8` (client-relative,
+zone below `0xB`), param2 the target place (same form), param3 the marker type 1–8, param4 1 add / 0 remove}
+(`0x5224E0` / `0x522530`); 1018 (`0x3FA`) {param1 the source place, param2 a target place, or `0xFFFF` for all of
+that source's relations} removes them (`0x5226B0` / `0x522750`). Type n draws field effect `0x33 + n`, except 6 →
+`0x35` and 7 → `0x37` (bit `0x100` of the type adds the type-8 marker); the effects use `cicon/duel_eff_cicon_01`–`08`.
+**Confirmed** live (a probe build sent eight relations from the client's monster): type 1 a cyan orb, 2 and 6 a yellow
+∞, 3 a green compass star, 4 and 7 a red ✕ circle, 5 orange turning arrows, 8 a pink target reticle, each on its
+slot (the opponent's row mirrored: their zone 0 on the client's right). What each type meant to the original server
+is **open** (no names in the client). EDOPro reports targets (CARD_TARGET 96, CANCEL_TARGET 97), equips (EQUIP 93) and
+relations; the translator doesn't follow them yet (see the roadmap's duel check audit).
+
+**Card overrides** (not sent yet). 1019 (`0x3FB`) stages {param2 type, param3 value, param4} and 1020 (`0x3FC`)
+{param1 a place} stores the staged entry for that place, or clears it when nothing is staged (`0x522850` /
+`0x522910`). Command `0x26` then copies each Spell/Trap place's entry onto its card (DuelCardManager `0x4FF000`): type
+1 → `+0xB0`, 2 → `+0xB4`, 3 → `+0xAC`, which the card's labels show instead of its own data (`0x4FBAA0`: two label
+values, compared with the card's own bits, and `+0xAC` a card id whose `data/card/%4d_1.png` replaces the picture).
+**Shape**: overrides of a card's shown data (a changed Attribute or Type, a card shown as another), not turn
+counters.
+
 **Moves out of a hand go by index.** `0x5000E0` takes a card out of its hand list by the move's from index
 (`0x5005D0(player, index)`), not by uid. When the server's mirror finds the card the engine named at another index than
 the engine's sequence, the move names the mirror's index (where the client has it). A card that lands in a hand goes to
