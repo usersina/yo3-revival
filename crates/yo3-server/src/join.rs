@@ -16,6 +16,8 @@ pub struct JoinInfo {
     pub http_port: u16,
     /// The host written into the lines when the request has no usable `Host` header.
     pub advertise: Option<String>,
+    /// The rules engine can't run (see `World::engine_problem`): the page warns that duels won't work.
+    pub duels_unavailable: bool,
 }
 
 /// An HTTP answer.
@@ -71,6 +73,10 @@ pub fn handle(path: &str, host: Option<&str>, peer: IpAddr, accounts: &Arc<Mutex
     }
     let state = accounts.locked().join_state(peer);
     let mut body = String::new();
+    if info.duels_unavailable {
+        body += "<p class=\"err\"><strong>Duels are unavailable on this server.</strong> The host needs to install \
+                 Node.js 22.18 or newer (see the guide), then restart the server. You can still join, chat and edit decks.</p>";
+    }
     if let Some(e) = &error {
         body += &format!("<p class=\"err\">{}</p>", esc(e));
     }

@@ -195,6 +195,7 @@ async fn main() -> anyhow::Result<()> {
         data_dir: Some(a.data_dir),
         regulation: a.regulation,
         idle_timeout: yo3_server::IDLE_TIMEOUT,
+        engine_problem: None,
     };
     start(cfg).await?.wait().await;
     Ok(())

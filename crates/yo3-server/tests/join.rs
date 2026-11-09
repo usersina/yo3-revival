@@ -197,3 +197,22 @@ async fn a_joined_key_binds_the_account_like_an_added_one() {
     let names: Vec<_> = list.items.iter().map(|i| i.get("pname").and_then(Value::as_str).unwrap_or_default()).collect();
     assert_eq!(names, ["Seto"]);
 }
+
+#[tokio::test]
+async fn the_page_warns_when_duels_are_unavailable() {
+    let dir = scratch("noengine");
+    let s = start(Config {
+        data_dir: Some(dir.to_path_buf()),
+        engine_problem: Some("Node.js v20.0.0 is too old".into()),
+        ..Config::ephemeral(dir.join("logs"))
+    })
+    .await
+    .unwrap();
+    let r = get(&s, "/join", "play.example:8080").await;
+    assert!(r.contains("Duels are unavailable on this server") && r.contains("Node.js 22.18"), "{r}");
+    // A server whose engine can run says nothing of it.
+    let dir = scratch("engine-ok");
+    let ok = server(&dir, true).await;
+    let r = get(&ok, "/join", "play.example:8080").await;
+    assert!(r.contains("<form"), "the form is still served");
+}

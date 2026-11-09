@@ -85,6 +85,8 @@ pub struct Config {
     pub regulation: Option<String>,
     /// How long a connection may stay silent before it is closed (the client heartbeats every 30 s).
     pub idle_timeout: std::time::Duration,
+    /// Testing aid: pretend the rules engine can't run, with this reason (none: check for real at start).
+    pub engine_problem: Option<String>,
 }
 
 impl Config {
@@ -109,6 +111,7 @@ impl Config {
             data_dir: None,
             regulation: None,
             idle_timeout: net::IDLE_TIMEOUT,
+            engine_problem: None,
         }
     }
 }
@@ -255,10 +258,14 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let http = TcpListener::bind((cfg.bind, cfg.http_port)).await?;
     let addrs = (gate.local_addr()?, front.local_addr()?, duel.local_addr()?, http.local_addr()?);
     let front_port = addrs.1.port();
-    let world = Arc::new(world(&cfg, addrs.2.port(), addrs.3.port())?);
-    match &world.engine_dir {
-        Some(dir) => tracing::info!("rules engine: {}", dir.display()),
-        None => tracing::warn!("rules engine not fetched (run engine/fetch.sh): duels open but can't be played"),
+    let mut world = world(&cfg, addrs.2.port(), addrs.3.port())?;
+    world.engine_problem = cfg.engine_problem.clone().or_else(|| engine::problem(world.engine_dir.as_deref()));
+    let duels_unavailable = world.engine_problem.is_some();
+    let world = Arc::new(world);
+    match (&world.engine_problem, &world.engine_dir) {
+        (Some(why), _) => tracing::error!("DUELS WON'T WORK: {why}. Duels will end at once as draws; players are told in the news and on the join page."),
+        (None, Some(dir)) => tracing::info!("rules engine: {}", dir.display()),
+        (None, None) => {}
     }
 
     let quiet = net::Idle { limit: cfg.idle_timeout, heartbeats: false };
@@ -343,7 +350,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         let mut session = duel::DuelSession::new(world.clone(), hub.clone(), seed).with_outbox(outbox).with_peer(peer.ip());
         move |p: &yo3_proto::Packet| session.handle(p)
     }));
-    let join_info = cfg.join.then(|| join::JoinInfo { gate_port: addrs.0.port(), http_port: addrs.3.port(), advertise: cfg.advertise.clone() });
+    let join_info = cfg.join.then(|| join::JoinInfo { gate_port: addrs.0.port(), http_port: addrs.3.port(), advertise: cfg.advertise.clone(), duels_unavailable });
     let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs")), directory_http, join_info));
 
     tracing::info!(

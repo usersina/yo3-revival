@@ -24,6 +24,34 @@ pub struct Answer {
 /// How long one call may take (a duel's first call loads the card database, a step takes milliseconds).
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// The oldest Node.js that runs `duelcore.ts` directly (type stripping without a flag).
+pub const MIN_NODE: (u32, u32) = (22, 18);
+
+/// `(major, minor)` of a `node --version` line such as `v22.18.0`.
+pub fn parse_node_version(text: &str) -> Option<(u32, u32)> {
+    let mut parts = text.trim().strip_prefix('v')?.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    Some((major, minor))
+}
+
+/// Why duels can't be played: the engine's files are missing, or `node` is missing or older than [`MIN_NODE`].
+/// None when the engine can run. Runs `node --version` once (fast), not the sidecar.
+pub fn problem(dir: Option<&Path>) -> Option<String> {
+    let (want_major, want_minor) = MIN_NODE;
+    if dir.is_none() {
+        return Some("the rules engine is not fetched (run engine/fetch.sh, or the launcher: run.sh / run.cmd)".into());
+    }
+    let out = match Command::new("node").arg("--version").output() {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).into_owned(),
+        _ => return Some(format!("Node.js is not installed or not on the PATH (version {want_major}.{want_minor} or newer is needed)")),
+    };
+    match parse_node_version(&out) {
+        Some(v) if v >= MIN_NODE => None,
+        _ => Some(format!("Node.js {} is too old (version {want_major}.{want_minor} or newer is needed)", out.trim())),
+    }
+}
+
 pub struct Engine {
     child: Child,
     stdin: ChildStdin,
@@ -105,5 +133,25 @@ impl Drop for Engine {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn node_versions_compare_by_major_then_minor() {
+        assert_eq!(parse_node_version("v22.18.0\n"), Some((22, 18)));
+        assert_eq!(parse_node_version("v20.0.0"), Some((20, 0)));
+        assert_eq!(parse_node_version("nonsense"), None);
+        assert!(parse_node_version("v22.9.0").unwrap() < MIN_NODE);
+        assert!(parse_node_version("v22.18.0").unwrap() >= MIN_NODE);
+        assert!(parse_node_version("v24.1.0").unwrap() >= MIN_NODE);
+    }
+
+    #[test]
+    fn a_missing_engine_directory_is_a_problem() {
+        assert!(problem(None).unwrap().contains("not fetched"));
     }
 }

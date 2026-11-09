@@ -219,6 +219,24 @@ fn news_list_is_nested_under_a_lang_record() {
 }
 
 #[test]
+fn news_says_duels_are_unavailable_only_when_the_engine_can_not_run() {
+    let titles = |world: World| -> Vec<String> {
+        let mut s = fresh_in(Arc::new(world));
+        for id in [0x1F47, 0x1F48, 0x1F49] {
+            s.handle(&req(id));
+        }
+        s.handle(&req_with(0x1F4C, "player_id", 1001));
+        s.handle(&req_with(0x1FA4, "player_id", 1001));
+        let r = one(s.handle(&req(0x1F41)));
+        r.items[0].items.iter().map(|e| e.get("title").and_then(Value::as_str).unwrap().to_string()).collect()
+    };
+    let base = || World::new((1..=20).collect());
+    assert!(!titles(base()).iter().any(|t| t.contains("unavailable")));
+    let broken = titles(World { engine_problem: Some("Node.js is too old".into()), ..base() });
+    assert!(broken.iter().any(|t| t.contains("Duels are unavailable")), "{broken:?}");
+}
+
+#[test]
 fn player_search_succeeds_with_a_result_count() {
     // InfoWindow 0x4591CA reads result_number (field trace); it matches the items sent.
     let r = one(in_world().handle(&req_with(0x2CF0, "search_type", 1)));

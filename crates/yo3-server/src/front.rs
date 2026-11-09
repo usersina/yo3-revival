@@ -489,6 +489,9 @@ pub struct World {
     pub test_times: Option<(u32, u32)>,
     /// The rules engine's directory (engine/, once fetched); without it the server deals the opening itself.
     pub engine_dir: Option<std::path::PathBuf>,
+    /// Why the rules engine can't run (Node.js missing or too old, files not fetched), checked at start: players
+    /// are told in the news, since every duel would end as a draw. None: it can run.
+    pub engine_problem: Option<String>,
     /// Where clients connect for their duels (0x22C4 duelData host and port).
     pub duel_server: (String, u16),
     /// The patch server's port, which also serves the duel logs.
@@ -502,6 +505,12 @@ pub struct World {
     pub protectors: Vec<u16>,
     pub avatar_items: Vec<(u16, u16)>,
 }
+
+/// The login news entry (title, body) while the rules engine can't run (`World::engine_problem`).
+pub const DUELS_UNAVAILABLE: (&str, &str) = (
+    "Duels are unavailable on this server",
+    "Duels are unavailable on this server: the host needs to install Node.js 22.18 or newer (see the guide).",
+);
 
 impl World {
     pub fn new(regulation_ids: Vec<u16>) -> World {
@@ -517,6 +526,7 @@ impl World {
             cards: HashMap::new(),
             token_rows: HashMap::new(),
             engine_dir: None,
+            engine_problem: None,
             start_lp: 8000,
             test_regulation: None,
             test_deck: None,
@@ -2728,11 +2738,12 @@ impl FrontSession {
             }
             0x1F41 => {
                 let now = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
-                let entries = self.world.news.iter().map(|(title, body)| {
+                let unavailable = self.world.engine_problem.is_some().then(|| (DUELS_UNAVAILABLE.0.to_string(), DUELS_UNAVAILABLE.1.to_string()));
+                let entries = self.world.news.iter().cloned().chain(unavailable).map(|(title, body)| {
                     Message::record()
                         .with("starttime", Value::text(&now))
-                        .with("title", Value::text(title))
-                        .with("body", Value::text(body))
+                        .with("title", Value::text(&title))
+                        .with("body", Value::text(&body))
                 });
                 let lang = entries.fold(Message::record().with("lang", Value::text("1")), Message::item);
                 Message::reply(0x21FC).item(lang)
