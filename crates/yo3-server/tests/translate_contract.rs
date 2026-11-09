@@ -1601,3 +1601,94 @@ fn a_cancelable_list_of_two_names_the_count_too() {
     assert_eq!(out[4], (0x3ED, [1 << 28 | 18, 2 << 28, 1 << 28 | 592, 8 << 28 | 2]));
     assert_eq!(out[5], (0x37, [0, 1, 1, 0]));
 }
+
+/// The client's monster zone 0 holds row 100 face-up attack and the CPU's zone 1 row 200 face-down defense.
+fn with_monsters() -> Translator {
+    let (mut t, _) = translator();
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }] })]);
+    t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4200 }] })]);
+    t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 0, 1) })]);
+    t.events(&[json!({ "type": 50, "cid": 4200, "from": loc(1, 2, 0, 10), "to": loc(1, 4, 1, 8) })]);
+    t
+}
+
+#[test]
+fn a_control_swap_trades_the_two_monsters_places() {
+    // MSG_SWAP (55) {card1, card2}: Creature Swap's two monsters change sides. The client trades two field slots with
+    // CardSwap 0x1B {_, place A, place B} (DuelCardManager 0x4FF000 case 0x1B): both field places (zone < 11), the
+    // object in each slot (0x4F8240) moves to the other and takes that place's word as its place and position (+0x82,
+    // 0x5000E0 with param_6 1, which leaves hands and piles alone), and the slots are swapped. Each card keeps its own
+    // face and position, so each word carries the face of the card arriving there; then the cards' new table entries
+    // and the monster records of both zones. Missed (the duel check, seed 6), the client showed each monster on its old
+    // owner's side.
+    let mut t = with_monsters();
+    let out: Vec<_> = t
+        .events(&[json!({ "type": 55, "card1": card_at(0, 4, 0, 4100), "card2": { "cid": 4200, "controller": 1, "location": 4, "sequence": 1, "position": 8 } })])
+        .iter()
+        .map(cmd)
+        .collect();
+    // Row 200 (uid 11) arrives at the client's zone 0 face-down defense, row 100 (uid 1) at the CPU's zone 1 face-up attack.
+    let (a, b) = (1 << 15, 1 | 1 << 1 | 1 << 14);
+    assert!(out.contains(&(0x1B, [0, b, a, 0])), "{out:x?}");
+    assert!(out.contains(&(1000, [11, 200, 0, 0])), "{out:x?}");
+    assert!(out.contains(&(1000, [1, 100, 0, 1 | 1 << 8])), "{out:x?}");
+    // The face-up monster now on the CPU's side gets its record there; the face-down one none.
+    assert!(out.contains(&(0x3EB, [1 | 1 << 8, 1000, 1000, 4100])), "{out:x?}");
+}
+
+#[test]
+fn set_cards_shuffled_in_place_follow_the_engine() {
+    // MSG_SHUFFLE_SET_CARD (36): Magical Hats shuffles the Set cards among their zones. The core's message gives only
+    // the old places (ocgcore-wasm pairs them up as {from, to}), so the sidecar adds `places`: each shuffled zone and the
+    // card it holds after the shuffle. Each card that changes zone is traded into place with CardSwap (0x1B), or moved
+    // with 0x1A when its new zone is empty; then its table entry. Missed (the duel check, seeds 3, 9, 14, 20, 43, 56,
+    // 57), the client showed the cards under the wrong hats.
+    let mut t = with_monsters();
+    t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 1, 0, 10), "to": loc(0, 4, 2, 8) })]);
+    let shuffle = json!({ "type": 36, "location": 4, "cards": [], "places": [
+        { "controller": 0, "location": 4, "sequence": 2, "position": 8, "cid": 4100 },
+        { "controller": 0, "location": 4, "sequence": 3, "position": 8, "cid": 4101 },
+        { "controller": 0, "location": 4, "sequence": 0, "position": 8, "cid": 0 } ] });
+    let out: Vec<_> = t.events(&[shuffle]).iter().map(cmd).collect();
+    // Row 100 (uid 1) goes to zone 2, trading with row 101 (uid 2), which goes on to the empty zone 3.
+    assert!(out.contains(&(0x1B, [0, 2 << 1 | 1 << 15, 1 << 15, 0])), "{out:x?}");
+    assert!(out.contains(&(0x1A, [2 | 101 << 16, 0, 3 << 1 | 1 << 15, 0])), "{out:x?}");
+    assert!(out.contains(&(1000, [1, 100, 0, 2 << 8])), "{out:x?}");
+    assert!(out.contains(&(1000, [2, 101, 0, 3 << 8])), "{out:x?}");
+}
+
+#[test]
+fn a_token_that_changes_sides_moves_instead_of_vanishing() {
+    // A token leaving the field is gone (CardVanish), but one whose control changes (Snatch Steal on a Sheep Token: a
+    // move from one monster zone to the other side's) stays on the field. Missed (the duel check, seed 30), the client
+    // lost it.
+    let (mut t, _) = translator();
+    t.tokens(HashMap::from([("Sheep Token".to_string(), vec![3900])]));
+    let to = loc(0, 4, 2, 4);
+    t.events(&[json!({ "type": 50, "cid": 0, "name": "Sheep Token", "from": loc(0, 0, 0, 0), "to": to })]);
+    let out: Vec<_> = t
+        .events(&[json!({ "type": 50, "cid": 0, "name": "Sheep Token", "from": loc(0, 4, 2, 4), "to": loc(1, 4, 1, 4), "reason": 0 })])
+        .iter()
+        .map(cmd)
+        .collect();
+    assert!(!out.iter().any(|(id, _)| *id == 0x1F), "{out:x?}");
+    assert!(out.contains(&(0x1A, [0x4000 | 3900 << 16, 2 << 1 | 1 << 14 | 1 << 15, 1 | 1 << 1 | 1 << 14 | 1 << 15, 0])), "{out:x?}");
+}
+
+#[test]
+fn a_graveyard_and_deck_swap_moves_every_card_between_them() {
+    // MSG_SWAP_GRAVE_DECK (35) {player, deck_size, returned_to_extra}: Exchange of the Spirit swaps a player's Graveyard and
+    // Deck (Extra Deck monsters in the Graveyard go back to the Extra Deck). The sidecar adds the player's `grave` and
+    // `extra` as they are afterwards. Each old Graveyard card moves out (to the Deck, or the Extra Deck when the engine's
+    // has one more of it), then each new Graveyard card comes in from the Deck in the engine's order. Missed (the duel
+    // check, seeds 152, 196, 244, 348, 387), the client's piles kept their old counts.
+    let (mut t, _) = translator();
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }] })]);
+    t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 0, 10), "to": loc(0, 16, 0, 5) })]);
+    let swap = json!({ "type": 35, "player": 0, "deck_size": 9, "returned_to_extra": [],
+        "grave": [{ "cid": 4105 }, { "cid": 4102 }], "extra": [] });
+    let out: Vec<_> = t.events(&[swap]).iter().map(cmd).collect();
+    let moves: Vec<_> = out.iter().filter(|(id, _)| *id == 0x1A).map(|(_, p)| (p[0] >> 16, p[1] >> 1 & 0x1F, p[2] >> 1 & 0x1F, p[2] >> 6 & 0xFF)).collect();
+    // Row 100 from the Graveyard (0xE) to the Deck (0xD), then rows 105 and 102 from the Deck to Graveyard indexes 0, 1.
+    assert_eq!(moves, [(100, 0xE, 0xD, 0), (105, 0xD, 0xE, 0), (102, 0xD, 0xE, 1)], "{out:x?}");
+}

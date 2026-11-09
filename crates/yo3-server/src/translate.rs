@@ -50,6 +50,9 @@ const MSG_RECOVER: u64 = 92;
 const MSG_LPUPDATE: u64 = 94;
 const MSG_CONFIRM_CARDS: u64 = 31;
 const MSG_SHUFFLE_HAND: u64 = 33;
+const MSG_SWAP_GRAVE_DECK: u64 = 35;
+const MSG_SHUFFLE_SET_CARD: u64 = 36;
+const MSG_SWAP: u64 = 55;
 const MSG_POS_CHANGE: u64 = 53;
 const MSG_SUMMONING: u64 = 60;
 const MSG_SPSUMMONING: u64 = 62;
@@ -129,6 +132,10 @@ const HAND_SHOW: u32 = 0x13;
 /// (player, hand, i) by 0x523DF0, its object by uid 0x500470; DuelCardManager 0x4FF000 case 0x12). Every index below
 /// the hand's count needs an entry, or the client stops with an error state (0x1200).
 const HAND_SHUFFLE: u32 = 0x12;
+/// CardSwap {_, place A, place B} as moves give them, both field places (zone < 11): the cards in the two slots trade
+/// places, each taking the word of the place it lands on as its place and position (DuelCardManager 0x4FF000 case 0x1B:
+/// the objects by 0x4F8240, 0x5000E0 with param_6 1, the slot array swapped). **Shape**: read in the code, not seen live.
+const CARD_SWAP: u32 = 0x1B;
 /// A card table entry's flag (command 1000's uid top byte, kept as `!= 0` by 0x521DF0): a pile whose count changes
 /// draws its top card's face when its entry has it, else a back (0x4FE4D0 → 0x523DA0), and the pointer over the pile
 /// previews that card (0x50B9C0). Set for the open piles: the Graveyard and the banished cards.
@@ -432,6 +439,9 @@ pub struct Translator {
     /// How many card names the CPU has declared: each try names the next card of the duel's (the core asks again
     /// when a name doesn't fit).
     declared: usize,
+    /// Xyz materials: cards that left the field to sit under an Xyz Monster, which the client has no place for, with the
+    /// field place each left (whose slot still holds its hidden object until another card lands there).
+    materials: Vec<(Card, Place)>,
     /// Cards an effect revealed (MSG_CONFIRM_CARDS) that wait to reach a hand, by Konami id.
     revealing: Vec<u16>,
     /// The card list open is a mixed one (see `card_list`), and how many table entries it staged.
@@ -518,6 +528,7 @@ impl Translator {
             counters: HashMap::new(),
             declared: 0,
             revealing: vec![],
+            materials: vec![],
             mixed: false,
             staged: None,
         };
@@ -613,6 +624,9 @@ impl Translator {
                 }
                 Some(MSG_CONFIRM_CARDS) => out.extend(self.confirm(m)),
                 Some(MSG_SHUFFLE_HAND) => out.extend(self.shuffle_hand(m)),
+                Some(MSG_SWAP) => out.extend(self.swap(m)),
+                Some(MSG_SHUFFLE_SET_CARD) => out.extend(self.shuffle_set(m)),
+                Some(MSG_SWAP_GRAVE_DECK) => out.extend(self.swap_grave_deck(m)),
                 Some(MSG_CHAIN_END) => self.chaining = None,
                 Some(MSG_WIN) => {
                     let result = match m["player"].as_u64() {
@@ -650,14 +664,22 @@ impl Translator {
     /// MSG_MOVE {card, cid, from, to}: the card leaves its place for the new one.
     fn move_card(&mut self, m: &Json) -> Vec<Message> {
         let cid = m["cid"].as_u64().unwrap_or(0) as u16;
+        if is_material(&m["to"]) && !is_material(&m["from"]) {
+            return self.attach(m, cid);
+        }
+        if is_material(&m["from"]) {
+            return self.engine_place(&m["to"]).map(|to| self.detach(cid, to)).unwrap_or_default();
+        }
         if m["from"]["location"].as_u64() == Some(0) {
             return self.engine_place(&m["to"]).map(|to| self.token(m, to)).unwrap_or_default();
         }
         if let Some(from) = self.engine_place(&m["from"]).filter(|f| f.zone < 5)
             && let Some(card) = self.sides[from.player as usize].zones.get(&from.zone).and_then(|z| z.first()).copied()
             && self.tokens.contains(&card.uid)
+            && !self.engine_place(&m["to"]).is_some_and(|to| to.zone <= FIELD_SPELL)
         {
-            // A token leaving the field is gone (EDOPro may send it to a pile first): it shatters off the field.
+            // A token leaving the field is gone (EDOPro may send it to a pile first): it shatters off the field. One that
+            // changes sides (a control change) stays and moves like any card.
             let mut out = self.drop_counters(&from);
             self.sides[from.player as usize].zone(from.zone).clear();
             self.tokens.retain(|&t| t != card.uid);
@@ -722,6 +744,163 @@ impl Translator {
             })
             .collect();
         out.push(command(HAND_SHUFFLE, [p, 0, 0, 0]));
+        out
+    }
+
+    /// A field card becomes an Xyz material: the client has no place under a monster, so the card leaves the field with
+    /// CardVanish (0x1F: marked off the field and hidden, 0x4FC520; the slot keeps the object until another card lands
+    /// there) and the mirror keeps it among the materials. **Shape**: the shatter effect plays for it. From elsewhere (a
+    /// hand or pile) it isn't followed (logged).
+    fn attach(&mut self, m: &Json, cid: u16) -> Vec<Message> {
+        let Some(from) = self.engine_place(&m["from"]) else { return vec![] };
+        if from.zone > FIELD_SPELL {
+            tracing::warn!("an Xyz material from a place the client can't take it from: {m}");
+            return vec![];
+        }
+        let Some(card) = self.sides[from.player as usize].zones.get(&from.zone).and_then(|z| z.first()).copied() else { return vec![] };
+        if self.cards.get(&card.row).map(|s| s.cid) != Some(cid) && cid != 0 {
+            tracing::warn!("mirror out of step: Xyz material {cid} not at {from:?}");
+        }
+        let mut out = self.drop_counters(&from);
+        self.sides[from.player as usize].zone(from.zone).clear();
+        self.positions.remove(&(from.player, from.zone));
+        self.materials.push((card, from));
+        out.push(command(CARD_VANISH, [from.player, from.zone, 0, 0]));
+        out
+    }
+
+    /// An Xyz material leaves its monster for a place (a detach to the Graveyard, its monster leaving the field): the
+    /// card goes there with a move from the field slot it left when that slot is still empty (the client clears the
+    /// move's slot, 0x5000E0, and so lets go of the hidden object), else from any empty field slot (another card landed
+    /// on its old one, which let go of it). **Shape**: the card flies from that slot. None empty: not followed (logged).
+    fn detach(&mut self, cid: u16, to: Place) -> Vec<Message> {
+        let Some(at) = self.materials.iter().position(|(c, _)| self.cards.get(&c.row).map(|s| s.cid) == Some(cid) || cid == 0) else { return vec![] };
+        let empty_at = |s: &Self, p: u32, z: u32| s.sides[p as usize].zones.get(&z).is_none_or(Vec::is_empty);
+        let left = self.materials[at].1;
+        let empty = |s: &Self, p: u32| (0..=FIELD_SPELL).find(|&z| empty_at(s, p, z)).map(|z| (p, z));
+        let slot = if empty_at(self, left.player, left.zone) { Some((left.player, left.zone)) } else { empty(self, to.player).or_else(|| empty(self, 1 - to.player)) };
+        let Some((player, zone)) = slot else {
+            tracing::warn!("an Xyz material leaves with no empty field slot to move it from");
+            return vec![];
+        };
+        let (card, _) = self.materials.remove(at);
+        self.sides[player as usize].zone(zone).push(card);
+        let via = Place { player, zone, index: 0, face_up: false, defense: false };
+        self.relocate(cid, via, to)
+    }
+
+    /// MSG_SWAP_GRAVE_DECK {player, grave, extra}: a player's Graveyard and Deck trade their cards (Exchange of the Spirit),
+    /// Extra Deck monsters going back to the Extra Deck. The sidecar gives the Graveyard and Extra Deck as they are after
+    /// it. Each old Graveyard card moves out, from the top: to the Extra Deck while the engine's holds more of its id than
+    /// the mirror's, else to the Deck; then each new Graveyard card moves in from the Deck, in the engine's order.
+    fn swap_grave_deck(&mut self, m: &Json) -> Vec<Message> {
+        let p = self.player(&m["player"]);
+        let cids = |k: &str| -> Vec<u16> { m[k].as_array().into_iter().flatten().map(|c| c["cid"].as_u64().unwrap_or(0) as u16).collect() };
+        let (grave, extra) = (cids("grave"), cids("extra"));
+        let cid_of = |s: &Self, c: &Card| s.cards.get(&c.row).map_or(0, |s| s.cid);
+        let at = |zone: u32, index: usize| Place { player: p, zone, index, face_up: true, defense: false };
+        let mut out = vec![];
+        while let Some(card) = self.sides[p as usize].zones.get(&GRAVE).and_then(|z| z.last()).copied() {
+            let cid = cid_of(self, &card);
+            let index = self.sides[p as usize].zone(GRAVE).len() - 1;
+            let in_extra = self.sides[p as usize].zones.get(&EXTRA).map_or(0, |z| z.iter().filter(|c| cid_of(self, c) == cid).count());
+            let to = if extra.iter().filter(|&&c| c == cid).count() > in_extra {
+                Place { face_up: false, ..at(EXTRA, self.sides[p as usize].zone(EXTRA).len()) }
+            } else {
+                Place { face_up: false, ..at(DECK, 0) }
+            };
+            out.extend(self.relocate(cid, at(GRAVE, index), to));
+        }
+        for (i, cid) in grave.into_iter().enumerate() {
+            out.extend(self.relocate(cid, Place { face_up: false, ..at(DECK, 0) }, at(GRAVE, i)));
+        }
+        out
+    }
+
+    /// MSG_SWAP {card1, card2}: two field cards trade places (Creature Swap: two monsters change sides), each keeping its
+    /// own position. Which mirror card is the engine's card1 is told by its id; then [`trade`](Self::trade).
+    fn swap(&mut self, m: &Json) -> Vec<Message> {
+        let (Some(p1), Some(p2)) = (self.engine_place(&m["card1"]), self.engine_place(&m["card2"])) else { return vec![] };
+        if p1.zone > FIELD_SPELL || p2.zone > FIELD_SPELL {
+            return vec![];
+        }
+        let cid1 = m["card1"]["cid"].as_u64().unwrap_or(0) as u16;
+        let holds = |p: &Place| self.sides[p.player as usize].zones.get(&p.zone).and_then(|z| z.first()).and_then(|c| self.cards.get(&c.row)).map(|s| s.cid);
+        // The message may name the places before or after the swap: card1 goes to whichever place doesn't hold it now.
+        let (card1_at, card2_at) = if holds(&p2) == Some(cid1) && holds(&p1) != Some(cid1) { (p2, p1) } else { (p1, p2) };
+        let (card1_to, card2_to) = (Place { face_up: p1.face_up, defense: p1.defense, ..card2_at }, Place { face_up: p2.face_up, defense: p2.defense, ..card1_at });
+        self.trade(card1_to, card2_to)
+    }
+
+    /// MSG_SHUFFLE_SET_CARD {location, places: [{controller, location, sequence, position, cid}]}: Set cards shuffled
+    /// among their zones (Magical Hats). The sidecar lists each shuffled zone and the card it holds after the shuffle (the
+    /// core's own lists give only the old places, see `fixShuffles` in duelcore.ts); each of the mirror's cards in those
+    /// zones is matched by id to its new zone (identical cards are interchangeable) and traded into place.
+    fn shuffle_set(&mut self, m: &Json) -> Vec<Message> {
+        let places: Vec<(Place, u16)> = m["places"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|p| Some((self.engine_place(p)?, p["cid"].as_u64().unwrap_or(0) as u16)))
+            .filter(|(p, _)| p.zone <= FIELD_SPELL)
+            .collect();
+        let mut left: Vec<(u32, u16)> = places
+            .iter()
+            .filter_map(|(p, _)| self.sides[p.player as usize].zones.get(&p.zone).and_then(|z| z.first()))
+            .map(|c| (c.uid, self.cards.get(&c.row).map_or(0, |s| s.cid)))
+            .collect();
+        let mut moves = vec![];
+        for (to, cid) in &places {
+            if let Some(i) = left.iter().position(|(_, c)| c == cid) {
+                moves.push((left.remove(i).0, *to));
+            }
+        }
+        if !left.is_empty() {
+            tracing::warn!("a Set card shuffle the mirror can't follow: {m}");
+        }
+        let mut out = vec![];
+        for (uid, to) in moves {
+            let at = self.sides.iter().enumerate().find_map(|(p, side)| {
+                side.zones.iter().find(|(z, cards)| **z <= FIELD_SPELL && cards.first().is_some_and(|c| c.uid == uid)).map(|(z, _)| (p as u32, *z))
+            });
+            let Some((player, zone)) = at.filter(|&(p, z)| (p, z) != (to.player, to.zone)) else { continue };
+            // The card already in the new zone takes this card's old zone as it is shown now.
+            let (face_up, defense) = self.positions.get(&(to.player, to.zone)).copied().unwrap_or((to.face_up, to.defense));
+            out.extend(self.trade(to, Place { player, zone, index: 0, face_up, defense }));
+        }
+        out
+    }
+
+    /// The cards at field places `a` and `b` trade places: the one at `b` lands at `a` with `a`'s face and position, the
+    /// one at `a` at `b` with `b`'s. CardSwap (0x1B) when both are there, a move (0x1A) when one place is empty; then each
+    /// card's table entry and, for a monster zone, its record.
+    fn trade(&mut self, a: Place, b: Place) -> Vec<Message> {
+        let at = |s: &Self, p: &Place| s.sides[p.player as usize].zones.get(&p.zone).and_then(|z| z.first()).copied();
+        let (card_a, card_b) = (at(self, &a), at(self, &b));
+        let mut out = match (card_a, card_b) {
+            (Some(_), Some(_)) => vec![command(CARD_SWAP, [0, a.packed(), b.packed(), 0])],
+            (Some(c), None) => vec![command(MOVE, [c.uid | (c.row as u32) << 16, Place { face_up: false, defense: false, ..a }.packed(), b.packed(), 0])],
+            (None, Some(c)) => vec![command(MOVE, [c.uid | (c.row as u32) << 16, Place { face_up: false, defense: false, ..b }.packed(), a.packed(), 0])],
+            (None, None) => return vec![],
+        };
+        for (place, card) in [(a, card_b), (b, card_a)] {
+            let zone = self.sides[place.player as usize].zone(place.zone);
+            zone.clear();
+            zone.extend(card);
+            match card {
+                Some(c) => {
+                    self.positions.insert((place.player, place.zone), (place.face_up, place.defense));
+                    let row = self.shown_row(&place, c.row);
+                    out.push(command(CARD, [c.uid | open(place.zone), row, 0, table_place(place.player, place.zone, 0)]));
+                    if place.zone < 5 && row != 0 && place.face_up {
+                        out.extend(self.monster_record(place.player, place.zone, c.row));
+                    }
+                }
+                None => {
+                    self.positions.remove(&(place.player, place.zone));
+                }
+            }
+        }
         out
     }
 
@@ -1006,6 +1185,11 @@ impl Translator {
 
     /// The client place of an engine location {controller, location, sequence, position}.
     fn engine_place(&self, loc: &Json) -> Option<Place> {
+        // An Xyz material: ocgcore-wasm gives its Xyz Monster's location with an `overlay_sequence` (a material attached
+        // in the Extra Deck read as the Extra Deck, one detached as its monster's zone); the client has no place for it.
+        if is_material(loc) {
+            return None;
+        }
         let player = self.player(&loc["controller"]);
         let seq = loc["sequence"].as_u64()? as usize;
         let (zone, index) = match loc["location"].as_u64()? {
@@ -1638,6 +1822,11 @@ impl Translator {
         }
         None
     }
+}
+
+/// Whether an engine location is an Xyz material's (ocgcore-wasm adds `overlay_sequence`; a raw location has bit 0x80).
+fn is_material(loc: &Json) -> bool {
+    loc["overlay_sequence"].is_u64() || loc["location"].as_u64().unwrap_or(0) & LOC_OVERLAY != 0
 }
 
 /// Tokens' uids, after any deck's (a move carries the uid in 16 bits).

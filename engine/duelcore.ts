@@ -3,7 +3,9 @@
 // One duel per process. Each request is one line on stdin, each answer one line on stdout:
 //   {"op":"new","seed":7,"lp":8000,"decks":[{"main":[cid…],"extra":[cid…]},{…}]}  team 0 goes first
 //   {"op":"respond","response":{…}}                                       an OcgResponse
-// Answer: {"messages":[…],"status":"await"|"end","errors":[…]}: the core's messages up to the next prompt.
+//   {"op":"state"}                       where every card is now (read only; the server's duel check, see state())
+// Answer: {"messages":[…],"status":"await"|"end","errors":[…]}: the core's messages up to the next prompt; "state"
+// answers {"status":"state","teams":[…]}.
 // Cards are given and reported by Konami card id (the client's "CID"): every `code` (or MOVE's `card`) in a
 // message gets a `cid` next to it. MOVE also gets its `reason`, read back from the card. Needs `fetch.sh` run first
 // (packages, card scripts, card database, Konami ids).
@@ -118,6 +120,38 @@ function addReasons(batch: Move[]) {
   }
 }
 
+const MSG_SHUFFLE_SET_CARD = 36;
+type Loc = { controller: 0 | 1; location: number; sequence: number; position?: number };
+
+/** MSG_SHUFFLE_SET_CARD as the core writes it: the shuffled cards' old places, then as many Xyz material places (zero
+ * when none). ocgcore-wasm reads them as {from, to} pairs, which pairs old places with each other; and the new place of
+ * each card is in neither list. So the message is given `places`: each shuffled zone and the card it holds now, read
+ * back from the duel right after the step (the translator matches them to its cards by id). */
+function fixShuffles(batch: { type: number | string; cards?: { from: Loc; to: Loc }[]; places?: unknown[] }[]) {
+  for (const m of batch) {
+    if (m.type !== MSG_SHUFFLE_SET_CARD || !m.cards) continue;
+    const zones = m.cards.flatMap((c) => [c.from, c.to]).slice(0, m.cards.length).filter((l) => l.location);
+    m.places = zones.map((l) => {
+      const q = lib.duelQuery(handle!, { flags: OcgQueryFlags.CODE | OcgQueryFlags.POSITION, controller: l.controller, location: l.location, sequence: l.sequence, overlaySequence: 0 });
+      return { controller: l.controller, location: l.location, sequence: l.sequence, position: Number(q?.position ?? 0), code: Number(q?.code ?? 0) };
+    });
+  }
+}
+
+const MSG_SWAP_GRAVE_DECK = 35;
+
+/** MSG_SWAP_GRAVE_DECK (Exchange of the Spirit) says only how many cards the Deck holds: it is given the player's
+ * `grave` and `extra` as they are after the step, in sequence order, for the translator to move each card. */
+function fixGraveSwaps(batch: { type: number | string; player?: number; grave?: unknown[]; extra?: unknown[] }[]) {
+  for (const m of batch) {
+    if (m.type !== MSG_SWAP_GRAVE_DECK) continue;
+    const codes = (location: OcgLocation) =>
+      lib.duelQueryLocation(handle!, { flags: OcgQueryFlags.CODE, controller: (m.player ?? 0) as 0 | 1, location }).filter((c) => c).map((c) => ({ code: Number(c!.code) }));
+    m.grave = codes(OcgLocation.GRAVE);
+    m.extra = codes(OcgLocation.EXTRA);
+  }
+}
+
 const MONSTER_STATS = OcgQueryFlags.POSITION | OcgQueryFlags.LEVEL | OcgQueryFlags.ATTACK | OcgQueryFlags.DEFENSE |
   OcgQueryFlags.BASE_ATTACK | OcgQueryFlags.BASE_DEFENSE;
 let lastField = "";
@@ -141,6 +175,26 @@ function fieldReport() {
   return { type: "field", monsters };
 }
 
+/** Where every card is, by team: the hand, Graveyard, banished and Extra Deck in sequence order, the monster and
+ * Spell/Trap zones by sequence (null where empty; Spell/Trap 5 is the Field Spell zone), and how many cards the Deck
+ * holds. Each card {code, position} gets its `cid` (or `name`) like the messages. Xyz materials aren't listed. */
+function state() {
+  const flags = OcgQueryFlags.CODE | OcgQueryFlags.POSITION;
+  const at = (controller: 0 | 1, location: OcgLocation) =>
+    lib.duelQueryLocation(handle!, { flags, controller, location }).map((c) => (c ? { code: Number(c.code), position: Number(c.position) } : null));
+  const list = (controller: 0 | 1, location: OcgLocation) => at(controller, location).filter((c) => c !== null);
+  const teams = ([0, 1] as const).map((t) => ({
+    hand: list(t, OcgLocation.HAND),
+    mzone: at(t, OcgLocation.MZONE),
+    szone: at(t, OcgLocation.SZONE),
+    grave: list(t, OcgLocation.GRAVE),
+    removed: list(t, OcgLocation.REMOVED),
+    extra: list(t, OcgLocation.EXTRA),
+    deck: lib.duelQueryCount(handle!, t, OcgLocation.DECK),
+  }));
+  return { status: "state", teams: withCids(teams) };
+}
+
 /** Runs the duel until it needs an answer or ends. The core keeps prompting after a win, so a win ends it here. */
 function run() {
   const messages: { type: number | string }[] = [];
@@ -148,6 +202,8 @@ function run() {
     const status = lib.duelProcess(handle!);
     const batch = lib.duelGetMessage(handle!) as { type: number | string }[];
     addReasons(batch as Move[]);
+    fixShuffles(batch as Parameters<typeof fixShuffles>[0]);
+    fixGraveSwaps(batch as Parameters<typeof fixGraveSwaps>[0]);
     const waiting = status === OcgProcessResult.WAITING;
     // Before the prompt, which stays last.
     const field = waiting && !batch.length ? null : fieldReport();
@@ -208,6 +264,9 @@ for await (const line of createInterface({ input: process.stdin })) {
         : r;
       lib.duelSetResponse(handle!, response);
       answer = run();
+    } else if (req.op === "state") {
+      process.stdout.write(JSON.stringify({ ...state(), errors: [...errors] }, bigintsAsNumbers) + "\n");
+      continue;
     } else throw new Error(`unknown op ${req.op}`);
     answer = { ...answer, messages: withCids(answer.messages) };
   } catch (e) {
