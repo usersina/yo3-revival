@@ -1,0 +1,35 @@
+name: 🔌 I can't set it up or connect
+description: Trouble installing, connecting, joining or hosting.
+labels: ["setup help"]
+body:
+  - type: dropdown
+    id: who
+    attributes:
+      label: Are you…
+      options:
+        - A player joining a server
+        - Hosting a server
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's going wrong?
+      description: What you tried and what happened. If an error message shows, copy it here exactly as it is.
+    validations:
+      required: true
+  - type: dropdown
+    id: pc
+    attributes:
+      label: Your PC
+      options:
+        - Windows
+        - Linux (Wine)
+        - Other
+  - type: checkboxes
+    id: guide
+    attributes:
+      label: Before you post
+      options:
+        - label: I read the guide's [troubleshooting section](https://github.com/usersina/yo3-revival/blob/main/docs/guide.md#when-something-goes-wrong).
+          required: true

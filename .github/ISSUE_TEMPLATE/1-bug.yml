@@ -1,0 +1,39 @@
+name: 🐛 Something's broken
+description: Something in the game or the server doesn't work as it should.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Describe what went wrong. If you can, say what you did just before it happened.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where?
+      options:
+        - Duel
+        - Deck & cards
+        - Shop & trades
+        - Chat & friends
+        - Logging in or joining
+        - Other
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: Optional. Drag and drop an image here.
+  - type: dropdown
+    id: pc
+    attributes:
+      label: Your PC
+      options:
+        - Windows
+        - Linux (Wine)
+        - Other

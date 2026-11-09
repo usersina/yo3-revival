@@ -64,6 +64,7 @@ The [docs index](docs/README.md) says what each document is for. The ones you wi
 | `tools/docs-check.py` | Checks every relative link and anchor in the Markdown, prints a table of contents (`--toc FILE`) |
 | `tools/release.sh` | Builds the host's release bundles into `dist/` (ignored) |
 | `LICENSE` | MIT |
+| `.github/ISSUE_TEMPLATE/` | Issue forms for players (bug, setup help, idea) and the new-issue page's links. Labels: `bug`, `setup help`, `idea` (set by the forms); areas `duels`, `cards & decks`, `accounts & joining`, `hosting`; status `needs info`, `confirmed`, `client limitation`, `duplicate` |
 | `re/` (ignored) | Ghidra project `re/ghidra`, `re/yo3_decompiled.c`, GhidraMCP jar |
 | `logs/` (ignored) | `packets-*.jsonl`, `client-stdout.log` (client trace), `client-wine.log`, `shots/` |
 

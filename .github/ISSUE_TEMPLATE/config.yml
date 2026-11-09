@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 How to play and join
+    url: https://github.com/usersina/yo3-revival/blob/main/docs/guide.md#for-every-player
+    about: Getting the game, joining a server and your first duel.
+  - name: 🛠️ Troubleshooting
+    url: https://github.com/usersina/yo3-revival/blob/main/docs/guide.md#when-something-goes-wrong
+    about: Answers to the most common problems.
