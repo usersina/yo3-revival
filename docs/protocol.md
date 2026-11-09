@@ -908,6 +908,22 @@ named it; the owner's info panel took the card too. The opponent's hand cards ha
 entry (1000, with the row) goes first. The client sees a card shown to it and its own cards shown to the opponent,
 not the opponent's cards shown to the opponent. A hand card shows at once; a card from the Deck (a search) shows when
 it reaches the hand: the server keeps its Konami id until the move to the hand, then sends the show at its new index.
+**Hand shuffles** (MSG_SHUFFLE_HAND, 33 `{player, cards}`: EDOPro shuffles a hand after a card in it was shown, as
+after a search's confirm). `cards` is the hand's new order as bare passcodes; the sidecar adds `cids` beside them. The
+server reorders its mirror of the hand to match, re-sends each hand card's table entry (1000) at its new index, then
+`0x12` HandShuffle {player} (DuelCardManager `0x4FF000` case `0x12`): the client rebuilds that player's hand list index
+by index from the table (`0x523DF0(player, 0xB, i)`, then the object by uid `0x500470`), renumbers each card and redraws
+it. An index with no table entry stops it with an error state (`0x1200`), so every index below the hand's count gets one.
+A shuffle that leaves the order unchanged (identical cards) sends nothing. **Confirmed** (live, `--duel-deck
+248,2627,807`: after Sangan's search the server sent the seven entries and `0x12 {0}`, the hand showed the new order, and
+the card clicked at index 5 was the one the engine summoned). Missed, it put the client's hand out of step with the
+engine's: see the hand-index rule under the moves above, and the crash it caused in
+[client-internals](client-internals.md#crash-history-and-the-rule-each-one-taught).
+
+**Moves out of a hand go by index.** `0x5000E0` takes a card out of its hand list by the move's from index
+(`0x5005D0(player, index)`), not by uid. When the server's mirror finds the card the engine named at another index than
+the engine's sequence, the move names the mirror's index (where the client has it).
+
 `0x14` HandOpen {player, open flag, uid or 0 for the whole hand} (`0x4FF1E7`: effect mode `0xD` closes, `0xC` opens, the
 card's face bit set to the flag) is the way to hold a hand open; not used. Cards revealed elsewhere (a Set card, the
 top of the Deck) are not shown: **open**. CardLockon `0x19` and RunDetail `0x3B` were not needed (`0x3B` has no case in

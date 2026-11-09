@@ -1552,14 +1552,40 @@ fn magical_hats_list_of_two_says_how_many_and_two_picks_answer() {
 #[test]
 fn a_card_leaving_a_list_zone_is_taken_by_its_id_when_the_mirror_is_out_of_step() {
     // The mirror takes the card at the engine's sequence; if another card sits there (the zones fell out of step),
-    // the move must carry the card the engine named, not the stale one (a wrong card's art on the field).
+    // the move must carry the card the engine named, not the stale one (a wrong card's art on the field), and come
+    // from where the client has it: the client takes a hand card out of its hand by the move's index, not by uid
+    // (0x5000E0 → 0x5005D0). From the engine's index it dropped another card and kept this one in its hand list after
+    // it left; the next card into that hand renumbered the list (0x500640 → 0x4FB7F0) and crashed on it (0x516185).
     let (mut t, _) = translator();
     t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }, { "cid": 4101 }, { "cid": 4102 }] })]);
-    // The engine says the Spell (4100) leaves hand sequence 1 (the mirror holds 4101 there).
+    // The engine says the Spell (4100) leaves hand sequence 1 (the mirror holds 4101 there, 4100 at 0).
     let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 1, 10), "to": loc(0, 8, 1, 1) })]).iter().map(cmd).collect();
-    // uid 1 holds row 100; its table entry and its move.
+    // uid 1 holds row 100; its table entry and its move, from hand index 0.
     assert_eq!(out[0], (1000, [1, 100, 0, 0x600]));
-    assert_eq!(out[1], (0x1A, [1 | 100 << 16, 0x56, 0x400C, 0]));
+    assert_eq!(out[1], (0x1A, [1 | 100 << 16, 0xB << 1, 0x400C, 0]));
+}
+
+#[test]
+fn a_hand_shuffle_reorders_the_hand_on_the_client_too() {
+    // MSG_SHUFFLE_HAND (33) {player, cards, cids}: the engine shuffles a hand after showing a card in it (a search's
+    // confirm). Its later moves name the new sequences, so the mirror takes the engine's order and the client follows:
+    // each hand card's table entry at its new index, then HandShuffle {player} (0x12, DuelCardManager 0x4FF000), which
+    // rebuilds the hand from the table's (player, hand, index) entries (0x523DF0) in index order. Missed (live, the
+    // CPU's Sangan search), the hands fell out of step and a card left the client's hand from the wrong index.
+    let (mut t, _) = translator();
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }, { "cid": 4101 }, { "cid": 4102 }] })]);
+    let shuffle = |cids: [u32; 3]| json!({ "type": 33, "player": 0, "cards": [1, 2, 3], "cids": cids });
+    let out: Vec<_> = t.events(&[shuffle([4102, 4100, 4101])]).iter().map(cmd).collect();
+    let hand = |i: u32| 0xB << 8 | i << 16;
+    assert_eq!(out, [(1000, [3, 102, 0, hand(0)]), (1000, [1, 100, 0, hand(1)]), (1000, [2, 101, 0, hand(2)]), (0x12, [0, 0, 0, 0])]);
+    // The engine's sequences now match: 4102 leaves from index 0, and the others move up.
+    let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4102, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 1, 1) })]).iter().map(cmd).collect();
+    assert_eq!(out[1], (0x1A, [3 | 102 << 16, 0xB << 1, 0x400C, 0]));
+    assert_eq!(out[2..], [(1000, [1, 100, 0, hand(0)]), (1000, [2, 101, 0, hand(1)])]);
+    // A shuffle that leaves the order as it is sends nothing; one that doesn't match the hand (a count or an id the
+    // mirror doesn't have) is ignored rather than guessed.
+    assert!(t.events(&[json!({ "type": 33, "player": 0, "cards": [1, 2], "cids": [4100, 4101] })]).is_empty());
+    assert!(t.events(&[json!({ "type": 33, "player": 0, "cards": [1, 2], "cids": [4101, 4100, 4109] })]).is_empty());
 }
 
 #[test]

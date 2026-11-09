@@ -49,6 +49,7 @@ const MSG_DAMAGE: u64 = 91;
 const MSG_RECOVER: u64 = 92;
 const MSG_LPUPDATE: u64 = 94;
 const MSG_CONFIRM_CARDS: u64 = 31;
+const MSG_SHUFFLE_HAND: u64 = 33;
 const MSG_POS_CHANGE: u64 = 53;
 const MSG_SUMMONING: u64 = 60;
 const MSG_SPSUMMONING: u64 = 62;
@@ -124,6 +125,10 @@ const FLIP_TURN: u32 = 0x1C;
 const CARD_VANISH: u32 = 0x1F;
 /// HandShow {player, index}: a hand card shows its face (DuelCardManager 0x4FF15C).
 const HAND_SHOW: u32 = 0x13;
+/// HandShuffle {player}: the client rebuilds the player's hand from its card table, index by index (the card at
+/// (player, hand, i) by 0x523DF0, its object by uid 0x500470; DuelCardManager 0x4FF000 case 0x12). Every index below
+/// the hand's count needs an entry, or the client stops with an error state (0x1200).
+const HAND_SHUFFLE: u32 = 0x12;
 /// A card table entry's flag (command 1000's uid top byte, kept as `!= 0` by 0x521DF0): a pile whose count changes
 /// draws its top card's face when its entry has it, else a back (0x4FE4D0 → 0x523DA0), and the pointer over the pile
 /// previews that card (0x50B9C0). Set for the open piles: the Graveyard and the banished cards.
@@ -607,6 +612,7 @@ impl Translator {
                     }
                 }
                 Some(MSG_CONFIRM_CARDS) => out.extend(self.confirm(m)),
+                Some(MSG_SHUFFLE_HAND) => out.extend(self.shuffle_hand(m)),
                 Some(MSG_CHAIN_END) => self.chaining = None,
                 Some(MSG_WIN) => {
                     let result = match m["player"].as_u64() {
@@ -678,6 +684,45 @@ impl Translator {
             // Tokens and Xyz materials have no client place yet.
             _ => vec![],
         }
+    }
+
+    /// MSG_SHUFFLE_HAND {player, cards, cids}: the engine's hand in its new order (after a card in it was shown). The
+    /// mirror takes that order and the client follows: each card's table entry at its new index, then HandShuffle. A
+    /// list that doesn't match the mirror's hand (another count, an id it doesn't hold) is left alone: moves still find
+    /// their card by id.
+    fn shuffle_hand(&mut self, m: &Json) -> Vec<Message> {
+        let p = self.player(&m["player"]);
+        let cids: Vec<u16> = m["cids"].as_array().into_iter().flatten().map(|c| c.as_u64().unwrap_or(0) as u16).collect();
+        let cards = &self.cards;
+        let hand = self.sides[p as usize].zone(HAND);
+        if cids.len() != hand.len() {
+            tracing::warn!("a hand shuffle of {} cards for a hand of {}", cids.len(), hand.len());
+            return vec![];
+        }
+        let mut left = hand.clone();
+        let mut order = Vec::with_capacity(left.len());
+        for cid in &cids {
+            let Some(at) = left.iter().position(|c| cards.get(&c.row).map(|s| s.cid) == Some(*cid)) else {
+                tracing::warn!("a hand shuffle names card {cid}, which the hand doesn't hold");
+                return vec![];
+            };
+            order.push(left.remove(at));
+        }
+        if order.iter().map(|c| c.uid).eq(hand.iter().map(|c| c.uid)) {
+            return vec![];
+        }
+        *hand = order.clone();
+        tracing::debug!("hand shuffle: player {p}, {} cards", order.len());
+        let mut out: Vec<Message> = order
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                let row = self.shown_row(&Place { player: p, zone: HAND, index: i, face_up: false, defense: false }, c.row);
+                command(CARD, [c.uid, row, 0, table_place(p, HAND, i)])
+            })
+            .collect();
+        out.push(command(HAND_SHUFFLE, [p, 0, 0, 0]));
+        out
     }
 
     /// MSG_CONFIRM_CARDS {player, cards}: the cards are shown to `player`. The client sees one it is shown to, and its
@@ -758,6 +803,10 @@ impl Translator {
             }
         };
         let Some(at) = at else { return vec![] };
+        // The client takes a hand card out by the move's index (0x5000E0 → 0x5005D0), so the move names the index the
+        // mirror (the client's view) found it at, not the engine's: from another index the client drops the wrong card
+        // and keeps this one in its hand list, and the next renumbering of that hand crashes on it (0x516185).
+        let from = if from.zone == DECK || from.zone == EXTRA { from } else { Place { index: at, ..from } };
         let card = source.remove(at);
         let dest = self.sides[to.player as usize].zone(to.zone);
         let index = if to.zone > FIELD_SPELL { to.index.min(dest.len()) } else { 0 };

@@ -69,8 +69,9 @@ function readScript(name: string) {
   }
 }
 
-/** Adds `cid` next to every numeric `code` (or `card`, as MOVE names it), so the server never sees passcodes (and
- * `name` when there is no Konami id, as for tokens), and `description_cid` next to a `description` that is a card's script string (aux.Stringid: code << 20 | n). */
+/** Adds `cid` next to every numeric `code` (or `card`, as MOVE names it) and `cids` next to a list of codes, so the
+ * server never sees passcodes (and `name` when there is no Konami id, as for tokens), and `description_cid` next to a
+ * `description` that is a card's script string (aux.Stringid: code << 20 | n). */
 function withCids(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(withCids);
   if (value && typeof value === "object") {
@@ -81,6 +82,10 @@ function withCids(value: unknown): unknown {
     if (typeof code === "number" && code && !out.cid) {
       const name = nameOf(code);
       if (name) out.name = name;
+    }
+    // A bare list of codes (SHUFFLE_HAND's `cards`): `cids` beside it, in the same order.
+    if (Array.isArray(out.cards) && out.cards.every((c) => typeof c === "number")) {
+      out.cids = (out.cards as number[]).map((c) => cidOf.get(c) ?? 0);
     }
     if (typeof out.description === "bigint" || typeof out.description === "number") {
       const owner = cidOf.get(Number(BigInt(out.description) >> 20n));

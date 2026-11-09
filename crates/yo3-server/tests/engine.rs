@@ -57,6 +57,31 @@ fn two_placeholder_ais_play_a_duel_to_the_end() {
 }
 
 #[test]
+fn a_hand_shuffle_names_the_cards_by_their_client_ids() {
+    // After a search the engine shows the card and shuffles the hand: MSG_SHUFFLE_HAND (33) {player, cards} with bare
+    // passcodes, which the sidecar gives `cids` beside, so the translator can follow the new order (a missed shuffle
+    // put the client's hand out of step and crashed it). 4054 = Sangan (destroyed, it adds a monster with 1500 or less
+    // ATK from the Deck: another Sangan), against 6960 = Gene-Warped Warwolf (2000 ATK), both sides played by the AI.
+    let Some(mut engine) = engine() else { return };
+    let sangans = [4054u16; 40];
+    let warwolves = [6960u16; 40];
+    let mut answer = engine.new_duel(5, 8000, [(&sangans, &[]), (&warwolves, &[])]).expect("a duel");
+    let mut shuffles = vec![];
+    for _ in 0..5_000 {
+        shuffles.extend(answer.messages.iter().filter(|m| m["type"] == 33).cloned());
+        if answer.status != "await" || !shuffles.is_empty() {
+            break;
+        }
+        let prompt = answer.messages.last().expect("a prompt").clone();
+        answer = engine.respond(yo3_server::translate::bot_answer(&prompt)).expect("the engine answers");
+    }
+    let shuffle = shuffles.first().expect("a hand shuffle after Sangan's search");
+    let (cards, cids) = (shuffle["cards"].as_array().unwrap(), shuffle["cids"].as_array().expect("cids beside the cards"));
+    assert_eq!(cards.len(), cids.len());
+    assert!(cids.iter().all(|c| c == 4054), "{shuffle}");
+}
+
+#[test]
 fn moves_carry_their_reason() {
     // ocgcore-wasm drops MSG_MOVE's reason; the sidecar reads it back with a query at the card's new place. Normal
     // Monsters leave the field only by battle: REASON_DESTROY (1) | REASON_BATTLE (0x20).
