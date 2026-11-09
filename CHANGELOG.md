@@ -9,6 +9,13 @@ gather under "Unreleased" first.
 
 ## Unreleased
 
+Nothing yet.
+
+## v0.0.3 (2026-11-09)
+
+Fixes a locked main screen and a crash. Download the bundle for your system below, unpack it, copy the `data` folder
+from your old one into it (your accounts, cards and decks), and run it as before.
+
 - Fixed: for a player with a friend (or someone ignored), the main screen stayed locked after login: only the chat
   answered clicks. The game was waiting for an old Yu-Gi-Oh! Online 2 step the server didn't answer.
 - Fixed: clicking the eagle icon at the top left crashed the game. It now shows your Duelist premium.
