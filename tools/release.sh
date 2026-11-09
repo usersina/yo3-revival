@@ -49,13 +49,16 @@ rem Fetches what the rules engine needs and is not shipped: the npm packages (oc
 rem scripts and card database, and the Konami card ids. Needs Node.js 22.18 or newer, Git and curl (Windows 10 and
 rem later have curl). "fetch.cmd check" only checks that they are installed.
 cd /d "%~dp0"
-set "MISSING="
-where node >nul 2>nul || set "MISSING=%MISSING% Node.js (version 22.18 or newer, from https://nodejs.org/)"
-where npm >nul 2>nul || set "MISSING=%MISSING% npm (comes with Node.js, https://nodejs.org/)"
-where git >nul 2>nul || set "MISSING=%MISSING% Git (from https://git-scm.com/download/win)"
-where curl >nul 2>nul || set "MISSING=%MISSING% curl (Windows 10 and later have it; on older Windows get it from https://curl.se/windows/)"
-if not defined MISSING goto :havetools
-echo Cannot set up the rules engine. Please install:%MISSING%
+where node >nul 2>nul || set "NO_NODE=1"
+where npm >nul 2>nul || set "NO_NPM=1"
+where git >nul 2>nul || set "NO_GIT=1"
+where curl >nul 2>nul || set "NO_CURL=1"
+if not defined NO_NODE if not defined NO_NPM if not defined NO_GIT if not defined NO_CURL goto :havetools
+echo Cannot set up the rules engine. Please install:
+if defined NO_NODE echo   - Node.js, version 22.18 or newer: https://nodejs.org/
+if defined NO_NPM echo   - npm, which comes with Node.js: https://nodejs.org/
+if defined NO_GIT echo   - Git: https://git-scm.com/download/win
+if defined NO_CURL echo   - curl: Windows 10 and later have it; on older Windows get it from https://curl.se/windows/
 echo Without them duels cannot be played. Install them, then run this again.
 exit /b 1
 :havetools
