@@ -924,15 +924,25 @@ engine's: see the hand-index rule under the moves above, and the crash it caused
 list at `+0xB8`/`+0xCC`) and draws them while the pointer is on a face-up field card (mouse move `0x50B700` →
 `0x50AC20` → `0x50B1C0`; command `0x26` redraws them too): every relation from the hovered card's place draws a
 marker on the related slot. Commands: 1017 (`0x3F9`) {param1 the source place `player | zone << 8` (client-relative,
-zone below `0xB`), param2 the target place (same form), param3 the marker type 1–8, param4 1 add / 0 remove}
-(`0x5224E0` / `0x522530`); 1018 (`0x3FA`) {param1 the source place, param2 a target place, or `0xFFFF` for all of
-that source's relations} removes them (`0x5226B0` / `0x522750`). Type n draws field effect `0x33 + n`, except 6 →
+zone below `0xB`), param2 the target place (same form), param3 the marker type 1–8, param4 1 add (`0x5224E0`) / 0
+remove the entry matching all three (`0x522530`)}. (1018, `0x3FA`, is another table, a map at `+0xD8`: {param1 →
+param2} set (`0x5226B0`), or param1's entry deleted when param2 is `0xFFFF` (`0x522750`); what reads it is **open**.)
+Type n draws field effect `0x33 + n`, except 6 →
 `0x35` and 7 → `0x37` (bit `0x100` of the type adds the type-8 marker); the effects use `cicon/duel_eff_cicon_01`–`08`.
 **Confirmed** live (a probe build sent eight relations from the client's monster): type 1 a cyan orb, 2 and 6 a yellow
 ∞, 3 a green compass star, 4 and 7 a red ✕ circle, 5 orange turning arrows, 8 a pink target reticle, each on its
 slot (the opponent's row mirrored: their zone 0 on the client's right). What each type meant to the original server
-is **open** (no names in the client). EDOPro reports targets (CARD_TARGET 96, CANCEL_TARGET 97), equips (EQUIP 93) and
-relations; the translator doesn't follow them yet (see the roadmap's duel check audit).
+is **open** (no names in the client).
+
+The server sends the engine's links: an equip (MSG_EQUIP 93 {card, target}; a new one replaces that equip's earlier
+link) with type 2, a lasting target (MSG_CARD_TARGET 96, ended by MSG_CANCEL_TARGET 97) with type 8 (the pairing is a
+**guess**). Each link goes both ways (either card as the source), follows the cards by uid, so a card that changes place
+has its relations removed at the old place and added at the new one, and goes when either card leaves the field. After
+each batch of engine events the server diffs what the client holds against what it should: removals, additions, then
+`0x26`. **Confirmed** live (`--duel-deck 807,581`, Axe of Despair on Vorse Raider): hovering the monster drew the yellow
+∞ on the Axe. Hovering the Axe drew nothing on the monster: the source lookup passed in the probe for a monster zone
+only, so a Spell/Trap slot's hovered place probably isn't `zone << 8` as sent (**open**; the relations are sent anyway).
+The duel check holds every relation to two occupied slots (240 self-played duels: 84 equips, 121 lasting targets).
 
 **Card overrides** (not sent yet). 1019 (`0x3FB`) stages {param2 type, param3 value, param4} and 1020 (`0x3FC`)
 {param1 a place} stores the staged entry for that place, or clears it when nothing is staged (`0x522850` /

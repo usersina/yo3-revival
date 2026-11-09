@@ -50,6 +50,9 @@ const MSG_RECOVER: u64 = 92;
 const MSG_LPUPDATE: u64 = 94;
 const MSG_CONFIRM_CARDS: u64 = 31;
 const MSG_SHUFFLE_HAND: u64 = 33;
+const MSG_EQUIP: u64 = 93;
+const MSG_CARD_TARGET: u64 = 96;
+const MSG_CANCEL_TARGET: u64 = 97;
 const MSG_SWAP_GRAVE_DECK: u64 = 35;
 const MSG_SHUFFLE_SET_CARD: u64 = 36;
 const MSG_SWAP: u64 = 55;
@@ -132,6 +135,16 @@ const HAND_SHOW: u32 = 0x13;
 /// (player, hand, i) by 0x523DF0, its object by uid 0x500470; DuelCardManager 0x4FF000 case 0x12). Every index below
 /// the hand's count needs an entry, or the client stops with an error state (0x1200).
 const HAND_SHUFFLE: u32 = 0x12;
+/// Card relations, which the client draws as markers on the related slots while the pointer is on a face-up field card
+/// (0x50B700 → 0x50B1C0): 1017 {source place, target place, marker type 1-8, 1 add (0x5224E0) / 0 remove the entry with
+/// all three (0x522530)} (pump 0x3F9), places as `player | zone << 8`; 0x26 redraws the hovered card's (DuelFieldManager
+/// 0x50A690). See "Card relations" in docs/protocol.md.
+const RELATION: u32 = 0x3F9;
+const RELATIONS_REDRAW: u32 = 0x26;
+/// The marker types used: an equip, the yellow ∞ (effect 0x35); a lasting target, the pink reticle (0x3B). A guess:
+/// the client names none of its eight markers.
+const MARK_EQUIP: u32 = 2;
+const MARK_TARGET: u32 = 8;
 /// CardSwap {_, place A, place B} as moves give them, both field places (zone < 11): the cards in the two slots trade
 /// places, each taking the word of the place it lands on as its place and position (DuelCardManager 0x4FF000 case 0x1B:
 /// the objects by 0x4F8240, 0x5000E0 with param_6 1, the slot array swapped). **Shape**: read in the code, not seen live.
@@ -447,6 +460,10 @@ pub struct Translator {
     /// The card list open is a mixed one (see `card_list`), and how many table entries it staged.
     mixed: bool,
     staged: Option<usize>,
+    /// The engine's links between cards (uids): (card, linked card, marker type), from MSG_EQUIP and MSG_CARD_TARGET.
+    links: Vec<(u32, u32, u32)>,
+    /// The relations the client holds: (source place, target place, marker type), places as `player | zone << 8`.
+    relations: Vec<(u32, u32, u32)>,
 }
 
 impl Translator {
@@ -531,6 +548,8 @@ impl Translator {
             materials: vec![],
             mixed: false,
             staged: None,
+            links: vec![],
+            relations: vec![],
         };
         (t, out)
     }
@@ -647,9 +666,65 @@ impl Translator {
                 Some(MSG_LPUPDATE) => {
                     out.push(command(SET_LP, [self.player(&m["player"]), m["lp"].as_u64().unwrap_or(0) as u32, 0, 0]));
                 }
+                Some(kind @ (MSG_EQUIP | MSG_CARD_TARGET | MSG_CANCEL_TARGET)) => self.link(m, kind),
                 _ => {}
             }
         }
+        out.extend(self.sync_relations());
+        out
+    }
+
+    /// MSG_EQUIP {card, target} (an equip's new monster: its earlier link goes), MSG_CARD_TARGET {card, target} (a
+    /// lasting target) and MSG_CANCEL_TARGET (its end): the cards' links, by uid.
+    fn link(&mut self, m: &Json, kind: u64) {
+        let uid = |t: &Self, loc: &Json| {
+            let place = t.engine_place(loc).filter(|p| p.zone <= FIELD_SPELL)?;
+            t.sides[place.player as usize].zones.get(&place.zone)?.first().map(|c| c.uid)
+        };
+        let (Some(card), Some(target)) = (uid(self, &m["card"]), uid(self, &m["target"])) else { return };
+        match kind {
+            MSG_EQUIP => {
+                self.links.retain(|&(c, _, mark)| !(c == card && mark == MARK_EQUIP));
+                self.links.push((card, target, MARK_EQUIP));
+            }
+            MSG_CARD_TARGET if !self.links.contains(&(card, target, MARK_TARGET)) => self.links.push((card, target, MARK_TARGET)),
+            MSG_CANCEL_TARGET => self.links.retain(|&l| l != (card, target, MARK_TARGET)),
+            _ => {}
+        }
+    }
+
+    /// The client's relations brought in line with the links, both ways round so either card shows it: a link whose
+    /// card left the field goes, one whose cards moved is re-sent at their new places. Removals, additions, then a redraw.
+    fn sync_relations(&mut self) -> Vec<Message> {
+        let place_of = |t: &Self, uid: u32| {
+            (0..2u32).find_map(|p| {
+                (0..=FIELD_SPELL).find(|z| t.sides[p as usize].zones.get(z).and_then(|c| c.first()).is_some_and(|c| c.uid == uid)).map(|z| p | z << 8)
+            })
+        };
+        let placed: Vec<_> = self.links.iter().map(|&(a, b, mark)| (place_of(self, a), place_of(self, b), mark)).collect();
+        let mut wanted = vec![];
+        let mut kept = vec![];
+        for (&link, (a, b, mark)) in self.links.iter().zip(placed) {
+            let (Some(a), Some(b)) = (a, b) else { continue };
+            kept.push(link);
+            for pair in [(a, b, mark), (b, a, mark)] {
+                if !wanted.contains(&pair) {
+                    wanted.push(pair);
+                }
+            }
+        }
+        self.links = kept;
+        let mut out: Vec<Message> = self
+            .relations
+            .iter()
+            .filter(|r| !wanted.contains(r))
+            .map(|&(a, b, mark)| command(RELATION, [a, b, mark, 0]))
+            .collect();
+        out.extend(wanted.iter().filter(|r| !self.relations.contains(r)).map(|&(a, b, mark)| command(RELATION, [a, b, mark, 1])));
+        if !out.is_empty() {
+            out.push(command(RELATIONS_REDRAW, [0; 4]));
+        }
+        self.relations = wanted;
         out
     }
 

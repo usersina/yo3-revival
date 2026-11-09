@@ -23,6 +23,9 @@
 //! - 0x1C CardFlipTurn {place}: the field card there takes the place's face and position (+0x82).
 //! - 0x1F CardVanish {player, zone | index << 8}, zone below 0xC: the card is marked off the field (+0xD7) until it
 //!   lands again (0x4FBF30).
+//! - 1017 (pump 0x3F9) {source place, target place, marker type, 1 add / 0 remove}, places `player | zone << 8`: the
+//!   relation list (0x5224E0 appends; 0x522530 removes the entry matching all three). Every relation must join two
+//!   field slots that hold a card, or the client draws a marker on an empty slot when the source is hovered.
 //!
 //! Where the model itself sees the client go wrong (a hand card taken out by an index that holds another card, a
 //! shuffle with an empty index) it notes a problem at once; [`ClientModel::check`] then compares every hand, field
@@ -47,6 +50,7 @@ const DECK_RESET: u32 = 0x16;
 const CARD_SWAP: u32 = 0x1B;
 const FLIP_TURN: u32 = 0x1C;
 const CARD_VANISH: u32 = 0x1F;
+const RELATION: u32 = 0x3F9;
 /// Zones: field slots 0-10 (monsters 0-4, Spell/Trap 5-9, Field Spell 10), then the hand and the piles.
 const FIELD_SPELL: u32 = 10;
 const HAND: u32 = 0xB;
@@ -106,6 +110,8 @@ pub struct ClientModel {
     /// Each card's place word as last given (its face and position), and the cards marked off the field.
     places: HashMap<u32, Place>,
     off_field: HashSet<u32>,
+    /// The relations the client holds: (source place, target place, marker type).
+    relations: Vec<(u32, u32, u32)>,
     /// Per player, the per-zone counts (0x5240F0) and the piles' shown counts, Extra Deck to banished.
     counts: [[i64; 4]; 2],
     piles: [[i64; 4]; 2],
@@ -125,6 +131,7 @@ impl ClientModel {
             slots: Default::default(),
             places: HashMap::new(),
             off_field: HashSet::new(),
+            relations: vec![],
             counts: Default::default(),
             piles: Default::default(),
             problems: vec![],
@@ -247,6 +254,16 @@ impl ClientModel {
                 }
                 self.note(format!("0x1F {{{p1}, {p2:#x}}}"));
             }
+            RELATION => {
+                self.note(format!("1017 {{{p1:#x}, {p2:#x}, {p3}, {p4}}}"));
+                if p4 != 0 {
+                    self.relations.push((p1, p2, p3));
+                } else if let Some(at) = self.relations.iter().position(|&r| r == (p1, p2, p3)) {
+                    self.relations.remove(at);
+                } else {
+                    self.problem(format!("1017 removes a relation the client doesn't hold: {p1:#x} -> {p2:#x}, type {p3}"));
+                }
+            }
             _ => {}
         }
     }
@@ -355,6 +372,15 @@ impl ClientModel {
         for (team, side) in teams.iter().enumerate().take(2) {
             let p = if team == 0 { self.first } else { 1 - self.first };
             found.extend(self.check_side(p, side));
+        }
+        let held = |place: u32| {
+            let (player, zone) = ((place & 1) as usize, (place >> 8 & 0xFF) as usize);
+            zone <= FIELD_SPELL as usize && self.slots[player][zone].is_some_and(|uid| !self.off_field.contains(&uid))
+        };
+        for &(a, b, mark) in &self.relations {
+            if !held(a) || !held(b) {
+                found.push(format!("a relation joins an empty slot: {a:#x} -> {b:#x}, type {mark}"));
+            }
         }
         out.extend(found.into_iter().map(|f| format!("{f} (after: {})", recent.join("; "))));
         out

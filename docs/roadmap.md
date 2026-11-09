@@ -345,8 +345,9 @@ What it found (each fixed with a contract test in `translate_contract.rs`, then 
       index; fixed in ac0afd8.)
 
 The engine message types the translator leaves alone, and why (the audit):
-- No card changes place: hints, waits, targets, equips and relations, coin and dice, chain negations and disables, field
-  zones disabled, MSG_SET (the move that follows does the work), RPS results, AI names.
+- No card changes place: hints, waits, relations (CREATE/RELEASE_RELATION; targets and equips are followed, as hover
+  markers), coin and dice, chain negations and disables, field zones disabled, MSG_SET (the move that follows does the
+  work), RPS results, AI names.
 - Only the Deck's or Extra Deck's order changes, which the client never sees (the Deck is a count; cards leaving the
   Deck or Extra Deck are found by id): SHUFFLE_DECK 32, REFRESH_DECK 34, REVERSE_DECK 37 and DECK_TOP 38 (Convulsion of
   Nature: the face-up Deck's top card isn't shown, **open**), SHUFFLE_EXTRA 39, CONFIRM_DECKTOP 30 and
@@ -354,6 +355,9 @@ The engine message types the translator leaves alone, and why (the audit):
 - [ ] Places change, not followed (never seen in 640 self-played duels with this pool): REMOVE_CARDS 190 (cards taken
       out of the duel), RELOAD_FIELD 162 (the whole field anew), TAG_SWAP 161 (tag duels, not played here), an Xyz
       material attached from a hand or pile (logged).
+- [x] Equips and lasting targets (EQUIP 93, CARD_TARGET 96, CANCEL_TARGET 97) shown as hover markers between the
+      cards (1017, see "Card relations" in protocol); the duel check holds them to occupied slots.
+- [ ] Hovering a Spell/Trap shows no markers (hovering the monster does): its hovered place isn't the key sent.
 - [ ] Not seen live: Magical Hats, Exchange of the Spirit and Xyz materials on the client (Creature Swap was). The
       client lacks the Xyz Monsters tried, so Xyz may not come up at all.
 

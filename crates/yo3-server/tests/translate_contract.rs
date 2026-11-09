@@ -1692,3 +1692,53 @@ fn a_graveyard_and_deck_swap_moves_every_card_between_them() {
     // Row 100 from the Graveyard (0xE) to the Deck (0xD), then rows 105 and 102 from the Deck to Graveyard indexes 0, 1.
     assert_eq!(moves, [(100, 0xE, 0xD, 0), (105, 0xD, 0xE, 0), (102, 0xD, 0xE, 1)], "{out:x?}");
 }
+
+#[test]
+fn equips_and_targets_show_as_hover_markers_between_the_cards() {
+    // The client draws relations while the pointer is on a face-up field card: 1017 {source place, target place, marker
+    // type, 1 add} (pump 0x3F9 → 0x5224E0), the same with 0 removes the entry with all three (0x522530), places as
+    // `player | zone << 8`, and 0x26 redraws the hovered card's (DuelFieldManager 0x50A690 → 0x50B1C0). Each link goes
+    // both ways, so hovering either card shows it: an equip (MSG_EQUIP 93) with type 2 (the yellow ∞), a lasting target
+    // (MSG_CARD_TARGET 96, gone with MSG_CANCEL_TARGET 97) with type 8 (the pink reticle). A card leaving the field takes
+    // its links with it. Which type the original used for what is a guess (the client names none).
+    let mut t = with_cards();
+    let ids = |out: &[Message]| out.iter().map(cmd).filter(|(id, _)| [0x3F9, 0x26].contains(id)).collect::<Vec<_>>();
+    // The client's monster (4100) to zone 2, its equip (4101) face-up to Spell/Trap zone 6.
+    t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 2, 1) })]);
+    let set = t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 1, 1) })]);
+    assert!(ids(&set).is_empty(), "no link yet: {:?}", ids(&set));
+    let (monster, equip, cpu) = (2 << 8, 6 << 8, 1 | 1 << 8);
+    let out = ids(&t.events(&[json!({ "type": 93, "card": loc(0, 8, 1, 1), "target": loc(0, 4, 2, 1) })]));
+    assert_eq!(out, [(0x3F9, [equip, monster, 2, 1]), (0x3F9, [monster, equip, 2, 1]), (0x26, [0; 4])]);
+    // A lasting target on the CPU's monster (zone 1), then its end.
+    let out = ids(&t.events(&[json!({ "type": 96, "card": loc(0, 8, 1, 1), "target": loc(1, 4, 1, 1) })]));
+    assert_eq!(out, [(0x3F9, [equip, cpu, 8, 1]), (0x3F9, [cpu, equip, 8, 1]), (0x26, [0; 4])]);
+    let out = ids(&t.events(&[json!({ "type": 97, "card": loc(0, 8, 1, 1), "target": loc(1, 4, 1, 1) })]));
+    assert_eq!(out, [(0x3F9, [equip, cpu, 8, 0]), (0x3F9, [cpu, equip, 8, 0]), (0x26, [0; 4])]);
+    // Nothing changed: nothing sent.
+    assert!(ids(&t.events(&[json!({ "type": 41, "phase": 4 })])).is_empty());
+    // The equip goes to the Graveyard: its links go.
+    let out = ids(&t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 8, 1, 1), "to": loc(0, 0x10, 0, 1) })]));
+    assert_eq!(out, [(0x3F9, [equip, monster, 2, 0]), (0x3F9, [monster, equip, 2, 0]), (0x26, [0; 4])]);
+}
+
+#[test]
+fn a_linked_card_that_changes_place_takes_its_markers_along() {
+    // The links follow the cards, not the places: a monster that moves (here to another zone) has its markers re-sent at
+    // its new place and removed from the old one.
+    let mut t = with_cards();
+    t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 2, 1) })]);
+    t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 1, 1) })]);
+    t.events(&[json!({ "type": 93, "card": loc(0, 8, 1, 1), "target": loc(0, 4, 2, 1) })]);
+    let out: Vec<_> = t
+        .events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 4, 2, 1), "to": loc(0, 4, 3, 1) })])
+        .iter()
+        .map(cmd)
+        .filter(|(id, _)| *id == 0x3F9)
+        .collect();
+    let (old, new, equip) = (2 << 8, 3 << 8, 6 << 8);
+    assert_eq!(
+        out,
+        [(0x3F9, [equip, old, 2, 0]), (0x3F9, [old, equip, 2, 0]), (0x3F9, [equip, new, 2, 1]), (0x3F9, [new, equip, 2, 1])]
+    );
+}
