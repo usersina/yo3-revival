@@ -451,7 +451,22 @@ impl DuelSession {
             Some(dir) => self.engine_opening(first, &dir),
             None => None,
         };
-        out.extend(opening.unwrap_or_else(|| self.opening(first)));
+        match opening {
+            Some(opening) => out.extend(opening),
+            // Without the rules engine (not fetched, or Node missing) nothing can play the duel: the scripted opening
+            // would stop at the first Draw Phase forever (issue #2), so the duel ends at once as a draw, as a table's
+            // does and as the startup error says.
+            // (No opening at all without a duel entry or the NPC's deck.)
+            None => {
+                let scripted = self.opening(first);
+                if !scripted.is_empty() {
+                    tracing::warn!("NPC duel: the rules engine can't run, so the duel ends as a draw");
+                    out.extend(scripted);
+                    out.push(command(DUEL_END, [DRAW, 0, 0, 0]));
+                    self.report(DRAW);
+                }
+            }
+        }
         out
     }
 
@@ -550,14 +565,21 @@ impl DuelSession {
         if failed {
             self.engine = None;
         }
-        if let (Some(result), Some(player_id), false) = (result, self.player_id, self.reported) {
+        if let Some(result) = result {
+            self.report(result);
+        }
+        out
+    }
+
+    /// Tells the hub the NPC duel ended with `result`, once.
+    fn report(&mut self, result: u32) {
+        if let (Some(player_id), false) = (self.player_id, self.reported) {
             self.reported = true;
             let opponent = self.entry.as_ref().and_then(|e| e.npc_id).unwrap_or(0);
             let duel_id = self.entry.as_ref().and_then(|e| e.duel_id).unwrap_or(0);
             let ended = Ended { player_id, opponent, npc: true, duel_id, match_type: SINGLE_MODE, result, replay: None };
             self.hub.locked().finish_duel(&ended);
         }
-        out
     }
 
     /// Setup (both decks' sizes), both shuffled decks in the card table, the duel start, both players'

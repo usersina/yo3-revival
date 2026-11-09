@@ -152,6 +152,9 @@ where
             && let Packet::Message(m) = &packet
             && let Some(id) = m.request()
             && id != crate::front::HEARTBEAT
+            // The duel connection's 0x200C often needs no answer (the duel options {player, autoSet} on entering the
+            // field, a pick with nothing asked): no warning, it only misled hosts reading the log (issue #2).
+            && !(who == "duel" && id == 0x200C)
         {
             tracing::warn!("[{who}] UNHANDLED request {id:#x}");
         }

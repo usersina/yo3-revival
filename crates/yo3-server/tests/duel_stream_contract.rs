@@ -129,7 +129,9 @@ fn the_duel_opens_after_the_janken() {
         // DeckReset 0x16 {player, pile zone} (DuelCardManager 0x4FF3A5) sets each deck (0xD) and extra deck (0xC) pile
         // from the setup's counts and shows it; the piles count themselves from there (0x4FBF30, 0x5000E0).
         let piles = [(0x16, [0, 0xD, 0, 0]), (0x16, [1, 0xD, 0, 0]), (0x16, [0, 0xC, 0, 0]), (0x16, [1, 0xC, 0, 0])];
-        let opening = [(1, [0; 4]), (0xF, [0, 8000, 0, 0]), (0xF, [1, 8000, 0, 0])].into_iter().chain(piles).chain([(5, [first, 0, 0, 0])]);
+        // Without the rules engine (as here) the duel then ends at once as a draw: command 2 {3}, see below.
+        let end = [(5, [first, 0, 0, 0]), (2, [3, 0, 0, 0])];
+        let opening = [(1, [0; 4]), (0xF, [0, 8000, 0, 0]), (0xF, [1, 8000, 0, 0])].into_iter().chain(piles).chain(end);
         assert_eq!(others, opening.collect::<Vec<_>>());
     }
 }
@@ -190,7 +192,20 @@ fn each_player_draws_five_before_the_first_draw_phase() {
         let hands = table(&cmds[start..]);
         assert_eq!(hands.len(), 10);
         assert!(hands.values().all(|(_, place)| place >> 8 & 0xFF == 0xB));
-        assert_eq!(cmds.last().unwrap().0, 5, "the Draw Phase comes last");
+        assert_eq!(cmds[cmds.len() - 2].0, 5, "the Draw Phase comes last, before the engine-less draw");
+    }
+}
+
+#[test]
+fn without_the_rules_engine_an_npc_duel_ends_at_once_as_a_draw() {
+    // Issue #2: with no engine (not fetched, or Node.js missing) the scripted opening stopped at the first Draw Phase
+    // and the duel hung there. Now it ends as a draw (command 2 {3}, the same end as a failed engine) and the front
+    // hears of it, as the server's startup error promises.
+    for choice in [1, 2] {
+        let mut s = session();
+        enter(&mut s);
+        let cmds = commands(&s.handle(&duel_msg(0xD, &[("choice", choice)])));
+        assert_eq!(cmds.last(), Some(&(2, [3, 0, 0, 0])), "{cmds:?}");
     }
 }
 
