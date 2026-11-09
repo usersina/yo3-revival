@@ -1,110 +1,127 @@
 #!/bin/sh
-# Builds the host's bundles: dist/yo3-revival-<version>-linux-x86_64.tar.gz and -windows-x86_64.zip, each with the
-# server, the rules engine's sources (its packages, scripts and card database are fetched on the host by
-# engine/fetch.sh or fetch.cmd), a launcher and the setup guide. No game files go in: the server reads the host's own
-# game install. The Windows build needs the x86_64-pc-windows-gnu target and mingw-w64.
+# Builds the host's bundles: dist/yo3-revival-<version>-linux-x86_64.tar.gz and -windows-x86_64.zip, each ready to
+# run with nothing to install: the server, the rules engine with its own Node.js, ocgcore-wasm, ProjectIgnis' card
+# scripts and card database, a launcher and the setup guide. No game files go in: the server reads the host's own game
+# install. The Windows build needs the x86_64-pc-windows-gnu target and mingw-w64. Building needs the network once: the
+# engine's data (engine/fetch.sh, when not fetched yet) and Node.js (cached in dist/.cache, checked against nodejs.org's
+# SHASUMS256.txt).
 set -e
 cd "$(dirname "$0")/.."
 version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
-name="yo3-revival-$version-linux-x86_64"
-out="dist/$name"
+# The Node.js shipped in the bundles (an LTS line; the engine needs 22.18 or newer).
+NODE_VERSION=v26.13.0
+cache=dist/.cache
 cargo build --release -p yo3-server
 cargo build --release -p yo3-server --target x86_64-pc-windows-gnu
+[ -s engine/vendor/cardinfo.json ] && [ -d engine/node_modules/ocgcore-wasm ] || engine/fetch.sh
+
+# Node.js's archive $1, downloaded once into the cache and checked against the release's SHASUMS256.txt.
+node_archive() {
+  mkdir -p "$cache"
+  [ -s "$cache/SHASUMS256-$NODE_VERSION.txt" ] ||
+    curl -fsS --retry 3 -o "$cache/SHASUMS256-$NODE_VERSION.txt" "https://nodejs.org/dist/$NODE_VERSION/SHASUMS256.txt"
+  [ -s "$cache/$1" ] || curl -fsS --retry 3 -o "$cache/$1" "https://nodejs.org/dist/$NODE_VERSION/$1"
+  (cd "$cache" && grep " $1\$" "SHASUMS256-$NODE_VERSION.txt" | sha256sum -c --quiet -) || {
+    echo "$cache/$1 does not match nodejs.org's checksum: delete it and run this again" >&2
+    exit 1
+  }
+}
+
+# Everything the engine reads besides Node.js, into $1/engine: the sidecar, its package, only the scripts it loads
+# (the root utilities and official/), only cards.cdb, and of YGOPRODeck's card info only each card's Konami id.
+engine_files() {
+  e="$1/engine"
+  mkdir -p "$e/vendor/CardScripts" "$e/vendor/BabelCDB"
+  cp engine/duelcore.ts engine/package.json engine/package-lock.json "$e/"
+  cp -r engine/node_modules "$e/"
+  cp engine/vendor/CardScripts/*.lua engine/vendor/CardScripts/COPYING engine/vendor/CardScripts/README.md "$e/vendor/CardScripts/"
+  cp -r engine/vendor/CardScripts/official "$e/vendor/CardScripts/"
+  cp engine/vendor/BabelCDB/cards.cdb engine/vendor/BabelCDB/README.md "$e/vendor/BabelCDB/"
+  python3 - engine/vendor/cardinfo.json "$e/vendor/cardinfo.json" <<'PY'
+import json, sys
+cards = json.load(open(sys.argv[1], encoding="utf-8"))["data"]
+ids = [{"id": c["id"], "misc_info": [{"konami_id": m["konami_id"]} for m in c.get("misc_info", []) if m.get("konami_id")]} for c in cards]
+json.dump({"data": [c for c in ids if c["misc_info"]]}, open(sys.argv[2], "w"), separators=(",", ":"))
+PY
+  cat > "$e/THIRD-PARTY.md" <<EOF
+# What the rules engine is made of
+
+yo3-revival's own code is MIT (../LICENSE). The engine in this folder is other people's work, shipped unchanged:
+
+| Part | Where | License | Source |
+|---|---|---|---|
+| Node.js $NODE_VERSION | \`node/\` | MIT and others (\`node/LICENSE\`) | https://nodejs.org/ |
+| ocgcore-wasm (EDOPro's core built for WebAssembly) | \`node_modules/ocgcore-wasm/\` | MIT (\`LICENSE.md\`); the core inside is ProjectIgnis' EDOPro core, AGPL-3.0 | https://github.com/edo9300/ygopro-core |
+| ProjectIgnis card scripts (\`official/\` and the root scripts) | \`vendor/CardScripts/\` | AGPL-3.0 (\`COPYING\`) | https://github.com/ProjectIgnis/CardScripts |
+| ProjectIgnis card database (\`cards.cdb\`) | \`vendor/BabelCDB/\` | see its README | https://github.com/ProjectIgnis/BabelCDB |
+| Konami card ids (each card's id only, from YGOPRODeck's card info) | \`vendor/cardinfo.json\` | | https://ygoprodeck.com/api-guide/ |
+
+To get newer card scripts before the next release, replace \`vendor/CardScripts/\` and \`vendor/BabelCDB/cards.cdb\` with
+fresh copies from the sources above.
+EOF
+}
+
+# The guide (as README.md, with its pictures at the same relative paths as in docs/) and the license.
+docs_files() {
+  cp docs/guide.md "$1/README.md"
+  mkdir -p "$1/images"
+  cp -r docs/images/guide "$1/images/"
+  cp docs/images/duel.png "$1/images/"
+  cp LICENSE "$1/LICENSE"
+}
+
+name="yo3-revival-$version-linux-x86_64"
+out="dist/$name"
 rm -rf "$out"
-mkdir -p "$out/engine"
+mkdir -p "$out"
 cp target/release/yo3-server "$out/"
-cp engine/duelcore.ts engine/package.json engine/package-lock.json engine/fetch.sh "$out/engine/"
-cp docs/guide.md "$out/README.md"
-# the guide's pictures, at the same relative paths (images/...) as in docs/, so README.md shows them
-mkdir -p "$out/images"
-cp -r docs/images/guide "$out/images/"
-cp docs/images/duel.png "$out/images/"
-cp LICENSE "$out/LICENSE"
+engine_files "$out"
+docs_files "$out"
+nodeball="node-$NODE_VERSION-linux-x64.tar.xz"
+node_archive "$nodeball"
+mkdir -p "$out/engine/node"
+tar -xJf "$cache/$nodeball" -C "$out/engine/node" --strip-components=2 "node-$NODE_VERSION-linux-x64/bin/node"
+tar -xJf "$cache/$nodeball" -C "$out/engine/node" --strip-components=1 "node-$NODE_VERSION-linux-x64/LICENSE"
 cat > "$out/run.sh" <<'EOF'
 #!/bin/sh
 # Starts the server for friends: every network interface, accounts and records in ./data (backed up at each start).
 # Extra options go to the server, e.g. ./run.sh --advertise my.host.name   (see ./yo3-server --help)
+# The rules engine comes with it (engine/, with its own Node.js): nothing to install.
 cd "$(dirname "$0")"
-# Duels need the rules engine: Node.js 22.18+, npm, Git and curl. Stop here, with a message, rather than start a
-# server whose duels all end as draws.
-engine/fetch.sh --check || exit 1
-if [ ! -s engine/vendor/cardinfo.json ]; then
-  engine/fetch.sh || { echo "Fetching the rules engine failed (see above), so duels would not work. Fix it and run ./run.sh again."; exit 1; }
-fi
 exec ./yo3-server --bind 0.0.0.0 --data-dir data --log-dir logs "$@"
 EOF
-chmod +x "$out/run.sh" "$out/engine/fetch.sh"
+chmod +x "$out/run.sh" "$out/yo3-server" "$out/engine/node/node"
 tar -C dist -czf "dist/$name.tar.gz" "$name"
 echo "dist/$name.tar.gz"
 
-# Windows: the same with .cmd launchers (CRLF line ends).
+# Windows: the same with node.exe and a .cmd launcher (CRLF line ends).
 win="yo3-revival-$version-windows-x86_64"
 out="dist/$win"
 rm -rf "$out"
-mkdir -p "$out/engine"
+mkdir -p "$out"
 cp target/x86_64-pc-windows-gnu/release/yo3-server.exe "$out/"
-cp engine/duelcore.ts engine/package.json engine/package-lock.json "$out/engine/"
-cp docs/guide.md "$out/README.md"
-# the guide's pictures, at the same relative paths (images/...) as in docs/, so README.md shows them
-mkdir -p "$out/images"
-cp -r docs/images/guide "$out/images/"
-cp docs/images/duel.png "$out/images/"
-cp LICENSE "$out/LICENSE"
+engine_files "$out"
+docs_files "$out"
+nodezip="node-$NODE_VERSION-win-x64.zip"
+node_archive "$nodezip"
+mkdir -p "$out/engine/node"
+python3 - "$cache/$nodezip" "$out/engine/node" "node-$NODE_VERSION-win-x64" <<'PY'
+import sys, zipfile
+z, dest, top = zipfile.ZipFile(sys.argv[1]), sys.argv[2], sys.argv[3]
+for name in ("node.exe", "LICENSE"):
+    with z.open(f"{top}/{name}") as src, open(f"{dest}/{name}", "wb") as dst:
+        dst.write(src.read())
+PY
 crlf() { sed 's/$/\r/' > "$1"; }
-crlf "$out/engine/fetch.cmd" <<'EOF'
-@echo off
-rem Fetches what the rules engine needs and is not shipped: the npm packages (ocgcore-wasm), ProjectIgnis' card
-rem scripts and card database, and the Konami card ids. Needs Node.js 22.18 or newer, Git and curl (Windows 10 and
-rem later have curl). "fetch.cmd check" only checks that they are installed.
-cd /d "%~dp0"
-where node >nul 2>nul || set "NO_NODE=1"
-where npm >nul 2>nul || set "NO_NPM=1"
-where git >nul 2>nul || set "NO_GIT=1"
-where curl >nul 2>nul || set "NO_CURL=1"
-if not defined NO_NODE if not defined NO_NPM if not defined NO_GIT if not defined NO_CURL goto :havetools
-echo Cannot set up the rules engine. Please install:
-if defined NO_NODE echo   - Node.js, version 22.18 or newer: https://nodejs.org/
-if defined NO_NPM echo   - npm, which comes with Node.js: https://nodejs.org/
-if defined NO_GIT echo   - Git: https://git-scm.com/download/win
-if defined NO_CURL echo   - curl: Windows 10 and later have it; on older Windows get it from https://curl.se/windows/
-echo Without them duels cannot be played. Install them, then run this again.
-exit /b 1
-:havetools
-set "NMAJ=0"
-set "NMIN=0"
-for /f "tokens=1,2 delims=v." %%a in ('node --version') do (set "NMAJ=%%a" & set "NMIN=%%b")
-set "NODEOLD="
-if %NMAJ% LSS 22 set "NODEOLD=1"
-if %NMAJ% EQU 22 if %NMIN% LSS 18 set "NODEOLD=1"
-if defined NODEOLD (
-  echo Node.js %NMAJ%.%NMIN% is too old: the rules engine needs 22.18 or newer. Without it every duel ends at once as a draw.
-  echo Install the current LTS from https://nodejs.org/ and run this again.
-  exit /b 1
-)
-if /i "%~1"=="check" exit /b 0
-call npm install --no-audit --no-fund || exit /b 1
-if not exist vendor mkdir vendor
-if not exist vendor\CardScripts git clone --depth 1 https://github.com/ProjectIgnis/CardScripts vendor\CardScripts || exit /b 1
-if not exist vendor\BabelCDB git clone --depth 1 https://github.com/ProjectIgnis/BabelCDB vendor\BabelCDB || exit /b 1
-if not exist vendor\cardinfo.json curl -fsS --retry 3 -o vendor\cardinfo.json "https://db.ygoprodeck.com/api/v7/cardinfo.php?misc=yes" || exit /b 1
-EOF
 crlf "$out/run.cmd" <<'EOF'
 @echo off
 rem Starts the server for friends: every network interface, accounts and records in .\data (backed up at each start).
 rem Extra options go to the server, e.g. run.cmd --advertise my.host.name   (see yo3-server.exe --help)
+rem The rules engine comes with it (engine\, with its own Node.js): nothing to install.
 cd /d "%~dp0"
-rem Duels need the rules engine: stop here, with a message, rather than start a server whose duels all end as draws.
-call engine\fetch.cmd check || goto :failed
-if not exist engine\vendor\cardinfo.json (
-  call engine\fetch.cmd || goto :failed
-)
 yo3-server.exe --bind 0.0.0.0 --data-dir data --log-dir logs %*
+if errorlevel 1 pause
 exit /b %errorlevel%
-:failed
-echo.
-echo The server was not started. Fix the above and run run.cmd again.
-pause
-exit /b 1
 EOF
 rm -f "dist/$win.zip"
 (cd dist && python3 -c 'import shutil, sys; shutil.make_archive(sys.argv[1], "zip", ".", sys.argv[1])' "$win")
