@@ -9,7 +9,12 @@ gather under "Unreleased" first.
 
 ## Unreleased
 
-Not released yet: the next version's notes. When releasing, rename this section to the version (`## v0.0.2 (date)`).
+Nothing yet.
+
+## v0.0.2 (2026-11-09)
+
+BOOSTERPASS codes and BP from the host. Download the bundle for your system below, unpack it, copy the `data` folder
+from your old one into it (your accounts, cards and decks), and run it as before.
 
 - BOOSTERPASS codes: the host makes codes (`add-code`) that players type in the game's BOOSTERPASS window (Main Menu →
   BOOSTERPASS) for BP, each account once; the game shows the points and "Acquired Duelist premium!".
