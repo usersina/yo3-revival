@@ -162,8 +162,7 @@ Friends on the same network cannot connect? Go through this in order, before any
 SmartScreen ("Windows protected your PC": press *More info*, then *Run anyway*) or some antivirus programs may warn
 about it or quarantine it. That is expected for a new unsigned program, not proof of a virus. To check that you have
 the real file, compare its SHA-256 with the one in the release notes (PowerShell: `Get-FileHash .\yo3-server.exe`),
-or avoid the question and build it yourself from the source (`cargo build --release -p yo3-server`, see the
-[README](../README.md#host)); all the code is in the repository.
+or avoid the question and [build it yourself from the source](#run-from-source); all the code is in the repository.
 
 ### macOS
 
@@ -173,6 +172,18 @@ with the Rust toolchain (`cargo run --release -p yo3-server -- --bind 0.0.0.0 --
 default game folder is a Windows or Wine path, so pass `--game-dir`) and Node.js 22.18 or newer with
 `engine/fetch.sh` run once (the bundles' Node.js is for Linux and Windows only), but nobody has checked. Reports
 welcome (see [When something goes wrong](#when-something-goes-wrong)).
+
+### Run from source
+
+Instead of a release bundle: the [Rust toolchain](https://rustup.rs/), and for the rules engine Node.js 22.18 or newer,
+npm, Git and curl. From a clone of the repository:
+
+```bash
+engine/fetch.sh                                   # once: the engine's package, card scripts and card database
+cargo run --release -p yo3-server -- --bind 0.0.0.0 --log-dir logs
+```
+
+`tools/release.sh` builds the bundles themselves (see [CLAUDE.md](../CLAUDE.md#commands)).
 
 ## For every player
 
