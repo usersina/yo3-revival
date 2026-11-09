@@ -26,6 +26,11 @@ pub const HEARTBEAT: u32 = 0x2724;
 
 /// Server clock in Japan time: the client treats server timestamps as JST (UTC+9) and
 /// converts them to the player's local time.
+/// When Duelist Premium ends, as the BOOSTERPASS window reads it (JST, "%4d-%2d-%2d %2d:%2d:%2d", 0x485B50): never on
+/// this server, so the last day the client's 32-bit time holds. The window parses it on a successful code and crashes
+/// without it (a null from localtime, 0x485CA1).
+const PREMIUM_EXPIRE: &str = "2037-12-31 23:59:59";
+
 fn jst_now() -> chrono::DateTime<chrono::FixedOffset> {
     chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(9 * 3600).expect("valid offset"))
 }
@@ -2513,13 +2518,33 @@ impl FrontSession {
                 let kind = msg.get("rental_kind").and_then(Value::as_u32).unwrap_or(0);
                 self.hub().rental_history(self.player().player_id, kind)
             }
-            // A BOOSTERPASS code (BpInputWindow, 0x40F7B0): Konami's codes are gone, so every one is refused (the "ng"
-            // frame). The global dispatcher keeps premium from it (0x4F5349), so it stays 1.
-            0x20D0 => Message::reply(0x23F0)
-                .with("dpauth_result", Value::U32(1))
-                .with("dpPoints", Value::U32(a.dpoint))
-                .with("dpGetPoints", Value::U32(0))
-                .with("premium", Value::U32(1)),
+            // A BOOSTERPASS code (BpInputWindow, 0x40F7B0): one the host made (`add-code`), once per account, gives its
+            // BP (result 0 adds dpGetPoints to the shown BP); anything else is refused (the "ng" frame: "Incorrect
+            // BOOSTERPASS CODE."). Konami's own codes are gone. The global dispatcher keeps premium from it (0x4F5349),
+            // so it stays 1.
+            0x20D0 => {
+                let code = msg.get("dpcode").and_then(Value::as_str).unwrap_or_default().to_string();
+                let user = a.user_id;
+                let redeemed = self.directory.as_ref().map(|d| d.locked().redeem(user, &code));
+                let (result, got) = match redeemed {
+                    Some(Ok((got, total))) => {
+                        tracing::info!("user {user} redeemed a BOOSTERPASS code: {got} BP, {total} now");
+                        self.account.dpoint = total;
+                        (0, got)
+                    }
+                    Some(Err(why)) => {
+                        tracing::info!("user {user}'s BOOSTERPASS code refused: {why}");
+                        (1, 0)
+                    }
+                    None => (1, 0),
+                };
+                Message::reply(0x23F0)
+                    .with("dpauth_result", Value::U32(result))
+                    .with("dpPoints", Value::U32(self.account.dpoint))
+                    .with("dpGetPoints", Value::U32(got))
+                    .with("premium", Value::U32(1))
+                    .with("premium_expire", Value::text(PREMIUM_EXPIRE))
+            }
             // The player's own user event (UserEventScene 0x4D9BB0): none.
             // Deck list (deck editor 0x43FC60): it saves each deck it lacks as a local file.
             // The starter deck, the official character decks, then the structure decks the player bought; the client

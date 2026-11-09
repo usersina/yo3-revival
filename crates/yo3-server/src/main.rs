@@ -3,13 +3,14 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use yo3_server::accounts::Directory;
+use yo3_server::admin::{self as live, Op};
 use yo3_server::{Config, start};
 
 /// Yu-Gi-Oh! ONLINE 3 private server (gate, front, duel and patch HTTP).
 #[derive(Parser)]
 struct Args {
-    /// An admin command on the data directory instead of running the server (stop the server first: it rewrites
-    /// the accounts file when a new friend connects).
+    /// An admin command on the data directory instead of running the server. The BP ones (give-bp, add-code,
+    /// remove-code, codes) reach a running server; the others need it stopped (it rewrites the accounts file).
     #[command(subcommand)]
     admin: Option<Admin>,
     /// Where accounts (accounts.json) and duel records (records.json) are kept; each start backs them up into
@@ -106,6 +107,21 @@ enum Admin {
     SetCountry { who: String, code: String },
     /// List the country codes the client has flags for.
     Countries,
+    /// Give BOOSTERPASS Points to the account at WHO (an address or one of its players' names). Works while the server
+    /// runs (on the server's PC).
+    GiveBp { who: String, amount: u32 },
+    /// Make a BOOSTERPASS code: CODE (16 letters and digits, the game's window) gives BP to each account that enters it
+    /// in Main Menu -> BOOSTERPASS, once; --uses N stops it after N accounts. Works while the server runs.
+    AddCode {
+        code: String,
+        bp: u32,
+        #[arg(long)]
+        uses: Option<u32>,
+    },
+    /// Remove a BOOSTERPASS code. Works while the server runs.
+    RemoveCode { code: String },
+    /// List the BOOSTERPASS codes and how often each was used. Works while the server runs.
+    Codes,
 }
 
 /// The `yo3.ini` a friend with `key` pastes: every line points at the host (`HOST` when not given).
@@ -124,8 +140,28 @@ fn print_key(a: &Args, key: &str) {
     }
 }
 
-/// Runs an admin command against the accounts file.
+/// Runs an admin command against the accounts file, or for the BP commands, the running server.
 fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
+    let op = match &command {
+        Admin::GiveBp { who, amount } => Some(Op::GiveBp { who: who.clone(), amount: *amount }),
+        Admin::AddCode { code, bp, uses } => Some(Op::AddCode { code: code.clone(), bp: *bp, uses: *uses }),
+        Admin::RemoveCode { code } => Some(Op::RemoveCode { code: code.clone() }),
+        Admin::Codes => Some(Op::Codes),
+        _ => None,
+    };
+    let server = live::running(&a.data_dir);
+    if let Some(op) = op {
+        let done = match &server {
+            Some(server) => live::send(server, &op),
+            None => live::apply(&mut Directory::open(a.players.clone(), &a.data_dir.join("accounts.json"))?, &op),
+        };
+        println!("{}", done.map_err(anyhow::Error::msg)?);
+        return Ok(());
+    }
+    // The rest edit the accounts file, which a running server would overwrite.
+    if server.is_some() && !matches!(command, Admin::Accounts | Admin::Countries) {
+        anyhow::bail!("the server is running on this data directory: stop it first, or its next save overwrites this change");
+    }
     let mut d = Directory::open(a.players.clone(), &a.data_dir.join("accounts.json"))?;
     let err = anyhow::Error::msg;
     match command {
@@ -165,6 +201,7 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
             d.set_country_of(user, &code).map_err(err)?
         }
         Admin::Countries => println!("{}", yo3_data::countries(&game_dir)?.join(" ")),
+        Admin::GiveBp { .. } | Admin::AddCode { .. } | Admin::RemoveCode { .. } | Admin::Codes => unreachable!("handled above"),
     }
     Ok(())
 }

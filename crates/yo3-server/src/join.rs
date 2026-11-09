@@ -160,7 +160,7 @@ fn host_of(header: Option<&str>, info: &JoinInfo) -> String {
 }
 
 /// `a=b&c=d` decoded (`+` is a space, `%XX` bytes as UTF-8).
-fn parse_query(q: &str) -> Vec<(String, String)> {
+pub(crate) fn parse_query(q: &str) -> Vec<(String, String)> {
     q.split('&').filter(|p| !p.is_empty()).map(|p| {
         let (k, v) = p.split_once('=').unwrap_or((p, ""));
         (decode(k), decode(v))

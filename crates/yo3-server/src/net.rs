@@ -168,7 +168,14 @@ where
 ///
 /// An account's key rides in the patch URL (`/yo3/<key>/yo3.idx`): the client fetches it before every connection to
 /// the gate, so the address that presented a known key is remembered for its next login (`Directory::login`).
-pub async fn http_loop(listener: TcpListener, game_dir: PathBuf, duel_logs: Option<PathBuf>, accounts: Arc<Mutex<Directory>>, join: Option<crate::join::JoinInfo>) {
+pub async fn http_loop(
+    listener: TcpListener,
+    game_dir: PathBuf,
+    duel_logs: Option<PathBuf>,
+    accounts: Arc<Mutex<Directory>>,
+    join: Option<crate::join::JoinInfo>,
+    admin_token: Option<String>,
+) {
     let mut backoff = Duration::from_millis(50);
     loop {
         let (mut stream, peer) = match listener.accept().await {
@@ -183,7 +190,7 @@ pub async fn http_loop(listener: TcpListener, game_dir: PathBuf, duel_logs: Opti
                 continue;
             }
         };
-        let (game_dir, duel_logs, accounts, join) = (game_dir.clone(), duel_logs.clone(), accounts.clone(), join.clone());
+        let (game_dir, duel_logs, accounts, join, admin_token) = (game_dir.clone(), duel_logs.clone(), accounts.clone(), join.clone(), admin_token.clone());
         tokio::spawn(async move {
             let mut buf = Vec::new();
             let mut chunk = [0u8; 1024];
@@ -197,7 +204,9 @@ pub async fn http_loop(listener: TcpListener, game_dir: PathBuf, duel_logs: Opti
             let request = String::from_utf8_lossy(&buf);
             let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
             let host = request.lines().skip(1).find_map(|l| l.split_once(':').filter(|(n, _)| n.eq_ignore_ascii_case("host")).map(|(_, v)| v.trim().to_string()));
-            if let Some(response) = join.as_ref().and_then(|info| crate::join::handle(&path, host.as_deref(), peer.ip(), &accounts, info)) {
+            let admin = crate::admin::handle(&path, peer.ip(), admin_token.as_deref(), &accounts);
+            let page = || join.as_ref().and_then(|info| crate::join::handle(&path, host.as_deref(), peer.ip(), &accounts, info));
+            if let Some(response) = admin.or_else(page) {
                 tracing::info!("[http] GET {} -> {} ({} B)", path.split('?').next().unwrap_or_default(), response.status, response.body.len());
                 let mut head = format!("HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n", response.status, response.content_type, response.body.len());
                 for (name, value) in &response.headers {

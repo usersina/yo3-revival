@@ -1,5 +1,6 @@
 //! Yu-Gi-Oh! ONLINE 3 private server: gate, front, duel and patch-HTTP services.
 pub mod accounts;
+pub mod admin;
 mod store;
 pub(crate) mod lock;
 pub mod duel;
@@ -360,7 +361,11 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         move |p: &yo3_proto::Packet| session.handle(p)
     }));
     let join_info = cfg.join.then(|| join::JoinInfo { gate_port: addrs.0.port(), http_port: addrs.3.port(), advertise: cfg.advertise.clone(), duels_unavailable });
-    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs")), directory_http, join_info));
+    // The host's BP commands reach the running server through its HTTP port, with a token only the host can read.
+    let admin_token = cfg.data_dir.as_ref().and_then(|dir| {
+        admin::write_live(dir, addrs.3.port()).map_err(|e| tracing::warn!("admin commands won't reach this server ({}): {e}", dir.display())).ok()
+    });
+    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs")), directory_http, join_info, admin_token));
 
     tracing::info!(
         "gate {} front {} duel {} http {} (advertise {}); packets -> {}",

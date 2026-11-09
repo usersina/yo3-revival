@@ -53,6 +53,19 @@ const KEY_CHARS: &[u8] = b"abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ2345
 /// The characters in a key.
 pub const KEY_LEN: usize = 20;
 
+/// The characters of a BOOSTERPASS code: the game's window (BpInputWindow 0x40F7B0) takes 16 letters and digits.
+pub const CODE_LEN: usize = 16;
+
+/// A BOOSTERPASS code the host made (`add-code`): the BP it gives, how many accounts may use it (any number when none),
+/// and the accounts (user ids) that did, each once.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BpCode {
+    pub code: String,
+    pub bp: u32,
+    pub uses: Option<u32>,
+    pub used_by: Vec<u32>,
+}
+
 /// An account with how a client finds it: by the address it connects from, by its key, or both.
 struct Entry {
     address: Option<IpAddr>,
@@ -64,7 +77,7 @@ struct Entry {
 
 /// A random key: 20 characters of a 57-letter alphabet (about 117 bits), from the OS-seeded hasher so it needs no
 /// extra crate and works on every host.
-fn new_key() -> String {
+pub(crate) fn new_key() -> String {
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
     let mut bits = 0u128;
     for i in 0..2u64 {
@@ -93,12 +106,14 @@ pub struct Directory {
     next_player: u32,
     /// Where the accounts are kept (none: in memory only).
     file: Option<PathBuf>,
+    /// The host's BOOSTERPASS codes.
+    codes: Vec<BpCode>,
 }
 
 impl Directory {
     /// `player_names`: the players every new account starts with (at most four are used).
     pub fn new(player_names: Vec<String>) -> Directory {
-        Directory { player_names, accounts: Vec::new(), presented: HashMap::new(), joins: Vec::new(), next_user: 1001, next_player: 1001, file: None }
+        Directory { player_names, accounts: Vec::new(), presented: HashMap::new(), joins: Vec::new(), next_user: 1001, next_player: 1001, file: None, codes: vec![] }
     }
 
     /// The accounts kept in `file` (none yet if it doesn't exist); changes are written back to it.
@@ -169,6 +184,11 @@ impl Directory {
             }
             let joined_from = a["joined_from"].as_str().and_then(|s| s.parse().ok());
             d.accounts.push(Entry { address, key, joined_from, account });
+        }
+        for c in saved["bp_codes"].as_array().into_iter().flatten() {
+            let (Some(code), Some(bp)) = (c["code"].as_str(), c["bp"].as_u64()) else { continue };
+            let used_by = c["used_by"].as_array().into_iter().flatten().filter_map(|u| u.as_u64()).map(|u| u as u32).collect();
+            d.codes.push(BpCode { code: code.to_string(), bp: bp as u32, uses: c["uses"].as_u64().map(|n| n as u32), used_by });
         }
         Ok(d)
     }
@@ -512,6 +532,75 @@ impl Directory {
         Some(total)
     }
 
+    /// Gives `bp` to the account at `who` (an address, or one of its players' names): who it went to, and the
+    /// account's BP now.
+    pub fn give_bp(&mut self, who: &str, bp: u32) -> Result<(String, u32), String> {
+        if bp == 0 {
+            return Err("give at least 1 BP".into());
+        }
+        let at = self.find(who).ok_or_else(|| format!("no account at or with a player named {who:?}"))?;
+        let account = &mut self.accounts[at].account;
+        account.dpoint = account.dpoint.saturating_add(bp);
+        let names: Vec<_> = account.players.iter().map(|p| p.name.as_str()).collect();
+        let done = (format!("user {} ({})", account.user_id, names.join(", ")), account.dpoint);
+        self.save();
+        Ok(done)
+    }
+
+    /// The host's BOOSTERPASS codes.
+    pub fn codes(&self) -> &[BpCode] {
+        &self.codes
+    }
+
+    /// Makes a BOOSTERPASS code worth `bp`, usable by `uses` accounts (any number when none), each once. It must fit the
+    /// game's window ([`CODE_LEN`] letters and digits) and differ from the others, whatever the case.
+    pub fn add_code(&mut self, code: &str, bp: u32, uses: Option<u32>) -> Result<(), String> {
+        if code.len() != CODE_LEN || !code.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            return Err(format!("a code is {CODE_LEN} letters and digits (the game's window has {CODE_LEN} boxes): {code:?}"));
+        }
+        if bp == 0 || uses == Some(0) {
+            return Err("a code gives at least 1 BP, to at least one account".into());
+        }
+        if self.code_at(code).is_some() {
+            return Err(format!("the code {code} exists already"));
+        }
+        self.codes.push(BpCode { code: code.to_string(), bp, uses, used_by: vec![] });
+        self.save();
+        Ok(())
+    }
+
+    /// Removes a BOOSTERPASS code (any case).
+    pub fn remove_code(&mut self, code: &str) -> Result<(), String> {
+        let at = self.code_at(code).ok_or_else(|| format!("no code {code}"))?;
+        self.codes.remove(at);
+        self.save();
+        Ok(())
+    }
+
+    /// The game's BOOSTERPASS window: account `user_id` enters `code` (any case). The BP got and the account's BP now;
+    /// refused when no such code, the account used it already, or it is used up.
+    pub fn redeem(&mut self, user_id: u32, code: &str) -> Result<(u32, u32), String> {
+        let at = self.code_at(code).ok_or("no such code")?;
+        let c = &self.codes[at];
+        if c.used_by.contains(&user_id) {
+            return Err("this account used the code already".into());
+        }
+        if c.uses.is_some_and(|n| c.used_by.len() as u32 >= n) {
+            return Err("the code is used up".into());
+        }
+        let bp = c.bp;
+        let account = self.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id).ok_or("no such account")?;
+        account.dpoint = account.dpoint.saturating_add(bp);
+        let total = account.dpoint;
+        self.codes[at].used_by.push(user_id);
+        self.save();
+        Ok((bp, total))
+    }
+
+    fn code_at(&self, code: &str) -> Option<usize> {
+        self.codes.iter().position(|c| c.code.eq_ignore_ascii_case(code.trim()))
+    }
+
     /// An account's BP.
     pub fn dpoint(&self, user_id: u32) -> Option<u32> {
         self.accounts.iter().map(|e| &e.account).find(|a| a.user_id == user_id).map(|a| a.dpoint)
@@ -602,7 +691,9 @@ impl Directory {
                 account
             })
             .collect();
-        if let Err(e) = store::write(file, &json!({ "next_user": self.next_user, "next_player": self.next_player, "accounts": accounts })) {
+        let codes: Vec<Json> = self.codes.iter().map(|c| json!({ "code": c.code, "bp": c.bp, "uses": c.uses, "used_by": c.used_by })).collect();
+        let all = json!({ "next_user": self.next_user, "next_player": self.next_player, "accounts": accounts, "bp_codes": codes });
+        if let Err(e) = store::write(file, &all) {
             tracing::warn!("accounts not saved to {}: {e}", file.display());
         }
     }
