@@ -66,6 +66,7 @@ The [docs index](docs/README.md) says what each document is for. The ones you wi
 | `docs/` | The documentation (index in `docs/README.md`): `guide.md`, `roadmap.md`, `protocol.md`, `client-internals.md`, `research.md`, `images/` |
 | `tools/docs-check.py` | Checks every relative link and anchor in the Markdown, prints a table of contents (`--toc FILE`) |
 | `tools/release.sh` | Builds the host's release bundles into `dist/` (ignored) |
+| `CHANGELOG.md`, `.github/workflows/release.yml` | Releases: each `## vX.Y.Z (date)` section is one; the workflow publishes a new top version on push to `main` (`.github/scripts/release_notes.py` reads the version and writes the notes) |
 | `LICENSE` | MIT |
 | `.github/ISSUE_TEMPLATE/` | Issue forms for players (bug, setup help, idea) and the new-issue page's links. Labels: `bug`, `setup help`, `idea` (set by the forms); areas `duels`, `cards & decks`, `accounts & joining`, `hosting`; status `needs info`, `confirmed`, `client limitation`, `duplicate` |
 | `re/` (ignored) | Ghidra project `re/ghidra`, `re/yo3_decompiled.c`, GhidraMCP jar |
@@ -85,6 +86,10 @@ tools/docs-check.py                               # every relative link and anch
 tools/release.sh                                  # the host's bundles in dist/ (Linux .tar.gz, Windows .zip), each with docs/guide.md as README.md
 #   and the whole rules engine (its own Node.js, NODE_VERSION in the script, checksum-checked; the scripts and card
 #   database from engine/vendor/): hosts install nothing. The server prefers engine/node/node[.exe] to the PATH's node
+#   releasing: add a section at the top of CHANGELOG.md (`## v0.0.2 (date)`, players' words, what changed for them)
+#   and push to main (ask first, rule 5). The Release workflow lints, tests, builds both bundles and publishes the
+#   version as a GitHub release (title "vX.Y.Z (pre-alpha)", not ticked pre-release so /releases/latest finds it).
+#   Never move or reuse a released tag: fix forward with the next version.
 #   once: rustup target add x86_64-pc-windows-gnu (mingw-w64 links it). A Windows build under Wine needs its own prefix
 #   (WINEPREFIX=.wine-c): vclient.sh stop kills every process of the default prefix
 ```

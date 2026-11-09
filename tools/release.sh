@@ -7,7 +7,8 @@
 # SHASUMS256.txt).
 set -e
 cd "$(dirname "$0")/.."
-version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
+# The version in the bundles' names: YO3_VERSION (the release workflow passes the CHANGELOG.md version), else git's.
+version=${YO3_VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}
 # The Node.js shipped in the bundles (an LTS line; the engine needs 22.18 or newer).
 NODE_VERSION=v26.13.0
 cache=dist/.cache

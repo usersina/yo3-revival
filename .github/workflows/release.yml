@@ -1,0 +1,95 @@
+# A push to main whose CHANGELOG.md has a new version at the top is a release: the lints and tests (the rules engine
+# fetched, no game install: the game-data tests skip), then both bundles (tools/release.sh), then the GitHub release
+# under that version's tag, its notes the version's section with the bundles' checksums. A push whose newest version is
+# already tagged releases nothing: its run passes after the first step.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One release at a time; a push made during a release waits for it
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Changelog
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.changelog.outputs.version }}
+      release: ${{ steps.changelog.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: The newest version in CHANGELOG.md, and whether it is released
+        id: changelog
+        run: |
+          version=$(python3 .github/scripts/release_notes.py version CHANGELOG.md)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+            echo "::notice::$version is already released: add a new version at the top of CHANGELOG.md to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::releasing $version"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    name: Test, build and release ${{ needs.prepare.outputs.version }}
+    needs: prepare
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      # The engine's sidecar and its tests run under the runner's Node.js; the bundles carry their own (release.sh)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Rust (with the Windows target) and mingw-w64, which links it
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup component add clippy
+          rustup target add x86_64-pc-windows-gnu
+          sudo apt-get update -q
+          sudo apt-get install -yq mingw-w64
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - name: The rules engine's package, card scripts and card database
+        run: engine/fetch.sh
+      - name: Lints
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Tests
+        run: cargo nextest run --workspace
+      - name: Bundles
+        run: YO3_VERSION="$VERSION" tools/release.sh
+      - name: Notes
+        run: |
+          mkdir assets
+          cp dist/yo3-revival-"$VERSION"-*.tar.gz dist/yo3-revival-"$VERSION"-*.zip assets/
+          ls -l assets
+          python3 .github/scripts/release_notes.py notes CHANGELOG.md assets > notes.md
+          cat notes.md
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$VERSION" assets/* \
+            --target "$GITHUB_SHA" \
+            --title "$VERSION (pre-alpha)" \
+            --notes-file notes.md \
+            --latest
