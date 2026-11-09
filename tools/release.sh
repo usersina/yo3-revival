@@ -15,6 +15,10 @@ mkdir -p "$out/engine"
 cp target/release/yo3-server "$out/"
 cp engine/duelcore.ts engine/package.json engine/package-lock.json engine/fetch.sh "$out/engine/"
 cp docs/guide.md "$out/README.md"
+# the guide's pictures, at the same relative paths (images/...) as in docs/, so README.md shows them
+mkdir -p "$out/images"
+cp -r docs/images/guide "$out/images/"
+cp docs/images/duel.png "$out/images/"
 cp LICENSE "$out/LICENSE"
 cat > "$out/run.sh" <<'EOF'
 #!/bin/sh
@@ -41,6 +45,10 @@ mkdir -p "$out/engine"
 cp target/x86_64-pc-windows-gnu/release/yo3-server.exe "$out/"
 cp engine/duelcore.ts engine/package.json engine/package-lock.json "$out/engine/"
 cp docs/guide.md "$out/README.md"
+# the guide's pictures, at the same relative paths (images/...) as in docs/, so README.md shows them
+mkdir -p "$out/images"
+cp -r docs/images/guide "$out/images/"
+cp docs/images/duel.png "$out/images/"
 cp LICENSE "$out/LICENSE"
 crlf() { sed 's/$/\r/' > "$1"; }
 crlf "$out/engine/fetch.cmd" <<'EOF'
