@@ -40,7 +40,8 @@ What is left is in the [roadmap](docs/roadmap.md).
 
 **There is no public server.** Somebody (a friend, or you) runs the server, and `HOST` below means *that person's
 address*, never the word "HOST". To try it alone, host it on your own PC: see
-[Play on your own PC](docs/guide.md#play-on-your-own-pc) (five steps; then `HOST` is `127.0.0.1`).
+[Play on your own PC](docs/guide.md#play-on-your-own-pc) (five steps; then `HOST` is `127.0.0.1`), with a
+[step-by-step guide with pictures](docs/guide.md#joining-step-by-step-with-pictures).
 
 You need your own copy of the game (the last released client, ver. 1.153, installed on Windows or under Wine on
 Linux). The original installer (the 2011-07-28 setup, about 900 MB) is preserved by a third party on
@@ -59,7 +60,8 @@ an address; then:
    Kaiba Corporation for a computer opponent.
 
 macOS is untested (see [the guide](docs/guide.md#macos)). The full player guide, with troubleshooting, is
-[docs/guide.md](docs/guide.md#for-every-player).
+[docs/guide.md](docs/guide.md#for-every-player); new players should start with its
+[picture guide to joining](docs/guide.md#joining-step-by-step-with-pictures).
 
 ## Host
 

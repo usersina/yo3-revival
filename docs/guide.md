@@ -12,6 +12,7 @@ install of the client (the last released version, ver. 1.153).
   - [Windows SmartScreen and antivirus warnings](#windows-smartscreen-and-antivirus-warnings)
   - [macOS](#macos)
 - [For every player](#for-every-player)
+  - [Joining, step by step (with pictures)](#joining-step-by-step-with-pictures)
 - [What works and what doesn't yet](#what-works-and-what-doesnt-yet)
 - [When something goes wrong](#when-something-goes-wrong)
 
@@ -34,7 +35,8 @@ only want to duel the computer opponents (or you have nobody to host), you are t
    so it must be replaced; the downloaded one points at your own PC.
 
 Then start the game, press **ONLINE**, log in with any name and password, pick your player, open **Main Menu → Edit
-Deck** once (it saves your starter deck), and walk the map to **Kaiba Corporation** for a computer opponent.
+Deck** once (it saves your starter deck), and walk the map to **Kaiba Corporation** for a computer opponent. Every
+step above and below has a picture in [Joining, step by step](#joining-step-by-step-with-pictures).
 
 ## For the host
 
@@ -174,6 +176,48 @@ default game folder is a Windows or Wine path, so pass `--game-dir`) and Node.js
 welcome (see [When something goes wrong](#when-something-goes-wrong)).
 
 ## For every player
+
+### Joining, step by step (with pictures)
+
+`HOST` is the **address of the person running the server** (the host tells you; there is no public server). The
+pictures use `192.168.1.20` as an example; on your own PC it is `127.0.0.1`. The red boxes mark what to click or
+type. The numbered list after the pictures has the same steps in words, with the details.
+
+**1. Open the join page in a browser:** `http://HOST:8080/join`. Type the player name you want and press **Join**.
+
+![The join page in a browser, with the address http://192.168.1.20:8080/join, a name typed in and the Join button marked](images/guide/1-join-page.png)
+
+**2. Press Download yo3.ini.** The page also shows the file's lines; you do not have to read them.
+
+![The join result page: Your account is ready, the yo3.ini lines and the Download yo3.ini link marked](images/guide/2-join-result.png)
+
+**3. Put the downloaded `yo3.ini` in the game's folder**, replacing the one that is there (keep a copy of the old one).
+The folder is `C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3` on Windows. This picture is a drawing, not a screenshot.
+
+![A drawn listing of the game folder with yo3.ini marked: the downloaded file goes here](images/guide/3-game-folder.png)
+
+**4. Start the game, press ONLINE** and log in with any User ID and password (nothing checks them), then OK.
+
+![The title screen with ONLINE marked, then the login window with the User ID, Password and OK marked](images/guide/4-title-login.png)
+
+**5. Pick your player**: the name you gave on the join page.
+
+![The Select Player screen with the player Duelist marked](images/guide/5-select-player.png)
+
+**6. Once: open Main Menu → Edit Deck.** The Main Menu is the button at the bottom left. Edit Deck's folder icon
+(top left) lists your Starter Deck and the official character decks. Opening Edit Deck saves them; leave it with the
+arrow at its bottom left. Without a deck the duel button refuses.
+
+![The Main Menu with Edit Deck marked, then Edit Deck with its folder icon marked and the Load Deck list showing the Starter Deck and official decks](images/guide/6-edit-deck.png)
+
+**7. To duel, press the duel button on the bottom bar, then Auto Duel and Confirm.** When two players wait with
+the same Rule Format they are matched. (To pick your friend instead, use **Create Duel**: the numbered list below says how.)
+
+![The Duel Menu with Auto Duel marked, then the Auto Duel window with Confirm marked](images/guide/7-auto-duel.png)
+
+Then pick your deck and play. The computer opponents are at Kaiba Corporation on the map.
+
+![The client in a duel against Seto Kaiba](images/duel.png)
 
 1. Install Yu-Gi-Oh! ONLINE 3. On Windows it runs as it is; on Linux it runs under Wine. The original installer (the
    2011-07-28 setup, about 900 MB) is preserved by a third party on [My Abandonware](https://www.myabandonware.com/game/yu-gi-oh-online-3-duel-accelerator-qy4); it is Konami's software,
