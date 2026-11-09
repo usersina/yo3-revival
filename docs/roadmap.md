@@ -78,6 +78,9 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
       affected. Noted in CLAUDE.md.
 - [x] No banlist by default (the user's choice); `--regulation` picks one.
 - [x] A new player needs Edit Deck once before any duel (the client alone writes deck files): the login news says so.
+- [x] When the rules engine can't run (Node.js missing or older than 22.18, engine not fetched), the server logs an ERROR
+  at start, the login news and the join page say duels are unavailable, and the launchers (`run.sh`, `run.cmd`,
+  `engine/fetch.sh`) stop before starting a server whose duels would all end as draws.
 - [x] Attacks and activations from any field slot but the first were ignored and the duel stalled: the client sends
       a field card's command as (zone slot, index 0).
 - [x] Set Spells/Traps lay sideways like set monsters (ocgcore's face-down defense position).

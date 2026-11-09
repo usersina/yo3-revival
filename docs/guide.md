@@ -6,10 +6,35 @@ install of the client (the last released version, ver. 1.153).
 
 **Contents**
 
+- [Play on your own PC](#play-on-your-own-pc)
 - [For the host](#for-the-host)
+  - [LAN checklist](#lan-checklist)
+  - [Windows SmartScreen and antivirus warnings](#windows-smartscreen-and-antivirus-warnings)
+  - [macOS](#macos)
 - [For every player](#for-every-player)
 - [What works and what doesn't yet](#what-works-and-what-doesnt-yet)
 - [When something goes wrong](#when-something-goes-wrong)
+
+## Play on your own PC
+
+**There is no public server.** Someone has to run one, and `HOST` in this guide means that person's address. If you
+only want to duel the computer opponents (or you have nobody to host), you are the host, on your own PC, and `HOST` is
+`127.0.0.1`:
+
+1. Install the game (ver. 1.153; see [For every player](#for-every-player) for where to find the installer).
+2. Download the bundle for your system from the [latest release](https://github.com/usersina/yo3-revival/releases/latest)
+   (Linux `.tar.gz`, Windows `.zip`) and unpack it anywhere.
+3. Install [Node.js](https://nodejs.org/) (22.18 or newer, the LTS one), [Git](https://git-scm.com/downloads) and curl
+   (Windows 10 and later have curl). Close and reopen your terminal afterwards.
+4. Run `run.cmd` (Windows) or `./run.sh` (Linux). The first start downloads the duel rules (about 160 MB) and
+   leaves a window open: keep it open while you play. If it says something is missing, install what it names.
+5. Open **<http://127.0.0.1:8080/join>** in a browser on the same PC, type a player name, press **Join**, press
+   **Download yo3.ini** and put that file in the game's install folder (`C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3`),
+   replacing the original (keep a copy). The file that comes with the game points at Konami's servers, which are gone,
+   so it must be replaced; the downloaded one points at your own PC.
+
+Then start the game, press **ONLINE**, log in with any name and password, pick your player, open **Main Menu → Edit
+Deck** once (it saves your starter deck), and walk the map to **Kaiba Corporation** for a computer opponent.
 
 ## For the host
 
@@ -42,7 +67,7 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
    unknown name lists them all. Auto Duel and Kaiba Corporation check decks against it; it shows as "Latest
    Regulation" in Create Duel, where a host can still pick another (Create Duel → Customize → Regulations → Select).
 3. Share the join page. Friends make their own account at **`http://HOST:8080/join`** (HOST is the address they reach
-   you at: your LAN or VPN address, or your public name). Nothing else to run, and the server can stay up. The game
+   you at: your LAN or VPN address, or your public name; tell them to type that address, not the word "HOST"). Nothing else to run, and the server can stay up. The game
    never sends a name or password, so an account is found by a secret **key** that rides in the friend's
    `PatchUpdateUrl` (the game fetches that address before every login); the page makes the account (one player with
    the name the friend picks, the starter deck, the starting BP), shows the friend their five `yo3.ini` lines (the host
@@ -109,13 +134,53 @@ newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and 
 4. Accounts and win/loss records live in `data/` (`accounts.json`, `records.json`), backed up into `data/backups/` at
    every start (the last 10 are kept). Back up `data/` to keep them.
 
+### LAN checklist
+
+Friends on the same network cannot connect? Go through this in order, before anyone starts the game:
+
+1. **Find your address.** Windows: open a terminal and run `ipconfig`, and read the *IPv4 Address* of the adapter
+   that is connected to your router (for example `192.168.1.23`). Linux: `ip addr` (or `ip -4 addr`) and the
+   `inet` address of your Wi-Fi or Ethernet. Give friends that address, and they use it as `HOST`.
+2. **Allow the server through the firewall.** Windows Defender Firewall asks the first time `yo3-server.exe` runs:
+   tick **Private networks** and press **Allow access**. If you pressed Cancel, Windows blocked it and LAN friends
+   cannot connect (you can, from the same PC). Fix it in Windows Security → Firewall & network protection → *Allow
+   an app through firewall* → *Change settings* → find `yo3-server` (or *Allow another app*) and tick Private; or in an
+   administrator terminal: `netsh advfirewall firewall add rule name="yo3-revival" dir=in action=allow protocol=TCP
+   localport=5730,1213,1214,8080`. On Linux: `sudo ufw allow 5730,1213,1214,8080/tcp`, or for firewalld `sudo
+   firewall-cmd --add-port={5730,1213,1214,8080}/tcp`.
+3. **Test from the friend's PC before starting the game:** the friend opens `http://HOST-IP:8080/join` (your address
+   from step 1) in a browser. The join page appearing means the network and firewall are fine. A page that keeps
+   loading means a firewall or the wrong address.
+4. **Beware of the wrong network interface.** If you run a VPN, a virtual machine or WSL, `ipconfig` lists several
+   adapters, and one of them is not the one your friends can reach. Spot it by the step 3 test failing while
+   everything else is right, or by the address not matching your router's range (a home LAN is usually `192.168.x.x`
+   or `10.x.x.x`). Try the other addresses in the list, or switch the VPN off while testing.
+
+### Windows SmartScreen and antivirus warnings
+
+`yo3-server.exe` is not code-signed (a signing certificate costs money a hobby project does not have), so Windows
+SmartScreen ("Windows protected your PC": press *More info*, then *Run anyway*) or some antivirus programs may warn
+about it or quarantine it. That is expected for a new unsigned program, not proof of a virus. To check that you have
+the real file, compare its SHA-256 with the one in the release notes (PowerShell: `Get-FileHash .\yo3-server.exe`),
+or avoid the question and build it yourself from the source (`cargo build --release -p yo3-server`, see the
+[README](../README.md#host)); all the code is in the repository.
+
+### macOS
+
+macOS is **untested**. The client is a Windows program, so it would need a Wine wrapper (for example CrossOver or
+Whisky), which we have not tried. The server uses no Windows- or Linux-only code, so it should build and run on macOS
+with the Rust toolchain (`cargo run --release -p yo3-server -- --bind 0.0.0.0 --game-dir "<the game's folder>"`; the
+default game folder is a Windows or Wine path, so pass `--game-dir`) and Node.js, but nobody has checked. Reports
+welcome (see [When something goes wrong](#when-something-goes-wrong)).
+
 ## For every player
 
 1. Install Yu-Gi-Oh! ONLINE 3. On Windows it runs as it is; on Linux it runs under Wine. The original installer (the
    2011-07-28 setup, about 900 MB) is preserved by a third party on [My Abandonware](https://www.myabandonware.com/game/yu-gi-oh-online-3-duel-accelerator-qy4); it is Konami's software,
    not part of this project, and you download it at your own discretion. Install it, then continue below (no patch
    needed: the game checks this server for updates).
-2. Open the host's join page, `http://HOST:8080/join` (the host tells you HOST), type the player name you want and
+2. Open the host's join page, `http://HOST:8080/join` (the host tells you HOST: it is the host's address, there is no
+   public server; on your own PC it is `127.0.0.1`), type the player name you want and
    press Join. The page shows your `yo3.ini`: press **Download yo3.ini** and put the file in the install folder
    (`C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3`), replacing the one there (keep a copy of the original). Windows
    protects Program Files: copy the file in with Explorer and accept the administrator prompt, or give your user write
@@ -199,6 +264,13 @@ Main Menu > Rental Card List shows what they lent and borrowed. Players' decks s
 
 ## When something goes wrong
 
+- **Found a bug, or stuck?** Open an issue at <https://github.com/usersina/yo3-revival/issues/new/choose> and say
+  what you did and what happened; the server's log (the terminal, and `logs/`) helps a lot.
+- **Duels end at once as a draw, or the news says "Duels are unavailable on this server":** the host's Node.js is
+  missing or older than 22.18, or the rules engine was not fetched. The server's log says `DUELS WON'T WORK` and why;
+  install the current LTS from <https://nodejs.org/> and run `run.sh` / `run.cmd` again.
+- **The join page does not open** (browser says it cannot connect): the address is wrong (it must be the host's real
+  address, not `HOST`) or the host's firewall blocks 8080; see the [LAN checklist](#lan-checklist).
 - **"There is no response from the server."** Check the address in `yo3.ini`, that the server runs, and that the four
   ports are open (`nc -vz HOST 5730` from the player's machine). A quick test from any browser on the player's
   machine: `http://HOST:8080/yo3/yo3.idx` shows lines of dated text when the host is reachable; a page that only

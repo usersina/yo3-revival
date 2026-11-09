@@ -14,7 +14,7 @@ engine.
 </p>
 
 **Contents:** [What works](#what-works) · [Play](#play) · [Host](#host) · [Documentation](#documentation) ·
-[Legal](#legal) · [License](#license)
+[Reporting bugs](#reporting-bugs) · [Legal](#legal) · [License](#license)
 
 ## What works
 
@@ -38,13 +38,18 @@ What is left is in the [roadmap](docs/roadmap.md).
 
 ## Play
 
-You need your own copy of the game (the last released client, ver. 1.153, installed on Windows or under Wine on
-Linux) and a host running this server. The original installer (the 2011-07-28 setup, about 900 MB) is preserved by a
-third party on [My Abandonware](https://www.myabandonware.com/game/yu-gi-oh-online-3-duel-accelerator-qy4); it is
-Konami's software, not part of this project, and you download it at your own discretion. The host sends you an
-address; then:
+**There is no public server.** Somebody (a friend, or you) runs the server, and `HOST` below means *that person's
+address*, never the word "HOST". To try it alone, host it on your own PC: see
+[Play on your own PC](docs/guide.md#play-on-your-own-pc) (five steps; then `HOST` is `127.0.0.1`).
 
-1. Open **`http://HOST:8080/join`** in a browser, type the player name you want and press **Join**.
+You need your own copy of the game (the last released client, ver. 1.153, installed on Windows or under Wine on
+Linux). The original installer (the 2011-07-28 setup, about 900 MB) is preserved by a third party on
+[My Abandonware](https://www.myabandonware.com/game/yu-gi-oh-online-3-duel-accelerator-qy4); it is Konami's software,
+not part of this project, and you download it at your own discretion. To join a friend's server, the host sends you
+an address; then:
+
+1. Open **`http://HOST:8080/join`** (with the host's address in place of `HOST`) in a browser, type the player name
+   you want and press **Join**.
 2. Press **Download yo3.ini** and put it in the game's install folder, replacing the original (keep a copy of it).
    On Windows that is `C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3`.
 3. Start the game, press **ONLINE**, log in with any name and password, and pick your player.
@@ -53,7 +58,8 @@ address; then:
    matched) or **Create Duel** (your friend sends you a request from your Player Information), or walk the map to
    Kaiba Corporation for a computer opponent.
 
-The full player guide, with troubleshooting, is [docs/guide.md](docs/guide.md#for-every-player).
+macOS is untested (see [the guide](docs/guide.md#macos)). The full player guide, with troubleshooting, is
+[docs/guide.md](docs/guide.md#for-every-player).
 
 ## Host
 
@@ -68,6 +74,11 @@ and curl.
    nothing needs forwarding.
 3. Share `http://YOUR-ADDRESS:8080/join` with your friends. On a server reachable from the internet, start it with
    `--no-join` and make accounts by hand, because the join page's keys travel over plain HTTP.
+
+Friends on your LAN cannot connect? Follow the [LAN checklist](docs/guide.md#lan-checklist). Windows may warn about
+the unsigned `yo3-server.exe`: see [the antivirus note](docs/guide.md#windows-smartscreen-and-antivirus-warnings).
+The launcher stops with a message if Node.js, npm, Git or curl is missing or Node.js is older than 22.18; without
+them duels would not work.
 
 Details (firewalls, forwarding, banlists, accounts, moving a friend's account, backups) are in
 [docs/guide.md](docs/guide.md#for-the-host). To build and run from source instead:
@@ -92,6 +103,12 @@ Everything detailed lives in [docs/](docs/README.md), which says what to read in
 To contribute, read [CLAUDE.md](CLAUDE.md) first. The short version: the game client is the spec, every reply cites
 client evidence, tests come first, and `cargo nextest run --workspace` and `cargo clippy --workspace --all-targets`
 stay clean.
+
+## Reporting bugs
+
+Found a bug, stuck on setup, or have an idea? Open an issue:
+**<https://github.com/usersina/yo3-revival/issues/new/choose>** (pick the form that fits). Say what you did, what you
+expected, and attach the server's log or `logs/` if you can.
 
 ## Legal
 
