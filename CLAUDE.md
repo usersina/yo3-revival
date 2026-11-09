@@ -56,7 +56,7 @@ The [docs index](docs/README.md) says what each document is for. The ones you wi
 |---|---|
 | `crates/yo3-proto` | Wire codec: frame, Blowfish (`BlowfishLE`), key/value messages, the version-string opener |
 | `crates/yo3-data` | Client data: `.ypk` archives, card table, UI text table, regulations, preset decks, packs (golden tests skip without the game) |
-| `crates/yo3-server` | Gate / front / duel / patch-HTTP servers (`main.rs` also holds the admin subcommands). `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `table.rs` = a duel between two players' connections, `shop.rs` = packs on sale and what a pack holds, `social.rs` = friends and ignore lists, `translate.rs` = engine messages to duel commands, `duelcheck.rs` = the duel check (a model of the client's card manager compared with the engine after each step, and the self-play that drives it), `accounts.rs` = accounts by key (the patch URL) or client address, `join.rs` = the self-service join page (`/join`) on the HTTP port, `deckcheck.rs` = the server-side deck check, `engine.rs` = the rules engine process, `trade.rs`, `rental.rs`, `mail.rs`, `teams.rs`, `events.rs` = the player features of those names, `duellog.rs` = duel logs, `clock.rs` = turn and total clocks, `store.rs` = what is kept in `data/`, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
+| `crates/yo3-server` | Gate / front / duel / patch-HTTP servers (`main.rs` also holds the admin subcommands). `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `table.rs` = a duel between two players' connections, `shop.rs` = packs on sale and what a pack holds, `social.rs` = friends and ignore lists, `translate.rs` = engine messages to duel commands, `duelcheck.rs` = the duel check (a model of the client's card manager compared with the engine after each step, and the self-play that drives it), `accounts.rs` = accounts by key (the patch URL) or client address, `join.rs` = the self-service join page (`/join`) on the HTTP port, `admin.rs` = the BP commands on a running server (`/admin`, loopback with a token), `deckcheck.rs` = the server-side deck check, `engine.rs` = the rules engine process, `trade.rs`, `rental.rs`, `mail.rs`, `teams.rs`, `events.rs` = the player features of those names, `duellog.rs` = duel logs, `clock.rs` = turn and total clocks, `store.rs` = what is kept in `data/`, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
 | `engine/` | Rules engine sidecar: `duelcore.ts` (EDOPro's core via ocgcore-wasm, under Node), `fetch.sh` (packages, card scripts, card database, Konami ids into the ignored `engine/vendor/`) |
 | `tools/client/vclient.sh` | Headless client: `xvfb`, `start [--trace]`, `login [SLOT]`, `check`, `shot`, `click`, `pixel`, `key`, `type`, `stop`, `prefix` |
 | `tools/tracer/` | Field-read tracer: `yo3trace.dll` + injector (C, mingw-w64), `summarize.py` |
@@ -117,12 +117,14 @@ target/release/yo3-server --gate-port 15730 --front-port 11213 --duel-port 11214
 #   the client then needs all five lines of its yo3.ini on those ports (GateServerPort=15730 and the three http URLs
 #   on :18080; CRLF line ends): back the file up first and restore it afterwards
 
-# admin subcommands (run with the server stopped; each takes --data-dir)
+# admin subcommands (each takes --data-dir; all but the BP ones need the server stopped)
 target/release/yo3-server accounts                # list: address, key, players
 #   add-account NAME [--also B,C] [--advertise HOST]: a key account; prints the key and the friend's yo3.ini lines
 #   key ADDR|PLAYER [--advertise HOST]: print (or make) an existing account's key and lines
 #   add-player ADDR|PLAYER NAME, rename OLD NEW, set-country ADDR|PLAYER CODE|auto (`countries` lists the codes)
 #   move-account OLD NEW [--replace]: a friend's address changed; --replace discards an account already at NEW
+#   give-bp WHO N, add-code CODE BP [--uses N], remove-code CODE, codes: BP and BOOSTERPASS codes; these four work
+#   while the server runs (admin.rs: the server's data/admin.json port and token, loopback only), the rest refuse then
 #   An account's key is the secret in PatchUpdateUrl (`/yo3/<key>/`), which the client fetches before every login (see
 #   "Accounts" in docs/protocol.md). The join page makes key accounts with no host step.
 ```

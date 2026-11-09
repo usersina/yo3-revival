@@ -2,9 +2,19 @@
 
 Pre-alpha: expect bugs, and please [report them](https://github.com/usersina/yo3-revival/issues/new/choose).
 
-Each section is a release. To release, add a section at the top, headed by the next version (`## v0.0.2 (date)`), and
-push to `main`: the release workflow builds the bundles and publishes the version under that tag, with the section as
-its notes. A push whose newest version is already released publishes nothing.
+Each section is a release. To release, rename the "Unreleased" section at the top to the next version
+(`## v0.0.2 (date)`) and push to `main`: the release workflow builds the bundles and publishes the version under that
+tag, with the section as its notes. A push whose newest version is already released publishes nothing, so changes can
+gather under "Unreleased" first.
+
+## Unreleased
+
+Not released yet: the next version's notes. When releasing, rename this section to the version (`## v0.0.2 (date)`).
+
+- BOOSTERPASS codes: the host makes codes (`add-code`) that players type in the game's BOOSTERPASS window (Main Menu →
+  BOOSTERPASS) for BP, each account once; the game shows the points and "Acquired Duelist premium!".
+- `give-bp` gives BP to one player's account. Both work while the server runs, from the server's own PC.
+- The admin commands that need the server stopped now say so instead of having their change overwritten.
 
 ## v0.0.1 (2026-11-09)
 

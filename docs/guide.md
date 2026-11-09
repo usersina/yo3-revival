@@ -131,7 +131,20 @@ Node.js, in `engine/` (what each part is and its license: `engine/THIRD-PARTY.md
    ./yo3-server set-country Anis TN          # that account's players show the Tunisian flag (a player's name or an address)
    ./yo3-server set-country Anis auto        # back to following the game's language
    ```
-4. Accounts and win/loss records live in `data/` (`accounts.json`, `records.json`), backed up into `data/backups/` at
+4. BOOSTERPASS Points (BP) beyond what duels pay: make a code your friends type in the game (Main Menu →
+   BOOSTERPASS), or give BP to one account. Both work while the server runs, from the server's own PC:
+
+   ```sh
+   ./yo3-server add-code WELCOME2YO3DUEL1 5000            # 16 letters and digits; each account may use it once
+   ./yo3-server add-code GIFTFORTHREE1234 2000 --uses 3   # only the first three accounts get it
+   ./yo3-server codes                                     # every code, and how often it was used
+   ./yo3-server remove-code GIFTFORTHREE1234
+   ./yo3-server give-bp Anis 10000                        # a player's name (or an address): their account gets it
+   ```
+
+   A code the server doesn't have (or one already used by that account) shows "Incorrect BOOSTERPASS CODE.". The
+   other admin commands (`rename`, `move-account`…) still need the server stopped, and say so when it runs.
+5. Accounts and win/loss records live in `data/` (`accounts.json`, `records.json`), backed up into `data/backups/` at
    every start (the last 10 are kept). Back up `data/` to keep them.
 
 ### LAN checklist
@@ -274,7 +287,8 @@ Working: chat rooms and whispers, player search, NPC duels, Auto Duel and Create
 and Match Mode), choosing targets, tributes, positions, coin calls and chains in the game's own dialogs, attack, summon,
 chain-link and destruction animations, the result screens, avatar settings, and the shop's booster packs and structure decks: every
 account starts with 5000 BOOSTERPASS Points (100 a pack), duels earn more (100 for a win, 50 for a draw, 30 for a
-loss; the shop shows them after your next login or purchase), and the cards you pull are kept on the server. A
+loss; the shop shows them after your next login or purchase), so do codes the host gives out (Main Menu → BOOSTERPASS),
+and the cards you pull are kept on the server. A
 structure deck you buy shows up in Edit Deck's deck list, ready to duel with.
 
 Duels between players have clocks: 3 minutes a turn and 10 minutes a duel (or the host's choice in Create Duel), and
