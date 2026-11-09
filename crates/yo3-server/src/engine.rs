@@ -35,16 +35,23 @@ pub fn parse_node_version(text: &str) -> Option<(u32, u32)> {
     Some((major, minor))
 }
 
-/// Why duels can't be played: the engine's files are missing, or `node` is missing or older than [`MIN_NODE`].
-/// None when the engine can run. Runs `node --version` once (fast), not the sidecar.
+/// The Node.js that runs the sidecar: the release bundles' own (`node/node`, `node\\node.exe` on Windows, in the
+/// engine directory), else `node` on the PATH.
+pub fn node(dir: &Path) -> PathBuf {
+    let bundled = dir.join("node").join(format!("node{}", std::env::consts::EXE_SUFFIX));
+    if bundled.is_file() { bundled } else { PathBuf::from("node") }
+}
+
+/// Why duels can't be played: the engine's files are missing, or its Node.js ([`node`]) is missing or older than
+/// [`MIN_NODE`]. None when the engine can run. Runs `node --version` once (fast), not the sidecar.
 pub fn problem(dir: Option<&Path>) -> Option<String> {
     let (want_major, want_minor) = MIN_NODE;
-    if dir.is_none() {
-        return Some("the rules engine is not fetched (run engine/fetch.sh, or the launcher: run.sh / run.cmd)".into());
-    }
-    let out = match Command::new("node").arg("--version").output() {
+    let Some(dir) = dir else {
+        return Some("the rules engine is missing (unpack the release bundle again, whole; from source, run engine/fetch.sh)".into());
+    };
+    let out = match Command::new(node(dir)).arg("--version").output() {
         Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).into_owned(),
-        _ => return Some(format!("Node.js is not installed or not on the PATH (version {want_major}.{want_minor} or newer is needed)")),
+        _ => return Some(format!("Node.js is missing (the release bundle's engine/node, else one on the PATH, version {want_major}.{want_minor} or newer)")),
     };
     match parse_node_version(&out) {
         Some(v) if v >= MIN_NODE => None,
@@ -69,7 +76,7 @@ impl Engine {
     }
 
     pub fn start(dir: &Path) -> io::Result<Engine> {
-        let mut node = Command::new("node");
+        let mut node = Command::new(node(dir));
         node.arg(dir.join("duelcore.ts"));
         Engine::spawn(node, CALL_TIMEOUT)
     }
@@ -141,6 +148,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_bundled_node_is_preferred_to_the_one_on_the_path() {
+        let dir = std::env::temp_dir().join(format!("yo3-bundled-node-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(node(&dir), PathBuf::from("node"), "no bundle: the PATH's");
+        let bundled = dir.join("node").join(format!("node{}", std::env::consts::EXE_SUFFIX));
+        std::fs::create_dir_all(bundled.parent().unwrap()).unwrap();
+        std::fs::write(&bundled, b"").unwrap();
+        assert_eq!(node(&dir), bundled);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn node_versions_compare_by_major_then_minor() {
         assert_eq!(parse_node_version("v22.18.0\n"), Some((22, 18)));
         assert_eq!(parse_node_version("v20.0.0"), Some((20, 0)));
@@ -152,6 +171,6 @@ mod tests {
 
     #[test]
     fn a_missing_engine_directory_is_a_problem() {
-        assert!(problem(None).unwrap().contains("not fetched"));
+        assert!(problem(None).unwrap().contains("rules engine is missing"));
     }
 }
