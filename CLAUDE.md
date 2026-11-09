@@ -56,7 +56,7 @@ The [docs index](docs/README.md) says what each document is for. The ones you wi
 |---|---|
 | `crates/yo3-proto` | Wire codec: frame, Blowfish (`BlowfishLE`), key/value messages, the version-string opener |
 | `crates/yo3-data` | Client data: `.ypk` archives, card table, UI text table, regulations, preset decks, packs (golden tests skip without the game) |
-| `crates/yo3-server` | Gate / front / duel / patch-HTTP servers (`main.rs` also holds the admin subcommands). `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `table.rs` = a duel between two players' connections, `shop.rs` = packs on sale and what a pack holds, `social.rs` = friends and ignore lists, `translate.rs` = engine messages to duel commands, `accounts.rs` = accounts by key (the patch URL) or client address, `join.rs` = the self-service join page (`/join`) on the HTTP port, `deckcheck.rs` = the server-side deck check, `engine.rs` = the rules engine process, `trade.rs`, `rental.rs`, `mail.rs`, `teams.rs`, `events.rs` = the player features of those names, `duellog.rs` = duel logs, `clock.rs` = turn and total clocks, `store.rs` = what is kept in `data/`, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
+| `crates/yo3-server` | Gate / front / duel / patch-HTTP servers (`main.rs` also holds the admin subcommands). `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `table.rs` = a duel between two players' connections, `shop.rs` = packs on sale and what a pack holds, `social.rs` = friends and ignore lists, `translate.rs` = engine messages to duel commands, `duelcheck.rs` = the duel check (a model of the client's card manager compared with the engine after each step, and the self-play that drives it), `accounts.rs` = accounts by key (the patch URL) or client address, `join.rs` = the self-service join page (`/join`) on the HTTP port, `deckcheck.rs` = the server-side deck check, `engine.rs` = the rules engine process, `trade.rs`, `rental.rs`, `mail.rs`, `teams.rs`, `events.rs` = the player features of those names, `duellog.rs` = duel logs, `clock.rs` = turn and total clocks, `store.rs` = what is kept in `data/`, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
 | `engine/` | Rules engine sidecar: `duelcore.ts` (EDOPro's core via ocgcore-wasm, under Node), `fetch.sh` (packages, card scripts, card database, Konami ids into the ignored `engine/vendor/`) |
 | `tools/client/vclient.sh` | Headless client: `xvfb`, `start [--trace]`, `login [SLOT]`, `check`, `shot`, `click`, `pixel`, `key`, `type`, `stop`, `prefix` |
 | `tools/tracer/` | Field-read tracer: `yo3trace.dll` + injector (C, mingw-w64), `summarize.py` |
@@ -77,7 +77,9 @@ Build and test:
 
 ```bash
 engine/fetch.sh                                   # once: the rules engine's dependencies (engine tests skip without them)
-cargo nextest run --workspace                     # all tests (or: cargo test --workspace)
+cargo nextest run --workspace                     # all tests (or: cargo test --workspace); about a minute, most of it the duel
+#   check's 240 self-played duels (tests/duel_check.rs, YO3_CHECK_DUELS=n per test for more): run it after any change to
+#   translate.rs or the sidecar. A failure names the seed, the step and the engine messages before the difference
 cargo clippy --workspace --all-targets            # lints
 tools/docs-check.py                               # every relative link and anchor in README.md, CLAUDE.md, docs/*.md
 tools/release.sh                                  # the host's bundles in dist/ (Linux .tar.gz, Windows .zip), each with docs/guide.md as README.md
@@ -100,7 +102,8 @@ ss -ltnp | grep ':5730 '                          # the server's pid, to stop it
 #   CARD_Prop rows repeated to 40: here Marauding Captain and Giant Orc, for a yes/no question and a card choice),
 #   --duel-extra 3437 (the extra deck as rows: Goyo Guardian, a Synchro for Krebons 3397 and Giant Orc),
 #   --duel-regulation 4 (check every duel's deck against that banlist, whatever the duel names: the starter deck breaks 4),
-#   --duel-time 0,0 (the turn and total clocks of duels between players off: live checks are slower than 180 s a turn)
+#   --duel-time 0,0 (the turn and total clocks of duels between players off: live checks are slower than 180 s a turn),
+#   --duel-check (compare every duel's client view with the engine after each step; a difference logs ERROR duel check)
 #   state: accounts and records persist in data/ (ignored; --data-dir), backed up into data/backups/ at each start
 
 # a dev server beside a live one (never touch the live one): other ports, scratch dirs
@@ -181,7 +184,8 @@ tools/monkey/protocol-monkey.sh soak --secs 300 --conns 24 --duel-pairs 4   # al
 tools/monkey/protocol-monkey.sh repro FILE                              # a saved plan ($SCRATCH/failures/*/plan-*.txt)
 tools/monkey/protocol-monkey.sh minimize FILE [--sig TEXT]              # cut a failing plan down (FILE.min.txt)
 #   SCRATCH=/tmp/yo3-monkey holds server.log, stats.csv (rss, fds, data size over time) and failures/. The corpus is the
-#   packet logs in logs/ (--corpus DIR). Add `--server-arg=--duel-lp --server-arg=1000` to end duels quickly.
+#   packet logs in logs/ (--corpus DIR). Add `--server-arg=--duel-lp --server-arg=1000` to end duels quickly. duel and
+#   soak start the server with --duel-check (`--no-duel-check` to leave it off)
 tools/monkey/ui-monkey.py --secs 1800 --seed 1                          # random clicks/drags/keys on both headless clients
 #   uses displays :77 and :78 and both clients' prefixes, so not while the user's client is queued there. It backs up
 #   ~/Documents/Yu-Gi-Oh! ONLINE 3 first and restores it after; failures (screenshots, packets, logs) in

@@ -31,7 +31,7 @@ tracked as `[ ]` boxes in the sections below and in "Open questions and guesses"
 
 | Where | What it is |
 |---|---|
-| The dated sections (overnight plan, Windows VM test, robustness review, monkey testing, screenshot session) | What each work session did and found |
+| The dated sections (overnight plan, Windows VM test, robustness review, monkey testing, screenshot session, duel check) | What each work session did and found |
 | M0 to M6 | The milestones, each ending in something checked against the real client |
 | Open questions and guesses | Every value we picked without client evidence, to revisit |
 | Leads | Ideas outside the code |
@@ -307,6 +307,55 @@ and Miracle Magic official decks). Both are traced below.
       pile was taken at the engine's sequence without checking its id; it is now taken by its id when another card
       sits there (a warning logs "mirror out of step" if it ever happens). If the art goes wrong again, look for
       that line in the server log.
+
+## ▶ Duel check (2026-11-09): the client's view checked against the engine
+
+After the client crash at `0x516185` (an engine hand shuffle the server didn't follow put the client's hand out of step,
+and a card left it by the wrong index; see the crash history in
+[client-internals](client-internals.md#crash-history-and-the-rule-each-one-taught)), a program now looks for that class
+of bug instead of a list of cases:
+
+- **A model of the client** (`crates/yo3-server/src/duelcheck.rs`): the hand lists, field slots, pile counts, card
+  table and each card's place word, as DuelCardManager keeps them after the commands the server sends, built only from
+  the client's code (each rule cites its address; see "Moves out of a hand go by index" and the paragraphs after it in
+  [protocol](protocol.md)). It notes the client going wrong as it happens (a hand card taken out by an index holding
+  another card, a HandShuffle with an empty index) and compares every hand, slot and pile with the engine's real field
+  (the sidecar's read-only `state` op) after each engine step.
+- **Self-play** (`duelcheck::selfplay`, `tests/duel_check.rs`): two seeded random players (any summon, Set, activation,
+  attack, chain, pick or answer the engine offers) duel through the engine and a translator, decks drawn from a pool of
+  searches, discards, hand and deck churn, control changes, swaps, flips, hats, tokens, Synchro and Xyz Summons; one
+  duel in three as against a player (the opponent's hidden cards without rows), every fourth starting at 2000 LP. 240
+  duels run in `cargo nextest run --workspace` (`YO3_CHECK_DUELS=n` per test for more); 400 more seeds were played
+  while fixing. `tests/duelcheck_model.rs` checks the model alone.
+- **In the server** (`--duel-check`, a testing aid): every NPC duel and table checks each step and logs `ERROR duel
+  check` with the difference (once per duel). The protocol monkey's `duel` and `soak` runs start the server with it.
+  Proved by a server built with a translator broken on purpose (the opponent's draws dropped): ERRORs in every table and
+  NPC duel, reported by the monkey as failures.
+
+What it found (each fixed with a contract test in `translate_contract.rs`, then none in 400 seeds):
+- [x] Magical Hats (MSG_SHUFFLE_SET_CARD 36) ignored: the client showed the cards under the wrong hats. ocgcore-wasm also
+      misreads the message; the sidecar now reads the shuffled zones back. CardSwap `0x1B` trades the cards.
+- [x] Creature Swap (MSG_SWAP 55) ignored: each monster stayed on its old side. CardSwap `0x1B`; **confirmed live**.
+- [x] A token whose control changed (Snatch Steal on a Sheep Token) vanished instead of moving.
+- [x] Xyz materials read as moving into the Extra Deck (ocgcore-wasm gives the Xyz Monster's location), and a detached
+      one as leaving its monster's zone (which would clear the monster's slot on the client). Now off the field with
+      CardVanish and moved on from an empty slot (shape; see "Xyz materials" in protocol).
+- [x] Exchange of the Spirit (MSG_SWAP_GRAVE_DECK 35) ignored: both piles kept their old counts.
+- [x] (Before the checker, the crash itself: MSG_SHUFFLE_HAND 33 ignored, and moves out of a hand named the engine's
+      index; fixed in ac0afd8.)
+
+The engine message types the translator leaves alone, and why (the audit):
+- No card changes place: hints, waits, targets, equips and relations, coin and dice, chain negations and disables, field
+  zones disabled, MSG_SET (the move that follows does the work), RPS results, AI names.
+- Only the Deck's or Extra Deck's order changes, which the client never sees (the Deck is a count; cards leaving the
+  Deck or Extra Deck are found by id): SHUFFLE_DECK 32, REFRESH_DECK 34, REVERSE_DECK 37 and DECK_TOP 38 (Convulsion of
+  Nature: the face-up Deck's top card isn't shown, **open**), SHUFFLE_EXTRA 39, CONFIRM_DECKTOP 30 and
+  CONFIRM_EXTRATOP 42 (reveals not shown, **open**).
+- [ ] Places change, not followed (never seen in 640 self-played duels with this pool): REMOVE_CARDS 190 (cards taken
+      out of the duel), RELOAD_FIELD 162 (the whole field anew), TAG_SWAP 161 (tag duels, not played here), an Xyz
+      material attached from a hand or pile (logged).
+- [ ] Not seen live: Magical Hats, Exchange of the Spirit and Xyz materials on the client (Creature Swap was). The
+      client lacks the Xyz Monsters tried, so Xyz may not come up at all.
 
 ## ✅ M0: Research and tooling
 
@@ -663,6 +712,9 @@ Stop finding missing fields one crash at a time.
 | Uploaded decks | the decks a duel's Select Deck sent, ten per player by name, listed after the starter and bought decks | The client has no other upload; the original server's deck storage is unknown |
 | Deck check | sizes, ownership per Konami id, the duel's regulation, refused with `0x22CB` (client text `0x2919`: settled, `0x50ECF0` compares only `0x22CA`/`0x22CB` and never uses `error_code`) | The rules of the check are ours |
 | Player names | the starting names (`--players`, default Duelist) made unique with a number; players make more at Select Player (at most 16 characters, unique ignoring case: **guess**), the host can still `add-player` / `rename` | The original's name rules are unknown; a team's leader can't be deleted and an account keeps one player (ours) |
+| CardSwap `0x1B` | each of the two words carries the face and position of the card arriving there (MSG_SWAP, Magical Hats) | Read in the code (`0x4FF000` case `0x1B`); live only for Creature Swap, whose two monsters were both face-up attack |
+| Magical Hats' new places | read back from the duel after the step (the sidecar's `places`), matched by id | The core's message lists only old places (the core's writing order as remembered, and ocgcore-wasm's pairing); the self-played duels agree with the engine, the client never saw it |
+| Xyz materials | CardVanish as one becomes a material, a move from an empty field slot as it leaves | How Online 3 showed materials is unknown; the client lacks the Xyz Monsters tried |
 
 ### Settled by the client's own code (no longer guesses)
 

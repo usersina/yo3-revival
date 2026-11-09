@@ -922,7 +922,47 @@ engine's: see the hand-index rule under the moves above, and the crash it caused
 
 **Moves out of a hand go by index.** `0x5000E0` takes a card out of its hand list by the move's from index
 (`0x5005D0(player, index)`), not by uid. When the server's mirror finds the card the engine named at another index than
-the engine's sequence, the move names the mirror's index (where the client has it).
+the engine's sequence, the move names the mirror's index (where the client has it). A card that lands in a hand goes to
+the end of the list (`0x52A400`, a push_back), whatever index the move names, and the hand is renumbered by position
+(`0x500640`); a field zone (0–10) the move leaves loses whatever card its slot held, and the one it lands on holds the
+card (the slot array at `+0x4C`). The duel check (below) follows exactly these rules.
+
+**Field cards that trade places.** `0x1B` CardSwap {_, place A, place B} as moves give them, both field places
+(DuelCardManager `0x4FF000` case `0x1B`): the cards in the two slots (`0x4F8240`) trade places, each taking the word of
+the place it lands on as its place and position (`+0x82`; `0x5000E0` with param_6 1, which leaves hands and piles
+alone), and the slot array is swapped. So each word carries the face and position of the card arriving there. The
+server uses it for MSG_SWAP (55 `{card1, card2}`: Creature Swap, two monsters change sides, each keeping its position)
+and MSG_SHUFFLE_SET_CARD (36: Magical Hats shuffles Set cards among their zones), then sends each card's table entry at
+its new place and, for a face-up monster, its zone's record. A card whose new zone is empty moves there with `0x1A`
+instead. **Confirmed** for MSG_SWAP (live, `--duel-deck 2627,1228`: Creature Swap between a Gene-Warped Warwolf and
+Kaiba's Ancient Lamp; each stood on the other side with its own label, the duel went on, and the server's duel check
+found no difference). MSG_SHUFFLE_SET_CARD: the core writes the shuffled cards' old places, then as many Xyz material
+places (zero when none), and ocgcore-wasm reads them as `{from, to}` pairs, which pairs old places with each other; no
+list gives a card's new place. The sidecar adds `places` (each shuffled zone and the card it holds after the step, read
+back from the duel) and the server matches its cards to them by id (identical cards are interchangeable). **Shape**: the
+self-played duels (below) agree with the engine after every Magical Hats; not seen on the client.
+
+**A Graveyard and Deck swap** (MSG_SWAP_GRAVE_DECK, 35 `{player, deck_size, returned_to_extra}`: Exchange of the Spirit)
+says only the Deck's new size. The sidecar adds the player's `grave` and `extra` as they are after the step; the server
+moves each old Graveyard card out with `0x1A` (to the Extra Deck while the engine's holds more of its id than the
+mirror's, else to the Deck), then each new Graveyard card in from the Deck in the engine's order. **Shape** (self-played
+duels only).
+
+**Xyz materials.** ocgcore-wasm gives a material's place as its Xyz Monster's location with an `overlay_sequence` (one
+attached in the Extra Deck reads as the Extra Deck). The client has no place under a monster, so a field card that
+becomes a material gets CardVanish (`0x1F`: off the field and hidden; its slot keeps the object until another card
+lands there) and the server keeps it among the materials; one that leaves for a pile moves there with `0x1A` from the
+field slot it left when that is still empty (the client clears the move's slot and so lets go of the hidden object),
+else from any empty field slot. **Shape**: the shatter plays for a material, and the client's card list has none of the
+Xyz Monsters tried (Gem-Knight Pearl, Number 39: Utopia), so this was not seen live. A material from a hand or pile is
+not followed (logged).
+
+**The duel check** (`crates/yo3-server/src/duelcheck.rs`, the server's `--duel-check`): a model of the client's card
+manager built only from the rules above (the hand lists, field slots, pile counts, card table and each card's place
+word), fed every command the server sends and compared with where the engine has every card (the sidecar's read-only
+`state` op) after each engine step. It catches a translator that drifts from the client or the engine at the first step
+where they differ. The tests self-play a few hundred seeded duels through it (`tests/duel_check.rs`); the protocol
+monkey's duels run the server with it. What it found is in the [roadmap](roadmap.md#-duel-check-2026-11-09-the-clients-view-checked-against-the-engine).
 
 `0x14` HandOpen {player, open flag, uid or 0 for the whole hand} (`0x4FF1E7`: effect mode `0xD` closes, `0xC` opens, the
 card's face bit set to the flag) is the way to hold a hand open; not used. Cards revealed elsewhere (a Set card, the
@@ -1024,7 +1064,7 @@ ids 3900–3999 (75 rows, e.g. four "Sheep Token", 3902–3905, one per colour).
 from location 0): the server takes the client's token card of that name (in turn when there are several), gives it a
 uid of its own (from `0x4000`), and sends its card table entry, its field record and a move from its slot onto
 itself (`0x1A` finds no object by uid and makes one, `0x5003A0`). A token leaving the field (to location 0, or to a
-pile) gets CardVanish and leaves the mirror. A card list finds a token at its place (it has no id to find it by).
+pile) gets CardVanish and leaves the mirror; one that changes sides (Snatch Steal on a Sheep Token) moves like any card. A card list finds a token at its place (it has no id to find it by).
 Live (Scapegoat): four Sheep Tokens in four colours, in defense, on both clients; Witch of the Black Forest's attack
 listed them as their own cards and the one destroyed shattered and left no Graveyard card.
 
