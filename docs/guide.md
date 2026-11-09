@@ -24,12 +24,10 @@ only want to duel the computer opponents (or you have nobody to host), you are t
 
 1. Install the game (ver. 1.153; see [For every player](#for-every-player) for where to find the installer).
 2. Download the bundle for your system from the [latest release](https://github.com/usersina/yo3-revival/releases/latest)
-   (Linux `.tar.gz`, Windows `.zip`) and unpack it anywhere.
-3. Install [Node.js](https://nodejs.org/) (22.18 or newer, the LTS one), [Git](https://git-scm.com/downloads) and curl
-   (Windows 10 and later have curl). Close and reopen your terminal afterwards.
-4. Run `run.cmd` (Windows) or `./run.sh` (Linux). The first start downloads the duel rules (about 160 MB) and
-   leaves a window open: keep it open while you play. If it says something is missing, install what it names.
-5. Open **<http://127.0.0.1:8080/join>** in a browser on the same PC, type a player name, press **Join**, press
+   (Linux `.tar.gz`, Windows `.zip`) and unpack it anywhere. It has everything, the duel rules included: nothing else
+   to install.
+3. Run `run.cmd` (Windows) or `./run.sh` (Linux). It leaves a window open: keep it open while you play.
+4. Open **<http://127.0.0.1:8080/join>** in a browser on the same PC, type a player name, press **Join**, press
    **Download yo3.ini** and put that file in the game's install folder (`C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3`),
    replacing the original (keep a copy). The file that comes with the game points at Konami's servers, which are gone,
    so it must be replaced; the downloaded one points at your own PC.
@@ -40,13 +38,13 @@ step above and below has a picture in [Joining, step by step](#joining-step-by-s
 
 ## For the host
 
-You need Linux or Windows, the game installed (the server reads its card data from your install), Node.js 22.18 or
-newer (it runs the engine's TypeScript directly), Git, and curl (Windows 10 and later have it).
+You need Linux or Windows and the game installed (the server reads its card data from your install). The release
+bundle carries the rest: the rules engine (EDOPro's core, ProjectIgnis' card scripts and card database) with its own
+Node.js, in `engine/` (what each part is and its license: `engine/THIRD-PARTY.md`). Nothing to install.
 
 1. Unpack the [release](https://github.com/usersina/yo3-revival/releases/latest) for your system (or build both with
    `tools/release.sh`) and start it: `./run.sh` on Linux, `run.cmd` on Windows (double-click it, or run it in a
-   terminal to pass options). The first start downloads what
-   the rules engine needs (EDOPro's core, card scripts and card database, about 160 MB). Your game install is found in
+   terminal to pass options). Your game install is found in
    `~/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3` on Linux and `C:\Program Files
    (x86)\Konami\Yu-Gi-Oh! ONLINE 3` on Windows; pass `--game-dir DIR` otherwise.
 2. Make the server reachable. Friends connect to TCP ports **5730** (gate), **1213** (front), **1214** (duels) and
@@ -172,7 +170,8 @@ or avoid the question and build it yourself from the source (`cargo build --rele
 macOS is **untested**. The client is a Windows program, so it would need a Wine wrapper (for example CrossOver or
 Whisky), which we have not tried. The server uses no Windows- or Linux-only code, so it should build and run on macOS
 with the Rust toolchain (`cargo run --release -p yo3-server -- --bind 0.0.0.0 --game-dir "<the game's folder>"`; the
-default game folder is a Windows or Wine path, so pass `--game-dir`) and Node.js, but nobody has checked. Reports
+default game folder is a Windows or Wine path, so pass `--game-dir`) and Node.js 22.18 or newer with
+`engine/fetch.sh` run once (the bundles' Node.js is for Linux and Windows only), but nobody has checked. Reports
 welcome (see [When something goes wrong](#when-something-goes-wrong)).
 
 ## For every player
@@ -310,9 +309,11 @@ Main Menu > Rental Card List shows what they lent and borrowed. Players' decks s
 
 - **Found a bug, or stuck?** Open an issue at <https://github.com/usersina/yo3-revival/issues/new/choose> and say
   what you did and what happened; the server's log (the terminal, and `logs/`) helps a lot.
-- **Duels end at once as a draw, or the news says "Duels are unavailable on this server":** the host's Node.js is
-  missing or older than 22.18, or the rules engine was not fetched. The server's log says `DUELS WON'T WORK` and why;
-  install the current LTS from <https://nodejs.org/> and run `run.sh` / `run.cmd` again.
+- **Duels end at once as a draw, or the news says "Duels are unavailable on this server":** the server can't run its
+  rules engine. The server's log says `DUELS WON'T WORK` and why. With a release bundle, the `engine` folder is missing
+  or incomplete (an antivirus may have removed `engine\node\node.exe`): unpack the bundle again, whole. Run from source,
+  Node.js is missing or older than 22.18, or `engine/fetch.sh` was not run: install the current LTS from
+  <https://nodejs.org/> and run it.
 - **The join page does not open** (browser says it cannot connect): the address is wrong (it must be the host's real
   address, not `HOST`) or the host's firewall blocks 8080; see the [LAN checklist](#lan-checklist).
 - **"There is no response from the server."** Check the address in `yo3.ini`, that the server runs, and that the four

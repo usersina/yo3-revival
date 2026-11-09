@@ -81,6 +81,8 @@ cargo nextest run --workspace                     # all tests (or: cargo test --
 cargo clippy --workspace --all-targets            # lints
 tools/docs-check.py                               # every relative link and anchor in README.md, CLAUDE.md, docs/*.md
 tools/release.sh                                  # the host's bundles in dist/ (Linux .tar.gz, Windows .zip), each with docs/guide.md as README.md
+#   and the whole rules engine (its own Node.js, NODE_VERSION in the script, checksum-checked; the scripts and card
+#   database from engine/vendor/): hosts install nothing. The server prefers engine/node/node[.exe] to the PATH's node
 #   once: rustup target add x86_64-pc-windows-gnu (mingw-w64 links it). A Windows build under Wine needs its own prefix
 #   (WINEPREFIX=.wine-c): vclient.sh stop kills every process of the default prefix
 ```

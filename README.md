@@ -65,13 +65,12 @@ macOS is untested (see [the guide](docs/guide.md#macos)). The full player guide,
 
 ## Host
 
-You need Linux or Windows, the game installed (the server reads its card data from it), Node.js 22.18 or newer, Git
-and curl.
+You need Linux or Windows and the game installed (the server reads its card data from it). The release bundle has
+everything else, the rules engine and its own Node.js included.
 
 1. Download the bundle for your system from the [latest release](https://github.com/usersina/yo3-revival/releases/latest)
    (Linux `.tar.gz`, Windows `.zip`; or build both with `tools/release.sh`), unpack it, and run `./run.sh` (Linux) or
-   `run.cmd` (Windows). The first start downloads the rules engine's packages, card scripts and card database (about
-   160 MB).
+   `run.cmd` (Windows). Nothing to install.
 2. Open TCP ports **5730**, **1213**, **1214** and **8080**, or put everyone on one VPN (Tailscale, ZeroTier) so
    nothing needs forwarding.
 3. Share `http://YOUR-ADDRESS:8080/join` with your friends. On a server reachable from the internet, start it with
@@ -79,13 +78,12 @@ and curl.
 
 Friends on your LAN cannot connect? Follow the [LAN checklist](docs/guide.md#lan-checklist). Windows may warn about
 the unsigned `yo3-server.exe`: see [the antivirus note](docs/guide.md#windows-smartscreen-and-antivirus-warnings).
-The launcher stops with a message if Node.js, npm, Git or curl is missing or Node.js is older than 22.18; without
-them duels would not work.
 
 Details (firewalls, forwarding, banlists, accounts, moving a friend's account, backups) are in
 [docs/guide.md](docs/guide.md#for-the-host). To build and run from source instead:
 
 ```bash
+engine/fetch.sh                                   # once: the rules engine (needs Node.js 22.18+, npm, Git and curl)
 cargo run --release -p yo3-server -- --bind 0.0.0.0 --log-dir logs
 ```
 
