@@ -44,6 +44,10 @@ struct Args {
     duel_port: u16,
     #[arg(long, global = true, default_value_t = 8080)]
     http_port: u16,
+    /// Duel and soak runs start the server with `--duel-check`, so every duel's client view is compared with the rules
+    /// engine after each step (a difference is an ERROR, so a failure); this turns that off.
+    #[arg(long, global = true)]
+    no_duel_check: bool,
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -212,7 +216,11 @@ async fn setup(a: &Args) -> anyhow::Result<Arc<Env>> {
     let ports = Ports { host: a.host.clone(), gate: a.gate_port, front: a.front_port, duel: a.duel_port, http: a.http_port, pids: [1001, 1002] };
     let mut ports = ports;
     let cwd = std::env::current_dir()?;
-    let mut sup = Supervisor::new(a.server_bin.clone(), cwd, scratch.clone(), ports.clone(), a.server_arg.clone());
+    let mut server_args = a.server_arg.clone();
+    if matches!(a.cmd, Cmd::Duel { .. } | Cmd::Soak { .. }) && !a.no_duel_check && !server_args.iter().any(|s| s == "--duel-check") {
+        server_args.push("--duel-check".into());
+    }
+    let mut sup = Supervisor::new(a.server_bin.clone(), cwd, scratch.clone(), ports.clone(), server_args);
     sup.start()?;
     anyhow::ensure!(sup.wait_ready().await, "the server did not come up (see {})", sup.log_path().display());
     let mut accounts = vec![];
