@@ -8,15 +8,16 @@ Research date: 2026-11-06. Client examined: `yo3.exe` built 2011-07-01, last pat
 
 **Contents**
 
-- [Verdict](#verdict)
-- [1. What's inside your install (verified locally)](#1-whats-inside-your-install-verified-locally)
-- [2. Wire format (from ygo3-research source, consistent with the file codec)](#2-wire-format-from-ygo3-research-source-consistent-with-the-file-codec)
-- [3. Konami's duel engine vocabulary is stable from 2008 to 2022](#3-konamis-duel-engine-vocabulary-is-stable-from-2008-to-2022)
-- [4. Existing projects to build on](#4-existing-projects-to-build-on)
-- [5. Plan](#5-plan)
-- [6. Leads worth chasing](#6-leads-worth-chasing)
-- [7. Legal hygiene (not legal advice)](#7-legal-hygiene-not-legal-advice)
-- [Tools in tools/](#tools-in-tools)
+- [Yu-Gi-Oh! ONLINE 3 (Duel Accelerator) — revival research](#yu-gi-oh-online-3-duel-accelerator--revival-research)
+  - [Verdict](#verdict)
+  - [1. What's inside your install (verified locally)](#1-whats-inside-your-install-verified-locally)
+  - [2. Wire format (from ygo3-research source, consistent with the file codec)](#2-wire-format-from-ygo3-research-source-consistent-with-the-file-codec)
+  - [3. Konami's duel engine vocabulary is stable from 2008 to 2022](#3-konamis-duel-engine-vocabulary-is-stable-from-2008-to-2022)
+  - [4. Existing projects to build on](#4-existing-projects-to-build-on)
+  - [5. Plan](#5-plan)
+  - [6. Leads worth chasing](#6-leads-worth-chasing)
+  - [7. Legal hygiene (not legal advice)](#7-legal-hygiene-not-legal-advice)
+  - [Tools in `tools/`](#tools-in-tools)
 
 ## Verdict
 
@@ -24,17 +25,18 @@ A private server for you and your friends is realistic. In October 2026, two ind
 Yu-Gi-Oh! Online 2 (Duel Evolution) with full PvP duels. They used ocgcore, EDOPro's open-source rules engine, plus a
 translator into Konami's duel command stream. Online 3 can follow the same recipe, and much of that work can be reused.
 
-| Part | Difficulty | Status |
-|---|---|---|
-| Point the client at your server | Trivial | `yo3.ini` → `GateServerAddress` |
-| Patch / info HTTP | Easy | Done in ygo3-research (serves `yo3.idx` and the install folder) |
-| Wire crypto and serializer | Done | Blowfish-ECB `"12345678"`, length `^0x77777777`, word swap. Format below. |
-| Login → player select | Done | ygo3-research |
-| Enter the world (trunk data, `0x1FA4` → `9000`) | **Next blocker** | Reply format unknown. The client reads it into PlayerData (`0x51C260`). |
-| Lobby, rooms, matchmaking, shop, decks | Moderate, weeks | Field names are in the exe. Real data samples are in the client files (below). |
-| Duel server | Hard, months | Rules engine: reuse ocgcore via YO2's `duelcore`. The work is the translator to Online 3's duel messages. |
+| Part                                            | Difficulty       | Status                                                                                                    |
+| ----------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------- |
+| Point the client at your server                 | Trivial          | `yo3.ini` → `GateServerAddress`                                                                           |
+| Patch / info HTTP                               | Easy             | Done in ygo3-research (serves `yo3.idx` and the install folder)                                           |
+| Wire crypto and serializer                      | Done             | Blowfish-ECB `"12345678"`, length `^0x77777777`, word swap. Format below.                                 |
+| Login → player select                           | Done             | ygo3-research                                                                                             |
+| Enter the world (trunk data, `0x1FA4` → `9000`) | **Next blocker** | Reply format unknown. The client reads it into PlayerData (`0x51C260`).                                   |
+| Lobby, rooms, matchmaking, shop, decks          | Moderate, weeks  | Field names are in the exe. Real data samples are in the client files (below).                            |
+| Duel server                                     | Hard, months     | Rules engine: reuse ocgcore via YO2's `duelcore`. The work is the translator to Online 3's duel messages. |
 
 Rough effort, for one person working evenings with Ghidra experience:
+
 - Lobby: 2–6 weeks.
 - Duels: 2–4 months, if Online 3's duel stream matches the Online 2 command set (likely, see §3). Longer if it doesn't.
 
@@ -114,19 +116,20 @@ These are estimates, not measurements.
 
 ## 4. Existing projects to build on
 
-| Project | What it gives you |
-|---|---|
-| [iteratequickly/ygo3-research](https://github.com/iteratequickly/ygo3-research) (MIT, Nov 2026) | Working Online 3 gate/front stub in Python, HTTP patch server, YPK extractor. Start here. |
-| [xan1242/ygo3_decoder](https://github.com/xan1242/ygo3_decoder) (MIT, 2020) | Online 3 file codec |
-| [xan1242/YGO3Hack](https://github.com/xan1242/YGO3Hack) (MIT, 2022) | DLL hack: offline boot into any scene; `YGO3_MenuIDs.h` lists scene IDs. Probably the "offline patch" from elitepvpers. |
-| [setokaiba666/YOLaucher](https://github.com/setokaiba666/YOLaucher) (Oct 2026, license TODO) | Full Online 2 server. `tools/yo2emu/duelcore/` = ocgcore as a standalone JSON-lines process (game-independent). `research/traductor/NOTES.md` = 170 KB on the engine command set and translation. Lobby, trade and deck notes. |
-| [y7ya-com/duel-evolution](https://github.com/y7ya-com/duel-evolution) (MIT code, Oct 2026) | Online 2 recompiled to C/WASM plus a TypeScript server; playable at original.ygoevolution.com |
-| [pixeltris/YgoMaster](https://github.com/pixeltris/YgoMaster) (MIT) | Konami engine API, view and dialog enums, headless PvP design |
-| [edo9300/ygopro-core](https://github.com/edo9300/ygopro-core) (AGPL-3.0+) | Rules engine with `MR1`/`MR2`/`GOAT` presets; restrict the pool through the card/script readers |
-| [ProjectIgnis/CardScripts](https://github.com/ProjectIgnis/CardScripts) (AGPL-3.0+) | Lua card scripts, keyed by passcode |
-| YGOProDeck API `misc_info.konami_id` | Konami card ID ↔ passcode mapping |
+| Project                                                                                         | What it gives you                                                                                                                                                                                                              |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [iteratequickly/ygo3-research](https://github.com/iteratequickly/ygo3-research) (MIT, Nov 2026) | Working Online 3 gate/front stub in Python, HTTP patch server, YPK extractor. Start here.                                                                                                                                      |
+| [xan1242/ygo3_decoder](https://github.com/xan1242/ygo3_decoder) (MIT, 2020)                     | Online 3 file codec                                                                                                                                                                                                            |
+| [xan1242/YGO3Hack](https://github.com/xan1242/YGO3Hack) (MIT, 2022)                             | DLL hack: offline boot into any scene; `YGO3_MenuIDs.h` lists scene IDs. Probably the "offline patch" from elitepvpers.                                                                                                        |
+| [setokaiba666/YOLaucher](https://github.com/setokaiba666/YOLaucher) (Oct 2026, license TODO)    | Full Online 2 server. `tools/yo2emu/duelcore/` = ocgcore as a standalone JSON-lines process (game-independent). `research/traductor/NOTES.md` = 170 KB on the engine command set and translation. Lobby, trade and deck notes. |
+| [y7ya-com/duel-evolution](https://github.com/y7ya-com/duel-evolution) (MIT code, Oct 2026)      | Online 2 recompiled to C/WASM plus a TypeScript server; playable at original.ygoevolution.com                                                                                                                                  |
+| [pixeltris/YgoMaster](https://github.com/pixeltris/YgoMaster) (MIT)                             | Konami engine API, view and dialog enums, headless PvP design                                                                                                                                                                  |
+| [edo9300/ygopro-core](https://github.com/edo9300/ygopro-core) (AGPL-3.0+)                       | Rules engine with `MR1`/`MR2`/`GOAT` presets; restrict the pool through the card/script readers                                                                                                                                |
+| [ProjectIgnis/CardScripts](https://github.com/ProjectIgnis/CardScripts) (AGPL-3.0+)             | Lua card scripts, keyed by passcode                                                                                                                                                                                            |
+| YGOProDeck API `misc_info.konami_id`                                                            | Konami card ID ↔ passcode mapping                                                                                                                                                                                              |
 
 **Wayback archives of the Online 3 site** (useful for reproducing server behaviour):
+
 - [FAQ](https://web.archive.org/web/20100308030832/http://www.yugioh-online.net/v3/pages/faq/index)
 - [Manual](https://web.archive.org/web/20100308025134/http://www.yugioh-online.net/v3/pages/howto/startgame)
 - [Final pack list](https://web.archive.org/web/20130119230329/http://www.yugioh-online.net:80/v3/packs/index)
@@ -136,6 +139,7 @@ These are estimates, not measurements.
 No patch files or traffic captures are archived.
 
 **Game rules a server must reproduce** (from the archived FAQ):
+
 - Decks: main 40–60, extra 0–15, side 0–15.
 - Timers: 180 s per turn, 60 s to answer a chain; tournaments use 10 min total.
 - Draws are decided by rock-paper-scissors. Disconnecting means you lose.
@@ -184,9 +188,9 @@ No patch files or traffic captures are archived.
 
 ## Tools in `tools/`
 
-| Script | Use |
-|---|---|
-| `ypk.py` | `python3 ypk.py list - '' <archives…>` / `python3 ypk.py extract <outdir> 'data/bin#/*,data/pack/*' <archives…>` |
-| `y3dec.py` | Decrypts `.y3d`/`.y3a`/`.y3r` (and is the network cipher) |
-| `emp.py` | Decrypts and parses EasyMultiPlay key/value data into JSON |
-| `cards.py` | Decodes `CARD_Prop` with English names |
+| Script     | Use                                                                                                              |
+| ---------- | ---------------------------------------------------------------------------------------------------------------- |
+| `ypk.py`   | `python3 ypk.py list - '' <archives…>` / `python3 ypk.py extract <outdir> 'data/bin#/*,data/pack/*' <archives…>` |
+| `y3dec.py` | Decrypts `.y3d`/`.y3a`/`.y3r` (and is the network cipher)                                                        |
+| `emp.py`   | Decrypts and parses EasyMultiPlay key/value data into JSON                                                       |
+| `cards.py` | Decodes `CARD_Prop` with English names                                                                           |

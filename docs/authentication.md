@@ -6,11 +6,12 @@ the game still writes its normal player files.
 
 **Contents**
 
-- [Setup](#setup)
-- [Connections and credentials](#connections-and-credentials)
-- [Client evidence](#client-evidence)
-- [Existing accounts and rollout](#existing-accounts-and-rollout)
-- [Development checks](#development-checks)
+- [Authenticated launcher and connection mod](#authenticated-launcher-and-connection-mod)
+  - [Setup](#setup)
+  - [Connections and credentials](#connections-and-credentials)
+  - [Client evidence](#client-evidence)
+  - [Existing accounts and rollout](#existing-accounts-and-rollout)
+  - [Development checks](#development-checks)
 
 ## Setup
 

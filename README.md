@@ -53,8 +53,8 @@ rules, the official Yugi, Jaden and Yusei decks, Edit Deck, the shop and booster
 teams and tournaments. The full list, and what is left, is in [the guide](docs/guide.md#what-works-and-what-doesnt-yet)
 and the [roadmap](docs/roadmap.md).
 
-| Duel against Kaiba | Official character decks |
-|---|---|
+| Duel against Kaiba                                                  | Official character decks                                                    |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | ![Seto Kaiba on the map's Kaiba Corporation](docs/images/kaiba.png) | ![The Select Deck screen listing the official decks](docs/images/decks.png) |
 
 ## For developers

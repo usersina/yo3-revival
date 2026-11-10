@@ -6,16 +6,17 @@ are for current source; the last published release predates the authenticated la
 
 **Contents**
 
-- [Play on your own PC](#play-on-your-own-pc)
-- [For the host](#for-the-host)
-  - [LAN checklist](#lan-checklist)
-  - [Windows SmartScreen and antivirus warnings](#windows-smartscreen-and-antivirus-warnings)
-  - [macOS](#macos)
-  - [Run from source](#run-from-source)
-- [For every player](#for-every-player)
-  - [Joining, step by step (with pictures)](#joining-step-by-step-with-pictures)
-- [What works and what doesn't yet](#what-works-and-what-doesnt-yet)
-- [When something goes wrong](#when-something-goes-wrong)
+- [Hosting and joining: playing Yu-Gi-Oh! ONLINE 3 with friends](#hosting-and-joining-playing-yu-gi-oh-online-3-with-friends)
+  - [Play on your own PC](#play-on-your-own-pc)
+  - [For the host](#for-the-host)
+    - [LAN checklist](#lan-checklist)
+    - [Windows SmartScreen and antivirus warnings](#windows-smartscreen-and-antivirus-warnings)
+    - [macOS](#macos)
+    - [Run from source](#run-from-source)
+  - [For every player](#for-every-player)
+    - [Joining, step by step (with pictures)](#joining-step-by-step-with-pictures)
+  - [What works and what doesn't yet](#what-works-and-what-doesnt-yet)
+  - [When something goes wrong](#when-something-goes-wrong)
 
 ## Play on your own PC
 

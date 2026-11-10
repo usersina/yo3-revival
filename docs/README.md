@@ -5,23 +5,24 @@ readers; this page says which is which and in what order to read them.
 
 **Contents**
 
-- [The documents](#the-documents)
-- [Where to start](#where-to-start)
-- [Conventions](#conventions)
-- [Checking the docs](#checking-the-docs)
+- [Documentation](#documentation)
+  - [The documents](#the-documents)
+  - [Where to start](#where-to-start)
+  - [Conventions](#conventions)
+  - [Checking the docs](#checking-the-docs)
 
 ## The documents
 
-| Document | For | What is in it |
-|---|---|---|
-| [guide.md](guide.md) | Hosts and players | TLS server setup, private launcher profiles, accounts, playing and troubleshooting. A copy ships in each release bundle as its `README.md` |
-| [authentication.md](authentication.md) | Hosts and maintainers | The launcher/DLL, TLS tickets, session binding, account migration and security checks |
-| [roadmap.md](roadmap.md) | Maintainers | Status, the milestones M0 to M6 with their checkboxes, the dated work sessions (reviews, monkey testing), every guess we made, open questions |
-| [protocol.md](protocol.md) | Maintainers | The protocol catalog: wire format, the gate, front and duel servers, every request/reply pair with its client evidence and a status (confirmed, shape, guess, open) |
-| [client-internals.md](client-internals.md) | Reverse engineers | Addresses and functions in `yo3.exe`, the field tracer, data file formats, behaviours worth knowing, crash history |
-| [research.md](research.md) | Curious readers | The feasibility study from before any server code existed, kept as history |
-| [../AGENTS.md](../AGENTS.md) | Contributors and AI agents | The working guide: ground rules, repo map, commands, the loop for answering a new client request, conventions, environment gotchas |
-| [images/](images/) | The READMEs | Screenshots of the real client running on this server |
+| Document                                   | For                        | What is in it                                                                                                                                                       |
+| ------------------------------------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [guide.md](guide.md)                       | Hosts and players          | TLS server setup, private launcher profiles, accounts, playing and troubleshooting. A copy ships in each release bundle as its `README.md`                          |
+| [authentication.md](authentication.md)     | Hosts and maintainers      | The launcher/DLL, TLS tickets, session binding, account migration and security checks                                                                               |
+| [roadmap.md](roadmap.md)                   | Maintainers                | Status, the milestones M0 to M6 with their checkboxes, the dated work sessions (reviews, monkey testing), every guess we made, open questions                       |
+| [protocol.md](protocol.md)                 | Maintainers                | The protocol catalog: wire format, the gate, front and duel servers, every request/reply pair with its client evidence and a status (confirmed, shape, guess, open) |
+| [client-internals.md](client-internals.md) | Reverse engineers          | Addresses and functions in `yo3.exe`, the field tracer, data file formats, behaviours worth knowing, crash history                                                  |
+| [research.md](research.md)                 | Curious readers            | The feasibility study from before any server code existed, kept as history                                                                                          |
+| [../AGENTS.md](../AGENTS.md)               | Contributors and AI agents | The working guide: ground rules, repo map, commands, the loop for answering a new client request, conventions, environment gotchas                                  |
+| [images/](images/)                         | The READMEs                | Screenshots of the real client running on this server                                                                                                               |
 
 ## Where to start
 
