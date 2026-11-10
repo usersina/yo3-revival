@@ -85,6 +85,11 @@ Node.js, in `engine/` (what each part is and its license: `engine/THIRD-PARTY.md
    An account keeps at least one player, and a team leader must disband or hand over the team before deletion.
    A refused deletion keeps the player's friends, mail and rentals.
 
+   **Shared-router limitation:** the game connection sends no account credential. The server associates it with the
+   latest patch key presented from that IP, for ten minutes. Two accounts behind the same router can therefore land
+   in the wrong account when their logins overlap. The login form's username and password do not resolve this.
+   Proper connection authentication needs client support and is still planned.
+
    **By hand instead**, for hosts who prefer it (or with `--no-join`), with the server stopped:
 
    ```sh
@@ -198,7 +203,7 @@ engine/fetch.sh                                   # once: the engine's package, 
 cargo run --release -p yo3-server -- --bind 0.0.0.0 --log-dir logs
 ```
 
-`tools/release.sh` builds the bundles themselves (see [CLAUDE.md](../CLAUDE.md#commands)).
+`tools/release.sh` builds the bundles themselves (see [AGENTS.md](../AGENTS.md#commands)).
 
 ## For every player
 

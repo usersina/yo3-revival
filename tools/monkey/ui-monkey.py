@@ -25,7 +25,7 @@ VCLIENT = ROOT / "tools/client/vclient.sh"
 DOCS = Path.home() / "Documents" / "Yu-Gi-Oh! ONLINE 3"
 W, H = 1024, 768
 
-# Known buttons (game-window coordinates in the 1024x768 window, read off screenshots and CLAUDE.md): (x, y, weight).
+# Known buttons (game-window coordinates in the 1024x768 window, read off screenshots and AGENTS.md): (x, y, weight).
 def row(y, xs, w):
     return [(x, y, w) for x in xs]
 

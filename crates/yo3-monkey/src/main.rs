@@ -1,4 +1,4 @@
-//! yo3-monkey: protocol monkey for yo3-server. See "Monkey testing" in docs/roadmap.md and CLAUDE.md for how to run it.
+//! yo3-monkey: protocol monkey for yo3-server. See "Monkey testing" in docs/roadmap.md and AGENTS.md for how to run it.
 //!
 //!   yo3-monkey fuzz   --seed 1 --plans 2000      plans one after another, the server checked after each
 //!   yo3-monkey soak   --secs 300 --conns 24 ...  concurrent plans, duel pairs, floods, a canary and a monitor

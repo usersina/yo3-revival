@@ -64,7 +64,7 @@ and the [roadmap](docs/roadmap.md).
 
 The server is written in Rust, reverse-engineered from the game client, and runs duels on
 [EDOPro](https://github.com/edo9300/edopro)'s rules engine. Everything technical (building from source, the protocol,
-the client's internals, the roadmap) is in [docs/](docs/README.md). To contribute, read [CLAUDE.md](CLAUDE.md) first.
+the client's internals, the roadmap) is in [docs/](docs/README.md). To contribute, read [AGENTS.md](AGENTS.md) first.
 
 ## Legal
 

@@ -19,13 +19,13 @@ readers; this page says which is which and in what order to read them.
 | [protocol.md](protocol.md) | Maintainers | The protocol catalog: wire format, the gate, front and duel servers, every request/reply pair with its client evidence and a status (confirmed, shape, guess, open) |
 | [client-internals.md](client-internals.md) | Reverse engineers | Addresses and functions in `yo3.exe`, the field tracer, data file formats, behaviours worth knowing, crash history |
 | [research.md](research.md) | Curious readers | The feasibility study from before any server code existed, kept as history |
-| [../CLAUDE.md](../CLAUDE.md) | Contributors and AI agents | The working guide: ground rules, repo map, commands, the loop for answering a new client request, conventions, environment gotchas |
+| [../AGENTS.md](../AGENTS.md) | Contributors and AI agents | The working guide: ground rules, repo map, commands, the loop for answering a new client request, conventions, environment gotchas |
 | [images/](images/) | The READMEs | Screenshots of the real client running on this server |
 
 ## Where to start
 
 - **I want to play or host:** [guide.md](guide.md).
-- **I want to contribute:** [../CLAUDE.md](../CLAUDE.md), then [roadmap.md](roadmap.md) to pick something open, then
+- **I want to contribute:** [../AGENTS.md](../AGENTS.md), then [roadmap.md](roadmap.md) to pick something open, then
   [protocol.md](protocol.md) for the area you will touch.
 - **I want to know how a screen works:** [protocol.md](protocol.md) for the messages, then
   [client-internals.md](client-internals.md) for the client side of it.
@@ -44,6 +44,6 @@ readers; this page says which is which and in what order to read them.
 ## Checking the docs
 
 ```bash
-tools/docs-check.py                    # every relative link and #anchor in README.md, CLAUDE.md and docs/*.md
+tools/docs-check.py                    # every relative link and #anchor in README.md, AGENTS.md and docs/*.md
 tools/docs-check.py --toc docs/FILE.md # a table of contents to paste under a document's title
 ```

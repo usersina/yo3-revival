@@ -1,6 +1,7 @@
 /logs/
 /data/
 /dist/
+/.codex/
 __pycache__/
 *.pyc
 /re/

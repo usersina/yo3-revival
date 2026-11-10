@@ -45,9 +45,15 @@ Review fixes (2026-11-10), each with a failing regression test before the implem
       Tests cover both a restricted duel under an unlimited login and the reverse. Live TCP: both clients received
       the chosen regulation in the match and handoff; the same starter was refused under banlist 4, accepted under 3.
 
-As of 2026-11-08 the server covers every feature the client uses: M0 to M2 (research, a stable world, an instrumented
+Final verification: 451 workspace tests passed, clippy clean, documentation checker reports no broken links. The
+traced stock client on private display `:78` logged in, opened Edit Deck, selected a deck for Seto Kaiba, received
+`0x22CA` and the `0x22C4` handoff, and reached turn 2 without an exception. The handoff's host, port and match type
+were found by the tracer. This was an opening-turn check; no full manual duel was played in this fix session.
+
+As of 2026-11-10 the server covers the client's game features: M0 to M2 (research, a stable world, an instrumented
 client) and M5 (duels) are done, M3 (social) and M6 (play with friends) are done apart from checking on real friends'
-machines, and M4 (accounts, collection and economy) has one open item, the deck list's own save. Two duel problems found in the screenshot session are settled (one fixed, one hardened and watched). What is left is
+machines, and M4 (accounts, collection and economy) still needs connection authentication and the deck list's own
+save. Two duel problems found in the screenshot session are settled (one fixed, one hardened and watched). What is left is
 tracked as `[ ]` boxes in the sections below and in "Open questions and guesses".
 
 | Where | What it is |
@@ -96,7 +102,7 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
 - [x] `yo3.ini`: only the gate line was changed, so the patch check went to Konami and the game never connected. The
       friends' guide now says all five lines change, how to edit a file in Program Files, and a browser check.
 - [x] The host's firewall (firewalld's `libvirt` zone) blocked the VM; friends over the VPN (trusted zone) aren't
-      affected. Noted in CLAUDE.md.
+      affected. Noted in AGENTS.md.
 - [x] No banlist by default (the user's choice); `--regulation` picks one.
 - [x] A new player needs Edit Deck once before any duel (the client alone writes deck files): the login news says so.
 - [x] When the rules engine can't run (Node.js missing or older than 22.18, engine not fetched), the server logs an ERROR
@@ -276,7 +282,7 @@ client (unchanged by this work), a sidecar that really hangs (covered by the eng
 ## ▶ Monkey testing (2026-11-08): two monkeys, what they covered and found
 
 Tools: `crates/yo3-monkey` (protocol monkey, run through `tools/monkey/protocol-monkey.sh`) and
-`tools/monkey/ui-monkey.py` (the two real headless clients); how to run them is in CLAUDE.md (Commands).
+`tools/monkey/ui-monkey.py` (the two real headless clients); how to run them is in AGENTS.md (Commands).
 
 Protocol monkey (a supervised server on a scratch data dir; plans from a seed and the packet logs' real requests,
 replayed in order and shuffled, fields mutated, random and garbage frames, drips, reconnects, plans as the clients of
@@ -410,7 +416,7 @@ Stop finding missing fields one crash at a time.
       fields in `docs/protocol.md`
 - [x] Code hits: `YO3_TRACE_HITS=0x…,0x…` logs when chosen client addresses run (int3 and a vectored handler); it
       found the startup step that kept the map locked
-- Standing practice (moved to CLAUDE.md): name functions in GhidraMCP as we understand them
+- Standing practice (moved to AGENTS.md): name functions in GhidraMCP as we understand them
 - **Exit:** one session prints every field each reply was asked for, with the missing ones flagged (met 2026-11-06)
 
 ## ▶ M3: A social world
@@ -476,6 +482,12 @@ Stop finding missing fields one crash at a time.
 
 ## M4: Accounts, collection and economy
 
+- [ ] Authenticated identity on each front and duel connection. The current patch-key handoff remembers the latest
+      key per IP for ten minutes; two accounts behind one router can receive each other's account. The stock game
+      sends no credential on these connections. Proposed first milestone for the [client mod framework (issue #1)](https://github.com/usersina/yo3-revival/issues/1):
+      a protected login exchange and short-lived credentials bound to the game connections, with tests for shared
+      IPs, replay, expiry and cross-account selection. Keep stock-client access an explicit legacy mode; it cannot
+      provide the same identity guarantee. No IP-only workaround applied in the server-hardening fixes above.
 - [x] Real accounts, through the patch URL. The login path has no id or password field: `0x1F47` is bare, `0x1F48`
       carries only `lang`, the opener only the version string, and Delete Player's "Enter your Password" prompt sends
       nothing (`0x1F4B {player_id}`, live packet log; no call of the connection's `+0x118`/`+0x134` copies is

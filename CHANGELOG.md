@@ -16,6 +16,7 @@ gather under "Unreleased" first.
   their collection refreshes after another session changes it.
 - Fixed: a third player can no longer enter or cancel another pair's duel by sending its duel id.
 - Fixed: Create Duel keeps the host's chosen banlist after the challenger accepts.
+- Fixed: documentation links and their checker follow the working guide's rename to `AGENTS.md`.
 
 ## v0.0.3 (2026-11-09)
 

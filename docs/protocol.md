@@ -85,6 +85,12 @@ and the heartbeat; every other request is ignored (nothing in the client sends o
 
 ### Login (dispatcher `0x469C00`, `LoginWindow.cpp`)
 
+The request named "auth" below does not carry an account credential: the version opener is a version string,
+`0x1F47` is bare and `0x1F48` carries only `lang` (live packets; see M4 in the roadmap). Today the HTTP patch key
+selects the account indirectly through the source IP. Accounts behind one IP can be confused when their patch
+requests overlap. This is a known limitation, not authenticated identity on the front connection; the protocol's
+fixed Blowfish key also provides no credential protection. A mod-assisted replacement is open in the roadmap.
+
 | Request | Reply | Fields | Evidence | Status |
 |---|---|---|---|---|
 | opener | `0x219F` | none | "front server : version valid." L370 | confirmed |
