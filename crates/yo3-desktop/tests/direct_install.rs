@@ -29,3 +29,16 @@ fn installer_rejects_symlinks_and_unowned_receipts() {
     std::fs::remove_file(p.join("winmm.dll")).unwrap(); std::fs::write(p.join("yo3-revival-loader.json"), b"{}").unwrap();
     assert!(direct::install_files(&p, &source).is_err()); std::fs::remove_dir_all(p).unwrap();
 }
+#[test]
+fn repair_refreshes_owned_loaders_and_missing_files_without_touching_the_game_or_foreign_mods() {
+    let p=scratch(); let source=p.join("bootstrap.dll"); std::fs::write(p.join("yo3.exe"),b"unchanged game").unwrap();
+    std::fs::write(&source,b"old owned loader").unwrap(); direct::install_files(&p,&source).unwrap();
+    std::fs::write(&source,b"updated loader").unwrap();
+    direct::install_files(&p,&source).expect("repair should refresh the older owned loader without manual disable/enable");
+    assert_eq!(std::fs::read(p.join("winmm.dll")).unwrap(),b"updated loader");
+    std::fs::remove_file(p.join("winmm.dll")).unwrap(); std::fs::write(&source,b"next loader").unwrap(); direct::install_files(&p,&source).unwrap();
+    assert_eq!(std::fs::read(p.join("yo3.exe")).unwrap(),b"unchanged game");
+    std::fs::write(p.join("winmm.dll"),b"foreign replacement").unwrap();
+    assert!(direct::install_files(&p,&source).is_err()); assert_eq!(std::fs::read(p.join("winmm.dll")).unwrap(),b"foreign replacement");
+    std::fs::remove_dir_all(p).unwrap();
+}

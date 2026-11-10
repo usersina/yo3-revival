@@ -37,11 +37,24 @@ pub fn install_files(game: &Path, source: &Path) -> anyhow::Result<()> {
     let target = game.join("winmm.dll"); let receipt = game.join(RECEIPT);
     if std::fs::symlink_metadata(&target).is_err() && std::fs::symlink_metadata(&receipt).is_ok() {
         let previous: Receipt = serde_json::from_slice(&regular(&receipt)?)?;
-        ensure!(previous.format == 1 && previous.executable == executable && previous.loader == loader, "Cannot repair an unrecognized or changed loader installation");
-        return publish(&target, &bytes)
+        ensure!(previous.format == 1 && previous.executable == executable, "Cannot repair an unrecognized or changed loader installation");
+        let old = regular(&receipt)?;
+        std::fs::remove_file(&receipt)?;
+        let result = install_files(game, source);
+        if result.is_err() && !receipt.exists() { let _ = publish(&receipt, &old); }
+        return result
     }
     if std::fs::symlink_metadata(&target).is_ok() || std::fs::symlink_metadata(&receipt).is_ok() {
-        ensure!(owned(game).context("An existing WINMM mod or unrecognized receipt was found; it will not be replaced")?.loader == loader, "An older owned loader is installed. Disable direct start before installing this release."); return Ok(())
+        let previous = owned(game).context("An existing WINMM mod or unrecognized receipt was found; it will not be replaced")?;
+        if previous.loader == loader { return Ok(()) }
+        let old_dll = regular(&target)?; let old_receipt = regular(&receipt)?;
+        remove_files(game)?;
+        let result = install_files(game, source);
+        if result.is_err() {
+            if !receipt.exists() { let _ = publish(&receipt, &old_receipt); }
+            if !target.exists() { let _ = publish(&target, &old_dll); }
+        }
+        return result
     }
     let body = serde_json::to_vec(&Receipt { format: 1, executable: executable.clone(), loader })?;
     // Publish with create_new: neither a foreign DLL nor a concurrently created receipt can be clobbered.
@@ -51,7 +64,10 @@ pub fn install_files(game: &Path, source: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 pub fn remove_files(game: &Path) -> anyhow::Result<()> {
-    owned(game)?; std::fs::remove_file(game.join("winmm.dll"))?; std::fs::remove_file(game.join(RECEIPT))?; Ok(())
+    let receipt: Receipt = serde_json::from_slice(&regular(&game.join(RECEIPT))?)?;
+    ensure!(receipt.format == 1 && receipt.executable == hash(&regular(&game.join("yo3.exe"))?), "The game or ownership receipt changed; removal refused");
+    if std::fs::symlink_metadata(game.join("winmm.dll")).is_ok() { owned(game)?; std::fs::remove_file(game.join("winmm.dll"))?; }
+    std::fs::remove_file(game.join(RECEIPT))?; Ok(())
 }
 #[cfg(not(windows))]
 fn wine_command(settings: &Settings, program: &str) -> std::process::Command {
@@ -90,7 +106,46 @@ fn registry(settings: &Settings, config: Option<&Path>) -> anyhow::Result<()> {
     }
     Ok(())
 }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum State { Disabled, Enabled, NeedsRepair(String), Conflict(String) }
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
+struct Stamp { game: String, prefix: String, paths: Vec<PathBuf>, hashes: Vec<String>, ini: String }
 impl Backend {
+    fn direct_helper(&self) -> anyhow::Result<PathBuf> {
+        #[cfg(windows)] { Ok(self.runtime.launcher.clone()) }
+        #[cfg(not(windows))] {
+            let bundled = self.runtime.launcher.with_file_name("yo3-launcher-windows.exe");
+            let manifest = bundled.with_file_name("bundle.json");
+            if manifest.is_file() {
+                let value: serde_json::Value = serde_json::from_slice(&std::fs::read(manifest)?)?;
+                ensure!(value["components"]["direct_launcher"]["sha256"].as_str() == Some(hash(&regular(&bundled)?).as_str()), "The direct-launch helper differs from its release manifest. Restore the complete application bundle.");
+                return Ok(bundled)
+            }
+            if bundled.is_file() { return Ok(bundled) }
+            ensure!(yo3_tunnel::BUILD_VERSION.ends_with("-dev"), "The Windows direct-launch helper is missing. Restore the complete application bundle.");
+            Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/x86_64-pc-windows-gnu/release/yo3-launcher.exe").canonicalize()?)
+        }
+    }
+    fn direct_stamp(&self, settings: &Settings) -> anyhow::Result<Stamp> {
+        let paths = vec![self.loader_source()?, self.runtime.dll.clone(), self.runtime.injector.clone(), self.direct_helper()?];
+        let hashes = paths.iter().map(|p| regular(p).map(|bytes| hash(&bytes))).collect::<anyhow::Result<_>>()?;
+        Ok(Stamp { game: settings.game_dir.clone(), prefix: settings.wine_prefix.clone(), paths, hashes, ini: hash(&regular(&self.root.join("profiles/loader.ini"))?) })
+    }
+    pub fn direct_state(&self, settings: &Settings) -> State {
+        let game = Path::new(&settings.game_dir); let receipt = game.join(RECEIPT);
+        if !receipt.exists() {
+            if std::fs::symlink_metadata(game.join("winmm.dll")).is_ok() { return State::Conflict("An unowned WINMM mod is installed. Keep it intact; use Play here or resolve the mod conflict manually.".into()) }
+            return if self.root.join("profiles/loader.ini").exists() { State::NeedsRepair("The game-local loader is missing.".into()) } else { State::Disabled }
+        }
+        if game.join("winmm.dll").exists() && let Err(error) = owned(game) { return State::Conflict(format!("{error:#}")) }
+        let result = (|| -> anyhow::Result<()> {
+            ensure!(game.join("winmm.dll").is_file(), "The owned loader is missing.");
+            let saved: Stamp = serde_json::from_slice(&regular(&self.root.join("profiles/direct-setup.json"))?)?;
+            ensure!(saved == self.direct_stamp(settings)?, "The game location or connection components changed.");
+            yo3_launcher::Profile::load(&self.root.join("profiles/direct.json"))?; Ok(())
+        })();
+        match result { Ok(()) => State::Enabled, Err(error) => State::NeedsRepair(format!("{error:#}")) }
+    }
     pub fn loader_source(&self) -> anyhow::Result<PathBuf> {
         let bundle = self.runtime.injector.parent().context("Application folder missing")?;
         let source = if bundle.join("yo3-bootstrap.dll").is_file() { bundle.join("yo3-bootstrap.dll") } else { bundle.join("winmm.dll") };
@@ -121,12 +176,9 @@ impl Backend {
         let game = Path::new(&settings.game_dir); crate::validate_game(game)?;
         yo3_launcher::components::preflight(&game.join("yo3.exe"), &self.runtime.injector, &self.runtime.dll)?;
         let source = self.loader_source()?;
-        #[cfg(windows)] let helper = self.runtime.launcher.clone();
-        #[cfg(not(windows))] let helper = {
-            let bundled = self.runtime.launcher.with_file_name("yo3-launcher-windows.exe");
-            if bundled.is_file() { bundled } else { PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/x86_64-pc-windows-gnu/release/yo3-launcher.exe").canonicalize()? }
-        };
+        let helper = self.direct_helper()?;
         ensure!(helper.is_file(), "The Windows connection helper is missing. Extract the complete bundle.");
+        self.check_game(settings)?;
         self.direct_profile(settings, remote)?;
         let state = self.root.join("profiles"); let file = state.join("loader.ini");
         let mut ini = String::from("[revival]\r\n");
@@ -143,17 +195,20 @@ impl Backend {
                 ensure!(crate::privileged::request_loader(game, false)? == crate::privileged::PermissionResult::Applied, "Direct-start installation cancelled");
             } else { return Err(error) }
         }
-        registry(settings, Some(&file))?; Ok(())
+        registry(settings, Some(&file))?;
+        private_write(&state.join("direct-setup.json"), &serde_json::to_vec(&self.direct_stamp(settings)?)?, true)?;
+        Ok(())
     }
     pub fn disable_direct(&self, settings: &Settings) -> anyhow::Result<()> {
         ensure!(!self.game_running(), "Close the game before changing direct-start setup");
-        if let Err(error) = remove_files(Path::new(&settings.game_dir)) {
+        let game = Path::new(&settings.game_dir);
+        if (game.join(RECEIPT).exists() || std::fs::symlink_metadata(game.join("winmm.dll")).is_ok()) && let Err(error) = remove_files(game) {
             if error.downcast_ref::<std::io::Error>().is_some_and(|e| e.kind() == std::io::ErrorKind::PermissionDenied) {
                 ensure!(crate::privileged::request_loader(Path::new(&settings.game_dir), true)? == crate::privileged::PermissionResult::Applied, "Direct-start removal cancelled");
             } else { return Err(error) }
         }
         registry(settings, None)?;
-        for name in ["loader.ini", "direct.json"] { let _ = std::fs::remove_file(self.root.join("profiles").join(name)); }
+        for name in ["loader.ini", "direct.json", "direct-setup.json"] { let _ = std::fs::remove_file(self.root.join("profiles").join(name)); }
         Ok(())
     }
 }
@@ -173,6 +228,22 @@ pub fn elevated_install(game: &Path, remove: bool) -> anyhow::Result<()> {
 
 #[cfg(all(test, not(windows)))]
 mod tests {
+    #[test]
+    fn a_packaged_direct_helper_must_exist_and_match_its_manifest() {
+        use super::*;
+        let root = std::env::temp_dir().join(format!("yo3-direct-helper-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mut backend = Backend::new(root.clone()).unwrap();
+        std::sync::Arc::get_mut(&mut backend).unwrap().runtime.launcher = root.join("yo3-launcher");
+        let helper = root.join("yo3-launcher-windows.exe");
+        std::fs::write(root.join("bundle.json"), serde_json::json!({"components":{"direct_launcher":{"sha256":hash(b"verified helper")}}}).to_string()).unwrap();
+        assert!(backend.direct_helper().is_err(), "a bundle cannot borrow a helper from the developer checkout");
+        std::fs::write(&helper, b"verified helper").unwrap();
+        assert_eq!(backend.direct_helper().unwrap(), helper);
+        std::fs::write(&helper, b"changed helper").unwrap();
+        assert!(backend.direct_helper().is_err(), "direct start must reject mismatched helper code");
+        drop(backend); std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn wine_batch_results_keep_unicode_paths_in_order_and_refuse_missing_or_extra_fields() {
         let text = "C:\\game folder\0Z:\\日本語\\mod.dll\0";

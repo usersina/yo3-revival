@@ -12,11 +12,27 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Changed: fewer boxed panels, integrated connection editing and contextual help tooltips. Wine options appear only
+  on Linux.
+- Changed: focused four-page launcher with hosting accounts/invitations under My server, scoped Save/Cancel forms,
+  accurate game/component readiness, editable/removable connections and context-specific feedback.
+- Fixed: exporting a friend's invitation no longer changes the local Play account; Start uses saved configuration.
+- Added: visible direct-launch state and safe owned-loader repair, plus a single log-export dialog for current or all
+  retained sessions. Loopback/listener addresses are not offered as sharing addresses for friends.
+- Removed: firewall automation and normal-flow certificate administration. OS policy stays in system settings;
+  read-only connection guidance and automatic server identity maintenance remain available.
+
+- Changed: refined Iced launcher with Lucide icons, grouped actions, a clearer address-first connection flow and
+  advanced settings hidden until expanded. Navigation stays usable during background operations.
+- Added: visible version/build, GitHub link and non-blocking startup update checks. Confirmed updates download and
+  verify a complete platform bundle, restart through a window-readiness handshake and retain the original version
+  and user data. Existing launcher shortcuts route to the verified newer version.
+
 - Added: optional reversible direct-start loader beside the game. The original executable/INI remain unchanged;
   exact DLL validation, readiness and authenticated server checks precede login, with local repair/restart guidance.
 - Added: session-indexed diagnostics, rotation and retention, plus current/all-retained ZIP exports with a size/date
   preview and a second redaction pass. Server logging survives closing the manager; detailed tracing is opt-in.
-- Added: advanced interface/port selection, actual listener status and optional firewall permission helpers. New GUI
+- Added: advanced interface/port selection, actual listener status. New GUI
   setups default to all IPv4 interfaces; existing local-only setups stay local-only. Normal Start needs no elevation.
 - Added: automatic self-managed certificate maintenance at server start, preserving its private identity key.
 - Added: shared game-component preflight, release hash manifests and explicit DLL readiness before account login

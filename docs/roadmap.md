@@ -26,6 +26,57 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 
 ## Status
 
+Launcher scope and consistency (2026-11-10):
+
+- [x] Four pages: Play, My server, Activity and Settings. Server selection/Add server share one section; connection
+  editing is inline. Headings/dividers replace nested panels; hosting status, logs and modals retain useful boundaries.
+  Native help tooltips explain accounts, keys, sharing, interfaces, game installation and direct launch. Wine prefix
+  controls appear only on Linux; private :90 checked Linux at 900×650 and the actual Windows build under Wine.
+- [x] Hosting accounts/invitations are separate from the Play account. Per-section Save/Cancel cannot apply unrelated
+  drafts; Start uses saved configuration. Live: an unsaved port change did not affect the listener, and creating,
+  selecting and exporting UXGuest left Play on UXHost. Advanced hosting Save/Cancel stay visible while scrolling.
+- [x] Complete game/component readiness, first-setup Continue, actionable setup help and visible direct-launch state.
+  Missing/updated owned loaders can be repaired without replacing foreign mods. Bundled helpers must exist and match
+  their release manifest; no developer fallback for a packaged direct helper. Regression tests first reproduced that
+  fallback. Live: missing loader repair, changed-DLL fail-fast, repaired original-executable login and managed Play
+  reached the game main screen; cleanup confirmed unchanged executable/INI hashes.
+- [x] Saved connection discovery/trust/test/edit/removal pass live. Loopback/listener addresses are not offered to
+  friends; local play remains available. Local process status does not claim remote reachability. Firewall automation
+  and manual certificate controls are removed from the GUI; OS guidance and automatic identity maintenance remain.
+- [x] One current/all-retained log-export dialog with scope/size/date preview. The final Windows GUI exported a private
+  invitation and both ZIP scopes through native dialogs; ZIP integrity, different inventories, credential exclusions
+  and home-path redaction passed. Hosting survived manager exit/reopen and Windows GUI reattachment. The final
+  Windows bundle also started its own server and launched the real game to main as UXHost; Close game kept hosting.
+- [x] 518 workspace tests (including 240 duels), desktop flow regressions, Clippy, workspace check, four headless-helper
+  tests and documentation checks pass. Linux/Windows bundles build; actual staged-window activation succeeds on both
+  Linux and Windows under Wine. Local test tags are not published releases.
+- [ ] Native Windows protected-folder/UAC behavior, friends on separate machines and a future GUI release's full public
+  GitHub download still need platform/release verification. Firewall mutation is outside the launcher’s scope.
+
+Launcher refinement and updates (2026-11-10, `feat/launcher-ux-updates`):
+
+- [x] Retain Iced with standard widgets, Lucide SVG icons/notices, grouped primary actions and collapsed advanced
+  options. Private display :89 verified the normal layout and 900×650 minimum; the overview screenshot is refreshed.
+  Navigation stays usable while jobs run; modal guards and account/connection refreshes preserve unfinished input.
+- [x] Visible version/build, GitHub link and asynchronous startup/manual release checks. Stable semantic versions,
+  platform assets, bounded metadata and HTTPS origins are checked; development builds are never auto-downgraded.
+  Live GitHub lookup reports v0.0.3; no test release was published. Offline/rate-limit/slow/oversized responses have tests.
+- [x] Explicit review → Download & restart, cancellable streaming progress and SHA-256 verification. Complete bundles
+  are unpacked into private version folders with path/link/size checks and component manifests; original files and
+  user data stay in place. SQLite records the active/previous version only after the new window acknowledges readiness.
+  Failed, missing or mismatched readiness cannot activate; verified installs can be retried and shortcuts route forward.
+- [x] Both local `v0.1.1+local` review bundles pass actual packaged window/activation checks on private :89 (Linux and
+  Windows under Wine). These are local test versions, not published releases. Managed Play reached the real game's main
+  screen as UXYugi and Close game ended its authenticated session. One cold Wine start under build load timed out before
+  mod readiness; retry reached main, and the failure remained visible in Activity. Default displays/data were untouched.
+- [x] Workspace check/Clippy, the full contract/240-duel suite, focused updater/UI regressions, four headless-helper
+  tests and documentation links pass. Archive tests cover changed hashes, traversal, Windows aliases, links, retries,
+  original data preservation and failed startup. Both bundles include the icon and dependency license notices.
+- [ ] Native Windows update/UAC behavior and a future published GUI release's full GitHub download still need
+  platform/release verification. Live release discovery, bounded download fixtures and full local bundle activation
+  are covered separately; Wine does not establish native Windows firewall behavior.
+
+
 Launcher usability phase (2026-11-10, implemented on `feat/desktop-launcher`):
 
 - [x] Address-first discovery and remembered identities; existing invitation/profile credentials preserved. Private
@@ -41,7 +92,7 @@ Launcher usability phase (2026-11-10, implemented on `feat/desktop-launcher`):
   login dispatcher `0x469C00` uses error codes and `0x46D050` selects fixed local UI strings. A custom requirements
   dialog/file picker needs local code; do not invent a server message field.
 - [x] Advanced interface binding (new GUI setups default all IPv4), one public port, retained local-only upgrades and
-  optional firewall elevation. Live: selected eno1 listener and local game main screen on :88; key retained during
+  optional firewall elevation (removed in the scope refinement below). Live: selected eno1 listener and local game main screen on :88; key retained during
   automatic identity maintenance. Windows helper cross-checks and pure command/argument tests pass; native UAC and
   real firewall mutation remain untested, so the user's host policy stays untouched.
 - [x] Session-indexed diagnostic logs, bounded retention and redacted current/all-retained ZIP exports. Private
@@ -52,8 +103,8 @@ Launcher usability phase (2026-11-10, implemented on `feat/desktop-launcher`):
   launcher reached the real client's main screen on private :88; offline-server and missing-DLL paths blocked login.
   The Windows GUI exported both current and retained-history ZIPs through its native file picker under Wine; CRCs,
   exclusions and redaction passed. Loader removal restored the original game folder's executable/INI hashes.
-- [ ] Native Windows UAC/protected-folder installation, actual firewall mutation and separate friends' machines
-  still need platform/user-driven verification. Wine and cross-compilation do not establish those results.
+- [ ] Native Windows UAC/protected-folder installation and separate friends' machines
+  still need platform/user-driven verification. Firewall mutation is no longer an application feature. Wine and cross-compilation do not establish those results.
 
 Next DLL candidates, after launcher usability:
 

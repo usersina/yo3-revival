@@ -18,6 +18,9 @@ async fn invitation_roundtrip_keeps_remote_identity_when_dialling_the_host_local
     let worker = backend.clone();
     tokio::task::spawn_blocking(move || {
         worker.manage(&settings, ManagerOp::CreateAccount { name: "Guest".into() }).unwrap();
+        let local_only = Settings { host_address: "localhost".into(), ..settings.clone() };
+        assert!(worker.invitation(&local_only, "Guest").is_err(), "a loopback invitation must not be handed to a friend");
+        worker.local_connection(&local_only, "Guest").unwrap();
         let local = worker.local_connection(&settings, "Guest").unwrap();
         assert_eq!(local.server_name, "friends.example", "loopback routing must not replace the certificate identity");
         worker.check_connection(&local).unwrap();

@@ -1,7 +1,11 @@
 # Hosting and joining: playing Yu-Gi-Oh! ONLINE 3 with friends
 
-For setup through the graphical application, read [the launcher guide](launcher.md). This page is the command-line
-reference and source-build guide; both routes use the same server, authentication and game files.
+For setup through the graphical application, read [the launcher guide](launcher.md). The GUI groups local/remote
+play, independent hosting, activity and game settings into four pages. Hosting uses saved configuration; advanced
+options stay under My server. Firewall policy belongs to the operating system.
+
+This page is the command-line reference and source-build guide; both routes use the same server, authentication
+and game files.
 
 Everyone uses the revival launcher and connection DLL with their own original game install (ver. 1.153). The
 server and launcher authenticate each account over TLS. The game executable and `yo3.ini` stay unchanged; no game files are shipped. These instructions
@@ -291,3 +295,5 @@ and the remaining live checks, including play from separate friends' machines wi
 - **A long session disconnects:** launcher sessions expire after 12 hours. Restart the launcher to authenticate again.
 - **Found a bug:** open <https://github.com/usersina/yo3-revival/issues/new/choose> with the steps and logs. Do not attach
   private profiles, account keys or `server.key`. Game packet logs exclude transport credentials.
+
+The graphical application also supports [confirmed application updates](launcher.md#application-updates), with a visible version, GitHub link and startup release check. Advanced setup is under expandable sections.

@@ -45,3 +45,14 @@ pub fn advertised(settings: &Settings) -> anyhow::Result<(String, String)> {
     let host = if name.parse::<std::net::Ipv6Addr>().is_ok() { format!("[{name}]") } else { name.clone() };
     Ok((format!("{host}:{}", settings.listen_port), name))
 }
+
+/// A bind address or localhost can serve local play but cannot be presented as an invitation address for friends.
+pub fn share_address(settings: &Settings) -> anyhow::Result<Option<(String, String)>> {
+    let (address, name) = advertised(settings)?;
+    if name.eq_ignore_ascii_case("localhost") || name.eq_ignore_ascii_case("localhost.localdomain") || name.to_ascii_lowercase().ends_with(".localhost") { return Ok(None) }
+    if let Ok(ip) = name.parse::<IpAddr>() {
+        if ip.is_loopback() || ip.is_unspecified() || ip.is_multicast() || ip == IpAddr::V4(std::net::Ipv4Addr::BROADCAST) { return Ok(None) }
+        if let IpAddr::V6(v6) = ip && let Some(v4) = v6.to_ipv4_mapped() && (v4.is_loopback() || v4.is_unspecified()) { return Ok(None) }
+    }
+    Ok(Some((address, name)))
+}

@@ -13,6 +13,7 @@ pub mod privileged;
 pub mod direct;
 pub mod reports;
 pub mod updates;
+pub mod preferences;
 
 pub fn server_address(input: &str) -> anyhow::Result<(String, String)> {
     let input = input.trim();
@@ -31,7 +32,7 @@ pub fn server_address(input: &str) -> anyhow::Result<(String, String)> {
     Ok((format!("{host}:{port}"), host.to_string()))
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub game_dir: String,
@@ -167,11 +168,20 @@ impl LauncherDb {
         let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
         rows.map(|row| { let (id, body) = row?; let mut server: SavedServer = serde_json::from_str(&body)?; server.id = id; Ok(server) }).collect()
     }
-    pub fn save_server(&self, server: &SavedServer) -> anyhow::Result<()> {
+    pub fn save_server(&self, server: &SavedServer) -> anyhow::Result<i64> {
         let body = serde_json::to_string(server)?;
         if server.id == 0 { self.conn.execute("INSERT INTO servers(body) VALUES(?1)", [body])?; }
-        else { self.conn.execute("UPDATE servers SET body=?1 WHERE id=?2", (body, server.id))?; }
-        Ok(())
+        else { ensure!(self.conn.execute("UPDATE servers SET body=?1 WHERE id=?2", (body, server.id))? == 1, "This connection no longer exists."); }
+        Ok(if server.id == 0 { self.conn.last_insert_rowid() } else { server.id })
+    }
+    pub fn delete_server(&mut self, id: i64) -> anyhow::Result<()> {
+        let mut settings = self.settings()?; let transaction = self.conn.transaction()?;
+        ensure!(transaction.execute("DELETE FROM servers WHERE id=?1", [id])? == 1, "This connection no longer exists.");
+        if settings.selected_server == Some(id) {
+            settings.selected_server = None;
+            transaction.execute("INSERT INTO settings VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET body=excluded.body", [serde_json::to_string(&settings)?])?;
+        }
+        transaction.commit()?; Ok(())
     }
 }
 
@@ -190,23 +200,26 @@ impl Runtime {
         let exe = std::env::current_exe()?;
         let bin = exe.parent().context("Application folder is unavailable.")?;
         let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let root = if bin.join(format!("yo3-server{}", std::env::consts::EXE_SUFFIX)).is_file() { bin.to_path_buf() }
+        let development = yo3_tunnel::BUILD_VERSION.ends_with("-dev") && !bin.join("bundle.json").exists();
+        let root = if !development || bin.join(format!("yo3-server{}", std::env::consts::EXE_SUFFIX)).is_file() { bin.to_path_buf() }
             else { project.join("target/release") };
-        let mods = if root.join("yo3-auth.dll").is_file() { root.clone() } else { project.join("tools/mod/build") };
-        let engine = if root.join("engine").is_dir() { root.join("engine") } else { project.join("engine") };
+        let mods = if !development || root.join("yo3-auth.dll").is_file() { root.clone() } else { project.join("tools/mod/build") };
+        let engine = if !development || root.join("engine").is_dir() { root.join("engine") } else { project.join("engine") };
         Ok(Self { server: root.join(format!("yo3-server{}", std::env::consts::EXE_SUFFIX)),
             launcher: root.join(format!("yo3-launcher{}", std::env::consts::EXE_SUFFIX)), injector: mods.join("yo3-auth-launch.exe"), dll: mods.join("yo3-auth.dll"), engine })
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Readiness { Ready, GameProblem(String), ComponentProblem(String) }
 pub struct Backend { pub root: PathBuf, pub runtime: Runtime, pub diagnostics: yo3_tunnel::diagnostics::Session,
-    server_session: Mutex<Option<String>>, game: Mutex<Option<Child>>, server: Mutex<Option<Child>> }
+    server_session: Mutex<Option<String>>, game: Mutex<Option<Child>>, game_ready: Mutex<Option<PathBuf>>, server: Mutex<Option<Child>> }
 impl Backend {
     pub fn new(root: PathBuf) -> anyhow::Result<Arc<Self>> {
         yo3_tunnel::diagnostics::private_dir(&root.join("profiles"))?;
         std::fs::create_dir_all(root.join("logs"))?;
         let diagnostics = yo3_tunnel::diagnostics::Session::start(&root.join("logs/sessions"), "app", None)?;
-        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), server: Mutex::new(None) }))
+        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), game_ready: Mutex::new(None), server: Mutex::new(None) }))
     }
     pub fn data_dir(&self, settings: &Settings) -> PathBuf {
         if settings.data_dir.trim().is_empty() { self.root.join("server") } else { PathBuf::from(&settings.data_dir) }
@@ -273,6 +286,10 @@ impl Backend {
         Ok(())
     }
     pub fn invitation(&self, settings: &Settings, who: &str) -> anyhow::Result<SavedServer> {
+        ensure!(network::share_address(settings)?.is_some(), "Set a sharing address under My server → Advanced before exporting an invitation for friends.");
+        self.account_connection(settings, who)
+    }
+    fn account_connection(&self, settings: &Settings, who: &str) -> anyhow::Result<SavedServer> {
         let key = self.manage(settings, ManagerOp::ExportAccount { who: who.into() })?["key"].as_str().context("Missing account key")?.to_string();
         let (address, server_name) = network::advertised(settings)?;
         Ok(SavedServer { id: 0, label: format!("{}'s server", who), address, server_name,
@@ -281,26 +298,45 @@ impl Backend {
     pub fn game_running(&self) -> bool {
         self.game.lock().unwrap().as_mut().is_some_and(|child| child.try_wait().ok().flatten().is_none())
     }
+    pub fn game_ready(&self) -> bool { self.game_ready.lock().unwrap().as_ref().is_some_and(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file() && !m.file_type().is_symlink() && m.len() <= 65536)) }
+    fn clear_game_ready(&self) { if let Some(path) = self.game_ready.lock().unwrap().take() { let _ = std::fs::remove_file(path); } }
     pub fn game_failure(&self) -> Option<String> {
         let mut game = self.game.lock().unwrap();
         let status = game.as_mut()?.try_wait().ok().flatten()?;
-        *game = None;
+        *game = None; self.clear_game_ready();
         (!status.success()).then(|| "The game could not start or exited unexpectedly. Open Activity → Launcher & game for details.".into())
     }
     pub fn local_connection(&self, settings: &Settings, who: &str) -> anyhow::Result<SavedServer> {
         let account = if who.is_empty() { self.accounts(settings)?[0]["players"][0]["name"].as_str().unwrap_or("Duelist").to_string() } else { who.to_string() };
-        let mut server = self.invitation(settings, &account)?;
+        let mut server = self.account_connection(settings, &account)?;
         let status = self.status(settings)?;
         let mut address: std::net::SocketAddr = status["listen"].as_str().context("Server does not report its listening address; update the server.")?.parse()?;
         if address.ip().is_unspecified() { address.set_ip(if address.is_ipv6() { "::1".parse()? } else { "127.0.0.1".parse()? }); }
         server.address = address.to_string();
         Ok(server)
     }
+    pub fn readiness(&self, settings: &Settings) -> Readiness {
+        if let Err(error) = validate_game(Path::new(&settings.game_dir)) { return Readiness::GameProblem(format!("{error:#}")) }
+        match self.check_components(settings) { Ok(()) => Readiness::Ready, Err(error) => Readiness::ComponentProblem(format!("{error:#}")) }
+    }
+    pub fn check_game(&self, settings: &Settings) -> anyhow::Result<()> {
+        validate_game(Path::new(&settings.game_dir))?; self.check_components(settings)
+    }
+    fn check_components(&self, settings: &Settings) -> anyhow::Result<()> {
+        ensure!(self.runtime.launcher.is_file(), "The connection launcher is missing. Restore the complete application bundle.");
+        yo3_launcher::components::preflight(&Path::new(&settings.game_dir).join("yo3.exe"), &self.runtime.injector, &self.runtime.dll)?;
+        let manifest = self.runtime.injector.parent().context("Application folder missing")?.join("bundle.json");
+        if manifest.is_file() {
+            let value: Value = serde_json::from_slice(&std::fs::read(manifest)?)?;
+            ensure!(std::fs::metadata(&self.runtime.launcher)?.len() <= 64 * 1024 * 1024, "Unexpected connection launcher size");
+            ensure!(value["components"]["launcher"]["sha256"].as_str() == Some(yo3_launcher::components::hash(&std::fs::read(&self.runtime.launcher)?).as_str()), "The connection launcher differs from its release manifest. Restore the complete application bundle.");
+        }
+        Ok(())
+    }
     pub fn play(&self, settings: &Settings, remote: Option<SavedServer>, who: &str) -> anyhow::Result<()> {
         let mut game = self.game.lock().unwrap();
         ensure!(game.as_mut().is_none_or(|p| p.try_wait().ok().flatten().is_some()), "The game is already running.");
-        validate_game(Path::new(&settings.game_dir))?;
-        yo3_launcher::components::preflight(&Path::new(&settings.game_dir).join("yo3.exe"), &self.runtime.injector, &self.runtime.dll)?;
+        self.check_game(settings)?;
         let mut server = match remote {
             Some(s) => s,
             None => {
@@ -319,8 +355,12 @@ impl Backend {
         cmd.arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id());
         if settings.detailed_logs { cmd.arg("--detailed-logs"); }
         cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
+        let ready = self.root.join("profiles").join(format!("game-ready-{}-{}.json", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos()));
+        cmd.arg("--ready-file").arg(&ready);
         hide_console(&mut cmd);
-        *game = Some(cmd.spawn()?);
+        let child = cmd.spawn()?;
+        self.clear_game_ready(); *self.game_ready.lock().unwrap() = Some(ready);
+        *game = Some(child);
         Ok(())
     }
     pub fn write_profile(&self, server: &SavedServer) -> anyhow::Result<PathBuf> {
@@ -351,7 +391,7 @@ impl Backend {
         use std::io::Write;
         let mut game = self.game.lock().unwrap();
         if let Some(child) = game.as_mut() {
-            if child.try_wait()?.is_some() { *game = None; return Ok(()) }
+            if child.try_wait()?.is_some() { *game = None; self.clear_game_ready(); return Ok(()) }
             if let Some(input) = &mut child.stdin
                 && let Err(error) = input.write_all(b"stop\n")
                 && error.kind() != std::io::ErrorKind::BrokenPipe { return Err(error.into()) }
@@ -443,6 +483,21 @@ mod tests {
         assert!(backend.game_failure().unwrap().contains("Activity"));
         assert!(backend.game_failure().is_none(), "report an unsuccessful launch only once");
         std::fs::remove_dir_all(root).unwrap();
+    }
+    mod component_fixture { include!(concat!(env!("CARGO_MANIFEST_DIR"), "/../yo3-launcher/tests/common/mod.rs")); }
+    #[test]
+    fn a_changed_connection_launcher_is_rejected_before_play() {
+        let root=std::env::temp_dir().join(format!("yo3-desktop-launcher-hash-{}",std::process::id())); let _=std::fs::remove_dir_all(&root);
+        let mut backend=Backend::new(root.clone()).unwrap(); let binary=root.join("connection-helper"); let injector=root.join("injector.exe"); let dll=root.join("mod.dll");
+        std::fs::write(root.join("yo3.exe"),component_fixture::pe_fixture(2)).unwrap();
+        std::fs::write(&injector,component_fixture::pe_fixture(2)).unwrap(); std::fs::write(&dll,component_fixture::pe_fixture(2)).unwrap(); std::fs::write(&binary,b"our verified helper").unwrap();
+        Arc::get_mut(&mut backend).unwrap().runtime=Runtime{server:root.join("server"),launcher:binary.clone(),injector,dll,engine:root.join("engine")};
+        let digest=yo3_launcher::components::hash(&component_fixture::pe_fixture(2));
+        std::fs::write(root.join("bundle.json"),serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":2,"components":{
+            "injector":{"sha256":digest},"connection_mod":{"sha256":digest},"launcher":{"sha256":yo3_launcher::components::hash(b"our verified helper")}}}).to_string()).unwrap();
+        let settings=Settings{game_dir:root.to_string_lossy().into(),..Settings::default()};
+        backend.check_components(&settings).unwrap(); std::fs::write(binary,b"changed helper").unwrap();
+        assert!(backend.check_components(&settings).is_err()); drop(backend); std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn equal_connection_labels_still_select_the_right_account() {

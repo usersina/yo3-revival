@@ -75,6 +75,8 @@ docs_files() {
   cp -r docs/images/guide "$1/images/"
   cp docs/images/duel.png "$1/images/"
   cp LICENSE "$1/LICENSE"
+  mkdir -p "$1/licenses"
+  cp crates/yo3-desktop/assets/icons/LICENSE "$1/licenses/LUCIDE.txt"
 }
 
 name="yo3-revival-$version-linux-x86_64"

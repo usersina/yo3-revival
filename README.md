@@ -23,20 +23,24 @@ Published releases through v0.0.3 predate this application; until a new release 
 
 - **Joining a friend?** Import their private invitation on **Play**, save the connection and press **Play**.
   You can also discover their address, approve their identity and enter the account key they supplied.
-- **Hosting friends?** Set your reachable address in **Settings**, then **Start server** on **My server**.
-  New servers listen on all IPv4 interfaces; **Advanced networking** selects a specific interface or port.
-  Create accounts and private invitations on **Accounts**, and allow the chosen TCP port through the firewall.
+- **Hosting friends?** Set your reachable address in **My server → Advanced**, then **Start server** in **Overview**.
+  New servers listen on all IPv4 interfaces; **My server → Advanced** selects a specific interface or port.
+  Create accounts and private invitations on **My server → Players & invitations**, and allow the chosen TCP port through the firewall.
 - **Playing alone?** Choose **My server** on **Play** and press **Play**; your server starts automatically.
 
 The [graphical setup guide](docs/launcher.md) walks through all three paths, certificates, data and troubleshooting.
 You can keep hosting your server while joining another, and leave hosting running when you close the application.
-**Settings → Enable direct start** optionally sets up the original game executable/shortcut to use your saved
+**Settings → Advanced game options → Enable direct launch** optionally sets up the original game executable/shortcut to use your saved
 connection too, with component and server checks before login.
 
-![The graphical server manager showing hosting status and controls](docs/images/launcher.png)
+![The graphical launcher with server and account selection](docs/images/launcher.png)
 
 Authentication happens in the launcher; the game's original username/password fields are unused. The game executable
 and `yo3.ini` stay unchanged. Each account has its own access key, so friends sharing a router stay separate.
+
+The sidebar shows the current version and links to GitHub. Updates are checked automatically at startup;
+**About & updates → Review & install** downloads and installs a verified update after your confirmation.
+See [application updates](docs/launcher.md#application-updates) for restart and data details.
 
 ## Your first duel
 
@@ -52,7 +56,7 @@ The [command-line guide](docs/guide.md) remains available for terminal users and
 
 Check [Troubleshooting](docs/launcher.md#troubleshooting) first. Still stuck, or found a bug?
 [Open an issue](https://github.com/usersina/yo3-revival/issues/new/choose) and attach a diagnostic ZIP from
-**Activity → Export current session** (or **Export all retained** for an earlier problem). Review it before sharing;
+**Activity → Export logs** (choose **Current session** or **All retained sessions**). Review it before sharing;
 private invitations, account keys and databases do not belong in bug reports. Nothing is uploaded automatically.
 
 ## What works

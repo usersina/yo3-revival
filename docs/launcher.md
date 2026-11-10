@@ -1,160 +1,177 @@
 # YO3 Revival: play and host from one window
 
-Open **yo3-revival.exe** on Windows or **yo3-revival** on Linux. This is the graphical launcher and server manager;
-there is no need to run a batch file, shell script, or Cargo command. Extract the whole application bundle first.
-Published releases through v0.0.3 predate this application; these instructions apply to bundles built from current source.
+Open **yo3-revival.exe** on Windows or **yo3-revival** on Linux after extracting the complete application bundle.
+The graphical launcher described here is available in current source builds; releases through v0.0.3 predate it.
+The four pages are **Play**, **My server**, **Activity** and **Settings**. Help, GitHub and the version are in the footer.
 
 **Contents**
 
 - [First launch](#first-launch)
-- [Open the game directly](#open-the-game-directly)
-- [Play on your server](#play-on-your-server)
+- [Play locally](#play-locally)
 - [Join another server](#join-another-server)
 - [Host friends](#host-friends)
-- [Accounts and invitations](#accounts-and-invitations)
-- [Activity and closing the app](#activity-and-closing-the-app)
+- [Connection help](#connection-help)
+- [Open the game directly](#open-the-game-directly)
+- [Logs and support](#logs-and-support)
+- [Application updates](#application-updates)
 - [Your data and upgrades](#your-data-and-upgrades)
 - [Troubleshooting](#troubleshooting)
 - [Getting the original game](#getting-the-original-game)
 
 ## First launch
 
-Install your own copy of **Yu-Gi-Oh! ONLINE 3 ver. 1.153**. Linux players also need Wine. The application bundle
-includes our server, rules engine, connection DLL and launcher, but no game files.
+Install your own **Yu-Gi-Oh! ONLINE 3 ver. 1.153**. Linux players also need Wine. Our bundle includes the server,
+rules engine, connection DLL and launcher; it contains no original game files.
 
-In **Settings**, check the detected game folder or press **Browse**. Choose the folder containing `yo3.exe`,
-`yo3.idx` and `package/`, then **Save settings**. On Linux you can select a different Wine prefix too.
-The application checks the game data before starting. It leaves `yo3.exe` and `yo3.ini` unchanged.
-Component preflight checks the DLL's interface/release, 32-bit architecture and release manifest before sending an
-account key. The game stays suspended until the injected mod acknowledges readiness and authentication succeeds.
+In **Settings**, choose the folder containing `yo3.exe`, `yo3.idx` and `package/`, then **Save changes**. A separate
+Wine prefix can be selected under **Advanced game options**. Each section saves only its own fields; **Cancel**
+discards that section's draft. Start and Play use saved configuration.
 
-## Open the game directly
+The saved setup checks the complete game data, injector and matching connection DLL. **Ready to play** means the
+preflight succeeded. **Continue to Play** finishes first-time setup. If something is missing, **Repair**
+explains whether to choose a complete game installation or restore the complete application bundle from a release
+download. Recheck after restoring files. Our DLL also acknowledges readiness before authentication and game resume.
+The original executable and INI stay unchanged.
 
-After saving the game folder and selecting your server/account, choose **Settings → Enable direct start**. For your
-own server, start it first. You can then open the original `yo3.exe` or its usual shortcut without the manager.
-Direct start connects to the saved selection; it does not start a stopped local server. Changing the selected
-server/account updates its private profile. If that update cannot complete, the old credential is cleared rather
-than reconnecting to the previous account. Enable direct start again after moving/upgrading the application bundle.
+## Play locally
 
-Setup adds a small `winmm.dll` loader and an ownership receipt beside the game. It never changes `yo3.exe` or
-`yo3.ini`, and refuses a foreign WINMM mod. Paths and account credentials stay in your private application storage;
-Windows stores only the private config path in your current user's registry. Linux configures the selected Wine
-prefix's `yo3.exe` override. A protected game folder may request permission for this file installation alone.
-**Disable direct start** removes only the loader files whose receipt and hashes still match; it does not remove other mods.
+On **Play**, select **My server** and press **Play**. The launcher creates the first local account if necessary and
+starts its local server automatically. No sharing address or firewall configuration is needed for local play.
+The account dropdown controls your game login; managing another account under My server does not change it.
 
-The loader checks the exact DLL hash and uses the same server identity/version checks as the manager. It loads the
-mod and waits for readiness before authenticating or allowing login. A missing DLL shows its expected path and
-offers a matching-file picker followed by a restart; other setup/server failures explain how to repair or use the
-launcher. Cancelled/failed setup blocks startup. The helper logs out when the game exits. An untouched game with no
-installed loader can only show its original generic connection failure; the server cannot inspect remote files.
+The UI reports **Starting game** until the authenticated launcher signals readiness, then **Game running**.
+**Close game** ends that session while hosting can continue. On Wine, a cold prefix can take longer to initialise;
+startup failures appear on Play and in **Activity → Game & launcher**.
 
-## Play on your server
-
-On **Play**, select **My server** and press **Play**. The application creates your local identity/account on first
-use, starts your server and authenticates the game. New GUI setups listen on all IPv4 interfaces by default;
-**My server → Advanced networking** offers a local-only option. Upgraded local-only setups keep that choice.
-You can also start it separately from **My server → Start server**.
-
-In the game, press **ONLINE**, dismiss the original login form and choose your player. Its username/password fields
-are unused; the launcher already authenticated your account. Open **Main Menu → Edit Deck** once to save your starting
-decks, then visit **Kaiba Corporation** for a computer opponent or use **Auto Duel** with a friend.
+In the game, select **ONLINE**, dismiss the original login form and choose your player. Its username/password
+fields are unused because the launcher authenticated the account. Open **Main Menu → Edit Deck** once to save the
+starter decks, then visit **Kaiba Corporation** for a computer opponent or use **Auto Duel** with a friend.
 
 ## Join another server
 
-Hosting and playing are independent: you can leave your own server running while you play on someone else's.
+Choose **Play → Import invitation**, select the private file from the host, then **Save connection**. The invitation
+contains the server address, identity and private account key. Existing authenticated `client.json` profiles can
+also be imported with their adjacent public certificate.
 
-The easiest route is **Play → Import invitation**. Select the private invitation from the host, then **Save connection**.
-It includes the address, account access key and public certificate in one file. Existing `client.json` profiles work
-with their adjacent `server.crt` too.
+Alternatively choose **Add server**. Enter the host's DNS name or IP, optionally with a port (default **7443**), then
+**Check server**. The check sends no account credentials. It displays the server version and compatibility, and asks
+you to compare its identity code with the host. Approve the identity, enter your account key and save the connection.
+`yo3://host:port` addresses work too. Later connections verify the remembered identity automatically.
 
-Alternatively, choose **Add by address** and enter:
-
-- A name for the connection.
-- The host's DNS name or IP, optionally with a port (default **7443**).
-- The account access key supplied by the host.
-
-Press **Discover server**. The application observes the host's identity without sending account credentials and shows
-its release, protocol and required connection-mod interface. Compare the identity code with the host, then approve
-it and save the connection. The stored identity is checked on later connections. An invitation already carries the
-expected identity, so its normal import flow needs no separate certificate file. `yo3://host:port` links work too.
-
-Manual certificate import is under **Advanced**. Original certificate-only profiles/invitations still import with
-their adjacent certificate; the application derives the trusted identity from it and preserves the account key.
-
-Save the connection, select it from the server list, and use **Test connection** or **Play**. Saved connections keep
-separate credentials even when accounts use the same host or router. Pinned connections verify the approved public
-key, certificate lifetime and TLS signature; certificate-only command-line profiles retain hostname/CA verification.
-An address alone does not grant an account or administration access.
+Use **Test connection** to check the account from this computer, then **Play**. **Edit** changes
+a saved name, address or key. Changing an address requires checking its identity again. **Remove** deletes only the
+saved connection and its local cached profile; it leaves the account and game data on the host. Close the game before
+changing its connection or account. Accounts sharing a router stay separate.
 
 ## Host friends
 
-Before starting a new hosted server:
+Hosting and playing are independent. You can host your own server while joining someone else's, or keep hosting
+after closing the launcher.
 
-1. Set the address friends will reach in **Settings**, such as `192.168.1.50` or your VPN/DNS address, and save.
-2. Optionally choose **My server → Advanced networking** to change the listening interface or port (default TCP 7443).
-3. Press **Start server**; networking choices on that page are saved when starting.
+1. Open **My server → Advanced** and set a sharing address friends can reach: your LAN/VPN address or public hostname.
+2. Keep the default interface or choose a specific one and TCP port, then **Save changes**.
+3. In **Overview**, choose **Start server**. It uses saved settings.
+4. In **Players & invitations**, create an account for each friend and export its private invitation.
 
-**Listen on** defaults to `0.0.0.0` (all IPv4 interfaces). The dropdown also offers localhost, available interface
-addresses, and IPv6. A selected interface follows a DHCP address change; an unavailable interface reports an error
-instead of widening access. The running status shows the actual bound listener. Stop the server before changing it.
-`0.0.0.0` is not a join address. Invitations use the separate reachable address and listening port; an explicitly
-entered external `:port` is preserved for router/VPN port mappings.
+Account selection here is for administration; it does not switch your account on Play. Each account can hold up to
+four players. **Additional players** adds one to the selected account; the player is chosen inside the game.
+Send invitations privately to their account owner. They contain credentials and do not belong in bug reports.
 
-Allow the chosen TCP port through the host firewall and route/forward it through your VPN/router if necessary.
-**Allow through firewall** is optional and requests permission only for the helper operation. On Windows it adds a
-rule for this server executable and TCP port on Private networks, preserving existing rules. On Linux it supports
-running firewalld or active UFW, without enabling a disabled firewall. Cancellation leaves hosting running. Normal
-Start never elevates the manager, server or game. Router/VPN forwarding remains separate. The internal admin service
-listens only on loopback; never forward that port.
+The default listener is **all IPv4 interfaces (`0.0.0.0`)**. Advanced also offers localhost, IPv6 and available
+interfaces. A saved interface follows DHCP changes; an unavailable interface reports an error instead of widening
+the listener. The sharing address is separate: `0.0.0.0` and localhost are never presented as addresses for friends.
+An explicit external `:port` in the sharing address supports router/VPN port mappings.
 
-Server identity maintenance runs automatically before starting: it renews self-managed certificates near expiry or
-when names change, preserving the key, existing names and a backup of the prior certificate. Corrupt/incomplete
-identities are reported instead of replaced. Externally issued certificates remain the issuer's responsibility.
-An explicit reissue action remains under **Advanced networking**. Pinned invitations retain trust after same-key renewal.
+Stop your server before saving hosting changes. Its data folder and first player for a new server are also under
+Advanced. The overview reports **Running on this computer**, online players and duels; that is local process status,
+not proof that the address is reachable from another network. **Stop server** disconnects its players.
 
-**My server** shows the local server's status, connected players and duel count. Those controls always manage your
-own server, including while a remote connection is selected on Play.
+## Connection help
 
-## Accounts and invitations
+If friends cannot connect, confirm the sharing address and the saved TCP port, and check that your server is running.
+A connection test from the host does not establish reachability from a friend's computer. A timeout alone cannot
+identify a firewall, VPN or router as the cause.
 
-With your server running, open **Accounts**. You can create an account, add up to four players to it, select the account
-for local play, and **Export private invitation**. Changes go through the running server and commit to SQLite;
-you do not need to disconnect players to add a friend.
+Manage firewall policy in your operating system. On Windows, allow the server application using
+[Windows Security's firewall tools](https://learn.microsoft.com/windows/security/operating-system-security/network-security/windows-firewall/tools).
+On systems using firewalld, its [port/service guide](https://firewalld.org/documentation/howto/open-a-port-or-service)
+explains the interface/zone and persistent settings. Use the port shown under **My server → Advanced** (default TCP
+7443). The launcher neither edits firewall rules nor configures a router/VPN. Start never elevates the application.
+Router forwarding, when needed, points to the host computer's chosen listener; never forward the internal admin port.
+An application-specific Windows allowance may need updating when a new version has a different executable path.
 
-Give each friend their own account and send its invitation privately. An invitation contains an account key, so do
-not post it publicly or attach it to a bug report. Export refuses to overwrite an existing file; choose a new filename.
+The server automatically maintains its self-managed certificate when starting, preserving the identity key and
+backing up the prior certificate. Same-key renewal retains invitation trust. Invalid or incomplete identity files
+are reported rather than replaced. Certificate recovery belongs in troubleshooting, not the normal join flow.
 
-## Activity and closing the app
+## Open the game directly
 
-**Activity** shows either your server's logs or launcher/game diagnostics. Filter the text, pause scrolling or copy
-it. **Export current session** includes this manager, its attached server and the latest game run; **Export all
-retained** includes the stored session history. Both show file count, dates and size before saving a ZIP. Nothing
-is uploaded. Build/OS/protocol/DLL versions accompany the logs. Databases, connection profiles, private keys, game
-files and symbolic links are excluded; account credentials, cookies and session tokens are redacted again at export.
+After saving the game folder and selecting your server/account, open **Settings → Advanced game options** and choose
+**Enable direct launch**. Start your local server first if that is the selected connection. You can then open the
+original `yo3.exe` or its usual shortcut. Direct launch uses the saved connection; it does not start a stopped server.
 
-Logs rotate at 2 MiB and are pruned after 14 days or 100 MiB, preserving each active process's current log. The
-viewer reads at most 96 KiB. Each server owns its writer, so **Keep hosting & exit** continues recording. Reopening
-the manager attaches to that server's session ID. Reports cover indexed sessions recorded by this version; older
-developer packet logs are outside the report inventory. **Settings → Detailed tracing** enables verbose client and
-protocol output on the next game/server start. This can include player/chat data: turn it off afterwards and review
-the report before sharing. Normal game stdout is drained because the original client prints raw packet contents.
+The status reports **Disabled**, **Enabled**, **Needs repair** or a mod conflict. **Repair direct launch** refreshes
+our owned loader and private configuration after an update or a missing-file problem. It preserves the game executable
+and refuses to replace another mod. **Disable direct launch** removes the owned setup. Disable it before changing the
+saved game location or Wine prefix.
 
-**Close game** ends the authenticated game session. It leaves hosting active. Closing the application asks whether
-to keep hosting or stop the server; a game started with **Play** closes in either case. A game opened independently
-has its own lifetime. Reopening the manager reconnects to its
-running local server. **Stop server** disconnects players, so finish their duels first.
+Setup adds an owned `winmm.dll` loader and receipt beside the game. Credentials and configuration stay in private
+application storage; Windows records only the config path in your user's registry, and Wine uses the chosen prefix.
+A protected game folder may request permission for this explicit component installation/removal. Firewall policy is
+unrelated to that permission.
+
+The loader checks the DLL hash, readiness and authenticated server compatibility before login. A missing DLL offers
+its expected path and a matching-file picker followed by restart. An untouched game with no loader can only show its
+original generic connection failure: a server cannot inspect files on another computer.
+
+## Logs and support
+
+**Activity** shows Server or Game & launcher logs. Filter them, pause updates or copy the displayed text. **Export logs**
+offers **Current session** or **All retained sessions**, then previews the file count, date range and size before saving
+one ZIP. The current scope includes this manager, its attached server and latest game run; all retained sessions
+includes current and older history. Nothing is uploaded.
+
+Logs rotate at 2 MiB and are retained up to 14 days or 100 MiB, preserving active process logs. The viewer reads at most
+96 KiB. **Diagnostics options** enables detailed tracing for the next game/server start; save or cancel that section
+independently. Detailed tracing can contain chat/player information, so turn it off after investigating and review
+the ZIP before sharing. Credentials, databases, private keys, profiles and game files are excluded from reports.
+Developer packet logs outside the indexed session directory are not part of these exports.
+
+Closing the launcher asks whether to keep hosting or stop the server. A game started here closes in either case;
+a game opened independently has its own lifetime. Reopening the launcher attaches to a running local server and its
+session logs. The server records logs independently of the manager window.
+
+## Application updates
+
+Click the footer version to open **About & updates**. The launcher checks GitHub at startup; an offline or rate-limited
+check leaves Play available. Only newer published stable releases for your platform are offered; development builds
+stay in place. GitHub is also linked in the footer.
+
+Choose **Review & install**, read the notes, then **Download & restart** to confirm. Progress and cancellation remain
+available while downloading. The launcher verifies SHA-256 and the complete component manifest, extracts into private
+version folders, then closes its managed game and restarts hosting. Finish duels first: online players disconnect.
+Settings, connections and server data remain in place. The game stays closed until you choose Play again.
+
+The new window must acknowledge readiness before its version becomes active in SQLite. Download, verification or
+startup failure leaves the previous version available. Original launcher shortcuts route to the active newer version;
+keep the original bundle if using that shortcut or an older direct-launch setup. Version folders are under
+`updates/installs/` in application storage, with the active/previous choices in `launcher.db`.
+
+After an update, direct launch may show **Needs repair**: use its Repair action to refresh owned components.
+Windows firewall allowances remain managed in the OS. No administrator access is needed for an update into your own
+application storage.
 
 ## Your data and upgrades
 
 The default application folder is `%LOCALAPPDATA%\YO3 Revival` on Windows and
-`${XDG_DATA_HOME:-~/.local/share}/yo3-revival` on Linux. **Settings → Open application data** opens it.
+`${XDG_DATA_HOME:-~/.local/share}/yo3-revival` on Linux. **Activity → Diagnostics options → Open application data** opens it.
 
 - `launcher.db` holds preferences and saved connections, including their private account credentials.
 - `server/server.db` holds the hosted server's persistent game state.
 - `server/server.crt` and `server/server.key` are its public certificate and private TLS key.
 - `logs/` holds diagnostic logs; `profiles/` contains private launcher profiles.
 
-To use an existing server's data, stop that server and select its data folder in Settings before starting the manager's
+To use an existing server's data, stop that server and select its data folder in **My server → Advanced** before starting the manager's
 server. The upgrade imports accounts, collections, BP, decks, records, social data, mail, teams, events and rentals into
 SQLite in one transaction. IDs and credentials remain intact. Original JSON files are retained and are **not** used as
 live storage after import. A failed import reports an error and can be retried after repairing its source.
