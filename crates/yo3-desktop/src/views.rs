@@ -128,7 +128,7 @@ impl App {
         if !matches!(self.setup_result, Some(yo3_desktop::Readiness::Ready)) {
             launch = launch.push(action(Icon::Folder, "Set up game", Some(Msg::Page(Page::Settings))).style(button::text));
         }
-        body = body.push(launch).push(muted("In the game: ONLINE → dismiss the login form → choose your player. Before your first duel, open Main Menu → Edit Deck once to save your starter deck."));
+        body = body.push(launch).push(muted("In the game: ONLINE → dismiss the login form → choose your player. Your first starting deck is prepared automatically. Use Main Menu → Edit Deck to customise it."));
         page_scroll(body)
     }
     fn connection_editor(&self) -> Element<'_, Msg> {

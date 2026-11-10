@@ -174,8 +174,8 @@ tools/client/vclient.sh stop                       # only your own instance; als
 # In a second terminal, use YO3_INSTANCE=c (:79), a separate prefix, and another account's profile.
 # Each account's first player is slot 0; login 1 means the second player within the same account.
 #   a duel between two clients: on each, the menu bar's duel button (195,752) -> Auto Duel (503,401) -> Confirm
-#   (420,522), then Select Deck OK (393,533). A player needs a local deck first: open Main Menu -> Edit Deck once
-#   (it saves the starter deck). NPC duel: map -> Kaiba Corporation (765,275), click through the talk, Yes (270,277),
+#   (420,522), then Select Deck OK (393,533). The mod prepares a legal starting deck once after a fresh player's login;
+#   Edit Deck is optional. NPC duel: map -> Kaiba Corporation (765,275), click through the talk, Yes (270,277),
 #   pick a deck, OK (393,533), janken. In a duel a left click on a hand card does its default action (summon or set); a
 #   right click opens the menu (xdotool button 3). Phase buttons: BP (645,240), M2 (710,240), EP (795,240).
 #   the shop: map (370,190) -> greeting (540,150) -> Purchase Pack (510,216) -> a pack (348,225) -> Confirm and Purchase

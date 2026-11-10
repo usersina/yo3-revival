@@ -55,7 +55,16 @@ async fn client_reaches_the_main_screen() {
     assert_eq!(recv(&mut front).await.request(), Some(0x251C), "friend list push");
     assert_eq!(recv(&mut front).await.request(), Some(0x252A), "black list push");
     assert_eq!(recv(&mut front).await.request(), Some(0x2D6C), "rental records push");
-    assert_eq!(rpc(&mut front, Message::reply(0x2072)).await.request(), Some(0x2398));
+    // Real game data supplies an automatic deck list after collection/rentals. Without that optional data
+    // there is no legal candidate and no extra packet. In both cases the next main-screen RPC must succeed.
+    send(&mut front, &Message::reply(0x2072).encode()).await;
+    let mut next = recv(&mut front).await;
+    if next.request() == Some(0x22C8) {
+        assert!(!next.items.is_empty() && next.items.len() <= 10);
+        assert!(next.items.iter().all(|deck| deck.tag == 6));
+        next = recv(&mut front).await;
+    }
+    assert_eq!(next.request(), Some(0x2398));
 
     // every packet is logged decoded
     let logged: usize = std::fs::read_dir(&log_dir)

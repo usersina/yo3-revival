@@ -12,6 +12,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Fixed: new players can duel without visiting Edit Deck first. The connection mod prepares a legal starting deck
+  once after login, preserving existing decks, default selections and subsequent manual edits or deletions.
+
 - Changed: fewer boxed panels, integrated connection editing and contextual help tooltips. Wine options appear only
   on Linux.
 - Changed: focused four-page launcher with hosting accounts/invitations under My server, scoped Save/Cancel forms,

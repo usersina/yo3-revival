@@ -16,6 +16,7 @@ print('#define YO3_MOD_ABI '+re.search(r'pub const MOD_ABI: u16 = (\d+);',source
 PY
 "$CC" -O2 -Wall -Wextra -Werror -shared -Wl,--kill-at -o build/yo3-auth.dll auth.c -lws2_32 -lwininet
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-test.exe test.c -lws2_32 -lwininet -lwinmm
+"$CC" -O2 -Wall -Wextra -Werror -DYO3_TEST_BAD_GAME_HOOK -o build/yo3-auth-guard-test.exe test.c -lws2_32 -lwininet -lwinmm
 i686-w64-mingw32-dlltool -d wsock32-ordinals.def -l build/wsock32-ordinals.a
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-ordinal-test.exe test.c build/wsock32-ordinals.a -lws2_32 -lwininet -lwinmm
 "$CC" -O2 -Wall -Wextra -Werror -municode -o build/yo3-auth-launch.exe launch.c

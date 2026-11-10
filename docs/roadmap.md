@@ -108,9 +108,15 @@ Launcher usability phase (2026-11-10, implemented on `feat/desktop-launcher`):
 
 Next DLL candidates, after launcher usability:
 
-- [ ] Initialize/select a legal starter after player login only when no valid local deck exists; preserve existing
-  decks/selection. Evidence: editor saves missing server-listed decks at `0x43E550` / `0x52EE60`, while matching
-  validates local files at `0x51AB00`. Verify account, collection and regulation before writing; DLL load is too early.
+- [x] Initialize a legal starting deck after player login only for a fresh local profile; preserve existing
+  files and selections. The first trunk reply supplies legal candidates after collection/rentals; the required mod
+  uses native validation, serialization and cache reload, then sets an empty default selection. Any existing deck
+  or saved selection blocks setup, even an invalid one; a durable per-player marker prevents regeneration after manual deletion. Contract tests and
+  the portable DLL policy protect ordering, ownership/banlists, repeat login and preservation. A fresh private Wine
+  player reached a live NPC duel without opening Edit Deck; the selected starter had 40 cards.
+  Live checks also preserve a custom selection and an unfinished deck, isolate the second player, and retain an
+  intentional deletion after reconnect even with an empty selection. All 523 workspace tests pass; check/Clippy,
+  DLL/loader contracts and Linux/Windows cross-builds pass. Native Windows gameplay still needs verification.
 - [ ] Sync editor saves without requiring a duel selection (currently only `0x1F4F update_type 1` uploads them).
 - [ ] Diagnose the client black-screen wait when the server hangs, then add bounded failure feedback.
 - [ ] Check local profile collisions for identically named players on different servers.
@@ -231,7 +237,8 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
 - [x] The host's firewall (firewalld's `libvirt` zone) blocked the VM; friends over the VPN (trusted zone) aren't
       affected. Noted in AGENTS.md.
 - [x] No banlist by default (the user's choice); `--regulation` picks one.
-- [x] A new player needs Edit Deck once before any duel (the client alone writes deck files): the login news says so.
+- [x] The required mod prepares a legal local starting deck after login automatically (2026-11-10), and
+  the login news describes this behavior.
 - [x] When the rules engine can't run (Node.js missing or older than 22.18, engine not fetched), the server logs an ERROR
   at start, the login news and the join page say duels are unavailable, and the launchers (`run.sh`, `run.cmd`,
   `engine/fetch.sh`) stop before starting a server whose duels would all end as draws.

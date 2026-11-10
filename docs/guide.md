@@ -208,7 +208,8 @@ Keep that terminal open while playing.
 
 1. Start the revival launcher with your private profile and the host certificate.
 2. Press **ONLINE**, dismiss the original login form, then select your player.
-3. Once: **Main Menu → Edit Deck**, then leave it. This saves the starter and official character decks.
+3. A legal starting deck is prepared once for a fresh player profile. **Main Menu → Edit Deck** is optional: use it to
+   customise your deck or load the other official character decks.
 
 ![Main Menu and Edit Deck](images/guide/6-edit-deck.png)
 

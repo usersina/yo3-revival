@@ -44,8 +44,11 @@ The UI reports **Starting game** until the authenticated launcher signals readin
 startup failures appear on Play and in **Activity → Game & launcher**.
 
 In the game, select **ONLINE**, dismiss the original login form and choose your player. Its username/password
-fields are unused because the launcher authenticated the account. Open **Main Menu → Edit Deck** once to save the
-starter decks, then visit **Kaiba Corporation** for a computer opponent or use **Auto Duel** with a friend.
+fields are unused because the launcher authenticated the account. On a fresh player profile, the mod prepares a
+legal starting deck and selects it if you have no selection. This runs only once: existing decks, even unfinished
+ones, and all later edits or deletions are preserved.
+Visit **Kaiba Corporation** for a computer opponent or use **Auto Duel** with a friend.
+**Main Menu → Edit Deck** is available whenever you want to customise your decks.
 
 ## Join another server
 

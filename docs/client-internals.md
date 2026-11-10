@@ -100,8 +100,8 @@ export, see [AGENTS.md](../AGENTS.md)).
 
 ## The connection mod
 
-The authenticated launcher injects `tools/mod/auth.c` before resuming the game. It hooks imports, rather than
-executable code: `GetPrivateProfileStringA`/`GetPrivateProfileIntA` supply local endpoints, `InternetOpenUrlA`
+The authenticated launcher injects `tools/mod/auth.c` before resuming the game. Its import hooks
+for `GetPrivateProfileStringA`/`GetPrivateProfileIntA` supply local endpoints, `InternetOpenUrlA`
 redirects asset downloads, and Winsock connect/send/close restrict sockets to the launcher and add its local cookie.
 The import table of this ver.1.153 client uses WSOCK32 ordinals: connect 4 at `0x7587D0`, send 19 at `0x7587F4`,
 closesocket 3 at `0x7587EC`. Both named and ordinal layouts have a native/Wine test executable. A missing import
@@ -110,6 +110,31 @@ Account credentials remain in the Rust TLS launcher. No binary or INI file is pa
 
 See [authentication.md](authentication.md) for the session binding and [protocol.md](protocol.md#authenticated-transport)
 for the outer protocol. These hooks describe our mod, not claims about Konami's authentication.
+
+### Automatic local deck initialization
+
+`tools/mod/starter.h` also redirects the verified CALL at `0x4F44BD` to a wrapper around the original global
+front dispatcher `0x4F4A00`. The expected bytes are `E8 3E 05 00 00`; an unexpected game-sized executable rejects
+DLL readiness before login. Only the in-memory displacement changes. Native/Wine fixtures cover changed bytes
+and the suspended-process failure path. This targets ver.1.153; the executable and INI on disk remain unchanged.
+
+The wrapper observes `0x22C8` after native dispatch, on the game thread. Player selection at `0x46BDB0` already
+loads the local cache through `0x52F240`. The front connection retains player id at `+0xD4`, regulation at `+0xC8`
+and dataset pointers at `+0x16C`/`+0x170`; collection slot 18 and rentals slot 8 must exist before initialization.
+FileManager is `*(0x82D2C8)`, its root string is `+0x50`, deck-map tree `+0x1000D8`, reload flag `+0x1000F8`.
+`0x51AB00` checks cached decks; `0x51AA80` checks one candidate with EAX=deck, EBX=three pointers: card table
+`*(0x82EBA8)`, regulation from `0x52DB30` (parsed by `0x414630` with ESI=regulation), collection from
+`0x4F6340(connection, 0x1D)`. Both collection/regulation objects are released with their native virtual destructor.
+
+The native serializer `0x52C320` is thiscall(FileManager, deck, by-value GameString), returns zero on success and
+consumes 32 stack bytes. The 28-byte MSVC string has proxy at `+0`, inline buffer/heap pointer at `+4`, length at
+`+0x14` and capacity at `+0x18`; constructor/destructor imports are `0x7583CC`/`0x7583D4`. We serialize to a unique
+staging file, atomically move without replacement, then reload the native cache; reply objects are never retained.
+The player's name comes from the user-data map at `0x82ECA4`. Profile config `*(0x82EC10)` contains `deckInfo`;
+only an empty `cursor_deck_name` is set through its native string setter and saved by `0x52E200`.
+Names and paths are bounded and checked before filesystem operations. This changes local behavior, not the deck
+wire format or exported mod ABI. Any existing local deck or nonempty saved selection prevents setup, regardless of validity. A per-player
+`revival-starter.initialized` file records setup or discovered existing decks/selection; automatic setup never undoes subsequent manual edits or deletions. Existing selections take precedence; no legal candidate leaves the profile untouched. See the [deck protocol](protocol.md#decks-deck-editor-deckedittest-handler-0x43fc60).
 
 ## The field tracer
 

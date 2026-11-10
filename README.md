@@ -46,7 +46,7 @@ See [application updates](docs/launcher.md#application-updates) for restart and 
 
 1. Choose your connection on **Play**, then press **Play**.
 2. Press **ONLINE**, dismiss the original login form and select your player.
-3. Open **Main Menu → Edit Deck** once, then leave it to save your starting decks.
+3. Your first legal starting deck is prepared and selected automatically. Use **Main Menu → Edit Deck** to customise it.
 4. Visit **Kaiba Corporation** for a computer opponent. With a friend, both choose **Auto Duel → Confirm**, or use
    **Create Duel** to arrange a specific match.
 

@@ -44,6 +44,36 @@ fn the_deck_list_carries_the_starter_deck() {
 fn no_starter_deck_means_an_empty_list() {
     let mut c = Server::new().join(1001, "Yugi");
     assert!(one(c.send(req(0x1F4E))).items.is_empty());
+    c.send(req_with(0x1F4C, &[("player_id", Value::U32(1001))]));
+    assert!(c.send(req_with(0x1FA4, &[("player_id", Value::U32(1001))])).iter()
+        .all(|m| m.request() != Some(0x22C8)), "no automatic list without a candidate");
+}
+
+#[test]
+fn login_supplies_a_native_starter_after_collection_and_rentals() {
+    // DLL post-dispatch hook 0x4F44BD: player decks were loaded by 0x46BDB0; 0x51AA80
+    // needs the trunk (slot 18) and rental records (slot 8) before validating/saving tag 6.
+    let mut c = Server::with_world(world()).join(1001, "Yugi");
+    c.send(req_with(0x1F4C, &[("player_id", Value::U32(1001))]));
+    let replies = c.send(req_with(0x1FA4, &[("player_id", Value::U32(1001))]));
+    assert_eq!(replies.iter().map(Message::request).collect::<Vec<_>>(),
+        [Some(9000), Some(0x251C), Some(0x252A), Some(0x2D6C), Some(0x22C8)]);
+    let deck = &replies[4].items[0];
+    assert_eq!(deck.tag, 6);
+    assert_eq!(deck, &one(c.send(req(0x1F4E))).items[0]);
+}
+
+#[test]
+fn automatic_decks_are_only_pushed_on_the_first_trunk_after_each_player_selection() {
+    let mut c = Server::with_world(world()).join(1001, "Yugi"); // already received the login trunk
+    let has_bootstrap = |messages: Vec<Message>| messages.iter().any(|m| m.request() == Some(0x22C8));
+    let trunk_request = || req_with(0x1FA4, &[("player_id", Value::U32(1001))]);
+    assert!(!has_bootstrap(c.send(trunk_request())), "ordinary editor/shop refreshes keep their existing replies");
+    c.send(req_with(0x1F4C, &[("player_id", Value::U32(1001))]));
+    assert!(has_bootstrap(c.send(trunk_request())));
+    assert!(!has_bootstrap(c.send(trunk_request())));
+    c.send(req_with(0x1F4C, &[("player_id", Value::U32(9999))]));
+    assert!(!has_bootstrap(c.send(trunk_request())), "a refused selection cannot initialize a player's decks");
 }
 
 #[test]

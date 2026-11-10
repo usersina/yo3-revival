@@ -12,6 +12,7 @@ DLL="$(winepath -w "$MOD/yo3-auth.dll" 2>/dev/null)"
 wine "$MOD/yo3-auth-test.exe" "$DLL"
 wine "$MOD/yo3-auth-ordinal-test.exe" "$DLL"
 wine "$MOD/yo3-auth-ordinal-test.exe" "$DLL" missing-env
+wine "$MOD/yo3-auth-guard-test.exe" "$DLL" mismatched-game
 LOG="$(mktemp)"
 UNICODE="$(mktemp -d)/日本語 game"
 mkdir -p "$UNICODE"

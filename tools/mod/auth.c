@@ -1,4 +1,4 @@
-/* Revival connection mod (32-bit). The game's imports are the hook boundary; no Konami bytes or files are changed.
+/* Revival connection mod (32-bit). Verified runtime hooks; the original game executable and files stay unchanged.
  * Only loopback endpoints owned by this launch are allowed. Account credentials remain in the Rust TLS launcher.
  */
 #include <winsock2.h>
@@ -136,6 +136,7 @@ static int WSAAPI hooked_close(SOCKET socket) {
 }
 
 #include "hooks.h"
+#include "starter.h"
 
 /* The automatic loader delegates the API call that triggered initialization here once, outside DllMain. */
 __declspec(dllexport) void *WINAPI Yo3ModApi(unsigned id) {
@@ -170,6 +171,7 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
         && hook("connect", (void *)hooked_connect, (void **)&socket_connect)
         && hook("send", (void *)hooked_send, (void **)&socket_send)
         && hook("closesocket", (void *)hooked_close, (void **)&socket_close)
-        && hook("InternetOpenUrlA", (void *)hooked_url, (void **)&open_url);
+        && hook("InternetOpenUrlA", (void *)hooked_url, (void **)&open_url)
+        && starter_install();
     return mod_ready;
 }

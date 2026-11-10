@@ -56,6 +56,35 @@ fn starter() -> Vec<u16> {
     (1..=20).chain(1..=20).collect()
 }
 
+#[test]
+fn automatic_starter_is_withheld_when_banned_or_no_longer_owned() {
+    // Native 0x51AA80 checks collection and regulation before 0x52C320 writes anything.
+    for login in [3, 5] {
+        let mut c = Server::with_world(world(login)).join(1001, "Yugi");
+        c.send(req_with(0x1F4C, &[("player_id", Value::U32(1001))]));
+        let replies = c.send(req_with(0x1FA4, &[("player_id", Value::U32(1001))]));
+        assert_eq!(replies.iter().any(|m| m.request() == Some(0x22C8)), login == 3);
+    }
+    let mut player = yo3_server::front::Player::new(1001, "Yugi");
+    player.given.insert(1, 1);
+    let mut c = Server::with_world(world(3)).join_as(player);
+    c.send(req_with(0x1F4C, &[("player_id", Value::U32(1001))]));
+    assert!(c.send(req_with(0x1FA4, &[("player_id", Value::U32(1001))])).iter()
+        .all(|m| m.request() != Some(0x22C8)));
+}
+
+#[test]
+fn automatic_decks_offer_a_legal_official_fallback_without_the_banned_starter() {
+    let mut w = world(5);
+    w.official_decks.push(Deck { id: 120, name: "Yugi".into(), main: (41..=60).chain(41..=60).collect(), extra: vec![], side: vec![] });
+    let mut c = Server::with_world(w).join(1001, "Yugi");
+    c.send(req_with(0x1F4C, &[("player_id", Value::U32(1001))]));
+    let replies = c.send(req_with(0x1FA4, &[("player_id", Value::U32(1001))]));
+    let bootstrap = replies.iter().find(|m| m.request() == Some(0x22C8)).expect("legal fallback");
+    assert_eq!(bootstrap.items.len(), 1);
+    assert_eq!(bootstrap.items[0].get("deck_name").and_then(Value::as_str).as_deref(), Some("Yugi"));
+}
+
 fn matched(server: &Server) -> (Client, Client, u32) {
     let (mut a, mut b) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
     for c in [&mut a, &mut b] {

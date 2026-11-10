@@ -568,11 +568,10 @@ impl World {
                     "Welcome back to Yu-Gi-Oh! ONLINE".into(),
                     "This is a private revival server. Have fun duelling with your friends!".into(),
                 ),
-                // The client keeps decks in its own files and only Edit Deck writes them (its Flash calls
-                // SaveDeckData), so a new player needs that one visit before any duel.
+                // The required mod prepares a legal local deck after the collection arrives.
                 (
                     "New here?".into(),
-                    "Open Main Menu > Edit Deck once: it saves your starter deck, which every duel needs.".into(),
+                    "Your first starting deck is prepared automatically. Main Menu > Edit Deck lets you customise it.".into(),
                 ),
             ],
             rooms: vec![
@@ -2133,6 +2132,8 @@ pub struct FrontSession {
     outbox: Outbox,
     opened: bool,
     selected: Option<usize>,
+    /// Supply deck initialization only with the first trunk after a successful player selection.
+    starter_pending: bool,
     /// Where the next deck list's official decks start (they take turns in the room the list leaves).
     official_next: usize,
     /// Hub registration once a player is selected.
@@ -2173,6 +2174,7 @@ impl FrontSession {
             outbox,
             opened: false,
             selected: None,
+            starter_pending: false,
             official_next: 0,
             online: None,
             duels: HashMap::new(),
@@ -2482,6 +2484,7 @@ impl FrontSession {
             0x1F4B => self.delete_player(msg),
             0x1F4C => {
                 self.selected = self.find_player(msg);
+                self.starter_pending = self.selected.is_some();
                 if self.selected.is_none() {
                     // No such player: whoever they were before is no longer online either (no ghost in searches or
                     // matching).
@@ -2521,7 +2524,21 @@ impl FrontSession {
                 // which opening the shop reads (0x48F080).
                 let [friends, ignored] = self.hub().social_lists(self.player().player_id);
                 let rentals = self.hub().rental_records(self.player().player_id);
-                return vec![trunk, friends, ignored, rentals];
+                let mut replies = vec![trunk, friends, ignored, rentals];
+                // Required DLL's post-dispatch hook at 0x4F44BD consumes the existing tag-6 deck shape after
+                // slots 18/8 are populated, then uses 0x51AA80 and the native file writer/cache loader.
+                // Local decks were loaded at player selection (0x46BDB0). Neither editor entry nor guessed fields
+                // are needed. A traded-away or banned starter must not be installed as a playable deck.
+                if std::mem::take(&mut self.starter_pending) {
+                    // Owned official decks give a fresh profile an alternative when the starter is banned
+                    // or its cards were traded away. Native validation
+                    // remains authoritative and only one missing deck is installed.
+                    let decks = self.world.starter_deck.iter().chain(&self.world.official_decks)
+                        .filter(|deck| self.check_deck(None, deck).is_ok()).take(MAX_LISTED_DECKS)
+                        .fold(Message::reply(0x22C8), |m, deck| m.item(deck.record()));
+                    if !decks.items.is_empty() { replies.push(decks); }
+                }
+                return replies;
             }
             // Shop (handler 0x48AA60): its text, then a chain where each reply asks for the next:
             // items (the booster packs), exchange items, protectors, event items, perks, rental terms, avatar

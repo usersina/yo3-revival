@@ -7,7 +7,13 @@
 #include <string.h>
 
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #x); return 1; } } while (0)
+#ifdef YO3_TEST_BAD_GAME_HOOK
+static volatile char mismatched_game[0x140000];
+#endif
 int main(int argc, char **argv) {
+#ifdef YO3_TEST_BAD_GAME_HOOK
+    mismatched_game[sizeof mismatched_game-1]=1; /* dispatcher RVA lies in this synthetic image */
+#endif
     CHECK(argc == 2 || argc == 3);
     if (argc == 2 && !strcmp(argv[1], "direct")) {
         CHECK(timeGetTime() > 0); /* force the same automatic WINMM import as yo3.exe */
@@ -42,6 +48,11 @@ int main(int argc, char **argv) {
     SetEnvironmentVariableA("YO3_LOCAL_GATE", port); SetEnvironmentVariableA("YO3_LOCAL_FRONT", port);
     SetEnvironmentVariableA("YO3_LOCAL_DUEL", port); SetEnvironmentVariableA("YO3_LOCAL_HTTP", port);
     SetEnvironmentVariableA("YO3_LOCAL_COOKIE", "0707070707070707070707070707070707070707070707070707070707070707");
+    if(argc==3 && !strcmp(argv[2],"mismatched-game")) {
+        CHECK(LoadLibraryA(argv[1])==NULL);
+        puts("PASS: a changed game-dispatch call prevents DLL readiness before login");
+        ExitProcess(0); /* partial import hooks must never be used after a refused DLL load */
+    }
     char directory[MAX_PATH], ini[MAX_PATH + 64], text[512];
     GetTempPathA(sizeof directory, directory);
     snprintf(ini, sizeof ini, "%syo3-auth-%lu.ini", directory, GetCurrentProcessId());
