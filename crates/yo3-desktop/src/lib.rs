@@ -304,7 +304,7 @@ impl Backend {
         let mut game = self.game.lock().unwrap();
         let status = game.as_mut()?.try_wait().ok().flatten()?;
         *game = None; self.clear_game_ready();
-        (!status.success()).then(|| "The game could not start or exited unexpectedly. Open Activity → Launcher & game for details.".into())
+        (!status.success()).then(|| "The game could not start or exited unexpectedly. Open Activity → Game & launcher for details.".into())
     }
     pub fn local_connection(&self, settings: &Settings, who: &str) -> anyhow::Result<SavedServer> {
         let account = if who.is_empty() { self.accounts(settings)?[0]["players"][0]["name"].as_str().unwrap_or("Duelist").to_string() } else { who.to_string() };
