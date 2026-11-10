@@ -999,8 +999,8 @@ stack; DuelScene's busy check `0x515300` holds the queue while its state `+0x74`
 | `0xD` BattleRun    | **per player**: `param1` the damage figure on the client's card, `param2` on the opponent's; `param3` flags, low byte the client's card, high byte the opponent's: bit 1 destroyed | states 5–6 (`0x4F8430`) play a damage or destroy effect at each side's card (`0x4F8920`, size by damage / 500); a destroyed card's effect ends hiding it (`0x4FB220` mode 0), before the server moves it | confirmed (live: values by attacker/target hid the wrong card when the CPU attacked) |
 | `0xE` BattleEnd    | none                                                                                                                                                                               | battle mode off; takes down the swords the battle input wait drew (`0x4F8E40`, as `0xB` and `0xC` do)                                                                                                    | confirmed (code)                                                                     |
 
-The server sends Init and Attack for MSG_ATTACK, Run for MSG_BATTLE (damage by ATK against ATK or DEF, destroyed from
-the message; a direct attack, whose target ocgcore-wasm reports as an empty place, gets no figures since there's no
+The server sends Init and Attack for MSG_ATTACK, Run for MSG_BATTLE (figures by ATK against ATK or DEF, destroy flags
+clear; a direct attack, whose target ocgcore-wasm reports as an empty place, gets no figures since there's no
 card to show them at), End at DAMAGE_STEP_END, ATTACK_DISABLED, the next attack or a new phase, and always when a
 Battle Phase ends: in battle mode the input wait (command 4 mode 3, `0x4F8A90` case 4) draws swords over the player's
 possible attackers (effect `0x3C`, kept at `+0x64`) that only `0xB`, `0xC` and `0xE` take down, so a Battle Phase with
@@ -1020,8 +1020,14 @@ command record's params like the other components):
 | `0x20` CardBreak  | `param1` the player, `param2` the field zone (at most 10), `param3` the card's uid                           | the card (by uid, `0x500470`) is marked off the field and its zone's label goes; no effect                                                                                                                                                                                                                                                                                                           | confirmed (code; live: nothing visible); not sent                                                                                  |
 
 The card's next move (`0x1A`) flies it on as usual (`0x5000E0` always runs effect mode 0). The server sends CardVanish
-before the move of a card the engine destroyed other than by battle (MSG_MOVE's `reason` has DESTROY and not BATTLE;
-battles have BattleRun's own destroy effect). ocgcore-wasm drops MSG_MOVE's `reason`, so the sidecar reads it back with
+before the move of a card the engine actually destroyed (MSG_MOVE's `reason` has DESTROY, including battle).
+MSG_BATTLE's `destroyed` flag is provisional: limited protection such as Fortress Warrior's and Shield Wing's is
+applied afterwards. Passing that flag to BattleRun hid a surviving card while leaving its slot occupied and usable
+as an attack target or Synchro Material. BattleRun now leaves both destroy bits clear; CardVanish runs only when
+an actual move confirms destruction. The duel check models BattleRun's hide bits too. Real-core regressions cover
+both client perspectives, face-up/Set Fortress Warrior, and Shield Wing's exhausted protection.
+Status: **confirmed**, native hide `0x4F8920` → `0x4FB220`, move handling `0x4FF000`, `tests/yusei_contract.rs`.
+ocgcore-wasm drops MSG_MOVE's `reason`, so the sidecar reads it back with
 a query (flag `REASON`) at the card's new place after each processing step.
 
 **Revealed cards** (MSG_CONFIRM_CARDS, 31 `{player: who it is shown to, cards}`; EDOPro's ConfirmCards: Witch of the Black

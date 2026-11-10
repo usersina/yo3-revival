@@ -223,6 +223,12 @@ Keep that terminal open while playing.
 
 Only the matched players can submit decks or start that duel. Create Duel keeps the chosen banlist after acceptance.
 
+Battle protection applies automatically: Fortress Warrior survives its first battle destruction each turn and
+stays on the field; it needs no activation prompt. Debris Dragon cannot use another Level 4 monster as Synchro
+Material, so Debris Dragon + Max Warrior cannot summon Stardust Dragon. Debris Dragon + Fortress Warrior +
+Quillbolt Hedgehog is a legal Level 8 combination. See the official [Fortress Warrior](https://www.db.yugioh-card.com/yugiohdb/card_search.action?cid=7985&ope=2)
+and [Debris Dragon](https://www.db.yugioh-card.com/yugiohdb/card_search.action?cid=8005&ope=2) card text.
+
 ## What works and what doesn't yet
 
 The main playable features are:

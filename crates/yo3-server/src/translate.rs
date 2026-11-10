@@ -117,7 +117,6 @@ const LOC_REMOVED: u64 = 32;
 const LOC_EXTRA: u64 = 64;
 /// ocgcore reasons (MSG_MOVE's `reason`, which the sidecar reads back).
 const REASON_DESTROY: u64 = 0x1;
-const REASON_BATTLE: u64 = 0x20;
 /// An Xyz material: or'ed with its monster's location, whose sequence it takes.
 const LOC_OVERLAY: u64 = 0x80;
 /// The client's list zones besides hand and deck.
@@ -198,8 +197,8 @@ const COUNTER_KINDS: [(u64, u32); 32] = [
 ];
 const ANY_COUNTER: u32 = 38;
 /// A battle (DuelBattle 0x4F8A90): start; the attack {attacker's player | zone << 8, target's player, target's zone or
-/// DIRECT_TARGET}; the battle's outcome per player {damage figure on the client's card, on the opponent's, flags: DESTROYED
-/// for the client's card, << 8 for the opponent's} (the effect at a card ends hiding it when DESTROYED); end.
+/// DIRECT_TARGET}; damage figures per player, then end. Native BattleRun also accepts destroy flags, but those hide
+/// the card: only a confirmed destruction move can do that, after any battle protection has applied.
 const VIEW_BATTLE_INIT: u32 = 0xA;
 const VIEW_BATTLE_ATTACK: u32 = 0xC;
 const VIEW_BATTLE_RUN: u32 = 0xD;
@@ -207,7 +206,6 @@ const VIEW_BATTLE_END: u32 = 0xE;
 /// A direct attack's target zone: any zone from 5 plays as one (the direct cut-in and strike, 0x4F8430 state 3);
 /// 0xFFFFFFFF plays nothing. 16 is the field's centre, as ChainSet's.
 const DIRECT_TARGET: u32 = 16;
-const DESTROYED: u32 = 2;
 /// The summon effects at a card {player, uid} (DuelScene 0x514290): Normal (or the player's ace), Special.
 const RUN_SUMMON: u32 = 0x38;
 const RUN_SP_SUMMON: u32 = 0x39;
@@ -771,8 +769,9 @@ impl Translator {
                     let index = self.sides[to.player as usize].zone(HAND).len().saturating_sub(1).min(to.index);
                     moved.extend(self.show_hand(to.player, index));
                 }
-                // Destroyed other than by battle (a battle shows it with BattleRun): the shatter first.
-                if moved.is_empty() || reason & REASON_DESTROY == 0 || reason & REASON_BATTLE != 0 || from.zone > HAND {
+                // Only an actual destruction move confirms the card died. MSG_BATTLE precedes limited battle
+                // protection (Fortress Warrior, Shield Wing), so its tentative destroy flag cannot hide the card.
+                if moved.is_empty() || reason & REASON_DESTROY == 0 || from.zone > HAND {
                     return dropped.into_iter().chain(moved).collect();
                 }
                 let vanish = command(CARD_VANISH, [from.player, from.zone | (from.index as u32) << 8, 0, 0]);
@@ -1106,7 +1105,8 @@ impl Translator {
 
     /// MSG_BATTLE {card, target: {attack, defense, position, destroyed}}: per player, the battle damage they take, by
     /// ATK against ATK, or DEF when the target defends (effects that change it aren't followed), and whether their card
-    /// is destroyed. The client pairs the values with the cards by player (DuelBattle states 5 and 6). A direct
+    /// would be destroyed. Limited protection is applied after this message, so destruction is shown only when
+    /// MSG_MOVE confirms it. The client pairs the values with the cards by player (DuelBattle states 5 and 6). A direct
     /// attack's target is an empty place (location 0; ocgcore-wasm parses it like any card): no figures, since there
     /// is no target card to show them at (the LP change shows the damage).
     fn battle(&self, m: &Json) -> Vec<Message> {
@@ -1115,20 +1115,17 @@ impl Translator {
             return vec![command(VIEW_BATTLE_RUN, [0; 4])];
         }
         let n = |c: &Json, k: &str| c[k].as_i64().unwrap_or(0);
-        let destroyed = |c: &Json| if c["destroyed"] == true { DESTROYED } else { 0 };
         let (to_attacker, to_target) = if target["position"].as_u64().unwrap_or(0) & (POS_FACEUP_ATTACK | POS_FACEDOWN_ATTACK) != 0 {
             let diff = n(card, "attack") - n(target, "attack");
             (-diff.min(0), diff.max(0))
         } else {
             ((n(target, "defense") - n(card, "attack")).max(0), 0)
         };
-        let (mut damage, mut flags) = ([0u32; 2], [0u32; 2]);
+        let mut damage = [0u32; 2];
         let attacker = self.player(&card["controller"]) as usize;
         damage[attacker] = to_attacker as u32;
         damage[1 - attacker] = to_target as u32;
-        flags[attacker] = destroyed(card);
-        flags[1 - attacker] = destroyed(target);
-        vec![command(VIEW_BATTLE_RUN, [damage[0], damage[1], flags[0] | flags[1] << 8, 0])]
+        vec![command(VIEW_BATTLE_RUN, [damage[0], damage[1], 0, 0])]
     }
 
     /// The end of the battle shown on the client, if one is.

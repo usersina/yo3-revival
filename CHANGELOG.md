@@ -15,6 +15,12 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **ONLINE** now opens player selection directly. The required connection mod skips the unused original login
   form, including when opening the game through the installed direct-start loader.
 - Fixed a local gate disconnect race exposed by automatic login, which could crash the client during connection.
+- Fixed monsters such as Fortress Warrior and Shield Wing disappearing after surviving a protected battle.
+  They remain visible and usable; destruction is shown only when the rules engine actually removes the card.
+- Detailed diagnostics now also enables the duel checker on the next hosted-server start. The checker tracks
+  battle animations that hide cards, closing a gap that let occupied but invisible slots go undetected.
+- Added real-engine regressions for battle protection and Stardust's legal/illegal Debris Dragon combinations,
+  plus simulations using all three original Yusei decks from the installed game.
 
 ## v0.0.4 (2026-11-10)
 

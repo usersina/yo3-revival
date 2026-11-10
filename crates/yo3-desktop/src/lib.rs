@@ -249,19 +249,13 @@ impl Backend {
         let (_, name) = server_address(&settings.host_address)?;
         let bind = network::resolve_bind(settings, &network::bindings()?)?;
         ensure!(settings.listen_port > 0, "Port must be between 1 and 65535.");
-        let port = settings.listen_port.to_string();
         let data = self.data_dir(settings);
         yo3_server::auth::maintain_identity(&data, vec!["localhost".into(), "127.0.0.1".into(), name.clone()])?;
         yo3_server::store::initialize(&data)?;
         let mut directory = yo3_server::accounts::Directory::open(vec![], &data.join("accounts.json"))?;
         if directory.entries().next().is_none() { directory.add_account(std::slice::from_ref(&settings.player_name)).map_err(anyhow::Error::msg)?; }
         drop(directory);
-        let mut cmd = Command::new(&self.runtime.server);
-        cmd.args(["--bind", &bind.to_string(), "--auth-port", &port, "--http-port", "0"])
-            .arg("--data-dir").arg(data).arg("--game-dir").arg(&settings.game_dir).arg("--log-dir").arg(self.root.join("logs"))
-            .arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id())
-            .env("YO3_ENGINE_DIR", &self.runtime.engine).env("NO_COLOR", "1").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-        if !settings.detailed_logs { cmd.arg("--no-packet-log"); }
+        let mut cmd = self.server_command(settings, bind);
         detach_server(&mut cmd);
         *self.server_session.lock().unwrap() = None;
         *owned = Some(cmd.spawn().context("Start the server")?);
@@ -271,6 +265,16 @@ impl Backend {
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
         anyhow::bail!("Server did not become ready. Open Activity for details.")
+    }
+    fn server_command(&self, settings: &Settings, bind: std::net::IpAddr) -> Command {
+        let port = settings.listen_port.to_string();
+        let mut cmd = Command::new(&self.runtime.server);
+        cmd.args(["--bind", &bind.to_string(), "--auth-port", &port, "--http-port", "0"])
+            .arg("--data-dir").arg(self.data_dir(settings)).arg("--game-dir").arg(&settings.game_dir).arg("--log-dir").arg(self.root.join("logs"))
+            .arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id())
+            .env("YO3_ENGINE_DIR", &self.runtime.engine).env("NO_COLOR", "1").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        if settings.detailed_logs { cmd.arg("--duel-check"); } else { cmd.arg("--no-packet-log"); }
+        cmd
     }
     pub fn stop_server(&self, settings: &Settings) -> anyhow::Result<Value> {
         self.manage(settings, ManagerOp::Shutdown)
@@ -454,6 +458,19 @@ fn detach_server(cmd: &mut Command) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn detailed_diagnostics_enables_the_hosted_servers_duel_checker() {
+        for detailed in [false, true] {
+            let root=std::env::temp_dir().join(format!("yo3-desktop-duel-check-{}-{detailed}",std::process::id()));
+            let _=std::fs::remove_dir_all(&root);
+            let backend=Backend::new(root.clone()).unwrap();
+            let settings=Settings{detailed_logs:detailed,listen_port:17443,..Settings::default()};
+            let cmd=backend.server_command(&settings,std::net::Ipv4Addr::LOCALHOST.into());
+            assert_eq!(cmd.get_args().any(|a| a=="--duel-check"),detailed,"{cmd:?}");
+            assert_eq!(cmd.get_args().any(|a| a=="--no-packet-log"),!detailed,"{cmd:?}");
+            drop(backend); std::fs::remove_dir_all(root).unwrap();
+        }
+    }
     #[test]
     #[cfg(unix)]
     fn hosting_survives_the_managers_process_group_ending() {

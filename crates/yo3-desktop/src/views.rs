@@ -212,7 +212,7 @@ impl App {
             row![text_input("Filter activity…",&self.filter).on_input(Msg::LogFilter).padding(12).width(Fill),checkbox(self.paused).label("Pause").on_toggle(Msg::Pause),action(Icon::Copy,"Copy",Some(Msg::CopyLogs)).style(button::text)].spacing(12).align_y(iced::Alignment::Center),
             card(scrollable(text(if shown.is_empty(){"No activity to show yet.".into()}else{shown}).font(iced::Font::MONOSPACE).size(12)).id("activity-log").height(Fill)).height(Fill),
             disclosure("Diagnostics options",self.advanced_diagnostics,Msg::Disclosure(Disclosure::Diagnostics))].spacing(16).height(Fill);
-        if self.advanced_diagnostics{body=body.push(column![checkbox(self.draft.detailed_logs).label("Detailed client and protocol tracing").on_toggle(Msg::Detailed),muted("Applies to the next game/server start. Detailed traces can contain chat/player information; turn this off after investigating."),self.save_actions(Section::Diagnostics),action(Icon::Folder,"Open application data",Some(Msg::OpenData)).style(button::text)].spacing(12));}
+        if self.advanced_diagnostics{body=body.push(column![checkbox(self.draft.detailed_logs).label("Detailed tracing and duel validation").on_toggle(Msg::Detailed),muted("Validates both players' duel state on your hosted server. Applies to the next game/server start. Detailed traces can contain chat/player information; turn this off after investigating."),self.save_actions(Section::Diagnostics),action(Icon::Folder,"Open application data",Some(Msg::OpenData)).style(button::text)].spacing(12));}
         body.into()
     }
     fn settings_view(&self) -> Element<'_, Msg> {

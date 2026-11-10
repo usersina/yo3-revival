@@ -50,6 +50,30 @@ fn state(hand: &[u32], mzone: [Option<(u32, u32)>; 5], deck: u32) -> serde_json:
 }
 
 #[test]
+fn a_battle_destroy_flag_hides_a_card_even_when_its_slot_stays_occupied() {
+    // 0x4F8920's destroy effect ends at 0x4FB220 mode 0. BattleEnd does not restore that card's visibility.
+    let mut m = drawn();
+    m.apply(&command(0x1A, [1 | 100 << 16, at(0xB, 0), at(0, 0) | 1 << 14, 0]));
+    m.apply(&command(0x1A, [2 | 101 << 16, at(0xB, 0), 1 | at(1, 0) | 1 << 14, 0]));
+    m.apply(&command(1000, [1, 100, 0, 0]));
+    m.apply(&command(1000, [2, 101, 0, 1 | 1 << 8]));
+    m.apply(&command(1000, [3, 102, 0, 0xB << 8]));
+    let mut engine = state(&[4102], [Some((4100, 1)), None, None, None, None], 0);
+    engine[1]["mzone"][1] = json!({"cid":4101,"position":1});
+    let initial = m.check(&engine); assert!(initial.is_empty(), "{initial:?}");
+    m.apply(&command(0xA, [0; 4]));
+    m.apply(&command(0xC, [1 | 1 << 8, 0, 0, 0]));
+    m.apply(&command(0xD, [1400, 0, 2, 0]));
+    m.apply(&command(0xE, [0; 4]));
+    assert!(!m.check(&engine).is_empty(), "the battle hid a surviving monster: occupied slots alone are insufficient");
+    m.apply(&command(1000, [1, 100, 0, 0xE << 8]));
+    m.apply(&command(0x1A, [1 | 100 << 16, at(0, 0) | 1 << 14, at(0xE, 0) | 1 << 14, 0]));
+    engine[0]["mzone"][0] = json!(null);
+    engine[0]["grave"] = json!([{"cid":4100,"position":1}]);
+    let settled = m.check(&engine); assert!(settled.is_empty(), "a subsequent real move settles the hidden card normally: {settled:?}");
+}
+
+#[test]
 fn a_hand_and_the_deck_pile_follow_the_moves() {
     // Drawn cards go to the end of the hand (0x52A400), the deck pile counts down from the setup's 3 (DeckReset 0x16,
     // then a card leaving the pile: 0x4FE4D0).

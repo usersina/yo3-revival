@@ -1038,9 +1038,9 @@ fn an_attack_plays_on_the_field() {
     // DuelBattle (0x4F8A90; the call at 0x4F840E passes param1 in ECX, param3 in EDX, param2 on the stack):
     // BattleInit 0xA, BattleAttack 0xC {attacker's player | its zone << 8, the target's player, the target's zone or
     // 16 for a direct attack}, BattleRun 0xD {per player: the damage figure on the client's card, on the
-    // opponent's, flags: bit 1 the client's card destroyed, bit 9 the opponent's}, which shows the figures at the cards
-    // (0x4F8920; states 5 and 6 pair the values with the cards by player, and a destroyed card's effect ends hiding
-    // it), and BattleEnd 0xE once the damage step ends or the attack is stopped. A direct attack shows no figures.
+    // opponent's}, which shows the figures at the cards (0x4F8920; states 5 and 6 pair values by player), and
+    // BattleEnd 0xE once the damage step ends or the attack is stopped. Destroy flags stay clear: MSG_BATTLE
+    // precedes limited protection, so only a confirmed destruction move may hide the card. Direct attacks show no figures.
     // Live: with the values by attacker and target instead, the CPU's attack hid the client's card.
     let mut t = with_cards();
     t.events(&[json!({ "type": 50, "cid": 4101,
@@ -1051,7 +1051,7 @@ fn an_attack_plays_on_the_field() {
     let battle = json!({ "type": 111,
         "card": { "controller": 0, "location": 4, "sequence": 0, "position": 1, "attack": 1700, "defense": 1000, "destroyed": false },
         "target": { "controller": 1, "location": 4, "sequence": 1, "position": 1, "attack": 1400, "defense": 1200, "destroyed": true } });
-    assert_eq!(shows(&t.events(&[battle])), [(0xD, [0, 300, 2 << 8, 0])]);
+    assert_eq!(shows(&t.events(&[battle])), [(0xD, [0, 300, 0, 0])]);
     assert_eq!(shows(&t.events(&[json!({ "type": 114 })])), [(0xE, [0; 4])]);
     // The CPU's direct attack from its zone 1: at the defending player, zone 16 (the field's centre, as ChainSet's). The
     // client plays an attack at any target zone of 5 and above as a direct one (0x4F8430 state 3: the direct cut-in,
@@ -1076,7 +1076,7 @@ fn an_attack_plays_on_the_field() {
     let battle = json!({ "type": 111,
         "card": { "controller": 1, "location": 4, "sequence": 1, "position": 1, "attack": 1400, "defense": 1200, "destroyed": true },
         "target": { "controller": 0, "location": 4, "sequence": 0, "position": 1, "attack": 1700, "defense": 1000, "destroyed": false } });
-    assert_eq!(shows(&t.events(&[battle])), [(0xD, [0, 300, 2 << 8, 0])]);
+    assert_eq!(shows(&t.events(&[battle])), [(0xD, [0, 300, 0, 0])]);
 }
 
 #[test]
@@ -1187,11 +1187,11 @@ fn destroyed(from: serde_json::Value, reason: u32) -> serde_json::Value {
 }
 
 #[test]
-fn a_card_destroyed_by_an_effect_shatters_before_it_moves() {
+fn a_destroyed_card_shatters_only_when_its_actual_move_confirms_it() {
     // DuelCardManager (0x4FF000) CardVanish 0x1F {player, zone | index << 8} (zone at most 0xB) hides the card's label,
     // plays effect 0x33 at its place (the shatter) and hides the card (state 0x4FC520); the move then flies it on.
     // It must come before the card table entry (1000) moves the card away. Only for MSG_MOVE's reason DESTROY (1)
-    // without BATTLE (0x20): battles show their own destruction (BattleRun).
+    // including BATTLE (0x20): BattleRun's tentative outcome cannot establish destruction after protection.
     let mut t = with_cards();
     t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4101 }, { "cid": 4101 }, { "cid": 4101 }, { "cid": 4101 }] })]);
     t.events(&[json!({ "type": 50, "cid": 4101,
@@ -1206,9 +1206,9 @@ fn a_card_destroyed_by_an_effect_shatters_before_it_moves() {
     t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 1, 10) })]);
     assert_eq!(vanishes(&t.events(&[destroyed(loc(0, 8, 1, 10), 0x41)])), [(0x1F, [0, 6, 0, 0])]);
     assert_eq!(vanishes(&t.events(&[destroyed(loc(0, 2, 2, 10), 0x41)])), [(0x1F, [0, 0xB | 2 << 8, 0, 0])]);
-    // Destroyed by battle, or not destroyed at all (a resolved Trap going to the graveyard): no shatter.
+    // A real battle destruction shatters here too. MSG_BATTLE's tentative flag may precede protection.
     t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 3, 1) })]);
-    assert_eq!(vanishes(&t.events(&[destroyed(loc(0, 4, 3, 1), 0x21)])), []);
+    assert_eq!(vanishes(&t.events(&[destroyed(loc(0, 4, 3, 1), 0x21)])), [(0x1F, [0, 3, 0, 0])]);
     t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 2, 5) })]);
     assert_eq!(vanishes(&t.events(&[destroyed(loc(0, 8, 2, 5), 0x400)])), []);
 }

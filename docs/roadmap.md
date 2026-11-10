@@ -520,9 +520,24 @@ of bug instead of a list of cases:
 - **In the server** (`--duel-check`, a testing aid): every NPC duel and table checks each step and logs `ERROR duel
   check` with the difference (once per duel). The protocol monkey's `duel` and `soak` runs start the server with it.
   Proved by a server built with a translator broken on purpose (the opponent's draws dropped): ERRORs in every table and
-  NPC duel, reported by the monkey as failures.
+  NPC duel, reported by the monkey as failures. The GUI's detailed diagnostics also enables it on the next server start.
 
-What it found (each fixed with a contract test in `translate_contract.rs`, then none in 400 seeds):
+What it found (covered by `translate_contract.rs` and the dedicated regressions below):
+
+- [x] Yusei battle protection (2026-11-10): Fortress Warrior and Shield Wing survived in the core but vanished in
+      the client, leaving occupied, targetable slots. MSG_BATTLE's destroy flag precedes limited protection;
+      BattleRun no longer hides from that provisional flag. Confirmed destruction moves now shatter through
+      CardVanish. The model now follows BattleRun's hide bits, closing the gap that missed this issue.
+      Real-core regressions cover both views, face-up/Set Fortress Warrior, Shield Wing's two protections and later
+      destruction, plus legal Debris/Fortress/Quillbolt → Stardust and correctly rejected Debris/Max Warrior.
+      The three original Yusei decks are loaded from installed game data for 24 seeded checks across both seats
+      (28 battles), alongside the ordinary 240 mixed-deck checks. All 533 workspace tests and strict Clippy pass.
+      Live on two private Wine clients: Regained Bonds PvP finished at 0 LP with Shield Wing still visible after
+      protected attacks; a controlled duel kept Fortress Warrior visible with no battle damage, then used it with
+      Debris Dragon and Quillbolt to summon Stardust. Both views showed all three materials in the graveyard and
+      Stardust's subsequent battle destruction of Debris correctly. Both duels reached the result screen at 0 LP,
+      with no duel-check differences or client crashes.
+      Detailed GUI diagnostics also starts the hosted server with `--duel-check` on its next start.
 
 - [x] Magical Hats (MSG_SHUFFLE_SET_CARD 36) ignored: the client showed the cards under the wrong hats. ocgcore-wasm also
       misreads the message; the sidecar now reads the shuffled zones back. CardSwap `0x1B` trades the cards.
@@ -780,8 +795,8 @@ Stop finding missing fields one crash at a time.
 - [x] Chain link animations: ChainSet `0x33` {player, zone, link} at each MSG_CHAINING and ChainRun `0x34` {_, _,
       link} at each MSG_CHAIN_SOLVING. Live: two Trap Holes chained to the CPU's summon showed links 1 and 2, the
       chain banner (`duel_chain.swf`), and each number fading as its link resolved
-- [x] Destruction by effects: CardVanish `0x1F` {player, zone | index << 8} before the card's move, for MSG_MOVE's
-      reason DESTROY without BATTLE (the sidecar reads the reason back, since ocgcore-wasm drops it). CardBreak `0x20`
+- [x] Confirmed destruction: CardVanish `0x1F` {player, zone | index << 8} before the card's move, for MSG_MOVE's
+      reason DESTROY, including battle (the sidecar reads the reason back, since ocgcore-wasm drops it). CardBreak `0x20`
       only hides a card's label. Live: Trap Hole shattered Sangan, then the duel went on
 - [x] Stat changes from effects: the sidecar reports the monster zones after each engine step when they changed, and
       a face-up monster's record (`0x3E9`–`0x3EB`) goes again, which the client re-reads after every command. Live: Axe
@@ -882,7 +897,7 @@ Stop finding missing fields one crash at a time.
 | Yes/no questions                                                          | 'Activate the effect of "X"?' for optional effects, 'Use the effect of "X"?' for other questions                                                                                                                                                                                                                                                                                                             | The cards' own question strings (EDOPro's) aren't in the client                                                                                                                       |
 | Position dialog                                                           | button 0 face-up attack (face-down if only that), button 1 face-up defense when allowed, else face-down; the flag shows the face-up defense picture                                                                                                                                                                                                                                                          | The dialog has two buttons; ocgcore allows any mix of four positions                                                                                                                  |
 | ChainRun `param1`/`param2`, ChainSet's place for a card off the field map | 0; the field's centre (16)                                                                                                                                                                                                                                                                                                                                                                                   | DuelChain reads neither; the original's values are unknown                                                                                                                            |
-| Destruction by effects                                                    | CardVanish (`0x1F`, the shatter) before the move; CardBreak (`0x20`) never sent                                                                                                                                                                                                                                                                                                                              | Which of the two the original sent, and when, is unknown; CardVanish is the one with an effect                                                                                        |
+| Confirmed destruction                                                     | CardVanish (`0x1F`, the shatter) before the move; CardBreak (`0x20`) never sent                                                                                                                                                                                                                                                                                                                              | Which of the two the original sent, and when, is unknown; CardVanish is the one with an effect                                                                                        |
 | MSG_MOVE's reason                                                         | read back by a query at the card's new place after each processing step                                                                                                                                                                                                                                                                                                                                      | A card that moves again within the same step reports its later reason                                                                                                                 |
 | Stat changes                                                              | level, ATK, DEF, base ATK, base DEF from the engine; race and attribute stay CARD_Prop's                                                                                                                                                                                                                                                                                                                     | The client's race and attribute numbering isn't ocgcore's; type-changing effects are rare in the card pool                                                                            |
 | Duel clocks                                                               | turn clock full again at each of the player's turns, both clocks running while the engine waits on that player (also during client animations), a time-out 5 s after 0; Auto Duel 180 s / 600 s, hosted duels their `time_turn` / `time_total` (0: off), NPC duels none                                                                                                                                      | The original's clock rules and Auto Duel's limits are unknown; the clocks follow Create Duel's own defaults                                                                           |

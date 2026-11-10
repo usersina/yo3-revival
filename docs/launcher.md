@@ -155,8 +155,11 @@ includes current and older history. Nothing is uploaded.
 ![Export logs with session scope and report preview](images/launcher-logs.png)
 
 Logs rotate at 2 MiB and are retained up to 14 days or 100 MiB, preserving active process logs. The viewer reads at most
-96 KiB. **Diagnostics options** enables detailed tracing for the next game/server start; save or cancel that section
-independently. Detailed tracing can contain chat/player information, so turn it off after investigating and review
+96 KiB. Under **Diagnostics options**, enable **Detailed tracing and duel validation**, then save that section.
+The next hosted server starts with `--duel-check`: it compares both players' modeled client state with the rules
+engine after every step and logs a mismatch. It includes battle animations that hide cards, beyond occupied slots.
+The next game also captures its detailed trace. A server already running needs a stop/start between games to apply
+this setting. Detailed tracing can contain chat/player information, so turn it off after investigating and review
 the ZIP before sharing. Credentials, databases, private keys, profiles and game files are excluded from reports.
 Developer packet logs outside the indexed session directory are not part of these exports.
 

@@ -23,6 +23,8 @@
 //! - 0x1C CardFlipTurn {place}: the field card there takes the place's face and position (+0x82).
 //! - 0x1F CardVanish {player, zone | index << 8}, zone below 0xC: the card is marked off the field (+0xD7) until it
 //!   lands again (0x4FBF30).
+//! - BattleAttack 0xC remembers both cards' slots; BattleRun 0xD's destroy bits hide the corresponding cards
+//!   (0x4F8920 -> 0x4FB220 mode 0), while leaving their slots occupied. BattleEnd does not restore visibility.
 //! - 1017 (pump 0x3F9) {source place, target place, marker type, 1 add / 0 remove}, places `player | zone << 8`: the
 //!   relation list (0x5224E0 appends; 0x522530 removes the entry matching all three). Every relation must join two
 //!   field slots that hold a card, or the client draws a marker on an empty slot when the source is hovered.
@@ -50,6 +52,10 @@ const DECK_RESET: u32 = 0x16;
 const CARD_SWAP: u32 = 0x1B;
 const FLIP_TURN: u32 = 0x1C;
 const CARD_VANISH: u32 = 0x1F;
+const BATTLE_INIT: u32 = 0xA;
+const BATTLE_ATTACK: u32 = 0xC;
+const BATTLE_RUN: u32 = 0xD;
+const BATTLE_END: u32 = 0xE;
 const RELATION: u32 = 0x3F9;
 /// Zones: field slots 0-10 (monsters 0-4, Spell/Trap 5-9, Field Spell 10), then the hand and the piles.
 const FIELD_SPELL: u32 = 10;
@@ -110,6 +116,7 @@ pub struct ClientModel {
     /// Each card's place word as last given (its face and position), and the cards marked off the field.
     places: HashMap<u32, Place>,
     off_field: HashSet<u32>,
+    battle: [Option<(usize, usize)>; 2],
     /// The relations the client holds: (source place, target place, marker type).
     relations: Vec<(u32, u32, u32)>,
     /// Per player, the per-zone counts (0x5240F0) and the piles' shown counts, Extra Deck to banished.
@@ -131,6 +138,7 @@ impl ClientModel {
             slots: Default::default(),
             places: HashMap::new(),
             off_field: HashSet::new(),
+            battle: [None; 2],
             relations: vec![],
             counts: Default::default(),
             piles: Default::default(),
@@ -193,6 +201,22 @@ impl ClientModel {
 
     fn command(&mut self, id: u32, [p1, p2, p3, p4]: [u32; 4]) {
         match id {
+            BATTLE_INIT | BATTLE_END => self.battle = [None; 2],
+            BATTLE_ATTACK => {
+                self.battle = [None; 2];
+                let (attacker, zone, target) = ((p1 & 1) as usize, (p1 >> 8 & 0xFF) as usize, (p2 & 1) as usize);
+                if zone < 5 { self.battle[attacker] = Some((attacker, zone)); }
+                if p3 < 5 { self.battle[target] = Some((target, p3 as usize)); }
+            },
+            BATTLE_RUN => {
+                self.note(format!("BattleRun flags {p3:#x}"));
+                for player in 0..2 {
+                    if p3 & (2 << (player * 8)) != 0
+                        && let Some((side, zone)) = self.battle[player]
+                        && let Some(uid) = self.slots[side][zone]
+                    { self.off_field.insert(uid); }
+                }
+            },
             CARD => {
                 let uid = p1 & 0xFF_FFFF;
                 if p2 != 0 && uid < STAGED {
