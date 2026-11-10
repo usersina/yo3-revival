@@ -26,6 +26,20 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 
 ## Status
 
+v0.0.4 release preparation (2026-11-10):
+
+- [x] README and illustrated launcher guide lead with release downloads and the current four-page UI. Fresh Windows
+  screenshots under Wine show v0.0.4, automatic starter setup, settings, independent hosting and diagnostic export.
+  Obsolete browser-join/login-field pictures are removed; all four GUI images ship in both application bundles.
+- [x] The old-release upgrade path explains complete backups, selecting the existing data folder before hosting,
+  transactional SQLite import, preserved accounts/credentials, private invitations and the single public TLS port.
+  CLI instructions, issue-help links and report forms point to the appropriate GUI guidance.
+- [x] 523 workspace tests, strict Clippy, four headless-helper tests and documentation checks pass. Both archives build;
+  component hashes, archive integrity and every bundled guide link/image are checked. The Windows GUI under Wine
+  started its own scratch server and launched the real game; a fresh player received a selected 40-card starter.
+  Close game kept hosting alive. Native Windows UAC/protected-folder and separate-machine checks remain open.
+- [ ] Publish v0.0.4 after the final push approval; the Release workflow runs the gates again before publishing.
+
 Launcher scope and consistency (2026-11-10):
 
 - [x] Four pages: Play, My server, Activity and Settings. Server selection/Add server share one section; connection

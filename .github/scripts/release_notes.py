@@ -43,7 +43,7 @@ def main():
         sys.exit(f"{sys.argv[3]}: no files to list")
     print("\n".join(body).strip())
     print("\n## Checksums (SHA-256)\n")
-    print("Windows may warn about the unsigned `yo3-server.exe`; compare its archive's checksum, or build from source.\n")
+    print("Windows may warn about these unsigned applications and the connection DLL; compare the archive's checksum, or build from source.\n")
     print("```")
     for f in files:
         print(f"{sha256(f)}  {f.name}")

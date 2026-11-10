@@ -3,69 +3,64 @@
 Pre-alpha: expect bugs, and please [report them](https://github.com/usersina/yo3-revival/issues/new/choose).
 
 Each section is a release. To release, rename the "Unreleased" section at the top to the next version
-(`## v0.0.2 (date)`) and push to `main`: the release workflow builds the bundles and publishes the version under that
+(`## v0.0.5 (date)`) and push to `main`: the release workflow builds the bundles and publishes the version under that
 tag, with the section as its notes. A push whose newest version is already released publishes nothing, so changes can
 gather under "Unreleased" first.
 
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
-[host and player guide](docs/guide.md); the authenticated launcher below has not been published yet.
+[graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.0.4 (2026-11-10)
 
-- Fixed: new players can duel without visiting Edit Deck first. The connection mod prepares a legal starting deck
-  once after login, preserving existing decks, default selections and subsequent manual edits or deletions.
+A graphical launcher for playing and hosting from one window. Download the bundle for your system, extract the
+whole folder, and open **yo3-revival.exe** (Windows) or **yo3-revival** (Linux). Game files are not included;
+Linux players also need Wine. This is still a pre-alpha.
 
-- Changed: fewer boxed panels, integrated connection editing and contextual help tooltips. Wine options appear only
-  on Linux.
-- Changed: focused four-page launcher with hosting accounts/invitations under My server, scoped Save/Cancel forms,
-  accurate game/component readiness, editable/removable connections and context-specific feedback.
-- Fixed: exporting a friend's invitation no longer changes the local Play account; Start uses saved configuration.
-- Added: visible direct-launch state and safe owned-loader repair, plus a single log-export dialog for current or all
-  retained sessions. Loopback/listener addresses are not offered as sharing addresses for friends.
-- Removed: firewall automation and normal-flow certificate administration. OS policy stays in system settings;
-  read-only connection guidance and automatic server identity maintenance remain available.
+### Play, join and host
 
-- Changed: refined Iced launcher with Lucide icons, grouped actions, a clearer address-first connection flow and
-  advanced settings hidden until expanded. Navigation stays usable during background operations.
-- Added: visible version/build, GitHub link and non-blocking startup update checks. Confirmed updates download and
-  verify a complete platform bundle, restart through a window-readiness handshake and retain the original version
-  and user data. Existing launcher shortcuts route to the verified newer version.
+- **Play** starts your local server automatically, or connects to a saved friend's server. Import a private
+  invitation, or enter a server address and confirm its identity before supplying an account key.
+- **My server** manages hosting independently of your game. Create accounts, add players and export private
+  invitations without stopping hosting. Advanced interface, port and sharing options stay out of the normal flow.
+- **Settings** checks your game folder and required connection components before login. Optional **direct launch**
+  lets the original game executable or shortcut use your saved connection, with fail-fast component/server checks
+  and repair guidance. The original executable and INI stay unchanged.
+- **Activity** shows server and game logs. Export the current session or all retained sessions as a diagnostic ZIP,
+  with a size/date preview and credential redaction. Nothing is uploaded automatically.
+- The sidebar shows the version, Help and GitHub links. Updates are checked at startup; future updates download,
+  verify and install a complete bundle **after confirmation**, with recovery to the previous version if startup fails.
+- Fresh players receive a legal, selected starting deck automatically. Setup runs only once; existing decks,
+  default selections, unfinished decks, and later manual edits or deletions are preserved by automatic setup.
+- The launcher uses native Iced controls, icons, question-mark help and four clear pages. Wine options appear only
+  on Linux. Starting a server does not request administrator access or change firewall rules.
 
-- Added: optional reversible direct-start loader beside the game. The original executable/INI remain unchanged;
-  exact DLL validation, readiness and authenticated server checks precede login, with local repair/restart guidance.
-- Added: session-indexed diagnostics, rotation and retention, plus current/all-retained ZIP exports with a size/date
-  preview and a second redaction pass. Server logging survives closing the manager; detailed tracing is opt-in.
-- Added: advanced interface/port selection, actual listener status. New GUI
-  setups default to all IPv4 interfaces; existing local-only setups stay local-only. Normal Start needs no elevation.
-- Added: automatic self-managed certificate maintenance at server start, preserving its private identity key.
-- Added: shared game-component preflight, release hash manifests and explicit DLL readiness before account login
-  and game resume. Missing/incompatible components report their local path before any authentication attempt.
-- Added: address-first server discovery with explicit identity approval, compatible version reporting and persistent
-  key verification. Existing invitations/profiles retain their credentials; same-key certificate renewal keeps trust.
-- Added: a Rust graphical launcher/server manager (`yo3-revival`) for local play, saved remote connections,
-  independent hosting, live account creation and private single-file invitations, with logs in the same window.
-- Changed: server state uses SQLite with an atomic one-time import of existing JSON data, consistent startup backups
-  and refusal to silently reimport stale data. Launcher preferences and connections use a separate SQLite database.
-- Added: explicit certificate updates while stopped preserve the host's private key and back up the previous certificate.
-- Fixed: a desktop-controlled game session exits after the game closes, even while its control pipe remains open.
-- Fixed: hosting survives manager process-group cleanup, and the injector accepts Unicode game and DLL paths.
-- Fixed: cold Xvfb startup no longer holds the UI monkey's captured output pipes open. Display diagnostics go to
-  the instance's `xvfb.log`; regression tests cover startup, reuse and failure and run in the release checks.
-- Added: authenticated revival launcher and connection DLL. Accounts sharing one IP stay separate; front and duel
-  connections use validated TLS and single-use tickets. The game executable and INI stay unchanged.
-- Changed: the launcher is now required. Initialize the host certificate, export a private profile per account, and
-  allow TCP 7443. Raw game connections and the IP-based HTTP join page are no longer supported. Existing account data
-  and keys carry over. Both bundles include the launcher, injector, DLL and new setup guide.
-- Fixed: changing a card trade's offer after the other player confirmed can no longer execute the changed deal
-  with that old confirmation. Both players must approve the current offers.
-- Fixed: a refused attempt to delete the account's last player no longer removes their friends, mail and rentals.
-- Fixed: existing key-based accounts (including those created through the retired join page) can complete card
-  trades, rental offers check their owned cards, and their collection refreshes after another session changes it.
-- Fixed: a third player can no longer enter or cancel another pair's duel by sending its duel id.
-- Fixed: Create Duel keeps the host's chosen banlist after the challenger accepts.
-- Fixed: documentation links and their checker follow the working guide's rename to `AGENTS.md`.
-- Docs: clearer joining/local/hosting paths, complete Windows and Linux setup, corrected source-build and backup
-  instructions, and current behavior separated from historical notes. Link checks now include the changelog and nested docs.
+### Upgrade from v0.0.3 or earlier
+
+**Stop the old server and back up its entire data folder before upgrading.** Extract this bundle into a separate
+folder, set the game folder in Settings, then select your existing data folder under **My server → Advanced**
+**before starting hosting**. Accounts, cards, BP and records import into SQLite automatically; original JSON files
+remain as migration copies. Keep players' local `Documents/Yu-Gi-Oh! ONLINE 3` folders too.
+
+The revival launcher and connection DLL are now required. Accounts sharing one router remain separate through
+TLS authentication. Allow the chosen TCP port (**7443** by default); the old raw game ports and browser `/join`
+page are retired. Choose each existing account in **Players & invitations**, export its private invitation, and
+send it only to its owner. Existing account credentials and player data carry over.
+
+The GUI keeps its preferences and connections in a separate SQLite database in private application storage.
+Self-managed server certificates are maintained when starting through the GUI, preserving the private identity key.
+Existing launchers from v0.0.3 and earlier have no updater: download this release manually. The
+[illustrated setup and upgrade guide](https://github.com/usersina/yo3-revival/blob/main/docs/launcher.md)
+walks through the complete process, backups and rollback limits.
+
+### Other fixes
+
+- Changing a trade after confirmation requires both players to approve the new offer. Existing key-based accounts
+  can trade, rental offers check ownership, and collections refresh after another session changes them.
+- Refusing deletion of an account's last player preserves that player's friends, mail and rentals.
+- An unrelated player cannot enter or cancel another pair's duel. Create Duel keeps the host's chosen banlist.
+- Exporting another player's invitation does not switch the account used on Play. Start uses saved settings.
+- Game exit, hosting after closing/reopening the manager, Unicode game/DLL paths and cold headless startup behave
+  correctly. Missing or incompatible connection components stop startup before account login.
 
 ## v0.0.3 (2026-11-09)
 

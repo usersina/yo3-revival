@@ -75,6 +75,8 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Headless client helper
         run: python3 tools/client/test_vclient.py
+      - name: Documentation links and images
+        run: tools/docs-check.py
       - name: Tests
         run: cargo nextest run --workspace
       - name: Bundles
