@@ -38,7 +38,10 @@ v0.0.4 release preparation (2026-11-10):
   component hashes, archive integrity and every bundled guide link/image are checked. The Windows GUI under Wine
   started its own scratch server and launched the real game; a fresh player received a selected 40-card starter.
   Close game kept hosting alive. Native Windows UAC/protected-folder and separate-machine checks remain open.
-- [ ] Publish v0.0.4 after the final push approval; the Release workflow runs the gates again before publishing.
+- [x] Published [v0.0.4](https://github.com/usersina/yo3-revival/releases/tag/v0.0.4) from `d0f482f` after approval;
+  the [release workflow](https://github.com/usersina/yo3-revival/actions/runs/42868619870) passed. Downloaded both
+  public archives and verified release-note SHA-256 checksums, integrity, component manifests, guide links and
+  screenshots. The latest-release endpoint returns v0.0.4; its tag still points to the verified release commit.
 
 Launcher scope and consistency (2026-11-10):
 
@@ -64,8 +67,8 @@ Launcher scope and consistency (2026-11-10):
 - [x] 518 workspace tests (including 240 duels), desktop flow regressions, Clippy, workspace check, four headless-helper
   tests and documentation checks pass. Linux/Windows bundles build; actual staged-window activation succeeds on both
   Linux and Windows under Wine. Local test tags are not published releases.
-- [ ] Native Windows protected-folder/UAC behavior, friends on separate machines and a future GUI release's full public
-  GitHub download still need platform/release verification. Firewall mutation is outside the launcher’s scope.
+- [ ] Native Windows protected-folder/UAC behavior, friends on separate machines and the first published GUI-to-GUI
+  automatic update still need platform/release verification. Firewall mutation is outside the launcher's scope.
 
 Launcher refinement and updates (2026-11-10, `feat/launcher-ux-updates`):
 
