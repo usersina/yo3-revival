@@ -9,6 +9,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::{rustls, TlsAcceptor, TlsConnector};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, pem::PemObject};
 mod identity;
+pub mod diagnostics;
 pub use identity::{ObservedServer, discover, identity_from_pem};
 
 pub type Stream = tokio_rustls::client::TlsStream<TcpStream>;
