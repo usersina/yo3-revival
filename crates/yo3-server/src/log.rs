@@ -32,6 +32,7 @@ struct Current {
 }
 
 pub struct PacketLog {
+    enabled: bool,
     dir: PathBuf,
     name: String,
     max_bytes: u64,
@@ -48,7 +49,13 @@ impl PacketLog {
         let name = format!("packets-{stamp}-{}-{seq}", std::process::id());
         let path = dir.join(format!("{name}.jsonl"));
         let cur = Current { file: File::create(&path)?, path, bytes: 0, older: VecDeque::new(), parts: 0 };
-        Ok(PacketLog { dir: dir.to_path_buf(), name, max_bytes: FILE_MAX, keep: FILES_KEPT, cur: Mutex::new(cur) })
+        Ok(PacketLog { enabled: true, dir: dir.to_path_buf(), name, max_bytes: FILE_MAX, keep: FILES_KEPT, cur: Mutex::new(cur) })
+    }
+    pub fn disabled() -> std::io::Result<PacketLog> {
+        let path = PathBuf::from(if cfg!(windows) { "NUL" } else { "/dev/null" });
+        let file = std::fs::OpenOptions::new().write(true).open(&path)?;
+        let cur = Current { file, path: PathBuf::from("disabled"), bytes: 0, older: VecDeque::new(), parts: 0 };
+        Ok(PacketLog { enabled: false, dir: PathBuf::new(), name: String::new(), max_bytes: FILE_MAX, keep: 1, cur: Mutex::new(cur) })
     }
 
     /// Other limits (a file's size in bytes, how many files are kept); for tests.
@@ -65,6 +72,7 @@ impl PacketLog {
     }
 
     pub fn incoming(&self, who: &str, plain: &[u8], packet: Option<&Packet>, error: Option<&str>) {
+        if !self.enabled { return }
         let (summary, msg) = match packet {
             Some(Packet::Version(v)) => (format!("<- version {v:?}"), json!({ "version": v })),
             Some(Packet::Message(m)) => (format!("<- {}", summarize(m)), message_json(m)),
@@ -75,6 +83,7 @@ impl PacketLog {
     }
 
     pub fn outgoing(&self, who: &str, plain: &[u8], msg: &Message) {
+        if !self.enabled { return }
         tracing::info!("[{who}] -> {}", summarize(msg));
         self.write(who, "->", plain, message_json(msg), None);
     }

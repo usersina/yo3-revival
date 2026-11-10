@@ -36,6 +36,10 @@ struct Args {
     game_dir: Option<PathBuf>,
     #[arg(long, default_value = "logs")]
     log_dir: PathBuf,
+    /// Disable raw game packet logging (the desktop defaults to bounded diagnostics).
+    #[arg(long)] no_packet_log: bool,
+    #[arg(long)] diagnostics_dir: Option<PathBuf>,
+    #[arg(long)] diagnostic_parent: Option<String>,
     /// Default players for add-account, comma separated (at most 4); a name already
     /// in use gets a number (Duelist2...).
     #[arg(long, value_delimiter = ',', default_value = "Duelist", global = true)]
@@ -223,11 +227,15 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let mut a = Args::parse();
+    let log = if a.admin.is_none() { Some(yo3_tunnel::diagnostics::Session::start(&a.diagnostics_dir.clone().unwrap_or_else(|| a.log_dir.join("sessions")), "server", a.diagnostic_parent.clone())?) } else { None };
+    let writer = log.clone();
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .with_target(false)
+        .with_ansi(false)
+        .with_writer(move || yo3_tunnel::diagnostics::ConsoleWriter::new(writer.clone()))
         .init();
-    let mut a = Args::parse();
     if let Some(command) = a.admin.take() {
         let game_dir = a.game_dir.clone().unwrap_or_else(yo3_data::default_game_dir);
         return admin(&a, command, game_dir);
@@ -241,6 +249,7 @@ async fn main() -> anyhow::Result<()> {
         http_port: a.http_port,
         game_dir: a.game_dir.unwrap_or_else(yo3_data::default_game_dir),
         log_dir: a.log_dir,
+        packet_logging: !a.no_packet_log, diagnostic_id: log.as_ref().map(|l| l.id()),
         players: a.players,
         duel_lp: a.duel_lp,
         duel_regulation: a.duel_regulation,
@@ -253,7 +262,8 @@ async fn main() -> anyhow::Result<()> {
         engine_problem: None,
         duel_check: a.duel_check,
     };
-    start(cfg).await?.wait().await;
+    let running = match start(cfg).await { Ok(running) => running, Err(error) => { tracing::error!("Server startup failed: {error:#}"); return Err(error) } };
+    running.wait().await;
     Ok(())
 }
 

@@ -65,6 +65,8 @@ pub struct Config {
     pub http_port: u16,
     pub game_dir: PathBuf,
     pub log_dir: PathBuf,
+    pub packet_logging: bool,
+    pub diagnostic_id: Option<String>,
     /// Default players for offline account administration; login never creates an account.
     pub players: Vec<String>,
     /// Each player's LP at the start of a duel (8000; lower only to test).
@@ -102,6 +104,7 @@ impl Config {
             http_port: 0,
             game_dir: yo3_data::default_game_dir(),
             log_dir: log_dir.clone(),
+            packet_logging: true, diagnostic_id: None,
             players: vec!["test".into()],
             duel_lp: 8000,
             duel_regulation: None,
@@ -256,7 +259,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
 const EVENT_ROUND_DELAY: std::time::Duration = std::time::Duration::from_secs(20);
 
 pub async fn start(cfg: Config) -> anyhow::Result<Running> {
-    let packets = Arc::new(log::PacketLog::create(&cfg.log_dir)?);
+    let packets = Arc::new(if cfg.packet_logging { log::PacketLog::create(&cfg.log_dir)? } else { log::PacketLog::disabled()? });
     let tls = yo3_tunnel::acceptor(&cfg.tls.certificate, &cfg.tls.private_key)?;
     let authenticated = TcpListener::bind((cfg.bind, cfg.tls.port)).await?;
     let http = TcpListener::bind((Ipv4Addr::LOCALHOST, cfg.http_port)).await?;
@@ -329,7 +332,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         admin::write_live(dir, http_addr.port()).map_err(|e| tracing::warn!("admin commands won't reach this server ({}): {e}", dir.display())).ok()
     });
     let (shutdown, _) = tokio::sync::watch::channel(false);
-    let manager = manager::Manager { accounts: directory.clone(), hub, shutdown: shutdown.clone(), engine_problem: world.engine_problem.clone(), listen: auth_addr };
+    let manager = manager::Manager { accounts: directory.clone(), hub, shutdown: shutdown.clone(), engine_problem: world.engine_problem.clone(), listen: auth_addr, diagnostic_id: cfg.diagnostic_id };
     let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs")), directory, admin_token, manager));
     tracing::info!("authenticated TLS {} local management/assets HTTP {}; packets -> {}", auth_addr, http_addr, packets.path().display());
     Ok(Running { auth: auth_addr, http: http_addr, tasks: vec![auth_task, http_task, clock_task], shutdown })
