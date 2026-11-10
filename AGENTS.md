@@ -162,6 +162,7 @@ export YO3_AUTH_PROFILE=/path/to/private/client.json  # absolute scratch-server 
 # Create the private display and prefix only when they are not already in use.
 tools/client/vclient.sh xvfb && tools/client/vclient.sh prefix
 YO3_DISPLAY=:88 YO3_DESKTOP_DATA=/tmp/yo3-gui tools/client/vclient.sh desktop # foreground GUI; create its private display first
+# YO3_DESKTOP_BIN=/absolute/path/to/bundle/yo3-revival tests an extracted bundle using the same private display/prefix.
 # Configure alternate host ports, scratch server data, and a private Wine prefix/Documents in its Settings before Play.
 tools/client/vclient.sh start && tools/client/vclient.sh login 0   # cold start, about 30 s
 tools/client/vclient.sh start-stock               # after GUI Enable direct start; same private game/display/prefix

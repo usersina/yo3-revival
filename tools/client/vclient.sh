@@ -72,7 +72,7 @@ case "${1:-}" in
     # The graphical manager can start its game here too, always on this instance's private display/prefix.
     echo "$$" >"$LOGS/desktop.pid"
     echo "desktop pid $$ on $DISPLAY"
-    WINEDEBUG=fixme-all exec "$ROOT/target/release/yo3-revival" >"$LOGS/desktop.log" 2>&1 ;;
+    WINEDEBUG=fixme-all exec "${YO3_DESKTOP_BIN:-$ROOT/target/release/yo3-revival}" >"$LOGS/desktop.log" 2>&1 ;;
   xvfb)
     # Keep the display alive without holding a caller's captured input/output pipes open.
     xdpyinfo >/dev/null 2>&1 || {
@@ -82,6 +82,10 @@ case "${1:-}" in
     xdpyinfo | grep dimensions ;;
   start-stock)
     # Installed automatic loader path: no injector or account credentials on this command line.
+    if [ ! -f "$GAME/winmm.dll" ] || [ ! -f "$GAME/yo3-revival-loader.json" ]; then
+      echo 'Enable direct start in the GUI and wait for setup to complete before start-stock.' >&2
+      exit 1
+    fi
     cd "$GAME"
     WINEDLLOVERRIDES=winmm=n,b WINEDEBUG=fixme-all nohup wine "$GAME/yo3.exe" >"$LOGS/client-stdout.log" 2>"$LOGS/client-wine.log" &
     for _ in $(seq 60); do [ -n "$(win)" ] && break; sleep 0.5; done

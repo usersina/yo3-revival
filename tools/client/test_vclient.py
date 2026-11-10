@@ -81,6 +81,34 @@ signal.pause()
         self.assertFalse(self.pid_file.exists())
         self.assertIn("display stderr", (self.logs / "xvfb.log").read_text())
 
+    def test_bundle_gui_override_keeps_the_private_display_and_prefix(self):
+        self.program("bundle-gui", """
+import os
+assert os.environ['DISPLAY'] == ':9999'
+assert os.environ['WINEPREFIX'] == os.environ['YO3_WINEPREFIX']
+assert 'WAYLAND_DISPLAY' not in os.environ
+print('private bundle GUI')
+""")
+        self.env.update(YO3_DESKTOP_BIN=str(self.directory / "bundle-gui"),
+            YO3_WINEPREFIX=str(self.directory / "private-prefix"), WAYLAND_DISPLAY="user-wayland")
+        result = subprocess.run([str(VCLIENT), "desktop"], env=self.env, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("private bundle GUI", (self.logs / "desktop.log").read_text())
+
+    def test_direct_start_requires_installed_loader_before_running_wine(self):
+        game = self.directory / "game"; game.mkdir(); (game / "yo3.exe").write_bytes(b"fixture")
+        self.env.update(YO3_GAME_DIR=str(game), TEST_GAME_RAN=str(self.directory / "game-ran"))
+        self.program("wine", """
+from pathlib import Path
+import os
+Path(os.environ['TEST_GAME_RAN']).write_text('started')
+""")
+        self.program("xdotool", "print('999')")
+        result = subprocess.run([str(VCLIENT), "start-stock"], env=self.env, capture_output=True, text=True, timeout=5)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Enable direct start", result.stderr)
+        self.assertFalse((self.directory / "game-ran").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
