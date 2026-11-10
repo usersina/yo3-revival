@@ -9,6 +9,16 @@ use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use yo3_proto::{MAX_FRAME, Message, Packet, Value, decrypt, frame, frame_len};
 
+fn proxy_cookies() -> &'static std::sync::Mutex<std::collections::HashMap<u16, [u8; 32]>> {
+    static COOKIES: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<u16, [u8; 32]>>> = std::sync::OnceLock::new();
+    COOKIES.get_or_init(Default::default)
+}
+
+pub fn authenticate_proxy(ports: &[u16], cookie: [u8; 32]) {
+    let mut cookies = proxy_cookies().lock().unwrap();
+    for port in ports { cookies.insert(*port, cookie); }
+}
+
 /// SplitMix64 (the flag says whether this run may build huge values: only a few plans do, since a message is built whole
 /// before it is cut to a frame): small, fast, and the same on every machine, so a seed always means the same run.
 #[derive(Clone)]
@@ -142,10 +152,12 @@ impl Conn {
                 }
             }
         };
-        let stream = tokio::time::timeout(Duration::from_secs(5), connect)
+        let mut stream = tokio::time::timeout(Duration::from_secs(5), connect)
             .await
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "connect timed out"))??;
         stream.set_nodelay(true).ok();
+        let cookie = proxy_cookies().lock().unwrap().get(&stream.peer_addr()?.port()).copied();
+        if let Some(cookie) = cookie { stream.write_all(&cookie).await?; }
         let (mut r, w) = stream.into_split();
         let (tx, rx) = unbounded_channel();
         tokio::spawn(async move {

@@ -47,7 +47,7 @@ The [docs index](docs/README.md) says what each document is for. The ones you wi
    `docs/images/guide/` (shipped in the release bundles) is made of crops of such frames and of browser pages with red
    boxes drawn on them, about 800 px wide and under about 300 KB each; the one non-screenshot, the game-folder
    listing, is drawn and labelled as an illustration.
-7. **Don't disturb a live setup.** The user may have a server on the default ports (5730, 1213, 1214, 8080) and a
+7. **Don't disturb a live setup.** The user may have a server on the default ports (7443, 8080; an older live setup may use 5730/1213/1214) and a
    client queued on display `:77`. Never stop, restart or touch them, or their `data/`. For your own checks run a
    dev server on other ports and scratch dirs (see Commands) and the second client (`YO3_INSTANCE=b`, display `:78`).
 
@@ -57,7 +57,9 @@ The [docs index](docs/README.md) says what each document is for. The ones you wi
 | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `crates/yo3-proto`                              | Wire codec: frame, Blowfish (`BlowfishLE`), key/value messages, the version-string opener                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `crates/yo3-data`                               | Client data: `.ypk` archives, card table, UI text table, regulations, preset decks, packs (golden tests skip without the game)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `crates/yo3-server`                             | Gate / front / duel / patch-HTTP servers (`main.rs` also holds the admin subcommands). `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `table.rs` = a duel between two players' connections, `shop.rs` = packs on sale and what a pack holds, `social.rs` = friends and ignore lists, `translate.rs` = engine messages to duel commands, `duelcheck.rs` = the duel check (a model of the client's card manager compared with the engine after each step, and the self-play that drives it), `accounts.rs` = accounts by key (the patch URL) or client address, `join.rs` = the self-service join page (`/join`) on the HTTP port, `admin.rs` = the BP commands on a running server (`/admin`, loopback with a token), `deckcheck.rs` = the server-side deck check, `engine.rs` = the rules engine process, `trade.rs`, `rental.rs`, `mail.rs`, `teams.rs`, `events.rs` = the player features of those names, `duellog.rs` = duel logs, `clock.rs` = turn and total clocks, `store.rs` = what is kept in `data/`, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
+| `crates/yo3-server`                             | Gate / front / duel / patch-HTTP servers (`main.rs` also holds the admin subcommands). `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `table.rs` = a duel between two players' connections, `shop.rs` = packs on sale and what a pack holds, `social.rs` = friends and ignore lists, `translate.rs` = engine messages to duel commands, `duelcheck.rs` = the duel check (a model of the client's card manager compared with the engine after each step, and the self-play that drives it), `accounts.rs` = persistent accounts and TLS credential lookup, `auth.rs`/`transport.rs` = session tickets and authenticated connections, `admin.rs` = the BP commands on a running server (`/admin`, loopback with a token), `deckcheck.rs` = the server-side deck check, `engine.rs` = the rules engine process, `trade.rs`, `rental.rs`, `mail.rs`, `teams.rs`, `events.rs` = the player features of those names, `duellog.rs` = duel logs, `clock.rs` = turn and total clocks, `store.rs` = what is kept in `data/`, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
+| `crates/yo3-launcher`, `crates/yo3-tunnel` | Authenticated launcher, private loopback proxy, shared TLS wire protocol |
+| `tools/mod/` | Required 32-bit connection DLL, injector and native/Wine regression tests |
 | `engine/`                                       | Rules engine sidecar: `duelcore.ts` (EDOPro's core via ocgcore-wasm, under Node), `fetch.sh` (packages, card scripts, card database, Konami ids into the ignored `engine/vendor/`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `tools/client/vclient.sh`                       | Headless client: `xvfb`, `start [--trace]`, `login [SLOT]`, `check`, `shot`, `click`, `pixel`, `key`, `type`, `stop`, `prefix`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `tools/tracer/`                                 | Field-read tracer: `yo3trace.dll` + injector (C, mingw-w64), `summarize.py`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -79,6 +81,9 @@ Build and test:
 
 ```bash
 engine/fetch.sh                                   # once: the rules engine's dependencies (engine tests skip without them)
+cargo build --release -p yo3-server -p yo3-launcher
+tools/mod/build.sh                               # 32-bit connection DLL, injector and native/Wine contract harnesses
+tools/mod/test.sh                                # named/ordinal imports, local cookies and fail-closed injection (private :78)
 cargo nextest run --workspace                     # all tests (or: cargo test --workspace); about a minute, most of it the duel
 #   check's 240 self-played duels (tests/duel_check.rs, YO3_CHECK_DUELS=n per test for more): run it after any change to
 #   translate.rs or the sidecar. A failure names the seed, the step and the engine messages before the difference
@@ -98,12 +103,15 @@ tools/release.sh                                  # the host's bundles in dist/ 
 The server (`yo3-server --help` lists everything):
 
 ```bash
-cargo run --release -p yo3-server -- --log-dir logs --players Yugi,Kaiba   # run it in the background; one account, up to 4 players
-ss -ltnp | grep ':5730 '                          # the server's pid, to stop it
+target/release/yo3-server init-auth localhost 127.0.0.1  # once, before starting; add names/IPs friends reach
+target/release/yo3-server add-account Yugi              # once per account; data persists
+target/release/yo3-server profile Yugi client.json --advertise localhost
+# copy data/server.crt beside the private client.json as server.crt
+cargo run --release -p yo3-server -- --log-dir logs     # run in the background; authenticated clients only
+ss -ltnp | rg ':7443 '                          # the server's pid, to stop it
 #   --bind 0.0.0.0 (default 127.0.0.1)  --advertise HOST (the address friends dial, for port forwarding)
 #   --regulation 1: the login banlist (an id or a name from the client's 20; default "unlimited", no banlist)
-#   --no-join: turn the join page (http://HOST:8080/join) off, for a server reachable from the internet
-#   --gate-port --front-port --duel-port --http-port --data-dir --log-dir --game-dir: where it listens and keeps things
+#   --auth-port --auth-cert --auth-key --http-port --data-dir --log-dir --game-dir: listeners, TLS identity and state
 #   testing aids: --duel-lp 1000 (reach a duel's end in one attack), --duel-deck 1149,1449 (the player's main deck as
 #   CARD_Prop rows repeated to 40: here Marauding Captain and Giant Orc, for a yes/no question and a card choice),
 #   --duel-extra 3437 (the extra deck as rows: Goyo Guardian, a Synchro for Krebons 3397 and Giant Orc),
@@ -113,28 +121,28 @@ ss -ltnp | grep ':5730 '                          # the server's pid, to stop it
 #   state: accounts and records persist in data/ (ignored; --data-dir), backed up into data/backups/ at each start
 
 # a dev server beside a live one (never touch the live one): other ports, scratch dirs
-target/release/yo3-server --gate-port 15730 --front-port 11213 --duel-port 11214 --http-port 18080 \
+target/release/yo3-server --auth-port 17443 --http-port 18080 \
   --data-dir "$SCRATCH/data" --log-dir "$SCRATCH/logs"
-#   the client then needs all five lines of its yo3.ini on those ports (GateServerPort=15730 and the three http URLs
-#   on :18080; CRLF line ends): back the file up first and restore it afterwards
+#   initialize the scratch server's identity/accounts first, export its profile with --auth-port 17443, and set
+#   YO3_AUTH_PROFILE to it. Do not edit yo3.ini: the connection DLL supplies the local endpoints.
 
 # admin subcommands (each takes --data-dir; all but the BP ones need the server stopped)
 target/release/yo3-server accounts                # list: address, key, players
-#   add-account NAME [--also B,C] [--advertise HOST]: a key account; prints the key and the friend's yo3.ini lines
-#   key ADDR|PLAYER [--advertise HOST]: print (or make) an existing account's key and lines
+#   add-account NAME [--also B,C]: make an account; profile PLAYER FILE --advertise HOST exports its private profile
+#   key ADDR|PLAYER [--advertise HOST]: print (or make) an existing account profile
 #   add-player ADDR|PLAYER NAME, rename OLD NEW, set-country ADDR|PLAYER CODE|auto (`countries` lists the codes)
 #   move-account OLD NEW [--replace]: a friend's address changed; --replace discards an account already at NEW
 #   give-bp WHO N, add-code CODE BP [--uses N], remove-code CODE, codes: BP and BOOSTERPASS codes; these four work
 #   while the server runs (admin.rs: the server's data/admin.json port and token, loopback only), the rest refuse then
-#   An account's key is the secret in PatchUpdateUrl (`/yo3/<key>/`), which the client fetches before every login (see
-#   "Accounts" in docs/protocol.md). The join page makes key accounts with no host step.
+#   TLS is required; there is no stock-client/IP fallback. The profile holds the account key and the public
+#   certificate's filename. See docs/authentication.md. /join is retired; accounts are created by the host.
 ```
 
 The headless client (display `:77`; `YO3_INSTANCE=b` for display `:78`, `c` for `:79`):
 
 ```bash
 tools/client/vclient.sh xvfb                      # once per boot
-tools/client/vclient.sh start && tools/client/vclient.sh login   # cold start to the main screen, about 30 s; `login SLOT` picks a player
+YO3_AUTH_PROFILE=/path/to/private/client.json tools/client/vclient.sh start && tools/client/vclient.sh login   # cold start to the main screen, about 30 s; `login SLOT` picks a player
 tools/client/vclient.sh check                     # process, client trace, crash, last packets
 tools/client/vclient.sh shot NAME                 # logs/shots/NAME.png (logs/b/shots/ for instance b), then view it
 tools/client/vclient.sh click X Y | key KEY | type TEXT | pixel X Y   # input and colour probes, game-window coordinates (1024x768)
@@ -142,7 +150,7 @@ tools/client/vclient.sh stop                      # also clears a crashed client
 
 export YO3_INSTANCE=b                             # a second client: display :78, logs/b/, prefix .wine-b/
 tools/client/vclient.sh xvfb && tools/client/vclient.sh prefix   # once: its display and reflinked Wine prefix
-tools/client/vclient.sh start && tools/client/vclient.sh login 1 # log in as the second player (slot 1)
+YO3_AUTH_PROFILE=/path/to/private/client.json tools/client/vclient.sh start && tools/client/vclient.sh login 1 # log in as the second player (slot 1)
 #   a duel between two clients: on each, the menu bar's duel button (195,752) -> Auto Duel (503,401) -> Confirm
 #   (420,522), then Select Deck OK (393,533). A player needs a local deck first: open Main Menu -> Edit Deck once
 #   (it saves the starter deck). NPC duel: map -> Kaiba Corporation (765,275), click through the talk, Yes (270,277),
@@ -197,7 +205,7 @@ tools/monkey/protocol-monkey.sh minimize FILE [--sig TEXT]              # cut a 
 tools/monkey/ui-monkey.py --secs 1800 --seed 1                          # random clicks/drags/keys on both headless clients
 #   uses displays :77 and :78 and both clients' prefixes, so not while the user's client is queued there. It backs up
 #   ~/Documents/Yu-Gi-Oh! ONLINE 3 first and restores it after; failures (screenshots, packets, logs) in
-#   /tmp/yo3-ui-monkey/ui-failures/. Needs a release build.
+#   /tmp/yo3-ui-monkey/ui-failures/. Uses :78/:79, refuses busy displays, needs a release build.
 ```
 
 ## The loop: answering a new request
@@ -242,8 +250,8 @@ tools/monkey/ui-monkey.py --secs 1800 --seed 1                          # random
 - Don't run `cargo fmt`: there is no `rustfmt.toml` and the code was never formatted with the defaults (lines run to
   about 120 columns), so it rewraps every file. Match the surrounding style by hand.
 - `pgrep -f` / `pkill -f` match the calling shell's own command line. Find processes by port (`ss -ltnp`) instead.
-- Ports: gate 5730, front 1213, duel 1214 (our choice), HTTP 8080. The game's `yo3.ini` points at 127.0.0.1; Konami's
-  original is saved next to it as `yo3.ini.konami`.
+- Ports: authenticated TLS 7443, internal HTTP/admin 8080 (loopback). The launcher assigns private local game ports.
+  Set `YO3_AUTH_PROFILE` before `vclient.sh start`; the INI is unchanged and the connection DLL is required.
 - Game install: `~/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3` (override with `YO3_GAME_DIR`).
 - A crashed client stays frozen in winedbg. Run `vclient.sh stop` before relaunching.
 - Software rendering under Xvfb: boot takes about 20 s, and there's a "Click the screen" logo between the splash and
@@ -255,14 +263,13 @@ tools/monkey/ui-monkey.py --secs 1800 --seed 1                          # random
   can lag. `logs/fields.tsv` is written straight away. Wine's `winepath` prints startup noise on stderr; silence it.
 - Wine assumes one X display per prefix: two clients in one prefix on two displays die with X `BadWindow`. Each extra
   client gets its own prefix (`vclient.sh prefix`, a btrfs reflink copy of `~/.wine`, so near-instant).
-- The server keys accounts by the key in the client's `PatchUpdateUrl`, else by client address, so every local client
-  without a key shares one account; pick different players with `login SLOT`. A player already online can still be
-  chosen twice (no guard yet).
+- Each launcher authenticates its account key over TLS. Two clients sharing an IP keep different identities; each
+  needs its own private profile. Additional players of one account use `login SLOT`. No legacy client path exists.
 - The Ghidra C export drops the client's log strings, so a log line ("chat room list success") can't be grepped
   there. Use `yodis.py` on the handler to see which case prints it.
 - A Windows 11 VM (libvirt `win11`, 192.168.122.71, shared folder `/data/shared`) runs the real client natively: it
-  reaches the host at 192.168.122.1 once firewalld's `libvirt` zone allows the four ports (its catch-all reject blocks
-  them; the user runs `sudo firewall-cmd --zone=libvirt --add-port={5730,1213,1214,8080}/tcp`). `virsh -c
+  reaches the host at 192.168.122.1 once firewalld's `libvirt` zone allows TLS port 7443 (its catch-all reject blocks
+  them; the user runs `sudo firewall-cmd --zone=libvirt --add-port=7443/tcp`). `virsh -c
   qemu:///system screenshot win11 FILE` shows its display without touching it; the user drives it.
 - Card drags (Edit Deck, Card Swap) need a hover before the press: `xdotool` on the client's display, moving onto the
   card's left edge, pausing, then `mousedown`, moving in steps and `mouseup`. `vclient.sh click` alone can't drag.

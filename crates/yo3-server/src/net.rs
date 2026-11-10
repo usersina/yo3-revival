@@ -1,18 +1,15 @@
 //! Connection loops: framing, decryption, logging, and the patch-HTTP endpoint.
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use yo3_proto::{MAX_FRAME, Message, Packet, decrypt, frame, frame_len};
 
-use crate::accounts::{Directory, KEY_LEN};
+use crate::accounts::Directory;
 use crate::front::Outbox;
-use crate::lock::Locked;
 use crate::log::PacketLog;
 
 /// How long a connection may stay silent before it is closed: before its first message on every port (a socket that
@@ -40,56 +37,23 @@ pub(crate) fn blocking<R>(work: impl FnOnce() -> R) -> R {
     }
 }
 
-/// Accepts connections. `make` builds a fresh packet handler for each one; it gets the peer's address, the
-/// address the peer reached (this end), and the connection's outbox, through which anything (replies, pushes
-/// from other sessions) is sent.
-pub async fn accept_loop<M, H>(listener: TcpListener, who: &'static str, log: Arc<PacketLog>, idle: Idle, make: M)
-where
-    M: Fn(SocketAddr, SocketAddr, Outbox) -> H,
-    H: FnMut(&Packet) -> Vec<Message> + Send + 'static,
-{
-    let mut backoff = Duration::from_millis(50);
-    loop {
-        match listener.accept().await {
-            Ok((stream, peer)) => {
-                backoff = Duration::from_millis(50);
-                tracing::info!("[{who}] connected {peer}");
-                let (outbox, queue) = unbounded_channel();
-                let local = stream.local_addr().unwrap_or(peer);
-                let handler = make(peer, local, outbox.clone());
-                let (reader, writer) = stream.into_split();
-                tokio::spawn(write_loop(writer, queue, who, log.clone()));
-                let log = log.clone();
-                tokio::spawn(async move {
-                    match serve(reader, who, &log, idle, handler, outbox).await {
-                        Ok(()) => tracing::info!("[{who}] {peer} closed"),
-                        Err(e) => tracing::warn!("[{who}] {peer}: {e}"),
-                    }
-                });
-            }
-            Err(e) => {
-                // A persistent error (out of file descriptors) would otherwise spin this loop at full speed.
-                tracing::warn!("[{who}] accept failed: {e}");
-                tokio::time::sleep(backoff).await;
-                backoff = (backoff * 2).min(Duration::from_secs(2));
-            }
-        }
-    }
-}
-
 /// Sends everything queued for one connection, in order, until every outbox clone is gone.
-async fn write_loop(mut stream: OwnedWriteHalf, mut queue: UnboundedReceiver<Message>, who: &str, log: Arc<PacketLog>) {
-    while let Some(msg) = queue.recv().await {
+async fn write_loop<W: AsyncWrite + Unpin>(mut stream: W, mut queue: UnboundedReceiver<Message>, who: &str, log: Arc<PacketLog>, mut stop: tokio::sync::oneshot::Receiver<()>) {
+    loop {
+        let msg = tokio::select! { biased; msg = queue.recv() => msg, _ = &mut stop => None };
+        let Some(msg) = msg else { break };
         let plain = msg.encode();
         log.outgoing(who, &plain, &msg);
         if stream.write_all(&frame(&plain)).await.is_err() {
             break;
         }
     }
+    let _ = stream.shutdown().await;
 }
 
-async fn serve<H>(mut stream: OwnedReadHalf, who: &str, log: &PacketLog, idle: Idle, mut handler: H, outbox: Outbox) -> std::io::Result<()>
+async fn serve<R, H>(mut stream: R, who: &str, log: &PacketLog, idle: Idle, mut handler: H, outbox: Outbox) -> std::io::Result<()>
 where
+    R: AsyncRead + Unpin,
     H: FnMut(&Packet) -> Vec<Message>,
 {
     let mut head = [0u8; 4];
@@ -164,16 +128,33 @@ where
     }
 }
 
+/// The same framing and session lifecycle on an authenticated TLS stream.
+pub(crate) async fn secured<S, H, M>(stream: S, who: &'static str, log: Arc<PacketLog>, idle: Idle, make: M) -> std::io::Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    H: FnMut(&Packet) -> Vec<Message>,
+    M: FnOnce(Outbox) -> H,
+{
+    let (outbox, queue) = unbounded_channel();
+    let handler = make(outbox.clone());
+    let (reader, writer) = tokio::io::split(stream);
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let mut writer = tokio::spawn(write_loop(writer, queue, who, log.clone(), stopped));
+    let result = serve(reader, who, &log, idle, handler, outbox).await;
+    let _ = stop.send(());
+    if tokio::time::timeout(std::time::Duration::from_secs(1), &mut writer).await.is_err() { writer.abort(); }
+    result
+}
+
 /// Minimal HTTP: serves the client's own patch index so it sees itself as up to date.
 ///
-/// An account's key rides in the patch URL (`/yo3/<key>/yo3.idx`): the client fetches it before every connection to
-/// the gate, so the address that presented a known key is remembered for its next login (`Directory::login`).
+/// This is an internal loopback asset/admin service. Account keys in old patch URLs are ignored; TLS identifies
+/// accounts before the game protocol runs. The authenticated asset tunnel whitelists routes before reaching here.
 pub async fn http_loop(
     listener: TcpListener,
     game_dir: PathBuf,
     duel_logs: Option<PathBuf>,
     accounts: Arc<Mutex<Directory>>,
-    join: Option<crate::join::JoinInfo>,
     admin_token: Option<String>,
 ) {
     let mut backoff = Duration::from_millis(50);
@@ -190,7 +171,7 @@ pub async fn http_loop(
                 continue;
             }
         };
-        let (game_dir, duel_logs, accounts, join, admin_token) = (game_dir.clone(), duel_logs.clone(), accounts.clone(), join.clone(), admin_token.clone());
+        let (game_dir, duel_logs, accounts, admin_token) = (game_dir.clone(), duel_logs.clone(), accounts.clone(), admin_token.clone());
         tokio::spawn(async move {
             let mut buf = Vec::new();
             let mut chunk = [0u8; 1024];
@@ -203,10 +184,7 @@ pub async fn http_loop(
             }
             let request = String::from_utf8_lossy(&buf);
             let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
-            let host = request.lines().skip(1).find_map(|l| l.split_once(':').filter(|(n, _)| n.eq_ignore_ascii_case("host")).map(|(_, v)| v.trim().to_string()));
-            let admin = crate::admin::handle(&path, peer.ip(), admin_token.as_deref(), &accounts);
-            let page = || join.as_ref().and_then(|info| crate::join::handle(&path, host.as_deref(), peer.ip(), &accounts, info));
-            if let Some(response) = admin.or_else(page) {
+            if let Some(response) = crate::admin::handle(&path, peer.ip(), admin_token.as_deref(), &accounts) {
                 tracing::info!("[http] GET {} -> {} ({} B)", path.split('?').next().unwrap_or_default(), response.status, response.body.len());
                 let mut head = format!("HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n", response.status, response.content_type, response.body.len());
                 for (name, value) in &response.headers {
@@ -219,15 +197,6 @@ pub async fn http_loop(
                 return;
             }
             let (status, body) = if path.trim_end_matches('/').ends_with("/yo3.idx") {
-                if let Some(key) = key_in(&path) {
-                    if accounts.locked().present_key(peer.ip(), key, std::time::Instant::now()) {
-                        tracing::info!("[http] {} presented an account key", peer.ip());
-                    } else if key.len() >= KEY_LEN {
-                        tracing::warn!("[http] {} presented an unknown key; its login stays with its address", peer.ip());
-                    }
-                } else {
-                    accounts.locked().present_no_key(peer.ip());
-                }
                 match tokio::fs::read(game_dir.join("yo3.idx")).await {
                     Ok(b) => ("200 OK", b),
                     Err(_) => ("404 Not Found", vec![]),
@@ -242,19 +211,11 @@ pub async fn http_loop(
             } else {
                 ("404 Not Found", vec![])
             };
-            tracing::info!("[http] GET {path} -> {status} ({} B)", body.len());
+            tracing::info!("[http] GET {} -> {status} ({} B)", if path.ends_with("/yo3.idx") { "/yo3/yo3.idx" } else { path.split('?').next().unwrap_or_default() }, body.len());
             let head = format!("HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
             let _ = stream.write_all(head.as_bytes()).await;
             let _ = stream.write_all(&body).await;
             let _ = stream.shutdown().await;
         });
     }
-}
-
-/// The account key in a patch URL path: the segment before `yo3.idx` (`/yo3/<key>/yo3.idx`), if there is one besides
-/// the stock `yo3`.
-fn key_in(path: &str) -> Option<&str> {
-    let path = path.split('?').next().unwrap_or_default().trim_end_matches('/');
-    let key = path.strip_suffix("/yo3.idx")?.rsplit('/').next()?;
-    (!key.is_empty() && key != "yo3").then_some(key)
 }

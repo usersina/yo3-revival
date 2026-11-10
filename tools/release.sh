@@ -12,8 +12,9 @@ version=${YO3_VERSION:-$(git describe --tags --always --dirty 2>/dev/null || ech
 # The Node.js shipped in the bundles (an LTS line; the engine needs 22.18 or newer).
 NODE_VERSION=v26.13.0
 cache=dist/.cache
-cargo build --release -p yo3-server
-cargo build --release -p yo3-server --target x86_64-pc-windows-gnu
+cargo build --release -p yo3-server -p yo3-launcher
+cargo build --release -p yo3-server -p yo3-launcher --target x86_64-pc-windows-gnu
+tools/mod/build.sh
 [ -s engine/vendor/cardinfo.json ] && [ -d engine/node_modules/ocgcore-wasm ] || engine/fetch.sh
 
 # Node.js's archive $1, downloaded once into the cache and checked against the release's SHASUMS256.txt.
@@ -65,6 +66,7 @@ EOF
 # The guide (as README.md, with its pictures at the same relative paths as in docs/) and the license.
 docs_files() {
   cp docs/guide.md "$1/README.md"
+  cp docs/authentication.md "$1/authentication.md"
   mkdir -p "$1/images"
   cp -r docs/images/guide "$1/images/"
   cp docs/images/duel.png "$1/images/"
@@ -76,6 +78,7 @@ out="dist/$name"
 rm -rf "$out"
 mkdir -p "$out"
 cp target/release/yo3-server "$out/"
+cp target/release/yo3-launcher tools/mod/build/yo3-auth.dll tools/mod/build/yo3-auth-launch.exe "$out/"
 engine_files "$out"
 docs_files "$out"
 nodeball="node-$NODE_VERSION-linux-x64.tar.xz"
@@ -101,6 +104,7 @@ out="dist/$win"
 rm -rf "$out"
 mkdir -p "$out"
 cp target/x86_64-pc-windows-gnu/release/yo3-server.exe "$out/"
+cp target/x86_64-pc-windows-gnu/release/yo3-launcher.exe tools/mod/build/yo3-auth.dll tools/mod/build/yo3-auth-launch.exe "$out/"
 engine_files "$out"
 docs_files "$out"
 nodezip="node-$NODE_VERSION-win-x64.zip"

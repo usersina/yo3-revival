@@ -9,6 +9,11 @@ gather under "Unreleased" first.
 
 ## Unreleased
 
+- Added: authenticated revival launcher and connection DLL. Accounts sharing one IP stay separate; front and duel
+  connections use validated TLS and single-use tickets. The game executable and INI stay unchanged.
+- Changed: the launcher is now required. Initialize the host certificate, export a private profile per account, and
+  allow TCP 7443. Raw game connections and the IP-based HTTP join page are no longer supported. Existing account data
+  and keys carry over. Both bundles include the launcher, injector, DLL and new setup guide.
 - Fixed: changing a card trade's offer after the other player confirmed can no longer execute the changed deal
   with that old confirmation. Both players must approve the current offers.
 - Fixed: a refused attempt to delete the account's last player no longer removes their friends, mail and rentals.

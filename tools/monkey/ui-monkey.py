@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""UI monkey: random clicks, right clicks, drags and keys on the two real headless clients (Yugi on :77, Kaiba on :78),
+"""UI monkey: random clicks, right clicks, drags and keys on the two real headless clients (Yugi on :78, Kaiba on :79),
 weighted toward the game's real buttons, with a watchdog. Everything runs on the private Xvfb displays through
 tools/client/vclient.sh and xdotool: it never touches the real screen or mouse.
 
     tools/monkey/ui-monkey.py --secs 1800 --seed 1            # roam, then Auto Duels, over and over
 
 What it does
-  * backs up the user's client Documents (local decks: ~/Documents/Yu-Gi-Oh! ONLINE 3) first and restores it at the end
-    (and on SIGINT/SIGTERM/errors), starts the server on a scratch data dir and both clients, logs them in as
-    Yugi (slot 0) and Kaiba (slot 1)
+  * copies the user's client Documents into private prefixes; never changes the originals, starts the server on a scratch data dir and both clients, logs them in as
+    Yugi and Kaiba (separate authenticated accounts, slot 0 each)
   * in rounds: ROAM (random actions on the lobby screens), DUEL (both clients enter Auto Duel by the scripted clicks,
     then the monkey plays both sides with actions weighted toward the duel screen's buttons and cards)
   * the watchdog, after every few actions: a client's window gone, a Wine page fault or winedbg, the "There is no
@@ -164,12 +163,25 @@ class Server:
     def start(self):
         (self.scratch / "data").mkdir(parents=True, exist_ok=True)
         out = open(self.log, "ab")
+        binary = ROOT / "target/release/yo3-server"
+        data = self.scratch / "data"
+        def admin(*args):
+            subprocess.run([str(binary), *args, "--data-dir", str(data)], check=True, stdout=subprocess.DEVNULL)
+        if not (data / "server.crt").exists(): admin("init-auth", "localhost")
+        if not (data / "accounts.json").exists():
+            admin("add-account", "Yugi")
+            admin("add-account", "Kaiba")
+        for name in ("Yugi", "Kaiba"):
+            profile = self.scratch / f"{name}.json"
+            profile.unlink(missing_ok=True)
+            admin("profile", name, str(profile), "--advertise", "localhost", "--auth-port", "17443")
+        shutil.copyfile(data / "server.crt", self.scratch / "server.crt")
         env = dict(os.environ, RUST_LOG="warn", NO_COLOR="1", RUST_BACKTRACE="1")
         self.proc = subprocess.Popen(
             [str(ROOT / "target/release/yo3-server"), "--log-dir", str(self.scratch / "logs"), "--data-dir", str(self.scratch / "data"),
-             "--players", "Yugi,Kaiba", *self.extra], cwd=ROOT, env=env, stdout=out, stderr=out, stdin=subprocess.DEVNULL)
+             "--auth-port", "17443", "--http-port", "18080", *self.extra], cwd=ROOT, env=env, stdout=out, stderr=out, stdin=subprocess.DEVNULL)
         for _ in range(100):
-            if sh(["ss", "-ltn", "sport = :1213"])[1].count("LISTEN"):
+            if sh(["ss", "-ltn", "sport = :17443"])[1].count("LISTEN"):
                 return
             time.sleep(0.1)
 
@@ -248,7 +260,10 @@ class Monkey:
         self.kinds = {}
         self.duels = 0
         self.duels_not_started = 0
-        self.clients = [Client("a", ":77", "", 0, ROOT / "logs"), Client("b", ":78", "b", 1, ROOT / "logs/b")]
+        self.clients = [Client("b", ":78", "b", 0, ROOT / "logs/b"), Client("c", ":79", "c", 0, ROOT / "logs/c")]
+        for client, name in zip(self.clients, ["Yugi", "Kaiba"]):
+            client.env.update(YO3_WINEPREFIX=str(self.scratch / f"prefix-{client.name}"),
+                YO3_AUTH_PROFILE=str(self.scratch / f"{name}.json"), YO3_PACKET_LOG_DIR=str(self.scratch / "logs"))
         self.server = Server(self.scratch, ["--duel-lp", str(a.duel_lp)])
         self.last_packets = 0
         self.last_packet_time = time.time()
@@ -256,25 +271,23 @@ class Monkey:
 
     # --- the user's Documents --------------------------------------------------------------------------------
     def backup_docs(self):
-        if self.backup.exists():
-            raise SystemExit(f"{self.backup} exists: a previous run did not restore the Documents; check it first")
-        if DOCS.exists():
-            shutil.copytree(DOCS, self.backup, symlinks=True)
-        else:
-            self.backup.mkdir()
-            (self.backup / ".absent").write_text("")
-        print(f"backed up {DOCS} -> {self.backup}", flush=True)
+        # Only private prefix copies use the snapshots; the user's Documents are never changed/restored over.
+        for client in self.clients:
+            prefix = self.scratch / f"prefix-{client.name}"
+            if not prefix.exists():
+                source = ROOT / ".wine-b" if (ROOT / ".wine-b").exists() else Path.home() / ".wine"
+                subprocess.run(["cp", "-a", "--reflink=auto", str(source), str(prefix)], check=True)
+            documents = self.scratch / f"documents-{client.name}"
+            if not documents.exists():
+                documents.mkdir()
+                if DOCS.exists(): shutil.copytree(DOCS, documents / DOCS.name, symlinks=True)
+            link = prefix / "drive_c/users" / os.environ.get("USER", "sina") / "Documents"
+            if link.is_symlink(): link.unlink()
+            elif link.exists(): shutil.rmtree(link)
+            link.symlink_to(documents)
 
     def restore_docs(self):
-        if not self.backup.exists():
-            return
-        if (self.backup / ".absent").exists():
-            shutil.rmtree(DOCS, ignore_errors=True)
-        else:
-            sh(["rsync", "-a", "--delete", f"{self.backup}/", f"{DOCS}/"])
-        diff = sh(["diff", "-r", str(self.backup), str(DOCS)])[1] if not (self.backup / ".absent").exists() else ""
-        print("restored the Documents" + (": DIFFERENCES REMAIN\n" + diff[:800] if diff.strip() else " (verified identical)"), flush=True)
-        shutil.rmtree(self.backup, ignore_errors=True)
+        pass  # source Documents were never written
 
     # --- failures ----------------------------------------------------------------------------------------------
     def fail(self, kind, detail, clients=()):
@@ -512,7 +525,12 @@ if __name__ == "__main__":
     p.add_argument("--no-duel", action="store_true")
     p.add_argument("--stall-secs", type=int, default=240)
     a = p.parse_args()
-    for port in (5730, 1213, 1214, 8080):
+    for display in (":78", ":79"):
+        result = subprocess.run(["xdotool", "search", "--name", "^Yu-Gi-Oh! ONLINE 3"],
+            env={**os.environ, "DISPLAY": display}, capture_output=True)
+        if result.returncode == 0:
+            sys.exit(f"private display {display} already has a game client; refusing to disturb it")
+    for port in (17443, 18080):
         if f":{port} " in sh(["ss", "-ltn", f"sport = :{port}"])[1]:
             sys.exit(f"port {port} is in use: stop the server first")
     m = Monkey(a)

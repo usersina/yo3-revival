@@ -160,15 +160,14 @@ fn enter_session(s: &mut DuelSession, player_id: u32) -> Vec<Message> {
 }
 
 mod wire {
-    use std::net::SocketAddr;
     use std::time::Duration;
 
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::TcpStream;
+    use yo3_tunnel::Stream;
     use yo3_proto::{Message, Packet, decrypt, frame, frame_len};
     use yo3_server::{Config, start};
 
-    pub async fn recv(s: &mut TcpStream) -> std::io::Result<Message> {
+    pub async fn recv(s: &mut Stream) -> std::io::Result<Message> {
         let mut head = [0; 4];
         s.read_exact(&mut head).await?;
         let mut body = vec![0; frame_len(head)];
@@ -183,15 +182,26 @@ mod wire {
         [b"\x00\x122010.03.23 skelton".as_slice(), &[0; 4]].concat()
     }
 
-    pub async fn front(server: &yo3_server::Running) -> TcpStream {
-        let mut s = TcpStream::connect(SocketAddr::from(([127, 0, 0, 1], server.front.port()))).await.unwrap();
+    pub async fn front(server: &yo3_server::Running) -> Stream {
+        let dir = std::env::temp_dir().join(format!("yo3-robust-{}", std::process::id()));
+        let info: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.join("endpoint.json")).unwrap()).unwrap();
+        let certificate = std::path::PathBuf::from(info["certificate"].as_str().unwrap());
+        let e = yo3_tunnel::Endpoint::new(server.auth.to_string(), "localhost".into(), &certificate).unwrap();
+        let session = e.login(info["key"].as_str().unwrap()).await.unwrap();
+        let ticket = e.ticket(&session, yo3_tunnel::Role::Front).await.unwrap();
+        let mut s = e.connect(&ticket, yo3_tunnel::Role::Front, 43210).await.unwrap();
         s.write_all(&frame(&version())).await.unwrap();
         s
     }
 
     pub async fn running(idle: Duration) -> yo3_server::Running {
         let log_dir = std::env::temp_dir().join(format!("yo3-robust-{}-{idle:?}", std::process::id()));
-        start(Config { idle_timeout: idle, ..Config::ephemeral(log_dir) }).await.unwrap()
+        let cfg = Config { idle_timeout: idle, ..Config::ephemeral(log_dir.clone()) };
+        let info = serde_json::json!({ "certificate": cfg.tls.certificate, "key": std::fs::read_to_string(log_dir.join("test-auth/client.key")).unwrap() });
+        let dir = std::env::temp_dir().join(format!("yo3-robust-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("endpoint.json"), info.to_string()).unwrap();
+        start(cfg).await.unwrap()
     }
 
     #[tokio::test(flavor = "multi_thread")]

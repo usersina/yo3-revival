@@ -19,30 +19,24 @@ struct Args {
     data_dir: PathBuf,
     #[arg(long, default_value = "127.0.0.1")]
     bind: IpAddr,
-    /// The address clients are sent to for the front and duel servers (default: the address each client reached;
-    /// set it when clients reach the server through a forwarded port or a different name).
-    /// With `add-account` and `key`: the address friends reach the server at, written into the `yo3.ini` lines.
+    /// The DNS name or IP friends reach in exported launcher profiles and advertised asset URLs.
     #[arg(long, global = true)]
     advertise: Option<String>,
-    #[arg(long, default_value_t = 5730, global = true)]
-    gate_port: u16,
-    #[arg(long, default_value_t = 1213)]
-    front_port: u16,
-    /// Duel connections (the original's port is unknown).
-    #[arg(long, default_value_t = 1214)]
-    duel_port: u16,
+    /// Authenticated launcher connections over TLS.
+    #[arg(long, default_value_t = 7443, global = true)]
+    auth_port: u16,
+    #[arg(long, global = true)]
+    auth_cert: Option<PathBuf>,
+    #[arg(long)]
+    auth_key: Option<PathBuf>,
     #[arg(long, default_value_t = 8080, global = true)]
     http_port: u16,
-    /// Turn the self-service join page (`http://HOST:8080/join`) off, for a server reachable from the internet: its
-    /// keys travel in plain HTTP. Hosts then make accounts with `add-account`.
-    #[arg(long)]
-    no_join: bool,
     /// Game install (for the patch index and the client's own data files).
     #[arg(long)]
     game_dir: Option<PathBuf>,
     #[arg(long, default_value = "logs")]
     log_dir: PathBuf,
-    /// Players each new account starts with, comma separated (at most 4; one account per address); a name already
+    /// Default players for add-account, comma separated (at most 4); a name already
     /// in use gets a number (Duelist2...).
     #[arg(long, value_delimiter = ',', default_value = "Duelist", global = true)]
     players: Vec<String>,
@@ -74,18 +68,22 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Admin {
+    /// Generate the host's TLS identity once. NAME is the DNS name or IP friends connect to; repeat for aliases.
+    InitAuth { #[arg(required = true)] names: Vec<String> },
+    /// Export an existing account's private launcher profile. Send it and the public server.crt to that friend.
+    Profile { who: String, output: PathBuf },
     /// List every account: its address (or none), key and players.
     Accounts,
     /// Make an account found by a secret key, not an address: NAME is its first player (the starting players when
-    /// omitted), --also adds up to three more. Prints the key and the `yo3.ini` lines to send the friend (the host in
+    /// omitted), --also adds up to three more. Prints a private launcher profile (the host in
     /// them is `--advertise`, or the placeholder HOST).
     AddAccount {
         name: Option<String>,
         #[arg(long, value_delimiter = ',')]
         also: Vec<String>,
     },
-    /// Print the key of an existing account, ADDRESS or one of its PLAYER names (making a key if it has none; the
-    /// account keeps its address too), with the `yo3.ini` lines.
+    /// Print a private launcher profile for an existing account, ADDRESS or one of its PLAYER names (assigning
+    /// a key if needed; existing player data stays in place).
     Key { who: String },
     /// Give an account (its ADDRESS or one of its PLAYER names) a player named NAME; a new address gets an account
     /// with only that player.
@@ -124,17 +122,16 @@ enum Admin {
     Codes,
 }
 
-/// The `yo3.ini` a friend with `key` pastes: every line points at the host (`HOST` when not given).
-fn ini_lines(a: &Args, key: &str) -> String {
+/// The private launcher profile (`HOST` is a placeholder when no address was supplied).
+fn profile(a: &Args, key: &str) -> String {
     let host = a.advertise.as_deref().unwrap_or("HOST");
-    format!(
-        "GateServerAddress={host}\nGateServerPort={}\nPatchUpdateUrl=http://{host}:{}/yo3/{key}/\nPatchDataUrl=http://{host}:{}/ygoda/patch/\nInfoURL=http://{host}:{}/app/",
-        a.gate_port, a.http_port, a.http_port, a.http_port
-    )
+    let address = match host.parse::<IpAddr>() { Ok(IpAddr::V6(_)) => format!("[{host}]"), _ => host.to_string() };
+    serde_json::json!({ "server": format!("{address}:{}", a.auth_port), "server_name": host,
+        "certificate": "server.crt", "key": key }).to_string()
 }
 
 fn print_key(a: &Args, key: &str) {
-    println!("key: {key}\n\nThe friend's yo3.ini (the [Yo3] section; the key is the secret in PatchUpdateUrl, keep it to them):\n\n{}", ini_lines(a, key));
+    println!("Private launcher profile (save as client.json; keep it to this friend):\n{}", profile(a, key));
     if a.advertise.is_none() {
         println!("\nReplace HOST with the address friends reach the server at (or pass --advertise ADDRESS).");
     }
@@ -142,6 +139,11 @@ fn print_key(a: &Args, key: &str) {
 
 /// Runs an admin command against the accounts file, or for the BP commands, the running server.
 fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
+    if let Admin::InitAuth { names } = command {
+        let tls = yo3_server::auth::initialize(&a.data_dir, names)?;
+        println!("Public certificate: {}\nPrivate server key: {}", tls.certificate.display(), tls.private_key.display());
+        return Ok(());
+    }
     let op = match &command {
         Admin::GiveBp { who, amount } => Some(Op::GiveBp { who: who.clone(), amount: *amount }),
         Admin::AddCode { code, bp, uses } => Some(Op::AddCode { code: code.clone(), bp: *bp, uses: *uses }),
@@ -165,6 +167,18 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
     let mut d = Directory::open(a.players.clone(), &a.data_dir.join("accounts.json"))?;
     let err = anyhow::Error::msg;
     match command {
+        Admin::InitAuth { .. } => unreachable!(),
+        Admin::Profile { who, output } => {
+            use std::io::Write;
+            let key = d.key_of(&who).map_err(err)?;
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)] {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            options.open(output)?.write_all(profile(a, &key).as_bytes())?;
+        }
         Admin::Accounts => {
             for (addr, key, acc) in d.entries() {
                 let names: Vec<_> = acc.players.iter().map(|p| format!("{} (#{})", p.name, p.player_id)).collect();
@@ -218,13 +232,12 @@ async fn main() -> anyhow::Result<()> {
         return admin(&a, command, game_dir);
     }
     let cfg = Config {
+        tls: yo3_server::auth::TlsConfig { port: a.auth_port,
+            certificate: a.auth_cert.unwrap_or_else(|| a.data_dir.join("server.crt")),
+            private_key: a.auth_key.unwrap_or_else(|| a.data_dir.join("server.key")) },
         bind: a.bind,
         advertise: a.advertise,
-        gate_port: a.gate_port,
-        front_port: a.front_port,
-        duel_port: a.duel_port,
         http_port: a.http_port,
-        join: !a.no_join,
         game_dir: a.game_dir.unwrap_or_else(yo3_data::default_game_dir),
         log_dir: a.log_dir,
         players: a.players,
@@ -241,4 +254,16 @@ async fn main() -> anyhow::Result<()> {
     };
     start(cfg).await?.wait().await;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn an_ipv6_profile_has_a_bracketed_address_and_an_unbracketed_certificate_name() {
+        let args = Args::try_parse_from(["yo3-server", "--advertise", "::1"]).unwrap();
+        let p: serde_json::Value = serde_json::from_str(&profile(&args, "private-test-key")).unwrap();
+        assert_eq!(p["server"], "[::1]:7443");
+        assert_eq!(p["server_name"], "::1");
+    }
 }

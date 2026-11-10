@@ -13,6 +13,7 @@ The contract tests in `crates/yo3-server/tests/front_contract.rs` enforce the co
 
 **Contents**
 
+- [Authenticated transport](#authenticated-transport)
 - [Wire format](#wire-format)
 - [Gate (TCP 5730)](#gate-tcp-5730)
 - [Front (TCP 1213)](#front-tcp-1213)
@@ -39,6 +40,34 @@ The contract tests in `crates/yo3-server/tests/front_contract.rs` enforce the co
 - [Fields the client reads that we leave out](#fields-the-client-reads-that-we-leave-out)
 - [Requests with a timeout](#requests-with-a-timeout)
 - [Families seen in the client, not mapped yet](#families-seen-in-the-client-not-mapped-yet)
+
+## Authenticated transport
+
+The server exposes TLS on TCP 7443. The launcher and DLL are required; there is no raw gate/front/duel listener.
+The numbered gate/front headings below retain their historical port names for the client's original protocol.
+Today the gate runs locally in the launcher and front/duel frames are carried inside TLS. **Status: confirmed live**
+with two accounts on one IP, private displays :78/:79, named and ordinal DLL tests, and `auth_flow`/launcher `proxy`.
+
+The outer handshake is our own protocol, not inferred Konami fields. Inside validated TLS each connection starts
+with ASCII `YO3TLS01` and a one-byte operation. Numbers are big-endian; tokens are opaque 32-byte random values.
+
+| Operation | Payload after operation | Reply | Meaning |
+|---|---|---|---|
+| 1 login | 20-byte account key | status byte, then session token on success | no IP lookup or implicit account creation; session lasts 12 hours |
+| 2 ticket | session token, role byte | status byte, then ticket on success | role 1 front, 2 duel, 3 assets; ticket lasts 30 seconds |
+| 3 connect | ticket, role, u16 launcher-local duel port | status byte, then stock game frames (or HTTP for role 3) | consume ticket once, including failed wrong-role attempts; a front needs a nonzero local duel port |
+| 4 logout | session token | status byte | invalidate session, queued tickets and live connections; retry is harmless |
+
+Status 0 succeeds, 1 refuses. Handshakes time out after 10 seconds. Authentication bytes never enter the game packet
+logger. The asset role permits public patch/app/duel-log routes only; `/admin` is inaccessible through TLS. Internal
+HTTP listens on loopback. New keys and tokens use OS cryptographic randomness. Store/connection caps are documented
+in [authentication.md](authentication.md).
+
+The DLL overrides the executable's INI API imports and guards its Winsock connect/send/close imports. The real
+WSOCK32 slots use ordinals 4/19/3 (`0x7587D0`/`0x7587F4`/`0x7587EC`); `InternetOpenUrlA` redirects asset downloads.
+Every local socket begins with a per-launch cookie, stripped before any game frame. Local HTTP uses a cookie path.
+The local `0x21FE` redirect and server `0x22C4` handoff (`0x50F690`) name this launcher's loopback ports. The
+`0x200A {player_id}` entry must match the authenticated identity attached when its front selected the deck.
 
 ## Wire format
 
@@ -85,11 +114,9 @@ and the heartbeat; every other request is ignored (nothing in the client sends o
 
 ### Login (dispatcher `0x469C00`, `LoginWindow.cpp`)
 
-The request named "auth" below does not carry an account credential: the version opener is a version string,
-`0x1F47` is bare and `0x1F48` carries only `lang` (live packets; see M4 in the roadmap). Today the HTTP patch key
-selects the account indirectly through the source IP. Accounts behind one IP can be confused when their patch
-requests overlap. This is a known limitation, not authenticated identity on the front connection; the protocol's
-fixed Blowfish key also provides no credential protection. A mod-assisted replacement is open in the roadmap.
+The stock request named "auth" carries no credential: the opener is a version string, `0x1F47` is bare and
+`0x1F48` carries only `lang` (live packets). Identity is established by the authenticated outer transport before
+`FrontSession` is constructed. The fixed Blowfish key provides game compatibility; TLS protects the connection.
 
 | Request | Reply | Fields | Evidence | Status |
 |---|---|---|---|---|
@@ -1485,44 +1512,22 @@ the body other than the four named; the hands show as white boxes in a replay (a
 
 ## Accounts
 
-The client never sends a user id or password. `0x1F47` is a bare request; the credentials typed at login are copied
-onto the front connection object (`+0x118`/`+0x134`, on `0x219F`) and never serialized. The server therefore tells
-accounts apart by an account key in the patch URL (below), else by the client's address, and lets the player pick
-one of up to four players at Select Player
-(`0x1F4C {player_id}`). Select Player also makes and deletes players (`0x1F4A`, `0x1F4B`, above), by slot (`pindex`
-0-3, kept with the account); the host can name them ahead too (see `docs/guide.md`). `CharMake.cpp`
-(`0x2CF5`/`0x2CF6`, the map's `GoCharMake`) is the appearance editor. The Delete Player dialog's "Enter your Password"
-is not sent: `0x1F4B` carries `player_id` only (live packet), and `0x1F47` is bare, `0x1F48` carries `lang` only, so
-the client has no user id or password field to answer.
+The client never serializes a user id or password: its login credentials stay on the front connection object
+(`+0x118`/`+0x134`, on `0x219F`), `0x1F47` is bare and `0x1F48` has only `lang`. Delete Player's password prompt
+sends no password either (`0x1F4B {player_id}`, live packet). The authenticated TLS transport therefore chooses the
+account before the original login protocol runs. `Directory::authenticate` checks the account key directly and
+never falls back to the source address. Separate launcher sessions have distinct front/duel identities.
 
-**The patch URL as the account key** (status: confirmed live). Before it connects to the gate, at every start, the
-client fetches `PatchUpdateUrl` + `yo3.idx` from its `yo3.ini` over HTTP, and the path is whatever the ini says. The
-server puts a secret key in it: with `PatchUpdateUrl=http://127.0.0.1:8080/yo3/k7Qx2mZ/` the HTTP log showed
-`GET /yo3/k7Qx2mZ/yo3.idx -> 200`, and the login went through as usual (the index is served for any path ending in
-`yo3.idx`). The patch server records "this source address presented this key" (`Directory::present_key`); a gate or
-front connection from that address then logs in to the key's account (`Directory::login`, within 10 minutes of the
-fetch; each login renews the window, so a reconnect in a long session still finds it), whatever address the friend
-connects from, and keeps it for the connection's life. The most recent fetch from an address decides: a second
-key replaces the first, and a fetch with no key or an unknown one clears it (that login goes to the address
-account, as before; an unknown key is logged). Edge: two friends behind one address who start the game within the
-same moment can swap (the connections carry nothing but the address); the key is checked only by the fetch that
-precedes a login. The key is a bearer secret in a URL, so use it over a VPN or a trusted network (the gate and front
-carry no password either). Not seen: the client does not re-fetch the index between its own gate and front connections.
+Select Player still chooses one of up to four account players (`0x1F4C`), and creates/deletes them (`0x1F4A`/`0x1F4B`,
+slot `pindex` 0–3). `CharMake.cpp` (`0x2CF5`/`0x2CF6`, the map's GoCharMake) remains the appearance editor. Account
+and player records keep their existing JSON schema and ids. `profile EXISTING_PLAYER FILE --advertise HOST` exports
+a private launcher profile, adding a key to an old address-only account without moving its cards or other data.
 
-**The patch HTTP server's endpoints** (port 8080; our own, not the client's): `GET /yo3/<anything>/yo3.idx` (the client's
-index, and where a key is presented, above), `GET /duellogs/NAME.dlog`, `GET /app/` (empty 200, `InfoURL`), and the join
-page (`crates/yo3-server/src/join.rs`, off with `--no-join`, then 404): `GET /join` (the form; for an address that
-has accounts, their keys and lines again, and "Keep my account" for an address-only account), `GET /join?name=NAME`
-(makes a key account with that one player, the rules of Create Player: 1 to 16 characters, no control characters,
-unique ignoring case; at most 4 accounts per address, 20 an hour in all; 400 with a message otherwise), `GET
-/join?keep=1` (gives the address-only account a key, as `yo3-server key ADDR`) and `GET /join/yo3.ini?key=KEY` (the
-five lines as `[Yo3]`, CRLF, `Content-Disposition: attachment; filename="yo3.ini"`). The host in the lines is the
-request's `Host` header without its port. The key is a bearer secret in plain HTTP: VPN or LAN only.
-
-The gate's redirect (`0x21FE {host, port}`) and the duel server's `0x22C4 duelData {host, port}` carry the address
-each client reached the server at (the connection's own address), unless the server is told one: one server then
-answers on loopback, a LAN and a VPN at once. Live: a client whose `yo3.ini` named the LAN address got the LAN
-address for the front and duel servers, another on `127.0.0.1` got loopback.
+The old patch-URL/IP association and HTTP self-service join page have been retired. `/join` and INI downloads now
+return 404; fetching `yo3.idx` cannot select or create an account. The internal asset service serves the client's
+index, `/duellogs/NAME.dlog` and `/app/`; the launcher carries these requests over TLS. The DLL routes the client's
+WinINet calls to its local authenticated asset proxy, including duel-log URLs (`0x498700`). No account key is put
+into a remote URL. See [authentication.md](authentication.md) for setup and credential lifetimes.
 
 ## Fields the client reads that we leave out
 

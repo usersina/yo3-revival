@@ -1,16 +1,9 @@
-//! Accounts by key or by source address.
+//! Persistent accounts, keys and imported address metadata.
 //!
-//! The client never sends a user id or password: 0x1F47 is a bare request, and the
-//! credentials typed at login stay on the client's connection object. What it does send, before every
-//! connection to the gate, is a GET of `PatchUpdateUrl` + `yo3.idx` from its `yo3.ini`: an account's secret key
-//! rides in that URL (`/yo3/<key>/yo3.idx`), the patch server notes which address presented it (`present_key`)
-//! and the next login from that address gets the key's account (`login`), wherever the friend connects from. A
-//! client with no (or an unknown) key is told apart by the address it connects from (one account per address).
-//! Each account offers up to four players to pick from at Select Player. With a file, accounts
-//! survive restarts and the host can name a friend's player ahead (`add_player`) or rename one.
+//! Game connections authenticate directly with a key through the TLS transport (`authenticate`); their source
+//! address never selects the account. Address/IP-presentation helpers below remain for historical data fixtures
+//! and offline migration, not a network login path. Player ids and the JSON schema survive the transport change.
 use std::collections::HashMap;
-use std::collections::hash_map::RandomState;
-use std::hash::{BuildHasher, Hasher};
 use std::io;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
@@ -75,24 +68,20 @@ struct Entry {
     account: Account,
 }
 
-/// A random key: 20 characters of a 57-letter alphabet (about 117 bits), from the OS-seeded hasher so it needs no
-/// extra crate and works on every host.
+/// A uniformly sampled account credential from the operating system's cryptographic RNG.
 pub(crate) fn new_key() -> String {
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
-    let mut bits = 0u128;
-    for i in 0..2u64 {
-        let mut h = RandomState::new().build_hasher();
-        h.write_u64(nanos);
-        h.write_u64(i);
-        bits = bits << 64 | h.finish() as u128;
+    let mut key = String::with_capacity(KEY_LEN);
+    while key.len() < KEY_LEN {
+        let mut bytes = [0; 32];
+        getrandom::fill(&mut bytes).expect("OS randomness unavailable");
+        for b in bytes {
+            if (b as usize) < 256 / KEY_CHARS.len() * KEY_CHARS.len() {
+                key.push(KEY_CHARS[b as usize % KEY_CHARS.len()] as char);
+                if key.len() == KEY_LEN { break }
+            }
+        }
     }
-    (0..KEY_LEN)
-        .map(|_| {
-            let c = KEY_CHARS[(bits % KEY_CHARS.len() as u128) as usize] as char;
-            bits /= KEY_CHARS.len() as u128;
-            c
-        })
-        .collect()
+    key
 }
 
 pub struct Directory {
@@ -274,6 +263,14 @@ impl Directory {
     /// Whether `key` is an account's.
     pub fn has_key(&self, key: &str) -> bool {
         !key.is_empty() && self.accounts.iter().any(|e| e.key.as_deref() == Some(key))
+    }
+
+    /// Protected transport login: no source-address association and no implicit account creation.
+    pub fn authenticate(&self, key: &[u8]) -> Option<Account> {
+        use subtle::ConstantTimeEq;
+        if key.len() != KEY_LEN { return None }
+        self.accounts.iter().find(|e| e.key.as_ref().is_some_and(|k| bool::from(k.as_bytes().ct_eq(key))))
+            .map(|e| e.account.clone())
     }
 
     /// The join page's view of `addr`: the accounts with a key it made or has, and whether an address-only account

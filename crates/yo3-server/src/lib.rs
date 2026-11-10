@@ -1,5 +1,7 @@
-//! Yu-Gi-Oh! ONLINE 3 private server: gate, front, duel and patch-HTTP services.
+//! Yu-Gi-Oh! ONLINE 3 private server: authenticated TLS front/duel transport and internal asset/admin HTTP.
 pub mod accounts;
+pub mod auth;
+mod transport;
 pub mod admin;
 mod store;
 pub(crate) mod lock;
@@ -22,7 +24,6 @@ mod events;
 pub mod clock;
 mod log;
 mod net;
-mod join;
 pub use net::IDLE_TIMEOUT;
 
 use crate::lock::Locked;
@@ -32,10 +33,10 @@ use std::sync::{Arc, Mutex};
 
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
-use yo3_proto::{Message, Value};
+use yo3_proto::Value;
 
 use accounts::Directory;
-use front::{Deck, FrontSession, Hub, LOGIN_REGULATION, STARTER_REGULATION, World};
+use front::{Deck, Hub, LOGIN_REGULATION, STARTER_REGULATION, World};
 
 /// The official character decks every player gets: the client's NPC decks of Yami Yugi (NPCs 120-122: "Attack of the
 /// Ancients", "Miracle Magic", "Slifer the Lightning"), Jaden Yuki (147-149) and Yusei Fudo (171-173), named after
@@ -55,20 +56,15 @@ use translate::CardStats;
 
 #[derive(Clone, Debug)]
 pub struct Config {
+    pub tls: auth::TlsConfig,
     pub bind: IpAddr,
     /// The address the gate hands to clients for the front server, and the front for the duel server. None: the
     /// address each client reached, so one server answers on loopback, a LAN and a VPN at once.
     pub advertise: Option<String>,
-    pub gate_port: u16,
-    pub front_port: u16,
-    /// Where clients open their duel connection (DuelServerConnection); only logged so far.
-    pub duel_port: u16,
     pub http_port: u16,
-    /// Serve the join page (`/join`) on the HTTP port; off for a server open to the internet (`--no-join`).
-    pub join: bool,
     pub game_dir: PathBuf,
     pub log_dir: PathBuf,
-    /// Players every new account starts with (one account per client address).
+    /// Default players for offline account administration; login never creates an account.
     pub players: Vec<String>,
     /// Each player's LP at the start of a duel (8000; lower only to test).
     pub duel_lp: u32,
@@ -97,23 +93,21 @@ pub struct Config {
 impl Config {
     /// Localhost on OS-assigned ports; for tests.
     pub fn ephemeral(log_dir: PathBuf) -> Config {
+        let tls = auth::test_config(&log_dir);
         Config {
+            tls,
             bind: IpAddr::V4(Ipv4Addr::LOCALHOST),
             advertise: None,
-            gate_port: 0,
-            front_port: 0,
-            duel_port: 0,
             http_port: 0,
-            join: true,
             game_dir: yo3_data::default_game_dir(),
-            log_dir,
+            log_dir: log_dir.clone(),
             players: vec!["test".into()],
             duel_lp: 8000,
             duel_regulation: None,
             duel_deck: vec![],
             duel_extra: vec![],
             duel_time: None,
-            data_dir: None,
+            data_dir: Some(log_dir.join("test-auth/data")),
             regulation: None,
             idle_timeout: net::IDLE_TIMEOUT,
             engine_problem: None,
@@ -124,9 +118,7 @@ impl Config {
 
 /// Addresses the services actually bound to.
 pub struct Running {
-    pub gate: SocketAddr,
-    pub front: SocketAddr,
-    pub duel: SocketAddr,
+    pub auth: SocketAddr,
     pub http: SocketAddr,
     tasks: Vec<JoinHandle<()>>,
 }
@@ -259,15 +251,13 @@ const EVENT_ROUND_DELAY: std::time::Duration = std::time::Duration::from_secs(20
 
 pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let packets = Arc::new(log::PacketLog::create(&cfg.log_dir)?);
-    let gate = TcpListener::bind((cfg.bind, cfg.gate_port)).await?;
-    let front = TcpListener::bind((cfg.bind, cfg.front_port)).await?;
-    let duel = TcpListener::bind((cfg.bind, cfg.duel_port)).await?;
-    let http = TcpListener::bind((cfg.bind, cfg.http_port)).await?;
-    let addrs = (gate.local_addr()?, front.local_addr()?, duel.local_addr()?, http.local_addr()?);
-    let front_port = addrs.1.port();
-    let mut world = world(&cfg, addrs.2.port(), addrs.3.port())?;
+    let tls = yo3_tunnel::acceptor(&cfg.tls.certificate, &cfg.tls.private_key)?;
+    let authenticated = TcpListener::bind((cfg.bind, cfg.tls.port)).await?;
+    let http = TcpListener::bind((Ipv4Addr::LOCALHOST, cfg.http_port)).await?;
+    let (auth_addr, http_addr) = (authenticated.local_addr()?, http.local_addr()?);
+    // The launcher supplies its local duel port for each front connection's handoff.
+    let mut world = world(&cfg, 0, http_addr.port())?;
     world.engine_problem = cfg.engine_problem.clone().or_else(|| engine::problem(world.engine_dir.as_deref()));
-    let duels_unavailable = world.engine_problem.is_some();
     if cfg.duel_check {
         tracing::info!("duel check on: every duel's client view is compared with the rules engine after each step");
     }
@@ -280,23 +270,6 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
 
     let quiet = net::Idle { limit: cfg.idle_timeout, heartbeats: false };
     let heartbeats = net::Idle { limit: cfg.idle_timeout, heartbeats: true };
-    let gate_task = {
-        let (packets, advertise) = (packets.clone(), cfg.advertise.clone());
-        tokio::spawn(net::accept_loop(gate, "gate", packets, quiet, move |_peer, local: SocketAddr, _outbox| {
-            let advertise = advertise.clone().unwrap_or_else(|| local.ip().to_string());
-            let mut sent = false;
-            move |_: &yo3_proto::Packet| {
-                if std::mem::replace(&mut sent, true) {
-                    return vec![];
-                }
-                vec![
-                    Message::reply(0x21FE)
-                        .with("host", Value::text(&advertise))
-                        .with("port", Value::U32(front_port as u32)),
-                ]
-            }
-        }))
-    };
     if let Some(dir) = &cfg.data_dir {
         store::back_up(dir)?;
     }
@@ -315,23 +288,13 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         hub.keep_teams(&dir.join("teams.json"));
         hub.keep_events(&dir.join("events.json"));
         hub.keep_rentals(&dir.join("rentals.json"));
-        hub.keep_duel_logs(&dir.join("duellogs"), addrs.3.port());
+        hub.keep_duel_logs(&dir.join("duellogs"), http_addr.port());
     }
     hub.set_round_delay(EVENT_ROUND_DELAY);
     hub.set_directory(directory.clone());
     let hub = Arc::new(Mutex::new(hub));
-    let directory_http = directory.clone();
-    let front_task = {
-        let (world, hub) = (world.clone(), hub.clone());
-        tokio::spawn(net::accept_loop(front, "front", packets.clone(), quiet, move |peer: SocketAddr, local: SocketAddr, outbox| {
-            let account = directory.locked().login(peer.ip(), std::time::Instant::now());
-            let mut session = FrontSession::new(account, world.clone(), hub.clone(), outbox);
-            session.set_reached_at(local.ip());
-            session.set_peer(peer.ip());
-            session.set_directory(directory.clone());
-            move |p: &yo3_proto::Packet| session.handle(p)
-        }))
-    };
+    let auth_task = tokio::spawn(transport::accept_loop(authenticated, tls, world.clone(), hub.clone(), directory.clone(),
+        packets.clone(), quiet, heartbeats, http_addr));
     // Duel clocks between players run out on the server's side: checked once a second.
     let clock_task = {
         let hub = hub.clone();
@@ -354,28 +317,11 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
             }
         })
     };
-    // The duel connection (DuelManager 0x50F690): a client duels the server as the CPU, or another client at a table.
-    let duel_task = tokio::spawn(net::accept_loop(duel, "duel", packets.clone(), heartbeats, move |peer, _local, outbox| {
-        let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
-        let mut session = duel::DuelSession::new(world.clone(), hub.clone(), seed).with_outbox(outbox).with_peer(peer.ip());
-        move |p: &yo3_proto::Packet| session.handle(p)
-    }));
-    let join_info = cfg.join.then(|| join::JoinInfo { gate_port: addrs.0.port(), http_port: addrs.3.port(), advertise: cfg.advertise.clone(), duels_unavailable });
     // The host's BP commands reach the running server through its HTTP port, with a token only the host can read.
     let admin_token = cfg.data_dir.as_ref().and_then(|dir| {
-        admin::write_live(dir, addrs.3.port()).map_err(|e| tracing::warn!("admin commands won't reach this server ({}): {e}", dir.display())).ok()
+        admin::write_live(dir, http_addr.port()).map_err(|e| tracing::warn!("admin commands won't reach this server ({}): {e}", dir.display())).ok()
     });
-    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs")), directory_http, join_info, admin_token));
-
-    tracing::info!(
-        "gate {} front {} duel {} http {} (advertise {}); packets -> {}",
-        addrs.0,
-        addrs.1,
-        addrs.2,
-        addrs.3,
-        cfg.advertise.as_deref().unwrap_or("the address each client reached"),
-        packets.path().display()
-    );
-    let tasks = vec![gate_task, front_task, duel_task, http_task, clock_task];
-    Ok(Running { gate: addrs.0, front: addrs.1, duel: addrs.2, http: addrs.3, tasks })
+    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs")), directory, admin_token));
+    tracing::info!("authenticated TLS {} public HTTP {}; packets -> {}", auth_addr, http_addr, packets.path().display());
+    Ok(Running { auth: auth_addr, http: http_addr, tasks: vec![auth_task, http_task, clock_task] })
 }

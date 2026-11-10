@@ -1,8 +1,8 @@
 # Hosting and joining: playing Yu-Gi-Oh! ONLINE 3 with friends
 
-One person (the host) runs the server; everyone, the host included, plays with the original game client pointed at
-it. This server is unofficial and has nothing to do with Konami. It ships no game files: every player needs their own
-install of the client (the last released version, ver. 1.153).
+Everyone uses the revival launcher and connection DLL with their own original game install (ver. 1.153). The
+server and launcher authenticate each account over TLS. No game files are modified or shipped. These instructions
+are for current source; the last published release predates the authenticated launcher.
 
 **Contents**
 
@@ -11,6 +11,7 @@ install of the client (the last released version, ver. 1.153).
   - [LAN checklist](#lan-checklist)
   - [Windows SmartScreen and antivirus warnings](#windows-smartscreen-and-antivirus-warnings)
   - [macOS](#macos)
+  - [Run from source](#run-from-source)
 - [For every player](#for-every-player)
   - [Joining, step by step (with pictures)](#joining-step-by-step-with-pictures)
 - [What works and what doesn't yet](#what-works-and-what-doesnt-yet)
@@ -18,277 +19,120 @@ install of the client (the last released version, ver. 1.153).
 
 ## Play on your own PC
 
-**There is no public server.** Someone has to run one, and `HOST` in this guide means that person's address. If you
-only want to duel the computer opponents (or you have nobody to host), you are the host, on your own PC, and `HOST` is
-`127.0.0.1`:
+Install the original game (on Linux, under Wine), build the bundles with `tools/release.sh`, and unpack the one for
+your system. On Windows substitute `.\yo3-server.exe` for `./yo3-server` in these commands:
 
-1. Install the game (ver. 1.153; see [For every player](#for-every-player) for where to find the installer).
-2. Download the bundle for your system from the [latest release](https://github.com/usersina/yo3-revival/releases/latest)
-   (Linux `.tar.gz`, Windows `.zip`) and unpack it anywhere. It has everything, the duel rules included: nothing else
-   to install.
-3. Run `run.cmd` (Windows) or `./run.sh` (Linux). It leaves a window open: keep it open while you play.
-4. Open **<http://127.0.0.1:8080/join>** in a browser on the same PC, type a player name, press **Join**, press
-   **Download yo3.ini** and put that file in the game's install folder (`C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3`),
-   replacing the original (keep a copy). The file that comes with the game points at Konami's servers, which are gone,
-   so it must be replaced; the downloaded one points at your own PC.
+```sh
+./yo3-server init-auth localhost 127.0.0.1
+./yo3-server add-account Yugi
+./yo3-server profile Yugi client.json --advertise localhost
+```
 
-Then start the game, press **ONLINE**, log in with any name and password, pick your player, open **Main Menu → Edit
-Deck** once (it saves your starter deck), and walk the map to **Kaiba Corporation** for a computer opponent. Every
-step above and below has a picture in [Joining, step by step](#joining-step-by-step-with-pictures).
+Copy `data/server.crt` next to `client.json` as `server.crt`. Keep `data/server.key` on the server. Start `run.cmd`
+(Windows) or `./run.sh` (Linux), then launch the game as described below. Initialization runs once; accounts and the
+server identity persist in `data/` and are backed up at server startup.
 
 ## For the host
 
-You need Linux or Windows and the game installed (the server reads its card data from your install). The release
-bundle carries the rest: the rules engine (EDOPro's core, ProjectIgnis' card scripts and card database) with its own
-Node.js, in `engine/` (what each part is and its license: `engine/THIRD-PARTY.md`). Nothing to install.
+Before initializing the certificate, choose the DNS name or IP your friends reach. Include it in `init-auth`, for
+example `./yo3-server init-auth localhost 127.0.0.1 192.168.1.50`. A certificate initialized only for localhost does
+not authenticate a LAN IP. Existing certificate/key files are never overwritten by this command.
 
-1. Unpack the [release](https://github.com/usersina/yo3-revival/releases/latest) for your system (or build both with
-   `tools/release.sh`) and start it: `./run.sh` on Linux, `run.cmd` on Windows (double-click it, or run it in a
-   terminal to pass options). Your game install is found in
-   `~/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3` on Linux and `C:\Program Files
-   (x86)\Konami\Yu-Gi-Oh! ONLINE 3` on Windows; pass `--game-dir DIR` otherwise.
-2. Make the server reachable. Friends connect to TCP ports **5730** (gate), **1213** (front), **1214** (duels) and
-   **8080** (patch check):
-   - **Same network:** friends use your LAN address (`ip -4 addr`, or `ipconfig` on Windows, e.g. `192.168.1.2`).
-     Open the ports if a firewall runs: `sudo ufw allow 5730,1213,1214,8080/tcp`, for firewalld `sudo firewall-cmd
-     --add-port={5730,1213,1214,8080}/tcp`, and on Windows allow `yo3-server.exe` when Windows asks, or in an
-     administrator terminal `netsh advfirewall firewall add rule name="yo3-revival" dir=in action=allow protocol=TCP
-     localport=5730,1213,1214,8080`.
-   - **Over the internet, easiest:** a mesh VPN (Tailscale, ZeroTier, NetBird). Everyone joins your network and uses
-     your VPN address (e.g. `100.x.y.z`). Nothing to forward, and only your friends can reach the server.
-   - **Over the internet with port forwarding:** forward the four ports on your router to your machine, and start the
-     server with your public address or DNS name: `./run.sh --advertise my.name.example`.
+With the server stopped, make an account per friend and export their profile:
 
-   The server sends each client to the address it used to reach the server, so one server answers on all of these at
-   once. `--advertise` is only needed when the address clients dial isn't one of the machine's own (port forwarding).
+```sh
+./yo3-server add-account Alice
+./yo3-server profile Alice Alice.json --advertise 192.168.1.50
+```
 
-   By default there is no banlist (any card, up to 3 copies each). To use one, start the server with
-   `--regulation`, e.g. `./run.sh --regulation "Season 16"`, `"OCG 2006-09-01"` or `1` (the game's first list); an
-   unknown name lists them all. Auto Duel and Kaiba Corporation check decks against it; it shows as "Latest
-   Regulation" in Create Duel, where a host can still pick another (Create Duel → Customize → Regulations → Select).
-3. Share the join page. Friends make their own account at **`http://HOST:8080/join`** (HOST is the address they reach
-   you at: your LAN or VPN address, or your public name; tell them to type that address, not the word "HOST"). Nothing else to run, and the server can stay up. The game
-   never sends a name or password, so an account is found by a secret **key** that rides in the friend's
-   `PatchUpdateUrl` (the game fetches that address before every login); the page makes the account (one player with
-   the name the friend picks, the starter deck, the starting BP), shows the friend their five `yo3.ini` lines (the host
-   in them is the address the friend typed, from the request's `Host` header) and a download of a ready `yo3.ini`.
-   Whoever has the key can play as that friend, and it travels in a plain HTTP address, so use the page over a VPN or
-   a LAN. **On a server reachable from the internet start it with `--no-join`** (`./run.sh --no-join`): `/join` then
-   answers 404 and you make accounts by hand, below.
+Privately give Alice `Alice.json` and the public `data/server.crt`; she keeps them together, with the certificate
+named `server.crt`. Each friend needs their own profile, even behind one router. The profile contains a secret
+account key; the certificate is public. Keep the server private key on the host. On Windows keep private profiles
+and the server key in folders private to their intended users; the tools set mode 0600 on Unix.
 
-   Limits: a friend's address gets its account back when it visits `/join` again (its key and lines are shown again),
-   may make up to four accounts (a second name, for a second person behind the same router), and the page makes at
-   most 20 accounts per hour in all. A friend who already played here without a key (an account found by their
-   address alone) sees a "Keep my account" button: it gives that account a key, so nothing is lost. Players can also
-   be made by the friends themselves at Select Player (an empty slot says "Create Player": a name, then the avatar) and
-   deleted (Delete; the password it asks for can be anything).
-   An account keeps at least one player, and a team leader must disband or hand over the team before deletion.
-   A refused deletion keeps the player's friends, mail and rentals.
+Run `run.cmd` or `./run.sh`. The host exposes TCP **7443** for TLS (`--auth-port` changes it). The internal HTTP/admin
+port, 8080 by default, stays on loopback and needs no firewall opening. A VPN is fine; TLS remains required.
 
-   **Shared-router limitation:** the game connection sends no account credential. The server associates it with the
-   latest patch key presented from that IP, for ten minutes. Two accounts behind the same router can therefore land
-   in the wrong account when their logins overlap. The login form's username and password do not resolve this.
-   Proper connection authentication needs client support and is still planned.
+Existing players keep their cards, BP and ids. Export `profile EXISTING_PLAYER client.json --advertise HOST`; an
+address-only account receives a key without moving its data. The old `/join` page and `yo3.ini` downloads are gone.
+Old clients cannot log in; the launcher is required. See [authentication.md](authentication.md) for the protocol and
+migration details.
 
-   **By hand instead**, for hosts who prefer it (or with `--no-join`), with the server stopped:
+Useful account commands (server stopped except the BP operations):
 
-   ```sh
-   ./yo3-server add-account Anis --advertise 100.64.0.5   # Anis's account, first player "Anis"; --also Alt,Spare adds more
-   ```
+```sh
+./yo3-server accounts
+./yo3-server add-player Yugi Joey
+./yo3-server rename Joey Joseph
+./yo3-server set-country Yugi TN
+./yo3-server give-bp Yugi 5000
+./yo3-server add-code ABCD1234EFGH5678 2500
+```
 
-   It prints the key and the `yo3.ini` lines to send Anis (`--advertise` is the address friends reach you at; without it
-   the lines say `HOST`, which you replace). Friends behind the same router each get their own account.
-
-   ```sh
-   ./yo3-server accounts                     # who's who: address, key, players
-   ./yo3-server add-player Anis Spare        # another player for Anis's account (an address works too)
-   ./yo3-server rename Duelist2 Joey         # rename a player
-   ./yo3-server key Anis --advertise 100.64.0.5   # print an account's key and lines again (by a player's name or address)
-   ```
-
-   On Windows it is `yo3-server.exe add-account ...` and so on, in a terminal in the server's folder.
-
-   **Without a key** (a `yo3.ini` that points at the server with no key in `PatchUpdateUrl`), the server falls back to
-   one account per address, made on first contact with a player called "Duelist" (then "Duelist2", "Duelist3"...). A
-   VPN gives each friend their own address; friends behind one router share that account. If such a friend's address
-   changes they arrive as a new, empty account; either give them a key for their old account
-   (`./yo3-server key 100.64.0.7` prints it, nothing is lost), or move the old one to the new address, with the
-   server stopped (players, cards, BP, decks and records go along):
-
-   ```sh
-   ./yo3-server move-account 100.64.0.7 100.64.0.9            # the old address, then the new one
-   ./yo3-server move-account 100.64.0.7 100.64.0.9 --replace  # if they already connected from the new address
-   ```
-
-   Without `--replace` the server refuses to overwrite the account it made at the new address, and names its players
-   (`--replace` discards that one, so check it's the empty newcomer).
-
-   A key counts for the login that follows the game's start: it is looked up when the game fetches the patch address,
-   remembered for that source address for 10 minutes (each login renews it), and the most recent fetch from an address
-   wins. Two friends behind one router who start the game in the same moment can therefore swap accounts; start one
-   after the other. The key shows up in the server's log lines as `presented an account key`, and an unknown key as
-   a warning (that login then goes to the address account).
-
-   The flag next to a player's name (Player Information, player search, the tournament bracket) is a setting of the
-   account, because the game never tells the server where its player lives. Left alone it follows the game's language
-   (English shows the UK flag, Japanese Japan, and so on); to give a friend's account another one:
-
-   ```sh
-   ./yo3-server countries                    # the codes the game has flags for (FR, JP, US, TN...)
-   ./yo3-server set-country Anis TN          # that account's players show the Tunisian flag (a player's name or an address)
-   ./yo3-server set-country Anis auto        # back to following the game's language
-   ```
-4. BOOSTERPASS Points (BP) beyond what duels pay: make a code your friends type in the game (Main Menu →
-   BOOSTERPASS), or give BP to one account. Both work while the server runs, from the server's own PC:
-
-   ```sh
-   ./yo3-server add-code WELCOME2YO3DUEL1 5000            # 16 letters and digits; each account may use it once
-   ./yo3-server add-code GIFTFORTHREE1234 2000 --uses 3   # only the first three accounts get it
-   ./yo3-server codes                                     # every code, and how often it was used
-   ./yo3-server remove-code GIFTFORTHREE1234
-   ./yo3-server give-bp Anis 10000                        # a player's name (or an address): their account gets it
-   ```
-
-   A code the server doesn't have (or one already used by that account) shows "Incorrect BOOSTERPASS CODE.". The
-   other admin commands (`rename`, `move-account`…) still need the server stopped, and say so when it runs.
-5. Accounts and win/loss records live in `data/` (`accounts.json`, `records.json`), backed up into `data/backups/` at
-   every start (the last 10 are kept). Back up `data/` to keep them.
+`--regulation NAME_OR_ID` sets the login banlist; by default it is unlimited. Hosted duels keep their host's choice.
 
 ### LAN checklist
 
-Friends on the same network cannot connect? Go through this in order, before anyone starts the game:
-
-1. **Find your address.** Windows: open a terminal and run `ipconfig`, and read the *IPv4 Address* of the adapter
-   that is connected to your router (for example `192.168.1.23`). Linux: `ip addr` (or `ip -4 addr`) and the
-   `inet` address of your Wi-Fi or Ethernet. Give friends that address, and they use it as `HOST`.
-2. **Allow the server through the firewall.** Windows Defender Firewall asks the first time `yo3-server.exe` runs:
-   tick **Private networks** and press **Allow access**. If you pressed Cancel, Windows blocked it and LAN friends
-   cannot connect (you can, from the same PC). Fix it in Windows Security → Firewall & network protection → *Allow
-   an app through firewall* → *Change settings* → find `yo3-server` (or *Allow another app*) and tick Private; or in an
-   administrator terminal: `netsh advfirewall firewall add rule name="yo3-revival" dir=in action=allow protocol=TCP
-   localport=5730,1213,1214,8080`. On Linux: `sudo ufw allow 5730,1213,1214,8080/tcp`, or for firewalld `sudo
-   firewall-cmd --add-port={5730,1213,1214,8080}/tcp`.
-3. **Test from the friend's PC before starting the game:** the friend opens `http://HOST-IP:8080/join` (your address
-   from step 1) in a browser. The join page appearing means the network and firewall are fine. A page that keeps
-   loading means a firewall or the wrong address.
-4. **Beware of the wrong network interface.** If you run a VPN, a virtual machine or WSL, `ipconfig` lists several
-   adapters, and one of them is not the one your friends can reach. Spot it by the step 3 test failing while
-   everything else is right, or by the address not matching your router's range (a home LAN is usually `192.168.x.x`
-   or `10.x.x.x`). Try the other addresses in the list, or switch the VPN off while testing.
+- Confirm the server reports `authenticated TLS` on the intended address and port.
+- Allow TCP 7443 on the host firewall; with a VPN or router, route/forward that port to the host.
+- Check the profile's server address and certificate name against the host's certificate names.
+- Give each friend the correct public certificate and their own private profile.
+- Launch through `yo3-launcher`; changing `yo3.ini` or starting `yo3.exe` directly cannot authenticate.
 
 ### Windows SmartScreen and antivirus warnings
 
-`yo3-server.exe` is not code-signed (a signing certificate costs money a hobby project does not have), so Windows
-SmartScreen ("Windows protected your PC": press *More info*, then *Run anyway*) or some antivirus programs may warn
-about it or quarantine it. That is expected for a new unsigned program, not proof of a virus. To check that you have
-the real file, compare its SHA-256 with the one in the release notes (PowerShell: `Get-FileHash .\yo3-server.exe`),
-or avoid the question and [build it yourself from the source](#run-from-source); all the code is in the repository.
+These are unsigned pre-alpha executables and an injector/DLL, which Windows or an antivirus may flag. Build from
+source or review the code before trusting them. The injector loads only the DLL paths supplied to it; it terminates
+the game before startup if a required hook fails. Restore files removed by an antivirus only after reviewing them.
 
 ### macOS
 
-macOS is **untested**. The client is a Windows program, so it would need a Wine wrapper (for example CrossOver or
-Whisky), which we have not tried. The server uses no Windows- or Linux-only code, so it should build and run on macOS
-with the Rust toolchain (`cargo run --release -p yo3-server -- --bind 0.0.0.0 --game-dir "<the game's folder>"`; the
-default game folder is a Windows or Wine path, so pass `--game-dir`) and Node.js 22.18 or newer with
-`engine/fetch.sh` run once (the bundles' Node.js is for Linux and Windows only), but nobody has checked. Reports
-welcome (see [When something goes wrong](#when-something-goes-wrong)).
+No macOS bundle or live check is provided. The supported builds are Linux with Wine and Windows.
 
 ### Run from source
 
-Instead of a release bundle: the [Rust toolchain](https://rustup.rs/), and for the rules engine Node.js 22.18 or newer,
-npm, Git and curl. From a clone of the repository:
-
-```bash
-engine/fetch.sh                                   # once: the engine's package, card scripts and card database
-cargo run --release -p yo3-server -- --bind 0.0.0.0 --log-dir logs
+```sh
+engine/fetch.sh
+cargo build --release -p yo3-server -p yo3-launcher
+tools/mod/build.sh
 ```
 
-`tools/release.sh` builds the bundles themselves (see [AGENTS.md](../AGENTS.md#commands)).
+Follow the host setup above. For a headless development client set `YO3_AUTH_PROFILE` to its private profile and use
+`tools/client/vclient.sh start --trace`; the working guide contains the private-display commands.
 
 ## For every player
 
+Start the launcher, using the private profile and game folder:
+
+```powershell
+.\yo3-launcher.exe --profile .\Alice.json --game-dir "C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3"
+```
+
+On Linux:
+
+```sh
+./yo3-launcher --profile Alice.json --game-dir "$HOME/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3"
+```
+
+The bundle's injector and DLL sit beside the launcher. Linux needs Wine; `--wine-prefix` selects another prefix.
+No `yo3.ini` edits are required. Authentication happens before the game starts; its original username/password
+fields are unused. A bad key, certificate or DLL stops startup and reports the reason in the launcher's terminal.
+Keep that terminal open while playing.
+
 ### Joining, step by step (with pictures)
 
-`HOST` is the **address of the person running the server** (the host tells you; there is no public server). The
-pictures use `192.168.1.20` as an example; on your own PC it is `127.0.0.1`. The red boxes mark what to click or
-type. The numbered list after the pictures has the same steps in words, with the details.
+1. Start the revival launcher with your private profile and the host certificate.
+2. Press **ONLINE**, dismiss the original login form, then select your player.
+3. Once: **Main Menu → Edit Deck**, then leave it. This saves the starter and official character decks.
 
-**1. Open the join page in a browser:** `http://HOST:8080/join`. Type the player name you want and press **Join**.
+![Main Menu and Edit Deck](images/guide/6-edit-deck.png)
 
-![The join page in a browser, with the address http://192.168.1.20:8080/join, a name typed in and the Join button marked](images/guide/1-join-page.png)
+4. **Auto Duel → Confirm** matches two waiting players. To pick a friend, use **Create Duel**, then your friend's
+   Player Information → **Send Duel Request**. Choose your deck and play. Computer opponents are at Kaiba Corporation.
 
-**2. Press Download yo3.ini.** The page also shows the file's lines; you do not have to read them.
+![Auto Duel](images/guide/7-auto-duel.png)
 
-![The join result page: Your account is ready, the yo3.ini lines and the Download yo3.ini link marked](images/guide/2-join-result.png)
-
-**3. Put the downloaded `yo3.ini` in the game's folder**, replacing the one that is there (keep a copy of the old one).
-The folder is `C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3` on Windows. This picture is a drawing, not a screenshot.
-
-![A drawn listing of the game folder with yo3.ini marked: the downloaded file goes here](images/guide/3-game-folder.png)
-
-**4. Start the game, press ONLINE** and log in with any User ID and password (nothing checks them), then OK.
-
-![The title screen with ONLINE marked, then the login window with the User ID, Password and OK marked](images/guide/4-title-login.png)
-
-**5. Pick your player**: the name you gave on the join page.
-
-![The Select Player screen with the player Duelist marked](images/guide/5-select-player.png)
-
-**6. Once: open Main Menu → Edit Deck.** The Main Menu is the button at the bottom left. Edit Deck's folder icon
-(top left) lists your Starter Deck and the official character decks. Opening Edit Deck saves them; leave it with the
-arrow at its bottom left. Without a deck the duel button refuses.
-
-![The Main Menu with Edit Deck marked, then Edit Deck with its folder icon marked and the Load Deck list showing the Starter Deck and official decks](images/guide/6-edit-deck.png)
-
-**7. To duel, press the duel button on the bottom bar, then Auto Duel and Confirm.** When two players wait with
-the same Rule Format they are matched. (To pick your friend instead, use **Create Duel**: the numbered list below says how.)
-
-![The Duel Menu with Auto Duel marked, then the Auto Duel window with Confirm marked](images/guide/7-auto-duel.png)
-
-Then pick your deck and play. The computer opponents are at Kaiba Corporation on the map.
-Only the matched players can submit decks or start that duel; another player's requests cannot cancel it.
-Create Duel keeps the host's selected banlist for both players after acceptance, including its deck checks.
-
-![The client in a duel against Seto Kaiba](images/duel.png)
-
-1. Install Yu-Gi-Oh! ONLINE 3. On Windows it runs as it is; on Linux it runs under Wine. The original installer (the
-   2011-07-28 setup, about 900 MB) is preserved by a third party on [My Abandonware](https://www.myabandonware.com/game/yu-gi-oh-online-3-duel-accelerator-qy4); it is Konami's software,
-   not part of this project, and you download it at your own discretion. Install it, then continue below (no patch
-   needed: the game checks this server for updates).
-2. Open the host's join page, `http://HOST:8080/join` (the host tells you HOST: it is the host's address, there is no
-   public server; on your own PC it is `127.0.0.1`), type the player name you want and
-   press Join. The page shows your `yo3.ini`: press **Download yo3.ini** and put the file in the install folder
-   (`C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3`), replacing the one there (keep a copy of the original). Windows
-   protects Program Files: copy the file in with Explorer and accept the administrator prompt, or give your user write
-   permission on `yo3.ini` first. The secret in your `PatchUpdateUrl` (the part after `/yo3/`) is what makes the server
-   give you your own account, wherever you connect from, so keep the file to yourself. If you lose it, open the join
-   page again from the same address and it shows your lines again.
-
-   Without the page (the host made your account, or turned the page off), paste the lines the host sent over the
-   `[Yo3]` section by hand. All five lines must point at the host (here `100.64.0.5`; the host itself can use
-   `127.0.0.1`): the game checks for updates at `PatchUpdateUrl` before it connects at all, and Konami's addresses are
-   gone, so changing only the first line isn't enough.
-
-   ```ini
-   [Yo3]
-   GateServerAddress=100.64.0.5
-   GateServerPort=5730
-   PatchUpdateUrl=http://100.64.0.5:8080/yo3/<your key>/
-   PatchDataUrl=http://100.64.0.5:8080/ygoda/patch/
-   InfoURL=http://100.64.0.5:8080/app/
-   ```
-
-3. Start the game, press ONLINE, log in with any name and password (they aren't checked), then pick your player.
-4. Once: open **Main Menu → Edit Deck** and leave it again. That saves your starter deck and three official
-   official character decks: Yugi's, Jaden's and Yusei's, three each (Edit Deck's folder icon loads them; if your own
-   decks fill the list, the rest come the next times you open Edit Deck, on any PC). Without a deck the duel button
-   says "There are no valid Decks available."
-5. To duel a friend, press the duel button on the bottom bar, then either:
-   - **Auto Duel → Confirm**: when two players wait for the same Rule Format they're matched;
-   - **Create Duel → Confirm** (with a password if you like): your friend opens the player list (the first tab of
-     the panel on the left), clicks your name, and presses **Send Duel Request**; you accept.
-
-   Then pick your deck and play. Kaiba Corporation on the map has the computer opponents.
+Only the matched players can submit decks or start that duel. Create Duel keeps the chosen banlist after acceptance.
 
 ## What works and what doesn't yet
 
@@ -331,7 +175,7 @@ To trade cards, open a player's Player Information and press Send Trade Request;
 your trunk into your half of the table, press Ready to Trade., and answer Yes to "Execute Trade?". A deck that used a
 card you traded away no longer counts as valid until you edit it.
 Changing either offer withdraws both players' approvals: both must press Ready to Trade. and confirm the new offer.
-Accounts made through the join page or `add-account` can trade and rent cards too; their collection follows the player.
+Existing accounts and accounts made through `add-account` can trade and rent cards too; their collection follows the player.
 
 To lend cards, open a player's Player Information and press Send Rental Request. Once they accept, the lender sets the
 conditions (a term of 1, 3, 7 or 14 days, and Free) and double-clicks cards from their trunk into the list, then presses
@@ -343,25 +187,15 @@ Main Menu > Rental Card List shows what they lent and borrowed. Players' decks s
 
 ## When something goes wrong
 
-- **Found a bug, or stuck?** Open an issue at <https://github.com/usersina/yo3-revival/issues/new/choose> and say
-  what you did and what happened; the server's log (the terminal, and `logs/`) helps a lot.
-- **Duels end at once as a draw, or the news says "Duels are unavailable on this server":** the server can't run its
-  rules engine. The server's log says `DUELS WON'T WORK` and why. With a release bundle, the `engine` folder is missing
-  or incomplete (an antivirus may have removed `engine\node\node.exe`): unpack the bundle again, whole. Run from source,
-  Node.js is missing or older than 22.18, or `engine/fetch.sh` was not run: install the current LTS from
-  <https://nodejs.org/> and run it.
-- **The join page does not open** (browser says it cannot connect): the address is wrong (it must be the host's real
-  address, not `HOST`) or the host's firewall blocks 8080; see the [LAN checklist](#lan-checklist).
-- **"There is no response from the server."** Check the address in `yo3.ini`, that the server runs, and that the four
-  ports are open (`nc -vz HOST 5730` from the player's machine). A quick test from any browser on the player's
-  machine: `http://HOST:8080/yo3/yo3.idx` shows lines of dated text when the host is reachable; a page that only
-  keeps loading means a firewall in between.
-- **The game can't find the server although the address is right:** the three `http://` lines in `yo3.ini` still
-  point at Konami (see step 2).
-- **Stuck right after logging in, or after the duel's janken:** the duel port 1214 is blocked, or the host needs
-  `--advertise`.
-- **Both friends get the same players, or a friend lands in an empty "Duelist" account:** the server didn't see their
-  key. Check that `PatchUpdateUrl` in their `yo3.ini` has the key (`.../yo3/<key>/`), that the host made the account
-  with the join page, `add-account` or `key`, and that the server's log shows `presented an account key` when they start the game.
-  Without a key, friends behind one router share one account (make keys for them).
-- The server's log is in the terminal; every packet is also written to `logs/packets-*.jsonl`.
+- **Authentication failed:** check that this is your private profile for this host. The game has not been started.
+- **Certificate or TLS handshake failed:** check the public certificate and the expected DNS name/IP. Use a name
+  included by the host when initializing the certificate; certificate checks cannot be bypassed.
+- **Cannot connect:** check TCP 7443, the profile's server address, and the host's firewall/VPN.
+- **Connection mod did not initialize:** rebuild/restore `yo3-auth.dll` and `yo3-auth-launch.exe` from this version.
+  Unsupported imports leave the game suspended and it is terminated; there is no fallback connection.
+- **Game cannot find the server:** start it through the launcher, and keep the launcher running.
+- **Duels end at once as draws:** inspect the server's `DUELS WON'T WORK` message. Restore the complete `engine/`
+  folder from the bundle, or fetch the dependencies and install a compatible Node.js when building from source.
+- **A long session disconnects:** launcher sessions expire after 12 hours. Restart the launcher to authenticate again.
+- **Found a bug:** open <https://github.com/usersina/yo3-revival/issues/new/choose> with the steps and logs. Do not attach
+  private profiles, account keys or `server.key`. Game packet logs exclude transport credentials.

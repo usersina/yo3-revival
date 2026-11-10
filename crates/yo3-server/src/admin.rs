@@ -14,7 +14,12 @@ use std::time::Duration;
 use serde_json::json;
 
 use crate::accounts::Directory;
-use crate::join::Response;
+pub struct Response {
+    pub status: &'static str,
+    pub content_type: &'static str,
+    pub headers: Vec<(&'static str, String)>,
+    pub body: Vec<u8>,
+}
 use crate::lock::Locked;
 
 /// The running server's port and token, in its data directory.
@@ -130,7 +135,7 @@ pub fn handle(path: &str, peer: IpAddr, token: Option<&str>, accounts: &Arc<Mute
         return None;
     }
     let text = |status, body: String| Response { status, content_type: "text/plain; charset=utf-8", headers: vec![], body: body.into_bytes() };
-    let q = crate::join::parse_query(query);
+    let q = parse_query(query);
     let given = q.iter().find(|(k, _)| k == "token").map(|(_, v)| v.as_str());
     let allowed = peer.is_loopback() && matches!((token, given), (Some(t), Some(g)) if same(g, t));
     if !allowed {
@@ -156,4 +161,28 @@ fn encode(s: &str) -> String {
     s.bytes()
         .map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") })
         .collect()
+}
+pub(crate) fn parse_query(q: &str) -> Vec<(String, String)> {
+    q.split('&').filter(|p| !p.is_empty()).map(|p| {
+        let (k, v) = p.split_once('=').unwrap_or((p, ""));
+        (decode(k), decode(v))
+    }).collect()
+}
+
+fn decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'+' => out.push(b' '),
+            b'%' if b.get(i + 1..i + 3).is_some_and(|h| h.iter().all(u8::is_ascii_hexdigit)) => {
+                out.push(u8::from_str_radix(&s[i + 1..i + 3], 16).unwrap_or(b'?'));
+                i += 2;
+            }
+            c => out.push(c),
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }

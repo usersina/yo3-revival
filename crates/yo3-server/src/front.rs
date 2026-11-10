@@ -326,6 +326,8 @@ impl Deck {
 /// opponent. The duel server finds it by player_id (0x200A).
 #[derive(Clone, Debug, Default)]
 pub struct DuelEntry {
+    /// The authenticated launcher session that brought this deck (none: explicit legacy client).
+    pub identity: Option<crate::auth::Identity>,
     pub deck: Deck,
     pub npc_id: Option<u32>,
     pub duel_id: Option<u32>,
@@ -2118,6 +2120,8 @@ impl Hub {
 }
 
 pub struct FrontSession {
+    identity: Option<crate::auth::Identity>,
+    tunnel_duel_port: Option<u16>,
     account: Account,
     world: Arc<World>,
     hub: Arc<Mutex<Hub>>,
@@ -2156,6 +2160,8 @@ impl FrontSession {
     pub fn new(account: Account, world: Arc<World>, hub: Arc<Mutex<Hub>>, outbox: Outbox) -> FrontSession {
         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
         let mut session = FrontSession {
+            identity: None,
+            tunnel_duel_port: None,
             account,
             world,
             hub,
@@ -2190,6 +2196,12 @@ impl FrontSession {
     pub fn set_peer(&mut self, ip: std::net::IpAddr) {
         self.peer = Some(ip);
     }
+
+    pub fn set_identity(&mut self, identity: crate::auth::Identity) {
+        self.identity = Some(identity);
+    }
+
+    pub fn set_tunnel_duel_port(&mut self, port: u16) { self.tunnel_duel_port = Some(port); }
 
     pub fn set_reached_at(&mut self, ip: std::net::IpAddr) {
         self.reached_at = Some(ip);
@@ -2643,14 +2655,14 @@ impl FrontSession {
                     let mut hub = self.hub();
                     if let Some(rule) = self.duels.get(&id) {
                         let npc_id = rule.iter().find(|(k, _)| k == "cpu_id").and_then(|(_, v)| v.as_u32()).filter(|&id| id > 0);
-                        hub.enter_duel(player_id, DuelEntry { deck, npc_id, peer: self.peer, ..DuelEntry::default() });
+                        hub.enter_duel(player_id, DuelEntry { deck, npc_id, identity: self.identity, peer: self.peer, ..DuelEntry::default() });
                     } else if let Some(m) = hub.matches.get(&id).filter(|m| m.players.contains(&player_id)) {
                         let opponent = m.players.into_iter().find(|&p| p != player_id);
                         let rule = |k: &str| m.rule.iter().find(|(n, _)| n == k).and_then(|(_, v)| v.as_u32());
                         let lp = rule("lp_start").filter(|&lp| lp > 0);
                         let best_of = if rule("match_type") == Some(MATCH_MODE) { 3 } else { 1 };
                         let times = m.times;
-                        hub.enter_duel(player_id, DuelEntry { deck, duel_id: Some(id), opponent, lp, best_of, times, peer: self.peer, ..DuelEntry::default() });
+                        hub.enter_duel(player_id, DuelEntry { deck, duel_id: Some(id), opponent, lp, best_of, times, identity: self.identity, peer: self.peer, ..DuelEntry::default() });
                     }
                 }
                 Message::reply(0x22CA)
@@ -2916,6 +2928,7 @@ impl FrontSession {
 
     /// The duel server's address for this client: the advertised one, else the address it reached.
     fn duel_server(&self) -> (String, u32) {
+        if let Some(port) = self.tunnel_duel_port { return ("127.0.0.1".into(), port as u32) }
         let (advertised, port) = &self.world.duel_server;
         let reached = self.reached_at.map(|ip| ip.to_string()).unwrap_or_else(|| "127.0.0.1".into());
         (if advertised.is_empty() { reached } else { advertised.clone() }, *port as u32)

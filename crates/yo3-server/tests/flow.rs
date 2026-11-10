@@ -1,16 +1,15 @@
 //! Drives the real TCP servers the way the client does: gate -> front -> login -> main screen.
-use std::net::SocketAddr;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use yo3_proto::{Message, Packet, Value, decrypt, frame, frame_len};
 use yo3_server::{Config, start};
 
-async fn send(s: &mut TcpStream, plain: &[u8]) {
+async fn send(s: &mut (impl AsyncWrite + Unpin), plain: &[u8]) {
     s.write_all(&frame(plain)).await.unwrap();
 }
 
-async fn recv(s: &mut TcpStream) -> Message {
+async fn recv(s: &mut (impl AsyncRead + Unpin)) -> Message {
     let mut head = [0; 4];
     s.read_exact(&mut head).await.unwrap();
     let mut body = vec![0; frame_len(head)];
@@ -21,7 +20,7 @@ async fn recv(s: &mut TcpStream) -> Message {
     }
 }
 
-async fn rpc(s: &mut TcpStream, msg: Message) -> Message {
+async fn rpc(s: &mut (impl AsyncRead + AsyncWrite + Unpin), msg: Message) -> Message {
     send(s, &msg.encode()).await;
     recv(s).await
 }
@@ -33,16 +32,14 @@ fn version() -> Vec<u8> {
 #[tokio::test]
 async fn client_reaches_the_main_screen() {
     let log_dir = std::env::temp_dir().join(format!("yo3-flow-{}", std::process::id()));
-    let server = start(Config::ephemeral(log_dir.clone())).await.unwrap();
-
-    let mut gate = TcpStream::connect(server.gate).await.unwrap();
-    send(&mut gate, &version()).await;
-    let redirect = recv(&mut gate).await;
-    assert_eq!(redirect.request(), Some(0x21FE));
-    let port = redirect.get("port").and_then(Value::as_u32).unwrap() as u16;
-    assert_eq!(port, server.front.port());
-
-    let mut front = TcpStream::connect(SocketAddr::from(([127, 0, 0, 1], port))).await.unwrap();
+    let cfg = Config::ephemeral(log_dir.clone());
+    let certificate = cfg.tls.certificate.clone();
+    let key = std::fs::read_to_string(log_dir.join("test-auth/client.key")).unwrap();
+    let server = start(cfg).await.unwrap();
+    let e = yo3_tunnel::Endpoint::new(server.auth.to_string(), "localhost".into(), &certificate).unwrap();
+    let session = e.login(&key).await.unwrap();
+    let ticket = e.ticket(&session, yo3_tunnel::Role::Front).await.unwrap();
+    let mut front = e.connect(&ticket, yo3_tunnel::Role::Front, 43210).await.unwrap();
     send(&mut front, &version()).await;
     assert_eq!(recv(&mut front).await.request(), Some(0x219F));
     for (req, reply) in [(0x1F47, 0x219A), (0x1F48, 0x2201), (0x1F49, 0x2260)] {
@@ -79,64 +76,4 @@ async fn patch_index_is_served_over_http() {
     s.read_to_string(&mut resp).await.unwrap();
     let game_has_idx = yo3_data::default_game_dir().join("yo3.idx").is_file();
     assert!(resp.starts_with(if game_has_idx { "HTTP/1.1 200" } else { "HTTP/1.1 404" }), "{resp}");
-}
-
-/// The gate's redirect (0x21FE {host, port}) to the front server for a client that reached the gate at `at`.
-async fn redirect(cfg: Config, at: [u8; 4]) -> (String, u16) {
-    let server = start(cfg).await.unwrap();
-    let mut gate = TcpStream::connect(SocketAddr::from((at, server.gate.port()))).await.unwrap();
-    send(&mut gate, &version()).await;
-    let r = recv(&mut gate).await;
-    (r.get("host").and_then(Value::as_str).unwrap(), r.get("port").and_then(Value::as_u32).unwrap() as u16)
-}
-
-#[tokio::test]
-async fn the_gate_sends_clients_back_to_the_address_they_reached() {
-    // Without --advertise, a client is sent to the front server at the address it reached the gate on, so one server
-    // works on loopback, a LAN and a VPN at once.
-    let mut cfg = Config::ephemeral(std::env::temp_dir().join("yo3-gate"));
-    cfg.bind = "127.0.0.2".parse().unwrap();
-    cfg.advertise = None;
-    assert_eq!(redirect(cfg, [127, 0, 0, 2]).await.0, "127.0.0.2");
-}
-
-#[tokio::test]
-async fn an_advertised_address_wins() {
-    let mut cfg = Config::ephemeral(std::env::temp_dir().join("yo3-gate"));
-    cfg.advertise = Some("10.9.8.7".into());
-    assert_eq!(redirect(cfg, [127, 0, 0, 1]).await.0, "10.9.8.7");
-}
-
-#[tokio::test]
-async fn a_key_in_the_patch_url_picks_the_account_of_the_next_login() {
-    // The client fetches PatchUpdateUrl + yo3.idx before it connects to the gate: with /yo3/<key>/ the front login
-    // that follows lands in the key's account. Without a (known) key it is the address account.
-    let dir = std::env::temp_dir().join(format!("yo3-keyflow-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    let key = yo3_server::accounts::Directory::open(vec!["Duelist".into()], &dir.join("accounts.json"))
-        .map(|mut d| d.add_account(&["Keyed".into()]).unwrap())
-        .unwrap();
-    let cfg = Config { data_dir: Some(dir.clone()), ..Config::ephemeral(dir.join("logs")) };
-    let server = start(cfg).await.unwrap();
-
-    async fn players(server: &yo3_server::Running) -> Vec<String> {
-        let mut front = TcpStream::connect(server.front).await.unwrap();
-        send(&mut front, &version()).await;
-        recv(&mut front).await;
-        let list = rpc(&mut front, Message::reply(0x1F49)).await;
-        list.items.iter().map(|i| i.get("pname").and_then(Value::as_str).unwrap_or_default()).collect()
-    }
-    async fn fetch(server: &yo3_server::Running, path: &str) {
-        let mut s = TcpStream::connect(server.http).await.unwrap();
-        s.write_all(format!("GET {path} HTTP/1.1\r\nHost: x\r\n\r\n").as_bytes()).await.unwrap();
-        let mut resp = String::new();
-        s.read_to_string(&mut resp).await.unwrap();
-    }
-    let at_first = players(&server).await;
-    assert!(at_first.iter().all(|p| !p.contains("Keyed")) && !at_first.is_empty(), "no key: the address account {at_first:?}");
-    fetch(&server, "/yo3/NotAKeyNotAKeyNotAKey/yo3.idx").await;
-    assert_eq!(players(&server).await, at_first, "an unknown key: the address account");
-    fetch(&server, &format!("/yo3/{key}/yo3.idx")).await;
-    let keyed = players(&server).await;
-    assert!(keyed.len() == 1 && keyed[0].contains("Keyed"), "{keyed:?}");
 }

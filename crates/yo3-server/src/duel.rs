@@ -236,6 +236,7 @@ pub(crate) fn next(rng: &mut u64) -> u64 {
 
 /// One client's duel connection: against the server as the CPU, or at a table against another player.
 pub struct DuelSession {
+    identity: Option<crate::auth::Identity>,
     world: Arc<World>,
     hub: Arc<Mutex<Hub>>,
     /// What the player brought (found by the player_id of 0x200A).
@@ -274,6 +275,7 @@ impl DuelSession {
     /// A session whose CPU choices follow `seed`.
     pub fn new(world: Arc<World>, hub: Arc<Mutex<Hub>>, seed: u64) -> DuelSession {
         DuelSession {
+            identity: None,
             world,
             hub,
             entry: None,
@@ -295,6 +297,11 @@ impl DuelSession {
     /// claimed by it (0x200A names the player, and anyone can name anyone).
     pub fn with_peer(mut self, peer: std::net::IpAddr) -> DuelSession {
         self.peer = Some(peer);
+        self
+    }
+
+    pub fn with_identity(mut self, identity: crate::auth::Identity) -> DuelSession {
+        self.identity = Some(identity);
         self
     }
 
@@ -391,6 +398,13 @@ impl DuelSession {
             }
             (Some(ENTER), _) => {
                 let mut entry = int("player_id").and_then(|id| self.hub.locked().duel_entry(id));
+                if entry.as_ref().is_some_and(|e| e.identity != self.identity)
+                    || (self.identity.is_some() && entry.is_none())
+                {
+                    tracing::warn!("duel entry does not belong to the authenticated launcher session; closed");
+                    self.closed = true;
+                    return vec![];
+                }
                 if let (Some(e), Some(peer)) = (&entry, self.peer)
                     && e.peer.is_some_and(|brought_by| brought_by != peer)
                 {

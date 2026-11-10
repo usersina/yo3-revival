@@ -18,5 +18,5 @@ SCRATCH="${SCRATCH:-/tmp/yo3-monkey}"
 for p in 5730 1213 1214 8080; do
   if ss -ltn "sport = :$p" | grep -q LISTEN; then echo "port $p is in use: stop the server first" >&2; exit 2; fi
 done
-cargo build --release -p yo3-server -p yo3-monkey 2>&1 | tail -1
+cargo build --release -p yo3-server -p yo3-launcher -p yo3-monkey 2>&1 | tail -1
 exec target/release/yo3-monkey --scratch "$SCRATCH" "$@"

@@ -8,6 +8,7 @@ export, see [AGENTS.md](../AGENTS.md)).
 
 - [The binary](#the-binary)
 - [Key objects and functions](#key-objects-and-functions)
+- [The connection mod](#the-connection-mod)
 - [The field tracer](#the-field-tracer)
 - [Data formats](#data-formats)
 - [Behaviours worth knowing](#behaviours-worth-knowing)
@@ -95,6 +96,19 @@ export, see [AGENTS.md](../AGENTS.md)).
 | `0x434D20` | reads one chat room item (`id`, `name`, `capacity`, `num`, `region`, `status`, `type`) |
 | `0x4F3C10`, `0x4F3CF0`, `0x4F4280` | chat requests `0x2135` (list), `0x2136` (enter), `0x2137` (leave) |
 | `0x4F17DF`, `0x4F45A5` | heartbeat `0x2724` builders (30 s / 120 s) |
+
+## The connection mod
+
+The authenticated launcher injects `tools/mod/auth.c` before resuming the game. It hooks imports, rather than
+executable code: `GetPrivateProfileStringA`/`GetPrivateProfileIntA` supply local endpoints, `InternetOpenUrlA`
+redirects asset downloads, and Winsock connect/send/close restrict sockets to the launcher and add its local cookie.
+The import table of this ver.1.153 client uses WSOCK32 ordinals: connect 4 at `0x7587D0`, send 19 at `0x7587F4`,
+closesocket 3 at `0x7587EC`. Both named and ordinal layouts have a native/Wine test executable. A missing import
+or environment value rejects DLL initialization; the injector terminates the suspended process instead of resuming.
+Account credentials remain in the Rust TLS launcher. No binary or INI file is patched on disk.
+
+See [authentication.md](authentication.md) for the session binding and [protocol.md](protocol.md#authenticated-transport)
+for the outer protocol. These hooks describe our mod, not claims about Konami's authentication.
 
 ## The field tracer
 

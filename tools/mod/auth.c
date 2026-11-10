@@ -1,0 +1,180 @@
+/* Revival connection mod (32-bit). The game's imports are the hook boundary; no Konami bytes or files are changed.
+ * Only loopback endpoints owned by this launch are allowed. Account credentials remain in the Rust TLS launcher.
+ */
+#include <winsock2.h>
+#include <windows.h>
+#include <wininet.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static DWORD (WINAPI *profile_string)(LPCSTR,LPCSTR,LPCSTR,LPSTR,DWORD,LPCSTR);
+static UINT (WINAPI *profile_int)(LPCSTR,LPCSTR,INT,LPCSTR);
+static int (WSAAPI *socket_connect)(SOCKET,const struct sockaddr *,int);
+static int (WSAAPI *socket_send)(SOCKET,const char *,int,int);
+static int (WSAAPI *socket_close)(SOCKET);
+static HINTERNET (WINAPI *open_url)(HINTERNET,LPCSTR,LPCSTR,DWORD,DWORD,DWORD_PTR);
+static unsigned short gate_port, front_port, duel_port, http_port;
+static unsigned char cookie[32];
+static char cookie_hex[65];
+static CRITICAL_SECTION guard;
+static struct { SOCKET socket; unsigned sent; } connections[64];
+
+static unsigned short port_from(const char *name) {
+    char text[16], *end;
+    DWORD n = GetEnvironmentVariableA(name, text, sizeof text);
+    if (!n || n >= sizeof text) return 0;
+    unsigned long port = strtoul(text, &end, 10);
+    return !*end && port > 0 && port <= 65535 ? (unsigned short)port : 0;
+}
+
+static int hex_digit(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return -1;
+}
+
+static int override(const char *section, const char *key, char *out, size_t size) {
+    if (!section || !key || _stricmp(section, "Yo3")) return 0;
+    if (!_stricmp(key, "GateServerAddress")) snprintf(out, size, "127.0.0.1");
+    else if (!_stricmp(key, "GateServerPort")) snprintf(out, size, "%u", gate_port);
+    else {
+        const char *path;
+        if (!_stricmp(key, "PatchUpdateUrl")) path = "yo3/";
+        else if (!_stricmp(key, "PatchDataUrl")) path = "ygoda/patch/";
+        else if (!_stricmp(key, "InfoURL")) path = "app/";
+        else return 0;
+        snprintf(out, size, "http://127.0.0.1:%u/session/%s/%s", http_port, cookie_hex, path);
+    }
+    return 1;
+}
+
+static DWORD WINAPI hooked_string(LPCSTR section, LPCSTR key, LPCSTR fallback, LPSTR out, DWORD size, LPCSTR file) {
+    char value[256];
+    if (!out || !size || !override(section, key, value, sizeof value))
+        return profile_string(section, key, fallback, out, size, file);
+    size_t n = strlen(value); if (n >= size) n = size - 1;
+    memcpy(out, value, n); out[n] = 0;
+    return (DWORD)n;
+}
+
+static UINT WINAPI hooked_int(LPCSTR section, LPCSTR key, INT fallback, LPCSTR file) {
+    char value[256];
+    if (override(section, key, value, sizeof value)) return (UINT)strtoul(value, NULL, 10);
+    return profile_int(section, key, fallback, file);
+}
+
+static HINTERNET WINAPI hooked_url(HINTERNET internet, LPCSTR url, LPCSTR headers, DWORD count, DWORD flags, DWORD_PTR context) {
+    char prefix[128], replacement[4096];
+    snprintf(prefix, sizeof prefix, "http://127.0.0.1:%u/session/%s/", http_port, cookie_hex);
+    if (url && !strncmp(url, prefix, strlen(prefix))) return open_url(internet, url, headers, count, flags, context);
+    const char *authority = url ? strstr(url, "://") : NULL;
+    const char *path = authority ? strchr(authority + 3, '/') : NULL;
+    if (!path || strlen(path) > 3000) { SetLastError(ERROR_ACCESS_DENIED); return NULL; }
+    if (strstr(path, "/yo3.idx")) path = "/yo3/yo3.idx";
+    snprintf(replacement, sizeof replacement, "%s%s", prefix, path + 1);
+    return open_url(internet, replacement, headers, count, flags, context);
+}
+
+static int WSAAPI hooked_connect(SOCKET socket, const struct sockaddr *to, int size) {
+    if (!to || size < (int)sizeof(struct sockaddr_in) || to->sa_family != AF_INET) {
+        WSASetLastError(WSAEACCES); return SOCKET_ERROR;
+    }
+    const struct sockaddr_in *address = (const struct sockaddr_in *)to;
+    unsigned short port = ntohs(address->sin_port);
+    if (address->sin_addr.s_addr != htonl(INADDR_LOOPBACK) || (port != gate_port && port != front_port && port != duel_port)) {
+        WSASetLastError(WSAEACCES); return SOCKET_ERROR;
+    }
+    EnterCriticalSection(&guard);
+    unsigned i;
+    for (i = 0; i < 64; ++i) if (connections[i].socket == socket) break;
+    if (i == 64) for (i = 0; i < 64; ++i) if (connections[i].socket == INVALID_SOCKET) break;
+    if (i == 64) { LeaveCriticalSection(&guard); WSASetLastError(WSAENOBUFS); return SOCKET_ERROR; }
+    if (connections[i].socket != socket) { connections[i].socket = socket; connections[i].sent = 0; }
+    LeaveCriticalSection(&guard);
+    return socket_connect(socket, to, size);
+}
+
+static int WSAAPI hooked_send(SOCKET socket, const char *data, int length, int flags) {
+    EnterCriticalSection(&guard);
+    unsigned i;
+    for (i = 0; i < 64; ++i) if (connections[i].socket == socket) break;
+    if (i == 64) { LeaveCriticalSection(&guard); WSASetLastError(WSAEACCES); return SOCKET_ERROR; }
+    while (connections[i].sent < sizeof cookie) {
+        int n = socket_send(socket, (const char *)cookie + connections[i].sent, sizeof cookie - connections[i].sent, 0);
+        if (n <= 0) {
+            int error = n < 0 ? WSAGetLastError() : WSAECONNRESET;
+            LeaveCriticalSection(&guard); WSASetLastError(error); return SOCKET_ERROR;
+        }
+        connections[i].sent += (unsigned)n;
+    }
+    LeaveCriticalSection(&guard);
+    /* The client sees only its own bytes/count. A partial/would-block cookie send is retried before any game byte. */
+    return socket_send(socket, data, length, flags);
+}
+
+static int WSAAPI hooked_close(SOCKET socket) {
+    EnterCriticalSection(&guard);
+    for (unsigned i = 0; i < 64; ++i) if (connections[i].socket == socket) connections[i].socket = INVALID_SOCKET;
+    LeaveCriticalSection(&guard);
+    return socket_close(socket);
+}
+
+static int hook(const char *name, void *replacement, void **original) {
+    unsigned char *base = (unsigned char *)GetModuleHandleA(NULL);
+    IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)base;
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return 0;
+    IMAGE_NT_HEADERS32 *nt = (IMAGE_NT_HEADERS32 *)(base + dos->e_lfanew);
+    if (nt->Signature != IMAGE_NT_SIGNATURE || nt->FileHeader.Machine != IMAGE_FILE_MACHINE_I386) return 0;
+    DWORD rva = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
+    if (!rva) return 0;
+    IMAGE_IMPORT_DESCRIPTOR *imports = (IMAGE_IMPORT_DESCRIPTOR *)(base + rva);
+    for (; imports->Name; ++imports) {
+        if (!imports->OriginalFirstThunk) continue;
+        IMAGE_THUNK_DATA32 *names = (IMAGE_THUNK_DATA32 *)(base + imports->OriginalFirstThunk);
+        IMAGE_THUNK_DATA32 *iat = (IMAGE_THUNK_DATA32 *)(base + imports->FirstThunk);
+        for (; names->u1.AddressOfData; ++names, ++iat) {
+            if (IMAGE_SNAP_BY_ORDINAL32(names->u1.Ordinal)) {
+                /* The real game's WSOCK32 imports: IAT connect 0x7587D0 (4), send 0x7587F4 (19), close 0x7587EC (3). */
+                if (_stricmp((const char *)(base + imports->Name), "WSOCK32.dll")) continue;
+                unsigned ordinal = IMAGE_ORDINAL32(names->u1.Ordinal);
+                if (!((!strcmp(name, "connect") && ordinal == 4) || (!strcmp(name, "send") && ordinal == 19)
+                    || (!strcmp(name, "closesocket") && ordinal == 3))) continue;
+            } else {
+                IMAGE_IMPORT_BY_NAME *entry = (IMAGE_IMPORT_BY_NAME *)(base + names->u1.AddressOfData);
+                if (strcmp((const char *)entry->Name, name)) continue;
+            }
+            DWORD old;
+            if (!VirtualProtect(&iat->u1.Function, sizeof(DWORD), PAGE_READWRITE, &old)) return 0;
+            *original = (void *)iat->u1.Function;
+            InterlockedExchangePointer((void *volatile *)&iat->u1.Function, replacement);
+            VirtualProtect(&iat->u1.Function, sizeof(DWORD), old, &old);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
+    (void)reserved;
+    if (reason != DLL_PROCESS_ATTACH) return TRUE;
+    DisableThreadLibraryCalls(dll);
+    gate_port = port_from("YO3_LOCAL_GATE"); front_port = port_from("YO3_LOCAL_FRONT");
+    duel_port = port_from("YO3_LOCAL_DUEL"); http_port = port_from("YO3_LOCAL_HTTP");
+    if (!gate_port || !front_port || !duel_port || !http_port ||
+        GetEnvironmentVariableA("YO3_LOCAL_COOKIE", cookie_hex, sizeof cookie_hex) != 64) return FALSE;
+    for (unsigned i = 0; i < 32; ++i) {
+        int a = hex_digit(cookie_hex[i * 2]), b = hex_digit(cookie_hex[i * 2 + 1]);
+        if (a < 0 || b < 0) return FALSE;
+        cookie[i] = (unsigned char)(a * 16 + b);
+    }
+    InitializeCriticalSection(&guard);
+    for (unsigned i = 0; i < 64; ++i) connections[i].socket = INVALID_SOCKET;
+    /* Fail closed: the injector must terminate the suspended game if any import cannot be guarded. */
+    return hook("GetPrivateProfileStringA", (void *)hooked_string, (void **)&profile_string)
+        && hook("GetPrivateProfileIntA", (void *)hooked_int, (void **)&profile_int)
+        && hook("connect", (void *)hooked_connect, (void **)&socket_connect)
+        && hook("send", (void *)hooked_send, (void **)&socket_send)
+        && hook("closesocket", (void *)hooked_close, (void **)&socket_close)
+        && hook("InternetOpenUrlA", (void *)hooked_url, (void **)&open_url);
+}

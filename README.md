@@ -1,7 +1,7 @@
 # yo3-revival
 
 A private server for **Yu-Gi-Oh! ONLINE 3 (Duel Accelerator)**, Konami's online card game that shut down in 2012. Log
-in with the original game client and duel again: against the computer, or with your friends.
+in through the authenticated revival launcher and duel again: against the computer, or with your friends.
 
 <p align="center">
   <img src="docs/images/duel.png" alt="The original Yu-Gi-Oh! ONLINE 3 client in a duel against Seto Kaiba, served by this project" width="800">
@@ -13,35 +13,36 @@ in with the original game client and duel again: against the computer, or with y
 
 ## Play on your own PC
 
-There is no public server: you run one yourself, on your PC. It takes about five minutes, on Windows or Linux.
+There is no public server: you run one yourself. Current source requires the revival launcher and connection DLL.
+The last published release predates this setup; build current bundles with `tools/release.sh`.
 
-1. **Get the game.** Download the original installer (about 900 MB) from
-   [My Abandonware](https://www.myabandonware.com/game/yu-gi-oh-online-3-duel-accelerator-qy4) and install it (on
-   Linux, with Wine). It is Konami's software, kept online by a third party, not part of this project.
-2. **Get the server.** Download the file for your system from the
-   [latest release](https://github.com/usersina/yo3-revival/releases/latest) (Windows: the `.zip`, Linux: the
-   `.tar.gz`) and unpack it anywhere. Nothing else to install.
-3. **Start the server.** Double-click `run.cmd` (Windows) or run `./run.sh` (Linux). Keep its window open while you
-   play. If Windows says "Windows protected your PC", press *More info*, then *Run anyway*.
-4. **Make your account.** Open <http://127.0.0.1:8080/join> in your browser, type a player name and press **Join**.
-   Press **Download yo3.ini** and put that file in the game's folder (Windows:
-   `C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3`), replacing the one there (keep a copy of the old one).
-5. **Log in.** Start the game, press **ONLINE**, log in with any name and password, and pick your player.
-6. **Once:** open **Main Menu → Edit Deck**, then leave it. That saves your starter deck.
-7. **Duel!** Walk the map to **Kaiba Corporation** for a computer opponent.
+1. Install your own copy of the original game (ver. 1.153; on Linux, under Wine).
+2. Build/unpack the bundle for your system. It includes the server, rules engine, launcher and our connection DLL.
+3. Once, initialize the server identity and account (Windows: use `.\yo3-server.exe`):
 
-Every step has a screenshot in the [picture guide](docs/guide.md#joining-step-by-step-with-pictures).
+   ```sh
+   ./yo3-server init-auth localhost 127.0.0.1
+   ./yo3-server add-account Yugi
+   ./yo3-server profile Yugi client.json --advertise localhost
+   cp data/server.crt server.crt
+   ```
+
+4. Start `run.cmd` on Windows or `./run.sh` on Linux. Keep it open.
+5. Start `yo3-launcher.exe --profile client.json --game-dir "C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3"`
+   on Windows. On Linux use `./yo3-launcher` and your Wine game directory.
+6. Press **ONLINE**, pick your player, open **Main Menu → Edit Deck** once, then visit **Kaiba Corporation** to duel.
+
+Authentication happens in the launcher. The original game's username/password fields are unused. Its binary and
+`yo3.ini` stay unchanged. The [host and player guide](docs/guide.md) has the full commands.
 
 ## Play with friends
 
-One of you runs the server (steps 2 and 3 above) and tells the others their address. Everyone else skips steps 2 and
-3 and, in step 4, opens `http://THEIR-ADDRESS:8080/join` instead of `127.0.0.1`. Then press the duel button on the
-bottom bar and pick **Auto Duel** to be matched with a friend.
+Initialize the certificate with the DNS name or IP your friends will reach. Create a separate account and private
+launcher profile for each friend, and give each the public `server.crt`. Only TCP **7443** needs to reach the host;
+all game connections use TLS. Accounts behind the same router stay separate. Then use **Auto Duel** or **Create Duel**.
 
-The host must let friends reach ports 5730, 1213, 1214 and 8080. On the same Wi-Fi or LAN that is usually just a
-firewall prompt to allow. Over the internet, the easiest way is a free VPN such as Tailscale. The
-[host guide](docs/guide.md#for-the-host) has the details, and a [LAN checklist](docs/guide.md#lan-checklist) for when
-friends can't connect.
+The [host guide](docs/guide.md#for-the-host) covers setup and existing-account migration. See the
+[authentication design](docs/authentication.md) for credential handling and verification.
 
 ## Something wrong?
 

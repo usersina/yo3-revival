@@ -70,13 +70,17 @@ case "${1:-}" in
     xdpyinfo >/dev/null 2>&1 || { Xvfb "$DISPLAY" -screen 0 1280x960x24 -nolisten tcp & sleep 1; }
     xdpyinfo | grep dimensions ;;
   start)
+    PROFILE="${YO3_AUTH_PROFILE:?set YO3_AUTH_PROFILE to the private client.json for this account}"
+    MOD="$ROOT/tools/mod/build"
+    [ -f "$MOD/yo3-auth.dll" ] || "$ROOT/tools/mod/build.sh" >/dev/null
+    cmd=("$ROOT/target/release/yo3-launcher" --profile "$PROFILE" --game-dir "$GAME"
+         --injector "$MOD/yo3-auth-launch.exe" --dll "$MOD/yo3-auth.dll"
+         --wine-prefix "${WINEPREFIX:-$HOME/.wine}")
     if [ "${2:-}" = "--trace" ]; then
       TRACER="$ROOT/tools/tracer/build"
       [ -f "$TRACER/yo3trace.dll" ] || "$ROOT/tools/tracer/build.sh" >/dev/null
       export YO3_TRACE_FILE; YO3_TRACE_FILE="$(winepath -w "$LOGS/fields.tsv" 2>/dev/null)"
-      cmd=(wine "$TRACER/yo3trace-launch.exe" "$(winepath -w "$GAME/yo3.exe" 2>/dev/null)" "$(winepath -w "$TRACER/yo3trace.dll" 2>/dev/null)")
-    else
-      cmd=(wine yo3.exe)
+      cmd+=(--trace-dll "$TRACER/yo3trace.dll")
     fi
     cd "$GAME"
     WINEDEBUG=fixme-all nohup "${cmd[@]}" >"$LOGS/client-stdout.log" 2>"$LOGS/client-wine.log" &
@@ -125,7 +129,7 @@ case "${1:-}" in
     grep -E '\.cpp L[0-9]+ :' "$LOGS/client-stdout.log" 2>/dev/null | tail -8 || true
     echo "--- crash"
     grep -iE 'page fault|unhandled exception' "$LOGS/client-wine.log" 2>/dev/null | tail -2 || echo "none"
-    latest=$(find "$ROOT/logs" -maxdepth 1 -name 'packets-*.jsonl' -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
+    latest=$(find "${YO3_PACKET_LOG_DIR:-$ROOT/logs}" -maxdepth 1 -name 'packets-*.jsonl' -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
     echo "--- packets ($latest, last 10)"
     [ -n "$latest" ] && python3 -c '
 import json, sys

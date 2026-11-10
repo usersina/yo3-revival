@@ -1,0 +1,5 @@
+LIBRARY WSOCK32.dll
+EXPORTS
+    connect@12 @4 NONAME
+    send@16 @19 NONAME
+    closesocket@4 @3 NONAME

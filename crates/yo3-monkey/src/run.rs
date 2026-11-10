@@ -26,12 +26,13 @@ pub struct Supervisor {
     ports: Ports,
     extra: Vec<String>,
     child: Option<Child>,
+    proxy: Option<Child>,
     pub starts: usize,
 }
 
 impl Supervisor {
     pub fn new(bin: PathBuf, cwd: PathBuf, scratch: PathBuf, ports: Ports, extra: Vec<String>) -> Supervisor {
-        Supervisor { bin, cwd, scratch, ports, extra, child: None, starts: 0 }
+        Supervisor { bin, cwd, scratch, ports, extra, child: None, proxy: None, starts: 0 }
     }
 
     pub fn log_path(&self) -> PathBuf {
@@ -46,6 +47,18 @@ impl Supervisor {
 
     pub fn start(&mut self) -> anyhow::Result<()> {
         std::fs::create_dir_all(self.data_dir())?;
+        let auth = std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port();
+        let admin = |args: &[&str]| -> anyhow::Result<()> {
+            anyhow::ensure!(Command::new(&self.bin).args(args).arg("--data-dir").arg(self.data_dir())
+                .stdout(Stdio::null()).status()?.success(), "prepare authenticated monkey account");
+            Ok(())
+        };
+        if !self.data_dir().join("server.crt").exists() { admin(&["init-auth", "localhost"])?; }
+        if !self.data_dir().join("accounts.json").exists() { admin(&["add-account", "--players", "Yugi,Kaiba"])?; }
+        let profile = self.scratch.join("client.json"); let ready = self.scratch.join("proxy.json");
+        let _ = std::fs::remove_file(&profile); let _ = std::fs::remove_file(&ready);
+        admin(&["profile", "Yugi", profile.to_str().unwrap(), "--advertise", "localhost", "--auth-port", &auth.to_string()])?;
+        std::fs::copy(self.data_dir().join("server.crt"), self.scratch.join("server.crt"))?;
         let log = std::fs::OpenOptions::new().create(true).append(true).open(self.log_path())?;
         let child = Command::new(&self.bin)
             .args(["--log-dir"])
@@ -53,8 +66,7 @@ impl Supervisor {
             .arg("--data-dir")
             .arg(self.data_dir())
             .args(["--players", "Yugi,Kaiba"])
-            .args(["--gate-port", &self.ports.gate.to_string(), "--front-port", &self.ports.front.to_string()])
-            .args(["--duel-port", &self.ports.duel.to_string(), "--http-port", &self.ports.http.to_string()])
+            .args(["--auth-port", &auth.to_string(), "--http-port", &self.ports.http.to_string()])
             .args(&self.extra)
             .current_dir(&self.cwd)
             .env("RUST_LOG", "warn")
@@ -65,6 +77,28 @@ impl Supervisor {
             .stderr(log)
             .spawn()?;
         self.child = Some(child);
+        for _ in 0..100 {
+            if std::net::TcpStream::connect(("127.0.0.1", auth)).is_ok() { break }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let launcher = self.bin.with_file_name("yo3-launcher");
+        let proxy_log = std::fs::OpenOptions::new().create(true).append(true).open(self.scratch.join("proxy.log"))?;
+        self.proxy = Some(Command::new(launcher).arg("--profile").arg(profile).arg("--proxy-only").arg("--ready-file").arg(ready)
+            .args(["--gate-port", &self.ports.gate.to_string(), "--front-port", &self.ports.front.to_string(), "--duel-port", &self.ports.duel.to_string()])
+            .stdout(Stdio::null()).stderr(proxy_log).spawn()?);
+        let mut authenticated = false;
+        for _ in 0..100 {
+            if let Ok(data) = std::fs::read(self.scratch.join("proxy.json"))
+                && let Ok(p) = serde_json::from_slice::<serde_json::Value>(&data)
+                && let Some(cookie) = p["cookie"].as_str().and_then(crate::wire::unhex).and_then(|v| <[u8; 32]>::try_from(v).ok())
+            {
+                crate::wire::authenticate_proxy(&[self.ports.gate, self.ports.front, self.ports.duel], cookie);
+                authenticated = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        anyhow::ensure!(authenticated, "authenticated proxy did not start; see proxy.log");
         self.starts += 1;
         Ok(())
     }
@@ -85,6 +119,12 @@ impl Supervisor {
 
     pub async fn wait_ready(&self) -> bool {
         for _ in 0..200 {
+            if let Ok(data) = std::fs::read(self.scratch.join("proxy.json"))
+                && let Ok(p) = serde_json::from_slice::<serde_json::Value>(&data)
+                && let Some(cookie) = p["cookie"].as_str().and_then(crate::wire::unhex).and_then(|v| <[u8; 32]>::try_from(v).ok())
+            {
+                crate::wire::authenticate_proxy(&[self.ports.gate, self.ports.front, self.ports.duel], cookie);
+            }
             if Conn::open(&self.ports.addr(Target::Gate)).await.is_ok() && Conn::open(&self.ports.addr(Target::Http)).await.is_ok() {
                 return true;
             }
@@ -94,6 +134,7 @@ impl Supervisor {
     }
 
     pub fn stop(&mut self) {
+        if let Some(mut proxy) = self.proxy.take() { let _ = proxy.kill(); let _ = proxy.wait(); }
         if let Some(mut c) = self.child.take() {
             // SIGTERM first so the server can flush, then the hard kill.
             let _ = Command::new("kill").arg(c.id().to_string()).status();

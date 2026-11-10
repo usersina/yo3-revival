@@ -24,6 +24,16 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 
 ## Status
 
+Authenticated launcher milestone (2026-11-10): the server accepts game connections only over validated TLS. The
+required DLL redirects the original client through private launcher endpoints without changing its binary or INI.
+Two real clients on one IP logged in to different accounts, matched, reached the field and displayed the win/loss
+results when the turn clock expired. Both downloaded their duel logs through TLS. Named/ordinal Wine hook tests pass; a failed injection prevents game startup.
+Regression coverage includes ticket expiry/replay/roles, certificate/name failures, logout and cross-launcher duel
+claims. The full suite passed 454 tests; clippy is clean. A 200-plan authenticated fuzz run, including restart,
+reported no failures. Linux and Windows bundles build; the Windows launcher authenticated under Wine.
+Setup and migration: [authentication.md](authentication.md). This completes the login milestone of
+[issue #1](https://github.com/usersina/yo3-revival/issues/1); visual mods remain separate work.
+
 Review fixes (2026-11-10), each with a failing regression test before the implementation:
 
 - [x] Trade confirmations belong to the current offers: an offer change clears both approvals, and final answers
@@ -52,8 +62,7 @@ were found by the tracer. This was an opening-turn check; no full manual duel wa
 
 As of 2026-11-10 the server covers the client's game features: M0 to M2 (research, a stable world, an instrumented
 client) and M5 (duels) are done, M3 (social) and M6 (play with friends) are done apart from checking on real friends'
-machines, and M4 (accounts, collection and economy) still needs connection authentication and the deck list's own
-save. Two duel problems found in the screenshot session are settled (one fixed, one hardened and watched). What is left is
+machines, and M4 (accounts, collection and economy) still needs the deck list's own save. Two duel problems found in the screenshot session are settled (one fixed, one hardened and watched). What is left is
 tracked as `[ ]` boxes in the sections below and in "Open questions and guesses".
 
 | Where | What it is |
@@ -482,21 +491,14 @@ Stop finding missing fields one crash at a time.
 
 ## M4: Accounts, collection and economy
 
-- [ ] Authenticated identity on each front and duel connection. The current patch-key handoff remembers the latest
-      key per IP for ten minutes; two accounts behind one router can receive each other's account. The stock game
-      sends no credential on these connections. Proposed first milestone for the [client mod framework (issue #1)](https://github.com/usersina/yo3-revival/issues/1):
-      a protected login exchange and short-lived credentials bound to the game connections, with tests for shared
-      IPs, replay, expiry and cross-account selection. Keep stock-client access an explicit legacy mode; it cannot
-      provide the same identity guarantee. No IP-only workaround applied in the server-hardening fixes above.
-- [x] Real accounts, through the patch URL. The login path has no id or password field: `0x1F47` is bare, `0x1F48`
-      carries only `lang`, the opener only the version string, and Delete Player's "Enter your Password" prompt sends
-      nothing (`0x1F4B {player_id}`, live packet log; no call of the connection's `+0x118`/`+0x134` copies is
-      serialized). But the client fetches `PatchUpdateUrl` + `yo3.idx` before every connection, so an account's
-      secret key rides in it (`/yo3/<key>/yo3.idx`): the patch server notes the address that presented it and that
-      address's next login gets the key's account, on any address (`Directory::present_key`/`login`; tests in
-      `accounts.rs` and `flow.rs`). No key: the address account, as before. Host: `add-account`, `key ADDRESS|PLAYER`.
-      Live: Yugi's headless client with a key in `yo3.ini` listed the key account's players, the same client without
-      it the address account's. Persistence stays JSON (`data/accounts.json`) with no concrete need for SQLite
+- [x] Per-connection authentication through the launcher and connection DLL. TLS 7443 is the sole game listener;
+      IP-based account selection and the HTTP join page are retired. Session capabilities last 12 hours and role-
+      scoped tickets last 30 seconds, are single-use, and bind front decks to the same launcher's duel connection.
+      Logout revokes tickets and active connections. Tests: `auth_flow`, `auth_contract`, `auth::tests`, launcher
+      `proxy` and local-cookie tests; native/Wine tests cover the real WSOCK32 ordinal imports and named imports.
+- [x] Existing account ids, cards, BP and other state keep their JSON schema. `profile PLAYER FILE --advertise HOST`
+      exports a private profile using its current key (or assigns a key to an address-only account). The host creates
+      accounts with `add-account`; there is no legacy-client fallback. See the authenticated setup guide.
 - [x] Player creation and deletion: Select Player's Create Player and Delete (`0x1F4A {pindex, pname}` → `0x2262`/`0x2263`,
       `0x1F4B {player_id}` → `0x2264`/`0x2265`; `CharMake.cpp`'s `0x2CF5/6` is only the appearance editor), within four
       slots kept with the account. Live: Joey made in slot 3 (name, then Avatar Settings, then the main screen), deleted
@@ -745,7 +747,7 @@ Stop finding missing fields one crash at a time.
 | Duel's end push `0x2009` | sent when the engine ends the duel; `duel_end` 1 (normal: no effect) or 3 (cancelled before it began); no `score_<id>`; `dlogURL` for duels between players | The original timing is unknown. Values settled by `0x515BD3`/`0x518631`: 2, 3 dialog `0x2918`; 4 "has disconnected" (we don't send it); 5 opens the result |
 | Result screen counts | `win`/`lose`/`draw` = totals against this opponent including this duel, `*_add` = this duel's change; kept in memory | The client only shows them ("Wins 1 (+001)") |
 | Duel port | 1214 | The original's port is unknown; the client takes whatever `duelData` says |
-| Accounts | by the key in the patch URL (`/yo3/<key>/yo3.idx`, fetched before every login: the address that fetched it last, within 10 minutes, logs in to the key's account); no key: one per client address (`move-account` for a changed address) | The client sends no credentials; the key rides in the one request it makes with a configurable path. Two friends behind one address starting within the same moment can swap; keyless friends behind one address share an account |
+| Accounts | authenticated TLS key login, single-use front/duel tickets, launcher-bound duel entries  | The launcher is required; the stock login form has no credential fields. Shared IPs no longer select accounts  |
 | Uploaded decks | the decks a duel's Select Deck sent, ten per player by name, listed after the starter and bought decks | The client has no other upload; the original server's deck storage is unknown |
 | Deck check | sizes, ownership per Konami id, the duel's regulation, refused with `0x22CB` (client text `0x2919`: settled, `0x50ECF0` compares only `0x22CA`/`0x22CB` and never uses `error_code`) | The rules of the check are ours |
 | Player names | the starting names (`--players`, default Duelist) made unique with a number; players make more at Select Player (at most 16 characters, unique ignoring case: **guess**), the host can still `add-player` / `rename` | The original's name rules are unknown; a team's leader can't be deleted and an account keeps one player (ours) |
