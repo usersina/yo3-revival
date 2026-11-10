@@ -7,7 +7,7 @@ use clap::Parser;
 use yo3_launcher::{Ports, Profile, Proxy, hex};
 
 #[derive(Parser)]
-#[command(about = "Authenticate, start private TLS proxies, and inject the revival connection mod into the game")]
+#[command(version = yo3_tunnel::BUILD_VERSION, about = "Authenticate, start private TLS proxies, and inject the revival connection mod into the game")]
 struct Args {
     #[arg(long)] profile: PathBuf,
     #[arg(long, required_unless_present = "proxy_only")] game_dir: Option<PathBuf>,

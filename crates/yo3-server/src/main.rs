@@ -8,6 +8,7 @@ use yo3_server::{Config, start};
 
 /// Yu-Gi-Oh! ONLINE 3 private server (gate, front, duel and patch HTTP).
 #[derive(Parser)]
+#[command(version = yo3_tunnel::BUILD_VERSION)]
 struct Args {
     /// An admin command on the data directory instead of running the server. The BP ones (give-bp, add-code,
     /// remove-code, codes) reach a running server; the others need it stopped (it rewrites the accounts file).

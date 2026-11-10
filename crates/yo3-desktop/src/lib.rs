@@ -11,6 +11,7 @@ use yo3_server::admin::{self, ManagerOp};
 
 pub fn server_address(input: &str) -> anyhow::Result<(String, String)> {
     let input = input.trim();
+    let input = input.strip_prefix("yo3://").unwrap_or(input).trim_end_matches('/');
     ensure!(!input.is_empty() && !input.contains(['/', '\\', '@']) && !input.chars().any(char::is_whitespace), "Enter a hostname or IP address, optionally followed by a port.");
     if let Ok(ip) = input.parse::<std::net::IpAddr>() {
         return Ok((match ip { std::net::IpAddr::V6(_) => format!("[{ip}]:7443"), _ => format!("{ip}:7443") }, ip.to_string()));
@@ -51,6 +52,7 @@ pub struct SavedServer {
     pub address: String,
     pub server_name: String,
     pub certificate: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub identity: Option<String>,
     pub key: String,
 }
 
@@ -71,12 +73,16 @@ impl std::fmt::Display for ServerChoice {
     }
 }
 impl SavedServer {
+    pub fn endpoint(&self) -> anyhow::Result<yo3_tunnel::Endpoint> {
+        let identity = self.identity.clone().map(Ok).unwrap_or_else(|| yo3_tunnel::identity_from_pem(self.certificate.as_bytes()))?;
+        yo3_tunnel::Endpoint::pinned(self.address.clone(), self.server_name.clone(), &identity)
+    }
     pub fn validate(&self) -> anyhow::Result<()> {
         server_address(&self.address)?;
         ensure!(self.key.is_ascii() && self.key.len() == 20, "An account access key has 20 characters.");
         ensure!(self.certificate.contains("-----BEGIN CERTIFICATE-----"), "Select the host's public certificate (.crt), or import their invitation.");
         ensure!(!self.server_name.is_empty(), "The certificate name is missing.");
-        yo3_tunnel::Endpoint::from_pem(self.address.clone(), self.server_name.clone(), self.certificate.as_bytes())?;
+        self.endpoint()?;
         Ok(())
     }
     pub fn import(path: &Path) -> anyhow::Result<Self> {
@@ -93,7 +99,8 @@ impl SavedServer {
         let s = Self { id: 0, label: v["label"].as_str().unwrap_or_else(|| path.file_stem().and_then(|p| p.to_str()).unwrap_or("Server")).into(),
             address: v["address"].as_str().or_else(|| v["server"].as_str()).context("Invitation is missing the address.")?.into(),
             server_name: v["server_name"].as_str().context("Invitation is missing the certificate name.")?.into(),
-            key: v["key"].as_str().context("Invitation is missing the account key.")?.into(), certificate };
+            key: v["key"].as_str().context("Invitation is missing the account key.")?.into(),
+            identity: v["identity"].as_str().map(str::to_string).or_else(|| yo3_tunnel::identity_from_pem(certificate.as_bytes()).ok()), certificate };
         s.validate()?;
         Ok(s)
     }
@@ -246,7 +253,7 @@ impl Backend {
         let key = self.manage(settings, ManagerOp::ExportAccount { who: who.into() })?["key"].as_str().context("Missing account key")?.to_string();
         let (address, server_name) = server_address(&settings.host_address)?;
         Ok(SavedServer { id: 0, label: format!("{}'s server", who), address, server_name,
-            certificate: std::fs::read_to_string(self.data_dir(settings).join("server.crt"))?, key })
+            certificate: std::fs::read_to_string(self.data_dir(settings).join("server.crt"))?, identity: None, key })
     }
     pub fn game_running(&self) -> bool {
         self.game.lock().unwrap().as_mut().is_some_and(|child| child.try_wait().ok().flatten().is_none())
@@ -293,18 +300,25 @@ impl Backend {
         let stem = format!("connection-{}", server.id);
         private_write(&self.root.join("profiles").join(format!("{stem}.crt")), server.certificate.as_bytes(), true)?;
         let file = self.root.join("profiles").join(format!("{stem}.json"));
-        private_write(&file, serde_json::json!({"server":server.address,"server_name":server.server_name,"key":server.key,"certificate":format!("{stem}.crt")}).to_string().as_bytes(), true)?;
+        private_write(&file, serde_json::json!({"server":server.address,"server_name":server.server_name,"key":server.key,"certificate":format!("{stem}.crt"), "identity":server.identity.clone().or_else(|| yo3_tunnel::identity_from_pem(server.certificate.as_bytes()).ok())}).to_string().as_bytes(), true)?;
         // Parse through the existing TLS implementation before starting any game process.
         yo3_launcher::Profile::load(&file)?;
         Ok(file)
     }
-    pub fn check_connection(&self, server: &SavedServer) -> anyhow::Result<()> {
+    pub fn check_connection(&self, server: &SavedServer) -> anyhow::Result<yo3_tunnel::ServerInfo> {
         server.validate()?;
-        let endpoint = yo3_tunnel::Endpoint::from_pem(server.address.clone(), server.server_name.clone(), server.certificate.as_bytes())?;
+        let endpoint = server.endpoint()?;
         tokio::runtime::Builder::new_current_thread().enable_all().build()?.block_on(async {
+            let info = endpoint.info().await?;
+            info.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI)?;
             let session = endpoint.login(&server.key).await?;
-            endpoint.logout(&session).await
+            endpoint.logout(&session).await?;
+            Ok::<_, anyhow::Error>(info)
         }).context("Connection check failed; verify the address and the host's invitation")
+    }
+    pub fn discover(input: &str) -> anyhow::Result<yo3_tunnel::ObservedServer> {
+        let (address, name) = server_address(input)?;
+        tokio::runtime::Builder::new_current_thread().enable_all().build()?.block_on(yo3_tunnel::discover(&address, &name))
     }
     pub fn stop_game(&self) -> anyhow::Result<()> {
         use std::io::Write;
@@ -381,7 +395,7 @@ mod tests {
     }
     #[test]
     fn equal_connection_labels_still_select_the_right_account() {
-        let a = SavedServer { id: 1, label: "Friends".into(), address: "host:7443".into(), server_name: "host".into(), certificate: String::new(), key: "a".repeat(20) };
+        let a = SavedServer { id: 1, label: "Friends".into(), address: "host:7443".into(), server_name: "host".into(), certificate: String::new(), identity: None, key: "a".repeat(20) };
         let b = SavedServer { id: 2, key: "b".repeat(20), ..a.clone() };
         let choice = ServerChoice::saved(&b);
         assert_ne!(ServerChoice::saved(&a), choice);
@@ -405,7 +419,7 @@ mod tests {
         let db = LauncherDb::open(&root).unwrap();
         let settings = Settings { game_dir: "a game with spaces".into(), selected_server: Some(2), local_account: "Duelist".into(), ..Settings::default() };
         db.save_settings(&settings).unwrap();
-        let a = SavedServer { id: 0, label: "Alice".into(), address: "alice.example:7443".into(), server_name: "alice.example".into(), certificate: "certificate-a".into(), key: "a".repeat(20) };
+        let a = SavedServer { id: 0, label: "Alice".into(), address: "alice.example:7443".into(), server_name: "alice.example".into(), certificate: "certificate-a".into(), identity: None, key: "a".repeat(20) };
         let mut b = a.clone(); b.label = "Bob".into(); b.address = "bob.example:7443".into(); b.key = "b".repeat(20);
         db.save_server(&a).unwrap(); db.save_server(&b).unwrap(); drop(db);
         let db = LauncherDb::open(&root).unwrap();

@@ -23,7 +23,7 @@ enum Page { Play, Server, Accounts, Activity, Settings }
 enum Field { Game, Wine, Host, Data, Player, Label, Address, Key, Account, NewPlayer }
 #[derive(Clone)]
 enum Msg {
-    Page(Page), Input(Field, String), Sharing(bool), Select(ServerChoice), AccountSelect(String), Start, Stop, Play, StopGame, TestConnection,
+    Page(Page), Input(Field, String), Sharing(bool), Select(ServerChoice), AccountSelect(String), Start, Stop, Play, StopGame, TestConnection, Discover, TrustIdentity, AdvancedConnection,
     SaveSettings, Browse(Field), Import, AddServer, SaveServer, Certificate, CreateAccount, AddPlayer, Export,
     Tick, Poll(Result<(Option<Value>, bool, String, Option<String>), String>), Done(Result<Outcome, String>), Logs(bool), Pause(bool),
     LogFilter(String), CopyLogs, SaveLogs, OpenData, Help, Close, CancelClose, Quit(bool), ConfirmCertificate, RenewCertificate,
@@ -32,7 +32,7 @@ impl std::fmt::Debug for Msg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("DesktopEvent") }
 }
 #[derive(Clone)]
-enum Outcome { Info(String), Status(Value), Accounts(Value), Path(Field, String), Imported(SavedServer), Certificate(String), SettingsSaved(Settings), ConnectionsSaved(Vec<SavedServer>), Quit }
+enum Outcome { Info(String), Status(Value), Accounts(Value), Path(Field, String), Imported(SavedServer), Observed(yo3_tunnel::ObservedServer), Checked(yo3_tunnel::ServerInfo), Certificate(String), SettingsSaved(Settings), ConnectionsSaved(Vec<SavedServer>), Quit }
 
 struct App {
     root: PathBuf, backend: Option<Arc<Backend>>, settings: Settings, draft: Settings,
@@ -40,6 +40,7 @@ struct App {
     account: String, new_account: String, new_player: String, editor: bool, label: String, address: String, key: String,
     certificate: String, server_name: String, busy: bool, polling: bool, game_running: bool, notice: String,
     failed: bool, log_server: bool, paused: bool, logs: String, filter: String, closing: bool, confirm_certificate: bool,
+    identity: Option<String>, observed: Option<yo3_tunnel::ObservedServer>, checked: Option<yo3_tunnel::ServerInfo>, advanced_connection: bool,
 }
 
 fn job(f: impl FnOnce() -> anyhow::Result<Outcome> + Send + 'static) -> Task<Msg> {
@@ -60,7 +61,8 @@ impl App {
             status: None, accounts: Value::Null, account, new_account: String::new(), new_player: String::new(),
             editor: false, label: String::new(), address: String::new(), key: String::new(), certificate: String::new(), server_name: String::new(),
             busy: false, polling: false, game_running: false, failed: !error.is_empty(), notice: if error.is_empty() { "Welcome. Choose where you want to play.".into() } else { error },
-            log_server: true, paused: false, logs: String::new(), filter: String::new(), closing: false, confirm_certificate: false }
+            log_server: true, paused: false, logs: String::new(), filter: String::new(), closing: false, confirm_certificate: false,
+            identity: None, observed: None, checked: None, advanced_connection: false }
     }
     fn update(&mut self, message: Msg) -> Task<Msg> {
         if self.busy && !matches!(message, Msg::Done(_) | Msg::Poll(_) | Msg::Tick | Msg::Close | Msg::CancelClose) { return Task::none() }
@@ -70,17 +72,30 @@ impl App {
                 Field::Game => self.draft.game_dir = value, Field::Wine => self.draft.wine_prefix = value,
                 Field::Host => self.draft.host_address = value, Field::Data => self.draft.data_dir = value,
                 Field::Player => self.draft.player_name = value, Field::Label => self.label = value,
-                Field::Address => { self.address = value; self.server_name.clear(); }, Field::Key => self.key = value,
+                Field::Address => { self.address = value; self.server_name.clear(); self.identity = None; self.certificate.clear(); self.observed = None; }, Field::Key => self.key = value,
                 Field::Account => self.new_account = value, Field::NewPlayer => self.new_player = value,
             },
             Msg::Sharing(value) => self.draft.allow_friends = value,
             Msg::Select(value) => {
                 if self.game_running { self.feedback(Err("Close the game before changing its connection.".into())); return Task::none() }
                 self.settings.selected_server = match &value { ServerChoice::Local => None, ServerChoice::Saved { id, .. } => Some(*id) };
+                self.checked = None;
                 self.selected = value; return self.save_selection();
             }
             Msg::AccountSelect(value) => { self.settings.local_account = value.clone(); self.account = value; return self.save_selection(); }
             Msg::AddServer => self.editor = !self.editor,
+            Msg::AdvancedConnection => self.advanced_connection = !self.advanced_connection,
+            Msg::Discover => {
+                let address = self.address.clone(); self.busy = true;
+                return job(move || Ok(Outcome::Observed(Backend::discover(&address)?)));
+            }
+            Msg::TrustIdentity => {
+                if let Some(observed) = self.observed.take() {
+                    if let Err(error) = observed.info.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI) { self.feedback(Err(error.to_string())); return Task::none() }
+                    self.identity = Some(observed.identity); self.certificate = observed.certificate; self.checked = Some(observed.info);
+                    self.feedback(Ok("Server identity approved. Enter your account key and save the connection.".into()));
+                }
+            }
             Msg::Start | Msg::Stop | Msg::Play | Msg::StopGame => {
                 if self.busy { return Task::none() }
                 let Some(backend) = self.backend.clone() else { return Task::none() };
@@ -126,8 +141,9 @@ impl App {
             Msg::SaveServer => {
                 let result = (|| -> anyhow::Result<SavedServer> {
                     let (address, name) = yo3_desktop::server_address(&self.address)?;
+                    anyhow::ensure!(self.identity.is_some(), "Discover and approve the server identity, or import an invitation first.");
                     let server = SavedServer { id: 0, label: if self.label.trim().is_empty() { name.clone() } else { self.label.trim().into() }, address,
-                        server_name: if self.server_name.is_empty() { name } else { self.server_name.clone() }, certificate: self.certificate.clone(), key: self.key.trim().into() };
+                        server_name: if self.server_name.is_empty() { name } else { self.server_name.clone() }, certificate: self.certificate.clone(), identity: self.identity.clone(), key: self.key.trim().into() };
                     server.validate()?;
                     Ok(server)
                 })();
@@ -139,7 +155,7 @@ impl App {
             Msg::TestConnection => {
                 let Some(backend) = self.backend.clone() else { return Task::none() };
                 let selected = match self.selected.remote(&self.servers) { Ok(Some(s)) => s, _ => { self.feedback(Err("Choose a saved remote connection first.".into())); return Task::none() } };
-                self.busy = true; return job(move || { backend.check_connection(&selected)?; Ok(Outcome::Info("Connection verified. Ready to play.".into())) });
+                self.busy = true; return job(move || Ok(Outcome::Checked(backend.check_connection(&selected)?)));
             }
             Msg::CreateAccount | Msg::AddPlayer => {
                 if self.busy { return Task::none() }
@@ -182,10 +198,12 @@ impl App {
                         self.feedback(Ok("Accounts updated.".into()));
                     }
                     Ok(Outcome::Path(field, path)) => return self.update(Msg::Input(field, path)),
-                    Ok(Outcome::Imported(server)) => { self.label = server.label; self.address = server.address; self.key = server.key; self.certificate = server.certificate; self.server_name = server.server_name; self.editor = true; self.page = Page::Play; self.feedback(Ok("Invitation loaded. Save this connection to continue.".into())); }
+                    Ok(Outcome::Imported(server)) => { self.identity = server.identity.clone().or_else(|| yo3_tunnel::identity_from_pem(server.certificate.as_bytes()).ok()); self.label = server.label; self.address = server.address; self.key = server.key; self.certificate = server.certificate; self.server_name = server.server_name; self.editor = true; self.page = Page::Play; self.feedback(Ok("Invitation loaded. Save this connection to continue.".into())); }
+                    Ok(Outcome::Observed(server)) => { self.observed = Some(server); self.feedback(Ok("Compare this identity with the host before approving it. No account credentials were sent.".into())); }
+                    Ok(Outcome::Checked(info)) => { self.checked = Some(info); self.feedback(Ok("Connection and account verified.".into())); }
                     Ok(Outcome::SettingsSaved(settings)) => { if settings.data_dir != self.settings.data_dir { self.accounts = Value::Null; self.account.clear(); self.status = None; } self.settings = settings; self.feedback(Ok("Settings saved.".into())); }
                     Ok(Outcome::ConnectionsSaved(servers)) => { self.selected = ServerChoice::saved(servers.last().unwrap()); self.servers = servers; self.editor = false; self.key.clear(); self.certificate.clear(); self.settings.selected_server = self.servers.last().map(|s| s.id); self.feedback(Ok("Connection saved.".into())); return self.save_selection(); }
-                    Ok(Outcome::Certificate(certificate)) => { self.certificate = certificate; self.feedback(Ok("Host certificate selected.".into())); }
+                    Ok(Outcome::Certificate(certificate)) => { self.identity = yo3_tunnel::identity_from_pem(certificate.as_bytes()).ok(); self.certificate = certificate; self.feedback(Ok("Host certificate selected.".into())); }
                     Ok(Outcome::Quit) => return iced::exit(),
                     Err(error) => self.feedback(Err(error)),
                 }
@@ -204,7 +222,7 @@ impl App {
             Msg::OpenData => { let path = self.root.to_string_lossy().to_string(); return job(move || { open(&path)?; Ok(Outcome::Info("Application data folder opened.".into())) }) }
             Msg::Help => return job(|| { open("https://github.com/usersina/yo3-revival/blob/main/docs/launcher.md")?; Ok(Outcome::Info("Setup guide opened.".into())) }),
             Msg::Close => { if self.status.is_some() || self.game_running || self.busy { self.closing = true; } else { return iced::exit() } }
-            Msg::CancelClose => { self.closing = false; self.confirm_certificate = false; },
+            Msg::CancelClose => { self.closing = false; self.confirm_certificate = false; self.observed = None; },
             Msg::ConfirmCertificate => self.confirm_certificate = true,
             Msg::RenewCertificate => {
                 let Some(backend) = self.backend.clone() else { return Task::none() };
@@ -231,12 +249,21 @@ impl App {
         job(move || Ok(Outcome::Accounts(backend.accounts(&settings)?)))
     }
     fn view(&self) -> Element<'_, Msg> {
+        if let Some(observed) = &self.observed {
+            let compatible = observed.info.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI);
+            return container(column![text("Confirm server identity").size(28), text(&self.address),
+                text(format!("Server reports {} · protocol {} · DLL interface {}", observed.info.release, observed.info.protocol, observed.info.mod_abi)),
+                text("This is a first-use identity, not independently verified. Compare the full code with the host or import their private invitation."),
+                text(&observed.identity).font(iced::Font::MONOSPACE).size(16),
+                text(compatible.as_ref().map(|_| "Compatible with this application.".to_string()).unwrap_or_else(|e| e.to_string())),
+                row![button("Cancel").on_press(Msg::CancelClose), button("Trust this identity").on_press_maybe(compatible.is_ok().then_some(Msg::TrustIdentity))].spacing(14)].spacing(24).padding(30).max_width(860)).center(Fill).into();
+        }
         let mut navigation = column![text("YO3").size(38), text("REVIVAL").size(17), text("Play. Host. Reconnect.").size(12), widget::rule::horizontal(1)].spacing(14);
         for (label, page) in [("Play", Page::Play), ("My server", Page::Server), ("Accounts", Page::Accounts), ("Activity", Page::Activity), ("Settings", Page::Settings)] {
             navigation = navigation.push(button(text(label)).width(Fill).padding([12, 16]).on_press(Msg::Page(page)).style(if self.page == page { button::primary } else { button::text }));
         }
         navigation = navigation.push(widget::Space::new().height(Fill)).push(button("Setup guide").on_press(Msg::Help).style(button::text))
-            .push(text("Yu-Gi-Oh! ONLINE 3\nver. 1.153 · fan revival").size(11));
+            .push(text(format!("YO3 Revival {}\nYu-Gi-Oh! ONLINE 3 · 1.153", yo3_tunnel::BUILD_VERSION)).size(11));
         let content = match self.page { Page::Play => self.play_view(), Page::Server => self.server_view(), Page::Accounts => self.accounts_view(), Page::Activity => self.activity_view(), Page::Settings => self.settings_view() };
         let notice = container(text(&self.notice).size(13).color(if self.failed { Color::from_rgb8(240, 143, 148) } else { Color::from_rgb8(166, 187, 210) })).padding([12, 16]).style(container::rounded_box).width(Fill);
         let main = column![content, notice].spacing(18).padding(28).width(Fill);
@@ -261,9 +288,11 @@ impl App {
             body = body.push(container(column![text("Add a connection").size(20),
                 input("Name", &self.label, Field::Label), input("Server address — hostname or IP, optional :port", &self.address, Field::Address),
                 text_input("Account access key from the host", &self.key).secure(true).on_input(|v| Msg::Input(Field::Key, v)).padding(12),
-                row![button(if self.certificate.is_empty() { "Choose host certificate" } else { "Certificate selected" }).on_press(Msg::Certificate), button("Save connection").on_press(Msg::SaveServer)].spacing(12),
-                text("An invitation fills in all of these fields. The default port is 7443.").size(12)].spacing(12)).padding(20).style(container::rounded_box));
+                row![button(if self.identity.is_some() { "Check server again" } else { "Discover server" }).on_press(Msg::Discover), button("Save connection").on_press(Msg::SaveServer), button("Advanced…").on_press(Msg::AdvancedConnection)].spacing(12),
+                text(if self.identity.is_some() { "Server identity approved. Invitations also include the identity and account key." } else { "Discover the server before sending credentials. The default port is 7443." }).size(12)].spacing(12)).padding(20).style(container::rounded_box));
+            if self.advanced_connection { body = body.push(button("Import a trusted certificate manually").on_press(Msg::Certificate).style(button::secondary)); }
         }
+        if let Some(info) = &self.checked { body = body.push(text(format!("Server {} · protocol {} · DLL interface {} · {}", info.release, info.protocol, info.mod_abi, if info.ready { "ready" } else { "rules engine unavailable" })).size(13)); }
         if self.selected != ServerChoice::Local { body = body.push(button("Test connection").on_press_maybe((!self.busy).then_some(Msg::TestConnection)).style(button::secondary)); }
         if self.selected == ServerChoice::Local && !account_names(&self.accounts).is_empty() { body = body.push(pick_list(account_names(&self.accounts), (!self.account.is_empty()).then_some(self.account.clone()), Msg::AccountSelect).placeholder("Choose your player account")); }
         body = body.push(widget::rule::horizontal(1)).push(row![button(text(if self.game_running { "Game is running" } else if self.busy { "Please wait…" } else { "Play" }).size(20)).width(Fixed(246.0)).padding([14, 46]).on_press_maybe((!self.busy && !self.game_running && self.backend.is_some()).then_some(Msg::Play)),

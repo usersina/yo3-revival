@@ -18,13 +18,15 @@ pub async fn authorize<R: AsyncRead + Unpin>(stream: &mut R, cookie: &Token) -> 
 }
 
 #[derive(Deserialize)]
-pub struct Profile { pub server: String, pub server_name: String, pub certificate: String, pub key: String }
+pub struct Profile { pub server: String, pub server_name: String, #[serde(default)] pub certificate: String,
+    #[serde(default)] pub identity: Option<String>, pub key: String }
 
 impl Profile {
     pub fn load(path: &Path) -> anyhow::Result<(Endpoint, String)> {
         let p: Self = serde_json::from_slice(&std::fs::read(path)?)?;
         let certificate = path.parent().unwrap_or(Path::new(".")).join(p.certificate);
-        let endpoint = Endpoint::new(p.server, p.server_name, &certificate)?;
+        let endpoint = match p.identity { Some(identity) => Endpoint::pinned(p.server, p.server_name, &identity)?,
+            None => Endpoint::new(p.server, p.server_name, &certificate)? };
         Ok((endpoint, p.key))
     }
 }

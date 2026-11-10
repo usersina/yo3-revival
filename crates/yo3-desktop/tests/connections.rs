@@ -29,7 +29,7 @@ async fn invitation_roundtrip_keeps_remote_identity_when_dialling_the_host_local
         let mut remembered = db.servers().unwrap().remove(0);
         worker.check_connection(&remembered).unwrap();
         remembered.key = "x".repeat(20); assert!(worker.check_connection(&remembered).is_err());
-        remembered.key = local.key; remembered.server_name = "wrong.example".into(); assert!(worker.check_connection(&remembered).is_err());
+        remembered.key = local.key; remembered.identity = Some("00".repeat(32)); assert!(worker.check_connection(&remembered).is_err());
         assert!(worker.root.join("launcher.db").exists());
         assert!(Path::new(&settings.data_dir).join("server.db").exists());
         let live = admin::running(Path::new(&settings.data_dir)).unwrap(); admin::manage(&live, &ManagerOp::Shutdown).unwrap();

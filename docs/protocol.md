@@ -51,14 +51,23 @@ Today the gate runs locally in the launcher and front/duel frames are carried in
 with two accounts on one IP, private displays :78/:79, named and ordinal DLL tests, and `auth_flow`/launcher `proxy`.
 
 The outer handshake is our own protocol, not inferred Konami fields. Inside validated TLS each connection starts
-with ASCII `YO3TLS01` and a one-byte operation. Numbers are big-endian; tokens are opaque 32-byte random values.
+with ASCII `YO3TLS02` and a one-byte operation. Numbers are big-endian; tokens are opaque 32-byte random values.
+The compiled protocol version is 2 and the required DLL interface is 2. Old transports are refused.
 
 | Operation | Payload after operation                    | Reply                                                    | Meaning                                                                                            |
 | --------- | ------------------------------------------ | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| 1 login   | 20-byte account key                        | status byte, then session token on success               | no IP lookup or implicit account creation; session lasts 12 hours                                  |
+| 1 login   | u16 protocol, u16 DLL interface, 20-byte account key | status byte, then session token on success | incompatible versions refused before reading the key; session lasts 12 hours |
 | 2 ticket  | session token, role byte                   | status byte, then ticket on success                      | role 1 front, 2 duel, 3 assets; ticket lasts 30 seconds                                            |
 | 3 connect | ticket, role, u16 launcher-local duel port | status byte, then stock game frames (or HTTP for role 3) | consume ticket once, including failed wrong-role attempts; a front needs a nonzero local duel port |
 | 4 logout  | session token                              | status byte                                              | invalidate session, queued tickets and live connections; retry is harmless                         |
+| 5 info | none | u16 byte length, UTF-8 JSON (1–4096 bytes) | credential-free build, commit, protocol, DLL interface, game version, readiness and generic engine problem |
+
+`tests/metadata_contract.rs` verifies discovery without an account, compatibility independent of patch-release labels,
+wrong host names/keys, certificate renewal preserving the identity, expired certificates and bounded metadata.
+Normal account endpoints verify an invitation/user-approved SHA-256 hash of the certificate's SPKI, its lifetime and
+the TLS handshake signature. Address discovery proves possession of the observed key but is **untrusted** until the
+user approves it or compares it to the host's invitation. It can issue only the credential-free info operation and
+does not save trust. Certificate-only CLI profiles retain their existing CA/name verification behavior.
 
 Status 0 succeeds, 1 refuses. Handshakes time out after 10 seconds. Authentication bytes never enter the game packet
 logger. The asset role permits public patch/app/duel-log routes only; `/admin` is inaccessible through TLS. Internal

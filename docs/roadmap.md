@@ -26,6 +26,19 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 
 ## Status
 
+Launcher usability phase (2026-11-10, in progress on `feat/desktop-launcher`):
+
+- [x] Address-first discovery and remembered identities; existing invitation/profile credentials preserved. Private
+  display :88 showed discovery and first-use identity confirmation by IP with no certificate file; metadata contracts
+  cover expiry, key changes, same-key renewal, wrong names and bounded responses.
+- [ ] Shared build/protocol/DLL requirements, preflight and DLL readiness before game login.
+- [ ] Direct-start loader investigation; keep `yo3.exe` unchanged. Gate callback `0x4699B0` reads only host/port;
+  login dispatcher `0x469C00` uses error codes and `0x46D050` selects fixed local UI strings. A custom requirements
+  dialog/file picker needs local code; do not invent a server message field.
+- [ ] Advanced interface binding (default all IPv4), one public port and an optional elevated firewall helper.
+- [ ] Session-indexed diagnostic logs, bounded retention and redacted current/all-retained ZIP exports.
+- [ ] TDD contracts, private-display live checks, both bundles and native Windows follow-up recorded separately.
+
 Desktop manager (2026-11-10): `yo3-desktop` supplies an Iced `yo3-revival` application with game-folder setup,
 local play, saved remote connections, independent server controls, live account creation/add-player/export,
 single-file private invitations, certificate updates and activity logs. Server state uses SQLite with a transactional

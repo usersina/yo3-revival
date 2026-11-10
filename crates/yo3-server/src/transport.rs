@@ -12,13 +12,16 @@ use crate::front::{FrontSession, Hub, World};
 use crate::lock::Locked;
 use crate::{log::PacketLog, net};
 
-async fn handshake(mut tls: TlsStream<TcpStream>, sessions: &Mutex<Sessions>, accounts: &Mutex<Directory>)
+async fn handshake(mut tls: TlsStream<TcpStream>, sessions: &Mutex<Sessions>, accounts: &Mutex<Directory>, info: &yo3_tunnel::ServerInfo)
     -> anyhow::Result<Option<(TlsStream<TcpStream>, Identity, Instant, Role, u16)>>
 {
     let mut magic = [0; 8]; tls.read_exact(&mut magic).await?;
     anyhow::ensure!(&magic == MAGIC, "unsupported transport version");
     match tls.read_u8().await? {
         1 => {
+            let protocol = tls.read_u16().await?;
+            let abi = tls.read_u16().await?;
+            if info.ensure_compatible(protocol, abi).is_err() { tls.write_u8(1).await?; tls.shutdown().await?; return Ok(None) }
             let mut key = [0; KEY_LEN]; tls.read_exact(&mut key).await?;
             let user = accounts.locked().authenticate(&key).map(|a| a.user_id);
             let token = user.and_then(|u| sessions.locked().login(u, Instant::now()));
@@ -46,6 +49,12 @@ async fn handshake(mut tls: TlsStream<TcpStream>, sessions: &Mutex<Sessions>, ac
             sessions.locked().logout(&session);
             tls.write_u8(0).await?;
         }
+        5 => {
+            let body = serde_json::to_vec(info)?;
+            anyhow::ensure!(body.len() <= yo3_tunnel::MAX_INFO, "discovery response too large");
+            tls.write_u16(body.len() as u16).await?;
+            tls.write_all(&body).await?;
+        }
         _ => anyhow::bail!("unsupported transport operation"),
     }
     tls.shutdown().await?;
@@ -69,7 +78,7 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: TlsAcceptor, wo
             let _permit = permit;
             let hello = tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
                 let tls = acceptor.accept(tcp).await?;
-                handshake(tls, &sessions, &accounts).await
+                handshake(tls, &sessions, &accounts, &yo3_tunnel::ServerInfo::current(world.engine_problem.is_none())).await
             }).await;
             let Ok(Ok(Some((mut tls, identity, expires, role, port)))) = hello else { return };
             let Some(mut lease) = sessions.locked().lease(identity) else { return };

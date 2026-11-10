@@ -12,6 +12,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Added: address-first server discovery with explicit identity approval, compatible version reporting and persistent
+  key verification. Existing invitations/profiles retain their credentials; same-key certificate renewal keeps trust.
 - Added: a Rust graphical launcher/server manager (`yo3-revival`) for local play, saved remote connections,
   independent hosting, live account creation and private single-file invitations, with logs in the same window.
 - Changed: server state uses SQLite with an atomic one-time import of existing JSON data, consistent startup backups

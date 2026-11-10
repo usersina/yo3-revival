@@ -8,11 +8,42 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls, TlsAcceptor, TlsConnector};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, pem::PemObject};
+mod identity;
+pub use identity::{ObservedServer, discover, identity_from_pem};
 
 pub type Stream = tokio_rustls::client::TlsStream<TcpStream>;
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
-pub const MAGIC: &[u8; 8] = b"YO3TLS01";
+pub const MAGIC: &[u8; 8] = b"YO3TLS02";
+pub const PROTOCOL_VERSION: u16 = 2;
+pub const MOD_ABI: u16 = 2;
+pub const BUILD_VERSION: &str = env!("YO3_VERSION");
+pub const BUILD_COMMIT: &str = env!("YO3_COMMIT");
+pub const MAX_INFO: usize = 4096;
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ServerInfo {
+    pub release: String,
+    pub commit: String,
+    pub protocol: u16,
+    pub mod_abi: u16,
+    pub game_version: String,
+    pub ready: bool,
+    pub problem: Option<String>,
+}
+impl ServerInfo {
+    pub fn current(ready: bool) -> Self {
+        Self { release: BUILD_VERSION.into(), commit: BUILD_COMMIT.into(), protocol: PROTOCOL_VERSION,
+            mod_abi: MOD_ABI, game_version: "1.153".into(), ready,
+            problem: (!ready).then(|| "The host's rules engine is unavailable.".into()) }
+    }
+    pub fn ensure_compatible(&self, protocol: u16, mod_abi: u16) -> anyhow::Result<()> {
+        if self.protocol != protocol { bail!("Server {} requires protocol {}; this application uses {}. Install a compatible release.", self.release, self.protocol, protocol) }
+        if self.mod_abi != mod_abi { bail!("Server {} requires connection DLL interface {}; installed components use {}. Repair or update the application.", self.release, self.mod_abi, mod_abi) }
+        if self.game_version != "1.153" { bail!("Server requires unsupported game version {}.", self.game_version) }
+        Ok(())
+    }
+}
 pub const KEY_LEN: usize = 20;
 pub const TOKEN_LEN: usize = 32;
 pub type Token = [u8; TOKEN_LEN];
@@ -43,6 +74,10 @@ pub struct Endpoint {
 }
 
 impl Endpoint {
+    /// A user/invitation-approved identity authenticates the public key independently of its changing address.
+    pub fn pinned(address: String, name: String, identity: &str) -> anyhow::Result<Self> {
+        Ok(Self { address, name: ServerName::try_from(name)?, connector: identity::connector(Some(identity))?.0 })
+    }
     pub fn new(address: String, name: String, certificate: &Path) -> anyhow::Result<Self> {
         Self::from_pem(address, name, &std::fs::read(certificate)?)
     }
@@ -66,13 +101,29 @@ impl Endpoint {
 
     pub async fn login(&self, key: &str) -> anyhow::Result<Token> {
         if key.len() != KEY_LEN { bail!("account key must have {KEY_LEN} characters") }
+        self.info().await?.ensure_compatible(PROTOCOL_VERSION, MOD_ABI)?;
         tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
             let mut tls = self.open(1).await?;
+            tls.write_u16(PROTOCOL_VERSION).await?;
+            tls.write_u16(MOD_ABI).await?;
             tls.write_all(key.as_bytes()).await?;
             let token = token_response(&mut tls).await?;
             tls.shutdown().await?;
             Ok(token)
         }).await.context("login timed out")?
+    }
+
+    /// Credential-free discovery, over the same authenticated TLS endpoint as game connections.
+    pub async fn info(&self) -> anyhow::Result<ServerInfo> {
+        tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
+            let mut tls = self.open(5).await?;
+            let length = tls.read_u16().await? as usize;
+            if length == 0 || length > MAX_INFO { bail!("invalid server discovery response length") }
+            let mut body = vec![0; length]; tls.read_exact(&mut body).await?;
+            let info = serde_json::from_slice(&body).context("invalid server discovery response")?;
+            tls.shutdown().await?;
+            Ok(info)
+        }).await.context("server discovery timed out")?.context("Server discovery failed; verify its address, identity and revival version")
     }
 
     pub async fn ticket(&self, session: &Token, role: Role) -> anyhow::Result<Token> {

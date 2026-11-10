@@ -54,8 +54,15 @@ hook terminates the suspended game before it can run. Starting the game directly
 
 ## Connections and credentials
 
-1. Rustls verifies the host certificate and its DNS name/IP using the public certificate the host supplied. No
-   certificate checks are disabled. The account key is sent only inside TLS, outside the game packet logger.
+The graphical application's address discovery is credential-free. Its first-use confirmation explicitly approves
+the observed identity; invitation import supplies the expected identity without another file-selection step.
+The approved SHA-256 SPKI identity, certificate validity and TLS handshake signature are verified on subsequent
+connections. Its address may change while retaining that identity. Legacy certificate-only CLI profiles below
+continue to use the supplied trust anchor and hostname checks; application exports now also include `identity`.
+
+1. Rustls verifies the approved server identity (or the supplied certificate/name for certificate-only CLI profiles).
+   TLS key-possession signatures are always verified. A credential-free compatibility check precedes login; the
+   server rejects unsupported protocol/DLL interfaces before reading an account key. Credentials stay outside packet logs.
 2. Login returns a random 256-bit session capability, valid for 12 hours. Separate launcher logins have separate
    identities, including two logins to the same account. The launcher never passes keys or tokens on command lines.
 3. Each front, duel or asset connection needs a fresh random 256-bit ticket. Tickets last 30 seconds, are scoped

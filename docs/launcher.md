@@ -48,10 +48,18 @@ Alternatively, choose **Add by address** and enter:
 - A name for the connection.
 - The host's DNS name or IP, optionally with a port (default **7443**).
 - The account access key supplied by the host.
-- The host's public `.crt` or `.pem` certificate.
+
+Press **Discover server**. The application observes the host's identity without sending account credentials and shows
+its release, protocol and required connection-mod interface. Compare the identity code with the host, then approve
+it and save the connection. The stored identity is checked on later connections. An invitation already carries the
+expected identity, so its normal import flow needs no separate certificate file. `yo3://host:port` links work too.
+
+Manual certificate import is under **Advanced**. Original certificate-only profiles/invitations still import with
+their adjacent certificate; the application derives the trusted identity from it and preserves the account key.
 
 Save the connection, select it from the server list, and use **Test connection** or **Play**. Saved connections keep
-separate credentials even when accounts use the same host or router. Certificate and hostname checks remain enabled.
+separate credentials even when accounts use the same host or router. Pinned connections verify the approved public
+key, certificate lifetime and TLS signature; certificate-only command-line profiles retain hostname/CA verification.
 An address alone does not grant an account or administration access.
 
 ## Host friends
@@ -123,8 +131,8 @@ snapshot; it cannot read SQLite or retain subsequent database-only changes.
 - **Incomplete game:** choose a full supported installation rather than an installer or a shortcut.
 - **Server executable/engine missing:** extract the entire application bundle, including `engine/` and its Node runtime.
 - **Cannot connect:** check the address/port, that the host is running and its firewall/VPN permits the connection.
-- **Certificate error:** get the correct invitation/certificate from the host. For a changed hosting address, update
-  its certificate while stopped and export new invitations. Certificate checks cannot be bypassed.
+- **Identity error:** confirm changes with the host or import their updated invitation. Automatic certificate renewal
+  with the same identity does not require approving a new key. An expired certificate still needs renewal by the host.
 - **Authentication refused:** the key belongs to an account on that specific server; import the correct invitation.
 - **Game startup fails:** see **Activity → Launcher & game**. The supported client and required DLL must match.
 - **Account name refused:** use a unique player name, 1–16 characters, and at most four players per account.
