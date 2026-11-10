@@ -24,6 +24,8 @@ includes our server, rules engine, connection DLL and launcher, but no game file
 In **Settings**, check the detected game folder or press **Browse**. Choose the folder containing `yo3.exe`,
 `yo3.idx` and `package/`, then **Save settings**. On Linux you can select a different Wine prefix too.
 The application checks the game data before starting. It leaves `yo3.exe` and `yo3.ini` unchanged.
+Component preflight checks the DLL's interface/release, 32-bit architecture and release manifest before sending an
+account key. The game stays suspended until the injected mod acknowledges readiness and authentication succeeds.
 
 ## Play on your server
 

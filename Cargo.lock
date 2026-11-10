@@ -3768,6 +3768,7 @@ dependencies = [
  "anyhow",
  "clap",
  "getrandom 0.4.3",
+ "ring",
  "serde",
  "serde_json",
  "subtle",

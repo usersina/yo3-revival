@@ -48,9 +48,12 @@ On Windows use `yo3-launcher.exe` and the Windows game-folder path. On Linux ins
 folder; `--wine-prefix /path/to/prefix` selects a non-default prefix. The injector and DLL are read from the
 launcher's directory, or `--injector` and `--dll` can name the development builds.
 
-The game still shows its original login form. Its username/password fields are not used: the launcher already
-authenticated before creating the game process. A bad credential or certificate prevents startup. A failed DLL
-hook terminates the suspended game before it can run. Starting the game directly cannot authenticate.
+The game still shows its original login form. Its username/password fields are unused. Static preflight checks
+the x86 game/injector, DLL metadata/release/interface and bundled file hashes before account authentication.
+The injector creates the game suspended, loads the DLL and asks its exported readiness function to confirm all
+hooks initialized. Only then does the launcher authenticate, activate its private proxy and permit the game to
+resume. A failed mod, identity or account check leaves the game unresumed and terminates it. Direct stock launches
+still require the separately installed loader; the current raw TLS endpoint cannot authenticate them.
 
 ## Connections and credentials
 

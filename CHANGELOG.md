@@ -12,6 +12,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Added: shared game-component preflight, release hash manifests and explicit DLL readiness before account login
+  and game resume. Missing/incompatible components report their local path before any authentication attempt.
 - Added: address-first server discovery with explicit identity approval, compatible version reporting and persistent
   key verification. Existing invitations/profiles retain their credentials; same-key certificate renewal keeps trust.
 - Added: a Rust graphical launcher/server manager (`yo3-revival`) for local play, saved remote connections,

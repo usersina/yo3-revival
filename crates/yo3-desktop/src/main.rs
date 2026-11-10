@@ -281,8 +281,10 @@ impl App {
     }
     fn play_view(&self) -> Element<'_, Msg> {
         let mut servers = vec![ServerChoice::Local]; servers.extend(self.servers.iter().map(ServerChoice::saved));
+        let choice_key = match self.selected { ServerChoice::Local => 0, ServerChoice::Saved { id, .. } => id };
+        let chooser = widget::keyed_column([(choice_key, pick_list(servers, Some(self.selected.clone()), Msg::Select).width(Fill).padding(12).into())]).width(Fill);
         let mut body = column![text("Your next duel starts here").size(30), text("Choose your own server or connect to a friend's address."),
-            row![pick_list(servers, Some(self.selected.clone()), Msg::Select).width(Fill).padding(12), button("Add by address").padding(12).on_press(Msg::AddServer).style(button::secondary), button("Import invitation").padding(12).on_press(Msg::Import).style(button::secondary)].spacing(12),
+            row![chooser, button("Add by address").padding(12).on_press(Msg::AddServer).style(button::secondary), button("Import invitation").padding(12).on_press(Msg::Import).style(button::secondary)].spacing(12),
             text(if self.selected == ServerChoice::Local { "Your server starts automatically when you press Play. Manage hosting in My server." } else { "This connection uses the saved account credential and host certificate." }).size(13)].spacing(20);
         if self.editor {
             body = body.push(container(column![text("Add a connection").size(20),

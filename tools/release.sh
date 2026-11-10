@@ -83,6 +83,8 @@ rm -rf "$out"
 mkdir -p "$out"
 cp target/release/yo3-server target/release/yo3-revival "$out/"
 cp target/release/yo3-launcher tools/mod/build/yo3-auth.dll tools/mod/build/yo3-auth-launch.exe "$out/"
+cp tools/mod/build/winmm.dll "$out/yo3-bootstrap.dll"
+cp target/x86_64-pc-windows-gnu/release/yo3-launcher.exe "$out/yo3-launcher-windows.exe"
 engine_files "$out"
 docs_files "$out"
 nodeball="node-$NODE_VERSION-linux-x64.tar.xz"
@@ -100,6 +102,7 @@ exec ./yo3-server --bind 0.0.0.0 --data-dir data --log-dir logs "$@"
 EOF
 chmod +x "$out/run.sh" "$out/yo3-server" "$out/yo3-revival" "$out/yo3-launcher" "$out/engine/node/node"
 python3 tools/bundle-licenses.py "$out" x86_64-unknown-linux-gnu
+python3 tools/bundle-manifest.py "$out"
 tar -C dist -czf "dist/$name.tar.gz" "$name"
 echo "dist/$name.tar.gz"
 
@@ -110,6 +113,7 @@ rm -rf "$out"
 mkdir -p "$out"
 cp target/x86_64-pc-windows-gnu/release/yo3-server.exe target/x86_64-pc-windows-gnu/release/yo3-revival.exe "$out/"
 cp target/x86_64-pc-windows-gnu/release/yo3-launcher.exe tools/mod/build/yo3-auth.dll tools/mod/build/yo3-auth-launch.exe "$out/"
+cp tools/mod/build/winmm.dll "$out/yo3-bootstrap.dll"
 engine_files "$out"
 docs_files "$out"
 nodezip="node-$NODE_VERSION-win-x64.zip"
@@ -134,6 +138,7 @@ if errorlevel 1 pause
 exit /b %errorlevel%
 EOF
 python3 tools/bundle-licenses.py "$out" x86_64-pc-windows-gnu
+python3 tools/bundle-manifest.py "$out"
 rm -f "dist/$win.zip"
 (cd dist && python3 -c 'import shutil, sys; shutil.make_archive(sys.argv[1], "zip", ".", sys.argv[1])' "$win")
 echo "dist/$win.zip"

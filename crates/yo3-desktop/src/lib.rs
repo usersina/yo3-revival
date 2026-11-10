@@ -275,6 +275,7 @@ impl Backend {
         let mut game = self.game.lock().unwrap();
         ensure!(game.as_mut().is_none_or(|p| p.try_wait().ok().flatten().is_some()), "The game is already running.");
         validate_game(Path::new(&settings.game_dir))?;
+        yo3_launcher::components::preflight(&Path::new(&settings.game_dir).join("yo3.exe"), &self.runtime.injector, &self.runtime.dll)?;
         let mut server = match remote {
             Some(s) => s,
             None => {
@@ -284,7 +285,6 @@ impl Backend {
         };
         server.id = server.id.max(0);
         server.validate()?;
-        self.check_connection(&server)?;
         let profile = self.write_profile(&server)?;
         ensure!(self.runtime.launcher.is_file() && self.runtime.dll.is_file() && self.runtime.injector.is_file(), "Connection files are missing. Extract the complete application bundle.");
         let log = std::fs::OpenOptions::new().create(true).append(true).open(self.root.join("logs/launcher.log"))?;

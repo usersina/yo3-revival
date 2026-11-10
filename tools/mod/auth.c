@@ -7,6 +7,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "metadata.h"
+
+__declspec(dllexport) const Yo3ModMetadata Yo3ModInfo __attribute__((section(".yo3"), used)) = {
+    {'Y','O','3','M','O','D','0','2'}, YO3_MOD_ABI, YO3_BUILD_VERSION, YO3_BUILD_COMMIT
+};
+static int mod_ready;
+__declspec(dllexport) DWORD WINAPI Yo3ModReady(void *unused) { (void)unused; return mod_ready ? YO3_MOD_ABI : 0; }
 
 static DWORD (WINAPI *profile_string)(LPCSTR,LPCSTR,LPCSTR,LPSTR,DWORD,LPCSTR);
 static UINT (WINAPI *profile_int)(LPCSTR,LPCSTR,INT,LPCSTR);
@@ -171,10 +178,11 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
     InitializeCriticalSection(&guard);
     for (unsigned i = 0; i < 64; ++i) connections[i].socket = INVALID_SOCKET;
     /* Fail closed: the injector must terminate the suspended game if any import cannot be guarded. */
-    return hook("GetPrivateProfileStringA", (void *)hooked_string, (void **)&profile_string)
+    mod_ready = hook("GetPrivateProfileStringA", (void *)hooked_string, (void **)&profile_string)
         && hook("GetPrivateProfileIntA", (void *)hooked_int, (void **)&profile_int)
         && hook("connect", (void *)hooked_connect, (void **)&socket_connect)
         && hook("send", (void *)hooked_send, (void **)&socket_send)
         && hook("closesocket", (void *)hooked_close, (void **)&socket_close)
         && hook("InternetOpenUrlA", (void *)hooked_url, (void **)&open_url);
+    return mod_ready;
 }

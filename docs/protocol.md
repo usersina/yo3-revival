@@ -69,6 +69,12 @@ the TLS handshake signature. Address discovery proves possession of the observed
 user approves it or compares it to the host's invitation. It can issue only the credential-free info operation and
 does not save trust. Certificate-only CLI profiles retain their existing CA/name verification behavior.
 
+The local injector's own startup protocol is `YO3_MOD_READY` (LF/CRLF accepted) on stdout after the required mod's
+`Yo3ModReady` confirms DLL interface 2; the game stays suspended. The parent authenticates and writes `resume\n`
+to stdin only after that acknowledgement. EOF/failure kills the suspended child. `.yo3` PE metadata carries the
+mod interface, release and commit, while `bundle.json` inventories release hashes. Tests: launcher `components`,
+`desktop_control`, `tools/mod/test.sh`; this is our bootstrap protocol, not a game reply shape.
+
 Status 0 succeeds, 1 refuses. Handshakes time out after 10 seconds. Authentication bytes never enter the game packet
 logger. The asset role permits public patch/app/duel-log routes only; `/admin` is inaccessible through TLS. Internal
 HTTP listens on loopback. New keys and tokens use OS cryptographic randomness. Store/connection caps are documented

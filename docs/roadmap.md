@@ -31,7 +31,9 @@ Launcher usability phase (2026-11-10, in progress on `feat/desktop-launcher`):
 - [x] Address-first discovery and remembered identities; existing invitation/profile credentials preserved. Private
   display :88 showed discovery and first-use identity confirmation by IP with no certificate file; metadata contracts
   cover expiry, key changes, same-key renewal, wrong names and bounded responses.
-- [ ] Shared build/protocol/DLL requirements, preflight and DLL readiness before game login.
+- [x] Shared build/protocol/DLL requirements, preflight and DLL readiness before game login. Static preflight rejects
+  wrong/missing/changed files before authentication; injector readiness precedes account login and game resume.
+  Live: private :88 game reached the main screen as UsabilityYugi after readiness interface 2 was acknowledged.
 - [ ] Direct-start loader investigation; keep `yo3.exe` unchanged. Gate callback `0x4699B0` reads only host/port;
   login dispatcher `0x469C00` uses error codes and `0x46D050` selects fixed local UI strings. A custom requirements
   dialog/file picker needs local code; do not invent a server message field.
