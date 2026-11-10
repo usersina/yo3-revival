@@ -1563,6 +1563,9 @@ It binds loopback and the TLS asset-role whitelist denies access. Account listin
 explicit credential-bearing operation. Unknown operations/fields and incorrect tokens are refused. Mutations persist
 once and restore memory if saving fails. **Status: implemented/tested**, evidence `tests/manager_contract.rs` and
 the GUI's live account/create/play check; these are our API definitions, not inferred game-client reply shapes.
+Status also reports the actual `listen` socket and `release`, so a reopened manager and local game use the active
+listener rather than guessing from saved settings. Only the authenticated game/discovery port is public; internal
+management/assets HTTP stays loopback.
 
 ## Fields the client reads that we leave out
 

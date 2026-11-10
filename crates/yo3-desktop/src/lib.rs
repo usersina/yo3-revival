@@ -8,6 +8,8 @@ use rusqlite::{Connection, OptionalExtension};
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
 use yo3_server::admin::{self, ManagerOp};
+pub mod network;
+pub mod privileged;
 
 pub fn server_address(input: &str) -> anyhow::Result<(String, String)> {
     let input = input.trim();
@@ -33,7 +35,9 @@ pub struct Settings {
     pub wine_prefix: String,
     pub host_address: String,
     pub data_dir: String,
-    pub allow_friends: bool,
+    pub bind_address: String,
+    pub bind_interface: Option<String>,
+    pub listen_port: u16,
     pub player_name: String,
     pub selected_server: Option<i64>,
     pub local_account: String,
@@ -41,7 +45,8 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self { game_dir: yo3_data::default_game_dir().to_string_lossy().into(), wine_prefix: String::new(),
-            host_address: "localhost:7443".into(), data_dir: String::new(), allow_friends: false, player_name: "Duelist".into(), selected_server: None, local_account: String::new() }
+            host_address: "localhost".into(), data_dir: String::new(), bind_address: "0.0.0.0".into(), bind_interface: None, listen_port: 7443,
+            player_name: "Duelist".into(), selected_server: None, local_account: String::new() }
     }
 }
 
@@ -137,7 +142,17 @@ impl LauncherDb {
     }
     pub fn settings(&self) -> anyhow::Result<Settings> {
         let data: Option<String> = self.conn.query_row("SELECT body FROM settings WHERE id=1", [], |r| r.get(0)).optional()?;
-        Ok(data.map(|s| serde_json::from_str(&s)).transpose()?.unwrap_or_default())
+        let Some(body) = data else { return Ok(Settings::default()) };
+        let value: Value = serde_json::from_str(&body)?;
+        let mut settings: Settings = serde_json::from_value(value.clone())?;
+        if value.get("bind_address").is_none() {
+            settings.bind_address = if value["allow_friends"].as_bool().unwrap_or(false) { "0.0.0.0" } else { "127.0.0.1" }.into();
+            let (address, name) = server_address(&settings.host_address)?;
+            settings.listen_port = address.rsplit_once(':').unwrap().1.parse()?;
+            settings.host_address = name;
+            self.save_settings(&settings)?;
+        }
+        Ok(settings)
     }
     pub fn save_settings(&self, settings: &Settings) -> anyhow::Result<()> {
         self.conn.execute("INSERT INTO settings VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET body=excluded.body", [serde_json::to_string(settings)?])?;
@@ -210,21 +225,19 @@ impl Backend {
         validate_game(Path::new(&settings.game_dir))?;
         ensure!(self.runtime.server.is_file(), "The server executable is missing. Extract the complete application bundle.");
         ensure!(yo3_server::engine::problem(Some(&self.runtime.engine)).is_none(), "The rules engine is incomplete. Extract the complete application bundle again.");
-        let (address, name) = server_address(&settings.host_address)?;
-        let ipv6 = name.parse::<std::net::Ipv6Addr>().is_ok();
-        let port = address.rsplit_once(':').unwrap().1;
+        let (_, name) = server_address(&settings.host_address)?;
+        let bind = network::resolve_bind(settings, &network::bindings()?)?;
+        ensure!(settings.listen_port > 0, "Port must be between 1 and 65535.");
+        let port = settings.listen_port.to_string();
         let data = self.data_dir(settings);
-        if !data.join("server.crt").exists() {
-            yo3_server::auth::initialize(&data, vec!["localhost".into(), "127.0.0.1".into(), name.clone()])?;
-        }
+        yo3_server::auth::maintain_identity(&data, vec!["localhost".into(), "127.0.0.1".into(), name.clone()])?;
         yo3_server::store::initialize(&data)?;
         let mut directory = yo3_server::accounts::Directory::open(vec![], &data.join("accounts.json"))?;
         if directory.entries().next().is_none() { directory.add_account(std::slice::from_ref(&settings.player_name)).map_err(anyhow::Error::msg)?; }
         drop(directory);
         let log = std::fs::OpenOptions::new().create(true).append(true).open(self.root.join("logs/server.log"))?;
         let mut cmd = Command::new(&self.runtime.server);
-        let bind = match (settings.allow_friends, ipv6) { (true, true) => "::", (false, true) => "::1", (true, false) => "0.0.0.0", (false, false) => "127.0.0.1" };
-        cmd.args(["--bind", bind, "--auth-port", port, "--http-port", "0"])
+        cmd.args(["--bind", &bind.to_string(), "--auth-port", &port, "--http-port", "0"])
             .arg("--data-dir").arg(data).arg("--game-dir").arg(&settings.game_dir).arg("--log-dir").arg(self.root.join("logs"))
             .env("YO3_ENGINE_DIR", &self.runtime.engine).env("NO_COLOR", "1").stdin(Stdio::null()).stdout(log.try_clone()?).stderr(log);
         detach_server(&mut cmd);
@@ -251,7 +264,7 @@ impl Backend {
     }
     pub fn invitation(&self, settings: &Settings, who: &str) -> anyhow::Result<SavedServer> {
         let key = self.manage(settings, ManagerOp::ExportAccount { who: who.into() })?["key"].as_str().context("Missing account key")?.to_string();
-        let (address, server_name) = server_address(&settings.host_address)?;
+        let (address, server_name) = network::advertised(settings)?;
         Ok(SavedServer { id: 0, label: format!("{}'s server", who), address, server_name,
             certificate: std::fs::read_to_string(self.data_dir(settings).join("server.crt"))?, identity: None, key })
     }
@@ -267,8 +280,10 @@ impl Backend {
     pub fn local_connection(&self, settings: &Settings, who: &str) -> anyhow::Result<SavedServer> {
         let account = if who.is_empty() { self.accounts(settings)?[0]["players"][0]["name"].as_str().unwrap_or("Duelist").to_string() } else { who.to_string() };
         let mut server = self.invitation(settings, &account)?;
-        let (_, port) = server.address.rsplit_once(':').unwrap();
-        server.address = if server.server_name.parse::<std::net::Ipv6Addr>().is_ok() { format!("[::1]:{port}") } else { format!("127.0.0.1:{port}") };
+        let status = self.status(settings)?;
+        let mut address: std::net::SocketAddr = status["listen"].as_str().context("Server does not report its listening address; update the server.")?.parse()?;
+        if address.ip().is_unspecified() { address.set_ip(if address.is_ipv6() { "::1".parse()? } else { "127.0.0.1".parse()? }); }
+        server.address = address.to_string();
         Ok(server)
     }
     pub fn play(&self, settings: &Settings, remote: Option<SavedServer>, who: &str) -> anyhow::Result<()> {

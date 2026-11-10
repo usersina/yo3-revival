@@ -329,8 +329,8 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         admin::write_live(dir, http_addr.port()).map_err(|e| tracing::warn!("admin commands won't reach this server ({}): {e}", dir.display())).ok()
     });
     let (shutdown, _) = tokio::sync::watch::channel(false);
-    let manager = manager::Manager { accounts: directory.clone(), hub, shutdown: shutdown.clone(), engine_problem: world.engine_problem.clone() };
+    let manager = manager::Manager { accounts: directory.clone(), hub, shutdown: shutdown.clone(), engine_problem: world.engine_problem.clone(), listen: auth_addr };
     let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs")), directory, admin_token, manager));
-    tracing::info!("authenticated TLS {} public HTTP {}; packets -> {}", auth_addr, http_addr, packets.path().display());
+    tracing::info!("authenticated TLS {} local management/assets HTTP {}; packets -> {}", auth_addr, http_addr, packets.path().display());
     Ok(Running { auth: auth_addr, http: http_addr, tasks: vec![auth_task, http_task, clock_task], shutdown })
 }

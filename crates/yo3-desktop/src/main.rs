@@ -8,6 +8,7 @@ use yo3_server::admin::ManagerOp;
 use serde_json::Value;
 
 fn main() -> iced::Result {
+    if let Some(code) = yo3_desktop::privileged::helper_mode() { std::process::exit(code); }
     iced::application(App::boot, App::update, App::view).title("YO3 Revival").default_font(iced::Font::with_name("Fira Sans"))
         .theme(|_: &App| Theme::custom("Revival", iced::theme::Palette { background: Color::from_rgb8(15, 20, 29),
             text: Color::from_rgb8(229, 235, 244), primary: Color::from_rgb8(75, 155, 224),
@@ -20,10 +21,10 @@ fn main() -> iced::Result {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Page { Play, Server, Accounts, Activity, Settings }
 #[derive(Clone, Copy)]
-enum Field { Game, Wine, Host, Data, Player, Label, Address, Key, Account, NewPlayer }
+enum Field { Game, Wine, Host, Data, Player, Label, Address, Key, Account, NewPlayer, Port }
 #[derive(Clone)]
 enum Msg {
-    Page(Page), Input(Field, String), Sharing(bool), Select(ServerChoice), AccountSelect(String), Start, Stop, Play, StopGame, TestConnection, Discover, TrustIdentity, AdvancedConnection,
+    Page(Page), Input(Field, String), Select(ServerChoice), AccountSelect(String), Start, Stop, Play, StopGame, TestConnection, Discover, TrustIdentity, AdvancedConnection, AdvancedNetwork, RefreshBindings, BindSelect(yo3_desktop::network::BindAddress), Firewall,
     SaveSettings, Browse(Field), Import, AddServer, SaveServer, Certificate, CreateAccount, AddPlayer, Export,
     Tick, Poll(Result<(Option<Value>, bool, String, Option<String>), String>), Done(Result<Outcome, String>), Logs(bool), Pause(bool),
     LogFilter(String), CopyLogs, SaveLogs, OpenData, Help, Close, CancelClose, Quit(bool), ConfirmCertificate, RenewCertificate,
@@ -32,7 +33,7 @@ impl std::fmt::Debug for Msg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("DesktopEvent") }
 }
 #[derive(Clone)]
-enum Outcome { Info(String), Status(Value), Accounts(Value), Path(Field, String), Imported(SavedServer), Observed(yo3_tunnel::ObservedServer), Checked(yo3_tunnel::ServerInfo), Certificate(String), SettingsSaved(Settings), ConnectionsSaved(Vec<SavedServer>), Quit }
+enum Outcome { Info(String), Status(Value), Accounts(Value), Path(Field, String), Imported(SavedServer), Observed(yo3_tunnel::ObservedServer), Checked(yo3_tunnel::ServerInfo), Bindings(Vec<yo3_desktop::network::BindAddress>), Certificate(String), SettingsSaved(Settings), ConnectionsSaved(Vec<SavedServer>), Quit }
 
 struct App {
     root: PathBuf, backend: Option<Arc<Backend>>, settings: Settings, draft: Settings,
@@ -41,6 +42,7 @@ struct App {
     certificate: String, server_name: String, busy: bool, polling: bool, game_running: bool, notice: String,
     failed: bool, log_server: bool, paused: bool, logs: String, filter: String, closing: bool, confirm_certificate: bool,
     identity: Option<String>, observed: Option<yo3_tunnel::ObservedServer>, checked: Option<yo3_tunnel::ServerInfo>, advanced_connection: bool,
+    bindings: Vec<yo3_desktop::network::BindAddress>, advanced_network: bool, port: String,
 }
 
 fn job(f: impl FnOnce() -> anyhow::Result<Outcome> + Send + 'static) -> Task<Msg> {
@@ -57,25 +59,36 @@ impl App {
         let account = settings.local_account.clone();
         let backend = if error.is_empty() { Backend::new(root.clone()).map_err(|e| error = e.to_string()).ok() } else { None };
         let page = if std::path::Path::new(&settings.game_dir).join("yo3.exe").is_file() { Page::Play } else { Page::Settings };
+        let port = settings.listen_port.to_string();
         Self { root, backend, draft: settings.clone(), settings, page, servers, selected,
             status: None, accounts: Value::Null, account, new_account: String::new(), new_player: String::new(),
             editor: false, label: String::new(), address: String::new(), key: String::new(), certificate: String::new(), server_name: String::new(),
             busy: false, polling: false, game_running: false, failed: !error.is_empty(), notice: if error.is_empty() { "Welcome. Choose where you want to play.".into() } else { error },
             log_server: true, paused: false, logs: String::new(), filter: String::new(), closing: false, confirm_certificate: false,
-            identity: None, observed: None, checked: None, advanced_connection: false }
+            identity: None, observed: None, checked: None, advanced_connection: false,
+            bindings: yo3_desktop::network::defaults(), advanced_network: false, port }
     }
     fn update(&mut self, message: Msg) -> Task<Msg> {
         if self.busy && !matches!(message, Msg::Done(_) | Msg::Poll(_) | Msg::Tick | Msg::Close | Msg::CancelClose) { return Task::none() }
         match message {
-            Msg::Page(page) => { self.page = page; if page == Page::Accounts { return self.load_accounts() } }
+            Msg::Page(page) => { self.page = page; if page == Page::Accounts { return self.load_accounts() } else if page == Page::Server { return self.update(Msg::RefreshBindings) } }
             Msg::Input(field, value) => match field {
                 Field::Game => self.draft.game_dir = value, Field::Wine => self.draft.wine_prefix = value,
                 Field::Host => self.draft.host_address = value, Field::Data => self.draft.data_dir = value,
                 Field::Player => self.draft.player_name = value, Field::Label => self.label = value,
                 Field::Address => { self.address = value; self.server_name.clear(); self.identity = None; self.certificate.clear(); self.observed = None; }, Field::Key => self.key = value,
-                Field::Account => self.new_account = value, Field::NewPlayer => self.new_player = value,
+                Field::Account => self.new_account = value, Field::NewPlayer => self.new_player = value, Field::Port => self.port = value,
             },
-            Msg::Sharing(value) => self.draft.allow_friends = value,
+            Msg::AdvancedNetwork => { self.advanced_network = !self.advanced_network; if self.advanced_network { return self.update(Msg::RefreshBindings) } }
+            Msg::RefreshBindings => { self.busy = true; return job(|| Ok(Outcome::Bindings(yo3_desktop::network::bindings()?))) }
+            Msg::BindSelect(binding) => { self.settings.bind_address = binding.address.to_string(); self.settings.bind_interface = binding.interface_id.clone(); self.draft.bind_address = binding.address.to_string(); self.draft.bind_interface = binding.interface_id; }
+            Msg::Firewall => {
+                let port = self.settings.listen_port; self.busy = true; self.notice = "Waiting for firewall permission. Normal server startup does not require elevation.".into();
+                return job(move || Ok(Outcome::Info(match yo3_desktop::privileged::request_firewall(port)? {
+                    yo3_desktop::privileged::PermissionResult::Applied => "Firewall rule configured for the server's TCP port.".into(),
+                    yo3_desktop::privileged::PermissionResult::Cancelled => "Firewall setup cancelled. Your server and settings were left running as before.".into(),
+                })));
+            }
             Msg::Select(value) => {
                 if self.game_running { self.feedback(Err("Close the game before changing its connection.".into())); return Task::none() }
                 self.settings.selected_server = match &value { ServerChoice::Local => None, ServerChoice::Saved { id, .. } => Some(*id) };
@@ -99,11 +112,15 @@ impl App {
             Msg::Start | Msg::Stop | Msg::Play | Msg::StopGame => {
                 if self.busy { return Task::none() }
                 let Some(backend) = self.backend.clone() else { return Task::none() };
+                if matches!(message, Msg::Start) {
+                    let port: u16 = match self.port.parse() { Ok(port) if port > 0 => port, _ => { self.feedback(Err("Port must be between 1 and 65535.".into())); return Task::none() } };
+                    self.settings.listen_port = port; self.draft.listen_port = port; self.settings.host_address = self.draft.host_address.clone();
+                }
                 self.busy = true;
                 let settings = self.settings.clone();
                 let who = self.account.clone();
                 match message {
-                    Msg::Start => { self.notice = "Starting your server…".into(); return job(move || Ok(Outcome::Status(backend.start_server(&settings)?))) }
+                    Msg::Start => { let root = self.root.clone(); self.notice = "Starting your server…".into(); return job(move || { LauncherDb::open(&root)?.save_settings(&settings)?; Ok(Outcome::Status(backend.start_server(&settings)?)) }) }
                     Msg::Stop => { self.notice = "Stopping your server…".into(); return job(move || { backend.stop_server(&settings)?; Ok(Outcome::Info("Server is stopping.".into())) }) }
                     Msg::StopGame => return job(move || { backend.stop_game()?; Ok(Outcome::Info("Closing the game…".into())) }),
                     _ => {
@@ -116,11 +133,15 @@ impl App {
             Msg::SaveSettings => {
                 if self.busy { return Task::none() }
                 let root = self.root.clone(); let mut draft = self.draft.clone(); draft.selected_server = self.settings.selected_server; draft.local_account = if draft.data_dir != self.settings.data_dir { String::new() } else { self.account.clone() }; let current = self.settings.clone(); let backend = self.backend.clone();
+                let port = self.port.clone();
                 self.busy = true;
                 return job(move || {
                     yo3_desktop::server_address(&draft.host_address)?;
+                    draft.listen_port = port.parse().map_err(|_| anyhow::anyhow!("Port must be between 1 and 65535."))?;
+                    anyhow::ensure!(draft.listen_port > 0, "Port must be between 1 and 65535.");
+                    yo3_desktop::network::resolve_bind(&draft, &yo3_desktop::network::bindings()?)?;
                     if backend.as_ref().is_some_and(|b| b.live(&current).is_some()) {
-                        anyhow::ensure!(current.host_address == draft.host_address && current.allow_friends == draft.allow_friends && current.data_dir == draft.data_dir && current.game_dir == draft.game_dir,
+                        anyhow::ensure!(current.bind_address == draft.bind_address && current.bind_interface == draft.bind_interface && current.listen_port == draft.listen_port && current.data_dir == draft.data_dir && current.game_dir == draft.game_dir,
                             "Stop your server before changing its setup.");
                     }
                     LauncherDb::open(&root)?.save_settings(&draft)?;
@@ -201,6 +222,7 @@ impl App {
                     Ok(Outcome::Imported(server)) => { self.identity = server.identity.clone().or_else(|| yo3_tunnel::identity_from_pem(server.certificate.as_bytes()).ok()); self.label = server.label; self.address = server.address; self.key = server.key; self.certificate = server.certificate; self.server_name = server.server_name; self.editor = true; self.page = Page::Play; self.feedback(Ok("Invitation loaded. Save this connection to continue.".into())); }
                     Ok(Outcome::Observed(server)) => { self.observed = Some(server); self.feedback(Ok("Compare this identity with the host before approving it. No account credentials were sent.".into())); }
                     Ok(Outcome::Checked(info)) => { self.checked = Some(info); self.feedback(Ok("Connection and account verified.".into())); }
+                    Ok(Outcome::Bindings(bindings)) => { self.bindings = bindings; }
                     Ok(Outcome::SettingsSaved(settings)) => { if settings.data_dir != self.settings.data_dir { self.accounts = Value::Null; self.account.clear(); self.status = None; } self.settings = settings; self.feedback(Ok("Settings saved.".into())); }
                     Ok(Outcome::ConnectionsSaved(servers)) => { self.selected = ServerChoice::saved(servers.last().unwrap()); self.servers = servers; self.editor = false; self.key.clear(); self.certificate.clear(); self.settings.selected_server = self.servers.last().map(|s| s.id); self.feedback(Ok("Connection saved.".into())); return self.save_selection(); }
                     Ok(Outcome::Certificate(certificate)) => { self.identity = yo3_tunnel::identity_from_pem(certificate.as_bytes()).ok(); self.certificate = certificate; self.feedback(Ok("Host certificate selected.".into())); }
@@ -304,13 +326,28 @@ impl App {
     fn server_view(&self) -> Element<'_, Msg> {
         let online = self.status.as_ref().and_then(|v| v["online"].as_u64()).unwrap_or(0);
         let duels = self.status.as_ref().and_then(|v| v["duels"].as_u64()).unwrap_or(0);
+        let listening = self.status.as_ref().and_then(|v| v["listen"].as_str()).map(str::to_string)
+            .unwrap_or_else(|| format!("{}:{}", self.settings.bind_address, self.settings.listen_port));
+        let friends = yo3_desktop::network::advertised(&self.settings).map(|v| v.0).unwrap_or_else(|_| self.settings.host_address.clone());
         let mut body = column![text("My server").size(30), text("Hosting is independent of the server selected on Play."),
-            container(column![text(if self.status.is_some() { "RUNNING" } else { "STOPPED" }).size(14), text(&self.settings.host_address).size(24),
-                text(format!("{online} players online · {duels} active duels")), text(if self.settings.allow_friends { "Accepting connections from other computers" } else { "Local play only · enable friends in Settings to host" }).size(13)].spacing(12)).padding(22).width(Fill).style(container::rounded_box),
+            container(column![text(if self.status.is_some() { "RUNNING" } else { "STOPPED" }).size(14), text(format!("{} {listening}", if self.status.is_some() { "Listening on" } else { "Will listen on" })).size(24),
+                text(format!("{online} players online · {duels} active duels")), text(format!("Friends use {friends} · one public TCP port")).size(13)].spacing(12)).padding(22).width(Fill).style(container::rounded_box),
             row![button("Start server").padding(12).on_press_maybe((!self.busy && self.status.is_none()).then_some(Msg::Start)),
                 button("Stop server").padding(12).on_press_maybe((!self.busy && self.status.is_some()).then_some(Msg::Stop)).style(button::danger),
                 button("View activity").padding(12).on_press(Msg::Page(Page::Activity)).style(button::secondary)].spacing(12),
-            text("Stopping the server disconnects its players. Closing your game keeps hosting active.").size(13)].spacing(22);
+            text("Stopping the server disconnects its players. Closing your game keeps hosting active.").size(13),
+            row![button("Advanced networking…").on_press(Msg::AdvancedNetwork).style(button::secondary), button("Allow through firewall…").on_press(Msg::Firewall).style(button::secondary)].spacing(12)].spacing(22);
+        if self.advanced_network {
+            if self.status.is_none() {
+                let resolved = yo3_desktop::network::resolve_bind(&self.settings, &self.bindings).ok();
+                let selected = self.bindings.iter().find(|b| b.interface_id == self.settings.bind_interface && Some(b.address) == resolved).cloned();
+                body = body.push(text("Listen on")).push(pick_list(self.bindings.clone(), selected, Msg::BindSelect).placeholder("Saved interface unavailable — refresh and select").width(Fill))
+                    .push(row![text("TCP port"), text_input("7443", &self.port).on_input(|v| Msg::Input(Field::Port, v)).padding(12).width(Fixed(120.0)), button("Refresh interfaces").on_press(Msg::RefreshBindings)].spacing(12))
+                    .push(input("Address friends use (hostname/IP, optional external :port)", &self.draft.host_address, Field::Host))
+                    .push(text("Start server saves these networking choices. 0.0.0.0 listens on all IPv4 interfaces; friends need an actual reachable address. An explicit address port supports router/VPN port mapping.").size(12))
+                    .push(button("Reissue certificate for saved address").on_press(Msg::ConfirmCertificate).style(button::secondary));
+            } else { body = body.push(text("Stop your server to change its listening interface or port. The address above reports its active listener.").size(13)); }
+        }
         if let Some(status) = &self.status {
             if let Some(problem) = status["engine_problem"].as_str() { body = body.push(text(problem).color(Color::from_rgb8(240, 143, 148))); }
             if let Some(players) = status["players"].as_array() { for p in players { body = body.push(text(format!("{}  ·  {}", p["name"].as_str().unwrap_or("Player"), if p["duelling"].as_bool().unwrap_or(false) { "Duelling" } else { "Online" }))); } }
@@ -342,12 +379,11 @@ impl App {
         let mut body = column![text("Make yourself at home").size(30), text("Choose a complete game installation. We keep the game executable and INI unchanged."),
             text("Game folder").size(15), row![input("Folder containing yo3.exe", &self.draft.game_dir, Field::Game), button("Browse…").padding(12).on_press(Msg::Browse(Field::Game))].spacing(12)].spacing(16);
         if !cfg!(windows) { body = body.push(text("Wine prefix (optional)")).push(row![input("Default Wine prefix", &self.draft.wine_prefix, Field::Wine), button("Browse…").padding(12).on_press(Msg::Browse(Field::Wine))].spacing(12)); }
-        body = body.push(widget::rule::horizontal(1)).push(text("Hosting").size(22)).push(checkbox(self.draft.allow_friends).label("Allow friends to connect to my server").on_toggle(Msg::Sharing))
+        body = body.push(widget::rule::horizontal(1)).push(text("Hosting").size(22)).push(text("Choose the listening interface and port in My server → Advanced networking.").size(13))
             .push(input("Address friends will reach — e.g. 192.168.1.50:7443", &self.draft.host_address, Field::Host))
             .push(input("Your first player's name", &self.draft.player_name, Field::Player))
             .push(row![input("Server data folder (empty uses application storage)", &self.draft.data_dir, Field::Data), button("Browse…").padding(12).on_press(Msg::Browse(Field::Data))].spacing(12))
-            .push(button("Update certificate for saved address").on_press_maybe((!self.busy && self.status.is_none()).then_some(Msg::ConfirmCertificate)).style(button::secondary))
-            .push(text("Choose the reachable address before starting a new server identity. Existing data folders are imported into SQLite once, with the originals retained.").size(12))
+            .push(text("Server identities are managed by the application. Existing data folders are imported into SQLite once, with the originals retained.").size(12))
             .push(row![button("Save settings").padding(12).on_press_maybe((!self.busy).then_some(Msg::SaveSettings)), button("Open application data").padding(12).on_press(Msg::OpenData)].spacing(12));
         scrollable(body).height(Fill).into()
     }

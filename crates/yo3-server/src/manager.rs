@@ -42,6 +42,7 @@ pub(crate) struct Manager {
     pub hub: Arc<Mutex<Hub>>,
     pub shutdown: tokio::sync::watch::Sender<bool>,
     pub engine_problem: Option<String>,
+    pub listen: SocketAddr,
 }
 
 impl Manager {
@@ -75,6 +76,7 @@ impl Manager {
         if matches!(op, ManagerOp::Status) {
             let hub = self.hub.locked();
             return Ok(json!({"ready":self.engine_problem.is_none(), "engine_problem":self.engine_problem,
+                "listen":self.listen.to_string(), "release":yo3_tunnel::BUILD_VERSION,
                 "players":hub.manager_players(), "online":hub.online(), "duels":hub.tables.len()}));
         }
         if matches!(op, ManagerOp::Shutdown) {

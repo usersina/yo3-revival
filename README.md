@@ -23,8 +23,9 @@ Published releases through v0.0.3 predate this application; until a new release 
 
 - **Joining a friend?** Import their private invitation on **Play**, save the connection and press **Play**.
   You can also add their address, account key and public certificate manually.
-- **Hosting friends?** Set your reachable address in **Settings**, enable friends, then **Start server** on
-  **My server**. Create their accounts and export private invitations on **Accounts**. Allow TCP **7443**.
+- **Hosting friends?** Set your reachable address in **Settings**, then **Start server** on **My server**.
+  New servers listen on all IPv4 interfaces; **Advanced networking** selects a specific interface or port.
+  Create accounts and private invitations on **Accounts**, and allow the chosen TCP port through the firewall.
 - **Playing alone?** Choose **My server** on **Play** and press **Play**; your server starts automatically.
 
 The [graphical setup guide](docs/launcher.md) walks through all three paths, certificates, data and troubleshooting.

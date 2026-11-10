@@ -20,7 +20,8 @@ pub fn initialize(dir: &std::path::Path, names: Vec<String>) -> anyhow::Result<T
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
     }
-    let cert = rcgen::generate_simple_self_signed(names)?;
+    let signing_key = rcgen::KeyPair::generate()?;
+    let cert = certificate_parameters(names)?.self_signed(&signing_key)?;
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)] {
@@ -28,10 +29,47 @@ pub fn initialize(dir: &std::path::Path, names: Vec<String>) -> anyhow::Result<T
         options.mode(0o600);
     }
     let mut key = options.open(&private_key)?;
-    key.write_all(cert.signing_key.serialize_pem().as_bytes())?;
+    key.write_all(signing_key.serialize_pem().as_bytes())?;
     let result = std::fs::OpenOptions::new().write(true).create_new(true).open(&certificate)
-        .and_then(|mut f| f.write_all(cert.cert.pem().as_bytes()));
+        .and_then(|mut f| f.write_all(cert.pem().as_bytes()));
     if let Err(e) = result { let _ = std::fs::remove_file(&private_key); return Err(e.into()) }
+    Ok(TlsConfig { port: 7443, certificate, private_key })
+}
+
+fn certificate_parameters(names: Vec<String>) -> anyhow::Result<rcgen::CertificateParams> {
+    let mut params = rcgen::CertificateParams::new(names)?;
+    params.not_before = std::time::SystemTime::now().into();
+    params.not_before -= std::time::Duration::from_secs(300);
+    params.not_after = params.not_before + std::time::Duration::from_secs(365 * 86400 + 300);
+    Ok(params)
+}
+
+/// The GUI calls this only while stopped. Renew self-managed identities near expiry or when names change,
+/// preserving the private key and previous names. An externally issued certificate is never replaced here.
+pub fn maintain_identity(dir: &std::path::Path, mut names: Vec<String>) -> anyhow::Result<TlsConfig> {
+    let certificate = dir.join("server.crt"); let private_key = dir.join("server.key");
+    if !certificate.exists() && !private_key.exists() { return initialize(dir, names) }
+    anyhow::ensure!(certificate.is_file() && private_key.is_file(), "Server identity is incomplete. Restore its matching certificate/key backup; a replacement key was not created.");
+    let bytes = std::fs::read(&certificate)?; anyhow::ensure!(bytes.len() <= 65536, "Server certificate is unexpectedly large");
+    let (_, pem) = x509_parser::pem::parse_x509_pem(&bytes).map_err(|_| anyhow::anyhow!("Server certificate is invalid; restore or repair it before starting"))?;
+    let (_, parsed) = x509_parser::parse_x509_certificate(&pem.contents).map_err(|_| anyhow::anyhow!("Invalid server identity certificate"))?;
+    let mut existing = Vec::new();
+    if let Some(san) = parsed.subject_alternative_name()? { for name in &san.value.general_names {
+        match name {
+            x509_parser::extensions::GeneralName::DNSName(name) => existing.push(name.to_string()),
+            x509_parser::extensions::GeneralName::IPAddress(bytes) if bytes.len() == 4 => existing.push(std::net::Ipv4Addr::from(<[u8; 4]>::try_from(*bytes)?).to_string()),
+            x509_parser::extensions::GeneralName::IPAddress(bytes) if bytes.len() == 16 => existing.push(std::net::Ipv6Addr::from(<[u8; 16]>::try_from(*bytes)?).to_string()),
+            _ => {},
+        }
+    } }
+    let now = chrono::Utc::now().timestamp();
+    let needs_names = names.iter().any(|name| !existing.contains(name));
+    let needs_renewal = parsed.validity().not_after.timestamp() < now + 30 * 86400 || parsed.validity().not_before.timestamp() > now;
+    if needs_names || needs_renewal {
+        anyhow::ensure!(parsed.issuer() == parsed.subject(), "The externally issued certificate needs names/renewal from its issuer; it was not replaced with a self-signed identity.");
+        names.extend(existing); names.sort(); names.dedup(); anyhow::ensure!(names.len() <= 64, "Too many names on the server identity");
+        reissue_certificate(dir, names)?;
+    }
     Ok(TlsConfig { port: 7443, certificate, private_key })
 }
 
@@ -39,7 +77,7 @@ pub fn initialize(dir: &std::path::Path, names: Vec<String>) -> anyhow::Result<T
 /// Call only while the server is stopped; the previous public certificate is kept for recovery.
 pub fn reissue_certificate(dir: &std::path::Path, names: Vec<String>) -> anyhow::Result<std::path::PathBuf> {
     let key = rcgen::KeyPair::from_pem(&std::fs::read_to_string(dir.join("server.key"))?)?;
-    let params = rcgen::CertificateParams::new(names)?;
+    let params = certificate_parameters(names)?;
     let certificate = params.self_signed(&key)?.pem();
     let backup = dir.join("backups").join(format!("certificate-{}.crt", chrono::Utc::now().format("%Y%m%d-%H%M%S%.9f")));
     std::fs::create_dir_all(backup.parent().unwrap())?;
@@ -127,6 +165,28 @@ impl Sessions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn automatic_identity_renewal_preserves_the_key_and_is_idempotent() {
+        let dir = std::env::temp_dir().join(format!("yo3-auto-renew-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let tls = initialize(&dir, vec!["localhost".into()]).unwrap();
+        let private = std::fs::read(&tls.private_key).unwrap();
+        let identity = yo3_tunnel::identity_from_pem(&std::fs::read(&tls.certificate).unwrap()).unwrap();
+        let key = rcgen::KeyPair::from_pem(std::str::from_utf8(&private).unwrap()).unwrap();
+        let mut expired = rcgen::CertificateParams::new(vec!["localhost".into()]).unwrap();
+        expired.not_before = rcgen::date_time_ymd(2000, 1, 1); expired.not_after = rcgen::date_time_ymd(2001, 1, 1);
+        std::fs::write(&tls.certificate, expired.self_signed(&key).unwrap().pem()).unwrap();
+        maintain_identity(&dir, vec!["localhost".into(), "friends.example".into()]).unwrap();
+        assert_eq!(std::fs::read(&tls.private_key).unwrap(), private);
+        let renewed = std::fs::read(&tls.certificate).unwrap();
+        assert_eq!(yo3_tunnel::identity_from_pem(&renewed).unwrap(), identity);
+        maintain_identity(&dir, vec!["localhost".into(), "friends.example".into()]).unwrap();
+        assert_eq!(std::fs::read(&tls.certificate).unwrap(), renewed, "a healthy identity is not repeatedly reissued");
+        std::fs::write(&tls.certificate, "broken certificate").unwrap();
+        assert!(maintain_identity(&dir, vec!["localhost".into()]).is_err());
+        assert_eq!(std::fs::read(&tls.private_key).unwrap(), private);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn updating_host_names_preserves_the_private_key_and_the_previous_certificate() {
         let dir = std::env::temp_dir().join(format!("yo3-renew-{}", std::process::id()));

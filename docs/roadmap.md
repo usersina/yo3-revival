@@ -37,7 +37,10 @@ Launcher usability phase (2026-11-10, in progress on `feat/desktop-launcher`):
 - [ ] Direct-start loader investigation; keep `yo3.exe` unchanged. Gate callback `0x4699B0` reads only host/port;
   login dispatcher `0x469C00` uses error codes and `0x46D050` selects fixed local UI strings. A custom requirements
   dialog/file picker needs local code; do not invent a server message field.
-- [ ] Advanced interface binding (default all IPv4), one public port and an optional elevated firewall helper.
+- [x] Advanced interface binding (new GUI setups default all IPv4), one public port, retained local-only upgrades and
+  optional firewall elevation. Live: selected eno1 listener and local game main screen on :88; key retained during
+  automatic identity maintenance. Windows helper cross-checks and pure command/argument tests pass; native UAC and
+  real firewall mutation remain untested, so the user's host policy stays untouched.
 - [ ] Session-indexed diagnostic logs, bounded retention and redacted current/all-retained ZIP exports.
 - [ ] TDD contracts, private-display live checks, both bundles and native Windows follow-up recorded separately.
 

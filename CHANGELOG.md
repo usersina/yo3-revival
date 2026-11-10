@@ -12,6 +12,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Added: advanced interface/port selection, actual listener status and optional firewall permission helpers. New GUI
+  setups default to all IPv4 interfaces; existing local-only setups stay local-only. Normal Start needs no elevation.
+- Added: automatic self-managed certificate maintenance at server start, preserving its private identity key.
 - Added: shared game-component preflight, release hash manifests and explicit DLL readiness before account login
   and game resume. Missing/incompatible components report their local path before any authentication attempt.
 - Added: address-first server discovery with explicit identity approval, compatible version reporting and persistent

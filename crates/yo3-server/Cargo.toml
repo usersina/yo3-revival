@@ -15,6 +15,7 @@ serde_json = "1.0.154"
 serde = { version = "1.0.228", features = ["derive"] }
 tokio = { version = "1.54.1", features = ["full"] }
 tracing = "0.1.44"
+x509-parser = "0.18.1"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 yo3-data = { version = "0.1.0", path = "../yo3-data" }
 yo3-proto = { version = "0.1.0", path = "../yo3-proto" }

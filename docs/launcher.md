@@ -30,7 +30,8 @@ account key. The game stays suspended until the injected mod acknowledges readin
 ## Play on your server
 
 On **Play**, select **My server** and press **Play**. The application creates your local identity/account on first
-use, starts your server and authenticates the game. The server starts in local-only mode by default.
+use, starts your server and authenticates the game. New GUI setups listen on all IPv4 interfaces by default;
+**My server → Advanced networking** offers a local-only option. Upgraded local-only setups keep that choice.
 You can also start it separately from **My server → Start server**.
 
 In the game, press **ONLINE**, dismiss the original login form and choose your player. Its username/password fields
@@ -66,19 +67,29 @@ An address alone does not grant an account or administration access.
 
 ## Host friends
 
-Before starting a new hosted server, open **Settings**:
+Before starting a new hosted server:
 
-1. Enable **Allow friends to connect to my server**.
-2. Set the address friends will reach, such as `192.168.1.50:7443` or your VPN/DNS address.
-3. Save, then use **My server → Start server**.
+1. Set the address friends will reach in **Settings**, such as `192.168.1.50` or your VPN/DNS address, and save.
+2. Optionally choose **My server → Advanced networking** to change the listening interface or port (default TCP 7443).
+3. Press **Start server**; networking choices on that page are saved when starting.
+
+**Listen on** defaults to `0.0.0.0` (all IPv4 interfaces). The dropdown also offers localhost, available interface
+addresses, and IPv6. A selected interface follows a DHCP address change; an unavailable interface reports an error
+instead of widening access. The running status shows the actual bound listener. Stop the server before changing it.
+`0.0.0.0` is not a join address. Invitations use the separate reachable address and listening port; an explicitly
+entered external `:port` is preserved for router/VPN port mappings.
 
 Allow the chosen TCP port through the host firewall and route/forward it through your VPN/router if necessary.
-The application does not open firewall ports or configure your router automatically. Its internal admin service
+**Allow through firewall** is optional and requests permission only for the helper operation. On Windows it adds a
+rule for this server executable and TCP port on Private networks, preserving existing rules. On Linux it supports
+running firewalld or active UFW, without enabling a disabled firewall. Cancellation leaves hosting running. Normal
+Start never elevates the manager, server or game. Router/VPN forwarding remains separate. The internal admin service
 listens only on loopback; never forward that port.
 
-If the address changes after you created the identity: stop your server, save the new address, then choose
-**Update certificate for saved address** and confirm. This keeps the private key and account data, backs up the previous
-certificate and issues one covering the saved name/IP. Export updated invitations afterward.
+Server identity maintenance runs automatically before starting: it renews self-managed certificates near expiry or
+when names change, preserving the key, existing names and a backup of the prior certificate. Corrupt/incomplete
+identities are reported instead of replaced. Externally issued certificates remain the issuer's responsibility.
+An explicit reissue action remains under **Advanced networking**. Pinned invitations retain trust after same-key renewal.
 
 **My server** shows the local server's status, connected players and duel count. Those controls always manage your
 own server, including while a remote connection is selected on Play.
