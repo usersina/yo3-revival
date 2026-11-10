@@ -24,11 +24,16 @@ pub fn private_create(path: &Path) -> io::Result<std::fs::File> {
     #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
     options.open(path)
 }
+pub fn private_dir(path: &Path) -> anyhow::Result<()> {
+    std::fs::create_dir_all(path)?;
+    anyhow::ensure!(!std::fs::symlink_metadata(path)?.file_type().is_symlink(), "Private application directory must not be a symlink");
+    #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; std::fs::File::open(path)?.set_permissions(std::fs::Permissions::from_mode(0o700))?; }
+    Ok(())
+}
 impl Session {
     pub fn start(root: &Path, kind: &str, parent: Option<String>) -> anyhow::Result<Self> {
         anyhow::ensure!(["app", "server", "game", "direct"].contains(&kind), "Invalid diagnostic kind");
-        std::fs::create_dir_all(root)?;
-        anyhow::ensure!(!std::fs::symlink_metadata(root)?.file_type().is_symlink(), "Diagnostic directory must not be a symlink");
+        private_dir(root)?;
         let mut random = [0; 6]; ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut random).map_err(|_| anyhow::anyhow!("OS randomness unavailable"))?;
         let nonce: String = random.iter().map(|b| format!("{b:02x}")).collect();
         let id = format!("{kind}-{}-{}-{nonce}", now(), std::process::id());
@@ -123,6 +128,16 @@ pub fn redact(text: &str, secrets: &[String], home: Option<&str>) -> String {
     for c in result.chars() { if c.is_ascii_alphanumeric() { token.push(c); } else { append(&mut token, &mut out); out.push(c); } }
     append(&mut token, &mut out);
     if let Some(home) = home.filter(|s| !s.is_empty()) { out = out.replace(home, "<user>"); }
+    // A Linux report can contain Windows/Wine paths, and vice versa; mask both without relying on this process's OS.
+    for root in ["\\\\users\\\\", "\\\\home\\\\", "/home/", "/users/", "\\users\\", "\\home\\"] {
+        let mut from = 0;
+        while let Some(offset) = out[from..].to_ascii_lowercase().find(root) {
+            let start = from + offset + root.len();
+            let end = out[start..].find(['/', '\\', '"', '\'', '\r', '\n']).map(|n| start+n).unwrap_or(out.len());
+            if start == end { from = start; continue }
+            out.replace_range(start..end, "<user>"); from = start + "<user>".len();
+        }
+    }
     out
 }
 #[derive(Clone, Serialize)]

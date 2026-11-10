@@ -1,6 +1,13 @@
 use std::io::Write;
 use yo3_tunnel::diagnostics::{Session, records, redact};
 #[test]
+fn report_redaction_masks_native_and_wine_home_paths() {
+    let text = r"failed /home/alice/game, Z:\home\sina\Documents\game and C:\Users\Alice Smith\game";
+    let redacted = redact(text, &[], Some("/home/sina"));
+    for name in ["alice", "sina", "Alice Smith"] { assert!(!redacted.contains(name), "{redacted}"); }
+    assert!(redacted.contains("game"));
+}
+#[test]
 fn log_capture_redacts_split_secrets_and_drops_overlong_lines() {
     let root = std::env::temp_dir().join(format!("yo3-capture-{}", std::process::id())); let _ = std::fs::remove_dir_all(&root);
     let log = Session::start(&root, "game", None).unwrap();

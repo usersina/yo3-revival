@@ -202,7 +202,7 @@ pub struct Backend { pub root: PathBuf, pub runtime: Runtime, pub diagnostics: y
     server_session: Mutex<Option<String>>, game: Mutex<Option<Child>>, server: Mutex<Option<Child>> }
 impl Backend {
     pub fn new(root: PathBuf) -> anyhow::Result<Arc<Self>> {
-        std::fs::create_dir_all(root.join("profiles"))?;
+        yo3_tunnel::diagnostics::private_dir(&root.join("profiles"))?;
         std::fs::create_dir_all(root.join("logs"))?;
         let diagnostics = yo3_tunnel::diagnostics::Session::start(&root.join("logs/sessions"), "app", None)?;
         Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), server: Mutex::new(None) }))

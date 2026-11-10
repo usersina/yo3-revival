@@ -1,6 +1,16 @@
 use std::io::Read;
 use yo3_desktop::reports::Report;
 use yo3_tunnel::diagnostics::Session;
+#[cfg(unix)]
+#[test]
+fn private_profile_and_log_directories_protect_wine_created_files() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!("yo3-private-directories-{}", std::process::id())); let _ = std::fs::remove_dir_all(&root);
+    for name in ["profiles", "logs/sessions"] { let p = root.join(name); std::fs::create_dir_all(&p).unwrap(); std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).unwrap(); }
+    let _backend = yo3_desktop::Backend::new(root.clone()).unwrap();
+    for name in ["profiles", "logs/sessions"] { assert_eq!(std::fs::metadata(root.join(name)).unwrap().permissions().mode() & 0o077, 0, "{name}"); }
+    std::fs::remove_dir_all(root).unwrap();
+}
 #[test]
 fn current_and_retained_zip_reports_are_bounded_redacted_and_allowlisted() {
     let root = std::env::temp_dir().join(format!("yo3-report-{}", std::process::id())); let _ = std::fs::remove_dir_all(&root);
