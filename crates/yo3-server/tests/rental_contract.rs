@@ -163,6 +163,26 @@ fn the_lender_sets_conditions_and_puts_up_cards() {
 }
 
 #[test]
+fn a_key_only_lenders_offer_is_checked_against_their_saved_cards() {
+    // CardRental 0x41C7E0: a key-only account must not bypass the same ownership check as an address account.
+    let mut t = table();
+    let mut d = t.dir.lock().unwrap();
+    d.add_account(&["KeyLender".into()]).unwrap();
+    let user = d.user_of("KeyLender").unwrap();
+    t.a_id = d.account_of(user).unwrap().players[0].player_id;
+    d.update_player(t.a_id, |p| { p.cards.insert(10, 1); });
+    drop(d);
+    t.a = t.server.join_saved(&t.dir, user);
+    in_scene(&mut t);
+    let r = cards(&mut t.a, &[99], &[], &[]);
+    assert_eq!((r.request(), int(&r, "error_code")), (Some(0x2D5B), Some(504)));
+    assert_eq!(cards(&mut t.a, &[10], &[], &[]).request(), Some(0x2D5A));
+    one(t.a.send(req(0x2C2D)));
+    send(&mut t.b, 0x2C2F, &[("answer", 2)]);
+    assert_eq!(one(t.a.send(req(0x2C34))).items.len(), 1);
+}
+
+#[test]
 fn the_borrower_confirms_and_the_rental_starts() {
     // 0x2C2D (the lender's Confirm) -> 0x2D60; the borrower gets 0x2C2E ("Borrow these cards?"), answers 0x2C2F
     // {answer 2} -> 0x2D64; both get 0x2C30 {trade_result 1} ("Rental Completed.") and the records 0x2D6C.

@@ -947,7 +947,7 @@ impl Hub {
     /// A player as the accounts keep them (none without accounts).
     fn saved_player(&self, player_id: u32) -> Option<Player> {
         let d = self.directory.as_ref()?.locked();
-        d.accounts().flat_map(|(_, a)| &a.players).find(|p| p.player_id == player_id).cloned()
+        d.player(player_id).cloned()
     }
 
     /// Whether a player is in a trade or a rental scene (one scene at a time).
@@ -1318,8 +1318,7 @@ impl Hub {
     fn exchange(&mut self, trade: &crate::trade::Trade, world: &World) -> bool {
         let Some(d) = self.directory.clone() else { return false };
         let mut d = d.locked();
-        let saved = |d: &crate::accounts::Directory, id: u32| d.accounts().flat_map(|(_, a)| &a.players).find(|p| p.player_id == id).cloned();
-        let owned = trade.players.iter().zip(&trade.offers).all(|(&p, offer)| saved(&d, p).is_some_and(|s| crate::trade::owns(world, &s, &self.rentals.lent_by(p), offer)));
+        let owned = trade.players.iter().zip(&trade.offers).all(|(&p, offer)| d.player(p).is_some_and(|s| crate::trade::owns(world, s, &self.rentals.lent_by(p), offer)));
         if !owned {
             return false;
         }
@@ -2491,7 +2490,7 @@ impl FrontSession {
                 // traded away. A trade changes the partner's collection in the accounts, so take it from there.
                 if let (Some(at), Some(d)) = (self.selected, &self.directory) {
                     let id = self.account.players[at].player_id;
-                    let saved = d.locked().accounts().flat_map(|(_, a)| &a.players).find(|p| p.player_id == id).cloned();
+                    let saved = d.locked().player(id).cloned();
                     if let Some(saved) = saved {
                         let me = &mut self.account.players[at];
                         (me.cards, me.given) = (saved.cards, saved.given);

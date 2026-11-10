@@ -193,6 +193,51 @@ fn changing_an_offer_withdraws_every_confirmation() {
 }
 
 #[test]
+fn two_key_only_accounts_can_complete_a_trade() {
+    // /join accounts have no address. CardTrade 0x4248F0 must still see their saved collections and complete.
+    let mut t = table();
+    for (seat, name, row, n) in [(0, "KeyA", 10, 2), (1, "KeyB", 20, 1)] {
+        let mut d = t.dir.lock().unwrap();
+        d.add_account(&[name.into()]).unwrap();
+        let user = d.user_of(name).unwrap();
+        let id = d.account_of(user).unwrap().players[0].player_id;
+        d.update_player(id, |p| { p.cards.insert(row, n); });
+        drop(d);
+        let c = t.server.join_saved(&t.dir, user);
+        if seat == 0 { (t.a, t.a_id) = (c, id); } else { (t.b, t.b_id) = (c, id); }
+    }
+    in_scene(&mut t);
+    offer(&mut t.a, &[10]);
+    offer(&mut t.b, &[20]);
+    send(&mut t.a, 0x2BC8, &[("status", 1)]);
+    send(&mut t.b, 0x2BC8, &[("status", 1)]);
+    send(&mut t.a, 0x2BC9, &[("answer", 2)]);
+    send(&mut t.b, 0x2BC9, &[("answer", 2)]);
+    let done = t.b.pushed().into_iter().find(|m| m.request() == Some(0x2BCA)).expect("trade result");
+    assert_eq!((int(&done, "error_code"), int(&done, "trade_result")), (Some(0), Some(1)));
+    let d = t.dir.lock().unwrap();
+    assert_eq!((d.player(t.a_id).unwrap().cards.get(&10), d.player(t.a_id).unwrap().cards.get(&20)), (Some(&1), Some(&1)));
+    assert_eq!((d.player(t.b_id).unwrap().cards.get(&10), d.player(t.b_id).unwrap().cards.get(&20)), (Some(&1), None));
+}
+
+#[test]
+fn a_key_only_accounts_trunk_refreshes_its_saved_collection() {
+    // The trunk builder 0x4F6340 must get current counts, not the front session's older copy after another session trades.
+    let t = table();
+    let mut d = t.dir.lock().unwrap();
+    d.add_account(&["KeyA".into()]).unwrap();
+    let user = d.user_of("KeyA").unwrap();
+    let id = d.account_of(user).unwrap().players[0].player_id;
+    d.update_player(id, |p| { p.cards.insert(10, 2); });
+    drop(d);
+    let mut c = t.server.join_saved(&t.dir, user);
+    t.dir.lock().unwrap().update_player(id, |p| { p.cards.insert(10, 1); });
+    let replies = c.send(req_with(0x1FA4, &[("player_id", Value::U32(id))]));
+    let trunk = replies.iter().find(|m| m.request() == Some(9000)).unwrap();
+    assert_eq!(count(trunk, 10), 1);
+}
+
+#[test]
 fn leaving_the_scene_tells_the_partner() {
     // 0x2BCB -> 0x2BE9; the partner gets 0x2BCD ("The trade partner has cancelled."). A "No" to "Execute Trade?" ends
     // the trade unchanged (0x2BCA trade_result 0).

@@ -34,6 +34,10 @@ Review fixes (2026-11-10), each with a failing regression test before the implem
       is checked against the current accounts before cleanup. Tests: `player_contract`
       `a_refused_last_player_deletion_preserves_their_social_data`, `a_team_leader_cannot_be_deleted_even_with_another_player`.
       Live TCP: the last-player deletion was refused and fresh friend, ignore, mail and rental replies were unchanged.
+- [x] Key-only accounts use the same saved collections as address accounts: trades complete, rental offers are
+      checked for ownership, and trunk requests refresh cards changed by another session. Three red-to-green tests
+      in `trade_contract` and `rental_contract`. Live TCP: two `/join` accounts traded, an older session refreshed its
+      trunk, and a rental refused an unowned card before accepting an owned one.
 
 As of 2026-11-08 the server covers every feature the client uses: M0 to M2 (research, a stable world, an instrumented
 client) and M5 (duels) are done, M3 (social) and M6 (play with friends) are done apart from checking on real friends'

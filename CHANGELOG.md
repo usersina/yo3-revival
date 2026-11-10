@@ -12,6 +12,8 @@ gather under "Unreleased" first.
 - Fixed: changing a card trade's offer after the other player confirmed can no longer execute the changed deal
   with that old confirmation. Both players must approve the current offers.
 - Fixed: a refused attempt to delete the account's last player no longer removes their friends, mail and rentals.
+- Fixed: accounts made through the join page can complete card trades, rental offers check their owned cards, and
+  their collection refreshes after another session changes it.
 
 ## v0.0.3 (2026-11-09)
 

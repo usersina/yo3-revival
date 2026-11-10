@@ -336,6 +336,10 @@ The server checks each offer against what the player owns (their starter deck's 
 the ones given away) and moves both offers when both said yes, in the accounts (`data/accounts.json`: `cards` and
 `given` per player). A session refreshes its player's collection from there on each trunk request, so the partner's
 next shop visit shows it too. Live: Yugi's Tainted Wisdom for Kaiba's Windstorm of Etaqua.
+Saved collections are looked up by player id across every account, including `/join` and `add-account` accounts with
+a key and no stored address. This applies to trade execution, rental offer validation and every trunk refresh
+(`9000`, collection builder `0x4F6340`). Tests: `two_key_only_accounts_can_complete_a_trade`,
+`a_key_only_accounts_trunk_refreshes_its_saved_collection`, `a_key_only_lenders_offer_is_checked_against_their_saved_cards`.
 
 Confirmation is tied to the current offers (**server choice**, protecting the sequence above): changing either offer
 clears both Ready marks and both final answers. `0x2BC9` before both scenes and Ready marks are ready is refused with

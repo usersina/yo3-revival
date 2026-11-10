@@ -70,6 +70,12 @@ impl Server {
         self.join_with(account, Some(directory.clone()))
     }
 
+    /// An existing account, including one found by key only (as /join and add-account create).
+    pub fn join_saved(&self, directory: &Arc<Mutex<Directory>>, user_id: u32) -> Client {
+        let account = directory.lock().unwrap().account_of(user_id).expect("saved account");
+        self.join_with(account, Some(directory.clone()))
+    }
+
     fn join_account(&self, account: Account) -> Client {
         self.join_with(account, None)
     }
