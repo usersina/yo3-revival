@@ -1031,7 +1031,7 @@ impl Hub {
                 Message::reply(0x2BED)
             }
             // An offer {main_list} -> 0x2BE1; the partner gets 0x2BCF {main_list}. 504 for cards the player doesn't
-            // have. A new offer takes back both OKs.
+            // have. A new offer takes back both OKs and final answers: neither approved this version of the offer.
             0x2BC6 => {
                 let rows: Vec<u16> = msg.get("main_list").and_then(Value::as_bytes).unwrap_or_default().as_chunks::<2>().0.iter().map(|b| u16::from_be_bytes(*b)).collect();
                 let player = self.saved_player(me);
@@ -1041,6 +1041,7 @@ impl Hub {
                 let Some((trade, seat)) = self.trade_of(me) else { return fail(0x2BE1, TRADE_ERROR) };
                 trade.offers[seat] = rows.clone();
                 trade.ok = [false; 2];
+                trade.answers = [None; 2];
                 let partner = trade.players[1 - seat];
                 self.push(partner, &Message::reply(0x2BCF).with("main_list", Value::u16_be_array(&rows)));
                 Message::reply(0x2BE1)
@@ -1075,6 +1076,9 @@ impl Hub {
             0x2BC9 => {
                 let yes = int("answer") == ACCEPTED;
                 let Some((trade, seat)) = self.trade_of(me) else { return fail(0x2BE7, TRADE_ERROR) };
+                if trade.ready != [true; 2] || trade.ok != [true; 2] {
+                    return fail(0x2BE7, TRADE_ERROR);
+                }
                 trade.answers[seat] = Some(yes);
                 let [Some(first), Some(second)] = trade.answers else { return Message::reply(0x2BE7) };
                 let at = self.trades.iter().position(|t| t.seat(me).is_some()).expect("the trade");

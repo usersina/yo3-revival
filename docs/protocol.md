@@ -331,6 +331,11 @@ the ones given away) and moves both offers when both said yes, in the accounts (
 `given` per player). A session refreshes its player's collection from there on each trunk request, so the partner's
 next shop visit shows it too. Live: Yugi's Tainted Wisdom for Kaiba's Windstorm of Etaqua.
 
+Confirmation is tied to the current offers (**server choice**, protecting the sequence above): changing either offer
+clears both Ready marks and both final answers. `0x2BC9` before both scenes and Ready marks are ready is refused with
+`0x2BE8 {error_code 503}` (the error twin in CardTrade's handler `0x4248F0`; global dispatcher `0x4F6057` reads nothing).
+Tests: `a_final_answer_before_both_ready_marks_is_refused`, `changing_an_offer_withdraws_every_confirmation`.
+
 One scene at a time (a **server choice**): a player in a trade or rental scene can neither invite nor be invited, and an
 answer that finds either side in a scene by now is sent to the inviter as a "no" (`0x2BC3 {answer 1}`, `0x2C27` for
 rentals) with `0x2BDC` (`0x2D55`) `{error_code 106}` for the answerer; leaving a scene ends every scene of the player.

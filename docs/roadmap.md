@@ -24,6 +24,13 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 
 ## Status
 
+Review fixes (2026-11-10), each with a failing regression test before the implementation:
+
+- [x] Trade confirmations belong to the current offers: an offer change clears both approvals, and final answers
+      before both Ready marks are refused. Tests: `trade_contract` `changing_an_offer_withdraws_every_confirmation`,
+      `a_final_answer_before_both_ready_marks_is_refused`. Live TCP: the stale answer was refused, both collections
+      stayed unchanged, then two fresh approvals executed the changed offer once.
+
 As of 2026-11-08 the server covers every feature the client uses: M0 to M2 (research, a stable world, an instrumented
 client) and M5 (duels) are done, M3 (social) and M6 (play with friends) are done apart from checking on real friends'
 machines, and M4 (accounts, collection and economy) has one open item, the deck list's own save. Two duel problems found in the screenshot session are settled (one fixed, one hardened and watched). What is left is

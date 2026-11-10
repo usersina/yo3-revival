@@ -153,6 +153,46 @@ fn an_offer_of_cards_not_owned_is_refused() {
 }
 
 #[test]
+fn a_final_answer_before_both_ready_marks_is_refused() {
+    // CardTrade 0x427640 sends 0x2BC9 only after both OKs (0x2BD2). Replayed final answers must not skip that step.
+    let mut t = table();
+    in_scene(&mut t);
+    offer(&mut t.a, &[10]);
+    offer(&mut t.b, &[20]);
+    send(&mut t.a, 0x2BC8, &[("status", 1)]);
+    let r = send(&mut t.a, 0x2BC9, &[("answer", 2)]);
+    assert_eq!((r.request(), int(&r, "error_code")), (Some(0x2BE8), Some(503)));
+    assert_eq!(t.dir.lock().unwrap().player(t.a_id).unwrap().cards.get(&10), Some(&2));
+}
+
+#[test]
+fn changing_an_offer_withdraws_every_confirmation() {
+    // After one 0x2BC9 Yes, the other player used to remove their offer and execute with that stale Yes.
+    let mut t = table();
+    in_scene(&mut t);
+    offer(&mut t.a, &[10]);
+    offer(&mut t.b, &[20]);
+    send(&mut t.a, 0x2BC8, &[("status", 1)]);
+    send(&mut t.b, 0x2BC8, &[("status", 1)]);
+    send(&mut t.a, 0x2BC9, &[("answer", 2)]);
+    offer(&mut t.b, &[]);
+    let r = send(&mut t.b, 0x2BC9, &[("answer", 2)]);
+    assert_eq!((r.request(), int(&r, "error_code")), (Some(0x2BE8), Some(503)));
+    {
+        let d = t.dir.lock().unwrap();
+        assert_eq!(d.player(t.a_id).unwrap().cards.get(&10), Some(&2));
+        assert_eq!(d.player(t.b_id).unwrap().cards.get(&20), Some(&1));
+    }
+    // Both may approve the new offer. One fresh Yes alone still leaves both collections unchanged.
+    send(&mut t.a, 0x2BC8, &[("status", 1)]);
+    send(&mut t.b, 0x2BC8, &[("status", 1)]);
+    send(&mut t.b, 0x2BC9, &[("answer", 2)]);
+    assert_eq!(t.dir.lock().unwrap().player(t.a_id).unwrap().cards.get(&10), Some(&2));
+    send(&mut t.a, 0x2BC9, &[("answer", 2)]);
+    assert_eq!(t.dir.lock().unwrap().player(t.a_id).unwrap().cards.get(&10), Some(&1));
+}
+
+#[test]
 fn leaving_the_scene_tells_the_partner() {
     // 0x2BCB -> 0x2BE9; the partner gets 0x2BCD ("The trade partner has cancelled."). A "No" to "Execute Trade?" ends
     // the trade unchanged (0x2BCA trade_result 0).

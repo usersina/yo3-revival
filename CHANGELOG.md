@@ -9,7 +9,8 @@ gather under "Unreleased" first.
 
 ## Unreleased
 
-Nothing yet.
+- Fixed: changing a card trade's offer after the other player confirmed can no longer execute the changed deal
+  with that old confirmation. Both players must approve the current offers.
 
 ## v0.0.3 (2026-11-09)
 

@@ -321,6 +321,7 @@ them once bought.
 To trade cards, open a player's Player Information and press Send Trade Request; once they accept, drag cards from
 your trunk into your half of the table, press Ready to Trade., and answer Yes to "Execute Trade?". A deck that used a
 card you traded away no longer counts as valid until you edit it.
+Changing either offer withdraws both players' approvals: both must press Ready to Trade. and confirm the new offer.
 
 To lend cards, open a player's Player Information and press Send Rental Request. Once they accept, the lender sets the
 conditions (a term of 1, 3, 7 or 14 days, and Free) and double-clicks cards from their trunk into the list, then presses
