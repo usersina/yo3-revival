@@ -60,6 +60,7 @@ pub struct BpCode {
 }
 
 /// An account with how a client finds it: by the address it connects from, by its key, or both.
+#[derive(Clone)]
 struct Entry {
     address: Option<IpAddr>,
     key: Option<String>,
@@ -84,6 +85,7 @@ pub(crate) fn new_key() -> String {
     key
 }
 
+#[derive(Clone)]
 pub struct Directory {
     player_names: Vec<String>,
     accounts: Vec<Entry>,
@@ -100,6 +102,21 @@ pub struct Directory {
 }
 
 impl Directory {
+    /// Publish a live administration change only after its entire snapshot commits. Failed writes restore memory.
+    pub fn atomic<T>(&mut self, change: impl FnOnce(&mut Self) -> Result<T, String>) -> Result<T, String> {
+        let before = self.clone();
+        self.file = None;
+        let result = change(self);
+        self.file.clone_from(&before.file);
+        match result {
+            Ok(value) => match self.persist() {
+                Ok(()) => Ok(value),
+                Err(error) => { *self = before; Err(format!("change was not saved: {error}")) },
+            },
+            Err(error) => { *self = before; Err(error) },
+        }
+    }
+
     /// `player_names`: the players every new account starts with (at most four are used).
     pub fn new(player_names: Vec<String>) -> Directory {
         Directory { player_names, accounts: Vec::new(), presented: HashMap::new(), joins: Vec::new(), next_user: 1001, next_player: 1001, file: None, codes: vec![] }
@@ -107,14 +124,18 @@ impl Directory {
 
     /// The accounts kept in `file` (none yet if it doesn't exist); changes are written back to it.
     pub fn open(player_names: Vec<String>, file: &Path) -> io::Result<Directory> {
+        Self::from_document(player_names, file, store::read(file)?)
+    }
+
+    pub(crate) fn from_document(player_names: Vec<String>, file: &Path, saved: Option<Json>) -> io::Result<Directory> {
         let mut d = Directory { file: Some(file.to_path_buf()), ..Directory::new(player_names) };
-        let Some(saved) = store::read(file)? else { return Ok(d) };
+        let Some(saved) = saved else { return Ok(d) };
         // The counters are kept: ids are never handed out twice, even after the newest player was deleted (the
         // friends, mail and rentals of the old one would else belong to the new).
         d.next_player = d.next_player.max(saved["next_player"].as_u64().unwrap_or(0) as u32);
         d.next_user = d.next_user.max(saved["next_user"].as_u64().unwrap_or(0) as u32);
         for a in saved["accounts"].as_array().into_iter().flatten() {
-            let bad = || io::Error::new(io::ErrorKind::InvalidData, format!("{}: bad account {a}", file.display()));
+            let bad = || io::Error::new(io::ErrorKind::InvalidData, format!("{}: invalid account record (check its ids and identity)", file.display()));
             // Old files have an address and no key; a key account may have no address.
             let address: Option<IpAddr> = a["address"].as_str().map(|s| s.parse().map_err(|_| bad())).transpose()?;
             let key = a["key"].as_str().filter(|k| !k.is_empty()).map(str::to_string);
@@ -651,7 +672,11 @@ impl Directory {
     }
 
     fn save(&self) {
-        let Some(file) = &self.file else { return };
+        if let Err(e) = self.persist() { tracing::warn!("accounts not saved: {e}"); }
+    }
+
+    fn persist(&self) -> io::Result<()> {
+        let Some(file) = &self.file else { return Ok(()) };
         let accounts: Vec<Json> = self
             .entries()
             .map(|(addr, key, a)| {
@@ -690,9 +715,7 @@ impl Directory {
             .collect();
         let codes: Vec<Json> = self.codes.iter().map(|c| json!({ "code": c.code, "bp": c.bp, "uses": c.uses, "used_by": c.used_by })).collect();
         let all = json!({ "next_user": self.next_user, "next_player": self.next_player, "accounts": accounts, "bp_codes": codes });
-        if let Err(e) = store::write(file, &all) {
-            tracing::warn!("accounts not saved to {}: {e}", file.display());
-        }
+        store::write(file, &all)
     }
 }
 

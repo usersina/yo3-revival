@@ -1525,7 +1525,8 @@ never falls back to the source address. Separate launcher sessions have distinct
 
 Select Player still chooses one of up to four account players (`0x1F4C`), and creates/deletes them (`0x1F4A`/`0x1F4B`,
 slot `pindex` 0–3). `CharMake.cpp` (`0x2CF5`/`0x2CF6`, the map's GoCharMake) remains the appearance editor. Account
-and player records keep their existing JSON schema and ids. `profile EXISTING_PLAYER FILE --advertise HOST` exports
+and player records keep their existing document schema and ids, stored in SQLite's `accounts` document.
+`profile EXISTING_PLAYER FILE --advertise HOST` exports
 a private launcher profile, adding a key to an old address-only account without moving its cards or other data.
 
 The old patch-URL/IP association and HTTP self-service join page have been retired. `/join` and INI downloads now
@@ -1533,6 +1534,20 @@ return 404; fetching `yo3.idx` cannot select or create an account. The internal 
 index, `/duellogs/NAME.dlog` and `/app/`; the launcher carries these requests over TLS. The DLL routes the client's
 WinINet calls to its local authenticated asset proxy, including duel-log URLs (`0x498700`). No account key is put
 into a remote URL. See [authentication.md](authentication.md) for setup and credential lifetimes.
+
+Persistence uses `data/server.db`, schema version 1. The `state_documents` table stores each domain's existing
+serialized document: accounts, records, friends, mail, teams, events and rentals. References elsewhere in this
+catalog to `accounts.json`, `friends.json`, etc. name their original formats, now imported once into SQLite.
+The importer commits all documents together, preserves source JSON and validates accounts before recording success.
+`storage.version` prevents an accidentally deleted database from causing a stale reimport. This changes storage,
+not Konami request/reply fields; tests live in `store.rs` and `tests/accounts.rs`.
+
+The desktop's **own** local protocol is `POST /manager` with a private admin bearer token and JSON `op`:
+`status`, `accounts`, `create_account {name}`, `add_player {who,name}`, `export_account {who}`, or `shutdown`.
+It binds loopback and the TLS asset-role whitelist denies access. Account listings omit credentials; export is the
+explicit credential-bearing operation. Unknown operations/fields and incorrect tokens are refused. Mutations persist
+once and restore memory if saving fails. **Status: implemented/tested**, evidence `tests/manager_contract.rs` and
+the GUI's live account/create/play check; these are our API definitions, not inferred game-client reply shapes.
 
 ## Fields the client reads that we leave out
 

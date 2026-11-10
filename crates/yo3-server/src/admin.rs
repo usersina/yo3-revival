@@ -14,6 +14,7 @@ use std::time::Duration;
 use serde_json::json;
 
 use crate::accounts::Directory;
+pub use crate::manager::{ManagerOp, manage};
 pub struct Response {
     pub status: &'static str,
     pub content_type: &'static str,
@@ -152,7 +153,7 @@ pub fn handle(path: &str, peer: IpAddr, token: Option<&str>, accounts: &Arc<Mute
 }
 
 /// Compares two tokens in time that doesn't depend on where they differ.
-fn same(a: &str, b: &str) -> bool {
+pub(crate) fn same(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 

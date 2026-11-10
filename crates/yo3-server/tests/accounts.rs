@@ -4,6 +4,24 @@ use std::net::{IpAddr, Ipv4Addr};
 
 use yo3_server::accounts::Directory;
 
+#[test]
+fn a_failed_manager_commit_restores_the_live_directory() {
+    let dir = std::env::temp_dir().join(format!("yo3-account-transaction-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    yo3_server::store::initialize(&dir).unwrap();
+    let mut d = Directory::open(vec![], &dir.join("accounts.json")).unwrap();
+    d.add_account(&["Original".into()]).unwrap();
+    let conn = rusqlite::Connection::open(dir.join("server.db")).unwrap();
+    conn.execute_batch("CREATE TRIGGER refuse_save BEFORE UPDATE ON state_documents BEGIN SELECT RAISE(FAIL, 'test write failure'); END;").unwrap();
+    let failed = d.atomic(|d| d.add_account(&["MustNotExist".into()]));
+    assert!(failed.is_err());
+    assert_eq!(d.entries().count(), 1, "failed write cannot publish an in-memory account");
+    let fresh = Directory::open(vec![], &dir.join("accounts.json")).unwrap();
+    assert_eq!(fresh.entries().count(), 1);
+    drop(conn);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 fn ip(last: u8) -> IpAddr {
     IpAddr::V4(Ipv4Addr::new(10, 0, 0, last))
 }

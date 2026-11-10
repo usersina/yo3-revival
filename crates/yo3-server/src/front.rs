@@ -668,6 +668,11 @@ struct Online {
 }
 
 impl Hub {
+    pub(crate) fn manager_players(&self) -> Vec<serde_json::Value> {
+        self.online.values().map(|p| serde_json::json!({"player_id":p.player_id,"name":p.name,
+            "duelling":self.in_match(p.player_id).is_some()})).collect()
+    }
+
     pub fn online(&self) -> usize {
         self.online.len()
     }

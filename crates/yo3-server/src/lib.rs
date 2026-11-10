@@ -3,7 +3,8 @@ pub mod accounts;
 pub mod auth;
 mod transport;
 pub mod admin;
-mod store;
+mod manager;
+pub mod store;
 pub(crate) mod lock;
 pub mod duel;
 pub mod duelcheck;
@@ -121,13 +122,18 @@ pub struct Running {
     pub auth: SocketAddr,
     pub http: SocketAddr,
     tasks: Vec<JoinHandle<()>>,
+    shutdown: tokio::sync::watch::Sender<bool>,
 }
 
 impl Running {
-    pub async fn wait(self) {
-        for t in self.tasks {
-            let _ = t.await;
+    pub async fn wait(mut self) {
+        let mut stop = self.shutdown.subscribe();
+        while !*stop.borrow_and_update() {
+            if stop.changed().await.is_err() { break }
         }
+        // Let the management response reach its caller before the CLI shuts its runtime down.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        for task in self.tasks.drain(..) { task.abort(); }
     }
 }
 
@@ -271,6 +277,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let quiet = net::Idle { limit: cfg.idle_timeout, heartbeats: false };
     let heartbeats = net::Idle { limit: cfg.idle_timeout, heartbeats: true };
     if let Some(dir) = &cfg.data_dir {
+        store::initialize(dir)?;
         store::back_up(dir)?;
     }
     let directory = Arc::new(Mutex::new(match &cfg.data_dir {
@@ -321,7 +328,9 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let admin_token = cfg.data_dir.as_ref().and_then(|dir| {
         admin::write_live(dir, http_addr.port()).map_err(|e| tracing::warn!("admin commands won't reach this server ({}): {e}", dir.display())).ok()
     });
-    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs")), directory, admin_token));
+    let (shutdown, _) = tokio::sync::watch::channel(false);
+    let manager = manager::Manager { accounts: directory.clone(), hub, shutdown: shutdown.clone(), engine_problem: world.engine_problem.clone() };
+    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs")), directory, admin_token, manager));
     tracing::info!("authenticated TLS {} public HTTP {}; packets -> {}", auth_addr, http_addr, packets.path().display());
-    Ok(Running { auth: auth_addr, http: http_addr, tasks: vec![auth_task, http_task, clock_task] })
+    Ok(Running { auth: auth_addr, http: http_addr, tasks: vec![auth_task, http_task, clock_task], shutdown })
 }

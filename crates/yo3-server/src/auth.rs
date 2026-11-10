@@ -35,6 +35,21 @@ pub fn initialize(dir: &std::path::Path, names: Vec<String>) -> anyhow::Result<T
     Ok(TlsConfig { port: 7443, certificate, private_key })
 }
 
+/// Explicitly update the names on an existing identity. The private key and account data are untouched.
+/// Call only while the server is stopped; the previous public certificate is kept for recovery.
+pub fn reissue_certificate(dir: &std::path::Path, names: Vec<String>) -> anyhow::Result<std::path::PathBuf> {
+    let key = rcgen::KeyPair::from_pem(&std::fs::read_to_string(dir.join("server.key"))?)?;
+    let params = rcgen::CertificateParams::new(names)?;
+    let certificate = params.self_signed(&key)?.pem();
+    let backup = dir.join("backups").join(format!("certificate-{}.crt", chrono::Utc::now().format("%Y%m%d-%H%M%S%.9f")));
+    std::fs::create_dir_all(backup.parent().unwrap())?;
+    std::fs::copy(dir.join("server.crt"), &backup)?;
+    let temporary = dir.join("server.crt.next");
+    std::fs::write(&temporary, certificate)?;
+    std::fs::rename(&temporary, dir.join("server.crt"))?;
+    Ok(backup)
+}
+
 /// Isolated, generated credentials for the in-process integration-test server.
 pub(crate) fn test_config(log_dir: &std::path::Path) -> TlsConfig {
     let dir = log_dir.join("test-auth");
@@ -112,6 +127,19 @@ impl Sessions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn updating_host_names_preserves_the_private_key_and_the_previous_certificate() {
+        let dir = std::env::temp_dir().join(format!("yo3-renew-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let tls = initialize(&dir, vec!["localhost".into()]).unwrap();
+        let key = std::fs::read(&tls.private_key).unwrap();
+        let original = std::fs::read(&tls.certificate).unwrap();
+        let backup = reissue_certificate(&dir, vec!["localhost".into(), "friends.example".into()]).unwrap();
+        assert_eq!(std::fs::read(&tls.private_key).unwrap(), key);
+        assert_eq!(std::fs::read(backup).unwrap(), original);
+        assert_ne!(std::fs::read(&tls.certificate).unwrap(), original);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[cfg(unix)]
     #[test]

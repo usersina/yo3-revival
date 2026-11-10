@@ -26,6 +26,12 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 
 ## Status
 
+SQLite and local management (2026-11-10): server state imports from the existing JSON documents in one transaction
+into `server.db`, with startup backups and a marker preventing stale reimport after accidental database removal.
+IDs, keys and original files are preserved. The loopback-only token-authenticated manager API creates accounts, adds
+players and exports credentials without stopping the server; failed saves restore its live account directory.
+Migration preservation/retry, write rollback and live TLS account creation have regression tests.
+
 Headless display fix (2026-11-10): cold Xvfb startup releases captured pipes immediately, keeps diagnostics in
 its instance log and reuses an existing display. Regression tests cover cold startup, reuse and failed startup;
 they run in the release checks without an X server or game. Live: the UI monkey's capture path on private `:88`

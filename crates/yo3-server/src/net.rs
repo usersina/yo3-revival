@@ -156,6 +156,7 @@ pub async fn http_loop(
     duel_logs: Option<PathBuf>,
     accounts: Arc<Mutex<Directory>>,
     admin_token: Option<String>,
+    manager: crate::manager::Manager,
 ) {
     let mut backoff = Duration::from_millis(50);
     loop {
@@ -172,6 +173,7 @@ pub async fn http_loop(
             }
         };
         let (game_dir, duel_logs, accounts, admin_token) = (game_dir.clone(), duel_logs.clone(), accounts.clone(), admin_token.clone());
+        let manager = manager.clone();
         tokio::spawn(async move {
             let mut buf = Vec::new();
             let mut chunk = [0u8; 1024];
@@ -182,10 +184,28 @@ pub async fn http_loop(
                     _ => break,
                 }
             }
+            if buf.is_empty() { return } // A local liveness probe has no HTTP request to log.
+            let header_end = buf.windows(4).position(|w| w == b"\r\n\r\n").map(|n| n + 4).unwrap_or(buf.len());
+            let length = String::from_utf8_lossy(&buf[..header_end]).lines().find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length").then(|| value.trim().parse::<usize>().ok()).flatten()
+            }).unwrap_or(0);
+            if length <= 8192 {
+                while buf.len() < header_end.saturating_add(length) {
+                    match tokio::time::timeout(Duration::from_secs(10), stream.read(&mut chunk)).await {
+                        Ok(Ok(n)) if n > 0 => buf.extend_from_slice(&chunk[..n]), _ => break,
+                    }
+                }
+            }
             let request = String::from_utf8_lossy(&buf);
             let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
-            if let Some(response) = crate::admin::handle(&path, peer.ip(), admin_token.as_deref(), &accounts) {
-                tracing::info!("[http] GET {} -> {} ({} B)", path.split('?').next().unwrap_or_default(), response.status, response.body.len());
+            let response = if path == "/manager" {
+                Some(manager.handle(&request, peer.ip(), admin_token.as_deref()))
+            } else { crate::admin::handle(&path, peer.ip(), admin_token.as_deref(), &accounts) };
+            if let Some(response) = response {
+                if path != "/manager" {
+                    tracing::info!("[http] GET {} -> {} ({} B)", path.split('?').next().unwrap_or_default(), response.status, response.body.len());
+                }
                 let mut head = format!("HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n", response.status, response.content_type, response.body.len());
                 for (name, value) in &response.headers {
                     head += &format!("{name}: {value}\r\n");

@@ -12,6 +12,11 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Changed: persistent server state uses SQLite, importing existing JSON data once and retaining the originals, with
+  consistent startup backups and refusal to silently reimport stale data.
+- Added: a private local manager API for readiness, live account/player creation, credential export and shutdown;
+  explicit certificate updates preserve the private key and back up the prior certificate.
+
 - Fixed: cold Xvfb startup no longer holds the UI monkey's captured output pipes open. Display diagnostics go to
   the instance's `xvfb.log`; regression tests cover startup, reuse and failure and run in the release checks.
 - Added: authenticated revival launcher and connection DLL. Accounts sharing one IP stay separate; front and duel

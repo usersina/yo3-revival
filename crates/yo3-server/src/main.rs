@@ -13,8 +13,7 @@ struct Args {
     /// remove-code, codes) reach a running server; the others need it stopped (it rewrites the accounts file).
     #[command(subcommand)]
     admin: Option<Admin>,
-    /// Where accounts (accounts.json) and duel records (records.json) are kept; each start backs them up into
-    /// backups/.
+    /// Where persistent state (SQLite server.db) is kept; each start backs it up into backups/.
     #[arg(long, default_value = "data", global = true)]
     data_dir: PathBuf,
     #[arg(long, default_value = "127.0.0.1")]
@@ -137,8 +136,9 @@ fn print_key(a: &Args, key: &str) {
     }
 }
 
-/// Runs an admin command against the accounts file, or for the BP commands, the running server.
+/// Runs an admin command against persisted accounts, or for the BP commands, the running server.
 fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
+    yo3_server::store::initialize(&a.data_dir)?;
     if let Admin::InitAuth { names } = command {
         let tls = yo3_server::auth::initialize(&a.data_dir, names)?;
         println!("Public certificate: {}\nPrivate server key: {}", tls.certificate.display(), tls.private_key.display());
