@@ -93,7 +93,8 @@ The local `0x21FE` redirect and server `0x22C4` handoff (`0x50F690`) name this l
     `0x2072`.
   - A missing field that the client reads without a NULL check is a crash: Wine's "Unhandled page fault" at the
     reading address.
-- Timestamps sent to the client are **JST** (UTC+9). The client converts them to local time.
+- Formatted date/time strings sent to the client are **JST** (UTC+9). Duel-log `end_time` is a Unix timestamp
+  rendered in the client's local time zone.
 
 ## Gate (TCP 5730)
 
@@ -101,10 +102,11 @@ The local `0x21FE` redirect and server `0x22C4` handoff (`0x50F690`) name this l
 |---|---|---|---|---|
 | opener | `0x21FE` | `host` text, `port` u32 (front server) | `LoginWindow.cpp L303/L314` | confirmed |
 
-Every connection (gate, front, duel) is closed after 180 s without a packet: the client heartbeats `0x2724` every 30 s
-on the front and duel connections, and the gate's only message comes at once (**guess**: the client never idles longer;
-the limit is `Config::idle_timeout`). Messages nest at most 16 levels deep (the client's own go about 3); a deeper one
-is an undecodable packet (`Error::TooDeep`).
+Game framing has a 180 s idle limit before the first decoded message, while waiting for bytes inside a frame,
+and between duel messages (`net::Idle`). Once it has spoken, the front connection may remain quiet: real-client
+logs include map-idle gaps of 650 s and 3000 s. Duel connections heartbeat `0x2724` every 30 s. These are server
+limits, separate from TLS handshake deadlines and launcher-session expiry. Messages nest at most 16 levels deep
+(the client's own go about 3); a deeper one is an undecodable packet (`Error::TooDeep`).
 
 ## Front (TCP 1213)
 
@@ -172,21 +174,6 @@ clicks do nothing. Every reply also passes through the global front dispatcher; 
 |---|---|---|---|---|
 | `0x2072` regulations | `0x2398` (`0x2399`) | `regulations`: binary u16 BE regulation ids | read unchecked at `0x4F545B` | confirmed field; list contents **guess** (all 20) |
 | `0x24C4 {friend_list, black_list}` (u32 BE player ids): Yu-Gi-Oh! Online 2's takeover, the first step `0x472780`. While `pbin[0x4B]` bit 0 is clear it sets the bit in its own copy, reads the player's local lists (`friends.y3l`, `blacks.yo3l`, `0x52CEF0`) and, if either has anyone, sends this and waits | `0x2530` (`0x2531`) | none read: the step notes `yo2_takeover` 1 in its local save itself (`0x472D3C`) | live: a player with a friend sent `0x24C4 {friend_list 000003f8}`; unanswered, the startup never reached the unlock and only the chat answered clicks (a player's report). The server sets `pbin[0x4B]` bit 0, so the step is skipped (traced: `0x472832` inside the step no longer runs, `0x4725B0` does), and answers `0x24C4` with `0x2530` anyway | confirmed |
-
-**Banlists.** The client ships 20 regulations (`data/regulation/*.y3r`, named in the text table): 1 "Beta
-Forbidden/Limited", 2 "Pre-Season", 3 "unlimited" (no lists: every card 3 times), 4–15 the OCG lists of 2004-03 to
-2009-09 (which also limit the card pool to the cards out by then: `addition_card` 0 and the pool as `card3`), 16–20
-"Season 12" to "Season 16". The client's deck check (`0x51AB00`) before Auto Duel and NPC duels
-uses the login's `regulation_id` (`0x219A`, `0x2201`), and a hosted duel uses the host's choice; the server repeats it
-at Select Deck (`0x1F4F`, below: sizes, cards owned, the duel's regulation), so a modified client gets no further. The server sends the
-one its `--regulation` setting names (an id, or a name such as "Season 16"; default 3, "unlimited", the user's
-choice since 2026-11-08); the starter deck is still the first preset regulation 1 allows, so it passes any list. Live: the Starter Deck breaks regulation 4 (six cards
-newer than March 2004); with `--regulation 4` Kaiba Corporation answered "There are no valid Decks available.", with
-`--regulation unlimited` the same deck reached the janken. Create Duel → Customize → Regulations shows the login
-regulation as "Latest Regulation" (with "unlimited": no Forbidden cards, "Cards not listed are Unlimited.") and Select
-lists the others by name with their Forbidden / Limited / Semi-Limited tabs (an OCG list: Limited, Semi-Limited and
-"Any", "Cards not listed are Forbidden."). The same screen offers Wait Time Per Turn (Standard, Any, 2, 3, 5 minutes)
-and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 600 s the clocks use.
 | `0x27D8` | `0x27D9` (`0x27DA`) | one record (copied into a 0xC4-byte object) | item[0] read unchecked at `0x4F5BE9` | shape |
 | `0x2CEE` player refresh `{player_id, type}` | `0x2CF3` (`0x2CF4`) | item = the selected player's record; its `player_id` must match | `0x47378A`, `0x4F5FC2` | confirmed |
 | `0x2583` | `0x2588` (`0x2589`) | `count` u32: D-Mail waiting (see D-Mail); a count sets flag `0x1000`, the bell's mail icon | `0x4730B0` | confirmed |
@@ -195,6 +182,21 @@ and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 
 | `0x2AFB` | `0x2B13` (`0x2B14`) | none | `0x4738FA` | shape |
 | `0x2AFD` | `0x2B17` (`0x2B18`) | none; the global case reads `member_id`, `authority` if present | `0x473A3A`, `0x4F5E0E` | shape (team?) |
 | `0x2775` next present (bare) | `0x2778` none (`0x2777`/`0x2779` would carry a present) | none | builder `0x4F3A00`. The `0x2201` reply sets flag `0x80` (so does a `0x2774` push), so startup step `0x473AE0` opens PresentWindow, which sends `0x2775` and holds the main screen locked until it closes. Its switch (`0x476E74`): `0x2777`/`0x2779` "PRESENT content get success", `0x2778`/`0x277A` "content get error", which retries while `+0x58` > 0 and then closes (`0x4783C9`); its `0x2774` case reads `present_count` and drops it | confirmed (live: the facilities unlock after `0x2778`) |
+
+**Banlists.** The client ships 20 regulations (`data/regulation/*.y3r`, named in the text table): 1 "Beta
+Forbidden/Limited", 2 "Pre-Season", 3 "unlimited" (no lists: every card 3 times), 4–15 the OCG lists of 2004-03 to
+2009-09 (which also limit the card pool to the cards out by then: `addition_card` 0 and the pool as `card3`), 16–20
+"Season 12" to "Season 16". The client's deck check (`0x51AB00`) before Auto Duel and NPC duels
+uses the login's `regulation_id` (`0x219A`, `0x2201`), and a hosted duel uses the host's choice; the server repeats it
+at Select Deck (`0x1F4F`, below: sizes, cards owned, the duel's regulation), so a modified client gets no further. The server sends the
+one its `--regulation` setting names (an id, or a name such as "Season 16"; default 3, "unlimited", the user's
+choice since 2026-11-08). The starter is the first preset regulation 1 allows; other regulations can reject it. Live: the Starter Deck breaks regulation 4 (six cards
+newer than March 2004); with `--regulation 4` Kaiba Corporation answered "There are no valid Decks available.", with
+`--regulation unlimited` the same deck reached the janken. Create Duel → Customize → Regulations shows the login
+regulation as "Latest Regulation" (with "unlimited": no Forbidden cards, "Cards not listed are Unlimited.") and Select
+lists the others by name with their Forbidden / Limited / Semi-Limited tabs (an OCG list: Limited, Semi-Limited and
+"Any", "Cards not listed are Forbidden."). The same screen offers Wait Time Per Turn (Standard, Any, 2, 3, 5 minutes)
+and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 600 s the clocks use.
 
 ### Info and chat windows
 
@@ -535,7 +537,7 @@ are no valid Decks available." and OK returns to the map.
 | Request | Reply (error) | Fields | Evidence | Status |
 |---|---|---|---|---|
 | `0x177A` event list (bare, `0x4D0BB0`) | `0x177B` (`0x177C`, dialog `0x4F7940`) | top `result_number`; items `{event_type, status, event_id}`. TournamentScene looks for `event_type` 10 with `status` 12; none means its no-event path | `0x4D0BB0`; the Stadium opens | shape (empty) |
-| `0x1789` event search `{search_flag, pname, status, pack_type, base_point, front_num 30, back_num}` (`0x4D9E37`) | `0x177B` (`0x177C`) | as above; the list case `0x4D66A0` reads `result_number` (tracer) and `premium` from another dataset | captured packet; User Event lists nothing, page 1/1 | shape (empty) |
+| `0x1789` event search `{search_flag, pname, status, pack_type, base_point, front_num 30, back_num}` (`0x4D9E37`) | `0x177B` (`0x177C`) | as above; the list case `0x4D66A0` reads `result_number` (tracer) and `premium` from another dataset | captured request; live created/participating user events described below | confirmed (see User events below) |
 | `0x339A` own user event (bare, `0x4D9C2B`) | `0x33FE` (`0x33FF`) | `remain`, `event_id`: the scene keeps `event_id` only while `remain` ≠ 0 (its own event: relation 0 in the list, Create off) | `0x4D9BB0`; live | confirmed |
 
 **User events** (Satellite Plaza; Create needs `premium`). The list `0x1789` → `0x177B {result_number}` has a row per
@@ -771,8 +773,8 @@ Watch button → mode 4):
 **Opponent's Limits** (Create Duel: OFF, Friend, Team) is the host's `party`: 1 off, 2 friends, 3 team. Challengers see
 it as `duel_party` ("Opponent's Limits Friend" in Duel Conditions), and PlayerInfoWindow (`0x4B6510`, button 0) offers
 Send Duel Request for 2 only when the host is in the viewer's friend list (`+0x49C`, from slot 6) and for 3 only to
-a team member (`+0x49E`). The server checks the same on `0x17B6` (201 otherwise); there are no teams yet, so a
-team-only duel takes nobody. Live: Yugi hosted with Friend; Joey's Player Information showed no Send Duel Request,
+a team member (`+0x49E`). The server checks the same on `0x17B6` (201 otherwise); Team permits only members of the
+host's team (see the Teams section). Live: Yugi hosted with Friend; Joey's Player Information showed no Send Duel Request,
 Kaiba's (his friend) did, and Kaiba's request reached Yugi.
 
 On Yes both get the match push `0x1978` (the host's `duel_id`; `duelData` carries `match_type`, `regulation_id` and
@@ -1229,8 +1231,8 @@ Battle: the engine's battle prompt becomes a command map with bit 0 (Attack) on 
 cards, the M2 and EP buttons as allowed, and command 4 mode 3. A monster in slot s sits at command-map place (zone 0,
 index s), and the client sends Attack as `{CommandID 0, position 0, index s}`. LP changes: command `0x10 {player,
 signed change}` (DuelCockpit, clamped to 0–99999; param3 non-zero adds a pop-up) for ocgcore's DAMAGE, PAY_LPCOST
-(negative) and RECOVER, and `0xF` for LPUPDATE. Live: a direct attack took the CPU from 8000 to 5700 LP. The attack has
-no animation yet (DuelBattle's commands `0xA`–`0xE` are unmapped).
+(negative) and RECOVER, and `0xF` for LPUPDATE. Live: a direct attack took the CPU from 8000 to 5700 LP. Attack animations use
+DuelBattle commands `0xA`–`0xE`, mapped in the battle-command table above.
 
 **Choices.** DuelScene opens dialogs with two commands (both popped like any other):
 
@@ -1475,7 +1477,7 @@ Next leaves to Kaiba Corporation, where the NPC says his after-duel line. The cl
 client send a bare `0x1842` on the duel connection (meaning **open**).
 
 The numbering differs from Online 2's engine (whose turn change is `0x04` and LP set `0x26`), so YO2 research is a guide
-only. Next: the card map, so decks, hands and draws show.
+only; the card mapping and opening hand are implemented as described above.
 
 ### Duel log files (`0x512070`, `0x498700`, `0x498B10`, `duellog.rs`)
 
@@ -1539,10 +1541,9 @@ NULL, which these callers check. Send them when we know what they mean.
 | `0x2201` | `bgm` int (top level) | global dispatcher `0x4F506A` | probably the lobby music |
 | `0x21FC` | `icon`, `lefttime` (int), `maintenance` (string), in the `{lang}` item | `0x4F477C`, `0x44E6EF`, `0x44E72D` | a maintenance countdown; absent = none |
 | player record | `npc_id` int | `0x51BFE2` | 0 = a human player |
-| player record | `evalnum`, `evaltotal`, `evallevel` uint | the shop's `0x1C20` case (`0x48ABB6`…), through UserData+`0x2C` | the player's manner rating; only used when the shop text is empty |
 | `0x27D9` | `cpuUse`, `notRelease` (raw) in its record | `0x4F2080`, `0x4F20BA` | meaning open (CPU duels? unreleased cards?) |
 | (around `0x2CF7`) | `premium` uint, from **another dataset**, not the reply | `0x44F3E7` | probably the account's Duelist Premium flag |
-| `0x2CF7` items | `duel_id`, `event_score`, `duel_status`, `tprank`, `duel_match_type`, `world_evid`, `official_evid`, `user_evid` (int) | `0x475A20` | 0 = not duelling, no rank, no event; they pick the list icon |
+| `0x2CF7` items | `event_score`, `tprank`, `world_evid`, `official_evid`, `user_evid` (int) | `0x475A20` | omitted values read as 0; duel id/status/match type are sent when applicable (see automatic matching) |
 
 Settled from the client's code (no value to send):
 
@@ -1571,12 +1572,12 @@ a trade or rental ready or cancel hangs nothing visible.
 
 ## Families seen in the client, not mapped yet
 
-- `0x2CEC`–`0x2CF8`: player search, character creation (`CharMake.cpp`: `0x2CF5/6`) and player data.
+- `0x2CEC`–`0x2CF8`: mapped in the login, search and avatar sections; any other ids in this range remain open.
 - `0x2774`–`0x277A`: presents (`PresentWindow.cpp`). `0x2774` = count, a push the global dispatcher keeps in slot 23
   (it also sets the "presents pending" flag `0x80`); `0x2777/0x2779` carry full present records (`present_id`,
   `type`, `level`, `form`, `item_img`, `end_time`, `item`…); `0x2778/0x277A` mean none (see `0x2775`).
   The same numbers also show up as UI text ids (`FUN_0051E6C0(table, id)`): don't confuse the two.
 - 48 more `REQUEST_` / `RESPONSE_COMMUNICATION_*` names for trade and rental (search the exe's strings).
-- `DuelServerConnection`: the third server tier; see "Duel connection".
+- `DuelServerConnection` is mapped under "Duel connection"; remaining command meanings are labelled open there.
 - Official duel logs were served over HTTP (`http://download.yugioh-online.net/duellogs/last/`), alongside team and
   Online 2 downloads under `download.yugioh-online.net`.

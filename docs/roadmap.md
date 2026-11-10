@@ -34,6 +34,11 @@ reported no failures. Linux and Windows bundles build; the Windows launcher auth
 Setup and migration: [authentication.md](authentication.md). This completes the login milestone of
 [issue #1](https://github.com/usersina/yo3-revival/issues/1); visual mods remain separate work.
 
+Documentation review (2026-11-10): all ten tracked Markdown files checked for navigation and current setup.
+README routes joining, local play and hosting to complete platform-specific commands. Corrected certificate setup,
+source paths, backup coverage and stale milestone/protocol descriptions. A fresh Linux bundle authenticated its
+launcher on alternate ports; 454 tests and clippy passed. Local links, anchors, image paths and table structure pass.
+
 Review fixes (2026-11-10), each with a failing regression test before the implementation:
 
 - [x] Trade confirmations belong to the current offers: an offer change clears both approvals, and final answers
@@ -55,14 +60,15 @@ Review fixes (2026-11-10), each with a failing regression test before the implem
       Tests cover both a restricted duel under an unlimited login and the reverse. Live TCP: both clients received
       the chosen regulation in the match and handoff; the same starter was refused under banlist 4, accepted under 3.
 
-Final verification: 451 workspace tests passed, clippy clean, documentation checker reports no broken links. The
-traced stock client on private display `:78` logged in, opened Edit Deck, selected a deck for Seto Kaiba, received
+Server-hardening verification (before the launcher migration): 451 workspace tests passed, clippy clean, and no
+broken documentation links. The traced stock client on private display `:78` logged in, opened Edit Deck, selected a deck for Seto Kaiba, received
 `0x22CA` and the `0x22C4` handoff, and reached turn 2 without an exception. The handoff's host, port and match type
 were found by the tracer. This was an opening-turn check; no full manual duel was played in this fix session.
 
 As of 2026-11-10 the server covers the client's game features: M0 to M2 (research, a stable world, an instrumented
 client) and M5 (duels) are done, M3 (social) and M6 (play with friends) are done apart from checking on real friends'
-machines, and M4 (accounts, collection and economy) still needs the deck list's own save. Two duel problems found in the screenshot session are settled (one fixed, one hardened and watched). What is left is
+machines. M4 (accounts, collection and economy) is implemented; instant syncing of editor-only deck saves
+would require additional client-mod work, because the stock editor saves locally. Two duel problems found in the screenshot session are settled (one fixed, one hardened and watched). What is left is
 tracked as `[ ]` boxes in the sections below and in "Open questions and guesses".
 
 | Where | What it is |
@@ -71,6 +77,9 @@ tracked as `[ ]` boxes in the sections below and in "Open questions and guesses"
 | M0 to M6 | The milestones, each ending in something checked against the real client |
 | Open questions and guesses | Every value we picked without client evidence, to revisit |
 | Leads | Ideas outside the code |
+
+The dated work sessions below are historical snapshots. Their old raw ports, IP-based accounts and join-page
+instructions were superseded by the TLS launcher migration in M4; use [the guide](guide.md) for current setup.
 
 ## ▶ Overnight plan (2026-11-07): everything left, end to end
 
@@ -99,8 +108,8 @@ most valuable first. Research for the later slices runs ahead in parallel (read-
         (and a last Auto Duel match and single duel, which caught the 0x1785 re-queue), the release bundles rebuilt
         (Linux and Windows); [ ] then the real friend test (M6 exit)
 
-Not possible with this client, so left out: logins with a user id and password (the client never sends
-credentials; the delete dialog's password prompt is local too). (Corrected later: the client does have Create Player and
+Not possible in the stock game protocol: logins with a user id and password (the client never sends
+credentials; the required revival launcher now authenticates accounts over TLS; the delete dialog's password prompt is local too). (Corrected later: the client does have Create Player and
 Delete on Select Player, `0x1F4A`/`0x1F4B`, now answered.)
 
 ## ▶ Windows VM test (2026-11-08): what a real Windows client turned up
@@ -317,7 +326,7 @@ Findings:
 - Monkey-side, not server bugs: Delete Player and Create Player (`0x1F4A/B`) changed the account the canary logged in
       as (a deleted Kaiba: no reply to `0x1F4C`, as designed), so the monkey leaves them out; a canary refused while the
       monkey itself kills the server is expected.
-- Open, by design: one account per client address means new addresses keep making accounts (about 2 KB of file and 40 KB
+- Historical issue, resolved by required TLS profiles: one account per client address meant new addresses kept making accounts (about 2 KB of file and 40 KB
   of memory each; 1500 addresses were fine). Only a spoofing client could do this over TCP. Rotation is per run: a
   server restarted often keeps four files each time.
 - Open, client: with the server frozen (SIGSTOP) the client goes to a black screen and shows no "no response" dialog
@@ -434,11 +443,9 @@ Stop finding missing fields one crash at a time.
 - [x] Chat rooms (the chat panel's top-left button) and chat messages: room list, enter, leave, room chat
       with echo, whispers
 - [x] Sessions registry: who is online, in which room (`Hub`); sessions leave on disconnect
-- [x] Accounts by client address (the client never sends credentials), up to four players each; since then also by key
-      (see M4 "Real accounts")
-- [x] Self-service join page (`http://HOST:8080/join`, `--no-join` to turn it off): a friend picks a player name and gets
-      a key account with a downloadable `yo3.ini`; a repeat visit shows the same key, an address-only account can be
-      kept with a key; at most 4 accounts per address and 20 an hour (a guess). Tests: `tests/join.rs`.
+- [x] Accounts support up to four players each. The original address-based login and self-service `/join` page
+      are retired; the host now creates accounts and exports private TLS launcher profiles (M4).
+      `tests/join.rs` protects the removed page returning 404.
 - [x] Two clients at once: `YO3_INSTANCE=b` with its own display and reflinked Wine prefix
 - [x] Player search returns the players online, filtered by name, level or id; both clients list each other
       (needed the friend and black list pushes, `0x251C`/`0x252A`)
@@ -448,7 +455,7 @@ Stop finding missing fields one crash at a time.
   - [x] NPC duel: opens (Kaiba Corporation), says there are no valid decks, returns to the map (the trunk now has
         `cards`/`noTrade` arrays, all zero)
   - [x] Character settings: Avatar Settings opens with a default avatar and returns to the map (`avatar1` needs
-        41 entries); saving changes is not handled yet
+        41 entries); saving changes is now handled (see Avatar Settings below)
   - [x] Official Event (Stadium) and Championship (tournament map): open, report no valid decks, return
   - [x] User event (Satellite Plaza): events created, listed, joined, started and run as a knockout
 - [x] Friends and the ignore list: friend requests through the bell, accepting or declining, withdrawing, removing,
@@ -566,13 +573,13 @@ Stop finding missing fields one crash at a time.
       back through the front (`0x1F4F` update_type 2) and the duel connection's `0xE` starts the next janken. Live:
       Yugi swapped Danipon in for Crass Clown and duel 2 was dealt from the swapped deck
 - [x] Create Duel's Opponent's Limits: Friend lets only the host's friends challenge (the client hides the button,
-      the server refuses with 201); Team takes nobody until teams exist. Live: Joey had no Send Duel Request, Kaiba
+      the server refuses with 201); Team accepts only the host's team members. Live: Joey had no Send Duel Request, Kaiba
       did and his request reached Yugi
-- [x] NPC roster and duel start: 26 NPCs (ids 120–197 from the NPC deck presets) listed by name with their
+- [x] NPC roster and duel start: 25 named NPCs (ids 120–194 from the NPC deck presets; unnamed 195–197 omitted) listed by name with their
       levels; picking one runs `0x1784` → `0x17AC` → Select Deck (`0x1F4F`) → `0x17D4`, and the duel screen opens
-      with both players. The client builds NPC duels itself (DuelManager `0x50ECF0`); no duel server is involved
+      with both players. The client builds the NPC duel metadata (DuelManager `0x50ECF0`); the authenticated duel server runs the rules engine
 - [x] Duel server handoff: after `0x17D4` the server pushes `0x22C4` (`duelData {host, port}` + `rule`), the
-      client connects to our duel listener (port 1214, logged only) and sends `0x200A {player_id, autoSet}`
+      client connects through the launcher's loopback duel proxy and TLS role 2 and sends `0x200A {player_id, autoSet}`
 - [x] Duel connection mapped (both directions' `duelRequestName`s, the engine command pump) and the janken played
       against the server as the CPU (commands 1500–1503): the duel field opens, Turn 1
 - [x] Duel opening: setup `0x15` with both decks' sizes, duel start, LP 8000 (`0xF`), the first player's Draw Phase
@@ -662,16 +669,15 @@ Stop finding missing fields one crash at a time.
 
 ## ▶ M6: Play with friends
 
-- [x] Run on a LAN or VPN: `--bind 0.0.0.0`; the gate and the front send each client to the address it reached
-      (`--advertise` only for port forwarding); firewall notes (TCP 5730, 1213, 1214, 8080). Live: a client through
-      the LAN address and one through loopback, two accounts, a duel to a win between them
+- [x] LAN/VPN hosting: `--bind 0.0.0.0`, a certificate covering the reachable name/IP, a private profile per account
+      exported with `--advertise HOST`, and TCP 7443 through the firewall. Gate/front/duel/asset traffic uses TLS.
+      The earlier raw LAN-versus-loopback duel check predates this transport; new-launcher remote-machine checks remain open.
 - [x] Accounts kept in `data/accounts.json` and duel records in `data/records.json`, backed up at each start; new
       players' names made unique (Duelist, Duelist2…)
-- [x] Admin commands: `accounts`, `add-player ADDRESS NAME` (name a friend's player before they connect), `rename`
-- [x] Linux release bundle (`tools/release.sh`: server, engine sources, `run.sh`) and the setup guide for the host
-      and the players (`docs/guide.md`: `yo3.ini`, Windows or Wine, LAN / VPN / port forwarding)
-- [x] A native Windows server build: `tools/release.sh` cross-compiles `yo3-server.exe` (x86_64-pc-windows-gnu,
-      mingw-w64) into a zip with `run.cmd` and `engine\fetch.cmd`. Live: under Wine, a client logged in through it
+- [x] Admin commands: `accounts`, `add-player WHO NAME` (add a player to an existing account), `rename`
+- [x] Linux and Windows bundles (`tools/release.sh`): server, TLS launcher, connection DLL/injector, complete
+      rules engine with Node, `run.sh` / `run.cmd` and [the setup guide](guide.md). No game files or credentials ship.
+      Windows executables are cross-compiled with mingw-w64; the new Windows launcher authenticated under Wine.
 - [x] Chain questions follow the player's Activation Message option (Manual / Semi Auto Cancel / Auto Cancel): the
       server sends a level per chance (3 after an event, 1 at a phase, 0 when nothing fits). Live: no question at the
       CPU's phases, the question at its summon
@@ -691,7 +697,7 @@ Stop finding missing fields one crash at a time.
 | Player search paging | skip `base_point`, return at most `front_num` | Only page 1 (`0, 100`) was seen |
 | Player search by name | case-insensitive substring | Konami's matching rule is unknown |
 | Friend and black list pushes | sent once, right after `9000` | The original timing is unknown; the client only needs them before it lists a player |
-| Shop lists besides packs, `perk_num`, rental terms | all empty or 0 | Only booster packs are stocked; `perk_num`'s meaning is unknown |
+| Shop lists besides packs, `perk_num`, rental terms | shop lists populated; unused fields 0 | Packs, structure decks, protectors and avatar items are stocked; `perk_num`'s meaning is unknown |
 | Pack prices and contents | 100 BP a pack, at most 10 per purchase; 5 cards: 4 of the pack list's first ascending run, 1 of a later run (each run half as likely as the one before), read as rarity tiers | The original's prices, pack size and odds are unknown; the runs match the OCG's rarity split (44/18/9/9) |
 | Starting BP | 5000 per account (`START_BP`) | The original's amounts are unknown |
 | Structure decks | SD001–SD005 only (the starters 1–3 have no art); 500 BP each, at most 3 per purchase, sale id 20000 + deck id; the owned-items bit (`pbin_no`) the client sets isn't kept by the server | The original's prices are unknown; nothing read so far depends on the bit for decks |
@@ -717,7 +723,7 @@ Stop finding missing fields one crash at a time.
 | Server duel messages | request `0x200D` | The pump reads only `duelRequestName` (and needs the id non-negative) |
 | CPU janken | random hand; the CPU goes first when it wins | The original CPU's choices are unknown |
 | Card table entries (1000) | param3 0 (it is only a hover-help text id for command 100, `0x523D20`), flag byte 0 (stored, no consumer found); uids 1.. in table order | The flag byte's use is unverified |
-| Hidden cards | against another player, the opponent's deck, hand, extra deck and face-down cards go with row 0 and face-down monsters get no field record; against the CPU, real rows | Online 2 used placeholders, whose value is unknown; a hidden card that flips without moving keeps row 0 until it moves (position changes aren't translated yet) |
+| Hidden cards | against another player, the opponent's deck, hand, extra deck and face-down cards go with row 0 and face-down monsters get no field record; against the CPU, real rows | Online 2 used placeholders, whose value is unknown; face-up position changes reveal the card through `Translator::turn`; the original hidden-card encoding remains unknown |
 | Automatic matching | the first two players waiting for the same `match_type`, Both (6) with either and two Both players in a Single duel; the level choice is ignored; the second player's `0x1978` goes a second after its `0x1799` | Konami's matching rules are unknown; the delay assumes the agent reads one message per step |
 | Match Mode | best of three; every duel opens with a janken; a drawn duel counts for neither; the records count the match once | Online 3's rules for who goes first in later duels, draws and the side deck are unknown |
 | Hosted LP and `--duel-lp` | the testing aid wins over a hosted `lp_start` when it isn't 8000 | A testing convenience, not the original's |
@@ -746,7 +752,7 @@ Stop finding missing fields one crash at a time.
 | Duel end reason | EDOPro's reason mapped to the client's texts (LP 0, deck out, surrender, Exodia...; others "won with a card") | The original server's values are unknown (100 takes another path) |
 | Duel's end push `0x2009` | sent when the engine ends the duel; `duel_end` 1 (normal: no effect) or 3 (cancelled before it began); no `score_<id>`; `dlogURL` for duels between players | The original timing is unknown. Values settled by `0x515BD3`/`0x518631`: 2, 3 dialog `0x2918`; 4 "has disconnected" (we don't send it); 5 opens the result |
 | Result screen counts | `win`/`lose`/`draw` = totals against this opponent including this duel, `*_add` = this duel's change; kept in memory | The client only shows them ("Wins 1 (+001)") |
-| Duel port | 1214 | The original's port is unknown; the client takes whatever `duelData` says |
+| Duel port | launcher-selected loopback port; remote TLS role 2 on 7443 | The original's port is unknown; the client takes whatever `duelData` says |
 | Accounts | authenticated TLS key login, single-use front/duel tickets, launcher-bound duel entries  | The launcher is required; the stock login form has no credential fields. Shared IPs no longer select accounts  |
 | Uploaded decks | the decks a duel's Select Deck sent, ten per player by name, listed after the starter and bought decks | The client has no other upload; the original server's deck storage is unknown |
 | Deck check | sizes, ownership per Konami id, the duel's regulation, refused with `0x22CB` (client text `0x2919`: settled, `0x50ECF0` compares only `0x22CA`/`0x22CB` and never uses `error_code`) | The rules of the check are ours |

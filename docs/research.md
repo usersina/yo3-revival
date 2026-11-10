@@ -4,6 +4,7 @@ Research date: 2026-11-06. Client examined: `yo3.exe` built 2011-07-01, last pat
 
 > Snapshot from before any server code existed. Its tool paths are out of date (`tools/re/` now), and the plan in
 > §5 continues in [roadmap.md](roadmap.md). Protocol facts found since then live in [protocol.md](protocol.md).
+> This is historical research, not a setup guide or a current assessment of third-party licensing.
 
 **Contents**
 

@@ -25,7 +25,7 @@ readers; this page says which is which and in what order to read them.
 
 ## Where to start
 
-- **I want to play or host:** [guide.md](guide.md).
+- **I want to play or host:** start with the [project README](../README.md), then [guide.md](guide.md) for commands.
 - **I want to contribute:** [../AGENTS.md](../AGENTS.md), then [roadmap.md](roadmap.md) to pick something open, then
   [protocol.md](protocol.md) for the area you will touch.
 - **I want to know how a screen works:** [protocol.md](protocol.md) for the messages, then
@@ -40,11 +40,12 @@ readers; this page says which is which and in what order to read them.
   `crates/yo3-server/tests/` and `roadmap.md`.
 - The docs cite addresses and field names but never paste decompiled code, Konami data or packet logs.
 - Screenshots in `images/` are 1024x768 frames of the client, with test player names only.
-- Each document starts with a table of contents. `tools/docs-check.py --toc FILE` prints one for a file.
+- Long technical documents start with a table of contents; the short project README and changelog do not need one.
+  `tools/docs-check.py --toc FILE` prints one for a file.
 
 ## Checking the docs
 
 ```bash
-tools/docs-check.py                    # every relative link and #anchor in README.md, AGENTS.md and docs/*.md
+tools/docs-check.py                    # every relative link and #anchor in root Markdown files and docs/**/*.md
 tools/docs-check.py --toc docs/FILE.md # a table of contents to paste under a document's title
 ```

@@ -1,9 +1,22 @@
 # Authenticated launcher and connection mod
 
 The revival launcher is the only supported login path. The server accepts game traffic over TLS on TCP 7443;
-there is no IP-based login or stock-client fallback. The original game executable and its files are unchanged.
+there is no IP-based login or stock-client fallback. The original game executable and `yo3.ini` stay unchanged;
+the game still writes its normal player files.
+
+**Contents**
+
+- [Setup](#setup)
+- [Connections and credentials](#connections-and-credentials)
+- [Client evidence](#client-evidence)
+- [Existing accounts and rollout](#existing-accounts-and-rollout)
+- [Development checks](#development-checks)
 
 ## Setup
+
+For complete platform-specific commands, server startup and firewall setup, follow the
+[host and player guide](https://github.com/usersina/yo3-revival/blob/main/docs/guide.md). The commands below illustrate
+the credential flow from an extracted Linux bundle.
 
 The host initializes a certificate with the DNS names/IPs friends will connect to, makes an account, and exports a
 private profile while the server is stopped:
@@ -17,7 +30,8 @@ private profile while the server is stopped:
 Send `Alice.json` privately to Alice, together with the public `data/server.crt`, saved next to the profile as
 `server.crt`. Keep `data/server.key` on the host. The profile contains the server address, expected certificate name,
 public certificate filename, and the account's secret key. Profiles and server private keys created by the tools
-use mode 0600 on Unix; initialization makes the credential directory private (0700), including existing backups. On Windows keep them in a folder private to the intended user.
+use mode 0600 on Unix; initialization makes the credential directory private (0700), including existing backups.
+On Windows keep them in a folder private to the intended user.
 
 The player runs the launcher from the bundle:
 
@@ -38,7 +52,7 @@ hook terminates the suspended game before it can run. Starting the game directly
 1. Rustls verifies the host certificate and its DNS name/IP using the public certificate the host supplied. No
    certificate checks are disabled. The account key is sent only inside TLS, outside the game packet logger.
 2. Login returns a random 256-bit session capability, valid for 12 hours. Separate launcher logins have separate
-   identities, including two logins to the same account. Keys and tokens are never passed on command lines.
+   identities, including two logins to the same account. The launcher never passes keys or tokens on command lines.
 3. Each front, duel or asset connection needs a fresh random 256-bit ticket. Tickets last 30 seconds, are scoped
    to their connection role, and are consumed once. A wrong-role presentation burns the ticket too.
 4. The server chooses the front account from the authenticated identity. It never consults source-IP patch-key

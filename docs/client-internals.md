@@ -150,9 +150,9 @@ parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Su
 
 ## Behaviours worth knowing
 
-- Login is automatic after OK on the saved credentials; only player selection needs a click. Up to 4 players per
-  account.
-- The client treats server times as JST.
+- The stock login form continues after OK; the revival launcher authenticates first and ignores that form's
+  credentials. Up to 4 players per account.
+- The client treats formatted server date/time strings as JST; duel-log epoch timestamps render in local time.
 - The client keeps its own data under `<My Documents>\Yu-Gi-Oh! ONLINE 3` (`SHGetFolderPath` `0x8005`, `0x52B8E0`):
   `options.y3o`, `users\`, and per player `players\<pname>\` with `decks`, `mail`, `regulations`, `duellogs`,
   `local`, `avatars` and `<pname>.y3p`. Under Wine, My Documents is usually a link to the Linux `~/Documents`, and
@@ -160,7 +160,8 @@ parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Su
 - Text values are read as C strings: anything after a NUL is lost. Use binary for blobs (`avatar1`, `pbin`,
   `regulations`).
 - Unanswered polls time out with a dialog naming the decimal request id, and the client then drops back to the title.
-- Credentials are never sent; see "Accounts" in the protocol catalog.
+- The stock game never sends login credentials. The required launcher sends its account key inside TLS; see
+  [authentication.md](authentication.md).
 - Several clients can run at once (unnamed mutexes only, so no single-instance guard). Under Wine each needs its own
   prefix when it gets its own X display; otherwise Wine dies with X `BadWindow` errors.
 - The player list hides the searcher's own entry and entries with `player_id` 0, and pages by 100.

@@ -1,7 +1,7 @@
 # Hosting and joining: playing Yu-Gi-Oh! ONLINE 3 with friends
 
 Everyone uses the revival launcher and connection DLL with their own original game install (ver. 1.153). The
-server and launcher authenticate each account over TLS. No game files are modified or shipped. These instructions
+server and launcher authenticate each account over TLS. The game executable and `yo3.ini` stay unchanged; no game files are shipped. These instructions
 are for current source; the last published release predates the authenticated launcher.
 
 **Contents**
@@ -19,44 +19,87 @@ are for current source; the last published release predates the authenticated la
 
 ## Play on your own PC
 
-Install the original game (on Linux, under Wine), build the bundles with `tools/release.sh`, and unpack the one for
-your system. On Windows substitute `.\yo3-server.exe` for `./yo3-server` in these commands:
+First obtain a **current bundle** (see [Run from source](#run-from-source)). Extract it and open a terminal in the
+extracted folder. The host needs its own game install too: the server reads its card, deck and other data.
+
+These commands create a local-only identity. If you plan to host friends, use [For the host](#for-the-host) instead
+so their address is included in the certificate from the start.
+
+Windows, in PowerShell:
+
+```powershell
+.\yo3-server.exe init-auth localhost 127.0.0.1
+.\yo3-server.exe add-account Yugi
+.\yo3-server.exe profile Yugi client.json --advertise localhost
+Copy-Item .\data\server.crt .\server.crt
+.\yo3-server.exe
+```
+
+Linux:
 
 ```sh
 ./yo3-server init-auth localhost 127.0.0.1
 ./yo3-server add-account Yugi
 ./yo3-server profile Yugi client.json --advertise localhost
+cp data/server.crt server.crt
+./yo3-server
 ```
 
-Copy `data/server.crt` next to `client.json` as `server.crt`. Keep `data/server.key` on the server. Start `run.cmd`
-(Windows) or `./run.sh` (Linux), then launch the game as described below. Initialization runs once; accounts and the
-server identity persist in `data/` and are backed up at server startup.
+Keep that terminal open. In a **second terminal** in the same folder, follow [For every player](#for-every-player),
+using `client.json` instead of `Alice.json`. The raw server defaults to loopback, which is enough for local play.
+
+Initialization and account creation run once. For later sessions, just start the server and launcher. Profile export
+refuses to overwrite a file; reuse your existing profile. If the game is installed elsewhere, add
+`--game-dir "PATH_TO_GAME"` to the server command as well as to the launcher command.
 
 ## For the host
 
-Before initializing the certificate, choose the DNS name or IP your friends reach. Include it in `init-auth`, for
-example `./yo3-server init-auth localhost 127.0.0.1 192.168.1.50`. A certificate initialized only for localhost does
-not authenticate a LAN IP. Existing certificate/key files are never overwritten by this command.
+Use an extracted current bundle, with your own game installed. Choose a stable LAN/VPN IP or DNS name that friends
+can reach. The example below uses **192.168.1.50**: replace it with your actual address everywhere, including in
+`init-auth`. Run setup with the server stopped.
 
-With the server stopped, make an account per friend and export their profile:
+Windows, in PowerShell:
 
-```sh
-./yo3-server add-account Alice
-./yo3-server profile Alice Alice.json --advertise 192.168.1.50
+```powershell
+.\yo3-server.exe init-auth localhost 127.0.0.1 192.168.1.50
+.\yo3-server.exe add-account Alice
+.\yo3-server.exe profile Alice Alice.json --advertise 192.168.1.50
+.\run.cmd
 ```
 
-Privately give Alice `Alice.json` and the public `data/server.crt`; she keeps them together, with the certificate
-named `server.crt`. Each friend needs their own profile, even behind one router. The profile contains a secret
-account key; the certificate is public. Keep the server private key on the host. On Windows keep private profiles
-and the server key in folders private to their intended users; the tools set mode 0600 on Unix.
+Linux:
 
-Run `run.cmd` or `./run.sh`. The host exposes TCP **7443** for TLS (`--auth-port` changes it). The internal HTTP/admin
-port, 8080 by default, stays on loopback and needs no firewall opening. A VPN is fine; TLS remains required.
+```sh
+./yo3-server init-auth localhost 127.0.0.1 192.168.1.50
+./yo3-server add-account Alice
+./yo3-server profile Alice Alice.json --advertise 192.168.1.50
+./run.sh
+```
 
-Existing players keep their cards, BP and ids. Export `profile EXISTING_PLAYER client.json --advertise HOST`; an
-address-only account receives a key without moving its data. The old `/join` page and `yo3.ini` downloads are gone.
-Old clients cannot log in; the launcher is required. See [authentication.md](authentication.md) for the protocol and
-migration details.
+The wrappers bind the TLS listener to all network interfaces. When running the server directly, pass
+`--bind 0.0.0.0`; **`--advertise` only sets the address in profiles, not the listening interface**. For a non-default
+game install, append `--game-dir "PATH_TO_GAME"` to the wrapper or server command.
+
+Privately give Alice `Alice.json` and the public `data/server.crt`. She keeps them together, with the certificate
+named `server.crt`. Repeat `add-account` and `profile` with a different name for each friend. Create your own account
+and profile too if you will play. Each account can have up to four players; accounts behind one router remain separate.
+
+The profile contains a secret account key. Keep it private and keep `data/server.key` on the host. Unix tools create
+private credential files with mode 0600; on Windows use folders private to the intended user.
+
+Allow TCP **7443** through the host firewall and, when needed, forward it through the router or route it through your
+VPN. The internal HTTP/admin port (8080 by default) stays on loopback; do not forward it. If you change
+`--auth-port`, use that port consistently when exporting profiles and starting the server.
+
+**Existing setup:** keep `data/`. Export `profile EXISTING_PLAYER client.json --advertise HOST` to reuse that player's
+account and cards/BP/ids; address-only accounts receive a key. A localhost-only certificate does not cover a LAN IP.
+`init-auth` refuses to overwrite an existing identity: choose an address already covered, or plan a new identity and
+redistribute its certificate and profiles. Do not delete your account data to change the certificate.
+The old `/join` page and INI downloads are retired. See [authentication.md](authentication.md) for the design.
+
+**Backups:** account and record JSON files are backed up at server startup. The TLS private key and certificate are
+not included in those automatic backups: separately back up the entire `data/` directory securely. Players should
+also back up their local `Documents/Yu-Gi-Oh! ONLINE 3` folder.
 
 Useful account commands (server stopped except the BP operations):
 
@@ -91,14 +134,43 @@ No macOS bundle or live check is provided. The supported builds are Linux with W
 
 ### Run from source
 
+Build on Linux from the repository root. You need Rust/Cargo, Node.js 22.18 or newer with npm, Git, curl and
+32-bit MinGW GCC and binutils (`i686-w64-mingw32-gcc`, `i686-w64-mingw32-dlltool`) for the connection DLL/injector. Linux players also need Wine.
+
 ```sh
+git clone https://github.com/usersina/yo3-revival.git
+cd yo3-revival
+engine/fetch.sh --check
 engine/fetch.sh
 cargo build --release -p yo3-server -p yo3-launcher
 tools/mod/build.sh
 ```
 
-Follow the host setup above. For a headless development client set `YO3_AUTH_PROFILE` to its private profile and use
-`tools/client/vclient.sh start --trace`; the working guide contains the private-display commands.
+If you already have a checkout, skip `git clone` and run the remaining commands from its root.
+
+Use **`./target/release/yo3-server`** in place of `./yo3-server` in the setup commands above, staying in the repository
+root. Start it directly (`--bind 0.0.0.0` for friends). To launch the development build:
+
+```sh
+./target/release/yo3-launcher --profile client.json \
+  --game-dir "$HOME/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3" \
+  --injector tools/mod/build/yo3-auth-launch.exe --dll tools/mod/build/yo3-auth.dll
+```
+
+To build **both distributable bundles**, also install the `x86_64-w64-mingw32-gcc` toolchain and the archive tools
+`tar`, `xz`, `sha256sum` and system `python3`, then run:
+
+```sh
+rustup target add x86_64-pc-windows-gnu
+tools/release.sh
+```
+
+The Linux archive and Windows zip appear in `dist/`. Distribute the matching archive to each player; its rules
+engine includes Node, and its launcher finds the DLL and injector beside itself. Never put private profiles or
+server keys in a shared bundle.
+
+For development and headless live checks, read [AGENTS.md](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md). Use a scratch data directory, alternate
+ports and private Xvfb displays; keep the user's live server and desktop untouched.
 
 ## For every player
 
@@ -136,13 +208,18 @@ Only the matched players can submit decks or start that duel. Create Duel keeps 
 
 ## What works and what doesn't yet
 
-Working: chat rooms and whispers, player search, NPC duels, Auto Duel and Create Duel between players (Single
-and Match Mode), choosing targets, tributes, positions, coin calls and chains in the game's own dialogs, attack, summon,
-chain-link and destruction animations, the result screens, avatar settings, and the shop's booster packs and structure decks: every
-account starts with 5000 BOOSTERPASS Points (100 a pack), duels earn more (100 for a win, 50 for a draw, 30 for a
-loss; the shop shows them after your next login or purchase), so do codes the host gives out (Main Menu → BOOSTERPASS),
-and the cards you pull are kept on the server. A
-structure deck you buy shows up in Edit Deck's deck list, ready to duel with.
+The main playable features are:
+
+- **Duels:** NPC opponents, Auto Duel, Create Duel, Single and Match Mode, spectating, and the client's choice dialogs
+  and animations.
+- **Cards and decks:** Edit Deck, official character decks, booster packs, structure decks, trading and rentals.
+- **Community:** chat rooms, whispers, player search, friends, D-Mail, teams and player-run knockout tournaments.
+- **Customization:** avatar settings, card protectors and avatar items bought in the shop.
+
+Each account starts with **5000 BOOSTERPASS Points**. Packs cost 100 BP; duels earn 100 for a win, 50 for a draw and
+30 for a loss. The shop shows updated points after your next login or purchase. The host can also issue codes,
+redeemed through **Main Menu → BOOSTERPASS**. Purchased cards stay on the server; a bought structure deck appears
+in Edit Deck's deck list.
 
 Duels between players have clocks: 3 minutes a turn and 10 minutes a duel (or the host's choice in Create Duel), and
 running out loses the duel.
@@ -182,8 +259,14 @@ conditions (a term of 1, 3, 7 or 14 days, and Free) and double-clicks cards from
 Confirm; the borrower answers "Borrow these cards?" and the cards join their trunk (marked as borrowed, so they can be
 put in decks but not traded) while the lender's copies are out of theirs. When the term is over the cards are back with
 their owner, even across a server restart (they are kept in `data/rentals.json`); there is no early return. Both players'
-Main Menu > Rental Card List shows what they lent and borrowed. Players' decks stay on their own machines (in
-`Documents\Yu-Gi-Oh! ONLINE 3`): a deck that used a borrowed card is no longer valid once the rental ends.
+Main Menu → Rental Card List shows what they lent and borrowed. Editor saves live locally in
+`Documents\Yu-Gi-Oh! ONLINE 3`; selecting a deck for a duel also uploads it to the server. A deck that used a borrowed
+card is no longer valid once the rental ends.
+
+Limitations: this is pre-alpha. Computer opponents use a basic bot, and saving in Edit Deck alone does not sync a
+deck to another machine; select it for a duel to upload it. The client has its original card pool and UI. Some reply
+fields remain inferred rather than confirmed against Konami's server; [the roadmap](https://github.com/usersina/yo3-revival/blob/main/docs/roadmap.md) lists those choices
+and the remaining live checks, including play from separate friends' machines with the new launcher.
 
 ## When something goes wrong
 

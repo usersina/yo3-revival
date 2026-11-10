@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Checks the Markdown docs and prints tables of contents.
 
-    tools/docs-check.py                 every relative link and #anchor in README.md, AGENTS.md and docs/*.md resolves
+    tools/docs-check.py                 every relative link and #anchor in root Markdown files and docs/**/*.md resolves
     tools/docs-check.py --toc FILE      a table of contents for FILE (H2 and H3 headings), ready to paste under its title
 
 Anchors follow GitHub's rule: lowercase, drop everything but letters, digits, spaces, hyphens and underscores, spaces
@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DOCS = [ROOT / "README.md", ROOT / "AGENTS.md", *sorted((ROOT / "docs").glob("*.md"))]
+DOCS = [*sorted(ROOT.glob("*.md")), *sorted((ROOT / "docs").rglob("*.md"))]
 LINK = re.compile(r"(?<!\!)\[[^\]]*\]\(([^)\s]+)\)|!\[[^\]]*\]\(([^)\s]+)\)")
 
 

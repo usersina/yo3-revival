@@ -8,41 +8,37 @@ in through the authenticated revival launcher and duel again: against the comput
 </p>
 
 <p align="center">
-  <sub>The unmodified game client (ver. 1.153), mid-duel on this server (screenshot of Konami's game).</sub>
+  <sub>The original game client (ver. 1.153), mid-duel on this server (screenshot of Konami's game).</sub>
 </p>
 
-## Play on your own PC
+## Start here
 
-There is no public server: you run one yourself. Current source requires the revival launcher and connection DLL.
-The last published release predates this setup; build current bundles with `tools/release.sh`.
+There is no public server. You can host on your own PC or join a friend's server. Everyone needs their own install
+of the original game **ver. 1.153**; Linux players also need Wine. Game files are not included.
 
-1. Install your own copy of the original game (ver. 1.153; on Linux, under Wine).
-2. Build/unpack the bundle for your system. It includes the server, rules engine, launcher and our connection DLL.
-3. Once, initialize the server identity and account (Windows: use `.\yo3-server.exe`):
+**Current source requires the revival launcher.** Published releases through v0.0.3 predate it and do not follow these
+instructions. Until a new release is published, a developer must [build the current bundles](docs/guide.md#run-from-source).
+Each bundle includes the server, rules engine, launcher and connection DLL.
 
-   ```sh
-   ./yo3-server init-auth localhost 127.0.0.1
-   ./yo3-server add-account Yugi
-   ./yo3-server profile Yugi client.json --advertise localhost
-   cp data/server.crt server.crt
-   ```
+- **Joining a friend?** Get your private profile and `server.crt` from the host, then follow
+  [the player instructions](docs/guide.md#for-every-player). You do not need to run a server or install build tools.
+- **Hosting friends?** Choose the address they will use **before** creating the certificate. Follow
+  [the host setup](docs/guide.md#for-the-host); only TCP **7443** needs to reach your PC.
+- **Playing alone?** Follow [the local setup](docs/guide.md#play-on-your-own-pc), then duel the computer at
+  **Kaiba Corporation**.
 
-4. Start `run.cmd` on Windows or `./run.sh` on Linux. Keep it open.
-5. Start `yo3-launcher.exe --profile client.json --game-dir "C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3"`
-   on Windows. On Linux use `./yo3-launcher` and your Wine game directory.
-6. Press **ONLINE**, pick your player, open **Main Menu → Edit Deck** once, then visit **Kaiba Corporation** to duel.
+Authentication happens in the launcher; the game's original username/password fields are unused. The game executable
+and `yo3.ini` stay unchanged. Each account has its own private profile, so friends sharing a router stay separate.
 
-Authentication happens in the launcher. The original game's username/password fields are unused. Its binary and
-`yo3.ini` stay unchanged. The [host and player guide](docs/guide.md) has the full commands.
+## Your first duel
 
-## Play with friends
+1. Keep the server running, then start the launcher with your profile and game folder.
+2. Press **ONLINE**, dismiss the original login form and select your player.
+3. Open **Main Menu → Edit Deck** once, then leave it to save your starting decks.
+4. Visit **Kaiba Corporation** for a computer opponent. With a friend, both choose **Auto Duel → Confirm**, or use
+   **Create Duel** to arrange a specific match.
 
-Initialize the certificate with the DNS name or IP your friends will reach. Create a separate account and private
-launcher profile for each friend, and give each the public `server.crt`. Only TCP **7443** needs to reach the host;
-all game connections use TLS. Accounts behind the same router stay separate. Then use **Auto Duel** or **Create Duel**.
-
-The [host guide](docs/guide.md#for-the-host) covers setup and existing-account migration. See the
-[authentication design](docs/authentication.md) for credential handling and verification.
+The [host and player guide](docs/guide.md) has complete Windows and Linux commands, account management and pictures.
 
 ## Something wrong?
 
