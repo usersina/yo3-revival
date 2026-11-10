@@ -10,6 +10,7 @@ use yo3_tunnel::{Endpoint, Role, Token};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 pub mod components;
+pub mod attach;
 
 pub async fn authorize<R: AsyncRead + Unpin>(stream: &mut R, cookie: &Token) -> anyhow::Result<()> {
     let mut given = [0; 32];
@@ -84,7 +85,7 @@ impl Proxy {
                             tokio::io::copy_bidirectional(&mut local, &mut remote).await?;
                             Ok::<_, anyhow::Error>(())
                         }.await;
-                        if let Err(e) = result { eprintln!("{role:?} connection: {e}"); }
+                        if let Err(e) = result { let message = format!("{role:?} connection: {e}"); yo3_tunnel::diagnostics::event(&message); eprintln!("{message}"); }
                     });
                 }
             }));

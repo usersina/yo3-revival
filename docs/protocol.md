@@ -75,6 +75,16 @@ to stdin only after that acknowledgement. EOF/failure kills the suspended child.
 mod interface, release and commit, while `bundle.json` inventories release hashes. Tests: launcher `components`,
 `desktop_control`, `tools/mod/test.sh`; this is our bootstrap protocol, not a game reply shape.
 
+Opt-in direct launch uses a game-local WINMM proxy (the seven imports in `tools/mod/loader.c`), leaving the executable
+unchanged. Its IAT wrappers defer process/UI/network work until a relevant INI/WinInet/connect call, outside DllMain.
+The user's private registry-selected config pins the connection DLL hash and private profile path. A Windows helper
+attaches to the verified game PID/executable, prepares local proxies, then publishes a bounded readiness JSON with
+helper/game PID, ABI, ports and fresh cookie. The loader verifies it, loads the DLL, checks `Yo3ModReady`, and
+atomically acknowledges that cookie. Only then does the helper authenticate and publish `authenticated`; game exit
+revokes the session. Stale/mismatched acknowledgements and existing readiness files are refused. Managed injection
+skips the automatic bootstrap. Tests: launcher `attach`, desktop `direct_install`, `tools/mod/test-loader.sh` and
+the live fixture `tools/mod/test-direct.sh`. These fields belong to our private bootstrap, never stock login replies.
+
 Status 0 succeeds, 1 refuses. Handshakes time out after 10 seconds. Authentication bytes never enter the game packet
 logger. The asset role permits public patch/app/duel-log routes only; `/admin` is inaccessible through TLS. Internal
 HTTP listens on loopback. New keys and tokens use OS cryptographic randomness. Store/connection caps are documented

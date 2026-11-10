@@ -13,7 +13,15 @@ __declspec(dllexport) const Yo3ModMetadata Yo3ModInfo __attribute__((section(".y
     {'Y','O','3','M','O','D','0','2'}, YO3_MOD_ABI, YO3_BUILD_VERSION, YO3_BUILD_COMMIT
 };
 static int mod_ready;
-__declspec(dllexport) DWORD WINAPI Yo3ModReady(void *unused) { (void)unused; return mod_ready ? YO3_MOD_ABI : 0; }
+static LONG reported_ready;
+__declspec(dllexport) DWORD WINAPI Yo3ModReady(void *unused) {
+    (void)unused;
+    if (mod_ready && InterlockedCompareExchange(&reported_ready, 1, 0) == 0) {
+        const char message[] = "[YO3 MOD] " YO3_BUILD_VERSION " interface ready; network hooks installed\r\n";
+        DWORD written; WriteFile(GetStdHandle(STD_ERROR_HANDLE), message, sizeof message - 1, &written, NULL);
+    }
+    return mod_ready ? YO3_MOD_ABI : 0;
+}
 
 static DWORD (WINAPI *profile_string)(LPCSTR,LPCSTR,LPCSTR,LPSTR,DWORD,LPCSTR);
 static UINT (WINAPI *profile_int)(LPCSTR,LPCSTR,INT,LPCSTR);
@@ -128,6 +136,18 @@ static int WSAAPI hooked_close(SOCKET socket) {
 }
 
 #include "hooks.h"
+
+/* The automatic loader delegates the API call that triggered initialization here once, outside DllMain. */
+__declspec(dllexport) void *WINAPI Yo3ModApi(unsigned id) {
+    if (!mod_ready) return NULL;
+    switch (id) {
+        case YO3_API_STRING: return (void *)hooked_string;
+        case YO3_API_INT: return (void *)hooked_int;
+        case YO3_API_URL: return (void *)hooked_url;
+        case YO3_API_CONNECT: return (void *)hooked_connect;
+        default: return NULL;
+    }
+}
 
 BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
     (void)reserved;

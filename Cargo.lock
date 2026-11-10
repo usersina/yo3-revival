@@ -3785,6 +3785,7 @@ dependencies = [
  "serde_json",
  "subtle",
  "tokio",
+ "windows-sys 0.61.2",
  "yo3-proto",
  "yo3-server",
  "yo3-tunnel",

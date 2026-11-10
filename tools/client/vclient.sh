@@ -6,6 +6,7 @@
 #   tools/client/vclient.sh desktop         graphical manager in the foreground on this instance's private display
 #   tools/client/vclient.sh start [--trace] launch yo3.exe on it (trace -> logs/client-stdout.log);
 #                                           --trace also logs every field lookup -> logs/fields.tsv
+#   tools/client/vclient.sh start-stock    open the original executable using its installed automatic loader
 #   tools/client/vclient.sh login [SLOT]    title -> ONLINE -> OK (saved credentials) -> player SLOT (0-3, default 0); `login select` stops at Select Player
 #   tools/client/vclient.sh shot NAME       screenshot the game window -> logs/shots/NAME.png
 #   tools/client/vclient.sh click X Y       left click at game-window coordinates (1024x768)
@@ -79,6 +80,12 @@ case "${1:-}" in
       sleep 1
     }
     xdpyinfo | grep dimensions ;;
+  start-stock)
+    # Installed automatic loader path: no injector or account credentials on this command line.
+    cd "$GAME"
+    WINEDLLOVERRIDES=winmm=n,b WINEDEBUG=fixme-all nohup wine "$GAME/yo3.exe" >"$LOGS/client-stdout.log" 2>"$LOGS/client-wine.log" &
+    for _ in $(seq 60); do [ -n "$(win)" ] && break; sleep 0.5; done
+    echo "window $(win)" ;;
   start)
     PROFILE="${YO3_AUTH_PROFILE:?set YO3_AUTH_PROFILE to the private client.json for this account}"
     MOD="$ROOT/tools/mod/build"

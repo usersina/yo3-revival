@@ -2,12 +2,28 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <wininet.h>
+#include <mmsystem.h>
 #include <stdio.h>
 #include <string.h>
 
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #x); return 1; } } while (0)
 int main(int argc, char **argv) {
     CHECK(argc == 2 || argc == 3);
+    if (argc == 2 && !strcmp(argv[1], "direct")) {
+        CHECK(timeGetTime() > 0); /* force the same automatic WINMM import as yo3.exe */
+        WSADATA data; CHECK(WSAStartup(MAKEWORD(2,2), &data) == 0);
+        char host[256];
+        GetPrivateProfileStringA("Yo3", "GateServerAddress", "stock.example", host, sizeof host, "yo3.ini");
+        CHECK(!strcmp(host, "127.0.0.1"));
+        UINT port = GetPrivateProfileIntA("Yo3", "GateServerPort", 5730, "yo3.ini"); CHECK(port && port != 5730);
+        HMODULE mod = GetModuleHandleA("yo3-auth.dll"); CHECK(mod != NULL);
+        DWORD (WINAPI *ready)(void *) = (void *)GetProcAddress(mod, "Yo3ModReady"); CHECK(ready && ready(NULL) == 2);
+        SOCKET client = socket(AF_INET, SOCK_STREAM, 0);
+        struct sockaddr_in address = {0}; address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK); address.sin_port = htons((unsigned short)port);
+        CHECK(connect(client, (struct sockaddr *)&address, sizeof address) == 0); closesocket(client);
+        puts("PASS: original process automatically loads the verified mod before authenticating"); return 0;
+    }
     if (argc == 3 && !strcmp(argv[2], "missing-env")) {
         SetEnvironmentVariableA("YO3_LOCAL_COOKIE", NULL);
         CHECK(LoadLibraryA(argv[1]) == NULL);
