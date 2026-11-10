@@ -1121,6 +1121,12 @@ else from any empty field slot. **Shape**: the shatter plays for a material, and
 Xyz Monsters tried (Gem-Knight Pearl, Number 39: Utopia), so this was not seen live. A material from a hand or pile is
 not followed (logged).
 
+**Counters and stats across control changes.** Counters follow the card object (`0x4FB6C0`, map `+0x130`);
+a face-bit change clears them (`0x4FBE50` → `0x4FB770`). The translator no longer removes counters for a control
+change: **confirmed** with Breaker and Snatch Steal on both running clients. Field-to-field moves and
+swaps also carry cached stat records with the card, avoiding a reset to printed stats when an equal-stat swap
+produces no changed engine field report: **shape**, covered by an engine-discovered contract regression.
+
 **The duel check** (`crates/yo3-server/src/duelcheck.rs`, the server's `--duel-check`): a model of the client's card
 manager built only from the rules above (the hand lists, field slots, pile counts, card table and each card's place
 word), fed every command the server sends and compared with where the engine has every card (the sidecar's read-only

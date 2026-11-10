@@ -1312,6 +1312,28 @@ fn a_card_leaving_the_field_drops_its_counters_first() {
 }
 
 #[test]
+fn a_control_change_keeps_the_cards_counters() {
+    // Counters belong to the card's map (+0x118..0x130, 0x4FB6C0), not its owner's field slot.
+    let mut t = with_field();
+    t.events(&[counter(true, 1, 4, 2, 2)]);
+    let out = t.events(&[json!({"type":50,"cid":4101,"from":loc(0,4,2,1),"to":loc(1,4,0,1),"reason":16})]);
+    assert!(counters(&out).is_empty(), "a control change must not remove counters: {out:?}");
+    let removed = t.events(&[json!({"type":102,"counter_type":1,"controller":1,"location":4,"sequence":0,"count":1})]);
+    assert_eq!(counters(&removed), [(0x27, [1, -1i32 as u32, 0, 0])]);
+}
+
+#[test]
+fn a_control_swap_preserves_dynamic_stats_when_the_core_has_no_new_field_report() {
+    let mut t = with_monsters();
+    t.events(&[json!({"type":"field","monsters":[
+        {"controller":0,"sequence":0,"position":1,"level":4,"attack":2300,"defense":900,"base_attack":1000,"base_defense":1000}
+    ]})]);
+    let out = t.events(&[json!({"type":55,"card1":card_at(0,4,0,4100),
+        "card2":{"cid":4200,"controller":1,"location":4,"sequence":1,"position":8}})]);
+    assert!(out.iter().map(cmd).any(|(id,p)| id==0x3EA && p==[0,4,2300,900]), "{out:?}");
+}
+
+#[test]
 fn extra_decks_go_into_the_card_table_and_move_from_there() {
     // Each side's extra deck joins the card table at zone 0xC (uids after both main decks), the opponent's with row
     // 0 against a player. A card leaving the extra deck (a Fusion or Synchro Summon) is found by its id, wherever the

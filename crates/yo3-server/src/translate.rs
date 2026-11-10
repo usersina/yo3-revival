@@ -762,7 +762,7 @@ impl Translator {
         match (self.engine_place(&m["from"]), self.engine_place(&m["to"])) {
             (Some(from), Some(to)) => {
                 let reason = m["reason"].as_u64().unwrap_or(0);
-                let dropped = self.drop_counters(&from);
+                let dropped = if to.zone > FIELD_SPELL { self.drop_counters(&from) } else { vec![] };
                 let mut moved = self.relocate(cid, from, to);
                 if to.zone == HAND && let Some(at) = self.revealing.iter().position(|&c| c == cid) {
                     self.revealing.remove(at);
@@ -951,13 +951,14 @@ impl Translator {
     fn trade(&mut self, a: Place, b: Place) -> Vec<Message> {
         let at = |s: &Self, p: &Place| s.sides[p.player as usize].zones.get(&p.zone).and_then(|z| z.first()).copied();
         let (card_a, card_b) = (at(self, &a), at(self, &b));
+        let (record_a, record_b) = (self.records.get(&(a.player, a.zone)).copied(), self.records.get(&(b.player, b.zone)).copied());
         let mut out = match (card_a, card_b) {
             (Some(_), Some(_)) => vec![command(CARD_SWAP, [0, a.packed(), b.packed(), 0])],
             (Some(c), None) => vec![command(MOVE, [c.uid | (c.row as u32) << 16, Place { face_up: false, defense: false, ..a }.packed(), b.packed(), 0])],
             (None, Some(c)) => vec![command(MOVE, [c.uid | (c.row as u32) << 16, Place { face_up: false, defense: false, ..b }.packed(), a.packed(), 0])],
             (None, None) => return vec![],
         };
-        for (place, card) in [(a, card_b), (b, card_a)] {
+        for (place, card, record) in [(a, card_b, record_b), (b, card_a, record_a)] {
             let zone = self.sides[place.player as usize].zone(place.zone);
             zone.clear();
             zone.extend(card);
@@ -967,7 +968,10 @@ impl Translator {
                     let row = self.shown_row(&place, c.row);
                     out.push(command(CARD, [c.uid | open(place.zone), row, 0, table_place(place.player, place.zone, 0)]));
                     if place.zone < 5 && row != 0 && place.face_up {
-                        out.extend(self.monster_record(place.player, place.zone, c.row));
+                        out.extend(match record {
+                            Some(values) => self.record(place.player, place.zone, c.row, values),
+                            None => self.monster_record(place.player, place.zone, c.row),
+                        });
                     }
                 }
                 None => {
@@ -1036,6 +1040,7 @@ impl Translator {
     /// Moves a card in the mirror and on the client: the card table entry (1000), then on screen (0x1A); the
     /// cards whose index shifted in a list zone get their table entry again.
     fn relocate(&mut self, cid: u16, from: Place, to: Place) -> Vec<Message> {
+        let record = (from.zone <= FIELD_SPELL).then(|| self.records.get(&(from.player, from.zone)).copied()).flatten();
         let cards = &self.cards;
         let source = self.sides[from.player as usize].zone(from.zone);
         let at = if from.zone == DECK || from.zone == EXTRA {
@@ -1074,7 +1079,10 @@ impl Translator {
         let row = self.shown_row(&to, card.row);
         let mut out = vec![command(CARD, [card.uid | open(to.zone), row, 0, table_place(to.player, to.zone, index)])];
         if to.zone < 5 && row != 0 {
-            out.extend(self.monster_record(to.player, to.zone, card.row));
+            out.extend(match record {
+                Some(values) => self.record(to.player, to.zone, card.row, values),
+                None => self.monster_record(to.player, to.zone, card.row),
+            });
         }
         // List zones renumber: re-send the shifted cards (not the face-down deck). A pile's go before the move, whose
         // count change redraws the pile from the table's top entry (0x4FE4D0); the hand's after.

@@ -524,6 +524,10 @@ of bug instead of a list of cases:
 
 What it found (covered by `translate_contract.rs` and the dedicated regressions below):
 
+- [x] Preserve counters on control changes (Breaker/Snatch Steal, confirmed on both running clients) and dynamic
+      stats on field moves/swaps (engine-discovered contract regression). Counters remain on their card object;
+      moving it must not erase them or reset displayed values to printed ones.
+
 - [x] Yusei battle protection (2026-11-10): Fortress Warrior and Shield Wing survived in the core but vanished in
       the client, leaving occupied, targetable slots. MSG_BATTLE's destroy flag precedes limited protection;
       BattleRun no longer hides from that provisional flag. Confirmed destruction moves now shatter through

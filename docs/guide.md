@@ -247,6 +247,9 @@ in Edit Deck's deck list.
 Duels between players have clocks: 3 minutes a turn and 10 minutes a duel (or the host's choice in Create Duel), and
 running out loses the duel.
 
+Control changes preserve a monster's counters and current stats. For example, Breaker keeps its Spell Counter
+and boosted ATK when Snatch Steal changes its controller.
+
 To add a friend, open their Player Information (click them in player search) and press Send Friend Request; they
 get a friends icon at the top left, and accepting adds you to each other's lists. Main Menu → Friend List shows all your
 friends; the search tab's two-people button shows the ones who are online. Friends are kept by the host's server.

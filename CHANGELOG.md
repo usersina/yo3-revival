@@ -21,6 +21,7 @@ Older entries describe their release at the time. For current setup, use the [RE
   battle animations that hide cards, closing a gap that let occupied but invisible slots go undetected.
 - Added real-engine regressions for battle protection and Stardust's legal/illegal Debris Dragon combinations,
   plus simulations using all three original Yusei decks from the installed game.
+- Fixed counters being removed during control changes and dynamic monster stats resetting during some swaps.
 
 ## v0.0.4 (2026-11-10)
 
