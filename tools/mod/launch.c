@@ -3,13 +3,13 @@
  */
 #include <windows.h>
 #include <stdio.h>
-#include <string.h>
+#include <wchar.h>
 
-static int inject(HANDLE process, const char *dll) {
-    SIZE_T length = strlen(dll) + 1;
+static int inject(HANDLE process, const wchar_t *dll) {
+    SIZE_T length = (wcslen(dll) + 1) * sizeof(wchar_t);
     void *remote = VirtualAllocEx(process, NULL, length, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!remote) return 0;
-    FARPROC load = GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA");
+    FARPROC load = GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryW");
     HANDLE thread = NULL;
     if (load && WriteProcessMemory(process, remote, dll, length, NULL))
         thread = CreateRemoteThread(process, NULL, 0, (LPTHREAD_START_ROUTINE)(void *)load, remote, 0, NULL);
@@ -21,14 +21,14 @@ static int inject(HANDLE process, const char *dll) {
     return complete && loaded != 0;
 }
 
-int main(int argc, char **argv) {
+int wmain(int argc, wchar_t **argv) {
     if (argc < 3) { fputs("usage: yo3-auth-launch GAME.exe AUTH.dll [TRACE.dll]\n", stderr); return 2; }
-    char command[MAX_PATH + 4], directory[MAX_PATH];
-    if (strlen(argv[1]) >= MAX_PATH) { fputs("game path too long\n", stderr); return 2; }
-    snprintf(command, sizeof command, "\"%s\"", argv[1]);
-    snprintf(directory, sizeof directory, "%s", argv[1]);
-    char *slash = strrchr(directory, '\\'); if (slash) *slash = 0;
-    STARTUPINFOA startup = {0}; PROCESS_INFORMATION child = {0}; startup.cb = sizeof startup;
+    wchar_t command[MAX_PATH + 4], directory[MAX_PATH];
+    if (wcslen(argv[1]) >= MAX_PATH) { fputs("game path too long\n", stderr); return 2; }
+    swprintf(command, sizeof command / sizeof *command, L"\"%ls\"", argv[1]);
+    wcscpy(directory, argv[1]);
+    wchar_t *slash = wcsrchr(directory, L'\\'); if (slash) *slash = 0;
+    STARTUPINFOW startup = {0}; PROCESS_INFORMATION child = {0}; startup.cb = sizeof startup;
     startup.dwFlags = STARTF_USESTDHANDLES;
     startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
     startup.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE); startup.hStdError = GetStdHandle(STD_ERROR_HANDLE);
@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {0};
     limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
     if (!job || !SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof limits)) return 1;
-    if (!CreateProcessA(argv[1], command, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, slash ? directory : NULL, &startup, &child)) {
+    if (!CreateProcessW(argv[1], command, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, slash ? directory : NULL, &startup, &child)) {
         fprintf(stderr, "cannot create game (%lu)\n", GetLastError()); CloseHandle(job); return 1;
     }
     int ready = AssignProcessToJobObject(job, child.hProcess);

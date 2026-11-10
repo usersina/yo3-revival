@@ -13,7 +13,9 @@ wine "$MOD/yo3-auth-test.exe" "$DLL"
 wine "$MOD/yo3-auth-ordinal-test.exe" "$DLL"
 wine "$MOD/yo3-auth-ordinal-test.exe" "$DLL" missing-env
 LOG="$(mktemp)"
-trap 'rm -f "$LOG"' EXIT
+UNICODE="$(mktemp -d)/日本語 game"
+mkdir -p "$UNICODE"
+trap 'rm -f "$LOG"; rm -rf "${UNICODE%/*}"' EXIT
 if wine "$MOD/yo3-auth-launch.exe" "$(winepath -w "$MOD/yo3-auth-test.exe" 2>/dev/null)" 'Z:\missing-auth.dll' >"$LOG" 2>&1; then
   echo "FAIL: injector resumed with a missing connection mod" >&2
   exit 1
@@ -21,3 +23,17 @@ fi
 grep -q 'game terminated before startup' "$LOG"
 if grep -q 'FAIL line' "$LOG"; then echo "FAIL: the suspended test executable ran" >&2; exit 1; fi
 echo 'PASS: injector refuses startup when the required DLL cannot load'
+cp "$MOD/yo3-auth-test.exe" "$UNICODE/game.exe"
+if wine "$MOD/yo3-auth-launch.exe" "$(winepath -w "$UNICODE/game.exe" 2>/dev/null)" 'Z:\missing-auth.dll' >"$LOG" 2>&1; then
+  echo 'FAIL: Unicode-path game resumed without its required DLL' >&2; exit 1
+fi
+grep -q 'game terminated before startup' "$LOG" || { command cat "$LOG" >&2; exit 1; }
+echo 'PASS: injector starts a suspended game from a Unicode folder'
+cp "$MOD/yo3-auth.dll" "$UNICODE/auth.dll"
+# The fixture deliberately exits 1 without its usual argument; the injector must load the Unicode-path DLL first.
+YO3_LOCAL_GATE=1 YO3_LOCAL_FRONT=1 YO3_LOCAL_DUEL=1 YO3_LOCAL_HTTP=1 \
+YO3_LOCAL_COOKIE=0707070707070707070707070707070707070707070707070707070707070707 \
+wine "$MOD/yo3-auth-launch.exe" "$(winepath -w "$MOD/yo3-auth-test.exe" 2>/dev/null)" \
+  "$(winepath -w "$UNICODE/auth.dll" 2>/dev/null)" >"$LOG" 2>&1 && { echo 'FAIL: fixture unexpectedly succeeded' >&2; exit 1; }
+grep -q 'connection mod loaded' "$LOG" || { command cat "$LOG" >&2; exit 1; }
+echo 'PASS: injector loads its required DLL from a Unicode folder'

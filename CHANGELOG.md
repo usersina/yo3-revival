@@ -12,6 +12,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Fixed: a desktop-controlled game session exits after the game closes, even while its control pipe remains open.
+- Fixed: the injector accepts Unicode game and DLL paths.
 - Changed: persistent server state uses SQLite, importing existing JSON data once and retaining the originals, with
   consistent startup backups and refusal to silently reimport stale data.
 - Added: a private local manager API for readiness, live account/player creation, credential export and shutdown;

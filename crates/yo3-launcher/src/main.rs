@@ -15,6 +15,8 @@ struct Args {
     #[arg(long)] dll: Option<PathBuf>,
     #[arg(long)] trace_dll: Option<PathBuf>,
     #[arg(long)] wine_prefix: Option<PathBuf>,
+    /// Desktop lifecycle pipe. Closing stdin or sending `stop` closes the game and revokes its session.
+    #[arg(long)] control_stdin: bool,
     /// Run the authenticated proxy for protocol tests, without starting the game.
     #[arg(long)] proxy_only: bool,
     /// Private JSON endpoint descriptor for protocol tests (contains the local cookie).
@@ -72,9 +74,14 @@ async fn main() -> anyhow::Result<()> {
     }
     cmd.envs(proxy.environment()).stdin(Stdio::null()).kill_on_drop(true);
     let mut child = cmd.spawn().context("start the injector")?;
+    let desktop_stop = async {
+        if args.control_stdin { yo3_launcher::wait_for_desktop_stop(std::io::BufReader::new(std::io::stdin())).await; }
+        else { std::future::pending::<()>().await; }
+    };
     let status = tokio::select! {
         status = child.wait() => Some(status?),
         _ = tokio::signal::ctrl_c() => { child.kill().await?; None }
+        _ = desktop_stop => { child.kill().await?; None }
     };
     let _ = endpoint.logout(&session).await;
     if let Some(status) = status { ensure!(status.success(), "game or injector exited with an error"); }
