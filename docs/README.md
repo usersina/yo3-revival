@@ -23,7 +23,7 @@ readers; this page says which is which and in what order to read them.
 | [client-internals.md](client-internals.md) | Reverse engineers          | Addresses and functions in `yo3.exe`, the field tracer, data file formats, behaviours worth knowing, crash history                                                  |
 | [research.md](research.md)                 | Curious readers            | The feasibility study from before any server code existed, kept as history                                                                                          |
 | [../AGENTS.md](../AGENTS.md)               | Contributors and AI agents | The working guide: ground rules, repo map, commands, the loop for answering a new client request, conventions, environment gotchas                                  |
-| [images/](images/)                         | The READMEs                | Screenshots of the real client running on this server                                                                                                               |
+| [images/](images/)                         | The READMEs and guides     | Screenshots of the current graphical launcher and the real client running on this server |
 
 ## Where to start
 
@@ -42,7 +42,7 @@ readers; this page says which is which and in what order to read them.
 - Four places stay in step: `protocol.md`, `crates/yo3-server/src/front.rs`, the contract tests under
   `crates/yo3-server/tests/` and `roadmap.md`.
 - The docs cite addresses and field names but never paste decompiled code, Konami data or packet logs.
-- Game screenshots in `images/` are 1024x768 client frames with test player names only; `launcher.png` shows our own GUI.
+- Game screenshots in `images/` are 1024x768 client frames with test player names only; `launcher*.png` show our own GUI.
 - Long technical documents start with a table of contents; the short project README and changelog do not need one.
   `tools/docs-check.py --toc FILE` prints one for a file.
 

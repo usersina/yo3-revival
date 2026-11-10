@@ -1,8 +1,12 @@
 # YO3 Revival: play and host from one window
 
-Open **yo3-revival.exe** on Windows or **yo3-revival** on Linux after extracting the complete application bundle.
-The graphical launcher described here is available in current source builds; releases through v0.0.3 predate it.
-The four pages are **Play**, **My server**, **Activity** and **Settings**. Help, GitHub and the version are in the footer.
+[Download the latest release](https://github.com/usersina/yo3-revival/releases/latest), choose the Windows ZIP or
+Linux archive, and extract the complete bundle. Open **yo3-revival.exe** on Windows or **yo3-revival** on Linux.
+The graphical launcher is included from **v0.0.4** onward; no terminal or development tools are needed.
+
+The four pages are **Play**, **My server**, **Activity** and **Settings**. Help, GitHub and the current version are
+at the bottom of the sidebar. Question-mark tooltips explain unfamiliar settings. Advanced options stay collapsed
+until you need them.
 
 **Contents**
 
@@ -15,6 +19,7 @@ The four pages are **Play**, **My server**, **Activity** and **Settings**. Help,
 - [Logs and support](#logs-and-support)
 - [Application updates](#application-updates)
 - [Your data and upgrades](#your-data-and-upgrades)
+- [Upgrade from v0.0.3 or earlier](#upgrade-from-v003-or-earlier)
 - [Troubleshooting](#troubleshooting)
 - [Getting the original game](#getting-the-original-game)
 
@@ -23,21 +28,27 @@ The four pages are **Play**, **My server**, **Activity** and **Settings**. Help,
 Install your own **Yu-Gi-Oh! ONLINE 3 ver. 1.153**. Linux players also need Wine. Our bundle includes the server,
 rules engine, connection DLL and launcher; it contains no original game files.
 
-In **Settings**, choose the folder containing `yo3.exe`, `yo3.idx` and `package/`, then **Save changes**. A separate
-Wine prefix can be selected under **Advanced game options**. Each section saves only its own fields; **Cancel**
-discards that section's draft. Start and Play use saved configuration.
+In **Settings**, choose the folder containing `yo3.exe`, `yo3.idx` and `package/`, then **Save changes**. If the
+correct game folder is already detected, leave it in place. A separate Wine prefix can be selected under
+**Advanced game options** on Linux; Wine settings do not appear on Windows. Each section saves only its own
+fields; **Cancel** discards that section's draft. Start and Play use saved configuration.
+
+![Settings with the game folder and component checks](images/launcher-settings.png)
 
 The saved setup checks the complete game data, injector and matching connection DLL. **Ready to play** means the
 preflight succeeded. **Continue to Play** finishes first-time setup. If something is missing, **Repair**
 explains whether to choose a complete game installation or restore the complete application bundle from a release
 download. Recheck after restoring files. Our DLL also acknowledges readiness before authentication and game resume.
-The original executable and INI stay unchanged.
+The original executable and INI stay unchanged. If you are moving from an older release, follow the
+[upgrade steps](#upgrade-from-v003-or-earlier) before starting your server.
 
 ## Play locally
 
 On **Play**, select **My server** and press **Play**. The launcher creates the first local account if necessary and
 starts its local server automatically. No sharing address or firewall configuration is needed for local play.
 The account dropdown controls your game login; managing another account under My server does not change it.
+
+![Play with the server and account in one section](images/launcher.png)
 
 The UI reports **Starting game** until the authenticated launcher signals readiness, then **Game running**.
 **Close game** ends that session while hosting can continue. On Wine, a cold prefix can take longer to initialise;
@@ -47,6 +58,9 @@ In the game, select **ONLINE**, dismiss the original login form and choose your 
 fields are unused because the launcher authenticated the account. On a fresh player profile, the mod prepares a
 legal starting deck and selects it if you have no selection. This runs only once: existing decks, even unfinished
 ones, and all later edits or deletions are preserved.
+
+![Choose a player after the launcher has authenticated your account](images/guide/5-select-player.png)
+
 Visit **Kaiba Corporation** for a computer opponent or use **Auto Duel** with a friend.
 **Main Menu → Edit Deck** is available whenever you want to customise your decks.
 
@@ -88,6 +102,10 @@ An explicit external `:port` in the sharing address supports router/VPN port map
 Stop your server before saving hosting changes. Its data folder and first player for a new server are also under
 Advanced. The overview reports **Running on this computer**, online players and duels; that is local process status,
 not proof that the address is reachable from another network. **Stop server** disconnects its players.
+
+![The server overview with independent hosting and private invitations](images/launcher-server.png)
+
+The screenshot uses an example sharing address. Use an address your friends can actually reach.
 
 ## Connection help
 
@@ -133,6 +151,8 @@ original generic connection failure: a server cannot inspect files on another co
 offers **Current session** or **All retained sessions**, then previews the file count, date range and size before saving
 one ZIP. The current scope includes this manager, its attached server and latest game run; all retained sessions
 includes current and older history. Nothing is uploaded.
+
+![Export logs with session scope and report preview](images/launcher-logs.png)
 
 Logs rotate at 2 MiB and are retained up to 14 days or 100 MiB, preserving active process logs. The viewer reads at most
 96 KiB. **Diagnostics options** enables detailed tracing for the next game/server start; save or cancel that section
@@ -190,6 +210,32 @@ Restore a database backup only with the server stopped. A migrated directory wit
 rather than silently reimporting stale JSON. Returning to an older server requires the original pre-upgrade JSON
 snapshot; it cannot read SQLite or retain subsequent database-only changes.
 
+## Upgrade from v0.0.3 or earlier
+
+This is the first release with the graphical launcher, so this upgrade starts with a manual download. Later
+versions can be installed through **About & updates** after confirmation.
+
+1. Stop the old server. Securely back up its **entire `data/` folder**, plus players' local
+   **`Documents/Yu-Gi-Oh! ONLINE 3`** folders. Keep the old bundle and backup until the upgrade works.
+2. Extract the complete new bundle into a separate folder and open **yo3-revival.exe** or **yo3-revival**.
+   Set your game folder in **Settings**.
+3. Before starting hosting, open **My server → Advanced**, select the old server's **data folder**, set the
+   sharing address if friends will join, and **Save changes**. Selecting a folder uses it directly; it does not
+   copy its contents. Do not run the old and new servers against the same folder together.
+4. Choose **My server → Overview → Start server**. Existing accounts, cards, BP and records import into SQLite
+   automatically. The original JSON files remain as migration copies. The launcher creates or maintains the server
+   identity without replacing an existing private key.
+5. In **Players & invitations**, choose each existing account and **Export private invitation…**. Send the new
+   invitation privately to its owner; they import it on **Play** and choose **Save connection**. Existing account
+   credentials and player data carry over; do not create replacement accounts for existing players.
+6. Allow the chosen **TCP port (7443 by default)** through the host firewall/VPN/router. Older raw game ports and
+   the browser `/join` page are retired. Start the game through the launcher or enable optional direct launch;
+   changing `yo3.ini` cannot authenticate an unmodified client.
+
+If importing fails, stop and inspect **Activity**. Repair the reported source problem and retry; do not delete
+account data or SQLite migration markers to force a reimport. See [Your data and upgrades](#your-data-and-upgrades)
+for backups and rollback limits.
+
 ## Troubleshooting
 
 - **Incomplete game:** choose a full supported installation rather than an installer or a shortcut.
@@ -198,7 +244,7 @@ snapshot; it cannot read SQLite or retain subsequent database-only changes.
 - **Identity error:** confirm changes with the host or import their updated invitation. Automatic certificate renewal
   with the same identity does not require approving a new key. An expired certificate still needs renewal by the host.
 - **Authentication refused:** the key belongs to an account on that specific server; import the correct invitation.
-- **Game startup fails:** see **Activity → Launcher & game**. The supported client and required DLL must match.
+- **Game startup fails:** see **Activity → Game & launcher**. The supported client and required DLL must match.
 - **Account name refused:** use a unique player name, 1–16 characters, and at most four players per account.
 - **Long session disconnected:** launcher sessions last 12 hours; close and launch the game again.
 - **Windows warnings:** the executables and injection DLL are unsigned. See the

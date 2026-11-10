@@ -43,11 +43,11 @@ The [docs index](docs/README.md) says what each document is for. The ones you wi
    Ask before pushing anywhere.
 6. **Code only in git.** Never commit game files, Konami data, decompiled code or packet logs. `re/`, `logs/` and
    `target/` are ignored. Docs may cite addresses and field names, but not paste decompiled code. The one exception
-   is the screenshots in `docs/images/`: they show the game running, they are not game data. Keep them to 1024x768
-   client frames, optimised PNGs under about 600 KB, with test player names and no host paths. The picture guide in
+   is the screenshots in `docs/images/`: they show our launcher and the game running, they are not game data. Keep game
+   screenshots to 1024x768 client frames, optimised PNGs under about 600 KB, with test player names and no host paths. The picture guide in
    `docs/images/guide/` (shipped in the release bundles) is made of crops of such frames and of browser pages with red
-   boxes drawn on them, about 800 px wide and under about 300 KB each; the one non-screenshot, the game-folder
-   listing, is drawn and labelled as an illustration.
+   boxes drawn on them, about 800 px wide and under about 300 KB each. A drawn game-folder listing must be labelled
+   as an illustration. Launcher screenshots show the real current UI with test accounts and no private credentials.
 7. **Don't disturb a live setup.** The user may have a server on the default ports (7443, 8080; older setups may use
    5730/1213/1214) and a client queued on display `:77`. Never stop, restart or touch them, or their `data/`. For your own checks run a
    dev server on other ports and scratch dirs (see Commands) and the second client (`YO3_INSTANCE=b`, display `:78`).

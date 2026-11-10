@@ -8,8 +8,9 @@ This page is the command-line reference and source-build guide; both routes use 
 and game files.
 
 Everyone uses the revival launcher and connection DLL with their own original game install (ver. 1.153). The
-server and launcher authenticate each account over TLS. The game executable and `yo3.ini` stay unchanged; no game files are shipped. These instructions
-are for current source; the last published release predates the authenticated launcher.
+server and launcher authenticate each account over TLS. The game executable and `yo3.ini` stay unchanged; no game
+files are shipped. These commands apply to **v0.0.4 and later**. For a graphical upgrade from an earlier release,
+follow [the upgrade steps](launcher.md#upgrade-from-v003-or-earlier).
 
 **Contents**
 
@@ -27,7 +28,8 @@ are for current source; the last published release predates the authenticated la
 
 ## Play on your own PC
 
-First obtain a **current bundle** (see [Run from source](#run-from-source)). Extract it and open a terminal in the
+First [download the current release](https://github.com/usersina/yo3-revival/releases/latest), or
+[build from source](#run-from-source). Extract the bundle and open a terminal in the
 extracted folder. The host needs its own game install too: the server reads its card, deck and other data.
 
 These commands create a local-only identity. If you plan to host friends, use [For the host](#for-the-host) instead
@@ -101,8 +103,10 @@ VPN. The internal HTTP/admin port (8080 by default) stays on loopback; do not fo
 
 **Existing setup:** keep `data/`. Export `profile EXISTING_PLAYER client.json --advertise HOST` to reuse that player's
 account and cards/BP/ids; address-only accounts receive a key. A localhost-only certificate does not cover a LAN IP.
-`init-auth` refuses to overwrite an existing identity: choose an address already covered, or plan a new identity and
-redistribute its certificate and profiles. Do not delete your account data to change the certificate.
+`init-auth` refuses to overwrite an existing identity. To add a sharing address while retaining that identity,
+use the graphical manager with the same data folder: stop hosting, save the new sharing address under
+**My server → Advanced**, then start hosting. It updates self-managed certificates with the same private key.
+Export updated profiles/invitations as needed; do not delete account data or the identity key.
 The old `/join` page and INI downloads are retired. See [authentication.md](authentication.md) for the design.
 
 **Backups:** persistent state lives in `data/server.db` (SQLite), imported once from existing JSON files. Consistent
@@ -153,7 +157,6 @@ The Linux GUI build also needs pkg-config and the X11, Wayland and xkbcommon dev
 ```sh
 git clone https://github.com/usersina/yo3-revival.git
 cd yo3-revival
-engine/fetch.sh --check
 engine/fetch.sh
 cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop
 tools/mod/build.sh
@@ -294,7 +297,8 @@ and the remaining live checks, including play from separate friends' machines wi
 - **Duels end at once as draws:** inspect the server's `DUELS WON'T WORK` message. Restore the complete `engine/`
   folder from the bundle, or fetch the dependencies and install a compatible Node.js when building from source.
 - **A long session disconnects:** launcher sessions expire after 12 hours. Restart the launcher to authenticate again.
-- **Found a bug:** open <https://github.com/usersina/yo3-revival/issues/new/choose> with the steps and logs. Do not attach
-  private profiles, account keys or `server.key`. Game packet logs exclude transport credentials.
+- **Found a bug:** open <https://github.com/usersina/yo3-revival/issues/new/choose> with the steps, application version
+  and a diagnostic ZIP from **Activity → Export logs…** when using the GUI. Review it before sharing. Do not attach
+  private profiles, account keys, databases or `server.key`. Game packet logs exclude transport credentials.
 
 The graphical application also supports [confirmed application updates](launcher.md#application-updates), with a visible version, GitHub link and startup release check. Advanced setup is under expandable sections.

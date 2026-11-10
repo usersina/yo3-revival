@@ -16,19 +16,22 @@ in through the authenticated revival launcher and duel again: against the comput
 There is no public server. You can host on your own PC or join a friend's server. Everyone needs their own install
 of the original game **ver. 1.153**; Linux players also need Wine. Game files are not included.
 
-**Open `yo3-revival.exe` (Windows) or `yo3-revival` (Linux)** from an extracted current bundle. The application
-combines playing, connections, server controls and logs in one window. In **Settings**, choose your game folder.
-Published releases through v0.0.3 predate this application; until a new release is published, a developer must
-[build the current bundles](docs/guide.md#run-from-source).
+1. [Download the latest release](https://github.com/usersina/yo3-revival/releases/latest): choose the Windows ZIP
+   or Linux archive and extract the **whole bundle**.
+2. Open **`yo3-revival.exe`** on Windows or **`yo3-revival`** on Linux.
+3. In **Settings**, choose your game folder and **Save changes**. When it says **Ready to play**, go to **Play**.
+
+The application combines playing, connections, server controls and logs in one window. No terminal, Rust or Node.js
+installation is needed for a release bundle. The graphical launcher is included from **v0.0.4** onward.
 
 - **Joining a friend?** Import their private invitation on **Play**, save the connection and press **Play**.
   You can also discover their address, approve their identity and enter the account key they supplied.
-- **Hosting friends?** Set your reachable address in **My server → Advanced**, then **Start server** in **Overview**.
+- **Hosting friends?** Set your reachable address in **My server → Advanced**, then **My server → Overview → Start server**.
   New servers listen on all IPv4 interfaces; **My server → Advanced** selects a specific interface or port.
   Create accounts and private invitations on **My server → Players & invitations**, and allow the chosen TCP port through the firewall.
 - **Playing alone?** Choose **My server** on **Play** and press **Play**; your server starts automatically.
 
-The [graphical setup guide](docs/launcher.md) walks through all three paths, certificates, data and troubleshooting.
+The [illustrated setup guide](docs/launcher.md) walks through local play, joining, hosting and troubleshooting.
 You can keep hosting your server while joining another, and leave hosting running when you close the application.
 **Settings → Advanced game options → Enable direct launch** optionally sets up the original game executable/shortcut to use your saved
 connection too, with component and server checks before login.
@@ -40,7 +43,8 @@ and `yo3.ini` stay unchanged. Each account has its own access key, so friends sh
 
 The sidebar shows the current version and links to GitHub. Updates are checked automatically at startup;
 **About & updates → Review & install** downloads and installs a verified update after your confirmation.
-See [application updates](docs/launcher.md#application-updates) for restart and data details.
+See [application updates](docs/launcher.md#application-updates) for restart and data details. Upgrading from v0.0.3
+or earlier? Follow [the upgrade steps](docs/launcher.md#upgrade-from-v003-or-earlier) to keep your accounts and cards.
 
 ## Your first duel
 

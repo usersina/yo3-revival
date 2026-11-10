@@ -23,12 +23,24 @@ body:
         - Shop & trades
         - Chat & friends
         - Logging in or joining
+        - Launcher or updates
+        - Hosting
         - Other
   - type: textarea
     id: screenshot
     attributes:
       label: Screenshot
       description: Optional. Drag and drop an image here.
+  - type: input
+    id: version
+    attributes:
+      label: Application version
+      description: Click the version at the bottom left, then Copy version in About & updates.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Diagnostic logs (optional)
+      description: In Activity, choose Export logs and attach the ZIP here. Review it first; never attach invitations, keys or databases.
   - type: dropdown
     id: pc
     attributes:

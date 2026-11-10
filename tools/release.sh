@@ -74,6 +74,7 @@ docs_files() {
   mkdir -p "$1/images"
   cp -r docs/images/guide "$1/images/"
   cp docs/images/duel.png "$1/images/"
+  cp docs/images/launcher*.png "$1/images/"
   cp LICENSE "$1/LICENSE"
   mkdir -p "$1/licenses"
   cp crates/yo3-desktop/assets/icons/LICENSE "$1/licenses/LUCIDE.txt"
