@@ -21,7 +21,8 @@ The [docs index](docs/README.md) says what each document is for. The ones you wi
 [docs/roadmap.md](docs/roadmap.md) (progress, next steps, the guesses table),
 [docs/protocol.md](docs/protocol.md) (every request/reply pair with its client evidence),
 [docs/client-internals.md](docs/client-internals.md) (client addresses, data formats, crash history) and
-[docs/guide.md](docs/guide.md) (hosting and joining, also shipped in the release bundles).
+[docs/launcher.md](docs/launcher.md) (graphical play and hosting, the bundle README) and
+[docs/guide.md](docs/guide.md) (command-line reference and source builds).
 
 ## Ground rules
 
@@ -57,6 +58,7 @@ The [docs index](docs/README.md) says what each document is for. The ones you wi
 |---|---|
 | `crates/yo3-proto` | Wire codec: frame, Blowfish (`BlowfishLE`), key/value messages, the version-string opener |
 | `crates/yo3-data` | Client data: `.ypk` archives, card table, UI text table, regulations, preset decks, packs (golden tests skip without the game) |
+| `crates/yo3-desktop` | Iced GUI (`yo3-revival`): local/remote connections, independent hosting, live accounts/invitations, activity; separate SQLite `launcher.db` for preferences and credentials |
 | `crates/yo3-server` | Gate / front / duel / patch-HTTP servers (`main.rs` also holds the admin subcommands). `front.rs` = the reply contract and the `Hub` of online players, `duel.rs` = the duel connection (engine commands, the janken), `table.rs` = a duel between two players' connections, `shop.rs` = packs on sale and what a pack holds, `social.rs` = friends and ignore lists, `translate.rs` = engine messages to duel commands, `duelcheck.rs` = the duel check (a model of the client's card manager compared with the engine after each step, and the self-play that drives it), `accounts.rs` = persistent accounts and TLS credential lookup, `auth.rs`/`transport.rs` = session tickets and authenticated connections, `admin.rs` = the BP commands on a running server (`/admin`, loopback with a token), `deckcheck.rs` = the server-side deck check, `engine.rs` = the rules engine process, `trade.rs`, `rental.rs`, `mail.rs`, `teams.rs`, `events.rs` = the player features of those names, `duellog.rs` = duel logs, `clock.rs` = turn and total clocks, `store.rs` = what is kept in `data/`, `net.rs` = framing and per-connection outbox, `log.rs` = packet log |
 | `crates/yo3-launcher`, `crates/yo3-tunnel` | Authenticated launcher, private loopback proxy, shared TLS wire protocol |
 | `tools/mod/` | Required 32-bit connection DLL, injector and native/Wine regression tests |
@@ -81,7 +83,7 @@ Build and test:
 
 ```bash
 engine/fetch.sh                                   # once: the rules engine's dependencies (engine tests skip without them)
-cargo build --release -p yo3-server -p yo3-launcher
+cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop
 tools/mod/build.sh                               # 32-bit connection DLL, injector and native/Wine contract harnesses
 tools/mod/test.sh                                # named/ordinal imports, local cookies and fail-closed injection (private :78)
 python3 tools/client/test_vclient.py              # cold display startup, captured pipes and diagnostics (no X server/game needed)
@@ -89,8 +91,9 @@ cargo nextest run --workspace                     # all tests (or: cargo test --
 #   check's 240 self-played duels (tests/duel_check.rs, YO3_CHECK_DUELS=n per test for more): run it after any change to
 #   translate.rs or the sidecar. A failure names the seed, the step and the engine messages before the difference
 cargo clippy --workspace --all-targets            # lints
+target/release/yo3-revival                        # graphical launcher/server manager after building
 tools/docs-check.py                               # every relative link and anchor in root Markdown files and docs/**/*.md
-tools/release.sh                                  # the host's bundles in dist/ (Linux .tar.gz, Windows .zip), each with docs/guide.md as README.md
+tools/release.sh                                  # bundles in dist/ (Linux .tar.gz, Windows .zip); docs/launcher.md is their README.md
 #   and the whole rules engine (its own Node.js, NODE_VERSION in the script, checksum-checked; the scripts and card
 #   database from engine/vendor/): hosts install nothing. The server prefers engine/node/node[.exe] to the PATH's node
 #   releasing: add a section at the top of CHANGELOG.md (`## v0.0.2 (date)`, players' words, what changed for them)
@@ -120,7 +123,8 @@ ss -ltnp | rg ':7443 '                          # the server's pid, to stop it
 #   --duel-regulation 4 (check every duel's deck against that banlist, whatever the duel names: the starter deck breaks 4),
 #   --duel-time 0,0 (the turn and total clocks of duels between players off: live checks are slower than 180 s a turn),
 #   --duel-check (compare every duel's client view with the engine after each step; a difference logs ERROR duel check)
-#   state: accounts and records persist in data/ (ignored; --data-dir), backed up into data/backups/ at each start
+#   state: server.db (SQLite) in data/ (ignored; --data-dir), backed up into data/backups/ at each start
+#   old JSON files import once transactionally and remain untouched; storage.version prevents stale reimport
 
 # A dev server beside a live one: first check that 17443 and 18080 are free.
 SCRATCH=$(mktemp -d /tmp/yo3-dev.XXXXXXXX)
@@ -154,6 +158,8 @@ export YO3_INSTANCE=b                             # :78, logs/b/, prefix .wine-b
 export YO3_AUTH_PROFILE=/path/to/private/client.json  # absolute scratch-server profile path from above
 # Create the private display and prefix only when they are not already in use.
 tools/client/vclient.sh xvfb && tools/client/vclient.sh prefix
+YO3_DISPLAY=:88 YO3_DESKTOP_DATA=/tmp/yo3-gui tools/client/vclient.sh desktop # foreground GUI; create its private display first
+# Configure alternate host ports, scratch server data, and a private Wine prefix/Documents in its Settings before Play.
 tools/client/vclient.sh start && tools/client/vclient.sh login 0   # cold start, about 30 s
 tools/client/vclient.sh check
 tools/client/vclient.sh shot NAME                  # logs/b/shots/NAME.png, then view it

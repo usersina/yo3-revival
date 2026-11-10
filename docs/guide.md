@@ -1,5 +1,8 @@
 # Hosting and joining: playing Yu-Gi-Oh! ONLINE 3 with friends
 
+For setup through the graphical application, read [the launcher guide](launcher.md). This page is the command-line
+reference and source-build guide; both routes use the same server, authentication and game files.
+
 Everyone uses the revival launcher and connection DLL with their own original game install (ver. 1.153). The
 server and launcher authenticate each account over TLS. The game executable and `yo3.ini` stay unchanged; no game files are shipped. These instructions
 are for current source; the last published release predates the authenticated launcher.
@@ -98,7 +101,9 @@ account and cards/BP/ids; address-only accounts receive a key. A localhost-only 
 redistribute its certificate and profiles. Do not delete your account data to change the certificate.
 The old `/join` page and INI downloads are retired. See [authentication.md](authentication.md) for the design.
 
-**Backups:** account and record JSON files are backed up at server startup. The TLS private key and certificate are
+**Backups:** persistent state lives in `data/server.db` (SQLite), imported once from existing JSON files. Consistent
+database copies are backed up at server startup. Originals remain as migration copies and no longer receive writes.
+See [data and upgrades](launcher.md#your-data-and-upgrades) before restoring or downgrading. The TLS private key and certificate are
 not included in those automatic backups: separately back up the entire `data/` directory securely. Players should
 also back up their local `Documents/Yu-Gi-Oh! ONLINE 3` folder.
 
@@ -136,20 +141,22 @@ No macOS bundle or live check is provided. The supported builds are Linux with W
 ### Run from source
 
 Build on Linux from the repository root. You need Rust/Cargo, Node.js 22.18 or newer with npm, Git, curl and
-32-bit MinGW GCC and binutils (`i686-w64-mingw32-gcc`, `i686-w64-mingw32-dlltool`) for the connection DLL/injector. Linux players also need Wine.
+32-bit MinGW GCC and binutils (`i686-w64-mingw32-gcc`, `i686-w64-mingw32-dlltool`) for the connection DLL/injector.
+The Linux GUI build also needs pkg-config and the X11, Wayland and xkbcommon development libraries (on Debian/Ubuntu:
+`pkg-config libx11-dev libwayland-dev libxkbcommon-dev`). Linux players also need Wine.
 
 ```sh
 git clone https://github.com/usersina/yo3-revival.git
 cd yo3-revival
 engine/fetch.sh --check
 engine/fetch.sh
-cargo build --release -p yo3-server -p yo3-launcher
+cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop
 tools/mod/build.sh
 ```
 
 If you already have a checkout, skip `git clone` and run the remaining commands from its root.
 
-Use **`./target/release/yo3-server`** in place of `./yo3-server` in the setup commands above, staying in the repository
+Open `./target/release/yo3-revival` for the graphical application. Use **`./target/release/yo3-server`** in place of `./yo3-server` in the setup commands above, staying in the repository
 root. Start it directly (`--bind 0.0.0.0` for friends). To launch the development build:
 
 ```sh
@@ -259,7 +266,7 @@ To lend cards, open a player's Player Information and press Send Rental Request.
 conditions (a term of 1, 3, 7 or 14 days, and Free) and double-clicks cards from their trunk into the list, then presses
 Confirm; the borrower answers "Borrow these cards?" and the cards join their trunk (marked as borrowed, so they can be
 put in decks but not traded) while the lender's copies are out of theirs. When the term is over the cards are back with
-their owner, even across a server restart (they are kept in `data/rentals.json`); there is no early return. Both players'
+their owner, even across a server restart (they are kept in the SQLite rentals document); there is no early return. Both players'
 Main Menu → Rental Card List shows what they lent and borrowed. Editor saves live locally in
 `Documents\Yu-Gi-Oh! ONLINE 3`; selecting a deck for a duel also uploads it to the server. A deck that used a borrowed
 card is no longer valid once the rental ends.

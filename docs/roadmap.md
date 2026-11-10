@@ -26,11 +26,18 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 
 ## Status
 
-SQLite and local management (2026-11-10): server state imports from the existing JSON documents in one transaction
-into `server.db`, with startup backups and a marker preventing stale reimport after accidental database removal.
-IDs, keys and original files are preserved. The loopback-only token-authenticated manager API creates accounts, adds
-players and exports credentials without stopping the server; failed saves restore its live account directory.
-Migration preservation/retry, write rollback and live TLS account creation have regression tests.
+Desktop manager (2026-11-10): `yo3-desktop` supplies an Iced `yo3-revival` application with game-folder setup,
+local play, saved remote connections, independent server controls, live account creation/add-player/export,
+single-file private invitations, certificate updates and activity logs. Server state uses SQLite with a transactional
+one-time JSON import; preferences and connections use a separate launcher database. Workspace tests cover
+migration retry/preservation, live manager operations, certificate identity and game-control lifecycle.
+On private Xvfb :88, the GUI started its server, created two accounts while running and launched the real client to
+the main screen. The GUI also joined a second server as RemotePlayer while its own server stayed hosted. Keeping
+hosting across manager exit/reopen passes after separating the server's process group. Unicode game and DLL paths
+have injector regression checks. Windows cross-build and GUI checks under Wine succeed, including the embedded
+font, native invitation picker/import, saved connection and TLS connection check. Native Windows GUI testing and
+separate friends' machines remain open. The Linux bundle also starts its server with the bundled Node/engine from
+outside the checkout; both platform archives exclude private credentials, databases and game files.
 
 Headless display fix (2026-11-10): cold Xvfb startup releases captured pipes immediately, keeps diagnostics in
 its instance log and reuses an existing display. Regression tests cover cold startup, reuse and failed startup;

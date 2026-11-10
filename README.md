@@ -16,35 +16,40 @@ in through the authenticated revival launcher and duel again: against the comput
 There is no public server. You can host on your own PC or join a friend's server. Everyone needs their own install
 of the original game **ver. 1.153**; Linux players also need Wine. Game files are not included.
 
-**Current source requires the revival launcher.** Published releases through v0.0.3 predate it and do not follow these
-instructions. Until a new release is published, a developer must [build the current bundles](docs/guide.md#run-from-source).
-Each bundle includes the server, rules engine, launcher and connection DLL.
+**Open `yo3-revival.exe` (Windows) or `yo3-revival` (Linux)** from an extracted current bundle. The application
+combines playing, connections, server controls and logs in one window. In **Settings**, choose your game folder.
+Published releases through v0.0.3 predate this application; until a new release is published, a developer must
+[build the current bundles](docs/guide.md#run-from-source).
 
-- **Joining a friend?** Get your private profile and `server.crt` from the host, then follow
-  [the player instructions](docs/guide.md#for-every-player). You do not need to run a server or install build tools.
-- **Hosting friends?** Choose the address they will use **before** creating the certificate. Follow
-  [the host setup](docs/guide.md#for-the-host); only TCP **7443** needs to reach your PC.
-- **Playing alone?** Follow [the local setup](docs/guide.md#play-on-your-own-pc), then duel the computer at
-  **Kaiba Corporation**.
+- **Joining a friend?** Import their private invitation on **Play**, save the connection and press **Play**.
+  You can also add their address, account key and public certificate manually.
+- **Hosting friends?** Set your reachable address in **Settings**, enable friends, then **Start server** on
+  **My server**. Create their accounts and export private invitations on **Accounts**. Allow TCP **7443**.
+- **Playing alone?** Choose **My server** on **Play** and press **Play**; your server starts automatically.
+
+The [graphical setup guide](docs/launcher.md) walks through all three paths, certificates, data and troubleshooting.
+You can keep hosting your server while joining another, and leave hosting running when you close the application.
+
+![The graphical server manager showing hosting status and controls](docs/images/launcher.png)
 
 Authentication happens in the launcher; the game's original username/password fields are unused. The game executable
-and `yo3.ini` stay unchanged. Each account has its own private profile, so friends sharing a router stay separate.
+and `yo3.ini` stay unchanged. Each account has its own access key, so friends sharing a router stay separate.
 
 ## Your first duel
 
-1. Keep the server running, then start the launcher with your profile and game folder.
+1. Choose your connection on **Play**, then press **Play**.
 2. Press **ONLINE**, dismiss the original login form and select your player.
 3. Open **Main Menu → Edit Deck** once, then leave it to save your starting decks.
 4. Visit **Kaiba Corporation** for a computer opponent. With a friend, both choose **Auto Duel → Confirm**, or use
    **Create Duel** to arrange a specific match.
 
-The [host and player guide](docs/guide.md) has complete Windows and Linux commands, account management and pictures.
+The [command-line guide](docs/guide.md) remains available for terminal users and source builds.
 
 ## Something wrong?
 
-Check [When something goes wrong](docs/guide.md#when-something-goes-wrong) first. Still stuck, or found a bug?
+Check [Troubleshooting](docs/launcher.md#troubleshooting) first. Still stuck, or found a bug?
 [Open an issue](https://github.com/usersina/yo3-revival/issues/new/choose) and attach a screenshot of the server's
-window if you can.
+**Activity** view if you can. Keep private invitations and account keys out of bug reports.
 
 ## What works
 
@@ -66,8 +71,8 @@ the client's internals, the roadmap) is in [docs/](docs/README.md). To contribut
 ## Legal
 
 This is a non-commercial fan preservation project. It is **not affiliated with or endorsed by Konami**. Yu-Gi-Oh!
-and Yu-Gi-Oh! ONLINE 3 belong to Konami; so do the cards, art and the game client, and the screenshots above show
-Konami's game. This repository holds only original code and notes: no game files, card data, art, decompiled code or
+and Yu-Gi-Oh! ONLINE 3 belong to Konami; so do the cards, art and the game client. The game screenshots above show
+Konami's game; the launcher screenshot shows our application. This repository holds original code and notes: no game files, card data, art, decompiled code or
 packet logs are distributed (the screenshots in `docs/images/` are the one exception, and they show the game, not its
 data). You need your own copy of the client, and the server reads your install's data files at run time. The release
 bundles also carry the rules engine, which is other people's open-source work (see `engine/THIRD-PARTY.md` in a

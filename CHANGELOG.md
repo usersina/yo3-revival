@@ -12,13 +12,13 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Added: a Rust graphical launcher/server manager (`yo3-revival`) for local play, saved remote connections,
+  independent hosting, live account creation and private single-file invitations, with logs in the same window.
+- Changed: server state uses SQLite with an atomic one-time import of existing JSON data, consistent startup backups
+  and refusal to silently reimport stale data. Launcher preferences and connections use a separate SQLite database.
+- Added: explicit certificate updates while stopped preserve the host's private key and back up the previous certificate.
 - Fixed: a desktop-controlled game session exits after the game closes, even while its control pipe remains open.
-- Fixed: the injector accepts Unicode game and DLL paths.
-- Changed: persistent server state uses SQLite, importing existing JSON data once and retaining the originals, with
-  consistent startup backups and refusal to silently reimport stale data.
-- Added: a private local manager API for readiness, live account/player creation, credential export and shutdown;
-  explicit certificate updates preserve the private key and back up the prior certificate.
-
+- Fixed: hosting survives manager process-group cleanup, and the injector accepts Unicode game and DLL paths.
 - Fixed: cold Xvfb startup no longer holds the UI monkey's captured output pipes open. Display diagnostics go to
   the instance's `xvfb.log`; regression tests cover startup, reuse and failure and run in the release checks.
 - Added: authenticated revival launcher and connection DLL. Accounts sharing one IP stay separate; front and duel

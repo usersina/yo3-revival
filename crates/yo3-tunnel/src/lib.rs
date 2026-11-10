@@ -44,8 +44,13 @@ pub struct Endpoint {
 
 impl Endpoint {
     pub fn new(address: String, name: String, certificate: &Path) -> anyhow::Result<Self> {
+        Self::from_pem(address, name, &std::fs::read(certificate)?)
+    }
+
+    pub fn from_pem(address: String, name: String, certificate: &[u8]) -> anyhow::Result<Self> {
         let mut roots = rustls::RootCertStore::empty();
-        for cert in CertificateDer::pem_file_iter(certificate)? { roots.add(cert?)?; }
+        for cert in CertificateDer::pem_slice_iter(certificate) { roots.add(cert?)?; }
+        if roots.is_empty() { bail!("host certificate is empty or invalid") }
         let config = rustls::ClientConfig::builder().with_root_certificates(roots).with_no_client_auth();
         Ok(Self { address, name: ServerName::try_from(name)?, connector: TlsConnector::from(Arc::new(config)) })
     }

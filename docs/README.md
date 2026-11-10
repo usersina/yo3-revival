@@ -15,7 +15,8 @@ readers; this page says which is which and in what order to read them.
 
 | Document                                   | For                        | What is in it                                                                                                                                                       |
 | ------------------------------------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [guide.md](guide.md)                       | Hosts and players          | TLS server setup, private launcher profiles, accounts, playing and troubleshooting. A copy ships in each release bundle as its `README.md`                          |
+| [launcher.md](launcher.md)                 | Hosts and players          | The graphical application's setup, local and remote play, hosting, accounts, invitations and SQLite data. Ships as the bundle's `README.md` |
+| [guide.md](guide.md)                       | Terminal users and builders | Command-line setup, private launcher profiles, account commands, source builds and playing |
 | [authentication.md](authentication.md)     | Hosts and maintainers      | The launcher/DLL, TLS tickets, session binding, account migration and security checks                                                                               |
 | [roadmap.md](roadmap.md)                   | Maintainers                | Status, the milestones M0 to M6 with their checkboxes, the dated work sessions (reviews, monkey testing), every guess we made, open questions                       |
 | [protocol.md](protocol.md)                 | Maintainers                | The protocol catalog: wire format, the gate, front and duel servers, every request/reply pair with its client evidence and a status (confirmed, shape, guess, open) |
@@ -26,7 +27,8 @@ readers; this page says which is which and in what order to read them.
 
 ## Where to start
 
-- **I want to play or host:** start with the [project README](../README.md), then [guide.md](guide.md) for commands.
+- **I want to play or host:** start with the [project README](../README.md), then [launcher.md](launcher.md).
+- **I want terminal commands or a source build:** [guide.md](guide.md).
 - **I want to contribute:** [../AGENTS.md](../AGENTS.md), then [roadmap.md](roadmap.md) to pick something open, then
   [protocol.md](protocol.md) for the area you will touch.
 - **I want to know how a screen works:** [protocol.md](protocol.md) for the messages, then
@@ -40,7 +42,7 @@ readers; this page says which is which and in what order to read them.
 - Four places stay in step: `protocol.md`, `crates/yo3-server/src/front.rs`, the contract tests under
   `crates/yo3-server/tests/` and `roadmap.md`.
 - The docs cite addresses and field names but never paste decompiled code, Konami data or packet logs.
-- Screenshots in `images/` are 1024x768 frames of the client, with test player names only.
+- Game screenshots in `images/` are 1024x768 client frames with test player names only; `launcher.png` shows our own GUI.
 - Long technical documents start with a table of contents; the short project README and changelog do not need one.
   `tools/docs-check.py --toc FILE` prints one for a file.
 

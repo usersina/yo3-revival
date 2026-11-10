@@ -3,6 +3,7 @@
 # screen or mouse.
 #
 #   tools/client/vclient.sh xvfb            start the virtual display (:77) if it is not running
+#   tools/client/vclient.sh desktop         graphical manager in the foreground on this instance's private display
 #   tools/client/vclient.sh start [--trace] launch yo3.exe on it (trace -> logs/client-stdout.log);
 #                                           --trace also logs every field lookup -> logs/fields.tsv
 #   tools/client/vclient.sh login [SLOT]    title -> ONLINE -> OK (saved credentials) -> player SLOT (0-3, default 0); `login select` stops at Select Player
@@ -66,6 +67,11 @@ wait_for() {
 }
 
 case "${1:-}" in
+  desktop)
+    # The graphical manager can start its game here too, always on this instance's private display/prefix.
+    echo "$$" >"$LOGS/desktop.pid"
+    echo "desktop pid $$ on $DISPLAY"
+    WINEDEBUG=fixme-all exec "$ROOT/target/release/yo3-revival" >"$LOGS/desktop.log" 2>&1 ;;
   xvfb)
     # Keep the display alive without holding a caller's captured input/output pipes open.
     xdpyinfo >/dev/null 2>&1 || {

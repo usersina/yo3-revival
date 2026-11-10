@@ -15,6 +15,10 @@ the game still writes its normal player files.
 
 ## Setup
 
+The [graphical application](launcher.md) handles server startup, live account management and single-file private
+invitations. It also imports existing profiles with their adjacent certificate. The command-line flow below remains
+available; it uses the same TLS authentication and connection DLL.
+
 For complete platform-specific commands, server startup and firewall setup, follow the
 [host and player guide](https://github.com/usersina/yo3-revival/blob/main/docs/guide.md). The commands below illustrate
 the credential flow from an extracted Linux bundle.
@@ -89,10 +93,14 @@ protocol is ours and is documented separately from Konami's reply shapes in
 
 ## Existing accounts and rollout
 
-Account/player ids, collections, BP, decks and social data keep their existing JSON formats. Exporting a profile
+Account/player ids, collections, BP, decks and social data retain their document formats inside `server.db` (SQLite).
+The first start imports the old JSON files atomically and leaves those originals untouched; later writes use SQLite.
+See [data and upgrades](launcher.md#your-data-and-upgrades) before restoring or downgrading. Exporting a profile
 for an existing player reuses its key, or adds a key to an address-only account; no player data is moved. The old
 patch URL no longer selects an account. The HTTP `/join` page and INI downloads are removed, so an IP cannot reveal
-another account's key. The internal HTTP service binds loopback only; the TLS asset role cannot reach `/admin`.
+another account's key. The internal HTTP service binds loopback only; the TLS asset role cannot reach `/admin` or
+`/manager`. The desktop uses the private local admin token to list/create accounts, add players, export invitations,
+query readiness and shut down its server. Credential-bearing bodies and replies are not logged.
 
 Deploy the server, launcher and DLL together. All friends need a private profile and the public certificate. Old
 clients are intentionally unsupported. A rollback restores the previous binary and backed-up data only when the

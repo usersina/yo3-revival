@@ -64,7 +64,7 @@ jobs:
           rustup component add clippy
           rustup target add x86_64-pc-windows-gnu
           sudo apt-get update -q
-          sudo apt-get install -yq mingw-w64
+          sudo apt-get install -yq mingw-w64 pkg-config libxkbcommon-dev libwayland-dev libx11-dev
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:

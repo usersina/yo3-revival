@@ -12,8 +12,8 @@ version=${YO3_VERSION:-$(git describe --tags --always --dirty 2>/dev/null || ech
 # The Node.js shipped in the bundles (an LTS line; the engine needs 22.18 or newer).
 NODE_VERSION=v26.13.0
 cache=dist/.cache
-cargo build --release -p yo3-server -p yo3-launcher
-cargo build --release -p yo3-server -p yo3-launcher --target x86_64-pc-windows-gnu
+cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop
+cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop --target x86_64-pc-windows-gnu
 tools/mod/build.sh
 [ -s engine/vendor/cardinfo.json ] && [ -d engine/node_modules/ocgcore-wasm ] || engine/fetch.sh
 
@@ -65,7 +65,9 @@ EOF
 
 # The guide (as README.md, with its pictures at the same relative paths as in docs/) and the license.
 docs_files() {
-  cp docs/guide.md "$1/README.md"
+  cp docs/launcher.md "$1/README.md"
+  cp docs/launcher.md "$1/launcher.md"
+  cp docs/guide.md "$1/guide.md"
   cp docs/authentication.md "$1/authentication.md"
   mkdir -p "$1/images"
   cp -r docs/images/guide "$1/images/"
@@ -77,7 +79,7 @@ name="yo3-revival-$version-linux-x86_64"
 out="dist/$name"
 rm -rf "$out"
 mkdir -p "$out"
-cp target/release/yo3-server "$out/"
+cp target/release/yo3-server target/release/yo3-revival "$out/"
 cp target/release/yo3-launcher tools/mod/build/yo3-auth.dll tools/mod/build/yo3-auth-launch.exe "$out/"
 engine_files "$out"
 docs_files "$out"
@@ -94,7 +96,8 @@ cat > "$out/run.sh" <<'EOF'
 cd "$(dirname "$0")"
 exec ./yo3-server --bind 0.0.0.0 --data-dir data --log-dir logs "$@"
 EOF
-chmod +x "$out/run.sh" "$out/yo3-server" "$out/engine/node/node"
+chmod +x "$out/run.sh" "$out/yo3-server" "$out/yo3-revival" "$out/yo3-launcher" "$out/engine/node/node"
+python3 tools/bundle-licenses.py "$out" x86_64-unknown-linux-gnu
 tar -C dist -czf "dist/$name.tar.gz" "$name"
 echo "dist/$name.tar.gz"
 
@@ -103,7 +106,7 @@ win="yo3-revival-$version-windows-x86_64"
 out="dist/$win"
 rm -rf "$out"
 mkdir -p "$out"
-cp target/x86_64-pc-windows-gnu/release/yo3-server.exe "$out/"
+cp target/x86_64-pc-windows-gnu/release/yo3-server.exe target/x86_64-pc-windows-gnu/release/yo3-revival.exe "$out/"
 cp target/x86_64-pc-windows-gnu/release/yo3-launcher.exe tools/mod/build/yo3-auth.dll tools/mod/build/yo3-auth-launch.exe "$out/"
 engine_files "$out"
 docs_files "$out"
@@ -128,6 +131,7 @@ yo3-server.exe --bind 0.0.0.0 --data-dir data --log-dir logs %*
 if errorlevel 1 pause
 exit /b %errorlevel%
 EOF
+python3 tools/bundle-licenses.py "$out" x86_64-pc-windows-gnu
 rm -f "dist/$win.zip"
 (cd dist && python3 -c 'import shutil, sys; shutil.make_archive(sys.argv[1], "zip", ".", sys.argv[1])' "$win")
 echo "dist/$win.zip"
