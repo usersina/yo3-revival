@@ -11,7 +11,12 @@ path = "src/main.rs"
 anyhow = "1.0.104"
 chrono = "0.4.45"
 if-addrs = "0.15.0"
-iced = { version = "0.14.0", default-features = false, features = ["tiny-skia", "tokio", "x11", "wayland", "fira-sans"] }
+iced = { version = "0.14.0", default-features = false, features = ["tiny-skia", "tokio", "x11", "wayland", "fira-sans", "svg"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider"] }
+semver = "1.0.28"
+ring = "0.17.14"
+tar = "0.4.46"
+flate2 = "1.1.11"
 rfd = "0.18.0"
 rusqlite = { version = "0.41.1", default-features = false, features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }

@@ -12,6 +12,7 @@ pub mod network;
 pub mod privileged;
 pub mod direct;
 pub mod reports;
+pub mod updates;
 
 pub fn server_address(input: &str) -> anyhow::Result<(String, String)> {
     let input = input.trim();
