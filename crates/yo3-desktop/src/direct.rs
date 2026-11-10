@@ -60,11 +60,21 @@ fn wine_command(settings: &Settings, program: &str) -> std::process::Command {
     cmd.env("WINEDEBUG", "-all"); cmd
 }
 fn windows_path(path: &Path, settings: &Settings) -> anyhow::Result<String> {
-    #[cfg(windows)] { let _ = settings; Ok(path.to_string_lossy().into_owned()) }
+    Ok(windows_paths(&[path], settings)?.remove(0))
+}
+#[cfg(not(windows))]
+fn decode_windows_paths(bytes: &[u8], count: usize) -> anyhow::Result<Vec<String>> {
+    ensure!(bytes.last() == Some(&0), "Wine returned an incomplete path conversion");
+    let paths: Vec<String> = std::str::from_utf8(bytes)?.split_terminator('\0').map(str::to_owned).collect();
+    ensure!(paths.len() == count && paths.iter().all(|p| !p.is_empty() && !p.contains(['\r', '\n'])), "Wine returned an unexpected path conversion");
+    Ok(paths)
+}
+fn windows_paths(paths: &[&Path], settings: &Settings) -> anyhow::Result<Vec<String>> {
+    #[cfg(windows)] { let _ = settings; Ok(paths.iter().map(|p| p.to_string_lossy().into_owned()).collect()) }
     #[cfg(not(windows))] {
-        let result = wine_command(settings, "winepath").arg("-w").arg(path).output()?;
+        let result = wine_command(settings, "winepath").args(["-0", "-w"]).args(paths).output()?;
         ensure!(result.status.success(), "Cannot translate the path into the selected Wine prefix");
-        Ok(String::from_utf8(result.stdout)?.trim().into())
+        decode_windows_paths(&result.stdout, paths.len())
     }
 }
 fn registry(settings: &Settings, config: Option<&Path>) -> anyhow::Result<()> {
@@ -120,8 +130,10 @@ impl Backend {
         self.direct_profile(settings, remote)?;
         let state = self.root.join("profiles"); let file = state.join("loader.ini");
         let mut ini = String::from("[revival]\r\n");
-        for (key, path) in [("launcher", &helper), ("injector", &self.runtime.injector), ("dll", &self.runtime.dll), ("profile", &state.join("direct.json")), ("state", &state), ("logs", &self.root.join("logs/sessions"))] {
-            let value = windows_path(path, settings)?; ensure!(!value.contains(['\r', '\n']), "Invalid setup path"); ini.push_str(&format!("{key}={value}\r\n"));
+        let profile = state.join("direct.json"); let logs = self.root.join("logs/sessions");
+        let values = windows_paths(&[&helper, &self.runtime.injector, &self.runtime.dll, &profile, &state, &logs], settings)?;
+        for (key, value) in ["launcher", "injector", "dll", "profile", "state", "logs"].into_iter().zip(values) {
+            ensure!(!value.contains(['\r', '\n']), "Invalid setup path"); ini.push_str(&format!("{key}={value}\r\n"));
         }
         ini.push_str(&format!("sha256={}\r\n", hash(&regular(&self.runtime.dll)?)));
         let bytes: Vec<u8> = std::iter::once(0xfeffu16).chain(ini.encode_utf16()).flat_map(u16::to_le_bytes).collect();
@@ -157,4 +169,16 @@ pub fn elevated_install(game: &Path, remove: bool) -> anyhow::Result<()> {
         ensure!(manifest["components"]["loader"]["sha256"].as_str() == Some(hash(&regular(&source)?).as_str()), "Bundled loader integrity check failed");
     }
     install_files(game, &source)
+}
+
+#[cfg(all(test, not(windows)))]
+mod tests {
+    #[test]
+    fn wine_batch_results_keep_unicode_paths_in_order_and_refuse_missing_or_extra_fields() {
+        let text = "C:\\game folder\0Z:\\日本語\\mod.dll\0";
+        assert_eq!(super::decode_windows_paths(text.as_bytes(), 2).unwrap(), ["C:\\game folder", "Z:\\日本語\\mod.dll"]);
+        assert!(super::decode_windows_paths(text.as_bytes(), 1).is_err());
+        assert!(super::decode_windows_paths(b"C:\\game\0", 2).is_err());
+        assert!(super::decode_windows_paths(b"\xff\0", 1).is_err());
+    }
 }

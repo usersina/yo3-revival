@@ -84,6 +84,7 @@ impl App {
                 let settings = self.settings.clone();
                 let remote = match self.selected.remote(&self.servers) { Ok(s) => s, Err(e) => { self.feedback(Err(e.to_string())); return Task::none() } };
                 self.busy = true;
+                self.notice = if enable { "Installing direct-start setup… Wine may take a moment on first use." } else { "Removing direct-start setup…" }.into();
                 return job(move || { if enable { backend.enable_direct(&settings, remote)?; } else { backend.disable_direct(&settings)?; }
                     Ok(Outcome::Info(if enable { "Direct start enabled for the saved game, server and account. You can now open yo3.exe directly. Restart any open game." } else { "Direct-start loader removed. Open the game through the launcher." }.into())) });
             }
