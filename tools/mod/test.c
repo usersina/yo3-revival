@@ -48,9 +48,18 @@ int main(int argc, char **argv) {
     SetEnvironmentVariableA("YO3_LOCAL_GATE", port); SetEnvironmentVariableA("YO3_LOCAL_FRONT", port);
     SetEnvironmentVariableA("YO3_LOCAL_DUEL", port); SetEnvironmentVariableA("YO3_LOCAL_HTTP", port);
     SetEnvironmentVariableA("YO3_LOCAL_COOKIE", "0707070707070707070707070707070707070707070707070707070707070707");
-    if(argc==3 && !strcmp(argv[2],"mismatched-game")) {
+    if(argc==3 && (!strcmp(argv[2],"mismatched-game") || !strcmp(argv[2],"mismatched-login"))) {
+#ifdef YO3_TEST_BAD_GAME_HOOK
+        if(!strcmp(argv[2],"mismatched-game")) {
+            /* Let the login guard pass so the independent starter-dispatch guard is exercised too. */
+            BYTE *site=(BYTE *)GetModuleHandleA(NULL)+0x06964b; DWORD previous, ignored;
+            const BYTE call[]={0xe8,0x50,0x6c,0x08,0x00};
+            CHECK(VirtualProtect(site,sizeof call,PAGE_EXECUTE_READWRITE,&previous));
+            memcpy(site,call,sizeof call); CHECK(VirtualProtect(site,sizeof call,previous,&ignored));
+        }
+#endif
         CHECK(LoadLibraryA(argv[1])==NULL);
-        puts("PASS: a changed game-dispatch call prevents DLL readiness before login");
+        printf("PASS: %s prevents DLL readiness before login\n",argv[2]);
         ExitProcess(0); /* partial import hooks must never be used after a refused DLL load */
     }
     char directory[MAX_PATH], ini[MAX_PATH + 64], text[512];

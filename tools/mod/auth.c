@@ -137,6 +137,7 @@ static int WSAAPI hooked_close(SOCKET socket) {
 
 #include "hooks.h"
 #include "starter.h"
+#include "login.h"
 
 /* The automatic loader delegates the API call that triggered initialization here once, outside DllMain. */
 __declspec(dllexport) void *WINAPI Yo3ModApi(unsigned id) {
@@ -172,6 +173,6 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
         && hook("send", (void *)hooked_send, (void **)&socket_send)
         && hook("closesocket", (void *)hooked_close, (void **)&socket_close)
         && hook("InternetOpenUrlA", (void *)hooked_url, (void **)&open_url)
-        && starter_install();
+        && login_install() && starter_install();
     return mod_ready;
 }

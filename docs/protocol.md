@@ -129,6 +129,11 @@ The local `0x21FE` redirect and server `0x22C4` handoff (`0x50F690`) name this l
 | ------- | -------- | -------------------------------------- | --------------------------- | --------- |
 | opener  | `0x21FE` | `host` text, `port` u32 (front server) | `LoginWindow.cpp L303/L314` | confirmed |
 
+The local gate keeps its socket open after the redirect until the client closes it or the launcher proxy stops.
+Immediate EOF races the native receive thread during automatic login and reaches a null error logger at
+`0x535210` (`0x82D214` is null). The native redirect handler sets its disconnect-suppression flag only at
+`0x469AF7`. Status: **confirmed live**; `tests/proxy.rs` protects the socket lifetime and cleanup.
+
 Game framing has a 180 s idle limit before the first decoded message, while waiting for bytes inside a frame,
 and between duel messages (`net::Idle`). Once it has spoken, the front connection may remain quiet: real-client
 logs include map-idle gaps of 650 s and 3000 s. Duel connections heartbeat `0x2724` every 30 s. These are server
@@ -142,6 +147,11 @@ and the heartbeat; every other request is ignored (nothing in the client sends o
 `0x1F4C` for a player the account doesn't have takes the old selection offline (no reply, as before).
 
 ### Login (dispatcher `0x469C00`, `LoginWindow.cpp`)
+
+The required mod skips the unused username/password form after **ONLINE**, starting the same native gate connection
+at `0x46B5FF…0x46B62C` in place of the one-shot `StartLogin` call at `0x46964B`. The wire requests, authenticated
+account identity and player-selection handler stay unchanged. See [the native flow](client-internals.md#skipping-the-stock-login-form).
+Status: **confirmed (revival behavior)**.
 
 The stock request named "auth" carries no credential: the opener is a version string, `0x1F47` is bare and
 `0x1F48` carries only `lang` (live packets). Identity is established by the authenticated outer transport before

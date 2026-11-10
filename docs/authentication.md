@@ -48,7 +48,8 @@ On Windows use `yo3-launcher.exe` and the Windows game-folder path. On Linux ins
 folder; `--wine-prefix /path/to/prefix` selects a non-default prefix. The injector and DLL are read from the
 launcher's directory, or `--injector` and `--dll` can name the development builds.
 
-The game still shows its original login form. Its username/password fields are unused. Static preflight checks
+The required mod skips the original username/password form: **ONLINE** opens player selection. The normal
+connection and error handlers remain in use. Static preflight checks
 the x86 game/injector, DLL metadata/release/interface and bundled file hashes before account authentication.
 The injector creates the game suspended, loads the DLL and asks its exported readiness function to confirm all
 hooks initialized. Only then does the launcher authenticate, activate its private proxy and permit the game to

@@ -109,6 +109,38 @@ Path(os.environ['TEST_GAME_RAN']).write_text('started')
         self.assertIn("Enable direct start", result.stderr)
         self.assertFalse((self.directory / "game-ran").exists())
 
+    def test_online_goes_straight_to_player_selection_without_a_form_click(self):
+        self.env["TEST_LOGIN_STATE"] = str(self.directory / "login-state")
+        self.program("sleep", "pass")
+        self.program("xdotool", """
+from pathlib import Path
+import os, sys
+state = Path(os.environ['TEST_LOGIN_STATE'])
+args = sys.argv[1:]
+if args[0] == 'search': print('999')
+elif args[0] == 'mousemove': state.with_suffix('.position').write_text(' '.join(args[-2:]))
+elif args[0] == 'click':
+    with state.open('a') as clicks: clicks.write(state.with_suffix('.position').read_text() + '\\n')
+""")
+        self.program("import", """
+from pathlib import Path
+import os, sys
+state = Path(os.environ['TEST_LOGIN_STATE'])
+args = sys.argv[1:]
+if '-crop' not in args:
+    Path(args[-1]).write_bytes(b'fixture'); sys.exit(0)
+pixel = args[args.index('-crop') + 1]
+online = state.exists()
+rgb = (39,61,117) if pixel == '1x1+297+301' else (0,0,0)
+if pixel == '1x1+297+434': rgb = (38,60,116)
+if online and pixel == '1x1+600+231': rgb = (38,60,116)
+print('0,0: (%d,%d,%d)' % rgb)
+""")
+        result = subprocess.run([str(VCLIENT), "login", "select"], env=self.env,
+            capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.directory / "login-state").read_text(), "297 301\n")
+
 
 if __name__ == "__main__":
     unittest.main()

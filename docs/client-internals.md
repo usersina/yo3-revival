@@ -10,6 +10,8 @@ export, see [AGENTS.md](../AGENTS.md)).
   - [The binary](#the-binary)
   - [Key objects and functions](#key-objects-and-functions)
   - [The connection mod](#the-connection-mod)
+    - [Skipping the stock login form](#skipping-the-stock-login-form)
+    - [Automatic local deck initialization](#automatic-local-deck-initialization)
   - [The field tracer](#the-field-tracer)
   - [Data formats](#data-formats)
   - [Behaviours worth knowing](#behaviours-worth-knowing)
@@ -111,6 +113,28 @@ Account credentials remain in the Rust TLS launcher. No binary or INI file is pa
 See [authentication.md](authentication.md) for the session binding and [protocol.md](protocol.md#authenticated-transport)
 for the outer protocol. These hooks describe our mod, not claims about Konami's authentication.
 
+### Skipping the stock login form
+
+The launcher authenticates before the game resumes. The original form adds no authentication: **ONLINE** can go
+straight to player selection. `tools/mod/login.h` redirects only the verified native `CALL` at `0x46964B`
+(`E8 50 6C 08 00`, originally `0x4F02A0`, invoking the movie's `StartLogin`). `LoginWindow`'s frame handler
+`0x469440` reaches it once, after its startup countdown and normal scene preparation.
+
+The replacement performs the gate-connect step of native `goLogin` (`0x46B5FF…0x46B62C`): copy the window's
+gate host (`+0x10DC`) into its gate connection (`+0xB0`, string at `+0x78`), set port `+0x94` from window
+`+0x10F8`, then call the connection's virtual slot `+0x38`. String assignment uses the game's own import
+`0x7583B4`. The call-site bridge takes the window in ESI, preserves callee-saved registers and matches `ret 4`.
+Saved login strings, remember flags and native error state stay untouched; no password or account key is supplied.
+
+The original `login.swf` frame 1 starts with a fully transparent login form and stops. Avoiding `StartLogin` leaves
+the form hidden. The normal successful player-list handler still invokes `StartPSelect`; its frame check accepts any frame
+below 12 and enters player selection. Native failure dialogs, player creation and Cancel remain responsible for
+their own transitions. No stock files are patched, and an unexpected call instruction refuses mod readiness.
+
+The shared C fixture checks both fresh and saved login data, preservation of unrelated native state, and byte-guard
+rejection. `tools/mod/test.sh` also runs it as 32-bit Windows code under Wine and independently checks changed
+login and starter hook sites. Live verification is recorded in [the roadmap](roadmap.md).
+
 ### Automatic local deck initialization
 
 `tools/mod/starter.h` also redirects the verified CALL at `0x4F44BD` to a wrapper around the original global
@@ -177,8 +201,8 @@ parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Su
 
 ## Behaviours worth knowing
 
-- The stock login form continues after OK; the revival launcher authenticates first and ignores that form's
-  credentials. Up to 4 players per account.
+- The required mod skips the stock username/password form after **ONLINE**; the revival launcher authenticates
+  first. The native connection/error/player-selection flow stays in use. Up to 4 players per account.
 - The client treats formatted server date/time strings as JST; duel-log epoch timestamps render in local time.
 - The client keeps its own data under `<My Documents>\Yu-Gi-Oh! ONLINE 3` (`SHGetFolderPath` `0x8005`, `0x52B8E0`):
   `options.y3o`, `users\`, and per player `players\<pname>\` with `decks`, `mail`, `regulations`, `duellogs`,
@@ -205,6 +229,7 @@ parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Su
 
 | Symptom                                                                                           | Cause                                                                                                                                                                                                                                                                                                                 | Rule                                                                                                                                                                                                                           |
 | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Null read at `0x535210` during automatic login | Local gate closed immediately after `0x21FE`; its EOF raced the redirect handler and the receive thread dereferenced the null error logger at `0x82D214` | Keep the redirect connection open until its client closes it; launcher shutdown must also release accepted sockets |
 | Crash at `0x46C750` after selecting a player                                                      | `avatar1` sent as text, so the array came back empty                                                                                                                                                                                                                                                                  | Blobs are binary (vtype 8)                                                                                                                                                                                                     |
 | Null read at `0x4727DE` entering the main screen                                                  | player record without `pbin`                                                                                                                                                                                                                                                                                          | Send every field the loader reads                                                                                                                                                                                              |
 | Crash in the 9000 handler (if no items)                                                           | it dereferences `item[0]`                                                                                                                                                                                                                                                                                             | Lists the client indexes need at least one record                                                                                                                                                                              |

@@ -38,8 +38,9 @@ connection too, with component and server checks before login.
 
 ![The graphical launcher with server and account selection](docs/images/launcher.png)
 
-Authentication happens in the launcher; the game's original username/password fields are unused. The game executable
-and `yo3.ini` stay unchanged. Each account has its own access key, so friends sharing a router stay separate.
+Authentication happens in the launcher; the required mod skips the game's original username/password form.
+The game executable and `yo3.ini` stay unchanged. Each account has its own access key, so friends sharing a router
+stay separate.
 
 The sidebar shows the current version and links to GitHub. Updates are checked automatically at startup;
 **About & updates → Review & install** downloads and installs a verified update after your confirmation.
@@ -49,7 +50,7 @@ or earlier? Follow [the upgrade steps](docs/launcher.md#upgrade-from-v003-or-ear
 ## Your first duel
 
 1. Choose your connection on **Play**, then press **Play**.
-2. Press **ONLINE**, dismiss the original login form and select your player.
+2. Press **ONLINE** and select your player. The mod skips the original login form.
 3. Your first legal starting deck is prepared and selected automatically. Use **Main Menu → Edit Deck** to customise it.
 4. Visit **Kaiba Corporation** for a computer opponent. With a friend, both choose **Auto Duel → Confirm**, or use
    **Create Duel** to arrange a specific match.

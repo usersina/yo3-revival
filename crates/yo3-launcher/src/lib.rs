@@ -55,18 +55,29 @@ impl Proxy {
         let mut cookie = [0; 32]; getrandom::fill(&mut cookie)?;
         let mut tasks = vec![];
         tasks.push(tokio::spawn(async move {
-            while let Ok((mut s, _)) = gate.accept().await {
-                tokio::spawn(async move {
-                    let _ = async {
-                        authorize(&mut s, &cookie).await?;
-                        let mut head = [0; 4]; s.read_exact(&mut head).await?;
-                        let n = frame_len(head); anyhow::ensure!(n > 0 && n <= MAX_FRAME, "bad gate frame");
-                        let mut data = vec![0; n]; s.read_exact(&mut data).await?;
-                        let reply = Message::reply(0x21FE).with("host", Value::text("127.0.0.1")).with("port", Value::U32(ports.front as u32));
-                        s.write_all(&frame(&reply.encode())).await?;
-                        Ok::<_, anyhow::Error>(())
-                    }.await;
-                });
+            // Keep accepted gates owned by this task so dropping the proxy also closes idle redirects.
+            let mut connections = tokio::task::JoinSet::new();
+            loop {
+                tokio::select! {
+                    Some(_) = connections.join_next() => {},
+                    accepted = gate.accept() => {
+                        let Ok((mut s, _)) = accepted else { break };
+                        connections.spawn(async move {
+                            let _ = async {
+                                authorize(&mut s, &cookie).await?;
+                                let mut head = [0; 4]; s.read_exact(&mut head).await?;
+                                let n = frame_len(head); anyhow::ensure!(n > 0 && n <= MAX_FRAME, "bad gate frame");
+                                let mut data = vec![0; n]; s.read_exact(&mut data).await?;
+                                let reply = Message::reply(0x21FE).with("host", Value::text("127.0.0.1")).with("port", Value::U32(ports.front as u32));
+                                s.write_all(&frame(&reply.encode())).await?;
+                                // The native window owns the gate until it leaves player selection. Premature EOF can
+                                // hit its null error logger (0x535210) before it processes the redirect/disconnect.
+                                tokio::io::copy(&mut s, &mut tokio::io::sink()).await?;
+                                Ok::<_, anyhow::Error>(())
+                            }.await;
+                        });
+                    },
+                }
             }
         }));
         for (listener, role) in [(front, Role::Front), (duel, Role::Duel)] {

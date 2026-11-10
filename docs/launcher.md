@@ -54,9 +54,9 @@ The UI reports **Starting game** until the authenticated launcher signals readin
 **Close game** ends that session while hosting can continue. On Wine, a cold prefix can take longer to initialise;
 startup failures appear on Play and in **Activity → Game & launcher**.
 
-In the game, select **ONLINE**, dismiss the original login form and choose your player. Its username/password
-fields are unused because the launcher authenticated the account. On a fresh player profile, the mod prepares a
-legal starting deck and selects it if you have no selection. This runs only once: existing decks, even unfinished
+In the game, select **ONLINE** and choose your player. The mod skips the original login form because the launcher
+already authenticated your account. On a fresh player profile, the mod prepares a legal starting deck and selects
+it if you have no selection. This runs only once: existing decks, even unfinished
 ones, and all later edits or deletions are preserved.
 
 ![Choose a player after the launcher has authenticated your account](images/guide/5-select-player.png)

@@ -203,14 +203,14 @@ On Linux:
 ```
 
 The bundle's injector and DLL sit beside the launcher. Linux needs Wine; `--wine-prefix` selects another prefix.
-No `yo3.ini` edits are required. Authentication happens before the game starts; its original username/password
-fields are unused. A bad key, certificate or DLL stops startup and reports the reason in the launcher's terminal.
+No `yo3.ini` edits are required. Authentication happens before the game starts; the mod skips the original
+username/password form. A bad key, certificate or DLL stops startup and reports the reason in the launcher's terminal.
 Keep that terminal open while playing.
 
 ### Joining, step by step (with pictures)
 
 1. Start the revival launcher with your private profile and the host certificate.
-2. Press **ONLINE**, dismiss the original login form, then select your player.
+2. Press **ONLINE**, then select your player.
 3. A legal starting deck is prepared once for a fresh player profile. **Main Menu → Edit Deck** is optional: use it to
    customise your deck or load the other official character decks.
 

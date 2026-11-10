@@ -10,6 +10,12 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **ONLINE** now opens player selection directly. The required connection mod skips the unused original login
+  form, including when opening the game through the installed direct-start loader.
+- Fixed a local gate disconnect race exposed by automatic login, which could crash the client during connection.
+
 ## v0.0.4 (2026-11-10)
 
 A graphical launcher for playing and hosting from one window. Download the bundle for your system, extract the

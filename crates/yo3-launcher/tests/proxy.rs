@@ -18,6 +18,29 @@ async fn local(p: &Proxy, port: u16) -> TcpStream {
 }
 
 #[tokio::test]
+async fn gate_redirect_stays_open_until_the_client_or_proxy_closes_it() {
+    // 0x535210 dereferences a missing stock logger after premature gate EOF. Automatic login exposes the race.
+    let dir = std::env::temp_dir().join(format!("yo3-gate-lifetime-{}", std::process::id()));
+    let cfg = yo3_server::Config::ephemeral(dir.clone());
+    let endpoint = Endpoint::new("127.0.0.1:1".into(), "localhost".into(), &cfg.tls.certificate).unwrap();
+    let proxy = Proxy::prepare(endpoint, Ports::default()).await.unwrap();
+    let mut gate = local(&proxy, proxy.ports.gate).await;
+    gate.write_all(&frame(b"\x00\x122010.03.23 skelton")).await.unwrap();
+    assert_eq!(read(&mut gate).await.request(), Some(0x21FE));
+    assert!(tokio::time::timeout(Duration::from_millis(75), gate.read(&mut [0; 1])).await.is_err(),
+        "the gate must not send EOF while the native login window still owns it");
+    gate.shutdown().await.unwrap();
+    assert_eq!(tokio::time::timeout(Duration::from_secs(1), gate.read(&mut [0; 1])).await.unwrap().unwrap(), 0);
+    let mut next = local(&proxy, proxy.ports.gate).await;
+    next.write_all(&frame(b"\x00\x122010.03.23 skelton")).await.unwrap();
+    assert_eq!(read(&mut next).await.request(), Some(0x21FE));
+    drop(proxy);
+    assert_eq!(tokio::time::timeout(Duration::from_secs(1), next.read(&mut [0; 1])).await.unwrap().unwrap(), 0,
+        "closing the proxy must release accepted gate sockets too");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
 async fn a_modded_client_logs_in_and_its_duel_is_bound_to_that_launcher() {
     let dir = std::env::temp_dir().join(format!("yo3-proxy-{}", std::process::id()));
     let cfg = yo3_server::Config::ephemeral(dir.clone());
