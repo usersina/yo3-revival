@@ -10,6 +10,8 @@ use serde_json::Value;
 use yo3_server::admin::{self, ManagerOp};
 pub mod network;
 pub mod privileged;
+pub mod direct;
+pub mod reports;
 
 pub fn server_address(input: &str) -> anyhow::Result<(String, String)> {
     let input = input.trim();
@@ -41,12 +43,13 @@ pub struct Settings {
     pub player_name: String,
     pub selected_server: Option<i64>,
     pub local_account: String,
+    pub detailed_logs: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
         Self { game_dir: yo3_data::default_game_dir().to_string_lossy().into(), wine_prefix: String::new(),
             host_address: "localhost".into(), data_dir: String::new(), bind_address: "0.0.0.0".into(), bind_interface: None, listen_port: 7443,
-            player_name: "Duelist".into(), selected_server: None, local_account: String::new() }
+            player_name: "Duelist".into(), selected_server: None, local_account: String::new(), detailed_logs: false }
     }
 }
 
@@ -195,12 +198,14 @@ impl Runtime {
     }
 }
 
-pub struct Backend { pub root: PathBuf, pub runtime: Runtime, game: Mutex<Option<Child>>, server: Mutex<Option<Child>> }
+pub struct Backend { pub root: PathBuf, pub runtime: Runtime, pub diagnostics: yo3_tunnel::diagnostics::Session,
+    server_session: Mutex<Option<String>>, game: Mutex<Option<Child>>, server: Mutex<Option<Child>> }
 impl Backend {
     pub fn new(root: PathBuf) -> anyhow::Result<Arc<Self>> {
         std::fs::create_dir_all(root.join("profiles"))?;
         std::fs::create_dir_all(root.join("logs"))?;
-        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, game: Mutex::new(None), server: Mutex::new(None) }))
+        let diagnostics = yo3_tunnel::diagnostics::Session::start(&root.join("logs/sessions"), "app", None)?;
+        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), server: Mutex::new(None) }))
     }
     pub fn data_dir(&self, settings: &Settings) -> PathBuf {
         if settings.data_dir.trim().is_empty() { self.root.join("server") } else { PathBuf::from(&settings.data_dir) }
@@ -208,7 +213,9 @@ impl Backend {
     pub fn live(&self, settings: &Settings) -> Option<admin::Live> { admin::running(&self.data_dir(settings)) }
     pub fn status(&self, settings: &Settings) -> anyhow::Result<Value> {
         let live = self.live(settings).context("Server stopped")?;
-        admin::manage(&live, &ManagerOp::Status).map_err(anyhow::Error::msg)
+        let status = admin::manage(&live, &ManagerOp::Status).map_err(anyhow::Error::msg)?;
+        if let Some(id) = status["diagnostic_id"].as_str().filter(|id| yo3_tunnel::diagnostics::valid_id(id)) { *self.server_session.lock().unwrap() = Some(id.into()); }
+        Ok(status)
     }
     pub fn accounts(&self, settings: &Settings) -> anyhow::Result<Value> {
         let live = self.live(settings).context("Start your server to manage accounts.")?;
@@ -235,12 +242,14 @@ impl Backend {
         let mut directory = yo3_server::accounts::Directory::open(vec![], &data.join("accounts.json"))?;
         if directory.entries().next().is_none() { directory.add_account(std::slice::from_ref(&settings.player_name)).map_err(anyhow::Error::msg)?; }
         drop(directory);
-        let log = std::fs::OpenOptions::new().create(true).append(true).open(self.root.join("logs/server.log"))?;
         let mut cmd = Command::new(&self.runtime.server);
         cmd.args(["--bind", &bind.to_string(), "--auth-port", &port, "--http-port", "0"])
             .arg("--data-dir").arg(data).arg("--game-dir").arg(&settings.game_dir).arg("--log-dir").arg(self.root.join("logs"))
-            .env("YO3_ENGINE_DIR", &self.runtime.engine).env("NO_COLOR", "1").stdin(Stdio::null()).stdout(log.try_clone()?).stderr(log);
+            .arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id())
+            .env("YO3_ENGINE_DIR", &self.runtime.engine).env("NO_COLOR", "1").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        if !settings.detailed_logs { cmd.arg("--no-packet-log"); }
         detach_server(&mut cmd);
+        *self.server_session.lock().unwrap() = None;
         *owned = Some(cmd.spawn().context("Start the server")?);
         for _ in 0..100 {
             if let Ok(status) = self.status(settings) { return Ok(status) }
@@ -300,13 +309,15 @@ impl Backend {
         };
         server.id = server.id.max(0);
         server.validate()?;
+        self.sync_direct(settings, Some(server.clone()))?;
         let profile = self.write_profile(&server)?;
         ensure!(self.runtime.launcher.is_file() && self.runtime.dll.is_file() && self.runtime.injector.is_file(), "Connection files are missing. Extract the complete application bundle.");
-        let log = std::fs::OpenOptions::new().create(true).append(true).open(self.root.join("logs/launcher.log"))?;
         let mut cmd = Command::new(&self.runtime.launcher);
         cmd.arg("--control-stdin").arg("--profile").arg(profile).arg("--game-dir").arg(&settings.game_dir).arg("--injector").arg(&self.runtime.injector).arg("--dll").arg(&self.runtime.dll);
         if !settings.wine_prefix.is_empty() { cmd.arg("--wine-prefix").arg(&settings.wine_prefix); }
-        cmd.stdin(Stdio::piped()).stdout(log.try_clone()?).stderr(log);
+        cmd.arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id());
+        if settings.detailed_logs { cmd.arg("--detailed-logs"); }
+        cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
         hide_console(&mut cmd);
         *game = Some(cmd.spawn()?);
         Ok(())
@@ -347,14 +358,38 @@ impl Backend {
         Ok(())
     }
     pub fn logs(&self, server: bool) -> String {
-        let file = self.root.join(if server { "logs/server.log" } else { "logs/launcher.log" });
-        // Read a bounded tail so a long session cannot grow the GUI's memory without limit.
+        let root = self.root.join("logs/sessions"); let ids = self.current_sessions();
+        let selected: Vec<_> = yo3_tunnel::diagnostics::records(&root).unwrap_or_default().into_iter()
+            .filter(|r| r.name.ends_with(".log") && ids.contains(&r.id) && r.id.starts_with(if server { "server-" } else { "game-" })).collect();
+        let fallback: Vec<_> = if server { vec![] } else { yo3_tunnel::diagnostics::records(&root).unwrap_or_default().into_iter().filter(|r| r.name.ends_with(".log") && ids.contains(&r.id) && (r.id.starts_with("app-") || r.id.starts_with("direct-"))).collect() };
+        let mut result = String::new();
         use std::io::{Read, Seek, SeekFrom};
-        let Ok(mut f) = std::fs::File::open(file) else { return String::new() };
-        let len = f.metadata().map(|m| m.len()).unwrap_or(0);
-        let _ = f.seek(SeekFrom::Start(len.saturating_sub(96 * 1024)));
-        let mut bytes = Vec::new(); let _ = f.read_to_end(&mut bytes);
-        String::from_utf8_lossy(&bytes).into_owned()
+        for record in fallback.into_iter().chain(selected).rev() {
+            let Ok(mut f) = std::fs::File::open(root.join(record.name)) else { continue };
+            let len = f.metadata().map(|m| m.len()).unwrap_or(0); let remaining = (96 * 1024usize).saturating_sub(result.len()); if remaining == 0 { break }
+            let _ = f.seek(SeekFrom::Start(len.saturating_sub(remaining as u64)));
+            let mut bytes = Vec::new(); let _ = f.take(remaining as u64).read_to_end(&mut bytes);
+            result = format!("{}{}", String::from_utf8_lossy(&bytes), result);
+        }
+        result
+    }
+    pub fn current_sessions(&self) -> Vec<String> {
+        let mut ids = vec![self.diagnostics.id()];
+        let server = self.server_session.lock().unwrap().clone().or_else(|| {
+            let root = self.root.join("logs/sessions");
+            yo3_tunnel::diagnostics::records(&root).ok()?.into_iter().rev().filter(|r| r.name.ends_with(".json")).find_map(|r| {
+                let meta: yo3_tunnel::diagnostics::Metadata = serde_json::from_slice(&std::fs::read(root.join(r.name)).ok()?).ok()?;
+                (meta.kind == "server" && meta.parent.as_deref() == Some(self.diagnostics.id().as_str())).then_some(meta.id)
+            })
+        });
+        if let Some(id) = server { ids.push(id); }
+        if let Ok(id) = std::fs::read_to_string(self.root.join("logs/sessions/latest-game"))
+            && yo3_tunnel::diagnostics::valid_id(&id) { ids.push(id); }
+        ids
+    }
+    pub fn report(&self, all: bool) -> anyhow::Result<reports::Report> {
+        let current = self.current_sessions();
+        reports::Report::prepare(&self.root.join("logs/sessions"), if all { None } else { Some(&current) })
     }
 }
 

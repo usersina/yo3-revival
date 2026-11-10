@@ -1,5 +1,12 @@
 use yo3_desktop::privileged::{windows_firewall_plan, linux_firewall_plan, LinuxFirewall};
 #[test]
+fn protected_loader_arguments_preserve_drive_roots_spaces_and_unicode() {
+    use yo3_desktop::privileged::loader_helper_arguments;
+    assert_eq!(loader_helper_arguments(std::path::Path::new("C:\\"), false).unwrap(), "--loader-helper install \"C:\\\\\"");
+    assert_eq!(loader_helper_arguments(std::path::Path::new("C:\\日本語 game"), true).unwrap(), "--loader-helper remove \"C:\\日本語 game\"");
+    assert!(loader_helper_arguments(std::path::Path::new("bad\"path"), false).is_err());
+}
+#[test]
 fn firewall_commands_use_a_single_tcp_port_and_never_evaluate_paths_as_script() {
     let path = std::path::Path::new(r"C:\Games & tools\$unexpected\yo3-server.exe");
     let plan = windows_firewall_plan(path, 7443).unwrap();

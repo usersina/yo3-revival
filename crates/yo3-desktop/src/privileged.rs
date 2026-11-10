@@ -54,10 +54,39 @@ fn configure_firewall(port: u16) -> anyhow::Result<()> {
 /// Recognized before Iced initializes, so an elevated helper never creates an elevated manager/game.
 pub fn helper_mode() -> Option<i32> {
     let mut args = std::env::args_os().skip(1);
-    if args.next().as_deref() != Some(std::ffi::OsStr::new("--firewall-helper")) { return None }
+    let mode = args.next();
+    if mode.as_deref() == Some(std::ffi::OsStr::new("--loader-helper")) {
+        let action = args.next(); let game = args.next();
+        let result = match (action.as_deref().and_then(|v| v.to_str()), game) {
+            (Some(action @ ("install" | "remove")), Some(game)) if args.next().is_none() => crate::direct::elevated_install(Path::new(&game), action == "remove"),
+            _ => Err(anyhow::anyhow!("Expected install/remove and one game folder")),
+        };
+        return Some(match result { Ok(()) => 0, Err(error) => { eprintln!("{error:#}"); 30 } });
+    }
+    if mode.as_deref() != Some(std::ffi::OsStr::new("--firewall-helper")) { return None }
     let port = args.next().and_then(|s| s.to_str().and_then(|s| s.parse::<u16>().ok()));
     let result = match port { Some(port) if port > 0 && args.next().is_none() => configure_firewall(port), _ => Err(anyhow::anyhow!("Expected only a TCP port from 1 to 65535")) };
     Some(match result { Ok(()) => 0, Err(error) => { eprintln!("{error:#}"); 30 } })
+}
+
+pub fn loader_helper_arguments(game: &Path, remove: bool) -> anyhow::Result<String> {
+    let path = game.to_str().context("Unsupported game path")?;
+    ensure!(!path.contains(['"', '\r', '\n']) && !path.is_empty(), "Invalid game path");
+    let trailing = path.chars().rev().take_while(|c| *c == '\\').count();
+    Ok(format!("--loader-helper {} \"{}{}\"", if remove { "remove" } else { "install" }, path, "\\".repeat(trailing)))
+}
+pub fn request_loader(game: &Path, remove: bool) -> anyhow::Result<PermissionResult> {
+    let action = if remove { "remove" } else { "install" };
+    #[cfg(windows)] {
+        let _ = action;
+        elevated_windows(&loader_helper_arguments(game, remove)?)
+    }
+    #[cfg(not(windows))] {
+        let output = std::process::Command::new("pkexec").arg(std::env::current_exe()?).args(["--loader-helper", action]).arg(game).output()?;
+        if output.status.code() == Some(126) { return Ok(PermissionResult::Cancelled) }
+        ensure!(output.status.success(), "Loader setup failed: {}", String::from_utf8_lossy(&output.stderr).trim());
+        Ok(PermissionResult::Applied)
+    }
 }
 
 pub fn request_firewall(port: u16) -> anyhow::Result<PermissionResult> {

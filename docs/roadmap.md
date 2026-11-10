@@ -34,15 +34,29 @@ Launcher usability phase (2026-11-10, in progress on `feat/desktop-launcher`):
 - [x] Shared build/protocol/DLL requirements, preflight and DLL readiness before game login. Static preflight rejects
   wrong/missing/changed files before authentication; injector readiness precedes account login and game resume.
   Live: private :88 game reached the main screen as UsabilityYugi after readiness interface 2 was acknowledged.
-- [ ] Direct-start loader investigation; keep `yo3.exe` unchanged. Gate callback `0x4699B0` reads only host/port;
+- [x] Reversible direct-start loader; `yo3.exe` and INI hashes stay unchanged. Private :88 reached the main screen
+  from the original executable, and a missing DLL showed its expected path, accepted a matching file and required
+  restart before login. Named/ordinal imports, Unicode paths, stale readiness and foreign-mod refusal are covered.
+  Gate callback `0x4699B0` reads only host/port;
   login dispatcher `0x469C00` uses error codes and `0x46D050` selects fixed local UI strings. A custom requirements
   dialog/file picker needs local code; do not invent a server message field.
 - [x] Advanced interface binding (new GUI setups default all IPv4), one public port, retained local-only upgrades and
   optional firewall elevation. Live: selected eno1 listener and local game main screen on :88; key retained during
   automatic identity maintenance. Windows helper cross-checks and pure command/argument tests pass; native UAC and
   real firewall mutation remain untested, so the user's host policy stays untouched.
-- [ ] Session-indexed diagnostic logs, bounded retention and redacted current/all-retained ZIP exports.
+- [x] Session-indexed diagnostic logs, bounded retention and redacted current/all-retained ZIP exports. Private
+  checks verified continued server logging after manager exit, reattachment, different current/all inventories and
+  valid ZIPs without saved account keys, private keys or home paths. Wine helpers use a cross-platform heartbeat.
 - [ ] TDD contracts, private-display live checks, both bundles and native Windows follow-up recorded separately.
+
+Next DLL candidates, after launcher usability:
+
+- [ ] Initialize/select a legal starter after player login only when no valid local deck exists; preserve existing
+  decks/selection. Evidence: editor saves missing server-listed decks at `0x43E550` / `0x52EE60`, while matching
+  validates local files at `0x51AB00`. Verify account, collection and regulation before writing; DLL load is too early.
+- [ ] Sync editor saves without requiring a duel selection (currently only `0x1F4F update_type 1` uploads them).
+- [ ] Diagnose the client black-screen wait when the server hangs, then add bounded failure feedback.
+- [ ] Check local profile collisions for identically named players on different servers.
 
 Desktop manager (2026-11-10): `yo3-desktop` supplies an Iced `yo3-revival` application with game-folder setup,
 local play, saved remote connections, independent server controls, live account creation/add-player/export,
@@ -238,8 +252,6 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
 - [x] A direct attack showed no sword (the user, VM round): BattleAttack's target zone `0xFFFFFFFF` plays nothing, while
       any zone from 5 plays the direct cut-in and the strike `0xCB` (`0x4F8430` state 3). Direct attacks now go at the
       defending player, zone 16. Live check pending; an attack on a monster plays the cut-in and strike already.
-- [ ] Card preview on hover needs a held button on the VM (the client shows it on hover under Wine): likely the VM's
-      PS/2 mouse or window focus, not the server.
 
 ## ▶ Robustness review (2026-11-08): what three code reviews found, and the fixes
 

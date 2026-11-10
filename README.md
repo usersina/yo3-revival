@@ -22,7 +22,7 @@ Published releases through v0.0.3 predate this application; until a new release 
 [build the current bundles](docs/guide.md#run-from-source).
 
 - **Joining a friend?** Import their private invitation on **Play**, save the connection and press **Play**.
-  You can also add their address, account key and public certificate manually.
+  You can also discover their address, approve their identity and enter the account key they supplied.
 - **Hosting friends?** Set your reachable address in **Settings**, then **Start server** on **My server**.
   New servers listen on all IPv4 interfaces; **Advanced networking** selects a specific interface or port.
   Create accounts and private invitations on **Accounts**, and allow the chosen TCP port through the firewall.
@@ -30,6 +30,8 @@ Published releases through v0.0.3 predate this application; until a new release 
 
 The [graphical setup guide](docs/launcher.md) walks through all three paths, certificates, data and troubleshooting.
 You can keep hosting your server while joining another, and leave hosting running when you close the application.
+**Settings → Enable direct start** optionally sets up the original game executable/shortcut to use your saved
+connection too, with component and server checks before login.
 
 ![The graphical server manager showing hosting status and controls](docs/images/launcher.png)
 
@@ -49,8 +51,9 @@ The [command-line guide](docs/guide.md) remains available for terminal users and
 ## Something wrong?
 
 Check [Troubleshooting](docs/launcher.md#troubleshooting) first. Still stuck, or found a bug?
-[Open an issue](https://github.com/usersina/yo3-revival/issues/new/choose) and attach a screenshot of the server's
-**Activity** view if you can. Keep private invitations and account keys out of bug reports.
+[Open an issue](https://github.com/usersina/yo3-revival/issues/new/choose) and attach a diagnostic ZIP from
+**Activity → Export current session** (or **Export all retained** for an earlier problem). Review it before sharing;
+private invitations, account keys and databases do not belong in bug reports. Nothing is uploaded automatically.
 
 ## What works
 

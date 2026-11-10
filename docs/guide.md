@@ -126,7 +126,8 @@ Useful account commands (server stopped except the BP operations):
 - Allow TCP 7443 on the host firewall; with a VPN or router, route/forward that port to the host.
 - Check the profile's server address and certificate name against the host's certificate names.
 - Give each friend the correct public certificate and their own private profile.
-- Launch through `yo3-launcher`; changing `yo3.ini` or starting `yo3.exe` directly cannot authenticate.
+- Launch through `yo3-launcher`, or enable the optional [automatic loader](launcher.md#open-the-game-directly) in the
+  graphical manager. An untouched game without that loader cannot authenticate by changing `yo3.ini` alone.
 
 ### Windows SmartScreen and antivirus warnings
 

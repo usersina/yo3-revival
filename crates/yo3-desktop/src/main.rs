@@ -24,16 +24,16 @@ enum Page { Play, Server, Accounts, Activity, Settings }
 enum Field { Game, Wine, Host, Data, Player, Label, Address, Key, Account, NewPlayer, Port }
 #[derive(Clone)]
 enum Msg {
-    Page(Page), Input(Field, String), Select(ServerChoice), AccountSelect(String), Start, Stop, Play, StopGame, TestConnection, Discover, TrustIdentity, AdvancedConnection, AdvancedNetwork, RefreshBindings, BindSelect(yo3_desktop::network::BindAddress), Firewall,
+    Page(Page), Input(Field, String), Select(ServerChoice), AccountSelect(String), Start, Stop, Play, StopGame, TestConnection, Discover, TrustIdentity, AdvancedConnection, AdvancedNetwork, RefreshBindings, BindSelect(yo3_desktop::network::BindAddress), Firewall, Direct(bool),
     SaveSettings, Browse(Field), Import, AddServer, SaveServer, Certificate, CreateAccount, AddPlayer, Export,
     Tick, Poll(Result<(Option<Value>, bool, String, Option<String>), String>), Done(Result<Outcome, String>), Logs(bool), Pause(bool),
-    LogFilter(String), CopyLogs, SaveLogs, OpenData, Help, Close, CancelClose, Quit(bool), ConfirmCertificate, RenewCertificate,
+    LogFilter(String), CopyLogs, PrepareReport(bool), SaveLogs, Detailed(bool), OpenData, Help, Close, CancelClose, Quit(bool), ConfirmCertificate, RenewCertificate,
 }
 impl std::fmt::Debug for Msg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("DesktopEvent") }
 }
 #[derive(Clone)]
-enum Outcome { Info(String), Status(Value), Accounts(Value), Path(Field, String), Imported(SavedServer), Observed(yo3_tunnel::ObservedServer), Checked(yo3_tunnel::ServerInfo), Bindings(Vec<yo3_desktop::network::BindAddress>), Certificate(String), SettingsSaved(Settings), ConnectionsSaved(Vec<SavedServer>), Quit }
+enum Outcome { Info(String), Status(Value), Accounts(Value), Path(Field, String), Imported(SavedServer), Observed(yo3_tunnel::ObservedServer), Checked(yo3_tunnel::ServerInfo), Bindings(Vec<yo3_desktop::network::BindAddress>), Certificate(String), SettingsSaved(Settings), ConnectionsSaved(Vec<SavedServer>), Report(yo3_desktop::reports::Report), Quit }
 
 struct App {
     root: PathBuf, backend: Option<Arc<Backend>>, settings: Settings, draft: Settings,
@@ -43,6 +43,7 @@ struct App {
     failed: bool, log_server: bool, paused: bool, logs: String, filter: String, closing: bool, confirm_certificate: bool,
     identity: Option<String>, observed: Option<yo3_tunnel::ObservedServer>, checked: Option<yo3_tunnel::ServerInfo>, advanced_connection: bool,
     bindings: Vec<yo3_desktop::network::BindAddress>, advanced_network: bool, port: String,
+    report: Option<yo3_desktop::reports::Report>,
 }
 
 fn job(f: impl FnOnce() -> anyhow::Result<Outcome> + Send + 'static) -> Task<Msg> {
@@ -66,11 +67,26 @@ impl App {
             busy: false, polling: false, game_running: false, failed: !error.is_empty(), notice: if error.is_empty() { "Welcome. Choose where you want to play.".into() } else { error },
             log_server: true, paused: false, logs: String::new(), filter: String::new(), closing: false, confirm_certificate: false,
             identity: None, observed: None, checked: None, advanced_connection: false,
-            bindings: yo3_desktop::network::defaults(), advanced_network: false, port }
+            bindings: yo3_desktop::network::defaults(), advanced_network: false, port, report: None }
     }
     fn update(&mut self, message: Msg) -> Task<Msg> {
         if self.busy && !matches!(message, Msg::Done(_) | Msg::Poll(_) | Msg::Tick | Msg::Close | Msg::CancelClose) { return Task::none() }
         match message {
+            Msg::Detailed(value) => self.draft.detailed_logs = value,
+            Msg::PrepareReport(all) => {
+                let Some(backend) = self.backend.clone() else { return Task::none() };
+                let settings = self.settings.clone(); self.busy = true;
+                return job(move || { let _ = backend.status(&settings); Ok(Outcome::Report(backend.report(all)?)) });
+            }
+            Msg::Direct(enable) => {
+                if self.busy { return Task::none() }
+                let Some(backend) = self.backend.clone() else { return Task::none() };
+                let settings = self.settings.clone();
+                let remote = match self.selected.remote(&self.servers) { Ok(s) => s, Err(e) => { self.feedback(Err(e.to_string())); return Task::none() } };
+                self.busy = true;
+                return job(move || { if enable { backend.enable_direct(&settings, remote)?; } else { backend.disable_direct(&settings)?; }
+                    Ok(Outcome::Info(if enable { "Direct start enabled for the saved game, server and account. You can now open yo3.exe directly. Restart any open game." } else { "Direct-start loader removed. Open the game through the launcher." }.into())) });
+            }
             Msg::Page(page) => { self.page = page; if page == Page::Accounts { return self.load_accounts() } else if page == Page::Server { return self.update(Msg::RefreshBindings) } }
             Msg::Input(field, value) => match field {
                 Field::Game => self.draft.game_dir = value, Field::Wine => self.draft.wine_prefix = value,
@@ -145,6 +161,10 @@ impl App {
                             "Stop your server before changing its setup.");
                     }
                     LauncherDb::open(&root)?.save_settings(&draft)?;
+                    if let Some(backend) = backend {
+                        let remote = draft.selected_server.and_then(|id| LauncherDb::open(&root).ok()?.servers().ok()?.into_iter().find(|s| s.id == id));
+                        if let Err(error) = backend.sync_direct(&draft, remote) { backend.diagnostics.line(&format!("Direct-start selection cleared; enable it again after fixing setup: {error:#}")); }
+                    }
                     Ok(Outcome::SettingsSaved(draft))
                 });
             }
@@ -227,6 +247,7 @@ impl App {
                     Ok(Outcome::ConnectionsSaved(servers)) => { self.selected = ServerChoice::saved(servers.last().unwrap()); self.servers = servers; self.editor = false; self.key.clear(); self.certificate.clear(); self.settings.selected_server = self.servers.last().map(|s| s.id); self.feedback(Ok("Connection saved.".into())); return self.save_selection(); }
                     Ok(Outcome::Certificate(certificate)) => { self.identity = yo3_tunnel::identity_from_pem(certificate.as_bytes()).ok(); self.certificate = certificate; self.feedback(Ok("Host certificate selected.".into())); }
                     Ok(Outcome::Quit) => return iced::exit(),
+                    Ok(Outcome::Report(report)) => self.report = Some(report),
                     Err(error) => self.feedback(Err(error)),
                 }
             }
@@ -235,16 +256,18 @@ impl App {
             Msg::LogFilter(filter) => self.filter = filter,
             Msg::CopyLogs => return iced::clipboard::write(self.logs.clone()),
             Msg::SaveLogs => {
-                self.busy = true; let logs = self.logs.clone();
+                let Some(report) = self.report.take() else { return Task::none() }; self.busy = true;
                 return Task::perform(async move {
-                    if let Some(file) = rfd::AsyncFileDialog::new().set_file_name("yo3-diagnostics.txt").save_file().await { std::fs::write(file.path(), logs).map_err(|e| e.to_string())?; }
-                    Ok(Outcome::Info("Diagnostics export complete.".into()))
+                    let Some(file) = rfd::AsyncFileDialog::new().add_filter("ZIP report", &["zip"]).set_file_name("yo3-diagnostics.zip").save_file().await else { return Ok(Outcome::Info("Report export cancelled.".into())) };
+                    let path = file.path().to_path_buf();
+                    tokio::task::spawn_blocking(move || report.export(&path)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?;
+                    Ok(Outcome::Info("Diagnostic ZIP saved. Review it before sharing; nothing was uploaded.".into()))
                 }, Msg::Done);
             }
             Msg::OpenData => { let path = self.root.to_string_lossy().to_string(); return job(move || { open(&path)?; Ok(Outcome::Info("Application data folder opened.".into())) }) }
             Msg::Help => return job(|| { open("https://github.com/usersina/yo3-revival/blob/main/docs/launcher.md")?; Ok(Outcome::Info("Setup guide opened.".into())) }),
             Msg::Close => { if self.status.is_some() || self.game_running || self.busy { self.closing = true; } else { return iced::exit() } }
-            Msg::CancelClose => { self.closing = false; self.confirm_certificate = false; self.observed = None; },
+            Msg::CancelClose => { self.closing = false; self.confirm_certificate = false; self.observed = None; self.report = None; },
             Msg::ConfirmCertificate => self.confirm_certificate = true,
             Msg::RenewCertificate => {
                 let Some(backend) = self.backend.clone() else { return Task::none() };
@@ -260,10 +283,13 @@ impl App {
         }
         Task::none()
     }
-    fn feedback(&mut self, result: Result<String, String>) { self.failed = result.is_err(); self.notice = result.unwrap_or_else(|e| e); }
+    fn feedback(&mut self, result: Result<String, String>) { self.failed = result.is_err(); self.notice = result.unwrap_or_else(|e| e); if let Some(backend) = &self.backend { backend.diagnostics.line(&self.notice); } }
     fn save_selection(&mut self) -> Task<Msg> {
         let root = self.root.clone(); let settings = self.settings.clone(); self.busy = true;
-        job(move || { LauncherDb::open(&root)?.save_settings(&settings)?; Ok(Outcome::SettingsSaved(settings)) })
+        let backend = self.backend.clone(); let remote = self.selected.remote(&self.servers).ok().flatten();
+        job(move || { LauncherDb::open(&root)?.save_settings(&settings)?; if let Some(backend) = backend
+            && let Err(error) = backend.sync_direct(&settings, remote) { backend.diagnostics.line(&format!("Direct-start selection cleared; enable it again after fixing setup: {error:#}")); }
+            Ok(Outcome::SettingsSaved(settings)) })
     }
     fn load_accounts(&mut self) -> Task<Msg> {
         let Some(backend) = self.backend.clone() else { return Task::none() };
@@ -271,6 +297,16 @@ impl App {
         job(move || Ok(Outcome::Accounts(backend.accounts(&settings)?)))
     }
     fn view(&self) -> Element<'_, Msg> {
+        if let Some(report) = &self.report {
+            let p = &report.preview;
+            let size = if p.bytes < 1_000_000 { format!("{:.1} KB", p.bytes as f64 / 1000.0) } else { format!("{:.1} MB", p.bytes as f64 / 1_000_000.0) };
+            let date = |n| chrono::DateTime::from_timestamp(n as i64, 0).map(|d| d.format("%Y-%m-%d %H:%M UTC").to_string()).unwrap_or_else(|| "No sessions".into());
+            return container(column![text("Export diagnostic report").size(28),
+                text(format!("{} files · {} before compression\n{} to {}", p.files, size, date(p.oldest), date(p.newest))),
+                text("Includes application/server/game session logs and build/compatibility details. Credentials, databases, keys and game files are excluded. Detailed tracing may contain player/chat information; review before sharing."),
+                text("Nothing is uploaded. Retention: 14 days or 100 MiB; active sessions keep their current log."),
+                row![button("Cancel").on_press(Msg::CancelClose), button("Save ZIP…").on_press(Msg::SaveLogs)].spacing(14)].spacing(24).padding(30).max_width(860)).center(Fill).into();
+        }
         if let Some(observed) = &self.observed {
             let compatible = observed.info.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI);
             return container(column![text("Confirm server identity").size(28), text(&self.address),
@@ -321,7 +357,7 @@ impl App {
         if self.selected == ServerChoice::Local && !account_names(&self.accounts).is_empty() { body = body.push(pick_list(account_names(&self.accounts), (!self.account.is_empty()).then_some(self.account.clone()), Msg::AccountSelect).placeholder("Choose your player account")); }
         body = body.push(widget::rule::horizontal(1)).push(row![button(text(if self.game_running { "Game is running" } else if self.busy { "Please wait…" } else { "Play" }).size(20)).width(Fixed(246.0)).padding([14, 46]).on_press_maybe((!self.busy && !self.game_running && self.backend.is_some()).then_some(Msg::Play)),
             button("Close game").padding(14).on_press_maybe(self.game_running.then_some(Msg::StopGame)).style(button::secondary)].spacing(14));
-        scrollable(body).height(Fill).into()
+        scrollable(body.width(Fill)).spacing(16).width(Fill).height(Fill).into()
     }
     fn server_view(&self) -> Element<'_, Msg> {
         let online = self.status.as_ref().and_then(|v| v["online"].as_u64()).unwrap_or(0);
@@ -352,7 +388,7 @@ impl App {
             if let Some(problem) = status["engine_problem"].as_str() { body = body.push(text(problem).color(Color::from_rgb8(240, 143, 148))); }
             if let Some(players) = status["players"].as_array() { for p in players { body = body.push(text(format!("{}  ·  {}", p["name"].as_str().unwrap_or("Player"), if p["duelling"].as_bool().unwrap_or(false) { "Duelling" } else { "Online" }))); } }
         }
-        scrollable(body).height(Fill).into()
+        scrollable(body.width(Fill)).spacing(16).width(Fill).height(Fill).into()
     }
     fn accounts_view(&self) -> Element<'_, Msg> {
         let mut body = column![text("Accounts on my server").size(30), text("Create accounts and share private invitations while your server keeps running."),
@@ -365,12 +401,13 @@ impl App {
             let names = a["players"].as_array().map(|p| p.iter().filter_map(|p| p["name"].as_str()).collect::<Vec<_>>().join(", ")).unwrap_or_default();
             body = body.push(container(row![text(names).width(Fill), text(format!("{} BP", a["bp"]))].spacing(16)).padding(14).width(Fill).style(container::rounded_box));
         } }
-        scrollable(body).height(Fill).into()
+        scrollable(body.width(Fill)).spacing(16).width(Fill).height(Fill).into()
     }
     fn activity_view(&self) -> Element<'_, Msg> {
         let filter = self.filter.to_lowercase();
         let shown = if filter.is_empty() { self.logs.clone() } else { self.logs.lines().filter(|line| line.to_lowercase().contains(&filter)).collect::<Vec<_>>().join("\n") };
-        column![text("Activity").size(30), row![button("Server").on_press(Msg::Logs(true)), button("Launcher & game").on_press(Msg::Logs(false)), checkbox(self.paused).label("Pause updates").on_toggle(Msg::Pause), button("Copy").on_press(Msg::CopyLogs), button("Export").on_press(Msg::SaveLogs)].spacing(12),
+        column![text("Activity").size(30), row![button("Server").on_press(Msg::Logs(true)), button("Launcher & game").on_press(Msg::Logs(false)), checkbox(self.paused).label("Pause updates").on_toggle(Msg::Pause), button("Copy").on_press(Msg::CopyLogs)].spacing(12),
+            row![button("Export current session…").on_press(Msg::PrepareReport(false)), button("Export all retained…").on_press(Msg::PrepareReport(true))].spacing(12),
             text_input("Filter activity…", &self.filter).on_input(Msg::LogFilter).padding(10),
             text(if self.log_server { "Your local server's activity" } else { "Game startup and connection diagnostics" }).size(13),
             container(scrollable(text(if shown.is_empty() { "No matching activity.".to_string() } else { shown }).font(iced::Font::MONOSPACE).size(12)).id("activity-log").height(Fill)).padding(16).width(Fill).height(Fill).style(container::rounded_box)].spacing(18).into()
@@ -379,13 +416,19 @@ impl App {
         let mut body = column![text("Make yourself at home").size(30), text("Choose a complete game installation. We keep the game executable and INI unchanged."),
             text("Game folder").size(15), row![input("Folder containing yo3.exe", &self.draft.game_dir, Field::Game), button("Browse…").padding(12).on_press(Msg::Browse(Field::Game))].spacing(12)].spacing(16);
         if !cfg!(windows) { body = body.push(text("Wine prefix (optional)")).push(row![input("Default Wine prefix", &self.draft.wine_prefix, Field::Wine), button("Browse…").padding(12).on_press(Msg::Browse(Field::Wine))].spacing(12)); }
-        body = body.push(widget::rule::horizontal(1)).push(text("Hosting").size(22)).push(text("Choose the listening interface and port in My server → Advanced networking.").size(13))
+        body = body.push(text("Direct start").size(22))
+            .push(text("After saving settings, install the optional automatic loader to open yo3.exe directly with your selected server/account. Setup may request permission for a protected game folder. An existing foreign WINMM mod is never replaced.").size(13))
+            .push(row![button("Enable direct start").on_press_maybe((!self.busy && !self.game_running).then_some(Msg::Direct(true))), button("Disable direct start").on_press_maybe((!self.busy && !self.game_running).then_some(Msg::Direct(false)))].spacing(12))
+            .push(widget::rule::horizontal(1)).push(text("Diagnostics").size(22))
+            .push(checkbox(self.draft.detailed_logs).label("Detailed client and protocol tracing (next game/server start)").on_toggle(Msg::Detailed))
+            .push(text("Normally only operational logs are kept. Detailed tracing can include player/chat data; use it when investigating a problem, then turn it off. Export ZIP reports from Activity.").size(13))
+            .push(widget::rule::horizontal(1)).push(text("Hosting").size(22)).push(text("Choose the listening interface and port in My server → Advanced networking.").size(13))
             .push(input("Address friends will reach — e.g. 192.168.1.50:7443", &self.draft.host_address, Field::Host))
             .push(input("Your first player's name", &self.draft.player_name, Field::Player))
             .push(row![input("Server data folder (empty uses application storage)", &self.draft.data_dir, Field::Data), button("Browse…").padding(12).on_press(Msg::Browse(Field::Data))].spacing(12))
             .push(text("Server identities are managed by the application. Existing data folders are imported into SQLite once, with the originals retained.").size(12))
             .push(row![button("Save settings").padding(12).on_press_maybe((!self.busy).then_some(Msg::SaveSettings)), button("Open application data").padding(12).on_press(Msg::OpenData)].spacing(12));
-        scrollable(body).height(Fill).into()
+        scrollable(body.width(Fill)).spacing(16).width(Fill).height(Fill).into()
     }
 }
 fn input(value_hint: &str, value: &str, field: Field) -> Element<'static, Msg> {

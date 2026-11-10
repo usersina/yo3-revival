@@ -7,6 +7,7 @@ Published releases through v0.0.3 predate this application; these instructions a
 **Contents**
 
 - [First launch](#first-launch)
+- [Open the game directly](#open-the-game-directly)
 - [Play on your server](#play-on-your-server)
 - [Join another server](#join-another-server)
 - [Host friends](#host-friends)
@@ -26,6 +27,26 @@ In **Settings**, check the detected game folder or press **Browse**. Choose the 
 The application checks the game data before starting. It leaves `yo3.exe` and `yo3.ini` unchanged.
 Component preflight checks the DLL's interface/release, 32-bit architecture and release manifest before sending an
 account key. The game stays suspended until the injected mod acknowledges readiness and authentication succeeds.
+
+## Open the game directly
+
+After saving the game folder and selecting your server/account, choose **Settings → Enable direct start**. For your
+own server, start it first. You can then open the original `yo3.exe` or its usual shortcut without the manager.
+Direct start connects to the saved selection; it does not start a stopped local server. Changing the selected
+server/account updates its private profile. If that update cannot complete, the old credential is cleared rather
+than reconnecting to the previous account. Enable direct start again after moving/upgrading the application bundle.
+
+Setup adds a small `winmm.dll` loader and an ownership receipt beside the game. It never changes `yo3.exe` or
+`yo3.ini`, and refuses a foreign WINMM mod. Paths and account credentials stay in your private application storage;
+Windows stores only the private config path in your current user's registry. Linux configures the selected Wine
+prefix's `yo3.exe` override. A protected game folder may request permission for this file installation alone.
+**Disable direct start** removes only the loader files whose receipt and hashes still match; it does not remove other mods.
+
+The loader checks the exact DLL hash and uses the same server identity/version checks as the manager. It loads the
+mod and waits for readiness before authenticating or allowing login. A missing DLL shows its expected path and
+offers a matching-file picker followed by a restart; other setup/server failures explain how to repair or use the
+launcher. Cancelled/failed setup blocks startup. The helper logs out when the game exits. An untouched game with no
+installed loader can only show its original generic connection failure; the server cannot inspect remote files.
 
 ## Play on your server
 
@@ -105,12 +126,22 @@ not post it publicly or attach it to a bug report. Export refuses to overwrite a
 
 ## Activity and closing the app
 
-**Activity** shows either your server's logs or launcher/game diagnostics. Filter the text, pause scrolling, copy
-it, or export it. The display keeps a bounded tail instead of loading an unlimited log into memory. Account keys,
-TLS session tokens and private server keys are excluded from normal diagnostic output.
+**Activity** shows either your server's logs or launcher/game diagnostics. Filter the text, pause scrolling or copy
+it. **Export current session** includes this manager, its attached server and the latest game run; **Export all
+retained** includes the stored session history. Both show file count, dates and size before saving a ZIP. Nothing
+is uploaded. Build/OS/protocol/DLL versions accompany the logs. Databases, connection profiles, private keys, game
+files and symbolic links are excluded; account credentials, cookies and session tokens are redacted again at export.
+
+Logs rotate at 2 MiB and are pruned after 14 days or 100 MiB, preserving each active process's current log. The
+viewer reads at most 96 KiB. Each server owns its writer, so **Keep hosting & exit** continues recording. Reopening
+the manager attaches to that server's session ID. Reports cover indexed sessions recorded by this version; older
+developer packet logs are outside the report inventory. **Settings → Detailed tracing** enables verbose client and
+protocol output on the next game/server start. This can include player/chat data: turn it off afterwards and review
+the report before sharing. Normal game stdout is drained because the original client prints raw packet contents.
 
 **Close game** ends the authenticated game session. It leaves hosting active. Closing the application asks whether
-to keep hosting or stop the server; an active game closes in either case. Reopening the manager reconnects to its
+to keep hosting or stop the server; a game started with **Play** closes in either case. A game opened independently
+has its own lifetime. Reopening the manager reconnects to its
 running local server. **Stop server** disconnects players, so finish their duels first.
 
 ## Your data and upgrades

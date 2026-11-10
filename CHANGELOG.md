@@ -12,6 +12,10 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Added: optional reversible direct-start loader beside the game. The original executable/INI remain unchanged;
+  exact DLL validation, readiness and authenticated server checks precede login, with local repair/restart guidance.
+- Added: session-indexed diagnostics, rotation and retention, plus current/all-retained ZIP exports with a size/date
+  preview and a second redaction pass. Server logging survives closing the manager; detailed tracing is opt-in.
 - Added: advanced interface/port selection, actual listener status and optional firewall permission helpers. New GUI
   setups default to all IPv4 interfaces; existing local-only setups stay local-only. Normal Start needs no elevation.
 - Added: automatic self-managed certificate maintenance at server start, preserving its private identity key.

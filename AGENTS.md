@@ -86,6 +86,9 @@ engine/fetch.sh                                   # once: the rules engine's dep
 cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop
 tools/mod/build.sh                               # 32-bit connection DLL, injector and native/Wine contract harnesses
 tools/mod/test.sh                                # named/ordinal imports, local cookies and fail-closed injection (private :78)
+tools/mod/test-loader.sh                         # WINMM forwarding, Unicode config, missing/changed DLL and missing state
+# Live direct-start fixture: first build the Windows yo3-launcher; use a fresh private prefix without LoaderConfig.
+YO3_WINEPREFIX=/path/to/private/prefix tools/mod/test-direct.sh /path/to/private/scratch-server-profile.json
 python3 tools/client/test_vclient.py              # cold display startup, captured pipes and diagnostics (no X server/game needed)
 cargo nextest run --workspace                     # all tests (or: cargo test --workspace); about a minute, most of it the duel
 #   check's 240 self-played duels (tests/duel_check.rs, YO3_CHECK_DUELS=n per test for more): run it after any change to
@@ -161,6 +164,7 @@ tools/client/vclient.sh xvfb && tools/client/vclient.sh prefix
 YO3_DISPLAY=:88 YO3_DESKTOP_DATA=/tmp/yo3-gui tools/client/vclient.sh desktop # foreground GUI; create its private display first
 # Configure alternate host ports, scratch server data, and a private Wine prefix/Documents in its Settings before Play.
 tools/client/vclient.sh start && tools/client/vclient.sh login 0   # cold start, about 30 s
+tools/client/vclient.sh start-stock               # after GUI Enable direct start; same private game/display/prefix
 tools/client/vclient.sh check
 tools/client/vclient.sh shot NAME                  # logs/b/shots/NAME.png, then view it
 tools/client/vclient.sh click X Y                  # also: key KEY, type TEXT, pixel X Y
