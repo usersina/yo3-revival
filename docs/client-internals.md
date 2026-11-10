@@ -160,6 +160,34 @@ Names and paths are bounded and checked before filesystem operations. This chang
 wire format or exported mod ABI. Any existing local deck or nonempty saved selection prevents setup, regardless of validity. A per-player
 `revival-starter.initialized` file records setup or discovered existing decks/selection; automatic setup never undoes subsequent manual edits or deletions. Existing selections take precedence; no legal candidate leaves the profile untouched. See the [deck protocol](protocol.md#decks-deck-editor-deckedittest-handler-0x43fc60).
 
+### Native duel observer
+
+`tools/mod/duel-observer.h` installs two byte-guarded hooks for ver.1.153: the CALL at `0x514212`
+(`E8 79 00 00 00` → fastcall dispatcher `0x514290`, ECX=id, EDX=params, scene on stack, `ret 4`) and the callback
+assignment at `0x5159EA` (`B8 30 5A 51 00` → thiscall update `0x515A30`). Ordinary dispatch and updates call the
+original functions. A mismatched site rejects DLL readiness before login. Our checkpoint `0x5F0` only records
+expectations; the update wrapper reads state after the original callback. No game state is written by the observer.
+
+The independently compiled reader in `duel-snapshot.h` accepts a checked read callback (`ReadProcessMemory` of this
+process in the DLL). DuelScene has card manager `+0xBC`, cockpit `+0x8C`, battle `+0xA8` and chain `+0xC0`.
+Battle `+0x74`, chain `+0x58` and every card's `+0x114` gate settlement, including cards travelling to piles.
+The card-manager map has sentinel `+0x44`, root sentinel `+4`, nodes left `+0`, right `+8`, card object `+0x10`.
+Traversal is bounded (512 cards, stack 64); unreadable or oversized structures refuse a snapshot. It never calls
+`0x515300`, whose busy check also clears effects and can hide cards.
+
+Card-manager slots start at `+0x4C`, 17 pointers per physical player. Hand vectors are begin/end `+0xE0/+0xE4`,
+24 bytes per player. Card UID is `+0x30`, place u16 `+0x82`, visible mode `+0x44`, displayed monster stats
+`+0xB8..+0xC8`. The per-card counter tree is `+0x130` (node kind `+0xC`, amount `+0x10`; getter `0x4FB6C0`).
+Pile counts are `+0x14` for zones 12–14 (`0x4FE4D0`); banished zone 15 is a different class, count `+0xC`
+(`0x4FE8A0`). Cockpit LP is `+0x50/+0x54`. Logical/physical player numbering XORs the local player at
+`*(0x82D2C0)+0x1B0`. Every offset is from the local binary and is covered by synthetic-memory tests; live checks
+remain necessary to establish that the selected fields match the running game's behavior.
+
+The DLL writes `[YO3 CHECK]` records to stderr, already captured by the launcher's normal session logger and both
+diagnostic ZIP scopes. Busy state waits at most 15 seconds; failures and superseded checkpoints are explicit.
+The schema and comparison limits are in [the protocol](protocol.md#duel-connection). The reader fixture mutates
+visibility, LP, stats, counters, busy flags and invalid pointers, and asserts that its reads never change memory.
+
 ## The field tracer
 
 `tools/tracer/` builds `yo3trace.dll` (32-bit, mingw-w64) and `yo3trace-launch.exe`. The launcher starts `yo3.exe`

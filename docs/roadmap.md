@@ -528,6 +528,28 @@ What it found (covered by `translate_contract.rs` and the dedicated regressions 
       stats on field moves/swaps (engine-discovered contract regression). Counters remain on their card object;
       moving it must not erase them or reset displayed values to printed ones.
 
+- [x] Expanded validation (2026-11-10): independently query LP, current/base monster stats and counters; compare
+      turn/phase events with translated commands. Unknown messages fail, while known unsupported mechanics are
+      explicitly recorded as `[YO3 GAP]` rather than silently treated as covered. New regressions prove detection
+      of dropped LP/stat/counter/turn/phase changes.
+- [x] Actual-client snapshots: the required DLL independently reads slots, visibility, ordered hand UIDs, pile
+      counts, cached LP/stats and per-card counters after card/battle/chain activity settles. Shared schema vectors
+      and a synthetic-memory mutation harness run in workspace tests; 32-bit Wine tests also check hook guards.
+      The report requires an acknowledgement for every checkpoint; absent, duplicate, superseded, unreadable and
+      timed-out snapshots fail validation. This establishes cached state/visibility, not every pixel or legal menu.
+- [x] Deterministic engine recordings under `--duel-check`: final deck order, seed, every input/answer and state
+      query, plus SHA-256 fingerprints of sidecar/core/bindings/scripts/database/card IDs and the Node version.
+      Existing bounded diagnostic sessions hold chunked recordings. `duel-replay.py` verifies exact replay with
+      matching dependencies and rejects incomplete recordings. This replays the engine, not game UI actions.
+- [x] Live proof on two isolated Wine clients: 35 native checkpoints through Fortress protection and
+      Debris/Fortress/Quillbolt → Stardust; another 15 through Breaker's counter, Snatch Steal and a lethal direct
+      attack to the result screen, including the final 0-LP checkpoint. No missing/failed acknowledgements,
+      engine/model errors or crashes in those runs. All 61 engine calls of the counter duel replay exactly from
+      the redacted indexed server session. Workspace: 547 passed, 1 skipped; check, strict Clippy, release build,
+      mod/loader harnesses, helper tests and documentation links pass. Executable/INI hashes stayed unchanged.
+- [ ] Complete menu/effect coverage and automatic native UI replay/minimization. Known reveal/reversal/disabled-zone
+      gaps remain visible; neither the random corpus nor matching state hashes proves all card interactions.
+
 - [x] Yusei battle protection (2026-11-10): Fortress Warrior and Shield Wing survived in the core but vanished in
       the client, leaving occupied, targetable slots. MSG_BATTLE's destroy flag precedes limited protection;
       BattleRun no longer hides from that provisional flag. Confirmed destruction moves now shatter through

@@ -9,12 +9,15 @@ export WINEDEBUG=-all
 "$ROOT/tools/mod/build.sh"
 MOD="$ROOT/tools/mod/build"
 wine "$MOD/yo3-login-test.exe"
+wine "$MOD/yo3-duel-snapshot-test.exe"
 DLL="$(winepath -w "$MOD/yo3-auth.dll" 2>/dev/null)"
 wine "$MOD/yo3-auth-test.exe" "$DLL"
 wine "$MOD/yo3-auth-ordinal-test.exe" "$DLL"
 wine "$MOD/yo3-auth-ordinal-test.exe" "$DLL" missing-env
 wine "$MOD/yo3-auth-guard-test.exe" "$DLL" mismatched-login
 wine "$MOD/yo3-auth-guard-test.exe" "$DLL" mismatched-game
+wine "$MOD/yo3-auth-guard-test.exe" "$DLL" mismatched-duel
+wine "$MOD/yo3-auth-guard-test.exe" "$DLL" mismatched-update
 LOG="$(mktemp)"
 UNICODE="$(mktemp -d)/日本語 game"
 mkdir -p "$UNICODE"

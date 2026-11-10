@@ -276,3 +276,39 @@ fn a_sidecar_that_exits_fails_the_call() {
     let mut engine = Engine::spawn(engine_cmd, std::time::Duration::from_secs(5)).expect("true runs");
     assert!(engine.respond(serde_json::json!({})).is_err());
 }
+
+#[test]
+fn diagnostic_identity_covers_the_core_scripts_database_and_sidecar() {
+    let Some(mut engine) = engine() else { return };
+    let identity = engine.identity().expect("diagnostic identity");
+    for key in ["sidecar", "core", "bindings", "scripts", "database", "card_ids"] {
+        let hash = identity[key].as_str().expect(key);
+        assert_eq!(hash.len(), 64, "SHA-256 for {key}: {identity}");
+    }
+    assert_eq!(engine.identity().unwrap(), identity, "identity is stable within a duel process");
+}
+
+#[test]
+fn an_unsupported_dependency_identity_cannot_count_as_a_valid_recording() {
+    let mut old = std::process::Command::new("printf");
+    old.args(["%s\n", "{\"status\":\"error\",\"error\":\"unknown op identity\"}"]);
+    let mut engine = Engine::spawn(old, std::time::Duration::from_secs(5)).unwrap();
+    assert!(engine.identity().is_err(), "an older sidecar did not provide the required fingerprints");
+}
+
+#[test]
+fn the_independent_state_query_includes_the_new_oracle_fields() {
+    let Some(mut engine) = engine() else { return };
+    let deck = [6960u16; 40];
+    engine.new_duel(7, 8000, [(&deck, &[]), (&deck, &[])]).unwrap();
+    let state = engine.state().unwrap();
+    for team in state.as_array().unwrap() {
+        assert_eq!(team["lp"], 8000);
+        for card in team["hand"].as_array().unwrap() {
+            for key in ["level", "attack", "defense", "base_attack", "base_defense"] {
+                assert!(card[key].is_i64(), "missing {key}: {card}");
+            }
+            assert!(card["counters"].is_object());
+        }
+    }
+}

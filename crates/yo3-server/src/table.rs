@@ -189,6 +189,7 @@ impl Table {
                 return self.abandon();
             }
         };
+        if self.world.duel_check { engine.record(); }
         // A hosted duel's starting LP (Create Duel's lp_start), unless the server's was set to test (--duel-lp).
         let hosted = self.seats.iter().find_map(|s| s.entry.lp);
         let lp = hosted.filter(|_| self.world.start_lp == DEFAULT_LP).unwrap_or(self.world.start_lp);
@@ -322,7 +323,7 @@ impl Table {
         let mut failed = false;
         let (mut repeats, mut answered) = (Repeats::default(), 0);
         let mut watched: Vec<Vec<Message>> = vec![vec![]; self.spectators.len()];
-        let Table { engine: Some(engine), translators, clocks, first, spectators, history, .. } = self else { return out };
+        let Table { engine: Some(engine), translators, checks, clocks, first, spectators, history, .. } = self else { return out };
         for _ in 0..10_000 {
             let a = match answer {
                 Ok(a) => a,
@@ -335,6 +336,7 @@ impl Table {
             for e in &a.errors {
                 tracing::warn!("rules engine: {e}");
             }
+            for model in checks.iter_mut() { model.observe_engine(&a.messages); }
             for (part, t) in out.iter_mut().zip(translators.iter_mut()) {
                 part.extend(t.events(&a.messages));
             }
@@ -443,6 +445,7 @@ impl Table {
         for (part, more) in out.iter_mut().zip(self.duel_over(results)) {
             part.extend(more);
         }
+        self.check_out(&mut out);
         for (s, part) in out.into_iter().enumerate() {
             for m in part {
                 let _ = self.seats[s].outbox.send(m);
@@ -471,9 +474,8 @@ impl Table {
             self.report(match_results);
             return Out::default();
         }
-        self.engine = None;
         self.translators.clear();
-        self.checks.clear();
+        // Retain engine/model until deliver checks the final moves and LP, including between match duels.
         self.hands = [None; 2];
         self.picker = None;
         self.ordered = false;
@@ -525,8 +527,7 @@ impl Table {
         let winner = results.iter().position(|&r| r == WON).map(|s| self.seats[s].player_id);
         hub.end_match(self.duel_id, winner);
         drop(hub);
-        // The duel is over: its engine process goes too.
-        self.engine = None;
+        // Delivery checks the final state before releasing the engine process.
         self.tell_spectators(vec![vec![command(MATCH_END, [results[0], 0, 0, 0])]; self.spectators.len()]);
     }
 
@@ -597,10 +598,27 @@ impl Table {
 
     /// Sends the other seat its part and returns this seat's. With the duel check on, each seat's view follows its part
     /// and is compared with the engine: an ERROR names where they differ.
-    pub fn deliver(&mut self, seat: usize, out: Out) -> Vec<Message> {
+    pub fn deliver(&mut self, seat: usize, mut out: Out) -> Vec<Message> {
+        self.check_out(&mut out);
+        let [mut mine, mut theirs] = out;
+        if seat == 1 {
+            std::mem::swap(&mut mine, &mut theirs);
+        }
+        if let Some(other) = self.seats.get(1 - seat) {
+            for m in theirs {
+                let _ = other.outbox.send(m);
+            }
+        }
+        mine
+    }
+
+    fn check_out(&mut self, out: &mut Out) {
         if let (Some(engine), [c0, c1]) = (self.engine.as_mut(), &mut self.checks[..]) {
             c0.apply_all(&out[0]);
             c1.apply_all(&out[1]);
+            for (model, part) in [&mut *c0, &mut *c1].into_iter().zip(out.iter_mut()) {
+                model.checkpoint_into(part);
+            }
             let mut failed = false;
             match engine.state() {
                 Ok(state) => {
@@ -612,22 +630,34 @@ impl Table {
                         }
                     }
                 }
-                Err(e) => tracing::warn!("duel check: no engine state: {e}"),
+                Err(e) => tracing::error!("duel check: no engine state: {e}"),
             }
             // Once per duel: every later step would repeat the same difference.
             if failed {
                 self.checks.clear();
             }
         }
-        let [mut mine, mut theirs] = out;
-        if seat == 1 {
-            std::mem::swap(&mut mine, &mut theirs);
+        if self.over || !self.ordered {
+            self.engine = None;
+            self.checks.clear();
         }
-        if let Some(other) = self.seats.get(1 - seat) {
-            for m in theirs {
-                let _ = other.outbox.send(m);
-            }
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+    #[test]
+    fn a_match_keeps_its_final_model_until_the_last_batch_is_delivered() {
+        let world = Arc::new(World::new(vec![]));
+        let mut table = Table::new(world, Arc::new(Mutex::new(Hub::default())), 1, 1);
+        table.best_of = 3;
+        for player_id in [1, 2] {
+            let (outbox, _) = tokio::sync::mpsc::unbounded_channel();
+            table.seats.push(Seat { player_id, entry: DuelEntry::default(), outbox });
         }
-        mine
+        table.checks = (0..2).map(|_| crate::duelcheck::ClientModel::new(0, Default::default())).collect();
+        table.duel_over([WON, LOST]);
+        assert_eq!(table.checks.len(), 2, "the final LP/moves still need checking before teardown");
     }
 }

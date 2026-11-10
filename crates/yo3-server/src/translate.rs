@@ -161,7 +161,7 @@ const COUNTER: u32 = 0x27;
 /// Spellstone ("Magical Stone", **guess**), Flower, Fog, Clock, D, Junk, Gate, Plant, Guard, Dragonic, Ocean,
 /// Chronicle, Magic Reflector's, Maiden, Speed, Earthbound Immortal, Protection, Des ("Death", **guess**). The others
 /// show as kind 38, "Counter".
-const COUNTER_KINDS: [(u64, u32); 32] = [
+pub(crate) const COUNTER_KINDS: [(u64, u32); 32] = [
     (0x1, 0),
     (0x1002, 42),
     (0x3, 6),

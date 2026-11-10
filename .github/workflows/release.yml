@@ -74,7 +74,10 @@ jobs:
       - name: Lints
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Headless client helper
-        run: python3 tools/client/test_vclient.py
+        run: |
+          python3 tools/client/test_vclient.py
+          python3 tools/monkey/test_duel_report.py
+          python3 tools/monkey/test_duel_replay.py
       - name: Documentation links and images
         run: tools/docs-check.py
       - name: Tests

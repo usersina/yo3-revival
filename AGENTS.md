@@ -90,6 +90,8 @@ tools/mod/test-loader.sh                         # WINMM forwarding, Unicode con
 # Live direct-start fixture: first build the Windows yo3-launcher; use a fresh private prefix without LoaderConfig.
 YO3_WINEPREFIX=/path/to/private/prefix tools/mod/test-direct.sh /path/to/private/scratch-server-profile.json
 python3 tools/client/test_vclient.py              # cold display startup, captured pipes and diagnostics (no X server/game needed)
+python3 tools/monkey/test_duel_report.py          # missing/duplicate/failed native snapshots and known coverage gaps
+python3 tools/monkey/test_duel_replay.py          # exact engine replay and incomplete/corrupt recording rejection
 cargo nextest run --workspace                     # all tests (or: cargo test --workspace); about a minute, most of it the duel
 #   check's 240 self-played duels (tests/duel_check.rs, YO3_CHECK_DUELS=n per test for more): run it after any change to
 #   translate.rs or the sidecar. A failure names the seed, the step and the engine messages before the difference
@@ -125,7 +127,8 @@ ss -ltnp | rg ':7443 '                          # the server's pid, to stop it
 #   --duel-extra 3437 (the extra deck as rows: Goyo Guardian, a Synchro for Krebons 3397 and Giant Orc),
 #   --duel-regulation 4 (check every duel's deck against that banlist, whatever the duel names: the starter deck breaks 4),
 #   --duel-time 0,0 (the turn and total clocks of duels between players off: live checks are slower than 180 s a turn),
-#   --duel-check (compare every duel's client view with the engine after each step; a difference logs ERROR duel check)
+#   --duel-check (compare model/engine state; the required DLL also logs native checkpoints; ERROR duel check on drift)
+#   Detailed diagnostics also records exact engine inputs/answers and dependency fingerprints for replay.
 #   state: server.db (SQLite) in data/ (ignored; --data-dir), backed up into data/backups/ at each start
 #   old JSON files import once transactionally and remain untouched; storage.version prevents stale reimport
 
@@ -227,6 +230,11 @@ tools/monkey/protocol-monkey.sh minimize FILE [--sig TEXT]              # cut a 
 tools/monkey/ui-monkey.py --secs 1800 --seed 1                          # random clicks/drags/keys on both headless clients
 #   uses private displays :78/:79 and isolated prefix/document copies, refuses busy displays, needs a release build.
 #   Failures (screenshots, packets, logs): /tmp/yo3-ui-monkey/ui-failures/.
+python3 tools/monkey/duel-report.py --server SERVER.log --client GAME_A.log GAME_B.log
+#   Include all rotated parts of matching sessions. Every native acknowledgement is required; gaps fail validation.
+python3 tools/monkey/duel-replay.py --server SERVER.log                  # list engine recording IDs in one session
+python3 tools/monkey/duel-replay.py --server SERVER.log --duel 1         # replay exact recorded inputs/answers
+#   Requires identical engine files/Node version; replays the engine, not the UI. Includes exact shuffled deck order.
 ```
 
 ## The loop: answering a new request

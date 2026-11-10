@@ -23,6 +23,7 @@ fn protected_battles(cid: u16, protections: usize, set: bool) {
         let setup = ["MainDeckNum001", "MainDeckNum002"].into_iter().fold(
             Message::reply(0x200D).with("duelRequestName", Value::U32(0x15)), |m, k| m.with(k, Value::U32(40)));
         model.apply(&setup); model.apply_all(&table);
+        model.apply(&command(0xF, [0, 50000, 0, 0])); model.apply(&command(0xF, [1, 50000, 0, 0]));
         model.apply(&command(0x16, [0, 0xD, 0, 0])); model.apply(&command(0x16, [1, 0xD, 0, 0]));
         (translator, model)
     }).collect();

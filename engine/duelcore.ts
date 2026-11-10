@@ -9,7 +9,8 @@
 // Cards are given and reported by Konami card id (the client's "CID"): every `code` (or MOVE's `card`) in a
 // message gets a `cid` next to it. MOVE also gets its `reason`, read back from the card. Needs `fetch.sh` run first
 // (packages, card scripts, card database, Konami ids).
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { createInterface } from "node:readline";
 import { dirname, join } from "node:path";
@@ -18,6 +19,21 @@ import createCore, { OcgDuelMode, OcgLocation, OcgPosition, OcgProcessResult, Oc
 
 const here = dirname(fileURLToPath(import.meta.url));
 const vendor = join(here, "vendor");
+let identityCache: Record<string, string> | undefined;
+/** Exact dependencies for diagnostic replay, including uncommitted card-script changes. Only requested in checks. */
+function identity() {
+  if (identityCache) return identityCache;
+  const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
+  const scripts = createHash("sha256");
+  for (const name of readdirSync(join(vendor, "CardScripts"), { recursive: true }).map(String).filter(n => n.endsWith(".lua")).sort()) {
+    scripts.update(name.replaceAll("\\", "/") + "\0").update(readFileSync(join(vendor, "CardScripts", name)));
+  }
+  identityCache = { node: process.version, sidecar: digest(fileURLToPath(import.meta.url)),
+    core: digest(join(here, "node_modules/ocgcore-wasm/lib/ocgcore.sync.wasm")),
+    bindings: digest(join(here, "node_modules/ocgcore-wasm/dist/index.js")), scripts: scripts.digest("hex"),
+    database: digest(join(vendor, "BabelCDB/cards.cdb")), card_ids: digest(join(vendor, "cardinfo.json")) };
+  return identityCache;
+}
 
 // Konami id <-> passcode (YGOProDeck's misc_info.konami_id).
 const passcodeOf = new Map<number, number>();
@@ -179,11 +195,19 @@ function fieldReport() {
  * Spell/Trap zones by sequence (null where empty; Spell/Trap 5 is the Field Spell zone), and how many cards the Deck
  * holds. Each card {code, position} gets its `cid` (or `name`) like the messages. Xyz materials aren't listed. */
 function state() {
-  const flags = OcgQueryFlags.CODE | OcgQueryFlags.POSITION;
+  const flags = OcgQueryFlags.CODE | MONSTER_STATS | OcgQueryFlags.COUNTERS;
   const at = (controller: 0 | 1, location: OcgLocation) =>
-    lib.duelQueryLocation(handle!, { flags, controller, location }).map((c) => (c ? { code: Number(c.code), position: Number(c.position) } : null));
+    lib.duelQueryLocation(handle!, { flags, controller, location }).map((c) => (c ? {
+      code: Number(c.code), position: Number(c.position), level: Number(c.level ?? 0), attack: Number(c.attack ?? 0),
+      defense: Number(c.defense ?? 0), base_attack: Number(c.baseAttack ?? 0), base_defense: Number(c.baseDefense ?? 0),
+      counters: c.counters ?? {},
+    } : null));
   const list = (controller: 0 | 1, location: OcgLocation) => at(controller, location).filter((c) => c !== null);
+  // ocgcore-wasm returns LP in queryField but omits it from OcgFieldPlayer's declaration (dist/index.js, readField).
+  const field = lib.duelQueryField(handle!);
   const teams = ([0, 1] as const).map((t) => ({
+    // The wrapper reads a signed core LP as u32; a lethal attack may leave a negative value before WIN.
+    lp: Math.max(0, (field.players[t] as typeof field.players[0] & { lp: number }).lp | 0),
     hand: list(t, OcgLocation.HAND),
     mzone: at(t, OcgLocation.MZONE),
     szone: at(t, OcgLocation.SZONE),
@@ -253,7 +277,10 @@ for await (const line of createInterface({ input: process.stdin })) {
   let answer;
   try {
     const req = JSON.parse(line);
-    if (req.op === "new") answer = newDuel(req);
+    if (req.op === "identity") {
+      process.stdout.write(JSON.stringify(identity()) + "\n");
+      continue;
+    } else if (req.op === "new") answer = newDuel(req);
     else if (req.op === "respond") {
       // A declared card comes as a Konami id (the client's DLGResult); the core wants its passcode. Races are 64-bit
       // values in the core (BigInts), JSON numbers here.

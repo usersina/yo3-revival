@@ -1134,6 +1134,31 @@ word), fed every command the server sends and compared with where the engine has
 where they differ. The tests self-play a few hundred seeded duels through it (`tests/duel_check.rs`); the protocol
 monkey's duels run the server with it. What it found is in the [roadmap](roadmap.md#-duel-check-2026-11-09-the-clients-view-checked-against-the-engine).
 
+The independent `state` query also supplies LP, current/base ATK/DEF, Level and counters. Turn/phase expectations
+come from engine messages 40/41, independently of outgoing commands. Unknown engine events or native commands fail
+the check. `duelcheck/coverage.rs` explicitly distinguishes state, interaction, presentation and known unsupported
+mechanics; `[YO3 GAP]` records the last group. Agreement on state does **not** validate every legal menu or animation.
+Mutation fixtures remove/change LP, stats, counters, turn/phase and visibility updates and require a difference.
+
+**Native diagnostic checkpoints, schema 1 — confirmed with our required mod.** With `--duel-check`, each nonempty
+checked batch ends in `0x200D`, `duelRequestName=17`, `id=0x5F0`, parameters `{1, sequence, inventory_hash, stats_hash}`.
+This is our extension; stock DuelScene's dispatcher has no such command. The mod intercepts the verified native
+dispatch call at `0x514212` and polls after the normal scene update callback `0x515A30`. It waits for card, battle
+and chain activity to settle, then reads memory without calling mutating game helpers. A missing, superseded,
+unreadable or timed-out snapshot is incomplete validation, never success.
+
+Both hashes are FNV-1a over little-endian u32 words. Inventory starts with schema 1, then for each logical player:
+cached LP; 11 slots (UID, and for occupied slots normalized place bits `0xC03F` and visible flag); hand count and
+ordered UIDs; Extra/Deck/Graveyard/banished counts. Stats starts with schema 1, then each occupied slot in the same
+order: face-up monsters' Level/ATK/DEF/base ATK/base DEF, followed by every card's nonzero counter count and sorted
+`{native kind, amount}` pairs. Native offsets and busy gates are in [client internals](client-internals.md#native-duel-observer).
+This checks cached client state and visibility, not rendered pixels, art identity, every effect or menu legality.
+
+Server expectations (`[YO3 EXPECT]`) and actual snapshots (`[YO3 CHECK]`) use existing session logs. The
+`tools/monkey/duel-report.py` report requires every expected acknowledgement, including identical checkpoints on two
+seats, rejects mismatches/crashes, and rejects a fully validated result when `[YO3 GAP]` occurs. Without a compatible
+observer it reports missing acknowledgements. No credential or account identifier is sent in the checkpoint.
+
 `0x14` HandOpen {player, open flag, uid or 0 for the whole hand} (`0x4FF1E7`: effect mode `0xD` closes, `0xC` opens, the
 card's face bit set to the flag) is the way to hold a hand open; not used. Cards revealed elsewhere (a Set card, the
 top of the Deck) are not shown: **open**. CardLockon `0x19` and RunDetail `0x3B` were not needed (`0x3B` has no case in

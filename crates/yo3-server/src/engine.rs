@@ -65,7 +65,9 @@ pub struct Engine {
     /// The sidecar's output lines, read by a thread of their own so a call can time out.
     lines: Receiver<io::Result<String>>,
     timeout: Duration,
+    recording: Option<(u64, u32)>,
 }
+static RECORDING_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 impl Engine {
     /// The engine directory: `YO3_ENGINE_DIR`, else `engine/` under the current directory. None until
@@ -95,7 +97,35 @@ impl Engine {
                 }
             }
         });
-        Ok(Engine { child, stdin, lines, timeout })
+        Ok(Engine { child, stdin, lines, timeout, recording: None })
+    }
+
+    pub fn identity(&mut self) -> io::Result<Json> {
+        let identity = self.line(json!({"op":"identity"}))?;
+        let fingerprints = ["sidecar", "core", "bindings", "scripts", "database", "card_ids"];
+        if !identity["node"].is_string() || fingerprints.iter().any(|k| !identity[*k].as_str()
+            .is_some_and(|s| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())))
+        { return Err(io::Error::other("the engine did not supply its diagnostic dependency identity")); }
+        Ok(identity)
+    }
+
+    /// Record exact final deck order, seeds, responses and engine answers in the existing diagnostic session.
+    /// Chunking keeps large states below the session logger's line limit. No account credentials are involved.
+    pub fn record(&mut self) {
+        self.recording = Some((RECORDING_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed), 0));
+        if let Err(e) = self.identity() { tracing::error!("duel check: recording identity unavailable: {e}"); }
+    }
+
+    fn record_line(&self, direction: &str, data: &str) {
+        if let Some((duel, call)) = self.recording {
+            let parts = data.len().div_ceil(1000);
+            for (part, chunk) in data.as_bytes().chunks(1000).enumerate() {
+                // Short hex groups preserve arbitrary JSON/64-bit seeds through credential redaction, without
+                // exempting diagnostic lines from that filter. This payload only contains rules-engine traffic.
+                let data: Vec<String> = chunk.chunks(8).map(|b| b.iter().map(|v| format!("{v:02x}")).collect()).collect();
+                tracing::info!("[YO3 ENGINE] {}", json!({"duel":duel,"call":call,"direction":direction,"part":part,"parts":parts,"encoding":"hex","data":data}));
+            }
+        }
     }
 
     /// Starts a duel with `lp` each; team 0 goes first. Decks are (main, extra) as Konami card ids.
@@ -121,6 +151,8 @@ impl Engine {
 
     /// Sends one request line and reads the answer line, within the timeout.
     fn line(&mut self, request: Json) -> io::Result<Json> {
+        if let Some((_, call)) = &mut self.recording { *call += 1; }
+        self.record_line("request", &request.to_string());
         writeln!(self.stdin, "{request}")?;
         self.stdin.flush()?;
         let line = match self.lines.recv_timeout(self.timeout) {
@@ -131,6 +163,7 @@ impl Engine {
             }
             Err(RecvTimeoutError::Disconnected) => return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "the engine exited")),
         };
+        self.record_line("answer", &line);
         serde_json::from_str(&line).map_err(io::Error::other)
     }
 

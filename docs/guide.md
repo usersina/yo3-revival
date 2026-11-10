@@ -311,3 +311,23 @@ and the remaining live checks, including play from separate friends' machines wi
   private profiles, account keys, databases or `server.key`. Game packet logs exclude transport credentials.
 
 The graphical application also supports [confirmed application updates](launcher.md#application-updates), with a visible version, GitHub link and startup release check. Advanced setup is under expandable sections.
+
+For duel bugs, enable **Activity → Diagnostics options → Detailed tracing and duel validation**, save, then restart
+your hosted server between games. The server compares client state with the rules engine; the required connection
+DLL also checks the running game's card slots, visibility, hands, piles, LP, monster stats and counters. Export the
+server and both players' matching game sessions after reproducing. Detailed logs also contain the duel's exact
+engine seed, shuffled deck order and choices for developer replay. They can reveal deck contents and player/chat
+information; review the ZIP and turn detailed tracing off after the investigation. Nothing is uploaded automatically.
+
+Developers can check exported session `.log` files (include all rotated parts):
+
+```bash
+python3 tools/monkey/duel-report.py --server SERVER.log --client GAME_A.log GAME_B.log
+python3 tools/monkey/duel-replay.py --server SERVER.log            # list recorded duel IDs
+python3 tools/monkey/duel-replay.py --server SERVER.log --duel 1   # exact engine replay
+```
+
+The report fails on a missing/failed checkpoint or known unsupported mechanic. Engine replay requires the same
+Node version, sidecar, core, card scripts, card database and card-ID mapping (fingerprinted in the recording).
+It compares every recorded answer and state query. This replays the rules engine, not UI input; pixel rendering,
+every legal menu and unsupported effects still require focused live checks.

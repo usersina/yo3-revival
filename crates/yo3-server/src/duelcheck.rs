@@ -39,6 +39,8 @@ use serde_json::Value as Json;
 use yo3_proto::{Message, Value};
 
 use crate::translate::CardStats;
+pub mod native;
+pub mod coverage;
 
 const SERVER_DUEL: u32 = crate::duel::SERVER_DUEL;
 /// Pump cases (duelRequestName): an engine command, the duel setup.
@@ -117,6 +119,15 @@ pub struct ClientModel {
     places: HashMap<u32, Place>,
     off_field: HashSet<u32>,
     battle: [Option<(usize, usize)>; 2],
+    lp: [Option<i64>; 2],
+    record: [u32; 9],
+    records: HashMap<(usize, u32), [u32; 9]>,
+    counters: HashMap<(u32, u32), i64>,
+    turn: (usize, u32),
+    phase: Option<(usize, u32)>,
+    engine_turn: (usize, u32),
+    engine_phase: Option<(usize, u32)>,
+    coverage_gaps: HashSet<u64>,
     /// The relations the client holds: (source place, target place, marker type).
     relations: Vec<(u32, u32, u32)>,
     /// Per player, the per-zone counts (0x5240F0) and the piles' shown counts, Extra Deck to banished.
@@ -139,6 +150,13 @@ impl ClientModel {
             places: HashMap::new(),
             off_field: HashSet::new(),
             battle: [None; 2],
+            lp: [None; 2],
+            record: [0; 9],
+            records: HashMap::new(),
+            counters: HashMap::new(),
+            turn: (first as usize, 1), phase: None,
+            engine_turn: (first as usize, 0), engine_phase: None,
+            coverage_gaps: HashSet::new(),
             relations: vec![],
             counts: Default::default(),
             piles: Default::default(),
@@ -161,6 +179,30 @@ impl ClientModel {
         }
     }
 
+    /// Engine events form the independent turn/phase oracle and audit the engine side of the translation boundary.
+    pub fn observe_engine(&mut self, messages: &[Json]) {
+        for m in messages {
+            if m["type"] == "field" { continue; }
+            let Some(kind) = m["type"].as_u64() else { self.problem(format!("unclassified engine event {}", m["type"])); continue };
+            if coverage::engine(kind) == coverage::Coverage::Unknown {
+                self.problem(format!("unclassified engine event {kind}"));
+            } else if coverage::engine(kind) == coverage::Coverage::Unsupported && self.coverage_gaps.insert(kind) {
+                tracing::warn!("[YO3 GAP] engine event {kind}: known unsupported presentation/interaction; state agreement does not validate it");
+            }
+            let player = if m["player"] == 0 { self.first } else { 1 - self.first };
+            if kind == 40 { self.engine_turn = (player, self.engine_turn.1 + 1); }
+            if kind == 41 {
+                let phase = match m["phase"].as_u64() {
+                    Some(1) => Some(0), Some(2) => Some(1), Some(4) => Some(2),
+                    Some(8 | 16 | 32 | 64 | 128) => Some(3), Some(256) => Some(4), Some(512) => Some(5), _ => None,
+                };
+                if let Some(phase) = phase { self.engine_phase = Some((self.engine_turn.0, phase)); }
+            }
+        }
+    }
+
+    pub fn coverage_gaps(&self) -> &HashSet<u64> { &self.coverage_gaps }
+
     /// Follows one message sent to the client.
     pub fn apply(&mut self, m: &Message) {
         if m.request() != Some(SERVER_DUEL) {
@@ -171,8 +213,12 @@ impl ClientModel {
             Some(DUEL_SETUP) => {
                 // A new duel (a match's next one too): nothing of the last one stays.
                 let rows = std::mem::take(&mut self.rows);
+                let gaps = std::mem::take(&mut self.coverage_gaps);
+                let oracle = (self.engine_turn, self.engine_phase);
                 *self = ClientModel::new(self.first as u32, std::mem::take(&mut self.cards));
                 self.rows = rows;
+                self.coverage_gaps = gaps;
+                (self.engine_turn, self.engine_phase) = oracle;
                 self.counts = [
                     [int("ExtraDeckNum001") as i64, int("MainDeckNum001") as i64, 0, 0],
                     [int("ExtraDeckNum002") as i64, int("MainDeckNum002") as i64, 0, 0],
@@ -201,6 +247,25 @@ impl ClientModel {
 
     fn command(&mut self, id: u32, [p1, p2, p3, p4]: [u32; 4]) {
         match id {
+            5 => self.phase = Some(((p1 & 1) as usize, p2)),
+            6 => self.turn = ((p1 & 1) as usize, self.turn.1 + 1),
+            0xF => self.lp[(p1 & 1) as usize] = Some(p2 as i64),
+            0x10 => {
+                if let Some(lp) = &mut self.lp[(p1 & 1) as usize] { *lp = (*lp + p2 as i32 as i64).clamp(0, 99999); }
+            },
+            0x3E9 => { self.record[0] = p2; self.record[2] = p3; self.record[3] = p4; },
+            0x3EA => { self.record[4] = p2; self.record[5] = p3; self.record[6] = p4; },
+            0x3EB => {
+                self.record[7] = p2; self.record[8] = p3; self.record[1] = p4;
+                self.records.insert(((p1 & 1) as usize, p1 >> 8 & 0xFF), self.record);
+            },
+            0x27 => {
+                let (p, z) = ((p1 & 1) as usize, (p1 >> 8 & 0xFF) as usize);
+                if let Some(uid) = self.slots[p].get(z).copied().flatten() {
+                    let count = self.counters.entry((uid, p3)).or_default();
+                    *count = (*count + p2 as i32 as i64).max(0);
+                } else { self.problem(format!("counter change at empty player {p} zone {z}")); }
+            },
             BATTLE_INIT | BATTLE_END => self.battle = [None; 2],
             BATTLE_ATTACK => {
                 self.battle = [None; 2];
@@ -250,11 +315,13 @@ impl ClientModel {
                 let (in_a, in_b) = (self.slots[a.player][a.zone as usize], self.slots[b.player][b.zone as usize]);
                 self.slots[a.player][a.zone as usize] = in_b;
                 self.slots[b.player][b.zone as usize] = in_a;
-                if let Some(uid) = in_b {
-                    self.places.insert(uid, a);
-                }
-                if let Some(uid) = in_a {
-                    self.places.insert(uid, b);
+                for (uid, place) in [(in_b, a), (in_a, b)] {
+                    if let Some(uid) = uid {
+                        if self.places.get(&uid).is_some_and(|old| old.face_up != place.face_up) {
+                            self.counters.retain(|(card, _), _| *card != uid);
+                        }
+                        self.places.insert(uid, place);
+                    }
                 }
             }
             FLIP_TURN => {
@@ -262,6 +329,9 @@ impl ClientModel {
                 if place.zone <= FIELD_SPELL
                     && let Some(uid) = self.slots[place.player][place.zone as usize]
                 {
+                    if self.places.get(&uid).is_some_and(|old| old.face_up != place.face_up) {
+                        self.counters.retain(|(card, _), _| *card != uid);
+                    }
                     self.places.insert(uid, place);
                 }
                 self.note(format!("0x1C {{{p1:#x}}}"));
@@ -288,12 +358,16 @@ impl ClientModel {
                     self.problem(format!("1017 removes a relation the client doesn't hold: {p1:#x} -> {p2:#x}, type {p3}"));
                 }
             }
-            _ => {}
+            _ if matches!(coverage::native(id), coverage::Coverage::Interaction | coverage::Coverage::Presentation) => {},
+            _ => self.problem(format!("unclassified native command {id:#x}")),
         }
     }
 
     /// 0x5000E0 for one card (param_6 0, as case 0x1A calls it).
     fn card_move(&mut self, uid: u32, from: Place, to: Place) {
+        if from.zone <= FIELD_SPELL && from.face_up != to.face_up {
+            self.counters.retain(|(card, _), _| *card != uid);
+        }
         if from.zone <= FIELD_SPELL {
             self.slots[from.player][from.zone as usize] = None;
         }
@@ -387,6 +461,12 @@ impl ClientModel {
     /// noted while following the commands; empty when they agree.
     pub fn check(&mut self, state: &Json) -> Vec<String> {
         let mut out = self.take_problems();
+        if self.engine_turn.1 > 0 && self.turn != self.engine_turn {
+            out.push(format!("turn: engine {:?}, client {:?}", self.engine_turn, self.turn));
+        }
+        if self.engine_phase.is_some() && self.phase != self.engine_phase {
+            out.push(format!("phase: engine {:?}, client {:?}", self.engine_phase, self.phase));
+        }
         let Some(teams) = state.as_array() else {
             out.push(format!("no engine state: {state}"));
             return out;
@@ -412,6 +492,9 @@ impl ClientModel {
 
     fn check_side(&self, p: usize, side: &Json) -> Vec<String> {
         let mut out = vec![];
+        if let Some(expected) = side["lp"].as_i64() && self.lp[p] != Some(expected) {
+            out.push(format!("player {p}'s LP: engine {expected}, client {:?}", self.lp[p]));
+        }
         let list = |k: &str| side[k].as_array().cloned().unwrap_or_default();
         let cid_of = |c: &Json| c["cid"].as_u64().unwrap_or(0) as u16;
         let token = |c: &Json| c["cid"].as_u64().unwrap_or(0) == 0;
@@ -470,6 +553,30 @@ impl ClientModel {
                             if place.face_up { "face-up" } else { "face-down" },
                             if place.defense { "defense" } else { "attack" },
                         ));
+                    }
+                    if zone < 5 && face_up {
+                        for (key, index) in [("level", 4), ("attack", 5), ("defense", 6), ("base_attack", 7), ("base_defense", 8)] {
+                            if let Some(mut value) = engine[key].as_i64() {
+                                if key == "level" && value == 0 {
+                                    value = self.rows.get(&uid).and_then(|row| self.cards.get(row)).map_or(0, |c| c.level as i64);
+                                }
+                                let shown = self.records.get(&(p, zone)).map(|r| r[index]);
+                                if shown != Some(value as u32) {
+                                    out.push(format!("player {p}'s zone {zone} {key}: engine {value}, client {shown:?}"));
+                                }
+                            }
+                        }
+                    }
+                    if let Some(counters) = engine["counters"].as_object() {
+                        let mut expected = HashMap::<u32, i64>::new();
+                        for (kind, count) in counters {
+                            let native = crate::translate::COUNTER_KINDS.iter().find(|(id, _)| Some(*id) == kind.parse().ok()).map_or(38, |(_, k)| *k);
+                            *expected.entry(native).or_default() += count.as_i64().unwrap_or(0);
+                        }
+                        let shown: HashMap<_, _> = self.counters.iter().filter(|((card, _), n)| *card == uid && **n != 0)
+                            .map(|((_, kind), n)| (*kind, *n)).collect();
+                        expected.retain(|_, n| *n != 0);
+                        if shown != expected { out.push(format!("player {p}'s zone {zone} counters: engine {expected:?}, client {shown:?}")); }
                     }
                 }
             }
@@ -717,6 +824,7 @@ pub mod selfplay {
         while played.steps < MAX_STEPS {
             played.steps += 1;
             let a = answer.map_err(|e| format!("seed {seed}: engine: {e}"))?;
+            model.observe_engine(&a.messages);
             for m in &a.messages {
                 if let Some(kind) = m["type"].as_u64() {
                     *played.kinds.entry(kind).or_default() += 1;

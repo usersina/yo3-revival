@@ -50,6 +50,86 @@ fn state(hand: &[u32], mzone: [Option<(u32, u32)>; 5], deck: u32) -> serde_json:
 }
 
 #[test]
+fn independently_queried_life_stats_and_counters_catch_dropped_updates() {
+    let mut m = drawn();
+    m.apply(&command(0x1A, [1 | 100 << 16, at(0xB, 0), at(0, 0) | 1 << 14, 0]));
+    m.apply(&command(1000, [1, 100, 0, 0]));
+    m.apply(&command(1000, [2, 101, 0, 0xB << 8]));
+    m.apply(&command(1000, [3, 102, 0, 0xB << 8 | 1 << 16]));
+    m.apply(&command(0xF, [0, 8000, 0, 0]));
+    m.apply(&command(0x3E9, [0, 4100, 1, 1]));
+    m.apply(&command(0x3EA, [0, 4, 1800, 1200]));
+    m.apply(&command(0x3EB, [0, 1800, 1200, 4100]));
+    m.apply(&command(0x27, [0, 2, 0, 0])); // Spell Counters (native kind 0).
+    let mut core = state(&[4101, 4102], [Some((4100, 1)), None, None, None, None], 0);
+    core[0]["lp"] = json!(8000);
+    core[0]["mzone"][0].as_object_mut().unwrap().extend(serde_json::from_value::<serde_json::Map<String, serde_json::Value>>(
+        json!({"level":4,"attack":1800,"defense":1200,"base_attack":1800,"base_defense":1200,"counters":{"1":2}})).unwrap());
+    assert!(m.check(&core).is_empty());
+    for (field, changed) in [("lp", json!(7600)), ("attack", json!(2200)), ("counters", json!({"1":3}))] {
+        let mut changed_core = core.clone();
+        if field == "lp" { changed_core[0][field] = changed; }
+        else { changed_core[0]["mzone"][0][field] = changed; }
+        let differences = m.check(&changed_core);
+        assert!(!differences.is_empty(), "checker missed a dropped {field} update");
+    }
+    m.apply(&command(0x10, [0, (-400i32) as u32, 0, 0]));
+    core[0]["lp"] = json!(7600);
+    assert!(m.check(&core).is_empty());
+}
+
+#[test]
+fn an_unclassified_native_command_cannot_silently_pass_the_checker() {
+    let mut m = model();
+    m.apply(&command(0x6FFF, [0; 4]));
+    assert!(m.take_problems().iter().any(|p| p.contains("unclassified")));
+}
+
+#[test]
+fn dropped_turn_and_phase_changes_are_detected_independently_of_the_translator() {
+    let mut m = drawn();
+    let core = state(&[4100, 4101, 4102], [None; 5], 0);
+    m.observe_engine(&[json!({"type":40,"player":0}), json!({"type":41,"phase":4})]);
+    assert!(m.check(&core).iter().any(|p| p.starts_with("phase:")));
+    m.apply(&command(5, [0, 2, 0, 0]));
+    assert!(m.check(&core).is_empty());
+    m.observe_engine(&[json!({"type":40,"player":1})]);
+    assert!(m.check(&core).iter().any(|p| p.starts_with("turn:")));
+    m.apply(&command(6, [1, 0, 0, 0]));
+    assert!(m.check(&core).is_empty());
+}
+
+#[test]
+fn unsupported_engine_mechanics_are_visible_and_new_events_fail_closed() {
+    let mut m = model();
+    m.observe_engine(&[json!({"type":30}), json!({"type":30})]); // CONFIRM_DECKTOP: known presentation gap.
+    assert_eq!(m.coverage_gaps().len(), 1);
+    assert!(m.coverage_gaps().contains(&30));
+    m.observe_engine(&[json!({"type":99999})]);
+    assert!(m.take_problems().iter().any(|p| p.contains("unclassified engine event 99999")));
+}
+
+#[test]
+fn the_native_snapshot_schema_matches_the_independent_c_reader() {
+    let mut m = ClientModel::new(0, HashMap::new());
+    let setup = Message::reply(0x200D).with("duelRequestName", Value::U32(0x15))
+        .with("MainDeckNum001", Value::U32(40)).with("MainDeckNum002", Value::U32(40));
+    m.apply(&setup);
+    for p in 0..2 {
+        m.apply(&command(0xF, [p, 8000, 0, 0]));
+        for z in 12..16 { m.apply(&command(0x16, [p, z, 0, 0])); }
+    }
+    m.apply(&command(0x1A, [7, 0x4000, 0x4000, 0]));
+    m.apply(&command(0x3E9, [0, 4100, 1, 1]));
+    m.apply(&command(0x3EA, [0, 4, 1800, 1800]));
+    m.apply(&command(0x3EB, [0, 1800, 1800, 4100]));
+    let [inventory, stats] = m.native_words();
+    assert_eq!(inventory.len(), 37);
+    assert_eq!(yo3_server::duelcheck::native::hash(&inventory), 0x5746458E);
+    assert_eq!(yo3_server::duelcheck::native::hash(&stats), 0xC79D18C0);
+}
+
+#[test]
 fn a_battle_destroy_flag_hides_a_card_even_when_its_slot_stays_occupied() {
     // 0x4F8920's destroy effect ends at 0x4FB220 mode 0. BattleEnd does not restore that card's visibility.
     let mut m = drawn();
@@ -140,4 +220,29 @@ fn a_swap_trades_two_slots_and_a_vanished_card_is_off_the_field() {
     assert!(turned.iter().any(|p| p.contains("zone 0") && p.contains("face-up attack in the engine")), "{turned:?}");
     m.apply(&command(0x1F, [0, 1, 0, 0]));
     assert_eq!(m.check(&state(&[4102], [Some((4101, 8)), None, None, None, None], 0)), Vec::<String>::new());
+}
+
+#[test]
+fn a_final_checkpoint_precedes_the_native_result_transition() {
+    let mut m = model();
+    let mut out = vec![command(0x10, [0, 0, 0, 0]), command(2, [1, 0, 0, 0]), command(1500, [0;4])];
+    m.checkpoint_into(&mut out);
+    assert_eq!(out.iter().map(|m| m.get("id").and_then(Value::as_u32).unwrap()).collect::<Vec<_>>(), [0x10, 0x5F0, 2, 1500]);
+}
+
+#[test]
+fn swaps_keep_counters_on_the_card_and_face_down_transitions_clear_them() {
+    let mut m = drawn();
+    for (uid, row, zone) in [(1, 100, 0), (2, 101, 1)] {
+        m.apply(&command(0x1A, [uid | row << 16, at(0xB, 0), at(zone, 0) | 1 << 14, 0]));
+        m.apply(&command(1000, [uid, row, 0, zone << 8]));
+    }
+    m.apply(&command(1000, [3, 102, 0, 0xB << 8]));
+    m.apply(&command(0x27, [1 << 8, 2, 0, 0]));
+    m.apply(&command(0x1B, [0, at(0, 0) | 1 << 15, at(1, 0) | 1 << 14, 0]));
+    m.apply(&command(1000, [2, 101, 0, 0]));
+    m.apply(&command(1000, [1, 100, 0, 1 << 8]));
+    let mut core = state(&[4102], [Some((4101, 8)), Some((4100, 1)), None, None, None], 0);
+    core[0]["mzone"][0]["counters"] = json!({});
+    assert!(m.check(&core).is_empty(), "native 0x4FBE50 clears counters on the face transition");
 }

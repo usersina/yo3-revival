@@ -364,9 +364,10 @@ impl DuelSession {
     /// Handles one client packet and returns the messages to send, in order. With the duel check on, the client's view
     /// of an NPC duel follows them and is compared with the engine: an ERROR names where they differ.
     pub fn handle(&mut self, packet: &Packet) -> Vec<Message> {
-        let out = self.respond_to(packet);
+        let mut out = self.respond_to(packet);
         if let (Some(model), Some((engine, _))) = (self.check.as_mut(), self.engine.as_mut()) {
             model.apply_all(&out);
+            model.checkpoint_into(&mut out);
             match engine.state() {
                 Ok(state) => {
                     let problems = model.check(&state);
@@ -376,7 +377,7 @@ impl DuelSession {
                         self.check = None;
                     }
                 }
-                Err(e) => tracing::warn!("duel check: no engine state: {e}"),
+                Err(e) => tracing::error!("duel check: no engine state: {e}"),
             }
         }
         out
@@ -522,6 +523,7 @@ impl DuelSession {
         self.shuffle(&mut m0);
         self.shuffle(&mut m1);
         let mut engine = Engine::start(dir).map_err(|e| tracing::warn!("rules engine not started: {e}")).ok()?;
+        if self.world.duel_check { engine.record(); }
         let seed = self.next();
         let lp = self.world.start_lp;
         let answer = engine.new_duel(seed, lp, [(&m0, &e0), (&m1, &e1)]);
@@ -576,6 +578,7 @@ impl DuelSession {
             for e in &a.errors {
                 tracing::warn!("rules engine: {e}");
             }
+            if let Some(model) = self.check.as_mut() { model.observe_engine(&a.messages); }
             out.extend(translator.events(&a.messages));
             let last = a.messages.last();
             let (true, Some(last)) = (a.status == "await", last) else { break };

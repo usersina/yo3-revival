@@ -48,14 +48,27 @@ int main(int argc, char **argv) {
     SetEnvironmentVariableA("YO3_LOCAL_GATE", port); SetEnvironmentVariableA("YO3_LOCAL_FRONT", port);
     SetEnvironmentVariableA("YO3_LOCAL_DUEL", port); SetEnvironmentVariableA("YO3_LOCAL_HTTP", port);
     SetEnvironmentVariableA("YO3_LOCAL_COOKIE", "0707070707070707070707070707070707070707070707070707070707070707");
-    if(argc==3 && (!strcmp(argv[2],"mismatched-game") || !strcmp(argv[2],"mismatched-login"))) {
+    if(argc==3 && (!strcmp(argv[2],"mismatched-game") || !strcmp(argv[2],"mismatched-login")
+        || !strcmp(argv[2],"mismatched-duel") || !strcmp(argv[2],"mismatched-update"))) {
 #ifdef YO3_TEST_BAD_GAME_HOOK
-        if(!strcmp(argv[2],"mismatched-game")) {
+        if(strcmp(argv[2],"mismatched-login")) {
             /* Let the login guard pass so the independent starter-dispatch guard is exercised too. */
             BYTE *site=(BYTE *)GetModuleHandleA(NULL)+0x06964b; DWORD previous, ignored;
             const BYTE call[]={0xe8,0x50,0x6c,0x08,0x00};
             CHECK(VirtualProtect(site,sizeof call,PAGE_EXECUTE_READWRITE,&previous));
             memcpy(site,call,sizeof call); CHECK(VirtualProtect(site,sizeof call,previous,&ignored));
+        }
+        if(!strcmp(argv[2],"mismatched-duel") || !strcmp(argv[2],"mismatched-update")) {
+            BYTE *base=(BYTE *)GetModuleHandleA(NULL); DWORD previous, ignored;
+            const BYTE starter[]={0xe8,0x3e,0x05,0,0};
+            CHECK(VirtualProtect(base+0xf44bd,5,PAGE_EXECUTE_READWRITE,&previous));
+            memcpy(base+0xf44bd,starter,5);CHECK(VirtualProtect(base+0xf44bd,5,previous,&ignored));
+            /* One observer site matches, the other is invalid: neither path may initialize the DLL. */
+            const BYTE call[]={0xe8,0x79,0,0,0},update[]={0xb8,0x30,0x5a,0x51,0};
+            BYTE *site=base+(!strcmp(argv[2],"mismatched-duel")?0x1159ea:0x114212);
+            CHECK(VirtualProtect(site,5,PAGE_EXECUTE_READWRITE,&previous));
+            memcpy(site,!strcmp(argv[2],"mismatched-duel")?update:call,5);
+            CHECK(VirtualProtect(site,5,previous,&ignored));
         }
 #endif
         CHECK(LoadLibraryA(argv[1])==NULL);

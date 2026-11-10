@@ -22,6 +22,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 - Added real-engine regressions for battle protection and Stardust's legal/illegal Debris Dragon combinations,
   plus simulations using all three original Yusei decks from the installed game.
 - Fixed counters being removed during control changes and dynamic monster stats resetting during some swaps.
+- Duel diagnostics now compare LP, monster stats, counters, turns and phases, and independently inspect the running
+  game's state through the connection DLL. Reports reject missing snapshots and explicitly list coverage gaps.
+  Exact engine recordings include deck order, choices and dependency fingerprints for developer replay.
 
 ## v0.0.4 (2026-11-10)
 
