@@ -26,7 +26,7 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 
 ## Status
 
-Launcher usability phase (2026-11-10, in progress on `feat/desktop-launcher`):
+Launcher usability phase (2026-11-10, implemented on `feat/desktop-launcher`):
 
 - [x] Address-first discovery and remembered identities; existing invitation/profile credentials preserved. Private
   display :88 showed discovery and first-use identity confirmation by IP with no certificate file; metadata contracts
@@ -47,7 +47,13 @@ Launcher usability phase (2026-11-10, in progress on `feat/desktop-launcher`):
 - [x] Session-indexed diagnostic logs, bounded retention and redacted current/all-retained ZIP exports. Private
   checks verified continued server logging after manager exit, reattachment, different current/all inventories and
   valid ZIPs without saved account keys, private keys or home paths. Wine helpers use a cross-platform heartbeat.
-- [ ] TDD contracts, private-display live checks, both bundles and native Windows follow-up recorded separately.
+- [x] 493 Rust tests and four headless-helper tests pass; workspace check/Clippy and documentation checks are clean.
+  Both review bundles build, their component hashes match, and game files/credentials are absent. The packaged
+  launcher reached the real client's main screen on private :88; offline-server and missing-DLL paths blocked login.
+  The Windows GUI exported both current and retained-history ZIPs through its native file picker under Wine; CRCs,
+  exclusions and redaction passed. Loader removal restored the original game folder's executable/INI hashes.
+- [ ] Native Windows UAC/protected-folder installation, actual firewall mutation and separate friends' machines
+  still need platform/user-driven verification. Wine and cross-compilation do not establish those results.
 
 Next DLL candidates, after launcher usability:
 
