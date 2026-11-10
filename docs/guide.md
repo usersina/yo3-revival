@@ -241,6 +241,7 @@ the same Rule Format they are matched. (To pick your friend instead, use **Creat
 ![The Duel Menu with Auto Duel marked, then the Auto Duel window with Confirm marked](images/guide/7-auto-duel.png)
 
 Then pick your deck and play. The computer opponents are at Kaiba Corporation on the map.
+Only the matched players can submit decks or start that duel; another player's requests cannot cancel it.
 
 ![The client in a duel against Seto Kaiba](images/duel.png)
 

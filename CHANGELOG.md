@@ -14,6 +14,7 @@ gather under "Unreleased" first.
 - Fixed: a refused attempt to delete the account's last player no longer removes their friends, mail and rentals.
 - Fixed: accounts made through the join page can complete card trades, rental offers check their owned cards, and
   their collection refreshes after another session changes it.
+- Fixed: a third player can no longer enter or cancel another pair's duel by sending its duel id.
 
 ## v0.0.3 (2026-11-09)
 

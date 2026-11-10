@@ -594,7 +594,16 @@ player gets a `0x2009` with `duel_end` 3 (no counts): DuelScene shows text `0x29
 deemed a non-Result.") and, at OK, leaves for the map; the match ends, won by the opponent for an event's round. (A
 duel-connection command 2 {1, 14} is ignored before the janken; a janken command first doesn't make it work either.)
 Live with the asymmetric check (only Yugi's deck refused): Kaiba, at the pre-janken screen, got that dialog and went
-back to the map. Card Swaps (`update_type` 2) aren't checked.
+back to the map. Card Swaps (`update_type` 2) that fail the deck check are ignored, with `0x22CA`.
+
+**Match membership (server enforcement).** Before a deck update can enter or cancel a duel, its selected player
+must belong to that match, or the NPC duel must have been created by this session. An outsider's Select Deck gets
+the existing `0x22CB` refusal (`0x50ECF0`); other update types are ignored with `0x22CA` (`0x50FDF0`). Neither changes
+the matched players' entries or cancels their match. Likewise `0x17D4` from an outsider gets only `0x17D5`, without
+the `0x22C4` handoff (`0x50F030`, `0x50F690`). These are server authorization rules, not new wire shapes. Tests:
+`regulation_contract` `an_outsider_cannot_upload_a_deck_for_another_players_match`,
+`an_outsiders_invalid_deck_cannot_cancel_another_players_match`,
+`an_outsider_is_not_sent_another_matches_duel_server_handoff`.
 
 Every player gets one deck, "Starter Deck": the first `deck_type` 1 preset (`data/recipe`, ids 1–6, 501, 502; they
 look like the starter decks) that the login regulation allows. Preset 1 holds a card regulation 1 forbids (4966), so

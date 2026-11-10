@@ -80,6 +80,9 @@ mod follow {
     const ADDR: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5));
 
     fn upload(c: &mut common::Client, update_type: u32, name: &str, main: &[u16]) {
+        // A real Select Deck names a duel this session created; an arbitrary id grants no membership.
+        let duel = one(c.send(Packet::Message(Message::reply(0x17AC).item(Message::record().with("cpu_id", Value::U32(124))))));
+        let duel_id = duel.get("duel_id").cloned().unwrap();
         let deck = Message::deck()
             .with("deck_id", Value::U32(7))
             .with("deck_name", Value::text(name))
@@ -88,7 +91,7 @@ mod follow {
             .with("main", Value::u16_be_array(main))
             .with("extra", Value::u16_be_array(&[]))
             .with("side", Value::u16_be_array(&[]));
-        let Packet::Message(m) = req_with(0x1F4F, &[("duel_id", Value::U32(1)), ("event_id", Value::U32(0)), ("update_type", Value::U32(update_type))])
+        let Packet::Message(m) = req_with(0x1F4F, &[("duel_id", duel_id), ("event_id", Value::U32(0)), ("update_type", Value::U32(update_type))])
         else {
             unreachable!()
         };

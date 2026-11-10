@@ -1591,7 +1591,8 @@ impl Hub {
     /// never reaches the duel server, so the opponent is sent out too (`duel_cancelled`) and the match is over, won by
     /// the opponent (an event's round goes on). Nothing is counted in their records.
     pub fn refuse_deck(&mut self, duel_id: u32, player_id: u32) {
-        let Some(opponent) = self.matches.get(&duel_id).and_then(|m| m.players.into_iter().find(|&p| p != player_id)) else { return };
+        let Some(opponent) = self.matches.get(&duel_id).filter(|m| m.players.contains(&player_id))
+            .and_then(|m| m.players.into_iter().find(|&p| p != player_id)) else { return };
         self.push(opponent, &duel_cancelled(opponent));
         self.end_match(duel_id, Some(opponent));
     }
@@ -2599,6 +2600,15 @@ impl FrontSession {
             0x1F4F => {
                 let duel_id = msg.get("duel_id").and_then(Value::as_u32);
                 let player_id = self.player().player_id;
+                // A duel id identifies a match, not permission to upload or refuse its deck. Check before deck
+                // validation, whose refusal otherwise cancels the match for the other player.
+                if let Some(id) = duel_id
+                    && !self.duels.contains_key(&id)
+                    && !self.hub().matches.get(&id).is_some_and(|m| m.players.contains(&player_id))
+                {
+                    let reply = if msg.get("update_type").and_then(Value::as_u32) == Some(1) { 0x22CB } else { 0x22CA };
+                    return vec![Message::reply(reply)];
+                }
                 // Select Deck (update_type 1): the deck must pass the check the client makes itself. 0x22CB shows
                 // text 0x2919 and leaves the duel scene (0x50EFD5).
                 let item = msg.items.first();
@@ -2634,7 +2644,7 @@ impl FrontSession {
                     if let Some(rule) = self.duels.get(&id) {
                         let npc_id = rule.iter().find(|(k, _)| k == "cpu_id").and_then(|(_, v)| v.as_u32()).filter(|&id| id > 0);
                         hub.enter_duel(player_id, DuelEntry { deck, npc_id, peer: self.peer, ..DuelEntry::default() });
-                    } else if let Some(m) = hub.matches.get(&id) {
+                    } else if let Some(m) = hub.matches.get(&id).filter(|m| m.players.contains(&player_id)) {
                         let opponent = m.players.into_iter().find(|&p| p != player_id);
                         let rule = |k: &str| m.rule.iter().find(|(n, _)| n == k).and_then(|(_, v)| v.as_u32());
                         let lp = rule("lp_start").filter(|&lp| lp > 0);
@@ -2891,7 +2901,8 @@ impl FrontSession {
     fn duel_ready(&self, msg: &Message) -> Vec<Message> {
         let ack = Message::reply(0x17D5);
         let duel_id = msg.get("duel_id").and_then(Value::as_u32);
-        let matched = duel_id.and_then(|id| self.hub().matches.get(&id).map(|m| m.rule.clone()));
+        let matched = duel_id.and_then(|id| self.hub().matches.get(&id)
+            .filter(|m| m.players.contains(&self.player().player_id)).map(|m| m.rule.clone()));
         let Some(asked) = duel_id.and_then(|id| self.duels.get(&id).cloned()).or(matched) else { return vec![ack] };
         let rule = asked.iter().fold(Message::record().with("name", Value::text("rule")), |m, (k, v)| m.with(k, v.clone()));
         let (host, port) = self.duel_server();

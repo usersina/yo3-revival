@@ -38,6 +38,9 @@ Review fixes (2026-11-10), each with a failing regression test before the implem
       checked for ownership, and trunk requests refresh cards changed by another session. Three red-to-green tests
       in `trade_contract` and `rental_contract`. Live TCP: two `/join` accounts traded, an older session refreshed its
       trunk, and a rental refused an unowned card before accepting an owned one.
+- [x] Duel ids do not grant membership: outsiders cannot upload a deck, cancel another pair's match with an invalid
+      deck, or receive its duel-server handoff. Three red-to-green tests in `regulation_contract`. Live TCP: outsider
+      uploads were refused without cancellation or handoff; both matched players still entered normally.
 
 As of 2026-11-08 the server covers every feature the client uses: M0 to M2 (research, a stable world, an instrumented
 client) and M5 (duels) are done, M3 (social) and M6 (play with friends) are done apart from checking on real friends'

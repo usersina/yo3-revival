@@ -94,8 +94,9 @@ fn the_duel_deck_is_acknowledged() {
     // (0x50EFC1 -> 0x50F030), 0x22CB fails with text 0x2919. Nobody reads a field of 0x22CA (the
     // deck editor 0x43FC60 and the shop 0x48AA60 take it too).
     let mut c = Server::with_world(world()).join(1001, "Yugi");
+    let duel_id = start_npc_duel(&mut c);
     let deck = Message::deck().with("deck_name", Value::text("Starter Deck"));
-    let fields = [("duel_id", Value::U32(1)), ("event_id", Value::U32(0)), ("update_type", Value::U32(1))];
+    let fields = [("duel_id", Value::U32(duel_id)), ("event_id", Value::U32(0)), ("update_type", Value::U32(1))];
     let update = fields.iter().fold(Message::reply(0x1F4F), |m, (k, v)| m.with(k, v.clone())).item(deck);
     let r = one(c.send(Packet::Message(update)));
     assert_eq!(r.request(), Some(0x22CA));

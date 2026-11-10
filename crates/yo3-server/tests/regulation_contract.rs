@@ -56,6 +56,73 @@ fn starter() -> Vec<u16> {
     (1..=20).chain(1..=20).collect()
 }
 
+fn matched(server: &Server) -> (Client, Client, u32) {
+    let (mut a, mut b) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+    for c in [&mut a, &mut b] {
+        let join = one(c.send(req_with(0x1784, &[("event_id", Value::U32(2))])));
+        c.send(req_with(0x1798, &[("event_id", Value::U32(2)), ("join_id", join.get("join_id").cloned().unwrap()), ("match_type", Value::U32(1))]));
+    }
+    let wait = |c: &mut Client| {
+        let start = std::time::Instant::now();
+        loop {
+            let out = c.pushed();
+            if !out.is_empty() { return one(out) }
+            assert!(start.elapsed() < std::time::Duration::from_secs(3), "match push");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    };
+    let push = wait(&mut a);
+    let id = push.items.iter().find_map(|i| i.get("duel_id").and_then(Value::as_u32)).expect("duel_id");
+    wait(&mut b);
+    (a, b, id)
+}
+
+#[test]
+fn an_outsider_cannot_upload_a_deck_for_another_players_match() {
+    // 0x50ECF0 / 0x50FDF0 identify the selected match, not permission to join it. Check both Select Deck and swaps.
+    let server = Server::with_world(world(3));
+    let (mut a, mut b, id) = matched(&server);
+    let mut outsider = server.join(1003, "Joey");
+    assert_eq!(pick(&mut outsider, id, &starter(), &[], &[]), 0x22CB);
+    for update_type in [0, 2, 3] {
+        assert_eq!(pick_as(&mut outsider, id, update_type, &starter()), 0x22CA);
+    }
+    assert!(server.hub.lock().unwrap().duel_entry(1003).is_none());
+    assert!(a.pushed().is_empty());
+    assert!(b.pushed().is_empty());
+    // Both matched players can still enter normally.
+    for c in [&mut a, &mut b] {
+        assert_eq!(pick(c, id, &starter(), &[], &[]), 0x22CA);
+    }
+    assert_eq!(server.hub.lock().unwrap().duel_entry(1001).unwrap().opponent, Some(1002));
+}
+
+#[test]
+fn an_outsiders_invalid_deck_cannot_cancel_another_players_match() {
+    let server = Server::with_world(world(3));
+    let (mut a, mut b, id) = matched(&server);
+    let mut outsider = server.join(1003, "Joey");
+    assert_eq!(pick(&mut outsider, id, &[1; 10], &[], &[]), 0x22CB);
+    // The Hub also protects its cancellation entry point.
+    server.hub.lock().unwrap().refuse_deck(id, 1003);
+    assert!(a.pushed().is_empty());
+    assert!(b.pushed().is_empty());
+    for (player_id, c) in [(1001, &mut a), (1002, &mut b)] {
+        assert_eq!(pick(c, id, &starter(), &[], &[]), 0x22CA);
+        assert!(server.hub.lock().unwrap().duel_entry(player_id).is_some());
+    }
+}
+
+#[test]
+fn an_outsider_is_not_sent_another_matches_duel_server_handoff() {
+    let server = Server::with_world(world(3));
+    let (mut a, _b, id) = matched(&server);
+    let mut outsider = server.join(1003, "Joey");
+    let ready = || req_with(0x17D4, &[("duel_id", Value::U32(id))]);
+    assert_eq!(outsider.send(ready()).iter().map(Message::request).collect::<Vec<_>>(), [Some(0x17D5)]);
+    assert_eq!(a.send(ready()).iter().map(Message::request).collect::<Vec<_>>(), [Some(0x17D5), Some(0x22C4)]);
+}
+
 #[test]
 fn a_legal_deck_goes_on_to_the_duel() {
     let server = Server::with_world(world(3));
