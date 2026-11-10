@@ -2005,11 +2005,8 @@ impl Hub {
         }
     }
 
-    /// A player is about to be deleted: they leave their team (a team's leader can't be deleted: false).
-    fn forget_player(&mut self, player_id: u32) -> bool {
-        if self.teams.of(player_id).and_then(|t| t.authority(player_id)).is_some_and(|a| a == LEADER) {
-            return false;
-        }
+    /// A player was deleted from the accounts: their associated data goes only after all eligibility checks passed.
+    fn forget_player(&mut self, player_id: u32) {
         if let Some(team) = self.teams.remove(player_id) {
             let name = self.social.name(player_id);
             self.tell_team(&team.ids(), Some(player_id), &Message::reply(0x2B09).with("member_name", Value::text(&name)));
@@ -2019,7 +2016,6 @@ impl Hub {
         self.social.forget(player_id);
         self.mail.forget(player_id);
         self.rentals.forget(player_id);
-        true
     }
 
     /// A challenger's offer is gone: the host's offer dialog closes (0x17C0) and it waits again.
@@ -2307,10 +2303,19 @@ impl FrontSession {
     fn delete_player(&mut self, msg: &Message) -> Message {
         let Some(id) = msg.get("player_id").and_then(Value::as_u32) else { return Message::reply(0x2265) };
         let Some(d) = self.directory.clone() else { return Message::reply(0x2265) };
-        if !self.account.players.iter().any(|p| p.player_id == id) || !self.hub().forget_player(id) {
-            return Message::reply(0x2265);
-        }
-        let deleted = d.locked().delete_player(self.account.user_id, id);
+        let deleted = {
+            // Hub first, then accounts: team authority cannot change between its check and the deletion. The
+            // directory checks ownership and the last player against current state, before any side-file cleanup.
+            let mut hub = self.hub();
+            if hub.teams.of(id).and_then(|t| t.authority(id)).is_some_and(|a| a == LEADER) {
+                return Message::reply(0x2265);
+            }
+            let deleted = d.locked().delete_player(self.account.user_id, id);
+            if deleted.is_ok() {
+                hub.forget_player(id);
+            }
+            deleted
+        };
         match deleted {
             Ok(()) => {
                 self.refresh_players();

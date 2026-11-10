@@ -82,6 +82,8 @@ Node.js, in `engine/` (what each part is and its license: `engine/THIRD-PARTY.md
    address alone) sees a "Keep my account" button: it gives that account a key, so nothing is lost. Players can also
    be made by the friends themselves at Select Player (an empty slot says "Create Player": a name, then the avatar) and
    deleted (Delete; the password it asks for can be anything).
+   An account keeps at least one player, and a team leader must disband or hand over the team before deletion.
+   A refused deletion keeps the player's friends, mail and rentals.
 
    **By hand instead**, for hosts who prefer it (or with `--no-join`), with the server stopped:
 

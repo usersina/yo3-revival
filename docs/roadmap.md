@@ -30,6 +30,10 @@ Review fixes (2026-11-10), each with a failing regression test before the implem
       before both Ready marks are refused. Tests: `trade_contract` `changing_an_offer_withdraws_every_confirmation`,
       `a_final_answer_before_both_ready_marks_is_refused`. Live TCP: the stale answer was refused, both collections
       stayed unchanged, then two fresh approvals executed the changed offer once.
+- [x] A refused player deletion leaves friends, ignores, waiting mail, rentals and team membership intact. Eligibility
+      is checked against the current accounts before cleanup. Tests: `player_contract`
+      `a_refused_last_player_deletion_preserves_their_social_data`, `a_team_leader_cannot_be_deleted_even_with_another_player`.
+      Live TCP: the last-player deletion was refused and fresh friend, ignore, mail and rental replies were unchanged.
 
 As of 2026-11-08 the server covers every feature the client uses: M0 to M2 (research, a stable world, an instrumented
 client) and M5 (duels) are done, M3 (social) and M6 (play with friends) are done apart from checking on real friends'

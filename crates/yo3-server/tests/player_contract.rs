@@ -151,3 +151,49 @@ fn a_deleted_player_leaves_the_friends_and_ignore_lists() {
     assert!(hub.friends_of(4242).is_empty());
     assert!(hub.friends_of(kaiba).is_empty());
 }
+
+#[test]
+fn a_refused_last_player_deletion_preserves_their_social_data() {
+    // LoginWindow 0x469C00: 0x2265 rejects the deletion. It must not run the successful deletion's cleanup.
+    let (server, d, mut c) = setup();
+    server.hub.lock().unwrap().set_directory(d.clone());
+    let me = list(&mut c)[0].1;
+    let mut other = server.join_from(&d, "10.0.0.8".parse().unwrap());
+    let partner = list(&mut other)[0].1;
+    d.lock().unwrap().update_player(me, |p| { p.cards.insert(10, 1); });
+    server.hub.lock().unwrap().befriend((me, "Yugi"), (partner, "Yugi2"));
+    let ask = |id, fields: &[(&str, u32)]| req_with(id, &fields.iter().map(|(k, v)| (*k, Value::U32(*v))).collect::<Vec<_>>());
+    one(c.send(ask(0x24C2, &[("to_id", partner)])));
+    one(other.send(req_with(0x2580, &[("mail_type", Value::U32(0)), ("to_id", Value::U32(me)),
+        ("title", Value::text("Keep this")), ("body", Value::text("Waiting mail"))])));
+    one(c.send(ask(0x2C24, &[("to_id", partner)])));
+    one(other.send(ask(0x2C26, &[("to_id", me), ("answer", 2)])));
+    one(c.send(req_with(0x2C2A, &[("main_list", Value::u16_be_array(&[10]))])));
+    one(c.send(req(0x2C2D)));
+    one(other.send(ask(0x2C2F, &[("answer", 2)])));
+    let before_friends = one(c.send(req(0x24B8)));
+    let before_ignored = one(c.send(req(0x24C1)));
+    let before_mail = one(c.send(req(0x2583)));
+    let before_rentals = one(c.send(req(0x2C34)));
+    assert_eq!((before_friends.items.len(), before_ignored.items.len(), before_rentals.items.len()), (1, 1, 1));
+    assert_eq!(before_mail.get("count"), Some(&Value::U32(1)));
+    assert_eq!(delete(&mut c, me).request(), Some(0x2265));
+    assert_eq!(one(c.send(req(0x24B8))), before_friends);
+    assert_eq!(one(c.send(req(0x24C1))), before_ignored);
+    assert_eq!(one(c.send(req(0x2583))), before_mail);
+    assert_eq!(one(c.send(req(0x2C34))), before_rentals);
+    assert_eq!(one(other.send(req(0x2C34))).items.len(), 1, "the borrower's rental still exists too");
+    assert!(d.lock().unwrap().player(me).is_some());
+}
+
+#[test]
+fn a_team_leader_cannot_be_deleted_even_with_another_player() {
+    let (_server, d, mut c) = setup();
+    create(&mut c, 1, "Kaiba");
+    let me = list(&mut c)[0].1;
+    assert_eq!(one(c.send(req_with(0x2AF9, &[("team_name", Value::text("Millennium"))]))).request(), Some(0x2B0F));
+    let before = one(c.send(req(0x2AFB)));
+    assert_eq!(delete(&mut c, me).request(), Some(0x2265));
+    assert_eq!(one(c.send(req(0x2AFB))), before);
+    assert!(d.lock().unwrap().player(me).is_some());
+}

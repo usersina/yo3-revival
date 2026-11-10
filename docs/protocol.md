@@ -98,7 +98,13 @@ and the heartbeat; every other request is ignored (nothing in the client sends o
 | (server push after `9000`) | `0x251C` friend list, `0x252A` black list | items `{friend_id, friend_name, login_flag}` / `{black_id, black_name, login_flag}` (`0x475A20` modes 2 and 3); see "Friends and the ignore list" | the global dispatcher stores them in dataset slots 6 and 7; the client never asks, and listing any player crashes without them (`0x45E734`) | shape; push timing **guess** |
 | (server push after `9000`) | `0x2D6C` rental records | one item per rental not over that the player lent or borrowed (fields in "Card rental" below); the shop checks `from_type` for 1 (we send 0) | the global dispatcher stores it in slot 8 (`0x4F5FBA`); opening the shop reads slot 8 unchecked (`0x48F0F6`); the collection builder `0x4F6340` reads it. `RentalRecord`/`CardRental` ask for it with `0x2C34` (bare), but not before the shop opens | live; push timing **guess** |
 
+Deleting a player checks current account ownership, the last-player rule and team leadership before changing any
+associated data. A refused `0x1F4B` (`0x2265`, `LoginWindow 0x469C00`) keeps friends, ignores, waiting mail, rentals and
+team membership intact. Tests: `a_refused_last_player_deletion_preserves_their_social_data`,
+`a_team_leader_cannot_be_deleted_even_with_another_player`.
+
 **Player record** (read by `0x46C1E4` and `0x51C260`):
+
 - `pname`, `pindex`, `player_id`, `dlv`, `title`, `n_win`, `n_lose`, `n_draw`, `team_level`, `team_name`,
   `team_authority`.
 - `avatar1`: **binary**, BE u16 entries copied into PlayerData+`0x28`. Sent as text, it crashes at `0x46C750`. Character
