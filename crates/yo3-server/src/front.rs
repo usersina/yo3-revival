@@ -3116,7 +3116,8 @@ impl FrontSession {
             let host = hub.hosts.remove(&duel_id).expect("the host");
             let challenger_record = hub.online.values().find(|o| o.player_id == challenger).map(|o| o.record.clone());
             let match_type = host.setting("match_type").and_then(Value::as_u32).unwrap_or(SINGLE_MODE);
-            let mut rule: Vec<(String, Value)> = host.settings.iter().filter(|(k, _)| k == "lp_start").cloned().collect();
+            let mut rule: Vec<(String, Value)> = host.settings.iter()
+                .filter(|(k, _)| k == "lp_start" || k == "regulation_id").cloned().collect();
             rule.push(("match_type".to_string(), Value::U32(match_type)));
             let push = |vs: &Message| {
                 let data = rule.iter().fold(Message::record().with("name", Value::text("duelData")), |m, (k, v)| m.with(k, v.clone()));

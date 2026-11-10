@@ -41,6 +41,9 @@ Review fixes (2026-11-10), each with a failing regression test before the implem
 - [x] Duel ids do not grant membership: outsiders cannot upload a deck, cancel another pair's match with an invalid
       deck, or receive its duel-server handoff. Three red-to-green tests in `regulation_contract`. Live TCP: outsider
       uploads were refused without cancellation or handoff; both matched players still entered normally.
+- [x] Hosted duels retain their chosen banlist after acceptance, in the match push, handoff and server deck check.
+      Tests cover both a restricted duel under an unlimited login and the reverse. Live TCP: both clients received
+      the chosen regulation in the match and handoff; the same starter was refused under banlist 4, accepted under 3.
 
 As of 2026-11-08 the server covers every feature the client uses: M0 to M2 (research, a stable world, an instrumented
 client) and M5 (duels) are done, M3 (social) and M6 (play with friends) are done apart from checking on real friends'

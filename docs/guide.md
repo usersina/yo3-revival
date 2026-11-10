@@ -242,6 +242,7 @@ the same Rule Format they are matched. (To pick your friend instead, use **Creat
 
 Then pick your deck and play. The computer opponents are at Kaiba Corporation on the map.
 Only the matched players can submit decks or start that duel; another player's requests cannot cancel it.
+Create Duel keeps the host's selected banlist for both players after acceptance, including its deck checks.
 
 ![The client in a duel against Seto Kaiba](images/duel.png)
 

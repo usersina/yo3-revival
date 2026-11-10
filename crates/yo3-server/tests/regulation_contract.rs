@@ -223,6 +223,40 @@ fn the_login_regulation_applies_to_a_rule_that_names_none() {
     assert_eq!(pick(&mut c, id, &starter(), &[], &[]), 0x22CA);
 }
 
+fn check_hosted_regulation(login: u32, hosted: u32, expected: u32) {
+    let server = Server::with_world(world(login));
+    let (mut a, mut b) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+    // Create Duel (0x49EE90) supplies the selected regulation; acceptance must keep it for Select Deck (0x51A9A0).
+    let settings = Message::record().with("status", Value::U32(1)).with("match_type", Value::U32(1))
+        .with("regulation_id", Value::U32(hosted));
+    let host = one(a.send(Packet::Message(Message::reply(0x17AC).item(settings))));
+    let id = host.get("duel_id").and_then(Value::as_u32).unwrap();
+    assert_eq!(one(b.send(req_with(0x17B6, &[("duel_id", Value::U32(id))]))).request(), Some(0x17B7));
+    a.send(req_with(0x17CA, &[("duel_id", Value::U32(id)), ("answer", Value::U32(2))]));
+    let mut announced = vec![];
+    for c in [&mut a, &mut b] {
+        let ready = c.send(req_with(0x17D4, &[("duel_id", Value::U32(id))]));
+        let rule = &ready[1].items[0].items[0];
+        announced.push(rule.get("regulation_id").cloned());
+    }
+    // Check the challenger first: a real refusal cancels the match for its opponent.
+    assert_eq!(pick(&mut b, id, &starter(), &[], &[]), expected);
+    if expected == 0x22CA {
+        assert_eq!(pick(&mut a, id, &starter(), &[], &[]), expected);
+    }
+    assert_eq!(announced, vec![Some(Value::U32(hosted)); 2]);
+}
+
+#[test]
+fn a_hosted_banlist_is_enforced_with_an_unlimited_login() {
+    check_hosted_regulation(3, 5, 0x22CB);
+}
+
+#[test]
+fn a_hosted_unlimited_duel_overrides_the_logins_banlist() {
+    check_hosted_regulation(5, 3, 0x22CA);
+}
+
 #[test]
 fn a_card_swap_that_fails_the_check_is_ignored_without_ending_the_match() {
     // update_type 2 sends the deck as swapped between a match's duels; it only keeps the match's entry, so a deck

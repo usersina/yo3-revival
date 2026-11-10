@@ -742,8 +742,13 @@ a team member (`+0x49E`). The server checks the same on `0x17B6` (201 otherwise)
 team-only duel takes nobody. Live: Yugi hosted with Friend; Joey's Player Information showed no Send Duel Request,
 Kaiba's (his friend) did, and Kaiba's request reached Yugi.
 
-On Yes both get the match push `0x1978` (the host's `duel_id`; `duelData` carries `match_type` and `lp_start`, which
-becomes the duel's starting LP) a second later, and the duel runs as an automatic match's. Live: Kaiba found Yugi's
+On Yes both get the match push `0x1978` (the host's `duel_id`; `duelData` carries `match_type`, `regulation_id` and
+`lp_start`, which becomes the duel's starting LP) a second later, and the duel runs as an automatic match's. The
+host's `regulation_id` also stays in `0x22C4`'s rule and the server's deck check (`0x51A9A0`), rather than falling
+back to the login regulation after acceptance. Tests: `matching_contract`
+`a_challenge_reaches_the_host_and_acceptance_starts_the_duel`, `regulation_contract`
+`a_hosted_banlist_is_enforced_with_an_unlimited_login`, `a_hosted_unlimited_duel_overrides_the_logins_banlist`.
+Live: Kaiba found Yugi's
 hosted duel in player search, sent the request, Yugi accepted, and both reached the janken.
 
 The server pairs the first two players waiting for the same `match_type`, gives the duel a `duel_id`, and pushes

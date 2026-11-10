@@ -15,6 +15,7 @@ gather under "Unreleased" first.
 - Fixed: accounts made through the join page can complete card trades, rental offers check their owned cards, and
   their collection refreshes after another session changes it.
 - Fixed: a third player can no longer enter or cancel another pair's duel by sending its duel id.
+- Fixed: Create Duel keeps the host's chosen banlist after the challenger accepts.
 
 ## v0.0.3 (2026-11-09)
 

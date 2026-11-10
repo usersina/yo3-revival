@@ -243,6 +243,7 @@ fn a_challenge_reaches_the_host_and_acceptance_starts_the_duel() {
         assert_eq!(push.request(), Some(0x1978));
         assert_eq!(named(push, "vsPlayerData").get("player_id").and_then(Value::as_u32), Some(opponent));
         assert_eq!(named(push, "duelData").get("duel_id").and_then(Value::as_u32), Some(duel_id));
+        assert_eq!(named(push, "duelData").get("regulation_id"), Some(&Value::U32(1)));
     }
     // The duel runs as an automatic match's does, with the host's starting LP.
     let deck = Message::record().with("main", Value::u16_be_array(&[100, 101, 102]));
