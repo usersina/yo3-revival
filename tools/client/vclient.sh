@@ -67,7 +67,11 @@ wait_for() {
 
 case "${1:-}" in
   xvfb)
-    xdpyinfo >/dev/null 2>&1 || { Xvfb "$DISPLAY" -screen 0 1280x960x24 -nolisten tcp & sleep 1; }
+    # Keep the display alive without holding a caller's captured input/output pipes open.
+    xdpyinfo >/dev/null 2>&1 || {
+      nohup Xvfb "$DISPLAY" -screen 0 1280x960x24 -nolisten tcp </dev/null >"$LOGS/xvfb.log" 2>&1 &
+      sleep 1
+    }
     xdpyinfo | grep dimensions ;;
   start)
     PROFILE="${YO3_AUTH_PROFILE:?set YO3_AUTH_PROFILE to the private client.json for this account}"

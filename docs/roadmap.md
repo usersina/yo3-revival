@@ -24,6 +24,11 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 
 ## Status
 
+Headless display fix (2026-11-10): cold Xvfb startup releases captured pipes immediately, keeps diagnostics in
+its instance log and reuses an existing display. Regression tests cover cold startup, reuse and failed startup;
+they run in the release checks without an X server or game. Live: the UI monkey's capture path on private `:88`
+returned in 1.02 s, then reused that display in 0.19 s, with no timeout.
+
 Authenticated launcher milestone (2026-11-10): the server accepts game connections only over validated TLS. The
 required DLL redirects the original client through private launcher endpoints without changing its binary or INI.
 Two real clients on one IP logged in to different accounts, matched, reached the field and displayed the win/loss

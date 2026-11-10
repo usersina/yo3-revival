@@ -84,6 +84,7 @@ engine/fetch.sh                                   # once: the rules engine's dep
 cargo build --release -p yo3-server -p yo3-launcher
 tools/mod/build.sh                               # 32-bit connection DLL, injector and native/Wine contract harnesses
 tools/mod/test.sh                                # named/ordinal imports, local cookies and fail-closed injection (private :78)
+python3 tools/client/test_vclient.py              # cold display startup, captured pipes and diagnostics (no X server/game needed)
 cargo nextest run --workspace                     # all tests (or: cargo test --workspace); about a minute, most of it the duel
 #   check's 240 self-played duels (tests/duel_check.rs, YO3_CHECK_DUELS=n per test for more): run it after any change to
 #   translate.rs or the sidecar. A failure names the seed, the step and the engine messages before the difference

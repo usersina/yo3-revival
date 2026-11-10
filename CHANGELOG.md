@@ -12,6 +12,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Fixed: cold Xvfb startup no longer holds the UI monkey's captured output pipes open. Display diagnostics go to
+  the instance's `xvfb.log`; regression tests cover startup, reuse and failure and run in the release checks.
 - Added: authenticated revival launcher and connection DLL. Accounts sharing one IP stay separate; front and duel
   connections use validated TLS and single-use tickets. The game executable and INI stay unchanged.
 - Changed: the launcher is now required. Initialize the host certificate, export a private profile per account, and

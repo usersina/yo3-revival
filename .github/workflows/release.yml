@@ -73,6 +73,8 @@ jobs:
         run: engine/fetch.sh
       - name: Lints
         run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Headless client helper
+        run: python3 tools/client/test_vclient.py
       - name: Tests
         run: cargo nextest run --workspace
       - name: Bundles
