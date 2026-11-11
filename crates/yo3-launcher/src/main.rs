@@ -34,6 +34,18 @@ struct Args {
     #[arg(long, default_value_t = 0)] http_port: u16,
 }
 
+#[cfg(windows)]
+fn windows_injector(injector: &std::path::Path, game: &std::path::Path, dll: &std::path::Path, compatibility: Option<std::ffi::OsString>) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new(injector);
+    // The original game's administrator manifest otherwise elevates it beyond the
+    // injector. It only needs the current user's rights in the selected game copy.
+    let mut layers = compatibility.unwrap_or_default();
+    if !layers.is_empty() { layers.push(" "); }
+    layers.push("RunAsInvoker");
+    cmd.env("__COMPAT_LAYER", layers);
+    cmd.arg("--control-stdin").arg(game).arg(dll); cmd
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
@@ -105,7 +117,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     let game = yo3_launcher::runtime::native_path(&game.unwrap())?;
     let injector = yo3_launcher::runtime::native_path(&injector)?; let dll = yo3_launcher::runtime::native_path(&dll)?;
     #[cfg(windows)]
-    let mut cmd = { let mut cmd = tokio::process::Command::new(injector); cmd.arg("--control-stdin").arg(game).arg(dll); cmd };
+    let mut cmd = windows_injector(&injector, &game, &dll, std::env::var_os("__COMPAT_LAYER"));
     #[cfg(not(windows))]
     let mut cmd = {
         log.line("Preparing Wine paths");
@@ -167,6 +179,20 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     let detail = tokio::time::timeout(std::time::Duration::from_secs(1), error_output).await.ok().and_then(Result::ok).unwrap_or_default();
     if detail.trim().is_empty() { result }
     else { result.with_context(|| yo3_tunnel::diagnostics::redact(&detail, &[key, hex(&proxy.cookie), hex(&session)], None)) }
+}
+
+#[cfg(all(test, windows))]
+mod native_permission_tests {
+    #[test]
+    fn only_the_game_process_tree_inherits_the_invoking_users_permission_level() {
+        use std::{ffi::{OsStr, OsString}, path::Path};
+        let before = std::env::var_os("__COMPAT_LAYER");
+        let command = super::windows_injector(Path::new("injector.exe"), Path::new("game with spaces/yo3.exe"), Path::new("auth.dll"), Some(OsString::from("HIGHDPIAWARE")));
+        let env = command.as_std().get_envs().find(|(key,_)| *key == OsStr::new("__COMPAT_LAYER")).and_then(|(_,value)| value);
+        assert_eq!(env, Some(OsStr::new("HIGHDPIAWARE RunAsInvoker")));
+        assert_eq!(std::env::var_os("__COMPAT_LAYER"), before, "launcher/server environment must stay unchanged");
+        assert_eq!(command.as_std().get_args().collect::<Vec<_>>(), [OsStr::new("--control-stdin"), OsStr::new("game with spaces/yo3.exe"), OsStr::new("auth.dll")]);
+    }
 }
 
 async fn capture(mut source: impl tokio::io::AsyncRead + Unpin, log: yo3_tunnel::diagnostics::Session, detailed: bool) -> String {

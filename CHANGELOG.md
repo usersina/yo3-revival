@@ -12,6 +12,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Fixed Windows game startup requesting administrator access and then failing to inject the connection DLL.
+  Desktop and Scripts now run the game with your normal user permissions.
 - Fixed the connection DLL rejecting supported Windows games when ASLR changes their load address. Login,
   starter-deck setup and duel diagnostics now follow the actual image base without disabling ASLR.
 - Fixed native Windows path handling: a supported game no longer fails runtime validation merely because its

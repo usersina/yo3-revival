@@ -144,8 +144,15 @@ imports, starter code/data/vtables and duel callbacks/globals all use that mappi
 exact; the MOV update-callback guard checks its relocated operand. ASLR remains enabled. Synthetic full-size
 fixtures contain real PE callback relocations and also link at `0x600000`: the old DLL failed and the corrected DLL
 passed on native Windows and Wine. The real native client reached player selection, the main map and a deck editor
-showing a selected 40-card starter and 498 Trunk cards. These checks used the invoking-user compatibility setting;
-normal Start's elevation behavior is tracked separately.
+showing a selected 40-card starter and 498 Trunk cards.
+
+The original executable's administrator manifest also caused native startup to prompt for UAC, then fail injection
+with `VirtualAllocEx` error 5 when the game ran above the standard-user injector. The Windows launcher now appends
+`RunAsInvoker` to the injector child's `__COMPAT_LAYER`, preserving inherited compatibility flags and leaving the
+launcher/server environment unchanged. A Windows-only regression went red/green for that boundary. Actual Desktop
+Normal Start then resumed the game without a UAC prompt; token inspection confirmed the app, helper, server and
+game were all non-elevated. A fresh NativeSmoke player received its selected starter before entering matchmaking,
+without opening Deck Edit. No executable manifest or machine UAC policy is changed.
 
 ### Skipping the stock login form
 

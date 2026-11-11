@@ -69,6 +69,10 @@ Startup feedback (2026-11-11):
   The same native fixture failed with the old DLL and passed with the fix at randomized bases; Wine's forced
   `0x600000` fixture also passes. The native client reaches login/map/deck editing with 498 cards. Standard-user
   game launch is still being checked separately; no ASLR/security policy was disabled.
+- [x] Native Windows standard-user startup: reproduced the original game's UAC request followed by injection
+  error 5. Scoped `RunAsInvoker` on the injector/game tree fixes normal Desktop Start without elevating the app or
+  server. The Windows regression went red/green; live token checks show every component non-elevated. A fresh
+  player received its starter automatically and entered matchmaking before ever opening Deck Edit.
 
 v0.0.4 release preparation (2026-11-10):
 

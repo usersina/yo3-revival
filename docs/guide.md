@@ -140,6 +140,7 @@ in Scripts; no manual extended-path conversion is needed.
   choosing **`vcredist_x86.exe`**, because the original game is 32-bit even on 64-bit Windows.
 
 Do not fetch individual DLLs from download sites. On Linux, the same check runs in the chosen Wine prefix; fix
-that prefix's runtime setup. A successful dependency probe does not prove graphics-driver or native Windows UAC behavior.
-If Windows reports **740 / elevation required**, the original game requests administrator permission: close Revival,
-use **Run as administrator**, and retry. Hosting itself does not require elevation.
+that prefix's runtime setup. A successful dependency probe does not prove graphics-driver behavior.
+Desktop and Scripts launch the original game with the current user's permissions, avoiding its obsolete administrator
+request. Run Revival normally. Keep the selected game folder and your game Documents writable by your account;
+hosting itself does not require elevation.
