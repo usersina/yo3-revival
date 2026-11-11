@@ -114,16 +114,42 @@ before moving data, restoring or downgrading.
 ## Windows SmartScreen and antivirus warnings
 
 These pre-alpha executables and the connection injector/DLL are unsigned. Windows or security software may block
-or quarantine them. Check the exact warning and protection history, and verify the official release source before
-restoring a file. Do not disable protection or assume every detection is harmless.
+or quarantine them. No exclusion is needed unless your security software actually blocks a file.
+
+1. Check your antivirus's protection history for the exact detection and affected file. A missing file alone does
+   not establish that antivirus removed it.
+2. Confirm you downloaded the complete matching archive from the
+   [official releases](https://github.com/usersina/yo3-revival/releases/latest). Do not assume every detection is harmless;
+   report an uncertain detection before allowing it.
+3. For a verified false positive, allow or restore the affected file. If you choose a folder exclusion instead,
+   exclude only the extracted **`yo3-revival-desktop/`** or **`yo3-revival-scripts/`** folder, then re-extract any
+   quarantined files from the matching archive. In Desktop, click **Validate game** again before **Start**.
+
+**Where are our DLLs?**
+
+| Location | Revival files |
+|---|---|
+| Extracted Desktop or Scripts folder | `yo3-auth.dll` (required connection mod), `yo3-auth-launch.exe` (required injector), and the Revival executables |
+| Extracted Desktop folder | `yo3-bootstrap.dll`, the loader used when enabling optional direct launch |
+| Game folder, beside `yo3.exe` | `winmm.dll`, installed only when [direct launch](launcher.md#open-the-game-directly) is enabled |
+
+Normal Desktop **Start** and Scripts **play** load `yo3-auth.dll` from the extracted Revival folder; they do not
+copy it into the game folder. Excluding just `yo3-revival.exe` does not cover the injector or DLL. The whole game
+folder does not normally need an exclusion. If the optional direct-launch `winmm.dll` is flagged, allow that
+specific file after verifying it came from your Revival setup.
+
+Keep antivirus protection on. Prefer a file exception to a folder exclusion, which stops scanning everything
+inside that folder. Do not exclude all of Downloads, Games or Program Files. See
+[Microsoft's Windows Security guidance](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/virus-and-threat-protection-in-the-windows-security-app)
+for Defender's exclusion settings.
 
 `yo3-auth-launch.exe` and `yo3-auth.dll` are both required. Keep the complete matching bundle together; removing them
 or mixing releases prevents startup. The injector resumes the game only after required hooks initialize. Source
 builds are documented [here](development.md#build-from-source) for people who want to inspect/build the code.
 
 For a detection report, include the security product, exact detection name, affected filename, application version
-and file SHA-256 if available. A missing file alone does not establish that antivirus removed it. Scripts use the
-same required injector/DLL as Desktop and can encounter the same detections.
+and file SHA-256 if available. Scripts use the same required injector/DLL as Desktop and can encounter the same
+detections. [Report a detection](https://github.com/usersina/yo3-revival/issues/new/choose).
 
 ## Original game runtimes
 

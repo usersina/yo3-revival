@@ -29,6 +29,9 @@ Use **64-bit Windows 10/11**, or **Linux with Wine**. **Windows 7 is not support
 4. Click **Start**. In the game, choose **ONLINE**, then select your player. Your starting deck is ready automatically.
 5. Visit **Kaiba Corporation** on the map for your first duel. [Playing guide](docs/playing.md).
 
+**Antivirus flags Revival?** For a verified false positive, allow the affected file or exclude only the extracted
+`yo3-revival-desktop/` folder. [What to check and which files to allow](docs/guide.md#windows-smartscreen-and-antivirus-warnings).
+
 ![Normal mode: game folder, Validate game, Start and logs](screenshots/desktop.png)
 
 [Join a friend](docs/launcher.md#join-another-server) ·

@@ -239,7 +239,7 @@ the original pre-upgrade snapshot and loses later database-only changes. Do not 
 | Unsupported game executable | Use the original **v1.153** installation. Validation checks the hook signatures before startup; replacing Revival helpers cannot fix a different game build. |
 | Missing DirectX or VC90 runtime | Follow [original game runtime repair](guide.md#original-game-runtimes), then **Validate game** again. The error identifies the dependency or runtime manifest. |
 | Revival helper/DLL or engine missing | Re-extract the complete matching Desktop archive, keeping every helper and `engine/`. A different game folder will not repair app files. |
-| A file disappeared or was blocked | Check security software's protection history and verify the official download before restoring it. Do not delete helpers, mix releases or disable protection. |
+| Antivirus flags Revival / a file disappeared | Check protection history and the official download. For a verified false positive, allow the affected file or exclude only the extracted Desktop folder. [Exact files, folders and recovery steps](guide.md#windows-smartscreen-and-antivirus-warnings). |
 | App settings/logs cannot open | Check the data folder's permissions/free space, then **Retry app setup**. Copy the error if it continues; keep your saved data. |
 | Game startup fails or stalls | Read **Show details** and the logs. Use **Close game** when available, validate and try again; export logs if it repeats. |
 | DLL did not initialize / unexpected EOF | Current builds include the native failure stage and Windows error/exit code in details and logs. Keep those details when reporting; an EOF alone does not identify the cause. |
