@@ -18,6 +18,8 @@ On Linux, install Rust/Cargo **1.98.1 or newer**, Node.js **22.18 or newer** wit
 (`i686-w64-mingw32-gcc`, `i686-w64-mingw32-dlltool`). Linux game testing needs Wine.
 The GUI also needs pkg-config and X11/Wayland/xkbcommon development libraries; on Debian/Ubuntu these are
 `pkg-config libx11-dev libwayland-dev libxkbcommon-dev`.
+X11 startup also needs `libxcursor1 libx11-xcb1 libxi6 libxkbcommon-x11-0` at runtime.
+The release runner installs them before testing the packaged Desktop window.
 
 The root `Cargo.toml` owns the shared crate version, edition, license, Rust baseline, dependency versions and lint
 settings. Every crate inherits them; crate-specific features such as Iced's renderer and Windows APIs stay in that

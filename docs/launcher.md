@@ -267,6 +267,10 @@ the original pre-upgrade snapshot and loses later database-only changes. Do not 
 | A card seems to behave incorrectly           | Check [card rules](playing.md#card-effects-and-summon-rules), then [record the duel](#logs-and-support) if needed.                                                                                                                                       |
 | Windows 7                                    | The current release requires a supported modern OS, even if the original game itself runs there.                                                                                                                                                         |
 
+On minimal Debian/Ubuntu X11 systems, install Desktop's runtime libraries with
+`sudo apt install libxcursor1 libx11-xcb1 libxi6 libxkbcommon-x11-0`. Missing-library errors prevent the app from
+opening its window.
+
 These executables and the injector/DLL are unsigned. [Windows warnings](guide.md#windows-smartscreen-and-antivirus-warnings)
 explains what to check. Native Windows 11 checks cover standard-user startup in a writable game copy, Desktop and
 Scripts hosting/play, starter setup, a complete NPC duel, log export and updater activation. Windows 10, protected-folder

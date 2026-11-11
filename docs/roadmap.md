@@ -50,6 +50,9 @@ v0.0.5 release preparation (2026-11-11):
   larger code at both image bases, checks contiguous PE sections, and rejects code overlapping the first hook.
   Both larger fixtures pass the real DLL contract under Wine; all four archives build and the packaged Desktop
   updater passes locally. Release CI runs the layout check before bundling; no production DLL or game-hook behavior changes.
+- [x] The next CI attempt built all four archives, then its real-window gate caught missing X11 runtime libraries.
+  An isolated Ubuntu 26.04 reproduction failed loading Xcursor/XInput. Installing the complete Iced X11 runtime
+  set makes the same packaged-updater test pass; CI and the Linux guides now list those dependencies explicitly.
 - [ ] Publish v0.0.5 after the release workflow verifies tests, all four archives and packaged-updater readiness.
   Native Windows 10, protected-folder direct-start installation, runtime reinstallation and separate-machine
   network checks remain open; Windows 11 evidence does not close those items.
