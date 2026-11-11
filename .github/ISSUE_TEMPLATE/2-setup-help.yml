@@ -37,6 +37,11 @@ body:
         - Windows
         - Linux (Wine)
         - Other
+  - type: textarea
+    id: security
+    attributes:
+      label: Security-software detection (if applicable)
+      description: "Include the security product, exact detection name, affected filename and file SHA-256 if available. Do not disable protection. A disappeared file alone does not prove a detection."
   - type: checkboxes
     id: guide
     attributes:

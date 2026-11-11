@@ -12,6 +12,13 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Hosting now refuses missing, corrupt or unusable game card/deck data instead of accepting players with an empty
+  collection. Fix the host's game-folder selection and retry; existing accounts, decks and identity files are kept.
+- Game validation checks the supported v1.153 executable's hook signatures and probes its legacy DirectX/VC++ 2008
+  dependencies before startup. Missing runtimes get specific repair instructions.
+- DLL startup failures include their native stage and available Windows error/exit codes in launcher details and exported
+  logs, with credential redaction. Logs also identify the executable fingerprint and connection mod version.
+
 - Normal mode is one screen: choose the game folder, **Validate game**, **Start**, and visible logs.
   Switch to **Advanced** for server connections, hosting and full controls without losing settings or drafts.
 - Advanced hosting lists the server's actual CLI flags, including independent `--duel-check` controls, with

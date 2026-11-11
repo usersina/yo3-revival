@@ -11,6 +11,7 @@ PowerShell. Run from the extracted bundle, or substitute `./target/release/yo3-s
 - [Network settings](#network-settings)
 - [Existing data and backups](#existing-data-and-backups)
 - [Windows SmartScreen and antivirus warnings](#windows-smartscreen-and-antivirus-warnings)
+- [Original game runtimes](#original-game-runtimes)
 
 ## Server options
 
@@ -26,6 +27,9 @@ Initialize the identity and accounts before running; [Scripts setup](scripts.md#
 Without `--game-dir`, the server uses its default original-game location. Release bundles carry `engine/` and its
 Node runtime; run the raw server from the bundle directory so those files can be found. The start-server wrapper
 changes to that directory automatically.
+
+Hosting refuses missing, corrupt or unusable game card/deck data before accepting players or migrating player
+storage. Select the complete installation with `--game-dir` and retry; keep existing accounts, decks and identity files.
 
 | Option | Purpose |
 |---|---|
@@ -116,3 +120,24 @@ restoring a file. Do not disable protection or assume every detection is harmles
 `yo3-auth-launch.exe` and `yo3-auth.dll` are both required. Keep the complete matching bundle together; removing them
 or mixing releases prevents startup. The injector resumes the game only after required hooks initialize. Source
 builds are documented [here](development.md#build-from-source) for people who want to inspect/build the code.
+
+For a detection report, include the security product, exact detection name, affected filename, application version
+and file SHA-256 if available. A missing file alone does not establish that antivirus removed it. Scripts use the
+same required injector/DLL as Desktop and can encounter the same detections.
+
+## Original game runtimes
+
+Validation checks the supported v1.153 executable's hook signatures and probes its known legacy runtime dependencies
+without starting the game. A compatible game build and intact Revival helpers are separate requirements.
+
+- **`d3dx9_40.dll`:** install or repair Microsoft's
+  [DirectX End-User Runtimes (June 2010)](https://www.microsoft.com/en-us/download/details.aspx?id=8109).
+  The DirectX included with modern Windows does not supply every legacy D3DX component.
+- **`MSVCR90.dll`, `MSVCP90.dll`, or the VC90 runtime manifest:** install or repair Microsoft's
+  [Visual C++ 2008 SP1 Redistributable](https://www.microsoft.com/en-us/download/details.aspx?id=26368),
+  choosing **`vcredist_x86.exe`**, because the original game is 32-bit even on 64-bit Windows.
+
+Do not fetch individual DLLs from download sites. On Linux, the same check runs in the chosen Wine prefix; fix
+that prefix's runtime setup. A successful dependency probe does not prove graphics-driver or native Windows UAC behavior.
+If Windows reports **740 / elevation required**, the original game requests administrator permission: close Revival,
+use **Run as administrator**, and retry. Hosting itself does not require elevation.

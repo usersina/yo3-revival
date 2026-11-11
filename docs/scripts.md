@@ -138,7 +138,13 @@ contain player/chat/deck data. [Duel diagnostics](development.md#duel-diagnostic
   `yo3-auth.dll`. Check security software's protection history if a file disappeared; verify the official download
   before restoring it. Do not delete helpers or combine files from different releases.
 - **Game folder rejected:** choose the complete installation with `yo3.exe`, `yo3.idx` and `package/`.
-  Revival is not the original game installer.
+  The executable must have the supported **v1.153** hook layout. Revival is not the original game installer.
+- **Missing `d3dx9_40.dll`, `MSVCR90.dll`, `MSVCP90.dll` or runtime manifest failure:** follow
+  [original game runtime repair](guide.md#original-game-runtimes), then retry. The checker does not start the game.
+- **Cannot load host game data / no cards:** fix the host's `--game-dir`. Current builds refuse hosting with
+  missing, corrupt or unusable card/deck data. Keep existing accounts, decks and identity files.
+- **Connection mod did not initialize:** keep the `stage=...`, `windows_error=...` and any process exit code from
+  the terminal/session log. These identify the failed startup step; EOF by itself does not establish the cause.
 - **Already initialized / profile already exists:** reuse the existing `data/` and profile. These setup commands
   deliberately refuse to overwrite them. Do not delete account data just to rerun initialization.
 - **Connection refused or timed out:** check the profile address/port and whether the host is running and reachable.

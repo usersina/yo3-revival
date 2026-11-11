@@ -236,10 +236,14 @@ the original pre-upgrade snapshot and loses later database-only changes. Do not 
 | Browse does not open a dialog | Choose **Use path instead**, close any remaining dialog and paste the game folder path. |
 | Start is disabled | Choose the game folder and click **Validate game**. If it fails, use **Show details** and the repair steps. |
 | Incomplete game | Select the full installation containing `yo3.exe`, `yo3.idx` and `package/`, not an installer or shortcut. |
+| Unsupported game executable | Use the original **v1.153** installation. Validation checks the hook signatures before startup; replacing Revival helpers cannot fix a different game build. |
+| Missing DirectX or VC90 runtime | Follow [original game runtime repair](guide.md#original-game-runtimes), then **Validate game** again. The error identifies the dependency or runtime manifest. |
 | Revival helper/DLL or engine missing | Re-extract the complete matching Desktop archive, keeping every helper and `engine/`. A different game folder will not repair app files. |
 | A file disappeared or was blocked | Check security software's protection history and verify the official download before restoring it. Do not delete helpers, mix releases or disable protection. |
 | App settings/logs cannot open | Check the data folder's permissions/free space, then **Retry app setup**. Copy the error if it continues; keep your saved data. |
 | Game startup fails or stalls | Read **Show details** and the logs. Use **Close game** when available, validate and try again; export logs if it repeats. |
+| DLL did not initialize / unexpected EOF | Current builds include the native failure stage and Windows error/exit code in details and logs. Keep those details when reporting; an EOF alone does not identify the cause. |
+| Trunk shows no cards | Clear the editor's filters and check server logs. The host must load complete game card/deck data; current builds refuse hosting if that fails. Correct the host's game folder and restart, keeping all account/deck data. |
 | Cannot connect to a friend | Confirm the selected connection in **Advanced → Play**, then **Test connection**. Check [network access](#connection-help). |
 | Identity or authentication refused | Confirm identity changes with the host, or import the correct invitation for this server/account. |
 | Cannot save a diagnostic ZIP | Check the error in the export dialog, choose a writable folder and retry. Copy logs/error as a fallback. |
