@@ -10,8 +10,8 @@ original game world.
 
 ![Stardust Dragon on the field in the original game client, running on Revival](screenshots/duel.png)
 
-| Duel against Kaiba | Build your deck |
-| --- | --- |
+| Duel against Kaiba                                             | Build your deck                                                                            |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | ![Meet Seto Kaiba at Kaiba Corporation](screenshots/kaiba.png) | ![Elemental Hero Shining Flare Wingman selected in the deck editor](screenshots/decks.png) |
 
 [Features and limitations](docs/playing.md#features-and-limitations) · [Development roadmap](docs/roadmap.md)
@@ -43,3 +43,14 @@ Use **64-bit Windows 10/11**, or **Linux with Wine**. [Game installation help](d
 
 Pre-alpha: [report bugs](https://github.com/usersina/yo3-revival/issues/new/choose).
 [MIT](LICENSE) · [Project, credits and support](docs/about.md). Unaffiliated with Konami.
+
+## For developers
+
+The server is written in Rust, reverse-engineered from the game client, and runs duels on
+[EDOPro](https://github.com/edo9300/edopro)'s rules engine. Everything technical (building from source, the protocol,
+the client's internals, the roadmap) is in [docs/](docs/README.md). To contribute, read [AGENTS.md](AGENTS.md) first.
+
+---
+
+<sub>If you'd like to support the work: [Buy me a coffee](https://buymeacoffee.com/usersina) · BTC
+`bc1qawq699ewyq0vgyux6nmyyx29r4vhj573l77elj`</sub>
