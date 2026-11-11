@@ -29,6 +29,16 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 Platform scope: **64-bit Windows 10/11** and **Linux with Wine**. **Windows 7 support is out of scope for now**,
 for both Desktop and Scripts. Current compatibility and native Windows verification work targets Windows 10/11.
 
+Desktop log viewer follow-up (2026-11-11):
+
+- [x] Normal and Advanced logs fill their panels, placing the scrollbar on the right. Views open at the newest line
+  and follow output only at the bottom; scrolling up preserves the older viewport and returning down resumes following.
+  Unchanged polls no longer force scrolling. Activity's explicit Pause control remains independent of following.
+- [x] Four regressions cover unchanged polls, following in both modes during startup, pause/resume and reopening or
+  changing the log view. All 594 workspace tests pass (one packaged-window release gate remains skipped), strict
+  Clippy and documentation links pass. Private Xvfb checks confirm both modes open/follow at the bottom, keep the same
+  older rows visible during appends and resume following after scrolling down; their scrollbars sit at the right edge.
+
 v0.0.5 release preparation (2026-11-11):
 
 - [x] Release notes cover Normal/Advanced mode, Desktop/Scripts editions, Windows startup repairs, protected-monster

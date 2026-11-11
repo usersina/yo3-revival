@@ -164,6 +164,9 @@ nested fields) and engine stderr are captured automatically; there is no tracing
 The ordinary view hides verbose payloads. Search **YO3 CLIENT**, **YO3 PACKET** or **YO3 ENGINE** in Activity to see
 those retained traces, or export them.
 
+Logs open at the newest line, with the scrollbar on the right. New output follows while you are at the bottom.
+Scroll up to read older lines without being pulled down; scroll back to the bottom to resume following.
+
 To report a problem:
 
 1. Reproduce it and note what you clicked or, for a duel, the card names and sequence of actions.

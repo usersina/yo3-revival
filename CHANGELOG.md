@@ -10,6 +10,11 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- Desktop logs open at the newest line and follow new output only while you are at the bottom. Scrolling up keeps
+  older lines in view; scrolling back down resumes following. The scrollbar now sits at the right edge in both modes.
+
 ## v0.0.5 (2026-11-11)
 
 A simpler launcher, native Windows startup fixes and more reliable duels. Choose **Desktop** for the graphical app

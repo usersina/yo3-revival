@@ -162,7 +162,8 @@ impl App {
         let shown=self.shown_logs(); let logs=if shown.is_empty(){"Validation and startup details will appear here. Full traces are saved automatically for export.".into()}else{friendly_logs(&shown)};
         body=body.push(row![text("Logs").size(15).font(bold()).width(Fill),action(Icon::Copy,"Copy",Some(Msg::CopyLogs)).style(button::text),
             action(Icon::Download,"Export logs…",(!self.locked()).then_some(Msg::ExportLogs)).style(button::text)].spacing(10).align_y(iced::Alignment::Center))
-            .push(container(scrollable(text(logs).size(12).font(iced::Font::MONOSPACE)).id("activity-log").anchor_bottom().height(Fill)).padding(14).width(Fill).height(Fill).style(container::rounded_box))
+            .push(container(scrollable(text(logs).size(12).font(iced::Font::MONOSPACE)).id("activity-log").width(Fill)
+                .on_scroll(|viewport|Msg::LogScrolled(viewport.absolute_offset_reversed().y<=1.0)).height(Fill)).padding(14).width(Fill).height(Fill).style(container::rounded_box))
             .push(row![button(text(format!("Version {}{}",yo3_tunnel::BUILD_VERSION,match &self.update_status {UpdateStatus::Checking=>" · Checking for updates…",UpdateStatus::Failed(_)=>" · Update check unavailable",UpdateStatus::Checked(updates::Decision::Available(_))=>" · Update available",_=>""})).size(12)).on_press(Msg::Page(Page::About)).style(button::text),
                 action(Icon::External,"GitHub",Some(Msg::GitHub)).style(button::text),widget::Space::new().width(Fill),action(Icon::Book,"Help",Some(Msg::Help)).style(button::text)].spacing(12).align_y(iced::Alignment::Center));
         body.into()
@@ -327,7 +328,8 @@ impl App {
         let shown = self.shown_logs();
         let body=column![self.page_heading("Activity","View session logs or export a diagnostic report."),row![ui::tab("Server",Msg::Logs(true),self.log_server),ui::tab("Game & launcher",Msg::Logs(false),!self.log_server),widget::Space::new().width(Fill),action(Icon::Download,"Export logs…",(!self.locked()).then_some(Msg::ExportLogs))].spacing(8),
             row![text_input("Filter activity…",&self.filter).on_input(Msg::LogFilter).padding(12).width(Fill),checkbox(self.paused).label("Pause").on_toggle(Msg::Pause),action(Icon::Copy,"Copy",Some(Msg::CopyLogs)).style(button::text)].spacing(12).align_y(iced::Alignment::Center),
-            card(scrollable(text(if shown.is_empty(){"No activity to show yet.".into()}else{shown}).font(iced::Font::MONOSPACE).size(12)).id("activity-log").height(Fill)).height(Fill),
+            card(scrollable(text(if shown.is_empty(){"No activity to show yet.".into()}else{shown}).font(iced::Font::MONOSPACE).size(12)).id("activity-log").width(Fill)
+                .on_scroll(|viewport|Msg::LogScrolled(viewport.absolute_offset_reversed().y<=1.0)).height(Fill)).height(Fill),
             muted("Full traces are saved automatically. Search YO3 CLIENT or YO3 PACKET to view payloads, or export logs."),
             action(Icon::Folder,"Open application data",Some(Msg::OpenData)).style(button::text)].spacing(16).height(Fill);
         body.into()

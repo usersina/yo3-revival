@@ -60,7 +60,7 @@ enum Msg {
     Start, Stop, Play, StopGame, TestConnection, Discover, TrustIdentity, RefreshBindings, BindSelect(yo3_desktop::network::BindAddress), Direct(bool),
     SaveSettings(Section), CancelSettings(Section), Browse(Field), UsePath, FolderPicked(u64,Field,Result<Option<String>,String>), Import, AddServer, SaveServer, EditServer, RemoveServer, ConfirmRemoveServer,
     CreateAccount, AddPlayer, Export, Tick, Animate, Poll(Result<LiveStatus, String>), LogsPolled(Result<String,String>), Done(Result<Outcome, String>),
-    Logs(bool), Pause(bool), LogFilter(String), CopyLogs, ExportLogs, PrepareReport(bool), SaveLogs, RemovePersonal(bool), OpenData, Help, NetworkHelp,
+    Logs(bool), LogScrolled(bool), Pause(bool), LogFilter(String), CopyLogs, ExportLogs, PrepareReport(bool), SaveLogs, RemovePersonal(bool), OpenData, Help, NetworkHelp,
     Close, CancelClose, Quit(bool), Disclosure(Disclosure), NewAccount, GitHub, ExternalOpened(Result<(), String>), DismissNotice,
     CheckSetup, RetrySetup, ValidateGame, SetupChecked(u64, Settings, yo3_desktop::Readiness, yo3_desktop::direct::State), RepairSetup, ErrorDetails, CopyError,
     ReportPrepared(u64, Result<yo3_desktop::reports::Report,String>), ReportDestination(u64,Result<Option<PathBuf>,String>), ReportSaved(u64, Result<String,String>), CopyReportError,
@@ -87,7 +87,7 @@ struct App {
     failure_setup: Option<yo3_desktop::Readiness>, monitor_error: Option<String>, logs_polling: bool, pulse: f32,
     setup_revision: u64, setup_checking: bool, game_start: Option<std::time::Instant>,
     picking: bool, picker_generation: u64,
-    log_server: bool, paused: bool, logs: String, filter: String, closing: bool,
+    log_server: bool, paused: bool, follow_logs: bool, logs: String, filter: String, closing: bool,
     identity: Option<String>, observed: Option<yo3_tunnel::ObservedServer>, checked: Option<yo3_tunnel::ServerInfo>,
     bindings: Vec<yo3_desktop::network::BindAddress>, port: String, report: Option<yo3_desktop::reports::Report>, report_options: bool, report_all: bool,
     report_busy: bool, report_generation: u64, report_feedback: Option<Result<String,String>>, report_remove_personal: bool,
@@ -119,7 +119,7 @@ impl App {
             account, admin_account: String::new(), new_account: String::new(), new_player: String::new(), editor: false, editing_id: None, remove_server: None,
             label: String::new(), address: String::new(), key: String::new(), certificate: String::new(), server_name: String::new(),
             busy: false, polling: false, game_running: false, game_ready: false, failed: !error.is_empty(), notice: error, feedback_page: page,
-            notice_expires: None, operation_page: page, operation_label: String::new(), log_server: true, paused: false, logs: String::new(), filter: String::new(), closing: false,
+            notice_expires: None, operation_page: page, operation_label: String::new(), log_server: true, paused: false, follow_logs: true, logs: String::new(), filter: String::new(), closing: false,
             failure_setup: None, monitor_error: None, logs_polling: false, pulse: 0.0, setup_revision: 0, setup_checking: false, game_start: None,
             picking: false, picker_generation: 0,
             identity: None, observed: None, checked: None, bindings: yo3_desktop::network::defaults(), port, report: None, report_options: false, report_all: false,
@@ -128,7 +128,7 @@ impl App {
             update_status: UpdateStatus::Checking, review_update: false, transfer: None, staged: None, applying: false, startup: Default::default() }
     }
     fn update(&mut self, message: Msg) -> Task<Msg> {
-        let background = matches!(message, Msg::Done(_) | Msg::FolderPicked(..) | Msg::Poll(_) | Msg::LogsPolled(_) | Msg::Tick | Msg::Animate | Msg::ReportPrepared(..) | Msg::ReportDestination(..) | Msg::ReportSaved(..) | Msg::UpdateChecked(_) | Msg::ExternalOpened(_) | Msg::SetupChecked(..) | Msg::UpdatePrepared(_) | Msg::UpdateApplied(_) | Msg::WindowOpened);
+        let background = matches!(message, Msg::Done(_) | Msg::FolderPicked(..) | Msg::Poll(_) | Msg::LogsPolled(_) | Msg::LogScrolled(_) | Msg::Tick | Msg::Animate | Msg::ReportPrepared(..) | Msg::ReportDestination(..) | Msg::ReportSaved(..) | Msg::UpdateChecked(_) | Msg::ExternalOpened(_) | Msg::SetupChecked(..) | Msg::UpdatePrepared(_) | Msg::UpdateApplied(_) | Msg::WindowOpened);
         if self.modal_open() && !background && !matches!(message, Msg::CancelClose | Msg::Close | Msg::Quit(_) | Msg::TrustIdentity | Msg::SaveLogs | Msg::PrepareReport(_) | Msg::RemovePersonal(_) | Msg::CopyReportError | Msg::CopyError | Msg::ErrorDetails | Msg::DismissNotice | Msg::CopyLogs | Msg::ConfirmUpdate | Msg::CancelUpdate | Msg::ConfirmRemoveServer | Msg::CheckSetup | Msg::Browse(Field::Game) | Msg::ReleasePage) { return Task::none() }
         if self.locked() && !background && !matches!(message, Msg::UsePath | Msg::Close | Msg::CancelClose | Msg::Page(_) | Msg::HostTab(_) | Msg::GitHub | Msg::Help | Msg::NetworkHelp | Msg::OpenData | Msg::ReleasePage | Msg::CheckUpdates | Msg::CopyVersion | Msg::CopyError | Msg::ErrorDetails | Msg::Logs(_) | Msg::Pause(_) | Msg::LogFilter(_) | Msg::CopyLogs | Msg::Disclosure(_) | Msg::CancelUpdate | Msg::Stop | Msg::StopGame | Msg::DismissNotice) { return Task::none() }
         match message {
@@ -141,6 +141,7 @@ impl App {
                 if let Err(error) = LauncherDb::open(&self.root).and_then(|db| db.save_mode(advanced)) { self.feedback(Err(error.to_string())); return Task::none() }
                 self.settings.advanced_mode = advanced; self.draft.advanced_mode = advanced;
                 if !advanced { self.page = Page::Play; self.host_tab = HostTab::Overview; }
+                self.follow_logs=true; return widget::operation::snap_to_end("activity-log");
             }
             Msg::ServerOption(name, value) => { if value.is_empty() { self.draft.server_options.remove(&name); } else { self.draft.server_options.insert(name, value); } }
             Msg::ResetOption(name) => { self.draft.server_options.remove(&name); }
@@ -196,7 +197,12 @@ impl App {
             Msg::DismissNotice => { self.notice.clear(); self.notice_expires = None; }
             Msg::Disclosure(section) => match section { Disclosure::Game => self.advanced_game = !self.advanced_game, Disclosure::Account => self.account_options = !self.account_options },
             Msg::NewAccount => self.account_form = !self.account_form,
-            Msg::Page(page) => { self.page = page; if page == Page::Play { self.first_setup = false; } }
+            Msg::Page(page) => {
+                self.page = page; if page == Page::Play { self.first_setup = false; }
+                if page==Page::Activity || (!self.settings.advanced_mode && page==Page::Play) {
+                    self.follow_logs=true; return widget::operation::snap_to_end("activity-log");
+                }
+            }
             Msg::HostTab(tab) => {
                 self.host_tab = tab;
                 if !self.locked() {
@@ -340,7 +346,10 @@ impl App {
             Msg::LogsPolled(result) => {
                 self.logs_polling=false;
                 match result {
-                    Ok(logs) if !self.settings.advanced_mode || !self.paused => {self.logs=logs; return widget::operation::snap_to_end("activity-log")}
+                    Ok(logs) if (!self.settings.advanced_mode || !self.paused) && self.logs!=logs => {
+                        self.logs=logs;
+                        if self.follow_logs { return widget::operation::snap_to_end("activity-log") }
+                    }
                     Err(error)=>self.monitor_failure(format!("Could not refresh logs: {error}")), _=>{}
                 }
             }
@@ -392,9 +401,10 @@ impl App {
                     Err(error) => { self.completed(Err(error)); return self.inspect_setup() }
                 }
             }
-            Msg::Logs(server) => { self.log_server = server; self.logs.clear(); }
+            Msg::Logs(server) => { self.log_server = server; self.logs.clear(); self.follow_logs=true; return widget::operation::snap_to_end("activity-log") }
+            Msg::LogScrolled(at_bottom) => self.follow_logs=at_bottom,
             Msg::Pause(paused) => self.paused = paused,
-            Msg::LogFilter(filter) => self.filter = filter,
+            Msg::LogFilter(filter) => { self.filter=filter; self.follow_logs=true; return widget::operation::snap_to_end("activity-log") }
             Msg::CopyLogs => return iced::clipboard::write(self.shown_logs()),
             Msg::ExportLogs => { self.report_options = true; self.report_remove_personal = false; return self.update(Msg::PrepareReport(false)) }
             Msg::RemovePersonal(value) => { self.report_remove_personal = value; self.report_feedback = None; }
@@ -551,6 +561,48 @@ fn wait_for_opener(cmd:&mut std::process::Command,limit:std::time::Duration)->an
 #[cfg(test)]
 mod flow_tests {
     use super::*;
+    #[test]
+    fn unchanged_log_refresh_does_not_move_the_scrollbar() {
+        let root=std::env::temp_dir().join(format!("yo3-ui-log-refresh-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);
+        let mut app=App::load(root.clone());
+        assert_eq!(app.update(Msg::LogsPolled(Ok("Latest log line".into()))).units(),1);
+        assert_eq!(app.update(Msg::LogsPolled(Ok("Latest log line".into()))).units(),0,"polling unchanged logs must not force a scroll");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn logs_follow_only_at_the_bottom_in_both_modes_even_during_startup() {
+        let root=std::env::temp_dir().join(format!("yo3-ui-log-follow-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);
+        let mut app=App::load(root.clone());
+        for advanced in [false,true] {
+            app.settings.advanced_mode=advanced;app.logs.clear();app.follow_logs=true;app.begin("Starting game…");
+            assert_eq!(app.update(Msg::LogsPolled(Ok("First line".into()))).units(),1,"start at the newest line");
+            let _=app.update(Msg::LogScrolled(false));
+            assert_eq!(app.update(Msg::LogsPolled(Ok("First line\nSecond line".into()))).units(),0,"reading older lines must not jump to the bottom");
+            assert_eq!(app.logs,"First line\nSecond line","scrolling up must not stop capture or refresh");
+            let _=app.update(Msg::LogScrolled(true));
+            assert_eq!(app.update(Msg::LogsPolled(Ok("First line\nSecond line\nThird line".into()))).units(),1,"scrolling back to the bottom resumes following");
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn paused_activity_keeps_its_logs_and_scroll_position_until_resumed() {
+        let root=std::env::temp_dir().join(format!("yo3-ui-log-pause-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);
+        let mut app=App::load(root.clone());app.settings.advanced_mode=true;
+        let _=app.update(Msg::LogsPolled(Ok("First line".into())));let _=app.update(Msg::LogScrolled(false));let _=app.update(Msg::Pause(true));
+        assert_eq!(app.update(Msg::LogsPolled(Ok("Second line".into()))).units(),0);assert_eq!(app.logs,"First line");
+        let _=app.update(Msg::Pause(false));assert_eq!(app.update(Msg::LogsPolled(Ok("Second line".into()))).units(),0);assert_eq!(app.logs,"Second line");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn opening_a_log_view_or_changing_its_source_or_filter_starts_at_the_latest_line() {
+        let root=std::env::temp_dir().join(format!("yo3-ui-log-view-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);
+        let mut app=App::load(root.clone());app.settings.advanced_mode=true;
+        for message in [Msg::Page(Page::Activity),Msg::Logs(false),Msg::LogFilter("ERROR".into()),Msg::Mode(false)] {
+            let _=app.update(Msg::LogScrolled(false));assert!(!app.follow_logs);
+            assert_eq!(app.update(message).units(),1);assert!(app.follow_logs,"a newly opened log view must start at the bottom");
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn closing_during_folder_selection_does_not_trap_the_user_in_a_busy_dialog() {
         let root=std::env::temp_dir().join(format!("yo3-ui-picker-close-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);
