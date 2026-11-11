@@ -1,4 +1,5 @@
 //! Yu-Gi-Oh! ONLINE 3 private server: authenticated TLS front/duel transport and internal asset/admin HTTP.
+pub mod cli;
 pub mod accounts;
 pub mod auth;
 mod transport;
