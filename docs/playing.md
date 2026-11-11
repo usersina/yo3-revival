@@ -31,7 +31,7 @@ Your first starting deck is prepared and selected automatically. You can duel wi
 In a duel, left-click a hand card for its default action; right-click it for the available actions.
 Use the phase buttons to enter the Battle Phase, Main Phase 2 or End Phase.
 
-![A duel against Kaiba](../screenshots/duel.png)
+![Stardust Dragon on the field during a duel](../screenshots/duel.png)
 
 ## Play with a friend
 
@@ -52,7 +52,7 @@ Drag a card after briefly hovering it. The Yugi, Jaden and Yusei character decks
 
 ![Main Menu and Edit Deck](../screenshots/edit-deck.png)
 
-![Official character decks](../screenshots/decks.png)
+![Elemental Hero Shining Flare Wingman selected in the deck editor](../screenshots/decks.png)
 
 Automatic starting-deck setup runs once for a fresh player profile. Existing decks and selections are kept,
 including unfinished decks and any later edits or deletions. It will not recreate a deck you deliberately removed.
