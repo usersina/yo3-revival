@@ -261,10 +261,11 @@ fn a_synchro_summon_is_offered_from_the_extra_deck() {
 
 #[test]
 fn a_sidecar_that_never_answers_times_out_and_is_killed() {
-    // A call must not block forever (it would hold a table's lock and stall its clock): `sleep` never answers.
-    let mut sleeper = std::process::Command::new("sleep");
-    sleeper.arg("60");
-    let mut engine = Engine::spawn(sleeper, std::time::Duration::from_millis(300)).expect("sleep runs");
+    // A call must not block forever: use an installed native sleeper so the timeout is exercised on both platforms.
+    let mut sleeper = std::process::Command::new(if cfg!(windows) { "powershell.exe" } else { "sleep" });
+    if cfg!(windows) { sleeper.args(["-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 60"]); }
+    else { sleeper.arg("60"); }
+    let mut engine = Engine::spawn(sleeper, std::time::Duration::from_millis(300)).expect("sleeper runs");
     let started = std::time::Instant::now();
     let err = engine.respond(serde_json::json!({})).unwrap_err();
     assert!(started.elapsed() < std::time::Duration::from_secs(10));
@@ -273,8 +274,9 @@ fn a_sidecar_that_never_answers_times_out_and_is_killed() {
 
 #[test]
 fn a_sidecar_that_exits_fails_the_call() {
-    let engine_cmd = std::process::Command::new("true");
-    let mut engine = Engine::spawn(engine_cmd, std::time::Duration::from_secs(5)).expect("true runs");
+    let mut engine_cmd = std::process::Command::new(if cfg!(windows) { "cmd.exe" } else { "true" });
+    if cfg!(windows) { engine_cmd.args(["/D", "/C", "exit", "0"]); }
+    let mut engine = Engine::spawn(engine_cmd, std::time::Duration::from_secs(5)).expect("exit fixture runs");
     assert!(engine.respond(serde_json::json!({})).is_err());
 }
 
@@ -291,8 +293,9 @@ fn diagnostic_identity_covers_the_core_scripts_database_and_sidecar() {
 
 #[test]
 fn an_unsupported_dependency_identity_cannot_count_as_a_valid_recording() {
-    let mut old = std::process::Command::new("printf");
-    old.args(["%s\n", "{\"status\":\"error\",\"error\":\"unknown op identity\"}"]);
+    let mut old = std::process::Command::new(if cfg!(windows) { "powershell.exe" } else { "printf" });
+    if cfg!(windows) { old.args(["-NoProfile", "-NonInteractive", "-Command", "[Console]::Out.WriteLine('{\"status\":\"error\",\"error\":\"unknown op identity\"}')"]); }
+    else { old.args(["%s\n", "{\"status\":\"error\",\"error\":\"unknown op identity\"}"]); }
     let mut engine = Engine::spawn(old, std::time::Duration::from_secs(5)).unwrap();
     assert!(engine.identity().is_err(), "an older sidecar did not provide the required fingerprints");
 }

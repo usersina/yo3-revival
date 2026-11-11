@@ -495,10 +495,12 @@ mod tests {
     #[test]
     fn an_unreadable_log_directory_shows_a_recovery_message_instead_of_empty_logs() {
         let root=std::env::temp_dir().join(format!("yo3-unreadable-log-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);
-        let backend=Backend::new(root.clone()).unwrap();
-        std::fs::rename(root.join("logs/sessions"),root.join("logs/sessions-held")).unwrap();std::fs::write(root.join("logs/sessions"),"not a directory").unwrap();
+        let mut backend=Backend::new(root.clone()).unwrap();
+        // Windows cannot rename a directory containing open log files. Point the reader at an independent broken path.
+        let blocked=root.join("unreadable");std::fs::create_dir_all(blocked.join("logs")).unwrap();std::fs::write(blocked.join("logs/sessions"),"not a directory").unwrap();
+        Arc::get_mut(&mut backend).unwrap().root=blocked;
         assert!(backend.logs(false).contains("Could not read logs"));
-        std::fs::remove_file(root.join("logs/sessions")).unwrap();std::fs::rename(root.join("logs/sessions-held"),root.join("logs/sessions")).unwrap();drop(backend);std::fs::remove_dir_all(root).unwrap();
+        drop(backend);std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     #[cfg(unix)]
