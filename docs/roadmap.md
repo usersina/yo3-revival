@@ -55,8 +55,8 @@ Startup feedback (2026-11-11):
   Xvfb with fresh application storage. The shared `tools/test-packaged-update.sh` helper fails if no test matches.
   Local proof: the current unpublished `v0.0.5` archive opened and activated successfully; a checksum-consistent
   fixture whose launcher exits immediately failed the same command and remained inactive. No updater version
-  checks were relaxed; native Windows testing remains separate. Normal pushes to `main` now run lints/workspace
-  tests even with an already published changelog version; only a new version enables packaging/publication.
+  checks were relaxed; native Windows testing remains separate. CI setup, lints/tests and packaging run only
+  before publishing a new version; other pushes stop after the changelog check.
 - [ ] Native Windows 10/11 dependency repair, UAC/protected-folder behavior and security-product detections still
   need platform evidence. The launcher reports OS errors and does not change antivirus/firewall policy.
 

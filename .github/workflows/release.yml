@@ -1,6 +1,5 @@
-# Every push to main runs the lints and tests (engine fetched; game-data tests skip without the original game).
-# A new CHANGELOG.md version also builds the bundles, verifies packaged updater readiness on private Xvfb,
-# then publishes the release with checksums. An already tagged version runs checks without publishing again.
+# A new CHANGELOG.md version runs lints/tests, builds the bundles, verifies packaged updater readiness on
+# private Xvfb, then publishes the release with checksums. An already tagged version skips that job.
 name: Release
 
 on:
@@ -43,6 +42,7 @@ jobs:
   release:
     name: Verify code and prepare ${{ needs.prepare.outputs.version }}
     needs: prepare
+    if: needs.prepare.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:

@@ -108,7 +108,7 @@ tools/release.sh                                  # bundles in dist/ (Linux .tar
 tools/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-linux-x86_64.tar.gz
 #   after building that stable-version test archive; private Xvfb/xauth and fresh app data, no game/server start.
 #   Release CI requires this integration test after bundling and before publishing; no matching test is a failure.
-#   Every push to main runs lints/workspace tests, including when the top changelog version is already released.
+#   CI lints/tests, setup and packaging run only before publishing a new version; other pushes just check the changelog.
 #   Desktop and Scripts editions for each platform; stable inner roots yo3-revival-desktop/ and yo3-revival-scripts/.
 #   Desktop README is the short project README; Scripts README is the terminal guide with relocated links.
 #   Both carry all Markdown docs and root screenshots; packaging checks their copied links before archiving.

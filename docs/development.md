@@ -129,8 +129,8 @@ check; Windows Scripts hosting/login and bundled-engine initialization have been
 The release workflow runs the real Desktop archive through the updater **after bundling and before publishing**.
 The test verifies archive checksums/contents, stages the update, opens its actual launcher on private Xvfb and
 requires the process's window-readiness acknowledgement before activation. A failed check blocks publication.
-Normal pushes to `main` run lints and workspace tests even when the changelog version is already released;
-bundling, this archive check and publishing run only for a new release version.
+CI setup, lints, tests, bundling and this archive check run only before publishing a new release version.
+When the changelog version is already released, the workflow stops after checking its version and tag.
 
 Run the same check locally on Linux with `Xvfb`, `xvfb-run` and `xauth` installed:
 
@@ -153,7 +153,7 @@ This checks Linux package activation; native Windows verification remains separa
 3. Commit in logical slices on a feature branch. Follow the working guide's local merge policy and ask before pushing.
 4. A push to `main` with an untagged top changelog version runs the release workflow: tests/lints, four bundles,
    the mandatory packaged-updater check, checksums, release notes and a GitHub release. An already published top
-   version runs checks without publishing again.
+   version skips verification, bundling and publishing after the changelog check.
 
 Desktop checks select only the matching Desktop archive; Scripts updates stay manual. Maintainer architecture and
 protocol evidence live in [authentication](authentication.md), [protocol](protocol.md), [client internals](client-internals.md)
