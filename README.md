@@ -1,6 +1,9 @@
 # YO3 Revival
 
-Play **Yu-Gi-Oh! ONLINE 3 (Duel Accelerator)** again, against the computer or with friends.
+A private server and launcher for the retired **Yu-Gi-Oh! ONLINE 3 (Duel Accelerator)**. Play again against the
+computer or with friends, using the original game client on your own server.
+
+![The original game client in a duel against Seto Kaiba, running on Revival](screenshots/duel.png)
 
 ## Start playing
 
@@ -26,6 +29,14 @@ Use **64-bit Windows 10/11**, or **Linux with Wine**. [Game installation help](d
   invitations for friends. [Hosting guide](docs/launcher.md#host-friends).
 - **Scripts edition:** Follow the [terminal hosting setup](docs/scripts.md#host-friends) and
   [server and account commands](docs/guide.md).
+
+## In the game
+
+| Duel against Kaiba | Official character decks |
+| --- | --- |
+| ![Meet Seto Kaiba at Kaiba Corporation](screenshots/kaiba.png) | ![Choose from the Yugi, Jaden and Yusei decks](screenshots/decks.png) |
+
+[Features and limitations](docs/playing.md#features-and-limitations) · [Development roadmap](docs/roadmap.md)
 
 Pre-alpha: [report bugs](https://github.com/usersina/yo3-revival/issues/new/choose).
 [MIT](LICENSE) · [Project, credits and support](docs/about.md). Unaffiliated with Konami.
