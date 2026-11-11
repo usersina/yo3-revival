@@ -629,6 +629,13 @@ host's Start is the only gate. **Impossible without a request to answer**, so no
 
 ### Decks (deck editor `DeckEditTest`, handler `0x43FC60`)
 
+Hosting requires readable game card data and starting decks before accepting players (**confirmed**, startup
+contracts for missing/corrupt archives). The former empty-world fallback could send a valid `9000` shape with
+zero owned cards; a scratch-account A/B reproduced that behavior with missing host data and restored 218 distinct
+owned cards when the host used the complete installation. This is a reproduced failure path relevant to
+[issue #4](https://github.com/usersina/yo3-revival/issues/4), not a confirmed diagnosis of that reporter's installation.
+The reply shapes below are unchanged; only explicit in-process protocol fixtures may opt into an empty world.
+
 The client keeps decks as **local files**: `<My Documents>\Yu-Gi-Oh! ONLINE 3\players\<pname>\decks\<deck_name>.y3d`
 (saved by `0x52EE60`, loaded by `0x52EB70`). Opening Edit Deck asks for the deck list and saves every listed deck the
 player doesn't have yet (by name; `0x43E550` checks). The NPC duel (`0x4BD880`) then needs one local deck that

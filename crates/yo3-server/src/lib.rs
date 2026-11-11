@@ -65,6 +65,9 @@ pub struct Config {
     pub advertise: Option<String>,
     pub http_port: u16,
     pub game_dir: PathBuf,
+    /// Protocol-test fixtures only: permit an empty world when no game installation is available.
+    /// Normal hosting always requires game data; this is not exposed as a CLI option.
+    pub allow_missing_game_data: bool,
     pub log_dir: PathBuf,
     pub packet_logging: bool,
     pub diagnostic_id: Option<String>,
@@ -104,6 +107,7 @@ impl Config {
             advertise: None,
             http_port: 0,
             game_dir: yo3_data::default_game_dir(),
+            allow_missing_game_data: true,
             log_dir: log_dir.clone(),
             packet_logging: true, diagnostic_id: None,
             players: vec!["test".into()],
@@ -141,8 +145,6 @@ impl Running {
     }
 }
 
-/// Banlist ids, card rows and NPCs from the client's own files, or ids 1-20 and nothing else if the
-/// game is absent.
 /// A regulation by its id or its name (ignoring case), among the client's (id, name) pairs; else what there is.
 pub fn regulation_by(arg: &str, known: &[(u32, String)]) -> Result<u32, String> {
     let found = match arg.trim().parse::<u32>() {
@@ -243,6 +245,9 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
         },
         Err(e) => {
+            if !cfg.allow_missing_game_data {
+                anyhow::bail!("Cannot load the host's game data from {}: {e}. Select a complete Yu-Gi-Oh! ONLINE 3 v1.153 installation with --game-dir (Desktop: Game setup). Hosting was not started; existing accounts and decks were preserved.", cfg.game_dir.display());
+            }
             tracing::warn!("game data not loaded ({e}); using regulation ids 1-20");
             let login_regulation = match cfg.regulation.as_deref().map(str::parse::<u32>) {
                 Some(Ok(id)) => id,
@@ -252,6 +257,9 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             World { duel_server, http_port, login_regulation, ..World::new((1..=20).collect()) }
         }
     };
+    if !cfg.allow_missing_game_data && (world.cards.is_empty() || (world.starter_deck.is_none() && world.official_decks.is_empty())) {
+        anyhow::bail!("The host's game data has no usable cards or starting decks. Select a complete Yu-Gi-Oh! ONLINE 3 v1.153 installation with --game-dir (Desktop: Game setup). Hosting was not started; existing accounts and decks were preserved.");
+    }
     tracing::info!("players log in with regulation {}", world.login_regulation);
     Ok(world)
 }

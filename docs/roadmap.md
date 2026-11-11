@@ -29,6 +29,14 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 Platform scope: **64-bit Windows 10/11** and **Linux with Wine**. **Windows 7 support is out of scope for now**,
 for both Desktop and Scripts. Current compatibility and native Windows verification work targets Windows 10/11.
 
+Startup feedback (2026-11-11):
+
+- [x] Normal hosting refuses missing/corrupt game archives and empty card/deck data before player-storage migration
+  or accepting players. Only explicit in-process protocol fixtures retain the empty-world path. CLI regressions
+  preserve existing files and the server key. Live A/B: absent data refuses startup; the complete installation gives
+  the same scratch account 218 distinct cards, 498 total. This addresses a reproduced path relevant to
+  [#4](https://github.com/usersina/yo3-revival/issues/4); the reporter's exact cause remains unconfirmed.
+
 v0.0.4 release preparation (2026-11-10):
 
 - [x] README and illustrated launcher guide lead with release downloads and the current four-page UI. Fresh Windows

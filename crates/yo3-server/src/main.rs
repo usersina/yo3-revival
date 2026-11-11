@@ -129,6 +129,7 @@ async fn main() -> anyhow::Result<()> {
         advertise: a.advertise,
         http_port: a.http_port,
         game_dir: a.game_dir.unwrap_or_else(yo3_data::default_game_dir),
+        allow_missing_game_data: false,
         log_dir: a.log_dir,
         packet_logging: !a.no_packet_log, diagnostic_id: log.as_ref().map(|l| l.id()),
         players: a.players,
