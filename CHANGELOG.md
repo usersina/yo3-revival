@@ -12,6 +12,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Detailed duel diagnostics allow cold dependency fingerprinting up to two minutes without extending the
+  30-second deadline for game actions. Recording errors no longer claim that the engine and model disagree.
 - Fixed Windows game startup requesting administrator access and then failing to inject the connection DLL.
   Desktop and Scripts now run the game with your normal user permissions.
 - Fixed the connection DLL rejecting supported Windows games when ASLR changes their load address. Login,

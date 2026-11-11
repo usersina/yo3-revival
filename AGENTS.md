@@ -312,9 +312,13 @@ python3 tools/monkey/duel-replay.py --server SERVER.log --duel 1         # repla
   needs its own private profile. Additional players of one account use `login SLOT`. No legacy client path exists.
 - The Ghidra C export drops the client's log strings, so a log line ("chat room list success") can't be grepped
   there. Use `yodis.py` on the handler to see which case prints it.
-- A Windows 11 VM (libvirt `win11`, 192.168.122.71, shared folder `/data/shared`) runs the real client natively: it
-  needs a launcher profile and a certificate covering 192.168.122.1. The new launcher has not yet had a native
-  Windows VM end-to-end check. Networking reaches the host once firewalld's `libvirt` zone allows TLS port 7443 (its catch-all reject blocks
+- A Windows 11 VM (libvirt `win11`, 192.168.122.71, shared folder `/data/shared`, guest `Z:`) runs the real client
+  natively. Desktop and Scripts standard-user startup, a complete checked NPC duel, exports and updater activation
+  passed on build 22000.2538 using a private writable game copy. Windows 10/protected-folder checks remain separate.
+  Use VM input only with explicit user authorization; libvirt/QEMU virtual input does not move the host pointer.
+  Keep the VM/host clocks correct for TLS; the scratch identity is renewed without replacing its key when needed.
+  A guest connecting to the host needs a profile/certificate for that host. Networking reaches the host once
+  firewalld's `libvirt` zone allows TLS port 7443 (its catch-all reject blocks
   them; the user runs `sudo firewall-cmd --zone=libvirt --add-port=7443/tcp`). `virsh -c
   qemu:///system screenshot win11 FILE` shows its display without touching it; the user drives it.
 - Card drags (Edit Deck, Card Swap) need a hover before the press: `xdotool` on the client's display, moving onto the

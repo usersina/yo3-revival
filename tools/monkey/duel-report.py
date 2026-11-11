@@ -46,7 +46,7 @@ def main():
     expected, observed = records(server, "[YO3 EXPECT] "), records(client, "[YO3 CHECK] ")
     problems = compare(expected, observed) + coverage_problems(server)
     if any(re.search(r"ERROR.*duel check", line) for line in server):
-        problems.append("The server reported an engine/model mismatch.")
+        problems.append("The server reported a duel-check or recording error; inspect its ERROR lines.")
     if any(re.search(r"page fault|unhandled exception|panicked at", line, re.I) for line in server + client):
         problems.append("A crash was recorded.")
     for problem in problems: print("FAIL:", problem)

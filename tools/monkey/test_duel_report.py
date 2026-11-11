@@ -1,12 +1,29 @@
 import importlib.util
+import contextlib
+import io
 from pathlib import Path
+import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("duel_report", Path(__file__).with_name("duel-report.py"))
 report = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(report)
 
 class NativeReportTests(unittest.TestCase):
+    def test_a_recording_failure_does_not_claim_the_models_disagreed(self):
+        expected = '{"schema":1,"sequence":1,"expected":[123,456]}'
+        passed = '{"schema":1,"sequence":1,"expected":[123,456],"actual":[123,456],"status":"pass"}'
+        with tempfile.TemporaryDirectory() as directory:
+            server, client = [Path(directory) / name for name in ("server.log", "game.log")]
+            server.write_text(f'INFO [YO3 EXPECT] {expected}\nERROR duel check: recording identity unavailable: timeout\n')
+            client.write_text(f'[YO3 CHECK] {passed}\n')
+            output = io.StringIO()
+            with patch("sys.argv", ["duel-report.py", "--server", str(server), "--client", str(client)]), contextlib.redirect_stdout(output):
+                self.assertEqual(report.main(), 1, "incomplete diagnostics must still fail validation")
+            self.assertIn("recording error", output.getvalue())
+            self.assertNotIn("engine/model mismatch", output.getvalue())
+
     def test_missing_duplicate_and_failed_acknowledgements_never_pass(self):
         expected = [{"schema": 1, "sequence": 1, "expected": [123, 456]}]
         passed = expected[0] | {"status": "pass", "actual": [123, 456]}

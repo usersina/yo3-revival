@@ -2,7 +2,8 @@
 //! JSON lines. Cards go in and come back as Konami card ids. `engine/fetch.sh` fetches what it needs.
 //!
 //! The calls block (a step of the core takes milliseconds), but never for longer than [`CALL_TIMEOUT`]: a sidecar that
-//! hangs is killed and the call fails, like one that died.
+//! hangs is killed and the call fails, like one that died. Diagnostic dependency hashing has a separate bounded
+//! budget because it reads thousands of files; it does not extend the deadlines for playing a duel.
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -23,6 +24,8 @@ pub struct Answer {
 
 /// How long one call may take (a duel's first call loads the card database, a step takes milliseconds).
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(30);
+/// Debug recording hashes thousands of dependency files, which can be cold on Windows.
+const IDENTITY_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The oldest Node.js that runs `duelcore.ts` directly (type stripping without a flag).
 pub const MIN_NODE: (u32, u32) = (22, 18);
@@ -65,6 +68,7 @@ pub struct Engine {
     /// The sidecar's output lines, read by a thread of their own so a call can time out.
     lines: Receiver<io::Result<String>>,
     timeout: Duration,
+    identity_timeout: Duration,
     recording: Option<(u64, u32)>,
 }
 static RECORDING_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -80,7 +84,9 @@ impl Engine {
     pub fn start(dir: &Path) -> io::Result<Engine> {
         let mut node = Command::new(node(dir));
         node.arg(dir.join("duelcore.ts"));
-        Engine::spawn(node, CALL_TIMEOUT)
+        let mut engine = Engine::spawn(node, CALL_TIMEOUT)?;
+        engine.identity_timeout = IDENTITY_TIMEOUT;
+        Ok(engine)
     }
 
     /// Runs `command` as the sidecar (JSON lines on its stdin and stdout), each call allowed `timeout`.
@@ -97,11 +103,11 @@ impl Engine {
                 }
             }
         });
-        Ok(Engine { child, stdin, lines, timeout, recording: None })
+        Ok(Engine { child, stdin, lines, timeout, identity_timeout: timeout, recording: None })
     }
 
     pub fn identity(&mut self) -> io::Result<Json> {
-        let identity = self.line(json!({"op":"identity"}))?;
+        let identity = self.line_with_timeout(json!({"op":"identity"}), self.identity_timeout)?;
         let fingerprints = ["sidecar", "core", "bindings", "scripts", "database", "card_ids"];
         if !identity["node"].is_string() || fingerprints.iter().any(|k| !identity[*k].as_str()
             .is_some_and(|s| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())))
@@ -151,11 +157,15 @@ impl Engine {
 
     /// Sends one request line and reads the answer line, within the timeout.
     fn line(&mut self, request: Json) -> io::Result<Json> {
+        self.line_with_timeout(request, self.timeout)
+    }
+
+    fn line_with_timeout(&mut self, request: Json, timeout: Duration) -> io::Result<Json> {
         if let Some((_, call)) = &mut self.recording { *call += 1; }
         self.record_line("request", &request.to_string());
         writeln!(self.stdin, "{request}")?;
         self.stdin.flush()?;
-        let line = match self.lines.recv_timeout(self.timeout) {
+        let line = match self.lines.recv_timeout(timeout) {
             Ok(line) => line?,
             Err(RecvTimeoutError::Timeout) => {
                 let _ = self.child.kill();
@@ -194,6 +204,23 @@ impl Drop for Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn cold_diagnostic_fingerprints_have_their_own_budget_without_unbounding_duel_steps() {
+        let hash = "0".repeat(64);
+        let identity = json!({"node":"v26.13.0", "sidecar":hash, "core":hash, "bindings":hash,
+            "scripts":hash, "database":hash, "card_ids":hash});
+        let mut fixture = Command::new("sh");
+        fixture.arg("-c").arg(format!("read -r request; sleep 0.15; printf '%s\\n' '{identity}'; read -r request; printf '%s\\n' '{{\"status\":\"await\",\"messages\":[],\"errors\":[]}}'; read -r request; exec sleep 10"));
+        let mut engine = Engine::spawn(fixture, Duration::from_millis(50)).unwrap();
+        engine.identity_timeout = Duration::from_secs(2);
+        engine.identity().expect("cold dependency hashing must not use the short duel-step deadline");
+        engine.new_duel(1, 8000, [(&[4007; 40], &[]), (&[4007; 40], &[])]).unwrap();
+        let started = std::time::Instant::now();
+        assert_eq!(engine.state().unwrap_err().kind(), io::ErrorKind::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(1), "duel steps keep the original deadline");
+    }
 
     #[test]
     fn the_bundled_node_is_preferred_to_the_one_on_the_path() {

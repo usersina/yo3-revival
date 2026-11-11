@@ -57,8 +57,9 @@ Startup feedback (2026-11-11):
   fixture whose launcher exits immediately failed the same command and remained inactive. No updater version
   checks were relaxed; native Windows testing remains separate. CI setup, lints/tests and packaging run only
   before publishing a new version; other pushes stop after the changelog check.
-- [ ] Native Windows 10/11 dependency repair, UAC/protected-folder behavior and security-product detections still
-  need platform evidence. The launcher reports OS errors and does not change antivirus/firewall policy.
+- [ ] Native Windows 10, installing direct start in protected folders and reinstalling missing runtimes still need
+  platform evidence. Windows 11 standard-user checks below used a writable private game copy, with Defender active;
+  they do not establish reputation with every security product. The app does not change antivirus/firewall policy.
 - [x] Native Windows 11 build 22000.2538: reproduced the supported game's runtime check passing with a normal
   drive path but failing with Rust's canonical extended-path prefix. Compatible native path handling now covers
   runtime probes, injection and direct-loader configuration. The Windows path regression went red/green with
@@ -73,6 +74,20 @@ Startup feedback (2026-11-11):
   error 5. Scoped `RunAsInvoker` on the injector/game tree fixes normal Desktop Start without elevating the app or
   server. The Windows regression went red/green; live token checks show every component non-elevated. A fresh
   player received its starter automatically and entered matchmaking before ever opening Deck Edit.
+- [x] Native Windows diagnostic I/O: a second duel's dependency fingerprint hit the 30-second engine-call deadline
+  during archive extraction. Separate native probes measured 61.4 seconds and 7.5 seconds for valid identities.
+  Fingerprinting now has its own bounded two-minute budget; a delayed-fixture regression went red/green and still
+  proves that stalled duel steps retain their shorter deadline. Recording errors continue to fail the report without
+  being mislabeled as a proven engine/model mismatch.
+- [x] Native Windows 11 completion: Normal Start authenticates and prepares a fresh starter; Scripts wrappers host
+  with their bundled engine and launch the real client. A complete NPC duel ended with a battle win, all five native
+  checkpoints matching, no checker errors and all 59 recorded calls replaying exactly. The earlier PvP recording's
+  31 calls also replay exactly. Four native engine contracts cover opening, complete self-play, battle move reasons
+  and field stats; native Rust identity checks pass for absolute and relative engine paths.
+- [x] The rebuilt Windows package passed native updater activation; the deliberately broken update remained
+  inactive. Both archive component inventories verify. Native current/all-retained exports contain 7/21 entries,
+  pass ZIP integrity and credential/home-path checks. A missing Desktop DLL disables Start with repair guidance;
+  restoring it permits revalidation. Linux workspace: 583 tests, strict Clippy and docs checks pass.
 
 v0.0.4 release preparation (2026-11-10):
 

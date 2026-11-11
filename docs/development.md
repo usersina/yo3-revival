@@ -73,6 +73,16 @@ reports native slots, card visibility, hands/piles, LP, stats, counters, turns a
 deck order and dependency fingerprints are recorded for replay. This catches model/native drift; it does not prove
 that every rendered animation or legal menu interaction is correct.
 
+The diagnostic dependency scan reads thousands of files and may be slow on cold Windows storage, especially during
+extraction or security scanning. It has a separate two-minute deadline; normal duel-engine calls remain limited to
+30 seconds. A recording failure still fails the report, and is not evidence that the engine and client model disagreed.
+Heavy I/O can still exhaust that budget: failed recordings must remain failed. Keep live validation separate from
+archive extraction and collect the complete session; do not discard an error to make a report pass.
+
+The engine integration tests accept `YO3_ENGINE_DIR` to check an extracted bundle, including a copied Windows test
+binary on a native VM. Without an override they use the source checkout's engine. Set the path explicitly and verify
+that output does not say dependencies were skipped before treating a native test as evidence.
+
 Collect the server and both players' matching session logs, including **every rotated part**. GUI users can export
 [diagnostic ZIPs](launcher.md#logs-and-support). Detailed logs can reveal deck contents, player names and chat;
 review them before sharing and turn tracing off afterwards.
