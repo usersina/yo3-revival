@@ -8,6 +8,7 @@ fn saving_one_section_cannot_apply_unrelated_drafts_or_change_the_play_identity(
     assert_eq!(game.game_dir,"new game"); assert_eq!(game.host_address,saved.host_address); assert_eq!(game.listen_port,7443); assert_eq!(game.local_account,"MyPlayer"); assert!(!game.detailed_logs);
     let logs=Section::Diagnostics.merge(&saved,&draft); assert!(logs.detailed_logs); assert_eq!(logs.game_dir,saved.game_dir);
     let host=Section::Hosting.merge(&saved,&draft); assert_eq!(host.host_address,draft.host_address); assert_eq!(host.game_dir,saved.game_dir); assert_eq!(host.local_account,saved.local_account);
+
 }
 #[test]
 fn editing_and_removing_a_connection_preserves_other_connections_and_preferences() {
@@ -41,4 +42,16 @@ fn diagnostics_save_uses_persisted_settings_and_a_bare_executable_is_not_ready()
     assert!(backend.save_preferences(Section::Hosting,&draft).is_err());
     assert_eq!(LauncherDb::open(&root).unwrap().settings().unwrap(),saved,"a rejected section must leave persisted settings intact");
     drop(backend); std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn normal_mode_is_the_default_and_switching_modes_preserves_saved_setup() {
+    let root=root(); let db=LauncherDb::open(&root).unwrap();
+    assert!(!db.settings().unwrap().advanced_mode);
+    let mut saved=Settings{game_dir:"my game".into(),local_account:"Mine".into(),..Default::default()};
+    saved.server_options.insert("duel-check".into(),"true".into()); db.save_settings(&saved).unwrap();
+    db.save_mode(true).unwrap(); let advanced=db.settings().unwrap();
+    assert!(advanced.advanced_mode); assert_eq!(advanced.game_dir,saved.game_dir); assert_eq!(advanced.server_options,saved.server_options);
+    db.save_mode(false).unwrap(); assert_eq!(db.settings().unwrap(),saved);
+    drop(db); std::fs::remove_dir_all(root).unwrap();
 }

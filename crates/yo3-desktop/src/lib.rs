@@ -14,6 +14,8 @@ pub mod direct;
 pub mod reports;
 pub mod updates;
 pub mod preferences;
+pub mod server_options;
+mod process;
 
 pub fn server_address(input: &str) -> anyhow::Result<(String, String)> {
     let input = input.trim();
@@ -35,6 +37,8 @@ pub fn server_address(input: &str) -> anyhow::Result<(String, String)> {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    pub advanced_mode: bool,
+    pub server_options: std::collections::BTreeMap<String, String>,
     pub game_dir: String,
     pub wine_prefix: String,
     pub host_address: String,
@@ -49,7 +53,7 @@ pub struct Settings {
 }
 impl Default for Settings {
     fn default() -> Self {
-        Self { game_dir: yo3_data::default_game_dir().to_string_lossy().into(), wine_prefix: String::new(),
+        Self { advanced_mode: false, server_options: Default::default(), game_dir: yo3_data::default_game_dir().to_string_lossy().into(), wine_prefix: String::new(),
             host_address: "localhost".into(), data_dir: String::new(), bind_address: "0.0.0.0".into(), bind_interface: None, listen_port: 7443,
             player_name: "Duelist".into(), selected_server: None, local_account: String::new(), detailed_logs: false }
     }
@@ -79,7 +83,7 @@ impl ServerChoice {
 }
 impl std::fmt::Display for ServerChoice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self { Self::Local => f.write_str("My server"), Self::Saved { title, .. } => f.write_str(title) }
+        match self { Self::Local => f.write_str("This computer"), Self::Saved { title, .. } => f.write_str(title) }
     }
 }
 impl SavedServer {
@@ -163,6 +167,9 @@ impl LauncherDb {
         self.conn.execute("INSERT INTO settings VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET body=excluded.body", [serde_json::to_string(settings)?])?;
         Ok(())
     }
+    pub fn save_mode(&self, advanced: bool) -> anyhow::Result<()> {
+        let mut saved = self.settings()?; saved.advanced_mode = advanced; self.save_settings(&saved)
+    }
     pub fn servers(&self) -> anyhow::Result<Vec<SavedServer>> {
         let mut stmt = self.conn.prepare("SELECT id,body FROM servers ORDER BY id")?;
         let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
@@ -211,15 +218,15 @@ impl Runtime {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Readiness { Ready, GameProblem(String), ComponentProblem(String) }
+pub enum Readiness { Ready, GameProblem(String), ComponentProblem(String), ValidationProblem(String) }
 pub struct Backend { pub root: PathBuf, pub runtime: Runtime, pub diagnostics: yo3_tunnel::diagnostics::Session,
-    server_session: Mutex<Option<String>>, game: Mutex<Option<Child>>, game_ready: Mutex<Option<PathBuf>>, server: Mutex<Option<Child>> }
+    server_session: Mutex<Option<String>>, game: Mutex<Option<Child>>, game_errors: Mutex<Option<process::Errors>>, game_ready: Mutex<Option<PathBuf>>, server: Mutex<Option<Child>> }
 impl Backend {
     pub fn new(root: PathBuf) -> anyhow::Result<Arc<Self>> {
         yo3_tunnel::diagnostics::private_dir(&root.join("profiles"))?;
         std::fs::create_dir_all(root.join("logs"))?;
         let diagnostics = yo3_tunnel::diagnostics::Session::start(&root.join("logs/sessions"), "app", None)?;
-        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), game_ready: Mutex::new(None), server: Mutex::new(None) }))
+        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), game_errors: Mutex::new(None), game_ready: Mutex::new(None), server: Mutex::new(None) }))
     }
     pub fn data_dir(&self, settings: &Settings) -> PathBuf {
         if settings.data_dir.trim().is_empty() { self.root.join("server") } else { PathBuf::from(&settings.data_dir) }
@@ -244,37 +251,41 @@ impl Backend {
         if let Some(live) = self.live(settings) { return admin::manage(&live, &ManagerOp::Status).map_err(anyhow::Error::msg) }
         ensure!(owned.as_mut().is_none_or(|p| p.try_wait().ok().flatten().is_some()), "Server is still starting.");
         validate_game(Path::new(&settings.game_dir))?;
-        ensure!(self.runtime.server.is_file(), "The server executable is missing. Extract the complete application bundle.");
-        ensure!(yo3_server::engine::problem(Some(&self.runtime.engine)).is_none(), "The rules engine is incomplete. Extract the complete application bundle again.");
+        self.check_server_resources()?;
         let (_, name) = server_address(&settings.host_address)?;
         let bind = network::resolve_bind(settings, &network::bindings()?)?;
         ensure!(settings.listen_port > 0, "Port must be between 1 and 65535.");
+        let mut cmd = self.server_command(settings, bind)?;
         let data = self.data_dir(settings);
         yo3_server::auth::maintain_identity(&data, vec!["localhost".into(), "127.0.0.1".into(), name.clone()])?;
         yo3_server::store::initialize(&data)?;
         let mut directory = yo3_server::accounts::Directory::open(vec![], &data.join("accounts.json"))?;
         if directory.entries().next().is_none() { directory.add_account(std::slice::from_ref(&settings.player_name)).map_err(anyhow::Error::msg)?; }
         drop(directory);
-        let mut cmd = self.server_command(settings, bind);
         detach_server(&mut cmd);
         *self.server_session.lock().unwrap() = None;
-        *owned = Some(cmd.spawn().context("Start the server")?);
+        let (child,errors)=process::spawn(&mut cmd,&self.diagnostics,"Server")?;
+        *owned = Some(child);
         for _ in 0..100 {
             if let Ok(status) = self.status(settings) { return Ok(status) }
-            if owned.as_mut().unwrap().try_wait()?.is_some() { anyhow::bail!("Server exited during startup. Open Activity for details.") }
+            if let Some(status)=owned.as_mut().unwrap().try_wait()? { anyhow::bail!("The server stopped during startup ({status}).\n{}\nCorrect the reported problem and try again. Export logs if you need help.",errors.finish()) }
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
-        anyhow::bail!("Server did not become ready. Open Activity for details.")
+        anyhow::bail!("The server did not become ready within 10 seconds. Check its status before retrying. Export logs to share the startup details.")
     }
-    fn server_command(&self, settings: &Settings, bind: std::net::IpAddr) -> Command {
+    fn server_command(&self, settings: &Settings, bind: std::net::IpAddr) -> anyhow::Result<Command> {
+        let extra = server_options::arguments(settings)?;
         let port = settings.listen_port.to_string();
         let mut cmd = Command::new(&self.runtime.server);
-        cmd.args(["--bind", &bind.to_string(), "--auth-port", &port, "--http-port", "0"])
+        cmd.args(["--bind", &bind.to_string(), "--auth-port", &port])
             .arg("--data-dir").arg(self.data_dir(settings)).arg("--game-dir").arg(&settings.game_dir).arg("--log-dir").arg(self.root.join("logs"))
             .arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id())
             .env("YO3_ENGINE_DIR", &self.runtime.engine).env("NO_COLOR", "1").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-        if settings.detailed_logs { cmd.arg("--duel-check"); } else { cmd.arg("--no-packet-log"); }
-        cmd
+        if !settings.server_options.contains_key("http-port") { cmd.args(["--http-port", "0"]); }
+        if settings.detailed_logs && !settings.server_options.contains_key("duel-check") { cmd.arg("--duel-check"); }
+        if !settings.detailed_logs && !settings.server_options.contains_key("no-packet-log") { cmd.arg("--no-packet-log"); }
+        cmd.args(extra);
+        Ok(cmd)
     }
     pub fn stop_server(&self, settings: &Settings) -> anyhow::Result<Value> {
         self.manage(settings, ManagerOp::Shutdown)
@@ -290,14 +301,15 @@ impl Backend {
         Ok(())
     }
     pub fn invitation(&self, settings: &Settings, who: &str) -> anyhow::Result<SavedServer> {
-        ensure!(network::share_address(settings)?.is_some(), "Set a sharing address under My server → Advanced before exporting an invitation for friends.");
+        ensure!(network::share_address(settings)?.is_some(), "Save a reachable sharing address under Advanced → Hosting → Advanced before making invitations.");
         self.account_connection(settings, who)
     }
     fn account_connection(&self, settings: &Settings, who: &str) -> anyhow::Result<SavedServer> {
         let key = self.manage(settings, ManagerOp::ExportAccount { who: who.into() })?["key"].as_str().context("Missing account key")?.to_string();
         let (address, server_name) = network::advertised(settings)?;
         Ok(SavedServer { id: 0, label: format!("{}'s server", who), address, server_name,
-            certificate: std::fs::read_to_string(self.data_dir(settings).join("server.crt"))?, identity: None, key })
+            certificate: std::fs::read_to_string(settings.server_options.get("auth-cert").map(PathBuf::from)
+                .unwrap_or_else(|| self.data_dir(settings).join("server.crt")))?, identity: None, key })
     }
     pub fn game_running(&self) -> bool {
         self.game.lock().unwrap().as_mut().is_some_and(|child| child.try_wait().ok().flatten().is_none())
@@ -307,8 +319,9 @@ impl Backend {
     pub fn game_failure(&self) -> Option<String> {
         let mut game = self.game.lock().unwrap();
         let status = game.as_mut()?.try_wait().ok().flatten()?;
-        *game = None; self.clear_game_ready();
-        (!status.success()).then(|| "The game could not start or exited unexpectedly. Open Activity → Game & launcher for details.".into())
+        let ready=self.game_ready(); *game = None; self.clear_game_ready();
+        let detail=self.game_errors.lock().unwrap().take().map(|e|e.finish()).unwrap_or_default();
+        (!status.success()).then(|| format!("{} ({status}).\n{detail}\nChoose Validate game to check files, then try Start again. If it still fails, export logs for help.",if ready{"The game stopped unexpectedly"}else{"The game could not start"}))
     }
     pub fn local_connection(&self, settings: &Settings, who: &str) -> anyhow::Result<SavedServer> {
         let account = if who.is_empty() { self.accounts(settings)?[0]["players"][0]["name"].as_str().unwrap_or("Duelist").to_string() } else { who.to_string() };
@@ -321,13 +334,30 @@ impl Backend {
     }
     pub fn readiness(&self, settings: &Settings) -> Readiness {
         if let Err(error) = validate_game(Path::new(&settings.game_dir)) { return Readiness::GameProblem(format!("{error:#}")) }
-        match self.check_components(settings) { Ok(()) => Readiness::Ready, Err(error) => Readiness::ComponentProblem(format!("{error:#}")) }
+        let components=self.check_components(settings).and_then(|()| if settings.selected_server.is_none() { self.check_server_resources() } else { Ok(()) });
+        match components { Ok(()) => Readiness::Ready, Err(error) => Readiness::ComponentProblem(format!("{error:#}")) }
     }
     pub fn check_game(&self, settings: &Settings) -> anyhow::Result<()> {
         validate_game(Path::new(&settings.game_dir))?; self.check_components(settings)
     }
+    fn check_server_resources(&self) -> anyhow::Result<()> {
+        ensure!(self.runtime.server.is_file(), "Required server file is missing: {}. Extract the complete application bundle.",self.runtime.server.display());
+        if let Some(problem)=yo3_server::engine::problem(Some(&self.runtime.engine)) {
+            anyhow::bail!("The rules engine is incomplete: {problem}. Extract the complete application bundle again.");
+        }
+        Ok(())
+    }
+    pub fn validate_setup(&self, draft: &Settings, remote: Option<&SavedServer>) -> anyhow::Result<Settings> {
+        let saved=LauncherDb::open(&self.root)?.settings()?;
+        let next=preferences::Section::Game.merge(&saved,draft);
+        self.diagnostics.line("Validating original game files and required connection components");
+        self.check_game(&next)?;
+        if let Some(remote)=remote { self.check_connection(remote)?; }
+        else { self.check_server_resources()?; server_options::arguments(&next)?; }
+        self.save_preferences(preferences::Section::Game,&next)
+    }
     fn check_components(&self, settings: &Settings) -> anyhow::Result<()> {
-        ensure!(self.runtime.launcher.is_file(), "The connection launcher is missing. Restore the complete application bundle.");
+        ensure!(self.runtime.launcher.is_file(), "Required connection file is missing: {}. Restore the complete application bundle.",self.runtime.launcher.display());
         yo3_launcher::components::preflight(&Path::new(&settings.game_dir).join("yo3.exe"), &self.runtime.injector, &self.runtime.dll)?;
         let manifest = self.runtime.injector.parent().context("Application folder missing")?.join("bundle.json");
         if manifest.is_file() {
@@ -362,7 +392,8 @@ impl Backend {
         let ready = self.root.join("profiles").join(format!("game-ready-{}-{}.json", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos()));
         cmd.arg("--ready-file").arg(&ready);
         hide_console(&mut cmd);
-        let child = cmd.spawn()?;
+        let (child,errors)=process::spawn(&mut cmd,&self.diagnostics,"Game helper")?;
+        *self.game_errors.lock().unwrap()=Some(errors);
         self.clear_game_ready(); *self.game_ready.lock().unwrap() = Some(ready);
         *game = Some(child);
         Ok(())
@@ -404,16 +435,17 @@ impl Backend {
     }
     pub fn logs(&self, server: bool) -> String {
         let root = self.root.join("logs/sessions"); let ids = self.current_sessions();
-        let selected: Vec<_> = yo3_tunnel::diagnostics::records(&root).unwrap_or_default().into_iter()
-            .filter(|r| r.name.ends_with(".log") && ids.contains(&r.id) && r.id.starts_with(if server { "server-" } else { "game-" })).collect();
-        let fallback: Vec<_> = if server { vec![] } else { yo3_tunnel::diagnostics::records(&root).unwrap_or_default().into_iter().filter(|r| r.name.ends_with(".log") && ids.contains(&r.id) && (r.id.starts_with("app-") || r.id.starts_with("direct-"))).collect() };
+        let records=match yo3_tunnel::diagnostics::records(&root) {Ok(records)=>records,Err(error)=>return format!("Could not read logs: {error}. Check the data folder permissions, then retry. Copy the on-screen error if export is unavailable.\n")};
+        let selected: Vec<_> = records.iter()
+            .filter(|r| r.name.ends_with(".log") && ids.contains(&r.id) && r.id.starts_with(if server { "server-" } else { "game-" })).cloned().collect();
+        let fallback: Vec<_> = if server { vec![] } else { records.into_iter().filter(|r| r.name.ends_with(".log") && ids.contains(&r.id) && (r.id.starts_with("app-") || r.id.starts_with("direct-"))).collect() };
         let mut result = String::new();
         use std::io::{Read, Seek, SeekFrom};
         for record in fallback.into_iter().chain(selected).rev() {
-            let Ok(mut f) = std::fs::File::open(root.join(record.name)) else { continue };
+            let mut f=match std::fs::File::open(root.join(&record.name)) {Ok(f)=>f,Err(error)=>{result.push_str(&format!("Could not open log {}: {error}. Try export or Copy error.\n",record.name));continue}};
             let len = f.metadata().map(|m| m.len()).unwrap_or(0); let remaining = (96 * 1024usize).saturating_sub(result.len()); if remaining == 0 { break }
-            let _ = f.seek(SeekFrom::Start(len.saturating_sub(remaining as u64)));
-            let mut bytes = Vec::new(); let _ = f.take(remaining as u64).read_to_end(&mut bytes);
+            let mut bytes = Vec::new();
+            if let Err(error)=f.seek(SeekFrom::Start(len.saturating_sub(remaining as u64))).and_then(|_|f.take(remaining as u64).read_to_end(&mut bytes)) {result.push_str(&format!("Could not read log {}: {error}. Try export or Copy error.\n",record.name));continue}
             result = format!("{}{}", String::from_utf8_lossy(&bytes), result);
         }
         result
@@ -459,13 +491,44 @@ fn detach_server(cmd: &mut Command) {
 mod tests {
     use super::*;
     #[test]
+    fn an_unreadable_log_directory_shows_a_recovery_message_instead_of_empty_logs() {
+        let root=std::env::temp_dir().join(format!("yo3-unreadable-log-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);
+        let backend=Backend::new(root.clone()).unwrap();
+        std::fs::rename(root.join("logs/sessions"),root.join("logs/sessions-held")).unwrap();std::fs::write(root.join("logs/sessions"),"not a directory").unwrap();
+        assert!(backend.logs(false).contains("Could not read logs"));
+        std::fs::remove_file(root.join("logs/sessions")).unwrap();std::fs::rename(root.join("logs/sessions-held"),root.join("logs/sessions")).unwrap();drop(backend);std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    #[cfg(unix)]
+    fn early_helper_errors_reach_the_user_and_export_even_before_game_logging_starts() {
+        let root=std::env::temp_dir().join(format!("yo3-early-error-{}",std::process::id()));
+        let backend=Backend::new(root.clone()).unwrap();
+        let mut cmd=Command::new("sh"); cmd.args(["-c","printf 'Cannot load yo3-auth.dll\\nkey=secret-value\\n' >&2; exit 7"]);
+        let (mut child,errors)=process::spawn(&mut cmd,&backend.diagnostics,"Game helper").unwrap();
+        assert!(!child.wait().unwrap().success());
+        let detail=errors.finish(); assert!(detail.contains("Cannot load yo3-auth.dll")); assert!(!detail.contains("secret-value"));
+        let logs=backend.logs(false); assert!(logs.contains("Cannot load yo3-auth.dll")); assert!(!logs.contains("secret-value"));
+        drop(backend); std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn explicit_server_options_override_diagnostic_defaults_without_duplicate_flags() {
+        let root=std::env::temp_dir().join(format!("yo3-explicit-flags-{}",std::process::id()));
+        let backend=Backend::new(root.clone()).unwrap(); let mut s=Settings{detailed_logs:true,..Default::default()};
+        s.server_options.extend([("duel-check".into(),"false".into()),("http-port".into(),"18080".into()),("duel-lp".into(),"1000".into())]);
+        let cmd=backend.server_command(&s,std::net::Ipv4Addr::LOCALHOST.into()).unwrap();
+        let args:Vec<_>=cmd.get_args().map(|s|s.to_string_lossy().to_string()).collect();
+        assert!(!args.iter().any(|s|s=="--duel-check")); assert!(!args.iter().any(|s|s=="--http-port"));
+        assert_eq!(args.iter().filter(|s|s.starts_with("--http-port=")).count(),1); assert!(args.contains(&"--http-port=18080".into()));
+        drop(backend); std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
     fn detailed_diagnostics_enables_the_hosted_servers_duel_checker() {
         for detailed in [false, true] {
             let root=std::env::temp_dir().join(format!("yo3-desktop-duel-check-{}-{detailed}",std::process::id()));
             let _=std::fs::remove_dir_all(&root);
             let backend=Backend::new(root.clone()).unwrap();
             let settings=Settings{detailed_logs:detailed,listen_port:17443,..Settings::default()};
-            let cmd=backend.server_command(&settings,std::net::Ipv4Addr::LOCALHOST.into());
+            let cmd=backend.server_command(&settings,std::net::Ipv4Addr::LOCALHOST.into()).unwrap();
             assert_eq!(cmd.get_args().any(|a| a=="--duel-check"),detailed,"{cmd:?}");
             assert_eq!(cmd.get_args().any(|a| a=="--no-packet-log"),!detailed,"{cmd:?}");
             drop(backend); std::fs::remove_dir_all(root).unwrap();
@@ -497,7 +560,7 @@ mod tests {
         let mut failed = Command::new("sh").args(["-c", "exit 7"]).spawn().unwrap();
         while failed.try_wait().unwrap().is_none() { std::thread::sleep(std::time::Duration::from_millis(5)); }
         *backend.game.lock().unwrap() = Some(failed);
-        assert!(backend.game_failure().unwrap().contains("Activity"));
+        assert!(backend.game_failure().unwrap().contains("export logs"));
         assert!(backend.game_failure().is_none(), "report an unsuccessful launch only once");
         std::fs::remove_dir_all(root).unwrap();
     }

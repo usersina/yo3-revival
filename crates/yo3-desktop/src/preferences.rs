@@ -8,7 +8,8 @@ impl Section {
         match self {
             Self::Game => { result.game_dir = draft.game_dir.clone(); result.wine_prefix = draft.wine_prefix.clone(); }
             Self::Hosting => { result.host_address = draft.host_address.clone(); result.data_dir = draft.data_dir.clone(); result.player_name = draft.player_name.clone();
-                result.bind_address = draft.bind_address.clone(); result.bind_interface = draft.bind_interface.clone(); result.listen_port = draft.listen_port; }
+                result.bind_address = draft.bind_address.clone(); result.bind_interface = draft.bind_interface.clone(); result.listen_port = draft.listen_port;
+                result.server_options = draft.server_options.clone(); }
             Self::Diagnostics => result.detailed_logs = draft.detailed_logs,
         }
         result
@@ -32,6 +33,7 @@ impl crate::Backend {
                 crate::server_address(&next.host_address)?;
                 ensure!(next.listen_port > 0, "Port must be between 1 and 65535.");
                 crate::network::resolve_bind(&next, &crate::network::bindings()?)?;
+                crate::server_options::arguments(&next)?;
                 next.player_name = next.player_name.trim().into();
                 ensure!(!next.player_name.is_empty() && next.player_name.chars().count() <= 16, "First player name must contain 1–16 characters.");
                 if next.data_dir != saved.data_dir { next.local_account.clear(); }
