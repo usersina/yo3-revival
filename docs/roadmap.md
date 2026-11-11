@@ -29,7 +29,12 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 Platform scope: **64-bit Windows 10/11** and **Linux with Wine**. **Windows 7 support is out of scope for now**,
 for both Desktop and Scripts. Current compatibility and native Windows verification work targets Windows 10/11.
 
-Desktop log viewer follow-up (2026-11-11):
+v0.0.6 release preparation (2026-11-11):
+
+- [x] The shared workspace package version and all seven local lockfile entries are `0.0.6`; external dependencies
+  are unchanged. Release notes include the log viewer fixes below and the package-version alignment.
+
+Desktop log viewer (2026-11-11):
 
 - [x] Normal and Advanced logs fill their panels, placing the scrollbar on the right. Views open at the newest line
   and follow output only at the bottom; scrolling up preserves the older viewport and returning down resumes following.
