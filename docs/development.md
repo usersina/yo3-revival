@@ -143,8 +143,9 @@ tools/docs-check.py --root /absolute/path/to/extracted/yo3-revival-scripts
 ```
 
 Check the real app and scripts from extracted archives, including paths with spaces and non-default ports/data
-folders. Verify Linux/Wine and native Windows separately. The current Desktop changes still need a native Windows
-check; Windows Scripts hosting/login and bundled-engine initialization have been exercised under Wine.
+folders. Verify Linux/Wine and native Windows separately. Native Windows 11 checks cover Desktop/Scripts hosting
+and play, starter setup, a complete NPC duel, log export and updater activation. Windows 10, protected-folder
+direct-start installation and runtime reinstallation remain open; see the [current evidence](roadmap.md#status).
 
 ## Verify the packaged updater
 

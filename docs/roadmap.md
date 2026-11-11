@@ -29,6 +29,25 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 Platform scope: **64-bit Windows 10/11** and **Linux with Wine**. **Windows 7 support is out of scope for now**,
 for both Desktop and Scripts. Current compatibility and native Windows verification work targets Windows 10/11.
 
+v0.0.5 release preparation (2026-11-11):
+
+- [x] Release notes cover Normal/Advanced mode, Desktop/Scripts editions, Windows startup repairs, protected-monster
+  fixes and automatic diagnostic capture with optional personal filtering at export. Setup and support guides use
+  the current UI. Dated entries below retain the evidence and limitations from their original checks.
+- [x] All seven crates inherit shared versions, package metadata, dependencies and lints from the root workspace.
+  Linux and Windows resolved dependency/feature graphs match the pre-refactor graphs exactly; `Cargo.lock` is
+  unchanged. Four test fixtures were made portable after native Windows failures, preserving their assertions.
+- [x] Current verification: 590 workspace tests pass, including the 240-duel check; the one packaged-window test
+  stays reserved for the release gate. Strict Clippy passes for Linux and Windows, both release builds pass,
+  DLL/loader harnesses pass under Wine, and documentation/helper/edition checks pass.
+- [x] Native Windows 11: 111 tests across 16 test binaries pass, including all 13 engine contracts with bundled
+  dependencies. The actual Desktop validates the game, starts its isolated server, confirms DLL readiness and
+  authenticates through player selection to the main map. Linux Desktop/Wine also reaches the main map.
+  Test processes were stopped and the VM's original game Documents restored with matching hashes.
+- [ ] Publish v0.0.5 after the release workflow verifies tests, all four archives and packaged-updater readiness.
+  Native Windows 10, protected-folder direct-start installation, runtime reinstallation and separate-machine
+  network checks remain open; Windows 11 evidence does not close those items.
+
 Startup feedback (2026-11-11):
 
 - [x] Automatic bounded diagnostics replace the capture checkbox: normal game launches retain client stdout/stderr,

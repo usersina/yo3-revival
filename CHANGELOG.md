@@ -3,33 +3,28 @@
 Pre-alpha: expect bugs, and please [report them](https://github.com/usersina/yo3-revival/issues/new/choose).
 
 Each section is a release. To release, rename the "Unreleased" section at the top to the next version
-(`## v0.0.5 (date)`) and push to `main`: the release workflow builds the bundles and publishes the version under that
+(`## vX.Y.Z (date)`) and push to `main`: the release workflow builds the bundles and publishes the version under that
 tag, with the section as its notes. A push whose newest version is already released publishes nothing, so changes can
 gather under "Unreleased" first.
 
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.0.5 (2026-11-11)
 
-- The launcher opens in a smaller, centered window so its footer remains visible on laptop-sized screens.
-- Detailed duel diagnostics allow cold dependency fingerprinting up to two minutes without extending the
-  30-second deadline for game actions. Recording errors no longer claim that the engine and model disagree.
-- Fixed Windows game startup requesting administrator access and then failing to inject the connection DLL.
-  Desktop and Scripts now run the game with your normal user permissions.
-- Fixed the connection DLL rejecting supported Windows games when ASLR changes their load address. Login,
-  starter-deck setup and duel diagnostics now follow the actual image base without disabling ASLR.
-- Fixed native Windows path handling: a supported game no longer fails runtime validation merely because its
-  resolved path uses Windows' extended-path prefix. Game, connection DLL and direct-start paths use the compatible form.
-- Hosting now refuses missing, corrupt or unusable game card/deck data instead of accepting players with an empty
-  collection. Fix the host's game-folder selection and retry; existing accounts, decks and identity files are kept.
-- Game validation checks the supported v1.153 executable's hook signatures and probes its legacy DirectX/VC++ 2008
-  dependencies before startup. Missing runtimes get specific repair instructions.
-- DLL startup failures include their native stage and available Windows error/exit codes in launcher details and exported
-  logs, with credential redaction. Logs also identify the executable fingerprint and connection mod version.
+A simpler launcher, native Windows startup fixes and more reliable duels. Choose **Desktop** for the graphical app
+or **Scripts** for terminal start/play commands. Both editions include the server, rules engine and required
+connection components. Original game files are not included. **Windows 7 is not supported.**
+
+Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.5/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.5/docs/scripts.md).
+
+### Simpler play and hosting
 
 - Normal mode is one screen: choose the game folder, **Validate game**, **Start**, and visible logs.
   Switch to **Advanced** for server connections, hosting and full controls without losing settings or drafts.
+- The launcher opens in a smaller, centered window so Version, GitHub and Help remain visible on laptop-sized screens.
 - Advanced hosting lists the server's actual CLI flags, including independent `--duel-check` controls, with
   validation and per-option reset. New run flags appear automatically.
 - Startup has animated feedback, live logs, cancellation and timeouts. Errors stay visible with details, copy and
@@ -38,10 +33,28 @@ Older entries describe their release at the time. For current setup, use the [RE
 - Releases provide **Desktop** and **Scripts** editions for Windows and Linux. Archives remain versioned, while
   their inner folders are `yo3-revival-desktop/` and `yo3-revival-scripts/`. Desktop still downloads and installs
   complete verified updates after confirmation; terminal users get start-server/play scripts and a dedicated guide.
-
 - Script defaults can be overridden for bind/data/log paths. Ctrl+C during early game startup now cleans up.
 - The README is a short first-play guide; detailed help is organized in `docs/`, with current screenshots in
   root `screenshots/`. Release bundles keep the same documentation layout and check their links.
+
+### Windows startup and game validation
+
+- Fixed Windows game startup requesting administrator access and then failing to inject the connection DLL.
+  Desktop and Scripts now run the game with your normal user permissions.
+- Fixed the connection DLL rejecting supported Windows games when ASLR changes their load address. Login,
+  starter-deck setup and duel diagnostics now follow the actual image base without disabling ASLR.
+- Fixed native Windows path handling: a supported game no longer fails runtime validation merely because its
+  resolved path uses Windows' extended-path prefix. Game, connection DLL and direct-start paths use the compatible form.
+- Game validation checks the supported v1.153 executable's hook signatures and probes its legacy DirectX/VC++ 2008
+  dependencies before startup. Missing runtimes get specific repair instructions.
+- DLL startup failures include their native stage and available Windows error/exit codes in launcher details and exported
+  logs, with credential redaction. Logs also identify the executable fingerprint and connection mod version.
+- Hosting now refuses missing, corrupt or unusable game card/deck data instead of accepting players with an empty
+  collection. Fix the host's game-folder selection and retry; existing accounts, decks and identity files are kept.
+- Added clear antivirus recovery guidance, including which Revival and game-folder files may need restoring after
+  a verified false positive. The app does not change antivirus or firewall settings.
+
+### Login and duels
 
 - **ONLINE** now opens player selection directly. The required connection mod skips the unused original login
   form, including when opening the game through the installed direct-start loader.
@@ -53,9 +66,26 @@ Older entries describe their release at the time. For current setup, use the [RE
 - Added real-engine regressions for battle protection and Stardust's legal/illegal Debris Dragon combinations,
   plus simulations using all three original Yusei decks from the installed game.
 - Fixed counters being removed during control changes and dynamic monster stats resetting during some swaps.
+
+### Logs and bug reports
+
+- Managed game launches automatically retain game output, connection-mod messages and decoded server packets;
+  engine stderr is retained too. No capture checkbox needs enabling before a problem happens.
+- Current-session and retained-history ZIP exports include full diagnostic detail by default. Optional
+  **Remove personal data** filters only the exported ZIP, leaving local logs available for a later full report.
+  Credentials remain scrubbed in every mode; nothing is uploaded automatically.
 - Duel diagnostics now compare LP, monster stats, counters, turns and phases, and independently inspect the running
   game's state through the connection DLL. Reports reject missing snapshots and explicitly list coverage gaps.
   Exact engine recordings include deck order, choices and dependency fingerprints for developer replay.
+- Detailed duel diagnostics allow cold dependency fingerprinting up to two minutes without extending the
+  30-second deadline for game actions. Recording errors no longer claim that the engine and model disagree.
+
+### Development and release checks
+
+- All seven Rust crates inherit shared dependency versions, package metadata, one crate version and common lints
+  from the workspace manifest. Resolved dependencies, enabled features and `Cargo.lock` are unchanged.
+- Four test fixtures now exercise the same assertions on native Windows as on Linux.
+- Publishing requires the final Desktop archive to pass the packaged-updater startup check after tests and builds.
 
 ## v0.0.4 (2026-11-10)
 
