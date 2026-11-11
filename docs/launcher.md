@@ -3,17 +3,18 @@
 Use **Desktop** for a window with game setup, a Start button and logs. Use [Scripts](scripts.md) if you prefer a terminal.
 Both editions include the server, rules engine, Node.js and required connection components. Game files are separate.
 
-- [First launch](#first-launch)
-- [Play locally](#play-locally)
-- [Join another server](#join-another-server)
-- [Host friends](#host-friends)
-- [Connection help](#connection-help)
-- [Open the game directly](#open-the-game-directly)
-- [Logs and support](#logs-and-support)
-- [Application updates](#application-updates)
-- [Your data and upgrades](#your-data-and-upgrades)
-- [Troubleshooting](#troubleshooting)
-- [Getting the original game](#getting-the-original-game)
+- [Desktop guide](#desktop-guide)
+  - [First launch](#first-launch)
+  - [Play locally](#play-locally)
+  - [Join another server](#join-another-server)
+  - [Host friends](#host-friends)
+  - [Connection help](#connection-help)
+  - [Open the game directly](#open-the-game-directly)
+  - [Logs and support](#logs-and-support)
+  - [Application updates](#application-updates)
+  - [Your data and upgrades](#your-data-and-upgrades)
+  - [Troubleshooting](#troubleshooting)
+  - [Getting the original game](#getting-the-original-game)
 
 ## First launch
 
@@ -220,12 +221,12 @@ App storage defaults to `%LOCALAPPDATA%\YO3 Revival` on Windows and
 `${XDG_DATA_HOME:-~/.local/share}/yo3-revival` on Linux. Open it through
 **Advanced → Activity → Open application data**.
 
-| Location inside app storage | Contents |
-|---|---|
-| `launcher.db` | Preferences and saved private connections |
-| `server/server.db` | Hosted server state, including accounts, cards, BP and uploaded decks |
-| `server/server.crt`, `server/server.key` | Public certificate and private server identity key |
-| `logs/`, `profiles/` | Diagnostics and private connection profiles |
+| Location inside app storage              | Contents                                                              |
+| ---------------------------------------- | --------------------------------------------------------------------- |
+| `launcher.db`                            | Preferences and saved private connections                             |
+| `server/server.db`                       | Hosted server state, including accounts, cards, BP and uploaded decks |
+| `server/server.crt`, `server/server.key` | Public certificate and private server identity key                    |
+| `logs/`, `profiles/`                     | Diagnostics and private connection profiles                           |
 
 To reuse an existing server, **stop it and back up its entire data folder first**. Set that folder under
 **Advanced → Hosting → Advanced → Data folder**, save, then start hosting. Changing the path selects data; it does
@@ -244,27 +245,27 @@ the original pre-upgrade snapshot and loses later database-only changes. Do not 
 
 ## Troubleshooting
 
-| Problem | What to do |
-|---|---|
-| Downloaded Revival but have no game | [Install the original game separately](#getting-the-original-game), then choose its installed folder. |
-| Browse does not open a dialog | Choose **Use path instead**, close any remaining dialog and paste the game folder path. |
-| Start is disabled | Choose the game folder and click **Validate game**. If it fails, use **Show details** and the repair steps. |
-| Incomplete game | Select the full installation containing `yo3.exe`, `yo3.idx` and `package/`, not an installer or shortcut. |
-| Unsupported game executable | Use the original **v1.153** installation. Validation checks the hook signatures before startup; replacing Revival helpers cannot fix a different game build. |
-| Missing DirectX or VC90 runtime | Follow [original game runtime repair](guide.md#original-game-runtimes), then **Validate game** again. The error identifies the dependency or runtime manifest. |
-| Revival helper/DLL or engine missing | Re-extract the complete matching Desktop archive, keeping every helper and `engine/`. A different game folder will not repair app files. |
+| Problem                                      | What to do                                                                                                                                                                                                                                               |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Downloaded Revival but have no game          | [Install the original game separately](#getting-the-original-game), then choose its installed folder.                                                                                                                                                    |
+| Browse does not open a dialog                | Choose **Use path instead**, close any remaining dialog and paste the game folder path.                                                                                                                                                                  |
+| Start is disabled                            | Choose the game folder and click **Validate game**. If it fails, use **Show details** and the repair steps.                                                                                                                                              |
+| Incomplete game                              | Select the full installation containing `yo3.exe`, `yo3.idx` and `package/`, not an installer or shortcut.                                                                                                                                               |
+| Unsupported game executable                  | Use the original **v1.153** installation. Validation checks the hook signatures before startup; replacing Revival helpers cannot fix a different game build.                                                                                             |
+| Missing DirectX or VC90 runtime              | Follow [original game runtime repair](guide.md#original-game-runtimes), then **Validate game** again. The error identifies the dependency or runtime manifest.                                                                                           |
+| Revival helper/DLL or engine missing         | Re-extract the complete matching Desktop archive, keeping every helper and `engine/`. A different game folder will not repair app files.                                                                                                                 |
 | Antivirus flags Revival / a file disappeared | Check protection history and the official download. For a verified false positive, allow the affected file or exclude only the extracted Desktop folder. [Exact files, folders and recovery steps](guide.md#windows-smartscreen-and-antivirus-warnings). |
-| App settings/logs cannot open | Check the data folder's permissions/free space, then **Retry app setup**. Copy the error if it continues; keep your saved data. |
-| Game startup fails or stalls | Read **Show details** and the logs. Use **Close game** when available, validate and try again; export logs if it repeats. |
-| DLL did not initialize / unexpected EOF | Current builds include the native failure stage and Windows error/exit code in details and logs. Keep those details when reporting; an EOF alone does not identify the cause. |
-| Trunk shows no cards | Clear the editor's filters and check server logs. The host must load complete game card/deck data; current builds refuse hosting if that fails. Correct the host's game folder and restart, keeping all account/deck data. |
-| Cannot connect to a friend | Confirm the selected connection in **Advanced → Play**, then **Test connection**. Check [network access](#connection-help). |
-| Identity or authentication refused | Confirm identity changes with the host, or import the correct invitation for this server/account. |
-| Cannot save a diagnostic ZIP | Check the error in the export dialog, choose a writable folder and retry. Copy logs/error as a fallback. |
-| A long session disconnects | Sessions last 12 hours. Close the game and start it again. |
-| A duel ends immediately as a draw | Check server logs for **DUELS WON'T WORK** and restore the complete bundled engine. Source builds need the [engine dependencies](development.md#build-from-source). |
-| A card seems to behave incorrectly | Check [card rules](playing.md#card-effects-and-summon-rules), then [record the duel](#logs-and-support) if needed. |
-| Windows 7 | The current release requires a supported modern OS, even if the original game itself runs there. |
+| App settings/logs cannot open                | Check the data folder's permissions/free space, then **Retry app setup**. Copy the error if it continues; keep your saved data.                                                                                                                          |
+| Game startup fails or stalls                 | Read **Show details** and the logs. Use **Close game** when available, validate and try again; export logs if it repeats.                                                                                                                                |
+| DLL did not initialize / unexpected EOF      | Current builds include the native failure stage and Windows error/exit code in details and logs. Keep those details when reporting; an EOF alone does not identify the cause.                                                                            |
+| Trunk shows no cards                         | Clear the editor's filters and check server logs. The host must load complete game card/deck data; current builds refuse hosting if that fails. Correct the host's game folder and restart, keeping all account/deck data.                               |
+| Cannot connect to a friend                   | Confirm the selected connection in **Advanced → Play**, then **Test connection**. Check [network access](#connection-help).                                                                                                                              |
+| Identity or authentication refused           | Confirm identity changes with the host, or import the correct invitation for this server/account.                                                                                                                                                        |
+| Cannot save a diagnostic ZIP                 | Check the error in the export dialog, choose a writable folder and retry. Copy logs/error as a fallback.                                                                                                                                                 |
+| A long session disconnects                   | Sessions last 12 hours. Close the game and start it again.                                                                                                                                                                                               |
+| A duel ends immediately as a draw            | Check server logs for **DUELS WON'T WORK** and restore the complete bundled engine. Source builds need the [engine dependencies](development.md#build-from-source).                                                                                      |
+| A card seems to behave incorrectly           | Check [card rules](playing.md#card-effects-and-summon-rules), then [record the duel](#logs-and-support) if needed.                                                                                                                                       |
+| Windows 7                                    | The current release requires a supported modern OS, even if the original game itself runs there.                                                                                                                                                         |
 
 These executables and the injector/DLL are unsigned. [Windows warnings](guide.md#windows-smartscreen-and-antivirus-warnings)
 explains what to check. Native Windows 11 checks cover standard-user startup in a writable game copy, Desktop and

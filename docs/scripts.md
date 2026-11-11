@@ -11,12 +11,15 @@ for a release bundle.
 [Download Scripts for your system](https://github.com/usersina/yo3-revival/releases/latest) and extract the entire
 archive. Keep every file together in `yo3-revival-scripts/`. Open a terminal in that folder.
 
-- [Play on your own PC](#play-on-your-own-pc)
-- [Join a friend's server](#join-a-friends-server)
-- [Host friends](#host-friends)
-- [Options and logs](#options-and-logs)
-- [When something fails](#when-something-fails)
-- [Updates](#updates)
+- [Scripts edition](#scripts-edition)
+  - [Play on your own PC](#play-on-your-own-pc)
+    - [Windows](#windows)
+    - [Linux](#linux)
+  - [Join a friend's server](#join-a-friends-server)
+  - [Host friends](#host-friends)
+  - [Options and logs](#options-and-logs)
+  - [When something fails](#when-something-fails)
+  - [Updates](#updates)
 
 ## Play on your own PC
 

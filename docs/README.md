@@ -4,15 +4,15 @@ New here? The [main README](../README.md) gets you into your first game.
 
 ## Play and host
 
-| I want to… | Read |
-|---|---|
-| Set up the Desktop app, join a friend or host | [Desktop guide](launcher.md) |
-| Learn the game controls and start duelling | [Playing guide](playing.md) |
-| Use terminal scripts instead of the app | [Scripts edition](scripts.md) |
-| Find a server command or change network settings | [Command-line reference](guide.md) |
-| Fix a setup problem or report a bug | [Troubleshooting](launcher.md#troubleshooting) |
-| Update or back up an existing setup | [Desktop updates](launcher.md#application-updates), [backups](launcher.md#your-data-and-upgrades), [Scripts updates](scripts.md#updates) |
-| Understand the project, credits or license | [About YO3 Revival](about.md) |
+| I want to…                                       | Read                                                                                                                                     |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Set up the Desktop app, join a friend or host    | [Desktop guide](launcher.md)                                                                                                             |
+| Learn the game controls and start duelling       | [Playing guide](playing.md)                                                                                                              |
+| Use terminal scripts instead of the app          | [Scripts edition](scripts.md)                                                                                                            |
+| Find a server command or change network settings | [Command-line reference](guide.md)                                                                                                       |
+| Fix a setup problem or report a bug              | [Troubleshooting](launcher.md#troubleshooting)                                                                                           |
+| Update or back up an existing setup              | [Desktop updates](launcher.md#application-updates), [backups](launcher.md#your-data-and-upgrades), [Scripts updates](scripts.md#updates) |
+| Understand the project, credits or license       | [About YO3 Revival](about.md)                                                                                                            |
 
 ## Build and contribute
 

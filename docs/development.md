@@ -4,12 +4,13 @@ These commands run in a **source checkout**, not an extracted release. For playi
 [Desktop](launcher.md) or [Scripts](scripts.md). Contributors should first read the
 [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md).
 
-- [Build from source](#build-from-source)
-- [Checks](#checks)
-- [Duel diagnostics](#duel-diagnostics)
-- [Build release bundles](#build-release-bundles)
-- [Verify the packaged updater](#verify-the-packaged-updater)
-- [Publish a release](#publish-a-release)
+- [Development guide](#development-guide)
+  - [Build from source](#build-from-source)
+  - [Checks](#checks)
+  - [Duel diagnostics](#duel-diagnostics)
+  - [Build release bundles](#build-release-bundles)
+  - [Verify the packaged updater](#verify-the-packaged-updater)
+  - [Publish a release](#publish-a-release)
 
 ## Build from source
 
@@ -128,8 +129,8 @@ Node and third-party notices are included. Game files, account profiles and serv
 
 Four archives are produced under `dist/`:
 
-| Edition | Linux | Windows | Stable inner folder |
-|---|---|---|---|
+| Edition | Linux                                             | Windows                                          | Stable inner folder    |
+| ------- | ------------------------------------------------- | ------------------------------------------------ | ---------------------- |
 | Desktop | `yo3-revival-desktop-VERSION-linux-x86_64.tar.gz` | `yo3-revival-desktop-VERSION-windows-x86_64.zip` | `yo3-revival-desktop/` |
 | Scripts | `yo3-revival-scripts-VERSION-linux-x86_64.tar.gz` | `yo3-revival-scripts-VERSION-windows-x86_64.zip` | `yo3-revival-scripts/` |
 

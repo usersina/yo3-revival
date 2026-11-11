@@ -3,12 +3,13 @@
 First set up [Desktop](launcher.md#first-launch) or the [Scripts edition](scripts.md). Both launch the same original
 game with the same connection DLL and rules engine.
 
-- [Enter the game](#enter-the-game)
-- [Your first duel](#your-first-duel)
-- [Play with a friend](#play-with-a-friend)
-- [Choose or edit a deck](#choose-or-edit-a-deck)
-- [Card effects and summon rules](#card-effects-and-summon-rules)
-- [Features and limitations](#features-and-limitations)
+- [Playing guide](#playing-guide)
+  - [Enter the game](#enter-the-game)
+  - [Your first duel](#your-first-duel)
+  - [Play with a friend](#play-with-a-friend)
+  - [Choose or edit a deck](#choose-or-edit-a-deck)
+  - [Card effects and summon rules](#card-effects-and-summon-rules)
+  - [Features and limitations](#features-and-limitations)
 
 ## Enter the game
 
@@ -72,7 +73,6 @@ If a protected monster disappears, a slot appears empty but remains occupied, or
 [duel bug reporting](launcher.md#logs-and-support). Include the card names and the exact steps.
 
 ## Features and limitations
-
 
 The main playable features are:
 

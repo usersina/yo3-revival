@@ -32,189 +32,188 @@ for both Desktop and Scripts. Current compatibility and native Windows verificat
 Startup feedback (2026-11-11):
 
 - [x] Automatic bounded diagnostics replace the capture checkbox: normal game launches retain client stdout/stderr,
-  mod messages and decoded nested server packets; engine stderr also reaches retained diagnostics in Scripts mode.
-  Full exports are the default, with optional best-effort personal filtering applied only to the ZIP. Credentials
-  remain scrubbed in every mode. Ordinary viewers hide verbose payloads; advanced searches and full exports retain
-  them. Expensive duel validation/replay stays under `--duel-check`. Direct-start game stdout and a remote host's
-  server logs still require separate collection; these limits are explicit in the support guide.
+      mod messages and decoded nested server packets; engine stderr also reaches retained diagnostics in Scripts mode.
+      Full exports are the default, with optional best-effort personal filtering applied only to the ZIP. Credentials
+      remain scrubbed in every mode. Ordinary viewers hide verbose payloads; advanced searches and full exports retain
+      them. Expensive duel validation/replay stays under `--duel-check`. Direct-start game stdout and a remote host's
+      server logs still require separate collection; these limits are explicit in the support guide.
 - [x] Normal hosting refuses missing/corrupt game archives and empty card/deck data before player-storage migration
-  or accepting players. Only explicit in-process protocol fixtures retain the empty-world path. CLI regressions
-  preserve existing files and the server key. Live A/B: absent data refuses startup; the complete installation gives
-  the same scratch account 218 distinct cards, 498 total. This addresses a reproduced path relevant to
-  [#4](https://github.com/usersina/yo3-revival/issues/4); the reporter's exact cause remains unconfirmed.
+      or accepting players. Only explicit in-process protocol fixtures retain the empty-world path. CLI regressions
+      preserve existing files and the server key. Live A/B: absent data refuses startup; the complete installation gives
+      the same scratch account 218 distinct cards, 498 total. This addresses a reproduced path relevant to
+      [#4](https://github.com/usersina/yo3-revival/issues/4); the reporter's exact cause remains unconfirmed.
 - [x] Desktop validation and script startup check the supported v1.153 executable's four existing hook signatures.
-  A separate 32-bit runtime probe uses the game's VC90 manifest and checks DirectX/VC90 dependencies without
-  invoking the game or its WINMM loader. Wine regressions cover missing runtimes, guarded hooks, Unicode paths,
-  both manifest/no-manifest fixtures and direct start. The direct fixture includes synthetic guarded hook sites.
+      A separate 32-bit runtime probe uses the game's VC90 manifest and checks DirectX/VC90 dependencies without
+      invoking the game or its WINMM loader. Wine regressions cover missing runtimes, guarded hooks, Unicode paths,
+      both manifest/no-manifest fixtures and direct start. The direct fixture includes synthetic guarded hook sites.
 - [x] Native startup failures retain their stage, real Win32 error where available and child exit status. Plain
-  repair instructions lead; details/export retain the diagnostics. Bounded stderr discards cut first lines before
-  credential redaction, protecting even truncated account-key suffixes. Executable fingerprint and mod version/ABI
-  identify the components being tested.
+      repair instructions lead; details/export retain the diagnostics. Bounded stderr discards cut first lines before
+      credential redaction, protecting even truncated account-key suffixes. Executable fingerprint and mod version/ABI
+      identify the components being tested.
 - [x] Private Desktop checks: missing DirectX fails validation, disables Start and creates no player storage;
-  valid setup starts its scratch server, reaches the real game's main screen and opens the deck editor with the
-  selected starter and all 498 cards. The Windows direct-start helper also passes under Wine.
+      valid setup starts its scratch server, reaches the real game's main screen and opens the deck editor with the
+      selected starter and all 498 cards. The Windows direct-start helper also passes under Wine.
 - [x] 582 workspace tests pass at bounded concurrency (one archive/window-dependent update test is skipped),
-  including the 240-duel check; strict Clippy, Linux/Windows release builds, native/Wine mod and loader harnesses,
-  documentation links and offline-edition tests pass. An engine-identity timeout during concurrent builds did
-  not repeat in either bounded full-suite run. The Windows CLI also passes its runtime probe under Wine.
+      including the 240-duel check; strict Clippy, Linux/Windows release builds, native/Wine mod and loader harnesses,
+      documentation links and offline-edition tests pass. An engine-identity timeout during concurrent builds did
+      not repeat in either bounded full-suite run. The Windows CLI also passes its runtime probe under Wine.
 - [x] Release CI explicitly runs the packaged Desktop updater test after bundling and before publishing, on owned
-  Xvfb with fresh application storage. The shared `tools/test-packaged-update.sh` helper fails if no test matches.
-  Local proof: the current unpublished `v0.0.5` archive opened and activated successfully; a checksum-consistent
-  fixture whose launcher exits immediately failed the same command and remained inactive. No updater version
-  checks were relaxed; native Windows testing remains separate. CI setup, lints/tests and packaging run only
-  before publishing a new version; other pushes stop after the changelog check.
+      Xvfb with fresh application storage. The shared `tools/test-packaged-update.sh` helper fails if no test matches.
+      Local proof: the current unpublished `v0.0.5` archive opened and activated successfully; a checksum-consistent
+      fixture whose launcher exits immediately failed the same command and remained inactive. No updater version
+      checks were relaxed; native Windows testing remains separate. CI setup, lints/tests and packaging run only
+      before publishing a new version; other pushes stop after the changelog check.
 - [ ] Native Windows 10, installing direct start in protected folders and reinstalling missing runtimes still need
-  platform evidence. Windows 11 standard-user checks below used a writable private game copy, with Defender active;
-  they do not establish reputation with every security product. The app does not change antivirus/firewall policy.
+      platform evidence. Windows 11 standard-user checks below used a writable private game copy, with Defender active;
+      they do not establish reputation with every security product. The app does not change antivirus/firewall policy.
 - [x] Native Windows 11 build 22000.2538: reproduced the supported game's runtime check passing with a normal
-  drive path but failing with Rust's canonical extended-path prefix. Compatible native path handling now covers
-  runtime probes, injection and direct-loader configuration. The Windows path regression went red/green with
-  spaces/Japanese text, and the actual Desktop validation passed; Linux workspace tests and strict Clippy pass.
+      drive path but failing with Rust's canonical extended-path prefix. Compatible native path handling now covers
+      runtime probes, injection and direct-loader configuration. The Windows path regression went red/green with
+      spaces/Japanese text, and the actual Desktop validation passed; Linux workspace tests and strict Clippy pass.
 - [x] Native Windows ASLR: observed the supported game at `0x006D0000`; the old DLL rejected it. Code, data,
-  vtables and the absolute duel-update callback now use the actual image base, retaining byte guards. Linked
-  full-size/relocated fixtures are valid Windows PE images (the old section-gap fixture was accepted only by Wine).
-  The same native fixture failed with the old DLL and passed with the fix at randomized bases; Wine's forced
-  `0x600000` fixture also passes. The native client reaches login/map/deck editing with 498 cards. Standard-user
-  game launch is still being checked separately; no ASLR/security policy was disabled.
+      vtables and the absolute duel-update callback now use the actual image base, retaining byte guards. Linked
+      full-size/relocated fixtures are valid Windows PE images (the old section-gap fixture was accepted only by Wine).
+      The same native fixture failed with the old DLL and passed with the fix at randomized bases; Wine's forced
+      `0x600000` fixture also passes. The native client reaches login/map/deck editing with 498 cards. Standard-user
+      game launch is still being checked separately; no ASLR/security policy was disabled.
 - [x] Native Windows standard-user startup: reproduced the original game's UAC request followed by injection
-  error 5. Scoped `RunAsInvoker` on the injector/game tree fixes normal Desktop Start without elevating the app or
-  server. The Windows regression went red/green; live token checks show every component non-elevated. A fresh
-  player received its starter automatically and entered matchmaking before ever opening Deck Edit.
+      error 5. Scoped `RunAsInvoker` on the injector/game tree fixes normal Desktop Start without elevating the app or
+      server. The Windows regression went red/green; live token checks show every component non-elevated. A fresh
+      player received its starter automatically and entered matchmaking before ever opening Deck Edit.
 - [x] Native Windows diagnostic I/O: a second duel's dependency fingerprint hit the 30-second engine-call deadline
-  during archive extraction. Separate native probes measured 61.4 seconds and 7.5 seconds for valid identities.
-  Fingerprinting now has its own bounded two-minute budget; a delayed-fixture regression went red/green and still
-  proves that stalled duel steps retain their shorter deadline. Recording errors continue to fail the report without
-  being mislabeled as a proven engine/model mismatch.
+      during archive extraction. Separate native probes measured 61.4 seconds and 7.5 seconds for valid identities.
+      Fingerprinting now has its own bounded two-minute budget; a delayed-fixture regression went red/green and still
+      proves that stalled duel steps retain their shorter deadline. Recording errors continue to fail the report without
+      being mislabeled as a proven engine/model mismatch.
 - [x] Native Windows 11 completion: Normal Start authenticates and prepares a fresh starter; Scripts wrappers host
-  with their bundled engine and launch the real client. A complete NPC duel ended with a battle win, all five native
-  checkpoints matching, no checker errors and all 59 recorded calls replaying exactly. The earlier PvP recording's
-  31 calls also replay exactly. Four native engine contracts cover opening, complete self-play, battle move reasons
-  and field stats; native Rust identity checks pass for absolute and relative engine paths.
+      with their bundled engine and launch the real client. A complete NPC duel ended with a battle win, all five native
+      checkpoints matching, no checker errors and all 59 recorded calls replaying exactly. The earlier PvP recording's
+      31 calls also replay exactly. Four native engine contracts cover opening, complete self-play, battle move reasons
+      and field stats; native Rust identity checks pass for absolute and relative engine paths.
 - [x] The rebuilt Windows package passed native updater activation; the deliberately broken update remained
-  inactive. Both archive component inventories verify. Native current/all-retained exports contain 7/21 entries,
-  pass ZIP integrity and credential/home-path checks. A missing Desktop DLL disables Start with repair guidance;
-  restoring it permits revalidation. Linux workspace: 583 tests, strict Clippy and docs checks pass.
+      inactive. Both archive component inventories verify. Native current/all-retained exports contain 7/21 entries,
+      pass ZIP integrity and credential/home-path checks. A missing Desktop DLL disables Start with repair guidance;
+      restoring it permits revalidation. Linux workspace: 583 tests, strict Clippy and docs checks pass.
 - [x] Initial Windows window sizing: the old 1080×760 window hid its footer on the 1280×800 VM. A centered
-  1000×640 default now keeps Version, GitHub and Help visible without maximizing; native DWM bounds fit the
-  1280×752 work area. Desktop state tests and strict Clippy pass; Iced's own sizing/position controls are used.
+      1000×640 default now keeps Version, GitHub and Help visible without maximizing; native DWM bounds fit the
+      1280×752 work area. Desktop state tests and strict Clippy pass; Iced's own sizing/position controls are used.
 
 v0.0.4 release preparation (2026-11-10):
 
 - [x] README and illustrated launcher guide lead with release downloads and the current four-page UI. Fresh Windows
-  screenshots under Wine show v0.0.4, automatic starter setup, settings, independent hosting and diagnostic export.
-  Obsolete browser-join/login-field pictures are removed; all four GUI images ship in both application bundles.
+      screenshots under Wine show v0.0.4, automatic starter setup, settings, independent hosting and diagnostic export.
+      Obsolete browser-join/login-field pictures are removed; all four GUI images ship in both application bundles.
 - [x] The old-release upgrade path explains complete backups, selecting the existing data folder before hosting,
-  transactional SQLite import, preserved accounts/credentials, private invitations and the single public TLS port.
-  CLI instructions, issue-help links and report forms point to the appropriate GUI guidance.
+      transactional SQLite import, preserved accounts/credentials, private invitations and the single public TLS port.
+      CLI instructions, issue-help links and report forms point to the appropriate GUI guidance.
 - [x] 523 workspace tests, strict Clippy, four headless-helper tests and documentation checks pass. Both archives build;
-  component hashes, archive integrity and every bundled guide link/image are checked. The Windows GUI under Wine
-  started its own scratch server and launched the real game; a fresh player received a selected 40-card starter.
-  Close game kept hosting alive. Native Windows UAC/protected-folder and separate-machine checks remain open.
+      component hashes, archive integrity and every bundled guide link/image are checked. The Windows GUI under Wine
+      started its own scratch server and launched the real game; a fresh player received a selected 40-card starter.
+      Close game kept hosting alive. Native Windows UAC/protected-folder and separate-machine checks remain open.
 - [x] Published [v0.0.4](https://github.com/usersina/yo3-revival/releases/tag/v0.0.4) from `d0f482f` after approval;
-  the [release workflow](https://github.com/usersina/yo3-revival/actions/runs/42868619870) passed. Downloaded both
-  public archives and verified release-note SHA-256 checksums, integrity, component manifests, guide links and
-  screenshots. The latest-release endpoint returns v0.0.4; its tag still points to the verified release commit.
+      the [release workflow](https://github.com/usersina/yo3-revival/actions/runs/42868619870) passed. Downloaded both
+      public archives and verified release-note SHA-256 checksums, integrity, component manifests, guide links and
+      screenshots. The latest-release endpoint returns v0.0.4; its tag still points to the verified release commit.
 
 Launcher scope and consistency (2026-11-10):
 
 - [x] Four pages: Play, My server, Activity and Settings. Server selection/Add server share one section; connection
-  editing is inline. Headings/dividers replace nested panels; hosting status, logs and modals retain useful boundaries.
-  Native help tooltips explain accounts, keys, sharing, interfaces, game installation and direct launch. Wine prefix
-  controls appear only on Linux; private :90 checked Linux at 900×650 and the actual Windows build under Wine.
+      editing is inline. Headings/dividers replace nested panels; hosting status, logs and modals retain useful boundaries.
+      Native help tooltips explain accounts, keys, sharing, interfaces, game installation and direct launch. Wine prefix
+      controls appear only on Linux; private :90 checked Linux at 900×650 and the actual Windows build under Wine.
 - [x] Hosting accounts/invitations are separate from the Play account. Per-section Save/Cancel cannot apply unrelated
-  drafts; Start uses saved configuration. Live: an unsaved port change did not affect the listener, and creating,
-  selecting and exporting UXGuest left Play on UXHost. Advanced hosting Save/Cancel stay visible while scrolling.
+      drafts; Start uses saved configuration. Live: an unsaved port change did not affect the listener, and creating,
+      selecting and exporting UXGuest left Play on UXHost. Advanced hosting Save/Cancel stay visible while scrolling.
 - [x] Complete game/component readiness, first-setup Continue, actionable setup help and visible direct-launch state.
-  Missing/updated owned loaders can be repaired without replacing foreign mods. Bundled helpers must exist and match
-  their release manifest; no developer fallback for a packaged direct helper. Regression tests first reproduced that
-  fallback. Live: missing loader repair, changed-DLL fail-fast, repaired original-executable login and managed Play
-  reached the game main screen; cleanup confirmed unchanged executable/INI hashes.
+      Missing/updated owned loaders can be repaired without replacing foreign mods. Bundled helpers must exist and match
+      their release manifest; no developer fallback for a packaged direct helper. Regression tests first reproduced that
+      fallback. Live: missing loader repair, changed-DLL fail-fast, repaired original-executable login and managed Play
+      reached the game main screen; cleanup confirmed unchanged executable/INI hashes.
 - [x] Saved connection discovery/trust/test/edit/removal pass live. Loopback/listener addresses are not offered to
-  friends; local play remains available. Local process status does not claim remote reachability. Firewall automation
-  and manual certificate controls are removed from the GUI; OS guidance and automatic identity maintenance remain.
+      friends; local play remains available. Local process status does not claim remote reachability. Firewall automation
+      and manual certificate controls are removed from the GUI; OS guidance and automatic identity maintenance remain.
 - [x] One current/all-retained log-export dialog with scope/size/date preview. The final Windows GUI exported a private
-  invitation and both ZIP scopes through native dialogs; ZIP integrity, different inventories, credential exclusions
-  and home-path redaction passed. Hosting survived manager exit/reopen and Windows GUI reattachment. The final
-  Windows bundle also started its own server and launched the real game to main as UXHost; Close game kept hosting.
+      invitation and both ZIP scopes through native dialogs; ZIP integrity, different inventories, credential exclusions
+      and home-path redaction passed. Hosting survived manager exit/reopen and Windows GUI reattachment. The final
+      Windows bundle also started its own server and launched the real game to main as UXHost; Close game kept hosting.
 - [x] 518 workspace tests (including 240 duels), desktop flow regressions, Clippy, workspace check, four headless-helper
-  tests and documentation checks pass. Linux/Windows bundles build; actual staged-window activation succeeds on both
-  Linux and Windows under Wine. Local test tags are not published releases.
+      tests and documentation checks pass. Linux/Windows bundles build; actual staged-window activation succeeds on both
+      Linux and Windows under Wine. Local test tags are not published releases.
 - [ ] Native Windows protected-folder/UAC behavior, friends on separate machines and the first published GUI-to-GUI
-  automatic update still need platform/release verification. Firewall mutation is outside the launcher's scope.
+      automatic update still need platform/release verification. Firewall mutation is outside the launcher's scope.
 
 Launcher refinement and updates (2026-11-10, `feat/launcher-ux-updates`):
 
 - [x] Retain Iced with standard widgets, Lucide SVG icons/notices, grouped primary actions and collapsed advanced
-  options. Private display :89 verified the normal layout and 900×650 minimum; the overview screenshot is refreshed.
-  Navigation stays usable while jobs run; modal guards and account/connection refreshes preserve unfinished input.
+      options. Private display :89 verified the normal layout and 900×650 minimum; the overview screenshot is refreshed.
+      Navigation stays usable while jobs run; modal guards and account/connection refreshes preserve unfinished input.
 - [x] Visible version/build, GitHub link and asynchronous startup/manual release checks. Stable semantic versions,
-  platform assets, bounded metadata and HTTPS origins are checked; development builds are never auto-downgraded.
-  Live GitHub lookup reports v0.0.3; no test release was published. Offline/rate-limit/slow/oversized responses have tests.
+      platform assets, bounded metadata and HTTPS origins are checked; development builds are never auto-downgraded.
+      Live GitHub lookup reports v0.0.3; no test release was published. Offline/rate-limit/slow/oversized responses have tests.
 - [x] Explicit review → Download & restart, cancellable streaming progress and SHA-256 verification. Complete bundles
-  are unpacked into private version folders with path/link/size checks and component manifests; original files and
-  user data stay in place. SQLite records the active/previous version only after the new window acknowledges readiness.
-  Failed, missing or mismatched readiness cannot activate; verified installs can be retried and shortcuts route forward.
+      are unpacked into private version folders with path/link/size checks and component manifests; original files and
+      user data stay in place. SQLite records the active/previous version only after the new window acknowledges readiness.
+      Failed, missing or mismatched readiness cannot activate; verified installs can be retried and shortcuts route forward.
 - [x] Both local `v0.1.1+local` review bundles pass actual packaged window/activation checks on private :89 (Linux and
-  Windows under Wine). These are local test versions, not published releases. Managed Play reached the real game's main
-  screen as UXYugi and Close game ended its authenticated session. One cold Wine start under build load timed out before
-  mod readiness; retry reached main, and the failure remained visible in Activity. Default displays/data were untouched.
+      Windows under Wine). These are local test versions, not published releases. Managed Play reached the real game's main
+      screen as UXYugi and Close game ended its authenticated session. One cold Wine start under build load timed out before
+      mod readiness; retry reached main, and the failure remained visible in Activity. Default displays/data were untouched.
 - [x] Workspace check/Clippy, the full contract/240-duel suite, focused updater/UI regressions, four headless-helper
-  tests and documentation links pass. Archive tests cover changed hashes, traversal, Windows aliases, links, retries,
-  original data preservation and failed startup. Both bundles include the icon and dependency license notices.
+      tests and documentation links pass. Archive tests cover changed hashes, traversal, Windows aliases, links, retries,
+      original data preservation and failed startup. Both bundles include the icon and dependency license notices.
 - [ ] Native Windows update/UAC behavior and a future published GUI release's full GitHub download still need
-  platform/release verification. Live release discovery, bounded download fixtures and full local bundle activation
-  are covered separately; Wine does not establish native Windows firewall behavior.
-
+      platform/release verification. Live release discovery, bounded download fixtures and full local bundle activation
+      are covered separately; Wine does not establish native Windows firewall behavior.
 
 Launcher usability phase (2026-11-10, implemented on `feat/desktop-launcher`):
 
 - [x] Address-first discovery and remembered identities; existing invitation/profile credentials preserved. Private
-  display :88 showed discovery and first-use identity confirmation by IP with no certificate file; metadata contracts
-  cover expiry, key changes, same-key renewal, wrong names and bounded responses.
+      display :88 showed discovery and first-use identity confirmation by IP with no certificate file; metadata contracts
+      cover expiry, key changes, same-key renewal, wrong names and bounded responses.
 - [x] Shared build/protocol/DLL requirements, preflight and DLL readiness before game login. Static preflight rejects
-  wrong/missing/changed files before authentication; injector readiness precedes account login and game resume.
-  Live: private :88 game reached the main screen as UsabilityYugi after readiness interface 2 was acknowledged.
+      wrong/missing/changed files before authentication; injector readiness precedes account login and game resume.
+      Live: private :88 game reached the main screen as UsabilityYugi after readiness interface 2 was acknowledged.
 - [x] Reversible direct-start loader; `yo3.exe` and INI hashes stay unchanged. Private :88 reached the main screen
-  from the original executable, and a missing DLL showed its expected path, accepted a matching file and required
-  restart before login. Named/ordinal imports, Unicode paths, stale readiness and foreign-mod refusal are covered.
-  Gate callback `0x4699B0` reads only host/port;
-  login dispatcher `0x469C00` uses error codes and `0x46D050` selects fixed local UI strings. A custom requirements
-  dialog/file picker needs local code; do not invent a server message field.
+      from the original executable, and a missing DLL showed its expected path, accepted a matching file and required
+      restart before login. Named/ordinal imports, Unicode paths, stale readiness and foreign-mod refusal are covered.
+      Gate callback `0x4699B0` reads only host/port;
+      login dispatcher `0x469C00` uses error codes and `0x46D050` selects fixed local UI strings. A custom requirements
+      dialog/file picker needs local code; do not invent a server message field.
 - [x] Advanced interface binding (new GUI setups default all IPv4), one public port, retained local-only upgrades and
-  optional firewall elevation (removed in the scope refinement below). Live: selected eno1 listener and local game main screen on :88; key retained during
-  automatic identity maintenance. Windows helper cross-checks and pure command/argument tests pass; native UAC and
-  real firewall mutation remain untested, so the user's host policy stays untouched.
+      optional firewall elevation (removed in the scope refinement below). Live: selected eno1 listener and local game main screen on :88; key retained during
+      automatic identity maintenance. Windows helper cross-checks and pure command/argument tests pass; native UAC and
+      real firewall mutation remain untested, so the user's host policy stays untouched.
 - [x] Session-indexed diagnostic logs, bounded retention and redacted current/all-retained ZIP exports. Private
-  checks verified continued server logging after manager exit, reattachment, different current/all inventories and
-  valid ZIPs without saved account keys, private keys or home paths. Wine helpers use a cross-platform heartbeat.
+      checks verified continued server logging after manager exit, reattachment, different current/all inventories and
+      valid ZIPs without saved account keys, private keys or home paths. Wine helpers use a cross-platform heartbeat.
 - [x] 493 Rust tests and four headless-helper tests pass; workspace check/Clippy and documentation checks are clean.
-  Both review bundles build, their component hashes match, and game files/credentials are absent. The packaged
-  launcher reached the real client's main screen on private :88; offline-server and missing-DLL paths blocked login.
-  The Windows GUI exported both current and retained-history ZIPs through its native file picker under Wine; CRCs,
-  exclusions and redaction passed. Loader removal restored the original game folder's executable/INI hashes.
+      Both review bundles build, their component hashes match, and game files/credentials are absent. The packaged
+      launcher reached the real client's main screen on private :88; offline-server and missing-DLL paths blocked login.
+      The Windows GUI exported both current and retained-history ZIPs through its native file picker under Wine; CRCs,
+      exclusions and redaction passed. Loader removal restored the original game folder's executable/INI hashes.
 - [ ] Native Windows UAC/protected-folder installation and separate friends' machines
-  still need platform/user-driven verification. Firewall mutation is no longer an application feature. Wine and cross-compilation do not establish those results.
+      still need platform/user-driven verification. Firewall mutation is no longer an application feature. Wine and cross-compilation do not establish those results.
 
 Next DLL candidates, after launcher usability:
 
 - [x] Skip the unused original login form: **ONLINE** opens player selection through the same native connection
-  and reply handlers. The mod guards the one-shot `StartLogin` call at `0x46964B`, keeps saved fields untouched,
-  and leaves the original executable/Flash files unchanged. The faster flow exposed premature local gate EOF
-  (null logger at `0x535210`); the proxy now retains that socket until client close or launcher shutdown.
-  Shared C/32-bit Wine contracts and a proxy lifetime regression protect this path. Fresh Documents data reached
-  player selection, Back/re-entry and the main screen on private Xvfb without a form click; starter setup still works.
-  Direct launch of the original executable also reached the main screen using the installed loader and Windows
-  helper under Wine; executable/INI hashes stayed unchanged. All 525 workspace tests and strict Clippy pass.
-  Native Windows gameplay still needs verification.
+      and reply handlers. The mod guards the one-shot `StartLogin` call at `0x46964B`, keeps saved fields untouched,
+      and leaves the original executable/Flash files unchanged. The faster flow exposed premature local gate EOF
+      (null logger at `0x535210`); the proxy now retains that socket until client close or launcher shutdown.
+      Shared C/32-bit Wine contracts and a proxy lifetime regression protect this path. Fresh Documents data reached
+      player selection, Back/re-entry and the main screen on private Xvfb without a form click; starter setup still works.
+      Direct launch of the original executable also reached the main screen using the installed loader and Windows
+      helper under Wine; executable/INI hashes stayed unchanged. All 525 workspace tests and strict Clippy pass.
+      Native Windows gameplay still needs verification.
 - [x] Initialize a legal starting deck after player login only for a fresh local profile; preserve existing
-  files and selections. The first trunk reply supplies legal candidates after collection/rentals; the required mod
-  uses native validation, serialization and cache reload, then sets an empty default selection. Any existing deck
-  or saved selection blocks setup, even an invalid one; a durable per-player marker prevents regeneration after manual deletion. Contract tests and
-  the portable DLL policy protect ordering, ownership/banlists, repeat login and preservation. A fresh private Wine
-  player reached a live NPC duel without opening Edit Deck; the selected starter had 40 cards.
-  Live checks also preserve a custom selection and an unfinished deck, isolate the second player, and retain an
-  intentional deletion after reconnect even with an empty selection. All 523 workspace tests pass; check/Clippy,
-  DLL/loader contracts and Linux/Windows cross-builds pass. Native Windows gameplay still needs verification.
+      files and selections. The first trunk reply supplies legal candidates after collection/rentals; the required mod
+      uses native validation, serialization and cache reload, then sets an empty default selection. Any existing deck
+      or saved selection blocks setup, even an invalid one; a durable per-player marker prevents regeneration after manual deletion. Contract tests and
+      the portable DLL policy protect ordering, ownership/banlists, repeat login and preservation. A fresh private Wine
+      player reached a live NPC duel without opening Edit Deck; the selected starter had 40 cards.
+      Live checks also preserve a custom selection and an unfinished deck, isolate the second player, and retain an
+      intentional deletion after reconnect even with an empty selection. All 523 workspace tests pass; check/Clippy,
+      DLL/loader contracts and Linux/Windows cross-builds pass. Native Windows gameplay still needs verification.
 - [ ] Sync editor saves without requiring a duel selection (currently only `0x1F4F update_type 1` uploads them).
 - [ ] Diagnose the client black-screen wait when the server hangs, then add bounded failure feedback.
 - [ ] Check local profile collisions for identically named players on different servers.
@@ -336,10 +335,10 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
       affected. Noted in AGENTS.md.
 - [x] No banlist by default (the user's choice); `--regulation` picks one.
 - [x] The required mod prepares a legal local starting deck after login automatically (2026-11-10), and
-  the login news describes this behavior.
+      the login news describes this behavior.
 - [x] When the rules engine can't run (Node.js missing or older than 22.18, engine not fetched), the server logs an ERROR
-  at start, the login news and the join page say duels are unavailable, and the launchers (`run.sh`, `run.cmd`,
-  `engine/fetch.sh`) stop before starting a server whose duels would all end as draws.
+      at start, the login news and the join page say duels are unavailable, and the launchers (`run.sh`, `run.cmd`,
+      `engine/fetch.sh`) stop before starting a server whose duels would all end as draws.
 - [x] Attacks and activations from any field slot but the first were ignored and the duel stalled: the client sends
       a field card's command as (zone slot, index 0).
 - [x] Set Spells/Traps lay sideways like set monsters (ocgcore's face-down defense position).
@@ -541,8 +540,8 @@ Findings:
 - [x] 1 The packet log grew without limit (2.6 GB in five minutes of a client that only sends). It now rotates at
       128 MB and keeps four files per run. Test: `log.rs` `the_packet_log_rotates_and_keeps_only_its_newest_files`.
 - Monkey-side, not server bugs: Delete Player and Create Player (`0x1F4A/B`) changed the account the canary logged in
-      as (a deleted Kaiba: no reply to `0x1F4C`, as designed), so the monkey leaves them out; a canary refused while the
-      monkey itself kills the server is expected.
+  as (a deleted Kaiba: no reply to `0x1F4C`, as designed), so the monkey leaves them out; a canary refused while the
+  monkey itself kills the server is expected.
 - Historical issue, resolved by required TLS profiles: one account per client address meant new addresses kept making accounts (about 2 KB of file and 40 KB
   of memory each; 1500 addresses were fine). Only a spoofing client could do this over TCP. Rotation is per run: a
   server restarted often keeps four files each time.
@@ -590,7 +589,7 @@ of bug instead of a list of cases:
   duels run in `cargo nextest run --workspace` (`YO3_CHECK_DUELS=n` per test for more); 400 more seeds were played
   while fixing. `tests/duelcheck_model.rs` checks the model alone.
 - **In the server** (`--duel-check`, a testing aid): every NPC duel and table checks each step and logs `ERROR duel
-  check` with the difference (once per duel). The protocol monkey's `duel` and `soak` runs start the server with it.
+check` with the difference (once per duel). The protocol monkey's `duel` and `soak` runs start the server with it.
   Proved by a server built with a translator broken on purpose (the opponent's draws dropped): ERRORs in every table and
   NPC duel, reported by the monkey as failures. The GUI's detailed diagnostics also enables it on the next server start.
 
@@ -1014,7 +1013,7 @@ Stop finding missing fields one crash at a time.
 | Duel's end push `0x2009`                                                  | sent when the engine ends the duel; `duel_end` 1 (normal: no effect) or 3 (cancelled before it began); no `score_<id>`; `dlogURL` for duels between players                                                                                                                                                                                                                                                  | The original timing is unknown. Values settled by `0x515BD3`/`0x518631`: 2, 3 dialog `0x2918`; 4 "has disconnected" (we don't send it); 5 opens the result                            |
 | Result screen counts                                                      | `win`/`lose`/`draw` = totals against this opponent including this duel, `*_add` = this duel's change; kept in memory                                                                                                                                                                                                                                                                                         | The client only shows them ("Wins 1 (+001)")                                                                                                                                          |
 | Duel port                                                                 | launcher-selected loopback port; remote TLS role 2 on 7443                                                                                                                                                                                                                                                                                                                                                   | The original's port is unknown; the client takes whatever `duelData` says                                                                                                             |
-| Accounts                                                                  | authenticated TLS key login, single-use front/duel tickets, launcher-bound duel entries                                                                                                                                                                                                                                                                                                                      | The launcher authenticates first; the required mod skips the stock login form. Shared IPs no longer select accounts                                                                         |
+| Accounts                                                                  | authenticated TLS key login, single-use front/duel tickets, launcher-bound duel entries                                                                                                                                                                                                                                                                                                                      | The launcher authenticates first; the required mod skips the stock login form. Shared IPs no longer select accounts                                                                   |
 | Uploaded decks                                                            | the decks a duel's Select Deck sent, ten per player by name, listed after the starter and bought decks                                                                                                                                                                                                                                                                                                       | The client has no other upload; the original server's deck storage is unknown                                                                                                         |
 | Deck check                                                                | sizes, ownership per Konami id, the duel's regulation, refused with `0x22CB` (client text `0x2919`: settled, `0x50ECF0` compares only `0x22CA`/`0x22CB` and never uses `error_code`)                                                                                                                                                                                                                         | The rules of the check are ours                                                                                                                                                       |
 | Player names                                                              | the starting names (`--players`, default Duelist) made unique with a number; players make more at Select Player (at most 16 characters, unique ignoring case: **guess**), the host can still `add-player` / `rename`                                                                                                                                                                                         | The original's name rules are unknown; a team's leader can't be deleted and an account keeps one player (ours)                                                                        |

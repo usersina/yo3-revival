@@ -67,7 +67,7 @@ These are estimates, not measurements.
 - **Protocol vocabulary.** About 1,500 lowercase field names in the exe: `duel_id`, `duel_server_id`,
   `duel_regulation_id`, `duel_time_turn`, `selectable`, `answer`, `room_id`, `trade_player_id`, `user_bp`…
   - Duel-specific keys are few, plus `buffer` and `data`. So duel traffic is probably a binary command blob inside an
-    EasyMultiPlay message. *Likely, not confirmed.*
+    EasyMultiPlay message. _Likely, not confirmed._
 - **Client structure (MSVC RTTI is intact, so classes are named).**
   - Network classes: `GateServerConnection`, `FrontServerConnection`, `DuelServerConnection`,
     `CommunicationAgent`, `DuelMatchingAgent`, `AutoMatchingAgent`.
@@ -103,14 +103,14 @@ These are estimates, not measurements.
 - Online 2 (2008), per YOLaucher's translator notes, receives duel updates as `0x6202` messages. Each is a list of
   8-byte engine commands: `u16 (player<<15 | id), u16 P0, P1, P2`, with IDs `0x01–0x6b` all mapped.
   - Their names: `DUEL_START, TURN_CHANGE, PHASE_CHANGE, CHAIN_SET, CHAIN_RUN, BATTLE_ATTACK, LIFE_DAMAGE, CARD_MOVE,
-    CARD_BREAK, CARD_LOCKON, RUN_SUMMON, RUN_FUSION, MONST_SHUFFLE…`
+CARD_BREAK, CARD_LOCKON, RUN_SUMMON, RUN_FUSION, MONST_SHUFFLE…`
 - Master Duel (2022), per YgoMaster's `Enums/Duel.cs`, has `DuelViewType` with the **same names**
   (`DuelStart, TurnChange, PhaseChange, ChainSet, ChainRun, BattleAttack, LifeDamage, CardMove, CardBreak, CardLockon,
-  RunSummon, RunFusion, MonstShuffle…`), plus `TuningSet/Run` for Synchro and the later Overlay/Link additions.
+RunSummon, RunFusion, MonstShuffle…`), plus `TuningSet/Run` for Synchro and the later Overlay/Link additions.
 - Its dialog types (`SelType, SelAttr, SelStand, SelCoin, SelDice, SelNum, Discard, Ritual, YesNo, Effect…`) match
   Online 3's dialog classes one for one.
 - **Implication:** Online 3, released in 2010, almost certainly ran the same Konami engine and sent the same kind of
-  command stream. The Online 2 command table and translator are therefore the best starting point. *Likely.* Confirm
+  command stream. The Online 2 command table and translator are therefore the best starting point. _Likely._ Confirm
   it by finding the command executor under `DuelCardCommand`/`DuelManager` in Ghidra and comparing handlers with
   Online 2's table.
 

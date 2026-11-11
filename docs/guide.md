@@ -6,12 +6,13 @@ commands and network configuration. [Source builds and test tools](development.m
 Examples use `./yo3-server` on Linux. On Windows use `yo3-server.exe` in Command Prompt or `.\yo3-server.exe` in
 PowerShell. Run from the extracted bundle, or substitute `./target/release/yo3-server` from the repository root.
 
-- [Server options](#server-options)
-- [Account commands](#account-commands)
-- [Network settings](#network-settings)
-- [Existing data and backups](#existing-data-and-backups)
-- [Windows SmartScreen and antivirus warnings](#windows-smartscreen-and-antivirus-warnings)
-- [Original game runtimes](#original-game-runtimes)
+- [Command-line reference](#command-line-reference)
+  - [Server options](#server-options)
+  - [Account commands](#account-commands)
+  - [Network settings](#network-settings)
+  - [Existing data and backups](#existing-data-and-backups)
+  - [Windows SmartScreen and antivirus warnings](#windows-smartscreen-and-antivirus-warnings)
+  - [Original game runtimes](#original-game-runtimes)
 
 ## Server options
 
@@ -31,19 +32,19 @@ changes to that directory automatically.
 Hosting refuses missing, corrupt or unusable game card/deck data before accepting players or migrating player
 storage. Select the complete installation with `--game-dir` and retry; keep existing accounts, decks and identity files.
 
-| Option | Purpose |
-|---|---|
-| `--bind` | Listening interface/IP; raw server defaults to `127.0.0.1`, scripts and Desktop default to `0.0.0.0` |
-| `--auth-port` | TLS listener, default `7443` |
-| `--advertise` | Address exported in profiles/asset URLs; does not change the listening interface |
-| `--game-dir` | Complete original game installation |
-| `--data-dir` | Persistent SQLite state and server identity, default `data/` |
-| `--log-dir` | Logs, default `logs/` |
-| `--http-port` | Internal loopback HTTP/admin listener, default `8080`; Desktop uses an automatically assigned port |
-| `--auth-cert`, `--auth-key` | Explicit TLS certificate/key files |
-| `--regulation` | Login banlist by ID/name; default unlimited |
-| `--duel-check` | Compare each player's modeled client state with the rules engine after each step |
-| `--no-packet-log` | Disable separate raw packet files; decoded packet traces remain in bounded session diagnostics |
+| Option                      | Purpose                                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `--bind`                    | Listening interface/IP; raw server defaults to `127.0.0.1`, scripts and Desktop default to `0.0.0.0` |
+| `--auth-port`               | TLS listener, default `7443`                                                                         |
+| `--advertise`               | Address exported in profiles/asset URLs; does not change the listening interface                     |
+| `--game-dir`                | Complete original game installation                                                                  |
+| `--data-dir`                | Persistent SQLite state and server identity, default `data/`                                         |
+| `--log-dir`                 | Logs, default `logs/`                                                                                |
+| `--http-port`               | Internal loopback HTTP/admin listener, default `8080`; Desktop uses an automatically assigned port   |
+| `--auth-cert`, `--auth-key` | Explicit TLS certificate/key files                                                                   |
+| `--regulation`              | Login banlist by ID/name; default unlimited                                                          |
+| `--duel-check`              | Compare each player's modeled client state with the rules engine after each step                     |
+| `--no-packet-log`           | Disable separate raw packet files; decoded packet traces remain in bounded session diagnostics       |
 
 Other duel-testing flags and diagnostic paths are listed by `--help`; see [duel diagnostics](development.md#duel-diagnostics).
 The game's connection ports are private loopback endpoints assigned by its launcher. Do not configure those in `yo3.ini`.
@@ -127,11 +128,11 @@ or quarantine them. No exclusion is needed unless your security software actuall
 
 **Where are our DLLs?**
 
-| Location | Revival files |
-|---|---|
+| Location                            | Revival files                                                                                                    |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | Extracted Desktop or Scripts folder | `yo3-auth.dll` (required connection mod), `yo3-auth-launch.exe` (required injector), and the Revival executables |
-| Extracted Desktop folder | `yo3-bootstrap.dll`, the loader used when enabling optional direct launch |
-| Game folder, beside `yo3.exe` | `winmm.dll`, installed only when [direct launch](launcher.md#open-the-game-directly) is enabled |
+| Extracted Desktop folder            | `yo3-bootstrap.dll`, the loader used when enabling optional direct launch                                        |
+| Game folder, beside `yo3.exe`       | `winmm.dll`, installed only when [direct launch](launcher.md#open-the-game-directly) is enabled                  |
 
 Normal Desktop **Start** and Scripts **play** load `yo3-auth.dll` from the extracted Revival folder; they do not
 copy it into the game folder. Excluding just `yo3-revival.exe` does not cover the injector or DLL. The whole game
@@ -145,7 +146,7 @@ for Defender's exclusion settings.
 
 `yo3-auth-launch.exe` and `yo3-auth.dll` are both required. Keep the complete matching bundle together; removing them
 or mixing releases prevents startup. The injector resumes the game only after required hooks initialize. Source
-builds are documented [here](development.md#build-from-source) for people who want to inspect/build the code.
+builds are [documented here](development.md#build-from-source) for people who want to inspect/build the code.
 
 For a detection report, include the security product, exact detection name, affected filename, application version
 and file SHA-256 if available. Scripts use the same required injector/DLL as Desktop and can encounter the same
