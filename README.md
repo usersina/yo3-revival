@@ -17,10 +17,15 @@ Use **64-bit Windows 10/11**, or **Linux with Wine**. [Game installation help](d
 ![Normal mode: game folder, Validate game, Start and logs](screenshots/desktop.png)
 
 [Join a friend](docs/launcher.md#join-another-server) ·
-[Host friends](docs/launcher.md#host-friends) ·
-[Scripts edition](docs/scripts.md) ·
 [Troubleshooting](docs/launcher.md#troubleshooting) ·
 [All documentation](docs/README.md)
+
+## Host or manage a server
+
+- **Desktop:** Switch to **Advanced → Hosting** to start or stop your server, manage accounts and export private
+  invitations for friends. [Hosting guide](docs/launcher.md#host-friends).
+- **Scripts edition:** Follow the [terminal hosting setup](docs/scripts.md#host-friends) and
+  [server and account commands](docs/guide.md).
 
 Pre-alpha: [report bugs](https://github.com/usersina/yo3-revival/issues/new/choose).
 [MIT](LICENSE) · [Project, credits and support](docs/about.md). Unaffiliated with Konami.
