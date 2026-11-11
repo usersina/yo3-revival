@@ -284,6 +284,8 @@ python3 tools/monkey/duel-replay.py --server SERVER.log --duel 1         # repla
 
 ## Environment gotchas
 
+- Platform scope: 64-bit Windows 10/11 and Linux with Wine. Windows 7 is unsupported and compatibility work is
+  out of scope for now; do not pursue it unless the user explicitly reopens it. This applies to Desktop and Scripts.
 - The user's shell aliases `ls` → eza and `cat` → bat. Use `command ls` / `command cat` in scripts.
 - Don't run `cargo fmt`: there is no `rustfmt.toml` and the code was never formatted with the defaults (lines run to
   about 120 columns), so it rewraps every file. Match the surrounding style by hand.

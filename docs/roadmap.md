@@ -26,6 +26,9 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 
 ## Status
 
+Platform scope: **64-bit Windows 10/11** and **Linux with Wine**. **Windows 7 support is out of scope for now**,
+for both Desktop and Scripts. Current compatibility and native Windows verification work targets Windows 10/11.
+
 v0.0.4 release preparation (2026-11-10):
 
 - [x] README and illustrated launcher guide lead with release downloads and the current four-page UI. Fresh Windows

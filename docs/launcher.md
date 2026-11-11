@@ -18,7 +18,8 @@ Both editions include the server, rules engine, Node.js and required connection 
 ## First launch
 
 You need a complete original **Yu-Gi-Oh! ONLINE 3 v1.153** installation and **64-bit Windows 10/11** or **Linux with Wine**.
-Windows 7 and macOS do not have supported builds. [Game installation help](#getting-the-original-game).
+**Windows 7 is not supported in either Desktop or Scripts; compatibility work is out of scope for now.**
+macOS does not have a supported build. [Game installation help](#getting-the-original-game).
 
 1. [Download the latest release](https://github.com/usersina/yo3-revival/releases/latest). Choose the **Desktop**
    archive for your system and extract **all** of it.

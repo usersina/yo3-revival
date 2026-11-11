@@ -5,7 +5,8 @@ Node.js, connection helper and DLL. Account/profile setup and updates are manual
 use [Desktop](launcher.md).
 
 You still need the original **Yu-Gi-Oh! ONLINE 3 v1.153** installation. Windows builds support **64-bit Windows 10/11**;
-Linux needs Wine for the game. No Rust or separate Node.js installation is needed for a release bundle.
+**Windows 7 is not supported.** Linux needs Wine for the game. No Rust or separate Node.js installation is needed
+for a release bundle.
 
 [Download Scripts for your system](https://github.com/usersina/yo3-revival/releases/latest) and extract the entire
 archive. Keep every file together in `yo3-revival-scripts/`. Open a terminal in that folder.

@@ -19,7 +19,8 @@ original game world.
 ## Start playing
 
 You need the original game **v1.153**, installed separately. Revival does not include it.
-Use **64-bit Windows 10/11**, or **Linux with Wine**. [Game installation help](docs/launcher.md#getting-the-original-game).
+Use **64-bit Windows 10/11**, or **Linux with Wine**. **Windows 7 is not supported.**
+[Game installation help](docs/launcher.md#getting-the-original-game).
 
 1. [Download the latest release](https://github.com/usersina/yo3-revival/releases/latest). Choose **Desktop** for
    your system and extract **the whole archive**.
@@ -48,7 +49,8 @@ Pre-alpha: [report bugs](https://github.com/usersina/yo3-revival/issues/new/choo
 
 The server is written in Rust, reverse-engineered from the game client, and runs duels on
 [EDOPro](https://github.com/edo9300/edopro)'s rules engine. Everything technical (building from source, the protocol,
-the client's internals, the roadmap) is in [docs/](docs/README.md). To contribute, read [AGENTS.md](AGENTS.md) first.
+the client's internals, the roadmap) is in [docs/](docs/README.md). To contribute, read
+[AGENTS.md](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md) first.
 
 ---
 
