@@ -86,6 +86,8 @@ Before updating, close the game and stop hosting. Keep your server data and loca
   from the workspace manifest. Resolved dependencies, enabled features and `Cargo.lock` are unchanged.
 - Four test fixtures now exercise the same assertions on native Windows as on Linux.
 - Publishing requires the final Desktop archive to pass the packaged-updater startup check after tests and builds.
+- Fixed packaging with MinGW toolchains whose runtime code exceeds the DLL test fixture's old fixed reservation.
+  Regression checks preserve its hook addresses, callback relocation and native Windows section layout.
 
 ## v0.0.4 (2026-11-10)
 

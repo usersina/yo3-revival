@@ -44,6 +44,12 @@ v0.0.5 release preparation (2026-11-11):
   dependencies. The actual Desktop validates the game, starts its isolated server, confirms DLL readiness and
   authenticates through player selection to the main map. Linux Desktop/Wine also reaches the main map.
   Test processes were stopped and the VM's original game Documents restored with matching hashes.
+- [x] The first release attempt passed all 590 tests and lints, then failed linking a synthetic mod fixture:
+  CI's MinGW runtime exceeded its fixed 12 KiB code reservation. The hook section now follows the actual aligned
+  code end while preserving guarded RVAs and the callback relocation. A regression reproduces the failure with
+  larger code at both image bases, checks contiguous PE sections, and rejects code overlapping the first hook.
+  Both larger fixtures pass the real DLL contract under Wine; all four archives build and the packaged Desktop
+  updater passes locally. Release CI runs the layout check before bundling; no production DLL or game-hook behavior changes.
 - [ ] Publish v0.0.5 after the release workflow verifies tests, all four archives and packaged-updater readiness.
   Native Windows 10, protected-folder direct-start installation, runtime reinstallation and separate-machine
   network checks remain open; Windows 11 evidence does not close those items.

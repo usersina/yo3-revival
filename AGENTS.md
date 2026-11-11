@@ -88,6 +88,7 @@ Build and test:
 engine/fetch.sh                                   # once: the rules engine's dependencies (engine tests skip without them)
 cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop
 tools/mod/build.sh                               # 32-bit connection DLL, injector and native/Wine contract harnesses
+python3 tools/mod/test_fixture_layout.py           # larger MinGW code, contiguous PE sections, fixed hook RVAs and relocation
 tools/mod/test.sh                                # named/ordinal imports, local cookies and fail-closed injection (private :78)
 tools/mod/test-loader.sh                         # WINMM forwarding, Unicode config, missing/changed DLL and missing state
 # Live direct-start fixture: first build the Windows yo3-launcher; use a fresh private prefix without LoaderConfig.

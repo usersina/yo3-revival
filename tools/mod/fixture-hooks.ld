@@ -1,12 +1,14 @@
 /* Keep PE sections contiguous: Windows rejects the gaps accepted by Wine's image loader. */
 SECTIONS {
-  .yo3hook __image_base__ + 0x4000 : SUBALIGN(1) {
-    . = 0x6964b - 0x4000; KEEP(*(.yo3login))
-    . = 0xf44bd - 0x4000; KEEP(*(.yo3starter))
-    . = 0x114212 - 0x4000; KEEP(*(.yo3duel))
-    . = 0x1159ea - 0x4000; KEEP(*(.yo3update))
-    . = 0x115a30 - 0x4000; KEEP(*(.yo3target))
-    . = 0x116000 - 0x4000;
+  /* MinGW CRT code size varies by toolchain. Follow .text while preserving every guarded RVA. */
+  __yo3_hook_start = ALIGN(ADDR(.text) + SIZEOF(.text), __section_alignment__);
+  .yo3hook __yo3_hook_start : SUBALIGN(1) {
+    . = __image_base__ + 0x6964b - __yo3_hook_start; KEEP(*(.yo3login))
+    . = __image_base__ + 0xf44bd - __yo3_hook_start; KEEP(*(.yo3starter))
+    . = __image_base__ + 0x114212 - __yo3_hook_start; KEEP(*(.yo3duel))
+    . = __image_base__ + 0x1159ea - __yo3_hook_start; KEEP(*(.yo3update))
+    . = __image_base__ + 0x115a30 - __yo3_hook_start; KEEP(*(.yo3target))
+    . = __image_base__ + 0x116000 - __yo3_hook_start;
   }
-  ASSERT(SIZEOF(.text) <= 0x3000, "fixture .text grew past its reserved image range")
+  ASSERT(__yo3_hook_start <= __image_base__ + 0x6964b, "fixture .text overlaps its first guarded hook")
 } INSERT AFTER .text;

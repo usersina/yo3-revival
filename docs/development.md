@@ -53,6 +53,7 @@ cover server setup beside an existing live session.
 ```bash
 cargo nextest run --workspace
 cargo clippy --workspace --all-targets -- -D warnings
+python3 tools/mod/test_fixture_layout.py
 python3 tools/client/test_vclient.py
 python3 tools/monkey/test_duel_report.py
 python3 tools/monkey/test_duel_replay.py
