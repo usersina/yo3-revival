@@ -63,6 +63,12 @@ Startup feedback (2026-11-11):
   drive path but failing with Rust's canonical extended-path prefix. Compatible native path handling now covers
   runtime probes, injection and direct-loader configuration. The Windows path regression went red/green with
   spaces/Japanese text, and the actual Desktop validation passed; Linux workspace tests and strict Clippy pass.
+- [x] Native Windows ASLR: observed the supported game at `0x006D0000`; the old DLL rejected it. Code, data,
+  vtables and the absolute duel-update callback now use the actual image base, retaining byte guards. Linked
+  full-size/relocated fixtures are valid Windows PE images (the old section-gap fixture was accepted only by Wine).
+  The same native fixture failed with the old DLL and passed with the fix at randomized bases; Wine's forced
+  `0x600000` fixture also passes. The native client reaches login/map/deck editing with 498 cards. Standard-user
+  game launch is still being checked separately; no ASLR/security policy was disabled.
 
 v0.0.4 release preparation (2026-11-10):
 

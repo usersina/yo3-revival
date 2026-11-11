@@ -14,8 +14,8 @@ static Yo3StarterState starter_state;
 static void starter_log(const char *text) {
     DWORD n; WriteFile(GetStdHandle(STD_ERROR_HANDLE),text,(DWORD)strlen(text),&n,NULL);
 }
-static void game_string(GameString *out, const char *text) { ((StringCtor)*(DWORD *)0x7583cc)(out,text); }
-static void game_string_free(GameString *s) { ((StringDtor)*(DWORD *)0x7583d4)(s); }
+static void game_string(GameString *out, const char *text) { ((StringCtor)*(DWORD *)game_address(0x7583cc))(out,text); }
+static void game_string_free(GameString *s) { ((StringDtor)*(DWORD *)game_address(0x7583d4))(s); }
 static void *game_get(void *object, unsigned slot) { return ((ObjectGet)(*(DWORD **)object)[slot/4])(object); }
 static void game_delete(void *object) {
     if(object) ((void (__attribute__((thiscall)) *)(void *,unsigned))(*(DWORD **)object)[0])(object,1);
@@ -31,7 +31,7 @@ static void *game_field(void *map, const char *key) {
     if(!map) return NULL;
     GameString name; game_string(&name,key);
     DWORD iter[2]={0,0}; void *tree=(BYTE *)map+4;
-    __asm__ volatile("pushl %%esi; pushl %[key]; pushl %[out]; movl %[tree],%%esi; movl $0x41a980,%%eax; call *%%eax; popl %%esi"
+    __asm__ volatile("pushl %%esi; pushl %[key]; pushl %[out]; movl %[tree],%%esi; movl _yo3_game_image_base,%%eax; addl $0x1a980,%%eax; call *%%eax; popl %%esi"
         : : [tree]"r"(tree),[key]"r"(&name),[out]"r"(iter) : "eax","ecx","edx","memory","cc");
     void *value=iter[1] && iter[1]!=*(DWORD *)((BYTE *)tree+0x18)?*(void **)(iter[1]+0x28):NULL;
     game_string_free(&name); return value;
@@ -41,7 +41,7 @@ static unsigned game_uint(void *object) {
 }
 static int game_text(void *map, const char *key, char *out, size_t size) {
     void *value=game_field(map,key);
-    if(!value || *(DWORD *)value!=0x793e94) return 0; /* EasyMultiPlayDataString */
+    if(!value || *(DWORD *)value!=(DWORD)(uintptr_t)game_address(0x793e94)) return 0; /* EasyMultiPlayDataString */
     GameString text;
     ((void (__attribute__((thiscall)) *)(void *,GameString *))(*(DWORD **)value)[0x1c/4])(value,&text);
     int ok=game_string_read(&text,out,size); game_string_free(&text); return ok;
@@ -52,7 +52,7 @@ static unsigned game_items(void *object, void ***items) {
     *items=(void **)begin; return (end-begin)/4;
 }
 static void *game_deck_info(void) {
-    void *config=*(void **)0x82ec10; /* application (0x40A420) +0x50: selected player's local profile */
+    void *config=*(void **)game_address(0x82ec10); /* application (0x40A420) +0x50: selected player's local profile */
     if(!config) return NULL;
     void **items=NULL; unsigned count=game_items(config,&items);
     for(unsigned i=0;i<count;++i) {
@@ -63,12 +63,12 @@ static void *game_deck_info(void) {
 }
 static int game_check(DeckCheck *check, void *deck) {
     int result;
-    __asm__ volatile("pushl %%ebx; pushl %[deck]; movl %[check],%%ebx; popl %%eax; movl $0x51aa80,%%ecx; call *%%ecx; popl %%ebx"
+    __asm__ volatile("pushl %%ebx; pushl %[deck]; movl %[check],%%ebx; popl %%eax; movl _yo3_game_image_base,%%ecx; addl $0x11aa80,%%ecx; call *%%ecx; popl %%ebx"
         : "=a"(result) : [check]"r"(check),[deck]"r"(deck) : "ecx","edx","memory","cc");
     return result;
 }
 static int game_check_all(DeckCheck *check, void *manager) {
-    return ((int (__attribute__((stdcall)) *)(DeckCheck *,void *))0x51ab00)(check,(BYTE *)manager+0x1000d8);
+    return ((int (__attribute__((stdcall)) *)(DeckCheck *,void *))game_address(0x51ab00))(check,(BYTE *)manager+0x1000d8);
 }
 typedef struct { void *manager, *connection; void **decks; DeckCheck check; char player[65]; } StarterJob;
 static int starter_local_path(StarterJob *job, const char *suffix, wchar_t *out) {
@@ -130,14 +130,14 @@ static int starter_save(void *data, unsigned index) {
     GameString path; game_string(&path,encoded);
     /* 0x52EE60 ultimately calls this serializer. It consumes the by-value string (0x20 stack bytes),
      * so the C copy transfers ownership. Stage first, then atomically publish without REPLACE_EXISTING. */
-    int result=((int (__attribute__((thiscall)) *)(void *,void *,GameString))0x52c320)(job->manager,job->decks[index],path);
+    int result=((int (__attribute__((thiscall)) *)(void *,void *,GameString))game_address(0x52c320))(job->manager,job->decks[index],path);
     WIN32_FILE_ATTRIBUTE_DATA written;
     if(result || !GetFileAttributesExW(stage,GetFileExInfoStandard,&written) || written.nFileSizeHigh || written.nFileSizeLow<16
         || !MoveFileExW(stage,file,MOVEFILE_WRITE_THROUGH)) { DeleteFileW(stage); return 0; }
     /* Refresh the same per-player cache loaded at 0x46BDB0. Avoid borrowing the reply's object beyond dispatch. */
     *((BYTE *)job->manager+0x1000f8)=1;
     GameString player; game_string(&player,job->player);
-    ((void *(__attribute__((thiscall)) *)(void *,GameString))0x52f240)(job->manager,player);
+    ((void *(__attribute__((thiscall)) *)(void *,GameString))game_address(0x52f240))(job->manager,player);
     return game_check_all(&job->check,job->manager)==0;
 }
 static int starter_select(void *data, unsigned index) {
@@ -148,27 +148,27 @@ static int starter_select(void *data, unsigned index) {
     if(!game_text(game_get(job->decks[index],0x68),"deck_name",name,sizeof name)) return 0;
     GameString key,value; game_string(&key,"cursor_deck_name"); game_string(&value,name);
     ((void (__attribute__((thiscall)) *)(void *,GameString,GameString))(*(DWORD **)map)[0xc/4])(map,key,value);
-    void *config=*(void **)0x82ec10;
-    return ((int (__attribute__((thiscall)) *)(void *,void *))0x52e200)(config,job->manager)==0;
+    void *config=*(void **)game_address(0x82ec10);
+    return ((int (__attribute__((thiscall)) *)(void *,void *))game_address(0x52e200))(config,job->manager)==0;
 }
 static void starter_reply(void *message, void *connection) {
     unsigned id=game_uint(game_field(game_get(message,0x68),"request"));
     if(id==0x2266) { yo3_starter_reset(&starter_state); return; }
     if(id!=0x22c8) return;
-    StarterJob job={0}; job.manager=*(void **)0x82d2c8; job.connection=connection;
-    if(!job.manager || !game_text((void *)0x82eca4,"pname",job.player,sizeof job.player) || !yo3_starter_safe_name(job.player)) return;
+    StarterJob job={0}; job.manager=*(void **)game_address(0x82d2c8); job.connection=connection;
+    if(!job.manager || !game_text(game_address(0x82eca4),"pname",job.player,sizeof job.player) || !yo3_starter_safe_name(job.player)) return;
     unsigned player=*(DWORD *)((BYTE *)connection+0xd4), regulation=*(DWORD *)((BYTE *)connection+0xc8);
     DWORD begin=*(DWORD *)((BYTE *)connection+0x16c), end=*(DWORD *)((BYTE *)connection+0x170);
     if(!player || !regulation || end<begin || (end-begin)/4<19 || !((void **)begin)[18] || !((void **)begin)[8]) return;
     if(starter_state.complete && starter_state.connection==(uintptr_t)connection && starter_state.player==player) return;
-    job.check.cards=*(void **)0x82eba8; /* 0x406680 data manager +8, as in NPC check 0x4BD8E6 */
+    job.check.cards=*(void **)game_address(0x82eba8); /* 0x406680 data manager +8, as in NPC check 0x4BD8E6 */
     if(!job.check.cards) return;
-    struct { DWORD vtable, value; } rule={0x793dac,regulation};
-    job.check.regulation=((void *(__attribute__((stdcall)) *)(void *,typeof(rule)))0x52db30)(job.manager,rule);
+    struct { DWORD vtable, value; } rule={(DWORD)(uintptr_t)game_address(0x793dac),regulation};
+    job.check.regulation=((void *(__attribute__((stdcall)) *)(void *,typeof(rule)))game_address(0x52db30))(job.manager,rule);
     if(!job.check.regulation) return;
-    __asm__ volatile("pushl %%esi; movl %[rule],%%esi; movl $0x414630,%%eax; call *%%eax; popl %%esi"
+    __asm__ volatile("pushl %%esi; movl %[rule],%%esi; movl _yo3_game_image_base,%%eax; addl $0x14630,%%eax; call *%%eax; popl %%esi"
         : : [rule]"r"(job.check.regulation) : "eax","ecx","edx","memory","cc");
-    job.check.collection=((void *(__attribute__((stdcall)) *)(void *,unsigned))0x4f6340)(connection,0x1d);
+    job.check.collection=((void *(__attribute__((stdcall)) *)(void *,unsigned))game_address(0x4f6340))(connection,0x1d);
     if(job.check.collection) {
         void *info=game_deck_info(); char selected[65];
         Yo3StarterContext context={.connection=(uintptr_t)connection,.player=player,.count=game_items(message,&job.decks),.ready=info!=NULL,
@@ -183,7 +183,7 @@ static void starter_reply(void *message, void *connection) {
 }
 static void __attribute__((fastcall)) starter_dispatch(void *message, void *unused, void *connection) {
     (void)unused;
-    ((void (__attribute__((thiscall)) *)(void *,void *))0x4f4a00)(message,connection);
+    ((void (__attribute__((thiscall)) *)(void *,void *))game_address(0x4f4a00))(message,connection);
     starter_reply(message,connection);
 }
 static int starter_install(void) {
@@ -192,7 +192,7 @@ static int starter_install(void) {
     /* The import-contract fixtures are small standalone executables, with no game dispatcher. */
     if(nt->OptionalHeader.SizeOfImage<0x0f44c2) return 1;
     BYTE *site=base+0x0f44bd;
-    if(base!=(BYTE *)0x400000 || !yo3_starter_dispatch_call_ok(site,5)) return 0;
+    if(!yo3_starter_dispatch_call_ok(site,5)) return 0;
     DWORD previous; if(!VirtualProtect(site,5,PAGE_EXECUTE_READWRITE,&previous)) return 0;
     LONG offset=(BYTE *)starter_dispatch-(site+5); memcpy(site+1,&offset,4);
     FlushInstructionCache(GetCurrentProcess(),site,5);

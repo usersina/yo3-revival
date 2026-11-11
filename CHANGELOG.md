@@ -12,6 +12,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Fixed the connection DLL rejecting supported Windows games when ASLR changes their load address. Login,
+  starter-deck setup and duel diagnostics now follow the actual image base without disabling ASLR.
 - Fixed native Windows path handling: a supported game no longer fails runtime validation merely because its
   resolved path uses Windows' extended-path prefix. Game, connection DLL and direct-start paths use the compatible form.
 - Hosting now refuses missing, corrupt or unusable game card/deck data instead of accepting players with an empty

@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "metadata.h"
+#include "game-image.h"
 
 __declspec(dllexport) const Yo3ModMetadata Yo3ModInfo __attribute__((section(".yo3"), used)) = {
     {'Y','O','3','M','O','D','0','2'}, YO3_MOD_ABI, YO3_BUILD_VERSION, YO3_BUILD_COMMIT
@@ -161,6 +162,7 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
     (void)reserved;
     if (reason != DLL_PROCESS_ATTACH) return TRUE;
     DisableThreadLibraryCalls(dll);
+    yo3_game_image_base = (uintptr_t)GetModuleHandleA(NULL);
     gate_port = port_from("YO3_LOCAL_GATE"); front_port = port_from("YO3_LOCAL_FRONT");
     duel_port = port_from("YO3_LOCAL_DUEL"); http_port = port_from("YO3_LOCAL_HTTP");
     if (!gate_port || !front_port || !duel_port || !http_port ||
@@ -181,6 +183,9 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
         && hook("closesocket", (void *)hooked_close, (void **)&socket_close)
         && hook("InternetOpenUrlA", (void *)hooked_url, (void **)&open_url)))
         return mod_failure("stage=mod-import-hooks: Game imports are unsupported. Validate the original v1.153 game and matching Revival files.\r\n");
+    char image[96];
+    int image_length = snprintf(image, sizeof image, "[YO3 MOD] Game image base=0x%08lx\r\n", (unsigned long)yo3_game_image_base);
+    DWORD image_written; WriteFile(GetStdHandle(STD_ERROR_HANDLE), image, (DWORD)image_length, &image_written, NULL);
     if (!login_install()) return mod_failure("stage=mod-login-hook: Game login code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!starter_install()) return mod_failure("stage=mod-starter-hook: Game deck code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!duel_observer_install()) return mod_failure("stage=mod-duel-hook: Game duel code is unsupported. Validate the original v1.153 executable.\r\n");

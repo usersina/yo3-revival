@@ -42,9 +42,13 @@ int main(void) {
     put(scene+0xbc,0xfffffff0);
     assert(yo3_duel_snapshot(read_memory,NULL,scene,0,&s)==-1);
     unsigned char call[]={0xe8,0x79,0,0,0},update[]={0xb8,0x30,0x5a,0x51,0};
-    assert(yo3_snapshot_call_ok(call,5) && yo3_snapshot_update_ok(update,5));
+    assert(yo3_snapshot_call_ok(call,5) && yo3_snapshot_update_ok(update,5,0x515a30));
+    uint32_t relocated=0x715a30; memcpy(update+1,&relocated,4);
+    assert(yo3_snapshot_update_ok(update,5,relocated));
+    assert(!yo3_snapshot_update_ok(update,5,0x515a30));
+    for(unsigned n=0;n<5;++n) assert(!yo3_snapshot_update_ok(update,n,relocated));
     call[1]^=1;update[2]^=1;
-    assert(!yo3_snapshot_call_ok(call,5) && !yo3_snapshot_update_ok(update,5));
+    assert(!yo3_snapshot_call_ok(call,5) && !yo3_snapshot_update_ok(update,5,relocated));
     puts("PASS: read-only native snapshots, hidden survivors, LP/stats, animation gating, bounds and hook guards");
     return 0;
 }

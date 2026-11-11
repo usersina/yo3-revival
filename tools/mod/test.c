@@ -11,6 +11,11 @@
 static volatile char mismatched_game[0x140000];
 #endif
 int main(int argc, char **argv) {
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+    BYTE *image=(BYTE *)GetModuleHandleA(NULL);
+    IMAGE_NT_HEADERS32 *headers=(IMAGE_NT_HEADERS32 *)(image+((IMAGE_DOS_HEADER *)image)->e_lfanew);
+    if(headers->OptionalHeader.SizeOfImage>=0xf44c2)
+        fprintf(stderr,"fixture image base=0x%08lx header-base=0x%08lx\n",(unsigned long)(uintptr_t)image,headers->OptionalHeader.ImageBase);
 #ifdef YO3_TEST_BAD_GAME_HOOK
     mismatched_game[sizeof mismatched_game-1]=1; /* dispatcher RVA lies in this synthetic image */
 #endif

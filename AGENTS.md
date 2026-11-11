@@ -302,7 +302,8 @@ python3 tools/monkey/duel-replay.py --server SERVER.log --duel 1         # repla
   the menu (`login` handles both).
 - Ghidra 12.1.2 lives at `/opt/ghidra`. GhidraMCP 2.0 runs headless (`--no-analyze`) on `re/ghidra`, registered in
   the local MCP configuration. Only one Ghidra process can hold the project at a time.
-- Ghidra's addresses equal the exe's virtual addresses (image base `0x400000`).
+- Ghidra's addresses use the exe's preferred image base `0x400000`. Native Windows ASLR can map it elsewhere;
+  DLL code/data/vtable addresses must resolve through the actual module base (`tools/mod/game-image.h`).
 - With `--trace`, the client's own stdout trace reaches `logs/client-stdout.log` in buffered chunks, so recent lines
   can lag. `logs/fields.tsv` is written straight away. Wine's `winepath` prints startup noise on stderr; silence it.
 - Wine assumes one X display per prefix: two clients in one prefix on two displays die with X `BadWindow`. Each extra

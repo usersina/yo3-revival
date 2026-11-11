@@ -19,9 +19,9 @@ static int yo3_snapshot_call_ok(const unsigned char *call,size_t n) {
     static const unsigned char expected[]={0xe8,0x79,0,0,0}; /* 0x514212 -> 0x514290 */
     return n==sizeof expected && !memcmp(call,expected,n);
 }
-static int yo3_snapshot_update_ok(const unsigned char *code,size_t n) {
-    static const unsigned char expected[]={0xb8,0x30,0x5a,0x51,0}; /* 0x5159EA callback */
-    return n==sizeof expected && !memcmp(code,expected,n);
+static int yo3_snapshot_update_ok(const unsigned char *code,size_t n,uint32_t target) {
+    if(n!=5 || code[0]!=0xb8 || !target) return 0; /* 0x5159EA: MOV EAX, relocated update callback. */
+    uint32_t actual; memcpy(&actual,code+1,4); return actual==target;
 }
 static int yo3_word(Yo3Read read,void *ctx,uint32_t at,uint32_t *value) { return at && read(ctx,at,value,4); }
 static int yo3_snap_push(Yo3Snapshot *s,uint32_t value) {

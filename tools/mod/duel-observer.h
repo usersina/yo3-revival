@@ -27,7 +27,7 @@ static void duel_observer_poll(void *scene) {
     if(!duel_pending.active) return;
     if(duel_pending.scene!=(uint32_t)(uintptr_t)scene) { duel_observer_log("scene-changed",NULL);duel_pending.active=0;return; }
     uint32_t data,local;
-    if(!yo3_word(duel_read,NULL,0x82d2c0,&data) || !yo3_word(duel_read,NULL,data+0x1b0,&local)) {
+    if(!yo3_word(duel_read,NULL,(uint32_t)(uintptr_t)game_address(0x82d2c0),&data) || !yo3_word(duel_read,NULL,data+0x1b0,&local)) {
         duel_observer_log("unreadable",NULL);duel_pending.active=0;return;
     }
     Yo3Snapshot snapshot; int state=yo3_duel_snapshot(duel_read,NULL,duel_pending.scene,local,&snapshot);
@@ -45,20 +45,20 @@ static void __attribute__((fastcall,force_align_arg_pointer)) duel_observer_disp
         if(params[0]!=YO3_SNAPSHOT_SCHEMA) { duel_observer_log("unsupported-schema",NULL);duel_pending.active=0; }
         return;
     }
-    ((void (__attribute__((fastcall)) *)(unsigned,uint32_t *,void *))0x514290)(id,params,scene);
+    ((void (__attribute__((fastcall)) *)(unsigned,uint32_t *,void *))game_address(0x514290))(id,params,scene);
 }
 static void __attribute__((fastcall,force_align_arg_pointer)) duel_observer_update(void *scene,void *unused) {
     (void)unused;
-    ((void (__attribute__((thiscall)) *)(void *))0x515a30)(scene);
+    ((void (__attribute__((thiscall)) *)(void *))game_address(0x515a30))(scene);
     duel_observer_poll(scene);
 }
 static int duel_observer_install(void) {
     BYTE *base=(BYTE *)GetModuleHandleA(NULL);
     IMAGE_NT_HEADERS32 *nt=(IMAGE_NT_HEADERS32 *)(base+((IMAGE_DOS_HEADER *)base)->e_lfanew);
     if(nt->OptionalHeader.SizeOfImage<0x0f44c2) return 1; /* Standalone import fixtures. */
-    if(base!=(BYTE *)0x400000 || nt->OptionalHeader.SizeOfImage<0x1159ef) return 0;
+    if(nt->OptionalHeader.SizeOfImage<0x1159ef) return 0;
     BYTE *call=base+0x114212,*update=base+0x1159ea;
-    if(!yo3_snapshot_call_ok(call,5) || !yo3_snapshot_update_ok(update,5)) return 0;
+    if(!yo3_snapshot_call_ok(call,5) || !yo3_snapshot_update_ok(update,5,(uint32_t)(uintptr_t)game_address(0x515a30))) return 0;
     DWORD old;
     if(!VirtualProtect(call,5,PAGE_EXECUTE_READWRITE,&old)) return 0;
     LONG offset=(BYTE *)duel_observer_dispatch-(call+5);memcpy(call+1,&offset,4);

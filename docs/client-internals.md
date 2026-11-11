@@ -1,7 +1,8 @@
 # Client internals
 
 What we know about `yo3.exe` and its data. Addresses are virtual addresses in the unpacked exe (image base
-`0x400000`). Decompiled C for every function is in `re/yo3_decompiled.c` (git-ignored; regenerate with the Ghidra
+`0x400000`); Windows ASLR may map the running image elsewhere. Decompiled C for every function is in
+`re/yo3_decompiled.c` (git-ignored; regenerate with the Ghidra
 export, see [AGENTS.md](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md)).
 
 **Contents**
@@ -136,6 +137,15 @@ rejections distinguish launch state, imports, login, starter and duel hooks, ret
 The Rust helper includes a bounded, redacted native stderr tail in startup errors so Desktop details and exported
 logs preserve the cause instead of reporting only EOF. Full native Windows play/elevation checks remain separate
 from these dependency and path checks.
+
+Native Windows 11 also mapped the supported game at `0x006D0000`, exposing the DLL's old fixed-base guard.
+`tools/mod/game-image.h` resolves preferred evidence addresses through the actual module base. Login string
+imports, starter code/data/vtables and duel callbacks/globals all use that mapping. Relative CALL signatures stay
+exact; the MOV update-callback guard checks its relocated operand. ASLR remains enabled. Synthetic full-size
+fixtures contain real PE callback relocations and also link at `0x600000`: the old DLL failed and the corrected DLL
+passed on native Windows and Wine. The real native client reached player selection, the main map and a deck editor
+showing a selected 40-card starter and 498 Trunk cards. These checks used the invoking-user compatibility setting;
+normal Start's elevation behavior is tracked separately.
 
 ### Skipping the stock login form
 

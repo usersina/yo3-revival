@@ -5,7 +5,7 @@
  * until the normal reply handler invokes StartPSelect. No Flash/game files or credentials change.
  * Native connection/error/player handlers still run. Evidence: docs/client-internals.md. */
 static void login_copy_string(void *to, const void *from) {
-    ((void (__attribute__((thiscall)) *)(void *,const void *))*(DWORD *)0x7583b4)(to,from);
+    ((void (__attribute__((thiscall)) *)(void *,const void *))*(DWORD *)game_address(0x7583b4))(to,from);
 }
 static void login_connect_gate(void *gate) {
     ((void (__attribute__((thiscall)) *)(void *))(*(DWORD **)gate)[0x38/4])(gate);
@@ -24,7 +24,7 @@ static int login_install(void) {
     /* As with the starter hook, small import-contract fixtures contain no game code. */
     if(nt->OptionalHeader.SizeOfImage<0x0f44c2) return 1;
     BYTE *site=base+0x06964b;
-    if(base!=(BYTE *)0x400000 || !yo3_login_call_ok(site,5)) return 0;
+    if(!yo3_login_call_ok(site,5)) return 0;
     DWORD previous; if(!VirtualProtect(site,5,PAGE_EXECUTE_READWRITE,&previous)) return 0;
     LONG offset=(BYTE *)login_start-(site+5); memcpy(site+1,&offset,4);
     FlushInstructionCache(GetCurrentProcess(),site,5);
