@@ -105,6 +105,10 @@ python3 tools/test_docs_check.py                   # repository/extracted-bundle
 python3 tools/test_package_editions.py             # editions, archives, literal arguments and offline docs links
 tools/docs-check.py --root /path/to/bundle         # the same checks against an extracted release
 tools/release.sh                                  # bundles in dist/ (Linux .tar.gz, Windows .zip), with docs/ and screenshots/
+tools/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-linux-x86_64.tar.gz
+#   after building that stable-version test archive; private Xvfb/xauth and fresh app data, no game/server start.
+#   Release CI requires this integration test after bundling and before publishing; no matching test is a failure.
+#   Every push to main runs lints/workspace tests, including when the top changelog version is already released.
 #   Desktop and Scripts editions for each platform; stable inner roots yo3-revival-desktop/ and yo3-revival-scripts/.
 #   Desktop README is the short project README; Scripts README is the terminal guide with relocated links.
 #   Both carry all Markdown docs and root screenshots; packaging checks their copied links before archiving.

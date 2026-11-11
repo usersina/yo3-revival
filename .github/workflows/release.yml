@@ -1,7 +1,6 @@
-# A push to main whose CHANGELOG.md has a new version at the top is a release: the lints and tests (the rules engine
-# fetched, no game install: the game-data tests skip), then both bundles (tools/release.sh), then the GitHub release
-# under that version's tag, its notes the version's section with the bundles' checksums. A push whose newest version is
-# already tagged releases nothing: its run passes after the first step.
+# Every push to main runs the lints and tests (engine fetched; game-data tests skip without the original game).
+# A new CHANGELOG.md version also builds the bundles, verifies packaged updater readiness on private Xvfb,
+# then publishes the release with checksums. An already tagged version runs checks without publishing again.
 name: Release
 
 on:
@@ -42,9 +41,8 @@ jobs:
           fi
 
   release:
-    name: Test, build and release ${{ needs.prepare.outputs.version }}
+    name: Verify code and prepare ${{ needs.prepare.outputs.version }}
     needs: prepare
-    if: needs.prepare.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -64,7 +62,7 @@ jobs:
           rustup component add clippy
           rustup target add x86_64-pc-windows-gnu
           sudo apt-get update -q
-          sudo apt-get install -yq mingw-w64 pkg-config libxkbcommon-dev libwayland-dev libx11-dev
+          sudo apt-get install -yq mingw-w64 pkg-config libxkbcommon-dev libwayland-dev libx11-dev xvfb xauth
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
@@ -85,8 +83,14 @@ jobs:
       - name: Tests
         run: cargo nextest run --workspace
       - name: Bundles
+        if: needs.prepare.outputs.release == 'true'
         run: YO3_VERSION="$VERSION" tools/release.sh
+      - name: Packaged Desktop updater opens before activation
+        if: needs.prepare.outputs.release == 'true'
+        timeout-minutes: 5
+        run: tools/test-packaged-update.sh "$VERSION" "dist/yo3-revival-desktop-$VERSION-linux-x86_64.tar.gz"
       - name: Notes
+        if: needs.prepare.outputs.release == 'true'
         run: |
           mkdir assets
           for edition in desktop scripts; do
@@ -97,6 +101,7 @@ jobs:
           python3 .github/scripts/release_notes.py notes CHANGELOG.md assets > notes.md
           cat notes.md
       - name: Release
+        if: needs.prepare.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

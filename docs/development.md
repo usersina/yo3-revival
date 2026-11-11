@@ -8,6 +8,7 @@ These commands run in a **source checkout**, not an extracted release. For playi
 - [Checks](#checks)
 - [Duel diagnostics](#duel-diagnostics)
 - [Build release bundles](#build-release-bundles)
+- [Verify the packaged updater](#verify-the-packaged-updater)
 - [Publish a release](#publish-a-release)
 
 ## Build from source
@@ -123,6 +124,27 @@ Check the real app and scripts from extracted archives, including paths with spa
 folders. Verify Linux/Wine and native Windows separately. The current Desktop changes still need a native Windows
 check; Windows Scripts hosting/login and bundled-engine initialization have been exercised under Wine.
 
+## Verify the packaged updater
+
+The release workflow runs the real Desktop archive through the updater **after bundling and before publishing**.
+The test verifies archive checksums/contents, stages the update, opens its actual launcher on private Xvfb and
+requires the process's window-readiness acknowledgement before activation. A failed check blocks publication.
+Normal pushes to `main` run lints and workspace tests even when the changelog version is already released;
+bundling, this archive check and publishing run only for a new release version.
+
+Run the same check locally on Linux with `Xvfb`, `xvfb-run` and `xauth` installed:
+
+```bash
+YO3_VERSION=v0.0.5 tools/release.sh
+tools/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-linux-x86_64.tar.gz
+```
+
+Use the version being tested. Building with a stable version label does not publish or create a Git tag; `-dev`
+archives are rejected by the production updater. The helper owns its Xvfb display and creates/removes fresh
+application storage. It does not start the game or a server. The integration test stays ignored in ordinary
+workspace runs because it needs the final archive; the release gate selects it explicitly and fails if no test matches.
+This checks Linux package activation; native Windows verification remains separate.
+
 ## Publish a release
 
 1. Update the current **Unreleased** changelog entry with player-visible behavior, then give it the next unused
@@ -130,7 +152,8 @@ check; Windows Scripts hosting/login and bundled-engine initialization have been
 2. Keep documentation/screenshots current, run required checks and live-test the extracted bundles.
 3. Commit in logical slices on a feature branch. Follow the working guide's local merge policy and ask before pushing.
 4. A push to `main` with an untagged top changelog version runs the release workflow: tests/lints, four bundles,
-   checksums, release notes and a GitHub release. An already published top version releases nothing.
+   the mandatory packaged-updater check, checksums, release notes and a GitHub release. An already published top
+   version runs checks without publishing again.
 
 Desktop checks select only the matching Desktop archive; Scripts updates stay manual. Maintainer architecture and
 protocol evidence live in [authentication](authentication.md), [protocol](protocol.md), [client internals](client-internals.md)

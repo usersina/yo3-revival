@@ -51,6 +51,12 @@ Startup feedback (2026-11-11):
   including the 240-duel check; strict Clippy, Linux/Windows release builds, native/Wine mod and loader harnesses,
   documentation links and offline-edition tests pass. An engine-identity timeout during concurrent builds did
   not repeat in either bounded full-suite run. The Windows CLI also passes its runtime probe under Wine.
+- [x] Release CI explicitly runs the packaged Desktop updater test after bundling and before publishing, on owned
+  Xvfb with fresh application storage. The shared `tools/test-packaged-update.sh` helper fails if no test matches.
+  Local proof: the current unpublished `v0.0.5` archive opened and activated successfully; a checksum-consistent
+  fixture whose launcher exits immediately failed the same command and remained inactive. No updater version
+  checks were relaxed; native Windows testing remains separate. Normal pushes to `main` now run lints/workspace
+  tests even with an already published changelog version; only a new version enables packaging/publication.
 - [ ] Native Windows 10/11 dependency repair, UAC/protected-folder behavior and security-product detections still
   need platform evidence. The launcher reports OS errors and does not change antivirus/firewall policy.
 
