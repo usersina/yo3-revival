@@ -38,7 +38,7 @@ fn run() -> iced::Result {
         .theme(|_: &App| Theme::custom("Revival", iced::theme::Palette { background: Color::from_rgb8(15, 20, 29),
             text: Color::from_rgb8(229, 235, 244), primary: Color::from_rgb8(75, 155, 224),
             success: Color::from_rgb8(89, 189, 151), warning: Color::from_rgb8(224, 180, 87), danger: Color::from_rgb8(222, 107, 114) }))
-        .window(iced::window::Settings { size: iced::Size::new(1080.0, 760.0), min_size: Some(iced::Size::new(900.0, 650.0)), ..Default::default() }).exit_on_close_request(false)
+        .window(iced::window::Settings { size: iced::Size::new(1000.0, 640.0), position: iced::window::Position::Centered, min_size: Some(iced::Size::new(900.0, 640.0)), ..Default::default() }).exit_on_close_request(false)
         .subscription(App::subscription)
         .run()
 }

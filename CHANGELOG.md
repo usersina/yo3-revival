@@ -12,6 +12,7 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- The launcher opens in a smaller, centered window so its footer remains visible on laptop-sized screens.
 - Detailed duel diagnostics allow cold dependency fingerprinting up to two minutes without extending the
   30-second deadline for game actions. Recording errors no longer claim that the engine and model disagree.
 - Fixed Windows game startup requesting administrator access and then failing to inject the connection DLL.

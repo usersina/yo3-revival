@@ -88,6 +88,9 @@ Startup feedback (2026-11-11):
   inactive. Both archive component inventories verify. Native current/all-retained exports contain 7/21 entries,
   pass ZIP integrity and credential/home-path checks. A missing Desktop DLL disables Start with repair guidance;
   restoring it permits revalidation. Linux workspace: 583 tests, strict Clippy and docs checks pass.
+- [x] Initial Windows window sizing: the old 1080×760 window hid its footer on the 1280×800 VM. A centered
+  1000×640 default now keeps Version, GitHub and Help visible without maximizing; native DWM bounds fit the
+  1280×752 work area. Desktop state tests and strict Clippy pass; Iced's own sizing/position controls are used.
 
 v0.0.4 release preparation (2026-11-10):
 
