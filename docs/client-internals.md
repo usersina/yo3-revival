@@ -2,7 +2,7 @@
 
 What we know about `yo3.exe` and its data. Addresses are virtual addresses in the unpacked exe (image base
 `0x400000`). Decompiled C for every function is in `re/yo3_decompiled.c` (git-ignored; regenerate with the Ghidra
-export, see [AGENTS.md](../AGENTS.md)).
+export, see [AGENTS.md](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md)).
 
 **Contents**
 

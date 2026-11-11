@@ -1,5 +1,6 @@
 #!/bin/sh
-# Builds the host's bundles: dist/yo3-revival-<version>-linux-x86_64.tar.gz and -windows-x86_64.zip, each ready to
+# Builds Desktop and Scripts editions for Linux and Windows, with versioned archives and stable inner folders.
+# Each edition is ready to
 # run with nothing to install: the server, the rules engine with its own Node.js, ocgcore-wasm, ProjectIgnis' card
 # scripts and card database, a launcher and the setup guide. No game files go in: the server reads the host's own game
 # install. The Windows build needs the x86_64-pc-windows-gnu target and mingw-w64. Building needs the network once: the
@@ -65,23 +66,17 @@ fresh copies from the sources above.
 EOF
 }
 
-# The guide (as README.md, with its pictures at the same relative paths as in docs/) and the license.
+# Keep repository and offline documentation links identical: README, docs/, screenshots/.
 docs_files() {
-  cp docs/launcher.md "$1/README.md"
-  cp docs/launcher.md "$1/launcher.md"
-  cp docs/guide.md "$1/guide.md"
-  cp docs/authentication.md "$1/authentication.md"
-  mkdir -p "$1/images"
-  cp -r docs/images/guide "$1/images/"
-  cp docs/images/duel.png "$1/images/"
-  cp docs/images/launcher*.png "$1/images/"
+  cp README.md "$1/README.md"
+  mkdir -p "$1/docs"
+  cp docs/*.md "$1/docs/"
+  cp -r screenshots "$1/"
   cp LICENSE "$1/LICENSE"
-  mkdir -p "$1/licenses"
-  cp crates/yo3-desktop/assets/icons/LICENSE "$1/licenses/LUCIDE.txt"
+
 }
 
-name="yo3-revival-$version-linux-x86_64"
-out="dist/$name"
+out="dist/.staging/linux-x86_64"
 rm -rf "$out"
 mkdir -p "$out"
 cp target/release/yo3-server target/release/yo3-revival "$out/"
@@ -95,23 +90,11 @@ node_archive "$nodeball"
 mkdir -p "$out/engine/node"
 tar -xJf "$cache/$nodeball" -C "$out/engine/node" --strip-components=2 "node-$NODE_VERSION-linux-x64/bin/node"
 tar -xJf "$cache/$nodeball" -C "$out/engine/node" --strip-components=1 "node-$NODE_VERSION-linux-x64/LICENSE"
-cat > "$out/run.sh" <<'EOF'
-#!/bin/sh
-# Starts the server for friends: every network interface, accounts and records in ./data (backed up at each start).
-# Extra options go to the server, e.g. ./run.sh --advertise my.host.name   (see ./yo3-server --help)
-# The rules engine comes with it (engine/, with its own Node.js): nothing to install.
-cd "$(dirname "$0")"
-exec ./yo3-server --bind 0.0.0.0 --data-dir data --log-dir logs "$@"
-EOF
-chmod +x "$out/run.sh" "$out/yo3-server" "$out/yo3-revival" "$out/yo3-launcher" "$out/engine/node/node"
-python3 tools/bundle-licenses.py "$out" x86_64-unknown-linux-gnu
-python3 tools/bundle-manifest.py "$out"
-tar -C dist -czf "dist/$name.tar.gz" "$name"
-echo "dist/$name.tar.gz"
+chmod +x "$out/yo3-server" "$out/yo3-revival" "$out/yo3-launcher" "$out/engine/node/node"
+python3 tools/package-editions.py "$out" linux-x86_64 "$version" dist
 
 # Windows: the same with node.exe and a .cmd launcher (CRLF line ends).
-win="yo3-revival-$version-windows-x86_64"
-out="dist/$win"
+out="dist/.staging/windows-x86_64"
 rm -rf "$out"
 mkdir -p "$out"
 cp target/x86_64-pc-windows-gnu/release/yo3-server.exe target/x86_64-pc-windows-gnu/release/yo3-revival.exe "$out/"
@@ -129,19 +112,4 @@ for name in ("node.exe", "LICENSE"):
     with z.open(f"{top}/{name}") as src, open(f"{dest}/{name}", "wb") as dst:
         dst.write(src.read())
 PY
-crlf() { sed 's/$/\r/' > "$1"; }
-crlf "$out/run.cmd" <<'EOF'
-@echo off
-rem Starts the server for friends: every network interface, accounts and records in .\data (backed up at each start).
-rem Extra options go to the server, e.g. run.cmd --advertise my.host.name   (see yo3-server.exe --help)
-rem The rules engine comes with it (engine\, with its own Node.js): nothing to install.
-cd /d "%~dp0"
-yo3-server.exe --bind 0.0.0.0 --data-dir data --log-dir logs %*
-if errorlevel 1 pause
-exit /b %errorlevel%
-EOF
-python3 tools/bundle-licenses.py "$out" x86_64-pc-windows-gnu
-python3 tools/bundle-manifest.py "$out"
-rm -f "dist/$win.zip"
-(cd dist && python3 -c 'import shutil, sys; shutil.make_archive(sys.argv[1], "zip", ".", sys.argv[1])' "$win")
-echo "dist/$win.zip"
+python3 tools/package-editions.py "$out" windows-x86_64 "$version" dist

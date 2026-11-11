@@ -3,16 +3,17 @@
 
     tools/docs-check.py                 every relative link and #anchor in root Markdown files and docs/**/*.md resolves
     tools/docs-check.py --toc FILE      a table of contents for FILE (H2 and H3 headings), ready to paste under its title
+    tools/docs-check.py --root DIR      validate the same layout in an extracted release
 
 Anchors follow GitHub's rule: lowercase, drop everything but letters, digits, spaces, hyphens and underscores, spaces
 become hyphens, repeated headings get -1, -2. Exit status 1 when a link is broken.
 """
+import argparse
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DOCS = [*sorted(ROOT.glob("*.md")), *sorted((ROOT / "docs").rglob("*.md"))]
 LINK = re.compile(r"(?<!\!)\[[^\]]*\]\(([^)\s]+)\)|!\[[^\]]*\]\(([^)\s]+)\)")
 
 
@@ -48,10 +49,13 @@ def toc(path):
             print(f"{'  ' * (level - 2)}- [{text}](#{anchor})")
 
 
-def check():
-    bad = 0
-    for doc in DOCS:
-        anchors = {a for _, _, a in headings(doc)}
+def check(root=ROOT):
+    root = root.resolve()
+    bad = 0 if (root / "README.md").is_file() else 1
+    if bad:
+        print("missing root README.md")
+    docs = [*sorted(root.glob("*.md")), *sorted((root / "docs").rglob("*.md"))]
+    for doc in docs:
         for line in lines_outside_code(doc):
             line = re.sub(r"`[^`]*`", "", line)
             for m in LINK.finditer(line):
@@ -61,18 +65,24 @@ def check():
                 file_part, _, frag = target.partition("#")
                 dest = doc if not file_part else (doc.parent / file_part).resolve()
                 if not dest.exists():
-                    print(f"{doc.relative_to(ROOT)}: missing file {target}")
+                    print(f"{doc.relative_to(root)}: missing file {target}")
                     bad += 1
                 elif frag and dest.suffix == ".md":
                     if frag not in {a for _, _, a in headings(dest)}:
-                        print(f"{doc.relative_to(ROOT)}: no anchor {target}")
+                        print(f"{doc.relative_to(root)}: no anchor {target}")
                         bad += 1
     print("broken links:", bad)
     return 1 if bad else 0
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 3 and sys.argv[1] == "--toc":
-        toc(Path(sys.argv[2]))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=ROOT, help="repository or extracted bundle root")
+    parser.add_argument("--toc", type=Path, help="print a Markdown table of contents")
+    args = parser.parse_args()
+    if not args.root.is_dir():
+        parser.error("--root must be a directory")
+    if args.toc:
+        toc(args.toc)
     else:
-        sys.exit(check())
+        sys.exit(check(args.root))

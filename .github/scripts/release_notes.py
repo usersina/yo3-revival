@@ -42,6 +42,16 @@ def main():
     if not files:
         sys.exit(f"{sys.argv[3]}: no files to list")
     print("\n".join(body).strip())
+    print("\n## Downloads\n")
+    print("**Desktop** is recommended: a simple Play screen, optional advanced controls, and confirmed in-app updates. "
+          "**Scripts** provides terminal start/play scripts without the GUI. Both include the server, engine and required connection helper/DLL. "
+          "Extract the whole archive; original game files are not included. Windows 7 is not supported.\n")
+    print("| Edition | Windows 10/11 (64-bit) | Linux (64-bit; Wine for the game) |")
+    print("|---|---|---|")
+    for edition in ("desktop", "scripts"):
+        base = f"https://github.com/usersina/yo3-revival/releases/download/{version}/yo3-revival-{edition}-{version}"
+        print(f"| {edition.title()} | [Download ZIP]({base}-windows-x86_64.zip) | [Download tar.gz]({base}-linux-x86_64.tar.gz) |")
+    print("\nThe folders inside are always `yo3-revival-desktop/` and `yo3-revival-scripts/`, without a version number.")
     print("\n## Checksums (SHA-256)\n")
     print("Windows may warn about these unsigned applications and the connection DLL; compare the archive's checksum, or build from source.\n")
     print("```")
@@ -53,4 +63,5 @@ def main():
           " `engine/THIRD-PARTY.md` in a bundle).")
 
 
-main()
+if __name__ == "__main__":
+    main()

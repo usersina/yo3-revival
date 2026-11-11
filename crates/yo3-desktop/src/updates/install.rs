@@ -38,7 +38,7 @@ fn tag_valid(tag: &str) -> anyhow::Result<()> {
 pub(super) fn platform(release: &Release) -> anyhow::Result<&'static str> {
     tag_valid(&release.tag)?;
     for (platform, ext) in [("windows-x86_64", "zip"), ("linux-x86_64", "tar.gz")] {
-        let name = format!("yo3-revival-{}-{platform}.{ext}", release.tag);
+        let name = format!("yo3-revival-desktop-{}-{platform}.{ext}", release.tag);
         if release.asset.name == name {
             ensure!(release.asset.url == format!("{}/releases/download/{}/{}", super::REPOSITORY, release.tag, name), "Unexpected update download source");
             return Ok(platform)
@@ -108,7 +108,7 @@ fn unpack(archive: &Path, destination: &Path, prefix: &str, windows: bool, cance
 fn bundle(directory: &Path, tag: &str, platform: &str) -> anyhow::Result<(String, String)> {
     let manifest = directory.join("bundle.json"); let manifest_sha = hash_file(&manifest, 65536)?;
     let value: serde_json::Value = serde_json::from_slice(&std::fs::read(&manifest)?)?;
-    ensure!(value["schema"] == 1 && value["release"] == tag, "Update manifest has the wrong format or version");
+    ensure!(value["schema"] == 1 && value["edition"] == "desktop" && value["release"] == tag, "Update manifest has the wrong format or version");
     for key in ["protocol", "mod_abi"] { ensure!(value[key].as_u64().is_some_and(|n| n > 0 && n <= 65535), "Update manifest lacks compatibility information"); }
     let components = value["components"].as_object().context("Update manifest has no components")?;
     ensure!(components.len() <= 32, "Update has too many components");
@@ -144,7 +144,7 @@ pub(crate) fn stage_with(root: &Path, release: &Release, archive: &Path, cancell
         ensure!(previous.archive_sha256 == release.asset.sha256, "A different update already occupies this version folder"); validate(&root, &previous)?; return Ok(previous)
     }
     let job = job_directory(&root)?; let unpacked = job.0.join("bundle"); private_dir(&unpacked)?;
-    unpack(archive, &unpacked, &format!("yo3-revival-{}-{platform}", release.tag), platform == "windows-x86_64", cancelled)?;
+    unpack(archive, &unpacked, "yo3-revival-desktop", platform == "windows-x86_64", cancelled)?;
     let (manifest_sha256, desktop_sha256) = bundle(&unpacked, &release.tag, platform)?;
     let installed = Installed { tag: release.tag.clone(), directory: directory.clone(), platform: platform.into(), manifest_sha256, desktop_sha256, archive_sha256: release.asset.sha256.clone() };
     private_create(&unpacked.join(RECEIPT))?.write_all(&serde_json::to_vec_pretty(&installed)?)?;

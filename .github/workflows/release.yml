@@ -78,6 +78,8 @@ jobs:
           python3 tools/client/test_vclient.py
           python3 tools/monkey/test_duel_report.py
           python3 tools/monkey/test_duel_replay.py
+          python3 tools/test_package_editions.py
+          python3 tools/test_docs_check.py
       - name: Documentation links and images
         run: tools/docs-check.py
       - name: Tests
@@ -87,7 +89,10 @@ jobs:
       - name: Notes
         run: |
           mkdir assets
-          cp dist/yo3-revival-"$VERSION"-*.tar.gz dist/yo3-revival-"$VERSION"-*.zip assets/
+          for edition in desktop scripts; do
+            cp "dist/yo3-revival-$edition-$VERSION-linux-x86_64.tar.gz" assets/
+            cp "dist/yo3-revival-$edition-$VERSION-windows-x86_64.zip" assets/
+          done
           ls -l assets
           python3 .github/scripts/release_notes.py notes CHANGELOG.md assets > notes.md
           cat notes.md

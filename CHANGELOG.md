@@ -12,6 +12,21 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Normal mode is one screen: choose the game folder, **Validate game**, **Start**, and visible logs.
+  Switch to **Advanced** for server connections, hosting and full controls without losing settings or drafts.
+- Advanced hosting lists the server's actual CLI flags, including independent `--duel-check` controls, with
+  validation and per-option reset. New run flags appear automatically.
+- Startup has animated feedback, live logs, cancellation and timeouts. Errors stay visible with details, copy and
+  log export; diagnostic failures have their own recovery controls. Missing game files and missing Revival files
+  get different repair guidance, and early helper/server failures are captured. A folder-picker fallback allows pasting a path.
+- Releases provide **Desktop** and **Scripts** editions for Windows and Linux. Archives remain versioned, while
+  their inner folders are `yo3-revival-desktop/` and `yo3-revival-scripts/`. Desktop still downloads and installs
+  complete verified updates after confirmation; terminal users get start-server/play scripts and a dedicated guide.
+
+- Script defaults can be overridden for bind/data/log paths. Ctrl+C during early game startup now cleans up.
+- The README is a short first-play guide; detailed help is organized in `docs/`, with current screenshots in
+  root `screenshots/`. Release bundles keep the same documentation layout and check their links.
+
 - **ONLINE** now opens player selection directly. The required connection mod skips the unused original login
   form, including when opening the game through the installed direct-start loader.
 - Fixed a local gate disconnect race exposed by automatic login, which could crash the client during connection.

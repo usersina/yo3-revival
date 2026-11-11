@@ -1,8 +1,8 @@
 use yo3_desktop::updates::{self, Decision, Platform};
 fn release(tag: &str) -> Vec<u8> {
     serde_json::json!({"tag_name":tag,"draft":false,"prerelease":false,"body":"A new launcher release.","assets":[
-        {"name":format!("yo3-revival-{tag}-linux-x86_64.tar.gz"),"size":1234,"digest":format!("sha256:{}","ab".repeat(32))},
-        {"name":format!("yo3-revival-{tag}-windows-x86_64.zip"),"size":2345,"digest":format!("sha256:{}","cd".repeat(32))}
+        {"name":format!("yo3-revival-desktop-{tag}-linux-x86_64.tar.gz"),"size":1234,"digest":format!("sha256:{}","ab".repeat(32))},
+        {"name":format!("yo3-revival-desktop-{tag}-windows-x86_64.zip"),"size":2345,"digest":format!("sha256:{}","cd".repeat(32))}
     ]}).to_string().into_bytes()
 }
 #[test]
@@ -27,4 +27,15 @@ fn untrusted_release_metadata_cannot_supply_commands_or_arbitrary_download_urls(
     assert_eq!(next.url,"https://github.com/usersina/yo3-revival/releases/tag/v0.3.0"); assert!(!next.asset.url.contains("evil.invalid"));
     value["assets"][0]["digest"]="sha256:bad".into(); assert!(updates::inspect("0.2.0",Platform::LinuxX64,&serde_json::to_vec(&value).unwrap()).is_err());
     assert!(updates::inspect("0.2.0", Platform::LinuxX64, &vec![b'x'; 1024*1024+1]).is_err());
+}
+
+#[test]
+fn scripts_downloads_are_never_offered_as_desktop_updates() {
+    let mut value:serde_json::Value=serde_json::from_slice(&release("v0.3.0")).unwrap();
+    let mut scripts=value["assets"][0].clone(); scripts["name"]="yo3-revival-scripts-v0.3.0-linux-x86_64.tar.gz".into();
+    value["assets"].as_array_mut().unwrap().insert(0,scripts.clone());
+    let Decision::Available(next)=updates::inspect("0.2.0",Platform::LinuxX64,&serde_json::to_vec(&value).unwrap()).unwrap() else {panic!()};
+    assert_eq!(next.asset.name,"yo3-revival-desktop-v0.3.0-linux-x86_64.tar.gz");
+    value["assets"]=serde_json::json!([scripts]);
+    assert!(matches!(updates::inspect("0.2.0",Platform::LinuxX64,&serde_json::to_vec(&value).unwrap()).unwrap(),Decision::Manual{..}));
 }

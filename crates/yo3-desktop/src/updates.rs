@@ -44,7 +44,7 @@ pub fn inspect(current: &str, platform: Platform, body: &[u8]) -> anyhow::Result
     if !installed.pre.is_empty() { return Ok(Decision::Development { latest: tag }) }
     if candidate.cmp_precedence(&installed).is_le() { return Ok(Decision::Current { latest: tag }) }
     let Some(suffix) = platform.suffix() else { return Ok(Decision::Manual { latest: tag }) };
-    let name = format!("yo3-revival-{tag}-{suffix}");
+    let name = format!("yo3-revival-desktop-{tag}-{suffix}");
     let matches: Vec<_> = metadata.assets.into_iter().filter(|a| a.name == name).collect();
     if matches.is_empty() { return Ok(Decision::Manual { latest: tag }) }
     ensure!(matches.len() == 1, "GitHub returned ambiguous update assets");

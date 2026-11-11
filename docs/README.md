@@ -1,54 +1,43 @@
 # Documentation
 
-Everything about the project that is too detailed for the [main README](../README.md). The documents are for different
-readers; this page says which is which and in what order to read them.
+New here? The [main README](../README.md) gets you into your first game.
 
-**Contents**
+## Play and host
 
-- [Documentation](#documentation)
-  - [The documents](#the-documents)
-  - [Where to start](#where-to-start)
-  - [Conventions](#conventions)
-  - [Checking the docs](#checking-the-docs)
+| I want to… | Read |
+|---|---|
+| Set up the Desktop app, join a friend or host | [Desktop guide](launcher.md) |
+| Learn the game controls and start duelling | [Playing guide](playing.md) |
+| Use terminal scripts instead of the app | [Scripts edition](scripts.md) |
+| Find a server command or change network settings | [Command-line reference](guide.md) |
+| Fix a setup problem or report a bug | [Troubleshooting](launcher.md#troubleshooting) |
+| Update or back up an existing setup | [Desktop updates](launcher.md#application-updates), [backups](launcher.md#your-data-and-upgrades), [Scripts updates](scripts.md#updates) |
+| Understand the project, credits or license | [About YO3 Revival](about.md) |
 
-## The documents
+## Build and contribute
 
-| Document                                   | For                        | What is in it                                                                                                                                                       |
-| ------------------------------------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [launcher.md](launcher.md)                 | Hosts and players          | The graphical application's setup, local and remote play, hosting, accounts, invitations and SQLite data. Ships as the bundle's `README.md` |
-| [guide.md](guide.md)                       | Terminal users and builders | Command-line setup, private launcher profiles, account commands, source builds and playing |
-| [authentication.md](authentication.md)     | Hosts and maintainers      | The launcher/DLL, TLS tickets, session binding, account migration and security checks                                                                               |
-| [roadmap.md](roadmap.md)                   | Maintainers                | Status, the milestones M0 to M6 with their checkboxes, the dated work sessions (reviews, monkey testing), every guess we made, open questions                       |
-| [protocol.md](protocol.md)                 | Maintainers                | The protocol catalog: wire format, the gate, front and duel servers, every request/reply pair with its client evidence and a status (confirmed, shape, guess, open) |
-| [client-internals.md](client-internals.md) | Reverse engineers          | Addresses and functions in `yo3.exe`, the field tracer, data file formats, behaviours worth knowing, crash history                                                  |
-| [research.md](research.md)                 | Curious readers            | The feasibility study from before any server code existed, kept as history                                                                                          |
-| [../AGENTS.md](../AGENTS.md)               | Contributors and AI agents | The working guide: ground rules, repo map, commands, the loop for answering a new client request, conventions, environment gotchas                                  |
-| [images/](images/)                         | The READMEs and guides     | Screenshots of the current graphical launcher and the real client running on this server |
+- [Development guide](development.md): source builds, checks, duel diagnostics and release packaging.
+- [Working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md): repository rules, tools and live-test safety.
+- [Roadmap](roadmap.md): implementation status, outstanding work and recorded investigations.
+- [Authentication](authentication.md): account keys, TLS, the required connection DLL and session binding.
+- [Protocol](protocol.md): wire format and request/reply shapes, with client evidence.
+- [Client internals](client-internals.md): executable addresses, native hooks, data formats and crash history.
+- [Research](research.md): the original feasibility study, retained as history.
+- [Screenshots](../screenshots/): the real Desktop app and game, used throughout these guides.
 
-## Where to start
+The client binary is the protocol spec. Technical claims carry client evidence and a status:
+**confirmed**, **shape**, **guess** or **open**. Historical notes describe the project at the time;
+use the Desktop or Scripts guide for current setup.
 
-- **I want to play or host:** start with the [project README](../README.md), then [launcher.md](launcher.md).
-- **I want terminal commands or a source build:** [guide.md](guide.md).
-- **I want to contribute:** [../AGENTS.md](../AGENTS.md), then [roadmap.md](roadmap.md) to pick something open, then
-  [protocol.md](protocol.md) for the area you will touch.
-- **I want to know how a screen works:** [protocol.md](protocol.md) for the messages, then
-  [client-internals.md](client-internals.md) for the client side of it.
-- **I want the history:** [research.md](research.md), then [roadmap.md](roadmap.md) from the top.
+## Check documentation
 
-## Conventions
-
-- The client binary is the spec. Protocol claims cite a client address, a `File.cpp Lnnn` trace line or a logged
-  packet, and carry a status: **confirmed**, **shape**, **guess** or **open**.
-- Four places stay in step: `protocol.md`, `crates/yo3-server/src/front.rs`, the contract tests under
-  `crates/yo3-server/tests/` and `roadmap.md`.
-- The docs cite addresses and field names but never paste decompiled code, Konami data or packet logs.
-- Game screenshots in `images/` are 1024x768 client frames with test player names only; `launcher*.png` show our own GUI.
-- Long technical documents start with a table of contents; the short project README and changelog do not need one.
-  `tools/docs-check.py --toc FILE` prints one for a file.
-
-## Checking the docs
+From a source checkout:
 
 ```bash
-tools/docs-check.py                    # every relative link and #anchor in root Markdown files and docs/**/*.md
-tools/docs-check.py --toc docs/FILE.md # a table of contents to paste under a document's title
+tools/docs-check.py                         # repository links and anchors
+tools/docs-check.py --toc docs/launcher.md  # generate a table of contents
+tools/docs-check.py --root /path/to/bundle  # check an extracted release
 ```
+
+Release packaging checks its copied documentation too, so screenshots and links must work both here and offline
+inside the extracted bundle.

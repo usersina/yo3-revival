@@ -21,8 +21,9 @@ The [docs index](docs/README.md) says what each document is for. The ones you wi
 [docs/roadmap.md](docs/roadmap.md) (progress, next steps, the guesses table),
 [docs/protocol.md](docs/protocol.md) (every request/reply pair with its client evidence),
 [docs/client-internals.md](docs/client-internals.md) (client addresses, data formats, crash history) and
-[docs/launcher.md](docs/launcher.md) (graphical play and hosting, the bundle README) and
-[docs/guide.md](docs/guide.md) (command-line reference and source builds).
+[docs/launcher.md](docs/launcher.md) (Desktop play and hosting), [docs/scripts.md](docs/scripts.md) (terminal setup),
+[docs/guide.md](docs/guide.md) (command-line reference) and [docs/development.md](docs/development.md) (source builds,
+checks and releases). Keep the root README short; link to those guides for detail.
 
 ## Ground rules
 
@@ -35,7 +36,8 @@ The [docs index](docs/README.md) says what each document is for. The ones you wi
    `cargo nextest run --workspace` green and `cargo clippy --workspace --all-targets` clean before every commit.
 4. **Keep four places in step:** `docs/protocol.md`, `crates/yo3-server/src/front.rs`, the contract tests
    (`crates/yo3-server/tests/front_contract.rs`, `chat_contract.rs`, one file per screen family) and
-   `docs/roadmap.md`. A change a host or player sees also goes in `docs/guide.md`. Run `tools/docs-check.py` after
+   `docs/roadmap.md`. A change a host or player sees also goes in the relevant Desktop/Scripts/playing guide;
+   keep command details in `docs/guide.md`. Run `tools/docs-check.py` after
    moving or renaming anything in the docs: it checks every relative link and anchor.
 5. **Small, logical commits** (conventional style: `feat(server): …`, `fix(…)`, `docs: …`, `refactor(…)`,
    `chore: …`) on a feature branch per slice of work. **`main` is the source of truth:** when a slice is done, tests
@@ -43,9 +45,9 @@ The [docs index](docs/README.md) says what each document is for. The ones you wi
    Ask before pushing anywhere.
 6. **Code only in git.** Never commit game files, Konami data, decompiled code or packet logs. `re/`, `logs/` and
    `target/` are ignored. Docs may cite addresses and field names, but not paste decompiled code. The one exception
-   is the screenshots in `docs/images/`: they show our launcher and the game running, they are not game data. Keep game
+   is the root `screenshots/` folder: it shows our launcher and the game running, not game data. Keep game
    screenshots to 1024x768 client frames, optimised PNGs under about 600 KB, with test player names and no host paths. The picture guide in
-   `docs/images/guide/` (shipped in the release bundles) is made of crops of such frames and of browser pages with red
+   `screenshots/` (shipped in the release bundles) may also contain guide crops of such frames and browser pages with red
    boxes drawn on them, about 800 px wide and under about 300 KB each. A drawn game-folder listing must be labelled
    as an illustration. Launcher screenshots show the real current UI with test accounts and no private credentials.
 7. **Don't disturb a live setup.** The user may have a server on the default ports (7443, 8080; older setups may use
@@ -68,9 +70,10 @@ The [docs index](docs/README.md) says what each document is for. The ones you wi
 | `tools/re/` | Python reverse-engineering helpers (see Commands) |
 | `tools/ghidra/` | Headless export script |
 | `crates/yo3-monkey`, `tools/monkey/` | The monkeys: `yo3-monkey` (protocol: replayed, mutated, random and garbage traffic, floods, a canary, Auto Duel and NPC duel clients) and `ui-monkey.py` (random input on the two headless clients) |
-| `docs/` | The documentation (index in `docs/README.md`): `guide.md`, `roadmap.md`, `protocol.md`, `client-internals.md`, `research.md`, `images/` |
+| `docs/` | Guides for Desktop, Scripts, playing, CLI and development; authentication/protocol/internals/roadmap/research references. Index: `docs/README.md` |
+| `screenshots/` | Real current Desktop screenshots and game frames/crops shared by the README, guides and release bundles |
 | `tools/docs-check.py` | Checks every relative link and anchor in the Markdown, prints a table of contents (`--toc FILE`) |
-| `tools/release.sh` | Builds the host's release bundles into `dist/` (ignored) |
+| `tools/release.sh` | Builds Desktop and Scripts release bundles into `dist/` (ignored) |
 | `CHANGELOG.md`, `.github/workflows/release.yml` | Releases: each `## vX.Y.Z (date)` section is one; the workflow publishes a new top version on push to `main` (`.github/scripts/release_notes.py` reads the version and writes the notes) |
 | `LICENSE` | MIT |
 | `.github/ISSUE_TEMPLATE/` | Issue forms for players (bug, setup help, idea) and the new-issue page's links. Labels: `bug`, `setup help`, `idea` (set by the forms); areas `duels`, `cards & decks`, `accounts & joining`, `hosting`; status `needs info`, `confirmed`, `client limitation`, `duplicate` |
@@ -98,8 +101,14 @@ cargo nextest run --workspace                     # all tests (or: cargo test --
 cargo clippy --workspace --all-targets            # lints
 target/release/yo3-revival                        # graphical launcher/server manager after building
 tools/docs-check.py                               # every relative link and anchor in root Markdown files and docs/**/*.md
-tools/release.sh                                  # bundles in dist/ (Linux .tar.gz, Windows .zip); docs/launcher.md is their README.md
-#   and the whole rules engine (its own Node.js, NODE_VERSION in the script, checksum-checked; the scripts and card
+python3 tools/test_docs_check.py                   # repository/extracted-bundle roots, screenshots and anchors
+python3 tools/test_package_editions.py             # editions, archives, literal arguments and offline docs links
+tools/docs-check.py --root /path/to/bundle         # the same checks against an extracted release
+tools/release.sh                                  # bundles in dist/ (Linux .tar.gz, Windows .zip), with docs/ and screenshots/
+#   Desktop and Scripts editions for each platform; stable inner roots yo3-revival-desktop/ and yo3-revival-scripts/.
+#   Desktop README is the short project README; Scripts README is the terminal guide with relocated links.
+#   Both carry all Markdown docs and root screenshots; packaging checks their copied links before archiving.
+#   Both include the whole rules engine (its own Node.js, NODE_VERSION in the script, checksum-checked; the scripts and card
 #   database from engine/vendor/): hosts install nothing. The server prefers engine/node/node[.exe] to the PATH's node
 #   releasing: add a section at the top of CHANGELOG.md (`## v0.0.2 (date)`, players' words, what changed for them)
 #   and push to main (ask first, rule 5). The Release workflow lints, tests, builds both bundles and publishes the

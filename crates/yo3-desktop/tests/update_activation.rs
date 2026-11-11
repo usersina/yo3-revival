@@ -13,11 +13,11 @@ fn fixture(script: &str) -> (PathBuf, install::Installed) {
         components.insert(role.into(), serde_json::json!({"file":name,"sha256":yo3_launcher::components::hash(&bytes)})); files.push((name,bytes));
     }
     for name in ["engine/duelcore.ts", "engine/package.json", "engine/vendor/cardinfo.json", "engine/node/node", "engine/node_modules/ocgcore-wasm/package.json", "engine/vendor/BabelCDB/cards.cdb", "engine/vendor/CardScripts/utility.lua"] { files.push((name,b"fixture".to_vec())); }
-    files.push(("bundle.json", serde_json::json!({"schema":1,"release":"v0.3.0","protocol":2,"mod_abi":2,"components":components}).to_string().into_bytes()));
+    files.push(("bundle.json", serde_json::json!({"schema":1,"edition":"desktop","release":"v0.3.0","protocol":2,"mod_abi":2,"components":components}).to_string().into_bytes()));
     let gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast()); let mut tar = tar::Builder::new(gzip);
-    for (name,bytes) in files { let mut header=tar::Header::new_gnu(); header.set_size(bytes.len() as u64); header.set_mode(0o700); header.set_cksum(); tar.append_data(&mut header,format!("yo3-revival-v0.3.0-linux-x86_64/{name}"),bytes.as_slice()).unwrap(); }
+    for (name,bytes) in files { let mut header=tar::Header::new_gnu(); header.set_size(bytes.len() as u64); header.set_mode(0o700); header.set_cksum(); tar.append_data(&mut header,format!("yo3-revival-desktop/{name}"),bytes.as_slice()).unwrap(); }
     let bytes=tar.into_inner().unwrap().finish().unwrap(); let archive=root.join("release.tar.gz"); std::fs::write(&archive,&bytes).unwrap();
-    let name="yo3-revival-v0.3.0-linux-x86_64.tar.gz";
+    let name="yo3-revival-desktop-v0.3.0-linux-x86_64.tar.gz";
     let release=Release{tag:"v0.3.0".into(),url:String::new(),notes:String::new(),asset:Asset{name:name.into(),url:format!("https://github.com/usersina/yo3-revival/releases/download/v0.3.0/{name}"),bytes:bytes.len() as u64,sha256:yo3_launcher::components::hash(&bytes)}};
     let installed=install::stage_archive(&root,&release,&archive).unwrap(); (root,installed)
 }
