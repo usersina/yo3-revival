@@ -35,12 +35,12 @@ body:
     id: version
     attributes:
       label: Application version
-      description: Click the version at the bottom left, then Copy version in About & updates.
+      description: "Desktop: click the footer version, then Copy version. Scripts: paste the output from the server's --version command."
   - type: textarea
     id: logs
     attributes:
       label: Diagnostic logs (optional)
-      description: In Activity, choose Export logs and attach the ZIP here. Review it first; never attach invitations, keys or databases.
+      description: "Desktop: Export logs below Start, or Advanced → Activity. Scripts: attach relevant session logs. Review first; never attach invitations, keys or databases."
   - type: dropdown
     id: pc
     attributes:
