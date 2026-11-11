@@ -53,8 +53,11 @@ v0.0.5 release preparation (2026-11-11):
 - [x] The next CI attempt built all four archives, then its real-window gate caught missing X11 runtime libraries.
   An isolated Ubuntu 26.04 reproduction failed loading Xcursor/XInput. Installing the complete Iced X11 runtime
   set makes the same packaged-updater test pass; CI and the Linux guides now list those dependencies explicitly.
-- [ ] Publish v0.0.5 after the release workflow verifies tests, all four archives and packaged-updater readiness.
-  Native Windows 10, protected-folder direct-start installation, runtime reinstallation and separate-machine
+- [x] Published [v0.0.5](https://github.com/usersina/yo3-revival/releases/tag/v0.0.5) from `7007ccd` after the
+  [release workflow](https://github.com/usersina/yo3-revival/actions/runs/43074266729) passed all 590 tests, lints,
+  PE layout checks, four bundles and the actual packaged-updater startup gate. All four uploaded asset digests
+  match the release-note SHA-256 checksums; the latest-release endpoint returns v0.0.5 and its tag names that commit.
+- [ ] Native Windows 10, protected-folder direct-start installation, runtime reinstallation and separate-machine
   network checks remain open; Windows 11 evidence does not close those items.
 
 Startup feedback (2026-11-11):
