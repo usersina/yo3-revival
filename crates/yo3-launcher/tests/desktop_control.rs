@@ -4,6 +4,48 @@ use std::os::unix::fs::PermissionsExt;
 use std::process::Stdio;
 mod common;
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn desktop_can_cancel_while_waiting_for_the_mod() { cancel_initialization("wine",false).await; }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn desktop_can_cancel_a_stalled_winepath() { cancel_initialization("winepath",false).await; }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn scripts_can_interrupt_a_stalled_winepath() { cancel_initialization("winepath",true).await; }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn scripts_can_interrupt_while_waiting_for_the_mod() { cancel_initialization("wine",true).await; }
+
+async fn cancel_initialization(stalled: &str, interrupt:bool) {
+    use tokio::io::AsyncWriteExt;
+    let dir=std::env::temp_dir().join(format!("yo3-cancel-{stalled}-{interrupt}-{}",std::process::id())); let _=std::fs::remove_dir_all(&dir);
+    let cfg=yo3_server::Config::ephemeral(dir.clone()); let certificate=cfg.tls.certificate.clone();
+    let key=std::fs::read_to_string(dir.join("test-auth/client.key")).unwrap(); let server=yo3_server::start(cfg).await.unwrap();
+    let bin=dir.join("fake-bin");std::fs::create_dir_all(&bin).unwrap();let marker=dir.join("waiting");
+    for (name,script) in [("winepath","#!/bin/sh\nprintf '%s\\n' \"$2\"\n"),("wine","#!/bin/sh\nprintf 'YO3_MOD_READY\\n'\nread -r resume\nexit 0\n")] {
+        let file=bin.join(name);std::fs::write(&file,if name==stalled {"#!/bin/sh\necho $$ > \"$YO3_TEST_WAITING\"\nexec sleep 60\n"}else{script}).unwrap();
+        std::fs::set_permissions(file,std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    for name in ["yo3.exe","injector.exe","auth.dll"] {std::fs::write(dir.join(name),common::pe_fixture(2)).unwrap();}
+    let digest=yo3_launcher::components::hash(&common::pe_fixture(2));
+    std::fs::write(dir.join("bundle.json"),serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":yo3_tunnel::MOD_ABI,
+        "components":{"injector":{"sha256":digest},"connection_mod":{"sha256":digest}}}).to_string()).unwrap();
+    let profile=dir.join("client.json");std::fs::write(&profile,serde_json::json!({"server":server.auth.to_string(),"server_name":"localhost","certificate":certificate,"key":key}).to_string()).unwrap();
+    let mut command=tokio::process::Command::new(env!("CARGO_BIN_EXE_yo3-launcher"));
+    command.env("PATH",format!("{}:{}",bin.display(),std::env::var("PATH").unwrap())).env("YO3_TEST_WAITING",&marker)
+        .arg("--profile").arg(profile).arg("--game-dir").arg(&dir).arg("--injector").arg(dir.join("injector.exe"))
+        .arg("--dll").arg(dir.join("auth.dll"));
+    if !interrupt {command.arg("--control-stdin");}
+    let mut child=command.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).kill_on_drop(true).spawn().unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(3),async {while !marker.is_file(){tokio::time::sleep(std::time::Duration::from_millis(10)).await;}}).await.unwrap();
+    let mut control=child.stdin.take().unwrap();
+    if interrupt {assert!(std::process::Command::new("kill").args(["-INT",&child.id().unwrap().to_string()]).status().unwrap().success());}
+    else {control.write_all(b"stop\n").await.unwrap();}
+    let stopped=tokio::time::timeout(std::time::Duration::from_secs(2),child.wait()).await;
+    assert!(stopped.is_ok(),"Close game must cancel {stalled} before DLL readiness, with the control pipe still open");
+    assert!(stopped.unwrap().unwrap().success(),"startup cancellation must run cleanup and exit successfully");std::fs::remove_dir_all(dir).unwrap();
+}
+
 #[tokio::test]
 async fn preparing_local_ports_does_not_contact_the_server_or_authenticate() {
     let dir = std::env::temp_dir().join(format!("yo3-prepare-proxy-{}", std::process::id()));
@@ -46,15 +88,18 @@ async fn natural_game_exit_does_not_wait_for_the_desktop_to_close_stdin() {
         let file = bin.join(name); std::fs::write(&file, script).unwrap(); std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
     for name in ["yo3.exe", "injector.exe", "auth.dll"] { std::fs::write(dir.join(name), common::pe_fixture(2)).unwrap(); }
+    let digest=yo3_launcher::components::hash(&common::pe_fixture(2));
+    std::fs::write(dir.join("bundle.json"),serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":yo3_tunnel::MOD_ABI,
+        "components":{"injector":{"sha256":digest},"connection_mod":{"sha256":digest}}}).to_string()).unwrap();
     let profile = dir.join("client.json");
     std::fs::write(&profile, serde_json::json!({"server":server.auth.to_string(),"server_name":"localhost","certificate":certificate,"key":key}).to_string()).unwrap();
     let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_yo3-launcher"))
         .env("PATH", format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()))
         .arg("--profile").arg(profile).arg("--game-dir").arg(&dir)
         .arg("--injector").arg(dir.join("injector.exe")).arg("--dll").arg(dir.join("auth.dll")).arg("--control-stdin")
-        .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).kill_on_drop(true).spawn().unwrap();
+        .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped()).kill_on_drop(true).spawn().unwrap();
     let _control = child.stdin.take().unwrap(); // Child::wait otherwise closes stdin itself.
-    let result = tokio::time::timeout(std::time::Duration::from_secs(3), child.wait()).await;
+    let result = tokio::time::timeout(std::time::Duration::from_secs(3), child.wait_with_output()).await;
     assert!(result.is_ok(), "an open desktop control pipe must not keep the launcher alive after the game exits");
-    assert!(result.unwrap().unwrap().success());
+    let output=result.unwrap().unwrap(); assert!(output.status.success(),"{}",String::from_utf8_lossy(&output.stderr));
 }

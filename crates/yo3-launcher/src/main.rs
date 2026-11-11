@@ -35,12 +35,13 @@ struct Args {
 }
 
 #[cfg(not(windows))]
-fn windows_path(path: &Path, prefix: Option<&Path>) -> anyhow::Result<String> {
-    let mut cmd = std::process::Command::new("winepath");
-    cmd.args(["-w"]).arg(path).stderr(Stdio::null());
+async fn windows_path(path: &Path, prefix: Option<&Path>) -> anyhow::Result<String> {
+    let mut cmd = tokio::process::Command::new("winepath");
+    cmd.args(["-w"]).arg(path).stderr(Stdio::null()).kill_on_drop(true);
     if let Some(prefix) = prefix { cmd.env("WINEPREFIX", prefix); }
-    let out = cmd.output()?;
-    ensure!(out.status.success(), "winepath failed");
+    let out = tokio::time::timeout(std::time::Duration::from_secs(30),cmd.output()).await
+        .context("Wine path setup timed out. Close the game, check that Wine is installed and its prefix is writable, then try again")??;
+    ensure!(out.status.success(), "Wine path setup failed. Check that Wine is installed and its prefix is writable");
     Ok(String::from_utf8(out.stdout)?.trim().to_string())
 }
 
@@ -59,6 +60,24 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Result<()> {
+    let desktop_stop=async {
+        if args.control_stdin {yo3_launcher::wait_for_desktop_stop(std::io::BufReader::new(std::io::stdin())).await;}
+        else {std::future::pending::<()>().await;}
+    };
+    tokio::pin!(desktop_stop);
+    let interrupt=tokio::signal::ctrl_c();tokio::pin!(interrupt);
+    let startup_deadline=tokio::time::sleep(std::time::Duration::from_secs(90));tokio::pin!(startup_deadline);
+    // Keep one control-pipe reader throughout startup and play. Dropping a pending
+    // initializer also drops its kill-on-drop injector/Wine child and private proxy.
+    macro_rules! initializing {
+        ($future:expr) => {tokio::select! {
+            biased;
+            _=&mut desktop_stop=>{log.line("Game startup cancelled");return Ok(())},
+            result=&mut interrupt=>{result?;log.line("Game startup interrupted");return Ok(())},
+            _=&mut startup_deadline=>anyhow::bail!("Game startup did not finish within 90 seconds. Close any stuck Wine processes for this game, validate the game and try again. Export logs if this repeats."),
+            result=$future=>result,
+        }};
+    }
     let bin = std::env::current_exe()?.parent().unwrap().to_path_buf();
     let injector = args.injector.clone().unwrap_or_else(|| bin.join("yo3-auth-launch.exe"));
     let dll = args.dll.clone().unwrap_or_else(|| bin.join("yo3-auth.dll"));
@@ -67,8 +86,8 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     if let Some(trace) = &args.trace_dll { ensure!(trace.is_file(), "Trace DLL not found: {}", trace.display()); }
     let (endpoint, key) = Profile::load(&args.profile).context("read the private launcher profile and host certificate")?;
     log.secret(&key); log.line("Checking server identity and compatibility");
-    endpoint.info().await?.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI)?;
-    let proxy = Proxy::prepare(endpoint.clone(), Ports { gate: args.gate_port, front: args.front_port, duel: args.duel_port, http: args.http_port }).await?;
+    initializing!(endpoint.info())?.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI)?;
+    let proxy = initializing!(Proxy::prepare(endpoint.clone(), Ports { gate: args.gate_port, front: args.front_port, duel: args.duel_port, http: args.http_port }))?;
     log.secret(&hex(&proxy.cookie));
     if let Some(pid) = args.attach_game {
         let request = yo3_launcher::attach::Attachment { pid, game: game.unwrap(),
@@ -79,7 +98,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     }
     if args.proxy_only {
         let session = endpoint.login(&key).await?; proxy.activate(session);
-        let result = async { write_ready(&args, &proxy)?; tokio::signal::ctrl_c().await?; Ok(()) }.await;
+        let result = async { write_ready(&args, &proxy)?; (&mut interrupt).await?; Ok(()) }.await;
         let _ = endpoint.logout(&session).await; return result;
     }
     let game = game.unwrap().canonicalize()?;
@@ -88,14 +107,15 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     let mut cmd = { let mut cmd = tokio::process::Command::new(injector); cmd.arg("--control-stdin").arg(game).arg(dll); cmd };
     #[cfg(not(windows))]
     let mut cmd = {
+        log.line("Preparing Wine paths");
         let mut cmd = tokio::process::Command::new("wine");
-        cmd.arg(injector).arg("--control-stdin").arg(windows_path(&game, args.wine_prefix.as_deref())?).arg(windows_path(&dll, args.wine_prefix.as_deref())?);
+        cmd.arg(injector).arg("--control-stdin").arg(initializing!(windows_path(&game, args.wine_prefix.as_deref()))?).arg(initializing!(windows_path(&dll, args.wine_prefix.as_deref()))?);
         if let Some(prefix) = &args.wine_prefix { cmd.env("WINEPREFIX", prefix); }
         cmd
     };
     if let Some(trace) = &args.trace_dll {
         #[cfg(windows)] cmd.arg(trace);
-        #[cfg(not(windows))] cmd.arg(windows_path(&trace.canonicalize()?, args.wine_prefix.as_deref())?);
+        #[cfg(not(windows))] {let path=trace.canonicalize()?;cmd.arg(initializing!(windows_path(&path, args.wine_prefix.as_deref()))?);}
     }
     cmd.envs(proxy.environment()).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
     let mut child = cmd.spawn().context("start the injector")?;
@@ -103,15 +123,16 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     let error_output = tokio::spawn(async move { capture(errors, error_log, true).await; });
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut stdout = tokio::io::BufReader::new(child.stdout.take().unwrap());
-    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+    log.line("Starting the game suspended; waiting for the connection DLL");
+    initializing!(tokio::time::timeout(std::time::Duration::from_secs(30), async {
         let mut ready = Vec::new();
         for _ in 0..128 { let byte = stdout.read_u8().await.context("Game stayed suspended: the mod did not report readiness. Repair the connection components.")?; if byte == b'\n' { break } ready.push(byte); }
         if ready.last() == Some(&b'\r') { ready.pop(); }
         ensure!(ready == b"YO3_MOD_READY", "Invalid injector readiness response; game was not resumed");
         Ok::<_, anyhow::Error>(())
-    }).await.context("Connection mod initialization timed out; game was not resumed")??;
+    })).context("Connection mod initialization timed out; game was not resumed. Validate the game and check the required DLL, then try Start again")??;
     log.line("Connection DLL loaded and interface ready; authenticating");
-    let session = endpoint.login(&key).await.context("Authentication failed; game was not resumed")?; log.secret(&hex(&session));
+    let session = initializing!(endpoint.login(&key)).context("Authentication failed; game was not resumed. Check the host's invitation in Advanced, or export logs for help")?; log.secret(&hex(&session));
     proxy.activate(session);
     let game_log = log.clone(); let detailed = args.detailed_logs;
     let output = tokio::spawn(async move { capture(stdout, game_log, detailed).await; });
@@ -121,14 +142,10 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         write_ready(&args, &proxy)?;
         eprintln!("Authenticated with mod interface {} ready. Local gate {}, front {}, duel {}, HTTP {}.", yo3_tunnel::MOD_ABI, proxy.ports.gate, proxy.ports.front, proxy.ports.duel, proxy.ports.http);
         log.line("Authenticated; game resumed");
-        let desktop_stop = async {
-            if args.control_stdin { yo3_launcher::wait_for_desktop_stop(std::io::BufReader::new(std::io::stdin())).await; }
-            else { std::future::pending::<()>().await; }
-        };
         let status = tokio::select! {
             status = child.wait() => Some(status?),
-            _ = tokio::signal::ctrl_c() => { child.kill().await?; None }
-            _ = desktop_stop => { child.kill().await?; None }
+            result = &mut interrupt => { result?; child.kill().await?; None }
+            _ = &mut desktop_stop => { child.kill().await?; None }
         };
         if let Some(status) = status { ensure!(status.success(), "game or injector exited with an error"); }
         Ok(())
