@@ -12,6 +12,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Fixed native Windows path handling: a supported game no longer fails runtime validation merely because its
+  resolved path uses Windows' extended-path prefix. Game, connection DLL and direct-start paths use the compatible form.
 - Hosting now refuses missing, corrupt or unusable game card/deck data instead of accepting players with an empty
   collection. Fix the host's game-folder selection and retry; existing accounts, decks and identity files are kept.
 - Game validation checks the supported v1.153 executable's hook signatures and probes its legacy DirectX/VC++ 2008

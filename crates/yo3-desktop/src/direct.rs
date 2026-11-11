@@ -86,7 +86,7 @@ fn decode_windows_paths(bytes: &[u8], count: usize) -> anyhow::Result<Vec<String
     Ok(paths)
 }
 fn windows_paths(paths: &[&Path], settings: &Settings) -> anyhow::Result<Vec<String>> {
-    #[cfg(windows)] { let _ = settings; Ok(paths.iter().map(|p| p.to_string_lossy().into_owned()).collect()) }
+    #[cfg(windows)] { let _ = settings; paths.iter().map(|p| Ok(yo3_launcher::runtime::native_path(p)?.to_string_lossy().into_owned())).collect() }
     #[cfg(not(windows))] {
         let result = wine_command(settings, "winepath").args(["-0", "-w"]).args(paths).output()?;
         ensure!(result.status.success(), "Cannot translate the path into the selected Wine prefix");

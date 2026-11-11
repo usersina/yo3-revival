@@ -3,6 +3,14 @@ use std::path::Path;
 use std::process::Stdio;
 use anyhow::Context;
 
+/// Absolute paths passed to the original game's Win32 image loader.
+pub fn native_path(path: &Path) -> std::io::Result<std::path::PathBuf> {
+    // The native image loader rejects ordinary files when passed std's Windows verbatim prefix.
+    // Keep extended paths only when simplifying them would select a different file.
+    #[cfg(windows)] { dunce::canonicalize(path) }
+    #[cfg(not(windows))] { path.canonicalize() }
+}
+
 #[cfg(not(windows))]
 pub async fn windows_path(path: &Path, prefix: Option<&Path>) -> anyhow::Result<String> {
     let mut cmd = tokio::process::Command::new("winepath");
@@ -16,7 +24,7 @@ pub async fn windows_path(path: &Path, prefix: Option<&Path>) -> anyhow::Result<
 }
 
 pub async fn check(game: &Path, injector: &Path, prefix: Option<&Path>) -> anyhow::Result<()> {
-    let game = game.canonicalize()?; let injector = injector.canonicalize()?;
+    let game = native_path(game)?; let injector = native_path(injector)?;
     #[cfg(windows)]
     let mut cmd = { let _ = prefix; let mut cmd = tokio::process::Command::new(injector); cmd.arg("--check-runtime").arg(game); cmd };
     #[cfg(not(windows))]

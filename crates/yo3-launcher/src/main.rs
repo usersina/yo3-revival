@@ -102,8 +102,8 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         let result = async { write_ready(&args, &proxy)?; (&mut interrupt).await?; Ok(()) }.await;
         let _ = endpoint.logout(&session).await; return result;
     }
-    let game = game.unwrap().canonicalize()?;
-    let injector = injector.canonicalize()?; let dll = dll.canonicalize()?;
+    let game = yo3_launcher::runtime::native_path(&game.unwrap())?;
+    let injector = yo3_launcher::runtime::native_path(&injector)?; let dll = yo3_launcher::runtime::native_path(&dll)?;
     #[cfg(windows)]
     let mut cmd = { let mut cmd = tokio::process::Command::new(injector); cmd.arg("--control-stdin").arg(game).arg(dll); cmd };
     #[cfg(not(windows))]
@@ -115,7 +115,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         cmd
     };
     if let Some(trace) = &args.trace_dll {
-        #[cfg(windows)] cmd.arg(trace);
+        #[cfg(windows)] cmd.arg(yo3_launcher::runtime::native_path(trace)?);
         #[cfg(not(windows))] {let path=trace.canonicalize()?;cmd.arg(initializing!(windows_path(&path, args.wine_prefix.as_deref()))?);}
     }
     #[cfg(windows)] cmd.creation_flags(0x08000000);

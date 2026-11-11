@@ -124,10 +124,18 @@ manifest as data, activates its context and probes only these known dependencies
 locations. It does not invoke the game or its local WINMM loader. Desktop validation and script startup both run
 this check before connecting. This covers dependency loadability, not graphics initialization or UAC consent.
 
+Native Windows 11 (build 22000.2538) exposed a path-boundary failure: the same supported executable passed the
+32-bit checker with a normal drive path and failed `stage=runtime-image windows_error=2` with the `\\?\` form
+returned by Rust's `canonicalize`. `yo3-launcher::runtime::native_path` uses `dunce::canonicalize` on Windows,
+preserving file identity while choosing the compatible spelling where possible. Runtime checks, injection paths
+and Desktop's direct-loader configuration share this boundary. The Windows-only `native_paths` regression failed
+before the fix and passed afterward with spaces and Japanese characters; actual Desktop validation also passed.
+
 Native failures log stable `stage=...` labels, Win32 errors where available and process exit codes. DLL hook
 rejections distinguish launch state, imports, login, starter and duel hooks, retaining fail-closed behavior.
 The Rust helper includes a bounded, redacted native stderr tail in startup errors so Desktop details and exported
-logs preserve the cause instead of reporting only EOF. Native Windows 10/11 verification is still required.
+logs preserve the cause instead of reporting only EOF. Full native Windows play/elevation checks remain separate
+from these dependency and path checks.
 
 ### Skipping the stock login form
 

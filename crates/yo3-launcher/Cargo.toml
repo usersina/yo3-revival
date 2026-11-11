@@ -19,4 +19,5 @@ yo3-tunnel = { path = "../yo3-tunnel" }
 yo3-server = { path = "../yo3-server" }
 
 [target.'cfg(windows)'.dependencies]
+dunce = "1.0.5"
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Threading"] }

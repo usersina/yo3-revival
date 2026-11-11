@@ -129,6 +129,8 @@ same required injector/DLL as Desktop and can encounter the same detections.
 
 Validation checks the supported v1.153 executable's hook signatures and probes its known legacy runtime dependencies
 without starting the game. A compatible game build and intact Revival helpers are separate requirements.
+Windows game paths are resolved to a spelling the original game's loader supports; folders with spaces and
+Unicode names do not require manual path conversion.
 
 - **`d3dx9_40.dll`:** install or repair Microsoft's
   [DirectX End-User Runtimes (June 2010)](https://www.microsoft.com/en-us/download/details.aspx?id=8109).

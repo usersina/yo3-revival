@@ -59,6 +59,10 @@ Startup feedback (2026-11-11):
   before publishing a new version; other pushes stop after the changelog check.
 - [ ] Native Windows 10/11 dependency repair, UAC/protected-folder behavior and security-product detections still
   need platform evidence. The launcher reports OS errors and does not change antivirus/firewall policy.
+- [x] Native Windows 11 build 22000.2538: reproduced the supported game's runtime check passing with a normal
+  drive path but failing with Rust's canonical extended-path prefix. Compatible native path handling now covers
+  runtime probes, injection and direct-loader configuration. The Windows path regression went red/green with
+  spaces/Japanese text, and the actual Desktop validation passed; Linux workspace tests and strict Clippy pass.
 
 v0.0.4 release preparation (2026-11-10):
 
