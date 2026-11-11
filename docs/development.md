@@ -13,10 +13,16 @@ These commands run in a **source checkout**, not an extracted release. For playi
 
 ## Build from source
 
-On Linux, install Rust/Cargo, Node.js **22.18 or newer** with npm, Git, curl, and 32-bit MinGW GCC/binutils
+On Linux, install Rust/Cargo **1.98.1 or newer**, Node.js **22.18 or newer** with npm, Git, curl, and 32-bit MinGW GCC/binutils
 (`i686-w64-mingw32-gcc`, `i686-w64-mingw32-dlltool`). Linux game testing needs Wine.
 The GUI also needs pkg-config and X11/Wayland/xkbcommon development libraries; on Debian/Ubuntu these are
 `pkg-config libx11-dev libwayland-dev libxkbcommon-dev`.
+
+The root `Cargo.toml` owns the shared crate version, edition, license, Rust baseline, dependency versions and lint
+settings. Every crate inherits them; crate-specific features such as Iced's renderer and Windows APIs stay in that
+crate's manifest. Change shared versions there and review `Cargo.lock` when updating dependencies. Internal crate
+dependencies use workspace paths and all seven crates advance together. Published bundle versions still come from
+`CHANGELOG.md` through `YO3_BUILD_VERSION`; reorganizing package metadata does not publish or bump a release.
 
 ```bash
 git clone https://github.com/usersina/yo3-revival.git

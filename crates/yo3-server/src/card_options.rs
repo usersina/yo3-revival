@@ -3,7 +3,7 @@
 //! paired by hand with EDOPro's strings where both say the same thing (**guess**: the original pairing per card is
 //! unknown). A card's options get the select dialog only when every one of them has a label here.
 // `code << 20 | 0` keeps every entry in the same shape.
-#![allow(clippy::identity_op)]
+#![allow(clippy::identity_op, reason = "Keep zero-valued option indices visible in wire option constants.")]
 
 pub const CARD_OPTION_LABELS: [(u64, u32); 110] = [
     (967928 << 20 | 0, 465), // Penalty Game!: Your opponent cannot draw during their next Draw Phase

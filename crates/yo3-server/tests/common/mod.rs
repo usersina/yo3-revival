@@ -1,5 +1,5 @@
 //! A server with several clients online, for contract tests that need more than one player.
-#![allow(dead_code)] // each test binary uses its own subset
+#![allow(dead_code, reason = "Each integration-test binary uses a different subset of the shared protocol helpers.")]
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};

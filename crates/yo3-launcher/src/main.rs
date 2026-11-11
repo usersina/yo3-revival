@@ -179,20 +179,6 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     else { result.with_context(|| yo3_tunnel::diagnostics::redact(&detail, &[key, hex(&proxy.cookie), hex(&session)], None)) }
 }
 
-#[cfg(all(test, windows))]
-mod native_permission_tests {
-    #[test]
-    fn only_the_game_process_tree_inherits_the_invoking_users_permission_level() {
-        use std::{ffi::{OsStr, OsString}, path::Path};
-        let before = std::env::var_os("__COMPAT_LAYER");
-        let command = super::windows_injector(Path::new("injector.exe"), Path::new("game with spaces/yo3.exe"), Path::new("auth.dll"), Some(OsString::from("HIGHDPIAWARE")));
-        let env = command.as_std().get_envs().find(|(key,_)| *key == OsStr::new("__COMPAT_LAYER")).and_then(|(_,value)| value);
-        assert_eq!(env, Some(OsStr::new("HIGHDPIAWARE RunAsInvoker")));
-        assert_eq!(std::env::var_os("__COMPAT_LAYER"), before, "launcher/server environment must stay unchanged");
-        assert_eq!(command.as_std().get_args().collect::<Vec<_>>(), [OsStr::new("--control-stdin"), OsStr::new("game with spaces/yo3.exe"), OsStr::new("auth.dll")]);
-    }
-}
-
 async fn capture(mut source: impl tokio::io::AsyncRead + Unpin, log: yo3_tunnel::diagnostics::Session, client_trace: bool) -> String {
     use tokio::io::AsyncReadExt;
     let mut buffer = [0; 4096]; let mut writer = if client_trace { log.client_writer() } else { log.writer() }; let mut tail = Vec::new(); let mut truncated = false;
@@ -235,5 +221,19 @@ mod capture_tests {
         assert!(text.contains("client effect failed"),"normal launches must retain evidence: {text}");
         assert!(!text.contains("abcdEFGH2345ijkmNPQR"));
         std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(all(test, windows))]
+mod native_permission_tests {
+    #[test]
+    fn only_the_game_process_tree_inherits_the_invoking_users_permission_level() {
+        use std::{ffi::{OsStr, OsString}, path::Path};
+        let before = std::env::var_os("__COMPAT_LAYER");
+        let command = super::windows_injector(Path::new("injector.exe"), Path::new("game with spaces/yo3.exe"), Path::new("auth.dll"), Some(OsString::from("HIGHDPIAWARE")));
+        let env = command.as_std().get_envs().find(|(key,_)| *key == OsStr::new("__COMPAT_LAYER")).and_then(|(_,value)| value);
+        assert_eq!(env, Some(OsStr::new("HIGHDPIAWARE RunAsInvoker")));
+        assert_eq!(std::env::var_os("__COMPAT_LAYER"), before, "launcher/server environment must stay unchanged");
+        assert_eq!(command.as_std().get_args().collect::<Vec<_>>(), [OsStr::new("--control-stdin"), OsStr::new("game with spaces/yo3.exe"), OsStr::new("auth.dll")]);
     }
 }

@@ -464,7 +464,7 @@ fn print_duel(s: &DuelStats) {
     );
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, reason = "The soak runner takes the independent load and failure-injection controls from the CLI.")]
 async fn soak(env: &Arc<Env>, base: Sample, canary: Arc<CanaryStats>, seed: u64, secs: u64, conns: usize, duel_pairs: usize, stall_ms: u64, kill_every: u64) -> usize {
     let stop = stop_flag();
     let recent = Arc::new(Recent::default());

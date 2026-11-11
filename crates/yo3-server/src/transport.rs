@@ -61,7 +61,7 @@ async fn handshake(mut tls: TlsStream<TcpStream>, sessions: &Mutex<Sessions>, ac
     Ok(None)
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, reason = "Each authenticated stream shares the server state, framing limits and HTTP endpoint.")]
 pub(crate) async fn accept_loop(listener: TcpListener, acceptor: TlsAcceptor, world: Arc<World>, hub: Arc<Mutex<Hub>>,
     accounts: Arc<Mutex<Directory>>, log: Arc<PacketLog>, quiet: net::Idle, heartbeats: net::Idle, http: SocketAddr)
 {
@@ -87,19 +87,19 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: TlsAcceptor, wo
                 match role {
                     Role::Front => {
                         let Some(account) = accounts.locked().account_of(identity.user_id) else { return Ok(()) };
-                        net::secured(tls, "front", log, quiet, move |outbox| {
+                        Box::pin(net::secured(tls, "front", log, quiet, move |outbox| {
                             let mut front = FrontSession::new(account, world, hub, outbox);
                             front.set_identity(identity);
                             front.set_tunnel_duel_port(port);
                             front.set_directory(accounts);
                             move |p: &yo3_proto::Packet| front.handle(p)
-                        }).await
+                        })).await
                     }
-                    Role::Duel => net::secured(tls, "duel", log, heartbeats, move |outbox| {
+                    Role::Duel => Box::pin(net::secured(tls, "duel", log, heartbeats, move |outbox| {
                         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
                         let mut duel = crate::duel::DuelSession::new(world, hub, seed).with_outbox(outbox).with_identity(identity);
                         move |p: &yo3_proto::Packet| duel.handle(p)
-                    }).await,
+                    })).await,
                     Role::Http => {
                         let mut header = vec![];
                         tokio::time::timeout(HANDSHAKE_TIMEOUT, async {

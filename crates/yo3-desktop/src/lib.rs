@@ -193,7 +193,7 @@ impl LauncherDb {
 
 pub fn default_root() -> PathBuf {
     if let Some(root) = std::env::var_os("YO3_DESKTOP_DATA") { return root.into() }
-    #[cfg(windows)] { return PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default()).join("YO3 Revival"); }
+    #[cfg(windows)] { PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default()).join("YO3 Revival") }
     #[cfg(not(windows))] {
         std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/share")).join("yo3-revival")
     }

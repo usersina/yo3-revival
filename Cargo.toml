@@ -3,5 +3,56 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
+version = "0.1.0"
 edition = "2024"
 license = "MIT"
+# The compiler baseline verified for this workspace; newer toolchains are also supported.
+rust-version = "1.98.1"
+
+[workspace.dependencies]
+# Shared versions and common features. Platform-specific features stay with the consuming crate.
+anyhow = "1.0.104"
+base64 = "0.22.1"
+blowfish = "0.10.0"
+chrono = "0.4.45"
+clap = { version = "4.6.7", features = ["derive"] }
+dunce = "1.0.5"
+flate2 = "1.1.11"
+getrandom = "0.4.3"
+iced = { version = "0.14.0", default-features = false }
+if-addrs = "0.15.0"
+proptest = "1.12.0"
+rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider"] }
+rfd = "0.18.0"
+ring = "0.17.14"
+rusqlite = { version = "0.41.1", default-features = false, features = ["bundled"] }
+semver = "1.0.28"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.154"
+subtle = "2.6.1"
+tar = "0.4.46"
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["full"] }
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+windows-sys = "0.61.2"
+x509-parser = "0.18.1"
+zip = { version = "9.5.0", default-features = false, features = ["deflate"] }
+
+# Internal crates inherit the one package version above; these paths are relative to this manifest.
+yo3-data = { path = "crates/yo3-data" }
+yo3-launcher = { path = "crates/yo3-launcher" }
+yo3-proto = { path = "crates/yo3-proto" }
+yo3-server = { path = "crates/yo3-server" }
+yo3-tunnel = { path = "crates/yo3-tunnel" }
+
+[workspace.lints.rust]
+# Native Windows integration requires FFI. Keep unsafe operations explicit inside unsafe functions too.
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+allow_attributes_without_reason = "warn"
+large_futures = "warn"
+non_std_lazy_statics = "warn"
