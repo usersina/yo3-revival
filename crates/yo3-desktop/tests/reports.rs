@@ -1,6 +1,35 @@
 use std::io::Read;
 use yo3_desktop::reports::Report;
 use yo3_tunnel::diagnostics::Session;
+fn archive_text(path: &std::path::Path) -> String {
+    let mut zip=zip::ZipArchive::new(std::fs::File::open(path).unwrap()).unwrap(); let mut text=String::new();
+    for i in 0..zip.len() {zip.by_index(i).unwrap().read_to_string(&mut text).unwrap();}
+    text
+}
+#[test]
+fn export_can_filter_personal_data_without_destroying_the_original_diagnostics() {
+    let root=std::env::temp_dir().join(format!("yo3-report-privacy-{}",std::process::id())); let _=std::fs::remove_dir_all(&root);
+    let log=Session::start(&root,"game",None).unwrap();
+    log.line(r"Runtime check failed at C:\Users\Alice Smith\game from 192.168.1.45:7443 and [2001:db8::45]:7443");
+    log.line("[YO3 CLIENT] Alice says private chat 日本語");
+    log.line("[YO3 PACKET] player=Alice deck=3437");
+    log.line("[YO3 ENGINE] shuffled private deck recording");
+    log.line("[tls] 192.168.1.45 user 9 launcher 3 Front");
+    log.line("Account PrivateDuelist created");
+    log.line("Connection failed for https://private-host.example/status; contact alice@example.org");
+    log.line("INFO [front] -> 0x2398 {name=LegacyDuelist}");
+    log.line("key=abcdEFGH2345ijkmNPQR");
+    let report=Report::prepare(&root,None).unwrap();
+    let full=root.join("full.zip"); report.export(&full).unwrap(); let full_text=archive_text(&full);
+    assert!(full_text.contains("Alice Smith") && full_text.contains("private chat 日本語") && full_text.contains("3437") && full_text.contains("192.168.1.45"));
+    let filtered=root.join("filtered.zip"); report.export_with_privacy(&filtered,true).unwrap(); let filtered_text=archive_text(&filtered);
+    assert!(filtered_text.contains("Runtime check failed"),"technical failures must survive filtering");
+    for personal in ["Alice","private chat","3437","192.168.1.45","2001:db8::45","shuffled private deck","PrivateDuelist","private-host.example","alice@example.org","LegacyDuelist"] {assert!(!filtered_text.contains(personal),"{personal}: {filtered_text}");}
+    for text in [&full_text,&filtered_text] {assert!(!text.contains("abcdEFGH2345ijkmNPQR"));}
+    assert!(full_text.contains("\"personal_data_filtered\": false") && filtered_text.contains("\"personal_data_filtered\": true"));
+    let again=root.join("full-again.zip"); report.export(&again).unwrap(); assert!(archive_text(&again).contains("private chat 日本語"));
+    std::fs::remove_dir_all(root).unwrap();
+}
 #[cfg(unix)]
 #[test]
 fn private_profile_and_log_directories_protect_wine_created_files() {

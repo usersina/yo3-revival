@@ -33,7 +33,7 @@ pub struct Args {
     pub game_dir: Option<PathBuf>,
     #[arg(long, default_value = "logs", overrides_with = "log_dir")]
     pub log_dir: PathBuf,
-    /// Disable raw game packet logging (the desktop defaults to bounded diagnostics).
+    /// Disable separate raw packet files; bounded session diagnostics still include decoded packet traces.
     #[arg(long)] pub no_packet_log: bool,
     #[arg(long)] pub diagnostics_dir: Option<PathBuf>,
     #[arg(long)] pub diagnostic_parent: Option<String>,

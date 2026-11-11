@@ -64,9 +64,13 @@ Never run `cargo fmt` across this repository; match its existing style.
 
 ## Duel diagnostics
 
-In Desktop, enable **Advanced → Activity → Diagnostics options → Detailed tracing and duel validation**, save,
-then restart the managed server between games and restart each game. For Scripts, use `--duel-check` on the server
-and `--detailed-logs` on each player's play command. Explicit Desktop flag overrides take priority over defaults.
+Game output, native mod diagnostics, decoded packet traces and engine stderr are captured automatically in session
+logs. The viewer hides verbose payloads until searched; exports include them by default. Privacy filtering at export
+omits payload traces and player activity and masks common personal paths/addresses without changing local evidence.
+
+For state validation and exact engine replay, enable **Advanced → Hosting → Advanced → All server flags → --duel-check**,
+save and restart the managed server between games. For Scripts, pass `--duel-check` to the server; each player's
+play command already captures client output. This extra engine work is optional and separate from automatic logging.
 
 The server compares its model of both clients with the rules engine after each step. The required DLL independently
 reports native slots, card visibility, hands/piles, LP, stats, counters, turns and phases. Exact engine inputs, shuffled
@@ -84,8 +88,9 @@ binary on a native VM. Without an override they use the source checkout's engine
 that output does not say dependencies were skipped before treating a native test as evidence.
 
 Collect the server and both players' matching session logs, including **every rotated part**. GUI users can export
-[diagnostic ZIPs](launcher.md#logs-and-support). Detailed logs can reveal deck contents, player names and chat;
-review them before sharing and turn tracing off afterwards.
+[diagnostic ZIPs](launcher.md#logs-and-support). Full reports can reveal deck contents, player names and chat;
+review them before sharing. Privacy-filtered exports omit replay inputs and cannot prove an exact replay. Disable
+`--duel-check` when finished; ordinary log capture continues.
 
 ```bash
 python3 tools/monkey/duel-report.py --server SERVER.log --client GAME_A.log GAME_B.log

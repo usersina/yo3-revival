@@ -49,13 +49,12 @@ pub struct Settings {
     pub player_name: String,
     pub selected_server: Option<i64>,
     pub local_account: String,
-    pub detailed_logs: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
         Self { advanced_mode: false, server_options: Default::default(), game_dir: yo3_data::default_game_dir().to_string_lossy().into(), wine_prefix: String::new(),
             host_address: "localhost".into(), data_dir: String::new(), bind_address: "0.0.0.0".into(), bind_interface: None, listen_port: 7443,
-            player_name: "Duelist".into(), selected_server: None, local_account: String::new(), detailed_logs: false }
+            player_name: "Duelist".into(), selected_server: None, local_account: String::new() }
     }
 }
 
@@ -282,8 +281,7 @@ impl Backend {
             .arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id())
             .env("YO3_ENGINE_DIR", &self.runtime.engine).env("NO_COLOR", "1").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         if !settings.server_options.contains_key("http-port") { cmd.args(["--http-port", "0"]); }
-        if settings.detailed_logs && !settings.server_options.contains_key("duel-check") { cmd.arg("--duel-check"); }
-        if !settings.detailed_logs && !settings.server_options.contains_key("no-packet-log") { cmd.arg("--no-packet-log"); }
+        if !settings.server_options.contains_key("no-packet-log") { cmd.arg("--no-packet-log"); }
         cmd.args(extra);
         Ok(cmd)
     }
@@ -391,7 +389,6 @@ impl Backend {
         cmd.arg("--control-stdin").arg("--profile").arg(profile).arg("--game-dir").arg(&settings.game_dir).arg("--injector").arg(&self.runtime.injector).arg("--dll").arg(&self.runtime.dll);
         if !settings.wine_prefix.is_empty() { cmd.arg("--wine-prefix").arg(&settings.wine_prefix); }
         cmd.arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id());
-        if settings.detailed_logs { cmd.arg("--detailed-logs"); }
         cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
         let ready = self.root.join("profiles").join(format!("game-ready-{}-{}.json", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos()));
         cmd.arg("--ready-file").arg(&ready);
@@ -518,7 +515,7 @@ mod tests {
     #[test]
     fn explicit_server_options_override_diagnostic_defaults_without_duplicate_flags() {
         let root=std::env::temp_dir().join(format!("yo3-explicit-flags-{}",std::process::id()));
-        let backend=Backend::new(root.clone()).unwrap(); let mut s=Settings{detailed_logs:true,..Default::default()};
+        let backend=Backend::new(root.clone()).unwrap(); let mut s=Settings::default();
         s.server_options.extend([("duel-check".into(),"false".into()),("http-port".into(),"18080".into()),("duel-lp".into(),"1000".into())]);
         let cmd=backend.server_command(&s,std::net::Ipv4Addr::LOCALHOST.into()).unwrap();
         let args:Vec<_>=cmd.get_args().map(|s|s.to_string_lossy().to_string()).collect();
@@ -527,15 +524,16 @@ mod tests {
         drop(backend); std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
-    fn detailed_diagnostics_enables_the_hosted_servers_duel_checker() {
-        for detailed in [false, true] {
-            let root=std::env::temp_dir().join(format!("yo3-desktop-duel-check-{}-{detailed}",std::process::id()));
+    fn automatic_diagnostics_keeps_expensive_duel_validation_an_explicit_server_option() {
+        for check in [false, true] {
+            let root=std::env::temp_dir().join(format!("yo3-desktop-duel-check-{}-{check}",std::process::id()));
             let _=std::fs::remove_dir_all(&root);
             let backend=Backend::new(root.clone()).unwrap();
-            let settings=Settings{detailed_logs:detailed,listen_port:17443,..Settings::default()};
+            let mut settings=Settings{listen_port:17443,..Settings::default()};
+            if check { settings.server_options.insert("duel-check".into(),"true".into()); }
             let cmd=backend.server_command(&settings,std::net::Ipv4Addr::LOCALHOST.into()).unwrap();
-            assert_eq!(cmd.get_args().any(|a| a=="--duel-check"),detailed,"{cmd:?}");
-            assert_eq!(cmd.get_args().any(|a| a=="--no-packet-log"),!detailed,"{cmd:?}");
+            assert_eq!(cmd.get_args().any(|a| a=="--duel-check"),check,"{cmd:?}");
+            assert!(cmd.get_args().any(|a| a=="--no-packet-log"),"raw developer files stay separate from bounded session diagnostics: {cmd:?}");
             drop(backend); std::fs::remove_dir_all(root).unwrap();
         }
     }

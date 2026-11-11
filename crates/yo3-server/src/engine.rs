@@ -4,7 +4,7 @@
 //! The calls block (a step of the core takes milliseconds), but never for longer than [`CALL_TIMEOUT`]: a sidecar that
 //! hangs is killed and the call fails, like one that died. Diagnostic dependency hashing has a separate bounded
 //! budget because it reads thousands of files; it does not extend the deadlines for playing a duel.
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
@@ -91,7 +91,12 @@ impl Engine {
 
     /// Runs `command` as the sidecar (JSON lines on its stdin and stdout), each call allowed `timeout`.
     pub fn spawn(mut command: Command, timeout: Duration) -> io::Result<Engine> {
-        let mut child = command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn()?;
+        let mut child = command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+        let stderr = child.stderr.take().expect("piped stderr");
+        let dispatch = tracing::dispatcher::get_default(Clone::clone);
+        if let Err(error) = std::thread::Builder::new().name("engine-errors".into()).spawn(move || {
+            tracing::dispatcher::with_default(&dispatch, || capture_errors(stderr));
+        }) { let _ = child.kill(); let _ = child.wait(); return Err(error) }
         let stdin = child.stdin.take().expect("piped stdin");
         let stdout = BufReader::new(child.stdout.take().expect("piped stdout"));
         let (tx, lines) = channel();
@@ -194,6 +199,26 @@ impl Engine {
     }
 }
 
+fn capture_errors(mut source: impl Read) {
+    let mut buffer = [0; 4096]; let mut line = Vec::new(); let mut overflow = false; let mut private = false;
+    let mut emit = |bytes: &[u8], overflow: bool| {
+        let text = String::from_utf8_lossy(bytes);
+        if text.contains("-----BEGIN") && text.contains("PRIVATE KEY-----") { private = true; }
+        let message = if overflow { "[overlong diagnostic line omitted]".into() } else if private { "[private key omitted]".into() }
+            else { yo3_tunnel::diagnostics::redact_secrets(&text, &[]) };
+        if text.contains("-----END") && text.contains("PRIVATE KEY-----") { private = false; }
+        tracing::warn!("[YO3 ENGINE STDERR] {message}");
+    };
+    loop {
+        let n = match source.read(&mut buffer) { Ok(0) => break, Ok(n) => n, Err(error) => { tracing::warn!("Could not read engine stderr: {error}"); break } };
+        for byte in &buffer[..n] {
+            if *byte == b'\n' { emit(&line, overflow); line.clear(); overflow = false; }
+            else if line.len() < 16000 { line.push(*byte); } else { overflow = true; }
+        }
+    }
+    if !line.is_empty() || overflow { emit(&line, overflow); }
+}
+
 impl Drop for Engine {
     fn drop(&mut self) {
         let _ = self.child.kill();
@@ -204,6 +229,25 @@ impl Drop for Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn engine_stderr_is_saved_in_diagnostics_instead_of_only_the_terminal() {
+        let root=std::env::temp_dir().join(format!("yo3-engine-stderr-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);
+        let session=yo3_tunnel::diagnostics::Session::start(&root,"server",None).unwrap();let writer=session.clone();
+        let subscriber=tracing_subscriber::fmt().without_time().with_ansi(false).with_writer(move||writer.writer()).finish();
+        let mut command=Command::new("sh");command.args(["-c","printf 'source.lua:17: effect failed\\n' >&2; read -r request; printf '%s\\n' '{\"status\":\"end\",\"messages\":[],\"errors\":[]}'"]);
+        let mut engine=tracing::subscriber::with_default(subscriber,||Engine::spawn(command,Duration::from_secs(2))).unwrap();
+        engine.new_duel(1,8000,[(&[4007;40],&[]),(&[4007;40],&[])]).unwrap();drop(engine);
+        let deadline=std::time::Instant::now()+Duration::from_secs(2);
+        let text=loop {
+            let text=yo3_tunnel::diagnostics::records(&root).unwrap().into_iter().filter(|r|r.name.ends_with(".log")).map(|r|std::fs::read_to_string(root.join(r.name)).unwrap()).collect::<String>();
+            if text.contains("source.lua:17: effect failed") || std::time::Instant::now()>=deadline {break text}
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        assert!(text.contains("source.lua:17: effect failed"),"engine errors must survive Scripts hosting: {text}");
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     #[cfg(unix)]

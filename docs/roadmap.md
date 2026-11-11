@@ -31,6 +31,12 @@ for both Desktop and Scripts. Current compatibility and native Windows verificat
 
 Startup feedback (2026-11-11):
 
+- [x] Automatic bounded diagnostics replace the capture checkbox: normal game launches retain client stdout/stderr,
+  mod messages and decoded nested server packets; engine stderr also reaches retained diagnostics in Scripts mode.
+  Full exports are the default, with optional best-effort personal filtering applied only to the ZIP. Credentials
+  remain scrubbed in every mode. Ordinary viewers hide verbose payloads; advanced searches and full exports retain
+  them. Expensive duel validation/replay stays under `--duel-check`. Direct-start game stdout and a remote host's
+  server logs still require separate collection; these limits are explicit in the support guide.
 - [x] Normal hosting refuses missing/corrupt game archives and empty card/deck data before player-storage migration
   or accepting players. Only explicit in-process protocol fixtures retain the empty-world path. CLI regressions
   preserve existing files and the server key. Live A/B: absent data refuses startup; the complete installation gives

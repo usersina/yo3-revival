@@ -40,6 +40,21 @@ pub struct PacketLog {
     cur: Mutex<Current>,
 }
 
+/// Session exports need nested fields too. Keep these bounded fragments separate from optional raw developer files.
+fn diagnostic(who: &str, direction: &str, summary: &str, message: &Json, error: Option<&str>) {
+    if !tracing::enabled!(tracing::Level::INFO) { return }
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let id = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let text = yo3_tunnel::diagnostics::redact_secrets(&json!({"server":who,"dir":direction,"summary":summary,"msg":message,"error":error}).to_string(), &[]);
+    let mut rest = text.as_str(); let mut part = 0;
+    while !rest.is_empty() {
+        let mut end = rest.len().min(8000); while !rest.is_char_boundary(end) { end -= 1; }
+        let chunk = &rest[..end]; let last = end == rest.len();
+        tracing::info!("[YO3 PACKET] packet={id} part={part} last={last} {chunk}");
+        rest = &rest[end..]; part += 1;
+    }
+}
+
 impl PacketLog {
     pub fn create(dir: &Path) -> std::io::Result<PacketLog> {
         static SEQ: AtomicU32 = AtomicU32::new(0);
@@ -72,20 +87,19 @@ impl PacketLog {
     }
 
     pub fn incoming(&self, who: &str, plain: &[u8], packet: Option<&Packet>, error: Option<&str>) {
-        if !self.enabled { return }
         let (summary, msg) = match packet {
             Some(Packet::Version(v)) => (format!("<- version {v:?}"), json!({ "version": v })),
             Some(Packet::Message(m)) => (format!("<- {}", summarize(m)), message_json(m)),
             None => (format!("<- undecodable: {}", error.unwrap_or("?")), Json::Null),
         };
-        tracing::info!("[{who}] {summary}");
-        self.write(who, "<-", plain, msg, error);
+        diagnostic(who, "<-", &summary, &msg, error);
+        if self.enabled { self.write(who, "<-", plain, msg, error); }
     }
 
     pub fn outgoing(&self, who: &str, plain: &[u8], msg: &Message) {
-        if !self.enabled { return }
-        tracing::info!("[{who}] -> {}", summarize(msg));
-        self.write(who, "->", plain, message_json(msg), None);
+        let data = message_json(msg);
+        diagnostic(who, "->", &summarize(msg), &data, None);
+        if self.enabled { self.write(who, "->", plain, data, None); }
     }
 
     fn rotate(&self, cur: &mut Current) {
@@ -168,6 +182,24 @@ fn message_json(m: &Message) -> Json {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_diagnostics_include_nested_packets_even_without_developer_raw_files() {
+        let dir = std::env::temp_dir().join(format!("yo3-session-packets-{}", std::process::id())); let _ = std::fs::remove_dir_all(&dir);
+        let session = yo3_tunnel::diagnostics::Session::start(&dir, "server", None).unwrap();
+        let writer = session.clone();
+        let subscriber = tracing_subscriber::fmt().without_time().with_ansi(false).with_writer(move || writer.writer()).finish();
+        let message = Message::reply(0x2398).item(Message::record().with("name", Value::text("TestDuelist")).with("card", Value::U32(3437)));
+        tracing::subscriber::with_default(subscriber, || {
+            let packets = PacketLog::disabled().unwrap();
+            packets.incoming("front", &message.encode(), Some(&Packet::Message(message.clone())), None);
+            packets.outgoing("front", &message.encode(), &message);
+        });
+        let text = yo3_tunnel::diagnostics::records(&dir).unwrap().into_iter().filter(|r| r.name.ends_with(".log")).map(|r| std::fs::read_to_string(dir.join(r.name)).unwrap()).collect::<String>();
+        assert!(text.contains("[YO3 PACKET]") && text.contains("TestDuelist") && text.contains("3437"), "nested packet evidence was lost: {text}");
+        assert!(text.contains("<-") && text.contains("->"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn the_packet_log_rotates_and_keeps_only_its_newest_files() {

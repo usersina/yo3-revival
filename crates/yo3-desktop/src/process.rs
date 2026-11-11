@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex, mpsc};
 use anyhow::Context;
-use yo3_tunnel::diagnostics::{Session, redact};
+use yo3_tunnel::diagnostics::{Session, redact_secrets};
 
 pub(crate) struct Errors { tail: Arc<Mutex<String>>, done: mpsc::Receiver<()> }
 impl Errors {
@@ -23,7 +23,7 @@ pub(crate) fn spawn(cmd: &mut Command, session: &Session, label: &'static str) -
         let mut emit=|bytes: &[u8],overflow: bool| {
             let text=String::from_utf8_lossy(bytes);
             if text.contains("-----BEGIN") && text.contains("PRIVATE KEY-----") { private=true; }
-            let clean=if overflow { "[overlong diagnostic line omitted]".into() } else if private { "[private key omitted]".into() } else { redact(&text,&[],None) };
+            let clean=if overflow { "[overlong diagnostic line omitted]".into() } else if private { "[private key omitted]".into() } else { redact_secrets(&text,&[]) };
             if text.contains("-----END") && text.contains("PRIVATE KEY-----") { private=false; }
             let _=writeln!(writer,"{label}: {clean}");
             let mut tail=output.lock().unwrap();

@@ -1,4 +1,4 @@
-//! Bounded, line-redacted session logs shared by the manager, independent server and game helper.
+//! Bounded session logs: credentials scrubbed at capture, optional personal-data filtering at export.
 use std::path::{Path, PathBuf};
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
@@ -65,10 +65,13 @@ impl Session {
     }
     pub fn id(&self) -> String { self.0.lock().unwrap().meta.id.clone() }
     pub fn secret(&self, value: &str) { if !value.is_empty() { self.0.lock().unwrap().secrets.push(value.into()); } }
-    pub fn writer(&self) -> LineWriter { LineWriter { session: self.clone(), line: Vec::new(), dropped: false, private_key: false } }
+    pub fn writer(&self) -> LineWriter { self.prefixed_writer("") }
+    pub fn client_writer(&self) -> LineWriter { self.prefixed_writer("[YO3 CLIENT] ") }
+    fn prefixed_writer(&self, prefix: &'static str) -> LineWriter { LineWriter { session: self.clone(), line: Vec::new(), dropped: false, private_key: false, prefix } }
     pub fn line(&self, line: &str) {
         let mut inner = self.0.lock().unwrap();
-        let clean = redact(line, &inner.secrets, None); let text = format!("{} {}\n", now(), clean);
+        let clean = redact_secrets(line, &inner.secrets);
+        let text = format!("{} {}\n", now(), if clean.len() > LINE_BYTES - 32 { "[overlong diagnostic line omitted]" } else { &clean });
         if inner.bytes + text.len() as u64 > PART_BYTES {
             inner.part += 1;
             if let Ok(file) = private_create(&inner.root.join(format!("{}.{:04}.log", inner.meta.id, inner.part))) {
@@ -79,7 +82,7 @@ impl Session {
         if text.len() <= LINE_BYTES && inner.file.write_all(text.as_bytes()).is_ok() { inner.bytes += text.len() as u64; }
     }
 }
-pub struct LineWriter { session: Session, line: Vec<u8>, dropped: bool, private_key: bool }
+pub struct LineWriter { session: Session, line: Vec<u8>, dropped: bool, private_key: bool, prefix: &'static str }
 pub struct ConsoleWriter { logger: Option<LineWriter> }
 impl ConsoleWriter { pub fn new(session: Option<Session>) -> Self { Self { logger: session.map(|s| s.writer()) } } }
 impl Write for ConsoleWriter {
@@ -91,12 +94,12 @@ impl Write for ConsoleWriter {
 }
 impl LineWriter {
     fn finish_line(&mut self) {
-        if self.dropped { self.session.line("[overlong diagnostic line omitted]"); }
+        if self.dropped { self.session.line(&format!("{}[overlong diagnostic line omitted]", self.prefix)); }
         else {
             let text = String::from_utf8_lossy(&self.line);
             if text.contains("-----BEGIN") && text.contains("PRIVATE KEY-----") { self.private_key = true; }
-            if self.private_key { if text.contains("-----END") && text.contains("PRIVATE KEY-----") { self.private_key = false; } self.session.line("[private key omitted]"); }
-            else { self.session.line(&text); }
+            if self.private_key { if text.contains("-----END") && text.contains("PRIVATE KEY-----") { self.private_key = false; } self.session.line(&format!("{}[private key omitted]", self.prefix)); }
+            else { self.session.line(&format!("{}{text}", self.prefix)); }
         }
         self.line.clear(); self.dropped = false;
     }
@@ -111,8 +114,8 @@ impl Write for LineWriter {
     fn flush(&mut self) -> io::Result<()> { self.session.0.lock().unwrap().file.flush() }
 }
 impl Drop for LineWriter { fn drop(&mut self) { if !self.line.is_empty() || self.dropped { self.finish_line(); } } }
-/// Conservative redaction at both capture and export. Named-secret lines are omitted in full.
-pub fn redact(text: &str, secrets: &[String], home: Option<&str>) -> String {
+/// Credentials are never optional, including in locally retained and full diagnostic reports.
+pub fn redact_secrets(text: &str, secrets: &[String]) -> String {
     let lower = text.to_ascii_lowercase();
     if ["password", "authorization", "private key", "\"key\"", "key=", "key:", "cookie", "token", "session/"].iter().any(|needle| lower.contains(needle)) {
         return "[sensitive diagnostic line omitted]".into()
@@ -127,6 +130,11 @@ pub fn redact(text: &str, secrets: &[String], home: Option<&str>) -> String {
     };
     for c in result.chars() { if c.is_ascii_alphanumeric() { token.push(c); } else { append(&mut token, &mut out); out.push(c); } }
     append(&mut token, &mut out);
+    out
+}
+/// Extra personal-path filtering for error displays and privacy-filtered exports.
+pub fn redact(text: &str, secrets: &[String], home: Option<&str>) -> String {
+    let mut out = redact_secrets(text, secrets);
     if let Some(home) = home.filter(|s| !s.is_empty()) { out = out.replace(home, "<user>"); }
     // A Linux report can contain Windows/Wine paths, and vice versa; mask both without relying on this process's OS.
     for root in ["\\\\users\\\\", "\\\\home\\\\", "/home/", "/users/", "\\users\\", "\\home\\"] {
@@ -140,6 +148,8 @@ pub fn redact(text: &str, secrets: &[String], home: Option<&str>) -> String {
     }
     out
 }
+/// Verbose payloads stay on disk, while the ordinary activity view remains readable.
+pub fn is_trace(line: &str) -> bool { ["[YO3 CLIENT]", "[YO3 PACKET]", "[YO3 ENGINE]"].iter().any(|marker| line.contains(marker)) }
 #[derive(Clone, Serialize)]
 pub struct Record { pub name: String, pub id: String, pub bytes: u64, pub modified: u64 }
 /// Only our flat, bounded file names. No recursive traversal and no symbolic links, profiles, keys or databases.

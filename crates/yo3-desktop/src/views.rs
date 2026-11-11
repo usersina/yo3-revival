@@ -38,19 +38,21 @@ impl App {
         }
         if self.report_options {
             let mut body=column![heading("Export logs","Choose which retained sessions to include."),
-                muted("Sessions are retained for up to 14 days or 100 MiB. The export includes logs and version information; credentials, databases and game files are excluded.")].spacing(16);
+                muted("Logs are captured automatically and retained for up to 14 days or 100 MiB. Credentials, databases and game files are always excluded.")].spacing(16);
             if self.report_busy {body=body.push(muted(if self.report_all{"All retained sessions selected"}else{"Current session selected"}));}
             else {body=body.push(widget::radio("Current session",false,Some(self.report_all),Msg::PrepareReport)).push(widget::radio("All retained sessions",true,Some(self.report_all),Msg::PrepareReport));}
+            body=body.push(checkbox(self.report_remove_personal).label("Remove personal data").on_toggle_maybe((!self.report_busy).then_some(Msg::RemovePersonal)))
+                .push(muted(if self.report_remove_personal {"Omits game, packet and engine traces and player activity; masks common user paths and network addresses. This reduces debugging detail. Review before sharing."}else{"Full report: may include player names, chat, decks, file paths and network addresses. Enable filtering if you prefer to leave those out."}));
             if let Some(report)=&self.report {
                 let p=&report.preview; let date=|n|chrono::DateTime::from_timestamp(n as i64,0).map(|d|d.format("%Y-%m-%d %H:%M UTC").to_string()).unwrap_or_else(||"No sessions".into());
-                body=body.push(text(format!("{} files · {} before compression",p.files,size(p.bytes))).size(17)).push(muted(format!("{} to {}",date(p.oldest),date(p.newest))));
+                body=body.push(text(format!("{} files · {} in source logs",p.files,size(p.bytes))).size(17)).push(muted(format!("{} to {}",date(p.oldest),date(p.newest))));
             } else if !self.report_busy && self.report_feedback.is_none() {body=body.push(muted("No preview available. Select a scope to retry."));}
             if self.report_busy {body=body.push(row![self.spinner(),muted(if self.report.is_some(){"Choose a ZIP location, then wait for the report to save…"}else{"Preparing preview…"})].spacing(10));}
             if let Some(result)=&self.report_feedback {let message=result.as_ref().unwrap_or_else(|e|e);body=body.push(text(message).size(14).color(if result.is_err(){ui::BAD}else{ui::GOOD}));
                 if result.is_err() {body=body.push(action(Icon::Copy,"Copy export error",Some(Msg::CopyReportError)).style(button::text));}
             }
             if self.failed {body=body.push(self.page_heading("",""));}
-            body=body.push(muted("Detailed tracing can contain player/chat information. Review the ZIP before sharing. Nothing is uploaded."))
+            body=body.push(muted("Filtering affects this ZIP only. Your original logs stay available. Nothing is uploaded."))
                 .push(row![action(Icon::Close,"Close",Some(Msg::CancelClose)),action(Icon::Refresh,"Retry preview",(!self.report_busy).then_some(Msg::PrepareReport(self.report_all))),action(Icon::Download,"Save ZIP…",(!self.report_busy && self.report.is_some()).then_some(Msg::SaveLogs)).style(button::primary)].spacing(12));
             return ui::modal(base,body.into());
         }
@@ -157,7 +159,7 @@ impl App {
         if matches!(self.setup_result,Some(yo3_desktop::Readiness::ComponentProblem(_))) {
             body=body.push(action(Icon::Shield,"Repair missing or incompatible Revival files…",(!self.locked()).then_some(Msg::RepairSetup)).style(button::text));
         }
-        let logs=if self.logs.is_empty(){"Validation and startup details will appear here.".into()}else{friendly_logs(&self.logs)};
+        let shown=self.shown_logs(); let logs=if shown.is_empty(){"Validation and startup details will appear here. Full traces are saved automatically for export.".into()}else{friendly_logs(&shown)};
         body=body.push(row![text("Logs").size(15).font(bold()).width(Fill),action(Icon::Copy,"Copy",Some(Msg::CopyLogs)).style(button::text),
             action(Icon::Download,"Export logs…",(!self.locked()).then_some(Msg::ExportLogs)).style(button::text)].spacing(10).align_y(iced::Alignment::Center))
             .push(container(scrollable(text(logs).size(12).font(iced::Font::MONOSPACE)).id("activity-log").anchor_bottom().height(Fill)).padding(14).width(Fill).height(Fill).style(container::rounded_box))
@@ -292,7 +294,7 @@ impl App {
             else {
                 let value=self.draft.server_options.get(&name);
                 if option.toggle {
-                    let default=match name.as_str() {"duel-check"=>self.draft.detailed_logs,"no-packet-log"=>!self.draft.detailed_logs,_=>option.default=="true"};
+                    let default=match name.as_str() {"no-packet-log"=>true,_=>option.default=="true"};
                     let selected=value.map_or(default,|v|v=="true");
                     let key=name.clone(); line=line.push(checkbox(selected).label(if selected{"On"}else{"Off"})
                         .on_toggle_maybe((!self.locked()).then_some(move |on:bool|Msg::ServerOption(key.clone(),on.to_string()))).width(Fill));
@@ -323,11 +325,11 @@ impl App {
     }
     fn activity_view(&self)->Element<'_,Msg>{
         let shown = self.shown_logs();
-        let mut body=column![self.page_heading("Activity","View session logs or export a diagnostic report."),row![ui::tab("Server",Msg::Logs(true),self.log_server),ui::tab("Game & launcher",Msg::Logs(false),!self.log_server),widget::Space::new().width(Fill),action(Icon::Download,"Export logs…",(!self.locked()).then_some(Msg::ExportLogs))].spacing(8),
+        let body=column![self.page_heading("Activity","View session logs or export a diagnostic report."),row![ui::tab("Server",Msg::Logs(true),self.log_server),ui::tab("Game & launcher",Msg::Logs(false),!self.log_server),widget::Space::new().width(Fill),action(Icon::Download,"Export logs…",(!self.locked()).then_some(Msg::ExportLogs))].spacing(8),
             row![text_input("Filter activity…",&self.filter).on_input(Msg::LogFilter).padding(12).width(Fill),checkbox(self.paused).label("Pause").on_toggle(Msg::Pause),action(Icon::Copy,"Copy",Some(Msg::CopyLogs)).style(button::text)].spacing(12).align_y(iced::Alignment::Center),
             card(scrollable(text(if shown.is_empty(){"No activity to show yet.".into()}else{shown}).font(iced::Font::MONOSPACE).size(12)).id("activity-log").height(Fill)).height(Fill),
-            disclosure("Diagnostics options",self.advanced_diagnostics,Msg::Disclosure(Disclosure::Diagnostics))].spacing(16).height(Fill);
-        if self.advanced_diagnostics{body=body.push(column![checkbox(self.draft.detailed_logs).label("Detailed tracing and duel validation").on_toggle(Msg::Detailed),muted("Validates both players' duel state on your hosted server. Applies to the next game/server start. Detailed traces can contain chat/player information; turn this off after investigating."),self.save_actions(Section::Diagnostics),action(Icon::Folder,"Open application data",Some(Msg::OpenData)).style(button::text)].spacing(12));}
+            muted("Full traces are saved automatically. Search YO3 CLIENT or YO3 PACKET to view payloads, or export logs."),
+            action(Icon::Folder,"Open application data",Some(Msg::OpenData)).style(button::text)].spacing(16).height(Fill);
         body.into()
     }
     fn settings_view(&self) -> Element<'_, Msg> {

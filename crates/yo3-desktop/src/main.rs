@@ -48,7 +48,7 @@ enum Page { Play, Server, Activity, Settings, About }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum HostTab { Overview, Invitations, Advanced }
 #[derive(Clone, Copy)]
-enum Disclosure { Game, Diagnostics, Account }
+enum Disclosure { Game, Account }
 #[derive(Clone)]
 enum UpdateStatus { Checking, Checked(updates::Decision), Failed(String) }
 #[derive(Clone, Copy)]
@@ -60,7 +60,7 @@ enum Msg {
     Start, Stop, Play, StopGame, TestConnection, Discover, TrustIdentity, RefreshBindings, BindSelect(yo3_desktop::network::BindAddress), Direct(bool),
     SaveSettings(Section), CancelSettings(Section), Browse(Field), UsePath, FolderPicked(u64,Field,Result<Option<String>,String>), Import, AddServer, SaveServer, EditServer, RemoveServer, ConfirmRemoveServer,
     CreateAccount, AddPlayer, Export, Tick, Animate, Poll(Result<LiveStatus, String>), LogsPolled(Result<String,String>), Done(Result<Outcome, String>),
-    Logs(bool), Pause(bool), LogFilter(String), CopyLogs, ExportLogs, PrepareReport(bool), SaveLogs, Detailed(bool), OpenData, Help, NetworkHelp,
+    Logs(bool), Pause(bool), LogFilter(String), CopyLogs, ExportLogs, PrepareReport(bool), SaveLogs, RemovePersonal(bool), OpenData, Help, NetworkHelp,
     Close, CancelClose, Quit(bool), Disclosure(Disclosure), NewAccount, GitHub, ExternalOpened(Result<(), String>), DismissNotice,
     CheckSetup, RetrySetup, ValidateGame, SetupChecked(u64, Settings, yo3_desktop::Readiness, yo3_desktop::direct::State), RepairSetup, ErrorDetails, CopyError,
     ReportPrepared(u64, Result<yo3_desktop::reports::Report,String>), ReportDestination(u64,Result<Option<PathBuf>,String>), ReportSaved(u64, Result<String,String>), CopyReportError,
@@ -90,8 +90,8 @@ struct App {
     log_server: bool, paused: bool, logs: String, filter: String, closing: bool,
     identity: Option<String>, observed: Option<yo3_tunnel::ObservedServer>, checked: Option<yo3_tunnel::ServerInfo>,
     bindings: Vec<yo3_desktop::network::BindAddress>, port: String, report: Option<yo3_desktop::reports::Report>, report_options: bool, report_all: bool,
-    report_busy: bool, report_generation: u64, report_feedback: Option<Result<String,String>>,
-    advanced_game: bool, advanced_diagnostics: bool, account_options: bool, account_form: bool,
+    report_busy: bool, report_generation: u64, report_feedback: Option<Result<String,String>>, report_remove_personal: bool,
+    advanced_game: bool, account_options: bool, account_form: bool,
     option_filter: String, error_details: bool,
     setup_result: Option<yo3_desktop::Readiness>, direct_state: yo3_desktop::direct::State, repair_setup: bool, first_setup: bool,
     update_status: UpdateStatus, review_update: bool, transfer: Option<(updates::Release, updates::download::Transfer)>,
@@ -123,13 +123,13 @@ impl App {
             failure_setup: None, monitor_error: None, logs_polling: false, pulse: 0.0, setup_revision: 0, setup_checking: false, game_start: None,
             picking: false, picker_generation: 0,
             identity: None, observed: None, checked: None, bindings: yo3_desktop::network::defaults(), port, report: None, report_options: false, report_all: false,
-            report_busy: false, report_generation: 0, report_feedback: None,
-            advanced_game: false, advanced_diagnostics: false, account_options: false, account_form: false, option_filter: String::new(), error_details: false, setup_result: None, direct_state: yo3_desktop::direct::State::Disabled, repair_setup: false, first_setup,
+            report_busy: false, report_generation: 0, report_feedback: None, report_remove_personal: false,
+            advanced_game: false, account_options: false, account_form: false, option_filter: String::new(), error_details: false, setup_result: None, direct_state: yo3_desktop::direct::State::Disabled, repair_setup: false, first_setup,
             update_status: UpdateStatus::Checking, review_update: false, transfer: None, staged: None, applying: false, startup: Default::default() }
     }
     fn update(&mut self, message: Msg) -> Task<Msg> {
         let background = matches!(message, Msg::Done(_) | Msg::FolderPicked(..) | Msg::Poll(_) | Msg::LogsPolled(_) | Msg::Tick | Msg::Animate | Msg::ReportPrepared(..) | Msg::ReportDestination(..) | Msg::ReportSaved(..) | Msg::UpdateChecked(_) | Msg::ExternalOpened(_) | Msg::SetupChecked(..) | Msg::UpdatePrepared(_) | Msg::UpdateApplied(_) | Msg::WindowOpened);
-        if self.modal_open() && !background && !matches!(message, Msg::CancelClose | Msg::Close | Msg::Quit(_) | Msg::TrustIdentity | Msg::SaveLogs | Msg::PrepareReport(_) | Msg::CopyReportError | Msg::CopyError | Msg::ErrorDetails | Msg::DismissNotice | Msg::CopyLogs | Msg::ConfirmUpdate | Msg::CancelUpdate | Msg::ConfirmRemoveServer | Msg::CheckSetup | Msg::Browse(Field::Game) | Msg::ReleasePage) { return Task::none() }
+        if self.modal_open() && !background && !matches!(message, Msg::CancelClose | Msg::Close | Msg::Quit(_) | Msg::TrustIdentity | Msg::SaveLogs | Msg::PrepareReport(_) | Msg::RemovePersonal(_) | Msg::CopyReportError | Msg::CopyError | Msg::ErrorDetails | Msg::DismissNotice | Msg::CopyLogs | Msg::ConfirmUpdate | Msg::CancelUpdate | Msg::ConfirmRemoveServer | Msg::CheckSetup | Msg::Browse(Field::Game) | Msg::ReleasePage) { return Task::none() }
         if self.locked() && !background && !matches!(message, Msg::UsePath | Msg::Close | Msg::CancelClose | Msg::Page(_) | Msg::HostTab(_) | Msg::GitHub | Msg::Help | Msg::NetworkHelp | Msg::OpenData | Msg::ReleasePage | Msg::CheckUpdates | Msg::CopyVersion | Msg::CopyError | Msg::ErrorDetails | Msg::Logs(_) | Msg::Pause(_) | Msg::LogFilter(_) | Msg::CopyLogs | Msg::Disclosure(_) | Msg::CancelUpdate | Msg::Stop | Msg::StopGame | Msg::DismissNotice) { return Task::none() }
         match message {
             Msg::Animate => self.pulse=(self.pulse+0.6)%std::f32::consts::TAU,
@@ -194,7 +194,7 @@ impl App {
             Msg::ErrorDetails => self.error_details = !self.error_details,
             Msg::CopyError => return iced::clipboard::write(format!("YO3 Revival {} ({})\n{}",yo3_tunnel::BUILD_VERSION,yo3_tunnel::BUILD_COMMIT,self.notice)),
             Msg::DismissNotice => { self.notice.clear(); self.notice_expires = None; }
-            Msg::Disclosure(section) => match section { Disclosure::Game => self.advanced_game = !self.advanced_game, Disclosure::Diagnostics => self.advanced_diagnostics = !self.advanced_diagnostics, Disclosure::Account => self.account_options = !self.account_options },
+            Msg::Disclosure(section) => match section { Disclosure::Game => self.advanced_game = !self.advanced_game, Disclosure::Account => self.account_options = !self.account_options },
             Msg::NewAccount => self.account_form = !self.account_form,
             Msg::Page(page) => { self.page = page; if page == Page::Play { self.first_setup = false; } }
             Msg::HostTab(tab) => {
@@ -210,7 +210,6 @@ impl App {
                 Field::Address => if self.address != value { self.address = value; self.server_name.clear(); self.identity = None; self.certificate.clear(); self.observed = None; self.checked = None; },
                 Field::Key => self.key = value, Field::Account => self.new_account = value, Field::NewPlayer => self.new_player = value, Field::Port => self.port = value,
             },
-            Msg::Detailed(value) => self.draft.detailed_logs = value,
             Msg::RefreshBindings => { self.begin("Reading network interfaces…"); return job(|| Ok(Outcome::Bindings(yo3_desktop::network::bindings()?))) }
             Msg::BindSelect(binding) => { self.draft.bind_address = binding.address.to_string(); self.draft.bind_interface = binding.interface_id; }
             Msg::Select(value) => {
@@ -397,7 +396,8 @@ impl App {
             Msg::Pause(paused) => self.paused = paused,
             Msg::LogFilter(filter) => self.filter = filter,
             Msg::CopyLogs => return iced::clipboard::write(self.shown_logs()),
-            Msg::ExportLogs => { self.report_options = true; return self.update(Msg::PrepareReport(false)) }
+            Msg::ExportLogs => { self.report_options = true; self.report_remove_personal = false; return self.update(Msg::PrepareReport(false)) }
+            Msg::RemovePersonal(value) => { self.report_remove_personal = value; self.report_feedback = None; }
             Msg::PrepareReport(all) => {
                 if self.report_busy {return Task::none()}
                 let Some(backend) = self.backend.clone() else {self.report_feedback=Some(Err("Logs are unavailable until app setup is repaired. Copy the error, check the data folder permissions and choose Retry app setup.".into())); return Task::none()};
@@ -411,8 +411,8 @@ impl App {
             Msg::ReportDestination(generation,result) => {
                 if generation!=self.report_generation || !self.report_options {return Task::none()}
                 match result {
-                    Ok(Some(path))=>if let Some(report)=self.report.clone() {return Task::perform(async move {
-                        tokio::task::spawn_blocking(move || report.export(&path)).await.map_err(|e|e.to_string())?.map_err(|e|format!("Could not save ZIP: {e:#}. Choose a writable folder and try Save ZIP again, or Copy logs."))?;
+                    Ok(Some(path))=>if let Some(report)=self.report.clone() {let remove_personal = self.report_remove_personal; return Task::perform(async move {
+                        tokio::task::spawn_blocking(move || report.export_with_privacy(&path, remove_personal)).await.map_err(|e|e.to_string())?.map_err(|e|format!("Could not save ZIP: {e:#}. Choose a writable folder and try Save ZIP again, or Copy logs."))?;
                         Ok("Diagnostic ZIP saved. Nothing was uploaded.".into())
                     },move|r|Msg::ReportSaved(generation,r));},
                     Ok(None)=>{self.report_busy=false;self.report_feedback=Some(Ok("No ZIP selected. Logs have not been saved. Try Save ZIP again, or close this dialog and Copy logs.".into()));}
@@ -440,7 +440,7 @@ impl App {
         }
         Task::none()
     }
-    fn begin(&mut self, label: &str) { self.busy = true; self.operation_page = self.page; self.operation_label = label.into(); self.notice.clear(); self.failure_setup=None; }
+    fn begin(&mut self, label: &str) { if let Some(backend) = &self.backend { backend.diagnostics.line(&format!("Operation started: {label}")); } self.busy = true; self.operation_page = self.page; self.operation_label = label.into(); self.notice.clear(); self.failure_setup=None; }
     fn completed(&mut self, result: Result<String, String>) { self.feedback_at(self.operation_page, result); }
     fn feedback(&mut self, result: Result<String, String>) { self.feedback_at(self.page, result); }
     fn feedback_at(&mut self, page: Page, result: Result<String, String>) {
@@ -483,8 +483,8 @@ impl App {
         }, move |(settings, result, state)| Msg::SetupChecked(revision, settings, result, state))
     }
     fn shown_logs(&self) -> String {
-        let filter = self.filter.to_lowercase();
-        if filter.is_empty() { self.logs.clone() } else { self.logs.lines().filter(|line| line.to_lowercase().contains(&filter)).collect::<Vec<_>>().join("\n") }
+        let filter = if self.settings.advanced_mode { self.filter.to_lowercase() } else { String::new() };
+        self.logs.lines().filter(|line| if filter.is_empty() { !yo3_tunnel::diagnostics::is_trace(line) } else { line.to_lowercase().contains(&filter) }).collect::<Vec<_>>().join("\n")
     }
     fn can_play(&self) -> bool { matches!(self.setup_result, Some(yo3_desktop::Readiness::Ready)) && !self.locked() && !self.game_running && self.backend.is_some()
         && (self.settings.advanced_mode || !Section::Game.changed(&self.settings,&self.draft)) }
@@ -629,6 +629,26 @@ mod flow_tests {
         assert_eq!(app.notice,original,"opening diagnostics must preserve the original error");
         let _=app.update(Msg::ErrorDetails); assert!(app.error_details,"error details must remain accessible inside a dialog");
         let _=app.update(Msg::DismissNotice);assert!(app.notice.is_empty(),"a visible dismiss control must work inside the dialog");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn export_privacy_is_a_per_report_choice_and_does_not_change_log_capture_or_scope() {
+        let root=std::env::temp_dir().join(format!("yo3-ui-report-privacy-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);
+        let mut app=App::load(root.clone());let saved=app.settings.clone();let _=app.update(Msg::ExportLogs);
+        assert!(!app.report_remove_personal);let generation=app.report_generation;
+        let report=app.backend.as_ref().unwrap().report(false).unwrap();let _=app.update(Msg::ReportPrepared(generation,Ok(report)));
+        let _=app.update(Msg::RemovePersonal(true));assert!(app.report_remove_personal);assert_eq!(app.settings,saved);let _=app.view();
+        let _=app.update(Msg::PrepareReport(true));assert!(app.report_all && app.report_remove_personal);
+        let _=app.update(Msg::CancelClose);let _=app.update(Msg::ExportLogs);assert!(!app.report_remove_personal);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn verbose_payloads_stay_out_of_the_default_view_but_can_be_searched_in_advanced_mode() {
+        let root=std::env::temp_dir().join(format!("yo3-ui-trace-view-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);
+        let mut app=App::load(root.clone());app.logs="1 Runtime validation failed\n2 [YO3 CLIENT] raw packet\n3 [YO3 PACKET] nested fields".into();
+        assert_eq!(app.shown_logs(),"1 Runtime validation failed");
+        app.settings.advanced_mode=true;app.filter="YO3 PACKET".into();assert!(app.shown_logs().contains("nested fields"));
+        app.settings.advanced_mode=false;assert_eq!(app.shown_logs(),"1 Runtime validation failed");
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]

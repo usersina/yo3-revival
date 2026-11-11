@@ -130,7 +130,11 @@ Use `yo3-server.exe --help` on Windows or `./yo3-server --help` on Linux for eve
 
 Server logs default to `logs/`, with bounded diagnostic sessions under `logs/sessions/`. Game-helper sessions default
 to `logs/sessions/` **beside the profile**, or the path supplied through `--diagnostics-dir`. Server packet logs may
-contain player/chat/deck data. [Duel diagnostics](development.md#duel-diagnostics) explains checker and replay tools.
+contain player/chat/deck data. Game output, mod diagnostics, decoded server packets and engine stderr are captured
+automatically. `--no-packet-log` disables the separate raw packet files, while decoded traces remain in session logs.
+Desktop's [export dialog](launcher.md#logs-and-support) offers optional personal-data filtering for its indexed
+sessions; manually shared Scripts logs should be reviewed before sharing. [Duel diagnostics](development.md#duel-diagnostics)
+explains the optional `--duel-check` flag and replay tools.
 
 ## When something fails
 

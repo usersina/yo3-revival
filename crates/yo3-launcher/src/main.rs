@@ -19,8 +19,6 @@ struct Args {
     #[arg(long)] control_stdin: bool,
     #[arg(long)] diagnostics_dir: Option<PathBuf>,
     #[arg(long)] diagnostic_parent: Option<String>,
-    /// Include verbose client trace output. Review reports for player/chat information before sharing.
-    #[arg(long)] detailed_logs: bool,
     /// A game-local bootstrap attaches to this existing game after proving mod readiness through private files.
     #[arg(long, requires = "proxy_only")] attach_game: Option<u32>,
     #[arg(long, requires = "attach_game")] mod_ready_file: Option<PathBuf>,
@@ -134,7 +132,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     cmd.envs(proxy.environment()).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
     let mut child = cmd.spawn().context("start the injector")?;
     let errors = child.stderr.take().unwrap(); let error_log = log.clone();
-    let mut error_output = tokio::spawn(async move { capture(errors, error_log, true).await });
+    let mut error_output = tokio::spawn(async move { capture(errors, error_log, false).await });
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut stdout = tokio::io::BufReader::new(child.stdout.take().unwrap());
     log.line("Starting the game suspended; waiting for the connection DLL");
@@ -157,8 +155,8 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     log.line("Connection DLL loaded and interface ready; authenticating");
     let session = initializing!(endpoint.login(&key)).context("Authentication failed; game was not resumed. Check the host's invitation in Advanced, or export logs for help")?; log.secret(&hex(&session));
     proxy.activate(session);
-    let game_log = log.clone(); let detailed = args.detailed_logs;
-    let output = tokio::spawn(async move { capture(stdout, game_log, detailed).await; });
+    let game_log = log.clone();
+    let output = tokio::spawn(async move { capture(stdout, game_log, true).await; });
     let result = async {
         child.stdin.as_mut().unwrap().write_all(b"resume\n").await?;
         child.stdin.take();
@@ -195,17 +193,15 @@ mod native_permission_tests {
     }
 }
 
-async fn capture(mut source: impl tokio::io::AsyncRead + Unpin, log: yo3_tunnel::diagnostics::Session, detailed: bool) -> String {
+async fn capture(mut source: impl tokio::io::AsyncRead + Unpin, log: yo3_tunnel::diagnostics::Session, client_trace: bool) -> String {
     use tokio::io::AsyncReadExt;
-    let mut buffer = [0; 4096]; let mut writer = log.writer(); let mut tail = Vec::new(); let mut truncated = false;
-    // Normal stdout is drained: the original client prints raw packets containing chat/player data.
-    while let Ok(n) = source.read(&mut buffer).await {
+    let mut buffer = [0; 4096]; let mut writer = if client_trace { log.client_writer() } else { log.writer() }; let mut tail = Vec::new(); let mut truncated = false;
+    loop {
+        let n=match source.read(&mut buffer).await {Ok(n)=>n,Err(error)=>{log.line(&format!("Could not read game output: {error}"));break}};
         if n == 0 { break }
-        if detailed {
-            let _ = std::io::Write::write_all(&mut writer, &buffer[..n]);
-            tail.extend_from_slice(&buffer[..n]);
-            if tail.len() > 8192 { tail.drain(..tail.len()-8192); truncated = true; }
-        }
+        let _ = std::io::Write::write_all(&mut writer, &buffer[..n]);
+        tail.extend_from_slice(&buffer[..n]);
+        if tail.len() > 8192 { tail.drain(..tail.len()-8192); truncated = true; }
     }
     // Discard a cut first line: a cropped credential suffix would evade whole-secret redaction.
     if truncated { let end = tail.iter().position(|b| *b == b'\n').map_or(tail.len(), |n| n+1); tail.drain(..end); }
@@ -224,4 +220,20 @@ fn write_ready(args: &Args, proxy: &Proxy) -> anyhow::Result<()> {
         options.open(file)?.write_all(data.to_string().as_bytes())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod capture_tests {
+    use super::*;
+    #[tokio::test]
+    async fn normal_launch_keeps_client_output_without_an_opt_in_and_scrubs_secrets() {
+        let root=std::env::temp_dir().join(format!("yo3-client-output-{}",std::process::id())); let _=std::fs::remove_dir_all(&root);
+        let log=yo3_tunnel::diagnostics::Session::start(&root,"game",None).unwrap();
+        let _args=Args::try_parse_from(["yo3-launcher","--profile","profile.json","--game-dir","game"]).unwrap();
+        capture(&b"client effect failed\nkey=abcdEFGH2345ijkmNPQR\n"[..],log,true).await;
+        let text=yo3_tunnel::diagnostics::records(&root).unwrap().into_iter().filter(|r|r.name.ends_with(".log")).map(|r|std::fs::read_to_string(root.join(r.name)).unwrap()).collect::<String>();
+        assert!(text.contains("client effect failed"),"normal launches must retain evidence: {text}");
+        assert!(!text.contains("abcdEFGH2345ijkmNPQR"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

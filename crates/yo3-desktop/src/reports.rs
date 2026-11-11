@@ -18,13 +18,16 @@ impl Report {
         Ok(Self { root: root.into(), files, preview })
     }
     pub fn export(&self, destination: &Path) -> anyhow::Result<()> {
+        self.export_with_privacy(destination, false)
+    }
+    pub fn export_with_privacy(&self, destination: &Path, remove_personal: bool) -> anyhow::Result<()> {
         ensure!(destination.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip")), "Choose a .zip report file");
         let mut archive = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated).unix_permissions(0o600);
         archive.start_file("report.json", options)?;
-        archive.write_all(&serde_json::to_vec_pretty(&serde_json::json!({"format":1,"created":logs::now(),"preview":self.preview,
+        archive.write_all(&serde_json::to_vec_pretty(&serde_json::json!({"format":2,"created":logs::now(),"preview":self.preview,"personal_data_filtered":remove_personal,
             "release":yo3_tunnel::BUILD_VERSION,"commit":yo3_tunnel::BUILD_COMMIT,"protocol":yo3_tunnel::PROTOCOL_VERSION,"mod_abi":yo3_tunnel::MOD_ABI,
-            "os":std::env::consts::OS,"note":"User-created report. No database, connection profiles, keys, game files or automatic uploads. Detailed traces may contain player/chat information; review before sharing."}))?)?;
+            "os":std::env::consts::OS,"arch":std::env::consts::ARCH,"note":"User-created report. Credentials, databases, profiles and game files are excluded. Personal filtering omits client/packet/engine traces and player activity, and masks common user paths and network addresses; review remaining text before sharing. Nothing is uploaded."}))?)?;
         let current = logs::records(&self.root)?;
         let home = std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).ok();
         let mut remaining = logs::RETAIN_BYTES;
@@ -39,10 +42,10 @@ impl Report {
                 if meta.id != record.id || !["app", "server", "game", "direct"].contains(&meta.kind.as_str()) { continue }
                 let mut value = serde_json::to_value(&meta)?;
                 if let Some(fields) = value.as_object_mut() { for field in fields.values_mut() {
-                    if let Some(text) = field.as_str() { *field = logs::redact(text, &[], home.as_deref()).into(); }
+                    if let Some(text) = field.as_str() { *field = clean(text, home.as_deref(), remove_personal).into(); }
                 } }
                 serde_json::to_string_pretty(&value)?
-            } else { sanitize(&String::from_utf8_lossy(&bytes), home.as_deref()) };
+            } else { sanitize(&String::from_utf8_lossy(&bytes), home.as_deref(), remove_personal) };
             archive.start_file(format!("sessions/{}", record.name), options)?; archive.write_all(text.as_bytes())?;
         }
         let bytes = archive.finish()?.into_inner();
@@ -53,13 +56,41 @@ impl Report {
         Ok(())
     }
 }
-fn sanitize(text: &str, home: Option<&str>) -> String {
+fn sanitize(text: &str, home: Option<&str>, remove_personal: bool) -> String {
     let mut out = String::new(); let mut private_key = false;
     for line in text.lines() {
         if line.contains("-----BEGIN") && line.contains("PRIVATE KEY-----") { private_key = true; }
         if private_key { if line.contains("-----END") && line.contains("PRIVATE KEY-----") { private_key = false; } out.push_str("[private key omitted]\n"); }
         else if line.len() > 16384 { out.push_str("[overlong diagnostic line omitted]\n"); }
-        else { out.push_str(&logs::redact(line, &[], home)); out.push('\n'); }
+        else if !remove_personal || !personal_line(line) { out.push_str(&clean(line, home, remove_personal)); out.push('\n'); }
     }
     out
+}
+fn personal_line(line: &str) -> bool {
+    if logs::is_trace(line) || line.contains("[tls]") || line.contains("] <-") || line.contains("] ->") { return true }
+    line.split(|c:char| !c.is_alphanumeric() && c != '_').any(|word| ["player", "player_id", "user", "user_id", "username", "account", "name", "chat", "mail", "friend", "team", "trade"].iter().any(|w| word.eq_ignore_ascii_case(w)))
+}
+fn clean(text: &str, home: Option<&str>, remove_personal: bool) -> String {
+    if !remove_personal { return logs::redact_secrets(text, &[]) }
+    let mut text = logs::redact(text, &[], home);
+    for scheme in ["https://", "http://"] {
+        let mut from = 0;
+        while let Some(offset) = text[from..].to_ascii_lowercase().find(scheme) {
+            let start = from + offset + scheme.len();
+            let end = text[start..].find(|c:char| c.is_whitespace() || ['/', '?', '#', '"', '\'', '\\'].contains(&c)).map_or(text.len(), |n| start+n);
+            text.replace_range(start..end, "<address>"); from = start + "<address>".len();
+        }
+    }
+    let mut result = String::new(); let mut token = String::new();
+    let append = |token: &mut String, result: &mut String| {
+        let network = token.parse::<std::net::IpAddr>().is_ok() || token.parse::<std::net::SocketAddr>().is_ok()
+            || token.rsplit_once(':').is_some_and(|(host,port)| port.parse::<u16>().is_ok() && host.contains('.') && !host.contains(['/', '\\']))
+            || token.contains('@');
+        result.push_str(if network { "<address>" } else { token }); token.clear();
+    };
+    for c in text.chars() {
+        if c.is_alphanumeric() || ['.', ':', '-', '_', '@'].contains(&c) { token.push(c); }
+        else { append(&mut token, &mut result); result.push(c); }
+    }
+    append(&mut token, &mut result); result
 }

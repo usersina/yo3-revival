@@ -3,10 +3,9 @@ fn root() -> std::path::PathBuf { std::env::temp_dir().join(format!("yo3-prefere
 #[test]
 fn saving_one_section_cannot_apply_unrelated_drafts_or_change_the_play_identity() {
     let saved=Settings{game_dir:"saved game".into(),host_address:"saved.example".into(),local_account:"MyPlayer".into(),..Default::default()};
-    let draft=Settings{game_dir:"new game".into(),host_address:"unfinished.example".into(),local_account:"SomeoneElse".into(),listen_port:0,detailed_logs:true,..saved.clone()};
+    let draft=Settings{game_dir:"new game".into(),host_address:"unfinished.example".into(),local_account:"SomeoneElse".into(),listen_port:0,..saved.clone()};
     let game=Section::Game.merge(&saved,&draft);
-    assert_eq!(game.game_dir,"new game"); assert_eq!(game.host_address,saved.host_address); assert_eq!(game.listen_port,7443); assert_eq!(game.local_account,"MyPlayer"); assert!(!game.detailed_logs);
-    let logs=Section::Diagnostics.merge(&saved,&draft); assert!(logs.detailed_logs); assert_eq!(logs.game_dir,saved.game_dir);
+    assert_eq!(game.game_dir,"new game"); assert_eq!(game.host_address,saved.host_address); assert_eq!(game.listen_port,7443); assert_eq!(game.local_account,"MyPlayer");
     let host=Section::Hosting.merge(&saved,&draft); assert_eq!(host.host_address,draft.host_address); assert_eq!(host.game_dir,saved.game_dir); assert_eq!(host.local_account,saved.local_account);
 
 }
@@ -32,12 +31,12 @@ fn local_and_listening_addresses_are_never_offered_as_addresses_to_share() {
     assert_eq!(yo3_desktop::network::share_address(&s).unwrap().unwrap().0,"192.168.1.50:17443");
 }
 #[test]
-fn diagnostics_save_uses_persisted_settings_and_a_bare_executable_is_not_ready() {
+fn saving_host_preferences_does_not_treat_a_bare_executable_as_a_ready_game() {
     let root=root(); let backend=yo3_desktop::Backend::new(root.clone()).unwrap(); let game=root.join("game"); std::fs::create_dir(&game).unwrap(); std::fs::write(game.join("yo3.exe"),b"incomplete fixture").unwrap();
     let settings=Settings{game_dir:game.to_string_lossy().into(),host_address:"saved.example".into(),local_account:"Mine".into(),..Default::default()};
     LauncherDb::open(&root).unwrap().save_settings(&settings).unwrap();
-    let draft=Settings{game_dir:"unfinished game".into(),host_address:"bad/address".into(),listen_port:0,detailed_logs:true,..settings.clone()};
-    let saved=backend.save_preferences(Section::Diagnostics,&draft).unwrap(); assert_eq!(saved.game_dir,settings.game_dir); assert_eq!(saved.host_address,settings.host_address); assert_eq!(saved.listen_port,7443); assert!(saved.detailed_logs);
+    let draft=Settings{game_dir:"unfinished game".into(),host_address:"bad/address".into(),listen_port:0,..settings.clone()};
+    let saved=backend.save_preferences(Section::Hosting,&settings).unwrap(); assert_eq!(saved,settings);
     assert!(matches!(backend.readiness(&saved),yo3_desktop::Readiness::GameProblem(_)));
     assert!(backend.save_preferences(Section::Hosting,&draft).is_err());
     assert_eq!(LauncherDb::open(&root).unwrap().settings().unwrap(),saved,"a rejected section must leave persisted settings intact");

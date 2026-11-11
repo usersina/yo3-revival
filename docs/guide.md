@@ -43,7 +43,7 @@ storage. Select the complete installation with `--game-dir` and retry; keep exis
 | `--auth-cert`, `--auth-key` | Explicit TLS certificate/key files |
 | `--regulation` | Login banlist by ID/name; default unlimited |
 | `--duel-check` | Compare each player's modeled client state with the rules engine after each step |
-| `--no-packet-log` | Disable raw game packet logging |
+| `--no-packet-log` | Disable separate raw packet files; decoded packet traces remain in bounded session diagnostics |
 
 Other duel-testing flags and diagnostic paths are listed by `--help`; see [duel diagnostics](development.md#duel-diagnostics).
 The game's connection ports are private loopback endpoints assigned by its launcher. Do not configure those in `yo3.ini`.

@@ -12,8 +12,8 @@ fn advanced_flags_are_typed_validated_and_never_parsed_as_a_shell_command() {
     settings.server_options.remove("duel-lp");settings.server_options.insert("made-up".into(),"true".into());assert!(server_options::arguments(&settings).is_err());
 }
 #[test]
-fn app_owned_options_have_one_owner_and_explicit_false_can_disable_a_diagnostic_default() {
-    let mut settings=Settings{detailed_logs:true,..Default::default()};
+fn app_owned_options_have_one_owner_and_duel_validation_is_an_explicit_option() {
+    let mut settings=Settings::default();
     settings.server_options.insert("duel-check".into(),"false".into());
     assert!(!server_options::arguments(&settings).unwrap().contains(&"--duel-check".into()));
     settings.server_options.insert("data-dir".into(),"elsewhere".into()); assert!(server_options::arguments(&settings).is_err());

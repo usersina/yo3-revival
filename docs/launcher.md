@@ -158,29 +158,43 @@ generic connection failure: the remote server cannot inspect files on your PC. U
 
 Normal mode always shows logs below Start, with **Copy** and **Export logs…**. Advanced → **Activity** separates
 **Server** and **Game & launcher** logs, with filtering and pause controls. Startup output is captured even if a helper
-fails before opening its own log session.
+fails before opening its own log session. Game stdout/stderr, DLL diagnostics, decoded server packets (including
+nested fields) and engine stderr are captured automatically; there is no tracing checkbox to enable beforehand.
+The ordinary view hides verbose payloads. Search **YO3 CLIENT**, **YO3 PACKET** or **YO3 ENGINE** in Activity to see
+those retained traces, or export them.
 
 To report a problem:
 
 1. Reproduce it and note what you clicked or, for a duel, the card names and sequence of actions.
 2. Use **Show details → Copy error** for the specific failure, then **Export logs…**.
-3. Select **Current session** or **All retained sessions**, review the file count/date range/size, then **Save ZIP…**.
+3. Select **Current session** or **All retained sessions** and review the source file count/date range/size.
+   Full detail is selected by default. Optionally enable **Remove personal data**, then **Save ZIP…**.
 4. Review the ZIP and attach it to [a bug report](https://github.com/usersina/yo3-revival/issues/new/choose), with the app version.
 
 Exporting keeps the original error visible. An export failure has its own message and **Retry preview** or **Save ZIP…**
 actions. If saving is unavailable, use **Copy logs** or **Copy error**. Nothing is uploaded automatically.
 Do not share private invitations, profiles, account keys, databases or `server.key`.
 
-For a duel bug, use **Advanced → Activity → Diagnostics options → Detailed tracing and duel validation → Save changes**.
-Stop/restart your hosted server between games and restart the game to apply it. If you override `--duel-check` under
-All server flags, that override takes priority. Ask both players to capture the matching sessions. Detailed logs can
-contain deck contents, player names and chat; review them and turn tracing off after the investigation.
+Full reports can contain player names, chat, decks, user paths and network addresses. **Remove personal data** omits
+client/packet/engine payload traces and player-activity lines, and masks common user paths, IP addresses, server URLs
+and email addresses. This reduces debugging detail; it is best-effort filtering, so review the remaining text before
+sharing. Filtering changes only the exported ZIP: the original logs remain available for a later full report.
+Credentials are scrubbed during capture and again at export, regardless of that option.
+
+For a duel bug that needs state validation and exact replay, enable **Advanced → Hosting → Advanced → All server
+flags → --duel-check**, save and restart the hosted server between games. Ask both players to collect matching logs.
+This extra checking remains optional because it adds engine queries and a potentially slow dependency scan. Automatic
+logging does not enable it. Disable the flag when the investigation is finished.
 [Developer replay and validation](development.md#duel-diagnostics) explains the automated checks.
 
 Logs rotate at 2 MiB and are retained for up to 14 days or 100 MiB, protecting active logs. The viewer reads a bounded
 tail. Current-session exports include this app, its attached server and latest game run; all-session exports also
 include retained history. Reports exclude credentials, databases and game files, and omit developer packet logs
-outside the indexed session directory.
+outside the indexed session directory. Decoded packet traces are inside the session logs even when separate raw
+packet files are disabled. Oversized lines/payloads are bounded; this is diagnostic capture, not a full memory dump.
+Original game stdout from optional direct launch is not redirected into the helper's session; reproduce through
+Desktop **Start** or Scripts **play** when that trace is needed. A remote player's export cannot include the host's
+server logs: the host must export those separately.
 
 ## Application updates
 
@@ -204,7 +218,7 @@ Do not overwrite a running bundle. [Scripts updates](scripts.md#updates) are man
 
 App storage defaults to `%LOCALAPPDATA%\YO3 Revival` on Windows and
 `${XDG_DATA_HOME:-~/.local/share}/yo3-revival` on Linux. Open it through
-**Advanced → Activity → Diagnostics options → Open application data**.
+**Advanced → Activity → Open application data**.
 
 | Location inside app storage | Contents |
 |---|---|

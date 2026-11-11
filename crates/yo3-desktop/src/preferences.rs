@@ -1,7 +1,7 @@
 //! Each form owns only its fields; saving it never applies another form's unfinished draft.
 use crate::Settings;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Section { Game, Hosting, Diagnostics }
+pub enum Section { Game, Hosting }
 impl Section {
     pub fn merge(self, saved: &Settings, draft: &Settings) -> Settings {
         let mut result = saved.clone();
@@ -10,7 +10,6 @@ impl Section {
             Self::Hosting => { result.host_address = draft.host_address.clone(); result.data_dir = draft.data_dir.clone(); result.player_name = draft.player_name.clone();
                 result.bind_address = draft.bind_address.clone(); result.bind_interface = draft.bind_interface.clone(); result.listen_port = draft.listen_port;
                 result.server_options = draft.server_options.clone(); }
-            Self::Diagnostics => result.detailed_logs = draft.detailed_logs,
         }
         result
     }
@@ -38,13 +37,10 @@ impl crate::Backend {
                 ensure!(!next.player_name.is_empty() && next.player_name.chars().count() <= 16, "First player name must contain 1–16 characters.");
                 if next.data_dir != saved.data_dir { next.local_account.clear(); }
             }
-            Section::Diagnostics => {},
         }
         db.save_settings(&next)?;
-        if section != Section::Diagnostics {
-            let remote = next.selected_server.and_then(|id| db.servers().ok()?.into_iter().find(|s| s.id == id));
-            if let Err(error) = self.sync_direct(&next, remote) { self.diagnostics.line(&format!("Direct-launch profile needs refresh: {error:#}")); }
-        }
+        let remote = next.selected_server.and_then(|id| db.servers().ok()?.into_iter().find(|s| s.id == id));
+        if let Err(error) = self.sync_direct(&next, remote) { self.diagnostics.line(&format!("Direct-launch profile needs refresh: {error:#}")); }
         Ok(next)
     }
 }

@@ -1,6 +1,17 @@
 use std::io::Write;
 use yo3_tunnel::diagnostics::{Session, records, redact};
 #[test]
+fn automatic_capture_keeps_local_context_until_export_but_never_credentials() {
+    let root = std::env::temp_dir().join(format!("yo3-capture-context-{}", std::process::id())); let _ = std::fs::remove_dir_all(&root);
+    let log = Session::start(&root, "game", None).unwrap();
+    log.line(r"Runtime check failed in C:\Users\Alice Smith\game; peer=192.168.1.45:7443");
+    log.line("key=abcdEFGH2345ijkmNPQR");
+    let text = records(&root).unwrap().into_iter().filter(|r| r.name.ends_with(".log")).map(|r| std::fs::read_to_string(root.join(r.name)).unwrap()).collect::<String>();
+    assert!(text.contains("Alice Smith") && text.contains("192.168.1.45"), "local evidence must be available before export filtering: {text}");
+    assert!(!text.contains("abcdEFGH2345ijkmNPQR"));
+    std::fs::remove_dir_all(root).unwrap();
+}
+#[test]
 fn report_redaction_masks_native_and_wine_home_paths() {
     let text = r"failed /home/alice/game, Z:\home\sina\Documents\game and C:\Users\Alice Smith\game";
     let redacted = redact(text, &[], Some("/home/sina"));
