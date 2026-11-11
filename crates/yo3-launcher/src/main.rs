@@ -1,10 +1,10 @@
 use std::path::PathBuf;
-#[cfg(not(windows))]
-use std::path::Path;
 use std::process::Stdio;
 use anyhow::{Context, ensure};
 use clap::Parser;
 use yo3_launcher::{Ports, Profile, Proxy, hex};
+#[cfg(not(windows))]
+use yo3_launcher::runtime::windows_path;
 
 #[derive(Parser)]
 #[command(version = yo3_tunnel::BUILD_VERSION, about = "Authenticate, start private TLS proxies, and inject the revival connection mod into the game")]
@@ -32,17 +32,6 @@ struct Args {
     #[arg(long, default_value_t = 0)] front_port: u16,
     #[arg(long, default_value_t = 0)] duel_port: u16,
     #[arg(long, default_value_t = 0)] http_port: u16,
-}
-
-#[cfg(not(windows))]
-async fn windows_path(path: &Path, prefix: Option<&Path>) -> anyhow::Result<String> {
-    let mut cmd = tokio::process::Command::new("winepath");
-    cmd.args(["-w"]).arg(path).stderr(Stdio::null()).kill_on_drop(true);
-    if let Some(prefix) = prefix { cmd.env("WINEPREFIX", prefix); }
-    let out = tokio::time::timeout(std::time::Duration::from_secs(30),cmd.output()).await
-        .context("Wine path setup timed out. Close the game, check that Wine is installed and its prefix is writable, then try again")??;
-    ensure!(out.status.success(), "Wine path setup failed. Check that Wine is installed and its prefix is writable");
-    Ok(String::from_utf8(out.stdout)?.trim().to_string())
 }
 
 #[tokio::main]
@@ -82,7 +71,19 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     let injector = args.injector.clone().unwrap_or_else(|| bin.join("yo3-auth-launch.exe"));
     let dll = args.dll.clone().unwrap_or_else(|| bin.join("yo3-auth.dll"));
     let game = args.game_dir.as_ref().map(|dir| dir.join("yo3.exe"));
-    if !args.proxy_only || args.attach_game.is_some() { yo3_launcher::components::preflight(game.as_ref().context("Direct game attachment requires --game-dir")?, &injector, &dll)?; }
+    if !args.proxy_only || args.attach_game.is_some() {
+        let game = game.as_ref().context("Direct game attachment requires --game-dir")?;
+        let info = yo3_launcher::components::preflight(game, &injector, &dll)?;
+        // Group the fingerprint so conservative credential redaction preserves this public diagnostic.
+        let digest = yo3_launcher::components::inspect_game(game)?;
+        let fingerprint = digest.as_bytes().chunks(16).map(|p| std::str::from_utf8(p).unwrap()).collect::<Vec<_>>().join(":");
+        log.line(&format!("Game v1.153 hook layout supported; executable sha256={fingerprint}; mod release={} commit={} ABI={}", info.release, info.commit, info.abi));
+        if args.attach_game.is_none() {
+            log.line("Checking game runtime prerequisites without starting the game");
+            initializing!(yo3_launcher::runtime::check(game, &injector, args.wine_prefix.as_deref()))?;
+            log.line("Game runtime prerequisites available");
+        }
+    }
     if let Some(trace) = &args.trace_dll { ensure!(trace.is_file(), "Trace DLL not found: {}", trace.display()); }
     let (endpoint, key) = Profile::load(&args.profile).context("read the private launcher profile and host certificate")?;
     log.secret(&key); log.line("Checking server identity and compatibility");
@@ -117,20 +118,30 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         #[cfg(windows)] cmd.arg(trace);
         #[cfg(not(windows))] {let path=trace.canonicalize()?;cmd.arg(initializing!(windows_path(&path, args.wine_prefix.as_deref()))?);}
     }
+    #[cfg(windows)] cmd.creation_flags(0x08000000);
     cmd.envs(proxy.environment()).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
     let mut child = cmd.spawn().context("start the injector")?;
     let errors = child.stderr.take().unwrap(); let error_log = log.clone();
-    let error_output = tokio::spawn(async move { capture(errors, error_log, true).await; });
+    let mut error_output = tokio::spawn(async move { capture(errors, error_log, true).await });
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut stdout = tokio::io::BufReader::new(child.stdout.take().unwrap());
     log.line("Starting the game suspended; waiting for the connection DLL");
-    initializing!(tokio::time::timeout(std::time::Duration::from_secs(30), async {
+    let readiness = initializing!(tokio::time::timeout(std::time::Duration::from_secs(30), async {
         let mut ready = Vec::new();
         for _ in 0..128 { let byte = stdout.read_u8().await.context("Game stayed suspended: the mod did not report readiness. Repair the connection components.")?; if byte == b'\n' { break } ready.push(byte); }
         if ready.last() == Some(&b'\r') { ready.pop(); }
         ensure!(ready == b"YO3_MOD_READY", "Invalid injector readiness response; game was not resumed");
         Ok::<_, anyhow::Error>(())
-    })).context("Connection mod initialization timed out; game was not resumed. Validate the game and check the required DLL, then try Start again")??;
+    })).context("Connection mod initialization timed out; game was not resumed. Validate the game and check the required DLL, then try Start again").and_then(|result| result);
+    if let Err(error) = readiness {
+        let _ = child.kill().await;
+        let detail = tokio::time::timeout(std::time::Duration::from_secs(1), &mut error_output).await.ok().and_then(Result::ok).unwrap_or_default();
+        let clean = yo3_tunnel::diagnostics::redact(&detail, &[key.clone(), hex(&proxy.cookie)], None);
+        let summary = clean.lines().filter(|line| line.starts_with("stage="))
+            .find_map(|line| line.split_once(": ").map(|(_, message)| message))
+            .unwrap_or("The game could not start safely. Validate the game and export logs if this repeats.");
+        anyhow::bail!("{summary}\n{error:#}\n{}", if clean.trim().is_empty() { "The injector exited without a native diagnostic. Restore the matching application bundle, check security-software detection history and export logs for help." } else { clean.trim() });
+    }
     log.line("Connection DLL loaded and interface ready; authenticating");
     let session = initializing!(endpoint.login(&key)).context("Authentication failed; game was not resumed. Check the host's invitation in Advanced, or export logs for help")?; log.secret(&hex(&session));
     proxy.activate(session);
@@ -147,24 +158,32 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
             result = &mut interrupt => { result?; child.kill().await?; None }
             _ = &mut desktop_stop => { child.kill().await?; None }
         };
-        if let Some(status) = status { ensure!(status.success(), "game or injector exited with an error"); }
+        if let Some(status) = status { ensure!(status.success(), "Game or injector exited with an error ({status})"); }
         Ok(())
     }.await;
     let _ = endpoint.logout(&session).await;
     if child.try_wait()?.is_none() { let _ = child.kill().await; }
     let _ = tokio::time::timeout(std::time::Duration::from_secs(1), output).await;
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), error_output).await;
-    result
+    let detail = tokio::time::timeout(std::time::Duration::from_secs(1), error_output).await.ok().and_then(Result::ok).unwrap_or_default();
+    if detail.trim().is_empty() { result }
+    else { result.with_context(|| yo3_tunnel::diagnostics::redact(&detail, &[key, hex(&proxy.cookie), hex(&session)], None)) }
 }
 
-async fn capture(mut source: impl tokio::io::AsyncRead + Unpin, log: yo3_tunnel::diagnostics::Session, detailed: bool) {
+async fn capture(mut source: impl tokio::io::AsyncRead + Unpin, log: yo3_tunnel::diagnostics::Session, detailed: bool) -> String {
     use tokio::io::AsyncReadExt;
-    let mut buffer = [0; 4096]; let mut writer = log.writer();
+    let mut buffer = [0; 4096]; let mut writer = log.writer(); let mut tail = Vec::new(); let mut truncated = false;
     // Normal stdout is drained: the original client prints raw packets containing chat/player data.
     while let Ok(n) = source.read(&mut buffer).await {
         if n == 0 { break }
-        if detailed { let _ = std::io::Write::write_all(&mut writer, &buffer[..n]); }
+        if detailed {
+            let _ = std::io::Write::write_all(&mut writer, &buffer[..n]);
+            tail.extend_from_slice(&buffer[..n]);
+            if tail.len() > 8192 { tail.drain(..tail.len()-8192); truncated = true; }
+        }
     }
+    // Discard a cut first line: a cropped credential suffix would evade whole-secret redaction.
+    if truncated { let end = tail.iter().position(|b| *b == b'\n').map_or(tail.len(), |n| n+1); tail.drain(..end); }
+    String::from_utf8_lossy(&tail).into_owned()
 }
 
 fn write_ready(args: &Args, proxy: &Proxy) -> anyhow::Result<()> {

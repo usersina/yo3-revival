@@ -47,8 +47,34 @@ pub fn inspect_mod(path: &Path) -> anyhow::Result<ModInfo> {
     result().with_context(|| format!("Connection DLL validation failed: {}", path.display()))
 }
 pub fn hash(bytes: &[u8]) -> String { ring::digest::digest(&ring::digest::SHA256, bytes).as_ref().iter().map(|b| format!("{b:02x}")).collect() }
+/// Check the same four executable sites guarded by the required DLL, using PE RVAs rather than file offsets.
+/// A version label or a valid PE header alone does not establish that this game's hooks are supported.
+pub fn inspect_game(path: &Path) -> anyhow::Result<String> {
+    let check = || -> anyhow::Result<String> {
+        let (bytes, sections, count) = pe32(path)?;
+        let pe = u32_at(&bytes, 0x3c)? as usize;
+        ensure!(u32_at(&bytes, pe+24+28)? == 0x400000, "Unexpected game image base");
+        ensure!(u32_at(&bytes, pe+24+56)? >= 0x1159ef, "Game image is incomplete");
+        for (rva, expected, name) in [(0x6964bu32, [0xe8,0x50,0x6c,0x08,0], "login"),
+            (0xf44bd, [0xe8,0x3e,0x05,0,0], "starter dispatcher"),
+            (0x114212, [0xe8,0x79,0,0,0], "duel dispatcher"),
+            (0x1159ea, [0xb8,0x30,0x5a,0x51,0], "duel update")] {
+            let found = (0..count).find_map(|i| {
+                let section = sections+40*i;
+                let offset = rva.checked_sub(u32_at(&bytes, section+12).ok()?)?;
+                let raw = u32_at(&bytes, section+16).ok()?;
+                if offset.checked_add(5)? > raw || u32_at(&bytes, section+36).ok()? & 0x20000000 == 0 { return None }
+                let at = (u32_at(&bytes, section+20).ok()? as usize).checked_add(offset as usize)?;
+                bytes.get(at..at.checked_add(5)?)
+            });
+            ensure!(found == Some(expected.as_slice()), "Unsupported {name} hook layout at 0x{:X}", 0x400000+rva);
+        }
+        Ok(hash(&bytes))
+    };
+    check().with_context(|| format!("Unsupported or incomplete game executable: {}. Use the supported original Yu-Gi-Oh! ONLINE 3 v1.153 installation; changing Revival helper files will not repair this game build.", path.display()))
+}
 pub fn preflight(game: &Path, injector: &Path, dll: &Path) -> anyhow::Result<ModInfo> {
-    pe32(game).context("Unsupported or incomplete game executable")?;
+    inspect_game(game)?;
     pe32(injector).context("Missing or invalid 32-bit injector")?;
     let info = inspect_mod(dll)?;
     let manifest = injector.parent().unwrap_or(Path::new(".")).join("bundle.json");

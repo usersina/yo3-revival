@@ -13,7 +13,7 @@ DIRECT_ROOT="$(mktemp -d /tmp/yo3-direct-test.XXXXXXXX)"
 SCRATCH="$DIRECT_ROOT/日本語 game"
 mkdir "$SCRATCH"
 trap 'if [[ $? == 0 ]]; then rm -rf "$DIRECT_ROOT"; else echo "Direct-start failure artifacts: $SCRATCH" >&2; fi' EXIT
-cp "$ROOT/tools/mod/build/yo3-auth-test.exe" "$SCRATCH/yo3.exe"
+cp "$ROOT/tools/mod/build/yo3-auth-direct-test.exe" "$SCRATCH/yo3.exe"
 cp "$ROOT/tools/mod/build/"{winmm.dll,yo3-auth.dll,yo3-auth-launch.exe} "$SCRATCH/"
 python3 - "$PROFILE" "$SCRATCH" "$(winepath -w "$SCRATCH" 2>/dev/null)" "$(winepath -w "$ROOT/target/x86_64-pc-windows-gnu/release/yo3-launcher.exe" 2>/dev/null)" <<'PY'
 from pathlib import Path

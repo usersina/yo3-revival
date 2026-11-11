@@ -338,7 +338,11 @@ impl Backend {
         match components { Ok(()) => Readiness::Ready, Err(error) => Readiness::ComponentProblem(format!("{error:#}")) }
     }
     pub fn check_game(&self, settings: &Settings) -> anyhow::Result<()> {
-        validate_game(Path::new(&settings.game_dir))?; self.check_components(settings)
+        validate_game(Path::new(&settings.game_dir))?; self.check_components(settings)?;
+        self.diagnostics.line("Checking game runtime prerequisites without starting the game");
+        let prefix = (!settings.wine_prefix.is_empty()).then(|| Path::new(&settings.wine_prefix));
+        tokio::runtime::Builder::new_current_thread().enable_all().build()?.block_on(
+            yo3_launcher::runtime::check(&Path::new(&settings.game_dir).join("yo3.exe"), &self.runtime.injector, prefix))
     }
     fn check_server_resources(&self) -> anyhow::Result<()> {
         ensure!(self.runtime.server.is_file(), "Required server file is missing: {}. Extract the complete application bundle.",self.runtime.server.display());
@@ -472,6 +476,7 @@ impl Backend {
 
 pub fn validate_game(path: &Path) -> anyhow::Result<()> {
     ensure!(path.join("yo3.exe").is_file(), "Choose the installed game folder containing yo3.exe.");
+    yo3_launcher::components::inspect_game(&path.join("yo3.exe"))?;
     ensure!(path.join("yo3.idx").is_file(), "The game patch index is missing; choose a complete installation.");
     yo3_data::GameData::load(path).context("The game data is incomplete or unsupported.")?;
     Ok(())
@@ -569,7 +574,7 @@ mod tests {
     fn a_changed_connection_launcher_is_rejected_before_play() {
         let root=std::env::temp_dir().join(format!("yo3-desktop-launcher-hash-{}",std::process::id())); let _=std::fs::remove_dir_all(&root);
         let mut backend=Backend::new(root.clone()).unwrap(); let binary=root.join("connection-helper"); let injector=root.join("injector.exe"); let dll=root.join("mod.dll");
-        std::fs::write(root.join("yo3.exe"),component_fixture::pe_fixture(2)).unwrap();
+        std::fs::write(root.join("yo3.exe"),component_fixture::game_fixture()).unwrap();
         std::fs::write(&injector,component_fixture::pe_fixture(2)).unwrap(); std::fs::write(&dll,component_fixture::pe_fixture(2)).unwrap(); std::fs::write(&binary,b"our verified helper").unwrap();
         Arc::get_mut(&mut backend).unwrap().runtime=Runtime{server:root.join("server"),launcher:binary.clone(),injector,dll,engine:root.join("engine")};
         let digest=yo3_launcher::components::hash(&component_fixture::pe_fixture(2));

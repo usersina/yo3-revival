@@ -152,6 +152,11 @@ __declspec(dllexport) void *WINAPI Yo3ModApi(unsigned id) {
     }
 }
 
+static BOOL mod_failure(const char *message) {
+    DWORD written; WriteFile(GetStdHandle(STD_ERROR_HANDLE), message, (DWORD)strlen(message), &written, NULL);
+    return FALSE;
+}
+
 BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
     (void)reserved;
     if (reason != DLL_PROCESS_ATTACH) return TRUE;
@@ -159,21 +164,26 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
     gate_port = port_from("YO3_LOCAL_GATE"); front_port = port_from("YO3_LOCAL_FRONT");
     duel_port = port_from("YO3_LOCAL_DUEL"); http_port = port_from("YO3_LOCAL_HTTP");
     if (!gate_port || !front_port || !duel_port || !http_port ||
-        GetEnvironmentVariableA("YO3_LOCAL_COOKIE", cookie_hex, sizeof cookie_hex) != 64) return FALSE;
+        GetEnvironmentVariableA("YO3_LOCAL_COOKIE", cookie_hex, sizeof cookie_hex) != 64)
+        return mod_failure("stage=mod-environment: Private launch state is missing or invalid. Start through Revival.\r\n");
     for (unsigned i = 0; i < 32; ++i) {
         int a = hex_digit(cookie_hex[i * 2]), b = hex_digit(cookie_hex[i * 2 + 1]);
-        if (a < 0 || b < 0) return FALSE;
+        if (a < 0 || b < 0) return mod_failure("stage=mod-environment: Private launch state is invalid. Start through Revival.\r\n");
         cookie[i] = (unsigned char)(a * 16 + b);
     }
     InitializeCriticalSection(&guard);
     for (unsigned i = 0; i < 64; ++i) connections[i].socket = INVALID_SOCKET;
     /* Fail closed: the injector must terminate the suspended game if any import cannot be guarded. */
-    mod_ready = hook("GetPrivateProfileStringA", (void *)hooked_string, (void **)&profile_string)
+    if (!(hook("GetPrivateProfileStringA", (void *)hooked_string, (void **)&profile_string)
         && hook("GetPrivateProfileIntA", (void *)hooked_int, (void **)&profile_int)
         && hook("connect", (void *)hooked_connect, (void **)&socket_connect)
         && hook("send", (void *)hooked_send, (void **)&socket_send)
         && hook("closesocket", (void *)hooked_close, (void **)&socket_close)
-        && hook("InternetOpenUrlA", (void *)hooked_url, (void **)&open_url)
-        && login_install() && starter_install() && duel_observer_install();
+        && hook("InternetOpenUrlA", (void *)hooked_url, (void **)&open_url)))
+        return mod_failure("stage=mod-import-hooks: Game imports are unsupported. Validate the original v1.153 game and matching Revival files.\r\n");
+    if (!login_install()) return mod_failure("stage=mod-login-hook: Game login code is unsupported. Validate the original v1.153 executable.\r\n");
+    if (!starter_install()) return mod_failure("stage=mod-starter-hook: Game deck code is unsupported. Validate the original v1.153 executable.\r\n");
+    if (!duel_observer_install()) return mod_failure("stage=mod-duel-hook: Game duel code is unsupported. Validate the original v1.153 executable.\r\n");
+    mod_ready = 1;
     return mod_ready;
 }

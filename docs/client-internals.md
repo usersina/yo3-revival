@@ -113,6 +113,22 @@ Account credentials remain in the Rust TLS launcher. No binary or INI file is pa
 See [authentication.md](authentication.md) for the session binding and [protocol.md](protocol.md#authenticated-transport)
 for the outer protocol. These hooks describe our mod, not claims about Konami's authentication.
 
+Before injection, `yo3-launcher::components::inspect_game` maps executable RVAs through the PE section table and
+checks the same four byte signatures used by the native hooks: `0x46964B`, `0x4F44BD`, `0x514212` and `0x5159EA`.
+Each must lie in file-backed executable section bytes. The SHA-256 fingerprint and mod release/commit/ABI are logged
+for identifying builds; the supported layout remains the contract, rather than trusting a version string.
+
+The original executable imports `d3dx9_40.dll`, `MSVCR90.dll` and `MSVCP90.dll`; its manifest requests the x86
+`Microsoft.VC90.CRT` assembly, version `9.0.21022.8`. The 32-bit injector's `--check-runtime GAME.exe` reads that
+manifest as data, activates its context and probes only these known dependencies from the game/system runtime
+locations. It does not invoke the game or its local WINMM loader. Desktop validation and script startup both run
+this check before connecting. This covers dependency loadability, not graphics initialization or UAC consent.
+
+Native failures log stable `stage=...` labels, Win32 errors where available and process exit codes. DLL hook
+rejections distinguish launch state, imports, login, starter and duel hooks, retaining fail-closed behavior.
+The Rust helper includes a bounded, redacted native stderr tail in startup errors so Desktop details and exported
+logs preserve the cause instead of reporting only EOF. Native Windows 10/11 verification is still required.
+
 ### Skipping the stock login form
 
 The launcher authenticates before the game resumes. The original form adds no authentication: **ONLINE** can go

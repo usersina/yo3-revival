@@ -18,6 +18,24 @@ PY
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-login-test.exe login-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-duel-snapshot-test.exe duel-snapshot-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-test.exe test.c -lws2_32 -lwininet -lwinmm
+# The direct-start fixture also passes the launcher's on-disk hook guards. These synthetic sites are never called.
+python3 - <<'PY'
+from pathlib import Path
+sites=bytearray(0xb6000)
+for rva,code in [(0x6964b,b'\xe8\x50\x6c\x08\x00'),(0xf44bd,b'\xe8\x3e\x05\x00\x00'),
+                 (0x114212,b'\xe8\x79\x00\x00\x00'),(0x1159ea,b'\xb8\x30\x5a\x51\x00')]:
+    sites[rva-0x60000:rva-0x60000+5]=code
+Path('build/fixture-hooks.bin').write_bytes(sites)
+Path('build/runtime-test.manifest').write_text('''<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+<dependency><dependentAssembly><assemblyIdentity type="win32" name="Microsoft.VC90.CRT" version="9.0.21022.8"
+processorArchitecture="x86" publicKeyToken="1fc8b3b9a1e18e3b" /></dependentAssembly></dependency></assembly>''')
+Path('build/runtime-test.rc').write_text('1 24 "runtime-test.manifest"\n')
+PY
+i686-w64-mingw32-objcopy --add-section .yo3hook=build/fixture-hooks.bin \
+  --set-section-flags .yo3hook=code,alloc,load,readonly --change-section-vma .yo3hook=0x460000 \
+  build/yo3-auth-test.exe build/yo3-auth-direct-test.exe
+i686-w64-mingw32-windres -I build build/runtime-test.rc -o build/runtime-test.o
+"$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-runtime-test.exe test.c build/runtime-test.o -lws2_32 -lwininet -lwinmm
 "$CC" -O2 -Wall -Wextra -Werror -DYO3_TEST_BAD_GAME_HOOK -o build/yo3-auth-guard-test.exe test.c -lws2_32 -lwininet -lwinmm
 i686-w64-mingw32-dlltool -d wsock32-ordinals.def -l build/wsock32-ordinals.a
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-ordinal-test.exe test.c build/wsock32-ordinals.a -lws2_32 -lwininet -lwinmm

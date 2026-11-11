@@ -36,6 +36,23 @@ Startup feedback (2026-11-11):
   preserve existing files and the server key. Live A/B: absent data refuses startup; the complete installation gives
   the same scratch account 218 distinct cards, 498 total. This addresses a reproduced path relevant to
   [#4](https://github.com/usersina/yo3-revival/issues/4); the reporter's exact cause remains unconfirmed.
+- [x] Desktop validation and script startup check the supported v1.153 executable's four existing hook signatures.
+  A separate 32-bit runtime probe uses the game's VC90 manifest and checks DirectX/VC90 dependencies without
+  invoking the game or its WINMM loader. Wine regressions cover missing runtimes, guarded hooks, Unicode paths,
+  both manifest/no-manifest fixtures and direct start. The direct fixture includes synthetic guarded hook sites.
+- [x] Native startup failures retain their stage, real Win32 error where available and child exit status. Plain
+  repair instructions lead; details/export retain the diagnostics. Bounded stderr discards cut first lines before
+  credential redaction, protecting even truncated account-key suffixes. Executable fingerprint and mod version/ABI
+  identify the components being tested.
+- [x] Private Desktop checks: missing DirectX fails validation, disables Start and creates no player storage;
+  valid setup starts its scratch server, reaches the real game's main screen and opens the deck editor with the
+  selected starter and all 498 cards. The Windows direct-start helper also passes under Wine.
+- [x] 582 workspace tests pass at bounded concurrency (one archive/window-dependent update test is skipped),
+  including the 240-duel check; strict Clippy, Linux/Windows release builds, native/Wine mod and loader harnesses,
+  documentation links and offline-edition tests pass. An engine-identity timeout during concurrent builds did
+  not repeat in either bounded full-suite run. The Windows CLI also passes its runtime probe under Wine.
+- [ ] Native Windows 10/11 dependency repair, UAC/protected-folder behavior and security-product detections still
+  need platform evidence. The launcher reports OS errors and does not change antivirus/firewall policy.
 
 v0.0.4 release preparation (2026-11-10):
 
