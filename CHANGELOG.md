@@ -10,6 +10,50 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## v0.0.7 (2026-11-12)
+
+A smoother Desktop experience, clearer startup errors and bug reports with diagnostics attached automatically.
+Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the server,
+rules engine and required connection components. Original game files are not included. **Windows 7 is not supported.**
+
+Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.7/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.7/docs/scripts.md).
+
+### Built-in bug reports
+
+- Added in-app GitHub sign-in and **Publish bug report**. Reports include version/system details, captured errors and
+  linked diagnostic logs automatically; the review keeps the public-sharing notice and action buttons visible.
+  The smaller **Exclude chat, decks, paths & addresses** option filters the report while preserving original logs.
+- Failed report publishing preserves progress across reopening, reuses uploaded logs and checks uncertain requests
+  before retrying. GitHub credentials use the system credential store, with a session-only fallback when unavailable.
+
+### Startup and recovery
+
+- Added **Help & support → Reset local game data…** with **Back up & reset**. The default preserves every player file, saved
+  deck and selected deck; an explicit full reset moves the entire client folder into a dated backup. Server data
+  and Revival connections are preserved, with running-game and folder-overlap checks before changes.
+- Fixed intermittent Windows authentication failures caused by TLS response cleanup. Complete, validated replies
+  remain successful when the peer resets during closure; incomplete replies and authentication failures still fail.
+- Failed Desktop server startup now stops its own unfinished process and permits another Start. Shutdown waits
+  before permitting a restart, including when Desktop reconnects to an already-running server.
+- Connection timeouts identify the stalled stage in the logs, distinguishing TCP, TLS and discovery response waits.
+
+### Simpler Desktop controls
+
+- Desktop now uses one **Play** button with checking/starting progress. Choosing a game folder checks it and saves
+  successful results automatically; Play rechecks required files, and imported invitations verify the server and account.
+- Refined Desktop guidance with inline field errors and visible filenames, failure stages and native codes when
+  available. Original launch failures stay visible during background checks. Status colors and contextual help remain
+  consistent; formatted update notes scroll separately while restart warnings and action buttons stay visible.
+- Direct launch is now a checkbox with contextual repair and clear prerequisites. Normal/Advanced controls fit the
+  sidebar, and server/account selection visibly locks while an operation is running.
+- Missing required files now appear together as exact paths, with a short antivirus/recovery hint. Local Play and
+  hosting recheck the bundled server, Node.js and engine dependencies, including when hosting is already running.
+- Error notices show the useful diagnosis directly, with a copy icon replacing the details expander. Normal mode
+  has a smaller log box that groups repeats and hides Wine diagnostics; exports preserve the original output.
+- Removed empty space in short log panels, release notes and forms, with consistent mode labels and dialog spacing.
+
 ## v0.0.6 (2026-11-11)
 
 - Desktop logs open at the newest line and follow new output only while you are at the bottom. Scrolling up keeps

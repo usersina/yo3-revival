@@ -29,6 +29,16 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 Platform scope: **64-bit Windows 10/11** and **Linux with Wine**. **Windows 7 support is out of scope for now**,
 for both Desktop and Scripts. Current compatibility and native Windows verification work targets Windows 10/11.
 
+v0.0.7 release preparation (2026-11-12):
+
+- [x] The workspace package version and all seven local lockfile entries are `0.0.7`. The changelog describes the
+  new Play flow, recovery, startup fixes and GitHub bug reports, with Desktop/Scripts update links.
+- [x] All 761 workspace tests pass, including 240 self-played duels and the original Yusei-deck checks. Strict
+  workspace Clippy, Python helper checks and documentation links pass. DLL/injector and automatic-loader checks
+  pass in an isolated Wine prefix on a private display.
+- The release workflow builds all four bundles and requires the packaged Desktop activation check before publishing.
+  Real GitHub publishing and native Windows verification of the new Desktop UI remain the player checks listed below.
+
 Desktop UI refinement (2026-11-12):
 
 - [x] Both modes use one dynamic **Play** button with checking/starting progress and contextual retry. Choosing a
