@@ -3,46 +3,50 @@ use iced::widget::{column, row};
 use ui::{Icon, action, card, disclosure, muted};
 impl App {
     pub(super) fn view(&self) -> Element<'_, Msg> {
-        let mut nav = column![row![ui::icon(Icon::Layers).width(28).height(28).style(|_,_| widget::svg::Style { color: Some(ui::GOLD) }),
-            column![text("YO3").size(26).font(bold()),text("REVIVAL").size(11).color(ui::MUTED)].spacing(1)].spacing(12).align_y(iced::Alignment::Center),widget::Space::new().height(20)].spacing(6);
-        nav=nav.push(ui::mode_switch(self.settings.advanced_mode,!self.locked()));
+        let mut nav = column![row![ui::brand(42.0),
+            column![text("YO3 Revival").size(18).font(bold()),text(format!("v{}",yo3_tunnel::BUILD_VERSION.trim_start_matches('v'))).size(11).color(ui::MUTED)].spacing(2)]
+            .spacing(12).align_y(iced::Alignment::Center),widget::Space::new().height(14)].spacing(6);
+        nav=nav.push(ui::mode_switch(self.settings.advanced_mode,!self.locked())).push(widget::Space::new().height(10));
         let pages=[("Play",Icon::Play,Page::Play),("Hosting",Icon::Server,Page::Server),("Activity",Icon::Activity,Page::Activity),("Game setup",Icon::Settings,Page::Settings)];
         for (label,icon,page) in pages {
             let selected=self.page==page;
-            nav=nav.push(action(icon,label,Some(Msg::Page(page))).width(Fill).style(move |theme,status| {
-                let mut style=button::text(theme,status); if selected { style.background=Some(Color::from_rgb8(36,57,79).into()); } style.border.radius=8.0.into(); style
-            }));
+            let glyph=ui::icon(icon).style(move |_,_|widget::svg::Style{color:Some(if selected{Color::WHITE}else{ui::MUTED})});
+            nav=nav.push(button(row![glyph,text(label).size(14).color(if selected{Color::WHITE}else{ui::MUTED})].spacing(10).align_y(iced::Alignment::Center))
+                .padding([9,12]).width(Fill).on_press(Msg::Page(page)).style(move |theme,status| if selected {ui::primary(theme,status)} else {ui::ghost(theme,status)}));
         }
+        let update=matches!(self.update_status,UpdateStatus::Checked(updates::Decision::Available(_)));
         nav=nav.push(widget::Space::new().height(Fill))
-            .push(action(Icon::Book,"Help & support",Some(Msg::Support)).width(Fill).style(button::text)).push(widget::rule::horizontal(1))
-            .push(button(column![text(format!("Version {}",yo3_tunnel::BUILD_VERSION)).size(12),text(match self.update_status { UpdateStatus::Checked(updates::Decision::Available(_))=>"Update available", _=>"About & updates" }).size(11).color(ui::MUTED)].spacing(5)).on_press(Msg::Page(Page::About)).padding([10,4]).width(Fill).style(button::text));
+            .push(action(Icon::Book,"Help & support",Some(Msg::Support)).width(Fill).style(ui::ghost)).push(widget::rule::horizontal(1))
+            .push(button(row![ui::icon(if update{Icon::Download}else{Icon::Info}).style(move |_,_|widget::svg::Style{color:Some(if update{ui::ACCENT}else{ui::MUTED})}),
+                text(if update{"Update available"}else{"About & updates"}).size(13).color(if update{ui::ACCENT}else{ui::MUTED})].spacing(10).align_y(iced::Alignment::Center))
+                .on_press(Msg::Page(Page::About)).padding([10,10]).width(Fill).style(ui::ghost));
         let content=match self.page {
             Page::About=>self.about_view(),_ if !self.settings.advanced_mode=>self.normal_view(),
             Page::Play=>self.play_view(),Page::Server=>self.server_view(),Page::Activity=>self.activity_view(),Page::Settings=>self.settings_view() };
         let mut main=column![].spacing(16).padding(28).width(Fill).height(Fill);
         if let Some((release,transfer))=&self.transfer {
             let detail=if transfer.cancelled() { "Cancelling…".into() } else if transfer.verifying() { "Verifying and unpacking…".into() } else { format!("{} of {}",size(transfer.bytes()),size(release.asset.bytes)) };
-            main=main.push(ui::notice(column![row![self.spinner(),text(format!("Updating to {}",release.tag)).size(16).width(Fill),action(Icon::Close,"Cancel download",(!transfer.cancelled()).then_some(Msg::CancelUpdate)).style(button::text)].spacing(10),widget::progress_bar(0.0..=release.asset.bytes as f32,transfer.bytes() as f32).girth(5),muted(detail)].spacing(12),ui::Tone::Info));
+            main=main.push(ui::notice(column![row![self.spinner(),text(format!("Updating to {}",release.tag)).size(16).width(Fill),action(Icon::Close,"Cancel download",(!transfer.cancelled()).then_some(Msg::CancelUpdate)).style(ui::ghost)].spacing(10),widget::progress_bar(0.0..=release.asset.bytes as f32,transfer.bytes() as f32).girth(5),muted(detail)].spacing(12),ui::Tone::Info));
         } else if self.applying || self.staged.is_some() { main=main.push(ui::notice(column![row![self.spinner(),text("Restarting into the update…").size(16)].spacing(10),muted("Waiting for the game/server to close and the new launcher to become ready.")].spacing(8),ui::Tone::Info)); }
         let base=if self.settings.advanced_mode {
-            row![container(nav).width(Fixed(202.0)).height(Fill).padding(20).style(|_|container::Style{background:Some(Color::from_rgb8(19,26,37).into()),..Default::default()}),main.push(content)].into()
-        } else { main.push(content).into() };
+            container(row![container(nav).width(Fixed(214.0)).height(Fill).padding(18).style(ui::sidebar),main.push(content)]).style(ui::backdrop).into()
+        } else { container(main.push(content)).style(ui::backdrop).into() };
         if self.support {
             let mut body=column![heading("Help & support","Setup help and tools for reporting a problem."),
-                action(Icon::Book,"Read the guide",Some(Msg::Help)).style(button::text),
+                action(Icon::Book,"Read the guide",Some(Msg::Help)).style(ui::ghost),
                 widget::rule::horizontal(1),
                 text("Share a problem").size(17).font(bold()),
                 muted("Prepare a GitHub bug report with your version, system details and diagnostic logs."),
-                action(Icon::External,"Report a problem…",(!self.locked()).then_some(Msg::ReportBug)).style(button::primary),
-                row![action(Icon::Download,"Export logs…",(!self.locked()).then_some(Msg::ExportLogs)).style(button::text),
-                    action(Icon::Copy,"Copy logs",Some(Msg::CopyLogs)).style(button::text)].spacing(12),
+                action(Icon::External,"Report a problem…",(!self.locked()).then_some(Msg::ReportBug)).style(ui::primary),
+                row![action(Icon::Download,"Export logs…",(!self.locked()).then_some(Msg::ExportLogs)).style(ui::ghost),
+                    action(Icon::Copy,"Copy logs",Some(Msg::CopyLogs)).style(ui::ghost)].spacing(12),
                 widget::rule::horizontal(1),
                 text("Game recovery").size(17).font(bold()),
                 muted("For repeated startup problems or broken settings, review a backed-up reset of the game's local files."),
-                action(Icon::Refresh,"Reset local game data…",(!self.locked()).then_some(Msg::Troubleshoot)).style(button::text)].spacing(14);
+                action(Icon::Refresh,"Reset local game data…",(!self.locked()).then_some(Msg::Troubleshoot)).style(ui::ghost)].spacing(14);
             if self.locked(){body=body.push(ui::inline_status("Export and recovery tools are available when the current operation finishes. You can still copy the logs.",ui::Tone::Info));}
             if self.feedback_visible() && self.failed {body=body.push(self.page_heading("",""));}
-            return ui::modal_actions(base,body.into(),row![action(Icon::Close,"Close",Some(Msg::CancelClose)).style(button::text)].into());
+            return ui::modal_actions(base,body.into(),row![action(Icon::Close,"Close",Some(Msg::CancelClose)).style(ui::ghost)].into());
         }
         if self.review_update && let UpdateStatus::Checked(updates::Decision::Available(release))=&self.update_status {
             let failed=self.failed && self.feedback_visible();
@@ -54,14 +58,14 @@ impl App {
             let diagnosis=failed.then(||self.error_evidence()).flatten();let has_diagnosis=diagnosis.is_some();
             if failed {
                 let mut error=column![row![ui::inline_status(self.error_summary(),ui::Tone::Danger),
-                    action(Icon::Copy,"Copy error",Some(Msg::CopyError)).style(button::text)].spacing(10).align_y(iced::Alignment::Center)].spacing(6);
+                    action(Icon::Copy,"Copy error",Some(Msg::CopyError)).style(ui::ghost)].spacing(10).align_y(iced::Alignment::Center)].spacing(6);
                 if let Some(diagnosis)=diagnosis {error=error.push(diagnosis);}
                 consequences=consequences.push(ui::notice(error,ui::Tone::Danger))
                     .push(muted("Copy error for the full report, or open the release page manually."));
             }
             return ui::update_review(base,header.into(),ui::release_notes_panel(&self.release_notes,if has_diagnosis{60.0}else if failed{100.0}else{190.0}),consequences.into(),
-                row![action(Icon::Close,"Cancel",Some(Msg::CancelClose)).style(button::text),
-                    action(Icon::Download,"Download & restart",Some(Msg::ConfirmUpdate)).style(button::primary)].spacing(12).into());
+                row![action(Icon::Close,"Cancel",Some(Msg::CancelClose)).style(ui::ghost),
+                    action(Icon::Download,"Download & restart",Some(Msg::ConfirmUpdate)).style(ui::primary)].spacing(12).into());
         }
         if self.report_options && self.bug_report.is_some() {return self.bug_report_view(base);}
         if self.report_options {
@@ -77,28 +81,28 @@ impl App {
             } else if !self.report_busy && self.report_feedback.is_none() {body=body.push(muted("No preview available. Select a scope to retry."));}
             if self.report_busy {body=body.push(row![self.spinner(),muted(if self.report.is_some(){"Choose a ZIP location, then wait for the report to save…"}else{"Preparing preview…"})].spacing(10));}
             if let Some(result)=&self.report_feedback {let message=result.as_ref().unwrap_or_else(|e|e);let tone=if result.is_err(){ui::Tone::Danger}else{ui::Tone::Success};body=body.push(ui::notice(ui::inline_status(message,tone),tone));
-                if result.is_err() {body=body.push(action(Icon::Copy,"Copy export error",Some(Msg::CopyReportError)).style(button::text));}
+                if result.is_err() {body=body.push(action(Icon::Copy,"Copy export error",Some(Msg::CopyReportError)).style(ui::ghost));}
             }
             if !self.report_busy && self.report.is_none() && self.report_feedback.as_ref().is_some_and(Result::is_err) {
-                body=body.push(action(Icon::Refresh,"Retry preview",Some(Msg::PrepareReport(self.report_all))).style(button::text));
+                body=body.push(action(Icon::Refresh,"Retry preview",Some(Msg::PrepareReport(self.report_all))).style(ui::ghost));
             }
             if self.failed && self.feedback_visible() {body=body.push(self.page_heading("",""));}
             body=body.push(muted("Filtering affects this ZIP only. Your original logs stay available. Nothing is uploaded."));
-            return ui::modal_actions(base,body.into(),row![action(Icon::Close,"Close",Some(Msg::CancelClose)).style(button::text),
-                action(Icon::Download,"Save ZIP…",(!self.report_busy && self.report.is_some()).then_some(Msg::SaveLogs)).style(button::primary)].spacing(12).into());
+            return ui::modal_actions(base,body.into(),row![action(Icon::Close,"Close",Some(Msg::CancelClose)).style(ui::ghost),
+                action(Icon::Download,"Save ZIP…",(!self.report_busy && self.report.is_some()).then_some(Msg::SaveLogs)).style(ui::primary)].spacing(12).into());
         }
         if let Some(observed)=&self.observed {
             let compatible=observed.info.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION,yo3_tunnel::MOD_ABI);
             let body=column![heading("Confirm this server","Compare this identity with the host before connecting."),text(&self.address).size(18),
                 ui::status_badge(format!("{} · {}",observed.info.release,if compatible.is_ok(){"Compatible"}else{"Update required"}),if compatible.is_ok(){ui::Tone::Success}else{ui::Tone::Danger}),
-                muted("Ask the host to confirm this code. An imported invitation already carries the expected identity."),container(text(&observed.identity).font(iced::Font::MONOSPACE).size(12)).padding(14).style(container::rounded_box),
+                muted("Ask the host to confirm this code. An imported invitation already carries the expected identity."),container(text(&observed.identity).font(iced::Font::MONOSPACE).size(12)).padding(14).style(ui::well),
                 if let Err(error)=&compatible{ui::inline_status(error.to_string(),ui::Tone::Danger)}else{ui::inline_status("Your account key has not been sent.",ui::Tone::Info)}].spacing(20);
-            return ui::modal_actions(base,body.into(),row![action(Icon::Close,"Cancel",Some(Msg::CancelClose)).style(button::text),
-                action(Icon::Shield,"Trust this server",compatible.is_ok().then_some(Msg::TrustIdentity)).style(button::primary)].spacing(12).into());
+            return ui::modal_actions(base,body.into(),row![action(Icon::Close,"Cancel",Some(Msg::CancelClose)).style(ui::ghost),
+                action(Icon::Shield,"Trust this server",compatible.is_ok().then_some(Msg::TrustIdentity)).style(ui::primary)].spacing(12).into());
         }
         if self.remove_server.is_some() {
             return ui::modal_actions(base,column![heading("Remove this connection?","The account and its game data remain on the server."),ui::inline_status("This removes its saved address and credentials from this launcher. You will need the invitation to add it again.",ui::Tone::Warning)].spacing(20).into(),
-                row![action(Icon::Close,"Cancel",Some(Msg::CancelClose)).style(button::text),action(Icon::Close,"Remove connection",Some(Msg::ConfirmRemoveServer)).style(button::danger)].spacing(12).into());
+                row![action(Icon::Close,"Cancel",Some(Msg::CancelClose)).style(ui::ghost),action(Icon::Close,"Remove connection",Some(Msg::ConfirmRemoveServer)).style(ui::danger)].spacing(12).into());
         }
         if let Some(dialog)=&self.game_data_dialog {
             let mut body=match dialog {
@@ -130,19 +134,19 @@ impl App {
                     if let Some(diagnosis)=self.error_evidence() {error=error.push(diagnosis);}
                     body=body.push(ui::notice(error,ui::Tone::Danger));
                 }
-                body=body.push(action(Icon::Copy,"Copy error",Some(Msg::CopyError)).style(button::text));
+                body=body.push(action(Icon::Copy,"Copy error",Some(Msg::CopyError)).style(ui::ghost));
             }
             if let Some(backup)=&self.game_data_backup {
                 body=body.push(widget::rule::horizontal(1)).push(muted(if matches!(dialog,GameDataDialog::Complete){"Backup folder"}else{"Last reset backup"}))
                     .push(text(display_path(backup)).font(iced::Font::MONOSPACE).size(12))
-                    .push(action(Icon::Folder,"Open backup folder",Some(Msg::OpenGameDataBackup)).style(button::text));
+                    .push(action(Icon::Folder,"Open backup folder",Some(Msg::OpenGameDataBackup)).style(ui::ghost));
             }
             if self.backend.is_some() && !self.locked() && (matches!(dialog,GameDataDialog::Problem(_)) || matches!(dialog,GameDataDialog::Ready {settings,..} if settings!=&self.settings)) {
-                body=body.push(action(Icon::Refresh,"Check again",Some(Msg::Troubleshoot)).style(button::text));
+                body=body.push(action(Icon::Refresh,"Check again",Some(Msg::Troubleshoot)).style(ui::ghost));
             }
-            let mut controls=row![action(Icon::Close,if matches!(dialog,GameDataDialog::Ready {..}|GameDataDialog::Checking {..}){"Cancel"}else{"Close"},Some(Msg::CancelClose)).style(button::text)].spacing(12);
+            let mut controls=row![action(Icon::Close,if matches!(dialog,GameDataDialog::Ready {..}|GameDataDialog::Checking {..}){"Cancel"}else{"Close"},Some(Msg::CancelClose)).style(ui::ghost)].spacing(12);
             if matches!(dialog,GameDataDialog::Ready {..}) {
-                controls=controls.push(action(Icon::Refresh,"Back up & reset",self.game_data_reset_request().map(|_|Msg::ConfirmGameDataReset)).style(button::danger));
+                controls=controls.push(action(Icon::Refresh,"Back up & reset",self.game_data_reset_request().map(|_|Msg::ConfirmGameDataReset)).style(ui::danger));
             }
             return ui::modal_actions(base,body.into(),controls.into());
         }
@@ -152,7 +156,7 @@ impl App {
                 if self.busy || self.feedback_visible() {body=body.push(self.page_heading("",""));}
                 if self.status.is_some(){body=body.push(ui::inline_status("Your local server will stop and connected players will be disconnected.",ui::Tone::Warning));}
                 return ui::modal_actions(base,body.into(),
-                    row![action(Icon::Close,"Cancel",Some(Msg::CancelClose)).style(button::text),action(Icon::Close,"Close app",(!self.locked()).then_some(Msg::Quit(true))).style(button::primary)].spacing(12).into());
+                    row![action(Icon::Close,"Cancel",Some(Msg::CancelClose)).style(ui::ghost),action(Icon::Close,"Close app",(!self.locked()).then_some(Msg::Quit(true))).style(ui::primary)].spacing(12).into());
             }
             let mut body=column![heading("Close YO3 Revival?","A game started here will close.")].spacing(16);
             if self.busy || self.feedback_visible() {body=body.push(self.page_heading("",""));}
@@ -161,8 +165,8 @@ impl App {
                     .push(ui::inline_status(if self.keep_hosting_on_exit {"Your server and its connected players stay online."}else{"Your server will stop and its connected players will be disconnected."},if self.keep_hosting_on_exit{ui::Tone::Info}else{ui::Tone::Warning}));
             }
             let stop=self.status.is_some() && !self.keep_hosting_on_exit;
-            return ui::modal_actions(base,body.into(),row![action(Icon::Close,"Cancel",Some(Msg::CancelClose)).style(button::text),
-                action(Icon::Close,"Close app",(!self.locked()).then_some(Msg::Quit(stop))).style(button::primary)].spacing(12).into());
+            return ui::modal_actions(base,body.into(),row![action(Icon::Close,"Cancel",Some(Msg::CancelClose)).style(ui::ghost),
+                action(Icon::Close,"Close app",(!self.locked()).then_some(Msg::Quit(stop))).style(ui::primary)].spacing(12).into());
         }
         base
     }
@@ -188,11 +192,11 @@ impl App {
             if !field_error {
                 let summary=if self.failed && self.failure_setup.is_some() && !self.setup_missing_files.is_empty(){format!("Missing required files ({})",self.setup_missing_files.len())}else{self.error_summary()};
                 let mut header=row![ui::inline_status(summary,tone)].spacing(10).align_y(iced::Alignment::Center);
-                if self.failed {header=header.push(widget::tooltip(button(ui::icon(Icon::Copy)).padding(4).style(button::text).on_press(Msg::CopyError),
-                    container(text("Copy error").size(12)).padding(8).style(container::rounded_box),widget::tooltip::Position::Top).snap_within_viewport(true));}
-                if self.failed && !self.modal_open() {header=header.push(widget::tooltip(button(ui::icon(Icon::External)).padding(4).style(button::text).on_press_maybe((!self.locked()).then_some(Msg::ReportBug)),
-                    container(text("Report a problem").size(12)).padding(8).style(container::rounded_box),widget::tooltip::Position::Top).snap_within_viewport(true));}
-                feedback=feedback.push(header.push(button(ui::icon(Icon::Close)).padding(4).style(button::text).on_press(Msg::DismissNotice)));
+                if self.failed {header=header.push(widget::tooltip(button(ui::icon(Icon::Copy)).padding(4).style(ui::ghost).on_press(Msg::CopyError),
+                    container(text("Copy error").size(12)).padding(8).style(ui::bubble),widget::tooltip::Position::Top).snap_within_viewport(true));}
+                if self.failed && !self.modal_open() {header=header.push(widget::tooltip(button(ui::icon(Icon::External)).padding(4).style(ui::ghost).on_press_maybe((!self.locked()).then_some(Msg::ReportBug)),
+                    container(text("Report a problem").size(12)).padding(8).style(ui::bubble),widget::tooltip::Position::Top).snap_within_viewport(true));}
+                feedback=feedback.push(header.push(button(ui::icon(Icon::Close)).padding(4).style(ui::ghost).on_press(Msg::DismissNotice)));
             }
             if self.failed {
                 let missing_only=self.failure_setup.is_some() && !self.setup_missing_files.is_empty();
@@ -219,7 +223,7 @@ impl App {
                 let download=matches!(self.setup_result,Some(yo3_desktop::Readiness::ComponentProblem(_))) && !self.modal_open();
                 let mut controls=row![].spacing(8).align_y(iced::Alignment::Center);
                 if saved || download {controls=controls.push(widget::Space::new().width(Fill));}
-                if saved {controls=controls.push(action(Icon::Refresh,"Use saved folder",(!self.locked()).then_some(Msg::CancelSettings(Section::Game))).style(button::text));}
+                if saved {controls=controls.push(action(Icon::Refresh,"Use saved folder",(!self.locked()).then_some(Msg::CancelSettings(Section::Game))).style(ui::ghost));}
                 if download {controls=controls.push(action(Icon::Download,"Download Desktop…",Some(Msg::ReleasePage)));}
                 if saved || download {feedback=feedback.push(controls);}
             }
@@ -234,43 +238,48 @@ impl App {
         row((0..3).map(|dot|text("•").size(16).color(if dot==active{ui::tone_color(ui::Tone::Info)}else{ui::MUTED}).into())).spacing(2).width(28).into()
     }
     fn normal_view(&self) -> Element<'_, Msg> {
-        column![row![ui::icon(Icon::Layers).width(26).height(26),text("YO3 Revival").size(25).font(bold()).width(Fill),
-            ui::mode_switch(false,!self.locked())].spacing(10).align_y(iced::Alignment::Center),
-            widget::rule::horizontal(1),self.normal_content()]
-            .spacing(16).height(Fill).into()
+        column![self.normal_content()].height(Fill).into()
+    }
+    /// The page's lead card: the icon, what this app is, where the game connects and the Play button.
+    /// The launch console: the icon, what this app is, and the status beside the Play button.
+    fn launch_hero<'a>(&'a self,status:&'a str,tone:ui::Tone,mode:bool)->Element<'a,Msg> {
+        let mut title=row![ui::brand(64.0),column![ui::plate("YO3 Revival",22),
+            text("A private server for Yu-Gi-Oh! ONLINE 3").size(13).color(ui::MUTED)].spacing(8).width(Fill)]
+            .spacing(16).align_y(iced::Alignment::Center);
+        if mode {title=title.push(ui::mode_switch(false,!self.locked()));}
+        ui::console(column![title,widget::rule::horizontal(1).style(|_|widget::rule::Style{color:Color::from_rgba8(0,0,0,0.45),radius:0.0.into(),fill_mode:widget::rule::FillMode::Full,snap:true}),
+            row![ui::inline_status(status,tone),self.play_action()].spacing(16).align_y(iced::Alignment::Center)].spacing(14)).into()
     }
     fn normal_content(&self) -> Element<'_, Msg> {
         let editable=self.backend.is_some() && !self.locked() && !self.game_running;
         let field_error=self.game_field_error();let invalid=field_error.is_some();
-        let mut body=column![].spacing(16);
+        let status=if self.game_field_error().is_some(){"Check the highlighted game folder."}else{self.play_status()};
+        let mut body=column![self.launch_hero(status,self.play_tone(),true)].spacing(16);
         if self.backend.is_none() {body=body.push(column![muted("Your settings or logs could not be opened. Check that the data folder is writable, then retry. Your saved data will be kept."),
             row![action(Icon::Refresh,"Retry app setup",(!self.locked()).then_some(Msg::RetrySetup)),action(Icon::Folder,"Open data folder",Some(Msg::OpenData))].spacing(12)].spacing(8));}
-        let mut game=column![text("Game folder").size(15).font(bold()),
+        let mut game=column![
             row![text_input("Choose the folder containing yo3.exe",&self.draft.game_dir).padding(13).width(Fill)
                 .on_input_maybe(editable.then_some(|s|Msg::Input(Field::Game,s))).style(move |theme,status|ui::input_style(theme,status,invalid)),
                 action(Icon::Folder,"Browse…",editable.then_some(Msg::Browse(Field::Game)))].spacing(12).align_y(iced::Alignment::Center)].spacing(8);
         if let Some(error)=field_error {game=game.push(ui::inline_status(error,ui::Tone::Danger));}
-        body=body.push(game.push(muted("Choose your original Yu-Gi-Oh! ONLINE 3 installation. It is checked and saved automatically. Game files are not included.")));
-        let status=if invalid{"Check the highlighted game folder."}else{self.play_status()};
-        body=body.push(row![ui::inline_status(status,self.play_tone()),self.play_action()].spacing(16).height(52).align_y(iced::Alignment::Center));
-        body=body.push(muted("Play rechecks the required files, then opens your game and prepares everything automatically."));
+        body=body.push(ui::section("Game folder",game.push(muted("Choose your original Yu-Gi-Oh! ONLINE 3 installation. It is checked and saved automatically. Game files are not included. Play rechecks the required files, then opens your game and prepares everything automatically."))));
         if self.picking {body=body.push(row![muted("No file dialog? You can paste the game folder path instead."),action(Icon::Close,"Use path instead",Some(Msg::UsePath))].spacing(12).align_y(iced::Alignment::Center));}
         if self.selected!=ServerChoice::Local || self.editor {
             body=body.push(row![muted(if self.editor {"Finish or cancel your connection in Advanced before playing.".into()}else{format!("Playing on {}",self.selected)}),
-                action(Icon::Settings,"Change in Advanced",(!self.locked()).then_some(Msg::Mode(true))).style(button::text)].spacing(12).align_y(iced::Alignment::Center));
+                action(Icon::Settings,"Change in Advanced",(!self.locked()).then_some(Msg::Mode(true))).style(ui::ghost)].spacing(12).align_y(iced::Alignment::Center));
         }
         // Feedback belongs below the launch controls so expiring notices cannot move Play mid-click.
         if self.feedback_visible() { body=body.push(self.page_heading("","")); }
         if matches!(self.setup_result,Some(yo3_desktop::Readiness::ComponentProblem(_))) && !self.feedback_visible() {
-            body=body.push(action(Icon::Download,"Download Desktop…",Some(Msg::ReleasePage)).style(button::text));
+            body=body.push(action(Icon::Download,"Download Desktop…",Some(Msg::ReleasePage)).style(ui::ghost));
         }
         let logs=friendly_logs(&self.shown_logs());let logs=if logs.is_empty(){"Checks and startup details will appear here. Full traces are saved automatically for export.".into()}else{logs};
-        body=body.push(row![container(ui::label_help("Logs","Compact activity: repeated lines are grouped and Wine diagnostics are hidden. Advanced → Activity shows technical output; Export logs includes full diagnostics.")).width(Fill),
-            action(Icon::Download,"Export logs…",(!self.locked()).then_some(Msg::ExportLogs)).style(button::text)].spacing(10).align_y(iced::Alignment::Center))
-            .push(ui::log_panel(logs).max_height(160))
-            .push(row![button(text(format!("Version {}{}",yo3_tunnel::BUILD_VERSION,match &self.update_status {UpdateStatus::Checking=>" · Checking for updates…",UpdateStatus::Failed(_)=>" · Update check unavailable",UpdateStatus::Checked(updates::Decision::Available(_))=>" · Update available",_=>""})).size(12)).on_press(Msg::Page(Page::About)).style(button::text),
+        // Compact activity: repeated lines are grouped and Wine diagnostics hidden; Advanced → Activity shows everything.
+        body=body.push(ui::section_with("Logs",Some(action(Icon::Download,"Export logs…",(!self.locked()).then_some(Msg::ExportLogs)).padding([4,10]).style(ui::secondary).into()),
+            ui::log_panel(logs).max_height(130)))
+            .push(row![button(text(format!("Version {}{}",yo3_tunnel::BUILD_VERSION,match &self.update_status {UpdateStatus::Checking=>" · Checking for updates…",UpdateStatus::Failed(_)=>" · Update check unavailable",UpdateStatus::Checked(updates::Decision::Available(_))=>" · Update available",_=>""})).size(12)).on_press(Msg::Page(Page::About)).style(ui::ghost),
                 widget::Space::new().width(Fill),
-                action(Icon::Book,"Help & support",Some(Msg::Support)).style(button::text)].spacing(12).align_y(iced::Alignment::Center));
+                action(Icon::Book,"Help & support",Some(Msg::Support)).style(ui::ghost)].spacing(12).align_y(iced::Alignment::Center));
         // Keep details, recovery actions and logs reachable at the minimum window size.
         // Reserve the scrollbar gutter even when it is hidden, keeping Play in the same position.
         scrollable(container(body.width(Fill)).padding(iced::Padding {right:22.0,..Default::default()}).width(Fill)).width(Fill).height(iced::Length::Shrink).into()
@@ -279,13 +288,13 @@ impl App {
         let loading=self.play_loading();let danger=self.game_running && !loading;
         let symbol:Element<'_,Msg>=if loading{
             let active=(self.pulse*3.0/std::f32::consts::TAU) as usize;
-            row((0..3).map(|dot|text("•").size(16).color(Color {a:if dot==active{1.0}else{0.35},..Color::from_rgb8(15,20,29)}).into())).spacing(2).width(28).into()
+            row((0..3).map(|dot|text("•").size(16).color(Color {a:if dot==active{1.0}else{0.35},..Color::WHITE}).into())).spacing(2).width(28).into()
         }else{ui::icon(if self.game_running{Icon::Stop}else if self.play_label()=="Retry check"{Icon::Refresh}else{Icon::Play}).into()};
-        button(container(row![symbol,text(self.play_label()).size(14)].spacing(9).align_y(iced::Alignment::Center)).center_x(Fill).center_y(Fill))
-            .on_press_maybe(self.play_message()).width(160).height(46).padding(10)
+        button(container(row![symbol,text(self.play_label().to_uppercase()).size(16).font(bold())].spacing(9).align_y(iced::Alignment::Center)).center_x(Fill).center_y(Fill))
+            .on_press_maybe(self.play_message()).width(170).height(48).padding(10)
             .style(move |theme,status| {
                 let status=if loading {button::Status::Active}else{status};
-                if danger {button::danger(theme,status)}else{button::primary(theme,status)}
+                if danger {ui::secondary(theme,status)}else{ui::duel(theme,status)}
             }).into()
     }
     fn play_view(&self) -> Element<'_, Msg> {
@@ -296,50 +305,51 @@ impl App {
         let mut body = column![self.page_heading("Play", "Choose a server, then launch your game.")].spacing(28);
         if let UpdateStatus::Checked(updates::Decision::Available(release)) = &self.update_status {
             body = body.push(row![muted(format!("Version {} is available", release.tag)),
-                action(Icon::Download, "View update", Some(Msg::Page(Page::About))).style(button::text)]
+                action(Icon::Download, "View update", Some(Msg::Page(Page::About))).style(ui::ghost)]
                 .spacing(12).align_y(iced::Alignment::Center));
         }
         let editable = !self.locked() && !self.game_running;
         let mut servers = vec![ServerChoice::Local]; servers.extend(self.servers.iter().map(ServerChoice::saved));
         let mut connection = column![row![
-            ui::label_help("Server", "This computer starts your own local server. Add a server to join a host by address, or import the private invitation they sent you."),
-            widget::Space::new().width(Fill), action(Icon::Plus, "Add server", editable.then_some(Msg::AddServer)).style(button::text)]
+            ui::label_help("Connect to", "This computer starts your own local server. Add a server to join a host by address, or import the private invitation they sent you."),
+            widget::Space::new().width(Fill), action(Icon::Plus, "Add server", editable.then_some(Msg::AddServer)).style(ui::ghost)]
             .align_y(iced::Alignment::Center)].spacing(14);
         if !editable {
-            connection = connection.push(container(text(self.selected.to_string()).color(ui::MUTED)).padding(12).width(Fill).style(container::rounded_box));
+            connection = connection.push(container(text(self.selected.to_string()).color(ui::MUTED)).padding(12).width(Fill).style(ui::well));
         } else {
-            connection = connection.push(pick_list(servers, Some(self.selected.clone()), Msg::Select).width(Fill).padding(12));
+            connection = connection.push(pick_list(servers, Some(self.selected.clone()), Msg::Select).width(Fill).padding(12).style(ui::pick));
         }
         if self.selected == ServerChoice::Local {
             let names = account_names(&self.accounts);
             if !names.is_empty() {
                 connection = connection.push(ui::label_help("Your account", "This is the account used to play. Each account can have several players; choose your player inside the game. Managing another account under Hosting does not change this selection."));
-                if !editable { connection = connection.push(container(text(&self.account).color(ui::MUTED)).padding(12).width(Fill).style(container::rounded_box)); }
-                else { connection = connection.push(pick_list(names, (!self.account.is_empty()).then_some(self.account.clone()), Msg::AccountSelect).width(Fill).padding(12)); }
+                if !editable { connection = connection.push(container(text(&self.account).color(ui::MUTED)).padding(12).width(Fill).style(ui::well)); }
+                else { connection = connection.push(pick_list(names, (!self.account.is_empty()).then_some(self.account.clone()), Msg::AccountSelect).width(Fill).padding(12).style(ui::pick)); }
             }
             connection = connection.push(muted("Your server starts automatically when you play."));
         } else {
-            connection = connection.push(row![action(Icon::Shield, "Test connection", (!self.locked()).then_some(Msg::TestConnection)).style(button::text),
-                widget::Space::new().width(Fill),action(Icon::Settings, "Edit server", editable.then_some(Msg::EditServer)).style(button::text)].spacing(8));
+            connection = connection.push(row![action(Icon::Shield, "Test connection", (!self.locked()).then_some(Msg::TestConnection)).style(ui::ghost),
+                widget::Space::new().width(Fill),action(Icon::Settings, "Edit server", editable.then_some(Msg::EditServer)).style(ui::ghost)].spacing(8));
         }
         if self.game_running { connection = connection.push(muted("Close the game to change its server or account.")); }
         else if self.locked() {connection=connection.push(muted("Server and account selection will be available when the current operation finishes."));}
         if let Some(info) = &self.checked {
             connection = connection.push(ui::status_badge(format!("Server {} · {}", info.release, if info.ready { "Ready" } else { "Rules engine unavailable" }),if info.ready{ui::Tone::Success}else{ui::Tone::Danger}));
         }
-        body = body.push(connection).push(widget::rule::horizontal(1));
+        body = body.push(ui::section("Server",connection));
         let mut launch = column![row![ui::inline_status(self.play_status(),self.play_tone()), self.play_action()].spacing(16).align_y(iced::Alignment::Center)].spacing(12);
+        let hint=muted("In the game: ONLINE → choose your player. Your first starting deck is prepared automatically. Use Main Menu → Edit Deck to customise it.");
         if !self.setup_in_progress() && matches!(self.setup_result, None | Some(yo3_desktop::Readiness::GameProblem(_))) {
-            launch = launch.push(action(Icon::Folder, "Review game setup", Some(Msg::Page(Page::Settings))).style(button::text));
+            launch = launch.push(action(Icon::Folder, "Review game setup", Some(Msg::Page(Page::Settings))).style(ui::ghost));
         }
-        body = body.push(launch).push(muted("In the game: ONLINE → choose your player. Your first starting deck is prepared automatically. Use Main Menu → Edit Deck to customise it."));
+        body = body.push(ui::console(launch.push(hint)));
         page_scroll(body)
     }
     fn connection_editor(&self) -> Element<'_, Msg> {
         let mut body = column![].spacing(16);
         if self.editing_id.is_none() {
             body = body.push(row![muted("Joining a friend? Import their private invitation to check the server and your account automatically."),
-                action(Icon::Upload, "Import invitation…", (!self.locked()).then_some(Msg::Import)).style(button::text)].spacing(12).align_y(iced::Alignment::Center))
+                action(Icon::Upload, "Import invitation…", (!self.locked()).then_some(Msg::Import)).style(ui::ghost)].spacing(12).align_y(iced::Alignment::Center))
                 .push(widget::rule::horizontal(1));
         }
         if self.invitation_checking {
@@ -350,7 +360,7 @@ impl App {
                 body = body.push(ui::status_badge("Invitation verified · ready to save".into(),ui::Tone::Success));
             } else {
                 body = body.push(row![ui::inline_status("Invitation not verified. Make sure the host's server is running, then retry the connection check.",ui::Tone::Warning),
-                    action(Icon::Refresh, "Retry check", (!self.locked()).then_some(Msg::CheckInvitation)).style(button::text)]
+                    action(Icon::Refresh, "Retry check", (!self.locked()).then_some(Msg::CheckInvitation)).style(ui::ghost)]
                     .spacing(12).align_y(iced::Alignment::Center));
             }
         }
@@ -377,17 +387,17 @@ impl App {
             } else { "Check the server and compare its identity with the host before entering an account key." }));
         }
         let mut footer=row![].spacing(12).align_y(iced::Alignment::Center);
-        if self.editing_id.is_some() {footer=footer.push(action(Icon::Close,"Remove connection",(!self.locked() && !self.game_running).then_some(Msg::RemoveServer)).style(button::danger));}
-        footer=footer.push(widget::Space::new().width(Fill)).push(action(Icon::Close,"Cancel",(!self.locked()).then_some(Msg::AddServer)).style(button::text));
+        if self.editing_id.is_some() {footer=footer.push(action(Icon::Close,"Remove connection",(!self.locked() && !self.game_running).then_some(Msg::RemoveServer)).style(ui::danger));}
+        footer=footer.push(widget::Space::new().width(Fill)).push(action(Icon::Close,"Cancel",(!self.locked()).then_some(Msg::AddServer)).style(ui::ghost));
         footer=footer.push(if self.identity.is_some() {
-            action(Icon::Check,"Save connection",(!self.locked() && self.key.is_ascii() && self.key.trim().len()==20 && (!self.invitation_imported || self.invitation_verified)).then_some(Msg::SaveServer)).style(button::primary)
-        } else {action(Icon::Shield,"Check server",(!self.locked() && !self.address.trim().is_empty()).then_some(Msg::Discover)).style(button::primary)});
+            action(Icon::Check,"Save connection",(!self.locked() && self.key.is_ascii() && self.key.trim().len()==20 && (!self.invitation_imported || self.invitation_verified)).then_some(Msg::SaveServer)).style(ui::primary)
+        } else {action(Icon::Shield,"Check server",(!self.locked() && !self.address.trim().is_empty()).then_some(Msg::Discover)).style(ui::primary)});
         page_scroll(body.push(widget::rule::horizontal(1)).push(footer))
     }
     fn server_view(&self) -> Element<'_, Msg> {
         let content: Element<'_, Msg> = match self.host_tab {
             HostTab::Overview => scrollable(self.host_overview()).spacing(12).width(Fill).height(Fill).into(),
-            HostTab::Invitations => scrollable(self.accounts_view()).spacing(12).width(Fill).height(Fill).into(),
+            HostTab::Invitations => scrollable(column![self.accounts_view()]).spacing(12).width(Fill).height(Fill).into(),
             HostTab::Advanced => {
                 let mut body=column![scrollable(self.host_advanced()).spacing(12).width(Fill).height(Fill)].spacing(16).height(Fill);
                 if self.changed(Section::Hosting) {body=body.push(self.save_actions(Section::Hosting));}
@@ -407,7 +417,7 @@ impl App {
         let mut body=column![card(column![row![text(if running{"Running on this computer"}else{"Ready to host"}).size(22).font(bold()).width(Fill),ui::status_badge(label.into(),tone)].spacing(12),
             row![metric("Players online",status.and_then(|s|s["online"].as_u64()).unwrap_or(0)),metric("Active duels",status.and_then(|s|s["duels"].as_u64()).unwrap_or(0))].spacing(24),
             row![muted(if running {"Your server stays available when you close the game. Stop it here when everyone has finished."}else{"Start your server to play locally or invite friends. It uses your saved hosting settings."}),
-                if running{action(Icon::Stop,"Stop server",(!self.busy && !self.applying).then_some(Msg::Stop)).style(button::danger)}else{action(Icon::Play,"Start server",(!self.locked()).then_some(Msg::Start)).style(button::primary)}].spacing(16).align_y(iced::Alignment::Center)].spacing(20))].spacing(20);
+                if running{action(Icon::Stop,"Stop server",(!self.busy && !self.applying).then_some(Msg::Stop)).style(ui::danger)}else{action(Icon::Play,"Start server",(!self.locked()).then_some(Msg::Start)).style(ui::primary)}].spacing(16).align_y(iced::Alignment::Center)].spacing(20))].spacing(20);
         if let Some(problem)=engine_problem {
             body=body.push(ui::notice(column![ui::inline_status("The rules engine is unavailable",ui::Tone::Danger),
                 text(problem).size(13),muted("Players cannot duel until the engine is restored. Check the details in Activity or export logs for help.")].spacing(8),ui::Tone::Danger));
@@ -415,14 +425,14 @@ impl App {
         if self.changed(Section::Hosting) {
             body=body.push(ui::inline_status("Unsaved hosting changes. Save them in Advanced before starting with the new settings.",ui::Tone::Warning));
         }
-        let mut sharing=column![ui::label_help("Invite friends", "Create a separate account for each friend, then send them a private invitation. A sharing address must be reachable from their computer."),muted("Set a reachable address, then create an account and send its private invitation to your friend.")].spacing(14);
-        match yo3_desktop::network::share_address(&self.settings){Ok(Some((address,_)))=>sharing=sharing.push(row![text(format!("Sharing address: {address}")).size(14).width(Fill),action(Icon::Copy,"Copy",Some(Msg::CopyAddress)).style(button::text)].spacing(12))
-            .push(action(Icon::Users,"Create invitations",Some(Msg::HostTab(HostTab::Invitations))).style(button::text)),_=>sharing=sharing.push(muted("A sharing address is not configured. localhost is for local play."))
-            .push(action(Icon::Settings,"Configure sharing",Some(Msg::HostTab(HostTab::Advanced))).style(button::text))};
-        sharing=sharing.push(action(Icon::Book,"Connection help",Some(Msg::NetworkHelp)).style(button::text));body=body.push(widget::rule::horizontal(1)).push(sharing);
+        let mut sharing=column![muted("Set a reachable address, then create an account and send its private invitation to your friend.")].spacing(14);
+        match yo3_desktop::network::share_address(&self.settings){Ok(Some((address,_)))=>sharing=sharing.push(row![text(format!("Sharing address: {address}")).size(14).width(Fill),action(Icon::Copy,"Copy",Some(Msg::CopyAddress)).style(ui::ghost)].spacing(12))
+            .push(action(Icon::Users,"Create invitations",Some(Msg::HostTab(HostTab::Invitations))).style(ui::ghost)),_=>sharing=sharing.push(muted("A sharing address is not configured. localhost is for local play."))
+            .push(action(Icon::Settings,"Configure sharing",Some(Msg::HostTab(HostTab::Advanced))).style(ui::ghost))};
+        sharing=sharing.push(action(Icon::Book,"Connection help",Some(Msg::NetworkHelp)).style(ui::ghost));body=body.push(ui::section("Invite friends",sharing));
         if let Some(status)=status {
-            if let Some(players)=status["players"].as_array().filter(|p|!p.is_empty()){let mut people=column![text("Online now").size(18).font(bold())].spacing(12);
-                for p in players{let duelling=p["duelling"].as_bool().unwrap_or(false);people=people.push(row![text(p["name"].as_str().unwrap_or("Player")).width(Fill),ui::status_badge(if duelling{"Duelling"}else{"Online"}.into(),if duelling{ui::Tone::Info}else{ui::Tone::Success})].spacing(12));}body=body.push(people);}
+            if let Some(players)=status["players"].as_array().filter(|p|!p.is_empty()){let mut people=column![].spacing(12);
+                for p in players{let duelling=p["duelling"].as_bool().unwrap_or(false);people=people.push(row![text(p["name"].as_str().unwrap_or("Player")).width(Fill),ui::status_badge(if duelling{"Duelling"}else{"Online"}.into(),if duelling{ui::Tone::Info}else{ui::Tone::Success})].spacing(12));}body=body.push(ui::section("Online now",people));}
             else {body=body.push(muted("No players are connected yet. You can join from Play while this server keeps running."));}
         }
         body.into()
@@ -434,33 +444,33 @@ impl App {
         let host_invalid=host_problem.is_some() && (self.draft.host_address.contains(['/', '\\', '@']) || self.draft.host_address.trim().chars().any(char::is_whitespace));
         let port_invalid=(self.port!=self.settings.listen_port.to_string() && !self.port.is_empty()
             && !self.port.parse::<u16>().is_ok_and(|port|port>0)) || (self.port.is_empty() && self.failed && self.notice.starts_with("Port must be between"));
-        let mut body=column![ui::label_help("Sharing address", "The LAN/VPN address or public hostname friends use to join. Router port forwarding can make this different from the network interface and port below."),
+        let mut sharing=column![ui::label_help("Sharing address", "The LAN/VPN address or public hostname friends use to join. Router port forwarding can make this different from the network interface and port below."),
             text_input("LAN/VPN address or public hostname", &self.draft.host_address).padding(12)
                 .style(move |theme,status|ui::input_style(theme,status,host_invalid))
                 .on_input_maybe((!self.locked() && !self.modal_open()).then_some(|s|Msg::Input(Field::Host,s)))].spacing(16);
-        if let Some(problem)=host_problem {body=body.push(ui::inline_status(problem,if host_invalid{ui::Tone::Danger}else{ui::Tone::Warning}));}
+        if let Some(problem)=host_problem {sharing=sharing.push(ui::inline_status(problem,if host_invalid{ui::Tone::Danger}else{ui::Tone::Warning}));}
+        let mut body=column![ui::section("Sharing",sharing)].spacing(16);
         let port=column![muted("TCP port"),text_input("7443",&self.port).padding(12)
             .style(move |theme,status|ui::input_style(theme,status,port_invalid))
             .on_input_maybe((!self.locked() && !self.modal_open()).then_some(|s|Msg::Input(Field::Port,s)))].spacing(8).width(150);
         let mut network=column![ui::label_help("Listen on", "The network interface the server accepts connections on. All interfaces (0.0.0.0) is the default. A specific interface limits access to that network; localhost allows only this computer."),muted("Keep All interfaces for hosting. Friends use the sharing address above, rather than 0.0.0.0. Until a sharing address is saved, All interfaces accepts only this computer."),
-            pick_list(self.bindings.clone(),selected,Msg::BindSelect).placeholder("Choose interface").padding(12).width(Fill),
-            row![port,widget::Space::new().width(Fill),action(Icon::Refresh,"Refresh interfaces",(!self.locked()).then_some(Msg::RefreshBindings)).style(button::text)].spacing(12).align_y(iced::Alignment::End)].spacing(16);
+            pick_list(self.bindings.clone(),selected,Msg::BindSelect).placeholder("Choose interface").padding(12).width(Fill).style(ui::pick),
+            row![port,widget::Space::new().width(Fill),action(Icon::Refresh,"Refresh interfaces",(!self.locked()).then_some(Msg::RefreshBindings)).style(ui::ghost)].spacing(12).align_y(iced::Alignment::End)].spacing(16);
         if port_invalid {network=network.push(ui::inline_status("TCP port: use a number from 1 to 65535.",ui::Tone::Danger));}
         if self.status.is_some(){network=network.push(ui::inline_status("Stop the running server before saving hosting changes. Start it again to apply them.",ui::Tone::Info));}
         if let Some(listen)=self.status.as_ref().and_then(|s|s["listen"].as_str()){network=network.push(muted(format!("Active listener: {listen}")));}
-        body=body.push(widget::rule::horizontal(1)).push(network).push(widget::rule::horizontal(1)).push(column![ui::label_help("Server data", "Accounts, cards and decks live in this folder. Leave it empty to use private application storage. Changing it selects a different server; it does not move existing data."),
-            row![self.field("Data folder","Empty uses private application storage",&self.draft.data_dir,Field::Data),action(Icon::Folder,"Browse…",(!self.locked()).then_some(Msg::Browse(Field::Data)))].spacing(12).align_y(iced::Alignment::End),
+        body=body.push(ui::section("Network",network)).push(ui::section("Server data",column![ui::label_help("Data folder", "Accounts, cards and decks live in this folder. Leave it empty to use private application storage. Changing it selects a different server; it does not move existing data."),
+            row![self.field("Folder path","Empty uses private application storage",&self.draft.data_dir,Field::Data),action(Icon::Folder,"Browse…",(!self.locked()).then_some(Msg::Browse(Field::Data)))].spacing(12).align_y(iced::Alignment::End),
             muted(match &self.backend { Some(b) => format!("Server data: {}. A Scripts edition keeps its own data folder; to use it here, choose that folder.", b.data_dir(&self.draft).display()), None => String::new() }),
-            self.field("First player on a new server","Duelist",&self.draft.player_name,Field::Player),muted("Existing servers keep their accounts. Back up the complete data folder securely.")].spacing(16));
-        body=body.push(widget::rule::horizontal(1)).push(self.server_options_view());
+            self.field("First player on a new server","Duelist",&self.draft.player_name,Field::Player),muted("Existing servers keep their accounts. Back up the complete data folder securely.")].spacing(16)));
+        body=body.push(ui::section("All server flags",self.server_options_view()));
         body.into()
     }
     fn server_options_view(&self) -> Element<'_, Msg> {
         let query=self.option_filter.to_lowercase();
         let mut search=row![text_input("Find a flag…",&self.option_filter).padding(12).on_input(Msg::FindOption).width(Fill)].spacing(8).align_y(iced::Alignment::Center);
-        if !self.option_filter.is_empty() {search=search.push(action(Icon::Close,"Clear filter",Some(Msg::FindOption(String::new()))).style(button::text));}
-        let mut body=column![text("All server flags").size(20).font(bold()),
-            muted("Generated from this server's CLI. Empty fields use defaults. Save hosting changes, then start the server."),
+        if !self.option_filter.is_empty() {search=search.push(action(Icon::Close,"Clear filter",Some(Msg::FindOption(String::new()))).style(ui::ghost));}
+        let mut body=column![muted("Generated from this server's CLI. Empty fields use defaults. Save hosting changes, then start the server."),
             search].spacing(16);
         let option_problem=if self.draft.server_options!=self.settings.server_options {
             yo3_desktop::server_options::arguments(&self.draft).err().map(|error|error.to_string())
@@ -473,8 +483,8 @@ impl App {
         if options.is_empty() {body=body.push(muted("No server flags match this filter. Try another search or clear the filter."));}
         for option in options {
             let name=option.name.clone();
-            let help=widget::tooltip(container(text("?").size(12)).padding(5).style(container::rounded_box),
-                container(text(option.help).size(13)).padding(12).max_width(420).style(container::rounded_box),widget::tooltip::Position::Top).snap_within_viewport(true);
+            let help=widget::tooltip(container(text("?").size(12)).padding(5).style(ui::well),
+                container(text(option.help).size(13)).padding(12).max_width(420).style(ui::bubble),widget::tooltip::Position::Top).snap_within_viewport(true);
             let mut line=row![text(format!("--{name}")).font(iced::Font::MONOSPACE).size(14).width(210),help].spacing(10).align_y(iced::Alignment::Center);
             if let Some(owner)=yo3_desktop::server_options::managed(&name) { line=line.push(muted(owner)); }
             else {
@@ -492,7 +502,7 @@ impl App {
                         .style(move |theme,status|ui::input_style(theme,status,invalid))
                         .on_input_maybe((!self.locked()).then_some(move |s|Msg::ServerOption(key.clone(),s))));
                 }
-                if value.is_some() {line=line.push(action(Icon::Refresh,"Use default",(!self.locked()).then_some(Msg::ResetOption(name.clone()))).style(button::text));}
+                if value.is_some() {line=line.push(action(Icon::Refresh,"Use default",(!self.locked()).then_some(Msg::ResetOption(name.clone()))).style(ui::ghost));}
             }
             if let Some(problem)=&option_problem && problem.contains(&format!("--{name}")) {
                 body=body.push(column![line,ui::inline_status(problem.lines().next().unwrap_or(problem).to_string(),
@@ -502,41 +512,41 @@ impl App {
         body.into()
     }
     fn accounts_view(&self)->Element<'_,Msg>{
-        if self.status.is_none(){return column![text("Start your server to manage players").size(20),
-            row![muted("Start with your saved hosting settings, then create one account for each friend and export their invitation."),action(Icon::Play,"Start server",(!self.locked()).then_some(Msg::Start)).style(button::primary)].spacing(16).align_y(iced::Alignment::Center)].spacing(16).into()}
+        if self.status.is_none(){return ui::section("Players",column![text("Start your server to manage players").size(18).font(bold()),
+            row![muted("Start with your saved hosting settings, then create one account for each friend and export their invitation."),action(Icon::Play,"Start server",(!self.locked()).then_some(Msg::Start)).style(ui::primary)].spacing(16).align_y(iced::Alignment::Center)].spacing(16)).into()}
         if self.account_form {
             let name=self.new_account.trim();let valid=!name.is_empty() && name.chars().count()<=yo3_server::accounts::MAX_NAME && !name.chars().any(char::is_control);
-            let mut form=column![text("New account").size(20).font(bold()),muted("Create a separate account for each person you invite. Their first player will use this name."),
+            let mut form=column![muted("Create a separate account for each person you invite. Their first player will use this name."),
                 self.field("First player's name","1–16 characters",&self.new_account,Field::Account),
-                row![widget::Space::new().width(Fill),action(Icon::Close,"Cancel",(!self.locked()).then_some(Msg::NewAccount)).style(button::text),
-                    action(Icon::Check,"Create account",(!self.locked() && valid).then_some(Msg::CreateAccount)).style(button::primary)].spacing(12)].spacing(16);
+                row![widget::Space::new().width(Fill),action(Icon::Close,"Cancel",(!self.locked()).then_some(Msg::NewAccount)).style(ui::ghost),
+                    action(Icon::Check,"Create account",(!self.locked() && valid).then_some(Msg::CreateAccount)).style(ui::primary)].spacing(12)].spacing(16);
             if self.new_account.trim().is_empty(){form=form.push(muted("Choose a player name to create the account. You can export its invitation next."));}
-            return form.into()
+            return ui::section("New account",form).into()
         }
         let names=account_names(&self.accounts);let share_ready=yo3_desktop::network::share_address(&self.settings).ok().flatten().is_some();
-        if names.is_empty(){return column![text("No accounts yet").size(20).font(bold()),
+        if names.is_empty(){return ui::section("No accounts yet",column![
             muted("Create your first account, then export a private invitation. Every friend should have their own account."),
-            row![widget::Space::new().width(Fill),action(Icon::Plus,"Create account",(!self.locked()).then_some(Msg::NewAccount)).style(button::primary)]].spacing(16).into()}
-        let mut selected=column![row![ui::label_help("Account", "Manage this account’s players and invitation. This selection is separate from your account on Play."),widget::Space::new().width(Fill),action(Icon::Plus,"New account",(!self.locked()).then_some(Msg::NewAccount)).style(button::text)].align_y(iced::Alignment::Center),pick_list(names,(!self.admin_account.is_empty()).then_some(self.admin_account.clone()),Msg::AdminAccountSelect).placeholder("Choose account").width(Fill).padding(12),
+            row![widget::Space::new().width(Fill),action(Icon::Plus,"Create account",(!self.locked()).then_some(Msg::NewAccount)).style(ui::primary)]].spacing(16)).into()}
+        let mut selected=column![row![ui::label_help("Account", "Manage this account’s players and invitation. This selection is separate from your account on Play."),widget::Space::new().width(Fill),action(Icon::Plus,"New account",(!self.locked()).then_some(Msg::NewAccount)).style(ui::ghost)].align_y(iced::Alignment::Center),pick_list(names,(!self.admin_account.is_empty()).then_some(self.admin_account.clone()),Msg::AdminAccountSelect).placeholder("Choose account").width(Fill).padding(12).style(ui::pick),
             muted("This selection manages invitations and players. Your account on Play is unchanged.")].spacing(16);
         let account=self.accounts.as_array().and_then(|a|a.iter().find(|a|a["players"][0]["name"].as_str()==Some(&self.admin_account)));
         let player_count=account.and_then(|a|a["players"].as_array()).map_or(0,Vec::len);
-        if let Some(account)=account{let players=account["players"].as_array().map(|p|p.iter().filter_map(|p|p["name"].as_str()).collect::<Vec<_>>().join(", ")).unwrap_or_default();selected=selected.push(muted(format!("Players: {players} · {} BP",account["bp"])));
+        if let Some(account)=account{let players=account["players"].as_array().map(|p|p.iter().filter_map(|p|p["name"].as_str()).collect::<Vec<_>>().join(", ")).unwrap_or_default();selected=selected.push(row![muted(format!("Players: {players}")),ui::counter(account["bp"].as_u64().unwrap_or(0).to_string()),text("BP").size(14).font(bold()).color(ui::MUTED)].spacing(10).align_y(iced::Alignment::Center));
             selected=selected.push(row![self.field("Give BP","Amount, e.g. 5000",&self.give_bp,Field::GiveBp),
-                action(Icon::Plus,"Give BP",(!self.locked() && give_bp_amount(&self.give_bp).is_some()).then_some(Msg::GiveBp)).style(button::secondary)].spacing(12).align_y(iced::Alignment::End));}
+                action(Icon::Plus,"Give BP",(!self.locked() && give_bp_amount(&self.give_bp).is_some()).then_some(Msg::GiveBp)).style(ui::secondary)].spacing(12).align_y(iced::Alignment::End));}
         if share_ready{selected=selected.push(row![muted(if self.admin_account.is_empty(){"Choose an account to export its invitation."}else{"Send this private file only to the account's owner. They import it under Play → Add server."}),
-            action(Icon::Upload,"Export invitation…",(!self.locked() && !self.admin_account.is_empty()).then_some(Msg::Export)).style(button::primary)].spacing(16).align_y(iced::Alignment::Center));}
+            action(Icon::Upload,"Export invitation…",(!self.locked() && !self.admin_account.is_empty()).then_some(Msg::Export)).style(ui::primary)].spacing(16).align_y(iced::Alignment::Center));}
         else{selected=selected.push(row![ui::inline_status("Set a reachable sharing address before exporting invitations.",ui::Tone::Info),
-            action(Icon::Settings,"Configure sharing",Some(Msg::HostTab(HostTab::Advanced))).style(button::text)].spacing(12).align_y(iced::Alignment::Center));}
-        let mut body=column![selected].spacing(24);
-        body=body.push(self.codes_view());
-        body=body.push(disclosure("Additional players",self.account_options,Msg::Disclosure(Disclosure::Account)));
+            action(Icon::Settings,"Configure sharing",Some(Msg::HostTab(HostTab::Advanced))).style(ui::ghost)].spacing(12).align_y(iced::Alignment::Center));}
+        let mut body=column![ui::section("Accounts",selected)].spacing(16);
+        body=body.push(ui::card(self.codes_view()).padding([10,16]));
+        let mut players=column![disclosure("Additional players",self.account_options,Msg::Disclosure(Disclosure::Account))].spacing(16);
         if self.account_options{
             let name=self.new_player.trim();let valid=!name.is_empty() && name.chars().count()<=yo3_server::accounts::MAX_NAME && !name.chars().any(char::is_control);
-            body=body.push(column![ui::inline_status(if player_count>=yo3_server::accounts::MAX_PLAYERS{"This account has all four player slots. Create another account for a new player."}else if self.admin_account.is_empty(){"Choose an account above before adding a player."}else{"Each account can hold up to four players. Enter a name, then choose the player inside the game."},if player_count>=yo3_server::accounts::MAX_PLAYERS{ui::Tone::Warning}else{ui::Tone::Neutral}),self.field("Player name","New player on the selected account",&self.new_player,Field::NewPlayer),
-                row![widget::Space::new().width(Fill),action(Icon::Plus,"Add player",(!self.locked() && !self.admin_account.is_empty() && valid && player_count<yo3_server::accounts::MAX_PLAYERS).then_some(Msg::AddPlayer)).style(button::primary)]].spacing(16));
+            players=players.push(column![ui::inline_status(if player_count>=yo3_server::accounts::MAX_PLAYERS{"This account has all four player slots. Create another account for a new player."}else if self.admin_account.is_empty(){"Choose an account above before adding a player."}else{"Each account can hold up to four players. Enter a name, then choose the player inside the game."},if player_count>=yo3_server::accounts::MAX_PLAYERS{ui::Tone::Warning}else{ui::Tone::Neutral}),self.field("Player name","New player on the selected account",&self.new_player,Field::NewPlayer),
+                row![widget::Space::new().width(Fill),action(Icon::Plus,"Add player",(!self.locked() && !self.admin_account.is_empty() && valid && player_count<yo3_server::accounts::MAX_PLAYERS).then_some(Msg::AddPlayer)).style(ui::primary)]].spacing(16));
         }
-        body.into()
+        body.push(ui::card(players).padding([10,16])).into()
     }
     /// BOOSTERPASS codes: make one (random when the code is left empty), see who claimed each and when, remove it.
     fn codes_view(&self)->Element<'_,Msg>{
@@ -548,7 +558,7 @@ impl App {
             .push(row![self.field("Code","Empty makes a random code",&self.code_text,Field::CodeText),
                 self.field("BP","e.g. 5000",&self.code_bp,Field::CodeBp),
                 self.field("Accounts","Empty: any number",&self.code_uses,Field::CodeUses)].spacing(12))
-            .push(row![widget::Space::new().width(Fill),action(Icon::Plus,"Create code",(!self.locked() && ready).then_some(Msg::AddCode)).style(button::primary)]);
+            .push(row![widget::Space::new().width(Fill),action(Icon::Plus,"Create code",(!self.locked() && ready).then_some(Msg::AddCode)).style(ui::primary)]);
         if !code_text_ok(&self.code_text){section=section.push(ui::inline_status("A code is 16 letters and digits, the boxes of the game's window.",ui::Tone::Warning));}
         let codes=self.codes.as_array().cloned().unwrap_or_default();
         if codes.is_empty(){return section.push(muted("No codes yet.")).into()}
@@ -558,13 +568,13 @@ impl App {
             let limit=code["uses"].as_u64().map_or(format!("{} account{} (no limit)",claims.len(),if claims.len()==1{""}else{"s"}),|n| format!("{} of {n} accounts",claims.len()));
             let mut entry=column![row![text(name.clone()).font(iced::Font::MONOSPACE).size(15),
                 muted(format!("{} BP · claimed by {limit}",code["bp"])),
-                action(Icon::Copy,"Copy",Some(Msg::CopyCode(name.clone()))).style(button::text),
-                action(Icon::Close,"Remove",(!self.locked()).then_some(Msg::RemoveCode(name))).style(button::text)].spacing(12).align_y(iced::Alignment::Center)].spacing(4);
+                action(Icon::Copy,"Copy",Some(Msg::CopyCode(name.clone()))).style(ui::ghost),
+                action(Icon::Close,"Remove",(!self.locked()).then_some(Msg::RemoveCode(name))).style(ui::ghost)].spacing(12).align_y(iced::Alignment::Center)].spacing(4);
             for claim in claims {
                 let who=claim["players"].as_array().map(|p|p.iter().filter_map(|n|n.as_str()).collect::<Vec<_>>().join(", ")).unwrap_or_default();
                 entry=entry.push(muted(format!("  {} · {}",if who.is_empty(){format!("account {}",claim["user_id"])}else{who},claim_time(claim["at"].as_str()))));
             }
-            section=section.push(card(entry));
+            section=section.push(container(entry).padding(12).width(Fill).style(ui::well));
         }
         section.into()
     }
@@ -575,9 +585,9 @@ impl App {
             else if self.log_server{"No server activity yet. Start your server from Hosting, or play on This computer."}
             else{"No game activity yet. Choose a server under Play and launch the game to see startup details here."};
         let mut controls=row![text_input("Filter activity…",&self.filter).on_input(Msg::LogFilter).padding(12).width(Fill)].spacing(12).align_y(iced::Alignment::Center);
-        if !self.filter.is_empty() {controls=controls.push(action(Icon::Close,"Clear filter",Some(Msg::LogFilter(String::new()))).style(button::text));}
-        controls=controls.push(checkbox(self.paused).label("Pause updates").on_toggle(Msg::Pause)).push(action(Icon::Copy,"Copy",(!shown.is_empty()).then_some(Msg::CopyLogs)).style(button::text));
-        let mut body=column![self.page_heading("Activity","View session logs or export a diagnostic report."),row![ui::tab("Server",Msg::Logs(true),self.log_server),ui::tab("Game & launcher",Msg::Logs(false),!self.log_server),widget::Space::new().width(Fill),action(Icon::Download,"Export logs…",(!self.locked()).then_some(Msg::ExportLogs)).style(button::primary)].spacing(8),
+        if !self.filter.is_empty() {controls=controls.push(action(Icon::Close,"Clear filter",Some(Msg::LogFilter(String::new()))).style(ui::ghost));}
+        controls=controls.push(checkbox(self.paused).label("Pause updates").on_toggle(Msg::Pause)).push(action(Icon::Copy,"Copy",(!shown.is_empty()).then_some(Msg::CopyLogs)).style(ui::ghost));
+        let mut body=column![self.page_heading("Activity","View session logs or export a diagnostic report."),row![ui::tab("Server",Msg::Logs(true),self.log_server),ui::tab("Game & launcher",Msg::Logs(false),!self.log_server),widget::Space::new().width(Fill),action(Icon::Download,"Export logs…",(!self.locked()).then_some(Msg::ExportLogs)).style(ui::primary)].spacing(8),
             controls,
             ui::inline_status(if self.paused{"Updates paused · recording continues. Clear Pause updates to resume."}
                 else if !self.follow_logs{"Scrolled up · scroll to the bottom to follow new activity."}
@@ -589,9 +599,9 @@ impl App {
         let changed = self.changed(Section::Game);
         let editable=!self.locked() && !self.game_running && !self.modal_open();
         let field_error=self.game_field_error();let invalid=field_error.is_some();
-        let mut game = column![row![ui::label_help("Game installation", "Choose the complete original Yu-Gi-Oh! ONLINE 3 installation, including yo3.exe, yo3.idx and package/. Choosing a folder checks and saves it automatically. Play checks required components again before opening the game."),
+        let mut game = column![row![ui::label_help("Game folder", "Choose the complete original Yu-Gi-Oh! ONLINE 3 installation, including yo3.exe, yo3.idx and package/. Choosing a folder checks and saves it automatically. Play checks required components again before opening the game."),
                 widget::Space::new().width(Fill), self.setup_badge()].spacing(12).align_y(iced::Alignment::Center),
-            row![column![muted("Game folder"),text_input("Folder containing yo3.exe", &self.draft.game_dir).padding(12)
+            row![column![text_input("Folder containing yo3.exe", &self.draft.game_dir).padding(12)
                     .on_input_maybe(editable.then_some(|s|Msg::Input(Field::Game,s))).style(move |theme,status|ui::input_style(theme,status,invalid))].spacing(8).width(Fill),
                 action(Icon::Folder, "Browse…", editable.then_some(Msg::Browse(Field::Game)))].spacing(12).align_y(iced::Alignment::End)].spacing(12);
         if let Some(error)=field_error {game=game.push(ui::inline_status(error,ui::Tone::Danger));}
@@ -612,22 +622,24 @@ impl App {
             Some(yo3_desktop::Readiness::ValidationProblem(_)) => "The check could not finish. Retry it; export logs if the problem continues.",
         }};
         let page_title=if invalid{heading("Game setup","Set up your game and optional direct launch.")}else{self.page_heading("Game setup","Set up your game and optional direct launch.")};
-        let mut body=column![page_title,game].spacing(20);
+        let mut body=column![page_title].spacing(16);
+        let mut install=column![game].spacing(16);
         if invalid && self.feedback_visible(){body=body.push(self.page_heading("",""));}
         if !invalid {
             let tone=if self.setup_in_progress(){ui::Tone::Info}else{match &self.setup_result{Some(yo3_desktop::Readiness::Ready)=>ui::Tone::Success,Some(_)=>ui::Tone::Danger,None=>ui::Tone::Neutral}};
-            body=body.push(ui::inline_status(detail,tone));
+            install=install.push(ui::inline_status(detail,tone));
         }
         if !self.setup_in_progress() && self.setup_result.as_ref().is_some_and(|s| *s != yo3_desktop::Readiness::Ready) {
-            let mut recovery=row![action(Icon::Refresh, "Retry check",(editable && !self.draft.game_dir.trim().is_empty()).then_some(Msg::ValidateGame)).style(button::primary)].spacing(12);
+            let mut recovery=row![action(Icon::Refresh, "Retry check",(editable && !self.draft.game_dir.trim().is_empty()).then_some(Msg::ValidateGame)).style(ui::primary)].spacing(12);
             if matches!(self.setup_result,Some(yo3_desktop::Readiness::ComponentProblem(_))) && !self.feedback_visible() {
-                recovery=recovery.push(action(Icon::Download, "Download Desktop…", Some(Msg::ReleasePage)).style(button::text));
+                recovery=recovery.push(action(Icon::Download, "Download Desktop…", Some(Msg::ReleasePage)).style(ui::ghost));
             }
-            body=body.push(recovery);
+            install=install.push(recovery);
         }
         if self.first_setup && !changed && !self.setup_in_progress() && matches!(self.setup_result, Some(yo3_desktop::Readiness::Ready)) {
-            body = body.push(action(Icon::Play, "Continue to Play", Some(Msg::Page(Page::Play))).style(button::primary));
+            install = install.push(action(Icon::Play, "Continue to Play", Some(Msg::Page(Page::Play))).style(ui::primary));
         }
+        body=body.push(ui::section("Game installation",install));
         if self.advanced_game {
             let (label, tone) = match self.direct_state {
                 yo3_desktop::direct::State::Disabled => ("Disabled", ui::Tone::Neutral),
@@ -635,7 +647,7 @@ impl App {
                 yo3_desktop::direct::State::NeedsRepair(_) => ("Needs repair", ui::Tone::Warning),
                 yo3_desktop::direct::State::Conflict(_) => ("Mod conflict", ui::Tone::Danger),
             };
-            let mut direct = column![row![ui::label_help("Direct launch", "Optional setup for opening yo3.exe or its original shortcut without this window. A small reversible loader checks the saved server and connection DLL before login. The original executable and INI are unchanged."),
+            let mut direct = column![row![ui::label_help("Open yo3.exe directly", "Optional setup for opening yo3.exe or its original shortcut without this window. A small reversible loader checks the saved server and connection DLL before login. The original executable and INI are unchanged."),
                     widget::Space::new().width(Fill), ui::status_badge(label.into(), tone)].spacing(12).align_y(iced::Alignment::Center),
                 checkbox(self.direct_checked()).label("Allow opening yo3.exe directly")
                     .on_toggle_maybe(self.can_change_direct(!self.direct_checked()).then_some(Msg::Direct)),
@@ -656,7 +668,7 @@ impl App {
                 && self.selected==ServerChoice::Local && self.status.is_none() && !self.locked() {
                 direct=direct.push(ui::inline_status("Start your server in Hosting before enabling or repairing direct launch.",ui::Tone::Info));
             }
-            body = body.push(widget::rule::horizontal(1)).push(direct);
+            body = body.push(ui::section("Direct launch",direct));
         }
         page_scroll(body)
     }
@@ -685,29 +697,29 @@ impl App {
             UpdateStatus::Checking=>{},
             UpdateStatus::Checked(updates::Decision::Available(r))=>{
                 update=update.push(row![muted(format!("Download size: {}",size(r.asset.bytes))),
-                    action(Icon::Download,"Review & install…",(!self.locked()).then_some(Msg::ReviewUpdate)).style(button::primary)].spacing(12).align_y(iced::Alignment::Center))
+                    action(Icon::Download,"Review & install…",(!self.locked()).then_some(Msg::ReviewUpdate)).style(ui::primary)].spacing(12).align_y(iced::Alignment::Center))
                     .push(row![text("Release notes").size(17).font(bold()).width(Fill),
-                        action(Icon::External,"View on GitHub",Some(Msg::ReleasePage)).style(button::text)].spacing(12).align_y(iced::Alignment::Center))
+                        action(Icon::External,"View on GitHub",Some(Msg::ReleasePage)).style(ui::ghost)].spacing(12).align_y(iced::Alignment::Center))
                     .push(ui::release_notes_panel(&self.release_notes,260.0));
             }
             UpdateStatus::Checked(updates::Decision::Manual {..})=>{
-                update=update.push(action(Icon::Download,"Open release downloads",Some(Msg::ReleasePage)).style(button::primary));
+                update=update.push(action(Icon::Download,"Open release downloads",Some(Msg::ReleasePage)).style(ui::primary));
             }
             UpdateStatus::Failed(_)=>{
-                update=update.push(row![action(Icon::Refresh,"Try again",(!self.locked()).then_some(Msg::CheckUpdates)).style(button::primary),
-                    action(Icon::External,"Open releases",Some(Msg::ReleasePage)).style(button::text)].spacing(12));
+                update=update.push(row![action(Icon::Refresh,"Try again",(!self.locked()).then_some(Msg::CheckUpdates)).style(ui::primary),
+                    action(Icon::External,"Open releases",Some(Msg::ReleasePage)).style(ui::ghost)].spacing(12));
             }
-            _=>update=update.push(action(Icon::Refresh,"Check for updates",(!self.locked()).then_some(Msg::CheckUpdates)).style(button::primary)),
+            _=>update=update.push(action(Icon::Refresh,"Check for updates",(!self.locked()).then_some(Msg::CheckUpdates)).style(ui::primary)),
         }
         if self.locked() && !matches!(self.update_status,UpdateStatus::Checking){update=update.push(ui::inline_status("Finish the current operation before checking or installing an update.",ui::Tone::Neutral));}
         let mut body = column![self.page_heading("About & updates", "Stay current with YO3 Revival."),
-            column![row![text(format!("YO3 Revival {}", yo3_tunnel::BUILD_VERSION)).size(23).font(bold()).width(Fill),
-                action(Icon::Copy, "Copy version", Some(Msg::CopyVersion)).style(button::text)].spacing(12),
-                muted(format!("Build {} · {}", yo3_tunnel::BUILD_COMMIT, std::env::consts::OS))].spacing(12),
-            row![action(Icon::External,"GitHub",Some(Msg::GitHub)).style(button::text),
-                action(Icon::Folder,"Open application data",Some(Msg::OpenData)).style(button::text)].spacing(12),
-            widget::rule::horizontal(1),update].spacing(20);
-        if !self.settings.advanced_mode { body=column![action(Icon::Play,"Back to game",Some(Msg::Page(Page::Play))).style(button::text)].push(body).spacing(18); }
+            ui::console(row![ui::brand(72.0),column![text(format!("YO3 Revival {}", yo3_tunnel::BUILD_VERSION)).size(22).font(bold()),
+                    muted(format!("Build {} · {}", yo3_tunnel::BUILD_COMMIT, std::env::consts::OS)),
+                    row![action(Icon::Copy, "Copy version", Some(Msg::CopyVersion)).style(ui::ghost),action(Icon::External,"GitHub",Some(Msg::GitHub)).style(ui::ghost),
+                        action(Icon::Folder,"Open application data",Some(Msg::OpenData)).style(ui::ghost)].spacing(4)].spacing(8)]
+                .spacing(18).align_y(iced::Alignment::Center)),
+            ui::section("Updates",update)].spacing(16);
+        if !self.settings.advanced_mode { body=column![action(Icon::Play,"Back to game",Some(Msg::Page(Page::Play))).style(ui::ghost)].push(body).spacing(18); }
         body=body.push(muted("Update checks run automatically when you open Revival. Download and installation always require your confirmation; game progress stays in place."));page_scroll(body)
     }
     fn setup_badge(&self)->Element<'_,Msg>{
@@ -718,8 +730,8 @@ impl App {
         let changed=self.changed(section);let running=section==Section::Hosting && self.status.is_some();
         if !changed {return widget::Space::new().height(0).into()}
         row![muted(if running{"Stop your server before saving these changes."}else{"Unsaved changes"}),
-            action(Icon::Close,"Cancel",(!self.locked()).then_some(Msg::CancelSettings(section))).style(button::text),
-            action(Icon::Check,"Save changes",(!self.locked() && !running).then_some(Msg::SaveSettings(section))).style(button::primary)].spacing(12).align_y(iced::Alignment::Center).into()
+            action(Icon::Close,"Cancel",(!self.locked()).then_some(Msg::CancelSettings(section))).style(ui::ghost),
+            action(Icon::Check,"Save changes",(!self.locked() && !running).then_some(Msg::SaveSettings(section))).style(ui::primary)].spacing(12).align_y(iced::Alignment::Center).into()
     }
     fn field<'a>(&self,label:&'static str,hint:&'static str,value:&str,field:Field)->Element<'a,Msg>{
         let problem=match field {
@@ -747,8 +759,8 @@ pub(super) fn display_path(path:&std::path::Path)->String {
     else {path.strip_prefix(r"\\?\").unwrap_or(&path).to_owned()}
 }
 fn bold()->iced::Font{iced::Font{weight:iced::font::Weight::Semibold,..iced::Font::with_name("Fira Sans")}}
-fn heading<'a>(title:&'static str,description:&'static str)->Element<'a,Msg>{column![text(title).size(28).font(bold()),muted(description)].spacing(8).into()}
-fn metric<'a>(label:&'static str,value:u64)->Element<'a,Msg>{column![text(value.to_string()).size(26),muted(label)].spacing(4).into()}
+fn heading<'a>(title:&'static str,description:&'static str)->Element<'a,Msg>{column![ui::plate(title,22),muted(description)].spacing(10).into()}
+fn metric<'a>(label:&'static str,value:u64)->Element<'a,Msg>{row![ui::counter(format!("{value:>2}")),text(label).size(14).color(ui::MUTED)].spacing(12).align_y(iced::Alignment::Center).into()}
 fn page_scroll(body:widget::Column<'_,Msg>)->Element<'_,Msg>{scrollable(body.width(Fill)).spacing(16).width(Fill).height(Fill).into()}
 pub(super) fn size(bytes:u64)->String{if bytes<1_000_000{format!("{:.1} KB",bytes as f64/1000.0)}else{format!("{:.1} MB",bytes as f64/1_000_000.0)}}
 

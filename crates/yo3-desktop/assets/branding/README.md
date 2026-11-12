@@ -16,6 +16,7 @@ magick launcher-icon.png -resize 256x256 -alpha on PNG32:launcher-window.png
 magick launcher-icon.png -define icon:auto-resize=256,128,64,48,40,32,24,20,16 launcher.ico
 ```
 
+The app also draws `launcher-window.png` itself (sidebar, Normal header, About), from the same decoded pixels.
 The build checks the window image's dimensions and pixel format. Windows resource compilation embeds the ICO in
 `yo3-revival.exe`; the PNG is embedded in the application, so neither needs to be copied beside the executable.
 

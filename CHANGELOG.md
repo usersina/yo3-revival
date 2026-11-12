@@ -12,7 +12,11 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
-- The launcher now has a Duel Disk icon with a Monster Reborn badge, embedded in its window and Windows executable.
+- **A new look for the app:** it now borrows from the game's own screens: blue title plates, steel-rimmed navy panels,
+  gunmetal frames and a red Play button. Logs read like the game's chat window: green text on black, with errors in
+  red and warnings in amber.
+- The app has a new Duel Disk icon with a Monster Reborn badge, shown in the app itself, its window and the Windows
+  executable.
 - **BP shows up right away:** BP from duels and from the host appears in the game on its next screen, without logging
   in again. Before, the game showed new BP only after a purchase or the next login. A gift from the host also arrives
   as a D-Mail "BP received" (the mail icon lights up, even during a duel).

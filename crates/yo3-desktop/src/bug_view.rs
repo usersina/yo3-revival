@@ -21,15 +21,15 @@ impl App {
             let mut sign_in=column![text("Sign in to GitHub").size(24).font(bold()),
                 muted("Enter this code at github.com/login/device, then approve sign-in."),
                 row![text(&device.user_code).size(28).font(iced::Font::MONOSPACE).width(Fill),
-                    action(Icon::Copy,"Copy code",Some(event(BugEvent::CopyCode))).style(button::text)].spacing(10).align_y(iced::Alignment::Center),
-                row![action(Icon::External,"Open GitHub",Some(event(BugEvent::OpenSignIn))).style(button::text),
-                    action(Icon::Close,"Cancel sign-in",Some(event(BugEvent::StopSignIn))).style(button::text)].spacing(12),
+                    action(Icon::Copy,"Copy code",Some(event(BugEvent::CopyCode))).style(ui::ghost)].spacing(10).align_y(iced::Alignment::Center),
+                row![action(Icon::External,"Open GitHub",Some(event(BugEvent::OpenSignIn))).style(ui::ghost),
+                    action(Icon::Close,"Cancel sign-in",Some(event(BugEvent::StopSignIn))).style(ui::ghost)].spacing(12),
                 row![self.spinner(),muted("Waiting for you to approve sign-in in your browser…")].spacing(10),
                 muted("Signing in does not publish your report. You will choose Publish after returning here.")].spacing(16);
             if let Some(warning)=&bug.auth_warning {sign_in=sign_in.push(ui::inline_status(warning,Tone::Warning));}
             if let Some(Err(error))=&self.report_feedback {sign_in=sign_in.push(ui::notice(ui::inline_status(error,Tone::Danger),Tone::Danger));}
-            let footer=row![action(Icon::Close,"Cancel",Some(Msg::CancelClose)).style(button::text),widget::Space::new().width(Fill),
-                action(Icon::External,"Waiting for sign-in…",None).width(220).style(button::primary)].width(Fill).spacing(12);
+            let footer=row![action(Icon::Close,"Cancel",Some(Msg::CancelClose)).style(ui::ghost),widget::Space::new().width(Fill),
+                action(Icon::External,"Waiting for sign-in…",None).width(220).style(ui::primary)].width(Fill).spacing(12);
             return ui::modal_actions(base,sign_in.into(),footer.into())
         }
 
@@ -50,7 +50,7 @@ impl App {
             if let Some(receipt)=&bug.receipt {
                 if let Some(owner)=&receipt.account_login {body=body.push(muted(format!("Report account: {owner}")));}
                 if receipt.gist_url.is_some() && !completed {
-                    body=body.push(action(Icon::External,"View uploaded logs",Some(event(BugEvent::OpenGist))).style(button::text));
+                    body=body.push(action(Icon::External,"View uploaded logs",Some(event(BugEvent::OpenGist))).style(ui::ghost));
                 }
             }
         } else {
@@ -97,11 +97,11 @@ impl App {
 
         if let Some(warning)=&bug.warning {body=body.push(ui::inline_status(warning,Tone::Warning));}
         if !bug.recovery_checked && !self.report_busy {
-            body=body.push(action(Icon::Refresh,"Retry preview",Some(event(BugEvent::RetryPreview))).style(button::text));
+            body=body.push(action(Icon::Refresh,"Retry preview",Some(event(BugEvent::RetryPreview))).style(ui::ghost));
         }
         if let Some(account)=&self.github_account {
             let mut account_row=row![ui::inline_status(format!("Signed in as {}",account.login),Tone::Success)].align_y(iced::Alignment::Center).spacing(10);
-            if !busy {account_row=account_row.push(action(Icon::Close,"Sign out",Some(event(BugEvent::SignOut))).style(button::text));}
+            if !busy {account_row=account_row.push(action(Icon::Close,"Sign out",Some(event(BugEvent::SignOut))).style(ui::ghost));}
             body=body.push(account_row);
             if let Some(warning)=&account.warning {body=body.push(ui::inline_status(warning,Tone::Warning));}
         }
@@ -114,10 +114,10 @@ impl App {
         }
         let has_error=bug.auth_warning.is_some() || self.report_feedback.as_ref().is_some_and(Result::is_err);
         if has_error && !self.report_busy {
-            let mut recovery=row![action(Icon::Copy,"Copy report",Some(event(BugEvent::Copy))).style(button::text),
-                action(Icon::Download,"Export logs…",Some(event(BugEvent::Export))).style(button::text)].spacing(8);
+            let mut recovery=row![action(Icon::Copy,"Copy report",Some(event(BugEvent::Copy))).style(ui::ghost),
+                action(Icon::Download,"Export logs…",Some(event(BugEvent::Export))).style(ui::ghost)].spacing(8);
             if bug.receipt.as_ref().is_some_and(|receipt|receipt.issue_url.is_some() || receipt.gist_url.is_some()) {
-                recovery=recovery.push(action(Icon::Copy,"Copy link",Some(event(BugEvent::CopyLink))).style(button::text));
+                recovery=recovery.push(action(Icon::Copy,"Copy link",Some(event(BugEvent::CopyLink))).style(ui::ghost));
             }
             body=body.push(recovery);
         }
@@ -139,9 +139,9 @@ impl App {
         };
         let primary:Element<'_,Msg>=if busy {
             button(row![self.spinner(),text(label).size(14)].spacing(9).align_y(iced::Alignment::Center))
-                .padding([10,14]).width(220).style(button::primary).into()
-        } else {action(icon,label,message).width(220).style(button::primary).into()};
-        let actions=row![action(Icon::Close,if completed{"Close"}else{"Cancel"},Some(Msg::CancelClose)).style(button::text),
+                .padding([10,14]).width(220).style(ui::primary).into()
+        } else {action(icon,label,message).width(220).style(ui::primary).into()};
+        let actions=row![action(Icon::Close,if completed{"Close"}else{"Cancel"},Some(Msg::CancelClose)).style(ui::ghost),
             widget::Space::new().width(Fill),primary].width(Fill).spacing(12).align_y(iced::Alignment::Center);
         let footer:Element<'_,Msg>=if completed {actions.into()}else{
             column![ui::inline_status("Public GitHub issue. Anyone with the link can also read its diagnostic logs.",Tone::Warning),

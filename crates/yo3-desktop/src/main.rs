@@ -1,7 +1,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 use std::sync::Arc;
 use std::path::PathBuf;
-use iced::{Element, Task, Subscription, Length::{Fill, Fixed}, Color, Theme};
+use iced::{Element, Task, Subscription, Length::{Fill, Fixed}, Color};
 use iced::widget::{self, button, checkbox, container, pick_list, scrollable, text, text_input};
 use yo3_desktop::{Backend, LauncherDb, Settings, SavedServer, ServerChoice};
 use yo3_server::admin::ManagerOp;
@@ -40,9 +40,7 @@ fn run() -> iced::Result {
         match routed { Ok(true) => return Ok(()), Ok(false) => {}, Err(error) => routing_error = Some(format!("Could not open the installed update. Using this version: {error:#}")) }
     }
     iced::application(move || App::boot(startup.clone(), routing_error.clone()), App::update, App::view).title("YO3 Revival").default_font(iced::Font::with_name("Fira Sans"))
-        .theme(|_: &App| Theme::custom("Revival", iced::theme::Palette { background: Color::from_rgb8(15, 20, 29),
-            text: Color::from_rgb8(229, 235, 244), primary: Color::from_rgb8(75, 155, 224),
-            success: Color::from_rgb8(89, 189, 151), warning: Color::from_rgb8(224, 180, 87), danger: Color::from_rgb8(222, 107, 114) }))
+        .theme(|_: &App| ui::theme())
         .window(iced::window::Settings { size: iced::Size::new(1000.0, 640.0), position: iced::window::Position::Centered, min_size: Some(iced::Size::new(900.0, 640.0)),
             icon: iced::window::icon::from_rgba(include_bytes!(concat!(env!("OUT_DIR"), "/launcher-icon.rgba")).to_vec(), 256, 256).ok(), ..Default::default() }).exit_on_close_request(false)
         .subscription(App::subscription)
