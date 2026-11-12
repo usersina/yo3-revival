@@ -258,6 +258,12 @@ impl Backend {
         self.check_server_resources()?;
         if let Some(live) = self.live(settings) { return admin::manage(&live, &ManagerOp::Status).map_err(anyhow::Error::msg) }
         ensure!(owned.as_mut().is_none_or(|p| p.try_wait().ok().flatten().is_some()), "Server is still starting.");
+        // No live file for this data folder, yet something answers on the port: another server (a Scripts `run.cmd` or
+        // another Revival with its own data) or another program. Starting would only fail to bind, with a vaguer error.
+        ensure!(!local_port_answers(settings.listen_port), "TCP port {} is already used by another program, such as a \
+            Scripts server (run.cmd / run.sh) or another YO3 Revival with a different data folder. Stop it, or choose \
+            another TCP port under Advanced → Hosting → Advanced. This app's server data is in {}.",
+            settings.listen_port, self.data_dir(settings).display());
         validate_game(Path::new(&settings.game_dir))?;
         let (_, name) = server_address(&settings.host_address)?;
         let bind = network::effective_bind(settings, network::resolve_bind(settings, &network::bindings()?)?);
@@ -615,6 +621,12 @@ fn detach_server(cmd: &mut Command) {
     #[cfg(unix)] { use std::os::unix::process::CommandExt; cmd.process_group(0); }
 }
 
+/// Whether anything accepts connections on this computer's loopback at `port` (IPv4 or IPv6).
+fn local_port_answers(port: u16) -> bool {
+    let budget = std::time::Duration::from_millis(300);
+    [std::net::IpAddr::from([127, 0, 0, 1]), std::net::IpAddr::from(std::net::Ipv6Addr::LOCALHOST)].into_iter()
+        .any(|ip| std::net::TcpStream::connect_timeout(&std::net::SocketAddr::new(ip, port), budget).is_ok())
+}
 fn server_endpoint_closed(address: &std::net::SocketAddr, budget: std::time::Duration) -> bool {
     if budget.is_zero() {return false}
     // Windows can take about two seconds to report loopback refusal. A shorter connect timeout reports
@@ -839,6 +851,17 @@ mod tests {
         let mut expected=vec![backend.runtime.injector.clone(),imported,opened];expected.sort();
         assert_eq!(backend.missing_required_files(&settings,Some(&diagnostic)),expected,"only actual absolute missing-import/open paths supplement the finite inventory; existing files and unrelated text stay excluded");
         drop(backend);std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    #[cfg(unix)]
+    fn a_port_taken_by_another_server_is_reported_before_starting() {
+        let backend=server_resource_fixture("port-taken");let root=backend.root.clone();
+        let other=std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let settings=Settings{listen_port:other.local_addr().unwrap().port(),game_dir:"not reached".into(),..Settings::default()};
+        let error=backend.start_server(&settings).unwrap_err().to_string();
+        assert!(error.contains("already used by another program") && error.contains(&backend.data_dir(&settings).display().to_string()),"{error}");
+        assert!(backend.server.lock().unwrap().is_none() && !backend.data_dir(&settings).join("server.db").exists());
+        drop(other);drop(backend);std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     #[cfg(unix)]

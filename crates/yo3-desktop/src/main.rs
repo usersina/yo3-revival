@@ -63,14 +63,14 @@ enum GameDataDialog {
     Problem(String), Complete,
 }
 #[derive(Clone, Copy)]
-enum Field { Game, Wine, Host, Data, Player, Label, Address, Key, Account, NewPlayer, Port }
+enum Field { Game, Wine, Host, Data, Player, Label, Address, Key, Account, NewPlayer, Port, GiveBp }
 #[derive(Clone)]
 enum Msg {
     Mode(bool), ServerOption(String, String), ResetOption(String), FindOption(String),
     Page(Page), HostTab(HostTab), Input(Field, String), Select(ServerChoice), AccountSelect(String), AdminAccountSelect(String),
     Start, Stop, Play, StopGame, TestConnection, Discover, TrustIdentity, RefreshBindings, BindSelect(yo3_desktop::network::BindAddress), Direct(bool),
     SaveSettings(Section), CancelSettings(Section), Browse(Field), UsePath, FolderPicked(u64,Field,Result<Option<String>,String>), Import, AddServer, SaveServer, EditServer, RemoveServer, ConfirmRemoveServer,
-    CreateAccount, AddPlayer, Export, Tick, Animate, Poll(Result<LiveStatus, String>), LogsPolled(Result<String,String>), Done(Result<Outcome, String>),
+    CreateAccount, AddPlayer, GiveBp, Export, Tick, Animate, Poll(Result<LiveStatus, String>), LogsPolled(Result<String,String>), Done(Result<Outcome, String>),
     Logs(bool), LogScrolled(bool), Pause(bool), LogFilter(String), CopyLogs, ExportLogs, PrepareReport(bool), SaveLogs, RemovePersonal(bool), OpenData, Support, Help, NetworkHelp,
     Close, CancelClose, KeepHosting(bool), Quit(bool), Disclosure(Disclosure), NewAccount, GitHub, ExternalOpened(Result<(), String>), DismissNotice,
     RetrySetup, ValidateGame, RunSetupCheck(u64), SetupChecked(u64, Settings, yo3_desktop::Readiness, yo3_desktop::direct::State, Vec<PathBuf>), SetupSaved(u64, Settings, Result<Settings,String>), CopyError,
@@ -94,7 +94,7 @@ struct LiveStatus { server: Option<Value>, game_running: bool, game_ready: bool,
 struct App {
     root: PathBuf, backend: Option<Arc<Backend>>, settings: Settings, draft: Settings, page: Page, host_tab: HostTab,
     servers: Vec<SavedServer>, selected: ServerChoice, status: Option<Value>, accounts: Value, account: String, admin_account: String,
-    new_account: String, new_player: String, editor: bool, editing_id: Option<i64>, remove_server: Option<i64>,
+    new_account: String, new_player: String, give_bp: String, editor: bool, editing_id: Option<i64>, remove_server: Option<i64>,
     label: String, address: String, key: String, certificate: String, server_name: String,
     busy: bool, polling: bool, game_running: bool, game_ready: bool, notice: String, failed: bool, feedback_page: Page,
     notice_expires: Option<std::time::Instant>, operation_page: Page, operation_label: String,
@@ -133,7 +133,7 @@ impl App {
         let backend = if error.is_empty() { Backend::new(root.clone()).map_err(|e| error = e.to_string()).ok() } else { None };
         let first_setup = !std::path::Path::new(&settings.game_dir).join("yo3.exe").is_file(); let page = if settings.advanced_mode && first_setup { Page::Settings } else { Page::Play };
         Self { root, backend, draft: settings.clone(), settings, page, host_tab: HostTab::Overview, servers, selected, status: None, accounts: Value::Null,
-            account, admin_account: String::new(), new_account: String::new(), new_player: String::new(), editor: false, editing_id: None, remove_server: None,
+            account, admin_account: String::new(), new_account: String::new(), new_player: String::new(), give_bp: String::new(), editor: false, editing_id: None, remove_server: None,
             label: String::new(), address: String::new(), key: String::new(), certificate: String::new(), server_name: String::new(),
             busy: false, polling: false, game_running: false, game_ready: false, failed: !error.is_empty(), notice: error, feedback_page: page,
             notice_expires: None, operation_page: page, operation_label: String::new(), log_server: true, paused: false, follow_logs: true, logs: String::new(), filter: String::new(), closing: false, keep_hosting_on_exit: true, support: false,
@@ -426,6 +426,16 @@ impl App {
                 self.begin(if creating { "Creating account…" } else { "Adding player…" });
                 return job(move || { backend.manage(&settings, op)?; Ok(Outcome::AccountsChanged(backend.accounts(&settings)?, if creating { "Account created. Export its private invitation." } else { "Player added." }.into(), creating.then_some(name))) });
             }
+            Msg::GiveBp => {
+                let Some(backend) = self.backend.clone() else { return Task::none() };
+                let Some(amount) = give_bp_amount(&self.give_bp) else { return Task::none() };
+                let (settings, who) = (self.settings.clone(), self.admin_account.clone());
+                self.begin("Giving BP…");
+                return job(move || {
+                    let total = backend.manage(&settings, ManagerOp::GiveBp { who: who.clone(), amount })?["bp"].as_u64().unwrap_or_default();
+                    Ok(Outcome::AccountsChanged(backend.accounts(&settings)?, format!("Gave {amount} BP to {who}: {total} BP now. The game shows it after the next purchase or login."), None))
+                });
+            }
             Msg::Export => {
                 let Some(backend) = self.backend.clone() else { return Task::none() }; let settings = self.settings.clone(); let who = self.admin_account.clone(); self.begin("Exporting private invitation…");
                 return Task::perform(async move {
@@ -494,7 +504,7 @@ impl App {
                     Ok(Outcome::Status(status)) => { self.status = Some(status); self.completed(Ok("Server is running on this computer.".into())); self.startup.resume_hosting = false; return self.load_accounts() }
                     Ok(Outcome::GameStarted) => { self.game_running = true; self.game_ready = false; self.game_start=Some(std::time::Instant::now()); }
                     Ok(Outcome::Accounts(accounts)) => { self.accounts = accounts; self.reconcile_accounts(); }
-                    Ok(Outcome::AccountsChanged(accounts, message, selected)) => { let invite = !self.settings.advanced_mode && selected.is_some(); self.accounts = accounts; if let Some(selected) = selected { self.admin_account = selected; } self.reconcile_accounts(); self.new_account.clear(); self.new_player.clear(); self.account_form = false; self.completed(Ok(message)); if invite { return self.update(Msg::Export) } }
+                    Ok(Outcome::AccountsChanged(accounts, message, selected)) => { let invite = !self.settings.advanced_mode && selected.is_some(); self.accounts = accounts; if let Some(selected) = selected { self.admin_account = selected; } self.reconcile_accounts(); self.new_account.clear(); self.new_player.clear(); self.give_bp.clear(); self.account_form = false; self.completed(Ok(message)); if invite { return self.update(Msg::Export) } }
                     Ok(Outcome::Imported(server)) => { self.reset_editor(); self.identity = server.identity.clone().or_else(|| yo3_tunnel::identity_from_pem(server.certificate.as_bytes()).ok()); self.label = server.label; self.address = server.address; self.key = server.key; self.certificate = server.certificate; self.server_name = server.server_name; self.editor = true; self.page = Page::Play; self.invitation_imported=true; return self.check_invitation() }
                     Ok(Outcome::Observed(server)) => {self.support=false; self.observed = Some(server);},
                     Ok(Outcome::Checked(info)) => { self.checked = Some(info); self.completed(Ok("This computer connected successfully and verified the account.".into())); }
@@ -633,7 +643,7 @@ impl App {
                 self.address=value;self.server_name.clear();self.identity=None;self.certificate.clear();self.observed=None;self.checked=None;self.invalidate_invitation();
             },
             Field::Key=>if self.key!=value {self.key=value;self.checked=None;self.invalidate_invitation();},
-            Field::Account=>self.new_account=value,Field::NewPlayer=>self.new_player=value,Field::Port=>self.port=value,
+            Field::Account=>self.new_account=value,Field::NewPlayer=>self.new_player=value,Field::GiveBp=>self.give_bp=value,Field::Port=>self.port=value,
         }
         if game_changed || first_game_input {
             self.first_setup=false;self.notice.clear();self.failed=false;self.failure_setup=None;
@@ -856,6 +866,8 @@ fn release_web_link(link: &str) -> Result<String,String> {
 fn open_external(url: String) -> Task<Msg> {
     Task::perform(async move { tokio::task::spawn_blocking(move || open(&url)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string()) }, Msg::ExternalOpened)
 }
+/// A Give BP amount the host typed: a whole number from 1 to 1,000,000.
+fn give_bp_amount(input: &str) -> Option<u32> { input.trim().parse::<u32>().ok().filter(|n| (1..=1_000_000).contains(n)) }
 fn account_names(accounts: &Value) -> Vec<String> { accounts.as_array().into_iter().flatten().filter_map(|a| a["players"][0]["name"].as_str().map(str::to_string)).collect() }
 fn open(path: &str) -> anyhow::Result<()> {
     let result:anyhow::Result<()>= {

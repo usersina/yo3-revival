@@ -450,6 +450,7 @@ impl App {
         if let Some(listen)=self.status.as_ref().and_then(|s|s["listen"].as_str()){network=network.push(muted(format!("Active listener: {listen}")));}
         body=body.push(widget::rule::horizontal(1)).push(network).push(widget::rule::horizontal(1)).push(column![ui::label_help("Server data", "Accounts, cards and decks live in this folder. Leave it empty to use private application storage. Changing it selects a different server; it does not move existing data."),
             row![self.field("Data folder","Empty uses private application storage",&self.draft.data_dir,Field::Data),action(Icon::Folder,"Browse…",(!self.locked()).then_some(Msg::Browse(Field::Data)))].spacing(12).align_y(iced::Alignment::End),
+            muted(match &self.backend { Some(b) => format!("Server data: {}. A Scripts edition keeps its own data folder; to use it here, choose that folder.", b.data_dir(&self.draft).display()), None => String::new() }),
             self.field("First player on a new server","Duelist",&self.draft.player_name,Field::Player),muted("Existing servers keep their accounts. Back up the complete data folder securely.")].spacing(16));
         body=body.push(widget::rule::horizontal(1)).push(self.server_options_view());
         body.into()
@@ -520,7 +521,9 @@ impl App {
             muted("This selection manages invitations and players. Your account on Play is unchanged.")].spacing(16);
         let account=self.accounts.as_array().and_then(|a|a.iter().find(|a|a["players"][0]["name"].as_str()==Some(&self.admin_account)));
         let player_count=account.and_then(|a|a["players"].as_array()).map_or(0,Vec::len);
-        if let Some(account)=account{let players=account["players"].as_array().map(|p|p.iter().filter_map(|p|p["name"].as_str()).collect::<Vec<_>>().join(", ")).unwrap_or_default();selected=selected.push(muted(format!("Players: {players} · {} BP",account["bp"])));}
+        if let Some(account)=account{let players=account["players"].as_array().map(|p|p.iter().filter_map(|p|p["name"].as_str()).collect::<Vec<_>>().join(", ")).unwrap_or_default();selected=selected.push(muted(format!("Players: {players} · {} BP",account["bp"])));
+            selected=selected.push(row![self.field("Give BP","Amount, e.g. 5000",&self.give_bp,Field::GiveBp),
+                action(Icon::Plus,"Give BP",(!self.locked() && give_bp_amount(&self.give_bp).is_some()).then_some(Msg::GiveBp)).style(button::secondary)].spacing(12).align_y(iced::Alignment::End));}
         if share_ready{selected=selected.push(row![muted(if self.admin_account.is_empty(){"Choose an account to export its invitation."}else{"Send this private file only to the account's owner. They import it under Play → Add server."}),
             action(Icon::Upload,"Export invitation…",(!self.locked() && !self.admin_account.is_empty()).then_some(Msg::Export)).style(button::primary)].spacing(16).align_y(iced::Alignment::Center));}
         else{selected=selected.push(row![ui::inline_status("Set a reachable sharing address before exporting invitations.",ui::Tone::Info),

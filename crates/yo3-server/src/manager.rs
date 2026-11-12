@@ -15,6 +15,8 @@ pub enum ManagerOp {
     CreateAccount { name: String },
     AddPlayer { who: String, name: String },
     ExportAccount { who: String },
+    /// BP for the account with a player of this name (the host's give-bp).
+    GiveBp { who: String, amount: u32 },
     Shutdown,
 }
 
@@ -66,7 +68,8 @@ impl Manager {
         let result = self.apply(&op);
         // Only the operation name is logged: export replies contain account credentials.
         let name = match op { ManagerOp::Status => "status", ManagerOp::Accounts => "accounts", ManagerOp::CreateAccount { .. } => "create-account",
-            ManagerOp::AddPlayer { .. } => "add-player", ManagerOp::ExportAccount { .. } => "export-account", ManagerOp::Shutdown => "shutdown" };
+            ManagerOp::AddPlayer { .. } => "add-player", ManagerOp::ExportAccount { .. } => "export-account", ManagerOp::GiveBp { .. } => "give-bp",
+            ManagerOp::Shutdown => "shutdown" };
         if !matches!(op, ManagerOp::Status | ManagerOp::Accounts) {
             tracing::info!("[manager] {name} {}", if result.is_ok() { "ok" } else { "refused" });
         }
@@ -100,6 +103,10 @@ impl Manager {
                 Ok(json!({"created":name}))
             }
             ManagerOp::ExportAccount { who } => Ok(json!({"key":accounts.atomic(|d| d.key_of(who))?})),
+            ManagerOp::GiveBp { who, amount } => {
+                let (_, bp) = accounts.give_bp(who, *amount)?;
+                Ok(json!({"bp":bp}))
+            }
             ManagerOp::Status | ManagerOp::Shutdown => unreachable!(),
         }
     }

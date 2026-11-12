@@ -320,7 +320,7 @@ fn a_purchase_that_cannot_be_saved_takes_no_bp_and_gives_no_cards() {
     std::fs::remove_file(dir.join("server.db")).unwrap();
     assert!(d.purchase(player, 100, None, |p| { p.cards.insert(10, 1); }).is_err());
     assert_eq!(d.accounts().next().unwrap().1.dpoint, START_BP);
-    assert!(d.player(player).unwrap().cards.get(&10).is_none());
+    assert!(!d.player(player).unwrap().cards.contains_key(&10));
     std::fs::remove_dir_all(dir).unwrap();
 }
 
