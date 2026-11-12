@@ -752,9 +752,26 @@ fn an_option_the_client_has_labels_for_opens_the_select_dialog() {
     assert_eq!(out[1], (0x3F0, [0x8000 | 465, 0x8000 | 466, 0, 0]));
     assert_eq!(out[3], (0x3ED, [1 << 28 | 276, 0, 0, 0]));
     assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 4, "index": 1 }))));
-    // Strings without a label: the first option, as the CPU would.
-    let card = json!({ "type": 14, "player": 0, "options": [4100u64 << 20, 4100u64 << 20 | 1] });
-    assert_eq!(t.prompt(&card), Prompt::Answer(json!({ "type": 4, "index": 0 })));
+    // Strings without a label: the card list, the option's card (the sidecar's `option_cids`) once per option in the
+    // engine's order under 276, so the player still chooses (the first option was taken for them before the duel
+    // check's round trip, which now fails a duel on a choice the client can't make).
+    let card = json!({ "type": 14, "player": 0, "options": [4100u64 << 20, 4100u64 << 20 | 1], "option_cids": [4100, 4100] });
+    let out = client_commands(t.prompt(&card));
+    let row = out.iter().find(|(id, _)| *id == 0x3F2).map(|(_, p)| p[0]).expect("the list's rows");
+    assert_ne!(row, 0);
+    assert_eq!(
+        out,
+        [
+            (0x3EF, [2, 1, 0, 0]),
+            (0x3F2, [row, row, 0, 0]),
+            (0x3F3, [0, 0, 0, 0]),
+            (0x3EC, [1, 0, 0, 0]),
+            (0x3ED, [1 << 28 | 276, 0, 0, 0]),
+            (0x37, [0, 0x27, 1, 0]),
+        ]
+    );
+    t.pick(1);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 4, "index": 1 }))));
 }
 
 /// A chain chance for the client: `selects` its cards that may chain.

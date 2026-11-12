@@ -1275,13 +1275,16 @@ HINTMSG_FMATERIAL and no message for Synchro materials (the client has no such t
 (`--duel-deck 3339,1449 --duel-extra 3745`): with Junk Synchron and Giant Orc on the field, clicking the extra deck
 listed Junk Synchron, then Giant Orc; both went to the Graveyard, the position dialog asked for Ancient Fairy Dragon,
 and it stood in attack position on both clients with the extra deck pile down to 1. The client has no window for ocgcore's place prompt, so the server
-takes the first free zone (positions: see Choices). Live: Summon from the hand put the monster in the
+takes the first free zone the prompt's `field_mask` allows, in the order own monster zones, own Spell/Trap and Field
+zones, the opponent's (Give and Take and Black Garden place on the opponent's field), as many as its `count` (Ground
+Collapse disables two); positions: see Choices. Live: Summon from the hand put the monster in the
 first monster zone, the hand closed up, and the next prompt offered only the Spell card.
 
 **Tokens.** EDOPro's tokens have passcodes with no Konami id (YGOProDeck lists none for Scapegoat's Sheep Tokens), so
 the sidecar adds the card's `name` from `cards.cdb` where it finds no id. The client has its own token cards: CARD_Prop
 ids 3900–3999 (75 rows, e.g. four "Sheep Token", 3902–3905, one per colour). A token comes from nowhere (MSG_MOVE
-from location 0): the server takes the client's token card of that name (in turn when there are several), gives it a
+from location 0): the server takes the client's token card of its Konami id when it has one (Doomsday Token 3940,
+Grinder Golem's 3936, Jam Breeding Machine's Slime Token 3907), else of its name (in turn when there are several), gives it a
 uid of its own (from `0x4000`), and sends its card table entry, its field record and a move from its slot onto
 itself (`0x1A` finds no object by uid and makes one, `0x5003A0`). A token leaving the field (to location 0, or to a
 pile) gets CardVanish and leaves the mirror; one that changes sides (Snatch Steal on a Sheep Token) moves like any card. A card list finds a token at its place (it has no id to find it by).
@@ -1464,8 +1467,10 @@ Summoned.
 The answers carry EDOPro's terms: the type's and attributes' RACE_/ATTRIBUTE_ bits, the number's index among the
 options (the first at least as large as the one picked), and a card by Konami id, which the sidecar turns into a
 passcode; races go to the core as BigInts (64-bit in ocgcore-wasm; a plain number threw "Cannot mix BigInt and other
-types"). Several types at once and numbers out of the dialog's range keep the automatic answer; the CPU names the
-duel's cards in turn (the core asks again when a name doesn't fit). The client has no other card name window
+types"). Several types at once and numbers out of the dialog's range keep the automatic answer. The CPU names a card
+the effect's filter allows: the sidecar runs ANNOUNCE_CARD's `opcodes` (EDOPro's `card_data::is_declarable` stack
+program: type, race, attribute, archetype and code tests) over the card database and adds `fits`, the duel's own cards
+first; without `fits`, the duel's cards in turn (the core asks again when a name doesn't fit). The client has no other card name window
 (DuelIidInputDialog is a debug key on the field). Live (`--duel-deck 1933,229,3609,1449`): Abyssal Designator asked
 for an Attribute (DARK, `DLGResult` 4) and a Type (Fiend, 3), and Kaiba had to send a Giant Orc; Prohibition opened
 the card search, "Giant Orc" filtered it to one card and `DLGResult` 5586 named it; Star Blast offered 500–1500 LP in

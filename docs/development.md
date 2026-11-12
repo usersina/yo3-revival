@@ -118,7 +118,20 @@ engine state after every step. A failure reports the seed, step and preceding en
 The card check (`crates/yo3-server/tests/card_data.rs`, with the game installed and the engine fetched) loads each of
 the client's 4,771 cards in the engine: every one must be found, load its script without an error and have the
 client's level, ATK and DEF. Only the 12 game exclusives EDOPro lacks (`engine::NOT_IN_THE_ENGINE`) may be missing; no
-pack or preset deck holds them and the deck check refuses them. Run it after updating `engine/fetch.sh`'s sources. Protocol and UI
+pack or preset deck holds them and the deck check refuses them. Run it after updating `engine/fetch.sh`'s sources.
+
+The card sweep (`tests/card_sweep.rs`) plays each card in a self-played duel through the duel check: three copies in
+both decks, two in the opening hand (twice in each Extra Deck for Fusion and Synchro Monsters). Every duel check also
+runs the round trip: each answer the engine offers must be reachable through the client's windows, and choices the
+server makes for the player are counted. By default it sweeps 24 cards; before a release or after engine changes run
+all of them (about 15 minutes on 12 cores):
+
+```bash
+YO3_CARD_SWEEP=all cargo nextest run --release -p yo3-server --test card_sweep --no-capture
+YO3_CARD_SWEEP=7986,7687 cargo nextest run --release -p yo3-server --test card_sweep --no-capture   # some cards
+```
+
+Its report, one line per card (activations, summons, choices made for the player), is `target/tmp/card-sweep.tsv`. Protocol and UI
 monkeys are documented in the [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#commands).
 
 ## Build release bundles

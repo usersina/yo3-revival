@@ -535,7 +535,9 @@ impl ClientModel {
                 (Some(uid), true) => out.push(format!("player {p}'s zone {zone}: empty in the engine, the client shows {}", self.describe(uid))),
                 (None, false) => out.push(format!("player {p}'s zone {zone}: the engine has card {}, the client nothing", cid_of(&engine))),
                 (Some(uid), false) => {
-                    let same = if uid >= FIRST_TOKEN { token(&engine) } else { self.cid(uid).is_none_or(|c| c == cid_of(&engine)) };
+                    // A token: one with no Konami id, or the client's token card of the engine's id (Doomsday Token).
+                    let token_row_cid = self.rows.get(&uid).and_then(|r| self.cards.get(r)).map(|c| c.cid);
+                    let same = if uid >= FIRST_TOKEN { token(&engine) || token_row_cid == Some(cid_of(&engine)) } else { self.cid(uid).is_none_or(|c| c == cid_of(&engine)) };
                     if !same {
                         out.push(format!("player {p}'s zone {zone}: the engine has card {}, the client {}", cid_of(&engine), self.describe(uid)));
                         continue;
@@ -636,6 +638,10 @@ pub mod selfplay {
     const MSG_SELECT_TRIBUTE: u64 = 20;
     const MSG_SELECT_UNSELECT_CARD: u64 = 26;
     const MSG_NEW_TURN: u64 = 40;
+    const MSG_SUMMONING: u64 = 60;
+    const MSG_SPSUMMONING: u64 = 62;
+    const MSG_FLIPSUMMONING: u64 = 64;
+    const MSG_CHAINING: u64 = 70;
     /// The Sheep Tokens' rows in the harness's card data (the client's token cards are 3900-3999; any rows do here).
     const SHEEP_ROWS: [u16; 4] = [60001, 60002, 60003, 60004];
     /// When a self-played duel stops: engine steps, turns.
@@ -770,7 +776,8 @@ pub mod selfplay {
     }
 
     /// What a self-played duel did: engine steps, turns, how each engine message type came up, how many moves were Xyz
-    /// materials' (to or from a place under a monster), and whether it ended.
+    /// materials' (to or from a place under a monster), whether it ended, and how often each card (Konami id)
+    /// activated an effect (MSG_CHAINING) or was summoned.
     #[derive(Debug, Default)]
     pub struct Played {
         pub steps: usize,
@@ -778,6 +785,35 @@ pub mod selfplay {
         pub ended: bool,
         pub kinds: BTreeMap<u64, u32>,
         pub materials: u32,
+        pub activated: BTreeMap<u16, u32>,
+        pub summoned: BTreeMap<u16, u32>,
+        /// The client's prompts the server answered itself although the player had a choice (see [`choices`]), by
+        /// engine message type: windows the client lacks (a zone, a sum, a sort...).
+        pub decided: BTreeMap<u64, u32>,
+    }
+
+    /// How many answers an engine prompt has, roughly, for the prompts the translator may answer itself: options,
+    /// positions, free zones, cards to pick or sort. None for the others.
+    pub fn choices(m: &Json) -> Option<usize> {
+        let len = |k: &str| m[k].as_array().map_or(0, Vec::len);
+        Some(match m["type"].as_u64()? {
+            14 => len("options"),
+            15 | 16 | 20 | 23 => len("selects"),
+            26 => len("select_cards"),
+            18 | 24 => (!m["field_mask"].as_u64().unwrap_or(0) as u32 & 0x1F1F_1F1F).count_ones() as usize,
+            19 => (m["positions"].as_u64().unwrap_or(0) as u32 & 0xF).count_ones() as usize,
+            22 | 21 | 25 => len("cards"),
+            _ => return None,
+        })
+    }
+
+    /// The cards a self-played duel knows: each CARD_Prop row's id and stats, the token rows by name, and the English
+    /// names of the Konami ids (for another print of a card, see `Engine::new_duel_named`).
+    #[derive(Clone, Debug, Default)]
+    pub struct CardData {
+        pub cards: HashMap<u16, CardStats>,
+        pub tokens: HashMap<String, Vec<u16>>,
+        pub names: HashMap<u16, String>,
     }
 
     /// Plays a duel between two seeded random players (`decks` by engine team: main and extra deck, Konami ids), the
@@ -785,14 +821,35 @@ pub mod selfplay {
     /// player. After every engine step the client model is checked against the engine: the first difference fails the
     /// duel with the seed, the step and the engine messages that came before it.
     pub fn play(dir: &Path, seed: u64, decks: [(&[u16], &[u16]); 2], client_team: usize, hidden: bool) -> Result<Played, String> {
+        let data = CardData {
+            cards: card_data(&decks),
+            tokens: HashMap::from([("Sheep Token".to_string(), SHEEP_ROWS.to_vec())]),
+            names: HashMap::new(),
+        };
+        play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
+    }
+
+    /// [`play`] with real card data: `decks` are CARD_Prop rows of `data`, and each team's `top` rows (cards of its main
+    /// deck) go on top of its shuffled deck (the last one drawn first), into the opening hand. A script error the
+    /// engine reports fails the duel too.
+    pub fn play_with(
+        dir: &Path,
+        seed: u64,
+        decks: [(&[u16], &[u16]); 2],
+        data: &CardData,
+        top: [&[u16]; 2],
+        client_team: usize,
+        hidden: bool,
+    ) -> Result<Played, String> {
         let mut rng = seed | 1;
-        let cards = card_data(&decks);
+        let cards = data.cards.clone();
+        let cid = |row: &u16| cards.get(row).map_or(0, |c| c.cid);
         // The client's engine player of team 0 (team 0 goes first), and the decks by client player.
         let first = if client_team == 0 { CLIENT } else { CPU };
         let (mine, theirs) = (decks[client_team], decks[1 - client_team]);
         let build = if hidden { Translator::against_player } else { Translator::new };
         let (mut t, mut table) = build(first, [mine.0, theirs.0], cards.clone());
-        t.tokens(HashMap::from([("Sheep Token".to_string(), SHEEP_ROWS.to_vec())]));
+        t.tokens(data.tokens.clone());
         table.extend(t.extra_decks([mine.1, theirs.1]));
         let mut model = ClientModel::new(first, cards.clone());
         // The rows the client isn't given: the same uids in the same order from a translator that hides nothing.
@@ -813,10 +870,18 @@ pub mod selfplay {
 
         let mut engine = Engine::start(dir).map_err(|e| format!("engine: {e}"))?;
         let mut shuffled = [decks[0].0.to_vec(), decks[1].0.to_vec()];
-        for d in shuffled.iter_mut() {
+        for (d, top) in shuffled.iter_mut().zip(top) {
             shuffle(&mut rng, d);
+            for row in top {
+                if let Some(at) = d.iter().position(|r| r == row) {
+                    let card = d.remove(at);
+                    d.push(card);
+                }
+            }
         }
-        let mut answer = engine.new_duel(seed, lp, [(&shuffled[0], decks[0].1), (&shuffled[1], decks[1].1)]);
+        let ids = |rows: &[u16]| rows.iter().map(cid).collect::<Vec<u16>>();
+        let (m0, e0, m1, e1) = (ids(&shuffled[0]), ids(decks[0].1), ids(&shuffled[1]), ids(decks[1].1));
+        let mut answer = engine.new_duel_named(seed, lp, [(&m0, &e0), (&m1, &e1)], &data.names);
         let mut played = Played::default();
         let mut prompt: Option<Json> = None;
         let mut retries = 0;
@@ -824,8 +889,17 @@ pub mod selfplay {
         while played.steps < MAX_STEPS {
             played.steps += 1;
             let a = answer.map_err(|e| format!("seed {seed}: engine: {e}"))?;
+            if !a.errors.is_empty() {
+                return Err(format!("seed {seed}, step {}: the engine reported {:?}", played.steps, a.errors));
+            }
             model.observe_engine(&a.messages);
             for m in &a.messages {
+                let card = m["cid"].as_u64().unwrap_or(0) as u16;
+                match m["type"].as_u64() {
+                    Some(MSG_CHAINING) => *played.activated.entry(card).or_default() += 1,
+                    Some(MSG_SUMMONING | MSG_SPSUMMONING | MSG_FLIPSUMMONING) => *played.summoned.entry(card).or_default() += 1,
+                    _ => {}
+                }
                 if let Some(kind) = m["type"].as_u64() {
                     *played.kinds.entry(kind).or_default() += 1;
                     if kind == 50 && (m["to"]["overlay_sequence"].is_u64() || m["from"]["overlay_sequence"].is_u64()) {
@@ -872,13 +946,26 @@ pub mod selfplay {
                 retries = 0;
                 // The translator's windows for the client (its prompts), then the random player's answer for whoever is
                 // asked (the translator's own answer for the CPU is the placeholder AI's).
-                if let Prompt::Client(mut msgs) = t.prompt(&last) {
-                    settle_positions(&mut msgs);
-                    model.apply_all(&msgs);
-                    let problems = model.check(&state);
-                    if !problems.is_empty() {
-                        return Err(fail(problems));
+                match t.prompt(&last) {
+                    Prompt::Client(mut msgs) => {
+                        settle_positions(&mut msgs);
+                        model.apply_all(&msgs);
+                        let mut problems = model.check(&state);
+                        // Every answer the engine offers must be one the client's windows can give.
+                        problems.extend(t.unreachable_answers().into_iter().map(|what| format!("the client can't answer {what}")));
+                        if !problems.is_empty() {
+                            return Err(fail(problems));
+                        }
                     }
+                    Prompt::Answer(_) if last["player"].as_u64() == Some(client_team as u64) && choices(&last).is_some_and(|n| n > 1) => {
+                        let kind = last["type"].as_u64().unwrap_or(0);
+                        // The options of an effect always reach the player (a card list when the client has no labels).
+                        if kind == MSG_SELECT_OPTION {
+                            return Err(fail(vec![format!("the server chose an option for the player: {}", short(&last))]));
+                        }
+                        *played.decided.entry(kind).or_default() += 1;
+                    }
+                    Prompt::Answer(_) => {}
                 }
                 prompt = Some(last.clone());
                 actions += 1;
@@ -965,15 +1052,28 @@ pub mod selfplay {
                 json!({ "type": 7, "index": index })
             }
             kind @ (MSG_SELECT_PLACE | 24) => {
-                // A random free own zone (field_mask bits set = unavailable: monster zones 0-4, Spell/Trap 8-12).
+                // Random free zones, `count` of them (field_mask bits set = unavailable): the player's monster zones
+                // 0-4, Spell/Trap 8-13, then the opponent's 16-20 and 24-29.
                 let mask = m["field_mask"].as_u64().unwrap_or(0);
-                let free: Vec<(u64, u64)> =
-                    (0..5).map(|s| (4, s, s)).chain((0..5).map(|s| (8, s, s + 8))).filter(|(_, _, b)| mask & 1 << b == 0).map(|(l, s, _)| (l, s)).collect();
-                if free.is_empty() {
+                let me = m["player"].as_u64().unwrap_or(0);
+                let free: Vec<(u64, u64, u64)> = [(me, 4, 0..5, 0), (me, 8, 0..6, 8), (1 - me, 4, 0..5, 16), (1 - me, 8, 0..6, 24)]
+                    .into_iter()
+                    .flat_map(|(p, l, seqs, base)| seqs.map(move |s| (p, l, s, base + s)))
+                    .filter(|&(_, _, _, b)| mask & 1 << b == 0)
+                    .map(|(p, l, s, _)| (p, l, s))
+                    .collect();
+                let count = (m["count"].as_u64().unwrap_or(1) as usize).max(1);
+                if free.len() < count {
                     return bot_answer(m);
                 }
-                let (location, sequence) = free[pick(free.len())];
-                json!({ "type": if kind == MSG_SELECT_PLACE { 10 } else { 9 }, "places": [{ "player": m["player"], "location": location, "sequence": sequence }] })
+                let mut free = free;
+                let places: Vec<Json> = (0..count)
+                    .map(|_| {
+                        let (player, location, sequence) = free.remove(pick(free.len()));
+                        json!({ "player": player, "location": location, "sequence": sequence })
+                    })
+                    .collect();
+                json!({ "type": if kind == MSG_SELECT_PLACE { 10 } else { 9 }, "places": places })
             }
             MSG_SELECT_POSITION => {
                 let allowed = m["positions"].as_u64().unwrap_or(1);

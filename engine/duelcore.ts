@@ -161,6 +161,10 @@ function withCids(value: unknown): unknown {
       const owner = cidOf.get(Number(BigInt(out.description) >> 20n));
       if (owner) out.description_cid = owner;
     }
+    // SELECT_OPTION's options are descriptions too: `option_cids` beside them, each its card's id (0: a system string).
+    if (Array.isArray(out.options) && out.options.every((o) => typeof o === "bigint" || typeof o === "number")) {
+      out.option_cids = (out.options as (bigint | number)[]).map((o) => cidOf.get(Number(BigInt(o) >> 20n)) ?? 0);
+    }
     return out;
   }
   return value;
@@ -171,6 +175,92 @@ let handle: ReturnType<typeof lib.createDuel> = null;
 const errors: string[] = [];
 
 const MSG_WIN = 5;
+const MSG_ANNOUNCE_CARD = 142;
+
+// EDOPro's card-name filter (ANNOUNCE_CARD's `opcodes`, card_data::is_declarable): a stack program over a card's data.
+const OP = 0x4000000000000000n;
+const OPS = { ADD: OP, SUB: OP | 0x100000000n, MUL: OP | 0x200000000n, DIV: OP | 0x300000000n, AND: OP | 0x400000000n,
+  OR: OP | 0x500000000n, NEG: OP | 0x600000000n, NOT: OP | 0x700000000n, BAND: OP | 0x800000000n, BOR: OP | 0x900000000n,
+  BNOT: OP | 0x1000000000n, BXOR: OP | 0x1100000000n, LSHIFT: OP | 0x1200000000n, RSHIFT: OP | 0x1300000000n,
+  ALLOW_ALIASES: OP | 0x1400000000n, ALLOW_TOKENS: OP | 0x1500000000n, ISCODE: OP | 0x10000000000n,
+  ISSETCARD: OP | 0x10100000000n, ISTYPE: OP | 0x10200000000n, ISRACE: OP | 0x10300000000n,
+  ISATTRIBUTE: OP | 0x10400000000n, GETCODE: OP | 0x10500000000n, GETTYPE: OP | 0x10700000000n,
+  GETRACE: OP | 0x10800000000n, GETATTRIBUTE: OP | 0x10900000000n };
+const TYPE_MONSTER = 0x1n, TYPE_TOKEN = 0x4000n;
+const MARINE_DOLPHIN = 78734254, TWINKLE_MOSS = 13857930;
+type Declarable = { code: number; alias: number; setcodes: bigint[]; type: bigint; race: bigint; attribute: bigint };
+
+function declarable(card: Declarable, opcodes: bigint[]): boolean {
+  const stack: bigint[] = [];
+  let aliases = false, tokens = false;
+  const two = (f: (l: bigint, r: bigint) => bigint) => { if (stack.length >= 2) { const r = stack.pop()!, l = stack.pop()!; stack.push(f(l, r)); } };
+  const one = (f: (v: bigint) => bigint) => { if (stack.length >= 1) stack.push(f(stack.pop()!)); };
+  const bool = (b: boolean) => (b ? 1n : 0n);
+  const setcard = (set: bigint) => card.setcodes.some((s) => (s & 0xfffn) === (set & 0xfffn) && (s & 0xf000n & set) === (set & 0xf000n));
+  for (const op of opcodes) {
+    switch (op) {
+      case OPS.ADD: two((l, r) => l + r); break;
+      case OPS.SUB: two((l, r) => l - r); break;
+      case OPS.MUL: two((l, r) => l * r); break;
+      case OPS.DIV: two((l, r) => (r ? l / r : 0n)); break;
+      case OPS.AND: two((l, r) => bool(!!l && !!r)); break;
+      case OPS.OR: two((l, r) => bool(!!l || !!r)); break;
+      case OPS.NEG: one((v) => -v); break;
+      case OPS.NOT: one((v) => bool(!v)); break;
+      case OPS.BAND: two((l, r) => l & r); break;
+      case OPS.BOR: two((l, r) => l | r); break;
+      case OPS.BNOT: one((v) => ~v); break;
+      case OPS.BXOR: two((l, r) => l ^ r); break;
+      case OPS.LSHIFT: two((l, r) => l << r); break;
+      case OPS.RSHIFT: two((l, r) => l >> r); break;
+      case OPS.ALLOW_ALIASES: aliases = true; break;
+      case OPS.ALLOW_TOKENS: tokens = true; break;
+      case OPS.ISCODE: one((v) => bool(BigInt(card.code) === v)); break;
+      case OPS.ISSETCARD: one((v) => bool(setcard(v))); break;
+      case OPS.ISTYPE: one((v) => card.type & v); break;
+      case OPS.ISRACE: one((v) => card.race & v); break;
+      case OPS.ISATTRIBUTE: one((v) => card.attribute & v); break;
+      case OPS.GETCODE: stack.push(BigInt(card.code)); break;
+      case OPS.GETTYPE: stack.push(card.type); break;
+      case OPS.GETRACE: stack.push(card.race); break;
+      case OPS.GETATTRIBUTE: stack.push(card.attribute); break;
+      default: stack.push(op);
+    }
+  }
+  if (stack.length !== 1 || stack[0] === 0n) return false;
+  const token = (card.type & (TYPE_MONSTER | TYPE_TOKEN)) === (TYPE_MONSTER | TYPE_TOKEN);
+  return card.code === MARINE_DOLPHIN || card.code === TWINKLE_MOSS || ((aliases || !card.alias) && (tokens || !token));
+}
+
+let declarables: Declarable[] | undefined;
+/** Every original card with a Konami id, for card-name filters. */
+function allDeclarables(): Declarable[] {
+  const query = db.prepare("select id, alias, setcode, type, race, attribute from datas where alias = 0");
+  query.setReadBigInts(true); // setcode packs four 16-bit codes
+  declarables ??= (query.all() as Record<string, number | bigint>[])
+    .filter((r) => cidOf.has(Number(r.id)))
+    .map((r) => {
+      const setcodes: bigint[] = [];
+      for (let s = BigInt(r.setcode); s > 0n; s >>= 16n) setcodes.push(s & 0xffffn);
+      return { code: Number(r.id), alias: Number(r.alias), setcodes, type: BigInt(r.type), race: BigInt(r.race), attribute: BigInt(r.attribute) };
+    });
+  return declarables;
+}
+
+/** ANNOUNCE_CARD gets `fits`: Konami ids of cards its filter allows, this duel's cards first, at most 30, for the
+ * server to name one for the CPU (and the duel check's players) that the core takes. */
+function addFits(batch: { type: number | string; opcodes?: (bigint | number)[]; fits?: number[] }[]) {
+  for (const m of batch) {
+    if (m.type !== MSG_ANNOUNCE_CARD || !m.opcodes) continue;
+    const opcodes = m.opcodes.map((o) => BigInt(o));
+    const own = new Set([...duelCids.keys()]);
+    const cards = allDeclarables();
+    const fit = (c: Declarable) => declarable(c, opcodes);
+    const first = cards.filter((c) => own.has(c.code) && fit(c));
+    const rest = cards.filter((c) => !own.has(c.code) && fit(c)).slice(0, Math.max(0, 30 - first.length));
+    m.fits = [...first, ...rest].map((c) => cidFor(c.code) ?? 0).filter((c) => c);
+  }
+}
 const MSG_MOVE = 50;
 
 type Move = { type: number | string; to?: { controller: 0 | 1; location: number; sequence: number }; reason?: number };
@@ -243,6 +333,15 @@ function fieldReport() {
   return { type: "field", monsters };
 }
 
+/** A card's counters as {counter type: count}. ocgcore-wasm reads each of the core's u32 entries (type | count << 16)
+ * into `counters[count] = type`, the other way round (a card holding two types with the same count keeps one of
+ * them there). Types left at 0 are dropped. */
+function counterCounts(counters: Record<string, number> | undefined) {
+  const out: Record<string, number> = {};
+  for (const [count, type] of Object.entries(counters ?? {})) if (Number(count)) out[type] = Number(count);
+  return out;
+}
+
 /** Where every card is, by team: the hand, Graveyard, banished and Extra Deck in sequence order, the monster and
  * Spell/Trap zones by sequence (null where empty; Spell/Trap 5 is the Field Spell zone), and how many cards the Deck
  * holds. Each card {code, position} gets its `cid` (or `name`) like the messages. Xyz materials aren't listed. */
@@ -252,7 +351,7 @@ function state() {
     lib.duelQueryLocation(handle!, { flags, controller, location }).map((c) => (c ? {
       code: Number(c.code), position: Number(c.position), level: Number(c.level ?? 0), attack: Number(c.attack ?? 0),
       defense: Number(c.defense ?? 0), base_attack: Number(c.baseAttack ?? 0), base_defense: Number(c.baseDefense ?? 0),
-      counters: c.counters ?? {},
+      counters: counterCounts(c.counters),
     } : null));
   const list = (controller: 0 | 1, location: OcgLocation) => at(controller, location).filter((c) => c !== null);
   // ocgcore-wasm returns LP in queryField but omits it from OcgFieldPlayer's declaration (dist/index.js, readField).
@@ -280,6 +379,7 @@ function run() {
     addReasons(batch as Move[]);
     fixShuffles(batch as Parameters<typeof fixShuffles>[0]);
     fixGraveSwaps(batch as Parameters<typeof fixGraveSwaps>[0]);
+    addFits(batch as Parameters<typeof addFits>[0]);
     const waiting = status === OcgProcessResult.WAITING;
     // Before the prompt, which stays last.
     const field = waiting && !batch.length ? null : fieldReport();

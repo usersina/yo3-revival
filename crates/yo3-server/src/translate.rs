@@ -386,7 +386,7 @@ struct Card {
 }
 
 /// One side's zones: field slots (0..=10) hold at most one card, list zones (0xB..=0xF) any number.
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Side {
     zones: HashMap<u32, Vec<Card>>,
 }
@@ -406,6 +406,7 @@ pub enum Prompt {
     Client(Vec<Message>),
 }
 
+#[derive(Clone)]
 pub struct Translator {
     /// The client's engine player of team 0.
     first: u32,
@@ -457,6 +458,8 @@ pub struct Translator {
     revealing: Vec<u16>,
     /// The card list open is a mixed one (see `card_list`), and how many table entries it staged.
     mixed: bool,
+    /// The card list open stands for SELECT_OPTION's options (the client has no labels for them).
+    option_cards: bool,
     staged: Option<usize>,
     /// The engine's links between cards (uids): (card, linked card, marker type), from MSG_EQUIP and MSG_CARD_TARGET.
     links: Vec<(u32, u32, u32)>,
@@ -545,6 +548,7 @@ impl Translator {
             revealing: vec![],
             materials: vec![],
             mixed: false,
+            option_cards: false,
             staged: None,
             links: vec![],
             relations: vec![],
@@ -1016,8 +1020,16 @@ impl Translator {
     /// the four Sheep Tokens), a card table entry, its record and a move onto its own slot, which makes the card
     /// object (0x1A finds none by uid, 0x5003A0). A token with no card of its name isn't shown.
     fn token(&mut self, m: &Json, to: Place) -> Vec<Message> {
-        let Some(rows) = m["name"].as_str().and_then(|n| self.token_rows.get(n)).filter(|r| !r.is_empty()) else {
-            tracing::warn!("a token the client has no card for: {}", m["name"]);
+        // A token with a Konami id (Doomsday Token, 3940) is the client's card of that id; one without, by its name.
+        let cid = m["cid"].as_u64().filter(|&c| c != 0).map(|c| c as u16);
+        let by_id: Option<Vec<u16>> = cid.map(|c| {
+            let mut rows: Vec<u16> = self.cards.iter().filter(|(_, s)| s.cid == c).map(|(&r, _)| r).collect();
+            rows.sort_unstable();
+            rows
+        });
+        let by_name = || m["name"].as_str().and_then(|n| self.token_rows.get(n)).cloned();
+        let Some(rows) = by_id.filter(|r| !r.is_empty()).or_else(by_name).filter(|r| !r.is_empty()) else {
+            tracing::warn!("a token the client has no card for: {} {}", m["cid"], m["name"]);
             return vec![];
         };
         if to.zone >= 5 {
@@ -1326,7 +1338,7 @@ impl Translator {
         let kind = m["type"].as_u64().unwrap_or(0);
         if self.player(&m["player"]) == CPU {
             if kind == MSG_ANNOUNCE_CARD {
-                return Prompt::Answer(self.cpu_card_name());
+                return Prompt::Answer(self.cpu_card_name(m));
             }
             return Prompt::Answer(cpu_answer(kind, m));
         }
@@ -1385,6 +1397,21 @@ impl Translator {
                     self.pending = Some(m.clone());
                     Prompt::Client(out)
                 }
+                // Options the client has no labels for: the card list, the option's card once per option in the
+                // engine's order, rather than the first option for the player.
+                None if m["options"].as_array().is_some_and(|o| o.len() > 1) => {
+                    let card = |i: usize| m["option_cids"][i].as_u64().filter(|&c| c != 0)
+                        .or_else(|| self.chaining.as_ref().and_then(|c| c["cid"].as_u64()))
+                        .unwrap_or(0);
+                    let selects: Vec<Json> = (0..m["options"].as_array().map_or(0, Vec::len))
+                        .map(|i| json!({ "controller": m["player"], "cid": card(i) }))
+                        .collect();
+                    let out = self.card_list(&json!({ "selects": selects, "min": 1, "max": 1 }), Some(SELECT_EFFECT_TEXT));
+                    self.option_cards = true;
+                    self.picks.clear();
+                    self.pending = Some(m.clone());
+                    Prompt::Client(out)
+                }
                 None => Prompt::Answer(cpu_answer(kind, m)),
             },
             MSG_SELECT_CHAIN => self.chain_chance(m),
@@ -1393,7 +1420,7 @@ impl Translator {
                     self.pending = Some(m.clone());
                     Prompt::Client(out)
                 }
-                None if kind == MSG_ANNOUNCE_CARD => Prompt::Answer(self.cpu_card_name()),
+                None if kind == MSG_ANNOUNCE_CARD => Prompt::Answer(self.cpu_card_name(m)),
                 None => Prompt::Answer(cpu_answer(kind, m)),
             },
             // No window for these yet.
@@ -1402,7 +1429,11 @@ impl Translator {
     }
 
     /// The CPU's card name declaration: the cards in the duel by turns, a new one each time it is asked.
-    fn cpu_card_name(&mut self) -> Json {
+    fn cpu_card_name(&mut self, m: &Json) -> Json {
+        // A card the effect's filter allows (the sidecar's `fits`, the duel's own cards first).
+        if let Some(cid) = m["fits"].as_array().and_then(|f| f.first()).and_then(Json::as_u64) {
+            return json!({ "type": RESP_CARD_NAME, "cid": cid });
+        }
         let mut cids: Vec<u16> =
             self.sides.iter().flat_map(|s| s.zones.values()).flatten().filter_map(|c| self.cards.get(&c.row)).map(|c| c.cid).collect();
         cids.sort_unstable();
@@ -1624,6 +1655,10 @@ impl Translator {
                     _ => json!({ "type": RESP_POSITION, "position": position }),
                 }
             }
+            MSG_SELECT_OPTION if std::mem::take(&mut self.option_cards) => match std::mem::take(&mut self.picks)[..] {
+                [index] if index < m["options"].as_array().map_or(0, Vec::len) => json!({ "type": RESP_OPTION, "index": index }),
+                _ => cpu_answer(kind, &m),
+            },
             MSG_SELECT_OPTION if (count as usize) < m["options"].as_array().map_or(0, Vec::len) => {
                 json!({ "type": RESP_OPTION, "index": count })
             }
@@ -1784,6 +1819,15 @@ impl Translator {
         if cmd.zone >= EXTRA && cmd.zone != DECK {
             return self.pile_command(&m, cmd);
         }
+        // A card that offers this command more than once (two effects it can activate now): the card list asks which,
+        // the card once per effect in the engine's order.
+        if let Some((list, kind, action, indices)) = self.listed(&cmd).filter(|l| l.3.len() > 1) {
+            let selects: Vec<Json> = indices.iter().map(|&i| m[list][i].clone()).collect();
+            let out = self.card_list(&json!({ "selects": selects, "min": 0, "max": 1 }), Some(SELECT_EFFECT_TEXT));
+            self.choosing = Some((kind, action, indices));
+            self.picks.clear();
+            return Some(Prompt::Client(out));
+        }
         let response = self.answer(cmd)?;
         let attack = &m["attacks"][response["index"].as_u64().unwrap_or(u64::MAX) as usize];
         let opponent = 1 - self.player(&attack["controller"]) as usize;
@@ -1873,8 +1917,159 @@ impl Translator {
         Some(out)
     }
 
-    /// The engine response for the client's card command, if it names a listed card.
+    /// The duel check's round trip for the pending idle or battle prompt: every answer the engine offers that the
+    /// client can't give through its menus, described. The client's side is played on copies of the translator: each
+    /// command of the command map as the client sends it (a field card from its own slot, `answer`), the card list a
+    /// pile's command opens and each of its picks, the direct attack's Yes, and the phase buttons. Empty when every
+    /// option is reachable (or nothing such is pending).
+    pub fn unreachable_answers(&self) -> Vec<String> {
+        let Some(m) = self.pending.as_ref() else { return vec![] };
+        let (lists, kind, phases): (Lists, u64, &[(&str, u64)]) = match m["type"].as_u64() {
+            Some(MSG_SELECT_IDLECMD) => (&IDLE_LISTS, RESP_IDLECMD, &[("to_bp", IDLE_TO_BP), ("to_ep", IDLE_TO_EP)]),
+            Some(MSG_SELECT_BATTLECMD) => (&BATTLE_LISTS, RESP_BATTLECMD, &[("to_m2", BATTLE_TO_M2), ("to_ep", BATTLE_TO_EP)]),
+            _ => return self.unreachable_choices(m),
+        };
+        let mut reachable: Vec<Json> = vec![];
+        let mut reach = |p: Option<Prompt>, t: &Translator| match p {
+            Some(Prompt::Answer(r)) => reachable.push(r),
+            Some(Prompt::Client(_)) if t.choosing.is_some() => {
+                for i in 0..t.choosing.as_ref().map_or(0, |c| c.2.len()) {
+                    let mut pick = t.clone();
+                    pick.pick(i as u32);
+                    if let Some(Prompt::Answer(r)) = pick.dialog_result(1) {
+                        reachable.push(r);
+                    }
+                }
+            }
+            Some(Prompt::Client(_)) if t.direct.is_some() => {
+                if let Some(Prompt::Answer(r)) = t.clone().dialog_result(1) {
+                    reachable.push(r);
+                }
+            }
+            _ => {}
+        };
+        for (place, bits) in self.command_map(m, lists) {
+            let (player, zone, index) = (place & 0xFF, place >> 8 & 0xFF, place >> 16 & 0xFF);
+            // As the client sends it: a field card from its own slot, index 0 (see `answer`).
+            let (zone, index) = match (zone, index) {
+                (0, i @ 1..=4) => (i, 0),
+                (5, 5) => (FIELD_SPELL, 0),
+                (5, i @ 0..=4) => (5 + i, 0),
+                other => other,
+            };
+            for bit in (0..32).filter(|b| bits >> b & 1 != 0) {
+                let mut t = self.clone();
+                let p = t.command(CardCommand { command: bit, player, zone, index });
+                reach(p, &t);
+            }
+        }
+        for button in [BUTTON_BP, BUTTON_M2, BUTTON_EP] {
+            if let Some(r) = self.clone().phase(button as u32) {
+                reachable.push(r);
+            }
+        }
+        let mut offered: Vec<(Json, String)> = vec![];
+        let mut seen_lists = vec![];
+        for &(list, _, action) in lists {
+            if seen_lists.contains(&list) {
+                continue;
+            }
+            seen_lists.push(list);
+            for (i, loc) in m[list].as_array().into_iter().flatten().enumerate() {
+                let what = format!("{list}[{i}] (card {} at location {} sequence {}, effect {})", loc["cid"], loc["location"], loc["sequence"], loc["description"]);
+                offered.push((json!({ "type": kind, "action": action, "index": i }), what));
+            }
+        }
+        for &(flag, action) in phases {
+            if m[flag] == true {
+                offered.push((json!({ "type": kind, "action": action, "index": null }), flag.to_string()));
+            }
+        }
+        offered.into_iter().filter(|(answer, _)| !reachable.contains(answer)).map(|(_, what)| what).collect()
+    }
+
+    /// [`unreachable_answers`] for the other windows: each card of a card choice (one pick, when one may be picked),
+    /// a chain chance's Yes for each card and its No, a question's Yes and No, and each option.
+    fn unreachable_choices(&self, m: &Json) -> Vec<String> {
+        let kind = m["type"].as_u64().unwrap_or(0);
+        let len = |k: &str| m[k].as_array().map_or(0, Vec::len);
+        // What, the clicks (each: the picks, then the dialog's result), the answer expected.
+        type Case = (String, Vec<(Vec<u32>, u32)>, Json);
+        let mut cases: Vec<Case> = vec![];
+        match kind {
+            MSG_SELECT_CARD | MSG_SELECT_TRIBUTE => {
+                let response = if kind == MSG_SELECT_TRIBUTE { RESP_TRIBUTE } else { RESP_CARD };
+                let (min, max) = (m["min"].as_u64().unwrap_or(1), m["max"].as_u64().unwrap_or(1));
+                if min <= 1 && max >= 1 {
+                    for i in 0..len("selects") as u32 {
+                        cases.push((format!("selects[{i}]"), vec![(vec![i], 1)], json!({ "type": response, "indicies": [i] })));
+                    }
+                } else {
+                    let picks: Vec<u32> = (0..min as u32).collect();
+                    cases.push((format!("the first {min} of selects"), vec![(picks.clone(), min as u32)], json!({ "type": response, "indicies": picks })));
+                }
+            }
+            MSG_SELECT_UNSELECT_CARD => {
+                for i in 0..len("select_cards") as u32 {
+                    cases.push((format!("select_cards[{i}]"), vec![(vec![i], 1)], json!({ "type": RESP_UNSELECT_CARD, "index": i })));
+                }
+            }
+            MSG_SELECT_CHAIN => {
+                let n = len("selects") as u32;
+                for i in 0..n {
+                    // Yes, then the card list when there are several (or a forced chain's list right away).
+                    let clicks = match (m["forced"] == true, n) {
+                        (true, _) => vec![(vec![i], 1)],
+                        (false, 1) => vec![(vec![], 1)],
+                        (false, _) => vec![(vec![], 1), (vec![i], 1)],
+                    };
+                    cases.push((format!("selects[{i}] (chain)"), clicks, json!({ "type": RESP_CHAIN, "index": i })));
+                }
+                if m["forced"] != true {
+                    cases.push(("passing the chain".into(), vec![(vec![], 0)], json!({ "type": RESP_CHAIN, "index": null })));
+                }
+            }
+            MSG_SELECT_EFFECTYN | MSG_SELECT_YESNO => {
+                let response = if kind == MSG_SELECT_EFFECTYN { RESP_EFFECTYN } else { RESP_YESNO };
+                cases.push(("yes".into(), vec![(vec![], 1)], json!({ "type": response, "yes": true })));
+                cases.push(("no".into(), vec![(vec![], 0)], json!({ "type": response, "yes": false })));
+            }
+            MSG_SELECT_OPTION => {
+                for i in 0..len("options") as u32 {
+                    let clicks = if self.option_cards { vec![(vec![i], 1)] } else { vec![(vec![], i)] };
+                    cases.push((format!("options[{i}]"), clicks, json!({ "type": RESP_OPTION, "index": i })));
+                }
+            }
+            _ => {}
+        }
+        cases
+            .into_iter()
+            .filter(|(_, clicks, expected)| {
+                let mut t = self.clone();
+                let mut last = None;
+                for (picks, result) in clicks {
+                    for &p in picks {
+                        t.pick(p);
+                    }
+                    last = t.dialog_result(*result);
+                }
+                last != Some(Prompt::Answer(expected.clone()))
+            })
+            .map(|(what, _, _)| format!("{what} of a {} prompt (card {})", kind, m["cid"]))
+            .collect()
+    }
+
+    /// The engine response for the client's card command, if it names a listed card (its first entry: `command`
+    /// asks which when there are several).
     pub fn answer(&mut self, cmd: CardCommand) -> Option<Json> {
+        let (_, kind, action, indices) = self.listed(&cmd)?;
+        self.pending = None;
+        Some(json!({ "type": kind, "action": action, "index": indices[0] }))
+    }
+
+    /// The pending prompt's entries the client's card command names: the list, the response's type and action, and
+    /// the entries' indices in the list (several when the card offers the command more than once).
+    fn listed(&self, cmd: &CardCommand) -> Option<(&'static str, u64, u64, Vec<usize>)> {
         let m = self.pending.as_ref()?;
         let (lists, kind): (Lists, u64) = match m["type"].as_u64() {
             Some(MSG_SELECT_BATTLECMD) => (&BATTLE_LISTS, RESP_BATTLECMD),
@@ -1894,10 +2089,9 @@ impl Translator {
             if bit != cmd.command {
                 continue;
             }
-            let at = m[list].as_array()?.iter().position(|loc| self.place(loc) == Some(place));
-            if let Some(index) = at {
-                self.pending = None;
-                return Some(json!({ "type": kind, "action": action, "index": index }));
+            let at: Vec<usize> = m[list].as_array()?.iter().enumerate().filter(|(_, loc)| self.place(loc) == Some(place)).map(|(i, _)| i).collect();
+            if !at.is_empty() {
+                return Some((list, kind, action, at));
             }
         }
         None
@@ -2122,7 +2316,8 @@ fn sum_choice(m: &Json) -> Vec<usize> {
     let selects: Vec<u64> = m["selects"].as_array().into_iter().flatten().map(level).collect();
     let target = m["amount"].as_u64().unwrap_or(0);
     let greater = m["select_max"].as_u64().unwrap_or(0) != 0;
-    let (min, max) = (m["min"].as_u64().unwrap_or(0) as usize, m["max"].as_u64().unwrap_or(u32::MAX as u64) as usize);
+    // min and max 0 set no bound (Machina Fortress: discard any number of monsters with Levels of 8 or more).
+    let (min, max) = (m["min"].as_u64().unwrap_or(0) as usize, m["max"].as_u64().filter(|&m| m != 0).unwrap_or(u32::MAX as u64) as usize);
     let values = |a: u64| -> Vec<u64> { [a & 0xFFFF, a >> 16].into_iter().filter(|v| *v > 0).collect() };
     // Whether these cards (the must ones included) can count to the target.
     let fits = |chosen: &[u64]| -> bool {
@@ -2224,18 +2419,46 @@ fn cpu_answer(kind: u64, m: &Json) -> Json {
         MSG_SELECT_OPTION => json!({ "type": RESP_OPTION, "index": 0 }),
         MSG_SORT_CHAIN | MSG_SORT_CARD => json!({ "type": RESP_SORT, "order": null }),
         MSG_SELECT_COUNTER => {
-            // Every counter from the first card.
-            let mut counters = vec![0; list_len("cards").max(1)];
-            counters[0] = m["count"].as_u64().unwrap_or(0);
+            // The counters from the cards in order, each giving what it holds until the count is made.
+            let mut left = m["count"].as_u64().unwrap_or(0);
+            let mut counters: Vec<u64> = m["cards"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|c| {
+                    let take = left.min(c["count"].as_u64().unwrap_or(0));
+                    left -= take;
+                    take
+                })
+                .collect();
+            if counters.is_empty() {
+                counters.push(left);
+            }
             json!({ "type": RESP_COUNTER, "counters": counters })
         }
         // The first free own zone (field_mask bits set = unavailable; own monster zones bits 0-4, Spell/Trap 8-12).
         MSG_SELECT_PLACE | MSG_SELECT_DISFIELD => {
+            // The first zone the mask leaves free: the player's monster zones (bits 0-4), Spell/Trap zones (8-12, the
+            // Field zone 13), then the opponent's (16-20, 24-29): Give and Take and Black Garden place on the
+            // opponent's field.
             let mask = m["field_mask"].as_u64().unwrap_or(0);
-            let free = (0..5).map(|s| (LOC_MZONE, s, s)).chain((0..5).map(|s| (LOC_SZONE, s, s + 8)));
-            let (location, sequence) = free.into_iter().find(|(_, _, bit)| mask & 1 << bit == 0).map_or((LOC_MZONE, 0), |(l, s, _)| (l, s));
+            let me = m["player"].as_u64().unwrap_or(0);
+            let free = [(me, LOC_MZONE, 0..5, 0), (me, LOC_SZONE, 0..6, 8), (1 - me, LOC_MZONE, 0..5, 16), (1 - me, LOC_SZONE, 0..6, 24)]
+                .into_iter()
+                .flat_map(|(p, l, seqs, base)| seqs.map(move |s| (p, l, s, base + s)));
+            // As many as asked (Ground Collapse and Phantom Dragon each disable two zones).
+            let count = (m["count"].as_u64().unwrap_or(1) as usize).max(1);
+            let mut places: Vec<Json> = free
+                .into_iter()
+                .filter(|&(_, _, _, bit)| mask & 1 << bit == 0)
+                .take(count)
+                .map(|(p, l, s, _)| json!({ "player": p, "location": l, "sequence": s }))
+                .collect();
+            if places.is_empty() {
+                places.push(json!({ "player": me, "location": LOC_MZONE, "sequence": 0 }));
+            }
             let kind = if kind == MSG_SELECT_PLACE { RESP_PLACE } else { RESP_DISFIELD };
-            json!({ "type": kind, "places": [{ "player": m["player"], "location": location, "sequence": sequence }] })
+            json!({ "type": kind, "places": places })
         }
         // Face-up attack when allowed, else the first allowed position.
         MSG_SELECT_POSITION => {
@@ -2251,6 +2474,7 @@ fn cpu_answer(kind: u64, m: &Json) -> Json {
             json!({ "type": kind, key: picked })
         }
         MSG_ANNOUNCE_NUMBER => json!({ "type": RESP_NUMBER, "value": 0 }),
+        MSG_ANNOUNCE_CARD => json!({ "type": RESP_CARD_NAME, "cid": m["fits"][0].as_u64().unwrap_or(0) }),
         MSG_ROCK_PAPER_SCISSORS => json!({ "type": RESP_RPS, "value": 1 }),
         MSG_SELECT_SUM => json!({ "type": RESP_SUM, "indicies": sum_choice(m) }),
         _ => {
@@ -2271,5 +2495,39 @@ mod tests {
             t.pick(i);
         }
         assert_eq!(t.picks.len(), MAX_PICKS);
+    }
+
+    /// An idle prompt of the client's: the hand card at sequence 0 offers `effects` activations.
+    fn idle_with_activations(effects: u64) -> Json {
+        let activates: Vec<Json> = (0..effects)
+            .map(|e| json!({ "controller": 0, "location": LOC_HAND, "sequence": 0, "cid": 4007, "description": e }))
+            .collect();
+        json!({ "type": MSG_SELECT_IDLECMD, "player": 0, "summons": [], "special_summons": [], "pos_changes": [],
+                "monster_sets": [], "spell_sets": [], "activates": activates, "to_bp": false, "to_ep": true, "shuffle": false })
+    }
+
+    #[test]
+    fn a_card_offering_two_effects_asks_which_and_both_are_reachable() {
+        let (mut t, _) = Translator::new(CLIENT, [&[], &[]], HashMap::new());
+        assert!(matches!(t.prompt(&idle_with_activations(2)), Prompt::Client(_)));
+        // The round trip (the duel check's): before the card list, only the first effect was reachable.
+        assert_eq!(t.unreachable_answers(), Vec::<String>::new());
+        let activate = CardCommand { command: 3, player: CLIENT, zone: HAND, index: 0 };
+        let Some(Prompt::Client(list)) = t.command(activate) else { panic!("a card list") };
+        let begin = list.iter().find(|m| m.get("id").and_then(yo3_proto::Value::as_u32) == Some(LIST_BEGIN)).expect("a list");
+        assert_eq!(begin.get("param1").and_then(yo3_proto::Value::as_u32), Some(2));
+        t.pick(1);
+        assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": RESP_IDLECMD, "action": 5, "index": 1 }))));
+    }
+
+    #[test]
+    fn the_round_trip_names_an_option_no_menu_reaches() {
+        let (mut t, _) = Translator::new(CLIENT, [&[], &[]], HashMap::new());
+        let mut idle = idle_with_activations(1);
+        // A card in the Deck: the client has no menu there.
+        idle["activates"][0]["location"] = json!(1);
+        assert!(matches!(t.prompt(&idle), Prompt::Client(_)));
+        let missing = t.unreachable_answers();
+        assert!(missing.len() == 1 && missing[0].starts_with("activates[0]"), "{missing:?}");
     }
 }
