@@ -6,7 +6,9 @@ pub fn native(id: u32) -> Coverage {
     match id {
         5 | 6 | 0xA | 0xC..=0x10 | 0x12 | 0x16 | 0x1A..=0x1C | 0x1F | 0x27 | 1000..=1003 | 1017 => Coverage::State,
         4 | 0x36 | 0x37 | 0x4C | 1004 | 1005 | 1007 | 1008 | 1010 | 1011 => Coverage::Interaction,
-        1 | 2 | 0x13 | 0x26 | 0x33 | 0x34 | 0x38 | 0x39 | 1500..=1505 | super::native::CHECKPOINT => Coverage::Presentation,
+        // 7, 0x1E, 0x22: the field's background, the Set and activation effects; 0x43-0x4D: the avatars' speech.
+        1 | 2 | 7 | 0x13 | 0x1E | 0x22 | 0x26 | 0x33 | 0x34 | 0x38 | 0x39 | 0x43 | 0x44 | 0x47 | 0x48 | 0x4D | 1500..=1505
+            | super::native::CHECKPOINT => Coverage::Presentation,
         _ => Coverage::Unknown,
     }
 }

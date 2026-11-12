@@ -1363,9 +1363,34 @@ Breakers destroyed each other, each client got `-1` for both cards before the mo
 Battle: the engine's battle prompt becomes a command map with bit 0 (Attack) on each attacker and bit 3 on chainable
 cards, the M2 and EP buttons as allowed, and command 4 mode 3. A monster in slot s sits at command-map place (zone 0,
 index s), and the client sends Attack as `{CommandID 0, position 0, index s}`. LP changes: command `0x10 {player,
-signed change}` (DuelCockpit, clamped to 0–99999; param3 non-zero adds a pop-up) for ocgcore's DAMAGE, PAY_LPCOST
-(negative) and RECOVER, and `0xF` for LPUPDATE. Live: a direct attack took the CPU from 8000 to 5700 LP. Attack animations use
+signed change, kind << 8 | shown}` (DuelCockpit `0x502EB0`) for ocgcore's DAMAGE, PAY_LPCOST (negative) and RECOVER,
+twice as Konami's server sent it: with `shown` 1 it shows the change's number and plays the kind's sound (4 a gain:
+recover sound, 2 a cost: payment sound, else damage), with 0 it applies the change (clamped to 0–99999); the damage
+line `0x4D` goes between. Kinds from the original logs: 0 effect damage, 1 battle damage (after BattleRun), 2 a cost, 4
+a gain. Before the logs we sent the second only, so changes applied silently. `0xF` for LPUPDATE. Live: a direct attack took the CPU from 8000 to 5700 LP. Attack animations use
 DuelBattle commands `0xA`–`0xE`, mapped in the battle-command table above.
+
+**Presentation from Konami's logs.** Commands the original server sent that only show something, now sent the same
+way (all from the 227 original duel logs, their handlers read in the client):
+
+| Command | Params | When | Handler |
+| ------- | ------ | ---- | ------- |
+| 7 FieldChange | the Field Spell's Konami id, or 0 | a card face up in the Field zone; 0 when it leaves | DuelScene → `0x50CD60`: the duel field's background (Dragon Ravine, Geartown, Necrovalley... in the logs) |
+| `0x1E` CardSet | player, zone, 1 for a monster | after a Set's move | DuelScene: the Set effect `0x22` |
+| `0x22` CardActivate | the card's place as moves give it (face up), Konami id, uid | before an activation's ChainSet | DuelScene: the activation effect by card type (`0x1A`–`0x20`; `0x20` for the player's "trump card"), waited for |
+| `0x43` | player, 1, 0 | the turn player's Draw Phase | DuelCutin `0x505A70`: the draw line (param3 non-zero: none) |
+| `0x44` | player, `0x8000` \| uid, kind | before a summon's effect | the summon line (the "ace monster" line for the configured card; kind 8 a Synchro's). Kinds in the logs: 0 Normal, 1–2 Tribute, 5 Special, 6 Fusion, 8 Synchro; we send 0 and 5 |
+| `0x47` | player, `0x8000` \| uid, step | before `0x22` | steps 1 (a Set card) or 2 (from the hand) only note how the card came, 3 and up speak (the "trump card" line, else by card type); a Spell/Trap gets 2 then 3, a monster's effect 4 |
+| `0x48` | player, Konami id, face up, to a Spell/Trap zone | before a card's move from the hand to the field (Normal Summon, activation, Set) | a Set's line (`param3` 0), none otherwise; the id is never read, so a Set the client may not see goes with 0 |
+| `0x4C` | player | the turn's end, before the turn change | the turn-end line |
+| `0x4D` | player, LP change, kind | between an LP change's two `0x10` | the damage line by the LP left (to 0, 1000+, 2000+); none for a cost or a gain |
+
+The speech lines are each player's Avatar Settings lines (speech00–22), which the client already holds; its duel
+option "speech" (`.y3p` `duelOption.speech`) turns them off. Still **open**: CardBreak `0x20` {player, 1–4, uid}
+(the original's destruction effect after BattleRun or an effect, 2.5 a duel; we keep CardVanish), BgmUpdate 9 (19 a
+duel, no params: the music's mood), `0x45`, `0x46`, `0x49`–`0x4B`, `0x4E`, 1006, 1013–1016, 1018–1025, `0x26`'s param3
+and CardCheat `0x1D` (a card object refreshed from its record, 46 a duel). Konami's opening also differs (1013 for every
+place, 1006, pile counts 1023 with only the top card in the table); ours, a table entry for every card, works.
 
 **Choices.** DuelScene opens dialogs with two commands (both popped like any other):
 

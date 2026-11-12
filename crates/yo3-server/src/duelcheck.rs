@@ -250,9 +250,11 @@ impl ClientModel {
             5 => self.phase = Some(((p1 & 1) as usize, p2)),
             6 => self.turn = ((p1 & 1) as usize, self.turn.1 + 1),
             0xF => self.lp[(p1 & 1) as usize] = Some(p2 as i64),
-            0x10 => {
+            // A change applies with param3's low byte 0; 1 only shows it (DuelCockpit 0x502EB0).
+            0x10 if p3 & 0xFF == 0 => {
                 if let Some(lp) = &mut self.lp[(p1 & 1) as usize] { *lp = (*lp + p2 as i32 as i64).clamp(0, 99999); }
             },
+            0x10 => {},
             0x3E9 => { self.record[0] = p2; self.record[2] = p3; self.record[3] = p4; },
             0x3EA => { self.record[4] = p2; self.record[5] = p3; self.record[6] = p4; },
             0x3EB => {

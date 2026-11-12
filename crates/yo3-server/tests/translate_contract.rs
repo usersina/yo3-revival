@@ -57,7 +57,9 @@ fn turns_and_phases_follow_the_engine() {
         json!({ "type": 41, "phase": 0x200 }),
     ]);
     let out: Vec<_> = out.iter().map(cmd).collect();
-    assert_eq!(out, [(5, [0, 0, 0, 0]), (5, [0, 2, 0, 0]), (6, [1, 0, 0, 0]), (5, [1, 5, 0, 0])]);
+    // Konami's speech cut-ins (DuelCutin 0x505A70) ride along: the turn player's draw line (0x43 {player, 1, 0}) as the
+    // Draw Phase starts, the turn's end (0x4C {player}) before the turn change.
+    assert_eq!(out, [(5, [0, 0, 0, 0]), (0x43, [0, 1, 0, 0]), (5, [0, 2, 0, 0]), (0x4C, [0, 0, 0, 0]), (6, [1, 0, 0, 0]), (5, [1, 5, 0, 0])]);
 }
 
 #[test]
@@ -319,9 +321,11 @@ fn a_summon_moves_the_card_from_the_hand_to_its_zone() {
         "to": { "controller": 0, "location": 4, "sequence": 2, "position": 1 } })]);
     let out: Vec<_> = out.iter().map(cmd).collect();
     // The monster's record (shown id, race, attribute, level, ATK/DEF, base ATK/DEF) comes before the move.
+    // Before it, the card leaving the hand for the field (0x48 {player, id, face up, to a Spell/Trap zone}).
     assert_eq!(
         out,
         [
+            (0x48, [0, 4100, 1, 0]),
             (1000, [1, 100, 4100, 2 << 8]),
             (0x3E9, [0, 4100, 12, 2]),
             (0x3EA, [0, 4, 1000, 1000]),
@@ -335,8 +339,11 @@ fn a_summon_moves_the_card_from_the_hand_to_its_zone() {
     let out = t.events(&[json!({ "type": 50, "cid": 4101,
         "from": { "controller": 0, "location": 2, "sequence": 0, "position": 10 },
         "to": { "controller": 0, "location": 8, "sequence": 1, "position": 8 } })]);
-    // A Set: move kind 5.
-    assert_eq!(cmd(&out[1]), (0x1A, [2 | 5 << 16, 0xB << 1, 6 << 1, 0]));
+    // A Set: announced (its own card: with its id), move kind 5, then the Set effect (0x1E {player, zone, monster}).
+    let out: Vec<_> = out.iter().map(cmd).collect();
+    assert_eq!(out[0], (0x48, [0, 4101, 0, 1]));
+    assert_eq!(out[2], (0x1A, [2 | 5 << 16, 0xB << 1, 6 << 1, 0]));
+    assert_eq!(out.last(), Some(&(0x1E, [0, 6, 0, 0])));
 }
 
 #[test]
@@ -406,7 +413,21 @@ fn damage_and_lp_changes_reach_the_lp_display() {
     let out: Vec<_> = out.iter().map(cmd).collect();
     assert_eq!(
         out,
-        [(0x10, [1, (-2300i32) as u32, 0, 0]), (0x10, [0, 500, 0, 0]), (0x10, [0, (-1000i32) as u32, 0, 0]), (0xF, [1, 5700, 0, 0])]
+        [
+            // Each change as Konami's server sent it (DuelCockpit 0x502EB0): shown (param3 kind << 8 | 1: the number
+            // and the kind's sound), the damage line (0x4D, DuelCutin), then applied (kind << 8). Kinds: 0 effect
+            // damage, 1 battle, 2 a cost, 4 a gain.
+            (0x10, [1, (-2300i32) as u32, 1, 0]),
+            (0x4D, [1, (-2300i32) as u32, 0, 0]),
+            (0x10, [1, (-2300i32) as u32, 0, 0]),
+            (0x10, [0, 500, 4 << 8 | 1, 0]),
+            (0x4D, [0, 500, 4, 0]),
+            (0x10, [0, 500, 4 << 8, 0]),
+            (0x10, [0, (-1000i32) as u32, 2 << 8 | 1, 0]),
+            (0x4D, [0, (-1000i32) as u32, 2, 0]),
+            (0x10, [0, (-1000i32) as u32, 2 << 8, 0]),
+            (0xF, [1, 5700, 0, 0])
+        ]
     );
 }
 
@@ -877,7 +898,10 @@ fn against_a_player_the_opponents_hidden_cards_carry_no_row() {
         "from": { "controller": 1, "location": 2, "sequence": 0, "position": 10 },
         "to": { "controller": 1, "location": 4, "sequence": 2, "position": 8 } });
     let face_down: Vec<_> = t.events(&[set]).iter().map(cmd).collect();
-    assert_eq!(face_down[0], (1000, [12, 0, 0, 1 | 2 << 8]));
+    // The Set's announcement carries no id for a card the client doesn't see; the Set effect follows the move.
+    assert_eq!(face_down[0], (0x48, [1, 0, 0, 0]));
+    assert_eq!(face_down[1], (1000, [12, 0, 0, 1 | 2 << 8]));
+    assert_eq!(face_down.last(), Some(&(0x1E, [1, 2, 1, 0])));
     assert!(!face_down.iter().any(|(id, _)| *id == 0x3EB), "no field record");
 }
 
@@ -1611,8 +1635,9 @@ fn a_card_leaving_a_list_zone_is_taken_by_its_id_when_the_mirror_is_out_of_step(
     let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 1, 10), "to": loc(0, 8, 1, 1) })]).iter().map(cmd).collect();
     // uid 1 holds row 100; its table entry and its move, from hand index 0.
     // A Spell from the hand face-up to a Spell/Trap zone: activated, move kind 4.
-    assert_eq!(out[0], (1000, [1, 100, 4100, 0x600]));
-    assert_eq!(out[1], (0x1A, [1 | 4 << 16, 0xB << 1, 0x400C, 0]));
+    assert_eq!(out[0], (0x48, [0, 4100, 1, 1]));
+    assert_eq!(out[1], (1000, [1, 100, 4100, 0x600]));
+    assert_eq!(out[2], (0x1A, [1 | 4 << 16, 0xB << 1, 0x400C, 0]));
 }
 
 #[test]
@@ -1630,8 +1655,8 @@ fn a_hand_shuffle_reorders_the_hand_on_the_client_too() {
     assert_eq!(out, [(1000, [3, 102, 4102, hand(0)]), (1000, [1, 100, 4100, hand(1)]), (1000, [2, 101, 4101, hand(2)]), (0x12, [0, 0, 0, 0])]);
     // The engine's sequences now match: 4102 leaves from index 0, and the others move up.
     let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4102, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 1, 1) })]).iter().map(cmd).collect();
-    assert_eq!(out[1], (0x1A, [3 | 4 << 16, 0xB << 1, 0x400C, 0]));
-    assert_eq!(out[2..], [(1000, [1, 100, 4100, hand(0)]), (1000, [2, 101, 4101, hand(1)])]);
+    assert_eq!(out[2], (0x1A, [3 | 4 << 16, 0xB << 1, 0x400C, 0]));
+    assert_eq!(out[3..], [(1000, [1, 100, 4100, hand(0)]), (1000, [2, 101, 4101, hand(1)])]);
     // A shuffle that leaves the order as it is sends nothing; one that doesn't match the hand (a count or an id the
     // mirror doesn't have) is ignored rather than guessed.
     assert!(t.events(&[json!({ "type": 33, "player": 0, "cards": [1, 2], "cids": [4100, 4101] })]).is_empty());
@@ -1792,4 +1817,33 @@ fn a_linked_card_that_changes_place_takes_its_markers_along() {
         out,
         [(0x3F9, [equip, old, 2, 0]), (0x3F9, [old, equip, 2, 0]), (0x3F9, [equip, new, 2, 1]), (0x3F9, [new, equip, 2, 1])]
     );
+}
+
+#[test]
+fn a_field_spell_changes_the_background_and_activations_and_summons_speak() {
+    // As Konami's server sent them (227 original duel logs): a Field Spell face up in the Field zone changes the duel
+    // field's background (command 7 {its Konami id}, DuelScene -> 0x50CD60), and back (7 {0}) when it leaves; an
+    // activation's line (0x47 {player, 0x8000 | uid, step}: 2, then 3, which speaks) and its activation effect (0x22
+    // {place as moves give it, Konami id, uid}, DuelScene) come before its ChainSet; a summon's line (0x44 {player,
+    // 0x8000 | uid, kind}) before its summon effect.
+    let mut t = with_cards();
+    let field = |from: serde_json::Value, to: serde_json::Value| json!({ "type": 50, "cid": 4100, "from": from, "to": to });
+    let hand = json!({ "controller": 0, "location": 2, "sequence": 0, "position": 10 });
+    let zone = json!({ "controller": 0, "location": 8, "sequence": 5, "position": 1 });
+    let grave = json!({ "controller": 0, "location": 16, "sequence": 0, "position": 1 });
+    let out: Vec<_> = t.events(&[field(hand, zone.clone())]).iter().map(cmd).collect();
+    assert_eq!(out.last(), Some(&(7, [4100, 0, 0, 0])), "{out:?}");
+    let chaining = json!({ "type": 70, "code": 4100, "cid": 4100, "controller": 0, "location": 8, "sequence": 5, "chain_size": 1 });
+    let out: Vec<_> = t.events(&[chaining]).iter().map(cmd).collect();
+    let place = 10 << 1 | 1 << 14;
+    assert_eq!(
+        out,
+        [(0x47, [0, 0x8001, 2, 0]), (0x47, [0, 0x8001, 3, 0]), (0x22, [place, 4100, 1, 0]), (0x33, [0, 10, 1, 0])]
+    );
+    let out: Vec<_> = t.events(&[field(zone, grave)]).iter().map(cmd).collect();
+    assert_eq!(out.last(), Some(&(7, [0, 0, 0, 0])), "{out:?}");
+    // The CPU's monster in its zone 1 (uid 11), Special Summoned: its line (kind 5), then the summon effect.
+    let special = json!({ "type": 62, "code": 4200, "cid": 4200, "controller": 1, "location": 4, "sequence": 1, "position": 1 });
+    let out: Vec<_> = t.events(&[special]).iter().map(cmd).collect();
+    assert_eq!(out, [(0x44, [1, 0x8000 | 11, 5, 0]), (0x39, [1 | 1 << 1 | 1 << 14, 11, 0, 0])]);
 }

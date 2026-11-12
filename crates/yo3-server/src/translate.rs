@@ -208,6 +208,31 @@ const VIEW_BATTLE_END: u32 = 0xE;
 const DIRECT_TARGET: u32 = 16;
 /// The summon effects at a card {player, uid} (DuelScene 0x514290): Normal (or the player's ace), Special.
 const RUN_SUMMON: u32 = 0x38;
+/// Commands Konami's server sent that only show something (227 original duel logs), by their handlers:
+/// FieldChange 7 {Field Spell's Konami id, or 0} changes the duel field's background (DuelScene → `0x50CD60`);
+/// CardSet `0x1E` {player, zone, 1 for a monster} plays the Set effect (`0x22`, DuelScene); CardActivate `0x22`
+/// {place as moves give it, Konami id, uid} plays a card's activation effect by its type (DuelScene, waited for);
+/// the avatar speech cut-ins (DuelCutin `0x505A70`, each player's Avatar Settings lines; the client's duel option
+/// "speech" turns them off): `0x43` {player, 1, 0} at the turn's draw, `0x44` {player, 0x8000 | uid, kind} a summon
+/// (the "ace monster" line for the configured card, 8 a Synchro Summon's line), `0x47` {player, 0x8000 | uid, step}
+/// an activation (steps 1 or 2 note how the card came, 3 and up speak; the "trump card" line for the configured card),
+/// `0x48` {player, Konami id, face up, to a Spell/Trap zone} a card leaving the hand for the field (a Set speaks),
+/// `0x4C` {player} the turn's end, `0x4D` {player, LP change, kind} damage (by the LP left; not for a cost or gain).
+const FIELD_CHANGE: u32 = 7;
+const CARD_SET: u32 = 0x1E;
+const CARD_ACTIVATE: u32 = 0x22;
+const SPEAK_DRAW: u32 = 0x43;
+const SPEAK_SUMMON: u32 = 0x44;
+const SPEAK_ACTIVATE: u32 = 0x47;
+const SPEAK_PLAY: u32 = 0x48;
+const SPEAK_TURN_END: u32 = 0x4C;
+const SPEAK_DAMAGE: u32 = 0x4D;
+/// LifeDamage `0x10`'s kinds (`param3 >> 8`), as in Konami's logs: 0 effect damage, 1 battle damage (after BattleRun),
+/// 2 a cost, 4 a gain. DuelCockpit (`0x502EB0`) plays the recover sound for 4, the payment sound for 2, else damage's.
+const DAMAGE_EFFECT: u32 = 0;
+const DAMAGE_BATTLE: u32 = 1;
+const DAMAGE_COST: u32 = 2;
+const DAMAGE_GAIN: u32 = 4;
 const RUN_SP_SUMMON: u32 = 0x39;
 /// The chain's links (DuelChain 0x501560): a new link {player, zone it shows over, link number}, link 1 starting the
 /// list; a link resolving {_, _, link number}, which must come last link first (the list's end leaves).
@@ -601,6 +626,10 @@ impl Translator {
                     }
                 }
                 Some(MSG_NEW_TURN) => {
+                    // The turn's end speaks for the player whose turn it was.
+                    if self.turns > 0 {
+                        out.push(command(SPEAK_TURN_END, [self.turn_player, 0, 0, 0]));
+                    }
                     self.turn_player = self.player(&m["player"]);
                     self.turns += 1;
                     // The client starts on turn 1; 6 would count it again.
@@ -620,6 +649,10 @@ impl Translator {
                     self.battle_phase = battle;
                     if let Some(phase) = m["phase"].as_u64().and_then(client_phase) {
                         out.push(command(PHASE, [self.turn_player, phase, 0, 0]));
+                        // The turn player's draw line, as the Draw Phase starts.
+                        if phase == 0 {
+                            out.push(command(SPEAK_DRAW, [self.turn_player, 1, 0, 0]));
+                        }
                     }
                 }
                 Some(MSG_MOVE) => out.extend(self.move_card(m)),
@@ -629,6 +662,7 @@ impl Translator {
                 // Also a Set Spell/Trap turning face-up as it is activated.
                 Some(MSG_POS_CHANGE | MSG_FLIPSUMMONING) => out.extend(self.turn(m, m["position"].as_u64().unwrap_or(0))),
                 Some(MSG_CHAINING) => {
+                    out.extend(self.activation(m));
                     let link = self.chain_link(m);
                     let param = |k: &str| link.get(k).and_then(Value::as_u32).unwrap_or(0);
                     self.chain.push((param("param1"), param("param2")));
@@ -654,6 +688,9 @@ impl Translator {
                     // The place as moves give it, with its face and position bits (Konami's logs: 0x4000 | place for a
                     // Normal Summon, 0x4000/0xC000/0x8000 for a Special Summon).
                     if let Some((place, uid)) = card {
+                        // The summon line first: 0 a Normal Summon, 5 a Special Summon (Konami's kinds).
+                        let kind = if kind == MSG_SUMMONING { 0 } else { 5 };
+                        out.push(command(SPEAK_SUMMON, [place.player, 0x8000 | uid, kind, 0]));
                         out.push(command(id, [Place { index: 0, ..place }.packed(), uid, 0, 0]));
                     }
                 }
@@ -679,7 +716,18 @@ impl Translator {
                 Some(kind @ (MSG_DAMAGE | MSG_RECOVER | MSG_PAY_LPCOST)) => {
                     let amount = m["amount"].as_i64().unwrap_or(0) as i32;
                     let change = if kind == MSG_RECOVER { amount } else { -amount };
-                    out.push(command(CHANGE_LP, [self.player(&m["player"]), change as u32, 0, 0]));
+                    let damage = match kind {
+                        MSG_RECOVER => DAMAGE_GAIN,
+                        MSG_PAY_LPCOST => DAMAGE_COST,
+                        _ if self.in_battle => DAMAGE_BATTLE,
+                        _ => DAMAGE_EFFECT,
+                    };
+                    // As Konami's server sent it: the change shown (param3's low byte 1: its number and sound), the
+                    // damage line, then the change applied (low byte 0). One message with 0 changed the LP silently.
+                    let p = self.player(&m["player"]);
+                    out.push(command(CHANGE_LP, [p, change as u32, damage << 8 | 1, 0]));
+                    out.push(command(SPEAK_DAMAGE, [p, change as u32, damage, 0]));
+                    out.push(command(CHANGE_LP, [p, change as u32, damage << 8, 0]));
                 }
                 Some(kind @ (MSG_ADD_COUNTER | MSG_REMOVE_COUNTER)) => out.extend(self.counter(m, kind == MSG_ADD_COUNTER)),
                 Some(MSG_LPUPDATE) => {
@@ -785,7 +833,11 @@ impl Translator {
             (Some(from), Some(to)) => {
                 let reason = m["reason"].as_u64().unwrap_or(0);
                 let dropped = if to.zone > FIELD_SPELL { self.drop_counters(&from) } else { vec![] };
-                let mut moved = self.relocate_as(cid, from, to, move_kind(reason, from, to));
+                let kind = move_kind(reason, from, to);
+                let mut moved = self.relocate_as(cid, from, to, kind);
+                if !moved.is_empty() {
+                    moved = self.presented(moved, cid, from, to, kind);
+                }
                 if to.zone == HAND && let Some(at) = self.revealing.iter().position(|&c| c == cid) {
                     self.revealing.remove(at);
                     let index = self.sides[to.player as usize].zone(HAND).len().saturating_sub(1).min(to.index);
@@ -1071,6 +1123,51 @@ impl Translator {
     /// cards whose index shifted in a list zone get their table entry again.
     fn relocate(&mut self, cid: u16, from: Place, to: Place) -> Vec<Message> {
         self.relocate_as(cid, from, to, MOVE_PLAIN)
+    }
+
+    /// A move's presentation around it, as Konami's server sent it: a card leaving the hand for the field is announced
+    /// first (`0x48`: a Set speaks), a Set plays the Set effect after it (`0x1E`), and the Field zone's card changes the
+    /// field's background (7: its Konami id face up, 0 when it leaves).
+    fn presented(&self, moved: Vec<Message>, cid: u16, from: Place, to: Place, kind: u32) -> Vec<Message> {
+        let mut out = vec![];
+        if from.zone == HAND && to.zone <= FIELD_SPELL && matches!(kind, MOVE_NORMAL_SUMMON | MOVE_ACTIVATE | MOVE_SET) {
+            // The speech never reads the id; a Set card the client may not see goes without it.
+            let shown = if kind == MOVE_SET && self.hidden[to.player as usize] { 0 } else { cid as u32 };
+            out.push(command(SPEAK_PLAY, [from.player, shown, (kind != MOVE_SET) as u32, (to.zone >= 5) as u32]));
+        }
+        out.extend(moved);
+        if kind == MOVE_SET && to.zone <= FIELD_SPELL {
+            out.push(command(CARD_SET, [to.player, to.zone, (to.zone < 5) as u32, 0]));
+        }
+        if to.zone == FIELD_SPELL && to.face_up {
+            out.push(command(FIELD_CHANGE, [cid as u32, 0, 0, 0]));
+        } else if from.zone == FIELD_SPELL && from.face_up && to.zone != FIELD_SPELL {
+            out.push(command(FIELD_CHANGE, [0; 4]));
+        }
+        out
+    }
+
+    /// An activation's presentation before its ChainSet, as Konami's server sent it: the activation line (`0x47`; for a
+    /// Spell/Trap step 2 then 3, as from the hand, since a Set card is face up by its MSG_CHAINING; Konami's sent 1 for
+    /// a Set one, which the client only keeps as context) and the card's activation effect (`0x22`). Nothing for a card
+    /// the client has no place for.
+    fn activation(&self, m: &Json) -> Vec<Message> {
+        let mut at = m.clone();
+        at["location"] = json!(m["location"].as_u64().unwrap_or(0) & !LOC_OVERLAY);
+        let Some(place) = self.engine_place(&at) else { return vec![] };
+        let index = if place.zone <= FIELD_SPELL { 0 } else { place.index };
+        let Some(card) = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.get(index)).copied() else { return vec![] };
+        let cid = self.cards.get(&card.row).map_or(0, |c| c.cid as u32);
+        let mut out = vec![];
+        if (5..=FIELD_SPELL).contains(&place.zone) {
+            out.push(command(SPEAK_ACTIVATE, [place.player, 0x8000 | card.uid, 2, 0]));
+            out.push(command(SPEAK_ACTIVATE, [place.player, 0x8000 | card.uid, 3, 0]));
+        } else {
+            out.push(command(SPEAK_ACTIVATE, [place.player, 0x8000 | card.uid, 4, 0]));
+        }
+        let place = Place { index, face_up: true, ..place };
+        out.push(command(CARD_ACTIVATE, [place.packed(), cid, card.uid, 0]));
+        out
     }
 
     /// [`relocate`] with the move's kind (`move_kind`), which the client's move takes in `param1`'s high half.
