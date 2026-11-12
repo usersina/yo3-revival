@@ -29,8 +29,17 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 Platform scope: **64-bit Windows 10/11** and **Linux with Wine**. **Windows 7 support is out of scope for now**,
 for both Desktop and Scripts. Current compatibility and native Windows verification work targets Windows 10/11.
 
-Launcher icon: the Duel Disk / Monster Reborn badge is embedded in the native window and Windows executable.
+Launcher icon: the Duel Disk / Monster Reborn badge is embedded in the native window and Windows executable, and drawn
+in the app itself (sidebar, Normal header, About).
 Linux and Windows release builds pass; live X11 icon pixels and all nine embedded Windows icon sizes match the assets.
+
+v0.0.8 release preparation (2026-11-12):
+
+- [x] The workspace package version and the local lockfile entries are `0.0.8`. The changelog describes the new
+  Desktop look, live BP and the gift D-Mail, BOOSTERPASS codes in the app, coloured logs and duel logs in SQLite.
+- [x] All 776 workspace tests pass; workspace Clippy is clean on Linux and the Windows target; documentation links
+  pass. The v0.0.8 Desktop bundle passed natively on Windows 11 (every page, Play to the map, clean close) and the
+  earlier full retest covered Linux Scripts/Desktop and a native Windows duel with a mid-duel BP gift.
 
 v0.0.7 release preparation (2026-11-12):
 

@@ -10,7 +10,15 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.0.8 (2026-11-12)
+
+A new look for the Desktop app, BP that shows up right away, and BOOSTERPASS codes you can manage from the app.
+Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the server,
+rules engine and required connection components. Original game files are not included. **Windows 7 is not supported.**
+
+Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.8/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.8/docs/scripts.md).
 
 - **A new look for the app:** calm dark panels with small corner labels and one blue accent, in the spirit of Master
   Duel's menus, over a backdrop of faint circuit traces like the icon's. Logs keep the original game's green-on-black
