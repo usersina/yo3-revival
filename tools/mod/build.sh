@@ -35,5 +35,5 @@ i686-w64-mingw32-windres -I build build/runtime-test.rc -o build/runtime-test.o
 "$CC" -O2 -Wall -Wextra -Werror -DYO3_TEST_BAD_GAME_HOOK -o build/yo3-auth-guard-test.exe test.c -lws2_32 -lwininet -lwinmm
 i686-w64-mingw32-dlltool -d wsock32-ordinals.def -l build/wsock32-ordinals.a
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-ordinal-test.exe test.c build/wsock32-ordinals.a -lws2_32 -lwininet -lwinmm
-"$CC" -O2 -Wall -Wextra -Werror -municode -o build/yo3-auth-launch.exe launch.c
+"$CC" -O2 -Wall -Wextra -Werror -municode -o build/yo3-auth-launch.exe launch.c -lshell32
 "$CC" -O2 -Wall -Wextra -Werror -shared -Wl,--kill-at -o build/winmm.dll loader.c -ladvapi32 -lws2_32 -lwininet -lcomdlg32

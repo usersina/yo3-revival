@@ -2,6 +2,7 @@
  * Owns the child in a kill-on-close job so terminating the launcher cannot leave an unguarded game behind.
  */
 #include <windows.h>
+#include <shlobj.h>
 #include <stdio.h>
 #include <wchar.h>
 #include <string.h>
@@ -9,6 +10,24 @@
 
 static int failure(const char *stage, DWORD error, const char *help) {
     fprintf(stderr, "stage=%s windows_error=%lu: %s\n", stage, error, help);
+    return 0;
+}
+
+/* Read the native client's current Documents location, including redirection. This
+ * command neither creates folders nor reads credentials, loads mods or starts a game. */
+static int game_data_directory(void) {
+    wchar_t folder[MAX_PATH+32]={0};
+    HRESULT result=SHGetFolderPathW(NULL,CSIDL_PERSONAL,NULL,SHGFP_TYPE_CURRENT,folder);
+    if(result!=S_OK || !folder[0]) {
+        fprintf(stderr,"stage=game-data-dir hresult=0x%08lx: The current Documents folder is unavailable. Check its location and permissions.\n",(unsigned long)result);return 1;
+    }
+    wcscat(folder,L"\\Yu-Gi-Oh! ONLINE 3");
+    char text[sizeof folder*2];int length=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,folder,-1,text,sizeof text,NULL,NULL);
+    if(!length) {failure("game-data-dir",GetLastError(),"The Documents path could not be encoded as UTF-8.");return 1;}
+    text[length-1]='\n';DWORD written=0;
+    if(!WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),text,(DWORD)length,&written,NULL) || written!=(DWORD)length) {
+        failure("game-data-dir",GetLastError(),"The Documents path could not be returned.");return 1;
+    }
     return 0;
 }
 
@@ -116,6 +135,7 @@ static int initialized(HANDLE process, DWORD base, DWORD offset) {
 }
 
 int wmain(int argc, wchar_t **argv) {
+    if(argc==2 && !wcscmp(argv[1],L"--game-data-dir")) return game_data_directory();
     if (argc < 3) { fputs("usage: yo3-auth-launch GAME.exe AUTH.dll [TRACE.dll]\n", stderr); return 2; }
     if (!wcscmp(argv[1], L"--check-runtime")) return argc == 3 ? check_runtime(argv[2]) : 2;
     int controlled = !wcscmp(argv[1], L"--control-stdin");

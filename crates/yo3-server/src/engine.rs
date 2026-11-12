@@ -29,6 +29,10 @@ const IDENTITY_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The oldest Node.js that runs `duelcore.ts` directly (type stripping without a flag).
 pub const MIN_NODE: (u32, u32) = (22, 18);
+const REQUIRED_FILES: &[&str] = &["duelcore.ts", "package.json", "node_modules/ocgcore-wasm/package.json",
+    "node_modules/ocgcore-wasm/dist/index.js", "node_modules/ocgcore-wasm/lib/ocgcore.sync.mjs",
+    "node_modules/ocgcore-wasm/lib/ocgcore.sync.wasm", "vendor/cardinfo.json", "vendor/BabelCDB/cards.cdb",
+    "vendor/CardScripts/constant.lua", "vendor/CardScripts/utility.lua"];
 
 /// `(major, minor)` of a `node --version` line such as `v22.18.0`.
 pub fn parse_node_version(text: &str) -> Option<(u32, u32)> {
@@ -45,14 +49,48 @@ pub fn node(dir: &Path) -> PathBuf {
     if bundled.is_file() { bundled } else { PathBuf::from("node") }
 }
 
+/// Lists every absent known anchor. Existing unreadable/invalid files and script-directory problems are separate.
+pub fn missing_files(dir: &Path) -> Vec<PathBuf> {
+    REQUIRED_FILES.iter().map(|name|dir.join(name))
+        .filter(|path|matches!(std::fs::metadata(path),Err(error) if error.kind()==io::ErrorKind::NotFound)).collect()
+}
+
+/// Checks a finite set of required engine anchors, not every imported module or card script.
+/// Runtime startup still checks whether the complete sidecar can load and execute.
+pub fn files_problem(dir: &Path) -> Option<String> {
+    let readable=|path: &Path| -> io::Result<()> {
+        if !std::fs::metadata(path)?.is_file() {return Err(io::Error::new(io::ErrorKind::InvalidData,"not a regular file"))}
+        let mut file=std::fs::File::open(path)?;
+        if !file.metadata()?.is_file() {return Err(io::Error::new(io::ErrorKind::InvalidData,"not a regular file"))}
+        if file.read(&mut [0;1])?==0 {return Err(io::Error::new(io::ErrorKind::UnexpectedEof,"file is empty"))}
+        Ok(())
+    };
+    for name in REQUIRED_FILES {
+        let path=dir.join(name);
+        if let Err(error)=readable(&path) {return Some(format!("Required engine file unavailable: {} ({error})",path.display()))}
+    }
+    let scripts=dir.join("vendor/CardScripts/official");
+    let entries=match std::fs::read_dir(&scripts) {Ok(entries)=>entries,Err(error)=>return Some(format!("Required card scripts unavailable: {} ({error})",scripts.display()))};
+    let mut unreadable=None;
+    for entry in entries {
+        let entry=match entry {Ok(entry)=>entry,Err(error)=>return Some(format!("Cannot read card script directory: {} ({error})",scripts.display()))};
+        let path=entry.path();if path.extension().is_none_or(|extension|extension!="lua") {continue}
+        match readable(&path) {Ok(())=>return None,Err(error)=>unreadable=Some(format!("Required card script unavailable: {} ({error})",path.display()))}
+    }
+    unreadable.or_else(||Some(format!("No readable, nonempty .lua card scripts found in {}",scripts.display())))
+}
+
 /// Why duels can't be played: the engine's files are missing, or its Node.js ([`node`]) is missing or older than
-/// [`MIN_NODE`]. None when the engine can run. Runs `node --version` once (fast), not the sidecar.
+/// [`MIN_NODE`]. None when the required anchors and Node version pass. Runs `node --version`, not the sidecar.
 pub fn problem(dir: Option<&Path>) -> Option<String> {
     let (want_major, want_minor) = MIN_NODE;
     let Some(dir) = dir else {
         return Some("the rules engine is missing (unpack the release bundle again, whole; from source, run engine/fetch.sh)".into());
     };
-    let out = match Command::new(node(dir)).arg("--version").output() {
+    if let Some(problem)=files_problem(dir) {return Some(problem)}
+    let mut command=Command::new(node(dir));command.arg("--version");
+    #[cfg(windows)] {use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
+    let out = match command.output() {
         Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).into_owned(),
         _ => return Some(format!("Node.js is missing (the release bundle's engine/node, else one on the PATH, version {want_major}.{want_minor} or newer)")),
     };
@@ -229,6 +267,95 @@ impl Drop for Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const REQUIRED_ENGINE_FILES: &[&str] = &["duelcore.ts", "package.json", "node_modules/ocgcore-wasm/package.json",
+        "node_modules/ocgcore-wasm/dist/index.js", "node_modules/ocgcore-wasm/lib/ocgcore.sync.mjs",
+        "node_modules/ocgcore-wasm/lib/ocgcore.sync.wasm", "vendor/cardinfo.json", "vendor/BabelCDB/cards.cdb",
+        "vendor/CardScripts/constant.lua", "vendor/CardScripts/utility.lua"];
+    fn files_fixture(name: &str) -> PathBuf {
+        let dir=std::env::temp_dir().join(format!("yo3-engine-files-{name}-{}",std::process::id()));let _=std::fs::remove_dir_all(&dir);
+        for name in REQUIRED_ENGINE_FILES.iter().copied().chain(["vendor/CardScripts/official/c1.lua"]) {
+            let path=dir.join(name);std::fs::create_dir_all(path.parent().unwrap()).unwrap();std::fs::write(path,b"fixture").unwrap();
+        }
+        dir
+    }
+    #[test]
+    #[cfg(unix)]
+    fn a_missing_sidecar_is_rejected_even_when_node_reports_a_supported_version() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir=files_fixture("sidecar");let executable=dir.join("node/node");std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        std::fs::write(&executable,b"#!/bin/sh\nprintf 'v22.18.0\\n'\n").unwrap();
+        std::fs::set_permissions(&executable,std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(problem(Some(&dir)).is_none(),"fixture's Node version is sufficient before a required file disappears");
+        let sidecar=dir.join("duelcore.ts");std::fs::remove_file(&sidecar).unwrap();
+        let failure=problem(Some(&dir));std::fs::remove_dir_all(dir).unwrap();
+        assert!(failure.is_some_and(|message|message.contains(&sidecar.to_string_lossy().to_string())),"a supported Node binary must not hide a missing sidecar");
+    }
+    #[test]
+    fn required_engine_files_reject_missing_empty_and_nonfile_anchors_with_their_paths() {
+        let dir=files_fixture("anchors");assert!(files_problem(&dir).is_none());
+        for name in REQUIRED_ENGINE_FILES {
+            let path=dir.join(name);std::fs::remove_file(&path).unwrap();
+            assert!(files_problem(&dir).unwrap().contains(&path.to_string_lossy().to_string()),"name the missing file: {name}");
+            std::fs::write(&path,b"").unwrap();
+            assert!(files_problem(&dir).unwrap().contains(&path.to_string_lossy().to_string()),"reject an empty file: {name}");
+            std::fs::remove_file(&path).unwrap();std::fs::create_dir(&path).unwrap();
+            assert!(files_problem(&dir).unwrap().contains(&path.to_string_lossy().to_string()),"reject a directory in place of a file: {name}");
+            std::fs::remove_dir(&path).unwrap();std::fs::write(&path,b"restored").unwrap();assert!(files_problem(&dir).is_none());
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn all_missing_engine_anchors_are_listed_without_mislabeling_existing_invalid_files() {
+        let dir=files_fixture("missing-list");assert!(missing_files(&dir).is_empty());
+        let expected=["duelcore.ts","node_modules/ocgcore-wasm/dist/index.js","vendor/BabelCDB/cards.cdb"]
+            .into_iter().map(|name|dir.join(name)).collect::<Vec<_>>();
+        for path in &expected {std::fs::remove_file(path).unwrap();}
+        std::fs::write(dir.join("package.json"),b"").unwrap();
+        let nonfile=dir.join("vendor/CardScripts/constant.lua");std::fs::remove_file(&nonfile).unwrap();std::fs::create_dir(nonfile).unwrap();
+        assert_eq!(missing_files(&dir),expected,"report every known absent path, but not empty files or directories that already exist");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn official_scripts_require_a_readable_nonempty_lua_file_rather_than_just_a_directory() {
+        let dir=files_fixture("scripts");let scripts=dir.join("vendor/CardScripts/official");
+        std::fs::remove_dir_all(&scripts).unwrap();assert!(files_problem(&dir).unwrap().contains(&scripts.to_string_lossy().to_string()));
+        std::fs::create_dir(&scripts).unwrap();assert!(files_problem(&dir).unwrap().contains(".lua"));
+        std::fs::write(scripts.join("README.txt"),b"scripts were removed").unwrap();assert!(files_problem(&dir).is_some());
+        std::fs::create_dir(scripts.join("directory.lua")).unwrap();assert!(files_problem(&dir).is_some());
+        std::fs::write(scripts.join("empty.lua"),b"").unwrap();assert!(files_problem(&dir).is_some());
+        std::fs::write(scripts.join("c1.lua"),b"return {}").unwrap();assert!(files_problem(&dir).is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    #[cfg(unix)]
+    fn an_unreadable_required_engine_file_is_reported_with_its_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir=files_fixture("unreadable");let path=dir.join("duelcore.ts");
+        std::fs::set_permissions(&path,std::fs::Permissions::from_mode(0o000)).unwrap();
+        let permission_enforced=std::fs::File::open(&path).is_err();let failure=files_problem(&dir);let absent=missing_files(&dir);
+        std::fs::set_permissions(&path,std::fs::Permissions::from_mode(0o600)).unwrap();std::fs::remove_dir_all(dir).unwrap();
+        // An elevated test process can bypass POSIX read permissions; do not confuse that with a checker failure.
+        if permission_enforced {assert!(failure.unwrap().contains(&path.to_string_lossy().to_string()));}
+        assert!(absent.is_empty(),"an unreadable existing file must not be reported as absent");
+    }
+    #[test]
+    #[cfg(target_os="linux")]
+    fn nonfile_engine_anchors_do_not_wait_for_pipe_writers() {
+        let dir=files_fixture("fifo");let path=dir.join("duelcore.ts");std::fs::remove_file(&path).unwrap();
+        assert!(Command::new("mkfifo").arg(&path).status().unwrap().success());
+        let checked=dir.clone();let (send,received)=channel();
+        let check=std::thread::spawn(move ||send.send(files_problem(&checked)).unwrap());
+        let result=received.recv_timeout(Duration::from_secs(1));let finished=result.is_ok();
+        if !finished {
+            // Linux permits opening a FIFO read/write without a peer. Unblock the old checker before failing.
+            let release=std::fs::OpenOptions::new().read(true).write(true).open(&path).unwrap();
+            check.join().unwrap();drop(release);
+        } else {check.join().unwrap();}
+        std::fs::remove_dir_all(dir).unwrap();
+        assert!(finished,"the file-type check must reject a FIFO before a blocking open");
+        assert!(result.unwrap().unwrap().contains(&path.to_string_lossy().to_string()));
+    }
 
     #[test]
     #[cfg(unix)]
