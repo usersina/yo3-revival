@@ -118,7 +118,8 @@ Hosting and playing are independent: you can host without opening a game, or hos
 1. Switch to **Advanced → Hosting → Advanced**. If your local server is running, close its game and choose
    **Overview → Stop server** before changing hosting settings.
 2. Set **Sharing address** to the LAN/VPN address or hostname your friends can reach. Leave **Listen on** at
-   **All interfaces (0.0.0.0)** unless you need a specific interface. Click **Save changes**.
+   **All interfaces (0.0.0.0)** unless you need a specific interface. Click **Save changes**. Until a sharing address
+   is saved, **All interfaces** accepts only this computer, so playing alone opens no network port.
 3. Under **Overview**, click **Start server**.
 4. Open **Players & invitations → New account** (or **Create account** if there are no accounts yet). Enter a unique
    first-player name, **1–16 characters**, and click **Create account**.
@@ -133,6 +134,10 @@ The default public port is **TCP 7443**. Friends connecting from outside your PC
 
 **Players & invitations → Additional players** adds players to the selected account, up to four total. Players choose
 their slot inside the game. Re-export an account's invitation when needed; managing it does not switch your login on Play.
+
+**Players & invitations → Give BP** adds BOOSTERPASS Points to the selected account while the server runs, including
+your own account when you play locally. The game shows the new total after the player's next purchase or login.
+Do not edit `accounts.json` for this: the server stores accounts in `server.db` and ignores that file after upgrading.
 
 Under **Hosting → Advanced**, you can choose an interface, change the port/data folder and set the first player for
 a new server. A saved interface follows address changes; an unavailable interface reports an error rather than
@@ -152,7 +157,9 @@ Only the chosen **TLS port** needs to be reachable by players. The internal HTTP
 do not forward it. The DLL supplies private local game ports automatically. You do not need to edit `yo3.ini` or
 forward the old game ports. A timeout alone does not identify a firewall or router as the cause.
 
-Manage firewall access in the operating system and router/VPN routing outside the app. See the official
+Manage firewall access in the operating system and router/VPN routing outside the app. On Windows, if an earlier
+version asked whether to allow `yo3-server.exe` and you chose **Cancel**, Windows saved a rule that blocks it: friends
+then cannot connect until you allow `yo3-server.exe` in Windows Defender Firewall (**Allow an app through firewall**). See the official
 [Windows firewall tools](https://learn.microsoft.com/windows/security/operating-system-security/network-security/windows-firewall/tools)
 or [firewalld port/service guide](https://firewalld.org/documentation/howto/open-a-port-or-service) if applicable.
 An application-specific firewall allowance may need updating after an executable path changes.
@@ -279,10 +286,16 @@ the version → **About & updates → Open application data**.
 
 To reuse an existing server, **stop it and back up its entire data folder first**. Set that folder under
 **Advanced → Hosting → Advanced → Data folder**, save, then start hosting. Changing the path selects data; it does
-not move existing data. The default is the app's `server/` directory.
+not move existing data. The default is the app's `server/` directory; the page shows the folder in use.
+
+**Coming from the Scripts edition?** Desktop does not use a Scripts bundle's `data/` folder on its own. Stop the
+Scripts server (`run.cmd` / `run.sh`), then choose that `data/` folder as the Data folder above to keep its
+accounts, cards, BP and invitations. If you start Desktop while the Scripts server still runs on the same port,
+Start reports that the port is taken.
 
 Old JSON state imports into SQLite in one transaction. Account/player IDs and credentials are preserved. Original
-JSON files remain as migration copies and no longer receive writes. A failed import reports an error; repair its
+JSON files remain as migration copies and no longer receive writes; edits to them after the upgrade are ignored
+(the server log says so). Give BP and the other Hosting controls change the database. A failed import reports an error; repair its
 source before retrying. Do not remove a migrated database to try to reimport stale JSON.
 
 Each server startup creates a consistent database backup under the server data folder's `backups/`. These backups

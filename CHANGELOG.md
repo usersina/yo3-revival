@@ -10,6 +10,21 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **Give BP from the app:** Advanced → Hosting → Players & invitations has a Give BP field for the selected account.
+  Editing `accounts.json` no longer changes anything after upgrading (accounts live in `server.db`); the server log now
+  says so when that file was edited.
+- **No firewall prompt when playing alone:** your local server only accepts this computer until you save a sharing
+  address for friends. Before, Windows asked to allow `yo3-server.exe`, and choosing Cancel quietly blocked friends
+  later. If that happened to you, see Connection help in the Desktop guide.
+- **Coming from the Scripts edition:** Hosting → Advanced shows which data folder the app uses; choose your Scripts
+  `data/` folder there to keep its accounts and BP. Starting while another server uses the same port now says so.
+- Fixed: a shop purchase that could not be saved took the BP without giving the cards. Two games on one account
+  can no longer buy the same protector or avatar item twice, and BP given during a session can be spent at once.
+- Fixed: a command-line (Scripts) server's certificate expired after a year and friends could no longer connect.
+  The server now renews it at start, keeping the same identity, so existing invitations and profiles keep working.
+
 ## v0.0.7 (2026-11-12)
 
 A smoother Desktop experience, clearer startup errors and bug reports with diagnostics attached automatically.

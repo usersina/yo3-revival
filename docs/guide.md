@@ -34,7 +34,7 @@ storage. Select the complete installation with `--game-dir` and retry; keep exis
 
 | Option                      | Purpose                                                                                              |
 | --------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `--bind`                    | Listening interface/IP; raw server defaults to `127.0.0.1`, scripts and Desktop default to `0.0.0.0` |
+| `--bind`                    | Listening interface/IP; raw server `127.0.0.1`, scripts `0.0.0.0`; Desktop: see below                |
 | `--auth-port`               | TLS listener, default `7443`                                                                         |
 | `--advertise`               | Address exported in profiles/asset URLs; does not change the listening interface                     |
 | `--game-dir`                | Complete original game installation                                                                  |
@@ -45,6 +45,8 @@ storage. Select the complete installation with `--game-dir` and retry; keep exis
 | `--regulation`              | Login banlist by ID/name; default unlimited                                                          |
 | `--duel-check`              | Compare each player's modeled client state with the rules engine after each step                     |
 | `--no-packet-log`           | Disable separate raw packet files; decoded packet traces remain in bounded session diagnostics       |
+
+Desktop listens on `127.0.0.1` while no sharing address is saved, even when **Listen on** is all interfaces.
 
 Other duel-testing flags and diagnostic paths are listed by `--help`; see [duel diagnostics](development.md#duel-diagnostics).
 The game's connection ports are private loopback endpoints assigned by its launcher. Do not configure those in `yo3.ini`.
@@ -67,7 +69,8 @@ admin token. Add `--data-dir PATH` to target a non-default setup. Keep each frie
 ```
 
 - `init-auth` creates the host's TLS identity once; include every hostname/IP friends will use. It refuses to replace
-  an existing identity.
+  an existing identity. Its certificate lasts a year; the server renews it at start within 30 days of expiry, with
+  the same key and names, so existing profiles and their copy of `server.crt` keep working.
 - `add-account NAME` creates an account and first player. Names are 1–16 characters and unique. `--also B,C` adds
   players to that account, up to four total.
 - `profile PLAYER FILE --advertise HOST` exports a CLI profile for an existing account. The profile references
@@ -75,6 +78,8 @@ admin token. Add `--data-dir PATH` to target a non-default setup. Keep each frie
 - `add-player`, `rename` and `set-country` manage an account's players. `countries` lists accepted country codes;
   `auto` clears an override.
 - `give-bp`, `add-code`, `remove-code` and `codes` manage points and redemption codes while hosting can continue.
+  Use them rather than editing `accounts.json`: after the first start of a current server, accounts live in
+  `server.db`, the JSON files are only kept as migration copies, and the server logs a warning when one was edited.
 
 `--help` on each subcommand lists the exact parameters. If playing from source, [the development guide](development.md#build-from-source)
 shows the explicit DLL/injector paths. For a release bundle, use its [play script](scripts.md#join-a-friends-server).
