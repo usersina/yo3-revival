@@ -35,6 +35,18 @@ async fn accounts_can_be_created_and_exported_while_the_tls_server_stays_online(
     let fresh = yo3_server::accounts::Directory::open(vec![], &data.join("accounts.json")).unwrap();
     assert!(fresh.has_key(&key), "live mutation committed to SQLite");
     assert_eq!(fresh.entries().find(|(_, k, _)| *k == Some(key.as_str())).unwrap().2.players.len(), 2);
+    // Duel logs are served from server.db; only plain .dlog names are looked up.
+    yo3_server::store::put_duel_log(&data, "20261112-9-1001.dlog", b"log bytes").unwrap();
+    let get = |path: &'static str| { let port = server.http.port(); async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut s = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        s.write_all(format!("GET {path} HTTP/1.1\r\nHost: x\r\n\r\n").as_bytes()).await.unwrap();
+        let mut out = Vec::new(); s.read_to_end(&mut out).await.unwrap(); String::from_utf8_lossy(&out).into_owned()
+    } };
+    let found = get("/duellogs/20261112-9-1001.dlog").await;
+    assert!(found.starts_with("HTTP/1.1 200") && found.ends_with("log bytes"), "{found}");
+    assert!(get("/duellogs/..%2Fserver.key").await.starts_with("HTTP/1.1 404"));
+    assert!(get("/duellogs/missing.dlog").await.starts_with("HTTP/1.1 404"));
     tokio::task::spawn_blocking(move || admin::manage(&live, &ManagerOp::Shutdown)).await.unwrap().unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(3), server.wait()).await.unwrap();
 }

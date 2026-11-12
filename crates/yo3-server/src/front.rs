@@ -761,7 +761,8 @@ impl Hub {
         }
     }
 
-    /// Keeps each duel's log in `dir`, which the HTTP server on `http_port` serves (`/duellogs/NAME`).
+    /// Keeps each duel's log in the database of data folder `dir`, which the HTTP server on `http_port` serves
+    /// (`/duellogs/NAME`).
     pub fn keep_duel_logs(&mut self, dir: &std::path::Path, http_port: u16) {
         self.duel_logs = Some(dir.to_path_buf());
         self.http_port = http_port;

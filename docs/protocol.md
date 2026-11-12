@@ -1600,7 +1600,8 @@ to `duellogs\<temp>\<file name>`, and when it is done (state 10) copies the file
 deletes the oldest beyond 100 (`0x498510`). So the log is a file the **server** serves, and **a duel against an NPC
 leaves none** (the only other caller of `0x498700` is the Server Duel Logs tab's download). `dlogURL` is
 `http://<host>:8080/duellogs/NAME.dlog` (the host is the address the client reached), served by our patch HTTP server from
-`data/duellogs/`; the file name is the URL's, ours `END_TIME-DUEL_ID-PLAYER_ID.dlog`, one file per player. The log is
+the `duel_logs` table of `server.db` (the newest 1000 are kept; older versions wrote `data/duellogs/`, which the
+server now reports as safe to delete); the name is the URL's, ours `END_TIME-DUEL_ID-PLAYER_ID.dlog`, one file per player. The log is
 that of the match's last duel. Live: both clients fetched theirs, Latest Duel Logs listed it ("Lv1 Yugi V.S. Lv1
 Kaiba"), Play replayed the duel on the field from the janken to the duel's end, then asked "Save this duel log?"
 (No) and returned to the main screen.

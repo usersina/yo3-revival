@@ -17,6 +17,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Give BP and BOOSTERPASS codes in the app:** Advanced → Hosting → Players & invitations has Give BP for the selected
   account, and a BOOSTERPASS codes section to make codes (random ones too), see who claimed each and when, and remove
   them. The `codes` command lists claim times too.
+- **Duel logs in the database:** the replays the game downloads after a duel between players are now kept in
+  `server.db` (the newest 1000) instead of loose files. An old `duellogs/` folder is reported as safe to delete.
 - **Clearer logs:** errors are red and warnings amber in the app, and in a server terminal. Old `accounts.json` copies
   are reported as a warning that they are no longer read and safe to delete (accounts live in `server.db`).
 - **No firewall prompt when playing alone:** your local server only accepts this computer until you save a sharing

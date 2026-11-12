@@ -26,7 +26,7 @@
 //! ExtraDeckNum, title, ?, PlayerType, card_protector, n_win, n_lose, n_draw}`, `pname` (32 bytes), the avatar (128
 //! bytes), `country` (4), the 32 speech lines (256 bytes each) and 256 bytes (the deck's name).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const MAGIC: u16 = 0x09E7;
 const NAME: usize = 32;
@@ -148,19 +148,17 @@ impl Log {
         out
     }
 
-    /// Writes the log into `dir`, returning its file name.
+    /// Keeps the log in the server's database (`store::put_duel_log`) in data folder `dir`, returning its name.
     pub fn save(&self, dir: &Path) -> std::io::Result<String> {
-        std::fs::create_dir_all(dir)?;
         let name = self.file_name();
-        std::fs::write(dir.join(&name), self.to_bytes())?;
+        crate::store::put_duel_log(dir, &name, &self.to_bytes())?;
         Ok(name)
     }
 }
 
-/// A saved log's path, if `name` is a plain file name of the directory (no path separators).
-pub fn path_of(dir: &Path, name: &str) -> Option<PathBuf> {
-    let plain = !name.is_empty() && name.ends_with(".dlog") && !name.contains(['/', '\\']) && !name.starts_with('.');
-    plain.then(|| dir.join(name))
+/// Whether `name` can be a kept log's name: a plain `.dlog` file name, as the download URL carries it.
+pub fn valid_name(name: &str) -> bool {
+    !name.is_empty() && name.ends_with(".dlog") && !name.contains(['/', '\\']) && !name.starts_with('.')
 }
 
 /// The engine commands among duel messages, as the log keeps them: `{id, 0, param1..param4}`.

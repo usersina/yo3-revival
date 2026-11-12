@@ -432,8 +432,8 @@ fn a_duel_between_players_leaves_a_replay_in_the_log() {
     enter(&mut a, 1001);
     enter(&mut b, 1002);
     second_wins(&mut a, &mut b);
-    let file = std::fs::read_dir(&dir).unwrap().filter_map(Result::ok).find(|f| f.file_name().to_string_lossy().contains("-1001")).expect("1001's log");
-    let bytes = std::fs::read(file.path()).unwrap();
+    let name = yo3_server::store::duel_log_names(&dir).unwrap().into_iter().find(|n| n.contains("-1001")).expect("1001's log");
+    let bytes = yo3_server::store::duel_log(&dir, &name).unwrap().unwrap();
     assert_eq!(u32::from_le_bytes(bytes[12..16].try_into().unwrap()), 1001, "player_1 is the first player");
     assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 1002);
     // The body, unpacked from the (value, count) pairs.

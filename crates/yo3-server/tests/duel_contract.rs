@@ -260,7 +260,7 @@ fn a_finished_duel_leaves_a_log_the_duel_log_screen_reads() {
     hub.keep_duel_logs(&dir, 8080);
     let ended = Ended { player_id: 1001, opponent: 1002, npc: false, duel_id: 9, match_type: 1, result: 1, replay: None };
     let name = hub.finish_duel(&ended).expect("a log file");
-    let bytes = std::fs::read(dir.join(&name)).unwrap();
+    let bytes = yo3_server::store::duel_log(&dir, &name).unwrap().expect("kept in server.db");
     let int = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
     assert_eq!(&bytes[..4], [0xE7, 0x09, 1, 0]);
     assert_eq!([int(8), int(12), int(16), int(20)], [9, 1001, 1002, 1]);
@@ -270,7 +270,8 @@ fn a_finished_duel_leaves_a_log_the_duel_log_screen_reads() {
     // A duel against an NPC leaves no log: the client downloads none of those (DuelResult 0x512070, MainGamen +0x804).
     let npc = Ended { player_id: 1001, opponent: 125, npc: true, duel_id: 10, match_type: 1, result: 1, replay: None };
     assert_eq!(hub.finish_duel(&npc), None);
-    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+    assert_eq!(yo3_server::store::duel_log_names(&dir).unwrap(), [name], "one log, in the database, no loose files");
+    assert!(!dir.join("duellogs").exists());
 }
 
 #[test]

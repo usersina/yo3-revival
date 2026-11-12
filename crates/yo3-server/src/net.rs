@@ -153,7 +153,7 @@ where
 pub async fn http_loop(
     listener: TcpListener,
     game_dir: PathBuf,
-    duel_logs: Option<PathBuf>,
+    data_dir: Option<PathBuf>,
     accounts: Arc<Mutex<Directory>>,
     admin_token: Option<String>,
     manager: crate::manager::Manager,
@@ -172,7 +172,7 @@ pub async fn http_loop(
                 continue;
             }
         };
-        let (game_dir, duel_logs, accounts, admin_token) = (game_dir.clone(), duel_logs.clone(), accounts.clone(), admin_token.clone());
+        let (game_dir, data_dir, accounts, admin_token) = (game_dir.clone(), data_dir.clone(), accounts.clone(), admin_token.clone());
         let manager = manager.clone();
         tokio::spawn(async move {
             let mut buf = Vec::new();
@@ -221,10 +221,11 @@ pub async fn http_loop(
                     Ok(b) => ("200 OK", b),
                     Err(_) => ("404 Not Found", vec![]),
                 }
-            } else if let Some(file) = path.strip_prefix("/duellogs/").and_then(|n| crate::duellog::path_of(duel_logs.as_deref()?, n)) {
-                match tokio::fs::read(file).await {
-                    Ok(b) => ("200 OK", b),
-                    Err(_) => ("404 Not Found", vec![]),
+            } else if let (Some(name), Some(dir)) = (path.strip_prefix("/duellogs/").filter(|n| crate::duellog::valid_name(n)), data_dir.clone()) {
+                let name = name.to_string();
+                match tokio::task::spawn_blocking(move || crate::store::duel_log(&dir, &name)).await {
+                    Ok(Ok(Some(b))) => ("200 OK", b),
+                    _ => ("404 Not Found", vec![]),
                 }
             } else if path.starts_with("/app/") {
                 ("200 OK", vec![])

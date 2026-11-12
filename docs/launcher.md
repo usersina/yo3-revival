@@ -286,7 +286,7 @@ the version → **About & updates → Open application data**.
 | Location inside app storage              | Contents                                                              |
 | ---------------------------------------- | --------------------------------------------------------------------- |
 | `launcher.db`                            | Preferences and saved private connections                             |
-| `server/server.db`                       | Hosted server state, including accounts, cards, BP and uploaded decks |
+| `server/server.db`                       | Server state: accounts, cards, decks, BP, codes, mail, duel logs      |
 | `server/server.crt`, `server/server.key` | Public certificate and private server identity key                    |
 | `logs/`, `profiles/`                     | Diagnostics and private connection profiles                           |
 | `reports/bug-reports.db`                 | Sanitized report drafts and posting receipts for safe retries          |

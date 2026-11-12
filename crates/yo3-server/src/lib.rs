@@ -307,7 +307,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         hub.keep_teams(&dir.join("teams.json"));
         hub.keep_events(&dir.join("events.json"));
         hub.keep_rentals(&dir.join("rentals.json"));
-        hub.keep_duel_logs(&dir.join("duellogs"), http_addr.port());
+        hub.keep_duel_logs(dir, http_addr.port());
     }
     hub.set_round_delay(EVENT_ROUND_DELAY);
     hub.set_directory(directory.clone());
@@ -342,7 +342,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     });
     let (shutdown, _) = tokio::sync::watch::channel(false);
     let manager = manager::Manager { accounts: directory.clone(), hub, shutdown: shutdown.clone(), engine_problem: world.engine_problem.clone(), listen: auth_addr, diagnostic_id: cfg.diagnostic_id };
-    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.as_ref().map(|d| d.join("duellogs")), directory, admin_token, manager));
+    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.clone(), directory, admin_token, manager));
     tracing::info!("authenticated TLS {} local management/assets HTTP {}; packets -> {}", auth_addr, http_addr, packets.path().display());
     Ok(Running { auth: auth_addr, http: http_addr, tasks: vec![auth_task, http_task, clock_task], shutdown })
 }
