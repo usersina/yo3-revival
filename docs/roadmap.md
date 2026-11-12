@@ -1049,7 +1049,10 @@ Stop finding missing fields one crash at a time.
       summon places with face bits, ChainRun's place; and what the original showed that we didn't: LP changes shown
       with their number and sound, the Set and activation effects, Field Spell backgrounds, the avatars' speech
       (draw, summon, activation, Set, turn end, damage). See "Presentation from Konami's logs" in protocol.md for
-      what is still open (CardBreak, music)
+      what is still open (CardBreak, music). Live (NPC duel against Kaiba, `--duel-deck 1408,550,557,120`):
+      Necrovalley turned the field into its canyon (back after the Battle Phase's own board), Gemini Elf's summon and
+      Trap Hole's Set played the avatar's cut-ins, Kaiba shouted his damage line, "-1240" counted his LP down from
+      7000 to 5100 (applied once), and the duel went on
 - [x] Translator, first part: the engine drives the duel session; its draws, turns and phases become engine commands,
       the client's idle prompt a command map of the legal commands, the client's card commands its responses; the CPU
       ends its turns at once (a placeholder bot) and other prompts are answered with defaults
