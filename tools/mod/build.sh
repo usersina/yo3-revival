@@ -4,8 +4,10 @@ cd "$(dirname "$0")"
 mkdir -p build
 CC=${CC:-i686-w64-mingw32-gcc}
 python3 - > build/version.h <<'PY'
-import json,os,subprocess,re
-version=os.environ.get('YO3_BUILD_VERSION','0.1.0-dev')
+import json,os,subprocess,re,tomllib
+# The default matches yo3-tunnel's build.rs ("<workspace version>-dev"), so dev DLLs pass the launcher's release check.
+workspace=tomllib.load(open('../../Cargo.toml','rb'))['workspace']['package']['version']
+version=os.environ.get('YO3_BUILD_VERSION',workspace+'-dev')
 commit=os.environ.get('YO3_BUILD_COMMIT') or subprocess.check_output(['git','rev-parse','--short=12','HEAD'],text=True).strip()
 assert len(version)<=64 and version.isascii() and not any(ord(c)<32 for c in version)
 assert len(commit)<=40 and commit.isascii()
