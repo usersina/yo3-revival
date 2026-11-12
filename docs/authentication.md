@@ -81,6 +81,12 @@ The session/ticket stores and simultaneous TLS connections have fixed caps (1024
 connections). TLS and credential handshakes have a 10-second deadline. Randomness comes from the operating system.
 The fixed Blowfish encryption is retained inside TLS for game compatibility; it is not a security boundary.
 
+Discovery, login, ticket and logout replies are complete, bounded messages. After a reply has been fully read and
+validated, failure to send the final TLS close alert does not invalidate it. The server sends its close alert and
+allows up to one second for the peer's close before dropping TCP. This avoids intermittent Windows socket resets
+during response cleanup; missing/truncated replies, certificate failures and rejected credentials still fail.
+Timeout diagnostics identify the active connection/response stage without changing the handshake deadline.
+
 The launcher binds ephemeral loopback gate/front/duel/HTTP ports. The DLL only permits the game's socket connections
 to those local ports and prepends a per-launch random cookie. The local proxy requires that cookie, so another
 local process cannot use the proxy merely by finding its port. Local HTTP uses the cookie in a loopback-only path.

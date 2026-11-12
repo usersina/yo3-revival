@@ -4943,6 +4943,7 @@ version = "0.0.6"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "rcgen",
  "ring",
  "serde",
  "serde_json",

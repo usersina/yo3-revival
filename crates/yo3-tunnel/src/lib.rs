@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use anyhow::{bail, Context};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls, TlsAcceptor, TlsConnector};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, pem::PemObject};
@@ -91,78 +91,133 @@ impl Endpoint {
         Ok(Self { address, name: ServerName::try_from(name)?, connector: TlsConnector::from(Arc::new(config)) })
     }
 
-    async fn open(&self, op: u8) -> anyhow::Result<Stream> {
-        let tcp = TcpStream::connect(&self.address).await?;
+    async fn open(&self, op: u8, stage: &mut &'static str) -> anyhow::Result<Stream> {
+        *stage = "TCP connect";
+        let tcp = TcpStream::connect(&self.address).await.context("connect to server")?;
         tcp.set_nodelay(true)?;
+        *stage = "TLS handshake";
         let mut tls = self.connector.connect(self.name.clone(), tcp).await.context("server certificate or TLS handshake failed")?;
-        tls.write_all(MAGIC).await?;
-        tls.write_u8(op).await?;
+        *stage = "transport write";
+        tls.write_all(MAGIC).await.context("send transport opener")?;
+        tls.write_u8(op).await.context("send transport operation")?;
         Ok(tls)
     }
 
     pub async fn login(&self, key: &str) -> anyhow::Result<Token> {
         if key.len() != KEY_LEN { bail!("account key must have {KEY_LEN} characters") }
         self.info().await?.ensure_compatible(PROTOCOL_VERSION, MOD_ABI)?;
-        tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
-            let mut tls = self.open(1).await?;
+        let mut stage = "TCP connect";
+        let (token,mut tls)=tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
+            let mut tls = self.open(1,&mut stage).await?;
             tls.write_u16(PROTOCOL_VERSION).await?;
             tls.write_u16(MOD_ABI).await?;
             tls.write_all(key.as_bytes()).await?;
-            let token = token_response(&mut tls).await?;
-            tls.shutdown().await?;
-            Ok(token)
-        }).await.context("login timed out")?
+            let token = token_response(&mut tls,&mut stage).await?;
+            Ok::<_,anyhow::Error>((token,tls))
+        }).await.with_context(|| format!("login timed out during {stage}"))??;
+        finish_response(token,&mut tls).await
     }
 
     /// Credential-free discovery, over the same authenticated TLS endpoint as game connections.
     pub async fn info(&self) -> anyhow::Result<ServerInfo> {
-        tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
-            let mut tls = self.open(5).await?;
-            let length = tls.read_u16().await? as usize;
+        let mut stage = "TCP connect";
+        let (info,mut tls)=tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
+            let mut tls = self.open(5,&mut stage).await?;
+            stage = "read server discovery response length";
+            let length = tls.read_u16().await.context("read server discovery response length")? as usize;
             if length == 0 || length > MAX_INFO { bail!("invalid server discovery response length") }
-            let mut body = vec![0; length]; tls.read_exact(&mut body).await?;
+            stage = "read server discovery response body";
+            let mut body = vec![0; length]; tls.read_exact(&mut body).await.context("read server discovery response body")?;
             let info = serde_json::from_slice(&body).context("invalid server discovery response")?;
-            tls.shutdown().await?;
-            Ok(info)
-        }).await.context("server discovery timed out")?.context("Server discovery failed; verify its address, identity and revival version")
+            Ok::<_,anyhow::Error>((info,tls))
+        }).await.with_context(|| format!("server discovery timed out during {stage}"))?.context("Server discovery failed; verify its address, identity and revival version")?;
+        finish_response(info,&mut tls).await
     }
 
     pub async fn ticket(&self, session: &Token, role: Role) -> anyhow::Result<Token> {
-        tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
-            let mut tls = self.open(2).await?;
+        let mut stage = "TCP connect";
+        let (token,mut tls)=tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
+            let mut tls = self.open(2,&mut stage).await?;
             tls.write_all(session).await?;
             tls.write_u8(role as u8).await?;
-            let token = token_response(&mut tls).await?;
-            tls.shutdown().await?;
-            Ok(token)
-        }).await.context("ticket request timed out")?
+            let token = token_response(&mut tls,&mut stage).await?;
+            Ok::<_,anyhow::Error>((token,tls))
+        }).await.with_context(|| format!("ticket request timed out during {stage}"))??;
+        finish_response(token,&mut tls).await
     }
 
     pub async fn logout(&self, session: &Token) -> anyhow::Result<()> {
-        tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
-            let mut tls = self.open(4).await?;
+        let mut stage = "TCP connect";
+        let mut tls=tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
+            let mut tls = self.open(4,&mut stage).await?;
             tls.write_all(session).await?;
-            if tls.read_u8().await? != 0 { bail!("logout refused") }
-            tls.shutdown().await?;
-            Ok(())
-        }).await.context("logout timed out")?
+            stage = "read logout acknowledgement";
+            if tls.read_u8().await.context("read logout acknowledgement")? != 0 { bail!("logout refused") }
+            Ok::<_,anyhow::Error>(tls)
+        }).await.with_context(|| format!("logout timed out during {stage}"))??;
+        finish_response((),&mut tls).await
     }
 
     pub async fn connect(&self, ticket: &Token, role: Role, local_duel_port: u16) -> anyhow::Result<Stream> {
+        let mut stage = "TCP connect";
         tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
-            let mut tls = self.open(3).await?;
+            let mut tls = self.open(3,&mut stage).await?;
             tls.write_all(ticket).await?;
             tls.write_u8(role as u8).await?;
             tls.write_u16(local_duel_port).await?;
+            stage = "read connection ticket acknowledgement";
             if tls.read_u8().await? != 0 { bail!("connection ticket refused") }
             Ok(tls)
-        }).await.context("connection timed out")?
+        }).await.with_context(|| format!("connection timed out during {stage}"))?
     }
 }
 
-async fn token_response(tls: &mut Stream) -> anyhow::Result<Token> {
-    if tls.read_u8().await? != 0 { bail!("login or session refused") }
+async fn finish_response<T,W: AsyncWrite+Unpin>(value: T, stream: &mut W) -> anyhow::Result<T> {
+    // Each caller has already read and validated its entire framed reply. A peer may close/reset immediately
+    // afterwards; failure to send our close_notify must not turn a successful operation into a startup failure.
+    // Keep cleanup separate from the request deadline so a late complete reply remains successful too.
+    let _=tokio::time::timeout(Duration::from_secs(1),stream.shutdown()).await;
+    Ok(value)
+}
+
+async fn token_response(tls: &mut Stream, stage: &mut &'static str) -> anyhow::Result<Token> {
+    *stage = "read login/session acknowledgement";
+    if tls.read_u8().await.context("read login/session acknowledgement")? != 0 { bail!("login or session refused") }
     let mut token = [0; TOKEN_LEN];
-    tls.read_exact(&mut token).await?;
+    *stage = "read complete login/session token";
+    tls.read_exact(&mut token).await.context("read complete login/session token")?;
     Ok(token)
+}
+
+#[cfg(test)]
+mod response_finalization {
+    use super::*;
+    use std::{io,pin::Pin,task::{Context,Poll}};
+
+    struct ClosingWriter { pending: bool, attempts: usize }
+    impl AsyncWrite for ClosingWriter {
+        fn poll_write(self: Pin<&mut Self>,_: &mut Context<'_>,bytes: &[u8]) -> Poll<io::Result<usize>> { Poll::Ready(Ok(bytes.len())) }
+        fn poll_flush(self: Pin<&mut Self>,_: &mut Context<'_>) -> Poll<io::Result<()>> { Poll::Ready(Ok(())) }
+        fn poll_shutdown(mut self: Pin<&mut Self>,_: &mut Context<'_>) -> Poll<io::Result<()>> {
+            self.attempts+=1;
+            if self.pending { Poll::Pending } else { Poll::Ready(Err(io::ErrorKind::ConnectionReset.into())) }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_validated_reply_survives_a_reset_during_shutdown() {
+        let value=[7;TOKEN_LEN];let mut writer=ClosingWriter{pending:false,attempts:0};
+        let result=finish_response(value,&mut writer).await;
+        assert!(writer.attempts>0,"attempt an orderly TLS close after reading the reply");
+        assert_eq!(result.expect("cleanup cannot invalidate an already validated reply"),value);
+    }
+
+    #[tokio::test]
+    async fn a_validated_reply_survives_a_shutdown_that_never_finishes() {
+        let value=[8;TOKEN_LEN];let mut writer=ClosingWriter{pending:true,attempts:0};
+        let result=tokio::time::timeout(Duration::from_secs(2),finish_response(value,&mut writer)).await
+            .expect("response cleanup must retain its one-second bound");
+        assert!(writer.attempts>0,"attempt an orderly TLS close after reading the reply");
+        assert_eq!(result.expect("a stalled close cannot invalidate an already validated reply"),value);
+    }
 }
