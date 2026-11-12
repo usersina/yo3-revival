@@ -557,12 +557,12 @@ impl Directory {
             return Err("give at least 1 BP".into());
         }
         let at = self.find(who).ok_or_else(|| format!("no account at or with a player named {who:?}"))?;
-        let account = &mut self.accounts[at].account;
-        account.dpoint = account.dpoint.saturating_add(bp);
-        let names: Vec<_> = account.players.iter().map(|p| p.name.as_str()).collect();
-        let done = (format!("user {} ({})", account.user_id, names.join(", ")), account.dpoint);
-        self.save();
-        Ok(done)
+        self.atomic(|d| {
+            let account = &mut d.accounts[at].account;
+            account.dpoint = account.dpoint.saturating_add(bp);
+            let names: Vec<_> = account.players.iter().map(|p| p.name.as_str()).collect();
+            Ok((format!("user {} ({})", account.user_id, names.join(", ")), account.dpoint))
+        })
     }
 
     /// The host's BOOSTERPASS codes.
@@ -632,6 +632,26 @@ impl Directory {
         let left = account.dpoint;
         self.save();
         Some(left)
+    }
+
+    /// A shop purchase: charges `cost` to the account holding `player_id` and applies `grant` to that player in one
+    /// save, both or neither. Refused when the player is gone, already owns `item` (checked against the stored player,
+    /// so two sessions of one account cannot buy it twice), the BP fall short, or the save fails. The BP left and the
+    /// player as stored.
+    pub fn purchase(&mut self, player_id: u32, cost: u32, item: Option<u16>, grant: impl FnOnce(&mut Player))
+        -> Result<(u32, Player), String> {
+        self.atomic(|d| {
+            let account = d.accounts.iter_mut().map(|e| &mut e.account)
+                .find(|a| a.players.iter().any(|p| p.player_id == player_id)).ok_or("no such player")?;
+            account.dpoint = account.dpoint.checked_sub(cost).ok_or("not enough BP")?;
+            let left = account.dpoint;
+            let player = account.players.iter_mut().find(|p| p.player_id == player_id).ok_or("no such player")?;
+            if item.is_some_and(|id| player.items.contains(&id)) {
+                return Err("already owned".into());
+            }
+            grant(player);
+            Ok((left, player.clone()))
+        })
     }
 
     /// Changes several players in one step and one save (a trade hands cards both ways): all of them or, when one is

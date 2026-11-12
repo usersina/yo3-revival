@@ -300,3 +300,49 @@ fn a_bought_protector_or_avatar_item_is_the_players() {
     let again = one(c.send(req_with(0x1B68, &[("sale_id", Value::U32(protector)), ("item_num", Value::U32(1))])));
     assert_eq!(again.request(), Some(0x1C25));
 }
+
+/// A stored account with one player: the directory, its folder and the player's id.
+fn stored_account(name: &str) -> (yo3_server::accounts::Directory, std::path::PathBuf, u32) {
+    let dir = std::env::temp_dir().join(format!("yo3-purchase-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    yo3_server::store::initialize(&dir).unwrap();
+    let mut d = yo3_server::accounts::Directory::open(vec!["Yugi".into()], &dir.join("accounts.json")).unwrap();
+    d.login(std::net::IpAddr::from([10, 0, 0, 9]), std::time::Instant::now());
+    let player = d.accounts().next().unwrap().1.players[0].player_id;
+    (d, dir, player)
+}
+
+#[test]
+fn a_purchase_that_cannot_be_saved_takes_no_bp_and_gives_no_cards() {
+    // The BP and the cards used to be two saves: a failure between them took the BP and gave nothing.
+    use yo3_server::accounts::START_BP;
+    let (mut d, dir, player) = stored_account("unsaved");
+    std::fs::remove_file(dir.join("server.db")).unwrap();
+    assert!(d.purchase(player, 100, None, |p| { p.cards.insert(10, 1); }).is_err());
+    assert_eq!(d.accounts().next().unwrap().1.dpoint, START_BP);
+    assert!(d.player(player).unwrap().cards.get(&10).is_none());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn an_item_is_bought_once_per_player_whatever_the_session_saw() {
+    // Ownership is checked on the stored player: two sessions of one account cannot both buy it.
+    let (mut d, dir, player) = stored_account("item-once");
+    let item = |p: &mut yo3_server::front::Player| { p.items.insert(2305); };
+    assert!(d.purchase(player, 200, Some(2305), item).is_ok());
+    let left = d.accounts().next().unwrap().1.dpoint;
+    assert_eq!(d.purchase(player, 200, Some(2305), item).unwrap_err(), "already owned");
+    assert_eq!(d.accounts().next().unwrap().1.dpoint, left, "no BP taken for a refused purchase");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn bp_given_during_a_session_can_be_spent_at_once() {
+    // The host's give-bp changes the stored account; the shop charges the stored amount, not the session's copy.
+    use yo3_server::accounts::START_BP;
+    let (mut d, dir, player) = stored_account("gift");
+    d.give_bp("Yugi", 500).unwrap();
+    let (left, stored) = d.purchase(player, START_BP + 400, None, |p| { p.cards.insert(10, 1); }).unwrap();
+    assert_eq!((left, stored.cards.get(&10)), (100, Some(&1)));
+    std::fs::remove_dir_all(dir).unwrap();
+}

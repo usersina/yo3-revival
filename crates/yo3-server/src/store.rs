@@ -43,6 +43,10 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
         let check: String = tx.query_row("PRAGMA quick_check", [], |r| r.get(0)).map_err(sql)?;
         if check != "ok" { return Err(io::Error::other(format!("server.db integrity check: {check}"))) }
         tx.commit().map_err(sql)?;
+        for name in edited_after_import(dir) {
+            tracing::warn!("{name} was changed after it was imported into server.db: the server uses server.db and \
+                ignores the edit. Use the admin commands instead (give-bp, add-player, rename; `yo3-server --help`)");
+        }
         fs::write(dir.join(FORMAT_MARKER), "sqlite:1\n")?;
         return Ok(());
     }
@@ -65,6 +69,13 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
     tx.commit().map_err(sql)?;
     fs::write(dir.join(FORMAT_MARKER), "sqlite:1\n")?;
     Ok(())
+}
+
+/// The legacy JSON documents modified after the last start's marker: hand edits that the database never sees.
+pub fn edited_after_import(dir: &Path) -> Vec<&'static str> {
+    let modified = |p: &Path| fs::metadata(p).and_then(|m| m.modified()).ok();
+    let Some(marker) = modified(&dir.join(FORMAT_MARKER)) else { return vec![] };
+    DOCUMENTS.iter().copied().filter(|name| modified(&dir.join(name)).is_some_and(|t| t > marker)).collect()
 }
 
 fn database_document(path: &Path) -> Option<(&Path, &str)> {
@@ -211,6 +222,22 @@ mod tests {
         let count: u32 = conn.query_row("SELECT count(*) FROM state_documents", [], |r| r.get(0)).unwrap();
         assert_eq!(count, 7);
         drop(conn);
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn json_edited_after_the_import_is_reported_not_reimported() {
+        // A host who raised BP by editing accounts.json after the import saw nothing change (issue #6).
+        let d = dir("sqlite-edited");
+        fs::write(d.join("accounts.json"), "{\"next_user\":1042}").unwrap();
+        initialize(&d).unwrap();
+        assert!(edited_after_import(&d).is_empty());
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+        fs::write(d.join("accounts.json"), "{\"next_user\":9999}").unwrap();
+        fs::File::options().write(true).open(d.join("accounts.json")).unwrap().set_modified(later).unwrap();
+        assert_eq!(edited_after_import(&d), ["accounts.json"]);
+        initialize(&d).unwrap();
+        assert_eq!(read(&d.join("accounts.json")).unwrap().unwrap()["next_user"], 1042, "server.db stays authoritative");
         fs::remove_dir_all(d).unwrap();
     }
 

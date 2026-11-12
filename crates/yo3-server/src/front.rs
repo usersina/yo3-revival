@@ -2382,21 +2382,13 @@ impl FrontSession {
         // A count from the client: its price must not overflow (a panic in a debug build, a cheap bargain in release).
         let Some(cost) = price.checked_mul(count) else { return Message::reply(0x1C25) };
         let Some(at) = self.selected else { return Message::reply(0x1C25) };
-        if count == 0 || count > max || cost > self.account.dpoint {
+        if count == 0 || count > max {
             return Message::reply(0x1C25);
         }
         let item = goods.item();
         if item.is_some_and(|id| self.account.players[at].items.contains(&id)) {
             return Message::reply(0x1C25);
         }
-        // The BP are taken from the stored amount under the accounts' lock, so duel rewards paid since this session last
-        // looked are neither lost nor spent twice.
-        let left = match &self.directory {
-            Some(d) => d.locked().charge(self.account.user_id, cost),
-            None => Some(self.account.dpoint - cost),
-        };
-        let Some(left) = left else { return Message::reply(0x1C25) };
-        self.account.dpoint = left;
         let bought: Vec<crate::shop::Present> = (0..count).map(|_| goods.take(&mut self.rng)).collect();
         let add = |p: &mut Player| {
             if let Some(id) = item {
@@ -2413,9 +2405,24 @@ impl FrontSession {
                 }
             }
         };
-        add(&mut self.account.players[at]);
-        if let Some(d) = &self.directory {
-            d.locked().update_player(self.account.players[at].player_id, add);
+        // The BP and the goods change together in the stored account under its lock: duel rewards paid since this
+        // session last looked are neither lost nor spent twice, and a failed save neither takes BP nor gives cards.
+        match &self.directory {
+            Some(d) => match d.locked().purchase(self.account.players[at].player_id, cost, item, add) {
+                Ok((left, stored)) => {
+                    self.account.dpoint = left;
+                    self.account.players[at] = stored;
+                }
+                Err(why) => {
+                    tracing::warn!("[shop] purchase refused: {why}");
+                    return Message::reply(0x1C25);
+                }
+            },
+            None => {
+                let Some(left) = self.account.dpoint.checked_sub(cost) else { return Message::reply(0x1C25) };
+                self.account.dpoint = left;
+                add(&mut self.account.players[at]);
+            }
         }
         self.presents.extend(bought);
         Message::reply(0x1C24).with("dpoint", Value::U32(self.account.dpoint))
