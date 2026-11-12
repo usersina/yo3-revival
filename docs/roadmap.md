@@ -36,6 +36,16 @@ Desktop archives also carry `yo3-revival.ico` and `yo3-revival.png` for custom s
 both platform archives. The in-game login news no longer includes the deck-onboarding notice; a front contract
 checks its removal alongside the existing news-format and engine-warning coverage.
 
+v0.0.9 release preparation (2026-11-12):
+
+- [x] The workspace package version and the local lockfile entries are `0.0.9`. The changelog describes the
+  presentation from Konami's logs, the card check and sweeps with their fixes, choices returned to the player
+  (two-effect cards, unlabeled options, sums), replays with every card, the stricter deck check, and the pinned
+  engine data (the release workflow now checks the bundle's own engine).
+- [x] All workspace tests pass; workspace Clippy is clean; documentation links pass. The full card sweep (4,684
+  cards) and the real-deck sweep (2,270 duels) pass; the presentation commands, the sum window and cancelling were
+  checked live in the client on Linux.
+
 v0.0.8 release preparation (2026-11-12):
 
 - [x] The workspace package version and the local lockfile entries are `0.0.8`. The changelog describes the new

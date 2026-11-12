@@ -10,8 +10,39 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.0.9 (2026-11-12)
 
+Every card checked against the rules engine, duels that look and sound like the original game, and choices back in
+your hands. Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the
+server, rules engine and required connection components. Original game files are not included. **Windows 7 is not
+supported.**
+
+Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.9/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.9/docs/scripts.md).
+
+- **Duels show what the original game showed,** worked out from duel logs recorded on Konami's own server in
+  2010–2012: Life Point changes show their number and sound, a Field Spell changes the duel field's background,
+  Sets and activations play their effects, and your avatar speaks your Avatar Settings lines when drawing,
+  summoning, activating, Setting, ending a turn and taking damage (the game's "speech" duel option turns it off).
+  Moves play the right sound, and a surrender reads as in the original.
+- **Every card checked:** each of the game's cards now has to load in the rules engine with the game's own Level,
+  ATK and DEF, and each is played through a full test duel, as are the decks people used on Konami's server. This
+  found and fixed:
+  - Barrel Dragon and Red-Eyes Darkness Metal Dragon didn't work in v0.0.8.
+  - A deck's second-print Dark Magician or Polymerization silently vanished from the duel.
+  - Placing a card on the opponent's field (Give and Take, Black Garden), disabling two zones (Ground Collapse) and
+    removing counters from several cards (Cloudian - Altus) could stall the duel.
+  - Machina Fortress couldn't be Special Summoned, and Doomsday Token, Grinder Golem's tokens and Slime Tokens never
+    appeared.
+- **Your choices are yours:** a card with two effects you can activate at once asks which one; an effect's options
+  the game has no label for show as cards to pick from instead of the first option being chosen for you; and when
+  cards must add up to a Level (Machina Fortress's discards, a Ritual Summon's tributes) you pick them, then confirm
+  with a right-click.
+- **Replays show both players' cards,** as the original's did, and duel log files match the original's layout.
+- **Decks the duel can't play are refused:** a Fusion or Synchro Monster in the main deck (the game's deck editor
+  doesn't allow it either), and the 12 game exclusives the rules engine doesn't have (Ulevo, Xexex and others; no
+  pack or preset deck holds them).
 - Removed the starting-deck onboarding notice from in-game login news.
 - Desktop folders now include `yo3-revival.ico` and `yo3-revival.png` for custom shortcuts. The Windows executable
   continues to contain the launcher icon itself.
