@@ -260,7 +260,7 @@ impl Backend {
         ensure!(owned.as_mut().is_none_or(|p| p.try_wait().ok().flatten().is_some()), "Server is still starting.");
         validate_game(Path::new(&settings.game_dir))?;
         let (_, name) = server_address(&settings.host_address)?;
-        let bind = network::resolve_bind(settings, &network::bindings()?)?;
+        let bind = network::effective_bind(settings, network::resolve_bind(settings, &network::bindings()?)?);
         ensure!(settings.listen_port > 0, "Port must be between 1 and 65535.");
         let mut cmd = self.server_command(settings, bind)?;
         let data = self.data_dir(settings);

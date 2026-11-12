@@ -442,7 +442,7 @@ impl App {
         let port=column![muted("TCP port"),text_input("7443",&self.port).padding(12)
             .style(move |theme,status|ui::input_style(theme,status,port_invalid))
             .on_input_maybe((!self.locked() && !self.modal_open()).then_some(|s|Msg::Input(Field::Port,s)))].spacing(8).width(150);
-        let mut network=column![ui::label_help("Listen on", "The network interface the server accepts connections on. All interfaces (0.0.0.0) is the default. A specific interface limits access to that network; localhost allows only this computer."),muted("Keep All interfaces for hosting. Friends use the sharing address above, rather than 0.0.0.0."),
+        let mut network=column![ui::label_help("Listen on", "The network interface the server accepts connections on. All interfaces (0.0.0.0) is the default. A specific interface limits access to that network; localhost allows only this computer."),muted("Keep All interfaces for hosting. Friends use the sharing address above, rather than 0.0.0.0. Until a sharing address is saved, All interfaces accepts only this computer."),
             pick_list(self.bindings.clone(),selected,Msg::BindSelect).placeholder("Choose interface").padding(12).width(Fill),
             row![port,widget::Space::new().width(Fill),action(Icon::Refresh,"Refresh interfaces",(!self.locked()).then_some(Msg::RefreshBindings)).style(button::text)].spacing(12).align_y(iced::Alignment::End)].spacing(16);
         if port_invalid {network=network.push(ui::inline_status("TCP port: use a number from 1 to 65535.",ui::Tone::Danger));}

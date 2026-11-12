@@ -37,6 +37,18 @@ pub fn resolve_bind(settings: &Settings, available: &[BindAddress]) -> anyhow::R
     ensure!(requested.is_unspecified() || requested.is_loopback() || available.iter().any(|b| b.address == requested), "The selected listening address is not assigned to this computer");
     Ok(requested)
 }
+
+/// The address the server actually listens on. Without a sharing address nobody else can be invited, so "all
+/// interfaces" narrows to this computer: solo play then opens no network port (and on Windows raises no firewall
+/// prompt, whose Cancel would leave block rules that later break hosting). A specific interface is kept as chosen.
+pub fn effective_bind(settings: &Settings, resolved: IpAddr) -> IpAddr {
+    let sharing = share_address(settings).ok().flatten().is_some();
+    match resolved {
+        IpAddr::V4(ip) if ip.is_unspecified() && !sharing => IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        IpAddr::V6(ip) if ip.is_unspecified() && !sharing => IpAddr::V6(std::net::Ipv6Addr::LOCALHOST),
+        other => other,
+    }
+}
 pub fn advertised(settings: &Settings) -> anyhow::Result<(String, String)> {
     let input = settings.host_address.trim().strip_prefix("yo3://").unwrap_or(settings.host_address.trim());
     let (address, name) = crate::server_address(input)?;
@@ -55,4 +67,29 @@ pub fn share_address(settings: &Settings) -> anyhow::Result<Option<(String, Stri
         if let IpAddr::V6(v6) = ip && let Some(v4) = v6.to_ipv4_mapped() && (v4.is_loopback() || v4.is_unspecified()) { return Ok(None) }
     }
     Ok(Some((address, name)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn settings(host: &str, bind: &str) -> Settings {
+        Settings { host_address: host.into(), bind_address: bind.into(), ..Settings::default() }
+    }
+
+    #[test]
+    fn all_interfaces_listen_only_locally_until_a_sharing_address_is_set() {
+        for (host, bind, expected) in [
+            ("localhost", "0.0.0.0", "127.0.0.1"),
+            ("", "0.0.0.0", "127.0.0.1"),
+            ("127.0.0.1", "::", "::1"),
+            ("friends.example", "0.0.0.0", "0.0.0.0"),
+            ("192.168.1.20", "::", "::"),
+            ("localhost", "192.168.1.20", "192.168.1.20"),
+            ("localhost", "127.0.0.1", "127.0.0.1"),
+        ] {
+            let s = settings(host, bind);
+            assert_eq!(effective_bind(&s, bind.parse().unwrap()), expected.parse::<IpAddr>().unwrap(), "{host} {bind}");
+        }
+    }
 }
