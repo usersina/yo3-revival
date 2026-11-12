@@ -53,7 +53,7 @@ enum Page { Play, Server, Activity, Settings, About }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum HostTab { Overview, Invitations, Advanced }
 #[derive(Clone, Copy)]
-enum Disclosure { Game, Account }
+enum Disclosure { Game, Account, Codes }
 #[derive(Clone)]
 enum UpdateStatus { Checking, Checked(updates::Decision), Failed(String) }
 #[derive(Clone)]
@@ -63,14 +63,14 @@ enum GameDataDialog {
     Problem(String), Complete,
 }
 #[derive(Clone, Copy)]
-enum Field { Game, Wine, Host, Data, Player, Label, Address, Key, Account, NewPlayer, Port, GiveBp }
+enum Field { Game, Wine, Host, Data, Player, Label, Address, Key, Account, NewPlayer, Port, GiveBp, CodeText, CodeBp, CodeUses }
 #[derive(Clone)]
 enum Msg {
     Mode(bool), ServerOption(String, String), ResetOption(String), FindOption(String),
     Page(Page), HostTab(HostTab), Input(Field, String), Select(ServerChoice), AccountSelect(String), AdminAccountSelect(String),
     Start, Stop, Play, StopGame, TestConnection, Discover, TrustIdentity, RefreshBindings, BindSelect(yo3_desktop::network::BindAddress), Direct(bool),
     SaveSettings(Section), CancelSettings(Section), Browse(Field), UsePath, FolderPicked(u64,Field,Result<Option<String>,String>), Import, AddServer, SaveServer, EditServer, RemoveServer, ConfirmRemoveServer,
-    CreateAccount, AddPlayer, GiveBp, Export, Tick, Animate, Poll(Result<LiveStatus, String>), LogsPolled(Result<String,String>), Done(Result<Outcome, String>),
+    CreateAccount, AddPlayer, GiveBp, AddCode, RemoveCode(String), CopyCode(String), Export, Tick, Animate, Poll(Result<LiveStatus, String>), LogsPolled(Result<String,String>), Done(Result<Outcome, String>),
     Logs(bool), LogScrolled(bool), Pause(bool), LogFilter(String), CopyLogs, ExportLogs, PrepareReport(bool), SaveLogs, RemovePersonal(bool), OpenData, Support, Help, NetworkHelp,
     Close, CancelClose, KeepHosting(bool), Quit(bool), Disclosure(Disclosure), NewAccount, GitHub, ExternalOpened(Result<(), String>), DismissNotice,
     RetrySetup, ValidateGame, RunSetupCheck(u64), SetupChecked(u64, Settings, yo3_desktop::Readiness, yo3_desktop::direct::State, Vec<PathBuf>), SetupSaved(u64, Settings, Result<Settings,String>), CopyError,
@@ -84,7 +84,7 @@ enum Msg {
 impl std::fmt::Debug for Msg { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("DesktopEvent") } }
 #[derive(Clone)]
 enum Outcome {
-    Info(String), Status(Value), GameStarted, Accounts(Value), AccountsChanged(Value, String, Option<String>), Imported(SavedServer),
+    Info(String), Status(Value), GameStarted, Accounts(Value), Codes(Value, Option<String>), AccountsChanged(Value, String, Option<String>), Imported(SavedServer),
     Observed(yo3_tunnel::ObservedServer), Checked(yo3_tunnel::ServerInfo), Bindings(Vec<yo3_desktop::network::BindAddress>),
     SettingsSaved(Section, Settings), SelectionSaved(Settings), ConnectionsSaved(Vec<SavedServer>, i64), ConnectionsRemoved(Vec<SavedServer>, Settings),
     Recovered(Settings, Vec<SavedServer>, Arc<Backend>), GameDataReset(PathBuf), Quit,
@@ -94,7 +94,7 @@ struct LiveStatus { server: Option<Value>, game_running: bool, game_ready: bool,
 struct App {
     root: PathBuf, backend: Option<Arc<Backend>>, settings: Settings, draft: Settings, page: Page, host_tab: HostTab,
     servers: Vec<SavedServer>, selected: ServerChoice, status: Option<Value>, accounts: Value, account: String, admin_account: String,
-    new_account: String, new_player: String, give_bp: String, editor: bool, editing_id: Option<i64>, remove_server: Option<i64>,
+    new_account: String, new_player: String, give_bp: String, codes: Value, codes_open: bool, code_text: String, code_bp: String, code_uses: String, editor: bool, editing_id: Option<i64>, remove_server: Option<i64>,
     label: String, address: String, key: String, certificate: String, server_name: String,
     busy: bool, polling: bool, game_running: bool, game_ready: bool, notice: String, failed: bool, feedback_page: Page,
     notice_expires: Option<std::time::Instant>, operation_page: Page, operation_label: String,
@@ -133,7 +133,7 @@ impl App {
         let backend = if error.is_empty() { Backend::new(root.clone()).map_err(|e| error = e.to_string()).ok() } else { None };
         let first_setup = !std::path::Path::new(&settings.game_dir).join("yo3.exe").is_file(); let page = if settings.advanced_mode && first_setup { Page::Settings } else { Page::Play };
         Self { root, backend, draft: settings.clone(), settings, page, host_tab: HostTab::Overview, servers, selected, status: None, accounts: Value::Null,
-            account, admin_account: String::new(), new_account: String::new(), new_player: String::new(), give_bp: String::new(), editor: false, editing_id: None, remove_server: None,
+            account, admin_account: String::new(), new_account: String::new(), new_player: String::new(), give_bp: String::new(), codes: Value::Null, codes_open: false, code_text: String::new(), code_bp: String::new(), code_uses: String::new(), editor: false, editing_id: None, remove_server: None,
             label: String::new(), address: String::new(), key: String::new(), certificate: String::new(), server_name: String::new(),
             busy: false, polling: false, game_running: false, game_ready: false, failed: !error.is_empty(), notice: error, feedback_page: page,
             notice_expires: None, operation_page: page, operation_label: String::new(), log_server: true, paused: false, follow_logs: true, logs: String::new(), filter: String::new(), closing: false, keep_hosting_on_exit: true, support: false,
@@ -306,7 +306,8 @@ impl App {
             Msg::OpenReleaseLink(link) => match release_web_link(&link) {Ok(link)=>return open_external(link),Err(error)=>self.feedback(Err(error))},
             Msg::CopyError => return iced::clipboard::write(format!("YO3 Revival {} ({})\n{}",yo3_tunnel::BUILD_VERSION,yo3_tunnel::BUILD_COMMIT,self.error_report())),
             Msg::DismissNotice => { self.notice.clear(); self.notice_expires = None; }
-            Msg::Disclosure(section) => match section { Disclosure::Game => self.advanced_game = !self.advanced_game, Disclosure::Account => self.account_options = !self.account_options },
+            Msg::Disclosure(section) => match section { Disclosure::Game => self.advanced_game = !self.advanced_game, Disclosure::Account => self.account_options = !self.account_options,
+                Disclosure::Codes => { self.codes_open = !self.codes_open; if self.codes_open { return self.load_codes(None) } } },
             Msg::NewAccount => self.account_form = !self.account_form,
             Msg::Page(page) => {
                 self.support=false;
@@ -433,9 +434,29 @@ impl App {
                 self.begin("Giving BP…");
                 return job(move || {
                     let total = backend.manage(&settings, ManagerOp::GiveBp { who: who.clone(), amount })?["bp"].as_u64().unwrap_or_default();
-                    Ok(Outcome::AccountsChanged(backend.accounts(&settings)?, format!("Gave {amount} BP to {who}: {total} BP now. The game shows it after the next purchase or login."), None))
+                    Ok(Outcome::AccountsChanged(backend.accounts(&settings)?, format!("Gave {amount} BP to {who}: {total} BP now. A game that is open shows it on its next screen."), None))
                 });
             }
+            Msg::AddCode => {
+                let Some(bp) = give_bp_amount(&self.code_bp) else { return Task::none() };
+                let uses = if self.code_uses.trim().is_empty() { None } else { match code_uses(&self.code_uses) { Some(n) => Some(n), None => return Task::none() } };
+                let Some(backend) = self.backend.clone() else { return Task::none() }; let settings = self.settings.clone();
+                let op = ManagerOp::AddCode { code: self.code_text.trim().to_uppercase(), bp, uses };
+                self.begin("Creating code…");
+                return job(move || {
+                    let code = backend.manage(&settings, op)?["code"].as_str().unwrap_or_default().to_string();
+                    Ok(Outcome::Codes(backend.manage(&settings, ManagerOp::Codes)?, Some(format!("Code {code} created: players enter it in Main Menu → BOOSTERPASS."))))
+                });
+            }
+            Msg::RemoveCode(code) => {
+                let Some(backend) = self.backend.clone() else { return Task::none() }; let settings = self.settings.clone();
+                self.begin("Removing code…");
+                return job(move || {
+                    backend.manage(&settings, ManagerOp::RemoveCode { code: code.clone() })?;
+                    Ok(Outcome::Codes(backend.manage(&settings, ManagerOp::Codes)?, Some(format!("Code {code} removed. BP already claimed with it stays."))))
+                });
+            }
+            Msg::CopyCode(code) => return iced::clipboard::write(code),
             Msg::Export => {
                 let Some(backend) = self.backend.clone() else { return Task::none() }; let settings = self.settings.clone(); let who = self.admin_account.clone(); self.begin("Exporting private invitation…");
                 return Task::perform(async move {
@@ -504,6 +525,11 @@ impl App {
                     Ok(Outcome::Status(status)) => { self.status = Some(status); self.completed(Ok("Server is running on this computer.".into())); self.startup.resume_hosting = false; return self.load_accounts() }
                     Ok(Outcome::GameStarted) => { self.game_running = true; self.game_ready = false; self.game_start=Some(std::time::Instant::now()); }
                     Ok(Outcome::Accounts(accounts)) => { self.accounts = accounts; self.reconcile_accounts(); }
+                    Ok(Outcome::Codes(codes, message)) => {
+                        self.codes = codes;
+                        if message.is_some() { self.code_text.clear(); self.code_bp.clear(); self.code_uses.clear(); }
+                        if let Some(message) = message { self.completed(Ok(message)) }
+                    }
                     Ok(Outcome::AccountsChanged(accounts, message, selected)) => { let invite = !self.settings.advanced_mode && selected.is_some(); self.accounts = accounts; if let Some(selected) = selected { self.admin_account = selected; } self.reconcile_accounts(); self.new_account.clear(); self.new_player.clear(); self.give_bp.clear(); self.account_form = false; self.completed(Ok(message)); if invite { return self.update(Msg::Export) } }
                     Ok(Outcome::Imported(server)) => { self.reset_editor(); self.identity = server.identity.clone().or_else(|| yo3_tunnel::identity_from_pem(server.certificate.as_bytes()).ok()); self.label = server.label; self.address = server.address; self.key = server.key; self.certificate = server.certificate; self.server_name = server.server_name; self.editor = true; self.page = Page::Play; self.invitation_imported=true; return self.check_invitation() }
                     Ok(Outcome::Observed(server)) => {self.support=false; self.observed = Some(server);},
@@ -643,7 +669,7 @@ impl App {
                 self.address=value;self.server_name.clear();self.identity=None;self.certificate.clear();self.observed=None;self.checked=None;self.invalidate_invitation();
             },
             Field::Key=>if self.key!=value {self.key=value;self.checked=None;self.invalidate_invitation();},
-            Field::Account=>self.new_account=value,Field::NewPlayer=>self.new_player=value,Field::GiveBp=>self.give_bp=value,Field::Port=>self.port=value,
+            Field::Account=>self.new_account=value,Field::NewPlayer=>self.new_player=value,Field::GiveBp=>self.give_bp=value,Field::CodeText=>self.code_text=value,Field::CodeBp=>self.code_bp=value,Field::CodeUses=>self.code_uses=value,Field::Port=>self.port=value,
         }
         if game_changed || first_game_input {
             self.first_setup=false;self.notice.clear();self.failed=false;self.failure_setup=None;
@@ -830,6 +856,11 @@ impl App {
         let backend = self.backend.clone(); let remote = self.selected.remote(&self.servers).ok().flatten();
         job(move || { LauncherDb::open(&root)?.save_settings(&settings)?; if let Some(backend) = backend && let Err(error) = backend.sync_direct(&settings, remote) { backend.diagnostics.line(&format!("Direct-launch selection needs refresh: {error:#}")); } Ok(Outcome::SelectionSaved(settings)) })
     }
+    fn load_codes(&mut self, message: Option<String>) -> Task<Msg> {
+        let Some(backend) = self.backend.clone() else { return Task::none() }; let settings = self.settings.clone();
+        if self.status.is_none() { return Task::none() }
+        self.begin("Loading BOOSTERPASS codes…"); job(move || Ok(Outcome::Codes(backend.manage(&settings, ManagerOp::Codes)?, message)))
+    }
     fn load_accounts(&mut self) -> Task<Msg> { let Some(backend) = self.backend.clone() else { return Task::none() }; let settings = self.settings.clone(); self.begin("Loading accounts…"); job(move || Ok(Outcome::Accounts(backend.accounts(&settings)?))) }
     fn apply_update(&mut self) -> Task<Msg> {
         if self.busy || self.modal_open() || self.applying { return Task::none() }
@@ -866,6 +897,15 @@ fn release_web_link(link: &str) -> Result<String,String> {
 fn open_external(url: String) -> Task<Msg> {
     Task::perform(async move { tokio::task::spawn_blocking(move || open(&url)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string()) }, Msg::ExternalOpened)
 }
+/// How many accounts may claim a new code: a whole number from 1 to 100,000.
+fn code_uses(input: &str) -> Option<u32> { input.trim().parse::<u32>().ok().filter(|n| (1..=100_000).contains(n)) }
+/// A code the host typed: empty (a random one is made) or the game window's 16 letters and digits.
+fn code_text_ok(input: &str) -> bool { let t = input.trim(); t.is_empty() || (t.len() == yo3_server::accounts::CODE_LEN && t.bytes().all(|b| b.is_ascii_alphanumeric())) }
+/// A claim time (UTC, RFC 3339) in this computer's time zone.
+fn claim_time(at: Option<&str>) -> String {
+    at.and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+        .map_or("an unrecorded time".into(), |t| t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string())
+}
 /// A Give BP amount the host typed: a whole number from 1 to 1,000,000.
 fn give_bp_amount(input: &str) -> Option<u32> { input.trim().parse::<u32>().ok().filter(|n| (1..=1_000_000).contains(n)) }
 fn account_names(accounts: &Value) -> Vec<String> { accounts.as_array().into_iter().flatten().filter_map(|a| a["players"][0]["name"].as_str().map(str::to_string)).collect() }
@@ -895,6 +935,14 @@ fn wait_for_opener(cmd:&mut std::process::Command,limit:std::time::Duration)->an
 #[cfg(test)]
 mod flow_tests {
     use super::*;
+    #[test]
+    fn host_inputs_for_bp_and_codes_are_checked_before_sending() {
+        assert_eq!((give_bp_amount(" 5000 "), give_bp_amount("0"), give_bp_amount("x"), give_bp_amount("1000001")), (Some(5000), None, None, None));
+        assert_eq!((code_uses("3"), code_uses("0"), code_uses("")), (Some(3), None, None));
+        assert!(code_text_ok("") && code_text_ok("WELCOME2YO3DUEL1") && !code_text_ok("SHORT") && !code_text_ok("WELCOME-YO3DUEL1"));
+        assert_eq!(claim_time(None), "an unrecorded time");
+        assert_eq!(claim_time(Some("2026-11-12T15:04:05Z")).len(), "2026-11-12 16:04".len(), "local date and minute");
+    }
     #[test]
     fn direct_launch_changes_require_a_ready_saved_idle_setup_and_our_own_loader() {
         use yo3_desktop::{Readiness,direct::State};

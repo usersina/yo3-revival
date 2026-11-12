@@ -529,6 +529,7 @@ impl App {
         else{selected=selected.push(row![ui::inline_status("Set a reachable sharing address before exporting invitations.",ui::Tone::Info),
             action(Icon::Settings,"Configure sharing",Some(Msg::HostTab(HostTab::Advanced))).style(button::text)].spacing(12).align_y(iced::Alignment::Center));}
         let mut body=column![selected].spacing(24);
+        body=body.push(self.codes_view());
         body=body.push(disclosure("Additional players",self.account_options,Msg::Disclosure(Disclosure::Account)));
         if self.account_options{
             let name=self.new_player.trim();let valid=!name.is_empty() && name.chars().count()<=yo3_server::accounts::MAX_NAME && !name.chars().any(char::is_control);
@@ -536,6 +537,36 @@ impl App {
                 row![widget::Space::new().width(Fill),action(Icon::Plus,"Add player",(!self.locked() && !self.admin_account.is_empty() && valid && player_count<yo3_server::accounts::MAX_PLAYERS).then_some(Msg::AddPlayer)).style(button::primary)]].spacing(16));
         }
         body.into()
+    }
+    /// BOOSTERPASS codes: make one (random when the code is left empty), see who claimed each and when, remove it.
+    fn codes_view(&self)->Element<'_,Msg>{
+        let mut section=column![disclosure("BOOSTERPASS codes",self.codes_open,Msg::Disclosure(Disclosure::Codes))].spacing(16);
+        if !self.codes_open {return section.into()}
+        let uses_ok=self.code_uses.trim().is_empty() || code_uses(&self.code_uses).is_some();
+        let ready=give_bp_amount(&self.code_bp).is_some() && uses_ok && code_text_ok(&self.code_text);
+        section=section.push(muted("Players enter a code in the game under Main Menu → BOOSTERPASS to get its BP, once per account."))
+            .push(row![self.field("Code","Empty makes a random code",&self.code_text,Field::CodeText),
+                self.field("BP","e.g. 5000",&self.code_bp,Field::CodeBp),
+                self.field("Accounts","Empty: any number",&self.code_uses,Field::CodeUses)].spacing(12))
+            .push(row![widget::Space::new().width(Fill),action(Icon::Plus,"Create code",(!self.locked() && ready).then_some(Msg::AddCode)).style(button::primary)]);
+        if !code_text_ok(&self.code_text){section=section.push(ui::inline_status("A code is 16 letters and digits, the boxes of the game's window.",ui::Tone::Warning));}
+        let codes=self.codes.as_array().cloned().unwrap_or_default();
+        if codes.is_empty(){return section.push(muted("No codes yet.")).into()}
+        for code in codes {
+            let name=code["code"].as_str().unwrap_or_default().to_string();
+            let claims=code["claims"].as_array().cloned().unwrap_or_default();
+            let limit=code["uses"].as_u64().map_or("any number of accounts".to_string(),|n| format!("{} of {n} accounts",claims.len()));
+            let mut entry=column![row![text(name.clone()).font(iced::Font::MONOSPACE).size(15),
+                muted(format!("{} BP · claimed by {limit}",code["bp"])),
+                action(Icon::Copy,"Copy",Some(Msg::CopyCode(name.clone()))).style(button::text),
+                action(Icon::Close,"Remove",(!self.locked()).then_some(Msg::RemoveCode(name))).style(button::text)].spacing(12).align_y(iced::Alignment::Center)].spacing(4);
+            for claim in claims {
+                let who=claim["players"].as_array().map(|p|p.iter().filter_map(|n|n.as_str()).collect::<Vec<_>>().join(", ")).unwrap_or_default();
+                entry=entry.push(muted(format!("  {} · {}",if who.is_empty(){format!("account {}",claim["user_id"])}else{who},claim_time(claim["at"].as_str()))));
+            }
+            section=section.push(card(entry));
+        }
+        section.into()
     }
     fn activity_view(&self)->Element<'_,Msg>{
         let shown = self.shown_logs();

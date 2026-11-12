@@ -57,9 +57,25 @@ pub fn card<'a>(content: impl Into<Element<'a, Msg>>) -> container::Container<'a
         border: iced::Border { color: Color::from_rgb8(42, 53, 69), width: 1.0, radius: 12.0.into() }, ..Default::default()
     })
 }
+/// The colour of a log line by its level: errors red, warnings amber, everything else the default text colour.
+pub fn log_color(line: &str) -> Option<Color> {
+    use yo3_tunnel::diagnostics::{Level, level};
+    match level(line) { Some(Level::Error) => Some(tone_color(Tone::Danger)), Some(Level::Warn) => Some(tone_color(Tone::Warning)), _ => None }
+}
 pub fn log_panel<'a>(logs: String) -> container::Container<'a, Msg> {
+    // Consecutive lines of one colour share a span, so long logs stay a handful of spans.
+    let mut spans: Vec<iced::widget::text::Span<'a>> = Vec::new();
+    let (mut run, mut color) = (String::new(), None);
+    for line in logs.lines() {
+        let next = log_color(line);
+        if next != color && !run.is_empty() { spans.push(iced::widget::span(std::mem::take(&mut run)).color_maybe(color)); }
+        color = next; run.push_str(line); run.push('\n');
+    }
+    if run.ends_with('\n') { run.pop(); }
+    if !run.is_empty() { spans.push(iced::widget::span(run).color_maybe(color)); }
+    let body = iced::widget::rich_text(spans).size(12).font(iced::Font::MONOSPACE).width(Fill);
     // Fit short output naturally; the parent bounds the viewport for long logs.
-    container(iced::widget::scrollable(text(logs).size(12).font(iced::Font::MONOSPACE).width(Fill))
+    container(iced::widget::scrollable(body)
         .id("activity-log").width(Fill).height(iced::Length::Shrink).spacing(10)
         .on_scroll(|viewport|Msg::LogScrolled(viewport.absolute_offset_reversed().y<=1.0)))
         .padding(14).width(Fill).height(iced::Length::Shrink).style(container::rounded_box)
