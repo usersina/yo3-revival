@@ -1534,8 +1534,8 @@ fn a_sum_prompt_is_answered_with_cards_that_make_the_sum() {
     assert_eq!(answer(&mut t, sum(1, 1, 8, &[4], &[2, 4, 6])), json!({ "type": 14, "indicies": [1] }));
     // A card that counts as 1 or 2 (low and high 16 bits): 1 + 4 = 5 in a sum of exactly 6 needs the 2.
     assert_eq!(answer(&mut t, sum(1, 0, 6, &[], &[1 | 2 << 16, 4])), json!({ "type": 14, "indicies": [0, 1] }));
-    // The client, with no window for it, gets the same answer.
-    assert_eq!(answer(&mut t, sum(0, 1, 8, &[], &[4, 4, 4])), json!({ "type": 14, "indicies": [0, 1] }));
+    // The client picks in the card list (a_sum_is_the_players_choice_in_the_card_list).
+    assert!(matches!(t.prompt(&sum(0, 1, 8, &[], &[4, 4, 4])), Prompt::Client(_)));
 }
 
 #[test]
@@ -1846,4 +1846,39 @@ fn a_field_spell_changes_the_background_and_activations_and_summons_speak() {
     let special = json!({ "type": 62, "code": 4200, "cid": 4200, "controller": 1, "location": 4, "sequence": 1, "position": 1 });
     let out: Vec<_> = t.events(&[special]).iter().map(cmd).collect();
     assert_eq!(out, [(0x44, [1, 0x8000 | 11, 5, 0]), (0x39, [1 | 1 << 1 | 1 << 14, 11, 0, 0])]);
+}
+
+#[test]
+fn a_sum_is_the_players_choice_in_the_card_list() {
+    // MSG_SELECT_SUM (23) {amount, select_max, min, max, selects, selects_must}: cards whose Levels make a total (a
+    // Ritual Summon's tributes, Machina Fortress's discards). The client picks them in the card list; picks that don't
+    // make the sum bring the list back (the server chose the smallest fit for the player before). Here at least 8
+    // (select_max 1) with no card to spare, from Levels 4, 4 and 3, no bound on how many (min and max 0).
+    let mut t = with_cards();
+    let card = |seq: u32, cid: u32, level: u32| json!({ "code": cid, "cid": cid, "controller": 0, "location": 2, "sequence": seq, "position": 10, "amount": level });
+    let sum = json!({ "type": 23, "player": 0, "amount": 8, "select_max": 1, "min": 0, "max": 0, "selects_must": [],
+        "selects": [card(0, 4100, 4), card(1, 4101, 4), card(2, 4100, 3)] });
+    let out = client_commands(t.prompt(&sum));
+    assert_eq!(out.first(), Some(&(0x3EF, [3, 3, 0, 0])), "the list of three, up to three picks: {out:?}");
+    // 4 + 3 = 7 is short: the list again.
+    t.pick(0);
+    t.pick(2);
+    assert!(matches!(t.dialog_result(2), Some(Prompt::Client(_))));
+    // 4 + 4 = 8.
+    t.pick(1);
+    t.pick(0);
+    assert_eq!(t.dialog_result(2), Some(Prompt::Answer(json!({ "type": 14, "indicies": [1, 0] }))));
+    // The duel check's round trip finds the sum the client can give.
+    assert!(matches!(t.prompt(&sum), Prompt::Client(_)));
+    assert_eq!(t.unreachable_answers(), Vec::<String>::new());
+}
+
+#[test]
+fn a_sum_nothing_can_make_gets_no_window() {
+    // A list no picks satisfy would hold the player forever: the automatic answer goes instead (the core refuses it,
+    // and the repeated prompt ends the duel, robustness_contract.rs).
+    let mut t = with_cards();
+    let card = json!({ "code": 4100, "cid": 4100, "controller": 0, "location": 2, "sequence": 0, "position": 10, "amount": 1 });
+    let sum = json!({ "type": 23, "player": 0, "amount": 100, "select_max": 1, "min": 1, "max": 1, "selects_must": [], "selects": [card] });
+    assert!(matches!(t.prompt(&sum), Prompt::Answer(_)));
 }

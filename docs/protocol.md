@@ -1392,6 +1392,14 @@ duel, no params: the music's mood), `0x45`, `0x46`, `0x49`–`0x4B`, `0x4E`, 100
 and CardCheat `0x1D` (a card object refreshed from its record, 46 a duel). Konami's opening also differs (1013 for every
 place, 1006, pile counts 1023 with only the top card in the table); ours, a table entry for every card, works.
 
+**Sums.** MSG_SELECT_SUM (cards whose Levels make a total: a Ritual Summon's tributes, Machina Fortress's discards)
+is the client's card list of `selects`, picks bounded by its `min`/`max` (0: none); the server checks the picks make
+the sum (exactly, or with `select_max` at least it with no card to spare, a card counting as either of its two levels)
+and shows the list again when they don't. A sum nothing can make gets the automatic answer instead, so no player is
+held by an impossible list. The client also has Discard (13) and Ritual (14) dialogs, probably the original's windows
+for these; their params are unread (**open**). Before, the server picked the smallest fitting set for the player: 140
+times in 2,270 self-played duels of Konami's own decks.
+
 **Choices.** DuelScene opens dialogs with two commands (both popped like any other):
 
 - `0x36 {kind, param2, param3}` (`0x514C0C`) builds a dialog by kind through the factory `0x4C8CD0` (kind table at

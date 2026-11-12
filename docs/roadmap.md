@@ -1041,7 +1041,8 @@ Stop finding missing fields one crash at a time.
       give (each command map click, pile list pick, chain chance, card choice, question, option), and a choice the
       server makes for the player is counted. It found a card offering two effects at once could only use the first
       (now the card list asks which), and options without client labels were taken as the first for the player (now
-      the card list shows the option's card once per option). Zone choices stay automatic (the client's own "auto
+      the card list shows the option's card once per option), and sums are the player's in the card list too. Zone
+      choices stay automatic (the client's own "auto
       place" option, on in every saved player config of the 2010–2012 data). The full sweep with it: 4,684 cards, no
       failure; choices made for the player: zones, two chain orders, three card orders, ten disabled zones
 - [x] Konami's own duel logs (2026-11-12, 227 from a 2010–2012 client folder, `tools/re/dlog.py`): the log file's

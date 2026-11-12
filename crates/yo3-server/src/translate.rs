@@ -1505,6 +1505,20 @@ impl Translator {
                 self.picks.clear();
                 Prompt::Client(out)
             }
+            // A sum (tributes or discards that make a total Level): the card list, as many picks as the bounds allow;
+            // picks that don't make the sum bring the list back. Only when some picks can make it: a list nothing
+            // satisfies would hold the player forever, so that one gets the automatic answer (and the core's
+            // refusals end the duel, see `Repeats`).
+            MSG_SELECT_SUM if m["selects"].as_array().is_some_and(|s| !s.is_empty()) && sum_fits(m, &sum_choice(m)) => {
+                let n = m["selects"].as_array().map_or(0, Vec::len);
+                let (min, max) = sum_bounds(m);
+                let list = json!({ "selects": m["selects"], "min": min.clamp(1, n), "max": max.min(n).max(1) });
+                let text = hint_text(std::mem::take(&mut self.hint));
+                let out = self.card_list(&list, text);
+                self.pending = Some(m.clone());
+                self.picks.clear();
+                Prompt::Client(out)
+            }
             MSG_SELECT_POSITION => match self.position_dialog(m) {
                 Some(out) => {
                     self.pending = Some(m.clone());
@@ -1745,7 +1759,8 @@ impl Translator {
             return Some(if count == 1 { Prompt::Answer(response) } else { self.prompt(&m) });
         }
         let kind = self.pending.as_ref()?["type"].as_u64()?;
-        const DIALOGS: [u64; 12] = [
+        const DIALOGS: [u64; 13] = [
+            MSG_SELECT_SUM,
             MSG_SELECT_CARD,
             MSG_SELECT_UNSELECT_CARD,
             MSG_SELECT_TRIBUTE,
@@ -1808,6 +1823,13 @@ impl Translator {
                 return Some(self.prompt(&m));
             }
             MSG_SELECT_CARD | MSG_SELECT_TRIBUTE => self.card_choice(&m, count),
+            MSG_SELECT_SUM => {
+                let picks = std::mem::take(&mut self.picks);
+                if !sum_fits(&m, &picks) {
+                    return Some(self.prompt(&m));
+                }
+                json!({ "type": RESP_SUM, "indicies": picks })
+            }
             MSG_SELECT_UNSELECT_CARD => match std::mem::take(&mut self.picks)[..] {
                 [index] if index < selects => json!({ "type": RESP_UNSELECT_CARD, "index": index }),
                 _ if m["can_finish"] == true || m["can_cancel"] == true => json!({ "type": RESP_UNSELECT_CARD, "index": null }),
@@ -2170,6 +2192,11 @@ impl Translator {
                     cases.push(("passing the chain".into(), vec![(vec![], 0)], json!({ "type": RESP_CHAIN, "index": null })));
                 }
             }
+            MSG_SELECT_SUM => {
+                let picks: Vec<u32> = sum_choice(m).into_iter().map(|i| i as u32).collect();
+                let n = picks.len() as u32;
+                cases.push((format!("the sum {picks:?}"), vec![(picks.clone(), n)], json!({ "type": RESP_SUM, "indicies": picks })));
+            }
             MSG_SELECT_EFFECTYN | MSG_SELECT_YESNO => {
                 let response = if kind == MSG_SELECT_EFFECTYN { RESP_EFFECTYN } else { RESP_YESNO };
                 cases.push(("yes".into(), vec![(vec![], 1)], json!({ "type": response, "yes": true })));
@@ -2494,22 +2521,34 @@ pub fn bot_answer(m: &Json) -> Json {
     cpu_answer(m["type"].as_u64().unwrap_or(0), m)
 }
 
-/// Indices into MSG_SELECT_SUM's `selects` that make its sum: `amount` is the target, `selects_must` cards count
-/// without being picked, `select_max` 0 asks for exactly the amount and 1 for at least it with no card to spare
-/// (Ritual Summons), `min`..`max` bound how many cards are picked. A card's `amount` is its level, or two levels
-/// (low and high 16 bits) it may count as. The smallest set that fits is picked; none that fits: every card, which
-/// the core refuses and the caller's repeated-prompt check then ends.
-fn sum_choice(m: &Json) -> Vec<usize> {
+/// MSG_SELECT_SUM {amount: the target, selects_must: cards that count without being picked, select_max: 0 exactly the
+/// amount, 1 at least it with no card to spare (Ritual Summons), min..max: how many cards are picked}: its bounds
+/// on how many cards are picked, where 0 sets none (Machina Fortress: discard any number of monsters with Levels of 8
+/// or more).
+fn sum_bounds(m: &Json) -> (usize, usize) {
+    (m["min"].as_u64().unwrap_or(0) as usize, m["max"].as_u64().filter(|&m| m != 0).unwrap_or(u32::MAX as u64) as usize)
+}
+
+/// Whether picking these of MSG_SELECT_SUM's `selects` (indices; the `selects_must` count too) makes its sum.
+fn sum_fits(m: &Json, picked: &[usize]) -> bool {
+    let level = |c: &Json| c["amount"].as_u64().unwrap_or(0);
+    let selects: Vec<u64> = m["selects"].as_array().into_iter().flatten().map(level).collect();
+    let mut seen = vec![];
+    let distinct = picked.iter().all(|&i| i < selects.len() && !seen.contains(&i) && { seen.push(i); true });
+    let (min, max) = sum_bounds(m);
+    distinct && (min.min(selects.len())..=max).contains(&picked.len()) && sum_reached(m, &picked.iter().map(|&i| selects[i]).collect::<Vec<_>>())
+}
+
+/// Whether cards of these amounts (with the `selects_must`) count to MSG_SELECT_SUM's target: exactly, or with
+/// `select_max` at least it with no card to spare. A card's `amount` is its level, or two levels (low and high 16
+/// bits) it may count as.
+fn sum_reached(m: &Json, chosen: &[u64]) -> bool {
     let level = |c: &Json| c["amount"].as_u64().unwrap_or(0);
     let must: Vec<u64> = m["selects_must"].as_array().into_iter().flatten().map(level).collect();
-    let selects: Vec<u64> = m["selects"].as_array().into_iter().flatten().map(level).collect();
     let target = m["amount"].as_u64().unwrap_or(0);
     let greater = m["select_max"].as_u64().unwrap_or(0) != 0;
-    // min and max 0 set no bound (Machina Fortress: discard any number of monsters with Levels of 8 or more).
-    let (min, max) = (m["min"].as_u64().unwrap_or(0) as usize, m["max"].as_u64().filter(|&m| m != 0).unwrap_or(u32::MAX as u64) as usize);
     let values = |a: u64| -> Vec<u64> { [a & 0xFFFF, a >> 16].into_iter().filter(|v| *v > 0).collect() };
-    // Whether these cards (the must ones included) can count to the target.
-    let fits = |chosen: &[u64]| -> bool {
+    {
         let all: Vec<u64> = must.iter().chain(chosen).copied().collect();
         let mut sums = vec![0u64];
         for a in &all {
@@ -2524,7 +2563,15 @@ fn sum_choice(m: &Json) -> Vec<usize> {
         // At least the target, and dropping the smallest card would leave less than it.
         let smallest = all.iter().map(|a| values(*a).into_iter().min().unwrap_or(0)).min().unwrap_or(0);
         sums.iter().any(|s| *s >= target && (all.is_empty() || s - smallest.min(*s) < target))
-    };
+    }
+}
+
+/// Indices into MSG_SELECT_SUM's `selects` that make its sum (see [`sum_reached`]), the fewest cards first; none
+/// that fits: every card, which the core refuses and the caller's repeated-prompt check then ends.
+fn sum_choice(m: &Json) -> Vec<usize> {
+    let selects: Vec<u64> = m["selects"].as_array().into_iter().flatten().map(|c| c["amount"].as_u64().unwrap_or(0)).collect();
+    let (min, max) = sum_bounds(m);
+    let fits = |chosen: &[u64]| sum_reached(m, chosen);
     let n = selects.len();
     if n <= 16 {
         let mut masks: Vec<u32> = (0..1u32 << n).collect();

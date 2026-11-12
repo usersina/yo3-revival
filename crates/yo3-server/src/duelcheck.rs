@@ -638,6 +638,7 @@ pub mod selfplay {
     const MSG_SELECT_PLACE: u64 = 18;
     const MSG_SELECT_POSITION: u64 = 19;
     const MSG_SELECT_TRIBUTE: u64 = 20;
+    const MSG_SELECT_SUM: u64 = 23;
     const MSG_SELECT_UNSELECT_CARD: u64 = 26;
     const MSG_NEW_TURN: u64 = 40;
     const MSG_SUMMONING: u64 = 60;
@@ -962,8 +963,8 @@ pub mod selfplay {
                     Prompt::Answer(_) if last["player"].as_u64() == Some(client_team as u64) && choices(&last).is_some_and(|n| n > 1) => {
                         let kind = last["type"].as_u64().unwrap_or(0);
                         // The options of an effect always reach the player (a card list when the client has no labels).
-                        if kind == MSG_SELECT_OPTION {
-                            return Err(fail(vec![format!("the server chose an option for the player: {}", short(&last))]));
+                        if kind == MSG_SELECT_OPTION || kind == MSG_SELECT_SUM {
+                            return Err(fail(vec![format!("the server chose for the player: {}", short(&last))]));
                         }
                         *played.decided.entry(kind).or_default() += 1;
                     }
