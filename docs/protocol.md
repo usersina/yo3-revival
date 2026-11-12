@@ -346,6 +346,12 @@ files mail by id), and drops a mail once fetched. Live: Yugi wrote to Kaiba from
 Kaiba); Send D-mail got `0x2584 {mail_id 1}`, Kaiba's bar showed the mail icon, and his D-Mail window listed "Yugi /
 Rematch? / 2026-11-07" with the body.
 
+A host's BP gift (`Hub::mail_bp_gift`) posts a mail from "Host" (`from_id` 0) titled "BP received" to each player of
+the account and pushes `0x2581`. The global case (`0x4F5565`) only sets the connection's flag `0x1000`, with no fields
+and no window, so it is safe on any screen. Live (2026-11-12): given mid-duel against Kaiba, the bar's mail icon
+appeared and the duel went on; the D-Mail window then listed the mail. Reply on it does nothing (no such player).
+The game's own BOOSTERPASS result box is not used: it belongs to the window the player opens (`0x40F7B0`).
+
 ### Teams (the community agent's modes 5–12, Team window `0x4BBEC0`, `main_teaminfo.swf`)
 
 The global dispatcher keeps the team info `0x2B13` whole in slot 17 (non-null = in a team: the chat's Team tab,

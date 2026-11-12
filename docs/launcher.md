@@ -138,8 +138,9 @@ The default public port is **TCP 7443**. Friends connecting from outside your PC
 their slot inside the game. Re-export an account's invitation when needed; managing it does not switch your login on Play.
 
 **Players & invitations → Give BP** adds BOOSTERPASS Points to the selected account while the server runs, including
-your own account when you play locally. A game that is open shows the new total on its next screen. BP earned in
-duels appears the same way.
+your own account when you play locally. A game that is open shows the new total on its next screen, and each player
+of the account gets a D-Mail "BP received" from Host (the mail icon lights up, even during a duel). BP earned in
+duels appears the same way, without a mail.
 
 **Players & invitations → BOOSTERPASS codes** makes codes players type in the game (Main Menu → BOOSTERPASS) for BP,
 once per account. Leave **Code** empty for a random one, and **Accounts** empty to let any number of accounts claim

@@ -14,7 +14,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 - The launcher now has a Duel Disk icon with a Monster Reborn badge, embedded in its window and Windows executable.
 - **BP shows up right away:** BP from duels and from the host appears in the game on its next screen, without logging
-  in again. Before, the game showed new BP only after a purchase or the next login.
+  in again. Before, the game showed new BP only after a purchase or the next login. A gift from the host also arrives
+  as a D-Mail "BP received" (the mail icon lights up, even during a duel).
 - **Give BP and BOOSTERPASS codes in the app:** Advanced → Hosting → Players & invitations has Give BP for the selected
   account, and a BOOSTERPASS codes section to make codes (random ones too), see who claimed each and when, and remove
   them. The `codes` command lists claim times too.

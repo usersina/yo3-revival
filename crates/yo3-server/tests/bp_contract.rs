@@ -243,3 +243,25 @@ fn bp_paid_for_a_duel_reaches_the_players_game_at_once() {
     let bp = c.pushed().into_iter().find(|m| m.request() == Some(yo3_server::front::REVIVAL_BP)).expect("BP pushed");
     assert_eq!(bp.get("revival_bp"), Some(&Value::U32(START_BP + 100)));
 }
+
+#[test]
+fn a_host_gift_arrives_as_a_d_mail_with_the_bell_icon() {
+    // 0x2581 only sets the connection's mail flag (global case 0x4F5565), so it is safe on any screen; the mail
+    // waits for the D-Mail window (0x2583 count, 0x2582 fetch).
+    let server = Server::new();
+    let d = directory();
+    server.hub.lock().unwrap().set_directory(d.clone());
+    let mut c = client(&server, &d, ADDR);
+    c.pushed();
+    let named = d.lock().unwrap().named_players_of("Yugi");
+    assert_eq!(named.len(), 2, "both players of the account");
+    server.hub.lock().unwrap().mail_bp_gift(&named, 2000, START_BP + 2000);
+    assert!(c.pushed().iter().any(|m| m.request() == Some(0x2581)), "the bell's mail icon");
+    let count = one(c.send(req(0x2583)));
+    assert_eq!(count.get("count"), Some(&Value::U32(1)));
+    let mail = one(c.send(req_with(0x2582, &[("count", Value::U32(1))])));
+    let item = &mail.items[0];
+    assert_eq!(item.get("title").and_then(Value::as_str).as_deref(), Some("BP received"));
+    assert_eq!(item.get("from_name").and_then(Value::as_str).as_deref(), Some("Host"));
+    assert!(item.get("body").and_then(Value::as_str).is_some_and(|b| b.contains("2000 BP") && b.contains(&(START_BP + 2000).to_string())));
+}

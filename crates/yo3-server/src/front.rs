@@ -1510,6 +1510,20 @@ impl Hub {
         Message::reply(0x2584).with("mail_id", Value::U32(mail_id))
     }
 
+    /// The host's gift of `amount` BP, `total` now, told to every player of the account by D-Mail from "Host". The game
+    /// has no message that opens its BOOSTERPASS result unasked (that box belongs to the window the player opened),
+    /// but `0x2581` lights the bell's mail icon from the global dispatcher (`0x4F5565`: only the connection's flag
+    /// `0x1000`, no fields, no window), so it is safe on any screen, a duel included.
+    pub fn mail_bp_gift(&mut self, players: &[(u32, String)], amount: u32, total: u32) {
+        let sent = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
+        for (id, name) in players {
+            let body = format!("The host gave your account {amount} BP. You have {total} BP now.");
+            let mail = Mail { kind: MAIL_TO_PLAYER, from: (0, "Host".into()), to: (*id, name.clone()), title: "BP received".into(), body, sent: sent.clone(), ..Mail::default() };
+            self.mail.post(mail);
+            self.push(*id, &Message::reply(0x2581));
+        }
+    }
+
     /// Makes two players friends (as an accepted request does).
     pub fn befriend(&mut self, (a, a_name): (u32, &str), (b, b_name): (u32, &str)) {
         self.social.seen(a, a_name);

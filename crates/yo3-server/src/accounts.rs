@@ -371,6 +371,11 @@ impl Directory {
         self.accounts.iter().map(|e| &e.account).find(|a| a.players.iter().any(|p| p.player_id == player_id)).map(|a| a.dpoint)
     }
 
+    /// The players (id and name) of the account at `who` (an address, or a player's name).
+    pub fn named_players_of(&self, who: &str) -> Vec<(u32, String)> {
+        self.find(who).map(|at| self.accounts[at].account.players.iter().map(|p| (p.player_id, p.name.clone())).collect()).unwrap_or_default()
+    }
+
     /// The player ids of the account holding `player_id` (empty when there is none).
     pub fn account_players(&self, player_id: u32) -> Vec<u32> {
         self.accounts.iter().map(|e| &e.account).find(|a| a.players.iter().any(|p| p.player_id == player_id))

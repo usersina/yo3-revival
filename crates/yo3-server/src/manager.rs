@@ -115,9 +115,11 @@ impl Manager {
             ManagerOp::ExportAccount { who } => Ok(json!({"key":accounts.atomic(|d| d.key_of(who))?})),
             ManagerOp::GiveBp { who, amount } => {
                 let (_, bp) = accounts.give_bp(who, *amount)?;
-                let players = accounts.players_of(who);
+                let (players, named) = (accounts.players_of(who), accounts.named_players_of(who));
                 drop(accounts);
-                self.hub.locked().push_bp(&players, bp);
+                let mut hub = self.hub.locked();
+                hub.push_bp(&players, bp);
+                hub.mail_bp_gift(&named, *amount, bp);
                 Ok(json!({"bp":bp}))
             }
             ManagerOp::Codes => Ok(Value::Array(accounts.codes().iter().map(|c| json!({

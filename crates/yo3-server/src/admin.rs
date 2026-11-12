@@ -151,11 +151,13 @@ pub fn handle(path: &str, peer: IpAddr, token: Option<&str>, accounts: &Arc<Mute
         let mut d = accounts.locked();
         let done = apply(&mut d, &op)?;
         // A running server shows the gift at once (Hub::push_bp), not only at the player's next login or purchase.
-        if let Op::GiveBp { who, .. } = &op {
-            let players = d.players_of(who);
+        if let Op::GiveBp { who, amount } = &op {
+            let (players, named) = (d.players_of(who), d.named_players_of(who));
             if let Some(bp) = players.first().and_then(|&p| d.player_bp(p)) {
                 drop(d);
-                hub.locked().push_bp(&players, bp);
+                let mut hub = hub.locked();
+                hub.push_bp(&players, bp);
+                hub.mail_bp_gift(&named, *amount, bp);
             }
         }
         Ok(done)
