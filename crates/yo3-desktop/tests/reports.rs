@@ -85,3 +85,26 @@ fn reopened_manager_keeps_latest_game_and_collects_its_failed_server_start() {
     assert!(reopened.current_sessions().contains(&game.id())); assert!(reopened.logs(false).contains("last game failed"));
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn bug_report_embeds_reviewed_markdown_context_and_system_with_the_same_privacy_choice() {
+    let root=std::env::temp_dir().join(format!("yo3-bug-report-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);std::fs::create_dir_all(&root).unwrap();
+    let log=Session::start(&root.join("sessions"),"app",None).unwrap();log.line("Original native failure: process_exit_code=0xc0000005");log.line("[YO3 CLIENT] Chat: Alice hello");
+    let context=serde_json::json!({"failure":{"message":r"Cannot load C:\Users\Alice\Game\yo3-auth.dll from 192.168.1.45:7443","stage":"mod-load","process_exit_code":"0xc0000005"},
+        "account":{"name":"Alice","access_key":"short-secret"},"nested":[{"token":"short-token"}],"missing_files":[r"C:\Users\Alice\Game\yo3-auth.dll"]});
+    let system=yo3_desktop::system_info::SystemInfo{os:"Windows 11 Pro 24H2 (build 26100.1234)".into(),arch:"x86_64".into(),wine:None};
+    let markdown=format!("# DLL cannot load\n\nMy player cannot summon Stardust Dragon.\nCannot load C:\\Users\\Alice\\Game\\yo3-auth.dll from 192.168.1.45:7443\npassword=short-secret\n-----BEGIN PRIVATE KEY-----\nSHORT PEM CONTENT\n-----END PRIVATE KEY-----\n{}Final reproduction detail remains\n","User step. ".repeat(2000));
+    let report=Report::prepare(&root.join("sessions"),None).unwrap();let full=root.join("full.zip");report.export_bug(&full,false,&context,&markdown,&system).unwrap();
+    let full_text=archive_text(&full);assert!(full_text.contains("Alice") && full_text.contains("192.168.1.45"));assert!(!full_text.contains("short-secret") && !full_text.contains("short-token"));
+    let mut archive=zip::ZipArchive::new(std::fs::File::open(&full).unwrap()).unwrap();
+    let mut metadata=String::new();archive.by_name("report.json").unwrap().read_to_string(&mut metadata).unwrap();let metadata:serde_json::Value=serde_json::from_str(&metadata).unwrap();
+    assert_eq!(metadata["system"]["os"],system.os);assert_eq!(metadata["system"]["arch"],"x86_64");assert_eq!(metadata["context"]["failure"]["stage"],"mod-load");
+    assert_eq!(metadata["release"],yo3_tunnel::BUILD_VERSION);assert_eq!(metadata["personal_data_filtered"],false);assert!(archive.by_name("bug-report.md").is_ok());
+    let filtered=root.join("filtered.zip");report.export_bug(&filtered,true,&context,&markdown,&system).unwrap();let filtered_text=archive_text(&filtered);
+    assert!(!filtered_text.contains("Alice") && !filtered_text.contains("192.168.1.45") && !filtered_text.contains("short-secret") && !filtered_text.contains("short-token"),"{filtered_text}");
+    assert!(filtered_text.contains("yo3-auth.dll") && filtered_text.contains("0xc0000005") && filtered_text.contains("Windows 11 Pro"));
+    let public_markdown=yo3_desktop::reports::filter_text(&markdown,true);assert!(!public_markdown.contains("Alice") && !public_markdown.contains("short-secret"));
+    for text in [&full_text,&filtered_text,&public_markdown] {assert!(text.contains("My player cannot summon Stardust Dragon.") && text.contains("Final reproduction detail remains"),"manual narrative stays intact, including long fallback descriptions");assert!(!text.contains("SHORT PEM CONTENT"),"private key blocks are never optional");}
+    let regular=root.join("regular.zip");report.export(&regular).unwrap();let mut regular=zip::ZipArchive::new(std::fs::File::open(regular).unwrap()).unwrap();assert!(regular.by_name("bug-report.md").is_err(),"ordinary exports retain their existing format");
+    std::fs::remove_dir_all(root).unwrap();
+}

@@ -12,9 +12,17 @@ pub mod network;
 pub mod privileged;
 pub mod direct;
 pub mod reports;
+pub mod system_info;
+pub mod bug_report;
+pub mod bug_evidence;
+pub mod github_credentials;
+pub mod github_report;
+pub mod bug_publish;
 pub mod updates;
 pub mod preferences;
 pub mod server_options;
+pub mod game_data;
+mod game_data_platform;
 mod process;
 
 pub fn server_address(input: &str) -> anyhow::Result<(String, String)> {
@@ -247,10 +255,10 @@ impl Backend {
     }
     pub fn start_server(&self, settings: &Settings) -> anyhow::Result<Value> {
         let mut owned = self.server.lock().unwrap();
+        self.check_server_resources()?;
         if let Some(live) = self.live(settings) { return admin::manage(&live, &ManagerOp::Status).map_err(anyhow::Error::msg) }
         ensure!(owned.as_mut().is_none_or(|p| p.try_wait().ok().flatten().is_some()), "Server is still starting.");
         validate_game(Path::new(&settings.game_dir))?;
-        self.check_server_resources()?;
         let (_, name) = server_address(&settings.host_address)?;
         let bind = network::resolve_bind(settings, &network::bindings()?)?;
         ensure!(settings.listen_port > 0, "Port must be between 1 and 65535.");
@@ -265,12 +273,32 @@ impl Backend {
         *self.server_session.lock().unwrap() = None;
         let (child,errors)=process::spawn(&mut cmd,&self.diagnostics,"Server")?;
         *owned = Some(child);
-        for _ in 0..100 {
-            if let Ok(status) = self.status(settings) { return Ok(status) }
-            if let Some(status)=owned.as_mut().unwrap().try_wait()? { anyhow::bail!("The server stopped during startup ({status}).\n{}\nCorrect the reported problem and try again. Export logs if you need help.",errors.finish()) }
-            std::thread::sleep(std::time::Duration::from_millis(100));
+        self.wait_server_ready(settings, &mut owned, errors, std::time::Duration::from_secs(10))
+    }
+    fn wait_server_ready(&self, settings: &Settings, owned: &mut Option<Child>, errors: process::Errors, timeout: std::time::Duration) -> anyhow::Result<Value> {
+        let started = std::time::Instant::now();
+        let result = (|| {
+            while started.elapsed() < timeout {
+                if let Ok(status) = self.status(settings) { return Ok(status) }
+                if let Some(status)=owned.as_mut().unwrap().try_wait()? { anyhow::bail!("The server stopped during startup ({status}).") }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            anyhow::bail!("The server did not become ready within {} seconds.",timeout.as_secs())
+        })();
+        match result {
+            Ok(status) => Ok(status),
+            Err(error) => {
+                // A failed Start must not leave a detached server running and block every retry.
+                if let Some(child) = owned.as_mut() {
+                    if child.try_wait()?.is_none()
+                        && let Err(stop) = child.kill()
+                        && child.try_wait()?.is_none() { return Err(stop).context("Could not stop the server after its failed startup") }
+                    child.wait().context("Could not wait for the failed server to stop")?;
+                }
+                *owned = None;
+                anyhow::bail!("{error:#}\n{}\nCorrect the reported problem and try Start again. Export logs if you need help.",errors.finish())
+            }
         }
-        anyhow::bail!("The server did not become ready within 10 seconds. Check its status before retrying. Export logs to share the startup details.")
     }
     fn server_command(&self, settings: &Settings, bind: std::net::IpAddr) -> anyhow::Result<Command> {
         let extra = server_options::arguments(settings)?;
@@ -286,7 +314,23 @@ impl Backend {
         Ok(cmd)
     }
     pub fn stop_server(&self, settings: &Settings) -> anyhow::Result<Value> {
-        self.manage(settings, ManagerOp::Shutdown)
+        let mut owned = self.server.lock().unwrap();
+        let live=self.live(settings).context("Start your server first.")?;
+        // Keep the captured endpoint: another app can replace the profile's live file during shutdown.
+        let reply=admin::manage(&live,&ManagerOp::Shutdown).map_err(anyhow::Error::msg)?;
+        // The management response acknowledges the request before ports and data files are released.
+        // Serialize Start with the owned child's graceful exit and original endpoint closure. An old child
+        // handle may already have exited while this app attached to a replacement server, so check both.
+        // Never terminate an unowned process or send another shutdown to a replacement endpoint.
+        let address=std::net::SocketAddr::from(([127,0,0,1],live.port));
+        let started=std::time::Instant::now();
+        let timeout=std::time::Duration::from_secs(10);
+        while started.elapsed()<timeout {
+            if let Some(child)=owned.as_mut() && child.try_wait()?.is_some() {*owned=None;}
+            if owned.is_none() && server_endpoint_closed(&address,timeout.saturating_sub(started.elapsed())) {return Ok(reply)}
+            std::thread::sleep(std::time::Duration::from_millis(100).min(timeout.saturating_sub(started.elapsed())));
+        }
+        anyhow::bail!("The server is still stopping. Wait a few seconds before trying Start again. Export logs if it does not stop.")
     }
     pub fn update_certificate(&self, settings: &Settings) -> anyhow::Result<()> {
         let _owned = self.server.lock().unwrap();
@@ -319,7 +363,7 @@ impl Backend {
         let status = game.as_mut()?.try_wait().ok().flatten()?;
         let ready=self.game_ready(); *game = None; self.clear_game_ready();
         let detail=self.game_errors.lock().unwrap().take().map(|e|e.finish()).unwrap_or_default();
-        (!status.success()).then(|| format!("{} ({status}).\n{detail}\nChoose Validate game to check files, then try Start again. If it still fails, export logs for help.",if ready{"The game stopped unexpectedly"}else{"The game could not start"}))
+        (!status.success()).then(|| format!("{} ({status}).\n{detail}\nTry Play again; it rechecks the required files. If it still fails, export logs for help.",if ready{"The game stopped unexpectedly"}else{"The game could not start"}))
     }
     pub fn local_connection(&self, settings: &Settings, who: &str) -> anyhow::Result<SavedServer> {
         let account = if who.is_empty() { self.accounts(settings)?[0]["players"][0]["name"].as_str().unwrap_or("Duelist").to_string() } else { who.to_string() };
@@ -329,6 +373,33 @@ impl Backend {
         if address.ip().is_unspecified() { address.set_ip(if address.is_ipv6() { "::1".parse()? } else { "127.0.0.1".parse()? }); }
         server.address = address.to_string();
         Ok(server)
+    }
+    /// Collects absent known files without stopping at the first validation error or reading file contents.
+    pub fn missing_required_files(&self, settings: &Settings, diagnostic: Option<&str>) -> Vec<PathBuf> {
+        let mut paths=vec![self.runtime.launcher.clone(),self.runtime.injector.clone(),self.runtime.dll.clone()];
+        let bundle=self.runtime.injector.parent().unwrap_or(Path::new("."));let manifest=bundle.join("bundle.json");
+        let packaged=manifest.exists() || !yo3_tunnel::BUILD_VERSION.ends_with("-dev");
+        if packaged {paths.push(manifest);}
+        let game=(!settings.game_dir.trim().is_empty()).then(||Path::new(&settings.game_dir));
+        if let Some(game)=game {paths.extend(["yo3.exe","yo3.idx","package/data002.ypk"].map(|name|game.join(name)));}
+        if settings.selected_server.is_none() {
+            paths.push(self.runtime.server.clone());
+            if packaged {paths.push(self.runtime.engine.join("node").join(format!("node{}",std::env::consts::EXE_SUFFIX)));}
+            paths.extend(yo3_server::engine::missing_files(&self.runtime.engine));
+        }
+        if let Some(diagnostic)=diagnostic {
+            let bounded=diagnostic.chars().take(16*1024).collect::<String>();
+            for line in bounded.lines() {
+                let quoted=line.split_once("Cannot find module ").map(|(_,path)|path)
+                    .or_else(||line.contains("ENOENT").then(||line.split_once("open ").map(|(_,path)|path)).flatten());
+                let Some(quoted)=quoted else {continue};
+                let Some(quote @ ('\''|'"'))=quoted.chars().next() else {continue};
+                let Some((path,_))=quoted[1..].split_once(quote) else {continue};
+                let path=Path::new(path);if path.is_absolute() {paths.push(path.to_path_buf());}
+            }
+        }
+        paths.retain(|path|matches!(std::fs::metadata(path),Err(error) if error.kind()==std::io::ErrorKind::NotFound));
+        paths.sort();paths.dedup();paths
     }
     pub fn readiness(&self, settings: &Settings) -> Readiness {
         if let Err(error) = validate_game(Path::new(&settings.game_dir)) { return Readiness::GameProblem(format!("{error:#}")) }
@@ -343,20 +414,75 @@ impl Backend {
             yo3_launcher::runtime::check(&Path::new(&settings.game_dir).join("yo3.exe"), &self.runtime.injector, prefix))
     }
     fn check_server_resources(&self) -> anyhow::Result<()> {
+        use std::io::Read;
         ensure!(self.runtime.server.is_file(), "Required server file is missing: {}. Extract the complete application bundle.",self.runtime.server.display());
+        let manifest=self.runtime.injector.parent().context("Application folder missing")?.join("bundle.json");
+        if manifest.exists() {
+            let mut bytes=Vec::new();
+            std::fs::File::open(&manifest).with_context(||format!("Could not read release manifest: {}",manifest.display()))?
+                .take(65537).read_to_end(&mut bytes).with_context(||format!("Could not read release manifest: {}",manifest.display()))?;
+            ensure!(bytes.len()<=65536,"Release manifest is too large: {}. Restore the complete bundle.",manifest.display());
+            let value:Value=serde_json::from_slice(&bytes).with_context(||format!("Invalid release manifest: {}",manifest.display()))?;
+            let expected=value["components"]["server"]["sha256"].as_str().filter(|hash|hash.len()==64 && hash.bytes().all(|byte|byte.is_ascii_hexdigit()))
+                .with_context(||format!("Release manifest is missing the server SHA-256: {}",manifest.display()))?;
+            let mut file=std::fs::File::open(&self.runtime.server).with_context(||format!("Could not read required server file: {}",self.runtime.server.display()))?.take(256*1024*1024+1);
+            let mut digest=ring::digest::Context::new(&ring::digest::SHA256);let mut buffer=[0;16384];let mut size=0;
+            loop {
+                let read=file.read(&mut buffer).with_context(||format!("Could not read required server file: {}",self.runtime.server.display()))?;
+                if read==0{break}size+=read;
+                ensure!(size<=256*1024*1024,"Required server file is unexpectedly large: {}",self.runtime.server.display());digest.update(&buffer[..read]);
+            }
+            let actual=digest.finish().as_ref().iter().map(|byte|format!("{byte:02x}")).collect::<String>();
+            ensure!(actual.eq_ignore_ascii_case(expected),"{} differs from the release manifest. Restore the complete matching bundle.",self.runtime.server.display());
+            let node=self.runtime.engine.join("node").join(format!("node{}",std::env::consts::EXE_SUFFIX));
+            ensure!(node.is_file(),"Required bundled Node.js file is missing: {}. Restore the complete matching bundle.",node.display());
+        } else {
+            ensure!(yo3_tunnel::BUILD_VERSION.ends_with("-dev"),"Release manifest is missing: {}. Restore the complete matching bundle.",manifest.display());
+        }
         if let Some(problem)=yo3_server::engine::problem(Some(&self.runtime.engine)) {
             anyhow::bail!("The rules engine is incomplete: {problem}. Extract the complete application bundle again.");
         }
-        Ok(())
+        self.check_engine_start(std::time::Duration::from_secs(10))
+    }
+    fn check_engine_start(&self,timeout:std::time::Duration)->anyhow::Result<()> {
+        let sidecar=self.runtime.engine.join("duelcore.ts");let node=yo3_server::engine::node(&self.runtime.engine);
+        let mut cmd=Command::new(&node);cmd.arg(&sidecar).stdin(Stdio::null()).stdout(Stdio::null());hide_console(&mut cmd);
+        self.diagnostics.line("Checking that the rules engine can load its dependencies without starting a duel");
+        let (mut child,errors)=process::spawn(&mut cmd,&self.diagnostics,"Engine check")?;
+        let started=std::time::Instant::now();
+        let result=(||->anyhow::Result<std::process::ExitStatus>{
+            loop {
+                if let Some(status)=child.try_wait().context("Could not inspect the engine check process")?{return Ok(status)}
+                ensure!(started.elapsed()<timeout,"The rules engine startup check timed out after {:.1} seconds",timeout.as_secs_f32());
+                std::thread::sleep(std::time::Duration::from_millis(20).min(timeout.saturating_sub(started.elapsed())));
+            }
+        })();
+        if result.is_err(){let _=child.kill();}
+        let waited=child.wait();let detail=errors.finish();
+        let cause=detail.lines().find(|line|line.starts_with("Error") || line.starts_with("SyntaxError") || line.starts_with("TypeError")
+            || line.contains("Cannot find module") || line.contains("ENOENT")).unwrap_or_else(||detail.lines().find(|line|!line.trim().is_empty()).unwrap_or("No engine diagnostic was returned."));
+        match result {
+            Ok(status) if status.success()=>{waited.context("Could not reap the completed engine check")?;Ok(())}
+            Ok(status)=>anyhow::bail!("The rules engine could not start: {cause}\nSidecar: {}\nNode.js: {}\nExit status: {status}\n{detail}\nRestore the complete matching bundle, then Retry check.",sidecar.display(),node.display()),
+            Err(error)=>anyhow::bail!("{error:#}. Sidecar: {}\n{cause}\n{detail}\nRestore the complete matching bundle or export logs if this repeats.",sidecar.display()),
+        }
     }
     pub fn validate_setup(&self, draft: &Settings, remote: Option<&SavedServer>) -> anyhow::Result<Settings> {
         let saved=LauncherDb::open(&self.root)?.settings()?;
         let next=preferences::Section::Game.merge(&saved,draft);
-        self.diagnostics.line("Validating original game files and required connection components");
-        self.check_game(&next)?;
-        if let Some(remote)=remote { self.check_connection(remote)?; }
-        else { self.check_server_resources()?; server_options::arguments(&next)?; }
+        self.verify_setup(&next,remote)?;
         self.save_preferences(preferences::Section::Game,&next)
+    }
+    /// Checks a captured setup without saving preferences, refreshing direct launch, or starting play/hosting.
+    pub fn verify_setup(&self, settings: &Settings, remote: Option<&SavedServer>) -> anyhow::Result<()> {
+        self.diagnostics.line("Validating original game files and required connection components");
+        self.check_game(settings)?;
+        if let Some(remote)=remote {
+            let info=self.check_connection(remote)?;
+            ensure!(info.ready,"{} Ask the host to repair the server, then choose Retry check.",info.problem.as_deref().unwrap_or("The host's rules engine is unavailable."));
+        }
+        else { self.check_server_resources()?; server_options::arguments(settings)?; }
+        Ok(())
     }
     fn check_components(&self, settings: &Settings) -> anyhow::Result<()> {
         ensure!(self.runtime.launcher.is_file(), "Required connection file is missing: {}. Restore the complete application bundle.",self.runtime.launcher.display());
@@ -489,9 +615,101 @@ fn detach_server(cmd: &mut Command) {
     #[cfg(unix)] { use std::os::unix::process::CommandExt; cmd.process_group(0); }
 }
 
+fn server_endpoint_closed(address: &std::net::SocketAddr, budget: std::time::Duration) -> bool {
+    if budget.is_zero() {return false}
+    // Windows can take about two seconds to report loopback refusal. A shorter connect timeout reports
+    // TimedOut even after the listener closes; that is unknown state, never proof that a server stopped.
+    matches!(std::net::TcpStream::connect_timeout(address,budget.min(std::time::Duration::from_secs(3))),
+        Err(error) if matches!(error.kind(),std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn stopped_loopback_endpoint_is_detected_with_a_windows_sized_probe_budget() {
+        let listener=std::net::TcpListener::bind("127.0.0.1:0").unwrap();let address=listener.local_addr().unwrap();
+        drop(listener);
+        assert!(!server_endpoint_closed(&address,std::time::Duration::ZERO),"an expired budget must not be mistaken for endpoint closure");
+        assert!(server_endpoint_closed(&address,std::time::Duration::from_secs(3)),"allow Windows enough time to distinguish refusal from a connect timeout");
+    }
+    #[test]
+    #[cfg(unix)]
+    fn startup_timeout_reaps_the_owned_server_so_start_can_retry() {
+        let root=std::env::temp_dir().join(format!("yo3-server-timeout-{}",std::process::id()));
+        let backend=Backend::new(root.clone()).unwrap();
+        let mut cmd=Command::new("sh"); cmd.args(["-c","printf 'Still loading server resources\\n' >&2; exec sleep 30"]);
+        let (child,errors)=process::spawn(&mut cmd,&backend.diagnostics,"Server").unwrap();
+        let pid=child.id().to_string(); let mut owned=Some(child);
+        let error=backend.wait_server_ready(&Settings::default(),&mut owned,errors,std::time::Duration::from_millis(1)).unwrap_err();
+        let released=owned.is_none();
+        let still_running=Command::new("kill").args(["-0",&pid]).stderr(Stdio::null()).status().unwrap().success();
+        // Clean up on the failing version too: the regression must never leave a server behind.
+        if let Some(mut child)=owned.take() { let _=child.kill(); let _=child.wait(); }
+        else if still_running { let _=Command::new("kill").args(["-KILL",&pid]).status(); }
+        drop(backend); std::fs::remove_dir_all(root).unwrap();
+        assert!(released,"a timed-out startup must release its owned child, rather than block every later Start: {error:#}");
+        assert!(!still_running,"dropping the process handle must not leave the detached server running");
+        assert!(format!("{error:#}").contains("Still loading server resources"),"preserve the server's diagnostic details: {error:#}");
+        assert!(format!("{error:#}").contains("try Start again"),"give the player an action they can take: {error:#}");
+    }
+    #[test]
+    #[cfg(unix)]
+    fn stopping_an_owned_server_waits_until_it_has_exited_before_start_can_retry() {
+        use std::io::{Read,Write};
+        let root=std::env::temp_dir().join(format!("yo3-server-shutdown-{}",std::process::id()));
+        let backend=Backend::new(root.clone()).unwrap(); let settings=Settings::default();
+        let listener=std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        admin::write_live(&backend.data_dir(&settings),listener.local_addr().unwrap().port()).unwrap();
+        let mut child=Command::new("sh").args(["-c","read finish; sleep 0.15"]).stdin(Stdio::piped()).spawn().unwrap();
+        let mut finish=child.stdin.take().unwrap(); *backend.server.lock().unwrap()=Some(child);
+        let manager=std::thread::spawn(move || {
+            // admin::running makes a TCP liveness probe before the actual management request.
+            drop(listener.accept().unwrap().0);
+            let (mut stream,_)=listener.accept().unwrap(); stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+            let mut request=Vec::new(); let mut byte=[0];
+            while !request.ends_with(b"\r\n\r\n") { stream.read_exact(&mut byte).unwrap(); request.push(byte[0]); }
+            let mut body=vec![0;b"{\"op\":\"shutdown\"}".len()]; stream.read_exact(&mut body).unwrap();
+            assert_eq!(body,b"{\"op\":\"shutdown\"}");
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 17\r\nConnection: close\r\n\r\n{\"stopping\":true}").unwrap();
+            drop(stream); finish.write_all(b"done\n").unwrap();
+        });
+        let reply=backend.stop_server(&settings).unwrap();
+        let released=backend.server.lock().unwrap().is_none();
+        manager.join().unwrap();
+        if let Some(mut child)=backend.server.lock().unwrap().take() { child.wait().unwrap(); }
+        drop(backend); std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(reply["stopping"],true);
+        assert!(released,"a shutdown acknowledgement must not enable Start while the owned server is still stopping");
+    }
+    #[test]
+    fn stopping_an_attached_server_waits_until_its_management_port_closes() {
+        use std::io::{Read,Write};
+        for stale_owned in [false,true] {
+        let root=std::env::temp_dir().join(format!("yo3-attached-shutdown-{}-{stale_owned}",std::process::id()));
+        let backend=Backend::new(root.clone()).unwrap();let settings=Settings::default();
+        if stale_owned {
+            let mut child=Command::new(std::env::current_exe().unwrap()).arg("--list").stdout(Stdio::null()).spawn().unwrap();
+            child.wait().unwrap();*backend.server.lock().unwrap()=Some(child);
+        }
+        let listener=std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        admin::write_live(&backend.data_dir(&settings),listener.local_addr().unwrap().port()).unwrap();
+        let (finished,closed)=std::sync::mpsc::channel();
+        let manager=std::thread::spawn(move || {
+            drop(listener.accept().unwrap().0);
+            let (mut stream,_)=listener.accept().unwrap();stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+            let mut request=Vec::new();let mut byte=[0];
+            while !request.ends_with(b"\r\n\r\n") {stream.read_exact(&mut byte).unwrap();request.push(byte[0]);}
+            let mut body=vec![0;b"{\"op\":\"shutdown\"}".len()];stream.read_exact(&mut body).unwrap();assert_eq!(body,b"{\"op\":\"shutdown\"}");
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 17\r\nConnection: close\r\n\r\n{\"stopping\":true}").unwrap();
+            drop(stream);std::thread::sleep(std::time::Duration::from_millis(150));drop(listener);finished.send(()).unwrap();
+        });
+        let reply=backend.stop_server(&settings).unwrap();let waited=closed.try_recv().is_ok();
+        manager.join().unwrap();drop(backend);std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(reply["stopping"],true);
+        assert!(waited,"an attached server must release its old management port before Stop completes (stale owned child: {stale_owned})");
+        }
+    }
     #[test]
     fn an_unreadable_log_directory_shows_a_recovery_message_instead_of_empty_logs() {
         let root=std::env::temp_dir().join(format!("yo3-unreadable-log-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);
@@ -570,6 +788,121 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
     mod component_fixture { include!(concat!(env!("CARGO_MANIFEST_DIR"), "/../yo3-launcher/tests/common/mod.rs")); }
+    #[cfg(unix)]
+    fn server_resource_fixture(name:&str)->Arc<Backend> {
+        let root=std::env::temp_dir().join(format!("yo3-resources-{name}-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);
+        let mut backend=Backend::new(root.clone()).unwrap();let engine=root.join("engine");
+        for name in ["duelcore.ts","package.json","node_modules/ocgcore-wasm/package.json","node_modules/ocgcore-wasm/dist/index.js",
+            "node_modules/ocgcore-wasm/lib/ocgcore.sync.mjs","node_modules/ocgcore-wasm/lib/ocgcore.sync.wasm","vendor/cardinfo.json",
+            "vendor/BabelCDB/cards.cdb","vendor/CardScripts/constant.lua","vendor/CardScripts/utility.lua","vendor/CardScripts/official/c1.lua"] {
+            let path=engine.join(name);std::fs::create_dir_all(path.parent().unwrap()).unwrap();std::fs::write(path,b"fixture").unwrap();
+        }
+        std::fs::write(engine.join("package.json"),br#"{"type":"module"}"#).unwrap();
+        std::fs::write(engine.join("duelcore.ts"),"import './required-chunk.mjs'; process.stdin.resume();").unwrap();
+        std::fs::write(engine.join("required-chunk.mjs"),"export const ready=true;").unwrap();
+        let node=std::env::split_paths(&std::env::var_os("PATH").expect("Node must be on PATH for engine startup fixtures"))
+            .map(|path|path.join("node")).find(|path|path.is_file()).expect("Node must be installed for engine startup fixtures");
+        std::fs::create_dir_all(engine.join("node")).unwrap();std::os::unix::fs::symlink(node,engine.join("node/node")).unwrap();
+        let server=root.join("yo3-server");std::fs::write(&server,b"verified server").unwrap();
+        std::fs::write(root.join("bundle.json"),serde_json::json!({"components":{"server":{"sha256":yo3_launcher::components::hash(b"verified server")}}}).to_string()).unwrap();
+        Arc::get_mut(&mut backend).unwrap().runtime=Runtime {server,engine,launcher:root.join("yo3-launcher"),injector:root.join("yo3-auth-launch.exe"),dll:root.join("yo3-auth.dll")};
+        backend
+    }
+    #[test]
+    #[cfg(unix)]
+    fn packaged_server_resources_reject_a_changed_server_and_missing_bundled_node() {
+        let backend=server_resource_fixture("package-integrity");let root=backend.root.clone();backend.check_server_resources().unwrap();
+        std::fs::write(&backend.runtime.server,b"changed server").unwrap();
+        let changed=backend.check_server_resources().unwrap_err().to_string();assert!(changed.contains("yo3-server") && changed.contains("manifest"),"{changed}");
+        std::fs::write(&backend.runtime.server,b"verified server").unwrap();std::fs::remove_file(backend.runtime.engine.join("node/node")).unwrap();
+        let missing=backend.check_server_resources().unwrap_err().to_string();assert!(missing.contains("engine/node/node"),"packaged checks must not fall back to PATH: {missing}");
+        drop(backend);std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    #[cfg(unix)]
+    fn missing_required_files_collects_every_absent_path_for_the_selected_mode() {
+        let backend=server_resource_fixture("missing-files");let root=backend.root.clone();let game=root.join("game");
+        std::fs::create_dir_all(game.join("package")).unwrap();std::fs::write(game.join("yo3.exe"),b"").unwrap();std::fs::create_dir(game.join("yo3.idx")).unwrap();
+        std::fs::write(&backend.runtime.launcher,b"").unwrap();std::fs::create_dir(&backend.runtime.dll).unwrap();
+        for path in [&backend.runtime.server,&backend.runtime.engine.join("node/node"),&backend.runtime.engine.join("node_modules/ocgcore-wasm/lib/ocgcore.sync.wasm"),&backend.runtime.engine.join("vendor/CardScripts/utility.lua")] {std::fs::remove_file(path).unwrap();}
+        std::fs::write(root.join("profiles/loader.ini"),b"configured direct launch").unwrap();
+        let mut settings=Settings{game_dir:game.to_string_lossy().into(),..Settings::default()};
+        let mut expected=vec![backend.runtime.injector.clone(),backend.runtime.server.clone(),game.join("package/data002.ypk"),
+            backend.runtime.engine.join("node/node"),backend.runtime.engine.join("node_modules/ocgcore-wasm/lib/ocgcore.sync.wasm"),backend.runtime.engine.join("vendor/CardScripts/utility.lua")];expected.sort();
+        assert_eq!(backend.missing_required_files(&settings,None),expected,"report all ordinary Play requirements even when game preflight fails first; configured optional direct-start files and existing invalid files are separate errors");
+        settings.selected_server=Some(7);std::fs::remove_file(root.join("profiles/loader.ini")).unwrap();
+        let mut expected=vec![backend.runtime.injector.clone(),game.join("package/data002.ypk")];expected.sort();
+        assert_eq!(backend.missing_required_files(&settings,None),expected,"joining does not need local hosting or disabled direct-start components");
+        settings.game_dir.clear();assert_eq!(backend.missing_required_files(&settings,None),vec![backend.runtime.injector.clone()],"an unchosen game folder is not a list of missing relative files");
+        let imported=root.join("engine/node_modules/ocgcore-wasm/lib/generated-core.mjs");let opened=root.join("engine/vendor/missing.cdb");
+        let diagnostic=format!("Error [ERR_MODULE_NOT_FOUND]: Cannot find module '{}' imported from duelcore.ts\nError: ENOENT: no such file or directory, open '{}'\nCannot find module '{}'\nCannot find module 'relative.mjs'\nOther error: open '{}'",imported.display(),opened.display(),backend.runtime.launcher.display(),root.join("unrelated.bin").display());
+        let mut expected=vec![backend.runtime.injector.clone(),imported,opened];expected.sort();
+        assert_eq!(backend.missing_required_files(&settings,Some(&diagnostic)),expected,"only actual absolute missing-import/open paths supplement the finite inventory; existing files and unrelated text stay excluded");
+        drop(backend);std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    #[cfg(unix)]
+    fn sidecar_imports_are_rechecked_after_ready_and_before_attaching_to_a_live_server() {
+        use std::io::{Read,Write};use std::sync::atomic::{AtomicBool,Ordering};
+        let backend=server_resource_fixture("import-deletion");let root=backend.root.clone();backend.check_server_resources().unwrap();
+        std::fs::remove_file(backend.runtime.engine.join("required-chunk.mjs")).unwrap();
+        let missing=backend.check_server_resources().unwrap_err().to_string();assert!(missing.contains("required-chunk.mjs"),"{missing}");
+        let settings=Settings{game_dir:"an attached server does not need a replacement game path".into(),..Settings::default()};
+        let listener=std::net::TcpListener::bind("127.0.0.1:0").unwrap();listener.set_nonblocking(true).unwrap();
+        admin::write_live(&backend.data_dir(&settings),listener.local_addr().unwrap().port()).unwrap();
+        let stop=Arc::new(AtomicBool::new(false));let stopping=stop.clone();let thread=std::thread::spawn(move|| {
+            let deadline=std::time::Instant::now()+std::time::Duration::from_secs(3);
+            while !stopping.load(Ordering::Relaxed) && std::time::Instant::now()<deadline {
+                if let Ok((mut stream,_))=listener.accept(){let _=stream.set_read_timeout(Some(std::time::Duration::from_millis(100)));let mut input=[0;4096];
+                    if stream.read(&mut input).unwrap_or(0)>0 {let _=stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 12\r\nConnection: close\r\n\r\n{\"online\":0}");}}
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        });
+        let attached=backend.start_server(&settings);stop.store(true,Ordering::Relaxed);thread.join().unwrap();
+        assert!(attached.unwrap_err().to_string().contains("required-chunk.mjs"));
+        assert!(backend.game.lock().unwrap().is_none() && backend.server.lock().unwrap().is_none());
+        assert!(!backend.data_dir(&settings).join("server.db").exists());drop(backend);std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    #[cfg(unix)]
+    fn engine_startup_check_has_a_short_budget_and_reaps_its_own_process() {
+        let backend=server_resource_fixture("probe-timeout");let root=backend.root.clone();
+        std::fs::write(backend.runtime.engine.join("duelcore.ts"),"import {writeFileSync} from 'node:fs'; writeFileSync(new URL('./probe.pid',import.meta.url),String(process.pid)); setInterval(()=>{},1000);").unwrap();
+        let started=std::time::Instant::now();let error=backend.check_engine_start(std::time::Duration::from_millis(500)).unwrap_err().to_string();
+        assert!(error.contains("timed out") && error.contains("duelcore.ts"),"{error}");assert!(started.elapsed()<std::time::Duration::from_secs(2));
+        let pid=std::fs::read_to_string(backend.runtime.engine.join("probe.pid")).unwrap();assert!(pid.parse::<u32>().is_ok());
+        assert!(!Command::new("kill").args(["-0",pid.trim()]).stdout(Stdio::null()).stderr(Stdio::null()).status().unwrap().success(),"the engine check must not leave its process running or a zombie");
+        assert!(backend.game.lock().unwrap().is_none() && backend.server.lock().unwrap().is_none());assert!(!backend.data_dir(&Settings::default()).exists());
+        drop(backend);std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn automatic_setup_checks_do_not_save_drafts_refresh_direct_launch_or_start_processes() {
+        let root=std::env::temp_dir().join(format!("yo3-read-only-setup-{}",std::process::id())); let _=std::fs::remove_dir_all(&root);
+        let backend=Backend::new(root.clone()).unwrap();
+        let saved=Settings{game_dir:"saved installation".into(),local_account:"MyPlayer".into(),..Settings::default()};
+        LauncherDb::open(&root).unwrap().save_settings(&saved).unwrap();
+        std::fs::write(root.join("profiles/loader.ini"),b"existing direct-start setup").unwrap();
+        std::fs::write(root.join("profiles/direct.json"),b"existing private connection").unwrap();
+        let draft=Settings{game_dir:root.join("unfinished game").to_string_lossy().into(),..saved.clone()};
+        let error=backend.verify_setup(&draft,None).unwrap_err();
+        assert!(error.to_string().contains("Choose the installed game folder containing yo3.exe"),"preserve the actionable game error: {error:#}");
+        assert_eq!(LauncherDb::open(&root).unwrap().settings().unwrap(),saved,"an automatic check must never save an unfinished draft");
+        assert_eq!(std::fs::read(root.join("profiles/loader.ini")).unwrap(),b"existing direct-start setup");
+        assert_eq!(std::fs::read(root.join("profiles/direct.json")).unwrap(),b"existing private connection");
+        assert!(backend.game.lock().unwrap().is_none()); assert!(backend.server.lock().unwrap().is_none());
+        assert!(!backend.data_dir(&draft).exists(),"a check must never initialize hosting data");
+        drop(backend); std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn automatic_setup_checks_do_not_require_a_launcher_database() {
+        let root=std::env::temp_dir().join(format!("yo3-setup-without-db-{}",std::process::id())); let _=std::fs::remove_dir_all(&root);
+        let backend=Backend::new(root.clone()).unwrap();
+        let settings=Settings{game_dir:root.join("missing installation").to_string_lossy().into(),..Settings::default()};
+        let error=backend.verify_setup(&settings,None).unwrap_err();
+        assert!(error.to_string().contains("Choose the installed game folder containing yo3.exe"));
+        assert!(!root.join("launcher.db").exists(),"verification belongs to the captured settings, without creating or consulting preference storage");
+        drop(backend); std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn a_changed_connection_launcher_is_rejected_before_play() {
         let root=std::env::temp_dir().join(format!("yo3-desktop-launcher-hash-{}",std::process::id())); let _=std::fs::remove_dir_all(&root);

@@ -16,7 +16,8 @@ path = "src/main.rs"
 anyhow.workspace = true
 chrono.workspace = true
 if-addrs.workspace = true
-iced = { workspace = true, features = ["tiny-skia", "tokio", "x11", "wayland", "fira-sans", "svg"] }
+keyring.workspace = true
+iced = { workspace = true, features = ["tiny-skia", "tokio", "x11", "wayland", "fira-sans", "svg", "markdown"] }
 reqwest.workspace = true
 semver.workspace = true
 ring.workspace = true
@@ -33,5 +34,8 @@ yo3-launcher.workspace = true
 yo3-tunnel.workspace = true
 zip.workspace = true
 
+[dev-dependencies]
+iced = { workspace = true, features = ["advanced"] }
+
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_System_Com", "Win32_System_Registry"] }
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_System_Com", "Win32_System_Registry", "Win32_System_Diagnostics_ToolHelp"] }
