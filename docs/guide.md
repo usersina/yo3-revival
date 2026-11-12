@@ -124,7 +124,7 @@ or quarantine them. No exclusion is needed unless your security software actuall
    report an uncertain detection before allowing it.
 3. For a verified false positive, allow or restore the affected file. If you choose a folder exclusion instead,
    exclude only the extracted **`yo3-revival-desktop/`** or **`yo3-revival-scripts/`** folder, then re-extract any
-   quarantined files from the matching archive. In Desktop, click **Validate game** again before **Start**.
+   quarantined files from the matching archive. In Desktop, choose **Retry check**, then **Play** once the check passes.
 
 **Where are our DLLs?**
 
@@ -134,7 +134,7 @@ or quarantine them. No exclusion is needed unless your security software actuall
 | Extracted Desktop folder            | `yo3-bootstrap.dll`, the loader used when enabling optional direct launch                                        |
 | Game folder, beside `yo3.exe`       | `winmm.dll`, installed only when [direct launch](launcher.md#open-the-game-directly) is enabled                  |
 
-Normal Desktop **Start** and Scripts **play** load `yo3-auth.dll` from the extracted Revival folder; they do not
+Desktop **Play** and Scripts **play** load `yo3-auth.dll` from the extracted Revival folder; they do not
 copy it into the game folder. Excluding just `yo3-revival.exe` does not cover the injector or DLL. The whole game
 folder does not normally need an exclusion. If the optional direct-launch `winmm.dll` is flagged, allow that
 specific file after verifying it came from your Revival setup.

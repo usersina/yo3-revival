@@ -29,6 +29,94 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 Platform scope: **64-bit Windows 10/11** and **Linux with Wine**. **Windows 7 support is out of scope for now**,
 for both Desktop and Scripts. Current compatibility and native Windows verification work targets Windows 10/11.
 
+Desktop UI refinement (2026-11-12):
+
+- [x] Both modes use one dynamic **Play** button with checking/starting progress and contextual retry. Choosing a
+  game folder starts verification automatically; pasted edits wait briefly. Verification leaves preferences and direct
+  launch unchanged. Successful checks save one at a time; stale results cannot approve a newer folder. Play rechecks
+  critical requirements, and imported invitations automatically verify the server, compatibility and account.
+- [x] Field errors appear beside the affected input, with consistent colors for progress, success, required actions
+  and failures. Contextual guidance covers play, joining, hosting, activity and updates. **Help & support** groups
+  log export and recovery; Add/Edit server group connection actions, dialogs retain visible confirmations, and
+  unchanged forms hide Save controls. Notices retain a short title and visible cause, including filenames, failure
+  stages and available native codes from the error chain. Background checks preserve the original launch failure.
+- [x] Update notes render formatted Markdown in a bounded scroll area, with restart warnings and confirmation buttons
+  always visible. A geometry regression guards table layout against infinite bounds. Real release notes, long notes,
+  tables and link errors each remain usable through 60 scroll actions at 900×640 on a private display.
+- [x] Direct launch uses a checkbox with contextual repair, installed-state feedback and prerequisite explanations.
+  Removal remains possible after failed validation or a removed connection; enabling requires verified settings and
+  a running local server or saved remote connection. Normal/Advanced stay text-only with hover help and fit the
+  sidebar. Busy server/account selectors show their saved values without offering ignored interactions.
+- [x] Missing required files appear together as exact paths, with a short conditional antivirus/exclusion hint.
+  A direct Desktop download action replaces the recovery dialog. Error notices show their cause/code directly, with
+  a copy icon for the full report and no details expander. Direct-launch repair states which
+  loader/configuration it restores.
+  Missing-path collection runs in background checks, ignores stale results and distinguishes absent files from
+  existing invalid files. Copied errors and exported diagnostics preserve the complete list and original failure.
+  Local Play/hosting recheck the server checksum, packaged Node, engine anchors and bounded sidecar startup even
+  when hosting is already live. Four focused Desktop backend checks and 11 engine checks pass, including deleted
+  imports, multiple missing files, non-regular files and timeout cleanup. Individual card scripts are not exhaustively
+  verified, and remote hosts' later file changes are not monitored by Desktop.
+- [x] Normal logs use a compact panel, group consecutive repeated messages and hide Wine `fixme` output with a count.
+  Errors, native codes and filenames remain visible. Advanced Activity retains technical output. Focused tests verify
+  full errors survive dismissal and ZIP export, including output filtered from the display; following and paused views
+  remain covered. Both modes were inspected with a sample crash and recorded diagnostic lines.
+- [x] Short logs and release notes fit their contents; Normal's footer and connection-editor actions follow the
+  content. Removed empty feedback/save-row gaps, centred mode labels and tightened About spacing. Inspected 21
+  private-display states, including minimum-size forms, dialogs, errors and empty/long logs. Native scrolling checks
+  confirm that scrolling up stops following, returning to the bottom resumes it, and error-page footers remain reachable.
+- [x] Twenty-nine new regression checks bring focused UI coverage to 67 checks: 60 flow checks, six error presentation
+  checks and one Markdown geometry check. The three direct-launch regressions pass; nine UI states were inspected
+  at 900×640. Four additional missing-file cache regressions pass; actual two-file deletion lists and direct download
+  controls were inspected in both modes at the same size. Repeat selection of the same invalid folder remains covered. Eight error
+  cases were inspected at 900×640; actual missing-helper failures are visible in both modes. Desktop lint and
+  Linux/Windows builds pass; private-display checks also cover automatic verification, forms/dialogs, account creation
+  and shutdown. Rendering a native crash error does not establish a crash fix;
+  native Windows GUI verification of this refinement remains open.
+
+Local game-data recovery (2026-11-12):
+
+- [x] Both modes offer **Help & support → Reset local game data… → Back up & reset** with a reviewed local
+  folder and explicit scope. The default moves only `options.y3o` and cached stock logins into a dated backup,
+  preserving the entire player tree, including local decks, `.y3p` selection and `revival-starter.initialized`.
+  An explicit full reset moves the original client folder to `backup/data`; server accounts/cards/BP and Revival
+  connections stay separate. Completion keeps an **Open backup folder** action, with restoration steps in the guide.
+- [x] The actual Windows Documents location is resolved through the same API as the client, including redirects.
+  Linux queries that API in the selected Wine prefix using a read-only injector flag. Running games, stale
+  confirmations, protected folder overlaps and symlink/reparse entries are refused. Partial failures roll back;
+  a failed rollback retains the backup and reports its recovery path without overwriting newly appeared files.
+- [x] Focused TDD: 16 Linux backend/platform checks, eight UI flow checks and 13 native Windows filesystem checks
+  pass. Native discovery and running-game refusal pass with a disposable process. Private Wine GUI checks complete
+  both reset scopes and restore their backups with identical player-file hashes; a simulated external game produces
+  an actionable visible error with no changed files. Linux/Windows release builds, focused Desktop Clippy and doc
+  links pass. Real user Documents were not reset; native Windows GUI confirmation/reset remains a separate check.
+
+Windows startup investigation (2026-11-12):
+
+- [x] Reproduced intermittent authentication resets on native Windows 11 with unmodified v0.0.6: eight explicit
+  socket-10054 failures in 40 attempts, separate from the reported native game crash. The client now accepts a fully
+  validated reply despite a later close-alert failure; the server gives the peer a bounded opportunity to close.
+  Truncation, credential rejection and certificate/compatibility checks remain enforced. Focused TLS regressions
+  went red/green. The patched client passed 60/60 against the original server; the original client passed 60/60
+  against the patched server. Combined checks passed 199/200, including a clean repeat of 100; one discovery
+  handshake hit the unchanged 10-second deadline, with no socket reset. The final rebuilt binaries passed another
+  50/50. The cause of that timeout remains open; new diagnostics identify the stalled connection/response stage.
+  Native regressions pass: 50 repeated framing/rejection checks, two deterministic cleanup-failure cases and three
+  timeout-stage cases. Successful-reply fixtures use orderly TLS closure because immediate TCP resets can discard
+  unread response bytes on Windows; cleanup failure is injected after validation in the focused regression.
+- [x] Desktop startup timeout now stops/reaps its owned unfinished child, preserves diagnostics and allows retry.
+  Stop waits for the captured server endpoint to close and any owned child to exit, including servers attached
+  after reopening Desktop. Real child/manager regressions cover retry and the acknowledgement-before-exit race.
+  Native closed-port/attached regressions and nine actual starts pass, including retry after timeout. Windows takes
+  about two seconds to report loopback refusal, so shutdown probes allow up to three seconds within the remaining
+  deadline. The deliberate startup timeout took 13 seconds including blocking status probes; that polling limit
+  is not a strict wall-clock deadline. All private test processes and listeners were stopped afterward.
+- [ ] The Discord recording's native game exit `0xc0000005` is a separate failure. No faulting address is present
+  in the submitted logs. Repeated authentication success does not establish that this access violation is fixed;
+  seven fresh native Windows 11 launches with the patched binaries reached the main map and exited normally, each
+  monitored through exit by a temporary debugger with unique capture files. A crash dump/faulting address from a
+  failing machine is still needed. Debugger attachment can change timing, so these runs do not rule out the crash.
+
 v0.0.6 release preparation (2026-11-11):
 
 - [x] The shared workspace package version and all seven local lockfile entries are `0.0.6`; external dependencies
@@ -276,6 +364,17 @@ have injector regression checks. Windows cross-build and GUI checks under Wine s
 font, native invitation picker/import, saved connection and TLS connection check. Native Windows GUI testing and
 separate friends' machines remain open. The Linux bundle also starts its server with the bundled Node/engine from
 outside the checkout; both platform archives exclude private credentials, databases and game files.
+
+Desktop bug reporting (2026-11-12):
+
+- [x] One review dialog publishes an issue and linked text diagnostics through the registered GitHub App, with device
+      sign-in, automatic version/system/error evidence, optional filtering and a visible public-sharing notice.
+- [x] OS credential storage and token refresh; private SQLite receipts, restart recovery, cancellation and concurrent
+      posting guards prevent blind duplicate uploads/issues. Oversized evidence fails before upload.
+- [x] 83 focused regressions pass; Desktop Clippy is clean. Native Iced layout checks cover sign-in, review, progress,
+      uncertain results and recovery at 900×640 and 1000×700. Linux and Windows release builds pass.
+- [ ] Player verification of real GitHub sign-in and issue/Gist publishing, including native Windows credential storage.
+      HTTP/vault checks used mocks; no player diagnostics were uploaded during development.
 
 Headless display fix (2026-11-10): cold Xvfb startup releases captured pipes immediately, keeps diagnostics in
 its instance log and reuses an existing display. Regression tests cover cold startup, reuse and failed startup;

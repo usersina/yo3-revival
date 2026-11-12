@@ -151,7 +151,7 @@ The original executable's administrator manifest also caused native startup to p
 with `VirtualAllocEx` error 5 when the game ran above the standard-user injector. The Windows launcher now appends
 `RunAsInvoker` to the injector child's `__COMPAT_LAYER`, preserving inherited compatibility flags and leaving the
 launcher/server environment unchanged. A Windows-only regression went red/green for that boundary. Actual Desktop
-Normal Start then resumed the game without a UAC prompt; token inspection confirmed the app, helper, server and
+Normal mode then resumed the game without a UAC prompt; token inspection confirmed the app, helper, server and
 game were all non-elevated. A fresh NativeSmoke player received its selected starter before entering matchmaking,
 without opening Deck Edit. No executable manifest or machine UAC policy is changed.
 
@@ -278,6 +278,12 @@ parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Su
   `options.y3o`, `users\`, and per player `players\<pname>\` with `decks`, `mail`, `regulations`, `duellogs`,
   `local`, `avatars` and `<pname>.y3p`. Under Wine, My Documents is usually a link to the Linux `~/Documents`, and
   every prefix made by `vclient.sh prefix` shares it.
+- Startup `0x40B820` loads `options.y3o` through `0x52D9F0` (language, screen/audio settings and `lastLogin`), then
+  reads the selected cached stock user through `0x52DDD0`. These files still influence startup with the login form
+  skipped. Player config read/save `0x52E0B0` / `0x52E200` includes `deckInfo.cursor_deck_name`; preserve it together
+  with local decks and `revival-starter.initialized`. Desktop's [local reset](launcher.md#reset-local-game-data)
+  keeps the entire player tree by default. This is a recovery option; old local data has not been established as
+  the cause of the reported native access violation.
 - Text values are read as C strings: anything after a NUL is lost. Use binary for blobs (`avatar1`, `pbin`,
   `regulations`).
 - Unanswered polls time out with a dialog naming the decimal request id, and the client then drops back to the title.

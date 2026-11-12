@@ -28,7 +28,7 @@ body:
     id: logs
     attributes:
       label: Diagnostic logs (optional)
-      description: "Desktop: Export logs below Start, or Advanced → Activity. Scripts: attach relevant session logs. Review first; never attach invitations, keys or databases."
+      description: "Desktop: Export logs below Play, or Advanced → Activity. Scripts: attach relevant session logs. Review first; never attach invitations, keys or databases."
   - type: dropdown
     id: pc
     attributes:

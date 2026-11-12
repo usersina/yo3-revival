@@ -13,7 +13,7 @@ game with the same connection DLL and rules engine.
 
 ## Enter the game
 
-Press **Start** in Normal mode, or **Play** on Advanced → Play. Once the game opens, choose **ONLINE** and select
+Press **Play** in Normal mode or on Advanced → Play. Once the game opens, choose **ONLINE** and select
 your player. The connection app already authenticated you; there is no original username/password form to fill in.
 A new account's first player is in the first slot.
 

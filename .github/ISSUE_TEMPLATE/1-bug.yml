@@ -10,6 +10,11 @@ body:
     validations:
       required: true
   - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Optional. List the actions that lead to the problem, including card names for a duel issue.
+  - type: textarea
     id: expected
     attributes:
       label: What did you expect?
@@ -29,8 +34,8 @@ body:
   - type: textarea
     id: screenshot
     attributes:
-      label: Screenshot
-      description: Optional. Drag and drop an image here.
+      label: Screenshot or video
+      description: Optional. Drag and drop a screenshot or a short video here.
   - type: input
     id: version
     attributes:
@@ -40,12 +45,9 @@ body:
     id: logs
     attributes:
       label: Diagnostic logs (optional)
-      description: "Desktop: Export logs below Start, or Advanced → Activity. Scripts: attach relevant session logs. Review first; never attach invitations, keys or databases."
-  - type: dropdown
+      description: "Desktop: Help & support → Report a problem publishes an issue with linked diagnostics after your confirmation. For a manual report, attach an exported ZIP or relevant Scripts session logs here. Review first; never attach invitations, keys or databases."
+  - type: textarea
     id: pc
     attributes:
-      label: Your PC
-      options:
-        - Windows
-        - Linux (Wine)
-        - Other
+      label: System details
+      description: "Desktop includes these details automatically when publishing from Report a problem. For a manual report, include your Windows or Linux version, architecture, and Wine version if used."

@@ -1,7 +1,7 @@
 # Scripts edition
 
 Choose **Scripts** if you want terminal commands without the Desktop app. It includes the same server, rules engine,
-Node.js, connection helper and DLL. Account/profile setup and updates are manual. For a Start button and log export,
+Node.js, connection helper and DLL. Account/profile setup and updates are manual. For a Play button and log export,
 use [Desktop](launcher.md).
 
 You still need the original **Yu-Gi-Oh! ONLINE 3 v1.153** installation. Windows builds support **64-bit Windows 10/11**;
