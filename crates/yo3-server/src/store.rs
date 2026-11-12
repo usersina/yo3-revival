@@ -44,24 +44,7 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
         if check != "ok" { return Err(io::Error::other(format!("server.db integrity check: {check}"))) }
         tx.execute_batch(DUEL_LOGS_TABLE).map_err(sql)?;
         tx.commit().map_err(sql)?;
-        for name in edited_after_import(dir) {
-            let hint = if name == "accounts.json" {
-                " To give BP, use Give BP in the app (Hosting → Players & invitations) or `yo3-server give-bp PLAYER AMOUNT`."
-            } else { "" };
-            tracing::warn!("{name} was edited after it was imported into server.db: the edit was ignored.{hint}");
-        }
-        if dir.join("duellogs").is_dir() {
-            tracing::warn!("duellogs/ holds duel logs from an older version: they now live in server.db, and each \
-                player's game keeps its own copy. The folder is safe to delete.");
-        }
-        let old = legacy_documents(dir);
-        if !old.is_empty() {
-            let (what, verb, pronoun) = if old.len() == 1 { ("an old copy", "is", "It") } else { ("old copies", "are", "They") };
-            tracing::warn!("{} {verb} {what}: the data was imported into server.db, which the server uses, and {} no longer \
-                read. {pronoun} {verb} safe to delete (server.db is backed up in backups/ at every start).",
-                old.join(", "), pronoun.to_lowercase() + " " + verb);
-        }
-        fs::write(dir.join(FORMAT_MARKER), "sqlite:1\n")?;
+        mark_imported(dir)?;
         return Ok(());
     }
     let tables: u32 = tx.query_row("SELECT count(*) FROM sqlite_master WHERE type='table'", [], |r| r.get(0)).map_err(sql)?;
@@ -82,8 +65,30 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
     tx.pragma_update(None, "application_id", APPLICATION_ID).map_err(sql)?;
     tx.pragma_update(None, "user_version", 1).map_err(sql)?;
     tx.commit().map_err(sql)?;
-    fs::write(dir.join(FORMAT_MARKER), "sqlite:1\n")?;
+    mark_imported(dir)?;
     Ok(())
+}
+
+/// Warns about files an older version left in the data folder that the server no longer reads. Called once when a
+/// server starts (not by the admin commands, which open the same database).
+pub fn report_leftovers(dir: &Path) {
+    for name in edited_after_import(dir) {
+        let hint = if name == "accounts.json" {
+            " To give BP, use Give BP in the app (Hosting → Players & invitations) or `yo3-server give-bp PLAYER AMOUNT`."
+        } else { "" };
+        tracing::warn!("{name} was edited after it was imported into server.db: the edit was ignored.{hint}");
+    }
+    if dir.join("duellogs").is_dir() {
+        tracing::warn!("duellogs/ holds duel logs from an older version: they now live in server.db, and each \
+            player's game keeps its own copy. The folder is safe to delete.");
+    }
+    let old = legacy_documents(dir);
+    if !old.is_empty() {
+        let (what, verb, pronoun) = if old.len() == 1 { ("an old copy", "is", "It") } else { ("old copies", "are", "They") };
+        tracing::warn!("{} {verb} {what}: the data was imported into server.db, which the server uses, and {} no longer \
+            read. {pronoun} {verb} safe to delete (server.db is backed up in backups/ at every start).",
+            old.join(", "), pronoun.to_lowercase() + " " + verb);
+    }
 }
 
 /// Duel logs (`.dlog` files) the client downloads right after a duel between players (`Hub::finish_duel`). An
@@ -117,12 +122,20 @@ pub fn duel_log_names(dir: &Path) -> io::Result<Vec<String>> {
     query.query_map([], |r| r.get(0)).map_err(sql)?.collect::<Result<_, _>>().map_err(sql)
 }
 
+/// Records the import in [`FORMAT_MARKER`], once: its time is when the JSON was imported, which
+/// [`edited_after_import`] compares against.
+fn mark_imported(dir: &Path) -> io::Result<()> {
+    let marker = dir.join(FORMAT_MARKER);
+    if fs::read_to_string(&marker).is_ok_and(|text| text == "sqlite:1\n") { return Ok(()) }
+    fs::write(marker, "sqlite:1\n")
+}
+
 /// The legacy JSON documents still beside an imported server.db.
 pub fn legacy_documents(dir: &Path) -> Vec<&'static str> {
     DOCUMENTS.iter().copied().filter(|name| dir.join(name).is_file()).collect()
 }
 
-/// The legacy JSON documents modified after the last start's marker: hand edits that the database never sees.
+/// The legacy JSON documents modified after the import: hand edits that the database never sees.
 pub fn edited_after_import(dir: &Path) -> Vec<&'static str> {
     let modified = |p: &Path| fs::metadata(p).and_then(|m| m.modified()).ok();
     let Some(marker) = modified(&dir.join(FORMAT_MARKER)) else { return vec![] };
@@ -290,6 +303,7 @@ mod tests {
         assert_eq!(legacy_documents(&d), ["accounts.json"], "reported as an old copy that is safe to delete");
         initialize(&d).unwrap();
         assert_eq!(read(&d.join("accounts.json")).unwrap().unwrap()["next_user"], 1042, "server.db stays authoritative");
+        assert_eq!(edited_after_import(&d), ["accounts.json"], "reopening the database keeps the import time");
         fs::remove_dir_all(d).unwrap();
     }
 

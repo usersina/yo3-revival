@@ -302,6 +302,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         None => Hub::default(),
     };
     if let Some(dir) = &cfg.data_dir {
+        store::report_leftovers(dir);
         hub.keep_social(&dir.join("friends.json"));
         hub.keep_mail(&dir.join("mail.json"));
         hub.keep_teams(&dir.join("teams.json"));
