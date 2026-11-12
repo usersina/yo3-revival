@@ -121,6 +121,9 @@ async fn main() -> anyhow::Result<()> {
         let game_dir = a.game_dir.clone().unwrap_or_else(yo3_data::default_game_dir);
         return admin(&a, command, game_dir);
     }
+    if a.auth_cert.is_none() && a.auth_key.is_none() {
+        yo3_server::auth::renew_on_start(&a.data_dir);
+    }
     let cfg = Config {
         tls: yo3_server::auth::TlsConfig { port: a.auth_port,
             certificate: a.auth_cert.unwrap_or_else(|| a.data_dir.join("server.crt")),

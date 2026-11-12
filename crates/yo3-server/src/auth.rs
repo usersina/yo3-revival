@@ -73,6 +73,23 @@ pub fn maintain_identity(dir: &std::path::Path, mut names: Vec<String>) -> anyho
     Ok(TlsConfig { port: 7443, certificate, private_key })
 }
 
+/// At a server's start: renew the data folder's own identity when it is within 30 days of expiry (same key and names,
+/// so pinned clients keep working). Before this only the Desktop app renewed, and a command-line host's clients all
+/// stopped connecting a year after `init-auth`. Nothing happens without an identity, and an externally issued
+/// certificate is left to its issuer (a warning). Whether the certificate was renewed.
+pub fn renew_on_start(dir: &std::path::Path) -> bool {
+    if !dir.join("server.crt").is_file() || !dir.join("server.key").is_file() { return false }
+    let before = std::fs::read(dir.join("server.crt")).ok();
+    match maintain_identity(dir, vec![]) {
+        Ok(_) => {
+            let renewed = std::fs::read(dir.join("server.crt")).ok() != before;
+            if renewed { tracing::info!("server certificate renewed for another year (same key: invitations stay valid)"); }
+            renewed
+        }
+        Err(e) => { tracing::warn!("server certificate not renewed: {e:#}"); false }
+    }
+}
+
 /// Explicitly update the names on an existing identity. The private key and account data are untouched.
 /// Call only while the server is stopped; the previous public certificate is kept for recovery.
 pub fn reissue_certificate(dir: &std::path::Path, names: Vec<String>) -> anyhow::Result<std::path::PathBuf> {
@@ -185,6 +202,31 @@ mod tests {
         std::fs::write(&tls.certificate, "broken certificate").unwrap();
         assert!(maintain_identity(&dir, vec!["localhost".into()]).is_err());
         assert_eq!(std::fs::read(&tls.private_key).unwrap(), private);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn a_server_start_renews_an_expiring_identity_with_the_same_key_and_names() {
+        let dir = std::env::temp_dir().join(format!("yo3-renew-start-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!renew_on_start(&dir), "no identity: nothing is created");
+        assert!(!dir.join("server.key").exists());
+        let tls = initialize(&dir, vec!["localhost".into(), "friends.example".into()]).unwrap();
+        assert!(!renew_on_start(&dir), "a fresh certificate is kept");
+        let key_pem = std::fs::read_to_string(&tls.private_key).unwrap();
+        let identity = yo3_tunnel::identity_from_pem(&std::fs::read(&tls.certificate).unwrap()).unwrap();
+        let key = rcgen::KeyPair::from_pem(&key_pem).unwrap();
+        let mut old = rcgen::CertificateParams::new(vec!["localhost".into(), "friends.example".into()]).unwrap();
+        old.not_before = rcgen::date_time_ymd(2000, 1, 1); old.not_after = rcgen::date_time_ymd(2001, 1, 1);
+        std::fs::write(&tls.certificate, old.self_signed(&key).unwrap().pem()).unwrap();
+        assert!(renew_on_start(&dir));
+        assert_eq!(std::fs::read_to_string(&tls.private_key).unwrap(), key_pem);
+        let renewed = std::fs::read(&tls.certificate).unwrap();
+        assert_eq!(yo3_tunnel::identity_from_pem(&renewed).unwrap(), identity, "pinned clients still match");
+        let (_, pem) = x509_parser::pem::parse_x509_pem(&renewed).unwrap();
+        let (_, cert) = x509_parser::parse_x509_certificate(&pem.contents).unwrap();
+        assert!(cert.validity().not_after.timestamp() > chrono::Utc::now().timestamp() + 300 * 86400);
+        let names = format!("{:?}", cert.subject_alternative_name().unwrap().unwrap().value);
+        assert!(names.contains("friends.example"), "{names}");
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
