@@ -44,8 +44,14 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
         if check != "ok" { return Err(io::Error::other(format!("server.db integrity check: {check}"))) }
         tx.commit().map_err(sql)?;
         for name in edited_after_import(dir) {
-            tracing::warn!("{name} was changed after it was imported into server.db: the server uses server.db and \
-                ignores the edit. Use the admin commands instead (give-bp, add-player, rename; `yo3-server --help`)");
+            tracing::warn!("{name} was edited after it was imported into server.db: the edit was ignored. To give BP, use \
+                Give BP in the app (Hosting → Players & invitations) or `yo3-server give-bp PLAYER AMOUNT`");
+        }
+        let old = legacy_documents(dir);
+        if !old.is_empty() {
+            tracing::warn!("{} {} old copies: their data was imported into server.db, which the server uses, and they are no \
+                longer read. They are safe to delete (server.db is backed up in backups/ at every start).",
+                old.join(", "), if old.len() == 1 { "is an" } else { "are" });
         }
         fs::write(dir.join(FORMAT_MARKER), "sqlite:1\n")?;
         return Ok(());
@@ -69,6 +75,11 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
     tx.commit().map_err(sql)?;
     fs::write(dir.join(FORMAT_MARKER), "sqlite:1\n")?;
     Ok(())
+}
+
+/// The legacy JSON documents still beside an imported server.db.
+pub fn legacy_documents(dir: &Path) -> Vec<&'static str> {
+    DOCUMENTS.iter().copied().filter(|name| dir.join(name).is_file()).collect()
 }
 
 /// The legacy JSON documents modified after the last start's marker: hand edits that the database never sees.
@@ -236,6 +247,7 @@ mod tests {
         fs::write(d.join("accounts.json"), "{\"next_user\":9999}").unwrap();
         fs::File::options().write(true).open(d.join("accounts.json")).unwrap().set_modified(later).unwrap();
         assert_eq!(edited_after_import(&d), ["accounts.json"]);
+        assert_eq!(legacy_documents(&d), ["accounts.json"], "reported as an old copy that is safe to delete");
         initialize(&d).unwrap();
         assert_eq!(read(&d.join("accounts.json")).unwrap().unwrap()["next_user"], 1042, "server.db stays authoritative");
         fs::remove_dir_all(d).unwrap();

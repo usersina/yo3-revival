@@ -83,12 +83,18 @@ impl Session {
     }
 }
 pub struct LineWriter { session: Session, line: Vec<u8>, dropped: bool, private_key: bool, prefix: &'static str }
-pub struct ConsoleWriter { logger: Option<LineWriter> }
-impl ConsoleWriter { pub fn new(session: Option<Session>) -> Self { Self { logger: session.map(|s| s.writer()) } } }
+pub struct ConsoleWriter { logger: Option<LineWriter>, color: bool }
+impl ConsoleWriter {
+    pub fn new(session: Option<Session>) -> Self { Self { logger: session.map(|s| s.writer()), color: false } }
+    /// Colours the terminal copy by level (the session log stays plain text): see [`console_color`].
+    pub fn colored(mut self, color: bool) -> Self { self.color = color; self }
+}
 impl Write for ConsoleWriter {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         if let Some(log) = &mut self.logger { log.write_all(bytes)?; }
-        std::io::stdout().write_all(bytes)?; Ok(bytes.len())
+        if self.color { std::io::stdout().write_all(colorize(&String::from_utf8_lossy(bytes)).as_bytes())?; }
+        else { std::io::stdout().write_all(bytes)?; }
+        Ok(bytes.len())
     }
     fn flush(&mut self) -> io::Result<()> { if let Some(log) = &mut self.logger { log.flush()?; } std::io::stdout().flush() }
 }
@@ -200,6 +206,18 @@ pub fn prune(root: &Path, time: u64, max_bytes: u64, max_age: u64) -> io::Result
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn log_levels_are_found_and_only_the_terminal_copy_is_coloured() {
+        use super::{Level, colorize, level};
+        assert_eq!(level("2026-11-12T13:02:07.593510Z  WARN accounts.json is an old copy"), Some(Level::Warn));
+        assert_eq!(level("14:25:39 ERROR duel check"), Some(Level::Error));
+        assert_eq!(level("14:25:39 INFO rules engine: engine"), Some(Level::Info));
+        assert_eq!(level("Game/helper session ended"), None);
+        assert_eq!(level("14:25:39 INFO a player named WARN"), Some(Level::Info), "the level word comes first");
+        let shown = colorize("t  WARN careful\nt  INFO fine\nplain\n");
+        assert_eq!(shown, "\x1b[33mt  WARN careful\x1b[0m\nt  \x1b[32mINFO\x1b[0m fine\nplain\n");
+    }
+
     use super::*;
     #[test]
     fn wine_helpers_keep_their_live_log_when_the_native_manager_prunes() {
@@ -222,4 +240,53 @@ mod tests {
         assert!(!p.join(format!("{id}.0000.log")).exists()); assert!(p.join("account.json").exists());
         let _ = std::fs::remove_dir_all(p);
     }
+}
+
+/// A log line's severity, from its level word (`<time>  WARN message`, or Desktop's `<hh:mm:ss> WARN message`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Level { Error, Warn, Info, Debug }
+pub fn level(line: &str) -> Option<Level> {
+    line.split_whitespace().take(4).find_map(|word| match word {
+        "ERROR" => Some(Level::Error), "WARN" => Some(Level::Warn), "INFO" => Some(Level::Info),
+        "DEBUG" | "TRACE" => Some(Level::Debug), _ => None,
+    })
+}
+
+/// Terminal colours by level: errors red and warnings yellow (the whole line, so they stand out), the level word of
+/// information green and of debugging lines blue.
+pub fn colorize(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 32);
+    for line in text.split_inclusive('\n') {
+        let (body, end) = line.strip_suffix('\n').map_or((line, ""), |b| (b, "\n"));
+        match level(body) {
+            Some(Level::Error) => out.push_str(&format!("\x1b[1;31m{body}\x1b[0m")),
+            Some(Level::Warn) => out.push_str(&format!("\x1b[33m{body}\x1b[0m")),
+            Some(found @ (Level::Info | Level::Debug)) => {
+                let word = if found == Level::Info { "INFO" } else if body.contains("DEBUG") { "DEBUG" } else { "TRACE" };
+                let code = if found == Level::Info { "32" } else { "34" };
+                out.push_str(&body.replacen(word, &format!("\x1b[{code}m{word}\x1b[0m"), 1));
+            }
+            None => out.push_str(body),
+        }
+        out.push_str(end);
+    }
+    out
+}
+
+/// Whether to colour console output: stdout is a terminal, `NO_COLOR` is unset, and (on Windows) the console accepts
+/// colour sequences, which it does once virtual-terminal processing is switched on here.
+pub fn console_color() -> bool {
+    use std::io::IsTerminal;
+    if std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty()) || !std::io::stdout().is_terminal() { return false }
+    #[cfg(windows)] {
+        use windows_sys::Win32::System::Console::{ENABLE_VIRTUAL_TERMINAL_PROCESSING, GetConsoleMode, GetStdHandle, STD_OUTPUT_HANDLE, SetConsoleMode};
+        // SAFETY: plain console API calls on this process's own standard output handle.
+        unsafe {
+            let handle = GetStdHandle(STD_OUTPUT_HANDLE); let mut mode = 0;
+            if GetConsoleMode(handle, &mut mode) == 0 { return false }
+            return mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING != 0 || SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0
+        }
+    }
+    #[allow(unreachable_code, reason = "Windows returns from its own block above")]
+    true
 }
