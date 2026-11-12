@@ -71,7 +71,7 @@ enum Msg {
     Page(Page), HostTab(HostTab), Input(Field, String), Select(ServerChoice), AccountSelect(String), AdminAccountSelect(String),
     Start, Stop, Play, StopGame, TestConnection, Discover, TrustIdentity, RefreshBindings, BindSelect(yo3_desktop::network::BindAddress), Direct(bool),
     SaveSettings(Section), CancelSettings(Section), Browse(Field), UsePath, FolderPicked(u64,Field,Result<Option<String>,String>), Import, AddServer, SaveServer, EditServer, RemoveServer, ConfirmRemoveServer,
-    CreateAccount, AddPlayer, GiveBp, AddCode, RemoveCode(String), CopyCode(String), Export, Tick, Animate, Poll(Result<LiveStatus, String>), LogsPolled(Result<String,String>), Done(Result<Outcome, String>),
+    CreateAccount, AddPlayer, GiveBp, AddCode, RemoveCode(String), CopyCode(String), CodesRefreshed(Result<Value, String>), Export, Tick, Animate, Poll(Result<LiveStatus, String>), LogsPolled(Result<String,String>), Done(Result<Outcome, String>),
     Logs(bool), LogScrolled(bool), Pause(bool), LogFilter(String), CopyLogs, ExportLogs, PrepareReport(bool), SaveLogs, RemovePersonal(bool), OpenData, Support, Help, NetworkHelp,
     Close, CancelClose, KeepHosting(bool), Quit(bool), Disclosure(Disclosure), NewAccount, GitHub, ExternalOpened(Result<(), String>), DismissNotice,
     RetrySetup, ValidateGame, RunSetupCheck(u64), SetupChecked(u64, Settings, yo3_desktop::Readiness, yo3_desktop::direct::State, Vec<PathBuf>), SetupSaved(u64, Settings, Result<Settings,String>), CopyError,
@@ -95,7 +95,7 @@ struct LiveStatus { server: Option<Value>, game_running: bool, game_ready: bool,
 struct App {
     root: PathBuf, backend: Option<Arc<Backend>>, settings: Settings, draft: Settings, page: Page, host_tab: HostTab,
     servers: Vec<SavedServer>, selected: ServerChoice, status: Option<Value>, accounts: Value, account: String, admin_account: String,
-    new_account: String, new_player: String, give_bp: String, codes: Value, codes_open: bool, code_text: String, code_bp: String, code_uses: String, editor: bool, editing_id: Option<i64>, remove_server: Option<i64>,
+    new_account: String, new_player: String, give_bp: String, codes: Value, codes_open: bool, codes_polling: bool, code_text: String, code_bp: String, code_uses: String, editor: bool, editing_id: Option<i64>, remove_server: Option<i64>,
     label: String, address: String, key: String, certificate: String, server_name: String,
     busy: bool, polling: bool, game_running: bool, game_ready: bool, notice: String, failed: bool, feedback_page: Page,
     notice_expires: Option<std::time::Instant>, operation_page: Page, operation_label: String,
@@ -134,7 +134,7 @@ impl App {
         let backend = if error.is_empty() { Backend::new(root.clone()).map_err(|e| error = e.to_string()).ok() } else { None };
         let first_setup = !std::path::Path::new(&settings.game_dir).join("yo3.exe").is_file(); let page = if settings.advanced_mode && first_setup { Page::Settings } else { Page::Play };
         Self { root, backend, draft: settings.clone(), settings, page, host_tab: HostTab::Overview, servers, selected, status: None, accounts: Value::Null,
-            account, admin_account: String::new(), new_account: String::new(), new_player: String::new(), give_bp: String::new(), codes: Value::Null, codes_open: false, code_text: String::new(), code_bp: String::new(), code_uses: String::new(), editor: false, editing_id: None, remove_server: None,
+            account, admin_account: String::new(), new_account: String::new(), new_player: String::new(), give_bp: String::new(), codes: Value::Null, codes_open: false, codes_polling: false, code_text: String::new(), code_bp: String::new(), code_uses: String::new(), editor: false, editing_id: None, remove_server: None,
             label: String::new(), address: String::new(), key: String::new(), certificate: String::new(), server_name: String::new(),
             busy: false, polling: false, game_running: false, game_ready: false, failed: !error.is_empty(), notice: error, feedback_page: page,
             notice_expires: None, operation_page: page, operation_label: String::new(), log_server: true, paused: false, follow_logs: true, logs: String::new(), filter: String::new(), closing: false, keep_hosting_on_exit: true, support: false,
@@ -147,7 +147,7 @@ impl App {
             update_status: UpdateStatus::Checking, release_notes: Vec::new(), review_update: false, transfer: None, staged: None, applying: false, startup: Default::default() }
     }
     fn update(&mut self, message: Msg) -> Task<Msg> {
-        let background = matches!(message, Msg::Done(_) | Msg::FolderPicked(..) | Msg::Poll(_) | Msg::LogsPolled(_) | Msg::LogScrolled(_) | Msg::Tick | Msg::Animate | Msg::RunSetupCheck(_) | Msg::SetupSaved(..) | Msg::InvitationChecked(..) | Msg::Bug(_) | Msg::ReportPrepared(..) | Msg::ReportDestination(..) | Msg::ReportSaved(..) | Msg::UpdateChecked(_) | Msg::ExternalOpened(_) | Msg::SetupChecked(..) | Msg::GameDataPreviewed(..) | Msg::UpdatePrepared(_) | Msg::UpdateApplied(_) | Msg::WindowOpened);
+        let background = matches!(message, Msg::Done(_) | Msg::FolderPicked(..) | Msg::Poll(_) | Msg::CodesRefreshed(_) | Msg::LogsPolled(_) | Msg::LogScrolled(_) | Msg::Tick | Msg::Animate | Msg::RunSetupCheck(_) | Msg::SetupSaved(..) | Msg::InvitationChecked(..) | Msg::Bug(_) | Msg::ReportPrepared(..) | Msg::ReportDestination(..) | Msg::ReportSaved(..) | Msg::UpdateChecked(_) | Msg::ExternalOpened(_) | Msg::SetupChecked(..) | Msg::GameDataPreviewed(..) | Msg::UpdatePrepared(_) | Msg::UpdateApplied(_) | Msg::WindowOpened);
         let game_data_action=self.game_data_dialog.is_some() && matches!(message,Msg::Troubleshoot | Msg::KeepGameDataPlayers(_) | Msg::ConfirmGameDataReset | Msg::OpenGameDataBackup);
         let support_action=self.support && matches!(message,Msg::Help | Msg::GitHub | Msg::CopyVersion | Msg::CopyLogs | Msg::ExportLogs | Msg::ReportBug | Msg::Troubleshoot | Msg::Page(Page::About));
         let bug_action=self.report_options && self.bug_report.is_some() && matches!(message,Msg::Bug(_));
@@ -458,6 +458,7 @@ impl App {
                 });
             }
             Msg::CopyCode(code) => return iced::clipboard::write(code),
+            Msg::CodesRefreshed(result) => { self.codes_polling = false; if let Ok(codes) = result { self.codes = codes; } }
             Msg::Export => {
                 let Some(backend) = self.backend.clone() else { return Task::none() }; let settings = self.settings.clone(); let who = self.admin_account.clone(); self.begin("Exporting private invitation…");
                 return Task::perform(async move {
@@ -481,6 +482,11 @@ impl App {
                 let Some(backend) = self.backend.clone() else { return Task::none() }; let settings = self.settings.clone(); let log_server = self.log_server;
                 let simple=!self.settings.advanced_mode; let read_logs=simple || (!self.paused && self.page == Page::Activity);
                 let mut tasks=vec![self.run_setup_check(self.setup_revision)];
+                // A visible code list follows claims made in the game while it is open; quietly, apart from Done.
+                if self.codes_open && self.page == Page::Server && self.host_tab == HostTab::Invitations && self.status.is_some() && !self.codes_polling {
+                    self.codes_polling=true; let (backend,settings)=(backend.clone(),settings.clone());
+                    tasks.push(Task::perform(async move {tokio::task::spawn_blocking(move || backend.manage(&settings, ManagerOp::Codes).map_err(|e|e.to_string())).await.map_err(|e|e.to_string())?},Msg::CodesRefreshed));
+                }
                 if read_logs && !self.logs_polling {
                     self.logs_polling=true; let backend=backend.clone();
                     tasks.push(Task::perform(async move {tokio::task::spawn_blocking(move || if simple {format!("{}{}",backend.logs(true),backend.logs(false))}else{backend.logs(log_server)}).await.map_err(|e|e.to_string())},Msg::LogsPolled));

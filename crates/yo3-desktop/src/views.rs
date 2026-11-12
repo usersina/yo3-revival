@@ -555,7 +555,7 @@ impl App {
         for code in codes {
             let name=code["code"].as_str().unwrap_or_default().to_string();
             let claims=code["claims"].as_array().cloned().unwrap_or_default();
-            let limit=code["uses"].as_u64().map_or("any number of accounts".to_string(),|n| format!("{} of {n} accounts",claims.len()));
+            let limit=code["uses"].as_u64().map_or(format!("{} account{} (no limit)",claims.len(),if claims.len()==1{""}else{"s"}),|n| format!("{} of {n} accounts",claims.len()));
             let mut entry=column![row![text(name.clone()).font(iced::Font::MONOSPACE).size(15),
                 muted(format!("{} BP · claimed by {limit}",code["bp"])),
                 action(Icon::Copy,"Copy",Some(Msg::CopyCode(name.clone()))).style(button::text),
