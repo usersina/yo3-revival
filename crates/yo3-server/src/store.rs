@@ -42,16 +42,24 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
     if app == APPLICATION_ID && version == 1 {
         let check: String = tx.query_row("PRAGMA quick_check", [], |r| r.get(0)).map_err(sql)?;
         if check != "ok" { return Err(io::Error::other(format!("server.db integrity check: {check}"))) }
+        tx.execute_batch(DUEL_LOGS_TABLE).map_err(sql)?;
         tx.commit().map_err(sql)?;
         for name in edited_after_import(dir) {
-            tracing::warn!("{name} was edited after it was imported into server.db: the edit was ignored. To give BP, use \
-                Give BP in the app (Hosting → Players & invitations) or `yo3-server give-bp PLAYER AMOUNT`");
+            let hint = if name == "accounts.json" {
+                " To give BP, use Give BP in the app (Hosting → Players & invitations) or `yo3-server give-bp PLAYER AMOUNT`."
+            } else { "" };
+            tracing::warn!("{name} was edited after it was imported into server.db: the edit was ignored.{hint}");
+        }
+        if dir.join("duellogs").is_dir() {
+            tracing::warn!("duellogs/ holds duel logs from an older version: they now live in server.db, and each \
+                player's game keeps its own copy. The folder is safe to delete.");
         }
         let old = legacy_documents(dir);
         if !old.is_empty() {
-            tracing::warn!("{} {} old copies: their data was imported into server.db, which the server uses, and they are no \
-                longer read. They are safe to delete (server.db is backed up in backups/ at every start).",
-                old.join(", "), if old.len() == 1 { "is an" } else { "are" });
+            let (what, verb, pronoun) = if old.len() == 1 { ("an old copy", "is", "It") } else { ("old copies", "are", "They") };
+            tracing::warn!("{} {verb} {what}: the data was imported into server.db, which the server uses, and {} no longer \
+                read. {pronoun} {verb} safe to delete (server.db is backed up in backups/ at every start).",
+                old.join(", "), pronoun.to_lowercase() + " " + verb);
         }
         fs::write(dir.join(FORMAT_MARKER), "sqlite:1\n")?;
         return Ok(());
@@ -61,6 +69,7 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
         return Err(io::Error::other("server.db has an unsupported application or schema version; keep it and use the matching server"));
     }
     tx.execute_batch("CREATE TABLE state_documents (name TEXT PRIMARY KEY, body TEXT NOT NULL CHECK(json_valid(body)));").map_err(sql)?;
+    tx.execute_batch(DUEL_LOGS_TABLE).map_err(sql)?;
     for name in DOCUMENTS {
         let path = dir.join(name);
         let body = match fs::read_to_string(&path) {
@@ -75,6 +84,37 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
     tx.commit().map_err(sql)?;
     fs::write(dir.join(FORMAT_MARKER), "sqlite:1\n")?;
     Ok(())
+}
+
+/// Duel logs (`.dlog` files) the client downloads right after a duel between players (`Hub::finish_duel`). An
+/// additive table: schema version 1 is unchanged, and an older server ignores it.
+const DUEL_LOGS_TABLE: &str = "CREATE TABLE IF NOT EXISTS duel_logs (name TEXT PRIMARY KEY, body BLOB NOT NULL, created INTEGER NOT NULL);";
+/// How many duel logs are kept: each player's game saves its own copy on download, so the server needs only recent ones.
+const DUEL_LOGS_KEPT: u32 = 1000;
+
+/// Keeps a duel log in server.db under `name`, dropping the oldest beyond [`DUEL_LOGS_KEPT`].
+pub fn put_duel_log(dir: &Path, name: &str, body: &[u8]) -> io::Result<()> {
+    if !dir.join("server.db").is_file() { initialize(dir)?; }
+    let mut conn = connection(dir)?;
+    let tx = conn.transaction().map_err(sql)?;
+    tx.execute("INSERT OR REPLACE INTO duel_logs(name, body, created) VALUES (?1, ?2, ?3)",
+        (name, body, chrono::Utc::now().timestamp())).map_err(sql)?;
+    tx.execute("DELETE FROM duel_logs WHERE name NOT IN (SELECT name FROM duel_logs ORDER BY created DESC, rowid DESC LIMIT ?1)",
+        [DUEL_LOGS_KEPT]).map_err(sql)?;
+    tx.commit().map_err(sql)
+}
+
+/// A kept duel log, if there is one by that name.
+pub fn duel_log(dir: &Path, name: &str) -> io::Result<Option<Vec<u8>>> {
+    if !dir.join("server.db").is_file() { return Ok(None) }
+    connection(dir)?.query_row("SELECT body FROM duel_logs WHERE name=?1", [name], |r| r.get(0)).optional().map_err(sql)
+}
+
+/// The kept duel logs' names, newest first.
+pub fn duel_log_names(dir: &Path) -> io::Result<Vec<String>> {
+    let conn = connection(dir)?;
+    let mut query = conn.prepare("SELECT name FROM duel_logs ORDER BY created DESC, rowid DESC").map_err(sql)?;
+    query.query_map([], |r| r.get(0)).map_err(sql)?.collect::<Result<_, _>>().map_err(sql)
 }
 
 /// The legacy JSON documents still beside an imported server.db.
@@ -250,6 +290,20 @@ mod tests {
         assert_eq!(legacy_documents(&d), ["accounts.json"], "reported as an old copy that is safe to delete");
         initialize(&d).unwrap();
         assert_eq!(read(&d.join("accounts.json")).unwrap().unwrap()["next_user"], 1042, "server.db stays authoritative");
+        fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn duel_logs_live_in_the_database_and_only_the_newest_are_kept() {
+        let d = dir("duel-logs");
+        for n in 0..DUEL_LOGS_KEPT + 5 { put_duel_log(&d, &format!("{n}.dlog"), &n.to_le_bytes()).unwrap(); }
+        let names = duel_log_names(&d).unwrap();
+        assert_eq!(names.len(), DUEL_LOGS_KEPT as usize);
+        assert_eq!(names[0], format!("{}.dlog", DUEL_LOGS_KEPT + 4), "newest first");
+        assert_eq!(duel_log(&d, "0.dlog").unwrap(), None, "the oldest were dropped");
+        assert_eq!(duel_log(&d, &names[0]).unwrap(), Some((DUEL_LOGS_KEPT + 4).to_le_bytes().to_vec()));
+        initialize(&d).unwrap();
+        assert_eq!(duel_log_names(&d).unwrap().len(), DUEL_LOGS_KEPT as usize, "a restart keeps them");
         fs::remove_dir_all(d).unwrap();
     }
 
