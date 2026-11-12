@@ -12,9 +12,13 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
-- **Give BP from the app:** Advanced → Hosting → Players & invitations has a Give BP field for the selected account.
-  Editing `accounts.json` no longer changes anything after upgrading (accounts live in `server.db`); the server log now
-  says so when that file was edited.
+- **BP shows up right away:** BP from duels and from the host appears in the game on its next screen, without logging
+  in again. Before, the game showed new BP only after a purchase or the next login.
+- **Give BP and BOOSTERPASS codes in the app:** Advanced → Hosting → Players & invitations has Give BP for the selected
+  account, and a BOOSTERPASS codes section to make codes (random ones too), see who claimed each and when, and remove
+  them. The `codes` command lists claim times too.
+- **Clearer logs:** errors are red and warnings amber in the app, and in a server terminal. Old `accounts.json` copies
+  are reported as a warning that they are no longer read and safe to delete (accounts live in `server.db`).
 - **No firewall prompt when playing alone:** your local server only accepts this computer until you save a sharing
   address for friends. Before, Windows asked to allow `yo3-server.exe`, and choosing Cancel quietly blocked friends
   later. If that happened to you, see Connection help in the Desktop guide.

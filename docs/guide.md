@@ -79,7 +79,9 @@ admin token. Add `--data-dir PATH` to target a non-default setup. Keep each frie
   `auto` clears an override.
 - `give-bp`, `add-code`, `remove-code` and `codes` manage points and redemption codes while hosting can continue.
   Use them rather than editing `accounts.json`: after the first start of a current server, accounts live in
-  `server.db`, the JSON files are only kept as migration copies, and the server logs a warning when one was edited.
+  `server.db`. The JSON files are old copies the server no longer reads; it warns while they exist, and they are safe
+  to delete. A player who is online sees BP changes (gifts, duel rewards) on the game's next screen. `codes` lists
+  who claimed each code and when. The server's terminal output is coloured by level (`NO_COLOR=1` turns it off).
 
 `--help` on each subcommand lists the exact parameters. If playing from source, [the development guide](development.md#build-from-source)
 shows the explicit DLL/injector paths. For a release bundle, use its [play script](scripts.md#join-a-friends-server).

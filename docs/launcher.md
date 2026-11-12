@@ -14,6 +14,7 @@ Both editions include the server, rules engine, Node.js and required connection 
   - [Application updates](#application-updates)
   - [Your data and upgrades](#your-data-and-upgrades)
   - [Reset local game data](#reset-local-game-data)
+  - [Reading the logs](#reading-the-logs)
   - [Troubleshooting](#troubleshooting)
   - [Getting the original game](#getting-the-original-game)
 
@@ -136,7 +137,13 @@ The default public port is **TCP 7443**. Friends connecting from outside your PC
 their slot inside the game. Re-export an account's invitation when needed; managing it does not switch your login on Play.
 
 **Players & invitations → Give BP** adds BOOSTERPASS Points to the selected account while the server runs, including
-your own account when you play locally. The game shows the new total after the player's next purchase or login.
+your own account when you play locally. A game that is open shows the new total on its next screen. BP earned in
+duels appears the same way.
+
+**Players & invitations → BOOSTERPASS codes** makes codes players type in the game (Main Menu → BOOSTERPASS) for BP,
+once per account. Leave **Code** empty for a random one, and **Accounts** empty to let any number of accounts claim
+it. Each code lists who claimed it and when; **Copy** puts it on the clipboard and **Remove** retires it (BP already
+claimed stays).
 Do not edit `accounts.json` for this: the server stores accounts in `server.db` and ignores that file after upgrading.
 
 Under **Hosting → Advanced**, you can choose an interface, change the port/data folder and set the first player for
@@ -323,6 +330,13 @@ selected Wine prefix are respected. Wine prefixes can share this folder, so clos
 To restore, close the game and move newly created files aside first. For a full reset, move the backup's `data/`
 folder back to the displayed original location; for the default reset, move `options.y3o` and `users/` back from
 the backup. Keep backups private: they can contain personal files and cached stock login details.
+
+## Reading the logs
+
+Logs show each line's level: **errors in red** and **warnings in amber**; other lines are information. The same
+levels appear in a terminal running the server (Scripts), coloured unless `NO_COLOR` is set; saved and exported
+logs stay plain text. A warning about old `accounts.json` (or other `.json`) copies is safe to act on: after an
+upgrade their data lives in `server.db`, the files are no longer read, and you can delete them.
 
 ## Troubleshooting
 
