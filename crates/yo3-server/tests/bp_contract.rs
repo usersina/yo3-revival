@@ -192,3 +192,54 @@ async fn the_commands_reach_a_running_server_and_the_file_editing_ones_wait_for_
     assert!(out[2].contains("stop it first"), "{}", out[2]);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_claim_records_the_account_and_when_and_older_claims_load_without_a_time() {
+    let dir = std::env::temp_dir().join(format!("yo3-bp-claims-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("accounts.json");
+    // A code saved before claim times were kept: one claim, no time.
+    std::fs::write(&file, r#"{"next_user":1002,"next_player":1002,"accounts":[],"bp_codes":[{"code":"OLDCODE123456789","bp":10,"used_by":[1001]}]}"#).unwrap();
+    let user = {
+        let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
+        assert_eq!(d.codes()[0].claimed_at, vec![None]);
+        d.add_code(CODE, 300, None).unwrap();
+        let user = d.login(ADDR, std::time::Instant::now()).user_id;
+        d.redeem(user, CODE).unwrap();
+        user
+    };
+    let d = Directory::open(vec!["Yugi".into()], &file).unwrap();
+    let code = d.codes().iter().find(|c| c.code == CODE).unwrap();
+    assert_eq!(code.used_by, vec![user]);
+    let at = code.claimed_at[0].as_deref().expect("claim time kept");
+    assert!(chrono::DateTime::parse_from_rfc3339(at).is_ok(), "{at}");
+    assert_eq!(d.player_names(user), ["Yugi"]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_random_code_fits_the_window_and_is_new() {
+    let d = directory();
+    let mut d = d.lock().unwrap();
+    let code = d.new_code();
+    assert_eq!(code.len(), yo3_server::accounts::CODE_LEN);
+    assert!(code.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()), "{code}");
+    d.add_code(&code, 100, None).unwrap();
+    assert_ne!(d.new_code(), code);
+}
+
+#[test]
+fn bp_paid_for_a_duel_reaches_the_players_game_at_once() {
+    // The client shows BP only from the login, a purchase, a rental and the BOOSTERPASS window; the server pushes
+    // REVIVAL_BP {revival_bp} for the connection DLL to apply (tools/mod/bp.h).
+    let server = Server::new();
+    let d = directory();
+    server.hub.lock().unwrap().set_directory(d.clone());
+    let mut c = client(&server, &d, ADDR);
+    c.pushed();
+    let players: Vec<u32> = d.lock().unwrap().accounts().flat_map(|(_, a)| a.players.iter().map(|p| p.player_id)).collect();
+    server.hub.lock().unwrap().record_result(players[0], players[1], 1);
+    let bp = c.pushed().into_iter().find(|m| m.request() == Some(yo3_server::front::REVIVAL_BP)).expect("BP pushed");
+    assert_eq!(bp.get("revival_bp"), Some(&Value::U32(START_BP + 100)));
+}

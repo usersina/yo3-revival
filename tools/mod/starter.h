@@ -181,9 +181,11 @@ static void starter_reply(void *message, void *connection) {
     }
     game_delete(job.check.collection); game_delete(job.check.regulation);
 }
+#include "bp.h"
 static void __attribute__((fastcall)) starter_dispatch(void *message, void *unused, void *connection) {
     (void)unused;
     ((void (__attribute__((thiscall)) *)(void *,void *))game_address(0x4f4a00))(message,connection);
+    bp_reply(message);
     starter_reply(message,connection);
 }
 static int starter_install(void) {

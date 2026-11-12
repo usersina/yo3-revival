@@ -15,6 +15,8 @@ use crate::teams::{LEADER, MEMBER, SUBLEADER, Teams};
 /// Where a session's outgoing messages go: its connection's writer task.
 pub type Outbox = tokio::sync::mpsc::UnboundedSender<Message>;
 
+/// Revival's own push of an account's BP (`Hub::push_bp`), applied by the connection DLL; unused by the client.
+pub const REVIVAL_BP: u32 = 0x7A11;
 pub const VERSION_VALID: u32 = 0x219F;
 /// The default banlist every account logs in with (0x2201 regulation_id), which Auto Duel's and the NPC duel's deck
 /// check uses (`World::login_regulation`, set by --regulation): 3, "unlimited", no banned or limited cards.
@@ -822,7 +824,12 @@ impl Hub {
     /// returns the player's wins, losses and draws against this opponent.
     pub fn record_result(&mut self, player_id: u32, opponent: u32, result: u32) -> [u32; 3] {
         if let Some(d) = &self.directory {
-            d.locked().reward(player_id, crate::shop::duel_bp(result));
+            let mut d = d.locked();
+            if let Some(bp) = d.reward(player_id, crate::shop::duel_bp(result)) {
+                let players = d.account_players(player_id);
+                drop(d);
+                self.push_bp(&players, bp);
+            }
         }
         let record = self.records.entry((player_id, opponent)).or_default();
         if let Some(n) = record.get_mut(result.wrapping_sub(1) as usize) {
@@ -2108,6 +2115,17 @@ impl Hub {
     fn send_room(&self, room: u32, msg: &Message, except: u64) {
         for (_, o) in self.online.iter().filter(|(id, o)| **id != except && o.room == Some(room)) {
             let _ = o.outbox.send(msg.clone());
+        }
+    }
+
+    /// Tells the online players of an account its new BP: `REVIVAL_BP {revival_bp}`. The original client has no message
+    /// that changes its shown BP outside the login, a purchase, a rental and the BOOSTERPASS window (protocol.md, "Where
+    /// the client's BP comes from"); Revival's connection DLL applies this one (`tools/mod/bp.h`). The client itself
+    /// ignores the id: the global dispatcher's default case returns (`0x4F6057`).
+    pub fn push_bp(&self, players: &[u32], bp: u32) {
+        let msg = Message::reply(REVIVAL_BP).with("revival_bp", Value::U32(bp));
+        for &player in players {
+            self.push(player, &msg);
         }
     }
 

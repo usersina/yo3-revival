@@ -561,7 +561,16 @@ and BpInputWindow's `0x23F0 {dpauth_result, dpPoints, dpGetPoints, premium, prem
 window, which adds the points got (`0x40F7B0`; the global case `0x4F5349` keeps only `premium`). Nothing after a duel
 touches it, so the original's duels earned no BP. The server pays BP for duels anyway (each result counted by the
 hub: win 100, draw 50, loss 30; **guess**, a server choice), keeps it with the account, and re-reads it for the
-login replies and each purchase: the client sees the new total at its next login or in the next `0x1C24`.
+login replies and each purchase (charged against the stored account, so BP given since the login can be spent).
+
+**Revival's BP push** (Revival only, no original counterpart). When an account's BP changes outside a purchase (a duel
+result, the host's give-bp), the server pushes `0x7A11 {revival_bp}` to that account's online players
+(`Hub::push_bp`). The client ignores the id: the global dispatcher (`0x4F4A00`) has no case for it and returns through
+its default (`0x4F6057`). The connection DLL, which wraps that dispatcher call (`0x4F44BD`), sets UserData `+0x76C`
+(UserData from its singleton getter `0x40A500`, no arguments) to `revival_bp` (`tools/mod/bp.h`). Screens read the
+value when drawn, so an open screen shows it on its next visit. Live (2026-11-12): with the DLL, the shop opened after
+a gift shows the new total without a login; with an older DLL the push was ignored on the main screen and in the shop
+and the client kept working. Status: confirmed.
 
 Each pack file's card list is ascending runs: 44, 18, 9, 9 for an 80-card pack, the OCG split of Normal, Rare, Super
 and Ultra Rares. The server reads the runs as rarity tiers (**guess**) and puts four cards of the first tier and one of

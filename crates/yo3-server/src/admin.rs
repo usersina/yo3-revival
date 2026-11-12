@@ -77,7 +77,10 @@ pub fn apply(d: &mut Directory, op: &Op) -> Result<String, String> {
                 .iter()
                 .map(|c| {
                     let left = c.uses.map_or("unlimited".to_string(), |n| format!("{} of {n} left", n.saturating_sub(c.used_by.len() as u32)));
-                    format!("{}\t{} BP\tused by {} account(s)\t{left}", c.code, c.bp, c.used_by.len())
+                    let claims: String = c.used_by.iter().zip(&c.claimed_at).map(|(&user, at)| {
+                        format!("\n  claimed by user {user} ({}) at {}", d.player_names(user).join(", "), at.as_deref().unwrap_or("an unrecorded time"))
+                    }).collect();
+                    format!("{}\t{} BP\tused by {} account(s)\t{left}{claims}", c.code, c.bp, c.used_by.len())
                 })
                 .collect::<Vec<_>>()
                 .join("\n")
@@ -130,7 +133,7 @@ pub fn send(live: &Live, op: &Op) -> Result<String, String> {
 
 /// The patch HTTP server's `/admin`: `path` (with its query) is an admin request, if so its answer. Only from this PC
 /// (a loopback peer) with the token; the server logs the route, never the query.
-pub fn handle(path: &str, peer: IpAddr, token: Option<&str>, accounts: &Arc<Mutex<Directory>>) -> Option<Response> {
+pub fn handle(path: &str, peer: IpAddr, token: Option<&str>, accounts: &Arc<Mutex<Directory>>, hub: &Arc<Mutex<crate::front::Hub>>) -> Option<Response> {
     let (route, query) = path.split_once('?').unwrap_or((path, ""));
     if route.trim_end_matches('/') != "/admin" {
         return None;
@@ -143,7 +146,21 @@ pub fn handle(path: &str, peer: IpAddr, token: Option<&str>, accounts: &Arc<Mute
         tracing::warn!("[http] {peer}: an admin request refused (not from this PC, or a wrong token)");
         return Some(text("403 Forbidden", "refused: admin requests come from the server's own PC, with its token".into()));
     }
-    Some(match Op::from_query(&q).and_then(|op| apply(&mut accounts.locked(), &op)) {
+    let op = Op::from_query(&q);
+    let applied = op.clone().and_then(|op| {
+        let mut d = accounts.locked();
+        let done = apply(&mut d, &op)?;
+        // A running server shows the gift at once (Hub::push_bp), not only at the player's next login or purchase.
+        if let Op::GiveBp { who, .. } = &op {
+            let players = d.players_of(who);
+            if let Some(bp) = players.first().and_then(|&p| d.player_bp(p)) {
+                drop(d);
+                hub.locked().push_bp(&players, bp);
+            }
+        }
+        Ok(done)
+    });
+    Some(match applied {
         Ok(done) => {
             tracing::info!("[admin] {done}");
             text("200 OK", done)

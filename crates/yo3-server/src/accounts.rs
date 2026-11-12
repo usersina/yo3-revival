@@ -57,6 +57,9 @@ pub struct BpCode {
     pub bp: u32,
     pub uses: Option<u32>,
     pub used_by: Vec<u32>,
+    /// When each account in `used_by` claimed it (UTC, RFC 3339), at the same position; `None` for claims saved before
+    /// claim times were kept.
+    pub claimed_at: Vec<Option<String>>,
 }
 
 /// An account with how a client finds it: by the address it connects from, by its key, or both.
@@ -197,8 +200,10 @@ impl Directory {
         }
         for c in saved["bp_codes"].as_array().into_iter().flatten() {
             let (Some(code), Some(bp)) = (c["code"].as_str(), c["bp"].as_u64()) else { continue };
-            let used_by = c["used_by"].as_array().into_iter().flatten().filter_map(|u| u.as_u64()).map(|u| u as u32).collect();
-            d.codes.push(BpCode { code: code.to_string(), bp: bp as u32, uses: c["uses"].as_u64().map(|n| n as u32), used_by });
+            let used_by: Vec<u32> = c["used_by"].as_array().into_iter().flatten().filter_map(|u| u.as_u64()).map(|u| u as u32).collect();
+            let times = c["claimed_at"].as_array();
+            let claimed_at = (0..used_by.len()).map(|i| times.and_then(|t| t.get(i)).and_then(|t| t.as_str()).map(str::to_string)).collect();
+            d.codes.push(BpCode { code: code.to_string(), bp: bp as u32, uses: c["uses"].as_u64().map(|n| n as u32), used_by, claimed_at });
         }
         Ok(d)
     }
@@ -354,6 +359,22 @@ impl Directory {
             Ok(addr) => self.accounts.iter().position(|e| e.address == Some(addr)),
             Err(_) => self.accounts.iter().position(|e| e.account.players.iter().any(|p| p.name.eq_ignore_ascii_case(who))),
         }
+    }
+
+    /// The player ids of the account at `who` (an address, or a player's name): who sees a BP change (`Hub::push_bp`).
+    pub fn players_of(&self, who: &str) -> Vec<u32> {
+        self.find(who).map(|at| self.accounts[at].account.players.iter().map(|p| p.player_id).collect()).unwrap_or_default()
+    }
+
+    /// The BP of the account holding `player_id`.
+    pub fn player_bp(&self, player_id: u32) -> Option<u32> {
+        self.accounts.iter().map(|e| &e.account).find(|a| a.players.iter().any(|p| p.player_id == player_id)).map(|a| a.dpoint)
+    }
+
+    /// The player ids of the account holding `player_id` (empty when there is none).
+    pub fn account_players(&self, player_id: u32) -> Vec<u32> {
+        self.accounts.iter().map(|e| &e.account).find(|a| a.players.iter().any(|p| p.player_id == player_id))
+            .map(|a| a.players.iter().map(|p| p.player_id).collect()).unwrap_or_default()
     }
 
     /// The user id of the account at `who` (an address, or a player's name).
@@ -582,17 +603,25 @@ impl Directory {
         if self.code_at(code).is_some() {
             return Err(format!("the code {code} exists already"));
         }
-        self.codes.push(BpCode { code: code.to_string(), bp, uses, used_by: vec![] });
-        self.save();
-        Ok(())
+        let code = BpCode { code: code.to_string(), bp, uses, used_by: vec![], claimed_at: vec![] };
+        self.atomic(|d| { d.codes.push(code); Ok(()) })
+    }
+
+    /// A new random BOOSTERPASS code that fits the game's window: capital letters and digits without look-alikes.
+    pub fn new_code(&self) -> String {
+        const CHARS: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        loop {
+            let mut bytes = [0u8; CODE_LEN];
+            getrandom::fill(&mut bytes).expect("OS randomness unavailable");
+            let code: String = bytes.iter().map(|b| CHARS[*b as usize % CHARS.len()] as char).collect();
+            if self.code_at(&code).is_none() { return code }
+        }
     }
 
     /// Removes a BOOSTERPASS code (any case).
     pub fn remove_code(&mut self, code: &str) -> Result<(), String> {
         let at = self.code_at(code).ok_or_else(|| format!("no code {code}"))?;
-        self.codes.remove(at);
-        self.save();
-        Ok(())
+        self.atomic(|d| { d.codes.remove(at); Ok(()) })
     }
 
     /// The game's BOOSTERPASS window: account `user_id` enters `code` (any case). The BP got and the account's BP now;
@@ -611,12 +640,19 @@ impl Directory {
         account.dpoint = account.dpoint.saturating_add(bp);
         let total = account.dpoint;
         self.codes[at].used_by.push(user_id);
+        self.codes[at].claimed_at.push(Some(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()));
         self.save();
         Ok((bp, total))
     }
 
     fn code_at(&self, code: &str) -> Option<usize> {
         self.codes.iter().position(|c| c.code.eq_ignore_ascii_case(code.trim()))
+    }
+
+    /// The player names of the account `user_id`, for showing who claimed a code.
+    pub fn player_names(&self, user_id: u32) -> Vec<String> {
+        self.accounts.iter().map(|e| &e.account).find(|a| a.user_id == user_id)
+            .map(|a| a.players.iter().map(|p| p.name.clone()).collect()).unwrap_or_default()
     }
 
     /// An account's BP.
@@ -733,7 +769,7 @@ impl Directory {
                 account
             })
             .collect();
-        let codes: Vec<Json> = self.codes.iter().map(|c| json!({ "code": c.code, "bp": c.bp, "uses": c.uses, "used_by": c.used_by })).collect();
+        let codes: Vec<Json> = self.codes.iter().map(|c| json!({ "code": c.code, "bp": c.bp, "uses": c.uses, "used_by": c.used_by, "claimed_at": c.claimed_at })).collect();
         let all = json!({ "next_user": self.next_user, "next_player": self.next_player, "accounts": accounts, "bp_codes": codes });
         store::write(file, &all)
     }
