@@ -36,6 +36,9 @@ v0.0.7 release preparation (2026-11-12):
 - [x] All 761 workspace tests pass, including 240 self-played duels and the original Yusei-deck checks. Strict
   workspace Clippy, Python helper checks and documentation links pass. DLL/injector and automatic-loader checks
   pass in an isolated Wine prefix on a private display.
+- [x] Release CI exposed a timeout fixture that assumed Node could finish cold startup within 500 ms. Injecting
+  a one-second Node delay reproduced the missing PID file. A minimal waiting process now records its PID before
+  `exec`, preserving the timeout and reaping assertions; 20 repeated runs pass with the delayed Node on PATH.
 - The release workflow builds all four bundles and requires the packaged Desktop activation check before publishing.
   Real GitHub publishing and native Windows verification of the new Desktop UI remain the player checks listed below.
 

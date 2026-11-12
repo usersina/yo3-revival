@@ -866,8 +866,13 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn engine_startup_check_has_a_short_budget_and_reaps_its_own_process() {
+        use std::os::unix::fs::PermissionsExt;
         let backend=server_resource_fixture("probe-timeout");let root=backend.root.clone();
-        std::fs::write(backend.runtime.engine.join("duelcore.ts"),"import {writeFileSync} from 'node:fs'; writeFileSync(new URL('./probe.pid',import.meta.url),String(process.pid)); setInterval(()=>{},1000);").unwrap();
+        // Test the timeout and reaping, without requiring Node's cold startup to finish within 500 ms.
+        // exec preserves the recorded PID and avoids leaving a descendant with the diagnostic pipe open.
+        let node=backend.runtime.engine.join("node/node");std::fs::remove_file(&node).unwrap();
+        std::fs::write(&node,"#!/bin/sh\nprintf '%s' \"$$\" > \"${1%/*}/probe.pid\"\nexec sleep 30\n").unwrap();
+        std::fs::set_permissions(&node,std::fs::Permissions::from_mode(0o755)).unwrap();
         let started=std::time::Instant::now();let error=backend.check_engine_start(std::time::Duration::from_millis(500)).unwrap_err().to_string();
         assert!(error.contains("timed out") && error.contains("duelcore.ts"),"{error}");assert!(started.elapsed()<std::time::Duration::from_secs(2));
         let pid=std::fs::read_to_string(backend.runtime.engine.join("probe.pid")).unwrap();assert!(pid.parse::<u32>().is_ok());
