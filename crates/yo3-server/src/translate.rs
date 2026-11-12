@@ -418,8 +418,9 @@ pub struct Translator {
     /// the card list (after Yes).
     pending: Option<Json>,
     chain_list: bool,
-    /// The chain's last link (MSG_CHAINING) until the chain ends.
+    /// The chain's last link (MSG_CHAINING) until the chain ends, and each link's {player, zone} by its number - 1.
     chaining: Option<Json>,
+    chain: Vec<(u32, u32)>,
     /// A battle shown on the client and not ended yet, and whether the duel is in a Battle Phase.
     in_battle: bool,
     battle_phase: bool,
@@ -494,6 +495,7 @@ impl Translator {
                 out.push(command(CARD, [uid, shown, 0, table_place(p as u32, EXTRA, zone.len() - 1)]));
             }
         }
+        with_card_ids(&self.cards, &mut out);
         out
     }
 
@@ -549,10 +551,12 @@ impl Translator {
             materials: vec![],
             mixed: false,
             option_cards: false,
+            chain: vec![],
             staged: None,
             links: vec![],
             relations: vec![],
         };
+        with_card_ids(&t.cards, &mut out);
         (t, out)
     }
 
@@ -625,10 +629,18 @@ impl Translator {
                 // Also a Set Spell/Trap turning face-up as it is activated.
                 Some(MSG_POS_CHANGE | MSG_FLIPSUMMONING) => out.extend(self.turn(m, m["position"].as_u64().unwrap_or(0))),
                 Some(MSG_CHAINING) => {
-                    out.push(self.chain_link(m));
+                    let link = self.chain_link(m);
+                    let param = |k: &str| link.get(k).and_then(Value::as_u32).unwrap_or(0);
+                    self.chain.push((param("param1"), param("param2")));
+                    out.push(link);
                     self.chaining = Some(m.clone());
                 }
-                Some(MSG_CHAIN_SOLVING) => out.push(command(CHAIN_RUN, [0, 0, m["chain_size"].as_u64().unwrap_or(0) as u32, 0])),
+                // The link's own {player, zone, link}, as its ChainSet (Konami's logs; the client reads only the link).
+                Some(MSG_CHAIN_SOLVING) => {
+                    let n = m["chain_size"].as_u64().unwrap_or(0) as u32;
+                    let (player, zone) = self.chain.get((n as usize).wrapping_sub(1)).copied().unwrap_or((0, 0));
+                    out.push(command(CHAIN_RUN, [player, zone, n, 0]));
+                }
                 Some(MSG_ATTACK) => {
                     out.extend(self.end_battle());
                     out.extend(self.attack(m));
@@ -639,8 +651,10 @@ impl Translator {
                     let id = if kind == MSG_SUMMONING { RUN_SUMMON } else { RUN_SP_SUMMON };
                     // The effect plays at the place's zone (0x514E5A), so the place, not only the player.
                     let card = self.engine_place(m).and_then(|p| Some((p, self.sides[p.player as usize].zones.get(&p.zone)?.first()?.uid)));
+                    // The place as moves give it, with its face and position bits (Konami's logs: 0x4000 | place for a
+                    // Normal Summon, 0x4000/0xC000/0x8000 for a Special Summon).
                     if let Some((place, uid)) = card {
-                        out.push(command(id, [place.player | place.zone << 1, uid, 0, 0]));
+                        out.push(command(id, [Place { index: 0, ..place }.packed(), uid, 0, 0]));
                     }
                 }
                 Some(MSG_CONFIRM_CARDS) => out.extend(self.confirm(m)),
@@ -648,7 +662,10 @@ impl Translator {
                 Some(MSG_SWAP) => out.extend(self.swap(m)),
                 Some(MSG_SHUFFLE_SET_CARD) => out.extend(self.shuffle_set(m)),
                 Some(MSG_SWAP_GRAVE_DECK) => out.extend(self.swap_grave_deck(m)),
-                Some(MSG_CHAIN_END) => self.chaining = None,
+                Some(MSG_CHAIN_END) => {
+                    self.chaining = None;
+                    self.chain.clear();
+                }
                 Some(MSG_WIN) => {
                     let result = match m["player"].as_u64() {
                         Some(TEAM_DRAW) => DRAW,
@@ -673,6 +690,7 @@ impl Translator {
             }
         }
         out.extend(self.sync_relations());
+        with_card_ids(&self.cards, &mut out);
         out
     }
 
@@ -767,7 +785,7 @@ impl Translator {
             (Some(from), Some(to)) => {
                 let reason = m["reason"].as_u64().unwrap_or(0);
                 let dropped = if to.zone > FIELD_SPELL { self.drop_counters(&from) } else { vec![] };
-                let mut moved = self.relocate(cid, from, to);
+                let mut moved = self.relocate_as(cid, from, to, move_kind(reason, from, to));
                 if to.zone == HAND && let Some(at) = self.revealing.iter().position(|&c| c == cid) {
                     self.revealing.remove(at);
                     let index = self.sides[to.player as usize].zone(HAND).len().saturating_sub(1).min(to.index);
@@ -958,8 +976,8 @@ impl Translator {
         let (record_a, record_b) = (self.records.get(&(a.player, a.zone)).copied(), self.records.get(&(b.player, b.zone)).copied());
         let mut out = match (card_a, card_b) {
             (Some(_), Some(_)) => vec![command(CARD_SWAP, [0, a.packed(), b.packed(), 0])],
-            (Some(c), None) => vec![command(MOVE, [c.uid | (c.row as u32) << 16, Place { face_up: false, defense: false, ..a }.packed(), b.packed(), 0])],
-            (None, Some(c)) => vec![command(MOVE, [c.uid | (c.row as u32) << 16, Place { face_up: false, defense: false, ..b }.packed(), a.packed(), 0])],
+            (Some(c), None) => vec![command(MOVE, [c.uid, Place { face_up: false, defense: false, ..a }.packed(), b.packed(), 0])],
+            (None, Some(c)) => vec![command(MOVE, [c.uid, Place { face_up: false, defense: false, ..b }.packed(), a.packed(), 0])],
             (None, None) => return vec![],
         };
         for (place, card, record) in [(a, card_b, record_b), (b, card_a, record_a)] {
@@ -1045,13 +1063,18 @@ impl Translator {
         self.positions.insert((to.player, to.zone), (to.face_up, to.defense));
         let mut out = vec![command(CARD, [uid, row as u32, 0, table_place(to.player, to.zone, 0)])];
         out.extend(self.monster_record(to.player, to.zone, row));
-        out.push(command(MOVE, [uid | (row as u32) << 16, to.packed(), to.packed(), 0]));
+        out.push(command(MOVE, [uid | MOVE_SPECIAL_SUMMON << 16, to.packed(), to.packed(), 0]));
         out
     }
 
     /// Moves a card in the mirror and on the client: the card table entry (1000), then on screen (0x1A); the
     /// cards whose index shifted in a list zone get their table entry again.
     fn relocate(&mut self, cid: u16, from: Place, to: Place) -> Vec<Message> {
+        self.relocate_as(cid, from, to, MOVE_PLAIN)
+    }
+
+    /// [`relocate`] with the move's kind (`move_kind`), which the client's move takes in `param1`'s high half.
+    fn relocate_as(&mut self, cid: u16, from: Place, to: Place, kind: u32) -> Vec<Message> {
         let record = (from.zone <= FIELD_SPELL).then(|| self.records.get(&(from.player, from.zone)).copied()).flatten();
         let cards = &self.cards;
         let source = self.sides[from.player as usize].zone(from.zone);
@@ -1110,7 +1133,7 @@ impl Translator {
                 if zone == HAND { hand.push(entry) } else { out.push(entry) }
             }
         }
-        out.push(command(MOVE, [card.uid | row << 16, from.packed(), to.packed(), 0]));
+        out.push(command(MOVE, [card.uid | kind << 16, from.packed(), to.packed(), 0]));
         out.extend(hand);
         out
     }
@@ -1182,7 +1205,7 @@ impl Translator {
                 // The field card takes its face from a move (a flip only turns it over), and a Spell/Trap has no
                 // record to carry its id: it moves onto its own slot with its row, face up.
                 let down = Place { face_up: false, ..place };
-                out.push(command(MOVE, [card.uid | (card.row as u32) << 16, down.packed(), place.packed(), 0]));
+                out.push(command(MOVE, [card.uid, down.packed(), place.packed(), 0]));
                 return out;
             }
         }
@@ -1192,8 +1215,7 @@ impl Translator {
         if let (Some(before), Some(card)) = (before, card) {
             let (face_up, defense) = before.unwrap_or((!place.face_up, !place.defense));
             let from = Place { face_up, defense, ..place };
-            let row = self.shown_row(&place, card.row);
-            out.push(command(MOVE, [card.uid | row << 16, from.packed(), place.packed(), 0]));
+            out.push(command(MOVE, [card.uid, from.packed(), place.packed(), 0]));
         }
         out.push(command(FLIP_TURN, [place.packed(), 0, 0, 0]));
         out
@@ -1325,6 +1347,7 @@ impl Translator {
             Prompt::Client(out) => {
                 let mut all = self.unstage_n(staged);
                 all.extend(out);
+                with_card_ids(&self.cards, &mut all);
                 Prompt::Client(all)
             }
             answer => {
@@ -1597,6 +1620,11 @@ impl Translator {
     /// several cards, the card list. No pick cancels when the engine allows it; picks that don't fit the choice get
     /// the default.
     pub fn dialog_result(&mut self, count: u32) -> Option<Prompt> {
+        let prompt = self.dialog_result_for(count);
+        prompt.map(|p| self.with_ids(p))
+    }
+
+    fn dialog_result_for(&mut self, count: u32) -> Option<Prompt> {
         if let Some((kind, action, candidates)) = self.choosing.take() {
             // Which card of the pile: the pick answers the engine; none goes back to the prompt.
             let pick = (count == 1).then(|| self.picks.first().and_then(|&i| candidates.get(i).copied())).flatten();
@@ -1809,6 +1837,22 @@ impl Translator {
     /// directly?" first (225, the original's dialog: EDOPro asks only when the attacker could also target a monster;
     /// live, an attack on an empty field just went through), anything else answers the engine.
     pub fn command(&mut self, cmd: CardCommand) -> Option<Prompt> {
+        let prompt = self.command_for(cmd);
+        prompt.map(|p| self.with_ids(p))
+    }
+
+    /// A client prompt's card table entries with their Konami ids (see [`with_card_ids`]).
+    fn with_ids(&self, p: Prompt) -> Prompt {
+        match p {
+            Prompt::Client(mut out) => {
+                with_card_ids(&self.cards, &mut out);
+                Prompt::Client(out)
+            }
+            answer => answer,
+        }
+    }
+
+    fn command_for(&mut self, cmd: CardCommand) -> Option<Prompt> {
         let m = self.pending.clone()?;
         if cmd.command == CONFIRM
             && let Some(out) = self.pile_view(cmd.player, cmd.zone)
@@ -2098,6 +2142,54 @@ impl Translator {
     }
 }
 
+/// The kinds of a card move (`0x1A`'s `param1` high half, the third argument of the client's move `0x5000E0`), as
+/// Konami's server sent them (227 original duel logs): 0 a plain move (draws, discards, cards sent or banished), 2 a
+/// Normal Summon, 3 a Special Summon, 4 a Spell/Trap activated from the hand, 5 a Set, 6 destroyed by an effect, 8 by
+/// battle, 9 tributed (1 and 7 are rare; meaning open). The client plays no move sound for 6, 8 and 9 (the destruction
+/// has its own) nor for 3 from anywhere but the hand.
+const MOVE_PLAIN: u32 = 0;
+const MOVE_NORMAL_SUMMON: u32 = 2;
+const MOVE_SPECIAL_SUMMON: u32 = 3;
+const MOVE_ACTIVATE: u32 = 4;
+const MOVE_SET: u32 = 5;
+const MOVE_DESTROYED: u32 = 6;
+const MOVE_DESTROYED_BY_BATTLE: u32 = 8;
+const MOVE_TRIBUTED: u32 = 9;
+const REASON_RELEASE: u64 = 0x2;
+const REASON_SUMMON: u64 = 0x10;
+const REASON_BATTLE: u64 = 0x20;
+const REASON_SPSUMMON: u64 = 0x800;
+
+/// A move's kind (see [`MOVE_PLAIN`]) from MSG_MOVE's reason and the places.
+fn move_kind(reason: u64, from: Place, to: Place) -> u32 {
+    if reason & REASON_DESTROY != 0 {
+        return if reason & REASON_BATTLE != 0 { MOVE_DESTROYED_BY_BATTLE } else { MOVE_DESTROYED };
+    }
+    if reason & REASON_RELEASE != 0 {
+        return MOVE_TRIBUTED;
+    }
+    match (from.zone, to.zone) {
+        (_, 0..5) if reason & REASON_SPSUMMON != 0 => MOVE_SPECIAL_SUMMON,
+        (HAND, 0..5) if !to.face_up => MOVE_SET,
+        (HAND, 0..5) if reason & REASON_SUMMON != 0 => MOVE_NORMAL_SUMMON,
+        (HAND, 5..=FIELD_SPELL) if to.face_up => MOVE_ACTIVATE,
+        (HAND, 5..=FIELD_SPELL) => MOVE_SET,
+        _ => MOVE_PLAIN,
+    }
+}
+
+/// Card table entries (1000) carry the card's Konami id in `param3`, as Konami's server sent them (all 53,586 entries of
+/// 227 original duel logs); a hidden card (row 0) has none. The client keeps it in its card table (`0x521DF0`).
+fn with_card_ids(cards: &HashMap<u16, CardStats>, out: &mut [Message]) {
+    for m in out.iter_mut().filter(|m| m.get("id").and_then(Value::as_u32) == Some(CARD)) {
+        let row = m.get("param2").and_then(Value::as_u32).unwrap_or(0) as u16;
+        let Some(cid) = cards.get(&row).map(|c| c.cid).filter(|_| row != 0) else { continue };
+        if let Some((_, v)) = m.fields.iter_mut().find(|(k, _)| k == "param3") {
+            *v = Value::U32(cid as u32);
+        }
+    }
+}
+
 /// Whether an engine location is an Xyz material's (ocgcore-wasm adds `overlay_sequence`; a raw location has bit 0x80).
 fn is_material(loc: &Json) -> bool {
     loc["overlay_sequence"].is_u64() || loc["location"].as_u64().unwrap_or(0) & LOC_OVERLAY != 0
@@ -2254,7 +2346,7 @@ fn hint_text(hint: u64) -> Option<u32> {
 /// The client's duel-end reason (text 1999 + reason, 0x508650) for an EDOPro win reason.
 fn end_reason(reason: u64) -> u32 {
     match reason {
-        0 => 5,     // "has surrendered"
+        0 => 12,    // "has surrendered" (12, not 5: 106 of Konami's 227 logs end on 12, none on 5)
         1 => 1,     // "Life Points have been reduced to 0"
         2 => 2,     // "has run out of cards in the Deck"
         3 => 11,    // "has ran out of time"

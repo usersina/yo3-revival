@@ -26,8 +26,9 @@ fn cmd(m: &Message) -> (u32, [u32; 4]) {
 fn both_decks_go_into_the_card_table() {
     let (_, table) = translator();
     assert_eq!(table.len(), 20);
-    assert_eq!(cmd(&table[0]), (1000, [1, 100, 0, 0xD << 8]));
-    assert_eq!(cmd(&table[10]), (1000, [11, 200, 0, 1 | 0xD << 8]));
+    // param3 is the card's Konami id (4000 + row here), as in all 53,586 entries of Konami's 227 original duel logs.
+    assert_eq!(cmd(&table[0]), (1000, [1, 100, 4100, 0xD << 8]));
+    assert_eq!(cmd(&table[10]), (1000, [11, 200, 4200, 1 | 0xD << 8]));
 }
 
 #[test]
@@ -37,9 +38,10 @@ fn a_draw_moves_the_card_with_that_id_to_the_hand() {
     let out = t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "code": 1, "cid": 4103 }] })]);
     let out: Vec<_> = out.iter().map(cmd).collect();
     // uid 4 holds row 103; it goes to hand index 0.
-    assert_eq!(out, [(1000, [4, 103, 0, 0xB << 8]), (0x1A, [4 | 103 << 16, 0xD << 1, 0xB << 1, 0])]);
+    // The move's param1 is the uid with the move's kind in the high half: 0, a plain move (a draw).
+    assert_eq!(out, [(1000, [4, 103, 4103, 0xB << 8]), (0x1A, [4, 0xD << 1, 0xB << 1, 0])]);
     let out = t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "code": 2, "cid": 4205 }] })]);
-    assert_eq!(cmd(&out[0]), (1000, [16, 205, 0, 1 | 0xB << 8]));
+    assert_eq!(cmd(&out[0]), (1000, [16, 205, 4205, 1 | 0xB << 8]));
 }
 
 #[test]
@@ -217,7 +219,7 @@ fn the_graveyards_top_card_shows_on_its_pile() {
         .iter().map(cmd).collect();
     let moved = out.iter().position(|(id, _)| *id == 0x1A).expect("the move");
     let uid = out[moved].1[0] & 0xFFFF;
-    assert!(out[..moved].contains(&(1000, [uid | 1 << 24, 100, 0, 0xE << 8])), "{out:?}");
+    assert!(out[..moved].contains(&(1000, [uid | 1 << 24, 100, 4100, 0xE << 8])), "{out:?}");
     // A second card on top, then the first leaves from under it: the top is renumbered to index 0 before the move.
     t.events(&[json!({ "type": 50, "cid": 4101, "from": loc(0, 2, 0, 10), "to": loc(0, 16, 1, 1) })]);
     let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 16, 0, 1), "to": loc(0, 2, 0, 1) })])
@@ -252,7 +254,8 @@ fn tokens_show_as_the_clients_own_token_cards() {
     assert!(uid > 20, "a uid of its own: {out:?}");
     assert!(out.iter().any(|(id, _)| *id == 0x3EB), "its record: {out:?}");
     let place = 2 << 1 | 1 << 14 | 1 << 15;
-    assert_eq!(out.last(), Some(&(0x1A, [uid | 300 << 16, place, place, 0])), "{out:?}");
+    // A token is Special Summoned: move kind 3.
+    assert_eq!(out.last(), Some(&(0x1A, [uid | 3 << 16, place, place, 0])), "{out:?}");
     // The next one takes the next Sheep Token card; the opponent sees it too (face up).
     let out: Vec<_> = t.events(&[token(3)]).iter().map(cmd).collect();
     assert_eq!(out[0].1[1], 301, "{out:?}");
@@ -310,7 +313,8 @@ fn a_summon_moves_the_card_from_the_hand_to_its_zone() {
     // moves up and gets its table entry again.
     let (mut t, _) = translator();
     t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }, { "cid": 4101 }] })]);
-    let out = t.events(&[json!({ "type": 50, "cid": 4100,
+    // REASON_SUMMON (0x10): a Normal Summon, move kind 2 (Konami's logs).
+    let out = t.events(&[json!({ "type": 50, "cid": 4100, "reason": 0x10,
         "from": { "controller": 0, "location": 2, "sequence": 0, "position": 10 },
         "to": { "controller": 0, "location": 4, "sequence": 2, "position": 1 } })]);
     let out: Vec<_> = out.iter().map(cmd).collect();
@@ -318,12 +322,12 @@ fn a_summon_moves_the_card_from_the_hand_to_its_zone() {
     assert_eq!(
         out,
         [
-            (1000, [1, 100, 0, 2 << 8]),
+            (1000, [1, 100, 4100, 2 << 8]),
             (0x3E9, [0, 4100, 12, 2]),
             (0x3EA, [0, 4, 1000, 1000]),
             (0x3EB, [2 << 8, 1000, 1000, 4100]),
-            (0x1A, [1 | 100 << 16, 0xB << 1, 2 << 1 | 1 << 14, 0]),
-            (1000, [2, 101, 0, 0xB << 8])
+            (0x1A, [1 | 2 << 16, 0xB << 1, 2 << 1 | 1 << 14, 0]),
+            (1000, [2, 101, 4101, 0xB << 8])
         ]
     );
     // A Set to the Spell/Trap zone 1 (zone 6): face down, but upright. ocgcore gives a set Spell/Trap a face-down
@@ -331,7 +335,8 @@ fn a_summon_moves_the_card_from_the_hand_to_its_zone() {
     let out = t.events(&[json!({ "type": 50, "cid": 4101,
         "from": { "controller": 0, "location": 2, "sequence": 0, "position": 10 },
         "to": { "controller": 0, "location": 8, "sequence": 1, "position": 8 } })]);
-    assert_eq!(cmd(&out[1]), (0x1A, [2 | 101 << 16, 0xB << 1, 6 << 1, 0]));
+    // A Set: move kind 5.
+    assert_eq!(cmd(&out[1]), (0x1A, [2 | 5 << 16, 0xB << 1, 6 << 1, 0]));
 }
 
 #[test]
@@ -444,7 +449,8 @@ fn the_engines_win_ends_the_duel_on_the_client() {
     let (mut t, _) = translator();
     assert_eq!(cmd(&t.events(&[json!({ "type": 5, "player": 0, "reason": 1 })])[0]), (2, [1, 1, 0, 0]));
     assert_eq!(cmd(&t.events(&[json!({ "type": 5, "player": 1, "reason": 2 })])[0]), (2, [2, 2, 0, 0]));
-    assert_eq!(cmd(&t.events(&[json!({ "type": 5, "player": 1, "reason": 0 })])[0]), (2, [2, 5, 0, 0]));
+    // A surrender is the client's reason 12 (both 5 and 12 read "surrendered"; Konami's logs end on 12, never 5).
+    assert_eq!(cmd(&t.events(&[json!({ "type": 5, "player": 1, "reason": 0 })])[0]), (2, [2, 12, 0, 0]));
 }
 
 #[test]
@@ -857,7 +863,7 @@ fn against_a_player_the_opponents_hidden_cards_carry_no_row() {
     let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
     let (mut t, table) = Translator::against_player(0, [&client, &cpu], cids);
     assert_eq!(cmd(&table[10]), (1000, [11, 0, 0, 1 | 0xD << 8]));
-    assert_eq!(cmd(&table[0]), (1000, [1, 100, 0, 0xD << 8]));
+    assert_eq!(cmd(&table[0]), (1000, [1, 100, 4100, 0xD << 8]));
     let drawn: Vec<_> = t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4200 }, { "cid": 4201 }] })]).iter().map(cmd).collect();
     assert!(drawn.iter().all(|(id, p)| *id != 1000 || p[1] == 0), "{drawn:?}");
     assert!(drawn.iter().all(|(id, p)| *id != 0x1A || p[0] >> 16 == 0), "{drawn:?}");
@@ -865,7 +871,7 @@ fn against_a_player_the_opponents_hidden_cards_carry_no_row() {
         "from": { "controller": 1, "location": 2, "sequence": 0, "position": 10 },
         "to": { "controller": 1, "location": 4, "sequence": 1, "position": position } });
     let face_up: Vec<_> = t.events(&[summon(1)]).iter().map(cmd).collect();
-    assert_eq!(face_up[0], (1000, [11, 200, 0, 1 | 1 << 8]));
+    assert_eq!(face_up[0], (1000, [11, 200, 4200, 1 | 1 << 8]));
     assert!(face_up.iter().any(|(id, _)| *id == 0x3EB), "the field record");
     let set = json!({ "type": 50, "cid": 4201,
         "from": { "controller": 1, "location": 2, "sequence": 0, "position": 10 },
@@ -897,7 +903,7 @@ fn a_list_with_the_opponents_hidden_card_shows_card_backs() {
     // The entries at the opponent's banished places 0 and 1 (place 1 | 0xF << 8 | index << 16): the Set card's clear,
     // the face-up card's with the flag and its row.
     assert_eq!(out[0], (1000, [0xF0_0000, 0, 0, 1 | 0xF << 8]), "{out:?}");
-    assert_eq!(out[1], (1000, [0xF0_0001 | 1 << 24, 201, 0, 1 | 0xF << 8 | 1 << 16]), "{out:?}");
+    assert_eq!(out[1], (1000, [0xF0_0001 | 1 << 24, 201, 4201, 1 | 0xF << 8 | 1 << 16]), "{out:?}");
     assert!(out.contains(&(0x3F2, [0, 201, 0, 0])), "{out:?}");
     assert_eq!(out.last(), Some(&(0x37, [1, 4, 0, 0])), "{out:?}");
     // Even a choice the player could back out of: the card is reachable only this way.
@@ -936,7 +942,7 @@ fn a_mixed_list_gives_the_opponents_banished_entries_back() {
     assert!(matches!(t.dialog_result(1), Some(Prompt::Answer(_))));
     let back: Vec<_> = t.events(&[]).iter().map(cmd).collect();
     // Uid 11 is the CPU's first deck card (cid 4200), row 200, banished face up at index 0.
-    assert_eq!(back, [(1000, [11 | 1 << 24, 200, 0, 1 | 0xF << 8])]);
+    assert_eq!(back, [(1000, [11 | 1 << 24, 200, 4200, 1 | 0xF << 8])]);
 }
 
 /// A chain chance's level: the Effect dialog's param3.
@@ -1002,7 +1008,7 @@ fn a_flipped_card_of_the_opponent_shows_its_row_first() {
         "to": { "controller": 1, "location": 4, "sequence": 2, "position": 8 } })]);
     let flip = json!({ "type": 64, "code": 4200, "cid": 4200, "controller": 1, "location": 4, "sequence": 2, "position": 1 });
     let out: Vec<_> = t.events(&[flip]).iter().map(cmd).collect();
-    assert_eq!(out.first(), Some(&(1000, [11, 200, 0, 1 | 2 << 8])), "{out:?}");
+    assert_eq!(out.first(), Some(&(1000, [11, 200, 4200, 1 | 2 << 8])), "{out:?}");
     assert!(out.iter().any(|(id, _)| *id == 0x3EB), "its field record");
     assert_eq!(out.last(), Some(&(0x1C, [1 | 2 << 1 | 1 << 14, 0, 0, 0])));
 }
@@ -1023,8 +1029,8 @@ fn the_opponents_activated_set_card_shows_its_face() {
     let up = json!({ "type": 53, "code": 4200, "cid": 4200, "controller": 1, "location": 8, "sequence": 1,
         "prev_position": 8, "position": 5 });
     let out: Vec<_> = t.events(&[up]).iter().map(cmd).collect();
-    assert_eq!(out.first(), Some(&(1000, [11, 200, 0, 1 | 6 << 8])), "{out:?}");
-    assert_eq!(out.last(), Some(&(0x1A, [11 | 200 << 16, 1 | 6 << 1, 1 | 6 << 1 | 1 << 14, 0])), "{out:?}");
+    assert_eq!(out.first(), Some(&(1000, [11, 200, 4200, 1 | 6 << 8])), "{out:?}");
+    assert_eq!(out.last(), Some(&(0x1A, [11, 1 | 6 << 1, 1 | 6 << 1 | 1 << 14, 0])), "{out:?}");
     assert!(!out.iter().any(|(id, _)| *id == 0x1C), "no flip: the move turns it");
 }
 
@@ -1108,9 +1114,10 @@ fn a_summon_plays_its_effect() {
         "from": { "controller": 0, "location": 2, "sequence": 1, "position": 10 },
         "to": { "controller": 0, "location": 4, "sequence": 2, "position": 1 } })]);
     let summoning = json!({ "type": 60, "code": 4101, "cid": 4101, "controller": 0, "location": 4, "sequence": 2, "position": 1 });
-    assert_eq!(shows(&t.events(&[summoning])), [(0x38, [2 << 1, 2, 0, 0])]);
+    // The summoned card's place as moves give it, with its face and position bits (Konami's logs: 0x4000 | place).
+    assert_eq!(shows(&t.events(&[summoning])), [(0x38, [2 << 1 | 1 << 14, 2, 0, 0])]);
     let special = json!({ "type": 62, "code": 4200, "cid": 4200, "controller": 1, "location": 4, "sequence": 1, "position": 1 });
-    assert_eq!(shows(&t.events(&[special])), [(0x39, [1 | 1 << 1, 11, 0, 0])]);
+    assert_eq!(shows(&t.events(&[special])), [(0x39, [1 | 1 << 1 | 1 << 14, 11, 0, 0])]);
 }
 
 #[test]
@@ -1128,7 +1135,7 @@ fn a_revealed_card_shows_its_face_when_it_is_in_the_hand() {
     // The CPU's hand card 1 shown to the client: its entry (uid 12, row 201), then the show.
     let seen = json!({ "type": 31, "player": 0, "cards": [card_at(1, 2, 1, 4201)] });
     let out: Vec<_> = t.events(&[seen]).iter().map(cmd).collect();
-    assert_eq!(out, [(1000, [12, 201, 0, 1 | 0xB << 8 | 1 << 16]), (0x13, [1, 1, 0, 0])]);
+    assert_eq!(out, [(1000, [12, 201, 4201, 1 | 0xB << 8 | 1 << 16]), (0x13, [1, 1, 0, 0])]);
     // The client's own hand card shown to the opponent: shown to the client as well.
     t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }] })]);
     let shown = json!({ "type": 31, "player": 1, "cards": [card_at(0, 2, 0, 4100)] });
@@ -1191,7 +1198,9 @@ fn a_chain_shows_its_links_and_resolves_them_last_first() {
     let solving = |link: u32| json!({ "type": 72, "chain_size": link });
     let solved = |link: u32| json!({ "type": 73, "chain_size": link });
     let out = t.events(&[solving(5), solved(5), solving(4), solved(4), solving(3)]);
-    assert_eq!(links(&out), [(0x34, [0, 0, 5, 0]), (0x34, [0, 0, 4, 0]), (0x34, [0, 0, 3, 0])]);
+    // Each ChainRun carries its link's ChainSet {player, zone} too, as Konami's server sent it (the client reads only
+    // the link).
+    assert_eq!(links(&out), [(0x34, [0, 16, 5, 0]), (0x34, [1, 2, 4, 0]), (0x34, [0, 0xB, 3, 0])]);
 }
 
 /// The CardVanish commands among `out` (0x1F).
@@ -1360,7 +1369,7 @@ fn extra_decks_go_into_the_card_table_and_move_from_there() {
     let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
     let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
     let table: Vec<_> = t.extra_decks([&[150, 151][..], &[250][..]]).iter().map(cmd).collect();
-    assert_eq!(table, [(1000, [21, 150, 0, 0xC << 8]), (1000, [22, 151, 0, 0xC << 8 | 1 << 16]), (1000, [23, 0, 0, 1 | 0xC << 8])]);
+    assert_eq!(table, [(1000, [21, 150, 4150, 0xC << 8]), (1000, [22, 151, 4151, 0xC << 8 | 1 << 16]), (1000, [23, 0, 0, 1 | 0xC << 8])]);
     let out: Vec<_> = t
         .events(&[json!({ "type": 50, "cid": 4151,
             "from": { "controller": 0, "location": 64, "sequence": 0, "position": 10 },
@@ -1369,7 +1378,7 @@ fn extra_decks_go_into_the_card_table_and_move_from_there() {
         .map(cmd)
         .collect();
     let moved = out.iter().find(|(id, _)| *id == 0x1A).expect("the move");
-    assert_eq!(moved.1[0], 22 | 151 << 16, "uid 22, the card asked for");
+    assert_eq!(moved.1[0] & 0xFFFF, 22, "uid 22, the card asked for");
     assert_eq!((moved.1[1] >> 1) & 0x1F, 0xC, "from the extra deck");
 }
 
@@ -1547,8 +1556,9 @@ fn a_monster_that_changes_position_moves_onto_its_own_slot() {
     let turned = json!({ "type": 53, "cid": 4100, "controller": 0, "location": 4, "sequence": 0, "prev_position": 1,
         "position": 4 });
     let out: Vec<_> = t.events(&[turned]).iter().map(cmd).collect();
-    let moved: Vec<_> = out.iter().filter(|(id, _)| *id == 0x1A).map(|(_, p)| (p[0] >> 16, p[1], p[2])).collect();
-    assert_eq!(moved, [(100, 1 << 14, 1 << 14 | 1 << 15)], "{out:?}");
+    // Uid 1 (row 100).
+    let moved: Vec<_> = out.iter().filter(|(id, _)| *id == 0x1A).map(|(_, p)| (p[0], p[1], p[2])).collect();
+    assert_eq!(moved, [(1, 1 << 14, 1 << 14 | 1 << 15)], "{out:?}");
     assert_eq!(out.last(), Some(&(0x1C, [1 << 14 | 1 << 15, 0, 0, 0])));
 }
 
@@ -1600,8 +1610,9 @@ fn a_card_leaving_a_list_zone_is_taken_by_its_id_when_the_mirror_is_out_of_step(
     // The engine says the Spell (4100) leaves hand sequence 1 (the mirror holds 4101 there, 4100 at 0).
     let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 1, 10), "to": loc(0, 8, 1, 1) })]).iter().map(cmd).collect();
     // uid 1 holds row 100; its table entry and its move, from hand index 0.
-    assert_eq!(out[0], (1000, [1, 100, 0, 0x600]));
-    assert_eq!(out[1], (0x1A, [1 | 100 << 16, 0xB << 1, 0x400C, 0]));
+    // A Spell from the hand face-up to a Spell/Trap zone: activated, move kind 4.
+    assert_eq!(out[0], (1000, [1, 100, 4100, 0x600]));
+    assert_eq!(out[1], (0x1A, [1 | 4 << 16, 0xB << 1, 0x400C, 0]));
 }
 
 #[test]
@@ -1616,11 +1627,11 @@ fn a_hand_shuffle_reorders_the_hand_on_the_client_too() {
     let shuffle = |cids: [u32; 3]| json!({ "type": 33, "player": 0, "cards": [1, 2, 3], "cids": cids });
     let out: Vec<_> = t.events(&[shuffle([4102, 4100, 4101])]).iter().map(cmd).collect();
     let hand = |i: u32| 0xB << 8 | i << 16;
-    assert_eq!(out, [(1000, [3, 102, 0, hand(0)]), (1000, [1, 100, 0, hand(1)]), (1000, [2, 101, 0, hand(2)]), (0x12, [0, 0, 0, 0])]);
+    assert_eq!(out, [(1000, [3, 102, 4102, hand(0)]), (1000, [1, 100, 4100, hand(1)]), (1000, [2, 101, 4101, hand(2)]), (0x12, [0, 0, 0, 0])]);
     // The engine's sequences now match: 4102 leaves from index 0, and the others move up.
     let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4102, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 1, 1) })]).iter().map(cmd).collect();
-    assert_eq!(out[1], (0x1A, [3 | 102 << 16, 0xB << 1, 0x400C, 0]));
-    assert_eq!(out[2..], [(1000, [1, 100, 0, hand(0)]), (1000, [2, 101, 0, hand(1)])]);
+    assert_eq!(out[1], (0x1A, [3 | 4 << 16, 0xB << 1, 0x400C, 0]));
+    assert_eq!(out[2..], [(1000, [1, 100, 4100, hand(0)]), (1000, [2, 101, 4101, hand(1)])]);
     // A shuffle that leaves the order as it is sends nothing; one that doesn't match the hand (a count or an id the
     // mirror doesn't have) is ignored rather than guessed.
     assert!(t.events(&[json!({ "type": 33, "player": 0, "cards": [1, 2], "cids": [4100, 4101] })]).is_empty());
@@ -1669,8 +1680,8 @@ fn a_control_swap_trades_the_two_monsters_places() {
     // Row 200 (uid 11) arrives at the client's zone 0 face-down defense, row 100 (uid 1) at the CPU's zone 1 face-up attack.
     let (a, b) = (1 << 15, 1 | 1 << 1 | 1 << 14);
     assert!(out.contains(&(0x1B, [0, b, a, 0])), "{out:x?}");
-    assert!(out.contains(&(1000, [11, 200, 0, 0])), "{out:x?}");
-    assert!(out.contains(&(1000, [1, 100, 0, 1 | 1 << 8])), "{out:x?}");
+    assert!(out.contains(&(1000, [11, 200, 4200, 0])), "{out:x?}");
+    assert!(out.contains(&(1000, [1, 100, 4100, 1 | 1 << 8])), "{out:x?}");
     // The face-up monster now on the CPU's side gets its record there; the face-down one none.
     assert!(out.contains(&(0x3EB, [1 | 1 << 8, 1000, 1000, 4100])), "{out:x?}");
 }
@@ -1691,9 +1702,9 @@ fn set_cards_shuffled_in_place_follow_the_engine() {
     let out: Vec<_> = t.events(&[shuffle]).iter().map(cmd).collect();
     // Row 100 (uid 1) goes to zone 2, trading with row 101 (uid 2), which goes on to the empty zone 3.
     assert!(out.contains(&(0x1B, [0, 2 << 1 | 1 << 15, 1 << 15, 0])), "{out:x?}");
-    assert!(out.contains(&(0x1A, [2 | 101 << 16, 0, 3 << 1 | 1 << 15, 0])), "{out:x?}");
-    assert!(out.contains(&(1000, [1, 100, 0, 2 << 8])), "{out:x?}");
-    assert!(out.contains(&(1000, [2, 101, 0, 3 << 8])), "{out:x?}");
+    assert!(out.contains(&(0x1A, [2, 0, 3 << 1 | 1 << 15, 0])), "{out:x?}");
+    assert!(out.contains(&(1000, [1, 100, 4100, 2 << 8])), "{out:x?}");
+    assert!(out.contains(&(1000, [2, 101, 4101, 3 << 8])), "{out:x?}");
 }
 
 #[test]
@@ -1711,7 +1722,7 @@ fn a_token_that_changes_sides_moves_instead_of_vanishing() {
         .map(cmd)
         .collect();
     assert!(!out.iter().any(|(id, _)| *id == 0x1F), "{out:x?}");
-    assert!(out.contains(&(0x1A, [0x4000 | 3900 << 16, 2 << 1 | 1 << 14 | 1 << 15, 1 | 1 << 1 | 1 << 14 | 1 << 15, 0])), "{out:x?}");
+    assert!(out.contains(&(0x1A, [0x4000, 2 << 1 | 1 << 14 | 1 << 15, 1 | 1 << 1 | 1 << 14 | 1 << 15, 0])), "{out:x?}");
 }
 
 #[test]
@@ -1727,9 +1738,10 @@ fn a_graveyard_and_deck_swap_moves_every_card_between_them() {
     let swap = json!({ "type": 35, "player": 0, "deck_size": 9, "returned_to_extra": [],
         "grave": [{ "cid": 4105 }, { "cid": 4102 }], "extra": [] });
     let out: Vec<_> = t.events(&[swap]).iter().map(cmd).collect();
-    let moves: Vec<_> = out.iter().filter(|(id, _)| *id == 0x1A).map(|(_, p)| (p[0] >> 16, p[1] >> 1 & 0x1F, p[2] >> 1 & 0x1F, p[2] >> 6 & 0xFF)).collect();
-    // Row 100 from the Graveyard (0xE) to the Deck (0xD), then rows 105 and 102 from the Deck to Graveyard indexes 0, 1.
-    assert_eq!(moves, [(100, 0xE, 0xD, 0), (105, 0xD, 0xE, 0), (102, 0xD, 0xE, 1)], "{out:x?}");
+    let moves: Vec<_> = out.iter().filter(|(id, _)| *id == 0x1A).map(|(_, p)| (p[0], p[1] >> 1 & 0x1F, p[2] >> 1 & 0x1F, p[2] >> 6 & 0xFF)).collect();
+    // Row 100 (uid 1) from the Graveyard (0xE) to the Deck (0xD), then rows 105 and 102 (uids 6, 3) from the Deck to
+    // Graveyard indexes 0, 1.
+    assert_eq!(moves, [(1, 0xE, 0xD, 0), (6, 0xD, 0xE, 0), (3, 0xD, 0xE, 1)], "{out:x?}");
 }
 
 #[test]
