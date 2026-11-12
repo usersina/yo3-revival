@@ -1393,12 +1393,32 @@ and CardCheat `0x1D` (a card object refreshed from its record, 46 a duel). Konam
 place, 1006, pile counts 1023 with only the top card in the table); ours, a table entry for every card, works.
 
 **Sums.** MSG_SELECT_SUM (cards whose Levels make a total: a Ritual Summon's tributes, Machina Fortress's discards)
-is the client's card list of `selects`, picks bounded by its `min`/`max` (0: none); the server checks the picks make
-the sum (exactly, or with `select_max` at least it with no card to spare, a card counting as either of its two levels)
-and shows the list again when they don't. A sum nothing can make gets the automatic answer instead, so no player is
-held by an impossible list. The client also has Discard (13) and Ritual (14) dialogs, probably the original's windows
-for these; their params are unread (**open**). Before, the server picked the smallest fitting set for the player: 140
-times in 2,270 self-played duels of Konami's own decks.
+is the client's card list of `selects`, kind 1, at most `max` picks (0: no bound), under the engine's hint or else
+text 207 "Tribute the necessary monsters to match the required number of Level.". The list has no OK button: the
+player confirms the picks with a right-click (`dlg_cardlist.swf`'s `onMouseUp`, `_cancelable` always set by
+`0x4C73A0`; kind `0x27` would close only at `max` picks). The server checks they make the sum (exactly, or with
+`select_max` at least it with no card to spare, a card counting as either of its two levels) and shows the list again,
+with its text, when they don't. A sum nothing can make gets the automatic answer, so no player is held by an
+impossible list. Before, the server picked the smallest fitting set for the player: 140 times in 2,270 self-played
+duels of Konami's own decks. Live (`--duel-deck 4222,2600,2602,2153`): Machina Fortress listed the Machines in hand
+under "Select the card(s) in your hand you want to discard."; Sniper and Cyber Dragon with a right-click summoned it;
+Cyber Dragon alone brought the list back, and Cyber Dragon and Sniper summoned the second.
+
+**Backing out.** A choice the engine lets the player cancel (`can_cancel`: a card choice, or a summon procedure that
+picks its cost in a cancellable step, as The Tricky's discard does) opens as kind 1, and a right-click with nothing
+picked answers it cancelled; the duel check's round trip requires that answer to be reachable. Live: The Tricky's
+discard list, right-clicked empty, went back to the Main Phase with the hand whole. A procedure that picks its cost
+inside its own operation (Machina Fortress's `SelectWithSumGreater`, among others) has no cancel in the engine: the
+summon has begun, and the list stays until the player picks.
+
+The client's other two windows for these are banners, not pickers: Discard (dialog kind 13, `DuelDiscardDialog`,
+`dlg_discard.swf`, `0x4C67F0`) shows the message entries and `setCardNum`, the cards still to discard, read from the
+engine's `+0x131C` and redrawn as it changes (`0x4C68E0`), closing at 0; Ritual (kind 14, `DuelRitualDialog`,
+`dlg_ritual.swf`, `0x4C6A50`), a draggable one, shows `setStarNum`, its target (`param3`) less the engine's `+0x1320`,
+closing a second after reaching it (`0x4C6D00`). Command 1014 (`0x3F6 {+0x1320, +0x131C}`) sets both counts, and the
+original server sent it 15 times a duel. So the original let the player click the cards on the field and in the hand
+while a banner counted down; the client sends a list's picks only when the list closes, so these banners can't follow
+picks in the card list, which needs no banner.
 
 **Choices.** DuelScene opens dialogs with two commands (both popped like any other):
 

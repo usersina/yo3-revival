@@ -278,6 +278,8 @@ const CARD_NAME: u32 = 5 << 28;
 const LINE_BREAK: u32 = 2 << 28;
 const NUMBER: u32 = 8 << 28;
 const SELECT_COUNT_TEXT: u32 = 592;
+/// "@3Tribute@0 the necessary @3monsters@0 to match the required number of Level." (the duel prompt table's 207).
+const SUM_TEXT: u32 = 207;
 /// Duel prompt texts: "Select the @3monster(s)@0 as @3Tribute@0.", 'Activate the effect of "@3%s@0"?', 'Use the
 /// effect of "@3%s@0"?', "Use the effect now?".
 const TRIBUTE_TEXT: u32 = 18;
@@ -486,6 +488,8 @@ pub struct Translator {
     mixed: bool,
     /// The card list open stands for SELECT_OPTION's options (the client has no labels for them).
     option_cards: bool,
+    /// The text of the sum's card list, for showing it again after picks that don't make the sum.
+    sum_text: Option<u32>,
     staged: Option<usize>,
     /// The engine's links between cards (uids): (card, linked card, marker type), from MSG_EQUIP and MSG_CARD_TARGET.
     links: Vec<(u32, u32, u32)>,
@@ -576,6 +580,7 @@ impl Translator {
             materials: vec![],
             mixed: false,
             option_cards: false,
+            sum_text: None,
             chain: vec![],
             staged: None,
             links: vec![],
@@ -1510,10 +1515,18 @@ impl Translator {
             // satisfies would hold the player forever, so that one gets the automatic answer (and the core's
             // refusals end the duel, see `Repeats`).
             MSG_SELECT_SUM if m["selects"].as_array().is_some_and(|s| !s.is_empty()) && sum_fits(m, &sum_choice(m)) => {
+                // Kind 1 (min 0): any number of picks, confirmed with a right-click (dlg_cardlist.swf has no OK
+                // button). A list of kind 0x27 with a larger max closes only at max picks (live: Machina Fortress's
+                // discards held the player at two picks of six).
                 let n = m["selects"].as_array().map_or(0, Vec::len);
-                let (min, max) = sum_bounds(m);
-                let list = json!({ "selects": m["selects"], "min": min.clamp(1, n), "max": max.min(n).max(1) });
-                let text = hint_text(std::mem::take(&mut self.hint));
+                let (_, max) = sum_bounds(m);
+                let list = json!({ "selects": m["selects"], "min": 0, "max": max.min(n).max(1) });
+                // The engine's hint (Machina Fortress: "Select the card(s) in your hand you want to discard."), kept for
+                // the list shown again, else the prompt table's 207 "Tribute the necessary monsters to match the
+                // required number of Level.".
+                let text = hint_text(std::mem::take(&mut self.hint)).or(self.sum_text).unwrap_or(SUM_TEXT);
+                self.sum_text = Some(text);
+                let text = Some(text);
                 let out = self.card_list(&list, text);
                 self.pending = Some(m.clone());
                 self.picks.clear();
@@ -1643,8 +1656,9 @@ impl Translator {
     fn card_list(&mut self, m: &Json, text: Option<u32>) -> Vec<Message> {
         let selects = m["selects"].as_array().map_or(&[][..], Vec::as_slice);
         let (min, max) = (m["min"].as_u64().unwrap_or(1) as u32, m["max"].as_u64().unwrap_or(1) as u32);
-        // A choice the player may back out of (can_cancel, or a chain list that isn't forced) opens with OK, where no
-        // pick cancels: the list's right-click cancel reaches no code in this client (0x4C20C0 calls an empty hook).
+        // A choice the player may back out of (can_cancel, or a chain list that isn't forced) opens as kind 1: the list
+        // (no OK button) closes on a right-click with the picks so far, none cancelling (dlg_cardlist.swf `onMouseUp`
+        // with `_cancelable`, which 0x4C73A0 always sets).
         let cancelable = m["can_cancel"] == true || (m["type"] == MSG_SELECT_CHAIN && m["forced"] != true);
         let min = if cancelable { 0 } else { min };
         let (kind, max) = match min {
@@ -1828,6 +1842,7 @@ impl Translator {
                 if !sum_fits(&m, &picks) {
                     return Some(self.prompt(&m));
                 }
+                self.sum_text = None;
                 json!({ "type": RESP_SUM, "indicies": picks })
             }
             MSG_SELECT_UNSELECT_CARD => match std::mem::take(&mut self.picks)[..] {
@@ -2171,10 +2186,18 @@ impl Translator {
                     let picks: Vec<u32> = (0..min as u32).collect();
                     cases.push((format!("the first {min} of selects"), vec![(picks.clone(), min as u32)], json!({ "type": response, "indicies": picks })));
                 }
+                // Backing out (a right-click with nothing picked) when the engine allows it.
+                if m["can_cancel"] == true {
+                    cases.push(("cancelling".into(), vec![(vec![], 0)], json!({ "type": response, "indicies": null })));
+                }
             }
             MSG_SELECT_UNSELECT_CARD => {
                 for i in 0..len("select_cards") as u32 {
                     cases.push((format!("select_cards[{i}]"), vec![(vec![i], 1)], json!({ "type": RESP_UNSELECT_CARD, "index": i })));
+                }
+                if m["can_cancel"] == true || m["can_finish"] == true {
+                    let what = if m["can_cancel"] == true { "cancelling" } else { "finishing" };
+                    cases.push((what.into(), vec![(vec![], 0)], json!({ "type": RESP_UNSELECT_CARD, "index": null })));
                 }
             }
             MSG_SELECT_CHAIN => {

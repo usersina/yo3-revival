@@ -1860,10 +1860,16 @@ fn a_sum_is_the_players_choice_in_the_card_list() {
         "selects": [card(0, 4100, 4), card(1, 4101, 4), card(2, 4100, 3)] });
     let out = client_commands(t.prompt(&sum));
     assert_eq!(out.first(), Some(&(0x3EF, [3, 3, 0, 0])), "the list of three, up to three picks: {out:?}");
-    // 4 + 3 = 7 is short: the list again.
+    // Kind 1: any number of picks, confirmed with a right-click (dlg_cardlist.swf has no OK button: a list closes at
+    // max picks, or on a right-click once the kind's minimum, 0 here, is reached; kind 0x27 held Machina Fortress's
+    // discards at two picks of six, live). With no hint, the prompt table's 207 about matching the Level.
+    assert_eq!(out.last(), Some(&(0x37, [0, 1, 1, 0])), "{out:?}");
+    assert!(out.contains(&(0x3ED, [1 << 28 | 207, 0, 0, 0])), "{out:?}");
+    // 4 + 3 = 7 is short: the list again, with its text.
     t.pick(0);
     t.pick(2);
-    assert!(matches!(t.dialog_result(2), Some(Prompt::Client(_))));
+    let Some(Prompt::Client(again)) = t.dialog_result(2) else { panic!("the list again") };
+    assert!(again.iter().map(cmd).any(|c| c == (0x3ED, [1 << 28 | 207, 0, 0, 0])));
     // 4 + 4 = 8.
     t.pick(1);
     t.pick(0);
