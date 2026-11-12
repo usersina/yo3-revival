@@ -29,6 +29,9 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
 Platform scope: **64-bit Windows 10/11** and **Linux with Wine**. **Windows 7 support is out of scope for now**,
 for both Desktop and Scripts. Current compatibility and native Windows verification work targets Windows 10/11.
 
+Launcher icon: the Duel Disk / Monster Reborn badge is embedded in the native window and Windows executable.
+Linux and Windows release builds pass; live X11 icon pixels and all nine embedded Windows icon sizes match the assets.
+
 v0.0.7 release preparation (2026-11-12):
 
 - [x] The workspace package version and all seven local lockfile entries are `0.0.7`. The changelog describes the

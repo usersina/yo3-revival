@@ -27,6 +27,7 @@ macOS does not have a supported build. [Game installation help](#getting-the-ori
 1. [Download the latest release](https://github.com/usersina/yo3-revival/releases/latest). Choose the **Desktop**
    archive for your system and extract **all** of it.
 2. Open `yo3-revival.exe` on Windows or `yo3-revival` on Linux inside `yo3-revival-desktop/`.
+   On Windows, look for the Duel Disk icon with the Monster Reborn badge.
 3. Stay in **Normal** mode. Click **Browse…** and select the original game folder containing `yo3.exe`, `yo3.idx`
    and `package/`. Select the installed folder, not a shortcut, installer or the extracted Revival folder.
 4. Wait for the automatic check, then click **Play**. A folder is saved only after its checks pass.

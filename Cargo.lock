@@ -5264,6 +5264,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "winresource"
+version = "0.1.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2bc6d36480b829272a5bdabf08e6dca8004761c1da7e35efef800540c66221b"
+dependencies = [
+ "version_check",
+]
+
+[[package]]
 name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5401,6 +5410,7 @@ dependencies = [
  "iced",
  "if-addrs",
  "keyring",
+ "png",
  "reqwest",
  "rfd",
  "ring",
@@ -5411,6 +5421,7 @@ dependencies = [
  "tar",
  "tokio",
  "windows-sys 0.61.2",
+ "winresource",
  "yo3-data",
  "yo3-launcher",
  "yo3-server",
