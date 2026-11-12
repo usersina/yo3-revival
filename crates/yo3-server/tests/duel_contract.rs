@@ -263,6 +263,8 @@ fn a_finished_duel_leaves_a_log_the_duel_log_screen_reads() {
     let bytes = yo3_server::store::duel_log(&dir, &name).unwrap().expect("kept in server.db");
     let int = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
     assert_eq!(&bytes[..4], [0xE7, 0x09, 1, 0]);
+    // The u32 at 4 is the header's size, where the body starts: 360 in all 227 of Konami's own logs (2010-2012).
+    assert_eq!(int(4), 360);
     assert_eq!([int(8), int(12), int(16), int(20)], [9, 1001, 1002, 1]);
     assert_eq!(bytes[100], 0);
     assert!(bytes.len() >= 360);
@@ -288,6 +290,9 @@ fn a_replay_runs_from_the_janken_to_the_matchs_end() {
     let commands = replay_commands(&world, [&deck(100), &deck(200)], [1, 2, 0], 8000, &history);
     let ids: Vec<u32> = commands.iter().map(|c| c[0]).collect();
     assert_eq!(&ids[..4], [1500, 1501, 1502, 1503]);
+    // Every card with its row, both hands and decks: Konami's replays hide none (no card table entry with row 0 in the
+    // 227 original logs), so a replay shows both players' hands.
+    assert!(commands.iter().filter(|c| c[0] == 1000).all(|c| c[3] != 0), "{commands:?}");
     assert_eq!(commands[1][2..5], [1, 2, 0], "the janken as the first player saw it: won with rock against scissors... ");
     assert!(ids.contains(&1) && ids.iter().filter(|&&i| i == 1000).count() >= 10, "the card table and the duel's start");
     assert_eq!(&ids[ids.len() - 2..], [2, 1505]);

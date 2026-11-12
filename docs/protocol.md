@@ -1621,21 +1621,31 @@ Kaiba"), Play replayed the duel on the field from the janken to the duel's end, 
 (No) and returned to the main screen.
 
 The file (readers `0x538AB0` header, `0x5384F0` all, `0x538BD0` comment rewrite; little endian): u16 `0x09E7`, u16 1,
-then u32s at 4 (unknown, we send 0), 8 `duel_id`, 12 `player_1`, 16 `player_2`, 20 `match_type`, 24 `dlv_1`, 28 `dlv_2`,
-32 `end_time`; 36 `pname_1` (32 bytes), 68 `pname_2` (32), 100 `dlog_comment` (256), 356 a u32 the rewrite keeps (we send
-the body's length), and from 360 the body, run-length coded as (value, count) byte pairs (`0x538360`). The body
+then u32s at 4 (360, the header's size), 8 `duel_id`, 12 `player_1`, 16 `player_2`, 20 `match_type`, 24 `dlv_1`, 28 `dlv_2`,
+32 `end_time`; 36 `pname_1` (32 bytes), 68 `pname_2` (32), 100 `dlog_comment` (256), 356 a u32 the rewrite keeps (the body's
+length), and from 360 the body, run-length coded as (value, count) byte pairs (`0x538360`). The body
 (`0x5384F0`, then `0x524330`, which builds from it the match push `0x1978` of a watched duel, a `duelData` and the
-setup): 20 u32s (`duel_id` third, the end time fourth (`0x17C`), `match_type` fifth, `event_type` seventh, `official`
-eighth), two player blocks of 8656 bytes, then a u32 count and that many commands of six u32s `{id, 0, param1..param4}`
+setup): 20 u32s (0–3 the file offsets of the duel data, the two blocks and the commands as if the body weren't coded:
+376, 440, 9096, 17752; 4 `duel_id`, 5 the end time (`0x17C`), 6 `match_type`, 7 always 5 or 4, 8 `event_type`, 9
+`official`), two player blocks of 8656 bytes, then a u32 count and that many commands of six u32s `{id, 0, param1..param4}`
 (`0x522A50`: the engine commands; entries whose second u32's low byte is negative are skipped). A block: 11 u32s
 `{player_id, dlv, MainDeckNum, ExtraDeckNum, title, ?, PlayerType, card_protector, n_win, n_lose, n_draw}`, `pname` (32
 bytes), the avatar (128), `country` (4), 32 speech lines of 256 bytes and a 256-byte deck name. The setup is not in
-the file: `0x524330` makes it from the blocks (FirstPlayer and PlayerNum are 0). So a replay is what a spectator of
-the player who went first sees: our commands are the janken as that player saw it (1500-1503, which take the pre-duel
+the file: `0x524330` makes it from the blocks (FirstPlayer and PlayerNum are 0). So a replay is the duel from the side of
+the player who went first, every card with its row as in Konami's replays (both hands show): our commands are the
+janken as that player saw it (1500-1503, which take the pre-duel
 screen to the field; without them the replay waits on it), the card table, the duel's start and LP, the engine's events
 and 1505 (the match's end for that player; without it the replay ends on the pre-duel screen). The first player's
-block comes first, so `player_1` is whoever went first. Unknown: the u32 at 4, the blocks' sixth u32, the first u32s of
-the body other than the four named; the hands show as white boxes in a replay (a spectator sees none).
+block comes first, so `player_1` is whoever went first.
+
+**Konami's own logs.** A player's 2010–2012 client folder (227 readable logs downloaded from the original server,
+`tools/re/dlog.py`) settles the layout: the u32 at 4 is 360 in all, the u32 at 356 the body's length, the body's first
+four u32s the offsets above, its u32 7 is 5 (4 in 6 logs, meaning unknown), the blocks' sixth u32 and deck name 0, the
+comment empty, `player_1` the first player in all, and no card table entry carries row 0. `event_type` ran 1–11
+(`official` 1 with 3, 4, 10 and 11); we send 0 for both, not knowing which of ours each was. The original named files
+`DUEL_ID_HHMMSS.dlog` (ten digits, Japan time), one file per duel; ours keep the end time first, since our duel ids
+restart with the server. A command's second u32 was 0, except `0x80` on 2,627 card-relation commands (1017, skipped
+on replay) and 1 on 87 dialogs.
 
 ## Accounts
 

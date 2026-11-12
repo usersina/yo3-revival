@@ -440,6 +440,12 @@ fn a_duel_between_players_leaves_a_replay_in_the_log() {
     let body: Vec<u8> = bytes[360..].chunks(2).flat_map(|p| std::iter::repeat_n(p[0], p[1] as usize)).collect();
     let body_len = u32::from_le_bytes(bytes[356..360].try_into().unwrap()) as usize;
     assert_eq!(body.len(), body_len);
+    // The body's first u32s, as in all 227 of Konami's own logs: the file offsets (as if the body weren't coded) of the
+    // duel's data, the two blocks and the commands, then duel_id, the end time, match_type, and 5 (4 in a few, meaning
+    // unknown).
+    let int = |at: usize| u32::from_le_bytes(body[at * 4..at * 4 + 4].try_into().unwrap());
+    assert_eq!([int(0), int(1), int(2), int(3)], [376, 440, 9096, 17752]);
+    assert_eq!(int(7), 5);
     let count = u32::from_le_bytes(body[80 + 2 * 0x21D0..][..4].try_into().unwrap()) as usize;
     assert!(count > 100, "the card table, the opening and the duel: {count} commands");
     assert_eq!(body.len(), 80 + 2 * 0x21D0 + 4 + 24 * count);

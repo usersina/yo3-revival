@@ -6,7 +6,7 @@
 //! | offset | size | field |
 //! |---|---|---|
 //! | 0 | u16 | magic `0x09E7`, then u16 version 1 |
-//! | 4 | u32 | unknown (the loaders keep it; **guess** 0) |
+//! | 4 | u32 | 360, the header's size (all 227 of Konami's own 2010-2012 logs) |
 //! | 8 | u32 | `duel_id` |
 //! | 12 | u32 | `player_1` |
 //! | 16 | u32 | `player_2` |
@@ -15,12 +15,13 @@
 //! | 32 | u32 | `end_time` (epoch) |
 //! | 36 | 32 | `pname_1`, then `pname_2` at 68, NUL padded |
 //! | 100 | 256 | `dlog_comment` |
-//! | 356 | u32 | kept by the comment rewrite (`0x538BD0`); **guess** the body's length |
+//! | 356 | u32 | the body's length (kept by the comment rewrite `0x538BD0`; Konami's logs confirm it) |
 //! | 360 | | the body, run-length coded as (value, count) byte pairs (`0x538360`) |
 //!
 //! The body (`0x5384F0`, then `0x524330` which makes a match push and a duel setup of it) is, before the coding: 20 u32s
-//! (the third is `duel_id`, the fourth the end time (`0x17C`), the fifth `match_type`, the seventh `event_type`, the
-//! eighth `official`; the rest unknown, 0), two player blocks of 8656 bytes each, then a u32 count and that many
+//! (0-3 the file offsets of the duel data, the two blocks and the commands as if the body weren't coded, 376, 440,
+//! 9096, 17752; 4 `duel_id`, 5 the end time (`0x17C`), 6 `match_type`, 7 always 4 or 5 in Konami's logs (meaning
+//! unknown), 8 `event_type`, 9 `official`, the rest 0), two player blocks of 8656 bytes each, then a u32 count and that many
 //! commands of six u32s `{id, 0, param1..param4}` (the engine commands of the duel pump `0x522A50`; entries whose second
 //! u32's low byte is negative are skipped by the loader). A block is 11 u32s `{player_id, dlv, MainDeckNum,
 //! ExtraDeckNum, title, ?, PlayerType, card_protector, n_win, n_lose, n_draw}`, `pname` (32 bytes), the avatar (128
@@ -29,6 +30,8 @@
 use std::path::Path;
 
 const MAGIC: u16 = 0x09E7;
+/// The header's size: the body starts there.
+const HEADER: u32 = 360;
 const NAME: usize = 32;
 const COMMENT: usize = 256;
 
@@ -89,9 +92,14 @@ impl Replay {
     pub fn body(&self, duel_id: u32, match_type: u32, end_time: u32) -> Vec<u8> {
         let mut out = vec![];
         let mut ints = [0u32; 20];
+        let block = BLOCK as u32;
+        ints[..4].copy_from_slice(&[HEADER + 16, HEADER + 80, HEADER + 80 + block, HEADER + 80 + 2 * block]);
         ints[4] = duel_id;
         ints[5] = end_time;
         ints[6] = match_type;
+        // 5 in 221 of Konami's 227 logs, 4 in the rest (meaning unknown). event_type (8) and official (9) stay 0: the
+        // original's values (1-11, and 1 for 3, 4, 10, 11) aren't tied to our kinds of duel.
+        ints[7] = 5;
         out.extend(ints.iter().flat_map(|n| n.to_le_bytes()));
         for side in &self.sides {
             let start = out.len();
@@ -138,7 +146,7 @@ impl Log {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = MAGIC.to_le_bytes().to_vec();
         out.extend(1u16.to_le_bytes());
-        let ints = [0, self.duel_id, self.player_1, self.player_2, self.match_type, self.dlv_1, self.dlv_2, self.end_time];
+        let ints = [HEADER, self.duel_id, self.player_1, self.player_2, self.match_type, self.dlv_1, self.dlv_2, self.end_time];
         out.extend(ints.iter().flat_map(|n| n.to_le_bytes()));
         field(&mut out, &self.pname_1, NAME);
         field(&mut out, &self.pname_2, NAME);

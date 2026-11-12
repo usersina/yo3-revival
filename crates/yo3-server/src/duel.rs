@@ -195,11 +195,12 @@ pub fn lead_janken([result, theirs, mine]: [u32; 3], lead_saw_it: bool) -> [u32;
     if lead_saw_it { [result, theirs, mine] } else { [[0, 2, 1][result as usize % 3], mine, theirs] }
 }
 
-/// The commands of a duel's replay (`duellog.rs`): what a spectator would have seen of the player who went first (the
-/// first deck), from the janken through the card table and the duel's events to the match's end. `history` is every
-/// engine message of the duel.
+/// The commands of a duel's replay (`duellog.rs`): the duel from the side of the player who went first (the first
+/// deck), from the janken through the card table and the duel's events to the match's end, every card with its row
+/// (Konami's replays hide no card: no card table entry with row 0 in 227 original logs, so both hands show). `history`
+/// is every engine message of the duel.
 pub fn replay_commands(world: &World, decks: [&Deck; 2], janken: [u32; 3], lp: u32, history: &[serde_json::Value]) -> Vec<[u32; 6]> {
-    let (mut translator, table) = Translator::spectating(CLIENT, [&decks[0].main, &decks[1].main], world.cards.clone());
+    let (mut translator, table) = Translator::new(CLIENT, [&decks[0].main, &decks[1].main], world.cards.clone());
     translator.tokens(world.token_rows.clone());
     let [result, theirs, mine] = janken;
     let mut messages = vec![
