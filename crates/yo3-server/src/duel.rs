@@ -526,7 +526,7 @@ impl DuelSession {
         if self.world.duel_check { engine.record(); }
         let seed = self.next();
         let lp = self.world.start_lp;
-        let answer = engine.new_duel(seed, lp, [(&m0, &e0), (&m1, &e1)]);
+        let answer = engine.new_duel_named(seed, lp, [(&m0, &e0), (&m1, &e1)], &self.world.card_names);
         let (mut translator, mut table) = Translator::new(first, [&entry.deck.main, &npc.main], self.world.cards.clone());
         if self.world.duel_check {
             self.check = Some(crate::duelcheck::ClientModel::new(first, self.world.cards.clone()));

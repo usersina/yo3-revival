@@ -113,7 +113,12 @@ sidecar, core, card scripts, database and card-ID mapping; it compares exact rec
 Replay exercises the engine, not mouse input or pixels. Use focused live checks for remaining UI behavior.
 
 After translator or sidecar changes, run the full duel check: its 240 self-played duels compare modeled client and
-engine state after every step. A failure reports the seed, step and preceding engine messages. Protocol and UI
+engine state after every step. A failure reports the seed, step and preceding engine messages.
+
+The card check (`crates/yo3-server/tests/card_data.rs`, with the game installed and the engine fetched) loads each of
+the client's 4,771 cards in the engine: every one must be found, load its script without an error and have the
+client's level, ATK and DEF. Only the 12 game exclusives EDOPro lacks (`engine::NOT_IN_THE_ENGINE`) may be missing; no
+pack or preset deck holds them and the deck check refuses them. Run it after updating `engine/fetch.sh`'s sources. Protocol and UI
 monkeys are documented in the [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#commands).
 
 ## Build release bundles

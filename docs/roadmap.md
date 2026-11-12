@@ -1024,6 +1024,12 @@ Stop finding missing fields one crash at a time.
 - [x] Rules engine sidecar: EDOPro's core (ocgcore-wasm, rule MR2) in `engine/duelcore.ts` under Node, one process
       per duel, JSON lines, cards as Konami ids (4,702 of the client's 4,771 map to passcodes through YGOProDeck's
       `konami_id`; the rest look like tokens); `engine/fetch.sh` fetches the core, ProjectIgnis' scripts and database
+- [x] Card check (2026-11-12, `tests/card_data.rs`): every client card loads in the engine as the client shows it.
+      It found three faults, now fixed: Barrel Dragon mapped to an artwork passcode the database lacks, so it had no
+      data or script; the second prints of Dark Magician (5165) and Polymerization (4867), under Konami ids YGOProDeck
+      doesn't list, never reached the engine and vanished from the deck (now found by name, each keeping its id on an
+      artwork passcode of its own); Red-Eyes Darkness Metal Dragon's script is in `pre-errata/`. The 12 game
+      exclusives EDOPro lacks are refused by the deck check
 - [x] Translator, first part: the engine drives the duel session; its draws, turns and phases become engine commands,
       the client's idle prompt a command map of the legal commands, the client's card commands its responses; the CPU
       ends its turns at once (a placeholder bot) and other prompts are answered with defaults

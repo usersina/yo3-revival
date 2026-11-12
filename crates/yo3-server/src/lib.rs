@@ -191,6 +191,10 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                 m.entry(c.name.clone()).or_insert_with(Vec::new).push(c.row);
                 m
             }),
+            card_names: data.cards.iter().fold(std::collections::HashMap::new(), |mut m, c| {
+                m.entry(c.cid).or_insert_with(|| c.name.clone());
+                m
+            }),
             engine_dir: engine::Engine::dir(),
             start_lp: cfg.duel_lp,
             test_regulation: cfg.duel_regulation,

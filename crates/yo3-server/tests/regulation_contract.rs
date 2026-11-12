@@ -202,6 +202,23 @@ fn cards_the_player_does_not_own_are_refused() {
 }
 
 #[test]
+fn a_card_the_rules_engine_lacks_is_refused() {
+    // Row 41 is Ulevo (5925), a game exclusive the rules engine doesn't have (engine::NOT_IN_THE_ENGINE): owned and
+    // unrestricted, but the duel couldn't play it, so the deck is refused like a regulation breach.
+    let mut w = world(3);
+    w.cards.insert(41, CardStats { cid: 5925, atk: 0, def: 0, level: 1, attribute: 1, race: 1 });
+    let server = Server::with_world(w);
+    let mut player = yo3_server::front::Player::new(1001, "Yugi");
+    player.cards.insert(41, 1);
+    let mut c = server.join_as(player);
+    let id = npc_duel(&mut c, 0);
+    let mut deck = starter();
+    deck.push(41);
+    assert_eq!(pick(&mut c, id, &deck, &[], &[]), 0x22CB);
+    assert_eq!(pick(&mut c, id, &starter(), &[], &[]), 0x22CA);
+}
+
+#[test]
 fn bought_cards_count_as_owned() {
     let server = Server::with_world(world(3));
     let mut player = yo3_server::front::Player::new(1001, "Yugi");

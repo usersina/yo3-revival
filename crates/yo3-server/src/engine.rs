@@ -4,6 +4,7 @@
 //! The calls block (a step of the core takes milliseconds), but never for longer than [`CALL_TIMEOUT`]: a sidecar that
 //! hangs is killed and the call fails, like one that died. Diagnostic dependency hashing has a separate bounded
 //! budget because it reads thousands of files; it does not extend the deadlines for playing a duel.
+use std::collections::HashMap;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -100,6 +101,12 @@ pub fn problem(dir: Option<&Path>) -> Option<String> {
     }
 }
 
+/// Konami ids of client cards EDOPro doesn't have at all (game and promotion exclusives: Ulevo, Meteo the Matchless,
+/// Xexex, Eternia, the Arcane Lords' Testament and Armament, Chimaera the Master of Beasts, Emperor of Lightning, Tyr,
+/// Lorelei, Aggiba, Skuna). No pack or preset deck holds them; the deck check refuses them, since a duel can't play
+/// them. `tests/card_data.rs` checks that this is exactly the set the engine can't find.
+pub const NOT_IN_THE_ENGINE: [u16; 12] = [5925, 5929, 6533, 6534, 6958, 6959, 7374, 7375, 7992, 7993, 8610, 8611];
+
 pub struct Engine {
     child: Child,
     stdin: ChildStdin,
@@ -179,8 +186,31 @@ impl Engine {
 
     /// Starts a duel with `lp` each; team 0 goes first. Decks are (main, extra) as Konami card ids.
     pub fn new_duel(&mut self, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2]) -> io::Result<Answer> {
+        self.new_duel_named(seed, lp, decks, &HashMap::new())
+    }
+
+    /// `new_duel` with the English names of the decks' cards (the client's `names`, by Konami id, as many as given):
+    /// the engine finds a print its card list lacks (the client's second Dark Magician, 5165) by name.
+    pub fn new_duel_named(&mut self, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2], names: &HashMap<u16, String>) -> io::Result<Answer> {
+        let used: std::collections::BTreeMap<String, &String> = decks
+            .iter()
+            .flat_map(|(main, extra)| main.iter().chain(extra.iter()))
+            .filter_map(|cid| names.get(cid).map(|name| (cid.to_string(), name)))
+            .collect();
         let decks: Vec<Json> = decks.iter().map(|(main, extra)| json!({ "main": main, "extra": extra })).collect();
-        self.call(json!({ "op": "new", "seed": seed, "lp": lp, "decks": decks }))
+        self.call(json!({ "op": "new", "seed": seed, "lp": lp, "decks": decks, "names": used }))
+    }
+
+    /// How the engine loads each card `(Konami id, English name)`: one answer per card, `{cid, passcode}` (null: the
+    /// engine has no such card) with `data` (its card data: type, level, attack, defense, attribute, race, alias,
+    /// name), `missing_scripts` and `errors` (the core's, loading it). For the card check (`tests/card_data.rs`).
+    pub fn cards(&mut self, cards: &[(u16, &str)]) -> io::Result<Vec<Json>> {
+        let cards: Vec<Json> = cards.iter().map(|(cid, name)| json!({ "cid": cid, "name": name })).collect();
+        let mut v = self.line(json!({ "op": "cards", "cards": cards }))?;
+        match v.get("status").and_then(Json::as_str) {
+            Some("cards") => Ok(v.get_mut("cards").map(Json::take).and_then(|c| serde_json::from_value(c).ok()).unwrap_or_default()),
+            _ => Err(io::Error::other(format!("engine: no card check ({})", v.get("error").and_then(Json::as_str).unwrap_or("unknown")))),
+        }
     }
 
     /// Answers the core's prompt (an OcgResponse object).

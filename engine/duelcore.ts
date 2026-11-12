@@ -1,11 +1,13 @@
 // Rules engine sidecar for the yo3-revival duel server: EDOPro's core (ocgcore-wasm) behind JSON lines.
 //
 // One duel per process. Each request is one line on stdin, each answer one line on stdout:
-//   {"op":"new","seed":7,"lp":8000,"decks":[{"main":[cid…],"extra":[cid…]},{…}]}  team 0 goes first
+//   {"op":"new","seed":7,"lp":8000,"decks":[{"main":[cid…],"extra":[cid…]},{…}],"names":{"cid":"English name"}}
+//                                        team 0 goes first; `names` finds other prints of a card (see resolve())
 //   {"op":"respond","response":{…}}                                       an OcgResponse
 //   {"op":"state"}                       where every card is now (read only; the server's duel check, see state())
+//   {"op":"cards","cards":[{"cid":…,"name":…}]}   how the core loads each card (the server's card check)
 // Answer: {"messages":[…],"status":"await"|"end","errors":[…]}: the core's messages up to the next prompt; "state"
-// answers {"status":"state","teams":[…]}.
+// answers {"status":"state","teams":[…]}, "cards" {"status":"cards","cards":[…]}.
 // Cards are given and reported by Konami card id (the client's "CID"): every `code` (or MOVE's `card`) in a
 // message gets a `cid` next to it. MOVE also gets its `reason`, read back from the card. Needs `fetch.sh` run first
 // (packages, card scripts, card database, Konami ids).
@@ -35,21 +37,64 @@ function identity() {
   return identityCache;
 }
 
-// Konami id <-> passcode (YGOProDeck's misc_info.konami_id).
-const passcodeOf = new Map<number, number>();
-const cidOf = new Map<number, number>();
-for (const card of JSON.parse(readFileSync(join(vendor, "cardinfo.json"), "utf-8")).data) {
-  for (const misc of card.misc_info ?? []) {
-    if (misc.konami_id && !passcodeOf.has(misc.konami_id)) {
-      passcodeOf.set(misc.konami_id, card.id);
-      cidOf.set(card.id, misc.konami_id);
-    }
-  }
-}
-
 const db = new DatabaseSync(join(vendor, "BabelCDB", "cards.cdb"), { readOnly: true });
 const cardQuery = db.prepare("select * from datas where id = ?");
 const nameQuery = db.prepare("select name from texts where id = ?");
+const aliasQuery = db.prepare("select alias from datas where id = ?");
+const byNameQuery = db.prepare("select d.id from datas d join texts t on t.id = d.id where lower(t.name) = lower(?) and d.alias = 0 order by d.id");
+const artworksQuery = db.prepare("select id from datas where alias = ? and id > ? - 20 and id < ? + 20 order by id");
+
+// Konami id <-> passcode (YGOProDeck's misc_info.konami_id). A card lists its artworks' passcodes too; the one the card
+// database holds as the original (alias 0) is the passcode, so that the core finds the card's data and script. Every
+// artwork the database holds maps back to the Konami id.
+const passcodeOf = new Map<number, number>();
+const cidOf = new Map<number, number>();
+for (const card of JSON.parse(readFileSync(join(vendor, "cardinfo.json"), "utf-8")).data) {
+  const ids: number[] = [...new Set<number>([card.id, ...(card.card_images ?? []).map((i: { id: number }) => i.id)])];
+  const known = ids.filter((id) => aliasQuery.get(id));
+  const original = known.find((id) => !(aliasQuery.get(id) as { alias: number }).alias) ?? known[0];
+  for (const misc of card.misc_info ?? []) {
+    const cid = misc.konami_id;
+    if (!cid || passcodeOf.has(cid) || original === undefined) continue;
+    passcodeOf.set(cid, original);
+    for (const id of known) if (!cidOf.has(id)) cidOf.set(id, cid);
+  }
+}
+
+/** The passcode of each Konami id in this duel, and the Konami id of each passcode in it, for the cards the table
+ * above doesn't know: another print of a card under its own Konami id (the client has two Dark Magicians, 4041 and
+ * 5165), found by its English name. Each print gets an artwork passcode of its own (the core plays an artwork as the
+ * original: the same name and script), so the messages still tell the prints apart. */
+let duelPasscodes = new Map<number, number>();
+let duelCids = new Map<number, number>();
+
+/** The passcode for Konami id `cid` (its client name `name` for another print), claiming it for this duel. */
+function resolve(cid: number, name?: string): number | undefined {
+  const known = duelPasscodes.get(cid) ?? passcodeOf.get(cid);
+  if (known !== undefined) {
+    duelPasscodes.set(cid, known);
+    if (!duelCids.has(known)) duelCids.set(known, cid);
+    return known;
+  }
+  const original = name ? (byNameQuery.get(name) as { id: number } | undefined)?.id : undefined;
+  if (original === undefined) return undefined;
+  // An artwork no Konami id claims, so the result doesn't depend on which print the deck lists first.
+  const taken = (code: number) => duelCids.has(code) && duelCids.get(code) !== cid;
+  const artworks = (artworksQuery.all(original, original, original) as { id: number }[]).map((r) => r.id);
+  const code = artworks.find((c) => !cidOf.has(c) && !taken(c)) ?? [...artworks, original].find((c) => !taken(c)) ?? original;
+  duelPasscodes.set(cid, code);
+  duelCids.set(code, cid);
+  return code;
+}
+
+/** The passcode the core wants for a declared card name (Konami id `cid`): the original's, not an artwork's. */
+function declared(cid: number): number {
+  const code = passcodeOf.get(cid) ?? duelPasscodes.get(cid) ?? 0;
+  return (aliasQuery.get(code) as { alias: number } | undefined)?.alias || code;
+}
+
+/** A passcode's Konami id: this duel's print first. */
+const cidFor = (code: number) => duelCids.get(code) ?? cidOf.get(code);
 
 /** A card's English name, for the cards with no Konami id (tokens), which the server finds among the client's own. */
 function nameOf(code: number): string | undefined {
@@ -78,13 +123,20 @@ function readCard(code: number) {
   };
 }
 
+/** The folders a card's script (`c<passcode>.lua`) may be in, in order: a few cards' current scripts sit outside
+ * `official/` (Red-Eyes Darkness Metal Dragon's in `pre-errata/`). Any other script is at the top. */
+const CARD_SCRIPT_FOLDERS = ["official", "pre-errata", "pre-release"];
+
 function readScript(name: string) {
-  const file = /^c\d+\.lua$/.test(name) ? join(vendor, "CardScripts", "official", name) : join(vendor, "CardScripts", name);
-  try {
-    return readFileSync(file, "utf-8");
-  } catch {
-    return null;
+  const folders = /^c\d+\.lua$/.test(name) ? CARD_SCRIPT_FOLDERS : [""];
+  for (const folder of folders) {
+    try {
+      return readFileSync(join(vendor, "CardScripts", folder, name), "utf-8");
+    } catch {
+      // the next folder
+    }
   }
+  return null;
 }
 
 /** Adds `cid` next to every numeric `code` (or `card`, as MOVE names it) and `cids` next to a list of codes, so the
@@ -96,14 +148,14 @@ function withCids(value: unknown): unknown {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) out[k] = withCids(v);
     const code = typeof out.code === "number" ? out.code : out.card;
-    if (typeof code === "number") out.cid = cidOf.get(code) ?? 0;
+    if (typeof code === "number") out.cid = cidFor(code) ?? 0;
     if (typeof code === "number" && code && !out.cid) {
       const name = nameOf(code);
       if (name) out.name = name;
     }
     // A bare list of codes (SHUFFLE_HAND's `cards`): `cids` beside it, in the same order.
     if (Array.isArray(out.cards) && out.cards.every((c) => typeof c === "number")) {
-      out.cids = (out.cards as number[]).map((c) => cidOf.get(c) ?? 0);
+      out.cids = (out.cards as number[]).map((c) => cidFor(c) ?? 0);
     }
     if (typeof out.description === "bigint" || typeof out.description === "number") {
       const owner = cidOf.get(Number(BigInt(out.description) >> 20n));
@@ -240,7 +292,7 @@ function run() {
   }
 }
 
-function newDuel(req: { seed: number; lp?: number; decks: { main: number[]; extra: number[] }[] }) {
+function newDuel(req: { seed: number; lp?: number; decks: { main: number[]; extra: number[] }[]; names?: Record<string, string> }) {
   const team = { startingLP: req.lp ?? 8000, startingDrawCount: 5, drawCountPerTurn: 1 };
   const seed = BigInt(req.seed);
   handle = lib.createDuel({
@@ -254,11 +306,13 @@ function newDuel(req: { seed: number; lp?: number; decks: { main: number[]; extr
   });
   if (!handle) throw new Error("the core refused the duel");
   lastField = "";
+  duelPasscodes = new Map();
+  duelCids = new Map();
   for (const name of ["constant.lua", "utility.lua"]) lib.loadScript(handle, name, readScript(name) ?? "");
   req.decks.forEach((deck, t) => {
     const put = (cids: number[], location: number) =>
       cids.forEach((cid) => {
-        const code = passcodeOf.get(cid);
+        const code = resolve(cid, req.names?.[cid]);
         if (!code) return void errors.push(`no passcode for cid ${cid}`);
         lib.duelNewCard(handle!, { team: t as 0 | 1, duelist: 0, code, controller: t as 0 | 1, location, sequence: 0, position: OcgPosition.FACEDOWN_DEFENSE });
       });
@@ -267,6 +321,40 @@ function newDuel(req: { seed: number; lp?: number; decks: { main: number[]; extr
   });
   lib.startDuel(handle);
   return run();
+}
+
+/** What the core makes of each card `{cid, name}` (the server's card check): its passcode (null when the engine has
+ * no such card), the card data it reads, and the errors and missing scripts loading it reported. Each card is made in
+ * a throwaway duel of its own; the running duel, if any, is left alone. */
+function checkCards(req: { cards: { cid: number; name?: string }[] }) {
+  // One throwaway duel for them all: the core reports each card's script problems as it makes the card.
+  let problems: string[] = [];
+  let missing: string[] = [];
+  const team = { startingLP: 8000, startingDrawCount: 0, drawCountPerTurn: 1 };
+  const scratch = lib.createDuel({
+    flags: OcgDuelMode.MODE_MR2, seed: [1n, 2n, 3n, 4n], team1: team, team2: team, cardReader: readCard,
+    scriptReader: (file) => { const text = readScript(file); if (text === null && /^c\d+\.lua$/.test(file)) missing.push(file); return text; },
+    errorHandler: (type, text) => void problems.push(`${type}: ${text}`),
+  });
+  if (!scratch) throw new Error("the core refused a duel");
+  for (const file of ["constant.lua", "utility.lua"]) lib.loadScript(scratch, file, readScript(file) ?? "");
+  const saved = [duelPasscodes, duelCids];
+  const out = req.cards.map(({ cid, name }) => {
+    duelPasscodes = new Map();
+    duelCids = new Map();
+    const code = resolve(cid, name);
+    if (code === undefined) return { cid, passcode: null };
+    problems = [];
+    missing = [];
+    lib.duelNewCard(scratch, { team: 0, duelist: 0, code, controller: 0, location: OcgLocation.DECK, sequence: 0, position: OcgPosition.FACEDOWN_DEFENSE });
+    const row = cardQuery.get(code) as Record<string, number> | undefined;
+    const data = row && { type: Number(row.type), level: Number(row.level) & 0xff, attack: Number(row.atk), defense: Number(row.def),
+      attribute: Number(row.attribute), race: Number(row.race), alias: Number(row.alias), name: nameOf(code) };
+    return { cid, passcode: code, data: data ?? null, missing_scripts: missing, errors: problems };
+  });
+  [duelPasscodes, duelCids] = saved;
+  lib.destroyDuel(scratch);
+  return out;
 }
 
 const bigintsAsNumbers = (_: string, v: unknown) => (typeof v === "bigint" ? Number(v) : v);
@@ -286,11 +374,14 @@ for await (const line of createInterface({ input: process.stdin })) {
       // values in the core (BigInts), JSON numbers here.
       const r = req.response;
       const response =
-        r.type === 18 && "cid" in r ? { type: 18, card: passcodeOf.get(r.cid) ?? 0 }
+        r.type === 18 && "cid" in r ? { type: 18, card: declared(r.cid) }
         : r.type === 16 ? { ...r, races: r.races.map((x: number) => BigInt(x)) }
         : r;
       lib.duelSetResponse(handle!, response);
       answer = run();
+    } else if (req.op === "cards") {
+      process.stdout.write(JSON.stringify({ status: "cards", cards: checkCards(req) }) + "\n");
+      continue;
     } else if (req.op === "state") {
       process.stdout.write(JSON.stringify({ ...state(), errors: [...errors] }, bigintsAsNumbers) + "\n");
       continue;

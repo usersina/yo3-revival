@@ -193,7 +193,7 @@ impl Table {
         // A hosted duel's starting LP (Create Duel's lp_start), unless the server's was set to test (--duel-lp).
         let hosted = self.seats.iter().find_map(|s| s.entry.lp);
         let lp = hosted.filter(|_| self.world.start_lp == DEFAULT_LP).unwrap_or(self.world.start_lp);
-        let answer = engine.new_duel(crate::duel::next(&mut self.rng), lp, [(&m0, &e0), (&m1, &e1)]);
+        let answer = engine.new_duel_named(crate::duel::next(&mut self.rng), lp, [(&m0, &e0), (&m1, &e1)], &self.world.card_names);
         self.engine = Some(engine);
         // A hosted duel's time_turn and time_total, else Create Duel's defaults, unless the server's were set to test.
         let hosted = self.seats.iter().find_map(|s| s.entry.times);

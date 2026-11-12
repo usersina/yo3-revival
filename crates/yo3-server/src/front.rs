@@ -504,6 +504,8 @@ pub struct World {
     pub cards: HashMap<u16, crate::translate::CardStats>,
     /// The client's token cards (CARD_Prop rows with ids 3900-3999) by name, for the rules engine's tokens.
     pub token_rows: HashMap<String, Vec<u16>>,
+    /// Each Konami id's English name, for the rules engine to find another print of a card (`Engine::new_duel`).
+    pub card_names: HashMap<u16, String>,
     /// Each player's LP at the start of a duel (8000; lower only to test).
     pub start_lp: u32,
     /// Testing aid: the regulation every duel's deck is checked against, over the duel's own.
@@ -555,6 +557,7 @@ impl World {
             npc_decks: HashMap::new(),
             cards: HashMap::new(),
             token_rows: HashMap::new(),
+            card_names: HashMap::new(),
             engine_dir: None,
             engine_problem: None,
             start_lp: 8000,

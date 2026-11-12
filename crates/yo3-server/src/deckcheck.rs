@@ -46,7 +46,12 @@ pub fn check(world: &World, regulation: u32, owned: &BTreeMap<u16, u32>, deck: &
         return Err(Refusal::NotOwned);
     }
     // cards missing from the table were refused above, so every row has an id
-    if !rules.allows(deck.cards().filter_map(|row| world.cards.get(&row).map(|c| c.cid))) {
+    let cids = || deck.cards().filter_map(|row| world.cards.get(&row).map(|c| c.cid));
+    if !rules.allows(cids()) {
+        return Err(Refusal::Regulation);
+    }
+    // A card the rules engine lacks can't be played: refused like a banned card.
+    if cids().any(|cid| crate::engine::NOT_IN_THE_ENGINE.contains(&cid)) {
         return Err(Refusal::Regulation);
     }
     Ok(())
