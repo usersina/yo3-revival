@@ -12,9 +12,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
-- **A new look for the app:** it now borrows from the game's own screens: blue title plates, steel-rimmed navy panels,
-  gunmetal frames and a red Play button. Logs read like the game's chat window: green text on black, with errors in
-  red and warnings in amber.
+- **A new look for the app:** calm dark panels with small corner labels and one blue accent, in the spirit of Master
+  Duel's menus, over a backdrop of faint circuit traces like the icon's. Logs keep the original game's green-on-black
+  chat style, with errors in red and warnings in amber.
 - The app has a new Duel Disk icon with a Monster Reborn badge, shown in the app itself, its window and the Windows
   executable.
 - **BP shows up right away:** BP from duels and from the host appears in the game on its next screen, without logging

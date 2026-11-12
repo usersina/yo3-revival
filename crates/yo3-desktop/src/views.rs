@@ -10,9 +10,12 @@ impl App {
         let pages=[("Play",Icon::Play,Page::Play),("Hosting",Icon::Server,Page::Server),("Activity",Icon::Activity,Page::Activity),("Game setup",Icon::Settings,Page::Settings)];
         for (label,icon,page) in pages {
             let selected=self.page==page;
-            let glyph=ui::icon(icon).style(move |_,_|widget::svg::Style{color:Some(if selected{Color::WHITE}else{ui::MUTED})});
-            nav=nav.push(button(row![glyph,text(label).size(14).color(if selected{Color::WHITE}else{ui::MUTED})].spacing(10).align_y(iced::Alignment::Center))
-                .padding([9,12]).width(Fill).on_press(Msg::Page(page)).style(move |theme,status| if selected {ui::primary(theme,status)} else {ui::ghost(theme,status)}));
+            let marker=container(widget::Space::new()).width(3).height(16).style(move |_|container::Style{background:selected.then(||ui::ACCENT.into()),
+                border:iced::Border{radius:2.0.into(),..Default::default()},..Default::default()});
+            let glyph=ui::icon(icon).style(move |_,_|widget::svg::Style{color:Some(if selected{ui::ACCENT}else{ui::MUTED})});
+            nav=nav.push(button(row![marker,glyph,text(label).size(14).color(if selected{Color::WHITE}else{ui::MUTED})].spacing(10).align_y(iced::Alignment::Center))
+                .padding([9,8]).width(Fill).on_press(Msg::Page(page)).style(move |theme,status| {
+                    let mut style=ui::ghost(theme,status); if selected {style.background=Some(Color{a:0.07,..Color::WHITE}.into());} style }));
         }
         let update=matches!(self.update_status,UpdateStatus::Checked(updates::Decision::Available(_)));
         nav=nav.push(widget::Space::new().height(Fill))
@@ -28,9 +31,10 @@ impl App {
             let detail=if transfer.cancelled() { "Cancelling…".into() } else if transfer.verifying() { "Verifying and unpacking…".into() } else { format!("{} of {}",size(transfer.bytes()),size(release.asset.bytes)) };
             main=main.push(ui::notice(column![row![self.spinner(),text(format!("Updating to {}",release.tag)).size(16).width(Fill),action(Icon::Close,"Cancel download",(!transfer.cancelled()).then_some(Msg::CancelUpdate)).style(ui::ghost)].spacing(10),widget::progress_bar(0.0..=release.asset.bytes as f32,transfer.bytes() as f32).girth(5),muted(detail)].spacing(12),ui::Tone::Info));
         } else if self.applying || self.staged.is_some() { main=main.push(ui::notice(column![row![self.spinner(),text("Restarting into the update…").size(16)].spacing(10),muted("Waiting for the game/server to close and the new launcher to become ready.")].spacing(8),ui::Tone::Info)); }
-        let base=if self.settings.advanced_mode {
+        let base:Element<'_,Msg>=if self.settings.advanced_mode {
             container(row![container(nav).width(Fixed(214.0)).height(Fill).padding(18).style(ui::sidebar),main.push(content)]).style(ui::backdrop).into()
         } else { container(main.push(content)).style(ui::backdrop).into() };
+        let base:Element<'_,Msg>=widget::stack![ui::circuitry(),base].into();
         if self.support {
             let mut body=column![heading("Help & support","Setup help and tools for reporting a problem."),
                 action(Icon::Book,"Read the guide",Some(Msg::Help)).style(ui::ghost),
@@ -243,11 +247,11 @@ impl App {
     /// The page's lead card: the icon, what this app is, where the game connects and the Play button.
     /// The launch console: the icon, what this app is, and the status beside the Play button.
     fn launch_hero<'a>(&'a self,status:&'a str,tone:ui::Tone,mode:bool)->Element<'a,Msg> {
-        let mut title=row![ui::brand(64.0),column![ui::plate("YO3 Revival",22),
-            text("A private server for Yu-Gi-Oh! ONLINE 3").size(13).color(ui::MUTED)].spacing(8).width(Fill)]
+        let mut title=row![ui::brand(64.0),column![text("YO3 Revival").size(26).font(bold()).color(Color::WHITE),
+            text("A private server for Yu-Gi-Oh! ONLINE 3").size(13).color(ui::MUTED)].spacing(4).width(Fill)]
             .spacing(16).align_y(iced::Alignment::Center);
         if mode {title=title.push(ui::mode_switch(false,!self.locked()));}
-        ui::console(column![title,widget::rule::horizontal(1).style(|_|widget::rule::Style{color:Color::from_rgba8(0,0,0,0.45),radius:0.0.into(),fill_mode:widget::rule::FillMode::Full,snap:true}),
+        ui::console(column![title,widget::rule::horizontal(1).style(|_|widget::rule::Style{color:ui::LINE,radius:0.0.into(),fill_mode:widget::rule::FillMode::Full,snap:true}),
             row![ui::inline_status(status,tone),self.play_action()].spacing(16).align_y(iced::Alignment::Center)].spacing(14)).into()
     }
     fn normal_content(&self) -> Element<'_, Msg> {
@@ -290,7 +294,7 @@ impl App {
             let active=(self.pulse*3.0/std::f32::consts::TAU) as usize;
             row((0..3).map(|dot|text("•").size(16).color(Color {a:if dot==active{1.0}else{0.35},..Color::WHITE}).into())).spacing(2).width(28).into()
         }else{ui::icon(if self.game_running{Icon::Stop}else if self.play_label()=="Retry check"{Icon::Refresh}else{Icon::Play}).into()};
-        button(container(row![symbol,text(self.play_label().to_uppercase()).size(16).font(bold())].spacing(9).align_y(iced::Alignment::Center)).center_x(Fill).center_y(Fill))
+        button(container(row![symbol,text(self.play_label()).size(16).font(bold())].spacing(9).align_y(iced::Alignment::Center)).center_x(Fill).center_y(Fill))
             .on_press_maybe(self.play_message()).width(170).height(48).padding(10)
             .style(move |theme,status| {
                 let status=if loading {button::Status::Active}else{status};
@@ -760,7 +764,7 @@ pub(super) fn display_path(path:&std::path::Path)->String {
 }
 fn bold()->iced::Font{iced::Font{weight:iced::font::Weight::Semibold,..iced::Font::with_name("Fira Sans")}}
 fn heading<'a>(title:&'static str,description:&'static str)->Element<'a,Msg>{column![ui::plate(title,22),muted(description)].spacing(10).into()}
-fn metric<'a>(label:&'static str,value:u64)->Element<'a,Msg>{row![ui::counter(format!("{value:>2}")),text(label).size(14).color(ui::MUTED)].spacing(12).align_y(iced::Alignment::Center).into()}
+fn metric<'a>(label:&'static str,value:u64)->Element<'a,Msg>{column![ui::counter(value.to_string()),muted(label)].spacing(2).width(160).into()}
 fn page_scroll(body:widget::Column<'_,Msg>)->Element<'_,Msg>{scrollable(body.width(Fill)).spacing(16).width(Fill).height(Fill).into()}
 pub(super) fn size(bytes:u64)->String{if bytes<1_000_000{format!("{:.1} KB",bytes as f64/1000.0)}else{format!("{:.1} MB",bytes as f64/1_000_000.0)}}
 
