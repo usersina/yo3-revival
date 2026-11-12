@@ -21,6 +21,7 @@ The app also draws `launcher-window.png` itself (sidebar, Normal header, About),
 drawn by hand for this project; it contains no game artwork.
 The build checks the window image's dimensions and pixel format. Windows resource compilation embeds the ICO in
 `yo3-revival.exe`; the PNG is embedded in the application, so neither needs to be copied beside the executable.
+Desktop bundles also include optional `yo3-revival.ico` and `yo3-revival.png` copies for custom shortcuts.
 
 ## Generation prompt
 

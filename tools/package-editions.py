@@ -16,8 +16,11 @@ def prepare(source, destination, edition, windows):
     for name in ("run.sh", "run.cmd"):
         (destination / name).unlink(missing_ok=True)
     if edition == "desktop":
+        branding = REPO / "crates/yo3-desktop/assets/branding"
+        for source_name, bundle_name in (("launcher.ico", "yo3-revival.ico"), ("launcher-window.png", "yo3-revival.png")):
+            shutil.copyfile(branding / source_name, destination / bundle_name)
         return
-    for name in ("yo3-revival", "yo3-revival.exe", "yo3-bootstrap.dll", "yo3-launcher-windows.exe"):
+    for name in ("yo3-revival", "yo3-revival.exe", "yo3-bootstrap.dll", "yo3-launcher-windows.exe", "yo3-revival.ico", "yo3-revival.png"):
         (destination / name).unlink(missing_ok=True)
     # The Scripts guide lives in docs/ in source, but is also this edition's entry README.
     # Preserve its local anchors and URLs while relocating sibling-document links.

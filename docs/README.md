@@ -1,7 +1,5 @@
 # Documentation
 
-New here? The [main README](../README.md) gets you into your first game.
-
 ## Play and host
 
 | I want to…                                       | Read                                                                                                                                     |

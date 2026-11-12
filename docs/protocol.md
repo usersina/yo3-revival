@@ -245,6 +245,9 @@ and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 
 | `0x2CF0` player search (below)                                                                                                                                                            | `0x2CF7` (`0x2CF8`) | `result_number` u32: the total, the client shows pages of 100 (`/100 + 1`); items = players `{player_id, pname, dlv}` | InfoWindow `0x458410` (`0x2CF7` case), item reader `0x475A20`; `RESPONSE_PLAYER_SEARCH_SUCCESS` `ChatWindow.cpp L651` | confirmed (fields); paging and name matching **guess**                                                                                                                                                                                                                                     |
 | `0x2724` heartbeat                                                                                                                                                                        | none                | none                                                                                                                  | builders `0x4F17DF` (every 30 s) and `0x4F45A5` (after 120 s); no reply is checked                                    | confirmed                                                                                                                                                                                                                                                                                  |
 
+Revival's default info list contains the welcome entry only; the deck-onboarding notice has been removed.
+The optional engine-unavailable warning is appended using the same record shape.
+
 **Player search** (`0x2CF0`, built by InfoWindow `0x45F390`):
 
 - Request: `search_flag`, `search_type`, `base_point`, `front_num`, `back_num`, plus the criteria the flags name.

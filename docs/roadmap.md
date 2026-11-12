@@ -32,6 +32,9 @@ for both Desktop and Scripts. Current compatibility and native Windows verificat
 Launcher icon: the Duel Disk / Monster Reborn badge is embedded in the native window and Windows executable, and drawn
 in the app itself (sidebar, Normal header, About).
 Linux and Windows release builds pass; live X11 icon pixels and all nine embedded Windows icon sizes match the assets.
+Desktop archives also carry `yo3-revival.ico` and `yo3-revival.png` for custom shortcuts, checked byte-for-byte in
+both platform archives. The in-game login news no longer includes the deck-onboarding notice; a front contract
+checks its removal alongside the existing news-format and engine-warning coverage.
 
 v0.0.8 release preparation (2026-11-12):
 

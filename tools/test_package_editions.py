@@ -36,6 +36,9 @@ class Editions(unittest.TestCase):
                     self.assertIn("](docs/launcher.md)", (destination / "README.md").read_text())
 
     def test_each_platform_has_two_named_editions_with_stable_inner_folders(self):
+        branding = editions.REPO / "crates/yo3-desktop/assets/branding"
+        icons = {"yo3-revival.ico": (branding / "launcher.ico").read_bytes(),
+                 "yo3-revival.png": (branding / "launcher-window.png").read_bytes()}
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for windows in (False, True):
@@ -60,10 +63,15 @@ class Editions(unittest.TestCase):
                     if windows:
                         with zipfile.ZipFile(archive) as z:
                             roots = {name.split('/')[0] for name in z.namelist()}
+                            archived_icons = {Path(name).name: z.read(name) for name in z.namelist() if Path(name).name in icons}
                     else:
                         with tarfile.open(archive) as t:
                             roots = {name.split('/')[0] for name in t.getnames()}
+                            archived_icons = {Path(name).name: t.extractfile(name).read() for name in t.getnames() if Path(name).name in icons}
                     self.assertEqual(roots, {f"yo3-revival-{edition}"})
+                    self.assertEqual(set(archived_icons), set(icons) if edition == "desktop" else set(), "Desktop downloads must carry the shortcut artwork")
+                    for name, content in archived_icons.items():
+                        self.assertTrue(content == icons[name], f"{name} must match the launcher artwork")
 
     def test_play_script_keeps_paths_and_arguments_literal(self):
         with tempfile.TemporaryDirectory(prefix="yo3 scripts ") as tmp:

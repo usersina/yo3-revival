@@ -10,6 +10,12 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- Removed the starting-deck onboarding notice from in-game login news.
+- Desktop folders now include `yo3-revival.ico` and `yo3-revival.png` for custom shortcuts. The Windows executable
+  continues to contain the launcher icon itself.
+
 ## v0.0.8 (2026-11-12)
 
 A new look for the Desktop app, BP that shows up right away, and BOOSTERPASS codes you can manage from the app.

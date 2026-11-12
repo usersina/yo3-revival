@@ -570,11 +570,6 @@ impl World {
                     "Welcome back to Yu-Gi-Oh! ONLINE".into(),
                     "This is a private revival server. Have fun duelling with your friends!".into(),
                 ),
-                // The required mod prepares a legal local deck after the collection arrives.
-                (
-                    "New here?".into(),
-                    "Your first starting deck is prepared automatically. Main Menu > Edit Deck lets you customise it.".into(),
-                ),
             ],
             rooms: vec![
                 Room::new(1, "Lobby"),

@@ -257,6 +257,15 @@ fn news_list_is_nested_under_a_lang_record() {
 }
 
 #[test]
+fn login_news_omits_the_starting_deck_onboarding_notice() {
+    let r = one(in_world().handle(&req(0x1F41)));
+    let entries = &r.items[0].items;
+    assert!(!entries.iter().any(|entry| entry.get("title") == Some(&Value::text("New here?"))), "{entries:?}");
+    assert!(!entries.iter().any(|entry| entry.get("body").and_then(Value::as_str)
+        .is_some_and(|body| body.starts_with("Your first starting deck is prepared automatically."))), "{entries:?}");
+}
+
+#[test]
 fn news_says_duels_are_unavailable_only_when_the_engine_can_not_run() {
     let titles = |world: World| -> Vec<String> {
         let mut s = fresh_in(Arc::new(world));
