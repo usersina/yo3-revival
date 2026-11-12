@@ -66,6 +66,21 @@ fn card_database_uses_konami_card_ids() {
 }
 
 #[test]
+fn card_kinds_tell_the_extra_deck_apart() {
+    let dir = need_game!();
+    let data = GameData::load(&dir).unwrap();
+    let card = |cid: u16| data.cards.by_cid(cid).unwrap();
+    // Junk Warrior (Synchro), Thousand-Eyes Restrict (Fusion), Formula Synchron (Synchro Tuner): Extra Deck.
+    assert!(card(7696).extra_deck(), "Junk Warrior");
+    assert!(data.cards.iter().filter(|c| c.name == "Thousand-Eyes Restrict").all(|c| c.extra_deck()));
+    assert!(data.cards.iter().filter(|c| c.name == "Formula Synchron").all(|c| c.extra_deck()));
+    // Junk Synchron (a Tuner), Blue-Eyes White Dragon (Normal), Mystical Space Typhoon (Spell): the main deck.
+    assert!(!card(7687).extra_deck() && !card(4007).extra_deck() && !card(4909).extra_deck());
+    assert_eq!(card(4909).kind, 13);
+    assert_eq!(data.cards.iter().filter(|c| c.extra_deck()).count(), 312);
+}
+
+#[test]
 fn regulations_carry_the_banlists() {
     let dir = need_game!();
     let data = GameData::load(&dir).unwrap();

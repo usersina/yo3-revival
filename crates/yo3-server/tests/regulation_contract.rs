@@ -219,6 +219,26 @@ fn a_card_the_rules_engine_lacks_is_refused() {
 }
 
 #[test]
+fn an_extra_deck_monster_in_the_main_deck_is_refused() {
+    // The client's deck editor keeps Fusion and Synchro Monsters in the Extra Deck; a deck that mixes them up (a
+    // modified client) would split client and engine (the engine moves the card to the Extra Deck by itself; found
+    // replaying the decks of Konami's own duel logs), so the server refuses it.
+    let mut w = world(3);
+    w.extra_deck_rows.insert(41);
+    w.extra_deck_rows.insert(42);
+    let server = Server::with_world(w);
+    let mut player = yo3_server::front::Player::new(1001, "Yugi");
+    player.cards.extend([(41, 1), (42, 1), (43, 1)]);
+    let mut c = server.join_as(player);
+    let id = npc_duel(&mut c, 0);
+    let mut main = starter();
+    main.push(41);
+    assert_eq!(pick(&mut c, id, &main, &[], &[]), 0x22CB);
+    assert_eq!(pick(&mut c, id, &starter(), &[43], &[]), 0x22CB, "a main deck card in the Extra Deck");
+    assert_eq!(pick(&mut c, id, &starter(), &[41, 42], &[]), 0x22CA);
+}
+
+#[test]
 fn bought_cards_count_as_owned() {
     let server = Server::with_world(world(3));
     let mut player = yo3_server::front::Player::new(1001, "Yugi");

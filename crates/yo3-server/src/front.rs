@@ -506,6 +506,8 @@ pub struct World {
     pub token_rows: HashMap<String, Vec<u16>>,
     /// Each Konami id's English name, for the rules engine to find another print of a card (`Engine::new_duel`).
     pub card_names: HashMap<u16, String>,
+    /// The CARD_Prop rows of Fusion and Synchro Monsters, which belong in the Extra Deck (the deck check).
+    pub extra_deck_rows: std::collections::HashSet<u16>,
     /// Each player's LP at the start of a duel (8000; lower only to test).
     pub start_lp: u32,
     /// Testing aid: the regulation every duel's deck is checked against, over the duel's own.
@@ -558,6 +560,7 @@ impl World {
             cards: HashMap::new(),
             token_rows: HashMap::new(),
             card_names: HashMap::new(),
+            extra_deck_rows: Default::default(),
             engine_dir: None,
             engine_problem: None,
             start_lp: 8000,

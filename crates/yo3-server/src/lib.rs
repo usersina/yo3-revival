@@ -195,6 +195,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                 m.entry(c.cid).or_insert_with(|| c.name.clone());
                 m
             }),
+            extra_deck_rows: data.cards.iter().filter(|c| c.extra_deck()).map(|c| c.row).collect(),
             engine_dir: engine::Engine::dir(),
             start_lp: cfg.duel_lp,
             test_regulation: cfg.duel_regulation,

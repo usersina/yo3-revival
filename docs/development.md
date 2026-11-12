@@ -146,7 +146,16 @@ YO3_CARD_SWEEP=all cargo nextest run --release -p yo3-server --test card_sweep -
 YO3_CARD_SWEEP=7986,7687 cargo nextest run --release -p yo3-server --test card_sweep --no-capture   # some cards
 ```
 
-Its report, one line per card (activations, summons, choices made for the player), is `target/tmp/card-sweep.tsv`. Protocol and UI
+Its report, one line per card (activations, summons, choices made for the player), is `target/tmp/card-sweep.tsv`.
+
+The real-deck sweep (`tests/original_decks.rs`) self-plays, the same way, the decks players used on Konami's own
+server, rebuilt from 2010–2012 duel logs: each side's cards as its log showed them, filled to 40. The logs are private
+and stay out of git (`YO3_ORIGINAL_LOGS`, default `re/Yu-Gi-Oh! ONLINE 3 GOLDMINE/players`); without them it skips.
+By default it plays 8 deck pairs; before a release, all of them with several seeds:
+
+```bash
+YO3_ORIGINAL_DECKS=all YO3_ORIGINAL_DECKS_SEEDS=10 cargo nextest run --release -p yo3-server --test original_decks --no-capture
+``` Protocol and UI
 monkeys are documented in the [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#commands).
 
 ## Build release bundles

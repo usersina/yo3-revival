@@ -119,7 +119,18 @@ pub struct Card {
     pub level: u32,
     pub attribute: u32,
     pub race: u32,
+    /// The card's kind, bits 3-7 of the second word: 0 Normal, 1 Effect, 2-3 Fusion, 4-5 Ritual, 6 Toon, 7 Spirit,
+    /// 8 Union, 9 Gemini, 10 Token, 13 Spell, 14 Trap, 15-16 Tuner, 17-19 Synchro (each kind's sample names checked
+    /// against the rules engine's types).
+    pub kind: u32,
     pub name: String,
+}
+
+impl Card {
+    /// A Fusion or Synchro Monster: it belongs in the Extra Deck.
+    pub fn extra_deck(&self) -> bool {
+        matches!(self.kind, 2 | 3 | 17..=19)
+    }
 }
 
 #[derive(Default)]
@@ -153,6 +164,7 @@ impl CardDb {
                 level: (b >> 12) & 0xF,
                 attribute: (b >> 8) & 0xF,
                 race: (b >> 19) & 0x1F,
+                kind: (b >> 3) & 0x1F,
                 name,
             };
             db.by_cid.entry(cid).or_insert(db.cards.len());

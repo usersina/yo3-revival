@@ -19,6 +19,14 @@ fn sizes_fit(deck: &Deck) -> bool {
     (40..=60).contains(&deck.main.len()) && deck.extra.len() < 16 && deck.side.len() < 16
 }
 
+/// Fusion and Synchro Monsters only in the Extra Deck, and nothing else there, as the client's deck editor keeps them:
+/// the rules engine moves such a card to the Extra Deck by itself, which would split the client's view from the duel.
+/// Without the game's data (no kinds known) every deck passes.
+fn in_their_decks(world: &World, deck: &Deck) -> bool {
+    let extra = |row: &u16| world.extra_deck_rows.contains(row);
+    world.extra_deck_rows.is_empty() || (!deck.main.iter().any(extra) && deck.extra.iter().all(extra))
+}
+
 /// Whether `owned` (copies by CARD_Prop row) covers the deck. Copies are counted per Konami id, so a card's other
 /// artworks count too: more lenient than the client, which counts per row.
 fn owns(world: &World, owned: &BTreeMap<u16, u32>, deck: &Deck) -> bool {
@@ -39,7 +47,7 @@ fn owns(world: &World, owned: &BTreeMap<u16, u32>, deck: &Deck) -> bool {
 /// (no regulations) every deck passes.
 pub fn check(world: &World, regulation: u32, owned: &BTreeMap<u16, u32>, deck: &Deck) -> Result<(), Refusal> {
     let Some(rules) = pick(world, regulation) else { return Ok(()) };
-    if !sizes_fit(deck) {
+    if !sizes_fit(deck) || !in_their_decks(world, deck) {
         return Err(Refusal::Sizes);
     }
     if !owns(world, owned, deck) {
