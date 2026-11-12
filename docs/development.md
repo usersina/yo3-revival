@@ -118,7 +118,22 @@ engine state after every step. A failure reports the seed, step and preceding en
 The card check (`crates/yo3-server/tests/card_data.rs`, with the game installed and the engine fetched) loads each of
 the client's 4,771 cards in the engine: every one must be found, load its script without an error and have the
 client's level, ATK and DEF. Only the 12 game exclusives EDOPro lacks (`engine::NOT_IN_THE_ENGINE`) may be missing; no
-pack or preset deck holds them and the deck check refuses them. Run it after updating `engine/fetch.sh`'s sources.
+pack or preset deck holds them and the deck check refuses them.
+
+**Engine data is pinned.** `engine/fetch.sh` installs ProjectIgnis' card scripts and card database at the commits it
+names (`SCRIPTS_COMMIT`, `DATABASE_COMMIT`) and copies `engine/card-ids.json`, YGOPRODeck's Konami ids for each
+passcode and its artworks, kept in git. The tests and the release use exactly that data, and
+`tests/engine_cards.rs` checks that the installed copy matches the pins. Its other test, which needs no game files,
+loads every Konami id of the client's era in the engine; CI runs it on the release bundle's own engine too. To move to
+newer data, deliberately:
+
+```bash
+engine/fetch.sh --update            # newest scripts, database and ids; rewrites the pins and card-ids.json
+cargo nextest run --workspace       # includes the card check and the 24-card sweep
+YO3_CARD_SWEEP=all cargo nextest run --release -p yo3-server --test card_sweep --no-capture
+```
+
+Commit `engine/fetch.sh` and `engine/card-ids.json` only when all of these pass.
 
 The card sweep (`tests/card_sweep.rs`) plays each card in a self-played duel through the duel check: three copies in
 both decks, two in the opening hand (twice in each Extra Deck for Fusion and Synchro Monsters). Every duel check also

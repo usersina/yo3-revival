@@ -18,7 +18,8 @@ cache=dist/.cache
 cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop
 cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop --target x86_64-pc-windows-gnu
 tools/mod/build.sh
-[ -s engine/vendor/cardinfo.json ] && [ -d engine/node_modules/ocgcore-wasm ] || engine/fetch.sh
+# The engine's data at the commits pinned in fetch.sh (quick when it is there already).
+engine/fetch.sh
 
 # Node.js's archive $1, downloaded once into the cache and checked against the release's SHASUMS256.txt.
 node_archive() {
@@ -33,21 +34,17 @@ node_archive() {
 }
 
 # Everything the engine reads besides Node.js, into $1/engine: the sidecar, its package, only the scripts it loads
-# (the root utilities and official/), only cards.cdb, and of YGOPRODeck's card info only each card's Konami id.
+# (the root utilities, official/, and pre-errata/ and pre-release/, where a few current scripts live), only
+# cards.cdb, and the pinned Konami card ids (each card's passcode, artworks and Konami ids).
 engine_files() {
   e="$1/engine"
   mkdir -p "$e/vendor/CardScripts" "$e/vendor/BabelCDB"
   cp engine/duelcore.ts engine/package.json engine/package-lock.json "$e/"
   cp -r engine/node_modules "$e/"
   cp engine/vendor/CardScripts/*.lua engine/vendor/CardScripts/COPYING engine/vendor/CardScripts/README.md "$e/vendor/CardScripts/"
-  cp -r engine/vendor/CardScripts/official "$e/vendor/CardScripts/"
+  cp -r engine/vendor/CardScripts/official engine/vendor/CardScripts/pre-errata engine/vendor/CardScripts/pre-release "$e/vendor/CardScripts/"
   cp engine/vendor/BabelCDB/cards.cdb engine/vendor/BabelCDB/README.md "$e/vendor/BabelCDB/"
-  python3 - engine/vendor/cardinfo.json "$e/vendor/cardinfo.json" <<'PY'
-import json, sys
-cards = json.load(open(sys.argv[1], encoding="utf-8"))["data"]
-ids = [{"id": c["id"], "misc_info": [{"konami_id": m["konami_id"]} for m in c.get("misc_info", []) if m.get("konami_id")]} for c in cards]
-json.dump({"data": [c for c in ids if c["misc_info"]]}, open(sys.argv[2], "w"), separators=(",", ":"))
-PY
+  cp engine/vendor/cardinfo.json "$e/vendor/cardinfo.json"
   cat > "$e/THIRD-PARTY.md" <<EOF
 # What the rules engine is made of
 
@@ -59,7 +56,7 @@ yo3-revival's own code is MIT (../LICENSE). The engine in this folder is other p
 | ocgcore-wasm (EDOPro's core built for WebAssembly) | \`node_modules/ocgcore-wasm/\` | MIT (\`LICENSE.md\`); the core inside is ProjectIgnis' EDOPro core, AGPL-3.0 | https://github.com/edo9300/ygopro-core |
 | ProjectIgnis card scripts (\`official/\` and the root scripts) | \`vendor/CardScripts/\` | AGPL-3.0 (\`COPYING\`) | https://github.com/ProjectIgnis/CardScripts |
 | ProjectIgnis card database (\`cards.cdb\`) | \`vendor/BabelCDB/\` | see its README | https://github.com/ProjectIgnis/BabelCDB |
-| Konami card ids (each card's id only, from YGOPRODeck's card info) | \`vendor/cardinfo.json\` | | https://ygoprodeck.com/api-guide/ |
+| Konami card ids (each card's ids and artworks only, from YGOPRODeck's card info) | \`vendor/cardinfo.json\` | | https://ygoprodeck.com/api-guide/ |
 
 To get newer card scripts before the next release, replace \`vendor/CardScripts/\` and \`vendor/BabelCDB/cards.cdb\` with
 fresh copies from the sources above.

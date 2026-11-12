@@ -1053,6 +1053,11 @@ Stop finding missing fields one crash at a time.
       Necrovalley turned the field into its canyon (back after the Battle Phase's own board), Gemini Elf's summon and
       Trap Hole's Set played the avatar's cut-ins, Kaiba shouted his damage line, "-1240" counted his LP down from
       7000 to 5100 (applied once), and the duel went on
+- [x] Engine data pinned (2026-11-12): `engine/fetch.sh` installs the card scripts and database at pinned commits and
+      the Konami ids from `engine/card-ids.json`; `tests/engine_cards.rs` checks the pins and, without game files,
+      that every card of the client's era loads; CI runs that on the release bundle's engine. It found the bundles
+      shipped only `official/` scripts and trimmed the artwork ids, which lost Red-Eyes Darkness Metal Dragon and
+      Barrel Dragon in v0.0.8; `release.sh` now ships `pre-errata/`, `pre-release/` and the pinned ids whole
 - [x] Translator, first part: the engine drives the duel session; its draws, turns and phases become engine commands,
       the client's idle prompt a command map of the legal commands, the client's card commands its responses; the CPU
       ends its turns at once (a placeholder bot) and other prompts are answered with defaults
