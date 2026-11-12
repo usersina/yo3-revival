@@ -262,8 +262,8 @@ impl Backend {
         // another Revival with its own data) or another program. Starting would only fail to bind, with a vaguer error.
         ensure!(!local_port_answers(settings.listen_port), "TCP port {} is already used by another program, such as a \
             Scripts server (run.cmd / run.sh) or another YO3 Revival with a different data folder. Stop it, or choose \
-            another TCP port under Advanced → Hosting → Advanced. This app's server data is in {}.",
-            settings.listen_port, self.data_dir(settings).display());
+            another TCP port under Advanced → Hosting → Advanced, which also shows this app's server data folder.",
+            settings.listen_port);
         validate_game(Path::new(&settings.game_dir))?;
         let (_, name) = server_address(&settings.host_address)?;
         let bind = network::effective_bind(settings, network::resolve_bind(settings, &network::bindings()?)?);
@@ -859,7 +859,7 @@ mod tests {
         let other=std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let settings=Settings{listen_port:other.local_addr().unwrap().port(),game_dir:"not reached".into(),..Settings::default()};
         let error=backend.start_server(&settings).unwrap_err().to_string();
-        assert!(error.contains("already used by another program") && error.contains(&backend.data_dir(&settings).display().to_string()),"{error}");
+        assert!(error.contains("already used by another program"),"{error}");
         assert!(backend.server.lock().unwrap().is_none() && !backend.data_dir(&settings).join("server.db").exists());
         drop(other);drop(backend);std::fs::remove_dir_all(root).unwrap();
     }

@@ -392,7 +392,7 @@ impl App {
             Msg::FolderPicked(generation,field,result) => {
                 if !self.picking || generation!=self.picker_generation {return Task::none()}
                 self.picking=false;self.busy=false;
-                match result {Ok(Some(path))=>return self.input_immediately(field,path),Ok(None)=>self.completed(Ok("No folder selected. You can Browse again or paste the game folder path into the box.".into())),Err(error)=>self.completed(Err(error))}
+                match result {Ok(Some(path))=>return self.input_immediately(field,path),Ok(None)=>self.completed(Ok(format!("No folder selected. You can Browse again or paste the {} path into the box.",match field {Field::Data=>"data folder",Field::Wine=>"Wine prefix",_=>"game folder"}))),Err(error)=>self.completed(Err(error))}
             }
             Msg::Import => {
                 self.begin("Importing an invitation…");

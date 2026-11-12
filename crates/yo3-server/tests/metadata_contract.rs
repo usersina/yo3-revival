@@ -48,6 +48,23 @@ async fn address_discovery_does_not_authenticate_and_pins_the_hosts_key_across_c
 }
 
 #[tokio::test]
+async fn a_command_line_profile_keeps_working_after_the_server_renews_its_certificate() {
+    // Scripts profiles carry a copy of server.crt as their trust anchor. A start-up renewal (auth::renew_on_start)
+    // keeps the key, names and subject, so the friend's old copy still verifies the renewed certificate.
+    let root = std::env::temp_dir().join(format!("yo3-cli-renewal-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let identity = yo3_server::auth::initialize(&root.join("identity"), vec!["localhost".into()]).unwrap();
+    let friends_copy = root.join("friend-server.crt");
+    std::fs::copy(&identity.certificate, &friends_copy).unwrap();
+    yo3_server::auth::reissue_certificate(&root.join("identity"), vec!["localhost".into()]).unwrap();
+    assert_ne!(std::fs::read(&identity.certificate).unwrap(), std::fs::read(&friends_copy).unwrap());
+    let mut cfg = yo3_server::Config::ephemeral(root.join("server"));
+    cfg.tls = yo3_server::auth::TlsConfig { port: 0, ..identity };
+    let server = yo3_server::start(cfg).await.unwrap();
+    Endpoint::new(server.auth.to_string(), "localhost".into(), &friends_copy).unwrap().info().await.unwrap();
+}
+
+#[tokio::test]
 async fn expired_identities_and_oversized_metadata_are_refused() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let root = std::env::temp_dir().join(format!("yo3-expired-{}", std::process::id()));
