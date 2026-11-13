@@ -5,6 +5,7 @@
 //! pop one at a time. Against an NPC it plays the janken as the CPU and runs the rules engine (see
 //! `translate.rs`); a duel between two players runs at a shared table (`table.rs`).
 use crate::lock::Locked;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -169,6 +170,13 @@ impl CardCommand {
 }
 
 /// The setup message: who goes first, and both decks' sizes.
+/// The translator of an NPC duel: `decks` are the player's and the NPC's main decks (CARD_Prop rows), and the NPC's
+/// hidden cards (deck, hand, extra deck, face-down) reach the client without their rows, as a player opponent's do.
+/// The client shows any card it has a row for, face-down or not (the attack-target window, the card panel).
+pub fn npc_translator(first: u32, decks: [&[u16]; 2], cards: HashMap<u16, crate::translate::CardStats>) -> (Translator, Vec<Message>) {
+    Translator::against_player(first, decks, cards)
+}
+
 pub(crate) fn setup(first: u32, mine: &Deck, theirs: &Deck) -> Message {
     let len = |cards: &Vec<u16>| cards.len() as u32;
     // PlayerType: 0 for the client, 1 for the CPU (meaning unknown, a guess).
@@ -540,9 +548,17 @@ impl DuelSession {
         let skills: Vec<(u32, String)> = style.and_then(|s| s["skills"].as_array()).into_iter().flatten()
             .filter_map(|s| s.as_str()).map(|s| (npc_team, s.to_string())).collect();
         let answer = engine.new_duel_with(seed, lp, [(&m0, &e0), (&m1, &e1)], &self.world.card_names, &skills);
-        let (mut translator, mut table) = Translator::new(first, [&entry.deck.main, &npc.main], self.world.cards.clone());
+        let (mut translator, mut table) = npc_translator(first, [&entry.deck.main, &npc.main], self.world.cards.clone());
         if self.world.duel_check {
-            self.check = Some(crate::duelcheck::ClientModel::new(first, self.world.cards.clone()));
+            // The NPC's hidden cards' rows, from a translator that hides nothing (the same uids in the same order).
+            let mut model = crate::duelcheck::ClientModel::new(first, self.world.cards.clone());
+            let (mut full, mut known) = Translator::new(first, [&entry.deck.main, &npc.main], self.world.cards.clone());
+            known.extend(full.extra_decks([&entry.deck.extra, &npc.extra]));
+            for m in &known {
+                let int = |k: &str| m.get(k).and_then(Value::as_u32).unwrap_or(0);
+                model.know(int("param1") & 0xFF_FFFF, int("param2") as u16);
+            }
+            self.check = Some(model);
         }
         translator.tokens(self.world.token_rows.clone());
         table.extend(translator.extra_decks([&entry.deck.extra, &npc.extra]));

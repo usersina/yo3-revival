@@ -56,9 +56,11 @@ v0.0.10 release preparation (2026-11-13):
   program only one directory above (`target/debug/deps/` until 1.99). It now looks up to four directories up; the
   workspace tests and Clippy (`-D warnings`) pass with Rust 1.100 as well as 1.98. CI runs the tests only for a new
   version, which is why the native engine's first CI test run was the release's.
-- [ ] Found on the way, not new in this release: in NPC duels the client is sent the NPC's cards unhidden (`Translator`
-  hides only a player opponent's), so the attack-target window and the card panel show his face-down monsters; and
-  a monster's switch to Defense Position at the end of the Battle Phase (Goblin Attack Force) stays drawn upright on
+- [x] Found on the way (fixed after the release, 2026-11-13): in NPC duels the client was sent the NPC's cards unhidden,
+  so the attack-target window and the card panel showed his face-down monsters. NPC duels now hide them as player
+  duels do (`duel::npc_translator`; the duel check learns their rows from a translator that hides nothing). Live: a
+  card back with no stats in both, the card itself once flipped in battle, his cut-ins unchanged.
+- [ ] Found on the way, not new in this release: a monster's switch to Defense Position at the end of the Battle Phase (Goblin Attack Force) stays drawn upright on
   its owner's screen, though the duel check agrees with the engine.
 
 v0.0.9 release preparation (2026-11-12):

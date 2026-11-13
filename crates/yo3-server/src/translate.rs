@@ -457,7 +457,8 @@ pub struct Translator {
     /// The duel's result for the client (1 won, 2 lost, 3 draw), once it ended.
     result: Option<u32>,
     /// By player, whether that side's hidden cards (deck, hand, extra deck, face-down) go to the client without their
-    /// rows: none against the CPU, the opponent's against a player, both for a spectator.
+    /// rows: the opponent's against a player or an NPC (`duel::npc_translator`), both for a spectator, none for a
+    /// translator that shows everything (`new`: duel log replays, the duel check's view of what the client isn't told).
     hidden: [bool; 2],
     /// The values each monster zone's record last went with (level, ATK, DEF, base ATK, base DEF), by player and zone.
     records: HashMap<(u32, u32), [u32; 5]>,

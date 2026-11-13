@@ -280,3 +280,32 @@ fn a_test_deck_replaces_the_players_main_deck() {
     rows.sort();
     assert_eq!(rows, [vec![7; 20], vec![8; 20]].concat());
 }
+
+#[test]
+fn an_npc_duel_hides_the_npcs_cards_like_a_player_opponents() {
+    // The client draws a card from the row its card table entry (1000) or move (0x1A uid | row << 16) gives, and the
+    // attack-target window and card panel show it, face-down or not: live (v0.0.10), Pegasus' face-down Toon Masked
+    // Sorcerer showed with its name, art and ATK/DEF. Against an NPC, as against a player, its deck, hand, extra deck and
+    // face-down cards come with row 0; a card turned face-up comes with its row.
+    use serde_json::json;
+    use yo3_server::translate::CardStats;
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cards = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<std::collections::HashMap<_, _>>();
+    let (client, npc): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, table) = yo3_server::duel::npc_translator(0, [&client, &npc], cards);
+    let cmds = commands(&table);
+    assert_eq!(cmds[0], (1000, [1, 100, 4100, 0xD << 8]), "the player's own deck shows");
+    assert!(cmds[10..].iter().all(|(id, p)| *id == 1000 && p[1] == 0 && p[2] == 0), "the NPC's deck: {cmds:?}");
+    let int = |m: &Message, k: &str| m.get(k).and_then(Value::as_u32).unwrap_or(0);
+    let events = |t: &mut yo3_server::translate::Translator, m: serde_json::Value| -> Vec<(u32, [u32; 4])> {
+        t.events(&[m]).iter().map(|m| (int(m, "id"), [int(m, "param1"), int(m, "param2"), int(m, "param3"), int(m, "param4")])).collect()
+    };
+    let drawn = events(&mut t, json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4200 }] }));
+    assert!(drawn.iter().all(|(id, p)| *id != 1000 || p[1] == 0), "its hand: {drawn:?}");
+    let place = |location, sequence, position| json!({ "controller": 1, "location": location, "sequence": sequence, "position": position });
+    let set = events(&mut t, json!({ "type": 50, "cid": 4200, "from": place(2, 0, 10), "to": place(4, 2, 8) }));
+    assert!(set.iter().all(|(id, p)| *id != 1000 || p[1] == 0) && !set.iter().any(|(id, _)| *id == 0x3EB), "its Set monster: {set:?}");
+    let flipped = events(&mut t, json!({ "type": 53, "code": 4200, "cid": 4200, "controller": 1, "location": 4, "sequence": 2,
+        "prev_position": 8, "position": 1 }));
+    assert!(flipped.iter().any(|(id, p)| *id == 1000 && p[1] == 200), "turned face-up, it shows: {flipped:?}");
+}

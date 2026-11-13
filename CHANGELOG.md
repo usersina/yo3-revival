@@ -10,6 +10,12 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **No more peeking at computer opponents' face-down cards.** In NPC duels the attack-target window and the card
+  panel showed a face-down monster's name, art and ATK/DEF. They now show a card back until the card is revealed, as
+  in duels between players.
+
 ## v0.0.10 (2026-11-13)
 
 Computer opponents that think, talk and have a character of their own, and much smaller downloads. Choose

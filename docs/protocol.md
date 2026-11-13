@@ -943,7 +943,11 @@ again. The winner's `0xD {choice}` gives each client its own 1503. One engine ru
 own translator in which it is player 0 (`PlayerNum` 0, its deck first, `FirstPlayer` from its side): the engine's
 events go to both, each prompt to the client it asks, and either client's commands reach the other through its
 connection's outbox. The opponent's hidden cards (deck, hand, extra deck, face-down) go with row 0 in 1000 and `0x1A`
-(**guess**, like Online 2's placeholders) and face-down monsters get no field record. A client that leaves loses:
+(**guess**, like Online 2's placeholders) and face-down monsters get no field record. NPC duels do the same for the
+NPC's cards (`duel::npc_translator`, since 2026-11-13): the client draws any card it has a row for, face-down or not,
+so with rows the attack-target window and the card info panel showed an NPC's face-down monster in full (live,
+v0.0.10, Pegasus' Toon Masked Sorcerer). Live after the change: his face-down monster showed as a card back in both,
+with no stats, and with its art once flipped in battle; his own summon cut-in still named its card. A client that leaves loses:
 the other gets command 2 {1, 14 "has disconnected"}. Both front connections get `0x2009` with the record against
 each other. Live (Yugi against Kaiba, LP 2000): Kaiba saw Yugi's Giant Orc on the opponent's side and Yugi's hand
 face down; Kaiba's Set card showed face down on Yugi's field; the direct attack ended the duel with WINNER on Yugi's
@@ -1274,7 +1278,7 @@ under Spellbinding Circle left each Graveyard showing its top card with its coun
 previewed it; field slots are zones 0–4 (monsters), 5–9 (Spell/Trap) and 10
 (Field Spell) at index 0, then hand `0xB`, extra `0xC`, deck `0xD`, graveyard `0xE`, banished `0xF`. Cards behind a
 removed list card get their table entry again. Both extra decks are in the card table too (zone `0xC`, uids after
-both main decks, the opponent's with row 0 against a player); a card leaving the deck or the extra deck is found by its
+both main decks, the opponent's with row 0 against a player or an NPC); a card leaving the deck or the extra deck is found by its
 id, so an extra deck summon moves the right card from zone `0xC` and the extra deck pile counts down. Commands on
 cards in the extra deck, Graveyard or banished pile (an idle prompt's Special Summon from the extra deck, an effect
 activated from the Graveyard) go in the command map at that pile's zone, index 0: the pointer over a pile gives the
