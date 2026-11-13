@@ -303,3 +303,23 @@ fn a_replay_runs_from_the_janken_to_the_matchs_end() {
     assert_eq!(lead_janken([1, 2, 0], false), [2, 0, 2]);
     assert_eq!(lead_janken([0, 1, 1], false), [0, 1, 1]);
 }
+
+#[test]
+fn an_opponent_leaving_at_the_janken_sends_the_player_off_its_screen() {
+    // JankenScene (0x518631) reads result.duel_end: 2 and 3 show text 0x2918 and leave, 4 shows text 0x291B
+    // "%s has disconnected." (the opponent's name from its own data) and leaves, 1 and anything else do nothing. Live
+    // (v0.0.11): the opponent's client closed at the janken, the server sent command 2 {1, 14} and a 0x2009 with
+    // duel_end 1, and the player stayed on the janken screen for good (a hand picked got no answer). A match left before
+    // its duel began goes to the remaining player as a win with duel_end 4 and the records unchanged.
+    let push = yo3_server::front::duel_left(1002, [2, 1, 0]);
+    assert_eq!(push.request(), Some(0x2009));
+    let data = &push.items[0];
+    let child = |name: &str| data.items.iter().find(|i| i.get("name").and_then(Value::as_str).as_deref() == Some(name));
+    let result = child("result").expect("result");
+    assert_eq!(result.get("duel_end").and_then(Value::as_u32), Some(4));
+    assert_eq!(result.get("duel_result").and_then(Value::as_u32), Some(1));
+    let counts = &child("players").expect("players").items[0].items[0];
+    let int = |k| counts.get(k).and_then(Value::as_u32);
+    assert_eq!([int("win"), int("lose"), int("draw")], [Some(2), Some(1), Some(0)]);
+    assert_eq!([int("win_add"), int("lose_add"), int("draw_add")], [Some(0), Some(0), Some(0)], "nothing counted");
+}

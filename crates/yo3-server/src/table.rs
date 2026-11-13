@@ -586,7 +586,8 @@ impl Table {
                 results[seat] = LOST;
                 self.report(results);
             } else {
-                self.hub.locked().walkover(self.seats[other].player_id, self.seats[seat].player_id);
+                // Both seats taken and no duel yet: the other client is on the janken or turn order screen.
+                self.hub.locked().left_at_janken(self.seats[other].player_id, self.seats[seat].player_id);
             }
         }
         if !self.over {

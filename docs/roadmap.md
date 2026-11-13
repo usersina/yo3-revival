@@ -670,6 +670,11 @@ P0, crashes and stalls:
       draw) now sends the other seat command 2 {1 won, 14 disconnected} and its result screen (`0x2009`) with the records
       unchanged; only a duel that began is counted. Tests: `a_player_leaving_before_the_duel_started_…`,
       `…in_the_turn_order_choice_…`.
+- [x] 6b (2026-11-13) Live, that wasn't enough: the janken screen ignores command 2 and `duel_end` 1, so the player
+      whose opponent left at the janken stayed there for good (a hand picked got no answer). Its `0x2009` now has
+      `duel_end` 4 (`front::duel_left`): "Bob has disconnected.", OK, the WINNER panel with the records unchanged, Next,
+      the map. The turn order choice is the same scene (`0x518631`) but wasn't checked live; a player arriving after its
+      match ended still gets `duel_end` 1 (not reproduced live). Test: `an_opponent_leaving_at_the_janken_…`.
 - [x] 7 A duel connection arriving after its match ended gets no table: it is told (command 2) and closed
       (`Hub::ended`). Test: `a_second_player_arriving_after_the_first_left_…`.
 - [x] 8 `Hub::leave` ends a match of the leaving player that has no table (the other player is sent out as at a

@@ -438,6 +438,19 @@ pub fn duel_over_with_log(player_id: u32, result: u32, record: [u32; 3], dlog_ur
     Message::reply(0x2009).item(data)
 }
 
+/// The `0x2009` of a match its opponent left before the duel began, for the player still on the janken or turn order
+/// screen: a win with `duel_end` 4, which JankenScene (`0x518631`) answers with text `0x291B` "%s has disconnected."
+/// (the opponent's name from its own data) and leaves (it does nothing on 1), and the records as they were.
+pub fn duel_left(player_id: u32, record: [u32; 3]) -> Message {
+    let name = |n: &str| Message::record().with("name", Value::text(n));
+    let counts = ["win", "lose", "draw"].iter().zip(record).fold(name("resultData"), |m, (k, n)| {
+        m.with(k, Value::U32(n)).with(&format!("{k}_add"), Value::U32(0))
+    });
+    let me = Message::record().with("player_id", Value::U32(player_id)).item(counts);
+    let result = name("result").with("duel_result", Value::U32(1)).with("duel_end", Value::U32(4));
+    Message::reply(0x2009).item(Message::duel_data().with("name", Value::text("duelData")).item(result).item(name("players").item(me)))
+}
+
 /// The `0x2009` of a duel that was cancelled before it began (the other player's deck was refused): `duel_end` 3, which
 /// DuelScene (`0x515BD3`) answers with text `0x2918` ("Time is up! This Duel will be deemed a non-Result.") and leaves,
 /// with a draw's empty counts.
@@ -1675,6 +1688,13 @@ impl Hub {
     pub fn walkover(&self, winner: u32, loser: u32) {
         let record = self.records.get(&(winner, loser)).copied().unwrap_or_default();
         self.push(winner, &duel_over(winner, 1, record));
+    }
+
+    /// The opponent left the match at the janken or the turn order choice: `winner` gets [`duel_left`], which takes it
+    /// off that screen, with the records as they were.
+    pub fn left_at_janken(&self, winner: u32, loser: u32) {
+        let record = self.records.get(&(winner, loser)).copied().unwrap_or_default();
+        self.push(winner, &duel_left(winner, record));
     }
 
     /// The duels of an event's round under way (tests).

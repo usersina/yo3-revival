@@ -10,6 +10,12 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **Fixed: stuck at rock-paper-scissors.** If your opponent left a duel while you were choosing rock, paper or
+  scissors, you stayed on that screen for good and had to close the game. You now see "(name) has disconnected." and
+  return to the map, with nothing counted.
+
 ## v0.0.11 (2026-11-13)
 
 A fairness fix for duels against the computer. Choose **Desktop** for the graphical app or **Scripts** for terminal
