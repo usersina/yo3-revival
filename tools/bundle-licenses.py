@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 out, target, edition = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
-roots = {"yo3-server", "yo3-launcher"}
+roots = {"yo3-server", "yo3-launcher", "yo3-engine"}
 if edition == "desktop":
     roots.add("yo3-desktop")
 metadata = json.loads(subprocess.check_output([
@@ -47,7 +47,8 @@ for package in sorted((packages[p] for p in used), key=lambda p: (p["name"], p["
     rows.append(f"| [{package['name']}]({url}) | {package['version']} | {license_name} | {'`' + str(folder) + '/`' if notices else 'see upstream'} |")
 (out / "THIRD-PARTY.md").write_text(
     "# Third-party notices\n\nThis project's code is MIT licensed (LICENSE). Rust dependency notices are collected below.\n"
-    "Rules-engine notices are in [engine/THIRD-PARTY.md](engine/THIRD-PARTY.md). No game files are included.\n\n"
+    "The rules engine (yo3-engine, AGPL-3.0-or-later: EDOPro's core is built into it) and its data are described in "
+    "[engine/THIRD-PARTY.md](engine/THIRD-PARTY.md). No game files are included.\n\n"
     + ("The embedded Fira Sans font (SIL OFL 1.1) and Iced's MIT notice are in [licenses/desktop/](licenses/desktop/). "
        "Lucide icons (ISC and MIT notices) are in [licenses/LUCIDE.txt](licenses/LUCIDE.txt). "
        "Sources: https://github.com/mozilla/Fira , https://github.com/iced-rs/iced/tree/0.14.0 , https://github.com/lucide-icons/lucide .\n\n"

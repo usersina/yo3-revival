@@ -51,10 +51,6 @@ jobs:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      # The engine's sidecar and its tests run under the runner's Node.js; the bundles carry their own (release.sh)
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
       - name: Rust (with the Windows target) and mingw-w64, which links it
         run: |
           rustup update stable --no-self-update
@@ -68,7 +64,7 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
-      - name: The rules engine's package, card scripts and card database
+      - name: The rules engine's core sources, card scripts and card database
         run: engine/fetch.sh
       - name: Lints
         run: cargo clippy --workspace --all-targets -- -D warnings
@@ -92,7 +88,8 @@ jobs:
         run: |
           rm -rf dist/engine-check && mkdir -p dist/engine-check
           tar -xzf "dist/yo3-revival-desktop-$VERSION-linux-x86_64.tar.gz" -C dist/engine-check
-          YO3_ENGINE_DIR="$PWD/dist/engine-check/yo3-revival-desktop/engine" cargo nextest run -p yo3-server --test engine_cards
+          YO3_ENGINE_DIR="$PWD/dist/engine-check/yo3-revival-desktop/engine" \
+            YO3_ENGINE="$PWD/dist/engine-check/yo3-revival-desktop/yo3-engine" cargo nextest run -p yo3-server --test engine_cards
       - name: Packaged Desktop updater opens before activation
         if: needs.prepare.outputs.release == 'true'
         timeout-minutes: 5
