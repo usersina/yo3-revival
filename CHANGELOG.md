@@ -10,6 +10,23 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **You choose the zones.** Ground Collapse, Seismic Shockwave and the other cards that make zones unusable now ask you
+  with the game's own message, and you click the zones; Senet Switch asks where to move. Unusable zones show a red
+  cross. Cards you summon, Set or activate fill the middle zones first, as on the original server.
+- **You choose the order.** Big Eye and the other cards that put cards back on your Deck, and effects that trigger
+  together, let you click them in order; the first click goes on top.
+- **Revealed cards are shown.** Ancient Telescope, Reversal Quiz and other looks at a Deck turn its top cards over on
+  the pile, a Set card shown to you flips up for a moment, and with Convulsion of Nature both Decks show their top card.
+- **Changed Types and Attributes show.** After Scroll of Bewitchment, DNA Surgery or Zombie World, the card's label and
+  info panel show the new Attribute or Type.
+- **Clearer prompts.** Synchro Summons say which monsters to pick, a card's effect choices that the game has no label
+  for are spelled out in the chat window, and Big Eye no longer asks you to "Declare monster level".
+- **Fairer duel clocks.** Your clock no longer runs while the game is still playing animations.
+- Your avatar speaks its line when you flip a Set card or reveal a hand card to activate it, as in the original.
+- **Fixed:** a token equipped to Allure Queen stayed on the field after it left.
+
 ## v0.0.12 (2026-11-13)
 
 Decks that follow you, an Official deck tab and fixes for getting stuck or thrown out. Choose **Desktop** for the

@@ -335,6 +335,17 @@ card manager's data, not the rendered card's rotation or animation.
 
 ## Behaviours worth knowing
 
+- Every field zone, empty or not, is a click target (pick areas `0x509CD0`; the hover place `0x50B510`); a click sends the
+  card command of the command map's entry for that zone with the zone itself (`0x4F9510`: `{CommandID, player,
+  position: zone, index 0}`), so a zone can be asked for with an ordinary command map (see "Places" in
+  [protocol](protocol.md)). DuelInvalidZone (`FieldManager+0x34`, vtable `0x7B30D8`) draws unusable zones from the
+  mask command 1006 stores at engine `+0x124`.
+- The duel dialogs show only the client's own texts (`0x519870`), the position dialog has two buttons
+  (`dlg_selstand.swf`), the type dialog one pick (`dlg_seltype.swf`), and the card list orders picks itself
+  (`dlg_cardlist.swf` `onCardClick`, badges 1..N): see "What the dialogs can't do" in [protocol](protocol.md).
+- `0x14` (the clocks) is handled when popped, one server message per tick (`0x4F1730`); only engine commands wait for
+  the animations (`0x523541`), and no duel request reports that they have played.
+
 - The required mod skips the stock username/password form after **ONLINE**; the revival launcher authenticates
   first. The native connection/error/player-selection flow stays in use. Up to 4 players per account.
 - The client treats formatted server date/time strings as JST; duel-log epoch timestamps render in local time.

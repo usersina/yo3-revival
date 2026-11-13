@@ -1061,8 +1061,14 @@ clock in duels between players: each player has a turn clock, full again at the 
 total clock for the duel; both run while the engine waits on that player, and the first to empty loses (command 2
 {result, 11}). Each client gets `0x14` with its own clocks as 1 whenever the waited-on player changes. A hosted duel
 takes its `time_turn` and `time_total` (0: that clock off); Auto Duel takes Create Duel's defaults, 180 s and 600 s
-(**guess**); NPC duels have none. A client starts counting when it takes `0x14` off its queue, after the animations
-before it, so the server calls a time-out 5 s after 0. Live (Auto Duel, Match Mode): Yugi's clock ran (TIME 169, 09:49)
+(**guess**); NPC duels have none. The client handles `0x14` as it pops it (one server message per tick, `0x4F1730`;
+only engine commands wait in the animation queue, `0x523541`), DuelCockpit counts whatever the scene is doing, and no
+duel request says when the client has played a batch (requests 2-7, 12-15 answer prompts; 1022's acknowledgement
+carries only the player). So a player's clocks start after an allowance for the batch their client was just sent: a
+duration per animated command (a move 0.4 s, a phase banner 1.2 s, a turn's banner 1.5 s, a summon's effect 1 s, an
+activation 0.8 s, a chain link 0.5 s, a shatter 0.6 s, an LP change 0.7 s, a battle 1.5 s, a reveal's popup 1 s), at
+most 15 s (**guess**; Konami's logs hold no timers message). Until then both clients get the clocks stopped (`start`
+0), and the clock pass sends them running once the allowance has passed. The server still calls a time-out 5 s after 0. Live (Auto Duel, Match Mode): Yugi's clock ran (TIME 169, 09:49)
 while Kaiba's stood at 180 and 10:00, each mirrored on the other client with "Now Thinking"; Kaiba, left idle, lost
 duel 1 by time out (his total down to 07:00), the match went on, and in duel 2 Yugi's screen read "YOU LOSE — Yugi
 has ran out of time." with its turn clock at 3 (hence the grace).
@@ -1335,14 +1341,35 @@ flow is unknown, the text is its own). EDOPro asks for Synchro and Fusion
 materials one at a time (MSG_SELECT_UNSELECT_CARD {can_finish, can_cancel, select_cards, unselect_cards}: the Tuner
 first); each round is the card list of `select_cards` with one pick (kind `0x27`, or 1 when the engine lets the player
 finish or cancel, where no pick answers index null), "Select monsters to use as Fusion Material." (92) for
-HINTMSG_FMATERIAL and no message for Synchro materials (the client has no such text; **guess**). Live
+HINTMSG_FMATERIAL, and for HINTMSG_SMATERIAL (512) "Select the card to send to the Graveyard." (58): the client's
+table has no Synchro material text, and that is where the materials go (live 2026-11-13, Gaia Knight from Krebons and
+Giant Orc). Live
 (`--duel-deck 3339,1449 --duel-extra 3745`): with Junk Synchron and Giant Orc on the field, clicking the extra deck
 listed Junk Synchron, then Giant Orc; both went to the Graveyard, the position dialog asked for Ancient Fairy Dragon,
-and it stood in attack position on both clients with the extra deck pile down to 1. The client has no window for ocgcore's place prompt, so the server
-takes the first free zone the prompt's `field_mask` allows, in the order own monster zones, own Spell/Trap and Field
-zones, the opponent's (Give and Take and Black Garden place on the opponent's field), as many as its `count` (Ground
-Collapse disables two); positions: see Choices. Live: Summon from the hand put the monster in the
-first monster zone, the hand closed up, and the next prompt offered only the Spell card.
+and it stood in attack position on both clients with the extra deck pile down to 1. **Places.** Where a summoned, Set or activated card goes (MSG_SELECT_PLACE, 18) is the server's choice, as it was
+Konami's: every one of the 129 placements in Konami's logs fills the free zones centre out (2, 3, 1, 4, 0; Spell/Trap
+zones the same), so the server takes the first free zone of the prompt's `field_mask` in that order: own monster zones,
+own Spell/Trap zones, the opponent's (Give and Take and Black Garden place there), then the Field zone; as many as its
+`count`. A zone an effect takes (MSG_SELECT_DISFIELD, 24: Ground Collapse, Seismic Shockwave, Ojama King and Knight,
+Mystical Cards of Light, Numbing Grub, Senet Switch's move) is the player's. The client has no zone dialog, but every
+zone, empty or not, is a click target (pick areas `0x509CD0`, hover place `0x50B510`) whose click sends the card command
+of the command map entry keyed as a card on that zone would be (monster zones zone 0, Spell/Trap zones zone 5, the
+zone's index in bits 16–23): duelRequestName 2 `{CommandID, player, position: the zone, index 0}` (`0x4F9510`). So the
+server first shows an OK dialog (kind 0) with the client's own prompt, 155 "Select Monster Card Zones to render
+unusable.", 324 "Select a Spell & Trap Card Zone to make unusable." or, after HINTMSG_TOZONE (571, Card.SelectAdjacent),
+472 "Move this card to an adjacent unoccupied Monster Card Zone.", then the free zones as a command map (Summon for a
+monster zone, Set for a Spell/Trap zone; a right-click menu would name them) and the input wait, a click per zone until
+`count`. A taken zone or a repeat changes nothing. Live (2026-11-13): Ground Collapse asked with 155, the clicks on the
+client's monster zone 1 and the CPU's zone 3 came back as `{4, 0, 1, 0}` and `{4, 1, 3, 0}`, and both zones showed
+unusable. Positions: see Choices.
+
+**Unusable zones.** MSG_FIELD_DISABLED (56) `{field_mask}`: per player (× 16) monster zones bits 0–4 and Spell/Trap
+zones 8–12, set when disabled. The client's 1006 `{mask}` (pump `0x522A50` → engine `+0x124`) has its own side in the
+low half and the opponent's in the high half, monster zones bits 0–4 and Spell/Trap zones 5–9, **set when usable**;
+DuelFieldManager reads it on the next `0x26` (`0x50AA90`) and DuelInvalidZone (`FieldManager+0x34`, RTTI vtable
+`0x7B30D8`) draws a zone that became unusable (effect `0x2D`, a red cross) or usable again (`0x2E`). The server sends 1006
+then `0x26`; the opening says every zone is usable (`0x3FF03FF`), as Konami's openings did (227 times in its logs,
+where the other 12 values clear a Trap Monster's Spell/Trap zone).
 
 **Tokens.** EDOPro's tokens have passcodes with no Konami id (YGOProDeck lists none for Scapegoat's Sheep Tokens), so
 the engine adds the card's `name` from `cards.cdb` where it finds no id. The client has its own token cards: CARD_Prop
@@ -1442,7 +1469,9 @@ The speech lines are each player's Avatar Settings lines (speech00–22), which 
 option "speech" (`.y3p` `duelOption.speech`) turns them off. The command picks a slot (DuelCutin `0x505A70`): 1 the draw
 (20, 21 variants), 2 a summon (22 a Synchro's, 23 the "ace monster"), 6–8 a Spell, Trap or other activation, 9 a
 monster's effect, 17 the "trump card", 10–11 a Set, 12 the turn's end, 13–15 damage by the LP left, 16 to 0; `0x46`
-(never sent yet) plays slot 19. `0x505EA0` first offers an animated cut-in ("my_effect", "your_effect", "npc_effect"
+`{player, 1, Konami id}` plays slot 19 and silences the next `0x47` (`+0x68`): Konami's logs send it before a Set
+Spell/Trap turns face up to activate (227 times) and after the ChainSet of a hand card's effect (about 75), and so does
+the server. `0x505EA0` first offers an animated cut-in ("my_effect", "your_effect", "npc_effect"
 options): by a frequency table per situation (NPCs `0x788BEC`: the first time always, then every 2nd to 8th; the
 draw every 8th) it plays the character's own animation with its built-in line; otherwise the slot's text shows in a
 speech bubble with the speaker's name. A slot reading `/preset N` is replaced by a built-in line. **An NPC's slots are
@@ -1451,11 +1480,67 @@ all set to `/preset 0`** by the duel's player setup (the branch around `0x428295
 play..."), whatever the roster item carries: speech fields sent in an NPC's `0x2711` item were ignored (live,
 2026-11-13). Our NPCs speak in the chat window instead (`crates/yo3-server/src/banter.rs`, lines in `npc_lines.txt`):
 a `0x2455` push to the player's front connection (`{from_id: npc_id, pname, chat_type: 0, chat_str}`), sent as the
-client plays the moment it belongs to (see the chat table above). Still **open**: CardBreak `0x20` {player, 1–4, uid}
-(the original's destruction effect after BattleRun or an effect, 2.5 a duel; we keep CardVanish), BgmUpdate 9 (19 a
-duel, no params: the music's mood), `0x45`, `0x46`, `0x49`–`0x4B`, `0x4E`, 1006, 1013–1016, 1018–1025, `0x26`'s param3
-and CardCheat `0x1D` (a card object refreshed from its record, 46 a duel). Konami's opening also differs (1013 for every
+client plays the moment it belongs to (see the chat table above). Not sent, with reasons
+(Konami's logs and the client's handlers, 2026-11-13): CardBreak `0x20` `{owner, monster zone 0–4, uid}`, 578 times, only
+after a battle (its move kind 8; an effect's destruction got CardVanish), only drops the zone's label (`0x4FF000` case
+`0x20`): the shatter came from BattleRun's destroy bit, which the server leaves clear because the engine sets it
+before a protection (Fortress Warrior, Shield Wing) is known, so the server keeps CardVanish's shatter. BgmUpdate 9
+(after every summon cut-in and every finished LP change, 4,400 times) has no handler in any duel component or the pump:
+nothing to send. `0x45`, `0x49`–`0x4B` and `0x4E` have no handler either; 1013–1016, 1018, 1021, 1022 (the client's own
+acknowledgement request), 1024 and 1025 are bookkeeping, and 1019/1020 a shown-data override for a few cards. CardCheat
+`0x1D` is sent with the reveals below. Konami's opening also differs (1013 for every
 place, 1006, pile counts 1023 with only the top card in the table); ours, a table entry for every card, works.
+
+**Orders.** MSG_SORT_CHAIN (21, chain links triggered together) and MSG_SORT_CARD (25, cards put back on the Deck: Big
+Eye, Gishki Chain, Fruits of Kozaky's Studies) are the player's. The card list orders picks by itself
+(`dlg_cardlist.swf`: `onCardClick` pushes the clicked position and draws a badge 1..N, a second click takes it back,
+and it decides at `selMax` picks), so the server opens it as kind 6 (all of max) with every card and "Select the cards
+you wish to return to the Deck in order of your choice." (245) or, for chain links, "Select effect to activate." (276),
+plus "Select %d card(s).". The picks arrive in click order (`7 {index}` each, `0x4C74F0`); card `picks[k]` gets rank
+k, the core's answer being one byte per card, its rank, with no count before them (playerop.cpp SortCard,
+processor.cpp: rank 0 the Deck's top or chain link 1). Anything but each card once keeps the engine's order. Live: Big
+Eye's five cards, the first click came up as the next draw.
+
+**Reveals** (Konami's own sequences, from its logs). A face-down field card shown to the client (MSG_CONFIRM_CARDS 31,
+`player` the one shown, with a field place): its table entry with the row, CardCheat `0x1D {place word | 0x4000,
+Konami id, uid}` (the card object reloads its face, `0x4FF000`), CardFlipTurn `0x1C` face up, CardLockon `0x19 {player,
+zone, 2}` (the card pops up), then the entry without its row, CardCheat and the flip back. The Deck's top cards
+(MSG_CONFIRM_DECKTOP 30, both players; or MSG_CONFIRM_CARDS of the Deck's top cards, to one: Ancient Telescope), one at
+a time: the card's entry at the Deck's index 0 (the pile's top, `0x4FE4D0`), DeckReset `0x16` once, CardCheat `{0x4000
+| 0xD << 1 | player, id, uid}`, DeckFlipTop `0x17 {player, 0xD}` (the pile's top turns over from index 0's row; 611
+Deck and 48 Extra Deck uses in Konami's logs), CardLockon, DeckFlipTop again (back), and index 0's last entry again
+(while that card is still in the Deck: the client's Deck entries are never renumbered, so another card's could pull it
+off its new place) and DeckReset. A face-up Deck (Convulsion of Nature: MSG_REVERSE_DECK 37 turns both, MSG_DECK_TOP 38
+`{player, 0, code, position}` names each top card after every change; the cards keep their face-down position, so a
+reversed Deck's top is public whatever the position): the top card's entry at index 0 with the public flag (uid top
+byte) and its row, then DeckReset, as a Graveyard shows its top card; turned back, the flag goes. Live (2026-11-13):
+Ancient Telescope turned two of Yami Bakura's cards over on his pile in turn; Convulsion of Nature showed both Decks'
+tops. Extra Deck reveals (CONFIRM_EXTRATOP 42) are not sent: no card of the client's makes them.
+
+**Changed Types and Attributes.** The monster info panel reads race and attribute from the place's record (`0x453740`
+→ `0x523F00`: `0x3E9`'s values 2 and 3), not from CARD_Prop. The engine's field report after each step carries both
+(query flags `0x40` attribute, `0x80` race, 64-bit in this core), and a monster whose Type or Attribute differs from
+CARD_Prop's gets its record again with the client's numbers (the place in its type or attribute list, plus one: Dark
+Magician DARK 2 / Spellcaster 18). Live: Scroll of Bewitchment's LIGHT showed on Giant Orc's field label and in the
+panel.
+
+**Option texts.** A card's options the client has no label for (`card_options.rs` pairs 44 cards' strings with the
+prompt table) open as the card list, the card once per option; a duel dialog takes only ids from the client's tables
+(`0x519870` builds every message from entries: text ids, card names by Konami id, numbers), so the engine sends each
+option's own text (the card's strings, `str1`–`str16` in `cards.cdb`) and the server puts them in the player's chat
+window as the list opens, numbered as listed: `0x2455 {from_id 0, pname "Effect", chat_type 0, chat_str "1: …"}`
+(**guess**: the name and type, chosen to show in the duel's chat window).
+
+**Numbers.** The number dialog (`0x4C6430`: max `param3 >> 24`, step and min 4 bits each, format 302 thousands / 303
+hundreds / else ones; `NumberSprite` to five figures) says "Declare monster level." (280) only after the Level hint
+(HINTMSG_LVRANK 567, Reasoning): EDOPro's Duel.AnnounceLevel is an alias of AnnounceNumberRange, and the client's
+other cards declare counts and die rolls with it (Big Eye, Ancient Telescope, Card Trooper, Sixth Sense).
+
+**What the dialogs can't do** (`dlg_selstand.swf`, `dlg_seltype.swf`, `0x4C5E50`, `0x4C5B50`): the position dialog has two
+buttons, face-up attack and face-up or face-down defense, so a prompt allowing face-down attack, or three or four
+positions, can't offer them all (none came up in 1,200 self-played duels of 600 cards); the type dialog takes one type
+(`onItemClick` stops at the first), and no card of the client's declares several; numbers beyond 255 of a unit, or with
+a minimum or step above 15, don't fit (no card of the client's asks for one).
 
 **Sums.** MSG_SELECT_SUM (cards whose Levels make a total: a Ritual Summon's tributes, Machina Fortress's discards)
 is the client's card list of `selects`, kind 1, at most `max` picks (0: no bound), under the engine's hint or else
@@ -1644,7 +1729,7 @@ answers no chain; Yes chains the only card, or opens the card list (one pick) wi
 where no pick is no chain. A forced chain of several goes straight to the list; of one needs no choice. Live (two Set
 Trap Holes, the CPU's summon): the question showed both cards; Yes opened the list, the second pick activated it, the
 next chance read '"Trap Hole" is activated. Chain another card or effect?', and No resolved it, destroying the CPU's
-monster. Places are still answered for the player.
+monster. Places: see "Places" above.
 
 **Chain links** (DuelChain `0x501560`, states `0x501250`; the record pump `0x523541` queues `{id, request, param1…4}` and
 the component reads from `param1`). DuelChain keeps a list of links `{opponent's, zone, link number, effect}`; the

@@ -13,6 +13,7 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
   - [▶ Monkey testing (2026-11-08): two monkeys, what they covered and found](#-monkey-testing-2026-11-08-two-monkeys-what-they-covered-and-found)
   - [✅ Screenshot session (2026-11-08): two things seen playing NPC duels](#-screenshot-session-2026-11-08-two-things-seen-playing-npc-duels)
   - [▶ Duel check (2026-11-09): the client's view checked against the engine](#-duel-check-2026-11-09-the-clients-view-checked-against-the-engine)
+  - [✅ Duel windows (2026-11-13): every choice and reveal the client can show](#-duel-windows-2026-11-13-every-choice-and-reveal-the-client-can-show)
   - [✅ M0: Research and tooling](#-m0-research-and-tooling)
   - [✅ M1: Stable world](#-m1-stable-world)
   - [✅ M2: An instrumented client](#-m2-an-instrumented-client)
@@ -20,6 +21,7 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+  - [Not possible with this client](#not-possible-with-this-client)
   - [Open questions and guesses (revisit)](#open-questions-and-guesses-revisit)
     - [Settled by the client's own code (no longer guesses)](#settled-by-the-clients-own-code-no-longer-guesses)
   - [Leads (outside the code)](#leads-outside-the-code)
@@ -919,22 +921,57 @@ What it found (covered by `translate_contract.rs` and the dedicated regressions 
 The engine message types the translator leaves alone, and why (the audit):
 
 - No card changes place: hints, waits, relations (CREATE/RELEASE_RELATION; targets and equips are followed, as hover
-  markers), coin and dice, chain negations and disables, field zones disabled, MSG_SET (the move that follows does the
-  work), RPS results, AI names.
+  markers), coin and dice, chain negations and disables, MSG_SET (the move that follows does the work), RPS results, AI
+  names. Disabled zones (FIELD_DISABLED 56) are shown since 2026-11-13 (1006, see "Duel windows" below).
 - Only the Deck's or Extra Deck's order changes, which the client never sees (the Deck is a count; cards leaving the
-  Deck or Extra Deck are found by id): SHUFFLE_DECK 32, REFRESH_DECK 34, REVERSE_DECK 37 and DECK_TOP 38 (Convulsion of
-  Nature: the face-up Deck's top card isn't shown, **open**), SHUFFLE_EXTRA 39, CONFIRM_DECKTOP 30 and
-  CONFIRM_EXTRATOP 42 (reveals not shown, **open**).
-- [ ] Places change, not followed (never seen in 640 self-played duels with this pool): REMOVE_CARDS 190 (cards taken
-      out of the duel), RELOAD_FIELD 162 (the whole field anew), TAG_SWAP 161 (tag duels, not played here), an Xyz
-      material attached from a hand or pile (logged).
+  Deck or Extra Deck are found by id): SHUFFLE_DECK 32, REFRESH_DECK 34, SHUFFLE_EXTRA 39. A face-up Deck (REVERSE_DECK
+  37, DECK_TOP 38: Convulsion of Nature) and revealed top cards (CONFIRM_DECKTOP 30) are shown since 2026-11-13.
+  CONFIRM_EXTRATOP 42 is not: no card of the client's makes it.
+- [x] Places change, not followed, and never will be with this client: no card of the client's 4,702 scripted cards
+      calls Duel.RemoveCards (REMOVE_CARDS 190) or Duel.ReloadField (RELOAD_FIELD 162), TAG_SWAP 161 belongs to tag
+      duels (not played here), and the client has no Xyz Monster (an Xyz material attached from a hand or pile is
+      logged). They still fail the duel check if they ever come.
 - [x] Equips and lasting targets (EQUIP 93, CARD_TARGET 96, CANCEL_TARGET 97) shown as hover markers between the
       cards (1017, see "Card relations" in protocol); the duel check holds them to occupied slots.
 - [x] Hovering a Spell/Trap shows its markers too (checked live 2026-11-13, `--duel-deck 807,581`: hovering the equipped
       Axe of Despair drew the yellow ∞ on Vorse Raider, and the other way round). The hover pick (`0x50B510`) gives a
       Spell/Trap slot as `zone << 8` like a monster's; the earlier failure was before the relations' places were fixed.
-- [ ] Not seen live: Magical Hats, Exchange of the Spirit and Xyz materials on the client (Creature Swap was). The
-      client lacks the Xyz Monsters tried, so Xyz may not come up at all.
+- [x] Magical Hats live (2026-11-13, against Joey): activated in his Battle Phase, its target and two Deck cards picked,
+      the shuffle sent as CardSwap, the Battle Phase ended with no warning or crash. Exchange of the Spirit (15 cards in
+      each Graveyard) is held by the self-played duels only. Xyz can't come up: the client has no Xyz Monster (0 of the
+      4,702 scripted cards).
+
+## ✅ Duel windows (2026-11-13): every choice and reveal the client can show
+
+Every choice the server used to make for the player and every engine event the client wasn't shown, measured with the
+card sweep (`YO3_CARD_SWEEP`, the duel check's round trip now covering positions, declarations and orders), researched
+in the client and Konami's own logs, then built where the client can show it and live-checked on the private client.
+Across 1,200 self-played duels of 600 cards, the only choice still made for the player is where a summoned, Set or
+activated card goes, which Konami's server made too.
+
+- [x] Placement centre out (2, 3, 1, 4, 0), as in all 129 placements of Konami's logs (was: first free from the left).
+- [x] Zones an effect takes (Ground Collapse, Seismic Shockwave, Ojama King and Knight, Mystical Cards of Light,
+      Numbing Grub, Senet Switch): the client's own prompt, then a click per zone. Live: the clicked zones came back.
+- [x] Unusable zones shown (1006, a red cross): live, Ground Collapse's two zones.
+- [x] Chain order and card order (Big Eye, Gishki Chain, Fruits of Kozaky's Studies): the card list's ordered pick.
+      Live: Big Eye's first click became the next draw. The engine answer had a stray count byte, never sent before.
+- [x] Revealed Set cards, a Deck's revealed top cards (Ancient Telescope, Reversal Quiz, A Cat of Ill Omen and 21 more)
+      and a face-up Deck (Convulsion of Nature), with Konami's own sequences. Live: Ancient Telescope, Convulsion.
+- [x] Changed Types and Attributes (13 and 17 of the client's cards: Zombie World, DNA Surgery, Scroll of Bewitchment):
+      the monster's record. Live: Scroll of Bewitchment's LIGHT on the label and in the panel.
+- [x] Synchro material lists under "Select the card to send to the Graveyard."; two more selection hints in the
+      client's words. Live: Gaia Knight from Krebons and Giant Orc.
+- [x] A card's option texts the client has no label for, in the chat window (unit-tested with the real card
+      database; not seen live).
+- [x] The avatar's reveal line (`0x46`) for a Set card flipped to activate and a hand card's effect.
+- [x] Duel clocks start after an allowance for the animations just sent (**guess**, see the guesses table; contract
+      and table tests, not seen live between two players).
+- [x] The number dialog's "Declare monster level." only for a Level (Big Eye's count read as a level).
+- [x] Found on the way: a token equipped as a card (Allure Queen LV3) stayed shown after leaving; the sweep can now
+      replay one card's duel alone (`YO3_CARD_SWEEP_OFFSET`).
+- [ ] Found on the way, not ours: Brain Research Lab's script errors in the engine at the pinned version (an extra
+      summon callback's argument count); EDOPro's Goyo Guardian wants an EARTH Tuner (the 2010 text doesn't): see
+      issue #7 for era texts.
 
 ## ✅ M0: Research and tooling
 
@@ -1224,7 +1261,7 @@ Stop finding missing fields one crash at a time.
       the client's idle prompt a command map of the legal commands, the client's card commands its responses; the CPU
       ends its turns at once (a placeholder bot, later replaced: see the placeholder CPU below) and other prompts are answered with defaults
 - [x] Card moves: the engine's MOVE becomes a card-table entry plus `0x1A`; place prompts are answered for the client
-      (first free zone). Live: a Normal Summon from the hand
+      (first free zone; since 2026-11-13 centre out, as Konami's server did). Live: a Normal Summon from the hand
 - [x] Phase buttons: Main Phase prompts enable BP and EP as the engine allows (command 4 mode 2 + other flags); a
       pressed button ends the phase. Live: summon, EP, the CPU's turn, our Turn 3 with BP and EP lit
 - [x] Battle: the battle prompt offers the attackers (Attack) and M2/EP; damage, costs and recovery change the LP
@@ -1316,6 +1353,29 @@ Stop finding missing fields one crash at a time.
 - **Exit:** friends connect from their own machines and duel (the network path is verified on one machine: a client
   through the LAN address against one through loopback, 2026-11-07; real friends' machines not tried yet)
 
+## Not possible with this client
+
+What the 2010 client can't do, whatever the server sends, with the evidence (details in
+[protocol](protocol.md) and [client internals](client-internals.md)). Each was searched for, not assumed.
+
+| What | Why it can't be done | Evidence | What we do instead |
+| --- | --- | --- | --- |
+| Server text inside a duel dialog | Every dialog message is built from entries that name the client's own texts, card names by Konami id or numbers | `0x519870` (entry kinds 1-8), Select dialog labels through it (`0x4C5880`); the Flash `setMessage` is fed only by the C++ | Option texts and other notes go to the chat window (`0x2455`) |
+| Three or four positions in one choice | The position dialog has two buttons (face-up attack; face-up or face-down defense) | `dlg_selstand.swf` (`btn0`, `btn1` only), `0x4C5E50` (`param3 >> 16` the only switch) | The two the prompt allows; none came up in 1,200 self-played duels |
+| Several Types declared at once | The type dialog stops at the first pick | `dlg_seltype.swf` `onItemClick`, `0x4C5B50` (`selMax` 1) | No card of the client's asks (0 scripts) |
+| Numbers beyond the number dialog | max 255 of a unit, min and step at most 15 | `0x4C6430` (8 and 4-bit fields), formats 302/303 | No card of the client's asks for one |
+| Extra Deck reveals, cards taken out of the duel, a reloaded field, tag swaps | No card of the client's makes them | Scripts searched: Duel.ConfirmExtratop, RemoveCards, ReloadField (0 of 4,702); tag duels aren't played | They fail the duel check if they ever come |
+| Xyz Monsters | The client has none | CARD_Prop against cards.cdb: 0 Xyz of 4,702 | Xyz materials stay handled and logged |
+| The original's destruction effect (CardBreak) | It only drops the zone's label; the shatter came from BattleRun's destroy bit, which the engine sets before a protection is known | `0x4FF000` case `0x20`; Konami's logs (578, battle only) | CardVanish's shatter |
+| Music changing with the duel | BgmUpdate has no handler | No case 9 in the duel components or the pump `0x522A50` | Nothing to send |
+| Clocks that wait for the animations by themselves | The client never says when it has played a batch, and counts down regardless | Duel requests 1-15 (`0x49F990`'s 16 senders), DuelCockpit `0x502660` | An allowance per batch (**guess**) |
+| Password logins | The client never serializes a user id or password | protocol.md, "Accounts" | TLS profiles per account |
+| Presents between players | No screen builds a send-present request | protocol.md, "No presents between players" | The host gives BP (`give-bp`) and codes |
+| Ready/Standby in events | No request builder for it exists; the lobby's buttons are the official tournament's entry menu | protocol.md, "Ready/Standby" (`official_event_lobby.swf`, ids `0x3390`-`0x339B`, `0x32C9`-`0x32D5` searched) | The host's Start is the only gate |
+| Returning a rental early | The rental screen registers no callbacks for it | protocol.md, `0x481E00` | Rentals end at their term |
+| NPC duel logs | The client writes a log only for duels against players | protocol.md, "Duel log files" (MainGamen `+0x804`) | Duel logs for duels between players |
+| The client choosing its country | No request carries it | protocol.md, "Country (flags)" | The host sets it per account (`set-country`) |
+
 ## Open questions and guesses (revisit)
 
 | Item                                                                      | Current choice                                                                                                                                                                                                                                                                                                                                                                                               | Why it's uncertain                                                                                                                                                                    |
@@ -1369,15 +1429,17 @@ Stop finding missing fields one crash at a time.
 | Confirmed destruction                                                     | CardVanish (`0x1F`, the shatter) before the move; CardBreak (`0x20`) never sent                                                                                                                                                                                                                                                                                                                              | Which of the two the original sent, and when, is unknown; CardVanish is the one with an effect                                                                                        |
 | MSG_MOVE's reason                                                         | read back by a query at the card's new place after each processing step                                                                                                                                                                                                                                                                                                                                      | A card that moves again within the same step reports its later reason                                                                                                                 |
 | Stat changes                                                              | level, ATK, DEF, base ATK, base DEF from the engine; race and attribute stay CARD_Prop's                                                                                                                                                                                                                                                                                                                     | The client's race and attribute numbering isn't ocgcore's; type-changing effects are rare in the card pool                                                                            |
-| Duel clocks                                                               | turn clock full again at each of the player's turns, both clocks running while the engine waits on that player (also during client animations), a time-out 5 s after 0; Auto Duel 180 s / 600 s, hosted duels their `time_turn` / `time_total` (0: off), NPC duels none                                                                                                                                      | The original's clock rules and Auto Duel's limits are unknown; the clocks follow Create Duel's own defaults                                                                           |
+| Duel clocks                                                               | turn clock full again at each of the player's turns, both clocks running while the engine waits on that player, from an allowance for the animations just sent (a duration per animated command, at most 15 s: `clock::allowance`), a time-out 5 s after 0; Auto Duel 180 s / 600 s, hosted duels their `time_turn` / `time_total` (0: off), NPC duels none | The original's clock rules and Auto Duel's limits are unknown (Konami's logs hold no timers message); the client never says when its animations end, so the allowance's durations are estimates |
 | Counter kinds                                                             | EDOPro ids mapped by name to the client's kinds (texts 200 + kind); Spellstone as "Magical Stone", Des as "Death", unnamed ones as 38 "Counter"; Mechanical (23) unused                                                                                                                                                                                                                                      | The original's kind per card is unknown; EDOPro's and Konami's names differ for a few                                                                                                 |
 | Card Swap                                                                 | offered (1504) only to a player whose deck has a side deck; no time limit (the clock slot 4 the screen counts down also drives the janken's); a swapped deck with other cards is refused                                                                                                                                                                                                                     | Who the original offered it to, and its time limit, are unknown                                                                                                                       |
 | Friends                                                                   | a request needs the other player online with no request waiting for them; no limit on friends (110 "The Player List is full." never sent); declining tells the requester; the team tab lists nobody                                                                                                                                                                                                          | The original's limits and offline requests are unknown                                                                                                                                |
 | Watching                                                                  | from seat 0's side (the first player to enter); the decisive janken round only; NPC duels can't be watched                                                                                                                                                                                                                                                                                                   | The original's spectator view and opening are unknown                                                                                                                                 |
 | Login banlist                                                             | regulation 3 ("unlimited", no banlist; the user's choice) unless `--regulation` names another                                                                                                                                                                                                                                                                                                                | Which list the original used for Auto Duel at each date is unknown; the client calls the login one "Latest Regulation"                                                                |
-| Declarations                                                              | several types at once and numbers outside the number dialog (min or step above 15 units, max above 255) answered automatically; the CPU names a card the filter allows (the engine's `fits`)                                                                                                                                                                                                                 | The client's dialogs pick one type and a range of numbers; the original server's handling of the rest is unknown                                                                      |
-| Material choice                                                           | Synchro and Fusion materials one at a time in the card list (EDOPro's order: the Tuner first); Fusion materials under "Select monsters to use as Fusion Material." (92), Synchro materials without a message                                                                                                                                                                                                 | The client has no Synchro material text; how the original asked is unknown                                                                                                            |
-| Option labels                                                             | EDOPro's system strings 60/61 and 70–72 mapped to the client's labels; a card's own strings paired by hand with the prompt table's per-card labels (`card_options.rs`), else the card list (the option's card once per option, in order)                                                                                                                                                                   | The original server's label per card option is unknown                                                                                                                                |
+| Declarations                                                              | several types at once and numbers outside the number dialog (min or step above 15 units, max above 255) answered automatically, though no card of the client's asks for them; "Declare monster level." only after the Level hint; the CPU names a card the filter allows (the engine's `fits`) | The client's dialogs pick one type and a range of numbers (see "Not possible with this client") |
+| Material choice                                                           | Synchro and Fusion materials one at a time in the card list (EDOPro's order: the Tuner first); Fusion materials under "Select monsters to use as Fusion Material." (92), Synchro materials under "Select the card to send to the Graveyard." (58) | The client has no Synchro material text; 58 says where the materials go; how the original asked is unknown |
+| Option labels                                                             | EDOPro's system strings 60/61 and 70–72 mapped to the client's labels; a card's own strings paired by hand with the prompt table's per-card labels (`card_options.rs`), else the card list (the option's card once per option, in order) with each option's text in the chat window (`Effect`, chat type 0) | The original server's label per card option is unknown; a duel dialog shows only the client's own text ids, so the chat window carries the rest |
+| Zone an effect takes                                                      | an OK dialog with the client's prompt (155, 324, 472), then a click per zone on the command map keyed as a card on that zone (Summon or Set as the command) | The client has no zone dialog; how the original asked is unknown, though its prompt texts exist |
+| Orders                                                                    | the card list as an ordered pick (kind 6, a badge per click) under 245 or 276 | The original's flow is unknown; the client's list orders picks by itself |
 | Chain chances                                                             | level 3 after an event, 1 at a phase or step, 0 when no card fits; messages 7/8 (Spell/Trap zone)/269                                                                                                                                                                                                                                                                                                        | Client side settled (`0x4C5560`: bands below 2, 2–3, 4+; Activation Message decides below 4); which windows the original judged low priority, and its message choice, are Konami-only |
 | Rules                                                                     | EDOPro's `MODE_MR2`                                                                                                                                                                                                                                                                                                                                                                                          | Online 3 (2010) ran Master Rule 2; EDOPro's preset may differ in details                                                                                                              |
 | CPU play                                                                  | the duel bot (`crates/yo3-engine/src/bot`): looks ahead within its turn, rules for attacks and positions                                                                                                                                                                                                                                                                                                     | The original NPCs' AI is unknown                                                                                                                                                      |
@@ -1400,7 +1462,9 @@ Evidence for each is in docs/protocol.md: `pbin` 512 bytes (`0x47E490`); `avatar
 `param1`/`param2`; `bgm`, `icon`/`lefttime`/`maintenance`, `npc_id` (omitted is right); menu bits 6/7 for Set (the icons
 and `0x520F00`); card list kinds and marks (`0x4C72D0`, `CardAttr`); the NPC tabs; the `0x17C1` and `0x2D68` ids (no
 reader). `cpuUse`/`notRelease` (`0x27D9`) are real but only drive the main screen's completion percentages: left out
-(every card counts) because the key type isn't verified.
+(every card counts) because the key type isn't verified. From Konami's own logs: placement fills zones centre out (2, 3, 1,
+4, 0; all 129 placements), 1006 is the usable-zones mask, `0x46` is the reveal line, and the reveals' sequences
+(DeckFlipTop, CardCheat, CardLockon).
 
 ## Leads (outside the code)
 
