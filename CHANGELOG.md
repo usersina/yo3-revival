@@ -12,6 +12,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- **Your decks follow you as soon as you save them.** Saving a deck in Edit Deck (Save or New) now sends it to the
+  server, so it shows up in Load Deck when you play from another computer, without using it in a duel first. A
+  computer that already has a deck of that name keeps its own copy.
 - **Fixed: stuck at rock-paper-scissors.** If your opponent left a duel while you were choosing rock, paper or
   scissors, you stayed on that screen for good and had to close the game. You now see "(name) has disconnected." and
   return to the map, with nothing counted.

@@ -13,6 +13,7 @@ export, see [AGENTS.md](https://github.com/usersina/yo3-revival/blob/main/AGENTS
   - [The connection mod](#the-connection-mod)
     - [Skipping the stock login form](#skipping-the-stock-login-form)
     - [Automatic local deck initialization](#automatic-local-deck-initialization)
+    - [Editor saves reach the server](#editor-saves-reach-the-server)
     - [Native duel observer](#native-duel-observer)
   - [The field tracer](#the-field-tracer)
   - [The UI probe](#the-ui-probe)
@@ -56,7 +57,7 @@ export, see [AGENTS.md](https://github.com/usersina/yo3-revival/blob/main/AGENTS
 | `0x476240` / `0x476DE0`                                                     | PresentWindow constructor / reply handler (window id `0xFFFFD90C` in the factory `0x4EEB90`)                                                                                                                                                                                                                                                                                                                                                                                              |
 | `0x48AA60` / `0x48F080`                                                     | shop (`shopmain.cpp`) reply handler / open routine; the open routine reads slot 8 unchecked                                                                                                                                                                                                                                                                                                                                                                                               |
 | `0x531B90`                                                                  | item factory: builds a received item's object by its tag (6 → `YO3Deck` `0x414240`)                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `0x43FC60`                                                                  | deck editor (`DeckEditTest`) reply handler; `0x22C8` saves missing decks locally (`0x52EE60`)                                                                                                                                                                                                                                                                                                                                                                                             |
+| `0x43FC60`                                                                  | deck editor (`DeckEditTest`) reply handler; `0x22C8` saves missing decks locally (`0x52EE60`); `0x22CA` asks for the list again, `0x22CB` opens a dialog                                                                                                                                                                                                                                                                                                                                  |
 | `0x4BD880`                                                                  | NPC duel deck check: regulation (`0x52DB30`), collection (`0x4F6340`), decks (`0x51AB00`); fails with text `0x295B`                                                                                                                                                                                                                                                                                                                                                                       |
 | `0x51AA80` / `0x51AC50` / `0x51A9A0` / `0x51A930`                           | validate one deck / sizes / regulation / per-card limit                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `0x410DB0`                                                                  | a card's count from the trunk: `cards` (or `noTrade`) byte at index row − 1, bounds-checked                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -199,6 +200,21 @@ consumes 32 stack bytes. The 28-byte MSVC string has proxy at `+0`, inline buffe
 staging file, atomically move without replacement, then reload the native cache; reply objects are never retained.
 The player's name comes from the user-data map at `0x82ECA4`. Profile config `*(0x82EC10)` contains `deckInfo`;
 only an empty `cursor_deck_name` is set through its native string setter and saved by `0x52E200`.
+
+### Editor saves reach the server
+
+`tools/mod/deck-upload.h` redirects the verified CALL at `0x415A4D` (bytes `56 E8 BE FB FF FF` from `0x415A4C`: `push
+esi; call 0x415610`) to a stdcall wrapper. `0x4159B0` is reached only from the deck editor's save `0x4442E0`
+(`DeckEditTest`: Save, its overwrite confirmation and New); it stores the name in the editor's deck model, makes the
+record with `0x415610(model)` (stdcall, a new `YO3Deck`, vtable `0x794BEC`, type byte `+0x34` = 6) and writes it with
+`0x52EE60` before deleting it. The wrapper sends that record before the write, built as Select Deck builds its upload
+(`0x50EEAD`-`0x50EF8C`): `0x40A190` (stdcall, the 0x6C-byte request), YO3Request vtable `0x7955F4`, type byte 4,
+`0x41BCA0(0x1F4F)` (thiscall), `update_type` 1 through the map at `+0x60` (vtable `+0x14`: by-value key string, then
+the int), the item with `0x40A320`, ownership byte `+0x50` of the item list at `+0x68` cleared (as `0x50EF63`), send
+`(*(front+0x74))->vtable[0x50](request)`, destroy with `0x40A210`; the record's parent pointer `+0xC` is restored.
+The front connection is the one the editor finds at `0x441340`: UserData (`0x40A500`) `+0x60` registry, vtable `+0x30`,
+id `0xFFFFD8F5`. Like `netlog.h`, the hook treats an image smaller than `0x42E000` as a contract fixture (their code
+occupies these low addresses); in the game an unexpected byte refuses DLL readiness (`stage=mod-deck-hook`).
 Names and paths are bounded and checked before filesystem operations. This changes local behavior, not the deck
 wire format or exported mod ABI. Any existing local deck or nonempty saved selection prevents setup, regardless of validity. A per-player
 `revival-starter.initialized` file records setup or discovered existing decks/selection; automatic setup never undoes subsequent manual edits or deletions. Existing selections take precedence; no legal candidate leaves the profile untouched. See the [deck protocol](protocol.md#decks-deck-editor-deckedittest-handler-0x43fc60).

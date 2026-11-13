@@ -97,9 +97,10 @@ fn deleting_a_deck_is_acknowledged() {
     assert_eq!(r.fields.len(), 1);
 }
 
-// Decks follow a player to another machine. The deck editor never uploads a save (the local file only), but a duel's
-// Select Deck sends the whole deck it picked (0x1F4F update_type 1, DuelManager 0x50ECF0), so the server keeps those
-// and lists them in 0x22C8, where a client that lacks a deck of that name saves it (0x43E550).
+// Decks follow a player to another machine. A duel's Select Deck sends the whole deck it picked (0x1F4F update_type 1,
+// DuelManager 0x50ECF0), and the connection DLL sends Edit Deck's saves the same way with no duel_id (the stock editor
+// only writes the local file), so the server keeps those and lists them in 0x22C8, where a client that lacks a deck of
+// that name saves it (0x43E550).
 mod follow {
     use std::net::{IpAddr, Ipv4Addr};
     use std::sync::{Arc, Mutex};
@@ -110,23 +111,33 @@ mod follow {
 
     const ADDR: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5));
 
-    fn upload(c: &mut common::Client, update_type: u32, name: &str, main: &[u16]) {
-        // A real Select Deck names a duel this session created; an arbitrary id grants no membership.
-        let duel = one(c.send(Packet::Message(Message::reply(0x17AC).item(Message::record().with("cpu_id", Value::U32(124))))));
-        let duel_id = duel.get("duel_id").cloned().unwrap();
-        let deck = Message::deck()
+    fn deck(name: &str, main: &[u16]) -> Message {
+        Message::deck()
             .with("deck_id", Value::U32(7))
             .with("deck_name", Value::text(name))
             .with("discription", Value::text(""))
             .with("card_protector", Value::U32(0))
             .with("main", Value::u16_be_array(main))
             .with("extra", Value::u16_be_array(&[]))
-            .with("side", Value::u16_be_array(&[]));
+            .with("side", Value::u16_be_array(&[]))
+    }
+
+    fn upload(c: &mut common::Client, update_type: u32, name: &str, main: &[u16]) {
+        // A real Select Deck names a duel this session created; an arbitrary id grants no membership.
+        let duel = one(c.send(Packet::Message(Message::reply(0x17AC).item(Message::record().with("cpu_id", Value::U32(124))))));
+        let duel_id = duel.get("duel_id").cloned().unwrap();
         let Packet::Message(m) = req_with(0x1F4F, &[("duel_id", duel_id), ("event_id", Value::U32(0)), ("update_type", Value::U32(update_type))])
         else {
             unreachable!()
         };
-        assert_eq!(one(c.send(Packet::Message(m.item(deck)))).request(), Some(0x22CA));
+        assert_eq!(one(c.send(Packet::Message(m.item(deck(name, main))))).request(), Some(0x22CA));
+    }
+
+    /// Edit Deck's Save and New as the connection DLL sends them (tools/mod/deck-upload.h: the record 0x415610 makes
+    /// in 0x4159B0, just before 0x52EE60 writes the file): 0x1F4F {update_type 1} and the deck, no duel_id or event_id.
+    fn save_in_editor(c: &mut common::Client, name: &str, main: &[u16]) -> Vec<Message> {
+        let Packet::Message(m) = req_with(0x1F4F, &[("update_type", Value::U32(1))]) else { unreachable!() };
+        c.send(Packet::Message(m.item(deck(name, main))))
     }
 
     fn names(c: &mut common::Client) -> Vec<String> {
@@ -152,6 +163,39 @@ mod follow {
         let list = one(there.send(req(0x1F4E)));
         assert_eq!(list.items.len(), 2);
         assert_eq!(list.items[1].get("main"), Some(&Value::u16_be_array(&[10])));
+    }
+
+    #[test]
+    fn a_deck_saved_in_the_editor_is_listed_on_another_machine() {
+        // Unanswered: the editor's handler (0x43FC60) reloads its deck list on 0x22CA (0x1F4E again, resetting the
+        // list's cursor) and opens a dialog (0x444BE0) on 0x22CB, and no timer waits for a reply to 0x1F4F.
+        let (server, d) = setup();
+        let mut here = server.join_from(&d, ADDR);
+        assert!(save_in_editor(&mut here, "Edited", &[10, 11]).is_empty());
+        let mut there = server.join_from(&d, ADDR);
+        assert_eq!(names(&mut there), ["Starter Deck", "Edited"]);
+        assert_eq!(one(there.send(req(0x1F4E))).items[1].get("main"), Some(&Value::u16_be_array(&[10, 11])));
+        // Saving again replaces it; a later Select Deck upload of the same name does too.
+        assert!(save_in_editor(&mut here, "Edited", &[12]).is_empty());
+        assert_eq!(one(there.send(req(0x1F4E))).items[1].get("main"), Some(&Value::u16_be_array(&[12])));
+        upload(&mut here, 1, "Edited", &[13]);
+        let list = one(there.send(req(0x1F4E)));
+        assert_eq!(list.items.len(), 2);
+        assert_eq!(list.items[1].get("main"), Some(&Value::u16_be_array(&[13])));
+    }
+
+    #[test]
+    fn an_editor_save_is_kept_unchecked_but_not_an_empty_deck_or_the_starters_name() {
+        // A save is not a duel: a deck the login banlist or the collection refuses is still the player's to keep (the
+        // client and the server check it at Select Deck). Card 4000 is a row the collection lacks.
+        let (server, d) = setup();
+        let mut c = server.join_from(&d, ADDR);
+        assert!(save_in_editor(&mut c, "Unowned", &[4000]).is_empty());
+        assert!(save_in_editor(&mut c, "Empty", &[]).is_empty());
+        assert!(save_in_editor(&mut c, "Starter Deck", &[99]).is_empty());
+        let list = one(c.send(req(0x1F4E)));
+        assert_eq!(names(&mut c), ["Starter Deck", "Unowned"]);
+        assert_eq!(list.items[0].get("main"), Some(&Value::u16_be_array(&[10, 10, 20])));
     }
 
     #[test]

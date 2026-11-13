@@ -425,7 +425,12 @@ Next DLL candidates, after launcher usability:
       intentional deletion after reconnect even with an empty selection. All 523 workspace tests pass; check/Clippy,
       DLL/loader contracts and Linux/Windows cross-builds pass. Native Windows gameplay was verified later (Windows 11,
       above: a fresh player received its starter and entered matchmaking).
-- [ ] Sync editor saves without requiring a duel selection (currently only `0x1F4F update_type 1` uploads them).
+- [x] Sync editor saves without requiring a duel selection (2026-11-13). The connection DLL (`tools/mod/deck-upload.h`)
+      redirects the editor save's call to `0x415610` (`0x415A4D`, inside `0x4159B0`) and sends the record it makes as
+      Select Deck does, `0x1F4F {update_type 1}` with the deck and no `duel_id`; the server keeps it unchecked and
+      unanswered (the editor reloads its list on `0x22CA` and opens a dialog on `0x22CB`). Live on two headless clients
+      of one account: New and Save → overwrite reached the server, and the other machine's Load Deck listed and loaded
+      the deck, also after a server restart. A machine that already has a deck of that name keeps its own copy.
 - [x] Diagnose the client black-screen wait when the server hangs, then add bounded failure feedback (2026-11-13). A
       dropped connection crashed the game: every failed receive logs through the client's network error logger
       (`0x82D214`), which this build never creates (`0xC0000005` at `0x535210`, live with the server killed mid-duel;
@@ -519,8 +524,8 @@ were found by the tracer. This was an opening-turn check; no full manual duel wa
 
 As of 2026-11-10 the server covers the client's game features: M0 to M2 (research, a stable world, an instrumented
 client) and M5 (duels) are done, M3 (social) and M6 (play with friends) are done apart from checking on real friends'
-machines. M4 (accounts, collection and economy) is implemented; instant syncing of editor-only deck saves
-would require additional client-mod work, because the stock editor saves locally. Two duel problems found in the screenshot session are settled (one fixed, one hardened and watched). What is left is
+machines. M4 (accounts, collection and economy) is implemented; the connection DLL sends Edit Deck's saves to the
+server, so decks follow a player without a duel. Two duel problems found in the screenshot session are settled (one fixed, one hardened and watched). What is left is
 tracked as `[ ]` boxes in the sections below and in "Open questions and guesses".
 
 | Where                                                                                                                   | What it is                                                               |
@@ -1034,11 +1039,11 @@ Stop finding missing fields one crash at a time.
         the player's own decks leave, each list going on where the last stopped: any PC gets them all, with nothing for
         the host to run. Live: Load Deck listed the nine, Yugi's "Miracle Magic" loaded with its 42 + 3 cards. (The Load Deck window's Official tab reads recipes from the client's
         own `data/recipe/` files, not from the server.)
-  - [x] Deleting a deck (`0x1F50` → `0x22CC`); saving never reaches the server (local files only)
-  - [x] Decks on the server, so they follow a player to another machine: the editor never uploads a save, but a duel's
-        Select Deck sends the whole deck (`0x1F4F` update_type 1), which the server keeps per player and lists in
-        `0x22C8`. Live: a deck used in a duel came back after its local file was deleted. A deck never used in a duel
-        can't reach the server (the client has no other upload)
+  - [x] Deleting a deck (`0x1F50` → `0x22CC`); the stock editor's saving never reaches the server (local files only)
+  - [x] Decks on the server, so they follow a player to another machine: a duel's Select Deck sends the whole deck
+        (`0x1F4F` update_type 1), and the connection DLL sends Edit Deck's saves the same way without a `duel_id`; the
+        server keeps them per player and lists them in `0x22C8`. Live: a deck used in a duel came back after its local
+        file was deleted; a deck saved in Edit Deck appeared in the other machine's Load Deck
 - [x] Shop: every booster pack of the client's pack files on the shelves (`0x1C22`), bought with BOOSTERPASS Points
       (`0x1B68` → `0x1C24`), opened as presents (`0x2775` → `0x2777` with the cards); BP and bought cards kept per
       account and player in the accounts (`server.db`, once `data/accounts.json`). Live: three Collection Pack vol.1 opened card by card, and after a

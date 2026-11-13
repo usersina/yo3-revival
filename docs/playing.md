@@ -63,8 +63,10 @@ Drag a card after briefly hovering it. The Yugi, Jaden and Yusei character decks
 Automatic starting-deck setup runs once for a fresh player profile. Existing decks and selections are kept,
 including unfinished decks and any later edits or deletions. It will not recreate a deck you deliberately removed.
 
-Editor saves live in your local `Documents/Yu-Gi-Oh! ONLINE 3` folder. Selecting a deck for a duel also uploads it to
-the server; saving in Edit Deck alone does not make that deck available on another computer. Back up the local folder.
+Editor saves live in your local `Documents/Yu-Gi-Oh! ONLINE 3` folder, and saving in Edit Deck (or selecting a deck
+for a duel) also sends the deck to the server. When you play from another computer, Edit Deck → Load Deck lists it
+there too. A computer that already has a deck of that name keeps its own copy, so give a changed deck a new name (New)
+if the other computer has the old one. The server keeps your ten most recent decks; back up the local folder.
 
 Each server keeps its own local game data, so a player named "Duelist" on one server doesn't see another server's
 "Duelist" decks. The first server you play on (since v0.0.12) keeps `Documents/Yu-Gi-Oh! ONLINE 3` and the decks
@@ -139,11 +141,11 @@ Confirm; the borrower answers "Borrow these cards?" and the cards join their tru
 put in decks but not traded) while the lender's copies are out of theirs. When the term is over the cards are back with
 their owner, even across a server restart (they are kept in the SQLite rentals document); there is no early return. Both players'
 Main Menu → Rental Card List shows what they lent and borrowed. Editor saves live locally in
-`Documents\Yu-Gi-Oh! ONLINE 3`; selecting a deck for a duel also uploads it to the server. A deck that used a borrowed
+`Documents\Yu-Gi-Oh! ONLINE 3`; saving a deck or selecting it for a duel also sends it to the server. A deck that used a borrowed
 card is no longer valid once the rental ends.
 
 Limitations: this is pre-alpha. Computer opponents think through their turn and yours, but only plan around the
 cards you show (and the heroes, Yugi, Jaden and Yusei, always draw the card they need).
-Saving in Edit Deck alone does not sync a deck to another machine; select it for a duel to upload it. The client has
+A deck you change on one computer doesn't replace a deck of the same name another computer already has. The client has
 its original card pool and UI. Some reply fields remain inferred rather than confirmed against Konami's server; [the roadmap](roadmap.md) lists those choices
 and the remaining live checks, including play from separate friends' machines with the new launcher.

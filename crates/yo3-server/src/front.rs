@@ -74,8 +74,9 @@ pub struct Player {
     pub cards: BTreeMap<u16, u32>,
     /// The structure decks the player bought (preset deck ids, in order), listed after the starter deck.
     pub decks: Vec<u32>,
-    /// The decks the player's clients uploaded at Select Deck (0x1F4F update_type 1), oldest first: the deck list
-    /// hands them to a client that lacks a deck of that name, so decks follow the player to another machine.
+    /// The decks the player's clients uploaded at Select Deck or saved in Edit Deck (0x1F4F update_type 1), oldest
+    /// first: the deck list hands them to a client that lacks a deck of that name, so decks follow the player to
+    /// another machine.
     pub uploaded: Vec<Deck>,
     /// The protectors and avatar items the player owns, by pbin id (their bits in the record's pbin).
     pub items: std::collections::BTreeSet<u16>,
@@ -2362,8 +2363,8 @@ impl FrontSession {
         }
     }
 
-    /// A deck the player picked at Select Deck: kept by name (a newer upload replaces it; the oldest goes when ten are
-    /// kept), unless the starter deck's name or an empty deck.
+    /// A deck the player picked at Select Deck or saved in Edit Deck: kept by name (a newer upload replaces it; the
+    /// oldest goes when ten are kept), unless the starter deck's name or an empty deck.
     fn keep_deck(&mut self, deck: Deck) {
         let given = self.world.starter_deck.iter().chain(&self.world.official_decks).any(|s| s.name == deck.name);
         if deck.name.is_empty() || deck.main.is_empty() || given {
@@ -2722,6 +2723,16 @@ impl FrontSession {
             0x1F4F => {
                 let duel_id = msg.get("duel_id").and_then(Value::as_u32);
                 let player_id = self.player().player_id;
+                // Edit Deck's Save and New, sent by the connection DLL (tools/mod/deck-upload.h) as update_type 1 with
+                // the deck and no duel_id (Select Deck always names one). Kept unchecked, since a save is not a duel,
+                // and unanswered: the editor (0x43FC60) reloads its deck list on 0x22CA and opens a dialog on 0x22CB,
+                // and no timer waits for a reply to 0x1F4F.
+                if duel_id.is_none() && msg.get("update_type").and_then(Value::as_u32) == Some(1) {
+                    if let Some(item) = msg.items.first() {
+                        self.keep_deck(Deck::from_record(item));
+                    }
+                    return vec![];
+                }
                 // A duel id identifies a match, not permission to upload or refuse its deck. Check before deck
                 // validation, whose refusal otherwise cancels the match for the other player.
                 if let Some(id) = duel_id

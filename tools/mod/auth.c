@@ -140,6 +140,7 @@ static int WSAAPI hooked_close(SOCKET socket) {
 #include "starter.h"
 #include "login.h"
 #include "duel-observer.h"
+#include "deck-upload.h"
 #include "netlog.h"
 #include "documents.h"
 #include <stdarg.h>
@@ -193,6 +194,7 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
     if (!login_install()) return mod_failure("stage=mod-login-hook: Game login code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!starter_install()) return mod_failure("stage=mod-starter-hook: Game deck code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!duel_observer_install()) return mod_failure("stage=mod-duel-hook: Game duel code is unsupported. Validate the original v1.153 executable.\r\n");
+    if (!deck_upload_install()) return mod_failure("stage=mod-deck-hook: Game deck editor code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!netlog_install()) return mod_failure("stage=mod-netlog: Game network code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!documents_install()) return mod_failure("stage=mod-documents: Game folder lookups are unsupported. Validate the original v1.153 executable.\r\n");
     ui_probe_install(); /* debugging aid, off unless YO3_UI_PROBE is set; never a reason to refuse the game */
