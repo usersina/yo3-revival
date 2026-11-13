@@ -334,9 +334,9 @@ impl DuelSession {
         let table = {
             let mut hub = self.hub.locked();
             // The match is over already (the other player left before this one connected): no table to make for a
-            // partner who isn't coming; this player is told and sent to the result.
+            // partner who isn't coming; this player, still before its janken, is told and sent back.
             if hub.ended(duel_id) {
-                hub.walkover(player_id, entry.opponent.unwrap_or(0));
+                hub.cancel_for(player_id);
                 self.closed = true;
                 return vec![command(DUEL_END, [crate::translate::WON, 14, 0, 0])];
             }

@@ -534,3 +534,19 @@ fn what_a_client_can_make_the_server_keep_is_capped() {
     }
     assert_eq!(server.hub.lock().unwrap().hosted_duels(), 1);
 }
+
+#[test]
+fn a_player_whose_opponent_never_connects_is_sent_back_after_a_while() {
+    // A match's table is made by whoever's duel connection comes first; the other client may never come (closed or
+    // crashed after Select Deck). The first one's heartbeats kept its connection alive and nothing ended the match: it
+    // waited for good. After NO_SHOW the match ends: the waiting player gets the cancelled duel's 0x2009 (duel_end 3,
+    // which the pre-janken screen answers, live for a refused deck), and the late one, if it ever comes, is told.
+    let (mut a, mut b, hub) = table_for(world(None));
+    enter(&mut a, 1001);
+    let now = std::time::Instant::now();
+    yo3_server::duel::tick_tables(&hub, now + std::time::Duration::from_secs(30));
+    assert!(!hub.lock().unwrap().ended(DUEL), "a slow client still has time");
+    yo3_server::duel::tick_tables(&hub, now + yo3_server::table::NO_SHOW + std::time::Duration::from_secs(1));
+    assert!(hub.lock().unwrap().ended(DUEL), "the match ends");
+    assert_eq!(commands(&enter(&mut b, 1002)), [(2, [1, 14, 0, 0])], "the late one is told, with no table to sit at");
+}

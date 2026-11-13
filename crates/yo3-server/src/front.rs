@@ -1683,11 +1683,10 @@ impl Hub {
         self.ended.contains(&duel_id)
     }
 
-    /// The opponent left before the duel began: `winner` gets the result screen's `0x2009` as a win, with the records
-    /// as they were (nothing is counted for a duel that never started).
-    pub fn walkover(&self, winner: u32, loser: u32) {
-        let record = self.records.get(&(winner, loser)).copied().unwrap_or_default();
-        self.push(winner, &duel_over(winner, 1, record));
+    /// The player's match ended before its janken (the other player left, or never connected): [`duel_cancelled`],
+    /// which the pre-janken screen answers with its dialog and the map (nothing is counted).
+    pub fn cancel_for(&self, player_id: u32) {
+        self.push(player_id, &duel_cancelled(player_id));
     }
 
     /// The opponent left the match at the janken or the turn order choice: `winner` gets [`duel_left`], which takes it

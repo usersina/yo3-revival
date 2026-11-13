@@ -81,7 +81,14 @@ pub struct Table {
     ordered: bool,
     over: bool,
     rng: u64,
+    /// When the table was made (its first player connected), for [`NO_SHOW`].
+    opened: Instant,
 }
+
+/// How long a match's first player waits for the other's duel connection before the match is cancelled (the other
+/// client closed or crashed after Select Deck). Select Deck's own timer is 30 s and a cold Wine client takes about 20 s
+/// to open the duel, so this leaves room for a slow one.
+pub const NO_SHOW: std::time::Duration = std::time::Duration::from_secs(90);
 
 impl Table {
     pub fn new(world: Arc<World>, hub: Arc<Mutex<Hub>>, duel_id: u32, seed: u64) -> Table {
@@ -108,6 +115,7 @@ impl Table {
             ordered: false,
             over: false,
             rng: seed | 1,
+            opened: Instant::now(),
         }
     }
 
@@ -432,6 +440,17 @@ impl Table {
     /// The server's clock check: once the player waited on is out of time, the duel ends with them losing by time out
     /// (command 2 {result, 11}), and the match goes on or ends as after any duel.
     pub fn tick(&mut self, now: Instant) {
+        // The other player never connected: the one waiting is sent back, and the match ends (an event's round goes
+        // on with the one who came).
+        if !self.over && self.seats.len() == 1 && now.saturating_duration_since(self.opened) >= NO_SHOW {
+            let waiting = self.seats[0].player_id;
+            tracing::info!("duel {}: the other player never connected; cancelled", self.duel_id);
+            self.over = true;
+            let mut hub = self.hub.locked();
+            hub.cancel_for(waiting);
+            hub.end_match(self.duel_id, Some(waiting));
+            return;
+        }
         let Some(seat) = self.clocks.as_ref().and_then(|c| c.expired(now)) else { return };
         self.clocks = None;
         if self.over || self.seats.len() < 2 {

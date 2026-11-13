@@ -10,7 +10,7 @@ pub(crate) mod lock;
 pub mod duel;
 pub mod duelcheck;
 mod duellog;
-mod table;
+pub mod table;
 pub mod engine;
 pub mod npc;
 pub mod banter;
