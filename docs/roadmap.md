@@ -36,6 +36,20 @@ Desktop archives also carry `yo3-revival.ico` and `yo3-revival.png` for custom s
 both platform archives. The in-game login news no longer includes the deck-onboarding notice; a front contract
 checks its removal alongside the existing news-format and engine-warning coverage.
 
+v0.0.12 release preparation (2026-11-13):
+
+- [x] The workspace package version and the local lockfile entries are `0.0.12`. The changelog describes Edit Deck's
+  saves reaching the server, the Official tab, and the fixes for the janken stall, the game closing when the host goes
+  away, an opponent who never connects, an unknown NPC and each server's own local decks. All workspace tests pass;
+  workspace Clippy is clean; documentation links pass.
+- [x] Windows 11 VM (build 22000, the Desktop bundle built from this commit, private writable game copy): the game
+  started with every new hook's byte check passing; Edit Deck's overwrite save reached the server (`0x1F4F`,
+  `update_type` 1, no `duel_id`); Load Deck's Official tab listed the nine character decks and CONCEALERS DECK; the
+  first server claimed the original Documents folder (`revival-server.txt`, the existing decks kept); an NPC duel
+  against Kaiba ran a summon, then the server was killed mid-duel: "You have been disconnected from the Duel Server.",
+  then "…from the server.", then the title screen, with no crash (no Application Error event) and Desktop reporting
+  the stopped local connection. No process was left over.
+
 v0.0.11 release preparation (2026-11-13):
 
 - [x] The workspace package version and the local lockfile entries are `0.0.11`. The changelog describes NPC duels
@@ -66,11 +80,13 @@ v0.0.10 release preparation (2026-11-13):
   so the attack-target window and the card panel showed his face-down monsters. NPC duels now hide them as player
   duels do (`duel::npc_translator`; the duel check learns their rows from a translator that hides nothing). Live: a
   card back with no stats in both, the card itself once flipped in battle, his cut-ins unchanged.
-- [ ] Found on the way, not new in this release: a monster's switch to Defense Position at the end of the Battle Phase (Goblin Attack Force) stays drawn upright on
+- [x] Not reproduced, watched. Found on the way, not new in this release: a monster's switch to Defense Position at the end of the Battle Phase (Goblin Attack Force) stays drawn upright on
   its owner's screen, though the duel check agrees with the engine. Not reproduced on 2026-11-13 in five tries (an NPC
   duel with `--duel-deck 307`, and an Auto Duel through the opponent's turn, a discard window right after the switch,
   a manual switch back to Attack and a second Goblin): the switch showed sideways every time. The v0.0.10 case came
-  after a battle with Pegasus' Toons and a Lei Lei trade; the trigger is still unknown.
+  after a battle with Pegasus' Toons and a Lei Lei trade; the trigger is still unknown. A sixth try the same day, with
+  Kaiba's Call of the Haunted going off at the end of the Battle Phase, also showed it sideways, and the UI probe read
+  the client's own card going from `up ATK` to `up DEF` (a pending switch stays upright until the phase really ends).
 
 v0.0.9 release preparation (2026-11-12):
 
@@ -1031,7 +1047,7 @@ Stop finding missing fields one crash at a time.
       slots kept with the account. Live: Joey made in slot 3 (name, then Avatar Settings, then the main screen), deleted
       with its password prompt (local, nothing sent), the slot empty again
 - [x] Trunk contents: the card collection (the starter deck's cards and the player's bought cards, `0x1FA4` → `9000`)
-- [ ] Deck list, deck editor saves (`HolderSelect.cpp` "deck list")
+- [x] Deck list, deck editor saves (`HolderSelect.cpp` "deck list")
   - [x] Every player owns a starter deck's cards and gets it in the deck list (`0x1F4E` → `0x22C8`, tag-6
         items); Edit Deck saves it locally and the NPC duel accepts it
   - [x] Official character decks: every player also gets Yami Yugi's, Jaden's and Yusei's three decks each (the
@@ -1040,7 +1056,8 @@ Stop finding missing fields one crash at a time.
         (`pbin_no`) in the player's own record, and the tab reads the client's own `data/recipe/` files (`0x43D8D0`).
         The deck list (`0x22C8`) keeps only the starter and the player's own decks. Live: the tab listed the nine and
         CONCEALERS DECK; Yugi's "Miracle Magic" loaded with its 42 + 3 cards and saved as the player's deck.
-  - [x] Deleting a deck (`0x1F50` → `0x22CC`); the stock editor's saving never reaches the server (local files only)
+  - [x] Deleting a deck (`0x1F50` → `0x22CC`); the stock editor saves only local files, so the connection DLL sends
+        its saves itself (below)
   - [x] Decks on the server, so they follow a player to another machine: a duel's Select Deck sends the whole deck
         (`0x1F4F` update_type 1), and the connection DLL sends Edit Deck's saves the same way without a `duel_id`; the
         server keeps them per player and lists them in `0x22C8`. Live: a deck used in a duel came back after its local

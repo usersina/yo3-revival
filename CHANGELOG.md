@@ -10,7 +10,15 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.0.12 (2026-11-13)
+
+Decks that follow you, an Official deck tab and fixes for getting stuck or thrown out. Choose **Desktop** for the
+graphical app or **Scripts** for terminal commands. Both editions include the server, rules engine and required
+connection components. Original game files are not included. **Windows 7 is not supported.**
+
+Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.12/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.12/docs/scripts.md).
 
 - **Your decks follow you as soon as you save them.** Saving a deck in Edit Deck (Save or New) now sends it to the
   server, so it shows up in Load Deck when you play from another computer, without using it in a duel first. A
