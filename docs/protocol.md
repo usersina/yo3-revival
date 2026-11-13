@@ -1386,7 +1386,17 @@ way (all from the 227 original duel logs, their handlers read in the client):
 | `0x4D` | player, LP change, kind | between an LP change's two `0x10` | the damage line by the LP left (to 0, 1000+, 2000+); none for a cost or a gain |
 
 The speech lines are each player's Avatar Settings lines (speech00–22), which the client already holds; its duel
-option "speech" (`.y3p` `duelOption.speech`) turns them off. Still **open**: CardBreak `0x20` {player, 1–4, uid}
+option "speech" (`.y3p` `duelOption.speech`) turns them off. The command picks a slot (DuelCutin `0x505A70`): 1 the draw
+(20, 21 variants), 2 a summon (22 a Synchro's, 23 the "ace monster"), 6–8 a Spell, Trap or other activation, 9 a
+monster's effect, 17 the "trump card", 10–11 a Set, 12 the turn's end, 13–15 damage by the LP left, 16 to 0; `0x46`
+(never sent yet) plays slot 19. `0x505EA0` first offers an animated cut-in ("my_effect", "your_effect", "npc_effect"
+options): by a frequency table per situation (NPCs `0x788BEC`: the first time always, then every 2nd to 8th; the
+draw every 8th) it plays the character's own animation with its built-in line; otherwise the slot's text shows in a
+speech bubble with the speaker's name. A slot reading `/preset N` is replaced by a built-in line. **An NPC's slots are
+all set to `/preset 0`** by the duel's player setup (the branch around `0x428295`'s caller, slots listed at
+`0x792660`), so its bubbles show its built-in lines (Pegasus' draw: text 63501 "My turn now!", 63502 "I think I'll
+play..."), whatever the roster item carries: speech fields sent in an NPC's `0x2711` item were ignored (live,
+2026-11-13). Still **open**: CardBreak `0x20` {player, 1–4, uid}
 (the original's destruction effect after BattleRun or an effect, 2.5 a duel; we keep CardVanish), BgmUpdate 9 (19 a
 duel, no params: the music's mood), `0x45`, `0x46`, `0x49`–`0x4B`, `0x4E`, 1006, 1013–1016, 1018–1025, `0x26`'s param3
 and CardCheat `0x1D` (a card object refreshed from its record, 46 a duel). Konami's opening also differs (1013 for every

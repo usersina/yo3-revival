@@ -390,9 +390,10 @@ impl GameData {
         firsts.filter(|&id| has(id + 1) && has(id + 2) && named(id)).flat_map(|id| id..id + 3).collect()
     }
 
-    /// The NPC's name ("Seto Kaiba"): the same for its three levels.
+    /// The NPC's name ("Seto Kaiba"): the same for its three levels. Trimmed: the text table has
+    /// "Maximillion Pegasus " with a trailing space.
     pub fn npc_name(&self, npc_id: u32) -> Option<&str> {
-        self.text(NPC_NAME + 2 * (npc_id.checked_sub(FIRST_NPC)? / 3))
+        self.text(NPC_NAME + 2 * (npc_id.checked_sub(FIRST_NPC)? / 3)).map(str::trim)
     }
 
     /// The title the NPC screen shows for an NPC's deck ("Miracle Magic").

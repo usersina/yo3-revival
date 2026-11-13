@@ -113,3 +113,18 @@ fn the_bot_beats_the_placeholder_cpu_with_the_npc_decks() {
         assert!(won > lost, "the bot should beat the placeholder CPU: won {won}, lost {lost}\n{report}");
     }
 }
+
+#[test]
+fn every_npc_of_the_client_has_a_character() {
+    // Styles and lines go by the client's NPC names (npc.rs); a name that doesn't match plays without them, as
+    // "Maximillion Pegasus " (a trailing space in the text table) did until names were trimmed.
+    let game_dir = std::env::var_os("YO3_GAME_DIR").map(PathBuf::from).unwrap_or_else(default_game_dir);
+    if !game_dir.join("package/data002.ypk").is_file() {
+        return;
+    }
+    let game = GameData::load(&game_dir).expect("the client's data loads");
+    for id in game.npc_ids() {
+        let name = game.npc_name(id).unwrap_or_default();
+        assert!(yo3_server::npc::style(name).is_object(), "NPC {id} {name:?} has no character in npc.rs");
+    }
+}
