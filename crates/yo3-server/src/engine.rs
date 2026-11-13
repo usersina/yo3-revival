@@ -224,6 +224,17 @@ impl Engine {
         self.call(json!({ "op": "respond", "response": response }))
     }
 
+    /// The duel bot's answer to the pending prompt, for an NPC (`simple`: the old placeholder CPU's, the baseline the
+    /// bot is measured against). Give it with [`Engine::respond`].
+    pub fn think(&mut self, simple: bool) -> io::Result<Json> {
+        let request = if simple { json!({ "op": "think", "policy": "simple" }) } else { json!({ "op": "think" }) };
+        let mut v = self.line(request)?;
+        match v.get("status").and_then(Json::as_str) {
+            Some("thought") => Ok(v.get_mut("response").map(Json::take).unwrap_or_default()),
+            _ => Err(io::Error::other(format!("engine: no answer ({})", v.get("error").and_then(Json::as_str).unwrap_or("unknown")))),
+        }
+    }
+
     /// Where every card is now, by engine team: `[{hand, mzone, szone, grave, removed, extra, deck}]` (see the sidecar's
     /// `state()`). Read only: the duel goes on as it was. For the duel check (`crate::duelcheck`).
     pub fn state(&mut self) -> io::Result<Json> {

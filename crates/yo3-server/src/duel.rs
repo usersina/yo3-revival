@@ -590,6 +590,16 @@ impl DuelSession {
                         failed = true;
                         break;
                     }
+                    // The NPC's own choices come from the duel bot (crates/yo3-engine/src/bot); the translator's
+                    // answer stays for the prompts the client has no window for, and if the engine can't think.
+                    let response = if translator.prompted(last) {
+                        response
+                    } else {
+                        engine.think(false).unwrap_or_else(|e| {
+                            tracing::warn!("duel bot: {e}; the NPC plays by the simple rules");
+                            response
+                        })
+                    };
                     answer = engine.respond(response)
                 }
                 Prompt::Client(messages) => {
