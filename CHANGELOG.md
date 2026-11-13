@@ -16,6 +16,10 @@ Older entries describe their release at the time. For current setup, use the [RE
   instead of the core running inside a bundled copy of Node.js. Downloads are much smaller and hosts still install
   nothing. Duels play exactly as before: every test duel was played through both engines and they agreed.
 - Updating from v0.0.9 or older works as usual from the app.
+- **Computer opponents actually play now.** Kaiba and the other NPCs used to summon their first monster and attack
+  with everything. They now think about each move: they try their options ahead within their turn, use their Spells
+  and Traps (removal when you summon, Ritual Summons, Set Traps waiting for your attack), choose good targets and
+  keep blockers up. They play fair: they never peek at your hand, your Set cards or anyone's Deck.
 
 ## v0.0.9 (2026-11-12)
 

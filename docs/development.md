@@ -160,6 +160,19 @@ By default it plays 8 deck pairs; before a release, all of them with several see
 YO3_ORIGINAL_DECKS=all YO3_ORIGINAL_DECKS_SEEDS=10 cargo nextest run --release -p yo3-server --test original_decks --no-capture
 ```
 
+The NPCs' duel bot (`crates/yo3-engine/src/bot`, the engine's `think` request) is measured against the old placeholder
+CPU on the client's own NPC decks (`tests/npc_bot.rs`, 6 duels in the normal run). After changing it, play more, with
+the same deck on both sides too (skill alone), and read a duel's look-ahead decisions with `YO3_BOT_TRACE`:
+
+```bash
+YO3_BOT_DUELS=40 cargo nextest run --release -p yo3-server --test npc_bot --no-capture
+YO3_BOT_DUELS=40 YO3_BOT_MIRROR=1 cargo nextest run --release -p yo3-server --test npc_bot --no-capture
+YO3_BOT_ONLY=21 YO3_BOT_MIRROR=1 YO3_BOT_DUELS=40 YO3_BOT_TRACE=/tmp/bot.trace cargo nextest run --release -p yo3-server --test npc_bot
+```
+
+Each duel's winner and the bot's thinking time go to `target/tmp/npc-bot.tsv`; a duel that doesn't end prints its last
+prompts.
+
 Protocol and UI monkeys are documented in the
 [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#commands).
 
