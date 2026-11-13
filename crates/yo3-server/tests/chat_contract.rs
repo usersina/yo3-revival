@@ -121,3 +121,18 @@ fn whispers_by_name_go_to_one_player() {
     assert_eq!(b.pushed()[0].items[0].get("chat_str"), Some(&Value::text("psst")));
     assert!(c.pushed().is_empty());
 }
+
+#[test]
+fn an_npcs_line_is_a_chat_push_the_duel_screens_window_shows() {
+    // The duel screen's chat window shows 0x2455 lines of chat_type 0 and 1 (live, 2026-11-13; 2 and up went to other
+    // tabs); ChatWindow 0x435950 colours the name of a chat_type 0 line red (colour 0xB), like the opponent's name
+    // plate. The NPC's npc_id is its from_id: never a player's (1001 and up), so never drawn as the player's own line.
+    let push = yo3_server::banter::chat_line(135, "Maximillion Pegasus", "I see your cards!");
+    assert_eq!(push.request(), Some(0x2455));
+    let line = &push.items[0];
+    let text = |k| line.get(k).and_then(Value::as_str);
+    assert_eq!(text("pname").as_deref(), Some("Maximillion Pegasus"));
+    assert_eq!(text("chat_str").as_deref(), Some("I see your cards!"));
+    assert_eq!(line.get("chat_type"), Some(&Value::U32(0)));
+    assert_eq!(line.get("from_id"), Some(&Value::U32(135)));
+}

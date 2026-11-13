@@ -126,5 +126,61 @@ fn every_npc_of_the_client_has_a_character() {
     for id in game.npc_ids() {
         let name = game.npc_name(id).unwrap_or_default();
         assert!(yo3_server::npc::style(name).is_object(), "NPC {id} {name:?} has no character in npc.rs");
+        assert!(yo3_server::banter::table().contains_key(name), "NPC {id} {name:?} has no lines in npc_lines.txt");
     }
+}
+
+#[test]
+fn pegasus_reads_a_real_duel_and_says_so() {
+    // The NPCs' lines (crate::banter) from a real duel's engine messages: Pegasus (team 1, the bot) against Kaiba's
+    // deck (team 0, the bot too). His first turn reads a card of team 0's hand through the engine's state, a Set card is
+    // named as it is Set, and the duel's end has its line. Every card named is one of team 0's.
+    use yo3_server::banter::{Banter, Live, table};
+    let game_dir = std::env::var_os("YO3_GAME_DIR").map(PathBuf::from).unwrap_or_else(default_game_dir);
+    let engine_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../engine");
+    if !game_dir.join("package/data002.ypk").is_file() || !engine_dir.join("vendor/cardinfo.json").is_file() {
+        eprintln!("the game or the engine missing; skipping");
+        return;
+    }
+    let game = GameData::load(&game_dir).expect("the client's data loads");
+    let mut world = yo3_server::front::World::new(vec![]);
+    for c in game.cards.iter() {
+        world.card_names.entry(c.cid).or_insert_with(|| c.name.clone());
+        let stats = yo3_server::translate::CardStats { cid: c.cid, atk: c.atk, def: c.def, level: c.level, attribute: c.attribute, race: c.race };
+        world.cards.insert(c.row, stats);
+    }
+    let deck = |name: &str| {
+        let id = game.npc_ids().into_iter().find(|&id| game.npc_name(id) == Some(name)).expect("the NPC");
+        let d = game.npc_deck(id).expect("its deck");
+        let cid = |rows: &[u16]| -> Vec<u16> { rows.iter().filter_map(|r| game.cards.by_row(*r)).map(|c| c.cid).collect() };
+        (cid(&d.main), cid(&d.extra))
+    };
+    let (kaiba, pegasus) = (deck("Seto Kaiba"), deck("Maximillion Pegasus"));
+    let theirs: Vec<&str> = kaiba.0.iter().chain(&kaiba.1).filter_map(|c| world.card_names.get(c)).map(String::as_str).collect();
+    let mut engine = Engine::start(&engine_dir).expect("the engine program runs");
+    let mut answer = engine.new_duel_with(5, 8000, [(&kaiba.0, &kaiba.1), (&pegasus.0, &pegasus.1)], &world.card_names, &[]).unwrap();
+    let mut banter = Banter::new("Maximillion Pegasus", 1, "Tester", 5).expect("his lines");
+    let mut said: Vec<String> = banter.greet().into_iter().map(|s| s.text).collect();
+    for _ in 0..6000 {
+        said.extend(banter.observe(&answer.messages, &mut Live { engine: &mut engine, world: &world }).into_iter().map(|s| s.text));
+        if answer.status != "await" {
+            break;
+        }
+        let response = engine.think(serde_json::json!({ "sees": true })).expect("an answer");
+        answer = engine.respond(response).expect("the engine answers");
+    }
+    eprintln!("{}", said.join("\n"));
+    let lines = &table()["Maximillion Pegasus"];
+    let kind = |text: &str| lines.iter().find(|(_, l)| l.iter().any(|l| {
+        let (head, tail) = l.split_once("{card}").unwrap_or((l, ""));
+        let (head, tail) = (head.replace("{you}", "Tester"), tail.replace("{you}", "Tester"));
+        text.starts_with(&head) && text.ends_with(&tail)
+    })).map(|(k, _)| *k);
+    assert_eq!(kind(&said[0]), Some("greet"));
+    let eye: Vec<&String> = said.iter().filter(|s| matches!(kind(s), Some("eye_hand" | "eye_set"))).collect();
+    assert!(!eye.is_empty(), "his Millennium Eye said nothing: {said:?}");
+    for line in &eye {
+        assert!(theirs.iter().any(|name| line.contains(name)), "not one of Kaiba's cards: {line}");
+    }
+    assert!(matches!(said.last().and_then(|s| kind(s)), Some("win" | "lose")), "the end: {said:?}");
 }

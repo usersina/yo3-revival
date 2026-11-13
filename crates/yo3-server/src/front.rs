@@ -502,6 +502,8 @@ pub struct World {
     pub npc_decks: HashMap<u32, Deck>,
     /// Each NPC's duel bot style (npc.rs), by npc_id.
     pub npc_styles: HashMap<u32, serde_json::Value>,
+    /// Each NPC's name (the same for its three levels), by npc_id.
+    pub npc_names: HashMap<u32, String>,
     /// Each CARD_Prop row's Konami id and stats, for the rules engine and the duel's card info.
     pub cards: HashMap<u16, crate::translate::CardStats>,
     /// The client's token cards (CARD_Prop rows with ids 3900-3999) by name, for the rules engine's tokens.
@@ -560,6 +562,7 @@ impl World {
             npcs: vec![],
             npc_decks: HashMap::new(),
             npc_styles: HashMap::new(),
+            npc_names: HashMap::new(),
             cards: HashMap::new(),
             token_rows: HashMap::new(),
             card_names: HashMap::new(),
@@ -2151,6 +2154,11 @@ impl Hub {
     /// Pushes to a player's front connection; false if they are not online.
     pub fn push(&self, player_id: u32, msg: &Message) -> bool {
         self.send_player(Some(player_id), None, msg)
+    }
+
+    /// An online player's name and front connection (an NPC's lines go there, crate::banter).
+    pub fn front_of(&self, player_id: u32) -> Option<(String, Outbox)> {
+        self.online.values().find(|o| o.player_id == player_id).map(|o| (o.name.clone(), o.outbox.clone()))
     }
 
     /// Sends to one player by id or name; false if they are not online.

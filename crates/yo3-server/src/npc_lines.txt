@@ -1,0 +1,326 @@
+# What each NPC says in the duel's chat window (crate::banter). Our own lines, written for the characters; the
+# client's built-in speech is separate. One line per entry, "kind: text". {card} is a card's name, {you} the player's.
+#   greet     the duel starts                     turn      its turn starts (now and then)
+#   ace       it summons a monster of 2400+ ATK   direct    it attacks directly
+#   hurt      it takes 2000+ damage at once       win/lose  the duel ends
+#   heart     a hero's draw (the Heart of the Cards: he draws what he needs)
+#   eye_hand  Pegasus reads a card in your hand   eye_set   Pegasus sees the card you just Set
+
+[Yami Yugi]
+greet: Let us see what your heart is made of, {you}. It's time to duel!
+greet: The cards will decide our fate. I'm ready!
+turn: My move. Watch closely.
+turn: You've played well, but this turn is mine.
+heart: Heart of the Cards, guide me!
+heart: My deck has never let me down. I draw!
+heart: I trust in my cards... and they answer!
+ace: I summon {card}! Your turn to face real power.
+ace: Rise, {card}! Together we fight!
+direct: Nothing stands in your way to protect you. Attack!
+hurt: A strong blow... but this duel isn't over yet!
+win: A fine duel, {you}. Keep believing in your cards.
+lose: Well played. You have earned my respect, {you}.
+
+[Seto Kaiba]
+greet: You dare challenge me? Fine. I'll make this quick.
+greet: Let's get this over with, {you}. I have a company to run.
+turn: Pay attention, amateur. This is how a real duelist plays.
+turn: My turn. Try to keep up.
+ace: Behold, {card}! Tremble before true power!
+ace: {card}! Crush this pathetic excuse for a duelist!
+direct: Your field is empty and so are your chances. Direct attack!
+hurt: Hmph. A lucky shot. It won't happen twice.
+win: As expected. Come back when you're worth my time.
+lose: Impossible... This isn't over, {you}. Not by a long shot.
+
+[Joey Wheeler]
+greet: Alright, {you}! Let's do this, I'm feelin' lucky today!
+greet: Ya ready? 'Cause I'm about to roll right over ya!
+turn: My turn! Time to show ya what I got!
+turn: Here comes the comeback, just watch!
+ace: Check it out, {card}! Pretty sweet, huh?
+ace: Say hello to {card}! Now we're talkin'!
+direct: Wide open! Go get 'em!
+hurt: Ow! Hey, that one stung!
+win: Yeah! Who's the champ? Good game though!
+lose: Aw man... Okay, you got me. Rematch, ya hear?
+
+[Mai Valentine]
+greet: Don't think I'll go easy on you just because you're cute, {you}.
+greet: Let's make this interesting, shall we?
+turn: My turn, darling. Try not to blink.
+turn: Elegance and power. Watch and learn.
+ace: Meet {card}. Isn't it gorgeous?
+ace: {card}, show them how a lady duels!
+direct: Nothing to hide behind? How unfortunate for you.
+hurt: Hmph. You'll pay for ruining my nails.
+win: Better luck next time, sweetie.
+lose: Not bad... You've got guts, I'll give you that.
+
+[Bandit Keith]
+greet: Heh. Another sucker. Let's make it quick, {you}.
+greet: You're playin' against a pro now, kid.
+turn: Watch and learn how a champion does it.
+turn: My turn. Your luck just ran out.
+ace: Here comes {card}! Hope you brought a spare deck!
+ace: {card}! Smash 'em!
+direct: Nothin' in the way! Take that!
+hurt: Grr! You little cheat!
+win: Ha! Told ya. Go home, kid.
+lose: This ain't over! I'll get you next time!
+
+[Maximillion Pegasus]
+greet: Oh, how delightful! A new guest for my little game. Shall we begin, {you}-boy?
+greet: Welcome, welcome! Do try to keep your thoughts to yourself... if you can.
+turn: My turn! Oh, this will be such fun.
+turn: Let's see... what shall I do with you next?
+eye_hand: My Millennium Eye tells me you're holding {card}. How quaint!
+eye_hand: {card} in your hand? I see it all, {you}-boy.
+eye_hand: Hiding {card}, are we? Nothing escapes my Millennium Eye!
+eye_hand: Your mind is an open book. Chapter one: {card}.
+eye_set: A face-down {card}? I see your cards, my friend!
+eye_set: Setting {card}... how terribly obvious.
+eye_set: Oh, {card}. I'll be sure to step around that one.
+ace: Allow me to present {card}! Isn't it wonderful?
+ace: Here's {card}, my star of the show!
+direct: No defenders? Oh, what a pity!
+hurt: Ouch! Now that was rather rude.
+win: Thank you for playing, {you}-boy. Do come again!
+lose: Impossible... my Millennium Eye couldn't have failed me!
+
+[Yami Bakura]
+greet: Ahh, a new soul for my collection. Let's play, {you}.
+greet: Welcome to my game. I do hope you don't mind the darkness.
+turn: My turn. Let's make this more... interesting.
+turn: The shadows grow restless.
+ace: Rise from the darkness, {card}!
+ace: {card}... feast on their fear.
+direct: Nothing left to shield you. Delicious.
+hurt: Heh... pain only makes the game more fun.
+win: Your soul will make a fine addition. Hahaha!
+lose: Enjoy it while it lasts. The darkness always returns.
+
+[Yami Marik]
+greet: Let the Shadow Game begin, {you}. I promise it will hurt.
+greet: Your mind will be mine before this duel ends.
+turn: My turn. Prepare to suffer.
+turn: Feel the shadows close in around you.
+ace: Behold {card}, the instrument of your despair!
+ace: {card}! Tear them apart!
+direct: Defenseless... just as I like it.
+hurt: Pain? I feast on pain!
+win: Sink into the darkness, forever.
+lose: This... is not... the end!
+
+[Yugi Muto]
+greet: Hi, {you}! Let's have a good duel!
+greet: I'll do my best. Good luck!
+turn: My turn! Here goes!
+turn: Okay, I think I see a way through this.
+heart: I believe in my deck. Heart of the Cards!
+heart: Come on... I know you're there. Draw!
+heart: My friends are with me. I draw!
+ace: Come on out, {card}!
+ace: {card}, I'm counting on you!
+direct: The path is clear. Attack!
+hurt: Ow... I'm not giving up yet!
+win: That was a great duel, {you}! Thanks!
+lose: Wow, you're really good! Let's duel again sometime.
+
+[Jaden Yuki]
+greet: Let's get our game on, {you}!
+greet: Alright! A new opponent! This is gonna be sweet!
+turn: My turn! Things are about to heat up!
+turn: Here we go! Let's have some fun!
+heart: I can feel it, my deck's with me! Draw!
+heart: Heart of the Cards, don't fail me now!
+heart: Time for a little hero magic!
+ace: Check it out, {card}!
+ace: Say hi to {card}! Sweet, huh?
+direct: Nothing in my way! Hero, go!
+hurt: Whoa! Nice move! But I'm just getting warmed up.
+win: That's game! Fun duel, {you}!
+lose: Man, you got me! That was awesome though!
+
+[Chazz Princeton]
+greet: You're facing the Chazz now, {you}. Show some respect.
+greet: Ugh, another nobody. Fine, let's get this over with.
+turn: Watch closely. Talent like this is rare.
+turn: My turn. Prepare to be Chazzed.
+ace: Witness {card}! Bow down!
+ace: {card}! Show them who's boss!
+direct: Wide open! Pathetic!
+hurt: Hey! Watch it, slacker!
+win: Obviously. Nobody beats the Chazz.
+lose: That was a fluke! A total fluke!
+
+[Alexis Rhodes]
+greet: Let's see if you're as good as they say, {you}.
+greet: Ready? I won't hold back.
+turn: My turn. Let's keep this graceful.
+turn: Every move counts. Watch this.
+ace: {card}, take the stage!
+ace: Presenting {card}!
+direct: Your guard is down. Attack!
+hurt: That hurt... but I'm not done yet.
+win: Good duel, {you}. You've got potential.
+lose: Impressive. I'll remember this one.
+
+[Syrus Truesdale]
+greet: Um, hi {you}! I'll try my best!
+greet: Okay... deep breaths. Let's duel!
+turn: My turn! Please work, please work...
+turn: I-I've got this! I think.
+ace: Look, {card}! I did it!
+ace: Go, {card}! Make my brother proud!
+direct: Nothing there? Okay! Attack!
+hurt: Waaah! That was a big one!
+win: I won? I won! Thanks for the duel!
+lose: Aww... I'll practice harder.
+
+[Hell Kaiser]
+greet: Don't expect mercy, {you}. Victory is all that matters.
+greet: Show me everything you have. Then I'll crush it.
+turn: My turn. This ends now.
+turn: Respect means nothing without power.
+ace: {card}. Feel overwhelming strength.
+ace: Come forth, {card}! Obliterate them!
+direct: No defense. No hope.
+hurt: Good. Make me feel it. It changes nothing.
+win: Victory is everything. Remember that.
+lose: So this is defeat... I'll learn from it.
+
+[Vellian Crowler]
+greet: Hmph! A lesson in proper dueling is in order, {you}.
+greet: Pay attention, this will be on the test!
+turn: Observe the technique of a true professor.
+turn: My turn. Take notes, slacker.
+ace: Behold, {card}! The pinnacle of dueling!
+ace: Marvel at {card}!
+direct: An empty field? Simply dreadful.
+hurt: Mamma mia! How dare you!
+win: As expected. Class dismissed.
+lose: Impossible! This is most irregular!
+
+[Aster Phoenix]
+greet: Destiny already chose the winner, {you}. Let's play it out.
+greet: A pro duel, then. Try to keep up.
+turn: My turn. Destiny is on my side.
+turn: Everything is going according to plan.
+ace: Destiny calls forth {card}!
+ace: {card}, show them their fate!
+direct: Clear skies. Direct attack.
+hurt: Hmph. Destiny has its detours.
+win: As destiny decreed. Good game.
+lose: Maybe destiny isn't fixed after all...
+
+[Jesse Andersen]
+greet: Howdy, {you}! Let's have a real good duel!
+greet: My Crystal Beasts and I are ready. You?
+turn: My turn! Time to shine!
+turn: Alright, gang, let's do this!
+ace: Shine bright, {card}!
+ace: Here comes {card}, my pal!
+direct: Clear shot! Go for it!
+hurt: Whoa! Now that's what I call a hit!
+win: Yeehaw! What a duel, {you}!
+lose: You got me fair and square! Great game!
+
+[Yusei Fudo]
+greet: Let's ride, {you}. Show me your best.
+greet: I'm ready. Let's duel.
+turn: My turn. Let's tune up.
+turn: Every card in my deck matters. Watch.
+heart: I believe in my deck. Draw!
+heart: The bonds in this deck won't let me down.
+heart: My friends are with me in every card. Draw!
+ace: Shine on, {card}!
+ace: {card}, take flight!
+direct: The road is clear. Attack!
+hurt: That was a strong hit. But I'm still standing.
+win: Good duel, {you}. You've got heart.
+lose: You earned that win. I'll be back stronger.
+
+[Jack Atlas]
+greet: There is only one King, {you}, and you're looking at him!
+greet: Kneel before the King's dueling!
+turn: The King's turn! Witness greatness!
+turn: Watch closely, a King's duel is a work of art.
+ace: Behold the King's soul, {card}!
+ace: {card}! Burn everything!
+direct: Nothing stands before the King! Attack!
+hurt: You dare harm the King?!
+win: The King reigns supreme!
+lose: Impossible! The King... defeated?!
+
+[Akiza Izinski]
+greet: Let's see if you can handle my thorns, {you}.
+greet: Careful. My roses bite.
+turn: My turn. Let the petals fall.
+turn: Feel the power of my cards.
+ace: Bloom, {card}!
+ace: {card}, scatter your petals!
+direct: Defenseless. Then feel this!
+hurt: That hurt... but I won't lose control.
+win: A beautiful finish.
+lose: You duel with real strength, {you}.
+
+[Leo]
+greet: Yeah! I'm gonna win this one, {you}!
+greet: Luna, watch me! This is gonna be awesome!
+turn: My turn! Time to power up!
+turn: Watch this, it's gonna be so cool!
+ace: Check it out, {card}! So cool!
+ace: Go, {card}! Show 'em what we got!
+direct: Nothing there! Direct attack, yeah!
+hurt: Hey! No fair!
+win: I won! Did you see that, Luna?!
+lose: Aww, man! Next time for sure!
+
+[Luna]
+greet: Let's have a nice duel, {you}.
+greet: My friends from the spirit world are with me.
+turn: My turn. Please lend me your strength.
+turn: I'll protect my cards, and they'll protect me.
+ace: Please come, {card}!
+ace: {card}, I need your help!
+direct: Sorry, but I have to attack now!
+hurt: Ow... I'm okay, I'm okay.
+win: Thank you for the duel, {you}.
+lose: You're very strong. Let's duel again!
+
+[Crow Hogan]
+greet: Alright, {you}, let's take to the skies!
+greet: Time to fly! Don't get left behind!
+turn: My turn! Here comes the flock!
+turn: Ready for some aerial maneuvers?
+ace: Spread your wings, {card}!
+ace: {card}! Dive in!
+direct: Clear skies! Swoop in!
+hurt: Argh! Now you've ruffled my feathers!
+win: That's how we do it in the Satellite!
+lose: You got me, {you}. Good flying.
+
+[Carly Carmine]
+greet: Oh! A scoop! Let's duel, {you}!
+greet: My fortune said I'd meet someone interesting today!
+turn: My turn! The cards say... something good, I think!
+turn: Okay, let me check my fortune... here goes!
+ace: Fortune smiles, it's {card}!
+ace: Here's {card}! Front page material!
+direct: Nothing there? Great, attack!
+hurt: Eek! My glasses!
+win: I won! This is going in the paper!
+lose: Oh well, it'll still make a great story!
+
+[Kalin Kessler]
+greet: Let's make this satisfying, {you}.
+greet: Show me a duel that'll satisfy me!
+turn: My turn. Now things get satisfying.
+turn: Infernity... that's where you're going.
+ace: Rise from the void, {card}!
+ace: {card}, satisfy me!
+direct: Wide open. Now that's satisfying.
+hurt: Heh... that actually felt good!
+win: Now THAT was satisfying!
+lose: Not satisfied... not yet. Again!

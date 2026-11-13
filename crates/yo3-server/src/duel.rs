@@ -6,9 +6,11 @@
 //! `translate.rs`); a duel between two players runs at a shared table (`table.rs`).
 use crate::lock::Locked;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use yo3_proto::{Message, Packet, Value};
 
+use crate::banter::{self, Banter, Said};
 use crate::engine::{Answer, Engine};
 use crate::front::{Deck, DuelEntry, Ended, Hub, Outbox, SINGLE_MODE, World};
 use crate::table::{MATCH_END, Table};
@@ -262,6 +264,9 @@ pub struct DuelSession {
     closed: bool,
     /// The duel check (`--duel-check`): the client's view of the NPC duel, compared with the engine after each step.
     check: Option<crate::duelcheck::ClientModel>,
+    /// The NPC's lines in the chat window (crate::banter), its npc_id and name, and when the next line may go.
+    banter: Option<(Banter, u32, String)>,
+    chat_free: Instant,
 }
 
 impl Drop for DuelSession {
@@ -291,6 +296,8 @@ impl DuelSession {
             peer: None,
             closed: false,
             check: None,
+            banter: None,
+            chat_free: Instant::now(),
         }
     }
 
@@ -540,6 +547,14 @@ impl DuelSession {
         translator.tokens(self.world.token_rows.clone());
         table.extend(translator.extra_decks([&entry.deck.extra, &npc.extra]));
         self.engine = Some((engine, translator));
+        let player = self.player_id.and_then(|id| self.hub.locked().front_of(id));
+        let you = player.map(|(name, _)| name).unwrap_or_default();
+        self.banter = entry.npc_id.and_then(|id| {
+            let name = self.world.npc_names.get(&id)?;
+            Some((Banter::new(name, npc_team as u64, &you, seed.rotate_left(17))?, id, name.clone()))
+        });
+        let greet = self.banter.as_mut().map(|(b, ..)| b.greet()).unwrap_or_default();
+        self.speak(greet);
         let mut out = vec![setup(first, &entry.deck, &npc)];
         out.extend(table);
         out.extend([
@@ -570,6 +585,8 @@ impl DuelSession {
         let style = self.entry.as_ref().and_then(|e| e.npc_id).and_then(|id| self.world.npc_styles.get(&id)).cloned().unwrap_or_default();
         let Some((engine, translator)) = self.engine.as_mut() else { return vec![] };
         let mut out = vec![];
+        let mut said: Vec<Said> = vec![];
+        if let Some((b, ..)) = self.banter.as_mut() { b.begin(); }
         let mut failed = false;
         let mut repeats = Repeats::default();
         // Each round answers one prompt; a duel needs far fewer between two of the client's choices.
@@ -587,6 +604,9 @@ impl DuelSession {
             }
             if let Some(model) = self.check.as_mut() { model.observe_engine(&a.messages); }
             out.extend(translator.events(&a.messages));
+            if let Some((b, ..)) = self.banter.as_mut() {
+                said.extend(b.observe(&a.messages, &mut banter::Live { engine: &mut *engine, world: &self.world }));
+            }
             let last = a.messages.last();
             let (true, Some(last)) = (a.status == "await", last) else { break };
             match translator.prompt(last) {
@@ -628,7 +648,30 @@ impl DuelSession {
         if let Some(result) = result {
             self.report(result);
         }
+        self.speak(said);
         out
+    }
+
+    /// Sends the NPC's lines to the player's chat window, each when the client should be showing its moment (and
+    /// some time after the one before).
+    fn speak(&mut self, said: Vec<Said>) {
+        let (Some(player_id), Some((_, npc_id, name)), false) = (self.player_id, self.banter.as_ref(), said.is_empty()) else { return };
+        let Some((_, outbox)) = self.hub.locked().front_of(player_id) else { return };
+        let now = Instant::now();
+        let mut lines = vec![];
+        for s in said {
+            let at = (now + Duration::from_secs_f64(s.after * banter::PACE)).max(self.chat_free);
+            self.chat_free = at + banter::GAP;
+            lines.push((at, banter::chat_line(*npc_id, name, &s.text)));
+        }
+        std::thread::spawn(move || {
+            for (at, line) in lines {
+                std::thread::sleep(at.saturating_duration_since(Instant::now()));
+                if outbox.send(line).is_err() {
+                    break;
+                }
+            }
+        });
     }
 
     /// Tells the hub the NPC duel ended with `result`, once.

@@ -7,10 +7,10 @@
 use serde_json::{Value as Json, json};
 
 /// The heroes: they draw the card they need (`heart_of_the_cards`).
-const HEROES: &[&str] = &["Yami Yugi", "Yugi Muto", "Jaden Yuki", "Yusei Fudo"];
+pub(crate) const HEROES: &[&str] = &["Yami Yugi", "Yugi Muto", "Jaden Yuki", "Yusei Fudo"];
 
 /// (name, aggression, caution, sees)
-const CHARACTERS: &[(&str, f64, f64, bool)] = &[
+pub(crate) const CHARACTERS: &[(&str, f64, f64, bool)] = &[
     ("Yami Yugi", 0.2, 0.3, false),
     ("Seto Kaiba", 0.9, 0.0, false),
     ("Joey Wheeler", 0.6, 0.0, false),
