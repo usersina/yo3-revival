@@ -337,6 +337,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
                 let pass = tokio::task::spawn_blocking(move || {
                     duel::tick_tables(&hub, std::time::Instant::now());
                     let mut hub = hub.locked();
+                    hub.tick_matches(std::time::Instant::now());
                     hub.tick_events(std::time::Instant::now());
                     hub.tick_rentals(chrono::Utc::now().timestamp());
                 });

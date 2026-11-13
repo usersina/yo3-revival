@@ -403,7 +403,13 @@ struct Match {
     times: Option<(u32, u32)>,
     /// Whether others may watch it (a hosted duel's Allow Watch Duel, watch 1).
     watchable: bool,
+    /// When it was made, for [`NO_JOIN`].
+    made: std::time::Instant,
 }
+
+/// How long a match may go without either player's duel connection before it ends with neither (both match pushes
+/// lost, or both clients gone). One player who came is handled at the table (`table::NO_SHOW`).
+pub const NO_JOIN: std::time::Duration = std::time::Duration::from_secs(180);
 
 /// How long the second player's match push waits after its 0x1799, so the agent has read that first (**guess**: it
 /// takes one message per step).
@@ -948,6 +954,17 @@ impl Hub {
     }
 
     /// Starts the rounds whose wait is over (called every second).
+    /// Ends the matches nobody joined within [`NO_JOIN`] (no table: neither duel connection came), with no winner.
+    pub fn tick_matches(&mut self, now: std::time::Instant) {
+        let stale: Vec<u32> = self.matches.iter()
+            .filter(|(d, m)| !self.tables.contains_key(d) && now.saturating_duration_since(m.made) >= NO_JOIN)
+            .map(|(d, _)| *d).collect();
+        for d in stale {
+            tracing::info!("duel {d}: neither player joined; the match ends");
+            self.end_match(d, None);
+        }
+    }
+
     pub fn tick_events(&mut self, now: std::time::Instant) {
         let due: Vec<usize> = (0..self.events.len()).filter(|&at| self.events[at].next_at.is_some_and(|t| t <= now)).collect();
         for at in due {
@@ -1812,7 +1829,7 @@ impl Hub {
             };
             self.push(*a, &push(&rb));
             self.push(*b, &push(&ra));
-            self.matches.insert(duel_id, Match { players: [*a, *b], rule: rule.clone(), times, watchable: event.int("duel_watch") != 0 });
+            self.matches.insert(duel_id, Match { players: [*a, *b], rule: rule.clone(), times, watchable: event.int("duel_watch") != 0, made: std::time::Instant::now() });
             round.push((duel_id, [*a, *b]));
         }
         self.events[at].round = round;
@@ -2134,7 +2151,7 @@ impl Hub {
             Message::reply(0x1978).item(vs.clone().with("name", Value::text("vsPlayerData"))).item(data.with("duel_id", Value::U32(duel_id)))
         };
         let pushes = [(other.player_id, push(&me.record)), (me.player_id, push(&other.record))];
-        self.matches.insert(duel_id, Match { players: [other.player_id, me.player_id], rule, times: None, watchable: true });
+        self.matches.insert(duel_id, Match { players: [other.player_id, me.player_id], rule, times: None, watchable: true, made: std::time::Instant::now() });
         Some((duel_id, pushes))
     }
 
@@ -3248,7 +3265,7 @@ impl FrontSession {
             let setting = |k| host.setting(k).and_then(Value::as_u32).unwrap_or(0);
             let times = Some((setting("time_turn"), setting("time_total")));
             let watchable = host.setting("watch").and_then(Value::as_u32).is_none_or(|w| w == 1);
-            hub.matches.insert(duel_id, Match { players: [player_id, challenger], rule, times, watchable });
+            hub.matches.insert(duel_id, Match { players: [player_id, challenger], rule, times, watchable, made: std::time::Instant::now() });
             let outboxes: Vec<(Outbox, Message)> = pushes
                 .into_iter()
                 .filter_map(|(to, m)| hub.online.values().find(|o| o.player_id == to).map(|o| (o.outbox.clone(), m)))

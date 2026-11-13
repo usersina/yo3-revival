@@ -340,3 +340,22 @@ fn the_lobby_waits_between_rounds() {
     assert_eq!(requests(&pushed)[..3], [0x3302, 0x1978, 0x32D3]);
     assert_eq!(int(&ask(&mut kaiba, 0x32C9, event_id, &[]), "status"), Some(6));
 }
+
+#[test]
+fn a_round_match_nobody_joins_ends_on_its_own() {
+    // A match push that reaches a client on another screen (a result screen) is lost (0x1978 is taken only by the
+    // matching agent or TournamentScene). A player who came waits at the table and is sent back (table::NO_SHOW); but
+    // when neither came, no table existed and the round never ended. A match nobody joined ends after NO_JOIN, both out.
+    let server = Server::new();
+    let (mut yugi, mut kaiba) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+    let event_id = create(&mut yugi, "Duelist Cup");
+    kaiba.send(req_with(0x3397, &[("event_id", Value::U32(event_id))]));
+    yugi.send(req_with(0x3395, &[("event_id", Value::U32(event_id))]));
+    let duel_id = server.hub.lock().unwrap().event_duels(event_id)[0];
+    let now = std::time::Instant::now();
+    server.hub.lock().unwrap().tick_matches(now + std::time::Duration::from_secs(30));
+    assert!(!server.hub.lock().unwrap().ended(duel_id), "players still have time to come");
+    server.hub.lock().unwrap().tick_matches(now + yo3_server::front::NO_JOIN + std::time::Duration::from_secs(1));
+    assert!(server.hub.lock().unwrap().ended(duel_id));
+    assert!(server.hub.lock().unwrap().event_duels(event_id).is_empty(), "the round goes on");
+}
