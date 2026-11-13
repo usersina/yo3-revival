@@ -82,7 +82,7 @@ pub(crate) const DECK: u32 = 0xD;
 /// per-zone count (0x5240F0, the setup's MainDeckNum and ExtraDeckNum at first) and shows it, with the count on its
 /// label. After that each pile counts itself (a card landing +1, 0x4FBF30; leaving -1, 0x5000E0), so without it the
 /// deck pile starts at 0 and never shows.
-const DECK_RESET: u32 = 0x16;
+pub(crate) const DECK_RESET: u32 = 0x16;
 const OPENING_HAND: usize = 5;
 /// Engine players: the client is player 0 (setup PlayerNum), the CPU player 1.
 pub(crate) const CLIENT: u32 = 0;

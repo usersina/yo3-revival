@@ -73,9 +73,10 @@ pub fn response(r: &Json) -> Vec<u8> {
             }
         }
         // SORT_CARD
+        // Byte i is card i's rank, no count before them (playerop.cpp SortCard reads returns from byte 0); 0xFF keeps
+        // the engine's order.
         15 => match list(field("order")).filter(|_| truthy(field("order"))) {
             Some(order) => {
-                out.push(order.len() as u8);
                 for i in order {
                     out.push(int(i) as u8);
                 }
@@ -122,6 +123,7 @@ mod tests {
         assert_eq!(response(&json!({"type": 7, "index": 2})), [1i32, 2].iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>());
         assert_eq!(response(&json!({"type": 10, "places": [{"player": 0, "location": 4, "sequence": 2}]})), [0, 4, 2]);
         assert_eq!(response(&json!({"type": 15, "order": null})), [0xFF]);
+        assert_eq!(response(&json!({"type": 15, "order": [2, 0, 1]})), [2, 0, 1]);
         assert_eq!(response(&json!({"type": 16, "races": [1, 4]})), 5u64.to_le_bytes());
         assert_eq!(response(&json!({"type": 13, "counters": [1, 0]})), [1, 0, 0, 0]);
         assert_eq!(response(&json!({"type": 3, "yes": true})), 1i32.to_le_bytes());

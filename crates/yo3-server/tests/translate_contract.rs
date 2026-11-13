@@ -25,10 +25,12 @@ fn cmd(m: &Message) -> (u32, [u32; 4]) {
 #[test]
 fn both_decks_go_into_the_card_table() {
     let (_, table) = translator();
-    assert_eq!(table.len(), 20);
+    // First every zone usable (1006 0x3FF03FF, as Konami's openings), then a table entry per deck card.
+    assert_eq!(table.len(), 21);
+    assert_eq!(cmd(&table[0]), (1006, [0x3FF_03FF, 0, 0, 0]));
     // param3 is the card's Konami id (4000 + row here), as in all 53,586 entries of Konami's 227 original duel logs.
-    assert_eq!(cmd(&table[0]), (1000, [1, 100, 4100, 0xD << 8]));
-    assert_eq!(cmd(&table[10]), (1000, [11, 200, 4200, 1 | 0xD << 8]));
+    assert_eq!(cmd(&table[1]), (1000, [1, 100, 4100, 0xD << 8]));
+    assert_eq!(cmd(&table[11]), (1000, [11, 200, 4200, 1 | 0xD << 8]));
 }
 
 #[test]
@@ -548,8 +550,10 @@ fn selection_hints_read_as_the_clients_own_prompts() {
     // same: 502 destroy (Mystical Space Typhoon) → 281 "Select card to destroy.", 514 face-up (Spellbinding Circle's
     // target) → 94 "Select the card(s) to target.", 518 equip (an Equip Spell's monster) → 101 "Select a monster to
     // equip.", and the others listed in hint_text. Live, these lists opened with no message.
-    let pairs = [(501, 347), (502, 281), (505, 348), (507, 78), (508, 39), (510, 46), (514, 94), (518, 101), (520, 119),
-        (526, 341), (528, 357)];
+    // 512 HINTMSG_SMATERIAL (a Synchro Summon's materials, picked one at a time) has no text of its own: the materials
+    // go to the Graveyard, 58 "Select the card to send to the Graveyard.". 515 face-down → 273, 550 an effect → 276.
+    let pairs = [(501, 347), (502, 281), (505, 348), (507, 78), (508, 39), (510, 46), (512, 58), (514, 94), (515, 273),
+        (518, 101), (520, 119), (526, 341), (528, 357), (550, 276)];
     let mut t = with_cards();
     for (hint, text) in pairs {
         t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": hint })]);
@@ -639,15 +643,15 @@ fn materials_are_picked_one_at_a_time_in_the_card_list() {
     // Fusion material choice, asked again after each pick: the card list of `select_cards` with one pick (kind 0x27),
     // or kind 1 (OK with no pick) when the engine lets the player finish or cancel. A pick answers its index; no pick
     // finishes (index null). HINTMSG_FMATERIAL (511) → "Select monsters to use as Fusion Material." (92); the client
-    // has no Synchro material text (**guess**: the list without a message).
+    // has no Synchro material text, so HINTMSG_SMATERIAL (512) reads where the materials go: 58 "Select the card to send
+    // to the Graveyard."
     let mut t = with_cards();
     t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 512 })]);
     let first = json!({ "type": 26, "player": 0, "can_finish": false, "can_cancel": false, "min": 1, "max": 2,
         "select_cards": [card_at(0, 4, 0, 4100), card_at(0, 4, 1, 4101)], "unselect_cards": [] });
     let out = client_commands(t.prompt(&first));
     assert_eq!(out[0], (0x3EF, [2, 1, 0, 0]));
-    assert!(!out.iter().any(|(id, _)| *id == 0x3ED));
-    assert_eq!(out.last(), Some(&(0x37, [0, 0x27, 0, 0])));
+    assert_eq!(out[out.len() - 2..], [(0x3ED, [1 << 28 | 58, 0, 0, 0]), (0x37, [0, 0x27, 1, 0])]);
     t.pick(1);
     assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 7, "index": 1 }))));
     t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 511 })]);
@@ -883,8 +887,10 @@ fn against_a_player_the_opponents_hidden_cards_carry_no_row() {
     let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
     let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
     let (mut t, table) = Translator::against_player(0, [&client, &cpu], cids);
-    assert_eq!(cmd(&table[10]), (1000, [11, 0, 0, 1 | 0xD << 8]));
-    assert_eq!(cmd(&table[0]), (1000, [1, 100, 4100, 0xD << 8]));
+    // After the usable zones (1006), the table entries.
+    assert_eq!(cmd(&table[0]).0, 1006);
+    assert_eq!(cmd(&table[11]), (1000, [11, 0, 0, 1 | 0xD << 8]));
+    assert_eq!(cmd(&table[1]), (1000, [1, 100, 4100, 0xD << 8]));
     let drawn: Vec<_> = t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4200 }, { "cid": 4201 }] })]).iter().map(cmd).collect();
     assert!(drawn.iter().all(|(id, p)| *id != 1000 || p[1] == 0), "{drawn:?}");
     assert!(drawn.iter().all(|(id, p)| *id != 0x1A || p[0] >> 16 == 0), "{drawn:?}");
@@ -1304,6 +1310,31 @@ fn a_monsters_changed_stats_go_to_the_client_as_its_record() {
     let same = json!({ "controller": 1, "sequence": 1, "position": 1, "level": 4, "attack": 2010, "defense": 1000,
         "base_attack": 2010, "base_defense": 1000 });
     assert_eq!(records(&t.events(&[field(vec![same])])), []);
+}
+
+#[test]
+fn a_monsters_changed_type_or_attribute_goes_to_the_client_as_its_record() {
+    // The monster info panel reads race and attribute from the place's record (0x453740 → 0x523F00: 0x3E9's v2 race,
+    // v3 attribute), not from CARD_Prop, so a Type or Attribute an effect changed (DNA Surgery, Scroll of Bewitchment,
+    // Zombie World) shows once the record is sent again. The report gives EDOPro's bits; the client's numbers are
+    // their place in its type and attribute lists, plus one (CARD_Prop: Dark Magician DARK 2 / Spellcaster 18).
+    let mut t = with_cards();
+    let field = |monsters: Vec<serde_json::Value>| json!({ "type": "field", "monsters": monsters });
+    let changed = |race: u64, attribute: u64| {
+        let mut m = monster(1, 1, 1, 4, 2000);
+        m["race"] = json!(race);
+        m["attribute"] = json!(attribute);
+        m
+    };
+    // Row 200 (race 12, attribute 2) reported as it is, Dinosaur 0x8000 and DARK 0x20: nothing to send.
+    assert_eq!(records(&t.events(&[field(vec![changed(0x8000, 0x20)])])), []);
+    // Zombie World: a Zombie (0x10, the client's 2), DARK as before.
+    assert_eq!(
+        records(&t.events(&[field(vec![changed(0x10, 0x20)])])),
+        [(0x3E9, [0, 4200, 2, 2]), (0x3EA, [0, 4, 2000, 1000]), (0x3EB, [1 | 1 << 8, 2000, 1000, 4200])]
+    );
+    // Scroll of Bewitchment: LIGHT (0x10, the client's 1).
+    assert_eq!(records(&t.events(&[field(vec![changed(0x10, 0x10)])]))[0], (0x3E9, [0, 4200, 2, 1]));
 }
 
 /// MSG_ADD_COUNTER (101) / MSG_REMOVE_COUNTER (102) {counter_type, controller, location, sequence, count}.
@@ -1887,4 +1918,161 @@ fn a_sum_nothing_can_make_gets_no_window() {
     let card = json!({ "code": 4100, "cid": 4100, "controller": 0, "location": 2, "sequence": 0, "position": 10, "amount": 1 });
     let sum = json!({ "type": 23, "player": 0, "amount": 100, "select_max": 1, "min": 1, "max": 1, "selects_must": [], "selects": [card] });
     assert!(matches!(t.prompt(&sum), Prompt::Answer(_)));
+}
+
+#[test]
+fn cards_put_back_in_an_order_are_ordered_in_the_card_list() {
+    // MSG_SORT_CARD (25) {player, cards}: the player orders cards (Big Eye: the Deck's top five). The card list orders
+    // picks itself: dlg_cardlist.swf's onCardClick pushes each clicked card's position (a badge 1..N, a second click
+    // takes it back) and decides at selMax picks; kind 6 needs all of max (0x4C72D0). The prompt is duel prompt text
+    // 245 "Select the cards you wish to return to the Deck in order of your choice." with "Select %d card(s).".
+    let mut t = with_cards();
+    let sort = json!({ "type": 25, "player": 0,
+        "cards": [card_at(0, 1, 9, 4105), card_at(0, 1, 8, 4106), card_at(0, 1, 7, 4107)] });
+    assert_eq!(
+        client_commands(t.prompt(&sort)),
+        [
+            (0x3EF, [3, 3, 0, 0]),
+            (0x3F2, [105, 106, 107, 0]),
+            (0x3F3, [0, 0, 0, 0]),
+            (0x3EC, [4, 0, 0, 0]),
+            (0x3ED, [1 << 28 | 245, 2 << 28, 1 << 28 | 592, 8 << 28 | 3]),
+            (0x37, [0, 6, 1, 0]),
+        ]
+    );
+    // Clicked third, first, second: the engine's answer gives each card its rank (byte i = card i's place, 0 first;
+    // playerop.cpp SortCard, processor.cpp's sort_decktop `tc[returns[i]] = card i`).
+    t.pick(2);
+    t.pick(0);
+    t.pick(1);
+    assert_eq!(t.dialog_result(3), Some(Prompt::Answer(json!({ "type": 15, "order": [1, 2, 0] }))));
+}
+
+#[test]
+fn chain_links_triggered_together_are_ordered_by_the_player() {
+    // MSG_SORT_CHAIN (21): the same ordered list, the first pick becoming chain link 1 (the core sorts the chain by the
+    // ranks, processor.cpp). An incomplete or repeated order keeps the engine's own.
+    let mut t = with_cards();
+    let sort = json!({ "type": 21, "player": 0, "cards": [card_at(0, 4, 0, 4105), card_at(0, 4, 1, 4106)] });
+    let out = client_commands(t.prompt(&sort));
+    assert_eq!(out.last(), Some(&(0x37, [0, 6, 1, 0])));
+    t.pick(1);
+    t.pick(1);
+    assert_eq!(t.dialog_result(2), Some(Prompt::Answer(json!({ "type": 15, "order": null }))));
+    // A single card needs no order.
+    let one = json!({ "type": 21, "player": 0, "cards": [card_at(0, 4, 0, 4105)] });
+    assert_eq!(t.prompt(&one), Prompt::Answer(json!({ "type": 15, "order": null })));
+}
+
+#[test]
+fn disabled_zones_show_as_unusable() {
+    // MSG_FIELD_DISABLED (56) {field_mask}: per player (× 16) monster zones bits 0-4 and Spell/Trap zones 8-12, set when
+    // disabled (processor.cpp refresh_location_info_instant). The client's 1006 {mask} (pump 0x522A50 → engine +0x124)
+    // has its own side in the low half and the opponent's in the high half, bits 0-4 the monster zones and 5-9 the
+    // Spell/Trap zones, set when usable; DuelFieldManager reads it on the next 0x26 (0x50AA90) and DuelInvalidZone draws
+    // a newly unusable zone (effect 0x2D) and a restored one (0x2E). Konami's logs: 0x3FF03FF at the opening, a Trap
+    // Monster's Spell/Trap zone cleared while it stands as a monster.
+    let mut t = with_cards();
+    // Ground Collapse on the CPU's monster zones 1 and 2 and the client's Spell/Trap zone 4 (EDOPro sequences).
+    let out: Vec<_> = t.events(&[json!({ "type": 56, "field_mask": (1u32 << 17 | 1 << 18) | 1 << 12 })]).iter().map(cmd).collect();
+    assert_eq!(out, [(1006, [0x3FF & !(1 << 9) | (0x3FF & !0b110) << 16, 0, 0, 0]), (0x26, [0, 0, 0, 0])]);
+    // All usable again.
+    let out: Vec<_> = t.events(&[json!({ "type": 56, "field_mask": 0 })]).iter().map(cmd).collect();
+    assert_eq!(out[0], (1006, [0x3FF03FF, 0, 0, 0]));
+}
+
+#[test]
+fn a_set_card_shown_to_the_player_flips_up_and_back() {
+    // MSG_CONFIRM_CARDS (31) {player: who is shown, cards} with a face-down field card the client can't see (Stern
+    // Mystic's flip effect, Mind Crush-like looks): Konami's server sent the table entry with the row, CardCheat 0x1D
+    // {place word | 0x4000, Konami id, uid} (the card object reloads its face, 0x4FF000), CardFlipTurn 0x1C face up,
+    // then the entry back, CardCheat and the flip face down. Between them CardLockon 0x19 {player, zone, 2} pops the
+    // card up. The owner's own view and a face-up card need nothing.
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
+    t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4201 }] })]);
+    // The opponent Sets row 201 in monster zone 2 (face-down defense) and a Spell/Trap in its zone 3.
+    t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4202 }] })]);
+    t.events(&[json!({ "type": 50, "cid": 4201, "from": loc(1, 2, 0, 10), "to": loc(1, 4, 2, 8) })]);
+    t.events(&[json!({ "type": 50, "cid": 4202, "from": loc(1, 2, 0, 10), "to": loc(1, 8, 3, 10) })]);
+    let shown = |cards: Vec<serde_json::Value>| json!({ "type": 31, "player": 0, "cards": cards });
+    let out: Vec<_> = t.events(&[shown(vec![card_at(1, 4, 2, 4201)])]).iter().map(cmd).collect();
+    // Face-down defense in zone 2: move place word 1 | 2 << 1 | 0x8000; face up adds 0x4000.
+    let (down, up) = (1 | 2 << 1 | 0x8000, 1 | 2 << 1 | 0xC000);
+    assert_eq!(
+        out,
+        [
+            (1000, [12, 201, 4201, 1 | 2 << 8]),
+            (0x1D, [up, 4201, 12, 0]),
+            (0x1C, [up, 0, 0, 0]),
+            (0x19, [1, 2, 2, 0]),
+            (1000, [12, 0, 0, 1 | 2 << 8]),
+            (0x1D, [down, 0, 12, 0]),
+            (0x1C, [down, 0, 0, 0]),
+        ]
+    );
+    // The Set Spell/Trap (zone 3 + 5): face down, no defense bit.
+    let out: Vec<_> = t.events(&[shown(vec![card_at(1, 8, 3, 4202)])]).iter().map(cmd).collect();
+    assert_eq!(out[2], (0x1C, [1 | 8 << 1 | 0x4000, 0, 0, 0]));
+    // Shown to the opponent (player 1), or the client's own card: nothing.
+    assert!(t.events(&[json!({ "type": 31, "player": 1, "cards": [card_at(1, 4, 2, 4201)] })]).is_empty());
+}
+
+#[test]
+fn the_decks_revealed_top_cards_turn_over_on_the_pile() {
+    // MSG_CONFIRM_DECKTOP (30) {player, cards} (Reversal Quiz, A Cat of Ill Omen): both players see the cards. Konami's
+    // server (659 times in its logs) pointed the Deck's index 0 at the card (1000 {uid, row, id, player | 0xD << 8}),
+    // DeckReset 0x16 once, CardCheat 0x1D {0x4000 | 0xD << 1 | player, id, uid}, DeckFlipTop 0x17 {player, 0xD} (the
+    // pile's top turns over from the table's index 0, 0x4FF000 case 0x17) and the popup CardLockon 0x19 {player, 0xD,
+    // 2}; then the top turns back and index 0 gets its entry again. The client's deck pile is otherwise never
+    // renumbered, so the entry put back is the last one sent for that place.
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
+    // The opponent's Deck (uids 11-20, hidden): its top two revealed, rows 207 and 203.
+    let reveal = json!({ "type": 30, "player": 1, "cards": [card_at(1, 1, 9, 4207), card_at(1, 1, 8, 4203)] });
+    let out: Vec<_> = t.events(&[reveal]).iter().map(cmd).collect();
+    let deck0 = 1 | 0xD << 8;
+    let up = 0x4000 | 0xD << 1 | 1;
+    assert_eq!(
+        out[..9],
+        [
+            (1000, [18, 207, 4207, deck0]),
+            (0x16, [1, 0xD, 0, 0]),
+            (0x1D, [up, 4207, 18, 0]),
+            (0x17, [1, 0xD, 0, 0]),
+            (0x19, [1, 0xD, 2, 0]),
+            (0x17, [1, 0xD, 0, 0]),
+            // Index 0's entry from the opening, hidden: uid 11, no row.
+            (1000, [11, 0, 0, deck0]),
+            (0x16, [1, 0xD, 0, 0]),
+            (1000, [14, 203, 4203, deck0]),
+        ]
+    );
+    assert_eq!(out.len(), 15, "{out:?}");
+}
+
+#[test]
+fn a_face_up_deck_shows_its_top_card() {
+    // Convulsion of Nature (EFFECT_REVERSE_DECK): MSG_REVERSE_DECK (37) turns both Decks over and MSG_DECK_TOP (38)
+    // {player, count 0, cid, position face-up} names each top card, again after every change while they are turned
+    // (processor.cpp, operations.cpp). The client's pile shows its top card's face when the table entry at index 0 has
+    // the public flag (uid top byte; 0x4FE4D0 on DeckReset 0x16), as for a Graveyard. Turned back, the entry loses the
+    // flag (and its row, for a hidden Deck).
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
+    let top = |p: u32, cid: u32| json!({ "type": 38, "player": p, "count": 0, "cid": cid, "position": 4 });
+    let out: Vec<_> = t.events(&[json!({ "type": 37 }), top(0, 4105), top(1, 4206)]).iter().map(cmd).collect();
+    assert_eq!(
+        out,
+        [(1000, [6 | 1 << 24, 105, 4105, 0xD << 8]), (0x16, [0, 0xD, 0, 0]), (1000, [17 | 1 << 24, 206, 4206, 1 | 0xD << 8]), (0x16, [1, 0xD, 0, 0])]
+    );
+    // Turned back: both tops hidden again (the opponent's without a row).
+    let out: Vec<_> = t.events(&[json!({ "type": 37 })]).iter().map(cmd).collect();
+    assert_eq!(out, [(1000, [6, 105, 4105, 0xD << 8]), (0x16, [0, 0xD, 0, 0]), (1000, [17, 0, 0, 1 | 0xD << 8]), (0x16, [1, 0xD, 0, 0])]);
 }

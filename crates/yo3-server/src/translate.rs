@@ -13,7 +13,7 @@ use yo3_proto::{Message, Value};
 
 use crate::card_options::CARD_OPTION_LABELS;
 use crate::duel::{
-    CARD, CHANGE_LP, CLIENT, CPU, CardCommand, DECK, HAND, INPUT, MOVE, PHASE, SET_LP, TURN, command, command_data,
+    CARD, CHANGE_LP, CLIENT, CPU, CardCommand, DECK, DECK_RESET, HAND, INPUT, MOVE, PHASE, SET_LP, TURN, command, command_data,
     move_place, table_place,
 };
 
@@ -34,6 +34,7 @@ const MSG_SORT_CHAIN: u64 = 21;
 const MSG_SELECT_COUNTER: u64 = 22;
 const MSG_SELECT_SUM: u64 = 23;
 const MSG_SELECT_DISFIELD: u64 = 24;
+const MSG_FIELD_DISABLED: u64 = 56;
 const MSG_SORT_CARD: u64 = 25;
 const MSG_SELECT_UNSELECT_CARD: u64 = 26;
 const MSG_ROCK_PAPER_SCISSORS: u64 = 132;
@@ -48,6 +49,9 @@ const MSG_DRAW: u64 = 90;
 const MSG_DAMAGE: u64 = 91;
 const MSG_RECOVER: u64 = 92;
 const MSG_LPUPDATE: u64 = 94;
+const MSG_CONFIRM_DECKTOP: u64 = 30;
+const MSG_REVERSE_DECK: u64 = 37;
+const MSG_DECK_TOP: u64 = 38;
 const MSG_CONFIRM_CARDS: u64 = 31;
 const MSG_SHUFFLE_HAND: u64 = 33;
 const MSG_EQUIP: u64 = 93;
@@ -127,6 +131,15 @@ const REMOVED: u32 = 0xF;
 /// A card destroyed {player, zone | index << 8}, zone at most the hand (CardVanish): its label goes, the shatter
 /// (effect 0x33) plays at it and it is hidden (state 0x4FC520), before its move.
 const FLIP_TURN: u32 = 0x1C;
+/// CardCheat {place word with face bits, Konami id, uid}: the card object (made when the uid has none) reloads its face
+/// from its table row and its stats from the place's record (DuelCardManager 0x4FF000; Konami's logs, 46 a duel).
+const CARD_CHEAT: u32 = 0x1D;
+/// CardLockon {player, zone | index << 8, 2}: the card at that place pops up, face or not (0x4FF000 case 0x19).
+const CARD_LOCKON: u32 = 0x19;
+const POPUP: u32 = 2;
+/// DeckFlipTop {player, pile 0xD or 0xC}: the pile's top card (the table's index 0 of the Deck, the last of the Extra
+/// Deck) turns over, face up from its row, or back (0x4FF000 case 0x17; Konami's logs: 611 Deck, 48 Extra Deck).
+const DECK_FLIP_TOP: u32 = 0x17;
 const CARD_VANISH: u32 = 0x1F;
 /// HandShow {player, index}: a hand card shows its face (DuelCardManager 0x4FF15C).
 const HAND_SHOW: u32 = 0x13;
@@ -140,6 +153,9 @@ const HAND_SHUFFLE: u32 = 0x12;
 /// 0x50A690). See "Card relations" in docs/protocol.md.
 const RELATION: u32 = 0x3F9;
 const RELATIONS_REDRAW: u32 = 0x26;
+/// The zones each side can use (pump 1006 → engine +0x124: own side low, bits 0-4 monster zones, 5-9 Spell/Trap).
+const ZONES_USABLE: u32 = 1006;
+const ALL_ZONES_USABLE: u32 = 0x3FF_03FF;
 /// The marker types used: an equip, the yellow ∞ (effect 0x35); a lasting target, the pink reticle (0x3B). A guess:
 /// the client names none of its eight markers.
 const MARK_EQUIP: u32 = 2;
@@ -280,6 +296,8 @@ const NUMBER: u32 = 8 << 28;
 const SELECT_COUNT_TEXT: u32 = 592;
 /// "@3Tribute@0 the necessary @3monsters@0 to match the required number of Level." (the duel prompt table's 207).
 const SUM_TEXT: u32 = 207;
+/// Duel prompt text 245: "Select the cards you wish to return to the Deck in order of your choice."
+const SORT_TEXT: u32 = 245;
 /// Duel prompt texts: "Select the @3monster(s)@0 as @3Tribute@0.", 'Activate the effect of "@3%s@0"?', 'Use the
 /// effect of "@3%s@0"?', "Use the effect now?".
 const TRIBUTE_TEXT: u32 = 18;
@@ -462,6 +480,13 @@ pub struct Translator {
     hidden: [bool; 2],
     /// The values each monster zone's record last went with (level, ATK, DEF, base ATK, base DEF), by player and zone.
     records: HashMap<(u32, u32), [u32; 5]>,
+    /// A monster zone's Type and Attribute (the client's numbers) where an effect changed them from CARD_Prop's.
+    kinds: HashMap<(u32, u32), (u32, u32)>,
+    /// The last table entry sent for each player's Deck index 0, which the deck pile shows (0x4FE4D0): a revealed top
+    /// card takes that place for a moment and the entry goes back.
+    deck_tops: [Option<[u32; 4]>; 2],
+    /// Both Decks turned over (Convulsion of Nature): each pile shows its top card's face.
+    decks_reversed: bool,
     /// Each monster zone's position as last shown (face up, defense), by player and zone.
     positions: HashMap<(u32, u32), (bool, bool)>,
     /// A direct attack waiting for the client's Yes: its engine response.
@@ -542,7 +567,9 @@ impl Translator {
 
     fn build(first: u32, decks: [&[u16]; 2], cards: HashMap<u16, CardStats>, hidden: [bool; 2]) -> (Translator, Vec<Message>) {
         let mut sides = [Side::default(), Side::default()];
-        let mut out = vec![];
+        // Every zone usable, as Konami's openings say (1006 0x3FF03FF): the client's starting mask isn't known, and a
+        // later disabled zone is drawn against it.
+        let mut out = vec![command(ZONES_USABLE, [ALL_ZONES_USABLE, 0, 0, 0])];
         let mut uid = 0;
         for (p, deck) in decks.iter().enumerate() {
             for (i, &row) in deck.iter().enumerate() {
@@ -568,6 +595,9 @@ impl Translator {
             result: None,
             hidden,
             records: HashMap::new(),
+            kinds: HashMap::new(),
+            deck_tops: [None; 2],
+            decks_reversed: false,
             positions: HashMap::new(),
             direct: None,
             viewing: false,
@@ -588,6 +618,8 @@ impl Translator {
             relations: vec![],
         };
         with_card_ids(&t.cards, &mut out);
+        let mut t = t;
+        t.note_deck_tops(&out);
         (t, out)
     }
 
@@ -662,6 +694,7 @@ impl Translator {
                     }
                 }
                 Some(MSG_MOVE) => out.extend(self.move_card(m)),
+                Some(MSG_FIELD_DISABLED) => out.extend(self.disabled_zones(m)),
                 Some(MSG_HINT) if m["hint_type"].as_u64() == Some(HINT_SELECTMSG) && self.player(&m["player"]) == CLIENT => {
                     self.hint = m["hint"].as_u64().unwrap_or(0);
                 }
@@ -701,6 +734,14 @@ impl Translator {
                     }
                 }
                 Some(MSG_CONFIRM_CARDS) => out.extend(self.confirm(m)),
+                Some(MSG_CONFIRM_DECKTOP) => out.extend(self.reveal_deck_top(m)),
+                Some(MSG_REVERSE_DECK) => {
+                    self.decks_reversed = !self.decks_reversed;
+                    if !self.decks_reversed {
+                        out.extend((0..2).flat_map(|p| self.face_down_deck_top(p)).collect::<Vec<_>>());
+                    }
+                }
+                Some(MSG_DECK_TOP) => out.extend(self.face_up_deck_top(m)),
                 Some(MSG_SHUFFLE_HAND) => out.extend(self.shuffle_hand(m)),
                 Some(MSG_SWAP) => out.extend(self.swap(m)),
                 Some(MSG_SHUFFLE_SET_CARD) => out.extend(self.shuffle_set(m)),
@@ -745,6 +786,7 @@ impl Translator {
         }
         out.extend(self.sync_relations());
         with_card_ids(&self.cards, &mut out);
+        self.note_deck_tops(&out);
         out
     }
 
@@ -803,6 +845,20 @@ impl Translator {
     }
 
     /// A deck card with that id moves to the end of the hand.
+    /// MSG_FIELD_DISABLED {field_mask}: per player (× 16) monster zones bits 0-4, Spell/Trap zones 8-12, set when
+    /// disabled. The client's 1006 {mask}: its own side low, the opponent's high, monster zones bits 0-4 and Spell/Trap
+    /// zones 5-9, set when usable; DuelFieldManager applies it on the next 0x26 (0x50AA90), DuelInvalidZone drawing a
+    /// zone that became unusable (effect 0x2D) or usable again (0x2E).
+    fn disabled_zones(&mut self, m: &Json) -> Vec<Message> {
+        let mask = m["field_mask"].as_u64().unwrap_or(0) as u32;
+        let usable = |p: u32| {
+            let dis = mask >> (16 * p);
+            (0..5).filter(|z| dis & 1 << z == 0).fold(0, |a, z| a | 1 << z) | (0..5).filter(|z| dis & 1 << (8 + z) == 0).fold(0, |a, z| a | 1 << (5 + z))
+        };
+        let own = (0..2).find(|&p| self.player(&json!(p)) == CLIENT).unwrap_or(0);
+        vec![command(ZONES_USABLE, [usable(own) | usable(1 - own) << 16, 0, 0, 0]), command(RELATIONS_REDRAW, [0; 4])]
+    }
+
     fn draw(&mut self, p: u32, cid: u16) -> Vec<Message> {
         let hand = self.sides[p as usize].zone(HAND).len();
         let from = Place { player: p, zone: DECK, index: 0, face_up: false, defense: false };
@@ -1076,11 +1132,122 @@ impl Translator {
             let cid = card["cid"].as_u64().unwrap_or(0) as u16;
             match card["location"].as_u64() {
                 Some(LOC_HAND) => out.extend(self.show_hand(owner, card["sequence"].as_u64().unwrap_or(0) as usize)),
+                Some(LOC_MZONE | LOC_SZONE) => {
+                    if viewer == CLIENT && owner != CLIENT {
+                        out.extend(self.reveal_field(card));
+                    }
+                }
                 _ if !self.revealing.contains(&cid) => self.revealing.push(cid),
                 _ => {}
             }
         }
         out
+    }
+
+    /// A face-down field card the client can't see, shown to it and hidden again, as Konami's server did (Stern Mystic in
+    /// its logs): the table entry with the row, CardCheat (0x1D: the card object reloads its face from the row,
+    /// 0x4FF000), the flip face up (0x1C), the card's popup (CardLockon 0x19 {player, zone, 2}), then the entry without a
+    /// row, CardCheat and the flip back.
+    fn reveal_field(&mut self, loc: &Json) -> Vec<Message> {
+        let Some(place) = self.engine_place(loc).filter(|p| p.zone <= FIELD_SPELL) else { return vec![] };
+        let Some(&(face_up, defense)) = self.positions.get(&(place.player, place.zone)) else { return vec![] };
+        let Some(card) = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied() else { return vec![] };
+        if face_up || !self.hidden[place.player as usize] {
+            return vec![];
+        }
+        let cid = self.cards.get(&card.row).map_or(0, |s| s.cid as u32);
+        let down = Place { face_up: false, defense: place.zone < 5 && defense, ..place };
+        let up = Place { face_up: true, ..down };
+        let key = table_place(place.player, place.zone, 0);
+        vec![
+            command(CARD, [card.uid, card.row as u32, 0, key]),
+            command(CARD_CHEAT, [up.packed(), cid, card.uid, 0]),
+            command(FLIP_TURN, [up.packed(), 0, 0, 0]),
+            command(CARD_LOCKON, [place.player, place.zone, POPUP, 0]),
+            command(CARD, [card.uid, 0, 0, key]),
+            command(CARD_CHEAT, [down.packed(), 0, card.uid, 0]),
+            command(FLIP_TURN, [down.packed(), 0, 0, 0]),
+        ]
+    }
+
+    /// Remembers the table entries sent for each Deck's index 0 (see `deck_tops`).
+    fn note_deck_tops(&mut self, out: &[Message]) {
+        for m in out {
+            let int = |k: &str| m.get(k).and_then(Value::as_u32).unwrap_or(0);
+            if int("id") != CARD {
+                continue;
+            }
+            for p in 0..2 {
+                if int("param4") == table_place(p, DECK, 0) {
+                    self.deck_tops[p as usize] = Some([int("param1"), int("param2"), int("param3"), int("param4")]);
+                }
+            }
+        }
+    }
+
+    /// MSG_CONFIRM_DECKTOP {player, cards}: the Deck's top cards shown to both players, one at a time as Konami's server
+    /// showed them: the card's table entry at the Deck's index 0, DeckReset (once), CardCheat, DeckFlipTop (the pile's
+    /// top turns over from index 0's row) and the card's popup (CardLockon); then the top turns back and index 0 gets
+    /// its last entry again, and DeckReset redraws the pile.
+    fn reveal_deck_top(&mut self, m: &Json) -> Vec<Message> {
+        let p = self.player(&m["player"]);
+        let key = table_place(p, DECK, 0);
+        let deck = self.sides[p as usize].zones.get(&DECK).cloned().unwrap_or_default();
+        let mut used: Vec<u32> = vec![];
+        let mut out = vec![];
+        for c in m["cards"].as_array().into_iter().flatten() {
+            let cid = c["cid"].as_u64().unwrap_or(0) as u16;
+            let has_cid = |d: &&Card| !used.contains(&d.uid) && self.cards.get(&d.row).map(|s| s.cid) == Some(cid);
+            let Some(card) = deck.iter().find(has_cid).copied() else { continue };
+            used.push(card.uid);
+            let hidden = self.shown_row(&Place { player: p, zone: DECK, index: 0, face_up: false, defense: false }, card.row);
+            // Index 0's last entry back while its card is still in the Deck; one that has left (drawn, sent) would pull
+            // its table entry off its new place, so the revealed card stays there instead, hidden.
+            let in_deck = |uid: u32| deck.iter().any(|d| d.uid == uid & !OPEN);
+            let back = self.deck_tops[p as usize].filter(|e| in_deck(e[0]) && e[0] & OPEN == 0).unwrap_or([card.uid, hidden, 0, key]);
+            out.push(command(CARD, [card.uid, card.row as u32, 0, key]));
+            if used.len() == 1 {
+                out.push(command(DECK_RESET, [p, DECK, 0, 0]));
+            }
+            out.extend([
+                command(CARD_CHEAT, [0x4000 | move_place(p, DECK, 0), cid as u32, card.uid, 0]),
+                command(DECK_FLIP_TOP, [p, DECK, 0, 0]),
+                command(CARD_LOCKON, [p, DECK, POPUP, 0]),
+                command(DECK_FLIP_TOP, [p, DECK, 0, 0]),
+                command(CARD, back),
+                command(DECK_RESET, [p, DECK, 0, 0]),
+            ]);
+        }
+        out
+    }
+
+    /// MSG_DECK_TOP {player, count, cid, position}: a face-up card on top of a Deck (Convulsion of Nature turned the
+    /// Decks over): the table entry at the Deck's index 0 with its row and the public flag, then DeckReset, so the pile
+    /// shows its face (0x4FE4D0), as a Graveyard shows its top card.
+    fn face_up_deck_top(&mut self, m: &Json) -> Vec<Message> {
+        let p = self.player(&m["player"]);
+        let cid = m["cid"].as_u64().unwrap_or(0) as u16;
+        let face_up = m["position"].as_u64().unwrap_or(0) & (POS_FACEUP_ATTACK | POS_FACEUP_DEFENSE) != 0;
+        if m["count"].as_u64().unwrap_or(0) != 0 || !face_up {
+            return vec![];
+        }
+        let deck = self.sides[p as usize].zones.get(&DECK);
+        let Some(card) = deck.and_then(|d| d.iter().find(|c| self.cards.get(&c.row).map(|s| s.cid) == Some(cid))).copied() else {
+            return vec![];
+        };
+        vec![command(CARD, [card.uid | OPEN, card.row as u32, 0, table_place(p, DECK, 0)]), command(DECK_RESET, [p, DECK, 0, 0])]
+    }
+
+    /// The Decks turned back: the card last shown on top of player `p`'s Deck loses its face (and, hidden, its row).
+    fn face_down_deck_top(&mut self, p: u32) -> Vec<Message> {
+        let Some([uid, row, _, place]) = self.deck_tops[p as usize].filter(|e| e[0] & OPEN != 0) else { return vec![] };
+        let uid = uid & !OPEN;
+        // Only while that card is still in the Deck (a drawn one has its own entry by now).
+        if !self.sides[p as usize].zones.get(&DECK).is_some_and(|d| d.iter().any(|c| c.uid == uid)) {
+            return vec![];
+        }
+        let shown = self.shown_row(&Place { player: p, zone: DECK, index: 0, face_up: false, defense: false }, row as u16);
+        vec![command(CARD, [uid, shown, 0, place]), command(DECK_RESET, [p, DECK, 0, 0])]
     }
 
     /// A hand card shows its face: its table entry with the row (the opponent's hand has none), then HandShow.
@@ -1211,7 +1378,8 @@ impl Translator {
         }
         dest.insert(index, card);
         let to = Place { index, ..to };
-        if to.zone < 5 {
+        // Monsters' face and position, and Spell/Traps' face (a revealed Set card, `reveal_field`).
+        if to.zone <= FIELD_SPELL {
             self.positions.insert((to.player, to.zone), (to.face_up, to.defense));
         }
         let row = self.shown_row(&to, card.row);
@@ -1289,6 +1457,9 @@ impl Translator {
         // A Spell/Trap has no battle position.
         let place = Place { face_up: position & 5 != 0, defense: place.zone < 5 && position & 12 != 0, ..place };
         let before = (place.zone < 5).then(|| self.positions.insert((place.player, place.zone), (place.face_up, place.defense)));
+        if place.zone >= 5 {
+            self.positions.insert((place.player, place.zone), (place.face_up, false));
+        }
         let mut out = vec![];
         let card = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied();
         // Face down, the client empties the card's counters itself (0x4FBE50); so does EDOPro.
@@ -1367,21 +1538,33 @@ impl Translator {
     /// A monster zone's record with these values (level, ATK, DEF, base ATK, base DEF); race and attribute are
     /// CARD_Prop's.
     fn record(&mut self, player: u32, zone: u32, row: u16, values: [u32; 5]) -> Vec<Message> {
+        self.kinds.remove(&(player, zone));
+        self.record_with(player, zone, row, values, None)
+    }
+
+    /// [`record`] with a Type and Attribute an effect changed (the client's numbers), kept for the zone.
+    fn record_with(&mut self, player: u32, zone: u32, row: u16, values: [u32; 5], kinds: Option<(u32, u32)>) -> Vec<Message> {
         self.records.insert((player, zone), values);
         let s = self.cards.get(&row).copied().unwrap_or_default();
         let cid = s.cid as u32;
+        let (race, attribute) = kinds.unwrap_or((s.race, s.attribute));
+        if let Some(k) = kinds {
+            self.kinds.insert((player, zone), k);
+        }
         let [level, atk, def, base_atk, base_def] = values;
         vec![
-            command(RECORD_BEGIN, [0, cid, s.race, s.attribute]),
+            command(RECORD_BEGIN, [0, cid, race, attribute]),
             command(RECORD_MORE, [0, level, atk, def]),
             command(RECORD_COMMIT, [player | zone << 8, base_atk, base_def, cid]),
         ]
     }
 
     /// The sidecar's report of the monsters' stats after an engine step ({"type": "field", monsters: [{controller,
-    /// sequence, position, level, attack, defense, base_attack, base_defense}]}): a face-up monster whose values
-    /// differ from those its record last went with gets the record again, which DuelCardManager picks up after the
-    /// next command (0x4FFF14) and shows on its label. A level of 0 (an Xyz monster's) keeps CARD_Prop's.
+    /// sequence, position, level, attack, defense, base_attack, base_defense, race, attribute}]}): a face-up monster
+    /// whose values differ from those its record last went with gets the record again, which DuelCardManager picks up
+    /// after the next command (0x4FFF14) and shows on its label. A level of 0 (an Xyz monster's) keeps CARD_Prop's.
+    /// A Type or Attribute other than CARD_Prop's (DNA Surgery, Zombie World) goes in the record too: the info panel
+    /// reads them from it (0x453740, 0x523F00).
     fn field(&mut self, m: &Json) -> Vec<Message> {
         let mut out = vec![];
         for s in m["monsters"].as_array().into_iter().flatten() {
@@ -1393,8 +1576,15 @@ impl Translator {
             let Some(card) = self.sides[player as usize].zones.get(&zone).and_then(|z| z.first()).copied() else { continue };
             let level = Some(int("level")).filter(|&l| l > 0).unwrap_or(self.cards.get(&card.row).map_or(0, |c| c.level));
             let values = [level, int("attack"), int("defense"), int("base_attack"), int("base_defense")];
-            if self.records.get(&(player, zone)) != Some(&values) {
-                out.extend(self.record(player, zone, card.row, values));
+            let printed = self.cards.get(&card.row).map_or((0, 0), |c| (c.race, c.attribute));
+            let race = client_number(s["race"].as_u64(), &TYPES).unwrap_or(printed.0);
+            let attribute = client_number(s["attribute"].as_u64(), &ATTRIBUTES).unwrap_or(printed.1);
+            let kinds = Some((race, attribute)).filter(|&k| k != printed);
+            if self.records.get(&(player, zone)) != Some(&values) || self.kinds.get(&(player, zone)).copied() != kinds {
+                out.extend(self.record_with(player, zone, card.row, values, kinds));
+                if kinds.is_none() {
+                    self.kinds.remove(&(player, zone));
+                }
             }
         }
         out
@@ -1563,6 +1753,17 @@ impl Translator {
                 None => Prompt::Answer(cpu_answer(kind, m)),
             },
             MSG_SELECT_CHAIN => self.chain_chance(m),
+            // An order: chain links triggered together (21; the first pick becomes chain link 1) or cards put back on
+            // the Deck (25, Big Eye). The card list orders the picks itself (dlg_cardlist.swf: a badge per click, a
+            // second click takes it back; kind 6 needs all of them), and each card's rank answers the engine.
+            MSG_SORT_CHAIN | MSG_SORT_CARD if m["cards"].as_array().is_some_and(|c| c.len() >= 2) => {
+                let n = m["cards"].as_array().map_or(0, Vec::len);
+                let text = if kind == MSG_SORT_CARD { SORT_TEXT } else { SELECT_EFFECT_TEXT };
+                let out = self.card_list(&json!({ "selects": m["cards"], "min": n, "max": n }), Some(text));
+                self.pending = Some(m.clone());
+                self.picks.clear();
+                Prompt::Client(out)
+            }
             MSG_ANNOUNCE_RACE | MSG_ANNOUNCE_ATTRIB | MSG_ANNOUNCE_NUMBER | MSG_ANNOUNCE_CARD => match declaration(m) {
                 Some(out) => {
                     self.pending = Some(m.clone());
@@ -1774,7 +1975,9 @@ impl Translator {
             return Some(if count == 1 { Prompt::Answer(response) } else { self.prompt(&m) });
         }
         let kind = self.pending.as_ref()?["type"].as_u64()?;
-        const DIALOGS: [u64; 13] = [
+        const DIALOGS: [u64; 15] = [
+            MSG_SORT_CHAIN,
+            MSG_SORT_CARD,
             MSG_SELECT_SUM,
             MSG_SELECT_CARD,
             MSG_SELECT_UNSELECT_CARD,
@@ -1872,6 +2075,17 @@ impl Translator {
                 json!({ "type": RESP_NUMBER, "value": index })
             }
             MSG_ANNOUNCE_CARD => json!({ "type": RESP_CARD_NAME, "cid": count }),
+            // The clicks in order: card picks[k] gets rank k (the core reads byte i as card i's rank). Anything but each
+            // card once keeps the engine's own order.
+            MSG_SORT_CHAIN | MSG_SORT_CARD => {
+                let picks = std::mem::take(&mut self.picks);
+                let n = m["cards"].as_array().map_or(0, Vec::len);
+                let mut order = vec![usize::MAX; n];
+                let whole = picks.len() == n && picks.iter().enumerate().all(|(rank, &i)| {
+                    i < n && order[i] == usize::MAX && { order[i] = rank; true }
+                });
+                if whole { json!({ "type": RESP_SORT, "order": order }) } else { cpu_answer(kind, &m) }
+            }
             _ => cpu_answer(kind, &m),
         };
         Some(Prompt::Answer(answer))
@@ -2456,6 +2670,13 @@ fn declaration(m: &Json) -> Option<Vec<Message>> {
     Some(out)
 }
 
+/// The client's number for EDOPro's Type or Attribute bits: its place in the client's list, plus one (CARD_Prop and the
+/// declaration dialogs number them so). None without bits or for one the client lacks.
+fn client_number(bits: Option<u64>, table: &[u64]) -> Option<u32> {
+    let bits = bits.filter(|&b| b != 0)?;
+    table.iter().position(|&t| bits & t != 0).map(|i| i as u32 + 1)
+}
+
 /// The number dialog's unit and format for these options: the largest unit all of them are multiples of.
 fn number_unit(options: &[u64]) -> Option<(u64, u32)> {
     if options.is_empty() {
@@ -2479,13 +2700,17 @@ fn hint_text(hint: u64) -> Option<u32> {
         509 => 25,  // HINTMSG_SPSUMMON: "Select the @3monster(s)@0 to @3Special Summon@0."
         510 => 46,  // HINTMSG_SET: "Select a @3Spell or Trap Card@0 to @3Set@0 on the field."
         511 => 92,  // HINTMSG_FMATERIAL: "Select @3monsters@0 to use as @3Fusion Material@0."
+        // HINTMSG_SMATERIAL: no Synchro text in the client's table; the materials go to the Graveyard.
+        512 => 58,
         // HINTMSG_FACEUP: the client has no "face-up card" prompt; EDOPro asks it for targets (Spellbinding Circle).
         514 => 94,
+        515 => 273, // HINTMSG_FACEDOWN: "Select the @3monster(s)@0 in @3face-down@0 Position."
         518 => 101, // HINTMSG_EQUIP: "Select a @3monster@0 to @3equip@0."
         520 => 119, // HINTMSG_CONTROL: "Select the @3monster(s)@0 your opponent controls to take control."
         526 => 341, // HINTMSG_CONFIRM: "Select the @3card(s)@0 to show your opponent."
         528 => 357, // HINTMSG_POSCHANGE: "Select the @3monster@0 to change its battle position."
         549 => 222, // HINTMSG_ATTACKTARGET: "Select an attack target @3monster@0."
+        550 => SELECT_EFFECT_TEXT, // HINTMSG_EFFECT: "Select effect to @3activate@0."
         551 => 94,  // HINTMSG_TARGET: "Select the @3card(s)@0 to target."
         _ => return None,
     })

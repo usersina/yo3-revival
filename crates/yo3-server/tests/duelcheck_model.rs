@@ -102,9 +102,10 @@ fn dropped_turn_and_phase_changes_are_detected_independently_of_the_translator()
 #[test]
 fn unsupported_engine_mechanics_are_visible_and_new_events_fail_closed() {
     let mut m = model();
-    m.observe_engine(&[json!({"type":30}), json!({"type":30})]); // CONFIRM_DECKTOP: known presentation gap.
+    // CONFIRM_EXTRATOP: a known gap (no card of the client's makes it). CONFIRM_DECKTOP (30) is shown since 2026-11-13.
+    m.observe_engine(&[json!({"type":42}), json!({"type":42}), json!({"type":30})]);
     assert_eq!(m.coverage_gaps().len(), 1);
-    assert!(m.coverage_gaps().contains(&30));
+    assert!(m.coverage_gaps().contains(&42));
     m.observe_engine(&[json!({"type":99999})]);
     assert!(m.take_problems().iter().any(|p| p.contains("unclassified engine event 99999")));
 }

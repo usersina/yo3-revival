@@ -111,7 +111,7 @@ fn moves_carry_their_reason() {
 fn the_field_report_follows_the_monsters_stats() {
     // The engine reports no stat changes: after each step the sidecar reports both monster zones when they changed,
     // {"type": "field", monsters: [{controller, sequence, position, level, attack, defense, base_attack,
-    // base_defense}]}, before the step's prompt. 6960 = Gene-Warped Warwolf (level 4, 2000/100).
+    // base_defense, attribute, race}]}, before the step's prompt. 6960 = Gene-Warped Warwolf (level 4, 2000/100).
     let Some(mut engine) = engine() else { return };
     let deck = [6960u16; 40];
     let mut answer = engine.new_duel(11, 8000, [(&deck, &[]), (&deck, &[])]).expect("a duel");
@@ -124,6 +124,8 @@ fn the_field_report_follows_the_monsters_stats() {
             for w in m["monsters"].as_array().unwrap() {
                 let stats = ["level", "attack", "defense", "base_attack", "base_defense"].map(|k| w[k].as_u64());
                 assert_eq!(stats, [Some(4), Some(2000), Some(100), Some(2000), Some(100)], "{w}");
+                // Its Type and Attribute too (Beast-Warrior 0x8000, EARTH 1): effects change them without a message.
+                assert_eq!([w["race"].as_u64(), w["attribute"].as_u64()], [Some(0x8000), Some(1)], "{w}");
                 assert!(w["sequence"].as_u64().unwrap() < 5 && w["position"].is_u64(), "{w}");
                 seen += 1;
             }

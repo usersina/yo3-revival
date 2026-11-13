@@ -439,6 +439,9 @@ pub fn messages(bytes: &[u8]) -> Result<Vec<Json>, Eof> {
 pub const QUERY_CODE: u32 = 0x1;
 pub const QUERY_POSITION: u32 = 0x2;
 pub const QUERY_LEVEL: u32 = 0x10;
+pub const QUERY_ATTRIBUTE: u32 = 0x40;
+/// 64-bit in this core (card.cpp `CHECK_AND_INSERT_T(QUERY_RACE, get_race(), uint64_t)`); the low half is kept.
+pub const QUERY_RACE: u32 = 0x80;
 pub const QUERY_ATTACK: u32 = 0x100;
 pub const QUERY_DEFENSE: u32 = 0x200;
 pub const QUERY_BASE_ATTACK: u32 = 0x400;
@@ -485,6 +488,9 @@ pub fn query(r: &mut Reader) -> Result<Option<Queried>, Eof> {
                 out.counters.push((kind, count));
             }
         } else if body.len() == 4 {
+            out.fields.push((flag, b.u32()?));
+        } else if body.len() == 8 {
+            // A 64-bit value (the race): every race of the client's era is in the low half.
             out.fields.push((flag, b.u32()?));
         }
     }

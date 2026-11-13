@@ -293,7 +293,8 @@ fn an_npc_duel_hides_the_npcs_cards_like_a_player_opponents() {
     let cards = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<std::collections::HashMap<_, _>>();
     let (client, npc): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
     let (mut t, table) = yo3_server::duel::npc_translator(0, [&client, &npc], cards);
-    let cmds = commands(&table);
+    // The table entries (the opening starts with the usable zones, 1006).
+    let cmds: Vec<_> = commands(&table).into_iter().filter(|(id, _)| *id == 1000).collect();
     assert_eq!(cmds[0], (1000, [1, 100, 4100, 0xD << 8]), "the player's own deck shows");
     assert!(cmds[10..].iter().all(|(id, p)| *id == 1000 && p[1] == 0 && p[2] == 0), "the NPC's deck: {cmds:?}");
     let int = |m: &Message, k: &str| m.get(k).and_then(Value::as_u32).unwrap_or(0);

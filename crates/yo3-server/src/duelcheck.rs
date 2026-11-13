@@ -1090,6 +1090,18 @@ pub mod selfplay {
                 let bits: Vec<u64> = [1, 2, 4, 8].into_iter().filter(|b| allowed & b != 0).collect();
                 json!({ "type": 11, "position": if bits.is_empty() { 1 } else { bits[pick(bits.len())] } })
             }
+            // An order (chain links 21, cards 25): half the time a random rank per card, else the engine's own.
+            21 | 25 => {
+                let n = len("cards");
+                if n < 2 || pick(2) == 0 {
+                    return bot_answer(m);
+                }
+                let mut order: Vec<usize> = (0..n).collect();
+                for i in (1..n).rev() {
+                    order.swap(i, pick(i + 1));
+                }
+                json!({ "type": 15, "order": order })
+            }
             _ => bot_answer(m),
         }
     }
