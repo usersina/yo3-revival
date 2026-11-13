@@ -140,6 +140,7 @@ static int WSAAPI hooked_close(SOCKET socket) {
 #include "starter.h"
 #include "login.h"
 #include "duel-observer.h"
+#include "netlog.h"
 
 /* The automatic loader delegates the API call that triggered initialization here once, outside DllMain. */
 __declspec(dllexport) void *WINAPI Yo3ModApi(unsigned id) {
@@ -189,6 +190,7 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
     if (!login_install()) return mod_failure("stage=mod-login-hook: Game login code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!starter_install()) return mod_failure("stage=mod-starter-hook: Game deck code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!duel_observer_install()) return mod_failure("stage=mod-duel-hook: Game duel code is unsupported. Validate the original v1.153 executable.\r\n");
+    if (!netlog_install()) return mod_failure("stage=mod-netlog: Game network code is unsupported. Validate the original v1.153 executable.\r\n");
     mod_ready = 1;
     return mod_ready;
 }

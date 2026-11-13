@@ -45,6 +45,21 @@ impl ServerInfo {
         Ok(())
     }
 }
+/// TCP keepalive on every connection to the host: idle this long, then probes this often, until this many go
+/// unanswered. A host that went away without closing (asleep, its network gone) otherwise left the game waiting for
+/// good with no message; with keepalive the connection drops within about a minute and a half, and the game shows
+/// its own "disconnected" dialogs (the connection DLL's logger keeps that from crashing, tools/mod/netlog.h).
+pub const KEEPALIVE_IDLE: Duration = Duration::from_secs(45);
+pub const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
+pub const KEEPALIVE_PROBES: u32 = 4;
+
+pub fn keep_alive(tcp: &TcpStream) -> std::io::Result<()> {
+    let keepalive = socket2::TcpKeepalive::new().with_time(KEEPALIVE_IDLE).with_interval(KEEPALIVE_INTERVAL);
+    #[cfg(not(windows))]
+    let keepalive = keepalive.with_retries(KEEPALIVE_PROBES);
+    socket2::SockRef::from(tcp).set_tcp_keepalive(&keepalive)
+}
+
 pub const KEY_LEN: usize = 20;
 pub const TOKEN_LEN: usize = 32;
 pub type Token = [u8; TOKEN_LEN];
@@ -95,6 +110,7 @@ impl Endpoint {
         *stage = "TCP connect";
         let tcp = TcpStream::connect(&self.address).await.context("connect to server")?;
         tcp.set_nodelay(true)?;
+        keep_alive(&tcp)?;
         *stage = "TLS handshake";
         let mut tls = self.connector.connect(self.name.clone(), tcp).await.context("server certificate or TLS handshake failed")?;
         *stage = "transport write";
@@ -219,5 +235,25 @@ mod response_finalization {
             .expect("response cleanup must retain its one-second bound");
         assert!(writer.attempts>0,"attempt an orderly TLS close after reading the reply");
         assert_eq!(result.expect("a stalled close cannot invalidate an already validated reply"),value);
+    }
+}
+
+#[cfg(test)]
+mod keepalive {
+    #[tokio::test]
+    async fn connections_to_the_host_keep_alive() {
+        // A host gone without closing (asleep, network lost) left the game waiting with no message; keepalive makes
+        // the connection drop, and the game then shows its own disconnect dialogs.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let tcp = tokio::net::TcpStream::connect(listener.local_addr().unwrap()).await.unwrap();
+        super::keep_alive(&tcp).unwrap();
+        let sock = socket2::SockRef::from(&tcp);
+        assert!(sock.keepalive().unwrap());
+        #[cfg(target_os = "linux")]
+        {
+            assert_eq!(sock.tcp_keepalive_time().unwrap(), super::KEEPALIVE_IDLE);
+            assert_eq!(sock.tcp_keepalive_interval().unwrap(), super::KEEPALIVE_INTERVAL);
+            assert_eq!(sock.tcp_keepalive_retries().unwrap(), super::KEEPALIVE_PROBES);
+        }
     }
 }
