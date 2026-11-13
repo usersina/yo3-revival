@@ -56,6 +56,15 @@ fn program_from(chosen: Option<std::ffi::OsString>, dir: &Path, exe: Option<&Pat
     [Some(dir.join(program_name())), Some(beside.clone()), above].into_iter().flatten().find(|p| p.is_file()).unwrap_or(beside)
 }
 
+fn dir_from(chosen: Option<std::ffi::OsString>, exe: Option<&Path>) -> Option<PathBuf> {
+    let ready = |dir: &Path| dir.join("vendor/cardinfo.json").is_file();
+    if let Some(dir) = chosen.filter(|d| !d.is_empty()).map(PathBuf::from) {
+        return ready(&dir).then_some(dir);
+    }
+    let beside = exe.and_then(Path::parent).map(|d| d.join("engine"));
+    [Some(PathBuf::from("engine")), beside].into_iter().flatten().find(|d| ready(d))
+}
+
 /// Lists every absent known anchor (the engine `program` among them). Existing unreadable/invalid files and
 /// script-directory problems are separate.
 pub fn missing_files(dir: &Path, program: &Path) -> Vec<PathBuf> {
@@ -124,11 +133,10 @@ pub struct Engine {
 static RECORDING_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 impl Engine {
-    /// The engine directory: `YO3_ENGINE_DIR`, else `engine/` under the current directory. None until
-    /// `fetch.sh` has run there.
+    /// The engine directory: `YO3_ENGINE_DIR`, else `engine/` under the current directory, else `engine/` beside this
+    /// program (a release bundle's server started from another directory). None until `fetch.sh` has run there.
     pub fn dir() -> Option<PathBuf> {
-        let dir = std::env::var_os("YO3_ENGINE_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("engine"));
-        dir.join("vendor/cardinfo.json").is_file().then_some(dir)
+        dir_from(std::env::var_os("YO3_ENGINE_DIR"), std::env::current_exe().ok().as_deref())
     }
 
     pub fn start(dir: &Path) -> io::Result<Engine> {
@@ -463,6 +471,22 @@ mod tests {
         assert_eq!(program_from(None, &data, Some(&exe)), data.join(program_name()), "the engine directory's own first");
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(program_from(None, &data, Some(&exe)), deps.join(program_name()), "none: the one beside, for messages");
+    }
+
+    #[test]
+    fn the_engine_directory_is_the_one_chosen_else_here_else_beside_this_program() {
+        // Live (v0.0.10's Scripts bundle): its server started from another directory found no engine/, so every duel
+        // ended at once as a draw.
+        let dir = files_fixture("dir-lookup");
+        let bundle = dir.join("bundle");
+        std::fs::create_dir_all(bundle.join("engine/vendor")).unwrap();
+        let exe = bundle.join("yo3-server");
+        assert_eq!(dir_from(None, Some(&exe)), None, "no engine data yet");
+        std::fs::write(bundle.join("engine/vendor/cardinfo.json"), b"{}").unwrap();
+        assert_eq!(dir_from(None, Some(&exe)), Some(bundle.join("engine")), "beside the server");
+        assert_eq!(dir_from(Some(dir.join("elsewhere").into()), Some(&exe)), None, "the chosen one only");
+        assert_eq!(dir_from(Some(bundle.join("engine").into()), None), Some(bundle.join("engine")));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

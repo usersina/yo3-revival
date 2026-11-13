@@ -1081,6 +1081,9 @@ Stop finding missing fields one crash at a time.
       bot now activates what it can after summoning, so a Spell drawn or held counts. A hero beats the same bot with
       the same deck 17 of 20 (11 of 20 before that fix). Live: Yami Yugi's first turn put Summoned Skull and a second
       monster on the field and hit for 3,800
+- [x] A server started from another directory finds its rules engine (2026-11-13): `engine/` beside the program
+      after `engine/` under the current directory (`YO3_ENGINE_DIR` still first). The v0.0.10 Scripts bundle's
+      `yo3-server`, run by its path from elsewhere, had no engine and ended every duel as a draw
 - [x] Bot and banter polish (2026-11-13): a decision has a time budget (700 ms, then 300 ms more for a try under
       way; doing nothing more is always tried first) and one ready copy per thread. Seed 9001's late turns (five
       monsters a side, each engine step up to 80 ms as the core checks every Extra Deck summon) took up to 2.7 s a
