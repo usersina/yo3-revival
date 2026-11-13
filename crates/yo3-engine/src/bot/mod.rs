@@ -92,6 +92,32 @@ pub struct Setup {
     pub lp: u32,
     /// (team, location, passcode), in the order the cards were made.
     pub cards: Vec<(u8, u32, u32)>,
+    /// The skills given, as (team, Lua call), loaded after the cards (see [`skill_call`]).
+    pub skills: Vec<(u8, String)>,
+}
+
+/// The skills' Lua (`YO3Skill`), loaded into a duel that has any.
+pub const SKILLS: &str = include_str!("../skills.lua");
+
+/// The Lua call that gives `team` the skill named `name` (as the server names it), or None for a skill this engine
+/// doesn't know.
+pub fn skill_call(name: &str, team: u8) -> Option<String> {
+    let function = match name {
+        "heart_of_the_cards" => "HeartOfTheCards",
+        _ => return None,
+    };
+    Some(format!("YO3Skill.{function}({team})"))
+}
+
+/// Loads `setup`'s skills into `duel` (before it starts).
+pub fn give_skills(duel: &mut Duel, setup: &Setup) {
+    if setup.skills.is_empty() {
+        return;
+    }
+    duel.load_script("yo3_skills.lua", SKILLS.as_bytes());
+    for (i, (_, call)) in setup.skills.iter().enumerate() {
+        duel.load_script(&format!("yo3_skill_{i}.lua"), call.as_bytes());
+    }
 }
 
 /// A copy's host: card data and scripts, no log.
@@ -187,6 +213,7 @@ fn build(library: &Arc<Library>, setup: &Setup, history: &[Vec<u8>]) -> Option<C
     for &(team, location, code) in &setup.cards {
         duel.new_card(team, 0, code, team, location, 0, POSITION_FACEDOWN_DEFENSE);
     }
+    give_skills(&mut duel, setup);
     duel.start();
     settle(&mut duel, false);
     for answer in history {
@@ -227,14 +254,10 @@ fn options(m: &Json, board: &Board, hint: Option<u64>) -> Option<Vec<Json>> {
         MSG_SELECT_EFFECTYN => vec![json!({ "type": RESP_EFFECTYN, "yes": true }), json!({ "type": RESP_EFFECTYN, "yes": false })],
         MSG_SELECT_YESNO => vec![json!({ "type": RESP_YESNO, "yes": true }), json!({ "type": RESP_YESNO, "yes": false })],
         MSG_SELECT_OPTION if len("options") > 1 => (0..len("options")).map(|i| json!({ "type": RESP_OPTION, "index": i })).collect(),
-        // One card out of a few, unless it is an attack target and the bot doesn't see.
-        MSG_SELECT_CARD if m["max"] == 1 && m["min"] == 1 && (2..=MAX_OPTIONS).contains(&len("selects"))
-            && (sees || hint != Some(HINTMSG_ATTACKTARGET)) =>
-        {
-            // The rules' favourite first, so it wins a tie.
-            let favourite = policy::answer(m, board.me, board, hint)["indicies"][0].as_u64().unwrap_or(0) as usize;
-            std::iter::once(favourite).chain((0..len("selects")).filter(|i| *i != favourite))
-                .map(|i| json!({ "type": RESP_CARD, "indicies": [i] })).collect()
+        // One card, unless it is an attack target and the bot doesn't see: of many (the Heart of the Cards' Deck), the
+        // rules' favourites; the rules' favourite first, so it wins a tie.
+        MSG_SELECT_CARD if m["max"] == 1 && m["min"] == 1 && len("selects") >= 2 && (sees || hint != Some(HINTMSG_ATTACKTARGET)) => {
+            policy::ranked(m, board.me, board, hint).into_iter().map(|i| json!({ "type": RESP_CARD, "indicies": [i] })).collect()
         }
         _ => return None,
     };
@@ -280,7 +303,7 @@ impl Thinker<'_> {
     fn copy_answer(&self, duel: &mut Duel, p: &Json, me: u8, hidden: &Hidden, hint: Option<u64>) -> Json {
         if p["player"] == me {
             let board = self.observe(duel, me, hidden);
-            return policy::answer(p, me, &board, hint);
+            return policy::in_copy(p, me, &board, hint);
         }
         let them = 1 - me;
         let kind = p["type"].as_u64().unwrap_or(0);

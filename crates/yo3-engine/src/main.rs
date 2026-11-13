@@ -3,7 +3,8 @@
 //! translator reads the same messages:
 //!
 //!   {"op":"new","seed":7,"lp":8000,"decks":[{"main":[cid…],"extra":[cid…]},{…}],"names":{"cid":"English name"}}
-//!                                    team 0 goes first; `names` finds other prints of a card (cards::Prints::resolve)
+//!                                    team 0 goes first; `names` finds other prints of a card (cards::Prints::resolve);
+//!                                    `"skills":[{"player":team,"skill":"heart_of_the_cards"}]` gives NPCs their powers
 //!   {"op":"respond","response":{…}}                                       an OcgResponse (encode.rs)
 //!   {"op":"state"}                   where every card is now (read only; the server's duel check)
 //!   {"op":"cards","cards":[{"cid":…,"name":…}]}   how the core loads each card (the server's card check)

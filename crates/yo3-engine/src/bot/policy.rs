@@ -137,6 +137,12 @@ fn best_picks(selects: &[Json], n: usize, me: u8, board: &Board, hint: Option<u6
     order
 }
 
+/// MSG_SELECT_CARD's `selects` in the order the rules want them, for hint `hint`.
+pub fn ranked(m: &Json, me: u8, board: &Board, hint: Option<u64>) -> Vec<usize> {
+    let selects = list(m, "selects");
+    best_picks(selects, selects.len(), me, board, hint)
+}
+
 fn min_max(m: &Json, len: usize) -> (usize, usize) {
     let min = (u(&m["min"]) as usize).max(1).min(len);
     let max = (u(&m["max"]) as usize).max(min).min(len);
@@ -254,6 +260,15 @@ pub fn declared_attacker(m: &Json, answer: &Json, me: u8, board: &Board) -> Opti
     }
     let a = list(m, "attacks").get(u(&answer["index"]) as usize)?;
     board.sides[me as usize].monster(u(&a["sequence"]) as u8).map(|m| m.atk)
+}
+
+/// The bot's own answer inside a look-ahead copy: as [`answer`], except that at an idle prompt, after summoning, it
+/// activates what it can (the first card offered), so that a Spell held or drawn counts for what it does in the copy.
+pub fn in_copy(m: &Json, me: u8, board: &Board, hint: Option<u64>) -> Json {
+    if u(&m["type"]) == MSG_SELECT_IDLECMD && list(m, "summons").is_empty() && !list(m, "activates").is_empty() {
+        return json!({ "type": RESP_IDLECMD, "action": IDLE_ACTIVATE, "index": 0 });
+    }
+    answer(m, me, board, hint)
 }
 
 /// An answer that moves the duel on, for a prompt that came straight back after the bot's answer: leave the phase

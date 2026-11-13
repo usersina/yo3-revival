@@ -177,7 +177,7 @@ impl Session {
         self.duel = Some(duel);
         self.last_field = None;
         self.prints = Prints::default();
-        let mut setup = Setup { seed: seeds, lp, cards: vec![] };
+        let mut setup = Setup { seed: seeds, lp, cards: vec![], skills: vec![] };
         self.history.clear();
         self.pool.reset();
         self.hints = [None; 2];
@@ -199,6 +199,15 @@ impl Session {
                 }
             }
         }
+        // Skills: {"player": team, "skill": name} (bot::skill_call).
+        for s in req["skills"].as_array().into_iter().flatten() {
+            let team = s["player"].as_u64().unwrap_or(0) as u8 & 1;
+            match crate::bot::skill_call(s["skill"].as_str().unwrap_or_default(), team) {
+                Some(call) => setup.skills.push((team, call)),
+                None => self.log.borrow_mut().lines.push(format!("no skill {}", s["skill"])),
+            }
+        }
+        crate::bot::give_skills(self.duel.as_mut().unwrap(), &setup);
         self.duel.as_mut().unwrap().start();
         self.setup = Arc::new(setup);
         self.run()
