@@ -56,7 +56,8 @@ full diagnostics are also saved in the logs. Missing-file errors show the exact 
 action. **Export logs…** stays above the logs, and copied errors and exported logs include the complete file list.
 Restore missing Revival files from the complete matching Desktop
 download, then choose **Retry check**. If antivirus removed
-them, restore the files and exclude the affected Revival or game folder from scans; choosing another game folder
+them, restore the files and exclude the affected Revival folder (after an in-app update,
+`%LOCALAPPDATA%\YO3 Revival\updates\installs\<version>-<platform>\`) or game folder from scans; choosing another game folder
 does not restore application files.
 
 **Normal** is one screen: game folder, Play and logs. **Advanced**, at the top right, adds the
@@ -172,7 +173,9 @@ version asked whether to allow `yo3-server.exe` and you chose **Cancel**, Window
 then cannot connect until you allow `yo3-server.exe` in Windows Defender Firewall (**Allow an app through firewall**). See the official
 [Windows firewall tools](https://learn.microsoft.com/windows/security/operating-system-security/network-security/windows-firewall/tools)
 or [firewalld port/service guide](https://firewalld.org/documentation/howto/open-a-port-or-service) if applicable.
-An application-specific firewall allowance may need updating after an executable path changes.
+An application-specific firewall allowance names the executable's path, and each Desktop update installs into a new
+folder named after its version (`%LOCALAPPDATA%\YO3 Revival\updates\installs\<version>-<platform>\`): allow the
+new `yo3-server.exe` again after every Desktop update, or friends cannot connect.
 
 The app maintains its self-managed certificate at startup while preserving the server's identity key. Normal joining
 uses an invitation or remembered identity; it does not require copying certificates. Confirm unexpected identity
@@ -352,7 +355,7 @@ upgrade their data lives in `server.db`, the files are no longer read, and you c
 | Unsupported game executable                  | Use the original **v1.153** installation. Validation checks the hook signatures before startup; replacing Revival helpers cannot fix a different game build.                                                                                             |
 | Missing DirectX or VC90 runtime              | Follow [original game runtime repair](guide.md#original-game-runtimes), then choose **Retry check**. The error identifies the dependency or runtime manifest.                                                                                           |
 | Revival helper/DLL or engine missing         | Re-extract the complete matching Desktop archive, keeping every helper, `yo3-engine` and `engine/`. A different game folder will not repair app files.                                                                                                   |
-| Antivirus flags Revival / a file disappeared | Check protection history and the official download. For a verified false positive, allow the affected file or exclude only the extracted Desktop folder. [Exact files, folders and recovery steps](guide.md#windows-smartscreen-and-antivirus-warnings). |
+| Antivirus flags Revival / a file disappeared | Check protection history and the official download. For a verified false positive, allow the affected file or exclude only the extracted Desktop folder (after an update, that version's `updates\installs\` folder). [Exact files, folders and recovery steps](guide.md#windows-smartscreen-and-antivirus-warnings). |
 | App settings/logs cannot open                | Check the data folder's permissions/free space, then **Retry app setup**. Copy the error if it continues; keep your saved data.                                                                                                                          |
 | Game startup fails or stalls                 | Read the visible error and logs. Use **Close game** when available, then try **Play** again; export logs if it repeats.                                                                                                                                 |
 | Old game preferences or saved login details  | Try [Reset local game data](#reset-local-game-data), keeping player files and decks selected first. Review the target and backup before confirming.                                                                                                        |
@@ -360,7 +363,7 @@ upgrade their data lives in `server.db`, the files are no longer read, and you c
 | Intermittent discovery/login reset (10054)   | Update both Desktop/Scripts and the host's server. A response-cleanup bug was reproduced on Windows 11. If it continues, export logs from the failed attempt; a native `0xc0000005` game crash needs separate investigation.                                  |
 | Trunk shows no cards                         | Clear the editor's filters and check server logs. The host must load complete game card/deck data; current builds refuse hosting if that fails. Correct the host's game folder and restart, keeping all account/deck data.                               |
 | Cannot connect to a friend                   | Confirm the selected connection in **Advanced → Play**, then **Test connection**. Check [network access](#connection-help).                                                                                                                              |
-| Identity or authentication refused           | Confirm identity changes with the host, or import the correct invitation for this server/account.                                                                                                                                                        |
+| Identity or authentication refused           | Confirm identity changes with the host, or import the correct invitation for this server/account. Check both PCs' clocks: a certificate is only accepted within its validity, and a new one starts just 5 minutes before it was made.                                                                                                                                                        |
 | Cannot save a diagnostic ZIP                 | Check the error in the export dialog, choose a writable folder and retry. Copy logs/error as a fallback.                                                                                                                                                 |
 | A long session disconnects                   | Sessions last 12 hours. Close the game and start it again.                                                                                                                                                                                               |
 | A duel ends immediately as a draw            | Check server logs for **DUELS WON'T WORK** and restore the complete bundled engine. Source builds need the [engine dependencies](development.md#build-from-source).                                                                                      |
@@ -387,3 +390,6 @@ This link is a reference, not a Revival download or a guarantee about that archi
 A typical installed folder contains `yo3.exe`, `yo3.idx` and `package/`. On Windows it is often under
 `C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3`; on Linux it is often inside your Wine prefix's `drive_c`.
 Keep the original game's folder separate from the extracted `yo3-revival-desktop/` folder.
+On Windows, native checks used a writable copy of the game folder (for example under `C:\Games\`); an install left in
+protected `Program Files` is not yet tested natively, so copy the whole folder somewhere your account can write if Play
+or the game misbehaves there.

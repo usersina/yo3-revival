@@ -26,9 +26,10 @@ PowerShell. Run from the extracted bundle, or substitute `./target/release/yo3-s
 
 Initialize the identity and accounts before running; [Scripts setup](scripts.md#play-on-your-own-pc) shows the sequence.
 Without `--game-dir`, the server uses its default original-game location. Release bundles carry `engine/` (the card
-scripts and database) and the `yo3-engine` program beside the server; run the raw server from the bundle directory so
-those files can be found. The start-server wrapper
-changes to that directory automatically.
+scripts and database) and the `yo3-engine` program beside the server, which finds them there from any directory. The
+default `--data-dir data` and `--log-dir logs` are relative to the current directory, so run the raw server from the
+bundle directory (or pass both) to keep using the bundle's `data/`. The start-server wrapper changes to that directory
+automatically.
 
 Hosting refuses missing, corrupt or unusable game card/deck data before accepting players or migrating player
 storage. Select the complete installation with `--game-dir` and retry; keep existing accounts, decks and identity files.
@@ -132,19 +133,23 @@ or quarantine them. No exclusion is needed unless your security software actuall
    report an uncertain detection before allowing it.
 3. For a verified false positive, allow or restore the affected file. If you choose a folder exclusion instead,
    exclude only the extracted **`yo3-revival-desktop/`** or **`yo3-revival-scripts/`** folder, then re-extract any
-   quarantined files from the matching archive. In Desktop, choose **Retry check**, then **Play** once the check passes.
+   quarantined files from the matching archive. After an in-app update, Desktop runs from
+   `%LOCALAPPDATA%\YO3 Revival\updates\installs\<version>-<platform>\` instead, a new folder for each version:
+   allow the file there, or exclude that version's folder. In Desktop, choose **Retry check**, then **Play** once the check passes.
 
 **Where are our DLLs?**
 
 | Location                            | Revival files                                                                                                    |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | Extracted Desktop or Scripts folder | `yo3-auth.dll` (required connection mod), `yo3-auth-launch.exe` (required injector), and the Revival executables |
+| Same folder                         | `yo3-engine.exe` (the rules engine, run by the server) and `engine\` (its card scripts and database)              |
 | Extracted Desktop folder            | `yo3-bootstrap.dll`, the loader used when enabling optional direct launch                                        |
+| After a Desktop in-app update       | the same Desktop files in `%LOCALAPPDATA%\YO3 Revival\updates\installs\<version>-<platform>\`, a new folder per version      |
 | Game folder, beside `yo3.exe`       | `winmm.dll`, installed only when [direct launch](launcher.md#open-the-game-directly) is enabled                  |
 
-Desktop **Play** and Scripts **play** load `yo3-auth.dll` from the extracted Revival folder; they do not
-copy it into the game folder. Excluding just `yo3-revival.exe` does not cover the injector or DLL. The whole game
-folder does not normally need an exclusion. If the optional direct-launch `winmm.dll` is flagged, allow that
+Desktop **Play** and Scripts **play** load `yo3-auth.dll` from the folder they run from (the extracted Revival folder,
+or Desktop's update folder after an in-app update); they do not copy it into the game folder. Excluding just
+`yo3-revival.exe` does not cover the injector or DLL. The whole game folder does not normally need an exclusion. If the optional direct-launch `winmm.dll` is flagged, allow that
 specific file after verifying it came from your Revival setup.
 
 Keep antivirus protection on. Prefer a file exception to a folder exclusion, which stops scanning everything

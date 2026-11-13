@@ -158,7 +158,8 @@ explains the optional `--duel-check` flag and replay tools.
   deliberately refuse to overwrite them. Do not delete account data just to rerun initialization.
 - **Connection refused or timed out:** check the profile address/port and whether the host is running and reachable.
 - **TLS or account refused:** use the correct private profile and adjacent certificate for this host. Confirm
-  unexpected identity changes with the host; certificate checks cannot be bypassed.
+  unexpected identity changes with the host; certificate checks cannot be bypassed. Check both PCs' clocks: a
+  certificate is only accepted within its validity, and a new one starts just 5 minutes before it was made.
 - **Duels end immediately:** restore the complete `engine/` directory and the `yo3-engine` program beside
   `yo3-server`, and inspect the server's **DUELS WON'T WORK** message.
 - **Need help:** keep the exact terminal error, application version and relevant session logs. Review them before

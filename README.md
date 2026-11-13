@@ -30,7 +30,8 @@ Use **64-bit Windows 10/11**, or **Linux with Wine**. **Windows 7 is not support
 5. Visit **Kaiba Corporation** on the map for your first duel. [Playing guide](docs/playing.md).
 
 **Antivirus flags Revival?** For a verified false positive, allow the affected file or exclude only the extracted
-`yo3-revival-desktop/` folder. [What to check and which files to allow](docs/guide.md#windows-smartscreen-and-antivirus-warnings).
+`yo3-revival-desktop/` folder (after an in-app update, the version's folder under
+`%LOCALAPPDATA%\YO3 Revival\updates\installs\`). [What to check and which files to allow](docs/guide.md#windows-smartscreen-and-antivirus-warnings).
 
 ![Normal mode: game folder, automatic checks, Play and logs](screenshots/desktop.png)
 
