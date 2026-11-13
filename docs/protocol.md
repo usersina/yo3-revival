@@ -330,7 +330,7 @@ friend icon, and kept him after he logged out (`login_flag` 0 changes nothing vi
 "Ignore List(0)".
 
 The server keeps friendships (both ways) and ignore lists, with the players' names, in the hub and saves them in
-`friends.json` next to the accounts. A request needs the other player online and with no request waiting (106 else,
+`server.db` (the friends document, once `friends.json`) next to the accounts. A request needs the other player online and with no request waiting (106 else,
 112 when offline); answering, cancelling and removing reach the other player as the pushes above, and whenever a player
 logs in or out their online friends get their friend list again (`0x251C`) with the new `login_flag`. Live: Yugi's
 Send Friend Request showed "Sending Friend Request to Kaiba...", Kaiba's bar showed a friends icon whose dialog read
@@ -350,7 +350,7 @@ there; the server only holds a mail until its recipient's window fetches it. All
 | `0x2580 {mail_type, title, body, to_id}` (Send D-mail, `0x4AE8E0`; subject 16 characters, body 255) | `0x2584 {mail_id}` (`0x2585 {error_code}`: 0 and 201 silent, 300 "This Player is currently offline.", 301 "There are no Players with this name.", 700 a transmission error) | the recipient is picked from the friend list (slot 6), offline friends too; team mail (type 3) has no `to_id` and carries `team_id`, `team_name`: every other member gets it                                                  | live; team mail by test | confirmed |
 | (push) `0x2581` (bare)                                                                              | —                                                                                                                                                                           | a mail came: flag `0x1000`, the mail icon on the bell, which opens the window                                                                                                                                                 | live                    | confirmed |
 
-The server keeps waiting mail in `data/mail.json` with the last mail id, so ids go on across restarts (the client
+The server keeps waiting mail in `server.db` (once `data/mail.json`) with the last mail id, so ids go on across restarts (the client
 files mail by id), and drops a mail once fetched. Live: Yugi wrote to Kaiba from Write Mail (the friends button listed
 Kaiba); Send D-mail got `0x2584 {mail_id 1}`, Kaiba's bar showed the mail icon, and his D-Mail window listed "Yugi /
 Rematch? / 2026-11-07" with the body.
@@ -388,7 +388,7 @@ icon frame, `0x46C1D0`); search entries carry `team_id` (0 none), `team_name`, `
 `0x4B6AF0`/`0x4B7350`); the search's team tab (`search_flag 0x20`) lists the player's team; chat type 3 goes to the
 team (`to_id` = slot 17's `team_id`, `0x439D20`); D-Mail type 3 goes to every other member with the team's
 `team_id`/`team_name`; Create Duel's Opponent's Limits → Team takes requests only from the host's team. Teams are kept
-in `data/teams.json`. Live: Yugi formed Millennium in the Team window (Lv1, founded, leader Yugi), invited Kaiba from
+in `server.db` (once `data/teams.json`). Live: Yugi formed Millennium in the Team window (Lv1, founded, leader Yugi), invited Kaiba from
 Player Information, Kaiba accepted from his bell, Kaiba's "gg team" reached Yugi's Team tab, and after a server
 restart Player Information showed Kaiba in Millennium with Remove from Team and Set as subleader.
 
@@ -422,7 +422,7 @@ and the two offers. The scene's replies and pushes (ids from its jump table at `
 | leave `0x2BCB`                                                                     | `0x2BE9`                                                                                                                                  | `0x2BCD` to the partner: "The trade partner has cancelled." (also when a player goes offline)                                                                                                                | research, test                                               | shape                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 The server checks each offer against what the player owns (their starter deck's cards, the ones bought or got, less
-the ones given away) and moves both offers when both said yes, in the accounts (`data/accounts.json`: `cards` and
+the ones given away) and moves both offers when both said yes, in the accounts (`server.db`, once `data/accounts.json`: `cards` and
 `given` per player). A session refreshes its player's collection from there on each trunk request, so the partner's
 next shop visit shows it too. Live: Yugi's Tainted Wisdom for Kaiba's Windstorm of Etaqua.
 Saved collections are looked up by player id across every account, including `/join` and `add-account` accounts with
@@ -470,7 +470,7 @@ a rental is one record per rental, pushed to both players (`0x2D6C`) when it sta
 `0x2C34`. Record fields: `from_id`, `from_name`, `from_type` (0; the shop's own rentals use 1), `to_id`, `to_name`,
 `rent_end` (text "%Y-%m-%d %H:%M:%S", Japan time), `deck_type` (0 Free, 1 Deck), `confirm_from`, `confirm_to` (0 while it
 runs, 1 once over) and `main`/`extra`/`side` (big-endian u16 rows). We send only the rentals not over in `0x2D6C`; the
-history `0x2D6E` has the over ones, greyed. The server keeps the rentals in `data/rentals.json`, checks the terms once a
+history `0x2D6E` has the over ones, greyed. The server keeps the rentals in `server.db` (once `data/rentals.json`), checks the terms once a
 second and, when one ends, pushes the new records to both (live: Kaiba's Edit Deck trunk went from 42 back to 40, the two
 cards 000), and it stops a lender from putting up or trading cards they have lent (`0x2D5B`, `0x2BE2`: owned less
 lent). Live: Yugi lent Tainted Wisdom and Windstorm of Etaqua to Kaiba for 3 days; Yugi's rental scene trunk showed them as
@@ -488,7 +488,7 @@ The client reads `country` (text, an ISO code it looks up in `data/text/countryt
 `0x46FC14`), the player records (`0x2260`, Player Information `0x4B7350`, a duel's `vsPlayerData` `0x4A2D30`/`0x4A4460`), the
 search entries (`0x2CF7`) and the bracket's seats (`0x32FD`, `0x4CEBE0`). No request carries the client's country, so the host
 sets one per account (`yo3-server set-country ADDRESS CODE`, `countries` lists the codes, `auto` clears it), kept in
-`accounts.json`; without a setting it follows the language the client gives at login (`0x1F48 {lang}`): Japanese JP,
+the accounts (`server.db`); without a setting it follows the language the client gives at login (`0x1F48 {lang}`): Japanese JP,
 English GB, German DE, French FR, Italian IT, Spanish ES, Korean KR, Chinese CN (**guess**: the client has no language-to-country table. It derives `lang` itself in `0x40DE50` from the Windows primary language id: ja 0, de 2, fr 3, it 4, es 5, ko 6, zh 7, else 1, which confirms our numbering; `country` is always server data and `countrytbl.bin` is only an id lookup). A missing or unknown `country`
 shows the Germany flag (what every player showed until 2026-11-08). The search's country criterion (`0x8`) compares the code.
 Live: Player Information showed the UK flag for an English client, the Japanese flag once the account was set to JP.
@@ -502,7 +502,7 @@ Live: Player Information showed the UK flag for an English client, the Japanese 
 | reply `0x2CF1` (error `0x2CF2 {error_code}`)                                                            | none                                                                                                                                                                                        | DuelResult state 2 (`0x512A40`) waits for an id above `0x2CF0` and below `0x2CF3`; the global dispatcher ignores both                                                                                                                                                                                                                                                                                                                                      | live: the dialog closed, no "no response" | confirmed (`error_code` 0 **guess**) |
 
 The server keeps the evaluations it asked for (`eval_id` -> rater, player rated; ours count up from 1): an answer counts once, from
-the rater, with one of the five values. Each player's ratings (count and sum) are in `data/accounts.json`
+the rater, with one of the five values. Each player's ratings (count and sum) are in the accounts (`server.db`)
 (`eval_num`, `eval_total`). `evallevel` (0-4) is the average mapped onto the buttons' scale, (average + 10) / 5 rounded
 (a **guess**: the original's thresholds are unknown), 2 without ratings. It is in the search entries (Player
 Information's face icon: live, a blue smile for Kaiba after a +10, a dead red face for Yugi after a -10 and the star
@@ -636,7 +636,7 @@ duel's winner (the table's report) stays in, and when a round's duels are over t
 coming up" and the TIME countdown, while the winners get through the result screens: a match push that arrives on a
 result screen is lost) and the next round is paired, until one player is left and the event is finished (it leaves the
 list; the host may create another). A player who left forfeits. The lobby's bracket, round banners and status follow
-each step (the pushes above). **Kept across restarts:** `events.json` in the data directory holds the events that are
+each step (the pushes above). **Kept across restarts:** the events document in `server.db` (once `events.json`) holds the events that are
 open (with their entrants, form and the id counter), and a restart brings them back; a running event cannot come back
 (its duels and the players' lobbies died with the server), so it ends at the restart without a winner. Live: three
 players entered "Friday Cup", the open event survived a server restart (list 2/4 and the entries kept, entering again
@@ -943,7 +943,8 @@ again. The winner's `0xD {choice}` gives each client its own 1503. One engine ru
 own translator in which it is player 0 (`PlayerNum` 0, its deck first, `FirstPlayer` from its side): the engine's
 events go to both, each prompt to the client it asks, and either client's commands reach the other through its
 connection's outbox. The opponent's hidden cards (deck, hand, extra deck, face-down) go with row 0 in 1000 and `0x1A`
-(**guess**, like Online 2's placeholders) and face-down monsters get no field record. NPC duels do the same for the
+and face-down monsters get no field record (**confirmed** live: card backs with no stats; only the original server's own
+placeholder value, like Online 2's, is unknown). NPC duels do the same for the
 NPC's cards (`duel::npc_translator`, since 2026-11-13): the client draws any card it has a row for, face-down or not,
 so with rows the attack-target window and the card info panel showed an NPC's face-down monster in full (live,
 v0.0.10, Pegasus' Toon Masked Sorcerer). Live after the change: his face-down monster showed as a card back in both,
@@ -968,8 +969,8 @@ client and LOSER on Kaiba's, and Next took both back to the map.
 
 The server shuffles both main decks, numbers the cards 1.. (the client's deck, then the CPU's), sends them all to the
 card table, starts the duel, sets LP, deals five cards each (the first player first) and then sends the Draw Phase. The
-CPU's cards go with their real rows; the client shows them face down. Online 2's server sent placeholders for hidden
-cards, which a PvP duel will need.
+NPC's hidden cards go with row 0, as the opponent's do in a player duel (`duel::npc_translator`, since v0.0.11; above);
+the client shows them face down.
 
 The duel connection only names the player (`0x200A {player_id}`), so the front server keeps, by player, the deck sent
 with `0x1F4F` and the NPC of the duel's `0x17AC` rule (`cpu_id`).
@@ -1035,7 +1036,7 @@ stack; DuelScene's busy check `0x515300` holds the queue while its state `+0x74`
 | `0xE` BattleEnd    | none                                                                                                                                                                               | battle mode off; takes down the swords the battle input wait drew (`0x4F8E40`, as `0xB` and `0xC` do)                                                                                                    | confirmed (code)                                                                     |
 
 The server sends Init and Attack for MSG_ATTACK, Run for MSG_BATTLE (figures by ATK against ATK or DEF, destroy flags
-clear; a direct attack, whose target ocgcore-wasm reports as an empty place, gets no figures since there's no
+clear; a direct attack, whose target the engine reports as an empty place (ocgcore-wasm's shape, which `yo3-engine` keeps), gets no figures since there's no
 card to show them at), End at DAMAGE_STEP_END, ATTACK_DISABLED, the next attack or a new phase, and always when a
 Battle Phase ends: in battle mode the input wait (command 4 mode 3, `0x4F8A90` case 4) draws swords over the player's
 possible attackers (effect `0x3C`, kept at `+0x64`) that only `0xB`, `0xC` and `0xE` take down, so a Battle Phase with
@@ -1062,7 +1063,7 @@ as an attack target or Synchro Material. BattleRun now leaves both destroy bits 
 an actual move confirms destruction. The duel check models BattleRun's hide bits too. Real-core regressions cover
 both client perspectives, face-up/Set Fortress Warrior, and Shield Wing's exhausted protection.
 Status: **confirmed**, native hide `0x4F8920` → `0x4FB220`, move handling `0x4FF000`, `tests/yusei_contract.rs`.
-ocgcore-wasm's parse (whose shape the engine keeps) drops MSG_MOVE's `reason`, so the engine reads it back with
+The engine's messages keep ocgcore-wasm 0.1.6's shape (`crates/yo3-engine/src/decode.rs`), which drops MSG_MOVE's `reason`, so the engine reads it back with
 a query (flag `REASON`) at the card's new place after each processing step.
 
 **Revealed cards** (MSG_CONFIRM_CARDS, 31 `{player: who it is shown to, cards}`; EDOPro's ConfirmCards: Witch of the Black
@@ -1136,7 +1137,7 @@ its new place and, for a face-up monster, its zone's record. A card whose new zo
 instead. **Confirmed** for MSG_SWAP (live, `--duel-deck 2627,1228`: Creature Swap between a Gene-Warped Warwolf and
 Kaiba's Ancient Lamp; each stood on the other side with its own label, the duel went on, and the server's duel check
 found no difference). MSG_SHUFFLE_SET_CARD: the core writes the shuffled cards' old places, then as many Xyz material
-places (zero when none), and ocgcore-wasm reads them as `{from, to}` pairs, which pairs old places with each other; no
+places (zero when none), and the engine's messages (ocgcore-wasm's shape) read them as `{from, to}` pairs, which pairs old places with each other; no
 list gives a card's new place. The engine adds `places` (each shuffled zone and the card it holds after the step, read
 back from the duel) and the server matches its cards to them by id (identical cards are interchangeable). **Shape**: the
 self-played duels (below) agree with the engine after every Magical Hats; not seen on the client.
@@ -1147,7 +1148,7 @@ moves each old Graveyard card out with `0x1A` (to the Extra Deck while the engin
 mirror's, else to the Deck), then each new Graveyard card in from the Deck in the engine's order. **Shape** (self-played
 duels only).
 
-**Xyz materials.** ocgcore-wasm gives a material's place as its Xyz Monster's location with an `overlay_sequence` (one
+**Xyz materials.** The engine (in ocgcore-wasm's shape) gives a material's place as its Xyz Monster's location with an `overlay_sequence` (one
 attached in the Extra Deck reads as the Extra Deck). The client has no place under a monster, so a field card that
 becomes a material gets CardVanish (`0x1F`: off the field and hidden; its slot keeps the object until another card
 lands there) and the server keeps it among the materials; one that leaves for a pile moves there with `0x1A` from the
@@ -1254,7 +1255,7 @@ command 4):
   hand card 1 → `{CommandID 4, player 0, position 11, index 1}`.
 
 Carrying out a command needs the rules: which cards may do what, and what follows. The server runs EDOPro's core for
-that (`engine/`, see roadmap.md, M5); `translate.rs` maps its draws, turns and phases to the commands above (ocgcore phases
+that (`crates/yo3-engine`, the `yo3-engine` program; see roadmap.md, M5); `translate.rs` maps its draws, turns and phases to the commands above (ocgcore phases
 1, 2, 4, 8–`0x80`, `0x100`, `0x200` → 0–5), its idle-command prompt to a command map (summons bit 4, special
 summons 2, position changes 5, 8 or 9 by the card's position as last shown (Flip Summon face down, to Attack
 Position in face-up defense, to Defence Position in attack: offering both showed "to Attack Position" on an attack
@@ -1408,7 +1409,7 @@ all set to `/preset 0`** by the duel's player setup (the branch around `0x428295
 play..."), whatever the roster item carries: speech fields sent in an NPC's `0x2711` item were ignored (live,
 2026-11-13). Our NPCs speak in the chat window instead (`crates/yo3-server/src/banter.rs`, lines in `npc_lines.txt`):
 a `0x2455` push to the player's front connection (`{from_id: npc_id, pname, chat_type: 0, chat_str}`), sent as the
-client plays the moment it belongs to (see the chat table below). Still **open**: CardBreak `0x20` {player, 1–4, uid}
+client plays the moment it belongs to (see the chat table above). Still **open**: CardBreak `0x20` {player, 1–4, uid}
 (the original's destruction effect after BattleRun or an effect, 2.5 a duel; we keep CardVanish), BgmUpdate 9 (19 a
 duel, no params: the music's mood), `0x45`, `0x46`, `0x49`–`0x4B`, `0x4E`, 1006, 1013–1016, 1018–1025, `0x26`'s param3
 and CardCheat `0x1D` (a card object refreshed from its record, 46 a duel). Konami's opening also differs (1013 for every

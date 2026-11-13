@@ -98,7 +98,8 @@ v0.0.7 release preparation (2026-11-12):
   a one-second Node delay reproduced the missing PID file. A minimal waiting process now records its PID before
   `exec`, preserving the timeout and reaping assertions; 20 repeated runs pass with the delayed Node on PATH.
 - The release workflow builds all four bundles and requires the packaged Desktop activation check before publishing.
-  Real GitHub publishing and native Windows verification of the new Desktop UI remain the player checks listed below.
+  Real GitHub publishing and native Windows verification of the new Desktop UI were left as player checks; both were
+  done later (releases publish from CI; the v0.0.8 Desktop bundle passed natively on Windows 11, above).
 
 Desktop UI refinement (2026-11-12):
 
@@ -125,7 +126,7 @@ Desktop UI refinement (2026-11-12):
   Missing-path collection runs in background checks, ignores stale results and distinguishes absent files from
   existing invalid files. Copied errors and exported diagnostics preserve the complete list and original failure.
   Local Play/hosting recheck the server checksum, packaged Node, engine anchors and bounded sidecar startup even
-  when hosting is already live. Four focused Desktop backend checks and 11 engine checks pass, including deleted
+  when hosting is already live (since v0.0.10: the `yo3-engine` program and its data files, with a bounded start). Four focused Desktop backend checks and 11 engine checks pass, including deleted
   imports, multiple missing files, non-regular files and timeout cleanup. Individual card scripts are not exhaustively
   verified, and remote hosts' later file changes are not monitored by Desktop.
 - [x] Normal logs use a compact panel, group consecutive repeated messages and hide Wine `fixme` output with a count.
@@ -143,7 +144,8 @@ Desktop UI refinement (2026-11-12):
   cases were inspected at 900×640; actual missing-helper failures are visible in both modes. Desktop lint and
   Linux/Windows builds pass; private-display checks also cover automatic verification, forms/dialogs, account creation
   and shutdown. Rendering a native crash error does not establish a crash fix;
-  native Windows GUI verification of this refinement remains open.
+  native Windows GUI verification of this refinement was open then; the v0.0.8 Desktop bundle later passed natively on
+  Windows 11 (every page, Play to the map, clean close).
 
 Local game-data recovery (2026-11-12):
 
@@ -409,7 +411,7 @@ Next DLL candidates, after launcher usability:
       player selection, Back/re-entry and the main screen on private Xvfb without a form click; starter setup still works.
       Direct launch of the original executable also reached the main screen using the installed loader and Windows
       helper under Wine; executable/INI hashes stayed unchanged. All 525 workspace tests and strict Clippy pass.
-      Native Windows gameplay still needs verification.
+      Native Windows gameplay was verified later (Windows 11 native completion, above: a complete NPC duel).
 - [x] Initialize a legal starting deck after player login only for a fresh local profile; preserve existing
       files and selections. The first trunk reply supplies legal candidates after collection/rentals; the required mod
       uses native validation, serialization and cache reload, then sets an empty default selection. Any existing deck
@@ -418,7 +420,8 @@ Next DLL candidates, after launcher usability:
       player reached a live NPC duel without opening Edit Deck; the selected starter had 40 cards.
       Live checks also preserve a custom selection and an unfinished deck, isolate the second player, and retain an
       intentional deletion after reconnect even with an empty selection. All 523 workspace tests pass; check/Clippy,
-      DLL/loader contracts and Linux/Windows cross-builds pass. Native Windows gameplay still needs verification.
+      DLL/loader contracts and Linux/Windows cross-builds pass. Native Windows gameplay was verified later (Windows 11,
+      above: a fresh player received its starter and entered matchmaking).
 - [ ] Sync editor saves without requiring a duel selection (currently only `0x1F4F update_type 1` uploads them).
 - [ ] Diagnose the client black-screen wait when the server hangs, then add bounded failure feedback.
 - [ ] Check local profile collisions for identically named players on different servers.
@@ -432,9 +435,10 @@ On private Xvfb :88, the GUI started its server, created two accounts while runn
 the main screen. The GUI also joined a second server as RemotePlayer while its own server stayed hosted. Keeping
 hosting across manager exit/reopen passes after separating the server's process group. Unicode game and DLL paths
 have injector regression checks. Windows cross-build and GUI checks under Wine succeed, including the embedded
-font, native invitation picker/import, saved connection and TLS connection check. Native Windows GUI testing and
-separate friends' machines remain open. The Linux bundle also starts its server with the bundled Node/engine from
-outside the checkout; both platform archives exclude private credentials, databases and game files.
+font, native invitation picker/import, saved connection and TLS connection check. Native Windows GUI testing passed
+later on Windows 11 (above); separate friends' machines remain open. The Linux bundle also starts its server with the
+bundled engine (Node and the sidecar then, `yo3-engine` since v0.0.10) from outside the checkout; both platform
+archives exclude private credentials, databases and game files.
 
 Desktop bug reporting (2026-11-12):
 
@@ -552,7 +556,8 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
 - [x] No banlist by default (the user's choice); `--regulation` picks one.
 - [x] The required mod prepares a legal local starting deck after login automatically (2026-11-10), and
       the login news describes this behavior.
-- [x] When the rules engine can't run (Node.js missing or older than 22.18, engine not fetched), the server logs an ERROR
+- [x] When the rules engine can't run (then: Node.js missing or older than 22.18 or the engine not fetched; since
+      v0.0.10: the `yo3-engine` program or its data files missing, or the program not running), the server logs an ERROR
       at start, the login news and the join page say duels are unavailable, and the launchers (`run.sh`, `run.cmd`,
       `engine/fetch.sh`) stop before starting a server whose duels would all end as draws.
 - [x] Attacks and activations from any field slot but the first were ignored and the duel stalled: the client sends
@@ -590,7 +595,7 @@ client, through the Linux release bundle's `run.sh`. Findings, in the order they
       effect of any card but the pile's first was unreachable. They now sit at index 0, and with several cards able the
       card list asks which (the original's "Select the monster(s) to Special Summon from your Extra Deck.").
 - [x] Found while checking: tokens never showed (Scapegoat's Sheep Tokens were invisible, so they couldn't be seen,
-      attacked knowingly or used). EDOPro's tokens have no Konami id; the sidecar now names them and the server shows
+      attacked knowingly or used). EDOPro's tokens have no Konami id; the engine now names them and the server shows
       the client's own token card of that name. Live: four coloured Sheep Tokens on both clients; one destroyed by an
       attack shattered and left the field.
 - [x] Testing aid: `--duel-time 0,0` turns the clocks of duels between players off (live checks run slower than
@@ -646,11 +651,12 @@ P0, crashes and stalls:
       panic). The clock pass runs in `spawn_blocking` (a panic in a pass is logged, not the end of the clock) and a table
       that panicked, under its lock or in its tick, ends its duel as a draw and goes. Tests: `duel.rs`
       `a_poisoned_hub_…`, `a_table_that_panicked_…`.
-- [x] 3 Engine failure: when the sidecar dies, hangs or can't start, both seats (and the NPC duel's player) get a draw
+- [x] 3 Engine failure: when the engine process (the Node sidecar then, `yo3-engine` since v0.0.10) dies, hangs or
+      can't start, both seats (and the NPC duel's player) get a draw
       end (command 2 {3, 0}), the match is reported once as a draw and the engine is dropped. Tests:
       `an_engine_that_dies_mid_duel_…`, `…cannot_open_the_duel…`, `…in_an_npc_duel…` (a proxy sidecar that dies on
       cue).
-- [x] 4 Blocking: engine calls time out after 30 s (`engine.rs`, a reader thread; the hung sidecar is killed, then 3
+- [x] 4 Blocking: engine calls time out after 30 s (`engine.rs`, a reader thread; the hung engine is killed, then 3
       applies); connection handlers run under `block_in_place`, the clock on a blocking thread, and a table whose lock
       is busy is skipped (`try_lock`). Tests: `engine.rs` `a_sidecar_that_never_answers_…`, `duel.rs`
       `a_table_that_is_busy_is_skipped_…`.
@@ -671,7 +677,7 @@ P0, crashes and stalls:
       `a_matched_player_whose_client_dies_before_the_duel_frees_the_match`. Not done: removing an offline entrant from an
       event's list on leave (the round start already forfeits a player who is gone).
 - [x] 9 The turn order (0xD) is taken once per janken, at the table and against the CPU (a second 0xD, or a janken
-      after it, opened another node process each time). Test: `the_turn_order_is_taken_once`.
+      after it, opened another engine process each time). Test: `the_turn_order_is_taken_once`.
 
 P1, data integrity and stuck state:
 
@@ -797,7 +803,7 @@ of bug instead of a list of cases:
   the client's code (each rule cites its address; see "Moves out of a hand go by index" and the paragraphs after it in
   [protocol](protocol.md)). It notes the client going wrong as it happens (a hand card taken out by an index holding
   another card, a HandShuffle with an empty index) and compares every hand, slot and pile with the engine's real field
-  (the sidecar's read-only `state` op) after each engine step.
+  (the engine's read-only `state` op) after each engine step.
 - **Self-play** (`duelcheck::selfplay`, `tests/duel_check.rs`): two seeded random players (any summon, Set, activation,
   attack, chain, pick or answer the engine offers) duel through the engine and a translator, decks drawn from a pool of
   searches, discards, hand and deck churn, control changes, swaps, flips, hats, tokens, Synchro and Xyz Summons; one
@@ -825,7 +831,8 @@ What it found (covered by `translate_contract.rs` and the dedicated regressions 
       The report requires an acknowledgement for every checkpoint; absent, duplicate, superseded, unreadable and
       timed-out snapshots fail validation. This establishes cached state/visibility, not every pixel or legal menu.
 - [x] Deterministic engine recordings under `--duel-check`: final deck order, seed, every input/answer and state
-      query, plus SHA-256 fingerprints of sidecar/core/bindings/scripts/database/card IDs and the Node version.
+      query, plus SHA-256 fingerprints of sidecar/core/bindings/scripts/database/card IDs and the Node version (since
+      v0.0.10 the `yo3-engine` identity: the program, its core commit, scripts, database and card ids).
       Existing bounded diagnostic sessions hold chunked recordings. `duel-replay.py` verifies exact replay with
       matching dependencies and rejects incomplete recordings. This replays the engine, not game UI actions.
 - [x] Live proof on two isolated Wine clients: 35 native checkpoints through Fortress protection and
@@ -853,7 +860,7 @@ What it found (covered by `translate_contract.rs` and the dedicated regressions 
       Detailed GUI diagnostics also starts the hosted server with `--duel-check` on its next start.
 
 - [x] Magical Hats (MSG_SHUFFLE_SET_CARD 36) ignored: the client showed the cards under the wrong hats. ocgcore-wasm also
-      misreads the message; the sidecar now reads the shuffled zones back. CardSwap `0x1B` trades the cards.
+      misreads the message; the engine now reads the shuffled zones back. CardSwap `0x1B` trades the cards.
 - [x] Creature Swap (MSG_SWAP 55) ignored: each monster stayed on its old side. CardSwap `0x1B`; **confirmed live**.
 - [x] A token whose control changed (Snatch Steal on a Sheep Token) vanished instead of moving.
 - [x] Xyz materials read as moving into the Extra Deck (ocgcore-wasm gives the Xyz Monster's location), and a detached
@@ -936,14 +943,14 @@ Stop finding missing fields one crash at a time.
   - [x] User event (Satellite Plaza): events created, listed, joined, started and run as a knockout
 - [x] Friends and the ignore list: friend requests through the bell, accepting or declining, withdrawing, removing,
       the ignore list, both lists at login and on request, friends' online state pushed as they come and go, kept in
-      `friends.json`; player search's friend, ignore and team tabs. Live: Yugi and Kaiba became friends, stayed so
+      `server.db` (the friends document, once `friends.json`); player search's friend, ignore and team tabs. Live: Yugi and Kaiba became friends, stayed so
       after a restart, and Yugi removed Kaiba
 - [x] Main Menu's Friend List and Ignore List views: their search reply comes before their list, so the rows draw.
       Live: Kaiba listed with the friend icon, online and after logging out
 - [x] D-Mail: Write Mail to a friend (`0x2580` → `0x2584`), the recipient's bell (`0x2581`), the fetch (`0x2583` →
-      `0x2588`, `0x2582` → `0x2586`); mail waits in `data/mail.json` for players offline. Live: Yugi to Kaiba
+      `0x2588`, `0x2582` → `0x2586`); mail waits in `server.db` (once `data/mail.json`) for players offline. Live: Yugi to Kaiba
 - [x] Teams: form, invite, answer, leave, remove, authority, disband; the team in records, search and Player
-      Information; team chat, team mail and Create Duel's Team limit; `data/teams.json`. Live: Millennium formed,
+      Information; team chat, team mail and Create Duel's Team limit; kept in `server.db` (once `data/teams.json`). Live: Millennium formed,
       Kaiba invited and joined, team chat, Set as subleader
 - [x] Player search criteria: language (from the login), status (duelling, hosting by rule), chat room, manner level
       (from the manner ratings), events (nobody). Live: the waiting tab listed only the host
@@ -952,7 +959,7 @@ Stop finding missing fields one crash at a time.
       and the average sets `evallevel` (search entries, Player Information, the player records). The client has no
       ratings for trades. Live: Yugi rated Kaiba +10, Kaiba rated Yugi -10; each saw the other's face icon change
 - [x] Country: no request carries the client's country, so it is a setting per account (`yo3-server set-country`, kept in
-      `accounts.json`; default from the login's language), sent in the login item, player records, search entries (and
+      the accounts in `server.db`; default from the login's language), sent in the login item, player records, search entries (and
       the search's country criterion) and the bracket. Live: Player Information showed the UK flag, then Japan's
 - [x] Main menu screens: Rental Card List (`0x2C34`/`0x2C35` chain), My Profile (wins and losses against players),
       Duel Log (`0x1793`, `0x19C8`), BOOSTERPASS (codes refused); Card Album, Leaderboard (a Konami
@@ -967,7 +974,7 @@ Stop finding missing fields one crash at a time.
       the event's duels paired round by round through the match push. Live: "Friday Cup", Yugi beat Kaiba in it
 - [x] User events, the lobby: the bracket's names, faces and advances (`0x32FF` blocks, `0x32FD` entries), the round
       banner and status, a wait between rounds with the TIME countdown, the winner; open events kept across restarts
-      (`events.json`; a running event ends at a restart). Live with three players, a bye and a final. Ready/Standby:
+      (`server.db`, once `events.json`; a running event ends at a restart). Live with three players, a bye and a final. Ready/Standby:
       the client builds no such request (docs/protocol.md), so none exists to answer
 - **Exit:** two headless clients log in as different players, find each other and chat (met 2026-11-06:
   Yugi and Kaiba chat in the Lobby; the room list shows the other player)
@@ -1003,7 +1010,7 @@ Stop finding missing fields one crash at a time.
         can't reach the server (the client has no other upload)
 - [x] Shop: every booster pack of the client's pack files on the shelves (`0x1C22`), bought with BOOSTERPASS Points
       (`0x1B68` → `0x1C24`), opened as presents (`0x2775` → `0x2777` with the cards); BP and bought cards kept per
-      account and player in `data/accounts.json`. Live: three Collection Pack vol.1 opened card by card, and after a
+      account and player in the accounts (`server.db`, once `data/accounts.json`). Live: three Collection Pack vol.1 opened card by card, and after a
       server restart the shop showed 4700 BP and the pack 21.4% collected
 - [x] BP from duels: each counted result pays into the account (win 100, draw 50, loss 30), which the login replies
       and every purchase re-read. Live: a lost NPC duel took 5000 to 5030, shown at the next login; a pack then left 4930
@@ -1019,7 +1026,7 @@ Stop finding missing fields one crash at a time.
       the cards moved in the accounts; a new trunk after. Live: Tainted Wisdom for Windstorm of Etaqua
 - [x] Card rental between players: invitation, the rental scene (conditions, cards, Confirm), the records `0x2D6C` the
       client counts its trunk from, the Rental Card List, terms of 1/3/7/14 days that end by themselves, kept in
-      `data/rentals.json`. Live: Yugi lent two cards to Kaiba, both trunks changed, a restart kept it and the term's end
+      `server.db` (once `data/rentals.json`). Live: Yugi lent two cards to Kaiba, both trunks changed, a restart kept it and the term's end
       gave the cards back with both online. Not seen live: a Deck rental (three lists); the client has no early return
 - [x] Presents between players: not possible, the client has no way to send one. PresentWindow only asks for the next
       present (`0x2775`); no screen builds a send request (docs/protocol.md, "No presents between players"). Cards
@@ -1064,9 +1071,9 @@ Stop finding missing fields one crash at a time.
       the card move `0x1A`); the opening hand shows, the CPU's face down
 - [x] Player actions mapped: phases, the command map `0x12`, the input wait 4, the menu's 14 command bits and the
       client's card command (`duelRequestName` 2), confirmed live with a test build
-- [x] Rules engine sidecar: EDOPro's core (ocgcore-wasm, rule MR2) in `engine/duelcore.ts` under Node, one process
-      per duel, JSON lines, cards as Konami ids (4,702 of the client's 4,771 map to passcodes through YGOProDeck's
-      `konami_id`; the rest look like tokens); `engine/fetch.sh` fetches the core, ProjectIgnis' scripts and database
+- [x] Rules engine: EDOPro's core (rule MR2), one process per duel; first the Node sidecar (ocgcore-wasm in
+      `engine/duelcore.ts`), since v0.0.10 the native `yo3-engine` (`crates/yo3-engine`, below), JSON lines, cards as
+      Konami ids (4,702 of the client's 4,771 map to passcodes through YGOProDeck's `konami_id`; the rest look like tokens); `engine/fetch.sh` fetches the core, ProjectIgnis' scripts and database
 - [x] Card check (2026-11-12, `tests/card_data.rs`): every client card loads in the engine as the client shows it.
       It found three faults, now fixed: Barrel Dragon mapped to an artwork passcode the database lacks, so it had no
       data or script; the second prints of Dark Magician (5165) and Polymerization (4867), under Konami ids YGOProDeck
@@ -1161,7 +1168,7 @@ Stop finding missing fields one crash at a time.
       Desktop 0.0.9 and older check an update for the sidecar's files, so the bundles keep short notes at those paths
 - [x] Translator, first part: the engine drives the duel session; its draws, turns and phases become engine commands,
       the client's idle prompt a command map of the legal commands, the client's card commands its responses; the CPU
-      ends its turns at once (a placeholder bot) and other prompts are answered with defaults
+      ends its turns at once (a placeholder bot, later replaced: see the placeholder CPU below) and other prompts are answered with defaults
 - [x] Card moves: the engine's MOVE becomes a card-table entry plus `0x1A`; place prompts are answered for the client
       (first free zone). Live: a Normal Summon from the hand
 - [x] Phase buttons: Main Phase prompts enable BP and EP as the engine allows (command 4 mode 2 + other flags); a
@@ -1171,7 +1178,8 @@ Stop finding missing fields one crash at a time.
 - [x] A placeholder CPU: it Normal Summons (or Sets) the first monster it may, attacks with everything, never chains;
       other prompts get simple answers (first cards, yes, first option), also for the client's prompts without a window.
       Two such AIs play a full engine duel to a win (test). Live: the CPU summoned, attacked and destroyed our monster
-      (LP 8000 → 7350; it went to the graveyard pile)
+      (LP 8000 → 7350; it went to the graveyard pile). Since replaced by the duel bot (`crates/yo3-engine/src/bot/`,
+      look-ahead in copies of the duel) with each NPC's style in `npc.rs`
 - [x] Field stats: a monster entering a monster zone gets its record (data commands `0x3E9`–`0x3EB`) with CARD_Prop's
       ATK/DEF, level, attribute and race; the field label and card info show them
 - [x] The duel's end on screen: command 2 {result, reason} plays the win/lose/draw movie with its reason; the front
@@ -1201,9 +1209,9 @@ Stop finding missing fields one crash at a time.
       link} at each MSG_CHAIN_SOLVING. Live: two Trap Holes chained to the CPU's summon showed links 1 and 2, the
       chain banner (`duel_chain.swf`), and each number fading as its link resolved
 - [x] Confirmed destruction: CardVanish `0x1F` {player, zone | index << 8} before the card's move, for MSG_MOVE's
-      reason DESTROY, including battle (the sidecar reads the reason back, since ocgcore-wasm drops it). CardBreak `0x20`
+      reason DESTROY, including battle (the engine reads the reason back, since ocgcore-wasm's parse, whose shape it keeps, drops it). CardBreak `0x20`
       only hides a card's label. Live: Trap Hole shattered Sangan, then the duel went on
-- [x] Stat changes from effects: the sidecar reports the monster zones after each engine step when they changed, and
+- [x] Stat changes from effects: the engine reports the monster zones after each engine step when they changed, and
       a face-up monster's record (`0x3E9`–`0x3EB`) goes again, which the client re-reads after every command. Live: Axe
       of Despair took Giant Orc's label and card info to ATK 3200 (in blue)
 - [x] Attack targets: the original used dialogs too (its dialog texts have the target list, "Attack your opponent
@@ -1231,7 +1239,7 @@ Stop finding missing fields one crash at a time.
       the winner's turn order, one engine with a translator per client (each sees itself as player 0), each prompt to
       the client it asks, the opponent's hidden cards without rows, a player leaving loses. Results reach both front
       connections. Live: Yugi against Kaiba, Giant Orc's direct attack, WINNER / LOSER screens, both back on the map
-- [x] Players' records written back (`data/records.json`, M6)
+- [x] Players' records written back (`server.db`, once `data/records.json`, M6)
 - **Exit:** two clients play a full duel with real decks to a finish (met 2026-11-07: two headless clients matched
   through Auto Duel and played their starter decks to a win)
 
@@ -1240,11 +1248,13 @@ Stop finding missing fields one crash at a time.
 - [x] LAN/VPN hosting: `--bind 0.0.0.0`, a certificate covering the reachable name/IP, a private profile per account
       exported with `--advertise HOST`, and TCP 7443 through the firewall. Gate/front/duel/asset traffic uses TLS.
       The earlier raw LAN-versus-loopback duel check predates this transport; new-launcher remote-machine checks remain open.
-- [x] Accounts kept in `data/accounts.json` and duel records in `data/records.json`, backed up at each start; new
+- [x] Accounts and duel records kept in `data/` (then `accounts.json` and `records.json`; now `server.db`, the JSON
+      files only imported once), backed up at each start; new
       players' names made unique (Duelist, Duelist2…)
 - [x] Admin commands: `accounts`, `add-player WHO NAME` (add a player to an existing account), `rename`
 - [x] Linux and Windows bundles (`tools/release.sh`): server, TLS launcher, connection DLL/injector, complete
-      rules engine with Node, `run.sh` / `run.cmd` and [the setup guide](guide.md). No game files or credentials ship.
+      rules engine (with Node then; `yo3-engine` since v0.0.10), `run.sh` / `run.cmd` and
+      [the setup guide](guide.md). No game files or credentials ship.
       Windows executables are cross-compiled with mingw-w64; the new Windows launcher authenticated under Wine.
 - [x] Chain questions follow the player's Activation Message option (Manual / Semi Auto Cancel / Auto Cancel): the
       server sends a level per chance (3 after an event, 1 at a phase, 0 when nothing fits). Live: no question at the
@@ -1291,7 +1301,7 @@ Stop finding missing fields one crash at a time.
 | Server duel messages                                                      | request `0x200D`                                                                                                                                                                                                                                                                                                                                                                                             | The pump reads only `duelRequestName` (and needs the id non-negative)                                                                                                                 |
 | CPU janken                                                                | random hand; the CPU goes first when it wins                                                                                                                                                                                                                                                                                                                                                                 | The original CPU's choices are unknown                                                                                                                                                |
 | Card table entries (1000) | param3 the Konami id; flag byte 1 for some public cards (stored, no consumer found); uids 1.. in table order | Settled by Konami's logs (param3 the Konami id in all 53,586 entries); the flag byte's use is unverified |
-| Hidden cards                                                              | against another player, the opponent's deck, hand, extra deck and face-down cards go with row 0 and face-down monsters get no field record; against the CPU, real rows                                                                                                                                                                                                                                       | Online 2 used placeholders, whose value is unknown; face-up position changes reveal the card through `Translator::turn`; the original hidden-card encoding remains unknown            |
+| Hidden cards                                                              | against another player, the opponent's deck, hand, extra deck and face-down cards go with row 0 and face-down monsters get no field record; NPC duels the same for the NPC's cards (`duel::npc_translator`, v0.0.11)                                                                                                                                                                                                                                 | Online 2 used placeholders, whose value is unknown; face-up position changes reveal the card through `Translator::turn`; the original hidden-card encoding remains unknown            |
 | Automatic matching                                                        | the first two players waiting for the same `match_type`, Both (6) with either and two Both players in a Single duel; the level choice is ignored; the second player's `0x1978` goes a second after its `0x1799`                                                                                                                                                                                              | Konami's matching rules are unknown; the delay assumes the agent reads one message per step                                                                                           |
 | Match Mode                                                                | best of three; every duel opens with a janken; a drawn duel counts for neither; the records count the match once                                                                                                                                                                                                                                                                                             | Online 3's rules for who goes first in later duels, draws and the side deck are unknown                                                                                               |
 | Hosted LP and `--duel-lp`                                                 | the testing aid wins over a hosted `lp_start` when it isn't 8000                                                                                                                                                                                                                                                                                                                                             | A testing convenience, not the original's                                                                                                                                             |
@@ -1311,7 +1321,7 @@ Stop finding missing fields one crash at a time.
 | Friends                                                                   | a request needs the other player online with no request waiting for them; no limit on friends (110 "The Player List is full." never sent); declining tells the requester; the team tab lists nobody                                                                                                                                                                                                          | The original's limits and offline requests are unknown                                                                                                                                |
 | Watching                                                                  | from seat 0's side (the first player to enter); the decisive janken round only; NPC duels can't be watched                                                                                                                                                                                                                                                                                                   | The original's spectator view and opening are unknown                                                                                                                                 |
 | Login banlist                                                             | regulation 3 ("unlimited", no banlist; the user's choice) unless `--regulation` names another                                                                                                                                                                                                                                                                                                                | Which list the original used for Auto Duel at each date is unknown; the client calls the login one "Latest Regulation"                                                                |
-| Declarations                                                              | several types at once and numbers outside the number dialog (min or step above 15 units, max above 255) answered automatically; the CPU names a card the filter allows (the sidecar's `fits`)                                                                                                                                                                                                                 | The client's dialogs pick one type and a range of numbers; the original server's handling of the rest is unknown                                                                      |
+| Declarations                                                              | several types at once and numbers outside the number dialog (min or step above 15 units, max above 255) answered automatically; the CPU names a card the filter allows (the engine's `fits`)                                                                                                                                                                                                                 | The client's dialogs pick one type and a range of numbers; the original server's handling of the rest is unknown                                                                      |
 | Material choice                                                           | Synchro and Fusion materials one at a time in the card list (EDOPro's order: the Tuner first); Fusion materials under "Select monsters to use as Fusion Material." (92), Synchro materials without a message                                                                                                                                                                                                 | The client has no Synchro material text; how the original asked is unknown                                                                                                            |
 | Option labels                                                             | EDOPro's system strings 60/61 and 70–72 mapped to the client's labels; a card's own strings paired by hand with the prompt table's per-card labels (`card_options.rs`), else the card list (the option's card once per option, in order)                                                                                                                                                                   | The original server's label per card option is unknown                                                                                                                                |
 | Chain chances                                                             | level 3 after an event, 1 at a phase or step, 0 when no card fits; messages 7/8 (Spell/Trap zone)/269                                                                                                                                                                                                                                                                                                        | Client side settled (`0x4C5560`: bands below 2, 2–3, 4+; Activation Message decides below 4); which windows the original judged low priority, and its message choice, are Konami-only |
@@ -1326,7 +1336,7 @@ Stop finding missing fields one crash at a time.
 | Deck check | sizes, Fusion and Synchro Monsters only in the Extra Deck, ownership per Konami id, the duel's regulation, no card the rules engine lacks, refused with `0x22CB` (client text `0x2919`: settled, `0x50ECF0` compares only `0x22CA`/`0x22CB` and never uses `error_code`) | The rules of the check are ours |
 | Player names                                                              | the starting names (`--players`, default Duelist) made unique with a number; players make more at Select Player (at most 16 characters, unique ignoring case: **guess**), the host can still `add-player` / `rename`                                                                                                                                                                                         | The original's name rules are unknown; a team's leader can't be deleted and an account keeps one player (ours)                                                                        |
 | CardSwap `0x1B`                                                           | each of the two words carries the face and position of the card arriving there (MSG_SWAP, Magical Hats)                                                                                                                                                                                                                                                                                                      | Read in the code (`0x4FF000` case `0x1B`); live only for Creature Swap, whose two monsters were both face-up attack                                                                   |
-| Magical Hats' new places                                                  | read back from the duel after the step (the sidecar's `places`), matched by id                                                                                                                                                                                                                                                                                                                               | The core's message lists only old places (the core's writing order as remembered, and ocgcore-wasm's pairing); the self-played duels agree with the engine, the client never saw it   |
+| Magical Hats' new places                                                  | read back from the duel after the step (the engine's `places`), matched by id                                                                                                                                                                                                                                                                                                                               | The core's message lists only old places (the core's writing order as remembered, and ocgcore-wasm's pairing); the self-played duels agree with the engine, the client never saw it   |
 | Xyz materials                                                             | CardVanish as one becomes a material, a move from an empty field slot as it leaves                                                                                                                                                                                                                                                                                                                           | How Online 3 showed materials is unknown; the client lacks the Xyz Monsters tried                                                                                                     |
 
 ### Settled by the client's own code (no longer guesses)
