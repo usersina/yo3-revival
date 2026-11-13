@@ -2670,7 +2670,10 @@ fn cpu_answer(kind: u64, m: &Json) -> Json {
         MSG_SELECT_CARD => json!({ "type": RESP_CARD, "indicies": first(&m["min"], &m["max"], list_len("selects")) }),
         MSG_SELECT_TRIBUTE => json!({ "type": RESP_TRIBUTE, "indicies": first(&m["min"], &m["max"], list_len("selects")) }),
         MSG_SELECT_UNSELECT_CARD => {
-            let index = if m["can_finish"] == true { Json::Null } else { json!(0) };
+            // Finishing with nothing picked cancels: Panther Warrior's attack (a Tribute to declare it) came back
+            // again and again. Pick first.
+            let finish = m["can_finish"] == true && m["unselect_cards"].as_array().is_some_and(|c| !c.is_empty());
+            let index = if finish { Json::Null } else { json!(0) };
             json!({ "type": RESP_UNSELECT_CARD, "index": index })
         }
         MSG_SELECT_EFFECTYN => json!({ "type": RESP_EFFECTYN, "yes": true }),
