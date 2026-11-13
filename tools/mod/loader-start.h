@@ -131,6 +131,9 @@ static BOOL CALLBACK bootstrap(PINIT_ONCE once, PVOID parameter, PVOID *context)
                         snprintf(text, sizeof text, "%lu", port); SetEnvironmentVariableA(environment[i], text); }
                     if (!valid) break;
                     SetEnvironmentVariableA("YO3_LOCAL_COOKIE", cookie);
+                    /* The server's id names its game-data folder (netlog.h's neighbour, documents.h); 16 hex digits. */
+                    char server[24] = {0};
+                    if (json_string(json, "server", server, sizeof server) && strlen(server) == 16) SetEnvironmentVariableA("YO3_SERVER_ID", server);
                     HMODULE mod = LoadLibraryW(config.dll);
                     DWORD (WINAPI *mod_ready)(void *) = mod ? (void *)GetProcAddress(mod, "Yo3ModReady") : NULL;
                     mod_api = mod ? (void *)GetProcAddress(mod, "Yo3ModApi") : NULL;

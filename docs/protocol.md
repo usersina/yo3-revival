@@ -129,6 +129,9 @@ The local `0x21FE` redirect and server `0x22C4` handoff (`0x50F690`) name this l
 | ------- | -------- | -------------------------------------- | --------------------------- | --------- |
 | opener  | `0x21FE` | `host` text, `port` u32 (front server) | `LoginWindow.cpp L303/L314` | confirmed |
 
+The launcher also gives the connection DLL the server's id (`YO3_SERVER_ID`), which picks the game's local data folder
+(see the roadmap's "Local profile collisions" and `tools/mod/documents.h`); nothing of it reaches the server.
+
 The local gate keeps its socket open after the redirect until the client closes it or the launcher proxy stops.
 Immediate EOF races the native receive thread during automatic login and reaches a null error logger at
 `0x535210` (`0x82D214` is null). The native redirect handler sets its disconnect-suppression flag only at

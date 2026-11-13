@@ -21,6 +21,10 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Fixed: waiting for an opponent who never shows up.** If your opponent's game closed after choosing a deck, you
   waited for good. After 90 seconds the duel is cancelled and you're sent back. In events, a match nobody joins now
   ends on its own so the tournament goes on.
+- **Each server keeps its own decks.** Everyone starts as "Duelist", so joining a second server showed the first
+  server's decks (which it might refuse) and skipped its starter deck. Each server now has its own local game data.
+  The first server you play on keeps your current decks; any other server starts with your display settings and a
+  fresh starter deck.
 - **Fixed:** a duel against a computer opponent the server doesn't have now stops at deck selection instead of
   leaving you stuck after rock-paper-scissors.
 

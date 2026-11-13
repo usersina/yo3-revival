@@ -16,23 +16,23 @@ fn create_private(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
 fn acknowledgement(path: &Path) -> std::io::Result<Vec<u8>> {
     let mut bytes = Vec::new(); std::fs::File::open(path)?.take(65).read_to_end(&mut bytes)?; Ok(bytes)
 }
-pub struct ReadyFiles { ready: PathBuf, ack: PathBuf, game_pid: u32, ports: Ports, cookie: String }
+pub struct ReadyFiles { ready: PathBuf, ack: PathBuf, game_pid: u32, ports: Ports, cookie: String, server: String }
 impl ReadyFiles {
-    pub fn prepare(ready: &Path, ack: &Path, game_pid: u32, ports: Ports, cookie: &Token) -> anyhow::Result<Self> {
+    pub fn prepare(ready: &Path, ack: &Path, game_pid: u32, ports: Ports, cookie: &Token, server: &str) -> anyhow::Result<Self> {
         ensure!(std::fs::symlink_metadata(ack).is_err(), "A stale acknowledgement already exists; start a new game session");
         // Acquire ownership only after create_new succeeds; an existing user file is never overwritten/removed.
-        let body = Self::payload(game_pid, ports, &hex(cookie), "prepared");
+        let body = Self::payload(game_pid, ports, &hex(cookie), server, "prepared");
         create_private(ready, &body)?;
-        Ok(Self { ready: ready.into(), ack: ack.into(), game_pid, ports, cookie: hex(cookie) })
+        Ok(Self { ready: ready.into(), ack: ack.into(), game_pid, ports, cookie: hex(cookie), server: server.into() })
     }
-    fn payload(game_pid: u32, ports: Ports, cookie: &str, state: &str) -> Vec<u8> {
+    fn payload(game_pid: u32, ports: Ports, cookie: &str, server: &str, state: &str) -> Vec<u8> {
         serde_json::json!({"state":state,"game_pid":game_pid,"helper_pid":std::process::id(),"abi":yo3_tunnel::MOD_ABI,
-            "ports":ports,"cookie":cookie}).to_string().into_bytes()
+            "ports":ports,"cookie":cookie,"server":server}).to_string().into_bytes()
     }
     pub fn authenticated(&self) -> anyhow::Result<()> {
         let mut random = [0; 8]; getrandom::fill(&mut random)?;
         let temporary = self.ready.with_extension(format!("{}.next", hex(&random)));
-        create_private(&temporary, &Self::payload(self.game_pid, self.ports, &self.cookie, "authenticated"))?;
+        create_private(&temporary, &Self::payload(self.game_pid, self.ports, &self.cookie, &self.server, "authenticated"))?;
         let result = std::fs::rename(&temporary, &self.ready); if result.is_err() { let _ = std::fs::remove_file(&temporary); } result?; Ok(())
     }
 }
@@ -67,7 +67,7 @@ pub struct Attachment { pub pid: u32, pub game: PathBuf, pub ready: PathBuf, pub
 #[cfg(windows)]
 pub async fn serve(request: Attachment, endpoint: Endpoint, key: &str, proxy: Proxy) -> anyhow::Result<()> {
     let owner = GameProcess::open(request.pid, &request.game)?;
-    let files = ReadyFiles::prepare(&request.ready, &request.ack, request.pid, proxy.ports, &proxy.cookie)?;
+    let files = ReadyFiles::prepare(&request.ready, &request.ack, request.pid, proxy.ports, &proxy.cookie, &proxy.server_id)?;
     wait_for_ack(&request.ack, &proxy.cookie, Duration::from_secs(30), || owner.alive()).await?;
     yo3_tunnel::diagnostics::event("Connection DLL acknowledged readiness; authenticating");
     let session = endpoint.login(key).await.context("Authentication failed; game login remains blocked")?;

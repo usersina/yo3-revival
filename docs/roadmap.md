@@ -435,9 +435,16 @@ Next DLL candidates, after launcher usability:
       now drops too: the launcher's connections use TCP keepalive (45 s, then 4 probes 10 s apart; not checked
       live, it needs a dead network path). A server process that hangs but keeps its connections open still leaves
       the duel waiting with no message (live with SIGSTOP); the client has no timeout of its own.
-- [ ] Check local profile collisions for identically named players on different servers. Confirmed by reading the
-      DLL (2026-11-13): local decks, `.y3p` and the starter marker live in `Documents/Yu-Gi-Oh! ONLINE 3/players/<name>/`
-      (`tools/mod/starter.h` `starter_local_path`), shared by every server; a fix needs a game-data folder per server.
+- [x] Local profile collisions for identically named players on different servers (2026-11-13). Local decks, `.y3p`
+      and the starter marker live in `Documents/Yu-Gi-Oh! ONLINE 3/players/<name>/` (`tools/mod/starter.h`
+      `starter_local_path`), and every server's players start as "Duelist". The client looks Documents up only with
+      `SHGetFolderPathW/A(CSIDL_PERSONAL)` then appends the folder name (`0x52B93F` and its narrow twin); the DLL
+      answers those per server (`tools/mod/documents.h`): the launcher passes `YO3_SERVER_ID` (16 hex digits of the
+      host's key, `Endpoint::server_id`, kept across certificate renewals and address changes; the direct loader gets it
+      in its ready file). The first server played on claims the original folder (`revival-server.txt`), others get
+      `Documents/YO3 Revival/servers/<id>/` with `options.y3o` copied. Live (isolated prefix and Documents copy): server
+      A claimed the original folder and kept its decks, server B got a new folder with only its starter deck, and A
+      logged in again to the original. Desktop's reset and backup still act on the original folder only.
 
 Desktop manager (2026-11-10): `yo3-desktop` supplies an Iced `yo3-revival` application with game-folder setup,
 local play, saved remote connections, independent server controls, live account creation/add-player/export,

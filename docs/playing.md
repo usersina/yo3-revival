@@ -66,6 +66,11 @@ including unfinished decks and any later edits or deletions. It will not recreat
 Editor saves live in your local `Documents/Yu-Gi-Oh! ONLINE 3` folder. Selecting a deck for a duel also uploads it to
 the server; saving in Edit Deck alone does not make that deck available on another computer. Back up the local folder.
 
+Each server keeps its own local game data, so a player named "Duelist" on one server doesn't see another server's
+"Duelist" decks. The first server you play on (since v0.0.12) keeps `Documents/Yu-Gi-Oh! ONLINE 3` and the decks
+already there; every other server gets `Documents/YO3 Revival/servers/<server id>/Yu-Gi-Oh! ONLINE 3`, starting with
+your display settings and a fresh starter deck. The folder's `revival-server.txt` names the server that owns it.
+
 ## Card effects and summon rules
 
 Battle protection can apply without a confirmation dialog. Fortress Warrior survives its first battle destruction

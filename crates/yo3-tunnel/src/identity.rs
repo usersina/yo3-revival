@@ -57,7 +57,7 @@ pub(super) fn connector(expected: Option<&str>) -> anyhow::Result<(TlsConnector,
 pub async fn discover(address: &str, name: &str) -> anyhow::Result<ObservedServer> {
     tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
         let (connector, observation) = connector(None)?;
-        let probe = Endpoint { address: address.into(), name: ServerName::try_from(name.to_string())?, connector };
+        let probe = Endpoint { address: address.into(), name: ServerName::try_from(name.to_string())?, connector, identity: None };
         let info = probe.info().await?;
         let der = observation.lock().map_err(|_| anyhow::anyhow!("identity observation failed"))?.clone().context("server supplied no identity")?;
         let identity = certificate_key(&der)?;

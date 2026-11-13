@@ -37,7 +37,7 @@ impl Profile {
 #[derive(Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Ports { pub gate: u16, pub front: u16, pub duel: u16, pub http: u16 }
 
-pub struct Proxy { pub ports: Ports, pub cookie: Token, tasks: Vec<JoinHandle<()>>, session: tokio::sync::watch::Sender<Option<Token>> }
+pub struct Proxy { pub ports: Ports, pub cookie: Token, pub server_id: String, tasks: Vec<JoinHandle<()>>, session: tokio::sync::watch::Sender<Option<Token>> }
 
 impl Drop for Proxy { fn drop(&mut self) { for task in &self.tasks { task.abort(); } } }
 
@@ -54,6 +54,7 @@ impl Proxy {
         let http = TcpListener::bind((Ipv4Addr::LOCALHOST, ports.http)).await?;
         let ports = Ports { gate: gate.local_addr()?.port(), front: front.local_addr()?.port(), duel: duel.local_addr()?.port(), http: http.local_addr()?.port() };
         let mut cookie = [0; 32]; getrandom::fill(&mut cookie)?;
+        let server_id = endpoint.server_id();
         let mut tasks = vec![];
         tasks.push(tokio::spawn(async move {
             // Keep accepted gates owned by this task so dropping the proxy also closes idle redirects.
@@ -110,12 +111,13 @@ impl Proxy {
                 tokio::spawn(async move { if let Ok(session) = wait_for_session(&mut active).await { let _ = relay_http(local, &endpoint, &session, &cookie).await; } });
             }
         }));
-        Ok(Self { ports, cookie, tasks, session: active })
+        Ok(Self { ports, cookie, server_id, tasks, session: active })
     }
 
     pub fn environment(&self) -> Vec<(&'static str, String)> {
         [("YO3_LOCAL_GATE", self.ports.gate), ("YO3_LOCAL_FRONT", self.ports.front), ("YO3_LOCAL_DUEL", self.ports.duel), ("YO3_LOCAL_HTTP", self.ports.http)]
-            .into_iter().map(|(k, v)| (k, v.to_string())).chain(std::iter::once(("YO3_LOCAL_COOKIE", hex(&self.cookie)))).collect()
+            .into_iter().map(|(k, v)| (k, v.to_string())).chain([("YO3_LOCAL_COOKIE", hex(&self.cookie)), ("YO3_SERVER_ID", self.server_id.clone())])
+            .collect()
     }
 }
 

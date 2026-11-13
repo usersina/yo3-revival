@@ -313,7 +313,8 @@ source before retrying. Do not remove a migrated database to try to reimport sta
 
 Each server startup creates a consistent database backup under the server data folder's `backups/`. These backups
 exclude the identity key: separately back up the **whole data folder** securely. Players should also back up their
-local `Documents/Yu-Gi-Oh! ONLINE 3` folder, which holds editor-only deck saves.
+local `Documents/Yu-Gi-Oh! ONLINE 3` folder, which holds editor-only deck saves, and `Documents/YO3 Revival/servers/`,
+which holds the same for every server after the first ([details](playing.md)).
 
 Restore only with the server stopped. Older releases cannot read the current SQLite state; downgrading requires
 the original pre-upgrade snapshot and loses later database-only changes. Do not downgrade by copying back the old JSON.
@@ -331,7 +332,9 @@ Server accounts, cards and BP, and your saved Revival connections stay in place.
 
 Use **Open backup folder** afterward. Dated backups live in `.yo3-revival-backups/` beside the game's local data
 folder in Documents; a full backup contains the original folder as `data/`. Windows Documents redirection and the
-selected Wine prefix are respected. Wine prefixes can share this folder, so close games in other prefixes too.
+selected Wine prefix are respected. Wine prefixes can share this folder, so close games in other prefixes too. Reset
+works on `Documents/Yu-Gi-Oh! ONLINE 3`, the folder of the first server you played on; other servers' folders under
+`Documents/YO3 Revival/servers/` are left alone (delete one by hand to start that server's local data afresh).
 
 To restore, close the game and move newly created files aside first. For a full reset, move the backup's `data/`
 folder back to the displayed original location; for the default reset, move `options.y3o` and `users/` back from

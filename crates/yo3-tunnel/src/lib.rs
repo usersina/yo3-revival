@@ -87,12 +87,16 @@ pub struct Endpoint {
     address: String,
     name: ServerName<'static>,
     connector: TlsConnector,
+    /// The host's key identity (SHA-256 of its public key, hex), when known: it stays the same across certificate
+    /// renewals and address changes, so it names the server (the game's per-server data folder, `server_id`).
+    identity: Option<String>,
 }
 
 impl Endpoint {
     /// A user/invitation-approved identity authenticates the public key independently of its changing address.
     pub fn pinned(address: String, name: String, identity: &str) -> anyhow::Result<Self> {
-        Ok(Self { address, name: ServerName::try_from(name)?, connector: identity::connector(Some(identity))?.0 })
+        Ok(Self { address, name: ServerName::try_from(name)?, connector: identity::connector(Some(identity))?.0,
+            identity: Some(identity.to_ascii_lowercase()) })
     }
     pub fn new(address: String, name: String, certificate: &Path) -> anyhow::Result<Self> {
         Self::from_pem(address, name, &std::fs::read(certificate)?)
@@ -103,7 +107,22 @@ impl Endpoint {
         for cert in CertificateDer::pem_slice_iter(certificate) { roots.add(cert?)?; }
         if roots.is_empty() { bail!("host certificate is empty or invalid") }
         let config = rustls::ClientConfig::builder().with_root_certificates(roots).with_no_client_auth();
-        Ok(Self { address, name: ServerName::try_from(name)?, connector: TlsConnector::from(Arc::new(config)) })
+        Ok(Self { address, name: ServerName::try_from(name)?, connector: TlsConnector::from(Arc::new(config)),
+            identity: identity::identity_from_pem(certificate).ok() })
+    }
+
+    /// A short name for the host, from its key: the first 16 hex digits of its identity (`identity`), or of the address
+    /// and name when the key is unknown. The connection DLL keeps each server's game data apart by it.
+    pub fn server_id(&self) -> String {
+        let source = match &self.identity {
+            Some(identity) => identity.clone(),
+            None => {
+                let name = match &self.name { ServerName::DnsName(n) => n.as_ref().to_string(), other => format!("{other:?}") };
+                let digest = ring::digest::digest(&ring::digest::SHA256, format!("{}|{name}", self.address).as_bytes());
+                digest.as_ref().iter().map(|b| format!("{b:02x}")).collect()
+            }
+        };
+        source.chars().take(16).collect()
     }
 
     async fn open(&self, op: u8, stage: &mut &'static str) -> anyhow::Result<Stream> {
@@ -255,5 +274,25 @@ mod keepalive {
             assert_eq!(sock.tcp_keepalive_interval().unwrap(), super::KEEPALIVE_INTERVAL);
             assert_eq!(sock.tcp_keepalive_retries().unwrap(), super::KEEPALIVE_PROBES);
         }
+    }
+}
+
+#[cfg(test)]
+mod server_id {
+    #[test]
+    fn a_server_is_named_by_its_key_not_its_certificate_or_address() {
+        // The game keeps each server's data apart by this id: a renewed certificate or a new address must not move it.
+        let key = rcgen::KeyPair::generate().unwrap();
+        let pem = |names: Vec<String>| rcgen::CertificateParams::new(names).unwrap().self_signed(&key).unwrap().pem();
+        let (a, b) = (pem(vec!["localhost".into()]), pem(vec!["localhost".into(), "example.test".into()]));
+        let at = |address: &str, pem: &str| super::Endpoint::from_pem(address.into(), "localhost".into(), pem.as_bytes()).unwrap().server_id();
+        let id = at("127.0.0.1:7443", &a);
+        assert_eq!(id.len(), 16);
+        assert!(id.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()));
+        assert_eq!(at("10.0.0.5:7443", &b), id, "same key: same server");
+        let other = rcgen::CertificateParams::new(vec!["localhost".to_string()]).unwrap().self_signed(&rcgen::KeyPair::generate().unwrap()).unwrap().pem();
+        assert_ne!(at("127.0.0.1:7443", &other), id, "another key: another server");
+        let identity = super::identity::identity_from_pem(a.as_bytes()).unwrap();
+        assert_eq!(super::Endpoint::pinned("127.0.0.1:7443".into(), "localhost".into(), &identity).unwrap().server_id(), id);
     }
 }
