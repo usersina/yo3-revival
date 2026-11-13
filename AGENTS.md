@@ -144,7 +144,8 @@ ss -ltnp | rg ':7443 '                          # the server's pid, to stop it
 #   --auth-port --auth-cert --auth-key --http-port --data-dir --log-dir --game-dir: listeners, TLS identity and state
 #   testing aids: --duel-lp 1000 (reach a duel's end in one attack), --duel-deck 1149,1449 (the player's main deck as
 #   CARD_Prop rows repeated to 40: here Marauding Captain and Giant Orc, for a yes/no question and a card choice),
-#   --duel-extra 3437 (the extra deck as rows: Goyo Guardian, a Synchro for Krebons 3397 and Giant Orc),
+#   --duel-extra 3359 (the extra deck as rows: Gaia Knight, the Force of Earth, a Synchro for Krebons 3397 and Giant Orc;
+#   EDOPro's Goyo Guardian wants an EARTH Tuner, which Krebons isn't),
 #   --duel-regulation 4 (check every duel's deck against that banlist, whatever the duel names: the starter deck breaks 4),
 #   --duel-time 0,0 (the turn and total clocks of duels between players off: live checks are slower than 180 s a turn),
 #   --duel-check (compare model/engine state; the required DLL also logs native checkpoints; ERROR duel check on drift)

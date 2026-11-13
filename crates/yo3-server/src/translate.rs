@@ -306,6 +306,8 @@ const SPELL_ZONE_TEXT: u32 = 324;
 const ADJACENT_ZONE_TEXT: u32 = 472;
 /// HINTMSG_TOZONE: Card.SelectAdjacent's hint (utility.lua) before its zone choice.
 const HINTMSG_TOZONE: u64 = 571;
+/// HINTMSG_LVRANK: the hint before a Level is declared (Reasoning).
+const HINTMSG_LVRANK: u64 = 567;
 /// The OK dialog (factory 0x4C8CD0 kind 0).
 const OK: u32 = 0;
 /// The command a zone's click sends (any bit works; the menu a right-click opens would name it): Summon for a monster
@@ -877,8 +879,9 @@ impl Translator {
     }
 
     /// A deck card with that id moves to the end of the hand.
-    /// The zones a MSG_SELECT_DISFIELD may still take, as click targets: the command map at `side | zone << 8` (an empty
-    /// zone's click sends the entry's command with the zone, 0x50B510 → 0x4F9510), then the input wait.
+    /// The zones a MSG_SELECT_DISFIELD may still take, as click targets: the command map keyed as a card on each zone
+    /// would be (an empty zone's click sends the entry's command with the zone, 0x50B510 → 0x4F9510), then the input
+    /// wait.
     fn zone_map(&self, m: &Json) -> Vec<Message> {
         let picked = self.zone_picks.clone().unwrap_or_default();
         let mut map = vec![];
@@ -887,8 +890,10 @@ impl Translator {
                 continue;
             }
             let side = self.player(&json!(player));
-            let (zone, bit) = if location == LOC_MZONE { (sequence as u32, ZONE_PICK_MONSTER) } else { (5 + sequence as u32, ZONE_PICK_SPELL) };
-            map.push((side | zone << 8, 1 << bit));
+            // Keyed like a card on that zone (`place`): monster zones as zone 0, Spell/Trap zones as zone 5, with the
+            // zone's index; the click comes back as the zone itself (position, index 0).
+            let (zone, bit) = if location == LOC_MZONE { (0, ZONE_PICK_MONSTER) } else { (5, ZONE_PICK_SPELL) };
+            map.push((table_place(side, zone, sequence as usize), 1 << bit));
         }
         vec![command_data(&map, &[]), command(INPUT, [MODE_MAIN, CLIENT, 0, 0])]
     }
@@ -1197,6 +1202,18 @@ impl Translator {
     fn confirm(&mut self, m: &Json) -> Vec<Message> {
         let viewer = self.player(&m["player"]);
         let mut out = vec![];
+        // A Deck's top cards shown to the client (Ancient Telescope): turned over on the pile, as MSG_CONFIRM_DECKTOP.
+        let cards: Vec<&Json> = m["cards"].as_array().into_iter().flatten().collect();
+        let deck_cards: Vec<&Json> = cards.iter().copied().filter(|c| c["location"].as_u64() == Some(LOC_DECK)).collect();
+        if viewer == CLIENT && !deck_cards.is_empty() && deck_cards.len() == cards.len() {
+            let owner = deck_cards[0]["controller"].clone();
+            let size = self.sides[self.player(&owner) as usize].zones.get(&DECK).map_or(0, Vec::len) as u64;
+            let top = deck_cards.iter().all(|c| c["controller"] == owner && c["sequence"].as_u64().is_some_and(|s| s + deck_cards.len() as u64 >= size));
+            if top {
+                let shown = json!({ "player": owner, "cards": deck_cards });
+                return self.reveal_deck_top(&shown);
+            }
+        }
         for card in m["cards"].as_array().into_iter().flatten() {
             let owner = self.player(&card["controller"]);
             if viewer != CLIENT && owner != CLIENT {
@@ -1300,7 +1317,9 @@ impl Translator {
     fn face_up_deck_top(&mut self, m: &Json) -> Vec<Message> {
         let p = self.player(&m["player"]);
         let cid = m["cid"].as_u64().unwrap_or(0) as u16;
-        let face_up = m["position"].as_u64().unwrap_or(0) & (POS_FACEUP_ATTACK | POS_FACEUP_DEFENSE) != 0;
+        // A reversed Deck's top is public though its cards keep their position (field.cpp reverse_deck only reorders);
+        // otherwise only a card turned face up in the Deck (ReverseInDeck).
+        let face_up = self.decks_reversed || m["position"].as_u64().unwrap_or(0) & (POS_FACEUP_ATTACK | POS_FACEUP_DEFENSE) != 0;
         if m["count"].as_u64().unwrap_or(0) != 0 || !face_up {
             return vec![];
         }
@@ -1852,7 +1871,7 @@ impl Translator {
                 self.picks.clear();
                 Prompt::Client(out)
             }
-            MSG_ANNOUNCE_RACE | MSG_ANNOUNCE_ATTRIB | MSG_ANNOUNCE_NUMBER | MSG_ANNOUNCE_CARD => match declaration(m) {
+            MSG_ANNOUNCE_RACE | MSG_ANNOUNCE_ATTRIB | MSG_ANNOUNCE_NUMBER | MSG_ANNOUNCE_CARD => match declaration(m, std::mem::take(&mut self.hint) == HINTMSG_LVRANK) {
                 Some(out) => {
                     self.pending = Some(m.clone());
                     Prompt::Client(out)
@@ -2816,8 +2835,10 @@ fn message(entries: &[u32]) -> Vec<Message> {
 }
 
 /// The client's dialog for a declaration (MSG_ANNOUNCE_RACE / ATTRIB {count, available}, NUMBER {options}, CARD):
-/// None when it can't ask it (several types at once, numbers outside the number dialog's range).
-fn declaration(m: &Json) -> Option<Vec<Message>> {
+/// None when it can't ask it (several types at once, numbers outside the number dialog's range). `level`: the number is
+/// a Level (hint 567 before it), which the dialog says; Duel.AnnounceLevel is only an alias of AnnounceNumberRange, and
+/// the client's other cards declare counts and die rolls with it.
+fn declaration(m: &Json, level: bool) -> Option<Vec<Message>> {
     let kind = m["type"].as_u64()?;
     let allowed = m["available"].as_u64().unwrap_or(0);
     let bits = |table: &[u64]| table.iter().enumerate().filter(|(_, b)| allowed & **b != 0).fold(0u32, |f, (i, _)| f | 1 << (i + 1));
@@ -2833,8 +2854,8 @@ fn declaration(m: &Json) -> Option<Vec<Message>> {
                 return None;
             }
             let param3 = (max as u32) << 24 | (step as u32) << 20 | (min as u32) << 16 | format;
-            // Levels get "Declare monster level."; other numbers no message.
-            if options.iter().all(|o| (1..=12).contains(o)) {
+            // A Level gets "Declare monster level."; other numbers no message.
+            if level {
                 let mut out = message(&[TEXT | LEVEL_TEXT]);
                 out.push(command(DIALOG, [NUMBER_DIALOG, FROM_ENTRIES, param3, 0]));
                 return Some(out);

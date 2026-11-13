@@ -1523,11 +1523,18 @@ fn type_attribute_and_number_declarations_open_the_clients_dialogs() {
     let attribute = json!({ "type": 141, "player": 0, "count": 1, "available": 0x30 });
     assert_eq!(client_commands(t.prompt(&attribute)).last(), Some(&(0x36, [7, 1, 0b110 << 16 | 1, 0])), "LIGHT and DARK");
     assert_eq!(t.dialog_result(1 << 2), Some(Prompt::Answer(json!({ "type": 17, "attributes": [0x20] }))), "DARK");
+    // A level (Reasoning: hint 567 HINTMSG_LVRANK first) says "Declare monster level."; Duel.AnnounceLevel is only an
+    // alias of AnnounceNumberRange, and the client's other cards declare counts and die rolls with it (Big Eye's "how
+    // many cards", Ancient Telescope, Card Trooper, Sixth Sense), so without the hint the dialog has no message.
+    t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 567 })]);
     let levels = json!({ "type": 143, "player": 0, "options": (1..=12).collect::<Vec<u32>>() });
     let out = client_commands(t.prompt(&levels));
     assert_eq!(out.last(), Some(&(0x36, [11, 1, 12 << 24 | 1 << 20 | 1 << 16 | 283, 0])));
     assert!(out.contains(&(0x3ED, [1 << 28 | 280, 0, 0, 0])), "Declare monster level.");
     assert_eq!(t.dialog_result(7), Some(Prompt::Answer(json!({ "type": 19, "value": 6 }))));
+    let count = json!({ "type": 143, "player": 0, "options": (1..=5).collect::<Vec<u32>>() });
+    let out = client_commands(t.prompt(&count));
+    assert_eq!(out, [(0x36, [11, 0, 5 << 24 | 1 << 20 | 1 << 16 | 283, 0])], "Big Eye: no level text");
     let lp = json!({ "type": 143, "player": 0, "options": [500, 1000, 1500, 2000] });
     assert_eq!(client_commands(t.prompt(&lp)).last(), Some(&(0x36, [11, 0, 20 << 24 | 5 << 20 | 5 << 16 | 303, 0])));
     assert_eq!(t.dialog_result(15), Some(Prompt::Answer(json!({ "type": 19, "value": 2 }))), "1500 LP");
@@ -2073,12 +2080,18 @@ fn a_face_up_deck_shows_its_top_card() {
     let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
     let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
     let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
-    let top = |p: u32, cid: u32| json!({ "type": 38, "player": p, "count": 0, "cid": cid, "position": 4 });
+    // While reversed the cards keep their face-down position (field.cpp reverse_deck only reorders): the top is public
+    // anyway. Outside a reversal only a card turned in the Deck (ReverseInDeck, face-up defense) is.
+    let top = |p: u32, cid: u32| json!({ "type": 38, "player": p, "count": 0, "cid": cid, "position": 10 });
     let out: Vec<_> = t.events(&[json!({ "type": 37 }), top(0, 4105), top(1, 4206)]).iter().map(cmd).collect();
     assert_eq!(
         out,
         [(1000, [6 | 1 << 24, 105, 4105, 0xD << 8]), (0x16, [0, 0xD, 0, 0]), (1000, [17 | 1 << 24, 206, 4206, 1 | 0xD << 8]), (0x16, [1, 0xD, 0, 0])]
     );
+    // A face-down top outside a reversal stays hidden.
+    let mut quiet = t.clone();
+    quiet.events(&[json!({ "type": 37 })]);
+    assert!(quiet.events(&[top(0, 4105)]).iter().all(|m| cmd(m).0 != 1000 || cmd(m).1[0] & 1 << 24 == 0));
     // Turned back: both tops hidden again (the opponent's without a row).
     let out: Vec<_> = t.events(&[json!({ "type": 37 })]).iter().map(cmd).collect();
     assert_eq!(out, [(1000, [6, 105, 4105, 0xD << 8]), (0x16, [0, 0xD, 0, 0]), (1000, [17, 0, 0, 1 | 0xD << 8]), (0x16, [1, 0xD, 0, 0])]);
@@ -2088,8 +2101,9 @@ fn a_face_up_deck_shows_its_top_card() {
 fn a_zone_an_effect_disables_or_moves_to_is_the_players_click() {
     // MSG_SELECT_DISFIELD (24) {count, field_mask}: Ground Collapse and the other zone-disabling cards, Senet Switch's move
     // (hint 571 HINTMSG_TOZONE). The client has no zone dialog, but every zone, empty or not, is a click target
-    // (0x509CD0) whose click sends the card command of the command map's entry at `zone << 8` (0x50B510 → 0x4F9510):
-    // duelRequestName 2 {CommandID, player, position: the zone, index 0} (live 2026-11-13: an empty monster zone 2).
+    // (0x509CD0) whose click sends the card command of the command map's entry keyed as a card on that zone would be
+    // (monster zones zone 0, Spell/Trap zones zone 5, the index in bits 16-23; 0x50B510 → 0x4F9510): duelRequestName 2
+    // {CommandID, player, position: the zone, index 0} (live 2026-11-13: an empty monster zone 2).
     // First an OK dialog with the client's own prompt (155 monster zones, 324 Spell/Trap zones, 472 a move to an
     // adjacent zone), then the zones as the map, a click each until `count`.
     let mut t = with_cards();
@@ -2103,8 +2117,8 @@ fn a_zone_an_effect_disables_or_moves_to_is_the_players_click() {
     let data = match map.get("COMIDDATA") { Some(Value::Bin(b)) => b.clone(), other => panic!("{other:?}") };
     let mut keys: Vec<u32> = data.chunks(8).map(|c| u32::from_be_bytes(c[..4].try_into().unwrap())).collect();
     keys.sort_unstable_by_key(|k| (k & 0xFF, *k));
-    // Free: the client's zones 1-4 (side 0) and the CPU's 0, 2, 3, 4 (side 1), keyed side | zone << 8.
-    assert_eq!(keys, [0x100, 0x200, 0x300, 0x400, 1, 0x201, 0x301, 0x401]);
+    // Free: the client's zones 1-4 (side 0) and the CPU's 0, 2, 3, 4 (side 1), keyed side | index << 16.
+    assert_eq!(keys, [0x1_0000, 0x2_0000, 0x3_0000, 0x4_0000, 1, 0x2_0001, 0x3_0001, 0x4_0001]);
     let click = |player: u32, zone: u32| CardCommand { command: 4, player, zone, index: 0 };
     // A taken zone is no answer: the zones again.
     assert!(matches!(t.command(click(0, 0)), Some(Prompt::Client(_))));
@@ -2181,4 +2195,23 @@ fn options_without_a_label_are_spelled_out_in_the_chat_window() {
     // Labelled options (the select dialog) need none.
     t.prompt(&json!({ "type": 14, "player": 0, "options": [60, 61], "option_texts": ["Heads", "Tails"] }));
     assert!(t.take_notes().is_empty());
+}
+
+#[test]
+fn deck_top_cards_shown_to_the_player_turn_over_on_the_pile_too() {
+    // Ancient Telescope and the other looks at a Deck's top cards show them with MSG_CONFIRM_CARDS (31) on Deck places
+    // (sequence 0 is the bottom), to one player: the same reveal as MSG_CONFIRM_DECKTOP on the pile, for that player only.
+    // A Deck card shown from elsewhere in it (a searched card on its way to the hand) keeps waiting to reach the hand.
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::against_player(0, [&client, &cpu], cids);
+    let look = |player: u32| json!({ "type": 31, "player": player, "cards": [card_at(1, 1, 9, 4207), card_at(1, 1, 8, 4203)] });
+    let out: Vec<_> = t.events(&[look(0)]).iter().map(cmd).collect();
+    assert_eq!(out[..5], [(1000, [18, 207, 4207, 1 | 0xD << 8]), (0x16, [1, 0xD, 0, 0]), (0x1D, [0x4000 | 0xD << 1 | 1, 4207, 18, 0]),
+        (0x17, [1, 0xD, 0, 0]), (0x19, [1, 0xD, 2, 0])]);
+    // Shown to the opponent: the client sees nothing.
+    assert!(t.events(&[look(1)]).is_empty());
+    // A card from the middle of the Deck: no pile reveal.
+    assert!(t.events(&[json!({ "type": 31, "player": 0, "cards": [card_at(1, 1, 3, 4204)] })]).is_empty());
 }
