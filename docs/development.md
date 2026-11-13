@@ -162,7 +162,9 @@ YO3_ORIGINAL_DECKS=all YO3_ORIGINAL_DECKS_SEEDS=10 cargo nextest run --release -
 
 The NPCs' duel bot (`crates/yo3-engine/src/bot`, the engine's `think` request) is measured against the old placeholder
 CPU on the client's own NPC decks (`tests/npc_bot.rs`, 6 duels in the normal run). After changing it, play more, with
-the same deck on both sides too (skill alone), and read a duel's look-ahead decisions with `YO3_BOT_TRACE`:
+the same deck on both sides too (skill alone), against the bot's first version (`YO3_BOT_RIVAL=action`) or itself
+(`bot`), with a style of its own (`YO3_BOT_STYLE='{"sees":true}'`), and read a duel's look-ahead decisions with
+`YO3_BOT_TRACE`:
 
 ```bash
 YO3_BOT_DUELS=40 cargo nextest run --release -p yo3-server --test npc_bot --no-capture

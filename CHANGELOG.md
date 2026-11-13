@@ -19,7 +19,10 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Computer opponents actually play now.** Kaiba and the other NPCs used to summon their first monster and attack
   with everything. They now think about each move: they try their options ahead within their turn, use their Spells
   and Traps (removal when you summon, Ritual Summons, Set Traps waiting for your attack), choose good targets and
-  keep blockers up. They play fair: they never peek at your hand, your Set cards or anyone's Deck.
+  keep blockers up, and they think through your next turn before committing. They play fair: they never peek at
+  your hand, your Set cards or anyone's Deck.
+- **Each opponent has a character:** Kaiba and Jack Atlas attack relentlessly, Syrus and Luna play it safe, and
+  Maximillion Pegasus... reads your mind. His Millennium Eye sees your face-down monsters and Set cards.
 
 ## v0.0.9 (2026-11-12)
 

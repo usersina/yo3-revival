@@ -1073,6 +1073,15 @@ Stop finding missing fields one crash at a time.
       with the duel check. It found that a deck with a Fusion or Synchro Monster in its main deck split the client's
       view from the engine (which moves the card to the Extra Deck): the deck check now refuses such decks (the card
       kind is CARD_Prop's second word, bits 3-7). All 681 duels (3 seeds) pass
+- [x] The duel bot looks through the opponent's turn (2026-11-13): a copy plays the option, the rest of the bot's turn
+      by its rules, then the opponent's next turn with only its public cards (face-up monsters attack, nothing from the
+      hand, no chains), and is judged when the bot's next turn begins. The two most promising idle actions are also
+      tried with each follow-up action (Tuner, then Synchro). Four copies are kept in step with the duel and rebuilt in
+      the background, so an NPC thinks in about 8 ms an answer (at most a quarter of a second) when it plays alone.
+      Against the first version: 30 of 40 mirror duels won; against the old placeholder: 38 of 40. Each NPC has a
+      character (`crates/yo3-server/src/npc.rs`: Kaiba and Jack attack hard, Syrus and Luna hold back) and Pegasus'
+      Millennium Eye sees your face-down monsters and Set cards. Seeing alone tied the fair bot (10 of 20); assuming
+      every Set card springs made it timid (16 of 40), so his copies still expect only your public cards
 - [x] A duel bot for the NPCs (2026-11-13): `yo3-engine`'s `think` answers the NPC's prompts. At a decision that
       matters (summon, activate, Set, chain, a card pick, yes/no) it tries each option in a copy of the duel (the
       core rebuilt from the same seed and every answer so far, one copy per thread), plays the action out, and keeps
