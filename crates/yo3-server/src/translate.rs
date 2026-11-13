@@ -240,6 +240,9 @@ const CARD_ACTIVATE: u32 = 0x22;
 const SPEAK_DRAW: u32 = 0x43;
 const SPEAK_SUMMON: u32 = 0x44;
 const SPEAK_ACTIVATE: u32 = 0x47;
+/// A card revealed to activate (a Set Spell/Trap, a hand card's effect): {player, 1, Konami id}, the speech slot 19
+/// (DuelCutin 0x505A70); the next 0x47 stays silent.
+const SPEAK_REVEAL: u32 = 0x46;
 const SPEAK_PLAY: u32 = 0x48;
 const SPEAK_TURN_END: u32 = 0x4C;
 const SPEAK_DAMAGE: u32 = 0x4D;
@@ -296,6 +299,19 @@ const NUMBER: u32 = 8 << 28;
 const SELECT_COUNT_TEXT: u32 = 592;
 /// "@3Tribute@0 the necessary @3monsters@0 to match the required number of Level." (the duel prompt table's 207).
 const SUM_TEXT: u32 = 207;
+/// Duel prompt texts for a zone an effect takes: 155 "Select Monster Card Zones to render unusable.", 324 "Select a Spell
+/// & Trap Card Zone to make unusable.", 472 "Move this card to an adjacent unoccupied Monster Card Zone.".
+const MONSTER_ZONE_TEXT: u32 = 155;
+const SPELL_ZONE_TEXT: u32 = 324;
+const ADJACENT_ZONE_TEXT: u32 = 472;
+/// HINTMSG_TOZONE: Card.SelectAdjacent's hint (utility.lua) before its zone choice.
+const HINTMSG_TOZONE: u64 = 571;
+/// The OK dialog (factory 0x4C8CD0 kind 0).
+const OK: u32 = 0;
+/// The command a zone's click sends (any bit works; the menu a right-click opens would name it): Summon for a monster
+/// zone, Set for a Spell/Trap zone.
+const ZONE_PICK_MONSTER: u32 = 4;
+const ZONE_PICK_SPELL: u32 = 6;
 /// Duel prompt text 245: "Select the cards you wish to return to the Deck in order of your choice."
 const SORT_TEXT: u32 = 245;
 /// Duel prompt texts: "Select the @3monster(s)@0 as @3Tribute@0.", 'Activate the effect of "@3%s@0"?', 'Use the
@@ -485,6 +501,8 @@ pub struct Translator {
     /// The last table entry sent for each player's Deck index 0, which the deck pile shows (0x4FE4D0): a revealed top
     /// card takes that place for a moment and the entry goes back.
     deck_tops: [Option<[u32; 4]>; 2],
+    /// A MSG_SELECT_DISFIELD's zones clicked so far, once its OK dialog closed (None while it is open).
+    zone_picks: Option<Vec<Json>>,
     /// Both Decks turned over (Convulsion of Nature): each pile shows its top card's face.
     decks_reversed: bool,
     /// Each monster zone's position as last shown (face up, defense), by player and zone.
@@ -597,6 +615,7 @@ impl Translator {
             records: HashMap::new(),
             kinds: HashMap::new(),
             deck_tops: [None; 2],
+            zone_picks: None,
             decks_reversed: false,
             positions: HashMap::new(),
             direct: None,
@@ -706,6 +725,10 @@ impl Translator {
                     let param = |k: &str| link.get(k).and_then(Value::as_u32).unwrap_or(0);
                     self.chain.push((param("param1"), param("param2")));
                     out.push(link);
+                    // A hand card's effect: its avatar's reveal line after the ChainSet (Konami's logs).
+                    if m["location"].as_u64() == Some(LOC_HAND) {
+                        out.push(command(SPEAK_REVEAL, [self.player(&m["controller"]), 1, m["cid"].as_u64().unwrap_or(0) as u32, 0]));
+                    }
                     self.chaining = Some(m.clone());
                 }
                 // The link's own {player, zone, link}, as its ChainSet (Konami's logs; the client reads only the link).
@@ -845,6 +868,46 @@ impl Translator {
     }
 
     /// A deck card with that id moves to the end of the hand.
+    /// The zones a MSG_SELECT_DISFIELD may still take, as click targets: the command map at `side | zone << 8` (an empty
+    /// zone's click sends the entry's command with the zone, 0x50B510 → 0x4F9510), then the input wait.
+    fn zone_map(&self, m: &Json) -> Vec<Message> {
+        let picked = self.zone_picks.clone().unwrap_or_default();
+        let mut map = vec![];
+        for (player, location, sequence) in free_zones(m) {
+            if picked.contains(&json!({ "player": player, "location": location, "sequence": sequence })) {
+                continue;
+            }
+            let side = self.player(&json!(player));
+            let (zone, bit) = if location == LOC_MZONE { (sequence as u32, ZONE_PICK_MONSTER) } else { (5 + sequence as u32, ZONE_PICK_SPELL) };
+            map.push((side | zone << 8, 1 << bit));
+        }
+        vec![command_data(&map, &[]), command(INPUT, [MODE_MAIN, CLIENT, 0, 0])]
+    }
+
+    /// A zone clicked for MSG_SELECT_DISFIELD: a free one not picked yet counts; with `count` of them the answer, else
+    /// the zones again.
+    fn zone_click(&mut self, m: &Json, cmd: CardCommand) -> Prompt {
+        let player = (0..2u64).find(|&p| self.player(&json!(p)) == cmd.player).unwrap_or(0);
+        let (location, sequence) = match cmd.zone {
+            z @ 0..=4 => (LOC_MZONE, z as u64),
+            z @ 5..=9 => (LOC_SZONE, z as u64 - 5),
+            _ => (0, 0),
+        };
+        let place = json!({ "player": player, "location": location, "sequence": sequence });
+        let picks = self.zone_picks.get_or_insert_with(Vec::new);
+        if cmd.index == 0 && free_zones(m).contains(&(player, location, sequence)) && !picks.contains(&place) {
+            picks.push(place);
+        }
+        let count = (m["count"].as_u64().unwrap_or(1) as usize).max(1);
+        if picks.len() >= count {
+            let places = std::mem::take(picks);
+            self.zone_picks = None;
+            self.pending = None;
+            return Prompt::Answer(json!({ "type": RESP_DISFIELD, "places": places }));
+        }
+        Prompt::Client(self.zone_map(m))
+    }
+
     /// MSG_FIELD_DISABLED {field_mask}: per player (× 16) monster zones bits 0-4, Spell/Trap zones 8-12, set when
     /// disabled. The client's 1006 {mask}: its own side low, the opponent's high, monster zones bits 0-4 and Spell/Trap
     /// zones 5-9, set when usable; DuelFieldManager applies it on the next 0x26 (0x50AA90), DuelInvalidZone drawing a
@@ -1457,11 +1520,20 @@ impl Translator {
         // A Spell/Trap has no battle position.
         let place = Place { face_up: position & 5 != 0, defense: place.zone < 5 && position & 12 != 0, ..place };
         let before = (place.zone < 5).then(|| self.positions.insert((place.player, place.zone), (place.face_up, place.defense)));
-        if place.zone >= 5 {
-            self.positions.insert((place.player, place.zone), (place.face_up, false));
-        }
         let mut out = vec![];
         let card = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied();
+        if place.zone >= 5 {
+            // A Set Spell/Trap turning face up is activated: its avatar's reveal line first (Konami's logs: 0x46 before the
+            // flip; the activation line after it stays silent, DuelCutin +0x68).
+            let was_down = self.positions.insert((place.player, place.zone), (place.face_up, false)).is_some_and(|(f, _)| !f);
+            if let Some(card) = card
+                && was_down
+                && place.face_up
+            {
+                let cid = self.cards.get(&card.row).map_or(0, |c| c.cid as u32);
+                out.push(command(SPEAK_REVEAL, [place.player, 1, cid, 0]));
+            }
+        }
         // Face down, the client empties the card's counters itself (0x4FBE50); so does EDOPro.
         if let Some(card) = card
             && !place.face_up
@@ -1772,7 +1844,25 @@ impl Translator {
                 None if kind == MSG_ANNOUNCE_CARD => Prompt::Answer(self.cpu_card_name(m)),
                 None => Prompt::Answer(cpu_answer(kind, m)),
             },
-            // No window for these yet.
+            // A zone an effect takes (Ground Collapse's, Senet Switch's move): the client's own prompt in an OK dialog, then
+            // the zones as click targets (`zone_map`).
+            MSG_SELECT_DISFIELD if !free_zones(m).is_empty() => {
+                let hint = std::mem::take(&mut self.hint);
+                let zones = free_zones(m);
+                let text = if hint == HINTMSG_TOZONE {
+                    ADJACENT_ZONE_TEXT
+                } else if zones.iter().all(|&(_, location, _)| location == LOC_SZONE) {
+                    SPELL_ZONE_TEXT
+                } else {
+                    MONSTER_ZONE_TEXT
+                };
+                let mut out = message(&[TEXT | text]);
+                out.push(command(DIALOG, [OK, FROM_ENTRIES, 0, 0]));
+                self.pending = Some(m.clone());
+                self.zone_picks = None;
+                Prompt::Client(out)
+            }
+            // Where a summoned, Set or activated card goes: chosen for the player, centre out, as Konami's server did.
             _ => Prompt::Answer(cpu_answer(kind, m)),
         }
     }
@@ -1975,6 +2065,11 @@ impl Translator {
             return Some(if count == 1 { Prompt::Answer(response) } else { self.prompt(&m) });
         }
         let kind = self.pending.as_ref()?["type"].as_u64()?;
+        if kind == MSG_SELECT_DISFIELD && self.zone_picks.is_none() {
+            self.zone_picks = Some(vec![]);
+            let m = self.pending.clone()?;
+            return Some(Prompt::Client(self.zone_map(&m)));
+        }
         const DIALOGS: [u64; 15] = [
             MSG_SORT_CHAIN,
             MSG_SORT_CARD,
@@ -2203,6 +2298,9 @@ impl Translator {
 
     fn command_for(&mut self, cmd: CardCommand) -> Option<Prompt> {
         let m = self.pending.clone()?;
+        if m["type"] == MSG_SELECT_DISFIELD && self.zone_picks.is_some() {
+            return Some(self.zone_click(&m, cmd));
+        }
         if cmd.command == CONFIRM
             && let Some(out) = self.pile_view(cmd.player, cmd.zone)
         {
@@ -2320,6 +2418,7 @@ impl Translator {
         let (lists, kind, phases): (Lists, u64, &[(&str, u64)]) = match m["type"].as_u64() {
             Some(MSG_SELECT_IDLECMD) => (&IDLE_LISTS, RESP_IDLECMD, &[("to_bp", IDLE_TO_BP), ("to_ep", IDLE_TO_EP)]),
             Some(MSG_SELECT_BATTLECMD) => (&BATTLE_LISTS, RESP_BATTLECMD, &[("to_m2", BATTLE_TO_M2), ("to_ep", BATTLE_TO_EP)]),
+            Some(MSG_SELECT_DISFIELD) if self.player(&m["player"]) == CLIENT => return self.unreachable_zones(m),
             _ => return self.unreachable_choices(m),
         };
         let mut reachable: Vec<Json> = vec![];
@@ -2379,6 +2478,33 @@ impl Translator {
             }
         }
         offered.into_iter().filter(|(answer, _)| !reachable.contains(answer)).map(|(_, what)| what).collect()
+    }
+
+    /// [`unreachable_answers`] for a zone choice: each free zone through the OK dialog and its click (and, for several,
+    /// the first ones in order).
+    fn unreachable_zones(&self, m: &Json) -> Vec<String> {
+        let zones = free_zones(m);
+        let count = (m["count"].as_u64().unwrap_or(1) as usize).max(1);
+        let click = |t: &mut Translator, (player, location, sequence): (u64, u64, u64)| {
+            let zone = if location == LOC_MZONE { sequence as u32 } else { 5 + sequence as u32 };
+            t.command(CardCommand { command: ZONE_PICK_MONSTER, player: t.player(&json!(player)), zone, index: 0 })
+        };
+        let place = |(p, l, s): (u64, u64, u64)| json!({ "player": p, "location": l, "sequence": s });
+        let mut missing = vec![];
+        let picks: Vec<Vec<(u64, u64, u64)>> = if count == 1 { zones.iter().map(|&z| vec![z]).collect() } else { vec![zones.iter().copied().take(count).collect()] };
+        for pick in picks {
+            let mut t = self.clone();
+            t.dialog_result(0);
+            let mut last = None;
+            for &z in &pick {
+                last = click(&mut t, z);
+            }
+            let expected = json!({ "type": RESP_DISFIELD, "places": pick.iter().map(|&z| place(z)).collect::<Vec<_>>() });
+            if last != Some(Prompt::Answer(expected)) {
+                missing.push(format!("zones {pick:?}"));
+            }
+        }
+        missing
     }
 
     /// [`unreachable_answers`] for the other windows: each card of a card choice (one pick, when one may be picked),
@@ -2868,6 +2994,22 @@ impl Repeats {
 /// The CPU's answer, and the default for the client's prompts that have no window yet. A placeholder AI: Normal
 /// Summon (or Set) the first monster it may, attack with every attacker, never chain; card selections take the first
 /// `min` cards, questions are answered yes, lists their first entry.
+/// The order Konami's server filled zones in, centre out (all 129 placements of its logs).
+const ZONE_ORDER: [u64; 5] = [2, 3, 1, 4, 0];
+
+/// The zones a place prompt leaves free (field_mask bits set = unavailable, relative to the choosing player: monster
+/// zones 0-4, Spell/Trap 8-12, the opponent's 16-20 and 24-28), as (engine player, location, sequence), centre out.
+fn free_zones(m: &Json) -> Vec<(u64, u64, u64)> {
+    let mask = m["field_mask"].as_u64().unwrap_or(0);
+    let me = m["player"].as_u64().unwrap_or(0);
+    [(me, LOC_MZONE, 0), (me, LOC_SZONE, 8), (1 - me, LOC_MZONE, 16), (1 - me, LOC_SZONE, 24)]
+        .into_iter()
+        .flat_map(|(p, l, base)| ZONE_ORDER.map(|s| (p, l, s, base + s)))
+        .filter(|&(_, _, _, bit)| mask & 1 << bit == 0)
+        .map(|(p, l, s, _)| (p, l, s))
+        .collect()
+}
+
 fn cpu_answer(kind: u64, m: &Json) -> Json {
     let list_len = |k: &str| m[k].as_array().map_or(0, Vec::len);
     let first = |min: &Json, max: &Json, len: usize| {
@@ -2924,23 +3066,19 @@ fn cpu_answer(kind: u64, m: &Json) -> Json {
             }
             json!({ "type": RESP_COUNTER, "counters": counters })
         }
-        // The first free own zone (field_mask bits set = unavailable; own monster zones bits 0-4, Spell/Trap 8-12).
+        // The free zones centre out, as Konami's server filled them: the player's monster zones, Spell/Trap zones, then
+        // the opponent's (Give and Take and Black Garden place on the opponent's field), and the Field zone (13).
         MSG_SELECT_PLACE | MSG_SELECT_DISFIELD => {
-            // The first zone the mask leaves free: the player's monster zones (bits 0-4), Spell/Trap zones (8-12, the
-            // Field zone 13), then the opponent's (16-20, 24-29): Give and Take and Black Garden place on the
-            // opponent's field.
             let mask = m["field_mask"].as_u64().unwrap_or(0);
             let me = m["player"].as_u64().unwrap_or(0);
-            let free = [(me, LOC_MZONE, 0..5, 0), (me, LOC_SZONE, 0..6, 8), (1 - me, LOC_MZONE, 0..5, 16), (1 - me, LOC_SZONE, 0..6, 24)]
-                .into_iter()
-                .flat_map(|(p, l, seqs, base)| seqs.map(move |s| (p, l, s, base + s)));
+            let field = (mask & 1 << 13 == 0).then_some((me, LOC_SZONE, 5));
             // As many as asked (Ground Collapse and Phantom Dragon each disable two zones).
             let count = (m["count"].as_u64().unwrap_or(1) as usize).max(1);
-            let mut places: Vec<Json> = free
+            let mut places: Vec<Json> = free_zones(m)
                 .into_iter()
-                .filter(|&(_, _, _, bit)| mask & 1 << bit == 0)
+                .chain(field)
                 .take(count)
-                .map(|(p, l, s, _)| json!({ "player": p, "location": l, "sequence": s }))
+                .map(|(p, l, s)| json!({ "player": p, "location": l, "sequence": s }))
                 .collect();
             if places.is_empty() {
                 places.push(json!({ "player": me, "location": LOC_MZONE, "sequence": 0 }));

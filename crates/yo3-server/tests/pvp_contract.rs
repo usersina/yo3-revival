@@ -214,7 +214,8 @@ fn second_wins(first: &mut Seat, second: &mut Seat) -> (Vec<Message>, Vec<Messag
     to_second.extend(second.pushed());
     to_second.extend(second.send(2, &[("CommandID", 4), ("player", 0), ("position", 0xB), ("index", 0)]));
     to_second.extend(second.send(3, &[("phase", 3)]));
-    to_second.extend(second.send(2, &[("CommandID", 0), ("player", 0), ("position", 0), ("index", 0)]));
+    // The monster stands in zone 2, the first zone Konami's server filled (centre out).
+    to_second.extend(second.send(2, &[("CommandID", 0), ("player", 0), ("position", 2), ("index", 0)]));
     // "Attack your opponent directly?" Yes.
     to_second.extend(second.send(4, &[("DLGResult", 1)]));
     to_first.extend(first.pushed());

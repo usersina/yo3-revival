@@ -350,15 +350,20 @@ fn a_summon_moves_the_card_from_the_hand_to_its_zone() {
 
 #[test]
 fn place_and_position_prompts_are_answered_for_the_player() {
-    // MSG_SELECT_PLACE (18): the client has no window for it; the first free own zone is taken (field_mask bits
-    // set = unavailable: monster zones 0-4, Spell/Trap 8-12). MSG_SELECT_POSITION (19) without an attack position
+    // MSG_SELECT_PLACE (18), where a summoned, Set or activated card goes: Konami's server chose it, centre out (all 129
+    // placements in its logs: zones 2, 3, 1, 4, 0, Spell/Traps the same), so the client's game never asks (field_mask
+    // bits set = unavailable: monster zones 0-4, Spell/Trap 8-12). MSG_SELECT_POSITION (19) without an attack position
     // (the position dialog's first button is always attack): the first allowed one, here face-up defense.
     let (mut t, _) = translator();
     let place = json!({ "type": 18, "player": 0, "count": 1, "field_mask": 0xFFFF_E0FFu32 });
-    let spell = json!({ "type": 10, "places": [{ "player": 0, "location": 8, "sequence": 0 }] });
+    let spell = json!({ "type": 10, "places": [{ "player": 0, "location": 8, "sequence": 2 }] });
     assert_eq!(t.prompt(&place), Prompt::Answer(spell));
-    let place = json!({ "type": 18, "player": 0, "count": 1, "field_mask": 0xFFFF_FFE2u32 });
-    let monster = json!({ "type": 10, "places": [{ "player": 0, "location": 4, "sequence": 0 }] });
+    // Zone 2 taken: 3, then 1.
+    let place = json!({ "type": 18, "player": 0, "count": 1, "field_mask": 0xFFFF_FFE4u32 });
+    let monster = json!({ "type": 10, "places": [{ "player": 0, "location": 4, "sequence": 3 }] });
+    assert_eq!(t.prompt(&place), Prompt::Answer(monster));
+    let place = json!({ "type": 18, "player": 0, "count": 1, "field_mask": 0xFFFF_FFECu32 });
+    let monster = json!({ "type": 10, "places": [{ "player": 0, "location": 4, "sequence": 1 }] });
     assert_eq!(t.prompt(&place), Prompt::Answer(monster));
     let position = json!({ "type": 19, "player": 0, "code": 1, "positions": 12 });
     assert_eq!(t.prompt(&position), Prompt::Answer(json!({ "type": 11, "position": 4 })));
@@ -1059,7 +1064,9 @@ fn the_opponents_activated_set_card_shows_its_face() {
     let up = json!({ "type": 53, "code": 4200, "cid": 4200, "controller": 1, "location": 8, "sequence": 1,
         "prev_position": 8, "position": 5 });
     let out: Vec<_> = t.events(&[up]).iter().map(cmd).collect();
-    assert_eq!(out.first(), Some(&(1000, [11, 200, 4200, 1 | 6 << 8])), "{out:?}");
+    // The avatar's reveal line (0x46), then the card's face.
+    assert_eq!(out[0], (0x46, [1, 1, 4200, 0]), "{out:?}");
+    assert_eq!(out[1], (1000, [11, 200, 4200, 1 | 6 << 8]), "{out:?}");
     assert_eq!(out.last(), Some(&(0x1A, [11, 1 | 6 << 1, 1 | 6 << 1 | 1 << 14, 0])), "{out:?}");
     assert!(!out.iter().any(|(id, _)| *id == 0x1C), "no flip: the move turns it");
 }
@@ -2075,4 +2082,65 @@ fn a_face_up_deck_shows_its_top_card() {
     // Turned back: both tops hidden again (the opponent's without a row).
     let out: Vec<_> = t.events(&[json!({ "type": 37 })]).iter().map(cmd).collect();
     assert_eq!(out, [(1000, [6, 105, 4105, 0xD << 8]), (0x16, [0, 0xD, 0, 0]), (1000, [17, 0, 0, 1 | 0xD << 8]), (0x16, [1, 0xD, 0, 0])]);
+}
+
+#[test]
+fn a_zone_an_effect_disables_or_moves_to_is_the_players_click() {
+    // MSG_SELECT_DISFIELD (24) {count, field_mask}: Ground Collapse and the other zone-disabling cards, Senet Switch's move
+    // (hint 571 HINTMSG_TOZONE). The client has no zone dialog, but every zone, empty or not, is a click target
+    // (0x509CD0) whose click sends the card command of the command map's entry at `zone << 8` (0x50B510 → 0x4F9510):
+    // duelRequestName 2 {CommandID, player, position: the zone, index 0} (live 2026-11-13: an empty monster zone 2).
+    // First an OK dialog with the client's own prompt (155 monster zones, 324 Spell/Trap zones, 472 a move to an
+    // adjacent zone), then the zones as the map, a click each until `count`.
+    let mut t = with_cards();
+    // Two monster zones on either side; the client's zone 0 and the CPU's zone 1 are taken.
+    let disable = json!({ "type": 24, "player": 0, "count": 2, "field_mask": !(0x1Fu32 | 0x1F << 16) | 1 | 1 << 17 });
+    let out = client_commands(t.prompt(&disable));
+    assert_eq!(out, [(0x3EC, [1, 0, 0, 0]), (0x3ED, [1 << 28 | 155, 0, 0, 0]), (0x36, [0, 1, 0, 0])]);
+    let Some(Prompt::Client(out)) = t.dialog_result(0) else { panic!("the zones to click") };
+    let map = &out[0];
+    assert_eq!(cmd(&out[1]), (4, [2, 0, 0, 0]), "waits for the click in the main mode");
+    let data = match map.get("COMIDDATA") { Some(Value::Bin(b)) => b.clone(), other => panic!("{other:?}") };
+    let mut keys: Vec<u32> = data.chunks(8).map(|c| u32::from_be_bytes(c[..4].try_into().unwrap())).collect();
+    keys.sort_unstable_by_key(|k| (k & 0xFF, *k));
+    // Free: the client's zones 1-4 (side 0) and the CPU's 0, 2, 3, 4 (side 1), keyed side | zone << 8.
+    assert_eq!(keys, [0x100, 0x200, 0x300, 0x400, 1, 0x201, 0x301, 0x401]);
+    let click = |player: u32, zone: u32| CardCommand { command: 4, player, zone, index: 0 };
+    // A taken zone is no answer: the zones again.
+    assert!(matches!(t.command(click(0, 0)), Some(Prompt::Client(_))));
+    // The client's zone 3, then the CPU's zone 2.
+    assert!(matches!(t.command(click(0, 3)), Some(Prompt::Client(_))));
+    assert_eq!(
+        t.command(click(1, 2)),
+        Some(Prompt::Answer(json!({ "type": 9, "places": [
+            { "player": 0, "location": 4, "sequence": 3 }, { "player": 1, "location": 4, "sequence": 2 }] })))
+    );
+    // A move to an adjacent zone (hint 571): prompt 472.
+    t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 571 })]);
+    let adjacent = json!({ "type": 24, "player": 0, "count": 1, "field_mask": !0b1010u32 });
+    let out = client_commands(t.prompt(&adjacent));
+    assert_eq!(out[1], (0x3ED, [1 << 28 | 472, 0, 0, 0]));
+}
+
+#[test]
+fn a_card_revealed_to_activate_speaks_its_line() {
+    // DuelCutin 0x505A70 case 0x46 {player, 1, Konami id}: the avatar's speech slot 19, and the next 0x47 (the
+    // activation line) stays silent (+0x68). Konami's logs (302 times): before a Set Spell/Trap turns face up to activate
+    // (0x46, then the flip), and after the chain link's ChainSet for a hand card's effect.
+    let mut t = with_cards();
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4102 }, { "cid": 4103 }] })]);
+    t.events(&[json!({ "type": 50, "cid": 4102, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 1, 10) })]);
+    // The Set card turns face up (MSG_POS_CHANGE 53): 0x46 first.
+    let out: Vec<_> = t.events(&[json!({ "type": 53, "cid": 4102, "controller": 0, "location": 8, "sequence": 1,
+        "position": 1, "previous_position": 10 })]).iter().map(cmd).collect();
+    assert_eq!(out[0], (0x46, [0, 1, 4102, 0]), "{out:?}");
+    // A hand monster's effect (MSG_CHAINING 70 at the hand): after its ChainSet.
+    let out: Vec<_> = t.events(&[json!({ "type": 70, "cid": 4103, "controller": 0, "location": 2, "sequence": 1,
+        "triggering_controller": 0, "triggering_location": 2, "triggering_sequence": 1, "chain_size": 1 })]).iter().map(cmd).collect();
+    let chain_set = out.iter().position(|(id, _)| *id == 0x33).expect("ChainSet");
+    assert_eq!(out[chain_set + 1], (0x46, [0, 1, 4103, 0]), "{out:?}");
+    // A Spell/Trap turning face up again (already face up) or a monster flip: no 0x46.
+    let out: Vec<_> = t.events(&[json!({ "type": 53, "cid": 4102, "controller": 0, "location": 8, "sequence": 1,
+        "position": 1, "previous_position": 1 })]).iter().map(cmd).collect();
+    assert!(!out.iter().any(|(id, _)| *id == 0x46), "{out:?}");
 }
