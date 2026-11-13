@@ -10,7 +10,8 @@ use yo3_server::front::{Deck, World};
 
 fn world() -> World {
     let starter = Deck { id: 1, name: "Starter Deck".into(), main: vec![10, 10, 20], extra: vec![30], side: vec![] };
-    World { card_rows: 4833, starter_deck: Some(starter), ..World::new((1..=20).collect()) }
+    // NPC 124 is the one the uploads' duels name (an NPC the server lacks is refused at Select Deck).
+    World { card_rows: 4833, starter_deck: Some(starter), npcs: vec![124], ..World::new((1..=20).collect()) }
 }
 
 fn trunk(c: &mut common::Client) -> Message {

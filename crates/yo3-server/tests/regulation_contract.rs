@@ -27,6 +27,8 @@ fn world(login: u32) -> World {
         cards: (1..=100).map(|row| (row, stats(row))).collect::<HashMap<_, _>>(),
         regulations: regulations.into_iter().map(|r| (r.id, r)).collect(),
         login_regulation: login,
+        // NPC 124 is the one the duels name (an NPC the server lacks is refused at Select Deck).
+        npcs: vec![124],
         ..World::new(vec![3, 5])
     }
 }

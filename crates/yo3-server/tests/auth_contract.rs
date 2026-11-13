@@ -11,7 +11,8 @@ const ALICE: Identity = Identity { user_id: 1, session_id: 10 };
 
 #[test]
 fn the_front_binds_its_deck_to_the_authenticated_launcher_session() {
-    let server = Server::new();
+    // A roster with the NPC the duel names (one the server lacks is refused at Select Deck).
+    let server = Server::with_world(World { npcs: vec![124], ..World::new(vec![]) });
     let mut a = server.join(1001, "Alice");
     a.session.set_identity(ALICE);
     let duel = one(a.send(Packet::Message(Message::reply(0x17AC).item(Message::record().with("cpu_id", Value::U32(124))))));

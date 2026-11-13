@@ -2715,6 +2715,18 @@ impl FrontSession {
                     let reply = if msg.get("update_type").and_then(Value::as_u32) == Some(1) { 0x22CB } else { 0x22CA };
                     return vec![Message::reply(reply)];
                 }
+                // An NPC duel's opponent is the client's cpu_id: one the server has no NPC for would leave the duel
+                // connection nothing to open (the client sat after the janken), so its Select Deck is refused too.
+                if msg.get("update_type").and_then(Value::as_u32) == Some(1)
+                    && let Some(rule) = duel_id.and_then(|id| self.duels.get(&id))
+                {
+                    let npc_id = rule.iter().find(|(k, _)| k == "cpu_id").and_then(|(_, v)| v.as_u32()).unwrap_or(0);
+                    let has_deck = self.world.npc_decks.is_empty() || self.world.npc_decks.contains_key(&npc_id);
+                    if !self.world.npcs.contains(&npc_id) || !has_deck {
+                        tracing::info!("player {player_id}: an NPC duel against unknown NPC {npc_id}; refused");
+                        return vec![Message::reply(0x22CB)];
+                    }
+                }
                 // Select Deck (update_type 1): the deck must pass the check the client makes itself. 0x22CB shows
                 // text 0x2919 and leaves the duel scene (0x50EFD5).
                 let item = msg.items.first();

@@ -323,3 +323,25 @@ fn an_opponent_leaving_at_the_janken_sends_the_player_off_its_screen() {
     assert_eq!([int("win"), int("lose"), int("draw")], [Some(2), Some(1), Some(0)]);
     assert_eq!([int("win_add"), int("lose_add"), int("draw_add")], [Some(0), Some(0), Some(0)], "nothing counted");
 }
+
+#[test]
+fn a_duel_against_an_npc_the_server_lacks_is_refused_at_select_deck() {
+    // The 0x17AC rule's cpu_id comes from the client. Unchecked, an id the server has no NPC for (a modified client, or a
+    // roster the server doesn't serve) reached the duel connection, which had nothing to open: the client sat after the
+    // janken for good. Select Deck's upload (0x1F4F update_type 1) is refused instead with 0x22CB, which shows text
+    // 0x2919 and leaves the duel scene (0x50EFD5), as for a deck that fails the check.
+    let mut c = Server::with_world(world()).join(1001, "Yugi");
+    for cpu_id in [999, 0] {
+        let join_id = one(c.send(req_with(0x1784, &[("event_id", Value::U32(1))]))).get("join_id").cloned().unwrap();
+        let rule = [("cpu_id", cpu_id), ("duel_server_id", 0), ("match_type", 4), ("regulation_id", 1), ("surrender", 1)]
+            .into_iter()
+            .fold(Message { tag: TAG_MESSAGE, ..Message::default() }, |m, (k, v)| m.with(k, Value::U32(v)));
+        let duel = Message::reply(0x17AC).with("event_id", Value::U32(1)).with("join_id", join_id).item(rule);
+        let duel_id = one(c.send(Packet::Message(duel))).get("duel_id").and_then(Value::as_u32).unwrap();
+        let deck = Message::deck().with("deck_name", Value::text("Starter Deck")).with("main", Value::u16_be_array(&[10; 40]))
+            .with("extra", Value::u16_be_array(&[])).with("side", Value::u16_be_array(&[]));
+        let fields = [("duel_id", Value::U32(duel_id)), ("event_id", Value::U32(0)), ("update_type", Value::U32(1))];
+        let update = fields.iter().fold(Message::reply(0x1F4F), |m, (k, v)| m.with(k, v.clone())).item(deck);
+        assert_eq!(one(c.send(Packet::Message(update))).request(), Some(0x22CB), "cpu_id {cpu_id}");
+    }
+}
