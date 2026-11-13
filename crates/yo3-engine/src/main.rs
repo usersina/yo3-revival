@@ -8,6 +8,8 @@
 //!   {"op":"state"}                   where every card is now (read only; the server's duel check)
 //!   {"op":"cards","cards":[{"cid":…,"name":…}]}   how the core loads each card (the server's card check)
 //!   {"op":"identity"}                fingerprints of the engine and its data, for replaying a recorded duel
+//!   {"op":"think"}                   the duel bot's answer to the pending prompt (bot/), for an NPC: the server then
+//!                                    gives it with `respond`. Answer {"status":"thought","response":{…},"ms":…}
 //!
 //! Answer: {"messages":[…],"status":"await"|"end","errors":[…]}: the core's messages up to the next prompt (as
 //! ocgcore-wasm 0.1.6 parsed them, decode.rs), with a Konami id (`cid`) beside every passcode. The engine directory (the
@@ -16,6 +18,7 @@
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
+mod bot;
 mod cards;
 mod core;
 mod decode;

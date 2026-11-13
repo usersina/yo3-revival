@@ -129,7 +129,7 @@ pub trait Host {
     /// Card data, or None for a code the database lacks (the core then gets zeros).
     fn card(&mut self, code: u32) -> Option<Card>;
     /// A script's text by file name (`c<passcode>.lua`, `constant.lua`...), or None.
-    fn script(&mut self, name: &str) -> Option<Vec<u8>>;
+    fn script(&mut self, name: &str) -> Option<std::sync::Arc<Vec<u8>>>;
     /// The core's log: its type (0 error, 1 from a script, 2 for debugging) and text.
     fn log(&mut self, kind: i32, text: &str);
 }

@@ -2,6 +2,7 @@
 //! which passcode a Konami id plays as in a duel, and back.
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 use serde_json::Value as Json;
@@ -22,8 +23,59 @@ pub struct Declarable {
     pub attribute: u64,
 }
 
+/// Card data and scripts, shared by the duel and the bot's look-ahead copies of it (on threads of their own).
+pub struct Library {
+    vendor: PathBuf,
+    /// Each card's data row: type, level column, atk, def, attribute, race, alias, setcode (a NULL column reads as 0,
+    /// as the sidecar's Number(null) did).
+    rows: HashMap<u32, [i64; 8]>,
+    /// Scripts by file name, read once (None: not found).
+    scripts: Mutex<HashMap<String, Option<Arc<Vec<u8>>>>>,
+}
+
+impl Library {
+    pub fn row(&self, code: u32) -> Option<[i64; 8]> {
+        self.rows.get(&code).copied()
+    }
+
+    /// The core's card data for `code`.
+    pub fn card(&self, code: u32) -> Option<Card> {
+        let [kind, level, atk, def, attribute, race, alias, setcode] = self.row(code)?;
+        Some(Card {
+            code,
+            alias: alias as u32,
+            setcodes: setcodes(setcode as u64),
+            kind: kind as u32,
+            level: (level & 0xff) as u32,
+            attribute: attribute as u32,
+            race: race as u64,
+            attack: atk as i32,
+            defense: def as i32,
+            lscale: ((level >> 24) & 0xff) as u32,
+            rscale: ((level >> 16) & 0xff) as u32,
+        })
+    }
+
+    /// A script's text by file name: a card's (`c<passcode>.lua`) from its folders, any other from the top.
+    pub fn script(&self, name: &str) -> Option<Arc<Vec<u8>>> {
+        if let Some(known) = self.scripts.lock().unwrap_or_else(|e| e.into_inner()).get(name) {
+            return known.clone();
+        }
+        let folders: &[&str] = if is_card_script(name) { &CARD_SCRIPT_FOLDERS } else { &[""] };
+        let text = folders.iter().find_map(|f| std::fs::read(self.vendor.join("CardScripts").join(f).join(name)).ok()).map(Arc::new);
+        self.scripts.lock().unwrap_or_else(|e| e.into_inner()).insert(name.to_string(), text.clone());
+        text
+    }
+}
+
+/// Whether `name` is a card's script, `c<passcode>.lua`.
+pub fn is_card_script(name: &str) -> bool {
+    name.strip_prefix('c').and_then(|n| n.strip_suffix(".lua")).is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
 pub struct Cards {
     pub vendor: PathBuf,
+    pub library: Arc<Library>,
     db: Connection,
     /// Konami id -> passcode: the database's original among the card's artworks.
     passcode_of: HashMap<u32, u32>,
@@ -49,14 +101,23 @@ impl Cards {
         std::fs::metadata(&path).map_err(|e| format!("open '{}': {e}", path.display()))?;
         let db = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
             .map_err(|e| format!("open '{}': {e}", path.display()))?;
-        let mut alias: HashMap<u32, u32> = HashMap::new();
+        let mut rows: HashMap<u32, [i64; 8]> = HashMap::new();
         {
-            let mut q = db.prepare("select id, alias from datas").map_err(|e| e.to_string())?;
-            let rows = q.query_map([], |r| Ok((r.get::<_, i64>(0)? as u32, r.get::<_, i64>(1)? as u32))).map_err(|e| e.to_string())?;
-            for row in rows.flatten() {
-                alias.insert(row.0, row.1);
+            let mut q = db.prepare("select id, type, level, atk, def, attribute, race, alias, setcode from datas").map_err(|e| e.to_string())?;
+            let found = q
+                .query_map([], |r| {
+                    let mut row = [0i64; 8];
+                    for (i, v) in row.iter_mut().enumerate() {
+                        *v = r.get::<_, Option<i64>>(i + 1)?.unwrap_or(0);
+                    }
+                    Ok((r.get::<_, i64>(0)? as u32, row))
+                })
+                .map_err(|e| e.to_string())?;
+            for (id, row) in found.flatten() {
+                rows.insert(id, row);
             }
         }
+        let alias: HashMap<u32, u32> = rows.iter().map(|(id, r)| (*id, r[6] as u32)).collect();
         let info = vendor.join("cardinfo.json");
         let text = std::fs::read(&info).map_err(|e| format!("open '{}': {e}", info.display()))?;
         let json: Json = serde_json::from_slice(&text).map_err(|e| format!("{}: {e}", info.display()))?;
@@ -85,7 +146,8 @@ impl Cards {
                 }
             }
         }
-        Ok(Cards { vendor: vendor.to_path_buf(), db, passcode_of, cid_of, declarables: None })
+        let library = Arc::new(Library { vendor: vendor.to_path_buf(), rows, scripts: Mutex::default() });
+        Ok(Cards { vendor: vendor.to_path_buf(), library, db, passcode_of, cid_of, declarables: None })
     }
 
     pub fn passcode(&self, cid: u32) -> Option<u32> {
@@ -93,7 +155,7 @@ impl Cards {
     }
 
     pub fn alias(&self, code: u32) -> Option<u32> {
-        self.db.query_row("select alias from datas where id = ?", params![code], |r| r.get::<_, i64>(0)).optional().ok().flatten().map(|a| a as u32)
+        self.library.row(code).map(|r| r[6] as u32)
     }
 
     /// The original (alias 0) whose English name is `name`, ignoring ASCII case.
@@ -120,51 +182,15 @@ impl Cards {
         self.db.query_row("select name from texts where id = ?", params![code], |r| r.get::<_, Option<String>>(0)).optional().ok().flatten().flatten()
     }
 
-    /// The card's data row: type, level column, atk, def, attribute, race, alias, setcode.
-    fn row(&self, code: u32) -> Option<[i64; 8]> {
-        self.db
-            .query_row("select type, level, atk, def, attribute, race, alias, setcode from datas where id = ?", params![code], |r| {
-                // A NULL column reads as 0, as the sidecar's Number(null) did.
-                let mut row = [0i64; 8];
-                for (i, v) in row.iter_mut().enumerate() {
-                    *v = r.get::<_, Option<i64>>(i)?.unwrap_or(0);
-                }
-                Ok(row)
-            })
-            .optional()
-            .ok()
-            .flatten()
-    }
-
-    /// The core's card data for `code`.
-    pub fn card(&self, code: u32) -> Option<Card> {
-        let [kind, level, atk, def, attribute, race, alias, setcode] = self.row(code)?;
-        Some(Card {
-            code,
-            alias: alias as u32,
-            setcodes: setcodes(setcode as u64),
-            kind: kind as u32,
-            level: (level & 0xff) as u32,
-            attribute: attribute as u32,
-            race: race as u64,
-            attack: atk as i32,
-            defense: def as i32,
-            lscale: ((level >> 24) & 0xff) as u32,
-            rscale: ((level >> 16) & 0xff) as u32,
-        })
-    }
-
     /// The card check's view of a card's data: (type, level, attack, defense, attribute, race, alias).
     pub fn data(&self, code: u32) -> Option<[i64; 7]> {
-        let [kind, level, atk, def, attribute, race, alias, _] = self.row(code)?;
+        let [kind, level, atk, def, attribute, race, alias, _] = self.library.row(code)?;
         Some([kind, level & 0xff, atk, def, attribute, race, alias])
     }
 
     /// A script's text by file name.
-    pub fn script(&self, name: &str) -> Option<Vec<u8>> {
-        let card = name.strip_prefix('c').and_then(|n| n.strip_suffix(".lua")).is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
-        let folders: &[&str] = if card { &CARD_SCRIPT_FOLDERS } else { &[""] };
-        folders.iter().find_map(|f| std::fs::read(self.vendor.join("CardScripts").join(f).join(name)).ok())
+    pub fn script(&self, name: &str) -> Option<Arc<Vec<u8>>> {
+        self.library.script(name)
     }
 
     /// Every original card with a Konami id, for card-name filters.

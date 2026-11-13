@@ -3,10 +3,12 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use serde_json::{Map, Value as Json, json};
 
-use crate::cards::{Cards, Declarable, Prints};
+use crate::bot::{Setup, Thinker};
+use crate::cards::{Cards, Declarable, Library, Prints, is_card_script};
 use crate::core::{Card, Duel, Host, Status};
 use crate::decode::{self, Queried, Reader};
 
@@ -20,6 +22,8 @@ const LOCATION_REMOVED: u32 = 0x20;
 const LOCATION_EXTRA: u32 = 0x40;
 const POSITION_FACEDOWN_DEFENSE: u32 = 0x8;
 
+const MSG_HINT: u64 = 2;
+const HINT_SELECTMSG: u64 = 3;
 const MSG_WIN: u64 = 5;
 const MSG_SWAP_GRAVE_DECK: u64 = 35;
 const MSG_SHUFFLE_SET_CARD: u64 = 36;
@@ -39,18 +43,17 @@ struct Log {
 }
 
 struct DuelHost {
-    cards: Rc<RefCell<Cards>>,
+    library: Arc<Library>,
     log: Rc<RefCell<Log>>,
 }
 
 impl Host for DuelHost {
     fn card(&mut self, code: u32) -> Option<Card> {
-        self.cards.borrow().card(code)
+        self.library.card(code)
     }
-    fn script(&mut self, name: &str) -> Option<Vec<u8>> {
-        let text = self.cards.borrow().script(name);
-        let card = name.strip_prefix('c').and_then(|n| n.strip_suffix(".lua")).is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
-        if text.is_none() && card && let Some(missing) = &mut self.log.borrow_mut().missing {
+    fn script(&mut self, name: &str) -> Option<Arc<Vec<u8>>> {
+        let text = self.library.script(name);
+        if text.is_none() && is_card_script(name) && let Some(missing) = &mut self.log.borrow_mut().missing {
             missing.push(name.to_string());
         }
         text
@@ -66,17 +69,39 @@ pub struct Session {
     duel: Option<Duel>,
     prints: Prints,
     last_field: Option<Json>,
+    /// How the duel began and every answer since, as the core read them: what the bot rebuilds copies from.
+    setup: Setup,
+    history: Vec<Vec<u8>>,
+    /// The prompt the duel awaits an answer to (as decoded, before Konami ids are added).
+    pending: Option<Json>,
+    /// Each player's last selection hint (HINT_SELECTMSG), and the ATK of the attacker the bot last declared.
+    hints: [Option<u64>; 2],
+    attacker: Option<i32>,
+    /// The bot's last prompt and answer: the same prompt straight back means the answer went nowhere.
+    thought: Option<(Json, Json)>,
 }
 
 type Answer = Result<Json, String>;
 
 impl Session {
     pub fn new(cards: Cards) -> Session {
-        Session { cards: Rc::new(RefCell::new(cards)), log: Default::default(), duel: None, prints: Prints::default(), last_field: None }
+        Session {
+            cards: Rc::new(RefCell::new(cards)),
+            log: Default::default(),
+            duel: None,
+            prints: Prints::default(),
+            last_field: None,
+            setup: Setup::default(),
+            history: vec![],
+            pending: None,
+            hints: [None; 2],
+            attacker: None,
+            thought: None,
+        }
     }
 
     fn make_duel(&self, seed: [u64; 4], lp: u32, draw: u32, log: Rc<RefCell<Log>>) -> Result<Duel, String> {
-        let host = DuelHost { cards: self.cards.clone(), log };
+        let host = DuelHost { library: self.cards.borrow().library.clone(), log };
         let mut duel = Duel::new(seed, MODE_MR2, lp, draw, Box::new(host)).ok_or("Error: the core refused the duel")?;
         for name in ["constant.lua", "utility.lua"] {
             let text = self.cards.borrow().script(name).unwrap_or_default();
@@ -120,12 +145,15 @@ impl Session {
                 };
                 drop(cards);
                 let duel = self.duel.as_mut().ok_or("TypeError: no duel")?;
-                duel.respond(&crate::encode::response(&response));
+                let bytes = crate::encode::response(&response);
+                duel.respond(&bytes);
+                self.history.push(bytes);
                 let answer = self.run()?;
                 Ok(self.with_cids_answer(answer))
             }
             Some("cards") => Ok(with_bare(json!({ "status": "cards", "cards": self.check_cards(req)? }))),
             Some("state") => self.state(),
+            Some("think") => self.think(req),
             other => Err(format!("Error: unknown op {}", other.map_or_else(|| req["op"].to_string(), String::from))),
         }
     }
@@ -141,10 +169,15 @@ impl Session {
         let lp = req["lp"].as_u64().unwrap_or(8000) as u32;
         // A new duel replaces the old one.
         self.duel = None;
-        let duel = self.make_duel([seed | 1, seed ^ 0x9e3779b97f4a7c15, 2, 3], lp, 5, self.log.clone())?;
+        let seeds = [seed | 1, seed ^ 0x9e3779b97f4a7c15, 2, 3];
+        let duel = self.make_duel(seeds, lp, 5, self.log.clone())?;
         self.duel = Some(duel);
         self.last_field = None;
         self.prints = Prints::default();
+        self.setup = Setup { seed: seeds, lp, cards: vec![] };
+        self.history.clear();
+        self.hints = [None; 2];
+        self.attacker = None;
         let names = &req["names"];
         for (t, deck) in req["decks"].as_array().into_iter().flatten().enumerate() {
             for (key, location) in [("main", LOCATION_DECK), ("extra", LOCATION_EXTRA)] {
@@ -155,6 +188,7 @@ impl Session {
                         Some(code) if code != 0 => {
                             let duel = self.duel.as_mut().unwrap();
                             duel.new_card(t as u8, 0, code, t as u8, location, 0, POSITION_FACEDOWN_DEFENSE);
+                            self.setup.cards.push((t as u8, location, code));
                         }
                         _ => self.log.borrow_mut().lines.push(format!("no passcode for cid {cid}")),
                     }
@@ -177,6 +211,17 @@ impl Session {
 
     /// Runs the duel until it needs an answer or ends. The core keeps prompting after a win, so a win ends it here.
     fn run(&mut self) -> Result<(Vec<Json>, &'static str), String> {
+        let (messages, status) = self.run_steps()?;
+        for m in &messages {
+            if m["type"] == MSG_HINT && m["hint_type"] == HINT_SELECTMSG {
+                self.hints[m["player"].as_u64().unwrap_or(0) as usize & 1] = m["hint"].as_u64();
+            }
+        }
+        self.pending = (status == "await").then(|| messages.last().cloned()).flatten();
+        Ok((messages, status))
+    }
+
+    fn run_steps(&mut self) -> Result<(Vec<Json>, &'static str), String> {
         let mut messages = vec![];
         loop {
             let duel = self.duel.as_mut().ok_or("TypeError: no duel")?;
@@ -295,6 +340,32 @@ impl Session {
         }
         self.last_field = Some(monsters.clone());
         Ok(Some(json!({ "type": "field", "monsters": monsters })))
+    }
+
+    /// The bot's answer to the pending prompt (`{"op":"think"}`), for the server to give with `respond`. With
+    /// `"policy":"simple"`, the old placeholder CPU's answer instead (the baseline the bot is measured against).
+    fn think(&mut self, req: &Json) -> Answer {
+        let prompt = self.pending.clone().ok_or("Error: no prompt to answer")?;
+        let me = prompt["player"].as_u64().unwrap_or(0) as usize & 1;
+        let started = std::time::Instant::now();
+        let response = if req["policy"] == "simple" {
+            crate::bot::policy::simple(&prompt)
+        } else {
+            let library = self.cards.borrow().library.clone();
+            let thinker = Thinker { library: &library, setup: &self.setup, history: &self.history };
+            let duel = self.duel.as_mut().ok_or("TypeError: no duel")?;
+            let (response, declared) = thinker.think(duel, &prompt, self.hints[me], self.attacker);
+            self.attacker = declared.or(self.attacker.filter(|_| prompt["type"] != crate::bot::policy::MSG_SELECT_BATTLECMD));
+            // The same prompt straight back after the same answer (an attack cancelled, an activation that came to
+            // nothing): move on instead of trying it forever.
+            let response = match &self.thought {
+                Some((last, answer)) if *last == prompt && *answer == response => crate::bot::policy::move_on(&prompt),
+                _ => response,
+            };
+            self.thought = Some((prompt, response.clone()));
+            response
+        };
+        Ok(json!({ "status": "thought", "response": response, "ms": started.elapsed().as_millis() as u64 }))
     }
 
     /// Where every card is, by team (see the sidecar's `state()`).
