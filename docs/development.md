@@ -7,6 +7,7 @@ These commands run in a **source checkout**, not an extracted release. For playi
 - [Development guide](#development-guide)
   - [Build from source](#build-from-source)
   - [Checks](#checks)
+  - [Which tool sees what](#which-tool-sees-what)
   - [Duel diagnostics](#duel-diagnostics)
     - [The rules engine](#the-rules-engine)
   - [Build release bundles](#build-release-bundles)
@@ -73,6 +74,27 @@ additional direct-launch fixture and prerequisites.
 Keep the user's screen, default ports, live data and `:77` client untouched. Use private Xvfb displays, separate
 Wine prefixes/documents, scratch server data and free alternate ports through `tools/client/vclient.sh`.
 Never run `cargo fmt` across this repository; match its existing style.
+
+## Which tool sees what
+
+Each debugging tool sees one layer. Start from the question and pick the tool that sees that layer. Commands are in
+the [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#commands).
+
+| Tool | What it sees | Use it for | Blind spots |
+| --- | --- | --- | --- |
+| Packet log (`--log-dir`: `packets-*.jsonl`, `[YO3 PACKET]` lines) | Every request and reply on the wire, decoded | Unanswered requests, reply contents, duel commands the server sent | What the client did with a reply |
+| `vclient.sh check` | Client alive, its own `File.cpp Lnnn` trace lines, Wine crashes, the last packet | A quick health check after each step | The trace arrives in buffered chunks; nothing about the screen |
+| Field tracer (`vclient.sh start --trace`, `tools/tracer/summarize.py`) | Every field the client looked up in each reply, found or missing; `E` lines for exceptions | New reply shapes, missing fields, crash addresses | Attribution is a 300 ms window; local data read then is listed too |
+| `YO3_TRACE_HITS` (with `--trace`) | Whether given client addresses ran | Where a screen's startup steps stopped | Only the addresses you name |
+| UI probe (`vclient.sh ui`, [details](client-internals.md#the-ui-probe)) | Open screens, windows and dialogs by class; the last UI texts looked up, by id; each duel slot's card, face and position | Which screen or dialog is open, which menu or prompt just appeared, what the client holds on the field | Text inside a scene's own Flash (NPC talk, "Start Duel?"); rendering and animation |
+| `vclient.sh shot`, `pixel` | The rendered frame, or one pixel's colour | Final visual checks, Flash-only prompts, animations | Needs reading an image; a pixel is only a colour |
+| Duel check (`--duel-check`), native checkpoints, `duel-report.py` | The server's model of each client, the engine, and the client's own card manager, compared after every step | State drift between engine, server and client | Rendering, menus, animations |
+| Duel replay (`duel-replay.py`) | The engine run again on the recorded inputs | Reproducing an engine-side problem exactly | Mouse input and the client |
+| Self-play tests (`duel_check.rs`, card sweep, real-deck sweep, `npc_bot.rs`) | Thousands of duel steps through translator and engine, offline | Regressions after translator, engine or bot changes | The real client |
+| Protocol monkey (`protocol-monkey.sh`) | The server under replayed, mutated, random and garbage traffic and floods | Server crashes, hangs and leaks | The client's reaction |
+| UI monkey (`ui-monkey.py`) | Random input on two clients; crashes, "no response" dialogs (OCR), server errors | Finding crashes nobody thought to click | Why it happened; reproducing it needs the saved packets and shots |
+| Reverse-engineering helpers (`tools/re/`, GhidraMCP) | The client binary: handlers, fields read, disassembly with log strings | Locating what a screen sends and reads | Runtime state |
+| Session logs and diagnostic ZIPs (Desktop) | A player's server, game and engine output | Bug reports from players | Only what was logged at the time |
 
 ## Duel diagnostics
 
