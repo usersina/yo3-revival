@@ -407,6 +407,7 @@ impl Table {
                 part.push(c.message(0, now));
             }
         }
+        self.notes();
         // Spectators get the duel's end before the match's (duel_over).
         self.tell_spectators(watched);
         if let [Some(r0), Some(r1)] = results[..] {
@@ -596,11 +597,25 @@ impl Table {
         match prompt {
             Some(Prompt::Answer(response)) => self.respond(Some(response)),
             Some(Prompt::Client(messages)) => {
+                self.notes();
                 let mut out = Out::default();
                 out[seat] = messages;
                 out
             }
             None => Out::default(),
+        }
+    }
+
+    /// What the duel windows can't say (an option list's texts), to each player's chat window now.
+    fn notes(&mut self) {
+        for (s, translator) in self.translators.iter_mut().enumerate() {
+            let notes = translator.take_notes();
+            let Some(seat) = self.seats.get(s).filter(|_| !notes.is_empty()) else { continue };
+            if let Some((_, outbox)) = self.hub.locked().front_of(seat.player_id) {
+                for note in notes {
+                    let _ = outbox.send(crate::banter::note_line(&note));
+                }
+            }
         }
     }
 

@@ -2165,3 +2165,20 @@ fn a_token_equipped_as_a_card_vanishes_when_it_leaves() {
     let out: Vec<_> = t.events(&[sheep(loc(1, 8, 0, 5), nowhere)]).iter().map(cmd).collect();
     assert_eq!(out, [(0x1F, [1, 5, 0, 0])], "it shatters off its Spell/Trap zone");
 }
+
+#[test]
+fn options_without_a_label_are_spelled_out_in_the_chat_window() {
+    // A card's options the client has no label for open as the card list, the card once per option in the engine's
+    // order, which tells the player nothing about which is which; a duel dialog takes only ids from the client's tables
+    // (0x519870). The engine's own text for each option (the card's strings, `option_texts`) goes to the chat window
+    // as the list opens, numbered in its order (`take_notes`, sent by the duel as chat lines).
+    let mut t = with_cards();
+    let card = json!({ "type": 14, "player": 0, "options": [4100u64 << 20, 4100u64 << 20 | 1], "option_cids": [4100, 4100],
+        "option_texts": ["Add 1 card to your hand", "Destroy 1 card"] });
+    assert!(matches!(t.prompt(&card), Prompt::Client(_)));
+    assert_eq!(t.take_notes(), ["1: Add 1 card to your hand", "2: Destroy 1 card"]);
+    assert!(t.take_notes().is_empty(), "taken once");
+    // Labelled options (the select dialog) need none.
+    t.prompt(&json!({ "type": 14, "player": 0, "options": [60, 61], "option_texts": ["Heads", "Tails"] }));
+    assert!(t.take_notes().is_empty());
+}

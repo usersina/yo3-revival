@@ -497,6 +497,12 @@ pub fn with_cids(value: Json, cards: &Cards, prints: &Prints) -> Json {
                 .map(|o| o.iter().map(|o| cards.cid_of.get(&((o.as_u64().unwrap_or(0) >> 20) as u32)).copied().unwrap_or(0)).collect::<Vec<_>>());
             if let Some(options) = options {
                 out.insert("option_cids".into(), json!(options));
+                // What each option says (the card's string; empty for the core's own descriptions).
+                let texts: Vec<String> = out["options"].as_array().into_iter().flatten()
+                    .map(|o| o.as_u64().unwrap_or(0))
+                    .map(|d| cards.string((d >> 20) as u32, (d & 0xF_FFFF) as u32).filter(|_| d >> 20 != 0).unwrap_or_default())
+                    .collect();
+                out.insert("option_texts".into(), json!(texts));
             }
             Json::Object(out)
         }

@@ -592,8 +592,23 @@ impl DuelSession {
                 Some(answer) => self.advance(answer),
                 None => vec![],
             },
-            Some(Prompt::Client(out)) => out,
+            Some(Prompt::Client(out)) => {
+                self.notes();
+                out
+            }
             None => vec![],
+        }
+    }
+
+    /// What the duel windows can't say (an option list's texts), to the player's chat window now.
+    fn notes(&mut self) {
+        let Some((_, translator)) = self.engine.as_mut() else { return };
+        let notes = translator.take_notes();
+        let Some(player_id) = self.player_id.filter(|_| !notes.is_empty()) else { return };
+        if let Some((_, outbox)) = self.hub.locked().front_of(player_id) {
+            for note in notes {
+                let _ = outbox.send(banter::note_line(&note));
+            }
         }
     }
 
@@ -665,6 +680,7 @@ impl DuelSession {
             self.report(result);
         }
         self.speak(said);
+        self.notes();
         out
     }
 

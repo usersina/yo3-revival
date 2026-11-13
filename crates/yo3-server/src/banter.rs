@@ -127,6 +127,17 @@ pub fn chat_line(npc_id: u32, npc_name: &str, text: &str) -> Message {
     Message::reply(0x2455).item(line)
 }
 
+/// A line the duel itself puts in a player's chat window (an option list's texts): chat type 0 with "Effect" for a
+/// name, from no one (from_id 0).
+pub fn note_line(text: &str) -> Message {
+    let line = Message::record()
+        .with("from_id", Value::U32(0))
+        .with("pname", Value::text("Effect"))
+        .with("chat_type", Value::U32(NPC_CHAT))
+        .with("chat_str", Value::text(text));
+    Message::reply(0x2455).item(line)
+}
+
 /// One NPC's voice through one duel.
 pub struct Banter {
     lines: &'static Lines,

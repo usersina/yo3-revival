@@ -503,6 +503,8 @@ pub struct Translator {
     deck_tops: [Option<[u32; 4]>; 2],
     /// A MSG_SELECT_DISFIELD's zones clicked so far, once its OK dialog closed (None while it is open).
     zone_picks: Option<Vec<Json>>,
+    /// Lines for the player's chat window, for what a duel window can't say (`take_notes`).
+    notes: Vec<String>,
     /// Both Decks turned over (Convulsion of Nature): each pile shows its top card's face.
     decks_reversed: bool,
     /// Each monster zone's position as last shown (face up, defense), by player and zone.
@@ -616,6 +618,7 @@ impl Translator {
             kinds: HashMap::new(),
             deck_tops: [None; 2],
             zone_picks: None,
+            notes: vec![],
             decks_reversed: false,
             positions: HashMap::new(),
             direct: None,
@@ -640,6 +643,12 @@ impl Translator {
         let mut t = t;
         t.note_deck_tops(&out);
         (t, out)
+    }
+
+    /// The lines for the player's chat window since the last call (an option list's texts): what a duel window can't
+    /// say, as the client takes only text ids there.
+    pub fn take_notes(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.notes)
     }
 
     /// The duel's result for the client (1 won, 2 lost, 3 draw), once the engine ended the duel.
@@ -1818,6 +1827,12 @@ impl Translator {
                         .map(|i| json!({ "controller": m["player"], "cid": card(i) }))
                         .collect();
                     let out = self.card_list(&json!({ "selects": selects, "min": 1, "max": 1 }), Some(SELECT_EFFECT_TEXT));
+                    // What each option does, from the engine's card strings: the chat window, numbered as listed.
+                    for (i, text) in m["option_texts"].as_array().into_iter().flatten().enumerate() {
+                        if let Some(text) = text.as_str().filter(|t| !t.is_empty()) {
+                            self.notes.push(format!("{}: {text}", i + 1));
+                        }
+                    }
                     self.option_cards = true;
                     self.picks.clear();
                     self.pending = Some(m.clone());

@@ -178,6 +178,15 @@ impl Cards {
         q.query_map(params![original, original, original], |r| r.get::<_, i64>(0)).map(|rows| rows.flatten().map(|c| c as u32).collect()).unwrap_or_default()
     }
 
+    /// A card's script string `n` (0-15: the database's str1-str16), as its option descriptions (code << 20 | n) name.
+    pub fn string(&self, code: u32, n: u32) -> Option<String> {
+        if n > 15 {
+            return None;
+        }
+        let sql = format!("select str{} from texts where id = ?", n + 1);
+        self.db.query_row(&sql, params![code], |r| r.get::<_, Option<String>>(0)).optional().ok().flatten().flatten()
+    }
+
     pub fn name(&self, code: u32) -> Option<String> {
         self.db.query_row("select name from texts where id = ?", params![code], |r| r.get::<_, Option<String>>(0)).optional().ok().flatten().flatten()
     }
@@ -258,5 +267,23 @@ impl Prints {
 
     pub fn own(&self) -> HashSet<u32> {
         self.cids.keys().copied().collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_cards_strings_are_its_option_texts() {
+        // An option's description is code << 20 | n, n naming the database's str(n + 1): Allure Queen LV3's two effects.
+        let vendor = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../engine/vendor");
+        if !vendor.join("BabelCDB/cards.cdb").is_file() {
+            return; // engine/fetch.sh not run
+        }
+        let cards = Cards::open(&vendor).expect("the card data");
+        assert_eq!(cards.string(87257460, 0).as_deref(), Some("Equip 1 opponent's Level 3 or lower monster to this card"));
+        assert_eq!(cards.string(87257460, 1).as_deref(), Some("Special Summon 1 \"Allure Queen LV5\""));
+        assert_eq!(cards.string(87257460, 16), None);
     }
 }
