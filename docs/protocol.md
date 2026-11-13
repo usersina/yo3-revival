@@ -932,7 +932,8 @@ answers). A table whose second player never connects is cancelled after `table::
 closed after Select Deck): the one waiting gets the same `0x2009`. A match neither player joins (both match pushes lost,
 say) ends after `front::NO_JOIN` (3 minutes) with no winner, so an event's round goes on. An NPC duel's Select Deck is
 refused (`0x22CB`) when its rule's `cpu_id` names no NPC the server has, with a deck: the duel connection would have had
-nothing to open (live before the check, the client sat after the janken). `0x200A {player_id}` is claimed only from the address of the front connection that picked the deck.
+nothing to open (live before the check, the client sat after the janken). A server without the client's NPC data (no
+game files, as in CI) knows no NPCs and skips the check, keeping its placeholder opponent. `0x200A {player_id}` is claimed only from the address of the front connection that picked the deck.
 The turn order `0xD` counts once per janken.
 
 Every message is key/value (tag 4) with a `duelRequestName`. The client sends request `0x200C` (header built by

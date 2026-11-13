@@ -2750,7 +2750,9 @@ impl FrontSession {
                 }
                 // An NPC duel's opponent is the client's cpu_id: one the server has no NPC for would leave the duel
                 // connection nothing to open (the client sat after the janken), so its Select Deck is refused too.
+                // A server without the client's NPC data (no game files) knows no NPCs and keeps its placeholder.
                 if msg.get("update_type").and_then(Value::as_u32) == Some(1)
+                    && !self.world.npcs.is_empty()
                     && let Some(rule) = duel_id.and_then(|id| self.duels.get(&id))
                 {
                     let npc_id = rule.iter().find(|(k, _)| k == "cpu_id").and_then(|(_, v)| v.as_u32()).unwrap_or(0);

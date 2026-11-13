@@ -325,6 +325,18 @@ fn an_opponent_leaving_at_the_janken_sends_the_player_off_its_screen() {
 }
 
 #[test]
+fn a_server_without_npc_data_does_not_refuse_npc_duels() {
+    // Without the client's files the server knows no NPCs (World.npcs empty), and its duel connection opens the
+    // placeholder opponent; refusing every cpu_id there broke the launcher's proxy test in CI (no game installed).
+    let mut c = Server::with_world(World { npcs: vec![], ..world() }).join(1001, "Yugi");
+    let duel_id = start_npc_duel(&mut c);
+    let deck = Message::deck().with("deck_name", Value::text("Starter Deck"));
+    let fields = [("duel_id", Value::U32(duel_id)), ("event_id", Value::U32(0)), ("update_type", Value::U32(1))];
+    let update = fields.iter().fold(Message::reply(0x1F4F), |m, (k, v)| m.with(k, v.clone())).item(deck);
+    assert_eq!(one(c.send(Packet::Message(update))).request(), Some(0x22CA));
+}
+
+#[test]
 fn a_duel_against_an_npc_the_server_lacks_is_refused_at_select_deck() {
     // The 0x17AC rule's cpu_id comes from the client. Unchecked, an id the server has no NPC for (a modified client, or a
     // roster the server doesn't serve) reached the duel connection, which had nothing to open: the client sat after the
