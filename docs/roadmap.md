@@ -1081,6 +1081,14 @@ Stop finding missing fields one crash at a time.
       bot now activates what it can after summoning, so a Spell drawn or held counts. A hero beats the same bot with
       the same deck 17 of 20 (11 of 20 before that fix). Live: Yami Yugi's first turn put Summoned Skull and a second
       monster on the field and hit for 3,800
+- [x] The NPCs talk (2026-11-13): each NPC has its own lines (`crates/yo3-server/src/npc_lines.txt`, ours, in each
+      character's voice) in the duel's chat window, since the client's own speech for NPCs is fixed. `banter.rs`
+      reads the engine's messages: the duel's start and end, its turns now and then, a summon of 2400+ ATK (named,
+      once per card), its direct attacks, 2000+ damage it takes, a hero's draw (Heart of the Cards), and Pegasus'
+      Millennium Eye naming a card in your hand (the engine's state) or the card you just Set. At most two lines a
+      turn and one of a kind; each is sent when the client should be showing its moment (a pace per message, 1.5
+      times `pace()` and a 3 s opening, measured live). Live: Pegasus named the Dark Mirror Force in our hand and the
+      one we Set as it landed; Yami Yugi's win line showed with YOU LOSE
 - [x] The duel bot looks through the opponent's turn (2026-11-13): a copy plays the option, the rest of the bot's turn
       by its rules, then the opponent's next turn with only its public cards (face-up monsters attack, nothing from the
       hand, no chains), and is judged when the bot's next turn begins. The two most promising idle actions are also

@@ -289,6 +289,12 @@ back_num 0}`.
 | `0x2134` send              | `0x2456` (`0x2457`)                        | fields sit in **one item (tag 10)**: `chat_str`, `chat_type`, and `to_id` or `to_name`. Room chat = `chat_type` 1 with `to_id` = the room id; whisper = `to_name` | captured packets; builders `0x4F3E00` (to_id) and `0x4F4030` (to_name)                                 | confirmed (room); whisper shape                                                                                                                                                                                                                          |
 | (server push)              | `0x2455`                                   | items `{from_id, pname, chat_type, chat_str}`; the handler also checks `friend_id`/`member_id`                                                                    | two clients see each other's lines; the client shows nothing on `0x2456`, so the sender needs the echo | confirmed                                                                                                                                                                                                                                                |
 
+`0x2455`'s `chat_type` picks the tab (`0x435FD0`: 0 → tab 7, 1 → 0, 2 → 1, 4 → 2, 3 → 3, 5 → 4, else 5) and the
+name's colour (`0x435DAF`, table at `0x7F67C0`: chat type 0 red `#F00000`; the player's own line `#00E8FF`; a team
+member green, a friend orange, anyone else `#F0F0F0`). The duel screen's chat window shows chat types 0 and 1; 2 to 7
+did not appear there (live probe, 2026-11-13). An NPC's lines use chat type 0, so the NPC's name is red like the
+opponent's name plate, and its `npc_id` as `from_id` (never a player's id): **confirmed** live, Pegasus and Yami Yugi.
+
 ### Friends and the ignore list (community agent `0x4A4EE0`)
 
 PlayerInfoWindow (`0x4B6060`) looks the player up in the friend list (dataset slot 6, items by `friend_id`) and the
@@ -1396,7 +1402,9 @@ speech bubble with the speaker's name. A slot reading `/preset N` is replaced by
 all set to `/preset 0`** by the duel's player setup (the branch around `0x428295`'s caller, slots listed at
 `0x792660`), so its bubbles show its built-in lines (Pegasus' draw: text 63501 "My turn now!", 63502 "I think I'll
 play..."), whatever the roster item carries: speech fields sent in an NPC's `0x2711` item were ignored (live,
-2026-11-13). Still **open**: CardBreak `0x20` {player, 1–4, uid}
+2026-11-13). Our NPCs speak in the chat window instead (`crates/yo3-server/src/banter.rs`, lines in `npc_lines.txt`):
+a `0x2455` push to the player's front connection (`{from_id: npc_id, pname, chat_type: 0, chat_str}`), sent as the
+client plays the moment it belongs to (see the chat table below). Still **open**: CardBreak `0x20` {player, 1–4, uid}
 (the original's destruction effect after BattleRun or an effect, 2.5 a duel; we keep CardVanish), BgmUpdate 9 (19 a
 duel, no params: the music's mood), `0x45`, `0x46`, `0x49`–`0x4B`, `0x4E`, 1006, 1013–1016, 1018–1025, `0x26`'s param3
 and CardCheat `0x1D` (a card object refreshed from its record, 46 a duel). Konami's opening also differs (1013 for every

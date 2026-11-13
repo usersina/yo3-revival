@@ -25,6 +25,10 @@ Older entries describe their release at the time. For current setup, use the [RE
   Maximillion Pegasus... reads your mind. His Millennium Eye sees your face-down monsters and Set cards.
 - **The heroes believe in the Heart of the Cards:** Yami Yugi, Yugi Muto, Jaden Yuki and Yusei Fudo always draw the
   card they need. Good luck.
+- **The opponents talk.** Every NPC has its own lines in the duel's chat window: a greeting, taunts, its big
+  monsters by name, its direct attacks, its reaction to a heavy hit, and a word when the duel ends. The heroes call
+  on the Heart of the Cards as they draw, and Pegasus tells you which card is in your hand and which one you just
+  Set. He is not bluffing.
 
 ## v0.0.9 (2026-11-12)
 

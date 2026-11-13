@@ -32,6 +32,11 @@ Your first starting deck is prepared and selected automatically. You can duel wi
 In a duel, left-click a hand card for its default action; right-click it for the available actions.
 Use the phase buttons to enter the Battle Phase, Main Phase 2 or End Phase.
 
+Each NPC plays in character and talks in the chat window below the field, with its name in red. Yami Yugi, Yugi,
+Jaden and Yusei draw the card they need, and Maximillion Pegasus can see your hand and your Set cards.
+
+![Maximillion Pegasus naming the Dark Mirror Force in the player's hand and the one just Set](../screenshots/pegasus.png)
+
 ![Stardust Dragon on the field during a duel](../screenshots/duel.png)
 
 ## Play with a friend
