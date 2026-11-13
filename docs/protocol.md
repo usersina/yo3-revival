@@ -893,7 +893,12 @@ janken or turn order, that `0x2009` has `duel_end` 4 (`front::duel_left`): the j
 `duel_end` 1 (live: the player stayed there for good). An engine
 that dies, hangs for 30 s or keeps refusing the answer to one prompt ends the duel for both seats with command 2 {3, 0}
 (a draw, no reason text), counted once as a draw. A duel connection that arrives after its match ended is sent command 2
-{1, 14} and ignored. `0x200A {player_id}` is claimed only from the address of the front connection that picked the deck.
+{1, 14} and ignored, and its front connection the cancelled duel's `0x2009` (`duel_end` 3, which the pre-janken screen
+answers). A table whose second player never connects is cancelled after `table::NO_SHOW` (90 s; the client may have
+closed after Select Deck): the one waiting gets the same `0x2009`. A match neither player joins (both match pushes lost,
+say) ends after `front::NO_JOIN` (3 minutes) with no winner, so an event's round goes on. An NPC duel's Select Deck is
+refused (`0x22CB`) when its rule's `cpu_id` names no NPC the server has, with a deck: the duel connection would have had
+nothing to open (live before the check, the client sat after the janken). `0x200A {player_id}` is claimed only from the address of the front connection that picked the deck.
 The turn order `0xD` counts once per janken.
 
 Every message is key/value (tag 4) with a `duelRequestName`. The client sends request `0x200C` (header built by
@@ -1110,8 +1115,8 @@ link) with type 2, a lasting target (MSG_CARD_TARGET 96, ended by MSG_CANCEL_TAR
 has its relations removed at the old place and added at the new one, and goes when either card leaves the field. After
 each batch of engine events the server diffs what the client holds against what it should: removals, additions, then
 `0x26`. **Confirmed** live (`--duel-deck 807,581`, Axe of Despair on Vorse Raider): hovering the monster drew the yellow
-∞ on the Axe. Hovering the Axe drew nothing on the monster: the source lookup passed in the probe for a monster zone
-only, so a Spell/Trap slot's hovered place probably isn't `zone << 8` as sent (**open**; the relations are sent anyway).
+∞ on the Axe, and hovering the Axe drew it on the monster (2026-11-13; the hover pick `0x50B510` gives a Spell/Trap slot
+as `zone << 8` too, and `0x50B1C0` looks the hovered place up in the relations with `0x522170`).
 The duel check holds every relation to two occupied slots (240 self-played duels: 84 equips, 121 lasting targets).
 
 **Card overrides** (not sent yet). 1019 (`0x3FB`) stages {param2 type, param3 value, param4} and 1020 (`0x3FC`)

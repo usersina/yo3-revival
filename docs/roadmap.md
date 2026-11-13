@@ -67,7 +67,10 @@ v0.0.10 release preparation (2026-11-13):
   duels do (`duel::npc_translator`; the duel check learns their rows from a translator that hides nothing). Live: a
   card back with no stats in both, the card itself once flipped in battle, his cut-ins unchanged.
 - [ ] Found on the way, not new in this release: a monster's switch to Defense Position at the end of the Battle Phase (Goblin Attack Force) stays drawn upright on
-  its owner's screen, though the duel check agrees with the engine.
+  its owner's screen, though the duel check agrees with the engine. Not reproduced on 2026-11-13 in five tries (an NPC
+  duel with `--duel-deck 307`, and an Auto Duel through the opponent's turn, a discard window right after the switch,
+  a manual switch back to Attack and a second Goblin): the switch showed sideways every time. The v0.0.10 case came
+  after a battle with Pegasus' Toons and a Lei Lei trade; the trigger is still unknown.
 
 v0.0.9 release preparation (2026-11-12):
 
@@ -423,8 +426,18 @@ Next DLL candidates, after launcher usability:
       DLL/loader contracts and Linux/Windows cross-builds pass. Native Windows gameplay was verified later (Windows 11,
       above: a fresh player received its starter and entered matchmaking).
 - [ ] Sync editor saves without requiring a duel selection (currently only `0x1F4F update_type 1` uploads them).
-- [ ] Diagnose the client black-screen wait when the server hangs, then add bounded failure feedback.
-- [ ] Check local profile collisions for identically named players on different servers.
+- [x] Diagnose the client black-screen wait when the server hangs, then add bounded failure feedback (2026-11-13). A
+      dropped connection crashed the game: every failed receive logs through the client's network error logger
+      (`0x82D214`), which this build never creates (`0xC0000005` at `0x535210`, live with the server killed mid-duel;
+      the "black screen" was the crash). The connection DLL now fills it with a logger that writes nothing
+      (`tools/mod/netlog.h`): live, "You have been disconnected from the Duel Server.", OK, "You have been
+      disconnected from the server.", OK, the title screen. A host gone without closing (asleep, its network lost)
+      now drops too: the launcher's connections use TCP keepalive (45 s, then 4 probes 10 s apart; not checked
+      live, it needs a dead network path). A server process that hangs but keeps its connections open still leaves
+      the duel waiting with no message (live with SIGSTOP); the client has no timeout of its own.
+- [ ] Check local profile collisions for identically named players on different servers. Confirmed by reading the
+      DLL (2026-11-13): local decks, `.y3p` and the starter marker live in `Documents/Yu-Gi-Oh! ONLINE 3/players/<name>/`
+      (`tools/mod/starter.h` `starter_local_path`), shared by every server; a fix needs a game-data folder per server.
 
 Desktop manager (2026-11-10): `yo3-desktop` supplies an Iced `yo3-revival` application with game-folder setup,
 local play, saved remote connections, independent server controls, live account creation/add-player/export,
@@ -772,8 +785,8 @@ Findings:
 - Historical issue, resolved by required TLS profiles: one account per client address meant new addresses kept making accounts (about 2 KB of file and 40 KB
   of memory each; 1500 addresses were fine). Only a spoofing client could do this over TCP. Rotation is per run: a
   server restarted often keeps four files each time.
-- Open, client: with the server frozen (SIGSTOP) the client goes to a black screen and shows no "no response" dialog
-  within 60 s; the UI monkey's OCR check for that dialog was not exercised live because the server answered every
+- Open, client (crash fixed 2026-11-13, see "Diagnose the client black-screen wait"): with the server frozen (SIGSTOP)
+  the client shows no "no response" dialog within 60 s; the UI monkey's OCR check for that dialog was not exercised live because the server answered every
   request. OCR itself reads the client's text (tested on the Duel Menu).
 - Real-client requests the server answers with nothing: duel `0x200A` (the first seat waits for the second, by design)
   and `0x200C` (duel messages that only produce commands). Nothing else was UNHANDLED.
@@ -889,7 +902,9 @@ The engine message types the translator leaves alone, and why (the audit):
       material attached from a hand or pile (logged).
 - [x] Equips and lasting targets (EQUIP 93, CARD_TARGET 96, CANCEL_TARGET 97) shown as hover markers between the
       cards (1017, see "Card relations" in protocol); the duel check holds them to occupied slots.
-- [ ] Hovering a Spell/Trap shows no markers (hovering the monster does): its hovered place isn't the key sent.
+- [x] Hovering a Spell/Trap shows its markers too (checked live 2026-11-13, `--duel-deck 807,581`: hovering the equipped
+      Axe of Despair drew the yellow ∞ on Vorse Raider, and the other way round). The hover pick (`0x50B510`) gives a
+      Spell/Trap slot as `zone << 8` like a monster's; the earlier failure was before the relations' places were fixed.
 - [ ] Not seen live: Magical Hats, Exchange of the Spirit and Xyz materials on the client (Creature Swap was). The
       client lacks the Xyz Monsters tried, so Xyz may not come up at all.
 

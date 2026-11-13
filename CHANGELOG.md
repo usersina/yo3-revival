@@ -15,6 +15,14 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Fixed: stuck at rock-paper-scissors.** If your opponent left a duel while you were choosing rock, paper or
   scissors, you stayed on that screen for good and had to close the game. You now see "(name) has disconnected." and
   return to the map, with nothing counted.
+- **Fixed: the game closing when the host goes away.** If the host's server stopped or crashed, or the network
+  dropped, the game itself crashed. You now see "You have been disconnected" and go back to the title screen. A host
+  whose computer went to sleep or lost its network is noticed within about a minute and a half too.
+- **Fixed: waiting for an opponent who never shows up.** If your opponent's game closed after choosing a deck, you
+  waited for good. After 90 seconds the duel is cancelled and you're sent back. In events, a match nobody joins now
+  ends on its own so the tournament goes on.
+- **Fixed:** a duel against a computer opponent the server doesn't have now stops at deck selection instead of
+  leaving you stuck after rock-paper-scissors.
 
 ## v0.0.11 (2026-11-13)
 
