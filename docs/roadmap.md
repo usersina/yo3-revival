@@ -36,6 +36,26 @@ Desktop archives also carry `yo3-revival.ico` and `yo3-revival.png` for custom s
 both platform archives. The in-game login news no longer includes the deck-onboarding notice; a front contract
 checks its removal alongside the existing news-format and engine-warning coverage.
 
+v0.0.10 release preparation (2026-11-13):
+
+- [x] The workspace package version and the local lockfile entries are `0.0.10`. The changelog describes the native
+  rules engine (no Node.js), the duel bot, the NPCs' characters, the heroes' Heart of the Cards and the NPCs' lines.
+- [x] All workspace tests pass; workspace Clippy is clean; documentation links pass; the packaged-update test passes
+  on the Linux Desktop archive.
+- [x] Linux, from the v0.0.10 bundles: the Scripts server run by its path from another directory (found its engine
+  after the fix below); a 3000 LP NPC duel against Pegasus with the duel check, 18 turns, no error, his lines (hand
+  reads, a Set named, a heavy hit), Threatening Roar and a negated attack from the bot; its 563 engine calls replayed
+  exactly with the bundle's engine; an Auto Duel between two accounts (Swords of Concealing Light, Sets, phases), both
+  views in step; Desktop starts and checks.
+- [x] Windows 11 VM, from the Desktop zip: unpacked into a scratch folder with its own app data, "Ready to play"
+  (the engine check loads its card data), Play hosted locally and opened the game; an NPC duel against Pegasus with
+  the Yusei deck (Max Warrior's battle effect, his Toons, his hand read in the chat); closing the game and the app left
+  no process, listener or error line.
+- [ ] Found on the way, not new in this release: in NPC duels the client is sent the NPC's cards unhidden (`Translator`
+  hides only a player opponent's), so the attack-target window and the card panel show his face-down monsters; and
+  a monster's switch to Defense Position at the end of the Battle Phase (Goblin Attack Force) stays drawn upright on
+  its owner's screen, though the duel check agrees with the engine.
+
 v0.0.9 release preparation (2026-11-12):
 
 - [x] The workspace package version and the local lockfile entries are `0.0.9`. The changelog describes the
