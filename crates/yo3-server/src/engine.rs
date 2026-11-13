@@ -198,13 +198,20 @@ impl Engine {
     /// `new_duel` with the English names of the decks' cards (the client's `names`, by Konami id, as many as given):
     /// the engine finds a print its card list lacks (the client's second Dark Magician, 5165) by name.
     pub fn new_duel_named(&mut self, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2], names: &HashMap<u16, String>) -> io::Result<Answer> {
+        self.new_duel_with(seed, lp, decks, names, &[])
+    }
+
+    /// `new_duel_named` with `skills`: (engine team, skill name) pairs, an NPC's hidden powers (see crate::npc).
+    pub fn new_duel_with(&mut self, seed: u64, lp: u32, decks: [(&[u16], &[u16]); 2], names: &HashMap<u16, String>,
+        skills: &[(u32, String)]) -> io::Result<Answer> {
         let used: std::collections::BTreeMap<String, &String> = decks
             .iter()
             .flat_map(|(main, extra)| main.iter().chain(extra.iter()))
             .filter_map(|cid| names.get(cid).map(|name| (cid.to_string(), name)))
             .collect();
         let decks: Vec<Json> = decks.iter().map(|(main, extra)| json!({ "main": main, "extra": extra })).collect();
-        self.call(json!({ "op": "new", "seed": seed, "lp": lp, "decks": decks, "names": used }))
+        let skills: Vec<Json> = skills.iter().map(|(team, skill)| json!({ "player": team, "skill": skill })).collect();
+        self.call(json!({ "op": "new", "seed": seed, "lp": lp, "decks": decks, "names": used, "skills": skills }))
     }
 
     /// How the engine loads each card `(Konami id, English name)`: one answer per card, `{cid, passcode}` (null: the

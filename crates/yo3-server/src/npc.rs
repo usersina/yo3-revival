@@ -1,9 +1,13 @@
 //! How each NPC plays: its duel bot style (crates/yo3-engine's bot::Style), by character. The client names an NPC
 //! (`GameData::npc_name`, the same for its three levels); the characters are ours to play, so these are our choices,
 //! not the original NPCs' (Konami's logs don't record how their CPU decided). `aggression` -1..1 (holds back ..
-//! attacks whenever it can), `caution` 0..1 (weighs threats, needs more to spend a card), `sees`: the opponent's hand
-//! and Set cards.
+//! attacks whenever it can), `caution` 0..1 (weighs threats, needs more to spend a card), `sees`: the opponent's
+//! face-down monsters and Set cards. Each era's hero has the Heart of the Cards (`skills`: the engine's
+//! skills.lua): before each draw, the card he needs most goes on top of his Deck.
 use serde_json::{Value as Json, json};
+
+/// The heroes: they draw the card they need (`heart_of_the_cards`).
+const HEROES: &[&str] = &["Yami Yugi", "Yugi Muto", "Jaden Yuki", "Yusei Fudo"];
 
 /// (name, aggression, caution, sees)
 const CHARACTERS: &[(&str, f64, f64, bool)] = &[
@@ -37,8 +41,9 @@ const CHARACTERS: &[(&str, f64, f64, bool)] = &[
 
 /// The style of the NPC named `name`; an NPC not listed plays the default (null).
 pub fn style(name: &str) -> Json {
+    let skills: &[&str] = if HEROES.contains(&name) { &["heart_of_the_cards"] } else { &[] };
     CHARACTERS.iter().find(|(n, ..)| *n == name).map_or(Json::Null, |(_, aggression, caution, sees)| {
-        json!({ "aggression": aggression, "caution": caution, "sees": sees })
+        json!({ "aggression": aggression, "caution": caution, "sees": sees, "skills": skills })
     })
 }
 
@@ -52,5 +57,9 @@ mod tests {
         assert_eq!(style("Seto Kaiba")["sees"], false);
         assert!(style("Seto Kaiba")["aggression"].as_f64().unwrap() > 0.5);
         assert_eq!(style("Someone Else"), Json::Null);
+        for hero in ["Yami Yugi", "Yugi Muto", "Jaden Yuki", "Yusei Fudo"] {
+            assert_eq!(style(hero)["skills"], json!(["heart_of_the_cards"]), "{hero}");
+        }
+        assert_eq!(style("Seto Kaiba")["skills"], json!([]));
     }
 }

@@ -1,7 +1,8 @@
 //! The duel bot (crates/yo3-engine/src/bot) against the old placeholder CPU, both playing the client's NPC decks: the
 //! bot must win clearly more often. `YO3_BOT_DUELS=n` plays n duels (default 6), `YO3_BOT_MIRROR=1` with the same deck on
 //! both sides (skill alone, no deck edge), `YO3_BOT_ONLY=i` only duel i, `YO3_BOT_RIVAL=action` against the bot's
-//! first version instead (`bot`: the default bot), `YO3_BOT_STYLE={...}` the bot's own style; each duel's result and the bot's
+//! first version instead (`bot`: the default bot), `YO3_BOT_STYLE={...}` the bot's own style,
+//! `YO3_BOT_SKILL=1` the heroes' Heart of the Cards; each duel's result and the bot's
 //! thinking time go to `npc-bot.tsv` in Cargo's test temporary directory. Skipped without the game or the engine.
 use std::path::PathBuf;
 use std::time::Instant;
@@ -28,7 +29,10 @@ fn own_style() -> serde_json::Value {
 /// bot's answers and its total thinking time.
 fn duel(engine_dir: &std::path::Path, seed: u64, decks: [(&[u16], &[u16]); 2], bot: u64) -> (Option<u64>, u32, f64, f64) {
     let mut engine = Engine::start(engine_dir).expect("the engine program runs");
-    let mut answer = engine.new_duel(seed, 8000, decks).expect("the duel starts");
+    // `YO3_BOT_SKILL=1`: the bot has the heroes' Heart of the Cards.
+    let skills: Vec<(u32, String)> =
+        if std::env::var_os("YO3_BOT_SKILL").is_some() { vec![(bot as u32, "heart_of_the_cards".into())] } else { vec![] };
+    let mut answer = engine.new_duel_with(seed, 8000, decks, &Default::default(), &skills).expect("the duel starts");
     let (mut thoughts, mut ms, mut longest) = (0u32, 0f64, 0f64);
     let mut recent: std::collections::VecDeque<String> = Default::default();
     for _ in 0..6000 {

@@ -884,7 +884,14 @@ pub mod selfplay {
         }
         let ids = |rows: &[u16]| rows.iter().map(cid).collect::<Vec<u16>>();
         let (m0, e0, m1, e1) = (ids(&shuffled[0]), ids(decks[0].1), ids(&shuffled[1]), ids(decks[1].1));
-        let mut answer = engine.new_duel_named(seed, lp, [(&m0, &e0), (&m1, &e1)], &data.names);
+        // `YO3_CHECK_SKILLS=1`: the side the client faces has the heroes' Heart of the Cards (crate::npc), which moves
+        // cards within the Deck without a message: the client's view must still follow.
+        let skills: Vec<(u32, String)> = if std::env::var_os("YO3_CHECK_SKILLS").is_some() {
+            vec![(1 - client_team as u32, "heart_of_the_cards".into())]
+        } else {
+            vec![]
+        };
+        let mut answer = engine.new_duel_with(seed, lp, [(&m0, &e0), (&m1, &e1)], &data.names, &skills);
         let mut played = Played::default();
         let mut prompt: Option<Json> = None;
         let mut retries = 0;

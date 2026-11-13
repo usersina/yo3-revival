@@ -527,7 +527,12 @@ impl DuelSession {
         if self.world.duel_check { engine.record(); }
         let seed = self.next();
         let lp = self.world.start_lp;
-        let answer = engine.new_duel_named(seed, lp, [(&m0, &e0), (&m1, &e1)], &self.world.card_names);
+        // The NPC's hidden powers (crate::npc), for its engine team.
+        let npc_team = if first == CLIENT { 1 } else { 0 };
+        let style = entry.npc_id.and_then(|id| self.world.npc_styles.get(&id));
+        let skills: Vec<(u32, String)> = style.and_then(|s| s["skills"].as_array()).into_iter().flatten()
+            .filter_map(|s| s.as_str()).map(|s| (npc_team, s.to_string())).collect();
+        let answer = engine.new_duel_with(seed, lp, [(&m0, &e0), (&m1, &e1)], &self.world.card_names, &skills);
         let (mut translator, mut table) = Translator::new(first, [&entry.deck.main, &npc.main], self.world.cards.clone());
         if self.world.duel_check {
             self.check = Some(crate::duelcheck::ClientModel::new(first, self.world.cards.clone()));
