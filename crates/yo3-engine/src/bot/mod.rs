@@ -48,8 +48,25 @@ const COMBO_FIRSTS: usize = 2;
 const COMBO_FOLLOWUPS: usize = 8;
 /// A copy plays at most this many answers past the option before it is judged.
 const MAX_STEPS: usize = 600;
-/// Copies kept in step with the real duel.
-const POOL_SIZE: usize = 4;
+/// Copies kept in step with the real duel: one for each thread, so a decision's first options start without a
+/// rebuild (late in a duel with a full field, replaying an answer costs the core up to 80 ms: each idle prompt checks
+/// every summon the Extra Deck allows).
+fn pool_size() -> usize {
+    threads()
+}
+
+/// The threads trying options at once: the machine's, at most 8.
+fn threads() -> usize {
+    std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 8)
+}
+
+/// How long the bot may weigh one decision before it settles for the options it has tried. Each try needs a copy of
+/// the duel, and once the pool's are used a copy is rebuilt by replaying every answer so far: late in a long duel a
+/// decision took up to 2.7 s (tests/npc_bot.rs, seed 9001). The option of doing nothing more is always tried first,
+/// each thread tries at least one option, and the two-step lines wait for time left.
+pub const BUDGET: std::time::Duration = std::time::Duration::from_millis(700);
+/// A try still playing this long past the deadline is judged where it stands.
+const GRACE: std::time::Duration = std::time::Duration::from_millis(300);
 
 /// How far a copy plays before it is judged.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -165,12 +182,12 @@ impl Pool {
         self.state.lock().unwrap_or_else(|e| e.into_inner()).ready.pop()
     }
 
-    /// Starts building copies in the background until [`POOL_SIZE`] are ready or on their way, from the duel as it is
+    /// Starts building copies in the background until [`pool_size`] are ready or on their way, from the duel as it is
     /// now (`history`).
     pub fn refill(self: &Arc<Self>, library: &Arc<Library>, setup: &Arc<Setup>, history: &[Vec<u8>]) {
         let (missing, generation) = {
             let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            let missing = POOL_SIZE.saturating_sub(s.ready.len() + s.building);
+            let missing = pool_size().saturating_sub(s.ready.len() + s.building);
             s.building += missing;
             (missing, s.generation)
         };
@@ -279,6 +296,8 @@ pub struct Thinker<'a> {
     pub history: &'a [Vec<u8>],
     pub pool: &'a Pool,
     pub style: Style,
+    /// When to stop trying more options ([`BUDGET`] from the start of the decision).
+    pub deadline: std::time::Instant,
 }
 
 impl Thinker<'_> {
@@ -338,7 +357,11 @@ impl Thinker<'_> {
         duel.respond(&crate::encode::response(&line[0]));
         let mut next = 1;
         let mut hint = None;
+        let cutoff = self.deadline + GRACE;
         for _ in 0..MAX_STEPS {
+            if std::time::Instant::now() > cutoff {
+                break;
+            }
             let (status, messages) = settle(&mut duel, true);
             for m in &messages {
                 if m["type"] == MSG_HINT && m["hint_type"] == HINT_SELECTMSG && m["player"] == me {
@@ -415,11 +438,16 @@ impl Thinker<'_> {
 
     /// The lines' values, each tried in a copy, on threads of their own.
     fn values(&self, lines: &[Vec<Json>], me: u8, hidden: &Hidden) -> Vec<f64> {
-        let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 8).min(lines.len().max(1));
+        let threads = threads().min(lines.len().max(1));
         let mut values = vec![f64::NEG_INFINITY; lines.len()];
         std::thread::scope(|scope| {
             let chunks: Vec<_> = (0..threads)
-                .map(|t| scope.spawn(move || (t..lines.len()).step_by(threads).map(|i| (i, self.try_line(&lines[i], me, hidden))).collect::<Vec<_>>()))
+                .map(|t| scope.spawn(move || {
+                    // Past the deadline a thread stops after its first line; the lines left are not tried.
+                    (t..lines.len()).step_by(threads).enumerate()
+                        .take_while(|(k, _)| *k == 0 || std::time::Instant::now() < self.deadline)
+                        .map(|(_, i)| (i, self.try_line(&lines[i], me, hidden))).collect::<Vec<_>>()
+                }))
                 .collect();
             for chunk in chunks {
                 for (i, v) in chunk.join().unwrap_or_default() {
@@ -434,14 +462,23 @@ impl Thinker<'_> {
     /// [`MARGIN`] (more for a cautious style); with [`Reach::Turn`] the most promising actions are also tried with
     /// each follow-up action, and count as their best line.
     fn best(&self, options: &[Json], m: &Json, me: u8, hidden: &Hidden, board: &Board) -> Json {
+        let started = std::time::Instant::now();
         let idle = m["type"] == MSG_SELECT_IDLECMD;
         let deep = idle && self.style.reach == Reach::Turn;
         let tried = if idle && !deep { &options[..options.len() - 1] } else { options };
-        let mut values = self.values(&tried.iter().map(|o| vec![o.clone()]).collect::<Vec<_>>(), me, hidden);
+        let mut lines: Vec<Vec<Json>> = tried.iter().map(|o| vec![o.clone()]).collect();
+        // Doing nothing more first: it is what every action must beat, so it is always tried.
         if deep {
-            self.combos(&tried[..tried.len() - 1], &mut values, me, hidden);
+            lines.rotate_right(1);
         }
-        trace(m, board, tried, &values);
+        let mut values = self.values(&lines, me, hidden);
+        if deep {
+            values.rotate_left(1);
+            if std::time::Instant::now() < self.deadline {
+                self.combos(&tried[..tried.len() - 1], &mut values, me, hidden);
+            }
+        }
+        trace(m, board, tried, &values, started.elapsed());
         let (mut best, mut best_value) = (None, f64::NEG_INFINITY);
         for (i, v) in values.iter().enumerate() {
             if *v > best_value {
@@ -487,14 +524,14 @@ impl Thinker<'_> {
 
 /// With `YO3_BOT_TRACE=FILE`, each look-ahead decision goes to FILE: the prompt, the position's value, and each
 /// option with what it came to (for tuning the bot; off by default).
-fn trace(m: &Json, board: &Board, options: &[Json], values: &[f64]) {
+fn trace(m: &Json, board: &Board, options: &[Json], values: &[f64], took: std::time::Duration) {
     let Some(path) = std::env::var_os("YO3_BOT_TRACE") else { return };
     use std::io::Write;
     let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) else { return };
     let me = &board.sides[board.me as usize];
     let them = &board.sides[1 - board.me as usize];
-    let _ = writeln!(file, "prompt {} now {:.0} (lp {}/{}, hand {}/{}, monsters {}/{})", m, board.value(), me.lp, them.lp, me.hand, them.hand,
-        me.monsters.len(), them.monsters.len());
+    let _ = writeln!(file, "prompt {} now {:.0} (lp {}/{}, hand {}/{}, monsters {}/{}) in {} ms", m, board.value(), me.lp, them.lp, me.hand,
+        them.hand, me.monsters.len(), them.monsters.len(), took.as_millis());
     for (o, v) in options.iter().zip(values) {
         let _ = writeln!(file, "  {v:>10.0}  {o}");
     }

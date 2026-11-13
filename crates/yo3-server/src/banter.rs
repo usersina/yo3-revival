@@ -53,7 +53,8 @@ pub const GAP: std::time::Duration = std::time::Duration::from_millis(1500);
 pub const ACE_ATK: u32 = 2400;
 /// Damage at least this big in one go makes the NPC complain.
 pub const HURT: u64 = 2000;
-/// Lines an NPC may say in one turn (the duel's end aside).
+/// Reactions an NPC may say in one turn: its moves, the damage it takes, what it sees (its turn's taunt and the duel's
+/// end aside, so a taunt never crowds out a reaction).
 pub const PER_TURN: u32 = 2;
 
 /// One character's lines by kind ("greet", "ace", ...).
@@ -258,15 +259,18 @@ impl Banter {
         !self.said_once.contains(kind) || roll < p
     }
 
-    /// One of the `kind` lines, within the turn's allowance.
+    /// One of the `kind` lines, within the turn's allowance (which the taunt doesn't use).
     fn line(&mut self, kind: &'static str, card: Option<&str>) -> Option<String> {
-        if self.said_this_turn >= PER_TURN || self.kinds_this_turn.contains(kind) {
+        let reaction = kind != "turn";
+        if reaction && self.said_this_turn >= PER_TURN || self.kinds_this_turn.contains(kind) {
             return None;
         }
         let text = self.say(kind, card)?;
         self.kinds_this_turn.insert(kind);
         self.said_once.insert(kind);
-        self.said_this_turn += 1;
+        if reaction {
+            self.said_this_turn += 1;
+        }
         Some(text)
     }
 
@@ -438,6 +442,25 @@ mod tests {
             b.over = false;
         }
         assert!(lines.windows(2).all(|w| w[0] != w[1]), "{lines:?}");
+    }
+
+    #[test]
+    fn a_taunt_never_crowds_out_a_reaction() {
+        // Live: Yami Yugi's taunt and his Heart of the Cards draw used the turn's two lines, and his winning direct
+        // attack went unsaid.
+        let mut d = duel();
+        let mut b = Banter::new("Yami Yugi", 1, "Tester", 9).unwrap();
+        b.observe(&[json!({ "type": MSG_NEW_TURN, "player": 1 }), json!({ "type": MSG_NEW_TURN, "player": 0 })], &mut d);
+        let batch = [
+            json!({ "type": MSG_NEW_TURN, "player": 1 }),
+            json!({ "type": MSG_DRAW, "player": 1, "drawn": [{ "cid": 4 }] }),
+            json!({ "type": MSG_SPSUMMONING, "cid": 2, "controller": 1, "location": 4, "sequence": 0, "position": 1 }),
+            json!({ "type": MSG_ATTACK, "card": { "controller": 1 }, "target": null }),
+        ];
+        let said: Vec<String> = b.observe(&batch, &mut d).into_iter().map(|s| s.text).collect();
+        let kind = |k: &str| said.iter().any(|s| table()["Yami Yugi"][k].iter().any(|l| s == l || l.contains("{card}") && s.contains("Dark Magician")));
+        assert!(kind("turn") && kind("heart") && kind("ace"), "{said:?}");
+        assert_eq!(said.len(), 3, "the taunt and two reactions; the third reaction waits: {said:?}");
     }
 
     #[test]

@@ -367,7 +367,8 @@ impl Session {
         } else {
             let library = self.cards.borrow().library.clone();
             let style = Style::from_json(&req["style"]);
-            let thinker = Thinker { library: &library, setup: &self.setup, history: &self.history, pool: &self.pool, style };
+            let deadline = std::time::Instant::now() + crate::bot::BUDGET;
+            let thinker = Thinker { library: &library, setup: &self.setup, history: &self.history, pool: &self.pool, style, deadline };
             let duel = self.duel.as_mut().ok_or("TypeError: no duel")?;
             let (response, declared) = thinker.think(duel, &prompt, self.hints[me], self.attacker);
             // Copies for the next decision, built while the duel goes on.

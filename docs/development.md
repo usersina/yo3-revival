@@ -112,7 +112,8 @@ python3 tools/monkey/duel-replay.py --server SERVER.log --duel 1
 
 The report fails on missing/failed checkpoints and reports coverage gaps. Replay requires the same engine program, card
 scripts, database and card-ID mapping; it compares exact recorded answers and state queries (card and player hints in
-any order: see [the rules engine](#the-rules-engine)).
+any order: see [the rules engine](#the-rules-engine)). The duel bot's `think` calls are skipped: the bot stops trying
+options after a time budget, so its answer depends on the machine, and the answer it gave is replayed by `respond`.
 Replay exercises the engine, not mouse input or pixels. Use focused live checks for remaining UI behavior.
 
 After translator or engine changes, run the full duel check: its 240 self-played duels compare modeled client and
@@ -174,7 +175,9 @@ YO3_BOT_ONLY=21 YO3_BOT_MIRROR=1 YO3_BOT_DUELS=40 YO3_BOT_TRACE=/tmp/bot.trace c
 ```
 
 Each duel's winner and the bot's thinking time go to `target/tmp/npc-bot.tsv`; a duel that doesn't end prints its last
-prompts.
+prompts. The trace gives each decision's time. A decision has a budget (`bot::BUDGET`, 700 ms, and 300 ms more for a
+try already under way): late in a duel with a full field each engine step costs up to 80 ms (every idle prompt checks
+the Extra Deck's summons), so copies rebuilt from the start are slow, and the bot keeps one ready copy per thread.
 
 Protocol and UI monkeys are documented in the
 [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#commands).

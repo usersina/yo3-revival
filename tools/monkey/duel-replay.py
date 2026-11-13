@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Replay one diagnostic duel's exact engine inputs and compare every answer, including dependency fingerprints.
 
-This replays the rules engine, not the game UI. Use duel-report.py for actual-client checkpoint validation.
+This replays the rules engine, not the game UI. Use duel-report.py for actual-client checkpoint validation. The duel
+bot's `think` calls are not replayed: their answers depend on the machine's speed (the bot stops trying options after a
+time budget), and the duel itself is replayed exactly through the `respond` calls, which carry the answer it gave.
 """
 import argparse
 import importlib.util
@@ -72,6 +74,8 @@ def run(calls, command):
     for request, _ in calls:
         if request.get('op') not in ['identity', 'new', 'respond', 'state', 'think']:
             raise ValueError('Unsupported recorded operation.')
+    # The bot's thinking reads the duel without changing it, and its answer depends on time: not replayed.
+    calls = [c for c in calls if c[0].get('op') != 'think']
     completed = subprocess.run(command, input=''.join(json.dumps(r)+'\n' for r, _ in calls), text=True,
                                capture_output=True, timeout=max(30, len(calls)*2), check=True)
     answers = [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]

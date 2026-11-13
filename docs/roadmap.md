@@ -1081,6 +1081,12 @@ Stop finding missing fields one crash at a time.
       bot now activates what it can after summoning, so a Spell drawn or held counts. A hero beats the same bot with
       the same deck 17 of 20 (11 of 20 before that fix). Live: Yami Yugi's first turn put Summoned Skull and a second
       monster on the field and hit for 3,800
+- [x] Bot and banter polish (2026-11-13): a decision has a time budget (700 ms, then 300 ms more for a try under
+      way; doing nothing more is always tried first) and one ready copy per thread. Seed 9001's late turns (five
+      monsters a side, each engine step up to 80 ms as the core checks every Extra Deck summon) took up to 2.7 s a
+      decision, now 1.1 s; 30 ms on average. It still won 34 of 40 against the old CPU with mixed decks, all 40 at
+      once. The duel replay no longer replays `think` (its answer depends on time). An NPC's taunt no longer uses the
+      turn's two reactions (Yami Yugi's winning direct attack went unsaid)
 - [x] The NPCs talk (2026-11-13): each NPC has its own lines (`crates/yo3-server/src/npc_lines.txt`, ours, in each
       character's voice) in the duel's chat window, since the client's own speech for NPCs is fixed. `banter.rs`
       reads the engine's messages: the duel's start and end, its turns now and then, a summon of 2400+ ATK (named,

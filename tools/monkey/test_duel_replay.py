@@ -37,6 +37,14 @@ class ReplayTests(unittest.TestCase):
         calls[0][0]['op'] = 'shell'
         with self.assertRaises(ValueError): replay.run(calls, command)
 
+    def test_the_bots_thinking_is_not_replayed(self):
+        # think's answer depends on the machine's speed (the bot's time budget); the duel goes on through respond.
+        calls = replay.assemble(self.records(), 1)
+        command = [sys.executable, '-u', '-c', f'import sys,json; identity={self.identity!r}; [print(json.dumps(identity if json.loads(line)["op"]=="identity" else {{"fixture":True}}),flush=True) for line in sys.stdin]']
+        calls[1][0]['op'] = 'state'
+        calls.append(({'op': 'think', 'style': {}}, {'status': 'thought', 'response': {'type': 1}, 'ms': 5}))
+        self.assertEqual(replay.run(calls, command), [])
+
     def test_hints_may_come_in_another_order_but_nothing_else(self):
         hint = lambda n: {'type': 160, 'controller': 0, 'location': 4, 'sequence': n, 'position': 1, 'card_hint': 7, 'description': 1}
         move = {'type': 50, 'card': 1}
