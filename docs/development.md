@@ -8,14 +8,15 @@ These commands run in a **source checkout**, not an extracted release. For playi
   - [Build from source](#build-from-source)
   - [Checks](#checks)
   - [Duel diagnostics](#duel-diagnostics)
+    - [The rules engine](#the-rules-engine)
   - [Build release bundles](#build-release-bundles)
   - [Verify the packaged updater](#verify-the-packaged-updater)
   - [Publish a release](#publish-a-release)
 
 ## Build from source
 
-On Linux, install Rust/Cargo **1.98.1 or newer**, Node.js **22.18 or newer** with npm, Git, curl, and 32-bit MinGW GCC/binutils
-(`i686-w64-mingw32-gcc`, `i686-w64-mingw32-dlltool`). Linux game testing needs Wine.
+On Linux, install Rust/Cargo **1.98.1 or newer**, a C++17 compiler (`g++`; the rules engine builds EDOPro's core), Git,
+curl, and 32-bit MinGW GCC/binutils (`i686-w64-mingw32-gcc`, `i686-w64-mingw32-dlltool`). Linux game testing needs Wine.
 The GUI also needs pkg-config and X11/Wayland/xkbcommon development libraries; on Debian/Ubuntu these are
 `pkg-config libx11-dev libwayland-dev libxkbcommon-dev`.
 X11 startup also needs `libxcursor1 libx11-xcb1 libxi6 libxkbcommon-x11-0` at runtime.
@@ -31,7 +32,7 @@ dependencies use workspace paths and all seven crates advance together. Publishe
 git clone https://github.com/usersina/yo3-revival.git
 cd yo3-revival
 engine/fetch.sh
-cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop
+cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop -p yo3-engine
 tools/mod/build.sh
 ```
 
@@ -45,7 +46,8 @@ in the repository root. The play equivalent is:
   --injector tools/mod/build/yo3-auth-launch.exe --dll tools/mod/build/yo3-auth.dll
 ```
 
-Source builds use the checkout's `engine/` and your Node installation. Release bundles carry their own Node runtime.
+Source builds use the checkout's `engine/` data and the `yo3-engine` program beside the server in `target/release/`.
+The release bundles carry both; no Node.js is needed anywhere.
 Game content comes from the installed client; never commit game files, extracted data or reverse-engineering exports.
 The [repo map and exact scratch commands](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#commands)
 cover server setup beside an existing live session.
@@ -108,11 +110,12 @@ python3 tools/monkey/duel-replay.py --server SERVER.log
 python3 tools/monkey/duel-replay.py --server SERVER.log --duel 1
 ```
 
-The report fails on missing/failed checkpoints and reports coverage gaps. Replay requires the same Node version,
-sidecar, core, card scripts, database and card-ID mapping; it compares exact recorded answers and state queries.
+The report fails on missing/failed checkpoints and reports coverage gaps. Replay requires the same engine program, card
+scripts, database and card-ID mapping; it compares exact recorded answers and state queries (card and player hints in
+any order: see [the rules engine](#the-rules-engine)).
 Replay exercises the engine, not mouse input or pixels. Use focused live checks for remaining UI behavior.
 
-After translator or sidecar changes, run the full duel check: its 240 self-played duels compare modeled client and
+After translator or engine changes, run the full duel check: its 240 self-played duels compare modeled client and
 engine state after every step. A failure reports the seed, step and preceding engine messages.
 
 The card check (`crates/yo3-server/tests/card_data.rs`, with the game installed and the engine fetched) loads each of
@@ -155,8 +158,34 @@ By default it plays 8 deck pairs; before a release, all of them with several see
 
 ```bash
 YO3_ORIGINAL_DECKS=all YO3_ORIGINAL_DECKS_SEEDS=10 cargo nextest run --release -p yo3-server --test original_decks --no-capture
-``` Protocol and UI
-monkeys are documented in the [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#commands).
+```
+
+Protocol and UI monkeys are documented in the
+[working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#commands).
+
+### The rules engine
+
+`yo3-engine` (`crates/yo3-engine`, AGPL-3.0-or-later like the core it links) is EDOPro's core and its Lua, compiled from
+the sources `engine/fetch.sh` pins (`CORE_COMMIT`, `LUA_COMMIT`), behind the JSON-lines protocol the server speaks
+(`crates/yo3-server/src/engine.rs`): one process per duel, Konami ids in and out. The server finds it beside itself,
+or where `YO3_ENGINE` points. It answers exactly as the old Node sidecar (`engine/duelcore.ts`, EDOPro's core built for
+WebAssembly by ocgcore-wasm 0.1.6, from the same commits) did, message for message, so the translator was unchanged by
+the switch.
+
+`tools/engine/parity.py` proves it: started in the engine's place, it sends every request to both engines and fails the
+duel on any difference. It needs the old sidecar's packages (`engine/fetch.sh --sidecar`, which needs Node.js):
+
+```bash
+engine/fetch.sh --sidecar
+cargo build --release -p yo3-engine
+YO3_ENGINE=$PWD/tools/engine/parity.py cargo nextest run --release -p yo3-server --test duel_check
+YO3_ENGINE=$PWD/tools/engine/parity.py YO3_CARD_SWEEP=all cargo nextest run --release -p yo3-server --test card_sweep
+```
+
+Differences go to `parity-failures.log` (`YO3_PARITY_LOG`) with the whole duel's requests. The one difference
+allowed: the order within a run of card and player hints (MSG_CARD_HINT, MSG_PLAYER_HINT), which the core emits while
+walking effects ordered by their addresses, so it follows the memory allocator (wasm's or the system's), not the game.
+On one platform the order repeats run to run.
 
 ## Build release bundles
 
@@ -169,8 +198,10 @@ tools/release.sh
 ```
 
 Set `YO3_VERSION` when building a specific unreleased version; otherwise the script uses Git's description.
-Node downloads are cached in `dist/.cache` and checked against upstream checksums. Engine scripts, card database,
-Node and third-party notices are included. Game files, account profiles and server keys are not.
+The rules engine (`yo3-engine`, built for each platform), its card scripts, card database and third-party notices are
+included. Game files, account profiles and server keys are not. Desktop 0.0.9 and older look for the old Node
+sidecar's files before installing an update, so each bundle keeps a short note at those paths (`engine/duelcore.ts`,
+`engine/package.json`, `engine/node_modules/ocgcore-wasm/package.json`, `engine/node/node[.exe]`); nothing reads them.
 
 Four archives are produced under `dist/`:
 

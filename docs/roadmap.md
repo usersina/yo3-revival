@@ -1073,6 +1073,14 @@ Stop finding missing fields one crash at a time.
       with the duel check. It found that a deck with a Fusion or Synchro Monster in its main deck split the client's
       view from the engine (which moves the card to the Extra Deck): the deck check now refuses such decks (the card
       kind is CARD_Prop's second word, bits 3-7). All 681 duels (3 seeds) pass
+- [x] A native rules engine, no Node.js (2026-11-13, issue #3): `yo3-engine` (`crates/yo3-engine`, AGPL like the core)
+      compiles EDOPro's core and Lua from the commits ocgcore-wasm 0.1.6 was built from and answers the server's
+      JSON lines exactly as `engine/duelcore.ts` did, so the translator is unchanged. `tools/engine/parity.py` ran both
+      engines request by request: the duel check's duels (480, twice the usual seeds), the full card sweep (4,684
+      cards) and the 227 real-deck pairs gave the same answers. The only difference is the order within a run of card
+      and player hints, which follows the memory allocator (the core walks those effects by address). The bundles drop
+      Node.js and ocgcore-wasm; the Windows build is one self-contained `.exe` and answers byte for byte like Linux's (Wine).
+      Desktop 0.0.9 and older check an update for the sidecar's files, so the bundles keep short notes at those paths
 - [x] Translator, first part: the engine drives the duel session; its draws, turns and phases become engine commands,
       the client's idle prompt a command map of the legal commands, the client's card commands its responses; the CPU
       ends its turns at once (a placeholder bot) and other prompts are answered with defaults

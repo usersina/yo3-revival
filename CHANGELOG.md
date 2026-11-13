@@ -10,6 +10,13 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **No more Node.js inside:** the rules engine is now a small program of its own, built from the same EDOPro core,
+  instead of the core running inside a bundled copy of Node.js. Downloads are much smaller and hosts still install
+  nothing. Duels play exactly as before: every test duel was played through both engines and they agreed.
+- Updating from v0.0.9 or older works as usual from the app.
+
 ## v0.0.9 (2026-11-12)
 
 Every card checked against the rules engine, duels that look and sound like the original game, and choices back in

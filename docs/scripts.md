@@ -1,11 +1,11 @@
 # Scripts edition
 
 Choose **Scripts** if you want terminal commands without the Desktop app. It includes the same server, rules engine,
-Node.js, connection helper and DLL. Account/profile setup and updates are manual. For a Play button and log export,
+connection helper and DLL. Account/profile setup and updates are manual. For a Play button and log export,
 use [Desktop](launcher.md).
 
 You still need the original **Yu-Gi-Oh! ONLINE 3 v1.153** installation. Windows builds support **64-bit Windows 10/11**;
-**Windows 7 is not supported.** Linux needs Wine for the game. No Rust or separate Node.js installation is needed
+**Windows 7 is not supported.** Linux needs Wine for the game. No Rust or other installation is needed
 for a release bundle.
 
 [Download Scripts for your system](https://github.com/usersina/yo3-revival/releases/latest) and extract the entire
@@ -159,8 +159,8 @@ explains the optional `--duel-check` flag and replay tools.
 - **Connection refused or timed out:** check the profile address/port and whether the host is running and reachable.
 - **TLS or account refused:** use the correct private profile and adjacent certificate for this host. Confirm
   unexpected identity changes with the host; certificate checks cannot be bypassed.
-- **Duels end immediately:** restore the complete `engine/` directory, including its Node runtime, and inspect the
-  server's **DUELS WON'T WORK** message.
+- **Duels end immediately:** restore the complete `engine/` directory and the `yo3-engine` program beside
+  `yo3-server`, and inspect the server's **DUELS WON'T WORK** message.
 - **Need help:** keep the exact terminal error, application version and relevant session logs. Review them before
   sharing; do not send private profiles, account keys, databases or server keys.
 

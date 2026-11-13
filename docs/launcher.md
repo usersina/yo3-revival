@@ -1,7 +1,7 @@
 # Desktop guide
 
 Use **Desktop** for a window with game setup, a Play button and logs. Use [Scripts](scripts.md) if you prefer a terminal.
-Both editions include the server, rules engine, Node.js and required connection components. Game files are separate.
+Both editions include the server, rules engine and required connection components. Game files are separate.
 
 - [Desktop guide](#desktop-guide)
   - [First launch](#first-launch)
@@ -41,8 +41,8 @@ needed for your saved connection. These checks also run when the app opens and w
 changes. Pasted paths are checked after a short pause; a result for an older path cannot approve a newer one.
 Only a successfully checked setup is saved. **Play** rechecks required files before opening the game and loads the
 connection mod automatically; it does not change `yo3.exe` or `yo3.ini`.
-Local play also verifies the bundled server, Node.js and critical engine files, then checks that the engine can load
-without starting a duel. These checks run before Play even when the local server is already running.
+Local play also verifies the bundled server, the rules engine and its critical files, then checks that the engine can
+load its card data without starting a duel. These checks run before Play even when the local server is already running.
 
 The main button stays in one place: **Checking… → Play → Starting…**, or **Retry check** after a failed check.
 Animated dots and nearby status text explain progress and why a button is unavailable. A game-folder problem appears
@@ -71,7 +71,7 @@ notice with details and recovery actions.
 ## Play locally
 
 On a new setup, **Play** prepares your local account and starts everything needed automatically. You do not need
-a sharing address, an invitation, firewall changes, Rust or a separate Node.js installation to play on your own PC.
+a sharing address, an invitation, firewall changes, Rust or any other installation to play on your own PC.
 There is no project-operated public server.
 
 Animated dots and the logs show startup activity. Wine can take about 30 seconds on a cold start. **Close game**
@@ -351,7 +351,7 @@ upgrade their data lives in `server.db`, the files are no longer read, and you c
 | Incomplete game                              | Select the full installation containing `yo3.exe`, `yo3.idx` and `package/`, not an installer or shortcut.                                                                                                                                               |
 | Unsupported game executable                  | Use the original **v1.153** installation. Validation checks the hook signatures before startup; replacing Revival helpers cannot fix a different game build.                                                                                             |
 | Missing DirectX or VC90 runtime              | Follow [original game runtime repair](guide.md#original-game-runtimes), then choose **Retry check**. The error identifies the dependency or runtime manifest.                                                                                           |
-| Revival helper/DLL or engine missing         | Re-extract the complete matching Desktop archive, keeping every helper and `engine/`. A different game folder will not repair app files.                                                                                                                 |
+| Revival helper/DLL or engine missing         | Re-extract the complete matching Desktop archive, keeping every helper, `yo3-engine` and `engine/`. A different game folder will not repair app files.                                                                                                   |
 | Antivirus flags Revival / a file disappeared | Check protection history and the official download. For a verified false positive, allow the affected file or exclude only the extracted Desktop folder. [Exact files, folders and recovery steps](guide.md#windows-smartscreen-and-antivirus-warnings). |
 | App settings/logs cannot open                | Check the data folder's permissions/free space, then **Retry app setup**. Copy the error if it continues; keep your saved data.                                                                                                                          |
 | Game startup fails or stalls                 | Read the visible error and logs. Use **Close game** when available, then try **Play** again; export logs if it repeats.                                                                                                                                 |

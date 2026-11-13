@@ -25,8 +25,9 @@ PowerShell. Run from the extracted bundle, or substitute `./target/release/yo3-s
 ```
 
 Initialize the identity and accounts before running; [Scripts setup](scripts.md#play-on-your-own-pc) shows the sequence.
-Without `--game-dir`, the server uses its default original-game location. Release bundles carry `engine/` and its
-Node runtime; run the raw server from the bundle directory so those files can be found. The start-server wrapper
+Without `--game-dir`, the server uses its default original-game location. Release bundles carry `engine/` (the card
+scripts and database) and the `yo3-engine` program beside the server; run the raw server from the bundle directory so
+those files can be found. The start-server wrapper
 changes to that directory automatically.
 
 Hosting refuses missing, corrupt or unusable game card/deck data before accepting players or migrating player

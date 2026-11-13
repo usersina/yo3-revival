@@ -1052,7 +1052,7 @@ as an attack target or Synchro Material. BattleRun now leaves both destroy bits 
 an actual move confirms destruction. The duel check models BattleRun's hide bits too. Real-core regressions cover
 both client perspectives, face-up/Set Fortress Warrior, and Shield Wing's exhausted protection.
 Status: **confirmed**, native hide `0x4F8920` → `0x4FB220`, move handling `0x4FF000`, `tests/yusei_contract.rs`.
-ocgcore-wasm drops MSG_MOVE's `reason`, so the sidecar reads it back with
+ocgcore-wasm's parse (whose shape the engine keeps) drops MSG_MOVE's `reason`, so the engine reads it back with
 a query (flag `REASON`) at the card's new place after each processing step.
 
 **Revealed cards** (MSG_CONFIRM_CARDS, 31 `{player: who it is shown to, cards}`; EDOPro's ConfirmCards: Witch of the Black
@@ -1066,7 +1066,7 @@ entry (1000, with the row) goes first. The client sees a card shown to it and it
 not the opponent's cards shown to the opponent. A hand card shows at once; a card from the Deck (a search) shows when
 it reaches the hand: the server keeps its Konami id until the move to the hand, then sends the show at its new index.
 **Hand shuffles** (MSG_SHUFFLE_HAND, 33 `{player, cards}`: EDOPro shuffles a hand after a card in it was shown, as
-after a search's confirm). `cards` is the hand's new order as bare passcodes; the sidecar adds `cids` beside them. The
+after a search's confirm). `cards` is the hand's new order as bare passcodes; the engine adds `cids` beside them. The
 server reorders its mirror of the hand to match, re-sends each hand card's table entry (1000) at its new index, then
 `0x12` HandShuffle {player} (DuelCardManager `0x4FF000` case `0x12`): the client rebuilds that player's hand list index
 by index from the table (`0x523DF0(player, 0xB, i)`, then the object by uid `0x500470`), renumbers each card and redraws
@@ -1127,12 +1127,12 @@ instead. **Confirmed** for MSG_SWAP (live, `--duel-deck 2627,1228`: Creature Swa
 Kaiba's Ancient Lamp; each stood on the other side with its own label, the duel went on, and the server's duel check
 found no difference). MSG_SHUFFLE_SET_CARD: the core writes the shuffled cards' old places, then as many Xyz material
 places (zero when none), and ocgcore-wasm reads them as `{from, to}` pairs, which pairs old places with each other; no
-list gives a card's new place. The sidecar adds `places` (each shuffled zone and the card it holds after the step, read
+list gives a card's new place. The engine adds `places` (each shuffled zone and the card it holds after the step, read
 back from the duel) and the server matches its cards to them by id (identical cards are interchangeable). **Shape**: the
 self-played duels (below) agree with the engine after every Magical Hats; not seen on the client.
 
 **A Graveyard and Deck swap** (MSG_SWAP_GRAVE_DECK, 35 `{player, deck_size, returned_to_extra}`: Exchange of the Spirit)
-says only the Deck's new size. The sidecar adds the player's `grave` and `extra` as they are after the step; the server
+says only the Deck's new size. The engine adds the player's `grave` and `extra` as they are after the step; the server
 moves each old Graveyard card out with `0x1A` (to the Extra Deck while the engine's holds more of its id than the
 mirror's, else to the Deck), then each new Graveyard card in from the Deck in the engine's order. **Shape** (self-played
 duels only).
@@ -1154,7 +1154,7 @@ produces no changed engine field report: **shape**, covered by an engine-discove
 
 **The duel check** (`crates/yo3-server/src/duelcheck.rs`, the server's `--duel-check`): a model of the client's card
 manager built only from the rules above (the hand lists, field slots, pile counts, card table and each card's place
-word), fed every command the server sends and compared with where the engine has every card (the sidecar's read-only
+word), fed every command the server sends and compared with where the engine has every card (the engine's read-only
 `state` op) after each engine step. It catches a translator that drifts from the client or the engine at the first step
 where they differ. The tests self-play a few hundred seeded duels through it (`tests/duel_check.rs`); the protocol
 monkey's duels run the server with it. What it found is in the [roadmap](roadmap.md#-duel-check-2026-11-09-the-clients-view-checked-against-the-engine).
@@ -1292,7 +1292,7 @@ Collapse disables two); positions: see Choices. Live: Summon from the hand put t
 first monster zone, the hand closed up, and the next prompt offered only the Spell card.
 
 **Tokens.** EDOPro's tokens have passcodes with no Konami id (YGOProDeck lists none for Scapegoat's Sheep Tokens), so
-the sidecar adds the card's `name` from `cards.cdb` where it finds no id. The client has its own token cards: CARD_Prop
+the engine adds the card's `name` from `cards.cdb` where it finds no id. The client has its own token cards: CARD_Prop
 ids 3900–3999 (75 rows, e.g. four "Sheep Token", 3902–3905, one per colour). A token comes from nowhere (MSG_MOVE
 from location 0): the server takes the client's token card of its Konami id when it has one (Doomsday Token 3940,
 Grinder Golem's 3936, Jam Breeding Machine's Slime Token 3907), else of its name (in turn when there are several), gives it a
@@ -1329,7 +1329,7 @@ after each one its common tail (`0x4FFF14`) re-reads both players' monster-zone 
 player`): a face-up monster (`+0x44` bit 0, face-up bit `0x4000`) whose record differs from its copy (`+0xA8`) takes
 the new one and has its label redrawn (`+0xD5` → `0x4FBAA0`: label fields 6 ATK, 7 DEF, 4 and 5 from values 7 and 8).
 So a changed record shows at the next command, and needs no command of its own. The rules engine reports no stat
-changes, so the sidecar queries both players' monster zones (position, level, ATK, DEF, base ATK, base DEF) after each
+changes, so the engine queries both players' monster zones (position, level, ATK, DEF, base ATK, base DEF) after each
 processing step and, when they changed, adds `{type: "field", monsters: [{controller, sequence, position, level,
 attack, defense, base_attack, base_defense}]}` before the step's prompt. The server re-sends the record of a face-up
 monster whose values differ from those it last sent (level from CARD_Prop when the engine has none, as for Xyz
@@ -1512,7 +1512,7 @@ battle commands again (**guess**: the original asked before every direct attack)
 
 The client's MSG_SELECT_EFFECTYN opens the Yes/No dialog with 'Activate the effect of "%s"?' (250) and the card's
 name, MSG_SELECT_YESNO with 'Use the effect of "%s"?' (226) naming the card whose script string the question is (the
-sidecar adds `description_cid` for a description `code << 20 | n`, EDOPro's `aux.Stringid`), else "Use the effect now?" (270) (**guess**: the
+engine adds `description_cid` for a description `code << 20 | n`, EDOPro's `aux.Stringid`), else "Use the effect now?" (270) (**guess**: the
 original questions are the card scripts' own strings). `DLGResult` 1 answers yes. Live (`--duel-deck 1149,1449`):
 summoning Marauding Captain asked 'Activate the effect of "Marauding Captain"?'; Yes sent `DLGResult 1`, the card list
 followed with "Select the monster(s) to Special Summon." and the hand's monsters, and the picked Giant Orc was Special
@@ -1529,10 +1529,9 @@ Summoned.
 | MSG_ANNOUNCE_CARD {opcodes}            | the card list `0x37 {player, 0x4C, 0}`: DuelCardListDialogEx (`0x5131E0`, `dlg_cardlistex.swf`) lists the client's own card database with a name search ("Input text.", Filter); kinds `0x4C`–`0x4F` pick its filter (CardDuelFilter `0x4976A0`: any card, no extra deck monsters, main deck monsters, monsters) | —                                                                                                                                                                                                                                                                                                                                  | the card's Konami id (`0x4C8290`, id & `0x3FFF`) | confirmed (live) |
 
 The answers carry EDOPro's terms: the type's and attributes' RACE_/ATTRIBUTE_ bits, the number's index among the
-options (the first at least as large as the one picked), and a card by Konami id, which the sidecar turns into a
-passcode; races go to the core as BigInts (64-bit in ocgcore-wasm; a plain number threw "Cannot mix BigInt and other
-types"). Several types at once and numbers out of the dialog's range keep the automatic answer. The CPU names a card
-the effect's filter allows: the sidecar runs ANNOUNCE_CARD's `opcodes` (EDOPro's `card_data::is_declarable` stack
+options (the first at least as large as the one picked), and a card by Konami id, which the engine turns into a
+passcode; races go to the core as one 64-bit value. Several types at once and numbers out of the dialog's range keep the automatic answer. The CPU names a card
+the effect's filter allows: the engine runs ANNOUNCE_CARD's `opcodes` (EDOPro's `card_data::is_declarable` stack
 program: type, race, attribute, archetype and code tests) over the card database and adds `fits`, the duel's own cards
 first; without `fits`, the duel's cards in turn (the core asks again when a name doesn't fit). The client has no other card name window
 (DuelIidInputDialog is a debug key on the field). Live (`--duel-deck 1933,229,3609,1449`): Abyssal Designator asked
@@ -1605,7 +1604,7 @@ text 1999 + reason (`0x508650`): 1 LP 0, 2 deck out, 3 Exodia, 4 Destiny Board, 
 Konami's 227 logs end on 12, none on 5), 6 Last Turn, 7 Final
 Countdown, 8 "won with" a card, 9 Vennominaga, 10 Exodius, 11 time out, 12 surrender, 13 disqualified, 14
 disconnected. Its update (`0x5084D0`) waits until the movie reports it has finished (about 3 s), then marks the
-effect done (`+0x28`). EDOPro's core keeps prompting after a win, so the sidecar ends the duel at the WIN message; its
+effect done (`+0x28`). EDOPro's core keeps prompting after a win, so the engine ends the duel at the WIN message; its
 WIN player 2 is a draw (result 3, no reason text).
 
 After the movie DuelScene (`0x515A30`, flag `+0xD8` set by command 2) opens DuelResult (`0x515D30`, component slot
