@@ -144,11 +144,14 @@ fn min_max(m: &Json, len: usize) -> (usize, usize) {
 }
 
 /// The monster at the opponent's side the bot would attack with `atk`: the most valuable one it destroys, never a
-/// face-down one with a small attacker.
-pub fn attack_target(atk: i32, opponent: &[Monster]) -> Option<&Monster> {
+/// face-down one with a small attacker. An aggressive style (`aggression` above 0) attacks face-down monsters with
+/// smaller attackers, and from 0.5 also trades its monster for one of the same ATK.
+pub fn attack_target(atk: i32, opponent: &[Monster], aggression: f64) -> Option<&Monster> {
+    let facedown = FACEDOWN_ATTACKER - (400.0 * aggression.max(0.0)) as i32;
+    let trade = aggression >= 0.5;
     opponent
         .iter()
-        .filter(|t| if !t.known { atk >= FACEDOWN_ATTACKER } else if t.attack_pos { atk > t.atk } else { atk > t.def })
+        .filter(|t| if !t.known { atk >= facedown } else if t.attack_pos { atk > t.atk || trade && atk == t.atk } else { atk > t.def })
         .max_by_key(|t| t.worth())
 }
 
@@ -185,7 +188,7 @@ pub fn answer(m: &Json, me: u8, board: &Board, hint: Option<u64>) -> Json {
                 // The target an attacker of this ATK would choose (the attacker is the one just declared).
                 let atk = board.attacker.unwrap_or(0);
                 let targets: Vec<&Monster> = selects.iter().filter_map(|c| opponent.monster(u(&c["sequence"]) as u8)).collect();
-                let best = attack_target(atk, &targets.iter().map(|m| (*m).clone()).collect::<Vec<_>>()).map(|t| t.seq);
+                let best = attack_target(atk, &targets.iter().map(|m| (*m).clone()).collect::<Vec<_>>(), board.style.aggression).map(|t| t.seq);
                 vec![selects.iter().position(|c| Some(u(&c["sequence"]) as u8) == best).unwrap_or(0)]
             } else {
                 best_picks(selects, min, me, board, hint)
@@ -236,7 +239,7 @@ fn battle(m: &Json, me: u8, board: &Board) -> Json {
     for i in order {
         let a = &attacks[i];
         let atk = atk_of(a);
-        if opponent.monsters.is_empty() && a["can_direct"] == true || attack_target(atk, &opponent.monsters).is_some() {
+        if opponent.monsters.is_empty() && a["can_direct"] == true || attack_target(atk, &opponent.monsters, board.style.aggression).is_some() {
             return json!({ "type": RESP_BATTLECMD, "action": BATTLE_ATTACK, "index": i });
         }
     }

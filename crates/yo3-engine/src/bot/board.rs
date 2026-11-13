@@ -10,6 +10,7 @@ use crate::core::Duel;
 use crate::decode::{self, Reader};
 
 use super::policy::FACEDOWN_GUESS;
+use super::{Reach, Style};
 
 const LOCATION_DECK: u32 = 0x01;
 const LOCATION_HAND: u32 = 0x02;
@@ -87,6 +88,8 @@ pub struct Board {
     pub sides: [Side; 2],
     /// The ATK of the monster the bot just declared an attack with (its target choice comes next).
     pub attacker: Option<i32>,
+    /// How the bot plays (what it sees, how it weighs a position).
+    pub style: Style,
     library: Arc<Library>,
 }
 
@@ -94,8 +97,9 @@ pub struct Board {
 pub type Hidden = HashSet<u8>;
 
 impl Board {
-    /// Player `me`'s view of `duel`; `hidden` are the opponent's monster zones it is not allowed to know.
-    pub fn observe(duel: &mut Duel, me: u8, library: &Arc<Library>, hidden: &Hidden) -> Board {
+    /// Player `me`'s view of `duel`; `hidden` are the opponent's monster zones it is not allowed to know (none, and
+    /// the opponent's Set cards too, when its style sees).
+    pub fn observe(duel: &mut Duel, me: u8, library: &Arc<Library>, hidden: &Hidden, style: Style) -> Board {
         let field = duel.query_field();
         let players = decode::field(&mut Reader::new(&field)).ok().and_then(|mut f| f.remove("players")).unwrap_or_default();
         let mut sides: [Side; 2] = Default::default();
@@ -113,7 +117,7 @@ impl Board {
                 let Some(card) = card else { continue };
                 let position = card.get(decode::QUERY_POSITION).unwrap_or(0);
                 let faceup = position & POS_FACEUP != 0;
-                let known = t == me || faceup && !hidden.contains(&(seq as u8));
+                let known = t == me || style.sees || faceup && !hidden.contains(&(seq as u8));
                 side.monsters.push(Monster {
                     seq: seq as u8,
                     faceup,
@@ -127,11 +131,11 @@ impl Board {
                 .unwrap_or_default();
             for card in szone.into_iter().flatten() {
                 let faceup = card.get(decode::QUERY_POSITION).unwrap_or(0) & POS_FACEUP != 0;
-                let kind = (t == me || faceup).then(|| card.get(QUERY_TYPE).unwrap_or(0) as i64);
+                let kind = (t == me || faceup || style.sees).then(|| card.get(QUERY_TYPE).unwrap_or(0) as i64);
                 side.spells.push(Spell { faceup, kind });
             }
         }
-        Board { me, sides, attacker: None, library: library.clone() }
+        Board { me, sides, attacker: None, style, library: library.clone() }
     }
 
     /// The opponent's monster zones holding a card the bot can't see now (for the look-ahead's `hidden`).
@@ -173,11 +177,14 @@ impl Board {
         if them.lp <= 0 {
             return 1e9;
         }
-        let mut v = (me.lp - them.lp) as f64;
+        // An aggressive style values the opponent's LP more: it trades its own for damage.
+        let mut v = me.lp as f64 - (1.0 + 0.3 * self.style.aggression) * them.lp as f64;
         v += 700.0 * (me.cards() as f64 - them.cards() as f64);
         let strength = |s: &Side| s.monsters.iter().map(|m| m.worth() as f64).sum::<f64>();
         v += 0.6 * (strength(me) - strength(them));
-        v -= 0.6 * exposure(me, them);
+        // Looking through the opponent's turn already plays its next battle out; what is left is the one after.
+        let exposed = if self.style.reach == Reach::Turn { 0.2 } else { 0.6 };
+        v -= exposed * (1.0 + self.style.caution) * exposure(me, them);
         for s in me.spells.iter().filter(|s| !s.faceup) {
             match s.kind {
                 Some(k) if k & (TYPE_TRAP | TYPE_QUICKPLAY) != 0 => v += 60.0,

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use serde_json::{Map, Value as Json, json};
 
-use crate::bot::{Setup, Thinker};
+use crate::bot::{Pool, Setup, Style, Thinker};
 use crate::cards::{Cards, Declarable, Library, Prints, is_card_script};
 use crate::core::{Card, Duel, Host, Status};
 use crate::decode::{self, Queried, Reader};
@@ -70,8 +70,10 @@ pub struct Session {
     prints: Prints,
     last_field: Option<Json>,
     /// How the duel began and every answer since, as the core read them: what the bot rebuilds copies from.
-    setup: Setup,
+    setup: Arc<Setup>,
     history: Vec<Vec<u8>>,
+    /// Copies of the duel kept in step for the bot.
+    pool: Arc<Pool>,
     /// The prompt the duel awaits an answer to (as decoded, before Konami ids are added).
     pending: Option<Json>,
     /// Each player's last selection hint (HINT_SELECTMSG), and the ATK of the attacker the bot last declared.
@@ -91,8 +93,9 @@ impl Session {
             duel: None,
             prints: Prints::default(),
             last_field: None,
-            setup: Setup::default(),
+            setup: Arc::default(),
             history: vec![],
+            pool: Arc::default(),
             pending: None,
             hints: [None; 2],
             attacker: None,
@@ -174,8 +177,9 @@ impl Session {
         self.duel = Some(duel);
         self.last_field = None;
         self.prints = Prints::default();
-        self.setup = Setup { seed: seeds, lp, cards: vec![] };
+        let mut setup = Setup { seed: seeds, lp, cards: vec![] };
         self.history.clear();
+        self.pool.reset();
         self.hints = [None; 2];
         self.attacker = None;
         let names = &req["names"];
@@ -188,7 +192,7 @@ impl Session {
                         Some(code) if code != 0 => {
                             let duel = self.duel.as_mut().unwrap();
                             duel.new_card(t as u8, 0, code, t as u8, location, 0, POSITION_FACEDOWN_DEFENSE);
-                            self.setup.cards.push((t as u8, location, code));
+                            setup.cards.push((t as u8, location, code));
                         }
                         _ => self.log.borrow_mut().lines.push(format!("no passcode for cid {cid}")),
                     }
@@ -196,6 +200,7 @@ impl Session {
             }
         }
         self.duel.as_mut().unwrap().start();
+        self.setup = Arc::new(setup);
         self.run()
     }
 
@@ -342,8 +347,8 @@ impl Session {
         Ok(Some(json!({ "type": "field", "monsters": monsters })))
     }
 
-    /// The bot's answer to the pending prompt (`{"op":"think"}`), for the server to give with `respond`. With
-    /// `"policy":"simple"`, the old placeholder CPU's answer instead (the baseline the bot is measured against).
+    /// The bot's answer to the pending prompt (`{"op":"think","style":{…}}`, see bot::Style), for the server to give
+    /// with `respond`. With `"policy":"simple"`, the old placeholder CPU's answer instead (a baseline to measure by).
     fn think(&mut self, req: &Json) -> Answer {
         let prompt = self.pending.clone().ok_or("Error: no prompt to answer")?;
         let me = prompt["player"].as_u64().unwrap_or(0) as usize & 1;
@@ -352,9 +357,12 @@ impl Session {
             crate::bot::policy::simple(&prompt)
         } else {
             let library = self.cards.borrow().library.clone();
-            let thinker = Thinker { library: &library, setup: &self.setup, history: &self.history };
+            let style = Style::from_json(&req["style"]);
+            let thinker = Thinker { library: &library, setup: &self.setup, history: &self.history, pool: &self.pool, style };
             let duel = self.duel.as_mut().ok_or("TypeError: no duel")?;
             let (response, declared) = thinker.think(duel, &prompt, self.hints[me], self.attacker);
+            // Copies for the next decision, built while the duel goes on.
+            self.pool.refill(&library, &self.setup, &self.history);
             self.attacker = declared.or(self.attacker.filter(|_| prompt["type"] != crate::bot::policy::MSG_SELECT_BATTLECMD));
             // The same prompt straight back after the same answer (an attack cancelled, an activation that came to
             // nothing): move on instead of trying it forever.
