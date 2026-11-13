@@ -47,7 +47,7 @@ fn engine() -> Option<Engine> {
         eprintln!("engine not fetched; skipping");
         return None;
     }
-    Some(Engine::start(&dir).expect("node runs the engine"))
+    Some(Engine::start(&dir).expect("the engine program runs"))
 }
 
 /// Every Konami id the client knows (tokens, 3900–3999, come from card effects and are matched by name instead), with

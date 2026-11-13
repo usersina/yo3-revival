@@ -73,7 +73,7 @@ fn every_card_plays_with_the_client_view_matching_the_engine() {
     for c in game.cards.iter().filter(|c| !(3900..4000).contains(&c.cid) && !NOT_IN_THE_ENGINE.contains(&c.cid)) {
         firsts.entry(c.cid).or_insert(c.row);
     }
-    let mut engine = Engine::start(&engine_dir).expect("node runs the engine");
+    let mut engine = Engine::start(&engine_dir).expect("the engine program runs");
     let list: Vec<(u16, &str)> = firsts.keys().map(|cid| (*cid, data.names[cid].as_str())).collect();
     let types: HashMap<u16, u64> = list
         .chunks(500)

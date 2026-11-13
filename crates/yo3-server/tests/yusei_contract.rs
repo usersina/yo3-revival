@@ -8,7 +8,7 @@ use yo3_server::{duel::command, duelcheck::ClientModel, engine::Engine, translat
 fn engine() -> Option<Engine> {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../engine");
     if !dir.join("vendor/cardinfo.json").is_file() { eprintln!("engine not fetched; skipping"); return None }
-    Some(Engine::start(&dir).expect("node runs the engine"))
+    Some(Engine::start(&dir).expect("the engine program runs"))
 }
 fn number(m: &Message, key: &str) -> u32 { m.get(key).and_then(Value::as_u32).unwrap_or(0) }
 

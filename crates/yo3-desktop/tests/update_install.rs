@@ -9,10 +9,10 @@ fn fixture(root: &Path, extra: Option<(&str, &[u8])>, corrupt: bool) -> (Release
     let tag = "v0.3.0"; let prefix = "yo3-revival-desktop";
     let mut files: Vec<(&str, Vec<u8>)> = vec![("yo3-revival.exe", b"our GUI fixture".to_vec()), ("yo3-server.exe", b"server".to_vec()),
         ("yo3-launcher.exe", b"launcher".to_vec()), ("yo3-auth-launch.exe", b"injector".to_vec()), ("yo3-auth.dll", b"mod".to_vec()),
-        ("yo3-bootstrap.dll", b"loader".to_vec()), ("engine/duelcore.ts", b"sidecar".to_vec()), ("engine/node/node.exe", b"node".to_vec()),
-        ("engine/vendor/cardinfo.json", b"{}".to_vec()), ("engine/package.json", b"{}".to_vec()), ("engine/node_modules/ocgcore-wasm/package.json", b"{}".to_vec()),
-        ("engine/vendor/BabelCDB/cards.cdb", b"fixture".to_vec()), ("engine/vendor/CardScripts/utility.lua", b"-- fixture".to_vec())];
-    let roles=["desktop","server","launcher","injector","connection_mod","loader"];
+        ("yo3-bootstrap.dll", b"loader".to_vec()), ("yo3-engine.exe", b"engine".to_vec()),
+        ("engine/vendor/cardinfo.json", b"{}".to_vec()), ("engine/vendor/BabelCDB/cards.cdb", b"fixture".to_vec()),
+        ("engine/vendor/CardScripts/utility.lua", b"-- fixture".to_vec())];
+    let roles=["desktop","server","launcher","injector","connection_mod","loader","engine"];
     let mut components=serde_json::Map::new();
     for (role,(name,bytes)) in roles.into_iter().zip(&files) { components.insert(role.into(),serde_json::json!({"file":name,"sha256":yo3_launcher::components::hash(bytes)})); }
     let manifest=serde_json::json!({"schema":1,"edition":"desktop","release":tag,"protocol":2,"mod_abi":2,"components":components}).to_string().into_bytes();

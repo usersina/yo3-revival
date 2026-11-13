@@ -31,7 +31,7 @@
 //!
 //! Where the model itself sees the client go wrong (a hand card taken out by an index that holds another card, a
 //! shuffle with an empty index) it notes a problem at once; [`ClientModel::check`] then compares every hand, field
-//! slot and pile with the engine's `state` (see `engine/duelcore.ts`). Cards whose row the client was never given
+//! slot and pile with the engine's `state` (see crates/yo3-engine's session.rs). Cards whose row the client was never given
 //! (an opponent's hidden cards) are compared by count and place only, unless [`ClientModel::know`] seeded their row.
 use std::collections::{HashMap, HashSet, VecDeque};
 

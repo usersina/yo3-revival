@@ -208,7 +208,9 @@ pub fn default_root() -> PathBuf {
 }
 
 #[derive(Clone)]
-pub struct Runtime { pub server: PathBuf, pub launcher: PathBuf, pub injector: PathBuf, pub dll: PathBuf, pub engine: PathBuf }
+pub struct Runtime { pub server: PathBuf, pub launcher: PathBuf, pub injector: PathBuf, pub dll: PathBuf, pub engine: PathBuf,
+    /// The rules engine program (`yo3-engine`) beside the server; `engine` is its data directory.
+    pub engine_program: PathBuf }
 impl Runtime {
     pub fn discover() -> anyhow::Result<Self> {
         let exe = std::env::current_exe()?;
@@ -220,7 +222,8 @@ impl Runtime {
         let mods = if !development || root.join("yo3-auth.dll").is_file() { root.clone() } else { project.join("tools/mod/build") };
         let engine = if !development || root.join("engine").is_dir() { root.join("engine") } else { project.join("engine") };
         Ok(Self { server: root.join(format!("yo3-server{}", std::env::consts::EXE_SUFFIX)),
-            launcher: root.join(format!("yo3-launcher{}", std::env::consts::EXE_SUFFIX)), injector: mods.join("yo3-auth-launch.exe"), dll: mods.join("yo3-auth.dll"), engine })
+            launcher: root.join(format!("yo3-launcher{}", std::env::consts::EXE_SUFFIX)), injector: mods.join("yo3-auth-launch.exe"), dll: mods.join("yo3-auth.dll"), engine,
+            engine_program: root.join(yo3_server::engine::program_name()) })
     }
 }
 
@@ -313,7 +316,7 @@ impl Backend {
         cmd.args(["--bind", &bind.to_string(), "--auth-port", &port])
             .arg("--data-dir").arg(self.data_dir(settings)).arg("--game-dir").arg(&settings.game_dir).arg("--log-dir").arg(self.root.join("logs"))
             .arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id())
-            .env("YO3_ENGINE_DIR", &self.runtime.engine).env("NO_COLOR", "1").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+            .env("YO3_ENGINE_DIR", &self.runtime.engine).env("YO3_ENGINE", &self.runtime.engine_program).env("NO_COLOR", "1").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         if !settings.server_options.contains_key("http-port") { cmd.args(["--http-port", "0"]); }
         if !settings.server_options.contains_key("no-packet-log") { cmd.arg("--no-packet-log"); }
         cmd.args(extra);
@@ -390,14 +393,13 @@ impl Backend {
         if let Some(game)=game {paths.extend(["yo3.exe","yo3.idx","package/data002.ypk"].map(|name|game.join(name)));}
         if settings.selected_server.is_none() {
             paths.push(self.runtime.server.clone());
-            if packaged {paths.push(self.runtime.engine.join("node").join(format!("node{}",std::env::consts::EXE_SUFFIX)));}
-            paths.extend(yo3_server::engine::missing_files(&self.runtime.engine));
+            paths.extend(yo3_server::engine::missing_files(&self.runtime.engine,&self.runtime.engine_program));
         }
         if let Some(diagnostic)=diagnostic {
             let bounded=diagnostic.chars().take(16*1024).collect::<String>();
             for line in bounded.lines() {
                 let quoted=line.split_once("Cannot find module ").map(|(_,path)|path)
-                    .or_else(||line.contains("ENOENT").then(||line.split_once("open ").map(|(_,path)|path)).flatten());
+                    .or_else(||(line.contains("ENOENT") || line.contains("os error 2")).then(||line.split_once("open ").map(|(_,path)|path)).flatten());
                 let Some(quoted)=quoted else {continue};
                 let Some(quote @ ('\''|'"'))=quoted.chars().next() else {continue};
                 let Some((path,_))=quoted[1..].split_once(quote) else {continue};
@@ -429,31 +431,33 @@ impl Backend {
                 .take(65537).read_to_end(&mut bytes).with_context(||format!("Could not read release manifest: {}",manifest.display()))?;
             ensure!(bytes.len()<=65536,"Release manifest is too large: {}. Restore the complete bundle.",manifest.display());
             let value:Value=serde_json::from_slice(&bytes).with_context(||format!("Invalid release manifest: {}",manifest.display()))?;
-            let expected=value["components"]["server"]["sha256"].as_str().filter(|hash|hash.len()==64 && hash.bytes().all(|byte|byte.is_ascii_hexdigit()))
-                .with_context(||format!("Release manifest is missing the server SHA-256: {}",manifest.display()))?;
-            let mut file=std::fs::File::open(&self.runtime.server).with_context(||format!("Could not read required server file: {}",self.runtime.server.display()))?.take(256*1024*1024+1);
-            let mut digest=ring::digest::Context::new(&ring::digest::SHA256);let mut buffer=[0;16384];let mut size=0;
-            loop {
-                let read=file.read(&mut buffer).with_context(||format!("Could not read required server file: {}",self.runtime.server.display()))?;
-                if read==0{break}size+=read;
-                ensure!(size<=256*1024*1024,"Required server file is unexpectedly large: {}",self.runtime.server.display());digest.update(&buffer[..read]);
+            for (role,path) in [("server",&self.runtime.server),("engine",&self.runtime.engine_program)] {
+                ensure!(path.is_file(),"Required {role} file is missing: {}. Restore the complete matching bundle.",path.display());
+                let expected=value["components"][role]["sha256"].as_str().filter(|hash|hash.len()==64 && hash.bytes().all(|byte|byte.is_ascii_hexdigit()))
+                    .with_context(||format!("Release manifest is missing the {role} SHA-256: {}",manifest.display()))?;
+                let mut file=std::fs::File::open(path).with_context(||format!("Could not read required {role} file: {}",path.display()))?.take(256*1024*1024+1);
+                let mut digest=ring::digest::Context::new(&ring::digest::SHA256);let mut buffer=[0;16384];let mut size=0;
+                loop {
+                    let read=file.read(&mut buffer).with_context(||format!("Could not read required {role} file: {}",path.display()))?;
+                    if read==0{break}size+=read;
+                    ensure!(size<=256*1024*1024,"Required {role} file is unexpectedly large: {}",path.display());digest.update(&buffer[..read]);
+                }
+                let actual=digest.finish().as_ref().iter().map(|byte|format!("{byte:02x}")).collect::<String>();
+                ensure!(actual.eq_ignore_ascii_case(expected),"{} differs from the release manifest. Restore the complete matching bundle.",path.display());
             }
-            let actual=digest.finish().as_ref().iter().map(|byte|format!("{byte:02x}")).collect::<String>();
-            ensure!(actual.eq_ignore_ascii_case(expected),"{} differs from the release manifest. Restore the complete matching bundle.",self.runtime.server.display());
-            let node=self.runtime.engine.join("node").join(format!("node{}",std::env::consts::EXE_SUFFIX));
-            ensure!(node.is_file(),"Required bundled Node.js file is missing: {}. Restore the complete matching bundle.",node.display());
         } else {
             ensure!(yo3_tunnel::BUILD_VERSION.ends_with("-dev"),"Release manifest is missing: {}. Restore the complete matching bundle.",manifest.display());
         }
-        if let Some(problem)=yo3_server::engine::problem(Some(&self.runtime.engine)) {
+        if let Some(problem)=yo3_server::engine::problem(Some(&self.runtime.engine),&self.runtime.engine_program) {
             anyhow::bail!("The rules engine is incomplete: {problem}. Extract the complete application bundle again.");
         }
         self.check_engine_start(std::time::Duration::from_secs(10))
     }
     fn check_engine_start(&self,timeout:std::time::Duration)->anyhow::Result<()> {
-        let sidecar=self.runtime.engine.join("duelcore.ts");let node=yo3_server::engine::node(&self.runtime.engine);
-        let mut cmd=Command::new(&node);cmd.arg(&sidecar).stdin(Stdio::null()).stdout(Stdio::null());hide_console(&mut cmd);
-        self.diagnostics.line("Checking that the rules engine can load its dependencies without starting a duel");
+        // With no requests (stdin closed), the engine loads its card data and exits.
+        let program=&self.runtime.engine_program;
+        let mut cmd=Command::new(program);cmd.arg(&self.runtime.engine).stdin(Stdio::null()).stdout(Stdio::null());hide_console(&mut cmd);
+        self.diagnostics.line("Checking that the rules engine can load its card data without starting a duel");
         let (mut child,errors)=process::spawn(&mut cmd,&self.diagnostics,"Engine check")?;
         let started=std::time::Instant::now();
         let result=(||->anyhow::Result<std::process::ExitStatus>{
@@ -465,12 +469,11 @@ impl Backend {
         })();
         if result.is_err(){let _=child.kill();}
         let waited=child.wait();let detail=errors.finish();
-        let cause=detail.lines().find(|line|line.starts_with("Error") || line.starts_with("SyntaxError") || line.starts_with("TypeError")
-            || line.contains("Cannot find module") || line.contains("ENOENT")).unwrap_or_else(||detail.lines().find(|line|!line.trim().is_empty()).unwrap_or("No engine diagnostic was returned."));
+        let cause=detail.lines().find(|line|line.starts_with("yo3-engine")).unwrap_or_else(||detail.lines().find(|line|!line.trim().is_empty()).unwrap_or("No engine diagnostic was returned."));
         match result {
             Ok(status) if status.success()=>{waited.context("Could not reap the completed engine check")?;Ok(())}
-            Ok(status)=>anyhow::bail!("The rules engine could not start: {cause}\nSidecar: {}\nNode.js: {}\nExit status: {status}\n{detail}\nRestore the complete matching bundle, then Retry check.",sidecar.display(),node.display()),
-            Err(error)=>anyhow::bail!("{error:#}. Sidecar: {}\n{cause}\n{detail}\nRestore the complete matching bundle or export logs if this repeats.",sidecar.display()),
+            Ok(status)=>anyhow::bail!("The rules engine could not start: {cause}\nEngine: {}\nData: {}\nExit status: {status}\n{detail}\nRestore the complete matching bundle, then Retry check.",program.display(),self.runtime.engine.display()),
+            Err(error)=>anyhow::bail!("{error:#}. Engine: {}\n{cause}\n{detail}\nRestore the complete matching bundle or export logs if this repeats.",program.display()),
         }
     }
     pub fn validate_setup(&self, draft: &Settings, remote: Option<&SavedServer>) -> anyhow::Result<Settings> {
@@ -800,34 +803,38 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
     mod component_fixture { include!(concat!(env!("CARGO_MANIFEST_DIR"), "/../yo3-launcher/tests/common/mod.rs")); }
+    /// A stand-in engine program: answers its version, and otherwise (the startup check) needs `vendor/required.dat`
+    /// in the engine directory it is given, as the real one needs its card data.
+    #[cfg(unix)]
+    const ENGINE_FIXTURE:&str="#!/bin/sh\n[ \"$1\" = --version ] && { echo 'yo3-engine fixture'; exit 0; }\n[ -f \"$1/vendor/required.dat\" ] || { echo \"yo3-engine: open '$1/vendor/required.dat': No such file or directory (os error 2)\" >&2; exit 2; }\nexit 0\n";
     #[cfg(unix)]
     fn server_resource_fixture(name:&str)->Arc<Backend> {
+        use std::os::unix::fs::PermissionsExt;
         let root=std::env::temp_dir().join(format!("yo3-resources-{name}-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);
         let mut backend=Backend::new(root.clone()).unwrap();let engine=root.join("engine");
-        for name in ["duelcore.ts","package.json","node_modules/ocgcore-wasm/package.json","node_modules/ocgcore-wasm/dist/index.js",
-            "node_modules/ocgcore-wasm/lib/ocgcore.sync.mjs","node_modules/ocgcore-wasm/lib/ocgcore.sync.wasm","vendor/cardinfo.json",
-            "vendor/BabelCDB/cards.cdb","vendor/CardScripts/constant.lua","vendor/CardScripts/utility.lua","vendor/CardScripts/official/c1.lua"] {
+        for name in ["vendor/cardinfo.json","vendor/BabelCDB/cards.cdb","vendor/CardScripts/constant.lua","vendor/CardScripts/utility.lua",
+            "vendor/CardScripts/official/c1.lua","vendor/required.dat"] {
             let path=engine.join(name);std::fs::create_dir_all(path.parent().unwrap()).unwrap();std::fs::write(path,b"fixture").unwrap();
         }
-        std::fs::write(engine.join("package.json"),br#"{"type":"module"}"#).unwrap();
-        std::fs::write(engine.join("duelcore.ts"),"import './required-chunk.mjs'; process.stdin.resume();").unwrap();
-        std::fs::write(engine.join("required-chunk.mjs"),"export const ready=true;").unwrap();
-        let node=std::env::split_paths(&std::env::var_os("PATH").expect("Node must be on PATH for engine startup fixtures"))
-            .map(|path|path.join("node")).find(|path|path.is_file()).expect("Node must be installed for engine startup fixtures");
-        std::fs::create_dir_all(engine.join("node")).unwrap();std::os::unix::fs::symlink(node,engine.join("node/node")).unwrap();
+        let engine_program=root.join("yo3-engine");std::fs::write(&engine_program,ENGINE_FIXTURE).unwrap();
+        std::fs::set_permissions(&engine_program,std::fs::Permissions::from_mode(0o755)).unwrap();
         let server=root.join("yo3-server");std::fs::write(&server,b"verified server").unwrap();
-        std::fs::write(root.join("bundle.json"),serde_json::json!({"components":{"server":{"sha256":yo3_launcher::components::hash(b"verified server")}}}).to_string()).unwrap();
-        Arc::get_mut(&mut backend).unwrap().runtime=Runtime {server,engine,launcher:root.join("yo3-launcher"),injector:root.join("yo3-auth-launch.exe"),dll:root.join("yo3-auth.dll")};
+        std::fs::write(root.join("bundle.json"),serde_json::json!({"components":{"server":{"sha256":yo3_launcher::components::hash(b"verified server")},
+            "engine":{"sha256":yo3_launcher::components::hash(ENGINE_FIXTURE.as_bytes())}}}).to_string()).unwrap();
+        Arc::get_mut(&mut backend).unwrap().runtime=Runtime {server,engine,launcher:root.join("yo3-launcher"),injector:root.join("yo3-auth-launch.exe"),dll:root.join("yo3-auth.dll"),engine_program};
         backend
     }
     #[test]
     #[cfg(unix)]
-    fn packaged_server_resources_reject_a_changed_server_and_missing_bundled_node() {
+    fn packaged_server_resources_reject_a_changed_server_or_engine_and_a_missing_engine() {
         let backend=server_resource_fixture("package-integrity");let root=backend.root.clone();backend.check_server_resources().unwrap();
         std::fs::write(&backend.runtime.server,b"changed server").unwrap();
         let changed=backend.check_server_resources().unwrap_err().to_string();assert!(changed.contains("yo3-server") && changed.contains("manifest"),"{changed}");
-        std::fs::write(&backend.runtime.server,b"verified server").unwrap();std::fs::remove_file(backend.runtime.engine.join("node/node")).unwrap();
-        let missing=backend.check_server_resources().unwrap_err().to_string();assert!(missing.contains("engine/node/node"),"packaged checks must not fall back to PATH: {missing}");
+        std::fs::write(&backend.runtime.server,b"verified server").unwrap();
+        let program=&backend.runtime.engine_program;std::fs::write(program,format!("{ENGINE_FIXTURE}# changed\n")).unwrap();
+        let changed=backend.check_server_resources().unwrap_err().to_string();assert!(changed.contains("yo3-engine") && changed.contains("manifest"),"{changed}");
+        std::fs::remove_file(program).unwrap();
+        let missing=backend.check_server_resources().unwrap_err().to_string();assert!(missing.contains("yo3-engine"),"{missing}");
         drop(backend);std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
@@ -836,20 +843,20 @@ mod tests {
         let backend=server_resource_fixture("missing-files");let root=backend.root.clone();let game=root.join("game");
         std::fs::create_dir_all(game.join("package")).unwrap();std::fs::write(game.join("yo3.exe"),b"").unwrap();std::fs::create_dir(game.join("yo3.idx")).unwrap();
         std::fs::write(&backend.runtime.launcher,b"").unwrap();std::fs::create_dir(&backend.runtime.dll).unwrap();
-        for path in [&backend.runtime.server,&backend.runtime.engine.join("node/node"),&backend.runtime.engine.join("node_modules/ocgcore-wasm/lib/ocgcore.sync.wasm"),&backend.runtime.engine.join("vendor/CardScripts/utility.lua")] {std::fs::remove_file(path).unwrap();}
+        for path in [&backend.runtime.server,&backend.runtime.engine_program,&backend.runtime.engine.join("vendor/BabelCDB/cards.cdb"),&backend.runtime.engine.join("vendor/CardScripts/utility.lua")] {std::fs::remove_file(path).unwrap();}
         std::fs::write(root.join("profiles/loader.ini"),b"configured direct launch").unwrap();
         let mut settings=Settings{game_dir:game.to_string_lossy().into(),..Settings::default()};
         let mut expected=vec![backend.runtime.injector.clone(),backend.runtime.server.clone(),game.join("package/data002.ypk"),
-            backend.runtime.engine.join("node/node"),backend.runtime.engine.join("node_modules/ocgcore-wasm/lib/ocgcore.sync.wasm"),backend.runtime.engine.join("vendor/CardScripts/utility.lua")];expected.sort();
+            backend.runtime.engine_program.clone(),backend.runtime.engine.join("vendor/BabelCDB/cards.cdb"),backend.runtime.engine.join("vendor/CardScripts/utility.lua")];expected.sort();
         assert_eq!(backend.missing_required_files(&settings,None),expected,"report all ordinary Play requirements even when game preflight fails first; configured optional direct-start files and existing invalid files are separate errors");
         settings.selected_server=Some(7);std::fs::remove_file(root.join("profiles/loader.ini")).unwrap();
         let mut expected=vec![backend.runtime.injector.clone(),game.join("package/data002.ypk")];expected.sort();
         assert_eq!(backend.missing_required_files(&settings,None),expected,"joining does not need local hosting or disabled direct-start components");
         settings.game_dir.clear();assert_eq!(backend.missing_required_files(&settings,None),vec![backend.runtime.injector.clone()],"an unchosen game folder is not a list of missing relative files");
-        let imported=root.join("engine/node_modules/ocgcore-wasm/lib/generated-core.mjs");let opened=root.join("engine/vendor/missing.cdb");
-        let diagnostic=format!("Error [ERR_MODULE_NOT_FOUND]: Cannot find module '{}' imported from duelcore.ts\nError: ENOENT: no such file or directory, open '{}'\nCannot find module '{}'\nCannot find module 'relative.mjs'\nOther error: open '{}'",imported.display(),opened.display(),backend.runtime.launcher.display(),root.join("unrelated.bin").display());
+        let opened=root.join("engine/vendor/missing.cdb");let imported=root.join("engine/vendor/missing.json");
+        let diagnostic=format!("yo3-engine: open '{}': No such file or directory (os error 2)\nError: ENOENT: no such file or directory, open '{}'\nCannot find module '{}'\nCannot find module 'relative.mjs'\nOther error: open '{}'",opened.display(),imported.display(),backend.runtime.launcher.display(),root.join("unrelated.bin").display());
         let mut expected=vec![backend.runtime.injector.clone(),imported,opened];expected.sort();
-        assert_eq!(backend.missing_required_files(&settings,Some(&diagnostic)),expected,"only actual absolute missing-import/open paths supplement the finite inventory; existing files and unrelated text stay excluded");
+        assert_eq!(backend.missing_required_files(&settings,Some(&diagnostic)),expected,"only actual absolute missing-file paths supplement the finite inventory; existing files and unrelated text stay excluded");
         drop(backend);std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
@@ -865,11 +872,11 @@ mod tests {
     }
     #[test]
     #[cfg(unix)]
-    fn sidecar_imports_are_rechecked_after_ready_and_before_attaching_to_a_live_server() {
+    fn engine_data_is_rechecked_after_ready_and_before_attaching_to_a_live_server() {
         use std::io::{Read,Write};use std::sync::atomic::{AtomicBool,Ordering};
-        let backend=server_resource_fixture("import-deletion");let root=backend.root.clone();backend.check_server_resources().unwrap();
-        std::fs::remove_file(backend.runtime.engine.join("required-chunk.mjs")).unwrap();
-        let missing=backend.check_server_resources().unwrap_err().to_string();assert!(missing.contains("required-chunk.mjs"),"{missing}");
+        let backend=server_resource_fixture("data-deletion");let root=backend.root.clone();backend.check_server_resources().unwrap();
+        std::fs::remove_file(backend.runtime.engine.join("vendor/required.dat")).unwrap();
+        let missing=backend.check_server_resources().unwrap_err().to_string();assert!(missing.contains("required.dat"),"{missing}");
         let settings=Settings{game_dir:"an attached server does not need a replacement game path".into(),..Settings::default()};
         let listener=std::net::TcpListener::bind("127.0.0.1:0").unwrap();listener.set_nonblocking(true).unwrap();
         admin::write_live(&backend.data_dir(&settings),listener.local_addr().unwrap().port()).unwrap();
@@ -882,7 +889,7 @@ mod tests {
             }
         });
         let attached=backend.start_server(&settings);stop.store(true,Ordering::Relaxed);thread.join().unwrap();
-        assert!(attached.unwrap_err().to_string().contains("required-chunk.mjs"));
+        assert!(attached.unwrap_err().to_string().contains("required.dat"));
         assert!(backend.game.lock().unwrap().is_none() && backend.server.lock().unwrap().is_none());
         assert!(!backend.data_dir(&settings).join("server.db").exists());drop(backend);std::fs::remove_dir_all(root).unwrap();
     }
@@ -891,13 +898,13 @@ mod tests {
     fn engine_startup_check_has_a_short_budget_and_reaps_its_own_process() {
         use std::os::unix::fs::PermissionsExt;
         let backend=server_resource_fixture("probe-timeout");let root=backend.root.clone();
-        // Test the timeout and reaping, without requiring Node's cold startup to finish within 500 ms.
+        // Test the timeout and reaping with an engine that never finishes loading.
         // exec preserves the recorded PID and avoids leaving a descendant with the diagnostic pipe open.
-        let node=backend.runtime.engine.join("node/node");std::fs::remove_file(&node).unwrap();
-        std::fs::write(&node,"#!/bin/sh\nprintf '%s' \"$$\" > \"${1%/*}/probe.pid\"\nexec sleep 30\n").unwrap();
-        std::fs::set_permissions(&node,std::fs::Permissions::from_mode(0o755)).unwrap();
+        let program=&backend.runtime.engine_program;
+        std::fs::write(program,"#!/bin/sh\nprintf '%s' \"$$\" > \"$1/probe.pid\"\nexec sleep 30\n").unwrap();
+        std::fs::set_permissions(program,std::fs::Permissions::from_mode(0o755)).unwrap();
         let started=std::time::Instant::now();let error=backend.check_engine_start(std::time::Duration::from_millis(500)).unwrap_err().to_string();
-        assert!(error.contains("timed out") && error.contains("duelcore.ts"),"{error}");assert!(started.elapsed()<std::time::Duration::from_secs(2));
+        assert!(error.contains("timed out") && error.contains("yo3-engine"),"{error}");assert!(started.elapsed()<std::time::Duration::from_secs(2));
         let pid=std::fs::read_to_string(backend.runtime.engine.join("probe.pid")).unwrap();assert!(pid.parse::<u32>().is_ok());
         assert!(!Command::new("kill").args(["-0",pid.trim()]).stdout(Stdio::null()).stderr(Stdio::null()).status().unwrap().success(),"the engine check must not leave its process running or a zombie");
         assert!(backend.game.lock().unwrap().is_none() && backend.server.lock().unwrap().is_none());assert!(!backend.data_dir(&Settings::default()).exists());
@@ -937,7 +944,7 @@ mod tests {
         let mut backend=Backend::new(root.clone()).unwrap(); let binary=root.join("connection-helper"); let injector=root.join("injector.exe"); let dll=root.join("mod.dll");
         std::fs::write(root.join("yo3.exe"),component_fixture::game_fixture()).unwrap();
         std::fs::write(&injector,component_fixture::pe_fixture(2)).unwrap(); std::fs::write(&dll,component_fixture::pe_fixture(2)).unwrap(); std::fs::write(&binary,b"our verified helper").unwrap();
-        Arc::get_mut(&mut backend).unwrap().runtime=Runtime{server:root.join("server"),launcher:binary.clone(),injector,dll,engine:root.join("engine")};
+        Arc::get_mut(&mut backend).unwrap().runtime=Runtime{server:root.join("server"),launcher:binary.clone(),injector,dll,engine:root.join("engine"),engine_program:root.join("yo3-engine")};
         let digest=yo3_launcher::components::hash(&component_fixture::pe_fixture(2));
         std::fs::write(root.join("bundle.json"),serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":2,"components":{
             "injector":{"sha256":digest},"connection_mod":{"sha256":digest},"launcher":{"sha256":yo3_launcher::components::hash(b"our verified helper")}}}).to_string()).unwrap();

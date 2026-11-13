@@ -280,7 +280,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let (auth_addr, http_addr) = (authenticated.local_addr()?, http.local_addr()?);
     // The launcher supplies its local duel port for each front connection's handoff.
     let mut world = world(&cfg, 0, http_addr.port())?;
-    world.engine_problem = cfg.engine_problem.clone().or_else(|| engine::problem(world.engine_dir.as_deref()));
+    world.engine_problem = cfg.engine_problem.clone().or_else(|| engine::problem(world.engine_dir.as_deref(), &engine::program(world.engine_dir.as_deref().unwrap_or(std::path::Path::new("engine")))));
     if cfg.duel_check {
         tracing::info!("duel check on: every duel's client view is compared with the rules engine after each step");
     }

@@ -492,7 +492,7 @@ impl DuelSession {
         };
         match opening {
             Some(opening) => out.extend(opening),
-            // Without the rules engine (not fetched, or Node missing) nothing can play the duel: the scripted opening
+            // Without the rules engine (not fetched, or its program missing) nothing can play the duel: the scripted opening
             // would stop at the first Draw Phase forever (issue #2), so the duel ends at once as a draw, as a table's
             // does and as the startup error says.
             // (No opening at all without a duel entry or the NPC's deck.)

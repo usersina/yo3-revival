@@ -1,4 +1,4 @@
-//! The rules engine sidecar (engine/duelcore.ts). Skipped unless engine/fetch.sh has run.
+//! The rules engine program (crates/yo3-engine). Skipped unless engine/fetch.sh has run.
 use std::path::PathBuf;
 
 use yo3_server::engine::Engine;
@@ -10,7 +10,7 @@ fn engine() -> Option<Engine> {
         eprintln!("engine not fetched; skipping");
         return None;
     }
-    Some(Engine::start(&dir).expect("node runs the engine"))
+    Some(Engine::start(&dir).expect("the engine program runs"))
 }
 
 #[test]
@@ -84,7 +84,7 @@ fn a_hand_shuffle_names_the_cards_by_their_client_ids() {
 
 #[test]
 fn moves_carry_their_reason() {
-    // ocgcore-wasm drops MSG_MOVE's reason; the sidecar reads it back with a query at the card's new place. Normal
+    // ocgcore-wasm drops MSG_MOVE's reason; the engine reads it back with a query at the card's new place. Normal
     // Monsters leave the field only by battle: REASON_DESTROY (1) | REASON_BATTLE (0x20).
     let Some(mut engine) = engine() else { return };
     let deck: Vec<u16> = [6960u16; 20].into_iter().chain([5004; 20]).collect();

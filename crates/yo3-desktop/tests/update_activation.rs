@@ -5,14 +5,14 @@ use yo3_desktop::updates::{Asset, Release, install, activation};
 fn fixture(script: &str) -> (PathBuf, install::Installed) {
     let root = std::env::temp_dir().join(format!("yo3-update-health-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
     std::fs::create_dir(&root).unwrap();
-    let names = ["yo3-revival", "yo3-server", "yo3-launcher", "yo3-auth-launch.exe", "yo3-auth.dll", "yo3-bootstrap.dll", "yo3-launcher-windows.exe"];
-    let roles = ["desktop", "server", "launcher", "injector", "connection_mod", "loader", "direct_launcher"];
+    let names = ["yo3-revival", "yo3-server", "yo3-launcher", "yo3-auth-launch.exe", "yo3-auth.dll", "yo3-bootstrap.dll", "yo3-launcher-windows.exe", "yo3-engine"];
+    let roles = ["desktop", "server", "launcher", "injector", "connection_mod", "loader", "direct_launcher", "engine"];
     let mut files = vec![]; let mut components = serde_json::Map::new();
     for (name,role) in names.into_iter().zip(roles) {
         let bytes = if role == "desktop" { script.as_bytes().to_vec() } else { b"our fixture".to_vec() };
         components.insert(role.into(), serde_json::json!({"file":name,"sha256":yo3_launcher::components::hash(&bytes)})); files.push((name,bytes));
     }
-    for name in ["engine/duelcore.ts", "engine/package.json", "engine/vendor/cardinfo.json", "engine/node/node", "engine/node_modules/ocgcore-wasm/package.json", "engine/vendor/BabelCDB/cards.cdb", "engine/vendor/CardScripts/utility.lua"] { files.push((name,b"fixture".to_vec())); }
+    for name in ["engine/vendor/cardinfo.json", "engine/vendor/BabelCDB/cards.cdb", "engine/vendor/CardScripts/utility.lua"] { files.push((name,b"fixture".to_vec())); }
     files.push(("bundle.json", serde_json::json!({"schema":1,"edition":"desktop","release":"v0.3.0","protocol":2,"mod_abi":2,"components":components}).to_string().into_bytes()));
     let gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast()); let mut tar = tar::Builder::new(gzip);
     for (name,bytes) in files { let mut header=tar::Header::new_gnu(); header.set_size(bytes.len() as u64); header.set_mode(0o700); header.set_cksum(); tar.append_data(&mut header,format!("yo3-revival-desktop/{name}"),bytes.as_slice()).unwrap(); }

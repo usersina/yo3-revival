@@ -198,7 +198,7 @@ fn each_player_draws_five_before_the_first_draw_phase() {
 
 #[test]
 fn without_the_rules_engine_an_npc_duel_ends_at_once_as_a_draw() {
-    // Issue #2: with no engine (not fetched, or Node.js missing) the scripted opening stopped at the first Draw Phase
+    // Issue #2: with no engine (not fetched, or its program missing) the scripted opening stopped at the first Draw Phase
     // and the duel hung there. Now it ends as a draw (command 2 {3}, the same end as a failed engine) and the front
     // hears of it, as the server's startup error promises.
     for choice in [1, 2] {

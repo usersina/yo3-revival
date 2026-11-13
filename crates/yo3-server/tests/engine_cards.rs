@@ -44,7 +44,7 @@ fn every_card_of_the_clients_era_loads_in_the_engine() {
     cids.sort_unstable();
     cids.dedup();
     assert!(cids.len() > 4500, "{} Konami ids", cids.len());
-    let mut engine = Engine::start(&dir).expect("node runs the engine");
+    let mut engine = Engine::start(&dir).expect("the engine program runs");
     let list: Vec<(u16, &str)> = cids.iter().map(|&c| (c, "")).collect();
     let answers: Vec<Json> = list.chunks(500).flat_map(|chunk| engine.cards(chunk).expect("the engine checks cards")).collect();
     let mut problems = vec![];

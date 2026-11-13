@@ -987,7 +987,7 @@ impl Translator {
 
     /// MSG_SHUFFLE_SET_CARD {location, places: [{controller, location, sequence, position, cid}]}: Set cards shuffled
     /// among their zones (Magical Hats). The sidecar lists each shuffled zone and the card it holds after the shuffle (the
-    /// core's own lists give only the old places, see `fixShuffles` in duelcore.ts); each of the mirror's cards in those
+    /// core's own lists give only the old places, see `fix_shuffles` in crates/yo3-engine's session.rs); each of the mirror's cards in those
     /// zones is matched by id to its new zone (identical cards are interchangeable) and traded into place.
     fn shuffle_set(&mut self, m: &Json) -> Vec<Message> {
         let places: Vec<(Place, u16)> = m["places"]

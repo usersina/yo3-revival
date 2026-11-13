@@ -16,10 +16,21 @@ const DUEL: u32 = 7;
 
 fn real_engine() -> Option<PathBuf> {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../engine");
-    dir.join("vendor/cardinfo.json").is_file().then_some(dir)
+    (dir.join("vendor/cardinfo.json").is_file() && yo3_server::engine::program(&dir).is_file()).then_some(dir)
 }
 
-/// An engine directory whose sidecar is the real one behind a proxy that dies on its next call once the returned
+/// Makes `script` (a shell script) the engine program of the engine directory `dir`.
+fn engine_program(dir: &std::path::Path, script: &str) {
+    let path = dir.join(yo3_server::engine::program_name());
+    std::fs::write(&path, script).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+}
+
+/// An engine directory whose program is the real one behind a proxy that dies on its next call once the returned
 /// flag file exists.
 fn dying_engine(name: &str) -> Option<(PathBuf, PathBuf)> {
     let real = real_engine()?;
@@ -28,15 +39,12 @@ fn dying_engine(name: &str) -> Option<(PathBuf, PathBuf)> {
     let flag = dir.join("die");
     let _ = std::fs::remove_file(&flag);
     let script = format!(
-        "import {{ spawn }} from 'node:child_process';\n\
-         import {{ existsSync }} from 'node:fs';\n\
-         const real = spawn('node', [{:?}], {{ stdio: ['pipe', 'inherit', 'inherit'] }});\n\
-         process.stdin.on('data', (d) => {{ if (existsSync({:?})) process.exit(1); real.stdin.write(d); }});\n\
-         process.stdin.on('end', () => real.kill());\n",
-        real.join("duelcore.ts").display().to_string(),
-        flag.display().to_string()
+        "#!/bin/sh\nwhile IFS= read -r line; do [ -e '{}' ] && exit 1; printf '%s\\n' \"$line\"; done | exec '{}' '{}'\n",
+        flag.display(),
+        yo3_server::engine::program(&real).display(),
+        real.display()
     );
-    std::fs::write(dir.join("duelcore.ts"), script).unwrap();
+    engine_program(&dir, &script);
     Some((dir, flag))
 }
 
@@ -254,7 +262,7 @@ mod wire {
     }
 }
 
-/// An engine directory whose sidecar answers every call with the same prompt (a MSG_SELECT_SUM no card can satisfy),
+/// An engine directory whose program answers every call with the same prompt (a MSG_SELECT_SUM no card can satisfy),
 /// as a core does that keeps refusing the server's answer; and the file counting its calls.
 fn nagging_engine(name: &str) -> (PathBuf, PathBuf) {
     let dir = std::env::temp_dir().join(format!("yo3-nagging-engine-{name}-{}", std::process::id()));
@@ -266,12 +274,11 @@ fn nagging_engine(name: &str) -> (PathBuf, PathBuf) {
                                      "selects_must": [], "selects": [card] });
     let answer = serde_json::json!({ "status": "await", "messages": [prompt], "errors": [] });
     let script = format!(
-        "import {{ appendFileSync }} from 'node:fs';\n\
-         process.stdin.on('data', () => {{ appendFileSync({:?}, 'x'); process.stdout.write({:?} + '\\n'); }});\n",
-        calls.display().to_string(),
-        answer.to_string()
+        "#!/bin/sh\nwhile IFS= read -r line; do printf x >> '{}'; printf '%s\\n' '{}'; done\n",
+        calls.display(),
+        answer
     );
-    std::fs::write(dir.join("duelcore.ts"), script).unwrap();
+    engine_program(&dir, &script);
     (dir, calls)
 }
 

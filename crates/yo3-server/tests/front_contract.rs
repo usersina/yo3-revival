@@ -279,7 +279,7 @@ fn news_says_duels_are_unavailable_only_when_the_engine_can_not_run() {
     };
     let base = || World::new((1..=20).collect());
     assert!(!titles(base()).iter().any(|t| t.contains("unavailable")));
-    let broken = titles(World { engine_problem: Some("Node.js is too old".into()), ..base() });
+    let broken = titles(World { engine_problem: Some("the rules engine program does not run".into()), ..base() });
     assert!(broken.iter().any(|t| t.contains("Duels are unavailable")), "{broken:?}");
 }
 

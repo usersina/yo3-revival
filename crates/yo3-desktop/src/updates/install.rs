@@ -114,7 +114,8 @@ fn bundle(directory: &Path, tag: &str, platform: &str) -> anyhow::Result<(String
     ensure!(components.len() <= 32, "Update has too many components");
     let windows = platform == "windows-x86_64"; let ext = if windows { ".exe" } else { "" };
     for (role, name) in [("desktop", format!("yo3-revival{ext}")), ("server", format!("yo3-server{ext}")), ("launcher", format!("yo3-launcher{ext}")),
-        ("injector", "yo3-auth-launch.exe".into()), ("connection_mod", "yo3-auth.dll".into()), ("loader", "yo3-bootstrap.dll".into())] {
+        ("injector", "yo3-auth-launch.exe".into()), ("connection_mod", "yo3-auth.dll".into()), ("loader", "yo3-bootstrap.dll".into()),
+        ("engine", format!("yo3-engine{ext}"))] {
         ensure!(components.get(role).is_some_and(|c| c["file"] == name), "Update is missing its {role} component");
     }
     if !windows { ensure!(components.get("direct_launcher").is_some_and(|c| c["file"] == "yo3-launcher-windows.exe"), "Linux update is missing its Windows connection helper"); }
@@ -124,7 +125,7 @@ fn bundle(directory: &Path, tag: &str, platform: &str) -> anyhow::Result<(String
         let expected = component["sha256"].as_str().context("Missing component checksum")?;
         ensure!(hash_file(&directory.join(name), MAX_DOWNLOAD)? == expected, "Update component checksum failed: {name}");
     }
-    for name in ["engine/duelcore.ts", "engine/package.json", "engine/vendor/cardinfo.json", "engine/node_modules/ocgcore-wasm/package.json", "engine/vendor/BabelCDB/cards.cdb", "engine/vendor/CardScripts/utility.lua", if windows { "engine/node/node.exe" } else { "engine/node/node" }] {
+    for name in ["engine/vendor/cardinfo.json", "engine/vendor/BabelCDB/cards.cdb", "engine/vendor/CardScripts/utility.lua"] {
         let meta = std::fs::symlink_metadata(directory.join(name)).with_context(|| format!("Update is incomplete: {name}"))?;
         ensure!(meta.is_file() && !meta.file_type().is_symlink(), "Unexpected update engine component");
     }

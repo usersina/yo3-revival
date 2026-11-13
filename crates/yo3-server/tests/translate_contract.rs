@@ -1714,7 +1714,7 @@ fn a_control_swap_trades_the_two_monsters_places() {
 #[test]
 fn set_cards_shuffled_in_place_follow_the_engine() {
     // MSG_SHUFFLE_SET_CARD (36): Magical Hats shuffles the Set cards among their zones. The core's message gives only
-    // the old places (ocgcore-wasm pairs them up as {from, to}), so the sidecar adds `places`: each shuffled zone and the
+    // the old places (ocgcore-wasm pairs them up as {from, to}), so the engine adds `places`: each shuffled zone and the
     // card it holds after the shuffle. Each card that changes zone is traded into place with CardSwap (0x1B), or moved
     // with 0x1A when its new zone is empty; then its table entry. Missed (the duel check, seeds 3, 9, 14, 20, 43, 56,
     // 57), the client showed the cards under the wrong hats.

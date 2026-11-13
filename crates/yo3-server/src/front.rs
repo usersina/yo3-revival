@@ -522,8 +522,8 @@ pub struct World {
     pub duel_check: bool,
     /// The rules engine's directory (engine/, once fetched); without it the server deals the opening itself.
     pub engine_dir: Option<std::path::PathBuf>,
-    /// Why the rules engine can't run (Node.js missing or too old, files not fetched), checked at start: players
-    /// are told in the news, since every duel would end as a draw. None: it can run.
+    /// Why the rules engine can't run (its program missing or not running, files not fetched), checked at start:
+    /// players are told in the news, since every duel would end as a draw. None: it can run.
     pub engine_problem: Option<String>,
     /// Where clients connect for their duels (0x22C4 duelData host and port).
     pub duel_server: (String, u16),
