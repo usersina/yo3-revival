@@ -25,7 +25,7 @@ The release runner installs them before testing the packaged Desktop window.
 The root `Cargo.toml` owns the shared crate version, edition, license, Rust baseline, dependency versions and lint
 settings. Every crate inherits them; crate-specific features such as Iced's renderer and Windows APIs stay in that
 crate's manifest. Change shared versions there and review `Cargo.lock` when updating dependencies. Internal crate
-dependencies use workspace paths and all seven crates advance together. Published bundle versions still come from
+dependencies use workspace paths and all eight crates advance together. Published bundle versions still come from
 `CHANGELOG.md` through `YO3_BUILD_VERSION`; reorganizing package metadata does not publish or bump a release.
 
 ```bash

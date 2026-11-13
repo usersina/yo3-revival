@@ -88,7 +88,7 @@ The main playable features are:
 - **Customization:** avatar settings, card protectors and avatar items bought in the shop.
 
 Each account starts with **5000 BOOSTERPASS Points**. Packs cost 100 BP; duels earn 100 for a win, 50 for a draw and
-30 for a loss. The shop shows updated points after your next login or purchase. The host can also issue codes,
+30 for a loss. An open game shows updated points on its next screen. The host can also issue codes,
 redeemed through **Main Menu → BOOSTERPASS**. Purchased cards stay on the server; a bought structure deck appears
 in Edit Deck's deck list.
 

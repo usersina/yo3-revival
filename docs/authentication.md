@@ -20,7 +20,7 @@ invitations. It also imports existing profiles with their adjacent certificate. 
 available; it uses the same TLS authentication and connection DLL.
 
 For complete platform-specific commands, server startup and firewall setup, follow the
-[host and player guide](https://github.com/usersina/yo3-revival/blob/main/docs/guide.md). The commands below illustrate
+[command-line reference](https://github.com/usersina/yo3-revival/blob/main/docs/guide.md). The commands below illustrate
 the credential flow from an extracted Linux bundle.
 
 The host initializes a certificate with the DNS names/IPs friends will connect to, makes an account, and exports a
