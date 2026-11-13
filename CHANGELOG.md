@@ -10,17 +10,25 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.0.10 (2026-11-13)
+
+Computer opponents that think, talk and have a character of their own, and much smaller downloads. Choose
+**Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the server, rules engine
+and required connection components. Original game files are not included. **Windows 7 is not supported.**
+
+Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.10/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.10/docs/scripts.md).
 
 - **No more Node.js inside:** the rules engine is now a small program of its own, built from the same EDOPro core,
   instead of the core running inside a bundled copy of Node.js. Downloads are much smaller and hosts still install
   nothing. Duels play exactly as before: every test duel was played through both engines and they agreed.
-- Updating from v0.0.9 or older works as usual from the app.
+  Updating from v0.0.9 or older works as usual from the app.
 - **Computer opponents actually play now.** Kaiba and the other NPCs used to summon their first monster and attack
   with everything. They now think about each move: they try their options ahead within their turn, use their Spells
   and Traps (removal when you summon, Ritual Summons, Set Traps waiting for your attack), choose good targets and
-  keep blockers up, and they think through your next turn before committing. They play fair: they never peek at
-  your hand, your Set cards or anyone's Deck.
+  keep blockers up, and they think through your next turn before committing, in about a second at most. They
+  play fair: they never peek at your hand, your Set cards or anyone's Deck (with a few famous exceptions below).
 - **Each opponent has a character:** Kaiba and Jack Atlas attack relentlessly, Syrus and Luna play it safe, and
   Maximillion Pegasus... reads your mind. His Millennium Eye sees your face-down monsters and Set cards.
 - **The heroes believe in the Heart of the Cards:** Yami Yugi, Yugi Muto, Jaden Yuki and Yusei Fudo always draw the
