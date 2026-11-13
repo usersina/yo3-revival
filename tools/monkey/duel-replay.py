@@ -70,7 +70,7 @@ def engine_program(engine):
 
 def run(calls, command):
     for request, _ in calls:
-        if request.get('op') not in ['identity', 'new', 'respond', 'state']:
+        if request.get('op') not in ['identity', 'new', 'respond', 'state', 'think']:
             raise ValueError('Unsupported recorded operation.')
     completed = subprocess.run(command, input=''.join(json.dumps(r)+'\n' for r, _ in calls), text=True,
                                capture_output=True, timeout=max(30, len(calls)*2), check=True)

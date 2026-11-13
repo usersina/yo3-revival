@@ -80,7 +80,8 @@ for line in sys.stdin:
     calls.append(request)
     native.stdin.write(line if line.endswith('\n') else line + '\n'); native.stdin.flush()
     answer = native.stdout.readline()
-    if request.get('op') != 'identity':
+    # identity and the duel bot (think) are the native engine's own: the sidecar has neither.
+    if request.get('op') not in ('identity', 'think'):
         node.stdin.write(line if line.endswith('\n') else line + '\n'); node.stdin.flush()
         expected = node.stdout.readline()
         a, b = json.loads(expected or 'null'), json.loads(answer or 'null')
