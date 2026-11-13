@@ -12,6 +12,7 @@ pub mod duelcheck;
 mod duellog;
 mod table;
 pub mod engine;
+pub mod npc;
 pub mod translate;
 mod card_options;
 pub mod front;
@@ -204,6 +205,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             test_times: cfg.duel_time,
             duel_check: cfg.duel_check,
             npcs: data.npc_ids(),
+            npc_styles: data.npc_ids().into_iter().map(|id| (id, npc::style(data.npc_name(id).unwrap_or_default()))).collect(),
             npc_decks: data
                 .npc_ids()
                 .into_iter()

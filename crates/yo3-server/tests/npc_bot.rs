@@ -1,12 +1,28 @@
 //! The duel bot (crates/yo3-engine/src/bot) against the old placeholder CPU, both playing the client's NPC decks: the
 //! bot must win clearly more often. `YO3_BOT_DUELS=n` plays n duels (default 6), `YO3_BOT_MIRROR=1` with the same deck on
-//! both sides (skill alone, no deck edge), `YO3_BOT_ONLY=i` only duel i; each duel's result and the bot's
+//! both sides (skill alone, no deck edge), `YO3_BOT_ONLY=i` only duel i, `YO3_BOT_RIVAL=action` against the bot's
+//! first version instead (`bot`: the default bot), `YO3_BOT_STYLE={...}` the bot's own style; each duel's result and the bot's
 //! thinking time go to `npc-bot.tsv` in Cargo's test temporary directory. Skipped without the game or the engine.
 use std::path::PathBuf;
 use std::time::Instant;
 
 use yo3_data::{GameData, default_game_dir};
 use yo3_server::engine::Engine;
+
+/// The bot's opponent: the old placeholder CPU, or with `YO3_BOT_RIVAL=action` the bot's first version (judging an
+/// option right after its action, not through the opponent's turn).
+fn rival() -> serde_json::Value {
+    match std::env::var("YO3_BOT_RIVAL").as_deref() {
+        Ok("action") => serde_json::json!({ "reach": "action" }),
+        Ok("bot") => serde_json::Value::Null,
+        _ => serde_json::json!({ "policy": "simple" }),
+    }
+}
+
+/// The bot's own style: `YO3_BOT_STYLE` (JSON, e.g. {"sees":true}), else the default.
+fn own_style() -> serde_json::Value {
+    std::env::var("YO3_BOT_STYLE").ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+}
 
 /// One duel: the bot plays engine team `bot` (team 0 goes first). The winner's team (None: a draw or too long), the
 /// bot's answers and its total thinking time.
@@ -24,7 +40,8 @@ fn duel(engine_dir: &std::path::Path, seed: u64, decks: [(&[u16], &[u16]); 2], b
         }
         let player = answer.messages.last().and_then(|m| m["player"].as_u64()).unwrap_or(0);
         let started = Instant::now();
-        let response = engine.think(player != bot).expect("an answer");
+        let style = if player == bot { own_style() } else { rival() };
+        let response = engine.think(style).expect("an answer");
         if player == bot {
             let took = started.elapsed().as_secs_f64() * 1000.0;
             thoughts += 1;
@@ -88,5 +105,7 @@ fn the_bot_beats_the_placeholder_cpu_with_the_npc_decks() {
     let out = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("npc-bot.tsv");
     std::fs::write(&out, &report).unwrap();
     eprintln!("bot won {won}, lost {lost} of {duels}; {:.0} ms an answer on average; report {}", ms / answers.max(1) as f64, out.display());
-    assert!(won > lost, "the bot should beat the placeholder CPU: won {won}, lost {lost}\n{report}");
+    if std::env::var_os("YO3_BOT_RIVAL").is_none() {
+        assert!(won > lost, "the bot should beat the placeholder CPU: won {won}, lost {lost}\n{report}");
+    }
 }

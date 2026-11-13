@@ -562,6 +562,7 @@ impl DuelSession {
     }
 
     fn advance(&mut self, mut answer: std::io::Result<Answer>) -> Vec<Message> {
+        let style = self.entry.as_ref().and_then(|e| e.npc_id).and_then(|id| self.world.npc_styles.get(&id)).cloned().unwrap_or_default();
         let Some((engine, translator)) = self.engine.as_mut() else { return vec![] };
         let mut out = vec![];
         let mut failed = false;
@@ -595,7 +596,7 @@ impl DuelSession {
                     let response = if translator.prompted(last) {
                         response
                     } else {
-                        engine.think(false).unwrap_or_else(|e| {
+                        engine.think(style.clone()).unwrap_or_else(|e| {
                             tracing::warn!("duel bot: {e}; the NPC plays by the simple rules");
                             response
                         })

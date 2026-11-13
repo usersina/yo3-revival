@@ -224,10 +224,11 @@ impl Engine {
         self.call(json!({ "op": "respond", "response": response }))
     }
 
-    /// The duel bot's answer to the pending prompt, for an NPC (`simple`: the old placeholder CPU's, the baseline the
-    /// bot is measured against). Give it with [`Engine::respond`].
-    pub fn think(&mut self, simple: bool) -> io::Result<Json> {
-        let request = if simple { json!({ "op": "think", "policy": "simple" }) } else { json!({ "op": "think" }) };
+    /// The duel bot's answer to the pending prompt, for an NPC playing `style` (crates/yo3-engine's bot::Style: its
+    /// aggression, caution, whether it sees the opponent's cards; null for the default), or with `{"policy":"simple"}`
+    /// the old placeholder CPU's, a baseline to measure the bot by. Give it with [`Engine::respond`].
+    pub fn think(&mut self, style: Json) -> io::Result<Json> {
+        let request = if style["policy"] == "simple" { json!({ "op": "think", "policy": "simple" }) } else { json!({ "op": "think", "style": style }) };
         let mut v = self.line(request)?;
         match v.get("status").and_then(Json::as_str) {
             Some("thought") => Ok(v.get_mut("response").map(Json::take).unwrap_or_default()),

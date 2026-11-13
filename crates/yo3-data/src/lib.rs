@@ -390,6 +390,11 @@ impl GameData {
         firsts.filter(|&id| has(id + 1) && has(id + 2) && named(id)).flat_map(|id| id..id + 3).collect()
     }
 
+    /// The NPC's name ("Seto Kaiba"): the same for its three levels.
+    pub fn npc_name(&self, npc_id: u32) -> Option<&str> {
+        self.text(NPC_NAME + 2 * (npc_id.checked_sub(FIRST_NPC)? / 3))
+    }
+
     /// The title the NPC screen shows for an NPC's deck ("Miracle Magic").
     pub fn npc_deck_title(&self, npc_id: u32) -> Option<&str> {
         self.text(NPC_DECK_TITLE + 2 * npc_id)

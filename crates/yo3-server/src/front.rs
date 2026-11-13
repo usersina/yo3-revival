@@ -500,6 +500,8 @@ pub struct World {
     pub npcs: Vec<u32>,
     /// Each NPC's deck (from its preset), by npc_id.
     pub npc_decks: HashMap<u32, Deck>,
+    /// Each NPC's duel bot style (npc.rs), by npc_id.
+    pub npc_styles: HashMap<u32, serde_json::Value>,
     /// Each CARD_Prop row's Konami id and stats, for the rules engine and the duel's card info.
     pub cards: HashMap<u16, crate::translate::CardStats>,
     /// The client's token cards (CARD_Prop rows with ids 3900-3999) by name, for the rules engine's tokens.
@@ -557,6 +559,7 @@ impl World {
             official_decks: vec![],
             npcs: vec![],
             npc_decks: HashMap::new(),
+            npc_styles: HashMap::new(),
             cards: HashMap::new(),
             token_rows: HashMap::new(),
             card_names: HashMap::new(),
