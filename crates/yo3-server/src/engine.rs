@@ -40,11 +40,17 @@ pub fn program_name() -> String {
 
 /// The engine program for the engine directory `dir`: `YO3_ENGINE` if set (a program taking the engine directory as
 /// its argument), else a `yo3-engine` in `dir` itself (an engine directory may bring its own: tests' stand-ins), else
-/// the one beside this program (the release bundles and a source build's `target/` directory), else the one above it
-/// (tests run from `target/*/deps/`). Where none is found, the one beside this program, for messages to name.
+/// the one beside this program (the release bundles and a source build's `target/` directory), else the nearest one
+/// in a directory above it (tests: Cargo up to 1.99 runs them from `target/debug/deps/`, 1.100 from
+/// `target/debug/build/<package>/<hash>/out/`, and the program is in `target/debug/`). Where none is found, the one
+/// beside this program, for messages to name.
 pub fn program(dir: &Path) -> PathBuf {
     program_from(std::env::var_os("YO3_ENGINE"), dir, std::env::current_exe().ok().as_deref())
 }
+
+/// How many directories above this program to look for the engine (`target/debug/` from a test in
+/// `target/debug/build/<package>/<hash>/out/` is 4).
+const ABOVE: usize = 4;
 
 fn program_from(chosen: Option<std::ffi::OsString>, dir: &Path, exe: Option<&Path>) -> PathBuf {
     if let Some(program) = chosen.filter(|p| !p.is_empty()) {
@@ -52,8 +58,8 @@ fn program_from(chosen: Option<std::ffi::OsString>, dir: &Path, exe: Option<&Pat
     }
     let here = exe.and_then(Path::parent).unwrap_or(Path::new("."));
     let beside = here.join(program_name());
-    let above = here.parent().map(|d| d.join(program_name()));
-    [Some(dir.join(program_name())), Some(beside.clone()), above].into_iter().flatten().find(|p| p.is_file()).unwrap_or(beside)
+    let above = here.ancestors().skip(1).take(ABOVE).map(|d| d.join(program_name()));
+    [dir.join(program_name()), beside.clone()].into_iter().chain(above).find(|p| p.is_file()).unwrap_or(beside)
 }
 
 fn dir_from(chosen: Option<std::ffi::OsString>, exe: Option<&Path>) -> Option<PathBuf> {
@@ -471,6 +477,19 @@ mod tests {
         assert_eq!(program_from(None, &data, Some(&exe)), data.join(program_name()), "the engine directory's own first");
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(program_from(None, &data, Some(&exe)), deps.join(program_name()), "none: the one beside, for messages");
+    }
+
+    #[test]
+    fn a_test_built_by_cargo_1_100_finds_the_engine_in_target_debug() {
+        // Cargo 1.100 (the release workflow's) runs integration tests from target/debug/build/<package>/<hash>/out/; the
+        // engine program is still built in target/debug/. Looking only one directory up failed every engine test there.
+        let dir = files_fixture("cargo-1-100");
+        let out = dir.join("debug/build/yo3-server/0123abcd/out");
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::write(dir.join("debug").join(program_name()), b"").unwrap();
+        let data = dir.join("data");
+        assert_eq!(program_from(None, &data, Some(&out.join("card_data-0123abcd"))), dir.join("debug").join(program_name()));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

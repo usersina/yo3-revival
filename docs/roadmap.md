@@ -51,6 +51,11 @@ v0.0.10 release preparation (2026-11-13):
   (the engine check loads its card data), Play hosted locally and opened the game; an NPC duel against Pegasus with
   the Yusei deck (Max Warrior's battle effect, his Toons, his hand read in the chat); closing the game and the app left
   no process, listener or error line.
+- [x] The first release run failed its tests before publishing: Cargo 1.100 (the workflow's stable Rust) runs
+  integration tests from `target/debug/build/<package>/<hash>/out/`, and the server's tests looked for the engine
+  program only one directory above (`target/debug/deps/` until 1.99). It now looks up to four directories up; the
+  workspace tests and Clippy (`-D warnings`) pass with Rust 1.100 as well as 1.98. CI runs the tests only for a new
+  version, which is why the native engine's first CI test run was the release's.
 - [ ] Found on the way, not new in this release: in NPC duels the client is sent the NPC's cards unhidden (`Translator`
   hides only a player opponent's), so the attack-target window and the card panel show his face-down monsters; and
   a monster's switch to Defense Position at the end of the Battle Phase (Goblin Attack Force) stays drawn upright on
