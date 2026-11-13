@@ -71,3 +71,26 @@ fn a_limit_of_0_turns_that_clock_off() {
     assert_eq!(c.expired(t0 + Duration::from_secs(604)), None);
     assert_eq!(fields(&c.message(0, t0))[..4], [0, 1, 0, 600]);
 }
+
+#[test]
+fn the_time_the_client_spends_on_animations_is_not_charged() {
+    // The client never says when it has played a batch's animations (no duel request reports it, and DuelCockpit
+    // counts a running pair down whatever the scene does), so the waited-on player's clocks start after an allowance
+    // for the batch it was sent (**guess**: a duration per animated command, capped). Until then they show stopped
+    // (start 0); once the allowance has passed `starting` says so once, for the clients to be told they run.
+    let t0 = Instant::now();
+    let s = Duration::from_secs;
+    let mut c = Clocks::new(180, 600).expect("clocks");
+    c.wait_after(Some(0), t0, s(4));
+    assert_eq!(fields(&c.message(0, t0))[..4], [0, 0, 180, 600], "stopped during the animations");
+    assert!(!c.starting(t0 + s(3)));
+    assert_eq!(c.message(0, t0 + s(3)).get("count1"), Some(&Value::U32(180)), "nothing charged yet");
+    assert!(c.starting(t0 + s(4)), "the allowance has passed: tell the clients");
+    assert!(!c.starting(t0 + s(5)), "once");
+    assert_eq!(fields(&c.message(0, t0 + s(14)))[..4], [0, 1, 170, 590]);
+    // A batch's allowance: the animated commands' durations, at most the cap.
+    let command = |id: u32| Message::reply(0x200D).with("duelRequestName", Value::U32(17)).with("id", Value::U32(id));
+    let batch = [command(1000), command(0x1A), command(0x1A), command(5)];
+    assert_eq!(yo3_server::clock::allowance(&batch), Duration::from_millis(400 + 400 + 1200));
+    assert_eq!(yo3_server::clock::allowance(&vec![command(6); 100]), s(15));
+}

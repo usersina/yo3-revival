@@ -5,7 +5,8 @@
 //! difference between the client's view and the engine, an answer the engine keeps refusing, or a script error.
 //!
 //! `YO3_CARD_SWEEP` picks the cards: unset, 24 spread over the table; `all`, every card (about ten minutes); a number
-//! n, n spread over the table; or Konami ids (`7986,7687`). `YO3_CARD_SWEEP_SEEDS=n` plays n duels per card (1).
+//! n, n spread over the table; or Konami ids (`7986,7687`). `YO3_CARD_SWEEP_SEEDS=n` plays n duels per card (1);
+//! `YO3_CARD_SWEEP_OFFSET=i` numbers the list from i (a card's duel from a larger sweep, seed 1000 + 7i, alone).
 //! The report, one line per card (id, name, result, activations, summons), goes to `card-sweep.tsv` in Cargo's test
 //! temporary directory. Skipped unless the game is installed and engine/fetch.sh has run.
 use std::collections::{BTreeMap, HashMap};
@@ -84,6 +85,9 @@ fn every_card_plays_with_the_client_view_matching_the_engine() {
     let all: Vec<(u16, u16)> = firsts.into_iter().filter(|(cid, _)| types.get(cid).is_some_and(|t| t & TYPE_TOKEN == 0)).collect();
     let cards = chosen(&all);
     let seeds: u64 = std::env::var("YO3_CARD_SWEEP_SEEDS").ok().and_then(|n| n.parse().ok()).unwrap_or(1);
+    // The swept list's first index, so that one card of a large sweep replays alone with its seed (a duel failing as
+    // card i of `YO3_CARD_SWEEP=600` replays as `YO3_CARD_SWEEP=<its id> YO3_CARD_SWEEP_OFFSET=i`).
+    let offset: usize = std::env::var("YO3_CARD_SWEEP_OFFSET").ok().and_then(|n| n.parse().ok()).unwrap_or(0);
 
     // The duel check's pool, as rows: the filler around the swept card (without its Xyz Monsters, which the client
     // lacks).
@@ -101,6 +105,7 @@ fn every_card_plays_with_the_client_view_matching_the_engine() {
         for _ in 0..threads {
             scope.spawn(|| loop {
                 let Some((i, cid, row, s)) = jobs.lock().unwrap().pop() else { break };
+                let i = i + offset;
                 let seed = 1000 + i as u64 * 7 + s * 100_003;
                 let extra_deck = types[&cid] & EXTRA_DECK != 0;
                 let mut decks = [pool(seed * 2), pool(seed * 2 + 1)];
@@ -115,7 +120,7 @@ fn every_card_plays_with_the_client_view_matching_the_engine() {
                 }
                 let top: &[u16] = if extra_deck { &[] } else { &[row, row] };
                 let decks_ref = [(&decks[0].0[..], &decks[0].1[..]), (&decks[1].0[..], &decks[1].1[..])];
-                let played = selfplay::play_with(&engine_dir, seed, decks_ref, &data, [top, top], i % 2, i % 3 == 0);
+                let played = selfplay::play_with(&engine_dir, seed, decks_ref, &data, [top, top], i % 2, i.is_multiple_of(3));
                 results.lock().unwrap().push((cid, seed, played));
             });
         }

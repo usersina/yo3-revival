@@ -397,7 +397,9 @@ impl Table {
             self.clocks = None;
         }
         if let Some(c) = self.clocks.as_mut() {
-            c.wait_on(waiting, now);
+            // The waited-on player's time counts once the client has played what it was just sent.
+            let held = waiting.and_then(|s| out.get(s)).map_or(std::time::Duration::ZERO, |part| crate::clock::allowance(part));
+            c.wait_after(waiting, now, held);
             for (view, part) in out.iter_mut().enumerate() {
                 part.push(c.message(view, now));
             }
@@ -450,6 +452,17 @@ impl Table {
             hub.cancel_for(waiting);
             hub.end_match(self.duel_id, Some(waiting));
             return;
+        }
+        // The animations' allowance has passed: the clients' clocks run from here.
+        if !self.over
+            && let Some(c) = self.clocks.as_mut()
+            && c.starting(now)
+        {
+            for (view, seat) in self.seats.iter().enumerate() {
+                let _ = seat.outbox.send(c.message(view, now));
+            }
+            let watched = vec![vec![c.message(0, now)]; self.spectators.len()];
+            self.tell_spectators(watched);
         }
         let Some(seat) = self.clocks.as_ref().and_then(|c| c.expired(now)) else { return };
         self.clocks = None;

@@ -309,8 +309,12 @@ fn a_player_who_runs_out_of_time_loses() {
             .map(|m| (m.get("timerKind").and_then(Value::as_u32).unwrap(), m.get("start").and_then(Value::as_u32).unwrap()))
             .collect()
     };
-    assert_eq!(timers(&to_a).last(), Some(&(0, 1)), "1001's clocks run on its own client");
-    assert_eq!(timers(&to_b).last(), Some(&(1, 1)), "and as the opponent's on 1002's");
+    // Stopped while 1001's client plays the batch it was sent (the animations' allowance), then running.
+    assert_eq!(timers(&to_a).last(), Some(&(0, 0)), "held on 1001's client during the animations");
+    assert_eq!(timers(&to_b).last(), Some(&(1, 0)), "and on 1002's");
+    yo3_server::duel::tick_tables(&hub, std::time::Instant::now() + std::time::Duration::from_secs(16));
+    assert_eq!(timers(&a.pushed()).last(), Some(&(0, 1)), "1001's clocks run on its own client");
+    assert_eq!(timers(&b.pushed()).last(), Some(&(1, 1)), "and as the opponent's on 1002's");
     yo3_server::duel::tick_tables(&hub, std::time::Instant::now() + std::time::Duration::from_secs(1000));
     assert_eq!(commands(&a.pushed()).last(), Some(&(2, [2, 11, 0, 0])));
     assert_eq!(commands(&b.pushed()).last(), Some(&(2, [1, 11, 0, 0])));

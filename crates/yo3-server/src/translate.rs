@@ -941,13 +941,14 @@ impl Translator {
         if m["from"]["location"].as_u64() == Some(0) {
             return self.engine_place(&m["to"]).map(|to| self.token(m, to)).unwrap_or_default();
         }
-        if let Some(from) = self.engine_place(&m["from"]).filter(|f| f.zone < 5)
+        if let Some(from) = self.engine_place(&m["from"]).filter(|f| f.zone <= FIELD_SPELL)
             && let Some(card) = self.sides[from.player as usize].zones.get(&from.zone).and_then(|z| z.first()).copied()
             && self.tokens.contains(&card.uid)
             && !self.engine_place(&m["to"]).is_some_and(|to| to.zone <= FIELD_SPELL)
         {
-            // A token leaving the field is gone (EDOPro may send it to a pile first): it shatters off the field. One that
-            // changes sides (a control change) stays and moves like any card.
+            // A token leaving the field is gone (EDOPro may send it to a pile first): it shatters off the field, a monster
+            // zone or, equipped as a card (Allure Queen LV3), a Spell/Trap zone. One that changes sides (a control
+            // change) or becomes an equip stays and moves like any card.
             let mut out = self.drop_counters(&from);
             self.sides[from.player as usize].zone(from.zone).clear();
             self.tokens.retain(|&t| t != card.uid);
@@ -2571,6 +2572,43 @@ impl Translator {
                     let clicks = if self.option_cards { vec![(vec![i], 1)] } else { vec![(vec![], i)] };
                     cases.push((format!("options[{i}]"), clicks, json!({ "type": RESP_OPTION, "index": i })));
                 }
+            }
+            // Each allowed position: the dialog's button 0 (attack) or 1 (defense).
+            MSG_SELECT_POSITION => {
+                let allowed = m["positions"].as_u64().unwrap_or(0);
+                for (bit, button) in [(POS_FACEUP_ATTACK, 0), (POS_FACEDOWN_ATTACK, 0), (POS_FACEUP_DEFENSE, 1), (POS_FACEDOWN_DEFENSE, 1)] {
+                    if allowed & bit != 0 {
+                        cases.push((format!("position {bit}"), vec![(vec![], button)], json!({ "type": RESP_POSITION, "position": bit })));
+                    }
+                }
+            }
+            // Each allowed Type and Attribute, one declared (the client's number, or its bit for an attribute).
+            MSG_ANNOUNCE_RACE if m["count"].as_u64() == Some(1) => {
+                let allowed = m["available"].as_u64().unwrap_or(0);
+                for (i, &race) in TYPES.iter().enumerate().filter(|(_, r)| allowed & **r != 0) {
+                    cases.push((format!("type {race:#x}"), vec![(vec![], i as u32 + 1)], json!({ "type": RESP_RACE, "races": [race] })));
+                }
+            }
+            MSG_ANNOUNCE_ATTRIB if m["count"].as_u64() == Some(1) => {
+                let allowed = m["available"].as_u64().unwrap_or(0);
+                for (i, &attribute) in ATTRIBUTES.iter().enumerate().filter(|(_, a)| allowed & **a != 0) {
+                    cases.push((format!("attribute {attribute:#x}"), vec![(vec![], 1 << (i + 1))], json!({ "type": RESP_ATTRIB, "attributes": [attribute] })));
+                }
+            }
+            // Each number offered, as the dialog sends it (in its unit).
+            MSG_ANNOUNCE_NUMBER => {
+                let options: Vec<u64> = m["options"].as_array().into_iter().flatten().filter_map(Json::as_u64).collect();
+                let unit = number_unit(&options).map_or(1, |(unit, _)| unit);
+                for (i, &o) in options.iter().enumerate() {
+                    cases.push((format!("number {o}"), vec![(vec![], (o / unit) as u32)], json!({ "type": RESP_NUMBER, "value": i })));
+                }
+            }
+            // An order: the cards clicked last to first.
+            MSG_SORT_CHAIN | MSG_SORT_CARD if len("cards") >= 2 => {
+                let n = len("cards") as u32;
+                let picks: Vec<u32> = (0..n).rev().collect();
+                let order: Vec<u32> = (0..n).rev().collect();
+                cases.push(("the reverse order".into(), vec![(picks, n)], json!({ "type": RESP_SORT, "order": order })));
             }
             _ => {}
         }

@@ -25,9 +25,38 @@ pub struct Clocks {
     /// Time left on each seat's turn and total clocks, as of the last charge.
     turn: [Duration; 2],
     total: [Duration; 2],
-    /// The seat the engine waits on, and since when.
+    /// The seat the engine waits on, and since when its time counts (after the animations' allowance).
     running: Option<(usize, Instant)>,
+    /// Whether the clients have been told the waited-on clocks run (false while an allowance holds them).
+    announced: bool,
 }
+
+/// How long the client takes to play these commands' animations before its player can answer: a duration per animated
+/// duel command (**guess**, from watching the client: a move 0.4 s, a phase banner 1.2 s, a turn's banner 1.5 s, a
+/// summon's effect 1 s, an activation 0.8 s, a chain link set or resolved 0.5 s each, a shatter 0.6 s, an LP change
+/// 0.7 s, a battle 1.5 s, a reveal's popup 1 s), at most `MAX_ALLOWANCE`.
+pub fn allowance(commands: &[Message]) -> Duration {
+    let ms: u64 = commands
+        .iter()
+        .filter(|m| m.get("duelRequestName").and_then(Value::as_u32) == Some(17))
+        .map(|m| match m.get("id").and_then(Value::as_u32).unwrap_or(0) {
+            0x1A | 0x1C | 0x17 => 400,
+            5 => 1200,
+            6 => 1500,
+            0x38 | 0x39 | 0x19 => 1000,
+            0x22 => 800,
+            0x33 | 0x34 => 500,
+            0x1F => 600,
+            0x10 => 700,
+            0xD => 1500,
+            _ => 0,
+        })
+        .sum();
+    Duration::from_millis(ms).min(MAX_ALLOWANCE)
+}
+
+/// The longest a batch's animations hold the clocks.
+const MAX_ALLOWANCE: Duration = Duration::from_secs(15);
 
 impl Clocks {
     /// Clocks with these limits in seconds; none when both are off.
@@ -36,7 +65,7 @@ impl Clocks {
             return None;
         }
         let (t, d) = (Duration::from_secs(turn as u64), Duration::from_secs(total as u64));
-        Some(Clocks { turn_limit: turn, total_limit: total, turn: [t; 2], total: [d; 2], running: None })
+        Some(Clocks { turn_limit: turn, total_limit: total, turn: [t; 2], total: [d; 2], running: None, announced: true })
     }
 
     /// A seat's time left on both clocks at `now`.
@@ -50,10 +79,26 @@ impl Clocks {
 
     /// The engine now waits on `seat` (None: on nobody): the time of the seat waited on so far is charged.
     pub fn wait_on(&mut self, seat: Option<usize>, now: Instant) {
+        self.wait_after(seat, now, Duration::ZERO);
+    }
+
+    /// [`wait_on`], the new seat's time counting only after `allowance` (the animations it was just sent, see
+    /// [`allowance`]); the clocks show stopped until then.
+    pub fn wait_after(&mut self, seat: Option<usize>, now: Instant, allowance: Duration) {
         if let Some((s, _)) = self.running {
             (self.turn[s], self.total[s]) = self.left(s, now);
         }
-        self.running = seat.map(|s| (s, now));
+        self.running = seat.map(|s| (s, now + allowance));
+        self.announced = allowance.is_zero();
+    }
+
+    /// True once, when the allowance holding the waited-on clocks has passed: the clients are to be told they run.
+    pub fn starting(&mut self, now: Instant) -> bool {
+        if self.announced || !self.running.is_some_and(|(_, since)| since <= now) {
+            return false;
+        }
+        self.announced = true;
+        true
     }
 
     /// The start of one of `seat`'s turns: its turn clock is full again.
@@ -85,7 +130,8 @@ impl Clocks {
             (secs(turn, self.turn_limit), secs(total, self.total_limit))
         });
         let (kind, start) = match self.running {
-            Some((s, _)) => ((s != view) as u32, 1),
+            // Held by an allowance: shown stopped.
+            Some((s, since)) => ((s != view) as u32, (since <= now) as u32),
             None => (0, 0),
         };
         let fields = [

@@ -2144,3 +2144,24 @@ fn a_card_revealed_to_activate_speaks_its_line() {
         "position": 1, "previous_position": 1 })]).iter().map(cmd).collect();
     assert!(!out.iter().any(|(id, _)| *id == 0x46), "{out:?}");
 }
+
+#[test]
+fn a_token_equipped_as_a_card_vanishes_when_it_leaves() {
+    // Allure Queen LV3 equips an opponent's monster to itself, a token too: the token moves into her controller's
+    // Spell/Trap zone, and leaves the duel from there when she does (MSG_MOVE to location 0). It shattered only from a
+    // monster zone, so the client kept a token in the Spell/Trap zone (the card sweep, Allure Queen LV3 seed 3240).
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let mut cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    cids.insert(300, CardStats { cid: 3902, atk: 0, def: 0, level: 1, attribute: 5, race: 11 });
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::new(0, [&client, &cpu], cids);
+    t.tokens(HashMap::from([("Sheep Token".to_string(), vec![300])]));
+    let sheep = |from: serde_json::Value, to: serde_json::Value| json!({ "type": 50, "code": 73915052, "cid": 0,
+        "name": "Sheep Token", "from": from, "to": to, "reason": 0 });
+    let nowhere = json!({ "controller": 0, "location": 0, "sequence": 0, "position": 0 });
+    t.events(&[sheep(nowhere.clone(), loc(0, 4, 2, 4))]);
+    // Equipped to the CPU's monster: into the CPU's Spell/Trap zone 0.
+    t.events(&[sheep(loc(0, 4, 2, 4), loc(1, 8, 0, 5))]);
+    let out: Vec<_> = t.events(&[sheep(loc(1, 8, 0, 5), nowhere)]).iter().map(cmd).collect();
+    assert_eq!(out, [(0x1F, [1, 5, 0, 0])], "it shatters off its Spell/Trap zone");
+}
