@@ -6,16 +6,24 @@
  *   components  the screens, windows and dialogs open now, by class, nested (ui-state.h)
  *   texts       the last UI texts the client looked up (0x51E6C0, table and id → text), newest last: the dialogs,
  *               labels and messages that just appeared, by text id
+ *   flash       the last calls the game's code made into its Flash screens (0x5CB1B0), newest last, repeats folded:
+ *               the text and state it handed them: an NPC's lines (setSpeech), dialogs opening (showDialog), button
+ *               labels (setButtonLabel), list data (respond); MousePos, sent every frame, is left out
  *   duel        in a duel, each side's field slots as the client's card manager holds them (face up, defense)
- * It reads game memory only through checked reads, from its own thread; the one hook (the text lookup, a detour of
- * its first 9 bytes, checked first) is installed only when the probe is on. */
+ * It reads game memory through checked reads, from its own thread; its two hooks (detours of the text lookup and the
+ * Flash invoke, each checked byte for byte first) are installed only when the probe is on, and YO3_UI_PROBE_HOOKS=0
+ * leaves both out. The invoke hook reads the call's own arguments, which the game is about to hand to Flash. */
 #include "ui-state.h"
 static wchar_t ui_folder[MAX_PATH];
 #define UI_TEXTS 40
 static struct { DWORD at; uint32_t table,id; char text[160]; } ui_texts[UI_TEXTS];
 static volatile LONG ui_text_next;
 static wchar_t *(__attribute__((stdcall)) *ui_lookup)(void *,unsigned);
-static int ui_hooked;
+static int ui_hooked,ui_flash_hooked;
+#define UI_CALLS 60
+static struct { DWORD at; unsigned repeat; char text[240]; } ui_calls[UI_CALLS];
+static volatile LONG ui_call_next;
+static int (__attribute__((thiscall)) *ui_invoke)(void *,const char *,const void *,unsigned);
 
 static int ui_read(void *ctx,uint32_t at,void *out,size_t n) {
     (void)ctx; SIZE_T got=0;
@@ -33,22 +41,41 @@ static wchar_t *__attribute__((stdcall,force_align_arg_pointer)) ui_text_hook(vo
     return text;
 }
 
-static int ui_hook_lookup(void) {
-    /* 0x51E6C0: push ebp; mov ebp,esp; and esp,-8; sub esp,0xC — nine bytes with no relative addresses. */
-    static const BYTE prologue[]={0x55,0x8b,0xec,0x83,0xe4,0xf8,0x83,0xec,0x0c};
-    BYTE *site=(BYTE *)game_address(0x51e6c0);
-    if(memcmp(site,prologue,sizeof prologue)) return 0;
+/* The game reads these arguments itself as soon as this returns, so they are read in place. */
+static int ui_direct_read(void *ctx,uint32_t at,void *out,size_t n) { (void)ctx; if(at<0x10000) return 0; memcpy(out,(const void *)(uintptr_t)at,n); return 1; }
+
+/* The Flash invoke's stand-in: the call kept as text (the same call again only counts), then the real invoke. */
+static int __attribute__((thiscall,force_align_arg_pointer)) ui_invoke_hook(void *movie,const char *name,const void *args,unsigned count) {
+    char text[sizeof ui_calls[0].text];
+    ui_flash_call(ui_direct_read,NULL,(uint32_t)(uintptr_t)name,(uint32_t)(uintptr_t)args,count,text,sizeof text);
+    if(!strncmp(text,"MousePos(",9)) return ui_invoke(movie,name,args,count); /* every frame: it would bury the rest */
+    LONG last=ui_call_next-1; unsigned slot=(unsigned)last%UI_CALLS;
+    if(last>=0 && !strcmp(ui_calls[slot].text,text)) { ++ui_calls[slot].repeat; ui_calls[slot].at=GetTickCount(); }
+    else {
+        slot=(unsigned)ui_call_next%UI_CALLS;
+        ui_calls[slot].at=0; memcpy(ui_calls[slot].text,text,sizeof text); ui_calls[slot].repeat=1; ui_calls[slot].at=GetTickCount();
+        InterlockedIncrement(&ui_call_next);
+    }
+    return ui_invoke(movie,name,args,count);
+}
+
+/* Detours `address` when its first bytes are `prologue` (`n` ≥ 5 bytes, no relative addresses): a jump to `hook`,
+ * and `*original` calls the copied bytes and jumps back. */
+static int ui_detour(uint32_t address,const BYTE *prologue,size_t n,void *hook,void **original) {
+    BYTE *site=(BYTE *)game_address(address);
+    if(n<5 || n>16 || memcmp(site,prologue,n)) return 0;
     BYTE *trampoline=VirtualAlloc(NULL,32,MEM_COMMIT|MEM_RESERVE,PAGE_EXECUTE_READWRITE);
     if(!trampoline) return 0;
-    memcpy(trampoline,prologue,sizeof prologue);
-    trampoline[9]=0xe9; LONG back=(LONG)((site+9)-(trampoline+14)); memcpy(trampoline+10,&back,4);
+    memcpy(trampoline,prologue,n);
+    trampoline[n]=0xe9; LONG back=(LONG)((site+n)-(trampoline+n+5)); memcpy(trampoline+n+1,&back,4);
     FlushInstructionCache(GetCurrentProcess(),trampoline,32);
-    ui_lookup=(void *)trampoline;
-    DWORD previous; if(!VirtualProtect(site,9,PAGE_EXECUTE_READWRITE,&previous)) return 0;
-    BYTE jump[9]={0xe9,0,0,0,0,0x90,0x90,0x90,0x90}; LONG to=(LONG)((BYTE *)ui_text_hook-(site+5)); memcpy(jump+1,&to,4);
-    memcpy(site,jump,sizeof jump);
-    FlushInstructionCache(GetCurrentProcess(),site,9);
-    DWORD ignored; VirtualProtect(site,9,previous,&ignored);
+    *original=trampoline;
+    DWORD previous; if(!VirtualProtect(site,n,PAGE_EXECUTE_READWRITE,&previous)) return 0;
+    BYTE jump[16]; memset(jump,0x90,sizeof jump); jump[0]=0xe9;
+    LONG to=(LONG)((BYTE *)hook-(site+5)); memcpy(jump+1,&to,4);
+    memcpy(site,jump,n);
+    FlushInstructionCache(GetCurrentProcess(),site,n);
+    DWORD ignored; VirtualProtect(site,n,previous,&ignored);
     return 1;
 }
 
@@ -62,8 +89,9 @@ static void ui_write(void) {
     static char json[262144]; char *at=json; size_t left=sizeof json; char text[400];
     static Yo3UiComponent components[400];
     int count=ui_components(ui_read,NULL,(uint32_t)(uintptr_t)game_address(0x82f7c0),(uint32_t)(uintptr_t)game_address(0x403c00),components,400);
-    /* text_hook false: the lookup's bytes weren't as expected (or YO3_UI_PROBE_TEXTS=0), so `texts` stays empty. */
-    ui_append(&at,&left,"{\"time\":%lu,\"text_hook\":%s,\"components\":[",(unsigned long)GetTickCount(),ui_hooked?"true":"false");
+    /* text_hook false: the lookup's bytes weren't as expected (or YO3_UI_PROBE_HOOKS=0), so `texts` stays empty; flash_hook likewise. */
+    ui_append(&at,&left,"{\"time\":%lu,\"text_hook\":%s,\"flash_hook\":%s,\"components\":[",(unsigned long)GetTickCount(),
+        ui_hooked?"true":"false",ui_flash_hooked?"true":"false");
     uint32_t duel_scene=0;
     for(int i=0;i<count;++i) {
         ui_append(&at,&left,"%s{\"depth\":%u,\"class\":\"%s\",\"key\":%ld,\"at\":\"0x%08x\"%s}",i?",":"",components[i].depth&0xff,
@@ -78,6 +106,16 @@ static void ui_write(void) {
         ui_json_text(text,sizeof text,ui_texts[slot].text);
         ui_append(&at,&left,"%s{\"ago_ms\":%lu,\"id\":%u,\"text\":\"%s\"}",first?"":",",
             (unsigned long)(now-ui_texts[slot].at),ui_texts[slot].id,text);
+        first=0;
+    }
+    ui_append(&at,&left,"],\"flash\":[");
+    next=ui_call_next; first=1;
+    for(LONG k=next-UI_CALLS;k<next;++k) {
+        if(k<0) continue;
+        unsigned slot=(unsigned)k%UI_CALLS; if(!ui_calls[slot].at) continue;
+        char call[2*sizeof ui_calls[0].text]; ui_json_text(call,sizeof call,ui_calls[slot].text);
+        ui_append(&at,&left,"%s{\"ago_ms\":%lu,\"repeat\":%u,\"call\":\"%s\"}",first?"":",",
+            (unsigned long)(now-ui_calls[slot].at),ui_calls[slot].repeat,call);
         first=0;
     }
     ui_append(&at,&left,"],\"duel\":");
@@ -126,8 +164,16 @@ static int ui_probe_install(void) {
     BYTE *base=(BYTE *)GetModuleHandleA(NULL);
     IMAGE_NT_HEADERS32 *nt=(IMAGE_NT_HEADERS32 *)(base+((IMAGE_DOS_HEADER *)base)->e_lfanew);
     if(nt->OptionalHeader.SizeOfImage<0x42e000) return 1; /* contract fixtures: no game to look at */
-    { char skip[4]={0}; if(!GetEnvironmentVariableA("YO3_UI_PROBE_TEXTS",skip,sizeof skip) || skip[0]!='0')
-        ui_hooked=ui_hook_lookup(); } /* without the hook the probe still reports components and the duel */
+    char skip[4]={0};
+    if(!GetEnvironmentVariableA("YO3_UI_PROBE_HOOKS",skip,sizeof skip) || skip[0]!='0') {
+        /* Without a hook the probe still reports components and the duel. */
+        /* 0x51E6C0: push ebp; mov ebp,esp; and esp,-8; sub esp,0xC. */
+        static const BYTE lookup[]={0x55,0x8b,0xec,0x83,0xe4,0xf8,0x83,0xec,0x0c};
+        ui_hooked=ui_detour(0x51e6c0,lookup,sizeof lookup,(void *)ui_text_hook,(void **)&ui_lookup);
+        /* 0x5CB1B0: sub esp,0x38; push esi; mov esi,ecx. */
+        static const BYTE invoke[]={0x83,0xec,0x38,0x56,0x8b,0xf1};
+        ui_flash_hooked=ui_detour(0x5cb1b0,invoke,sizeof invoke,(void *)ui_invoke_hook,(void **)&ui_invoke);
+    }
     HANDLE thread=CreateThread(NULL,0,ui_probe_thread,NULL,0,NULL);
     if(thread) CloseHandle(thread);
     return 1;

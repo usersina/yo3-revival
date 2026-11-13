@@ -285,7 +285,15 @@ synthetic memory (`ui-state-test.c`, run by `tools/mod/test.sh`); it writes no g
 - **Texts.** The text lookup `0x51E6C0` (stdcall `(table, id)` → `wchar_t *`, `ret 8`) is detoured when its nine
   prologue bytes are `55 8B EC 83 E4 F8 83 EC 0C`; the last 40 lookups are kept with their id and age, newest last.
   They show the dialogs, labels and menus that just appeared ("#1109: Change card position", "#0: Attack"). A
-  mismatch leaves the lookup alone and reports `text_hook: false`; `YO3_UI_PROBE_TEXTS=0` turns the hook off.
+  mismatch leaves the lookup alone and reports `text_hook: false`.
+- **Flash calls.** The screens are Flash (GFx) movies, and the game's code talks to them through one invoke,
+  `0x5CB1B0` (thiscall `(movie, name, args, count)`, `ret 0xC`), detoured when its first six bytes are
+  `83 EC 38 56 8B F1`. Its name is `"call"` for an ActionScript method, which `0x539760` (234 callers) passes as the
+  first argument (`setButtonLabel` from `0x4C35C0`), or `"respond"` for data the movie asked for. Each argument is a
+  16-byte GFx value (copied by `0x40F0F0`): `+4` type, `+8` value; 2 bool, 3 number (double), 4 `char *`,
+  5 `wchar_t *`, bit `0x40` managed (`0x44`: `char **`). The last 60 calls are kept as `method(arguments)`, a call
+  repeated straight after itself counted instead of kept again; `MousePos`, sent every frame, is left out.
+  `flash_hook: false` reports a mismatch, and `YO3_UI_PROBE_HOOKS=0` leaves both hooks out.
 - **Duel.** When a `DuelScene` is in the tree, each side's 11 field slots from its card manager (`+0xBC`), as the
   [native duel observer](#native-duel-observer) reads them: uid `+0x30`, place `+0x82` (`0x4000` face up, `0x8000`
   defense). `you` is the local player (`*(0x82D2C0)+0x1B0`).
@@ -293,11 +301,16 @@ synthetic memory (`ui-state-test.c`, run by `tools/mod/test.sh`); it writes no g
 Live (2026-11-13, NPC duel): the map showed `MainGamen` with its menu labels, the NPC screen `SelectNpcScene` and
 `CutinForNPC`, the duel `DuelScene` with `DuelFieldManager`, `DuelCockpit`, `DuelBattle` and the others; after
 Goblin Attack Force attacked, the probe showed it `up ATK`, then `up DEF` once the Battle Phase ended, as drawn.
+The Flash calls showed Zigzix's and Kaiba's talk (`respond(1, "Zigzix", …)`, `setSpeech("Seto Kaiba", …)`, every
+line at once), the hovered opponent's record, the "Start Duel?" box opening (`showDialog()`), the chosen deck's
+counts (`respond(93, 40, 0, 18, 0, 9, 13)`), the janken (`Janken.resolveJanken("guuuu", "choki", "win")`) and the
+duel's opening draws (`setDeckCount`).
 
-Limits: text drawn inside a scene's own Flash movie never passes through `0x51E6C0` or the component tree (an NPC's
-talk, the NPC screen's "Start Duel?" box; dialog labels set through `0x4C35C0`'s `setButtonLabel` are not kept
-either), so those still need a screenshot. A text id seen means it was looked up, not that it is still on screen
-(read `ago_ms`). The duel field is the card manager's data, not the rendered card's rotation or animation.
+Limits: words written into a movie itself never pass through the probe: the "Start Duel?" box shows as
+`showDialog()`, its wording only on screen or in the extracted movie (ffdec). A talk's lines come all at once, so
+which one is showing still needs a click count or a screenshot; the card info panel's hover text uses neither path.
+A text id or a call seen means it happened, not that it is still on screen (read `ago_ms`). The duel field is the
+card manager's data, not the rendered card's rotation or animation.
 
 ## Data formats
 

@@ -9,7 +9,11 @@
  *    iterated by 0x404570). The root is Yo3App's component part, 0x82F7C0 (Yo3App is the static 0x82F760).
  *  - A component's class is its MSVC RTTI name: vtable-4 → complete object locator, +0xC → type descriptor, +8 → name.
  *  - In a duel the card manager (DuelScene +0xBC) holds each slot's card at +0x4C + (player*17 + zone)*4, as the
- *    duel snapshot reads it (duel-snapshot.h): uid +0x30, place word +0x82 (0x4000 face up, 0x8000 defense). */
+ *    duel snapshot reads it (duel-snapshot.h): uid +0x30, place word +0x82 (0x4000 face up, 0x8000 defense).
+ *  - Flash calls: the screens are Flash movies, and the game's code talks to them through one invoke, 0x5CB1B0
+ *    (thiscall movie, name, args, count): "call" with the ActionScript method first (0x539760's 234 callers, e.g.
+ *    "setButtonLabel" from 0x4C35C0), "respond" answering the movie. Each argument is a 16-byte GFx value (copied
+ *    by 0x40F0F0): +4 type (0x40 managed), +8 value; 2 bool, 3 number (double), 4 char *, 5 wchar_t *, 0x44 char **. */
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -86,6 +90,71 @@ static int ui_duel_slots(Yo3UiRead read,void *ctx,uint32_t scene,unsigned p,Yo3U
         if(!ui_word(read,ctx,card+0x30,&slots[z].uid) || !read(ctx,card+0x82,&slots[z].place,2)) return 0;
     }
     return 1;
+}
+
+typedef struct { char *at; size_t left; } Yo3UiOut;
+/* Appends all of `text` or, when it doesn't fit, nothing more at all (so a UTF-8 sequence is never cut). */
+static void ui_put(Yo3UiOut *o,const char *text) {
+    size_t n=strlen(text);
+    if(n+1>o->left) { o->left=o->left?1:0; return; }
+    memcpy(o->at,text,n+1); o->at+=n; o->left-=n;
+}
+
+/* A string argument as `"text"`, at most `limit` characters, UTF-16 turned into UTF-8. */
+static void ui_put_string(Yo3UiRead read,void *ctx,uint32_t at,int wide,unsigned limit,Yo3UiOut *o) {
+    ui_put(o,"\"");
+    for(unsigned i=0;i<limit;++i) {
+        uint32_t c=0; uint16_t w; uint8_t b;
+        if(wide) { if(!read(ctx,at+i*2,&w,2)) break; c=w; }
+        else { if(!read(ctx,at+i,&b,1)) break; c=b; }
+        if(!c) { ui_put(o,"\""); return; }
+        if(wide && c>=0xd800 && c<0xdc00) { /* a surrogate pair */
+            if(!read(ctx,at+(i+1)*2,&w,2) || w<0xdc00 || w>=0xe000) break;
+            c=0x10000+((c-0xd800)<<10)+(w-0xdc00); ++i;
+        }
+        char u[5]={0};
+        if(c<0x80) u[0]=(char)c;
+        else if(!wide) u[0]='?'; /* a byte of an unknown code page */
+        else if(c<0x800) { u[0]=(char)(0xc0|c>>6); u[1]=(char)(0x80|(c&0x3f)); }
+        else if(c<0x10000) { u[0]=(char)(0xe0|c>>12); u[1]=(char)(0x80|((c>>6)&0x3f)); u[2]=(char)(0x80|(c&0x3f)); }
+        else { u[0]=(char)(0xf0|c>>18); u[1]=(char)(0x80|((c>>12)&0x3f)); u[2]=(char)(0x80|((c>>6)&0x3f)); u[3]=(char)(0x80|(c&0x3f)); }
+        ui_put(o,u);
+    }
+    ui_put(o,"…\""); /* cut, or unreadable */
+}
+
+/* One GFx value as text. */
+static void ui_put_value(Yo3UiRead read,void *ctx,uint32_t value,Yo3UiOut *o) {
+    uint32_t type,pointer; char text[40];
+    if(!ui_word(read,ctx,value+4,&type)) { ui_put(o,"?"); return; }
+    switch(type) {
+    case 0: ui_put(o,"undefined"); return;
+    case 1: ui_put(o,"null"); return;
+    case 2: { uint8_t b; if(!read(ctx,value+8,&b,1)) break; ui_put(o,b?"true":"false"); return; }
+    case 3: { double d; if(!read(ctx,value+8,&d,8)) break; snprintf(text,sizeof text,"%.10g",d); ui_put(o,text); return; }
+    case 4: case 5: if(!ui_word(read,ctx,value+8,&pointer)) break; ui_put_string(read,ctx,pointer,type==5,80,o); return;
+    case 0x44: if(!ui_word(read,ctx,value+8,&pointer) || !ui_word(read,ctx,pointer,&pointer)) break;
+        ui_put_string(read,ctx,pointer,0,80,o); return;
+    }
+    snprintf(text,sizeof text,"<type 0x%x>",type); ui_put(o,text);
+}
+
+/* A Flash call as `method(arg, ...)`: "call"'s first argument names the method; other invokes keep their name
+ * (`respond(...)`). At most 8 arguments are shown. */
+static void ui_flash_call(Yo3UiRead read,void *ctx,uint32_t name,uint32_t args,unsigned count,char *out,size_t cap) {
+    Yo3UiOut o={out,cap}; out[0]=0; char invoke[24]={0}; unsigned first=0;
+    for(unsigned i=0;i+1<sizeof invoke;++i) if(!read(ctx,name+i,&invoke[i],1) || !invoke[i]) break;
+    uint32_t type;
+    if(!strcmp(invoke,"call") && count && ui_word(read,ctx,args+4,&type) && (type==4 || type==0x44)) {
+        uint32_t method; char m[64]={0};
+        if(ui_word(read,ctx,args+8,&method) && (type==4 || ui_word(read,ctx,method,&method)))
+            for(unsigned i=0;i+1<sizeof m;++i) if(!read(ctx,method+i,&m[i],1) || !m[i]) break;
+        ui_put(&o,m[0]?m:"?"); first=1;
+    } else ui_put(&o,invoke[0]?invoke:"?");
+    ui_put(&o,"(");
+    for(unsigned i=first;i<count && i<first+8;++i) { if(i>first) ui_put(&o,", "); ui_put_value(read,ctx,args+i*16,&o); }
+    if(count>first+8) ui_put(&o,", …");
+    ui_put(&o,")");
 }
 
 /* JSON-safe copy of UTF-8 text (quotes, backslashes and control characters escaped), within `cap`. */

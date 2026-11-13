@@ -190,7 +190,7 @@ YO3_DISPLAY=:88 YO3_DESKTOP_DATA=/tmp/yo3-gui tools/client/vclient.sh desktop # 
 tools/client/vclient.sh start && tools/client/vclient.sh login 0   # cold start, about 30 s
 tools/client/vclient.sh start-stock               # after GUI Enable direct start; same private game/display/prefix
 tools/client/vclient.sh check
-tools/client/vclient.sh ui                         # open screens/dialogs, recent UI texts, duel field (--raw: JSON)
+tools/client/vclient.sh ui                         # open screens/dialogs, recent UI texts and Flash calls, duel field (--raw: JSON)
 tools/client/vclient.sh shot NAME                  # logs/b/shots/NAME.png, then view it
 tools/client/vclient.sh click X Y                  # also: key KEY, type TEXT, pixel X Y
 tools/client/vclient.sh stop                       # only your own instance; also clears its crashed client
@@ -267,8 +267,8 @@ python3 tools/monkey/duel-replay.py --server SERVER.log --duel 1         # repla
    - a "There is no response from the server. (N)" dialog (N is the request id in decimal)
    - a Wine "page fault … at address X" in `logs/client-wine.log`, or an `E` line in `logs/fields.tsv` (traced runs):
      the exception and the game-code addresses on the stack, a rough backtrace even when Wine prints none
-   - what is on screen: `vclient.sh ui` names the open screens and dialogs, the texts just shown and, in a duel,
-     each slot's card and position (docs/development.md, "Which tool sees what"); a screenshot for the rest
+   - what is on screen: `vclient.sh ui` names the open screens and dialogs, the texts just shown, what the game
+     just handed its Flash screens (NPC talk, dialogs, janken) and, in a duel, each slot's card and position (docs/development.md, "Which tool sees what"); a screenshot for the rest
    - clicks that do nothing: the screen may still be locked (the main screen locks itself until its startup steps
      finish; see the main-screen section of the protocol). `YO3_TRACE_HITS` shows which step it stopped at.
 2. **Locate.** Find the request's builder and the reply ids its screen compares (grep the id in

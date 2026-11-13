@@ -12,9 +12,16 @@ def view(state):
         lines.append('  (the component tree was being changed; ask again)')
     lines.append('recent texts (newest last):')
     if not state.get('text_hook', True):
-        lines.append('  (the text hook is off: the lookup at 0x51E6C0 was not as expected, or YO3_UI_PROBE_TEXTS=0)')
+        lines.append('  (the text hook is off: the lookup at 0x51E6C0 was not as expected, or YO3_UI_PROBE_HOOKS=0)')
     for t in state.get('texts', [])[-15:]:
         lines.append(f"  {t['ago_ms'] / 1000:6.1f}s ago  #{t['id']}: {t['text']}")
+    lines.append('recent Flash calls (newest last):')
+    if not state.get('flash_hook', True):
+        lines.append('  (the Flash hook is off: the invoke at 0x5CB1B0 was not as expected, or YO3_UI_PROBE_HOOKS=0)')
+    for c in state.get('flash', [])[-20:]:
+        times = f" x{c['repeat']}" if c.get('repeat', 1) > 1 else ''
+        call = c['call'].replace('\n', ' / ')
+        lines.append(f"  {c['ago_ms'] / 1000:6.1f}s ago  {call}{times}")
     duel = state.get('duel')
     if duel:
         lines.append('duel field (as the client holds it):')
@@ -26,4 +33,4 @@ def view(state):
 
 
 if __name__ == '__main__':
-    print(view(json.load(open(sys.argv[1], encoding='utf-8'))))
+    print(view(json.load(open(sys.argv[1], encoding='utf-8', errors='replace'))))
