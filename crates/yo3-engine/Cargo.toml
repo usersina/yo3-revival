@@ -1,0 +1,20 @@
+[package]
+name = "yo3-engine"
+version.workspace = true
+edition.workspace = true
+# Links EDOPro's core (engine/vendor/ygopro-core), which is AGPL. The server only starts this program and speaks
+# JSON lines with it, as it did with the old Node sidecar (engine/duelcore.ts).
+license = "AGPL-3.0-or-later"
+rust-version.workspace = true
+description = "The rules engine: EDOPro's core, built natively, behind the duel server's JSON-lines protocol"
+
+[lints]
+workspace = true
+
+[dependencies]
+ring.workspace = true
+rusqlite.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+cc = { version = "1.11.1", features = ["parallel"] }

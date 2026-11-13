@@ -5476,6 +5476,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "yo3-engine"
+version = "0.0.9"
+dependencies = [
+ "cc",
+ "ring",
+ "rusqlite",
+ "serde_json",
+]
+
+[[package]]
 name = "yo3-launcher"
 version = "0.0.9"
 dependencies = [
