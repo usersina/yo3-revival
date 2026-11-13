@@ -1355,26 +1355,28 @@ Stop finding missing fields one crash at a time.
 
 ## Not possible with this client
 
-What the 2010 client can't do, whatever the server sends, with the evidence (details in
-[protocol](protocol.md) and [client internals](client-internals.md)). Each was searched for, not assumed.
+What the stock 2010 client can't do, whatever the server sends, with the evidence (details in [protocol](protocol.md)
+and [client internals](client-internals.md)). Each was searched for, not assumed. Our required connection DLL already
+patches the client (the duel dispatcher, the text lookup, the Flash invoke), so the last column says what it would
+take: most of these are only out of reach for a server talking to the stock client.
 
-| What | Why it can't be done | Evidence | What we do instead |
-| --- | --- | --- | --- |
-| Server text inside a duel dialog | Every dialog message is built from entries that name the client's own texts, card names by Konami id or numbers | `0x519870` (entry kinds 1-8), Select dialog labels through it (`0x4C5880`); the Flash `setMessage` is fed only by the C++ | Option texts and other notes go to the chat window (`0x2455`) |
-| Three or four positions in one choice | The position dialog has two buttons (face-up attack; face-up or face-down defense) | `dlg_selstand.swf` (`btn0`, `btn1` only), `0x4C5E50` (`param3 >> 16` the only switch) | The two the prompt allows; none came up in 1,200 self-played duels |
-| Several Types declared at once | The type dialog stops at the first pick | `dlg_seltype.swf` `onItemClick`, `0x4C5B50` (`selMax` 1) | No card of the client's asks (0 scripts) |
-| Numbers beyond the number dialog | max 255 of a unit, min and step at most 15 | `0x4C6430` (8 and 4-bit fields), formats 302/303 | No card of the client's asks for one |
-| Extra Deck reveals, cards taken out of the duel, a reloaded field, tag swaps | No card of the client's makes them | Scripts searched: Duel.ConfirmExtratop, RemoveCards, ReloadField (0 of 4,702); tag duels aren't played | They fail the duel check if they ever come |
-| Xyz Monsters | The client has none | CARD_Prop against cards.cdb: 0 Xyz of 4,702 | Xyz materials stay handled and logged |
-| The original's destruction effect (CardBreak) | It only drops the zone's label; the shatter came from BattleRun's destroy bit, which the engine sets before a protection is known | `0x4FF000` case `0x20`; Konami's logs (578, battle only) | CardVanish's shatter |
-| Music changing with the duel | BgmUpdate has no handler | No case 9 in the duel components or the pump `0x522A50` | Nothing to send |
-| Clocks that wait for the animations by themselves | The client never says when it has played a batch, and counts down regardless | Duel requests 1-15 (`0x49F990`'s 16 senders), DuelCockpit `0x502660` | An allowance per batch (**guess**) |
-| Password logins | The client never serializes a user id or password | protocol.md, "Accounts" | TLS profiles per account |
-| Presents between players | No screen builds a send-present request | protocol.md, "No presents between players" | The host gives BP (`give-bp`) and codes |
-| Ready/Standby in events | No request builder for it exists; the lobby's buttons are the official tournament's entry menu | protocol.md, "Ready/Standby" (`official_event_lobby.swf`, ids `0x3390`-`0x339B`, `0x32C9`-`0x32D5` searched) | The host's Start is the only gate |
-| Returning a rental early | The rental screen registers no callbacks for it | protocol.md, `0x481E00` | Rentals end at their term |
-| NPC duel logs | The client writes a log only for duels against players | protocol.md, "Duel log files" (MainGamen `+0x804`) | Duel logs for duels between players |
-| The client choosing its country | No request carries it | protocol.md, "Country (flags)" | The host sets it per account (`set-country`) |
+| What | Why the stock client can't | Evidence | Today | With the DLL or the server |
+| --- | --- | --- | --- | --- |
+| Server text inside a duel dialog | Every dialog message is built from entries that name the client's own texts, card names by Konami id or numbers | `0x519870` (entry kinds 1-8), Select dialog labels through it (`0x4C5880`); the Flash `setMessage` is fed only by the C++ | Option texts go to the chat window (`0x2455`) | Possible: the DLL's invoke hook could put server text in (#10) |
+| Clocks that wait for the animations by themselves | The client never says when it has played a batch, and counts down regardless | Duel requests 1-15 (`0x49F990`'s 16 senders), DuelCockpit `0x502660` | An allowance per batch (**guess**) | Possible: the duel observer knows when the scene settles and could say so (#11) |
+| NPC duel logs | The client fetches a log only for duels against players | protocol.md, "Duel log files" (MainGamen `+0x804`) | Duel logs for duels between players | Possible: a patched check and a server-written log (#12) |
+| Returning a rental early | The rental screen's Return button has no C++ callback | protocol.md, `0x481E00` | Rentals end at their term | Possible: the DLL registers the callback (#13) |
+| Music changing with the duel | BgmUpdate has no handler | No case 9 in the duel components or the pump `0x522A50` | Nothing sent | Possible after research: the DLL switches tracks itself (#14) |
+| Three or four positions in one choice | The position dialog has two buttons (face-up attack; face-up or face-down defense) | `dlg_selstand.swf` (`btn0`, `btn1` only), `0x4C5E50` (`param3 >> 16` the only switch) | The two the prompt allows; none came up in 1,200 self-played duels | Server-side: two dialogs in a row. Not done: no card of the client's needs it |
+| Several Types declared at once | The type dialog stops at the first pick | `dlg_seltype.swf` `onItemClick`, `0x4C5B50` (`selMax` 1) | Answered automatically | Server-side: one dialog per Type. Not done: no card of the client's asks (0 scripts) |
+| Numbers beyond the number dialog | max 255 of a unit, min and step at most 15 | `0x4C6430` (8 and 4-bit fields), formats 302/303 | Answered automatically | Server-side: a coarser unit or several dialogs. Not done: no card of the client's asks |
+| The original's destruction effect (CardBreak) | It only drops the zone's label; the shatter came from BattleRun's destroy bit, which the engine sets before a protection is known | `0x4FF000` case `0x20`; Konami's logs (578, battle only) | CardVanish's shatter | Server-side: hold BattleRun until the destruction is known. Not done: the shatter already shows |
+| Extra Deck reveals, cards taken out of the duel, a reloaded field, tag swaps | Not a client limit: no card of the client's makes them | Scripts searched: Duel.ConfirmExtratop, RemoveCards, ReloadField (0 of 4,702); tag duels aren't played | They fail the duel check if they ever come | Nothing to do |
+| Password logins | The client never serializes a user id or password | protocol.md, "Accounts" | TLS profiles per account | Not needed |
+| The client choosing its country | No request carries it | protocol.md, "Country (flags)" | The host sets it per account (`set-country`) | Not needed |
+| Presents between players | No screen builds a send-present request | protocol.md, "No presents between players" | The host gives BP (`give-bp`) and codes | A new screen is out of scope; chat commands could do it server-side |
+| Ready/Standby in events | No request builder for it exists; the lobby's buttons are the official tournament's entry menu | protocol.md, "Ready/Standby" (`official_event_lobby.swf`, ids `0x3390`-`0x339B`, `0x32C9`-`0x32D5` searched) | The host's Start is the only gate | Possible but not worth it: the host's Start does the job |
+| Xyz Monsters | The client has none: no card data, no art | CARD_Prop against cards.cdb: 0 Xyz of 4,702 | Xyz materials stay handled and logged | Out of reach: it would mean new Konami content |
 
 ## Open questions and guesses (revisit)
 
