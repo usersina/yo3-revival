@@ -23,6 +23,8 @@ Older entries describe their release at the time. For current setup, use the [RE
   your hand, your Set cards or anyone's Deck.
 - **Each opponent has a character:** Kaiba and Jack Atlas attack relentlessly, Syrus and Luna play it safe, and
   Maximillion Pegasus... reads your mind. His Millennium Eye sees your face-down monsters and Set cards.
+- **The heroes believe in the Heart of the Cards:** Yami Yugi, Yugi Muto, Jaden Yuki and Yusei Fudo always draw the
+  card they need. Good luck.
 
 ## v0.0.9 (2026-11-12)
 

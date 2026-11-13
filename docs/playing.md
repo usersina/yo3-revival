@@ -133,7 +133,7 @@ Main Menu → Rental Card List shows what they lent and borrowed. Editor saves l
 card is no longer valid once the rental ends.
 
 Limitations: this is pre-alpha. Computer opponents think through their turn and yours, but only plan around the
-cards you show.
+cards you show (and the heroes, Yugi, Jaden and Yusei, always draw the card they need).
 Saving in Edit Deck alone does not sync a deck to another machine; select it for a duel to upload it. The client has
 its original card pool and UI. Some reply fields remain inferred rather than confirmed against Konami's server; [the roadmap](roadmap.md) lists those choices
 and the remaining live checks, including play from separate friends' machines with the new launcher.

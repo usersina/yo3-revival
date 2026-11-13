@@ -1073,6 +1073,14 @@ Stop finding missing fields one crash at a time.
       with the duel check. It found that a deck with a Fusion or Synchro Monster in its main deck split the client's
       view from the engine (which moves the card to the Extra Deck): the deck check now refuses such decks (the card
       kind is CARD_Prop's second word, bits 3-7). All 681 duels (3 seeds) pass
+- [x] The heroes draw what they need (2026-11-13): Yami Yugi, Yugi Muto, Jaden Yuki and Yusei Fudo have the Heart of
+      the Cards, a hidden skill (`crates/yo3-engine/src/skills.lua`, given by `npc.rs` through `new`'s `skills`):
+      before each of their draws they pick which card of their Deck is on top, and the bot picks by playing each
+      candidate ahead. Moving a card within the Deck sends no message, so the client simply sees the draw; the duel
+      check with the skill on the opponent's side (`YO3_CHECK_SKILLS=1`) keeps all 240 duels in step. In copies the
+      bot now activates what it can after summoning, so a Spell drawn or held counts. A hero beats the same bot with
+      the same deck 17 of 20 (11 of 20 before that fix). Live: Yami Yugi's first turn put Summoned Skull and a second
+      monster on the field and hit for 3,800
 - [x] The duel bot looks through the opponent's turn (2026-11-13): a copy plays the option, the rest of the bot's turn
       by its rules, then the opponent's next turn with only its public cards (face-up monsters attack, nothing from the
       hand, no chains), and is judged when the bot's next turn begins. The two most promising idle actions are also
