@@ -10,7 +10,15 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.0.11 (2026-11-13)
+
+A fairness fix for duels against the computer. Choose **Desktop** for the graphical app or **Scripts** for terminal
+commands. Both editions include the server, rules engine and required connection components. Original game files are
+not included. **Windows 7 is not supported.**
+
+Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.11/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.11/docs/scripts.md).
 
 - **No more peeking at computer opponents' face-down cards.** In NPC duels the attack-target window and the card
   panel showed a face-down monster's name, art and ATK/DEF. They now show a card back until the card is revealed, as

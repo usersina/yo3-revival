@@ -36,6 +36,12 @@ Desktop archives also carry `yo3-revival.ico` and `yo3-revival.png` for custom s
 both platform archives. The in-game login news no longer includes the deck-onboarding notice; a front contract
 checks its removal alongside the existing news-format and engine-warning coverage.
 
+v0.0.11 release preparation (2026-11-13):
+
+- [x] The workspace package version and the local lockfile entries are `0.0.11`. The changelog describes NPC duels
+  hiding the NPC's face-down cards. All workspace tests pass; workspace Clippy is clean; documentation links pass. The
+  change was checked live against Pegasus with the duel check (see the v0.0.10 section's fixed item below).
+
 v0.0.10 release preparation (2026-11-13):
 
 - [x] The workspace package version and the local lockfile entries are `0.0.10`. The changelog describes the native
