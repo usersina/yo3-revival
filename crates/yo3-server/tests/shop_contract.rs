@@ -67,7 +67,7 @@ fn shop() -> Server {
     };
     let packs = vec![pack(1, vec![vec![10, 11, 12, 13], vec![20, 21], vec![30]]), pack(271, vec![vec![40, 41, 42]])];
     let deck = Deck { id: 4, name: "Equip to Win!".into(), main: vec![40, 40], extra: vec![41], side: vec![] };
-    let deck = ShopDeck { released: "2009-11-26 16:26:17".into(), modified: "2009-11-26 16:26:17".into(), deck };
+    let deck = ShopDeck { released: "2009-11-26 16:26:17".into(), modified: "2009-11-26 16:26:17".into(), deck, item: Some(2560) };
     Server::with_world(World { packs, structure_decks: vec![deck], card_rows: 50, ..World::new((1..=20).collect()) })
 }
 
@@ -225,23 +225,19 @@ fn a_bought_structure_deck_arrives_whole() {
 }
 
 #[test]
-fn a_bought_structure_deck_joins_the_deck_list() {
-    // The deck list (0x1F4E -> 0x22C8, tag-6 items read by 0x43FC60) brings each listed deck to the editor, which
-    // saves it locally under its deck_name, and to Select Deck. Bought structure decks follow the starter deck under
-    // their own names; a deck bought twice is listed once.
+fn a_bought_structure_deck_is_on_the_official_tab() {
+    // A bought structure deck's present sets its recipe's item bit (pbin_no) in the client's own copy (PresentWindow
+    // case 1); the server keeps it in the player's record, so Load Deck's Official tab (0x43D8D0, catalogue kind 5)
+    // lists the deck after every login, from the client's own recipe file. It is not one of the player's own decks
+    // (0x22C8); a deck bought twice is one item.
     let mut c = shop().join_with_bp(1001, "Yugi", 2000);
-    assert!(one(c.send(req(0x1F4E))).items.is_empty());
+    assert!(!has_bit(&one(c.send(req(0x2CEE))).items.remove(0), 2560));
     for _ in 0..2 {
         let buy = req_with(0x1B68, &[("sale_id", Value::U32(20004)), ("item_num", Value::U32(1))]);
         assert_eq!(one(c.send(buy)).request(), Some(0x1C24));
     }
-    let list = one(c.send(req(0x1F4E)));
-    assert_eq!(list.items.len(), 1);
-    let d = &list.items[0];
-    assert_eq!(d.get("deck_id").and_then(Value::as_u32), Some(4));
-    assert_eq!(d.get("deck_name").and_then(Value::as_str).as_deref(), Some("Equip to Win!"));
-    let rows = |k| d.get(k).and_then(Value::as_bytes).map(<[u8]>::to_vec);
-    assert_eq!((rows("main"), rows("extra")), (Some(vec![0, 40, 0, 40]), Some(vec![0, 41])));
+    assert!(one(c.send(req(0x1F4E))).items.is_empty());
+    assert!(has_bit(&one(c.send(req(0x2CEE))).items.remove(0), 2560));
 }
 
 /// The shop with two protectors (pbin ids 2305, 2306) and one avatar item (pbin id 6, "Bald", text 26006).

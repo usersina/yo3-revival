@@ -199,6 +199,17 @@ mod follow {
     }
 
     #[test]
+    fn a_deck_named_like_an_official_deck_is_the_players_own() {
+        // An official deck saved from the Official tab under its name is the player's copy, kept like any other.
+        let yugi = Deck { id: 20, name: "Yugi - Miracle Magic".into(), main: vec![10, 40], extra: vec![], side: vec![] };
+        let server = Server::with_world(World { official_decks: vec![yugi], ..world() });
+        let d = Arc::new(Mutex::new(Directory::new(vec!["Yugi".into()])));
+        let mut c = server.join_from(&d, ADDR);
+        assert!(save_in_editor(&mut c, "Yugi - Miracle Magic", &[10]).is_empty());
+        assert_eq!(names(&mut c), ["Starter Deck", "Yugi - Miracle Magic"]);
+    }
+
+    #[test]
     fn a_card_swap_and_the_starters_name_are_not_kept() {
         let (server, d) = setup();
         let mut c = server.join_from(&d, ADDR);
@@ -249,37 +260,39 @@ mod follow {
     }
 }
 
+fn has_item(record: &Message, id: u16) -> bool {
+    let pbin = record.get("pbin").and_then(Value::as_bytes).expect("pbin");
+    pbin[id as usize >> 3] & 1 << (id & 7) != 0
+}
+
 #[test]
-fn every_player_gets_the_official_character_decks() {
-    // The client's own NPC decks (deck_type 3 presets) include the main characters', three each: Yami Yugi's, Jaden's,
-    // Yusei's. Every player owns their cards on top of the starter deck's, so they pass the deck check, and gets them
-    // in the deck list after the starter deck.
+fn the_official_decks_are_on_the_official_tab() {
+    // Load Deck's Official tab (0x43D8D0) lists the deck recipes the player owns as items: each catalogue entry
+    // (yo3pbininfo.bin) of kind 5 or 8 whose pbin bit is set, by its recipe id (the entry's a), read from the client's
+    // own data/recipe files (0x52DC10). Every recipe names its item (pbin_no): the starter's (preset 2: 773) and the main
+    // characters' decks (Yami Yugi's, Jaden's and Yusei's NPC decks, three each, e.g. Miracle Magic 615) are every
+    // player's. They stay out of the player's own decks (0x22C8), which keep only the starter deck, so the ten decks
+    // the client takes are the player's. Their cards are still owned, so a deck loaded from the tab passes the check.
     let yugi = Deck { id: 20, name: "Yugi - Miracle Magic".into(), main: vec![10, 40], extra: vec![], side: vec![] };
     let yusei = Deck { id: 261, name: "Yusei - Power of Bonds".into(), main: vec![50], extra: vec![60], side: vec![] };
-    let mut c = Server::with_world(World { official_decks: vec![yugi, yusei], ..world() }).join(1001, "Yugi");
+    let world = World { official_decks: vec![yugi, yusei], official_items: vec![773, 615, 1621], ..world() };
+    let mut c = Server::with_world(world).join(1001, "Yugi");
     let r = one(c.send(req(0x1F4E)));
     let names: Vec<String> = r.items.iter().filter_map(|d| d.get("deck_name").and_then(Value::as_str)).collect();
-    assert_eq!(names, ["Starter Deck", "Yugi - Miracle Magic", "Yusei - Power of Bonds"]);
-    assert_eq!(r.items[2].get("extra"), Some(&Value::u16_be_array(&[60])));
+    assert_eq!(names, ["Starter Deck"]);
+    let me = one(c.send(req(0x2CEE))).items.remove(0);
+    assert!([773, 615, 1621].iter().all(|&id| has_item(&me, id)));
+    assert!(!has_item(&me, 619));
     let Some(Value::Bin(cards)) = trunk(&mut c).get("cards").cloned() else { panic!("no cards") };
     // Row 10: twice in the starter deck and once in Yugi's; rows 40, 50, 60 once each.
     assert_eq!((cards[9], cards[39], cards[49], cards[59]), (3, 1, 1, 1));
 }
 
 #[test]
-fn the_official_decks_take_turns_in_the_room_the_list_has() {
-    // The client uses at most 10 decks of a list and keeps every listed deck it lacks (by name) as a local file, so
-    // listing one it has costs nothing. The official decks fill the room the starter deck and the player's own decks
-    // leave, each list going on where the last stopped: any PC gets them all over a few lists, with nothing kept
-    // per player. Twelve here: nine fit beside the starter deck.
-    let official: Vec<Deck> = (0..12).map(|i| Deck { id: 100 + i, name: format!("Official {i}"), main: vec![10], extra: vec![], side: vec![] }).collect();
-    let mut c = Server::with_world(World { official_decks: official, ..world() }).join(1001, "Yugi");
-    let numbers = |c: &mut common::Client| -> Vec<u32> {
-        let names: Vec<String> = one(c.send(req(0x1F4E))).items.iter().filter_map(|d| d.get("deck_name").and_then(Value::as_str)).collect();
-        assert_eq!(names[0], "Starter Deck");
-        names[1..].iter().map(|n| n.trim_start_matches("Official ").parse().unwrap()).collect()
-    };
-    assert_eq!(numbers(&mut c), (0..9).collect::<Vec<_>>());
-    assert_eq!(numbers(&mut c), [9, 10, 11, 0, 1, 2, 3, 4, 5]);
-    assert_eq!(numbers(&mut c), [6, 7, 8, 9, 10, 11, 0, 1, 2]);
+fn the_player_list_carries_the_official_items_too() {
+    // The player list's records (0x1F49 -> 0x2260) are what the client loads as its own player data at selection.
+    let world = World { official_items: vec![773], ..world() };
+    let mut c = Server::with_world(world).join(1001, "Yugi");
+    let list = one(c.send(req(0x1F49)));
+    assert!(list.items.iter().all(|p| has_item(p, 773)));
 }

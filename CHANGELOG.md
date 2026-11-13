@@ -15,6 +15,10 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Your decks follow you as soon as you save them.** Saving a deck in Edit Deck (Save or New) now sends it to the
   server, so it shows up in Load Deck when you play from another computer, without using it in a duel first. A
   computer that already has a deck of that name keeps its own copy.
+- **Official decks have their own tab.** The Yugi, Jaden and Yusei character decks, your starter deck's original
+  recipe and the structure decks you bought are now under Edit Deck → Load Deck → **Official**, which used to be
+  empty. Your **Deck** tab keeps your own decks, so they all fit. To duel with an official deck, load it and save it
+  with New. Copies you already have stay where they are.
 - **Fixed: stuck at rock-paper-scissors.** If your opponent left a duel while you were choosing rock, paper or
   scissors, you stayed on that screen for good and had to close the game. You now see "(name) has disconnected." and
   return to the map, with nothing counted.

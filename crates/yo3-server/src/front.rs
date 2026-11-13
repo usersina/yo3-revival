@@ -171,6 +171,11 @@ impl Player {
     /// Seto Kaiba, Yami Marik, Alexis Rhodes and Jack Atlas refuse to duel (0x4BDAB0 state 2), bit 0x258 (the Online 2
     /// takeover done), and the items owned.
     fn flags(&self) -> Vec<u8> {
+        self.flags_with(&[])
+    }
+
+    /// The pbin with `more` items owned too (the deck recipes on the Official tab, which the world decides).
+    fn flags_with(&self, more: &[u16]) -> Vec<u8> {
         let mut pbin = self.pbin.clone();
         if let Some(b) = pbin.get_mut(74) {
             *b |= 0x0F;
@@ -180,7 +185,7 @@ impl Player {
         if let Some(b) = pbin.get_mut(0x4B) {
             *b |= 1;
         }
-        for &id in &self.items {
+        for &id in self.items.iter().chain(more) {
             if let Some(b) = pbin.get_mut(id as usize >> 3) {
                 *b |= 1 << (id & 7);
             }
@@ -513,9 +518,11 @@ pub struct World {
     pub card_rows: usize,
     /// Every player's deck until decks are stored per player (from the client's preset decks).
     pub starter_deck: Option<Deck>,
-    /// The main characters' decks every player gets after the starter deck (the client's own NPC decks), whose cards
-    /// they own.
+    /// The main characters' decks (the client's own NPC decks), whose cards every player owns.
     pub official_decks: Vec<Deck>,
+    /// The items (pbin ids) of the recipes on every player's Official tab in Load Deck (0x43D8D0): the starter deck's
+    /// and the official decks'.
+    pub official_items: Vec<u16>,
     /// NPC opponents, every level of each (three consecutive ids per NPC, from 120).
     pub npcs: Vec<u32>,
     /// Each NPC's deck (from its preset), by npc_id.
@@ -579,6 +586,7 @@ impl World {
             card_rows: 0,
             starter_deck: None,
             official_decks: vec![],
+            official_items: vec![],
             npcs: vec![],
             npc_decks: HashMap::new(),
             npc_styles: HashMap::new(),
@@ -614,6 +622,13 @@ impl World {
             protectors: vec![],
             avatar_items: vec![],
         }
+    }
+
+    /// The deck recipes on a player's Official tab in Load Deck (0x43D8D0), as items (pbin ids): every player's
+    /// (`official_items`) and the structure decks they bought.
+    pub fn deck_items(&self, player: &Player) -> Vec<u16> {
+        let bought = player.decks.iter().filter_map(|&id| self.structure_decks.iter().find(|s| s.deck.id == id)?.item);
+        self.official_items.iter().copied().chain(bought).collect()
     }
 }
 
@@ -907,9 +922,14 @@ impl Hub {
         against_players.fold([0; 3], |t, (_, r)| [t[0] + r[0], t[1] + r[1], t[2] + r[2]])
     }
 
-    /// A player's own record (the player list 0x2260, the refresh 0x2CF3): with their totals, team and NPC experience.
-    fn own_record(&self, player: &Player) -> Message {
-        self.record(player).with("npcbin", Value::Bin(self.npcbin(player.player_id)))
+    /// A player's own record (the player list 0x2260, the refresh 0x2CF3): with their totals, team and NPC experience,
+    /// and `decks` (the deck recipes on their Official tab, `World::deck_items`) among the items in its pbin.
+    fn own_record(&self, player: &Player, decks: &[u16]) -> Message {
+        let mut record = self.record(player).with("npcbin", Value::Bin(self.npcbin(player.player_id)));
+        if let Some((_, pbin)) = record.fields.iter_mut().find(|(k, _)| k == "pbin") {
+            *pbin = Value::Bin(player.flags_with(decks));
+        }
+        record
     }
 
     /// A player's record with their totals and team.
@@ -2216,8 +2236,6 @@ pub struct FrontSession {
     selected: Option<usize>,
     /// Supply deck initialization only with the first trunk after a successful player selection.
     starter_pending: bool,
-    /// Where the next deck list's official decks start (they take turns in the room the list leaves).
-    official_next: usize,
     /// Hub registration once a player is selected.
     online: Option<u64>,
     /// The rule (0x17AC item fields) of each duel this session asked for, by duel_id.
@@ -2257,7 +2275,6 @@ impl FrontSession {
             opened: false,
             selected: None,
             starter_pending: false,
-            official_next: 0,
             online: None,
             duels: HashMap::new(),
             reached_at: None,
@@ -2366,7 +2383,7 @@ impl FrontSession {
     /// A deck the player picked at Select Deck or saved in Edit Deck: kept by name (a newer upload replaces it; the
     /// oldest goes when ten are kept), unless the starter deck's name or an empty deck.
     fn keep_deck(&mut self, deck: Deck) {
-        let given = self.world.starter_deck.iter().chain(&self.world.official_decks).any(|s| s.name == deck.name);
+        let given = self.world.starter_deck.iter().any(|s| s.name == deck.name);
         if deck.name.is_empty() || deck.main.is_empty() || given {
             return;
         }
@@ -2567,7 +2584,8 @@ impl FrontSession {
             0x1F49 => {
                 self.refresh_players();
                 let hub = self.hub.locked();
-                self.account.players.iter().fold(Message::reply(0x2260), |m, p| m.item(hub.own_record(p)))
+                let world = &self.world;
+                self.account.players.iter().fold(Message::reply(0x2260), |m, p| m.item(hub.own_record(p, &world.deck_items(p))))
             }
             0x1F4A => self.create_player(msg),
             0x1F4B => self.delete_player(msg),
@@ -2696,25 +2714,13 @@ impl FrontSession {
             // reads nothing from it (it notes yo2_takeover itself); there is no Online 2 account to take over.
             0x24C4 => Message::reply(0x2530),
             // The player's own user event (UserEventScene 0x4D9BB0): none.
-            // Deck list (deck editor 0x43FC60): it saves each deck it lacks as a local file.
-            // The starter deck, the official character decks, then the structure decks the player bought; the client
-            // uses at most 10.
+            // Deck list (deck editor 0x43FC60): the player's own decks, which it saves as local files when it lacks one
+            // of the name (the client uses at most 10). The starter deck, then the decks this player's clients uploaded
+            // (the newest account state: another machine may have uploaded since). The official and bought structure
+            // decks are on Load Deck's Official tab instead (their items in the player's pbin, `World::deck_items`).
             0x1F4E => {
-                let world = self.world.clone();
-                let owned = self.selected.map(|at| self.account.players[at].decks.clone()).unwrap_or_default();
-                let bought = owned.iter().filter_map(|&id| world.structure_decks.iter().find(|s| s.deck.id == id)).map(|s| &s.deck);
-                let listed: Vec<&Deck> = world.starter_deck.iter().chain(bought).collect();
-                // Then the decks this player's clients uploaded, unless a listed deck has the name (the client would
-                // keep its own copy anyway). The newest account state: another machine may have uploaded since.
                 let uploaded = self.uploaded_decks();
-                let kept: Vec<&Deck> = uploaded.iter().filter(|u| !listed.iter().any(|l| l.name == u.name)).collect();
-                // The official decks in the room left, going on where the last list stopped: the client keeps the ones
-                // it lacks (by name), so listing one it has costs nothing and any PC gets them all over a few lists.
-                let room = MAX_LISTED_DECKS.saturating_sub(listed.len() + kept.len()).min(world.official_decks.len());
-                let start = self.official_next % world.official_decks.len().max(1);
-                let fresh: Vec<&Deck> = world.official_decks.iter().cycle().skip(start).take(room).collect();
-                self.official_next = start + room;
-                let decks = listed.iter().take(1).chain(&fresh).chain(listed.iter().skip(1)).chain(&kept);
+                let decks = self.world.starter_deck.iter().chain(uploaded.iter().filter(|u| !self.world.starter_deck.iter().any(|s| s.name == u.name)));
                 decks.take(MAX_LISTED_DECKS).fold(Message::reply(0x22C8), |m, d| m.item(d.record()))
             }
             0x17D4 => return self.duel_ready(msg),
@@ -2918,7 +2924,7 @@ impl FrontSession {
             0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_ids)),
             0x27D8 => Message::reply(0x27D9).item(Message::record()),
             0x2CEE => {
-                let record = self.hub().own_record(self.player());
+                let record = self.hub().own_record(self.player(), &self.world.deck_items(self.player()));
                 Message::reply(0x2CF3).item(record)
             }
             0x2CEF => self.update_player(msg),

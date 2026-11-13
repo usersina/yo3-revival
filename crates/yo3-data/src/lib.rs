@@ -468,6 +468,11 @@ impl Deck {
     pub fn name_id(&self) -> Option<u32> {
         text_int(&self.record, "name_id")
     }
+
+    /// The item (pbin id) that owns this recipe: the bit Load Deck's Official tab (0x43D8D0) tests.
+    pub fn pbin_no(&self) -> Option<u16> {
+        self.record.get("pbin_no").and_then(Value::as_u32).and_then(|n| u16::try_from(n).ok()).filter(|&n| n > 0)
+    }
 }
 
 /// A number the client's data files store as text (preset decks' name_id).

@@ -181,6 +181,14 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                     Some(Deck { id: d.id, name, main: d.main.clone(), extra: d.extra.clone(), side: d.side.clone() })
                 })
                 .collect(),
+            // Every player's Official tab in Load Deck: the starter preset's recipe and the official decks' (their
+            // pbin_no items, catalogue kinds 5 and 8).
+            official_items: data
+                .starter_deck(STARTER_REGULATION)
+                .into_iter()
+                .chain(OFFICIAL_DECKS.iter().filter_map(|&(npc, _)| data.npc_deck(npc)))
+                .filter_map(yo3_data::Deck::pbin_no)
+                .collect(),
             cards: data
                 .cards
                 .iter()
@@ -237,7 +245,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                     let date = |k: &str| d.record.get(k).and_then(Value::as_str).unwrap_or_default();
                     let name = d.name_id().and_then(|id| data.text(id)).unwrap_or("Structure Deck").to_string();
                     let deck = Deck { id: d.id, name, main: d.main.clone(), extra: d.extra.clone(), side: d.side.clone() };
-                    shop::ShopDeck { released: date("created"), modified: date("modified"), deck }
+                    shop::ShopDeck { released: date("created"), modified: date("modified"), deck, item: d.pbin_no() }
                 })
                 .collect(),
             protectors: data.protectors().iter().map(|e| e.id).collect(),

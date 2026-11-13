@@ -50,6 +50,8 @@ pub struct ShopDeck {
     pub released: String,
     pub modified: String,
     pub deck: crate::front::Deck,
+    /// The recipe's item (pbin_no): its bit puts the bought deck on Load Deck's Official tab.
+    pub item: Option<u16>,
 }
 
 /// What a sale id sells.

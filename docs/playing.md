@@ -54,7 +54,9 @@ The chosen banlist applies to Create Duel. The host controls the default banlist
 ## Choose or edit a deck
 
 Open **Main Menu → Edit Deck** to customise your cards, use another official character deck or make a side deck.
-Drag a card after briefly hovering it. The Yugi, Jaden and Yusei character decks are available.
+Drag a card after briefly hovering it. The Yugi, Jaden and Yusei character decks, your starter deck's original recipe
+and the structure decks you bought are under **Load Deck → Official**: load one, then save it (Save → New) to make it
+one of your decks and use it in duels. The **Deck** tab holds your own decks.
 
 ![Main Menu and Edit Deck](../screenshots/edit-deck.png)
 
