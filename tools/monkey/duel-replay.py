@@ -44,6 +44,30 @@ def assemble(records, duel):
         raise ValueError('Recording has no valid dependency fingerprints.')
     return calls
 
+def canonical(answer):
+    """The answer with each run of consecutive card and player hints (MSG_CARD_HINT 160, MSG_PLAYER_HINT 165) sorted.
+    The core emits those while walking effects ordered by address, so their order may follow the heap (Windows
+    randomises it); nothing else may differ (tools/engine/parity.py)."""
+    if not isinstance(answer, dict) or not isinstance(answer.get('messages'), list):
+        return answer
+    out, run = [], []
+    for m in answer['messages'] + [None]:
+        if isinstance(m, dict) and m.get('type') in (160, 165):
+            run.append(m)
+            continue
+        out += sorted(run, key=lambda h: json.dumps(h, sort_keys=True)); run = []
+        if m is not None:
+            out.append(m)
+    return {**answer, 'messages': out}
+
+def engine_program(engine):
+    """The engine program: YO3_ENGINE, else the release bundle's (beside the engine folder), else a source build's."""
+    name = 'yo3-engine.exe' if os.name == 'nt' else 'yo3-engine'
+    for candidate in [os.environ.get('YO3_ENGINE'), engine.resolve().parent/name, Path(__file__).resolve().parents[2]/'target'/'release'/name]:
+        if candidate and Path(candidate).is_file():
+            return str(candidate)
+    raise ValueError(f'No {name}: build it (cargo build --release -p yo3-engine) or set YO3_ENGINE.')
+
 def run(calls, command):
     for request, _ in calls:
         if request.get('op') not in ['identity', 'new', 'respond', 'state']:
@@ -54,8 +78,8 @@ def run(calls, command):
     problems = []
     if len(answers) != len(calls): problems.append(f'Expected {len(calls)} answers, got {len(answers)}.')
     for index, (actual, (_, expected)) in enumerate(zip(answers, calls), 1):
-        if actual != expected:
-            problems.append(f'Call {index}: '+('dependency identity differs; use the recorded engine files/Node version.'
+        if canonical(actual) != canonical(expected):
+            problems.append(f'Call {index}: '+('dependency identity differs; use the recorded engine program and files.'
                             if index == 1 else 'engine answer differs.'))
             break
     return problems
@@ -64,7 +88,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--server', nargs='+', type=Path, required=True, help='one server session, including rotated parts')
     parser.add_argument('--duel', type=int, help='recording ID; omit to list available IDs')
-    parser.add_argument('--engine', type=Path, default=Path('engine'))
+    parser.add_argument('--engine', type=Path, default=Path('engine'), help='the engine folder (its vendor/ data)')
     args = parser.parse_args()
     lines = [line for p in args.server for line in p.read_text(errors='replace').splitlines()]
     records = report.records(lines, '[YO3 ENGINE] ')
@@ -72,8 +96,7 @@ def main():
         print('Recorded duels:', ', '.join(str(i) for i in sorted({r['duel'] for r in records})) or 'none')
         return 0
     calls = assemble(records, args.duel)
-    bundled = args.engine/'node'/('node.exe' if os.name == 'nt' else 'node')
-    problems = run(calls, [str(bundled.resolve()) if bundled.is_file() else 'node', str((args.engine/'duelcore.ts').resolve())])
+    problems = run(calls, [engine_program(args.engine), str(args.engine.resolve())])
     for problem in problems: print('FAIL:', problem)
     if not problems: print(f'PASS: all {len(calls)} recorded engine calls replay exactly, with matching dependencies.')
     return int(bool(problems))

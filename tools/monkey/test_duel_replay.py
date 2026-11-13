@@ -9,7 +9,7 @@ replay = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(replay)
 
 class ReplayTests(unittest.TestCase):
-    identity = dict(node='v24.0.0', **{k: 'a'*64 for k in ['sidecar', 'core', 'bindings', 'scripts', 'database', 'card_ids']})
+    identity = dict(node='native 0.0.10', **{k: 'a'*64 for k in ['sidecar', 'core', 'bindings', 'scripts', 'database', 'card_ids']})
     def records(self):
         result = []
         for call in range(1, 3):
@@ -36,6 +36,13 @@ class ReplayTests(unittest.TestCase):
         self.assertTrue(replay.run(calls, command))
         calls[0][0]['op'] = 'shell'
         with self.assertRaises(ValueError): replay.run(calls, command)
+
+    def test_hints_may_come_in_another_order_but_nothing_else(self):
+        hint = lambda n: {'type': 160, 'controller': 0, 'location': 4, 'sequence': n, 'position': 1, 'card_hint': 7, 'description': 1}
+        move = {'type': 50, 'card': 1}
+        recorded = {'status': 'await', 'messages': [move, hint(1), hint(2), move]}
+        self.assertEqual(replay.canonical(recorded), replay.canonical({**recorded, 'messages': [move, hint(2), hint(1), move]}))
+        self.assertNotEqual(replay.canonical(recorded), replay.canonical({**recorded, 'messages': [hint(1), move, hint(2), move]}))
 
     def test_a_missing_dependency_identity_is_not_a_reproducible_recording(self):
         records = self.records()
