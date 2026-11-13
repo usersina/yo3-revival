@@ -944,6 +944,10 @@ Stop finding missing fields one crash at a time.
       fields in `docs/protocol.md`
 - [x] Code hits: `YO3_TRACE_HITS=0x…,0x…` logs when chosen client addresses run (int3 and a vectored handler); it
       found the startup step that kept the map locked
+- [x] UI probe (2026-11-13): `vclient.sh ui` prints the open screens and dialogs (the client's component tree), the
+      UI texts just looked up and the duel field as the client holds it, so most checks need no screenshot
+      ([client internals](client-internals.md#the-ui-probe); every tool's view and blind spots:
+      [development](development.md#which-tool-sees-what))
 - Standing practice (moved to AGENTS.md): name functions in GhidraMCP as we understand them
 - **Exit:** one session prints every field each reply was asked for, with the missing ones flagged (met 2026-11-06)
 

@@ -13,6 +13,8 @@
 #   tools/client/vclient.sh key KEY...      xdotool key names, e.g. Return Escape
 #   tools/client/vclient.sh type TEXT       type text
 #   tools/client/vclient.sh pixel X Y       print the window's colour at X Y as "R G B"
+#   tools/client/vclient.sh ui [--raw]      what the client shows, from the connection DLL's UI probe: open components,
+#                                           recent UI texts and, in a duel, each field slot (face up / defense)
 #   tools/client/vclient.sh check           process state, client trace, crash, last packets
 #   tools/client/vclient.sh stop            close this instance's client (wineserver -k on its prefix)
 #   tools/client/vclient.sh prefix          create this instance's Wine prefix (reflinked copy of ~/.wine)
@@ -30,7 +32,9 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 if [ -n "$INSTANCE" ]; then export WINEPREFIX="${YO3_WINEPREFIX:-$ROOT/.wine-$INSTANCE}"; fi
 GAME="${YO3_GAME_DIR:-${WINEPREFIX:-$HOME/.wine}/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3}"
 LOGS="$ROOT/logs${INSTANCE:+/$INSTANCE}"
-mkdir -p "$LOGS/shots"
+mkdir -p "$LOGS/shots" "$LOGS/ui"
+# The connection DLL's UI probe answers `vclient.sh ui` through this folder (tools/mod/ui-probe.h); players never set it.
+ui_probe() { YO3_UI_PROBE="$(winepath -w "$LOGS/ui" 2>/dev/null || true)"; export YO3_UI_PROBE; }
 
 win() { xdotool search --name '^Yu-Gi-Oh! ONLINE 3' 2>/dev/null | head -1; }
 
@@ -86,12 +90,14 @@ case "${1:-}" in
       echo 'Enable direct start in the GUI and wait for setup to complete before start-stock.' >&2
       exit 1
     fi
+    ui_probe
     cd "$GAME"
     WINEDLLOVERRIDES=winmm=n,b WINEDEBUG=fixme-all nohup wine "$GAME/yo3.exe" >"$LOGS/client-stdout.log" 2>"$LOGS/client-wine.log" &
     for _ in $(seq 60); do [ -n "$(win)" ] && break; sleep 0.5; done
     echo "window $(win)" ;;
   start)
     PROFILE="${YO3_AUTH_PROFILE:?set YO3_AUTH_PROFILE to the private client.json for this account}"
+    ui_probe
     MOD="$ROOT/tools/mod/build"
     [ -f "$MOD/yo3-auth.dll" ] || "$ROOT/tools/mod/build.sh" >/dev/null
     cmd=("$ROOT/target/release/yo3-launcher" --profile "$PROFILE" --game-dir "$GAME"
@@ -142,6 +148,13 @@ case "${1:-}" in
     xdotool type --delay 60 "$2" ;;
   pixel)
     pixel "$2" "$3" ;;
+  ui)
+    # Ask the probe (a request file it polls every 200 ms) and print its answer.
+    need_win >/dev/null
+    rm -f "$LOGS/ui/ui.json"; : > "$LOGS/ui/request"
+    for _ in $(seq 25); do [ -s "$LOGS/ui/ui.json" ] && break; sleep 0.2; done
+    [ -s "$LOGS/ui/ui.json" ] || { echo "no answer from the UI probe (client started before it existed? restart it)" >&2; exit 1; }
+    if [ "${2:-}" = "--raw" ]; then cat "$LOGS/ui/ui.json"; else python3 "$ROOT/tools/client/ui_view.py" "$LOGS/ui/ui.json"; fi ;;
   check)
     if [ -n "$(win)" ]; then echo "client: running (window $(win))"; else echo "client: not running"; fi
     echo "--- client trace (last 8)"

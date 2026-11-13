@@ -15,6 +15,7 @@ export, see [AGENTS.md](https://github.com/usersina/yo3-revival/blob/main/AGENTS
     - [Automatic local deck initialization](#automatic-local-deck-initialization)
     - [Native duel observer](#native-duel-observer)
   - [The field tracer](#the-field-tracer)
+  - [The UI probe](#the-ui-probe)
   - [Data formats](#data-formats)
   - [Behaviours worth knowing](#behaviours-worth-knowing)
   - [Crash history (and the rule each one taught)](#crash-history-and-the-rule-each-one-taught)
@@ -247,6 +248,40 @@ Each line carries the dataset (tree) pointer. A lookup on the same dataset as th
 top-level field (`top`); anything else is an item or local data (`sub`). Lookups that happen with no message being
 parsed (local settings such as `bgm`, `se`, `lastLogin`, the saved login, `yo2Succession`) appear as
 "outside any reply".
+
+## The UI probe
+
+`tools/mod/ui-probe.h` (in the connection DLL) answers `tools/client/vclient.sh ui`: what the client shows, as text,
+so a check doesn't need a screenshot. It is off unless `YO3_UI_PROBE` names an existing folder; `vclient.sh` sets it to
+`logs/<instance>/ui` for its private clients, and the launchers never set it. Its own thread checks that folder for a
+`request` file every 200 ms, then writes `ui.json` (a temporary file renamed into place). `vclient.sh ui` prints it
+readably, `vclient.sh ui --raw` as JSON. Its readers (`ui-state.h`) take a checked read callback and are tested on
+synthetic memory (`ui-state-test.c`, run by `tools/mod/test.sh`); it writes no game memory.
+
+- **Components.** Every screen, window and dialog is a component made by the factory `0x4EEB90` and added to its
+  parent with the parent's vtable slot 14 (`+0x38`). For a container (`BroadcastComponent`, add-child `0x403C00`,
+  remove `0x403C50`) the child's parent goes to child `+4` and the child into the parent's `std::map`: head node
+  pointer at `+0x44`; nodes left `+0`, parent `+4`, right `+8`, key `+0xC`, child `+0x10`, nil flag `+0x15`
+  (iterator `0x404570`). The root is Yo3App's component part, `0x82F7C0` (Yo3App is the static `0x82F760`). The
+  probe opens only components whose slot 14 is `0x403C00` (others, such as `TitleScene` and `InfoWindow`, keep other
+  data at `+0x44`), names each one from its MSVC RTTI (vtable `-4` → locator, `+0xC` → type descriptor, `+8` →
+  `.?AVName@@`), and leaves a subtree it can't read closed (`unreadable_children`) instead of failing the walk.
+- **Texts.** The text lookup `0x51E6C0` (stdcall `(table, id)` → `wchar_t *`, `ret 8`) is detoured when its nine
+  prologue bytes are `55 8B EC 83 E4 F8 83 EC 0C`; the last 40 lookups are kept with their id and age, newest last.
+  They show the dialogs, labels and menus that just appeared ("#1109: Change card position", "#0: Attack"). A
+  mismatch leaves the lookup alone and reports `text_hook: false`; `YO3_UI_PROBE_TEXTS=0` turns the hook off.
+- **Duel.** When a `DuelScene` is in the tree, each side's 11 field slots from its card manager (`+0xBC`), as the
+  [native duel observer](#native-duel-observer) reads them: uid `+0x30`, place `+0x82` (`0x4000` face up, `0x8000`
+  defense). `you` is the local player (`*(0x82D2C0)+0x1B0`).
+
+Live (2026-11-13, NPC duel): the map showed `MainGamen` with its menu labels, the NPC screen `SelectNpcScene` and
+`CutinForNPC`, the duel `DuelScene` with `DuelFieldManager`, `DuelCockpit`, `DuelBattle` and the others; after
+Goblin Attack Force attacked, the probe showed it `up ATK`, then `up DEF` once the Battle Phase ended, as drawn.
+
+Limits: text drawn inside a scene's own Flash movie never passes through `0x51E6C0` or the component tree (an NPC's
+talk, the NPC screen's "Start Duel?" box; dialog labels set through `0x4C35C0`'s `setButtonLabel` are not kept
+either), so those still need a screenshot. A text id seen means it was looked up, not that it is still on screen
+(read `ago_ms`). The duel field is the card manager's data, not the rendered card's rotation or animation.
 
 ## Data formats
 

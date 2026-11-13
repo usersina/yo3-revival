@@ -10,6 +10,7 @@ export WINEDEBUG=-all
 MOD="$ROOT/tools/mod/build"
 wine "$MOD/yo3-login-test.exe"
 wine "$MOD/yo3-duel-snapshot-test.exe"
+wine "$MOD/yo3-ui-state-test.exe"
 DLL="$(winepath -w "$MOD/yo3-auth.dll" 2>/dev/null)"
 wine "$MOD/yo3-auth-test.exe" "$DLL"
 wine "$MOD/yo3-auth-ordinal-test.exe" "$DLL"
