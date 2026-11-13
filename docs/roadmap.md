@@ -970,8 +970,8 @@ activated card goes, which Konami's server made too.
 - [x] Found on the way: a token equipped as a card (Allure Queen LV3) stayed shown after leaving; the sweep can now
       replay one card's duel alone (`YO3_CARD_SWEEP_OFFSET`).
 - [ ] Found on the way, not ours: Brain Research Lab's script errors in the engine at the pinned version (an extra
-      summon callback's argument count); EDOPro's Goyo Guardian wants an EARTH Tuner (the 2010 text doesn't): see
-      issue #7 for era texts.
+      summon callback's argument count; issue #9); EDOPro's Goyo Guardian wants an EARTH Tuner (the 2010 text doesn't;
+      issue #7, era texts). The shop's exchange, Special Packs and card rental are issue #8.
 
 ## ✅ M0: Research and tooling
 
