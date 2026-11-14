@@ -415,6 +415,7 @@ impl DuelSession {
             }
             (Some(CLIENT_DUEL), Some(DIALOG_RESULT)) => t.dialog_result(seat, int("DLGResult").unwrap_or(0)),
             (Some(CLIENT_DUEL), Some(SWAPPED)) => t.swapped(seat),
+            (Some(CLIENT_DUEL), Some(crate::clock::SETTLED)) => t.settled(seat, int("seq").unwrap_or(0), Instant::now()),
             _ => Default::default(),
         };
         t.deliver(seat, out)

@@ -235,6 +235,16 @@ the game's thread (the pump) and read there (dialogs).
 the others (the mod refuses the game). The launcher's preflight (`yo3-launcher::components::inspect_game`) still checks
 only the four original sites; the DLL checks every site it patches.
 
+### Animation settle answers (issue #11)
+
+`tools/mod/duel-observer.h` also takes engine command `0x5F1 {seq}` at the duel dispatcher (keeping it from the stock
+`0x514290`) and, after each scene update, tests the same settlement as the snapshot (battle `+0x74`, chain `+0x58`,
+every card's `+0x114`); once settled it sends `duelRequestName 0x7A13 {seq}`: a `YO3Request` (`0x40A190`, vtable
+`0x7955F4`, type 4) with `request 0x200C` (`0x41BCA0`) and its fields set through the map's vtable `+0x14`, sent by the
+duel connection `[0x82D2C4]`'s vtable `+0x50`, as the phase button does (`0x521180`). It skips a replay (engine
+`[0x82D2C0]` `+0` is 1) but not the player's input flag `+0x284`, which the input wait 4 and a card list `0x37` set
+(`0x523062`): the marker comes before them. Unsettled after 30 s it gives up (the server's allowance stands).
+
 ### Native duel observer
 
 `tools/mod/duel-observer.h` installs two byte-guarded hooks for ver.1.153: the CALL at `0x514212`

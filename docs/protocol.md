@@ -988,6 +988,7 @@ We send request `0x200D` (**guess**: no reader).
 | 0xD                      | `choice` (1 first, 2 second)                                                                                                                                     | `0x4F1430`                                |
 | 0xE                      | none: Card Swap is done (state 4, once the front answered its `0x1F4F` with `0x22CA` or `0x22CB`); then the next janken (`0x50F690`), so the server answers 1500 | `0x50FDF0` (DuelManager)                  |
 | 0xF                      | `player`, `autoSet` (duel options; live on entering the duel field: `{player 0, autoSet 1}`)                                                                     | `0x515790`, `0x4A0390`                    |
+| `0x7A13` (Revival)       | `seq`: the batch ending with settle marker `0x5F1 {seq}` has played (issue #11; see "Duel clocks")                                                                 | the connection DLL (`duel-observer.h`)    |
 
 **Janken** (who goes first; JankenScene `0x518400`, `duel_janken.swf`). Engine commands, all confirmed live:
 
@@ -1095,6 +1096,19 @@ most 15 s (**guess**; Konami's logs hold no timers message). Until then both cli
 while Kaiba's stood at 180 and 10:00, each mirrored on the other client with "Now Thinking"; Kaiba, left idle, lost
 duel 1 by time out (his total down to 07:00), the match went on, and in duel 2 Yugi's screen read "YOU LOSE — Yugi
 has ran out of time." with its turn clock at 3 (hence the grace).
+
+**The client says when it has played a batch** (issue #11, through the connection DLL). The server ends the waited-on
+player's batch with engine command `0x5F1 {seq}`, after its animations and before the prompt that ends it (the input
+wait 4, a dialog `0x36`/`0x37` and their data, which hold the queue until the player answers; `clock::mark_settle`).
+The scene pops a command only once the commands before it have played (`0x522A50`); the DLL's duel observer takes
+`0x5F1` there (the stock dispatcher has no case for it), waits until cards, battles and chains have settled (the
+snapshot's own test), and sends `duelRequestName 0x7A13 {seq}` as the client's duel requests are sent (a `YO3Request`
+`0x200C` through the duel connection `0x82D2C4`; not in a replay, engine `+0` 1). The player's clocks count from that
+answer, earlier or later than the allowance, which stays the fallback: an answer more than 30 s after its batch, or
+none, leaves the allowance's start (**guess**: the window), and both clients get `0x14` again when the answer moves the
+start. Live (2026-11-14, Auto Duel Alpha against Bravo on the private software-rendered clients): a summon's batch had
+an allowance of 1.45 s; the client answered 4.4 s after it, and both clients' clocks were re-counted from there (the
+first player's 143 again); the opening took 16 s to play against an allowance of 8.7 s, hence the 30 s window.
 
 **Battles** (DuelBattle `0x4F8A90`; its caller `0x4F840E` passes `param1` in ECX, `param3` in EDX and `param2` on the
 stack; DuelScene's busy check `0x515300` holds the queue while its state `+0x74` runs):

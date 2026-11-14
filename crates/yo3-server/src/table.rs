@@ -400,6 +400,12 @@ impl Table {
             // The waited-on player's time counts once the client has played what it was just sent.
             let held = waiting.and_then(|s| out.get(s)).map_or(std::time::Duration::ZERO, |part| crate::clock::allowance(part));
             c.wait_after(waiting, now, held);
+            // The waited-on client says when it has played this batch (issue #11): its clocks count from then.
+            if let Some((seat, seq)) = c.awaiting()
+                && let Some(part) = out.get_mut(seat)
+            {
+                crate::clock::mark_settle(part, seq);
+            }
             for (view, part) in out.iter_mut().enumerate() {
                 part.push(c.message(view, now));
             }
@@ -438,6 +444,22 @@ impl Table {
                 let _ = seat.outbox.send(m);
             }
         }
+    }
+
+    /// `seat`'s client has played the batch with settle marker `seq` (duelRequestName `clock::SETTLED`): the clocks the
+    /// engine waits on count from now, and both clients and the spectators are told.
+    pub fn settled(&mut self, seat: usize, seq: u32, now: Instant) -> Out {
+        let mut out = Out::default();
+        let Some(c) = self.clocks.as_mut().filter(|_| !self.over) else { return out };
+        if !c.settled(seat, seq, now) {
+            return out;
+        }
+        for (view, part) in out.iter_mut().enumerate() {
+            part.push(c.message(view, now));
+        }
+        let watched = vec![vec![c.message(0, now)]; self.spectators.len()];
+        self.tell_spectators(watched);
+        out
     }
 
     /// The server's clock check: once the player waited on is out of time, the duel ends with them losing by time out

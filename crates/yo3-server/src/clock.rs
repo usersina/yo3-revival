@@ -29,6 +29,37 @@ pub struct Clocks {
     running: Option<(usize, Instant)>,
     /// Whether the clients have been told the waited-on clocks run (false while an allowance holds them).
     announced: bool,
+    /// The settle marker the waited-on client was sent with its batch (`settle_marker`), and until when its answer
+    /// counts; the next marker's number.
+    settle: Option<(u32, Instant)>,
+    next_settle: u32,
+}
+
+/// Engine command {seq} at the end of a batch to the player the engine waits on (Revival, issue #11): the connection
+/// DLL takes it off the queue when the commands before it have played (the scene pops a command only then, 0x522A50),
+/// waits until cards, battles and chains have settled (`tools/mod/duel-observer.h`), and answers duelRequestName
+/// `SETTLED {seq}`. The stock dispatcher (0x514290) has no case for it.
+pub const SETTLE: u32 = 0x5F1;
+/// Client duelRequestName of that answer (`tools/mod/duel-observer.h`); the stock client sends 1-15.
+pub const SETTLED: u32 = 0x7A13;
+
+/// The marker for the batch of the client waited on (see [`SETTLE`]).
+pub fn settle_marker(seq: u32) -> Message {
+    crate::duel::command(SETTLE, [seq, 0, 0, 0])
+}
+
+/// The commands that ask the player (the input wait 4, the dialogs 0x36 and 0x37 and the data they read, 0x3EC-0x3F3,
+/// and a mixed list's staged card table entries, 1000): a batch ends with them, after its animations.
+const PROMPT_COMMANDS: [u32; 11] = [4, 0x36, 0x37, 0x3EC, 0x3ED, 0x3EE, 0x3EF, 0x3F0, 0x3F1, 0x3F2, 0x3F3];
+
+/// Puts the settle marker `seq` into a batch after its animations and before the prompt that ends it (and the messages
+/// the pump handles at once: the command map, the server's texts), so the client answers once it has played the
+/// animations, not after the player's choice (a dialog or input wait holds the queue).
+pub fn mark_settle(part: &mut Vec<Message>, seq: u32) {
+    let is_command = |m: &Message| m.get("duelRequestName").and_then(Value::as_u32) == Some(17);
+    let id = |m: &Message| m.get("id").and_then(Value::as_u32).unwrap_or(0);
+    let at = part.iter().rposition(|m| is_command(m) && !PROMPT_COMMANDS.contains(&id(m)) && id(m) != 1000).map_or(0, |i| i + 1);
+    part.insert(at, settle_marker(seq));
 }
 
 /// How long the client takes to play these commands' animations before its player can answer: a duration per animated
@@ -57,6 +88,9 @@ pub fn allowance(commands: &[Message]) -> Duration {
 
 /// The longest a batch's animations hold the clocks.
 const MAX_ALLOWANCE: Duration = Duration::from_secs(15);
+/// How long after its batch a client's settle answer still counts (issue #11): live, the duel's opening took 16 s to
+/// play on the software-rendered test client, against an allowance of 8.7 s.
+const ANSWER_WINDOW: Duration = Duration::from_secs(30);
 
 impl Clocks {
     /// Clocks with these limits in seconds; none when both are off.
@@ -65,7 +99,16 @@ impl Clocks {
             return None;
         }
         let (t, d) = (Duration::from_secs(turn as u64), Duration::from_secs(total as u64));
-        Some(Clocks { turn_limit: turn, total_limit: total, turn: [t; 2], total: [d; 2], running: None, announced: true })
+        Some(Clocks {
+            turn_limit: turn,
+            total_limit: total,
+            turn: [t; 2],
+            total: [d; 2],
+            running: None,
+            announced: true,
+            settle: None,
+            next_settle: 1,
+        })
     }
 
     /// A seat's time left on both clocks at `now`.
@@ -84,12 +127,34 @@ impl Clocks {
 
     /// [`wait_on`], the new seat's time counting only after `allowance` (the animations it was just sent, see
     /// [`allowance`]); the clocks show stopped until then.
+    /// The allowance is the fallback: the client says itself when it has played the batch ([`settled`]).
     pub fn wait_after(&mut self, seat: Option<usize>, now: Instant, allowance: Duration) {
         if let Some((s, _)) = self.running {
             (self.turn[s], self.total[s]) = self.left(s, now);
         }
         self.running = seat.map(|s| (s, now + allowance));
         self.announced = allowance.is_zero();
+        self.settle = seat.map(|_| (self.next_settle, now + ANSWER_WINDOW));
+        self.next_settle = self.next_settle.wrapping_add(1).max(1);
+    }
+
+    /// The seat waited on and the number of the settle marker to end its batch with (see [`SETTLE`]).
+    pub fn awaiting(&self) -> Option<(usize, u32)> {
+        Some((self.running?.0, self.settle?.0))
+    }
+
+    /// `seat`'s client has played the batch marked `seq` (its `SETTLED`): its clocks count from `now`, earlier or later
+    /// than the allowance said, but never later than `ANSWER_WINDOW` after the batch (a silent or late client keeps the
+    /// allowance), and once. True when the clients are to be told the clocks run from here.
+    pub fn settled(&mut self, seat: usize, seq: u32, now: Instant) -> bool {
+        let fits = |(s, deadline): (u32, Instant)| s == seq && now <= deadline;
+        if self.running.map(|(s, _)| s) != Some(seat) || !self.settle.is_some_and(fits) {
+            return false;
+        }
+        self.settle = None;
+        self.running = Some((seat, now));
+        self.announced = true;
+        true
     }
 
     /// True once, when the allowance holding the waited-on clocks has passed: the clients are to be told they run.

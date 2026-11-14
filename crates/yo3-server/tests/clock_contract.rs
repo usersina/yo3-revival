@@ -94,3 +94,49 @@ fn the_time_the_client_spends_on_animations_is_not_charged() {
     assert_eq!(yo3_server::clock::allowance(&batch), Duration::from_millis(400 + 400 + 1200));
     assert_eq!(yo3_server::clock::allowance(&vec![command(6); 100]), s(15));
 }
+
+#[test]
+fn the_client_says_when_it_has_played_the_batch() {
+    // Issue #11: each wait ends the waited-on client's batch with a settle marker (engine command 0x5F1 {seq}); the
+    // connection DLL answers duelRequestName 0x7A13 {seq} once the scene has settled after it, and the clocks count from
+    // that answer: sooner than the allowance, or later (a slow machine), but not past the cap (30 s after the batch),
+    // so a client that never answers keeps the allowance and can't hold its own clock.
+    let t0 = Instant::now();
+    let s = Duration::from_secs;
+    let mut c = Clocks::new(180, 600).expect("clocks");
+    c.wait_after(Some(0), t0, s(4));
+    let (seat, seq) = c.awaiting().expect("a marker for the seat waited on");
+    assert_eq!(seat, 0);
+    assert!(!c.settled(1, seq, t0 + s(1)), "only the waited-on client's answer counts");
+    assert!(!c.settled(0, seq + 1, t0 + s(1)), "and only for its own batch");
+    assert!(c.settled(0, seq, t0 + s(1)), "played after 1 s: the clocks run from here");
+    assert!(!c.settled(0, seq, t0 + s(2)), "once");
+    assert!(!c.starting(t0 + s(4)), "the clients were told already");
+    assert_eq!(fields(&c.message(0, t0 + s(11)))[..4], [0, 1, 170, 590]);
+    // A slow client: the allowance started the clocks at 4 s, its answer at 9 s gives those 5 s back.
+    c.wait_after(Some(1), t0 + s(20), s(4));
+    let (_, seq) = c.awaiting().unwrap();
+    assert!(c.starting(t0 + s(24)));
+    assert!(c.settled(1, seq, t0 + s(29)));
+    assert_eq!(fields(&c.message(1, t0 + s(39)))[2..4], [170, 590]);
+    // One that answers after the cap keeps the allowance.
+    c.wait_after(Some(0), t0 + s(100), s(2));
+    let (_, seq) = c.awaiting().unwrap();
+    assert!(!c.settled(0, seq, t0 + s(131)), "30 s after the batch it no longer counts");
+    assert_eq!(fields(&c.message(0, t0 + s(112)))[2], 151, "charged from the allowance's end: 161 left, less 10");
+    // Nobody waited on: no marker.
+    c.wait_after(None, t0 + s(120), s(0));
+    assert_eq!(c.awaiting(), None);
+    assert_eq!(yo3_server::clock::settle_marker(7).get("id"), Some(&Value::U32(0x5F1)));
+    // The marker goes after the batch's animations and before its prompt: a dialog or the input wait holds the
+    // client's queue until the player answers, and the answer must come once the animations have played.
+    let command = |id: u32| Message::reply(0x200D).with("duelRequestName", Value::U32(17)).with("id", Value::U32(id));
+    let map = Message::reply(0x200D).with("duelRequestName", Value::U32(0x12));
+    let mut batch = vec![command(0x1A), command(5), map, command(4)];
+    yo3_server::clock::mark_settle(&mut batch, 9);
+    let ids: Vec<u32> = batch.iter().map(|m| m.get("id").and_then(Value::as_u32).unwrap_or(0)).collect();
+    assert_eq!(ids, [0x1A, 5, 0x5F1, 0, 4]);
+    let mut dialog = vec![command(0x1A), command(0x3EC), command(0x3ED), command(0x36)];
+    yo3_server::clock::mark_settle(&mut dialog, 9);
+    assert_eq!(dialog[1].get("id"), Some(&Value::U32(0x5F1)));
+}

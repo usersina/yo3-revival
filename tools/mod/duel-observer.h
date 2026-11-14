@@ -2,6 +2,14 @@
 #define YO3_DUEL_OBSERVER_H
 #include "duel-snapshot.h"
 static struct { uint32_t schema,sequence,inventory,stats,scene; DWORD started; int active; } duel_pending;
+/* Issue #11: the server ends the batch of the player it waits on with engine command 0x5F1 {seq}
+ * (crates/yo3-server/src/clock.rs, SETTLE). The scene pops a command only when the ones before it have played
+ * (0x522A50); once cards, battles and chains have settled as well (the snapshot's own test), the client answers
+ * duelRequestName 0x7A13 {seq} and the server counts the player's clocks from then. Unanswered within 30 s, the
+ * server's allowance stands. */
+#define YO3_SETTLE 0x5f1u
+#define YO3_SETTLED 0x7a13u
+static struct { uint32_t seq,scene; DWORD started; int active; } duel_settle;
 static int duel_read(void *ctx,uint32_t at,void *out,size_t n) {
     (void)ctx; SIZE_T got=0;
     return ReadProcessMemory(GetCurrentProcess(),(const void *)(uintptr_t)at,out,n,&got) && got==n;
@@ -22,6 +30,41 @@ static void duel_observer_log(const char *status,const Yo3Snapshot *snapshot) {
     }
     n+=snprintf(line+n,sizeof line-n,"}\r\n");
     DWORD written; WriteFile(GetStdHandle(STD_ERROR_HANDLE),line,(DWORD)n,&written,NULL);
+}
+/* The answer, built as the client's own duel requests are (the phase button 0x521180: a YO3Request 0x200C with its
+ * duelRequestName, sent through the duel connection 0x82D2C4's vtable +0x50), but not in a replay (the engine
+ * 0x82D2C0's +0 is 1). Unlike the player's requests it doesn't wait for the input flag (+0x284, set when the input
+ * wait 4 or a card list 0x37 pops, 0x523062): the marker comes before those. */
+static void duel_settle_send(uint32_t seq) {
+    BYTE *engine=*(BYTE **)game_address(0x82d2c0);
+    void *sender=*(void **)game_address(0x82d2c4);
+    if(!engine || !sender || engine[0]==1) return;
+    __attribute__((aligned(8))) BYTE request[0x80]; /* YO3Request is 0x6C bytes (0x52FCC0 allocates that much) */
+    memset(request,0,sizeof request);
+    ((void *(__attribute__((stdcall)) *)(void *))game_address(0x40a190))(request);
+    *(DWORD *)request=(DWORD)(uintptr_t)game_address(0x7955f4); /* YO3Request's vtable */
+    request[0x34]=4;
+    ((void (__attribute__((thiscall)) *)(void *,unsigned))game_address(0x41bca0))(request,0x200c);
+    void *map=*(void **)(request+0x60);
+    typedef void (__attribute__((thiscall)) *SetUint)(void *,GameString,unsigned);
+    GameString key; game_string(&key,"duelRequestName");
+    ((SetUint)(*(DWORD **)map)[0x14/4])(map,key,YO3_SETTLED);
+    game_string(&key,"seq");
+    ((SetUint)(*(DWORD **)map)[0x14/4])(map,key,seq);
+    ((void (__attribute__((thiscall)) *)(void *,void *))(*(DWORD **)sender)[0x50/4])(sender,request);
+    *(DWORD *)request=(DWORD)(uintptr_t)game_address(0x7955f4);
+    ((void (__attribute__((thiscall)) *)(void *))game_address(0x40a210))(request);
+}
+static void duel_settle_poll(void *scene) {
+    if(!duel_settle.active) return;
+    if(duel_settle.scene!=(uint32_t)(uintptr_t)scene || GetTickCount()-duel_settle.started>=30000) { duel_settle.active=0; return; }
+    uint32_t data,local;
+    if(!yo3_word(duel_read,NULL,(uint32_t)(uintptr_t)game_address(0x82d2c0),&data) || !yo3_word(duel_read,NULL,data+0x1b0,&local)) return;
+    static Yo3Snapshot snapshot;
+    int state=yo3_duel_snapshot(duel_read,NULL,duel_settle.scene,local,&snapshot);
+    if(state==0) return;
+    duel_settle.active=0;
+    if(state==1) duel_settle_send(duel_settle.seq);
 }
 static void duel_observer_poll(void *scene) {
     if(!duel_pending.active) return;
@@ -45,12 +88,17 @@ static void __attribute__((fastcall,force_align_arg_pointer)) duel_observer_disp
         if(params[0]!=YO3_SNAPSHOT_SCHEMA) { duel_observer_log("unsupported-schema",NULL);duel_pending.active=0; }
         return;
     }
+    if(id==YO3_SETTLE) {
+        duel_settle.seq=params[0];duel_settle.scene=(uint32_t)(uintptr_t)scene;duel_settle.started=GetTickCount();duel_settle.active=1;
+        return;
+    }
     ((void (__attribute__((fastcall)) *)(unsigned,uint32_t *,void *))game_address(0x514290))(id,params,scene);
 }
 static void __attribute__((fastcall,force_align_arg_pointer)) duel_observer_update(void *scene,void *unused) {
     (void)unused;
     ((void (__attribute__((thiscall)) *)(void *))game_address(0x515a30))(scene);
     duel_observer_poll(scene);
+    duel_settle_poll(scene);
 }
 static int duel_observer_install(void) {
     BYTE *base=(BYTE *)GetModuleHandleA(NULL);

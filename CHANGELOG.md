@@ -29,7 +29,8 @@ Older entries describe their release at the time. For current setup, use the [RE
   Latest Duel Logs and press Play to watch it again.
 - **Update required:** everyone needs this version (the connection files changed); an older client can't join this
   server, and this client can't join an older one.
-- **Fairer duel clocks.** Your clock no longer runs while the game is still playing animations.
+- **Fairer duel clocks.** Your clock no longer runs while the game is still playing animations: your game now tells
+  the server when it has finished them, so a slower computer no longer loses thinking time.
 - Your avatar speaks its line when you flip a Set card or reveal a hand card to activate it, as in the original.
 - **Trade Card at the shop.** Give Blister 10 cards you don't need and get any card you pick from the first 48
   booster packs.

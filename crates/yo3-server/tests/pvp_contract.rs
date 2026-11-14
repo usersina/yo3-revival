@@ -321,6 +321,30 @@ fn a_player_who_runs_out_of_time_loses() {
     assert_eq!(hub.lock().unwrap().record_result(1002, 1001, 0), [1, 0, 0], "1002's win is counted");
 }
 
+#[test]
+fn the_waited_on_client_starts_its_clocks_when_it_has_played_the_batch() {
+    // Issue #11: the waited-on client's batch ends with the settle marker (engine command 0x5F1 {seq}); the connection
+    // DLL answers duelRequestName 0x7A13 {seq} once the scene has settled, and both clients get the clocks running from
+    // there, without waiting for the allowance. The other client gets no marker, and an answer from it does nothing.
+    let Some((mut a, mut b, _)) = after_janken(true) else { return };
+    let to_a = a.send(0xD, &[("choice", 1)]);
+    let to_b = b.pushed();
+    let markers = |out: &[Message]| -> Vec<u32> { commands(out).iter().filter(|(id, _)| *id == 0x5F1).map(|(_, p)| p[0]).collect() };
+    let [seq] = markers(&to_a)[..] else { panic!("one marker for 1001's batch: {:?}", markers(&to_a)) };
+    assert!(markers(&to_b).is_empty(), "1002 isn't waited on");
+    let timers = |out: &[Message]| -> Vec<(u32, u32)> {
+        out.iter()
+            .filter(|m| m.get("duelRequestName") == Some(&Value::U32(0x14)))
+            .map(|m| (m.get("timerKind").and_then(Value::as_u32).unwrap(), m.get("start").and_then(Value::as_u32).unwrap()))
+            .collect()
+    };
+    assert!(b.send(0x7A13, &[("seq", seq)]).is_empty() && a.pushed().is_empty(), "not 1002's batch");
+    let to_a = a.send(0x7A13, &[("seq", seq)]);
+    assert_eq!(timers(&to_a), [(0, 1)], "1001's clocks run on its own client");
+    assert_eq!(timers(&b.pushed()), [(1, 1)], "and as the opponent's on 1002's");
+    assert!(a.send(0x7A13, &[("seq", seq)]).is_empty(), "once");
+}
+
 /// A spectator's duel connection on `hub`: it opens with 0x1838 {duel_id} (DuelManager's watching state 0x50F320)
 /// instead of 0x200A.
 fn spectator(hub: &Arc<Mutex<Hub>>) -> (Seat, Vec<Message>) {
