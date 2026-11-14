@@ -17,6 +17,9 @@ pub type Outbox = tokio::sync::mpsc::UnboundedSender<Message>;
 
 /// Revival's own push of an account's BP (`Hub::push_bp`), applied by the connection DLL; unused by the client.
 pub const REVIVAL_BP: u32 = 0x7A11;
+/// An early rental return {rental_id} (Revival, issue #13; for the connection DLL, which has no button to send it from
+/// yet).
+pub const REVIVAL_RETURN: u32 = 0x7A14;
 pub const VERSION_VALID: u32 = 0x219F;
 /// The default banlist every account logs in with (0x2201 regulation_id), which Auto Duel's and the NPC duel's deck
 /// check uses (`World::login_regulation`, set by --regulation): 3, "unlimited", no banned or limited cards.
@@ -1198,6 +1201,17 @@ impl Hub {
                 self.push(p, &self.rentals.records_for(p));
             }
         }
+    }
+
+    /// The borrower `player_id` returns rental `id` early (issue #13, `REVIVAL_RETURN`): it ends now, and both players get the records
+    /// again (0x2D6C), as at its term. False when it isn't theirs or is over.
+    pub fn return_rental(&mut self, id: u32, player_id: u32, now: i64) -> bool {
+        let Some((lender, borrower)) = self.rentals.give_back(id, player_id, now) else { return false };
+        tracing::info!("rental {id}: returned early by its borrower");
+        for p in [lender, borrower] {
+            self.push(p, &self.rentals.records_for(p));
+        }
+        true
     }
 
     /// The rental records of a player (0x2D6C), and their history lists (0x2D6E for kind 0 borrowed, 1 lent).
@@ -2777,6 +2791,15 @@ impl FrontSession {
             0x2C35 => {
                 let kind = msg.get("rental_kind").and_then(Value::as_u32).unwrap_or(0);
                 self.hub().rental_history(self.player().player_id, kind)
+            }
+            // An early return {rental_id} (Revival, issue #13): what the Rental Card List's Return would send through the
+            // connection DLL. Nothing sends it yet: the shipped rentalrecord.swf has no Return button to press (see the
+            // roadmap). No reply: the records come as pushes.
+            REVIVAL_RETURN => {
+                let id = msg.get("rental_id").and_then(Value::as_u32).unwrap_or(0);
+                let me = self.player().player_id;
+                self.hub().return_rental(id, me, chrono::Utc::now().timestamp());
+                return vec![];
             }
             // A BOOSTERPASS code (BpInputWindow, 0x40F7B0): one the host made (`add-code`), once per account, gives its
             // BP (result 0 adds dpGetPoints to the shown BP); anything else is refused (the "ng" frame: "Incorrect

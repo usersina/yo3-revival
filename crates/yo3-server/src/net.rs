@@ -121,6 +121,8 @@ where
             && !(who == "duel" && id == 0x200C)
             // Edit Deck's saves (0x1F4F without a duel_id, from the connection DLL) are kept unanswered on purpose.
             && !(who == "front" && id == 0x1F4F && m.get("duel_id").is_none())
+            // An early rental return (issue #13) is answered by pushes.
+            && !(who == "front" && id == crate::front::REVIVAL_RETURN)
         {
             tracing::warn!("[{who}] UNHANDLED request {id:#x}");
         }

@@ -480,9 +480,14 @@ lent). Live: Yugi lent Tainted Wisdom and Windstorm of Etaqua to Kaiba for 3 day
 000, Kaiba's Edit Deck listed them (42 cards, a blue badge) and both Rental Card Lists had the row; a server restart
 kept it and an end time moved to the past ended it while both were online.
 
-Not seen: a Deck rental (`type 1`: three lists) and the Return button of `rentalrecord.swf` (`BorrowReturan`,
-`BorrowDeckSave`): the C++ registers no callbacks for them (`0x481E00`), so the client has no early return: a rental ends
-at its term. The "Lender's / Borrower's Rental List is full" texts (14205/14206) have no code we know of.
+Not seen: a Deck rental (`type 1`: three lists). **No early return** (issue #13): the Borrowed tab's script
+(`rentalrecord.swf`, frame 3) wires `borrow_btn0` (`BorrowDeckSave`) and `borrow_btn1` (`BorrowReturan` with the row's
+index) and the C++ registers no callbacks for them (RentalRecord's Accept `0x481D70`, slot 1 of the vtable at
+`0x7A7A54`), but the shipped movie never places either button (nor `btn_main`, AdjustRental): only `btn_main01` is in
+its library. Live (2026-11-14): Bravo's Borrowed tab listed Alpha's rental, with no button below it. So a rental ends at
+its term. The server already takes an early return, `0x7A14 {rental_id}` from the borrower (every record carries our
+`rental_id`, which the client ignores; contract `the_borrower_can_return_a_rental_early`), ending it as at its term;
+what the client lacks is a button to send it (see the roadmap, #13). The "Lender's / Borrower's Rental List is full" texts (14205/14206) have no code we know of.
 
 ### Country (flags)
 

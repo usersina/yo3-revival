@@ -339,6 +339,42 @@ fn a_rental_ends_when_its_time_is_up() {
 }
 
 #[test]
+fn the_borrower_can_return_a_rental_early() {
+    // Issue #13, the server's half: 0x7A14 {rental_id} (the field every record carries) from the borrower ends the
+    // rental as at its term: the records go to both (0x2D6C, none active), the history shows it over, and the lender's
+    // cards are theirs again. Only the borrower can, only an active rental, and only once. The client's half needs a
+    // Return button the shipped rentalrecord.swf doesn't have (its script wires `borrow_btn1`, which the movie never
+    // places), so nothing sends it yet; see the roadmap.
+    let mut t = table();
+    rented(&mut t);
+    let borrowed = send(&mut t.b, 0x2C35, &[("rental_kind", 1), ("base_id", 0)]);
+    let id = int(&borrowed.items[0], "rental_id").expect("every record names its rental");
+    t.a.pushed();
+    t.b.pushed();
+    // Not the lender's, nor an unknown rental's: nothing happens (no reply, the rental runs on).
+    assert!(t.a.send(req_with(0x7A14, &[("rental_id", Value::U32(id))])).is_empty());
+    assert!(t.b.send(req_with(0x7A14, &[("rental_id", Value::U32(id + 1))])).is_empty());
+    assert_eq!(one(t.a.send(req(0x2C34))).items.len(), 1, "still rented");
+    // The borrower's: both get the records again, with nothing active.
+    let returned = t.b.send(req_with(0x7A14, &[("rental_id", Value::U32(id))]));
+    assert!(returned.iter().chain(&t.b.pushed()).any(|m| m.request() == Some(0x2D6C) && m.items.is_empty()), "{returned:?}");
+    let records = one(t.a.pushed());
+    assert_eq!((records.request(), records.items.len()), (Some(0x2D6C), 0));
+    let borrowed = send(&mut t.b, 0x2C35, &[("rental_kind", 1), ("base_id", 0)]);
+    assert_eq!((int(&borrowed.items[0], "confirm_to"), int(&borrowed.items[0], "confirm_from")), (Some(1), Some(1)));
+    // Once: a second return does nothing.
+    assert!(t.b.send(req_with(0x7A14, &[("rental_id", Value::U32(id))])).is_empty());
+    // Row 11 can be traded again.
+    send(&mut t.a, 0x2BC0, &[("to_id", t.b_id)]);
+    t.b.pushed();
+    send(&mut t.b, 0x2BC2, &[("to_id", t.a_id), ("answer", 2)]);
+    one(t.a.send(req(0x2BD5)));
+    one(t.b.send(req(0x2BD5)));
+    let offer = one(t.a.send(req_with(0x2BC6, &[("main_list", Value::u16_be_array(&[11]))])));
+    assert_eq!(offer.request(), Some(0x2BE1));
+}
+
+#[test]
 fn rentals_survive_a_restart() {
     let file = std::env::temp_dir().join(format!("yo3-rentals-{}", std::process::id())).join("rentals.json");
     let _ = std::fs::remove_dir_all(file.parent().unwrap());

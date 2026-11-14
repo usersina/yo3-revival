@@ -75,7 +75,9 @@ impl Rental {
     pub fn record(&self) -> Message {
         let over = self.over as u32;
         let [main, extra, side] = &self.lists;
+        // `rental_id` is ours, unread by the stock client: what an early return names (issue #13, `Rentals::give_back`).
         Message::record()
+            .with("rental_id", Value::U32(self.id))
             .with("from_id", Value::U32(self.lender.0))
             .with("from_name", Value::text(&self.lender.1))
             .with("from_type", Value::U32((self.lender.0 == SHOP) as u32))
@@ -184,6 +186,17 @@ impl Rentals {
             self.save();
         }
         ended
+    }
+
+    /// The borrower `player_id` gives rental `id` back before its term (the Rental Card List's Return, issue #13): it
+    /// ends now, as at its term. The players concerned (lender, borrower), or None when it isn't theirs or is over.
+    pub fn give_back(&mut self, id: u32, player_id: u32, now: i64) -> Option<(u32, u32)> {
+        let r = self.all.iter_mut().find(|r| r.id == id && r.borrower.0 == player_id && !r.over)?;
+        r.over = true;
+        r.end = r.end.min(now);
+        let ended = (r.lender.0, r.borrower.0);
+        self.save();
+        Some(ended)
     }
 
     /// The rentals not over.
