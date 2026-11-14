@@ -85,6 +85,49 @@ async fn missing_mod_is_reported_before_any_authentication_attempt() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// The higher resolution (tools/mod/resolution.h) reaches the game as YO3_RESOLUTION only when asked for, in its
+/// normal form; a value the DLL would refuse never starts anything.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn resolution_reaches_the_game_only_when_asked() {
+    for (case, argument, expected) in [("off", None, ""), ("size", Some("1440X1080"), "1440x1080"), ("auto", Some("Auto"), "auto")] {
+        let dir = std::env::temp_dir().join(format!("yo3-desktop-resolution-{}-{case}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let cfg = yo3_server::Config::ephemeral(dir.clone());
+        let certificate = cfg.tls.certificate.clone();
+        let key = std::fs::read_to_string(dir.join("test-auth/client.key")).unwrap();
+        let server = yo3_server::start(cfg).await.unwrap();
+        let bin = dir.join("fake-bin"); std::fs::create_dir_all(&bin).unwrap();
+        let wine = "#!/bin/sh\nprintf '%s' \"${YO3_RESOLUTION-unset}\" >\"$YO3_TEST_RESOLUTION\"\nprintf 'YO3_MOD_READY\\r\\n'\nread -r resume\nexit 0\n";
+        for (name, script) in [("winepath", "#!/bin/sh\nprintf '%s\\n' \"$2\"\n"), ("wine", wine)] {
+            let file = bin.join(name); std::fs::write(&file, script).unwrap(); std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        std::fs::write(dir.join("yo3.exe"),common::game_fixture()).unwrap();
+        for name in ["injector.exe", "auth.dll"] { std::fs::write(dir.join(name), common::pe_fixture(2)).unwrap(); }
+        let digest=yo3_launcher::components::hash(&common::pe_fixture(2));
+        std::fs::write(dir.join("bundle.json"),serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":yo3_tunnel::MOD_ABI,
+            "components":{"injector":{"sha256":digest},"connection_mod":{"sha256":digest}}}).to_string()).unwrap();
+        let profile = dir.join("client.json");
+        std::fs::write(&profile, serde_json::json!({"server":server.auth.to_string(),"server_name":"localhost","certificate":certificate,"key":key}).to_string()).unwrap();
+        let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_yo3-launcher"));
+        command.env("PATH", format!("{}:{}", bin.display(), std::env::var("PATH").unwrap())).env_remove("YO3_RESOLUTION")
+            .env("YO3_TEST_RESOLUTION", dir.join("resolution"))
+            .arg("--profile").arg(&profile).arg("--game-dir").arg(&dir)
+            .arg("--injector").arg(dir.join("injector.exe")).arg("--dll").arg(dir.join("auth.dll")).arg("--control-stdin");
+        if let Some(value) = argument { command.arg("--resolution").arg(value); }
+        let mut child = command.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped()).kill_on_drop(true).spawn().unwrap();
+        let _control = child.stdin.take().unwrap();
+        let output = tokio::time::timeout(std::time::Duration::from_secs(5), child.wait_with_output()).await.unwrap().unwrap();
+        assert!(output.status.success(), "{case}: {}", String::from_utf8_lossy(&output.stderr));
+        let seen = std::fs::read_to_string(dir.join("resolution")).unwrap();
+        assert_eq!(seen, if expected.is_empty() { "unset" } else { expected }, "{case}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    let refused = std::process::Command::new(env!("CARGO_BIN_EXE_yo3-launcher"))
+        .args(["--profile", "missing.json", "--game-dir", ".", "--resolution", "100x100"]).output().unwrap();
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("is not a resolution"), "{}", String::from_utf8_lossy(&refused.stderr));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn natural_game_exit_does_not_wait_for_the_desktop_to_close_stdin() {
     let dir = std::env::temp_dir().join(format!("yo3-desktop-control-{}", std::process::id()));

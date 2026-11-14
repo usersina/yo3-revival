@@ -65,7 +65,7 @@ enum GameDataDialog {
 enum Field { Game, Wine, Host, Data, Player, Label, Address, Key, Account, NewPlayer, Port, GiveBp, CodeText, CodeBp, CodeUses }
 #[derive(Clone)]
 enum Msg {
-    Mode(bool), ServerOption(String, String), ResetOption(String), FindOption(String),
+    Mode(bool), Resolution(String), ServerOption(String, String), ResetOption(String), FindOption(String),
     Page(Page), HostTab(HostTab), Input(Field, String), Select(ServerChoice), AccountSelect(String), AdminAccountSelect(String),
     Start, Stop, Play, StopGame, TestConnection, Discover, TrustIdentity, RefreshBindings, BindSelect(yo3_desktop::network::BindAddress), Direct(bool),
     SaveSettings(Section), CancelSettings(Section), Browse(Field), UsePath, FolderPicked(u64,Field,Result<Option<String>,String>), Import, AddServer, SaveServer, EditServer, RemoveServer, ConfirmRemoveServer,
@@ -205,6 +205,10 @@ impl App {
                 if !advanced { self.page = Page::Play; self.host_tab = HostTab::Overview; }
                 self.follow_logs=true; return widget::operation::snap_to_end("activity-log");
             }
+            Msg::Resolution(value) => match LauncherDb::open(&self.root).and_then(|db| db.save_resolution(&value)) {
+                Ok(saved) => { self.settings.resolution = saved.clone(); self.draft.resolution = saved; }
+                Err(error) => self.feedback(Err(error.to_string())),
+            },
             Msg::ServerOption(name, value) => { if value.is_empty() { self.draft.server_options.remove(&name); } else { self.draft.server_options.insert(name, value); } }
             Msg::ResetOption(name) => { self.draft.server_options.remove(&name); }
             Msg::FindOption(value) => self.option_filter = value,
@@ -940,6 +944,16 @@ fn wait_for_opener(cmd:&mut std::process::Command,limit:std::time::Duration)->an
 #[cfg(test)]
 mod flow_tests {
     use super::*;
+    #[test]
+    fn resolution_choices_show_the_saved_size_even_one_set_by_hand() {
+        let (choices,chosen)=views::resolution_choices("");
+        assert_eq!((chosen.to_string().as_str(),choices.len()),("Original · 1024 × 768",6));
+        assert_eq!(views::resolution_choices("auto").1.to_string(),"Fit my screen");
+        assert_eq!(views::resolution_choices("1440X1080").1.to_string(),"1440 × 1080");
+        let (choices,chosen)=views::resolution_choices("2048x1536");
+        assert_eq!((chosen.to_string().as_str(),choices.len()),("2048 × 1536",7),"a hand-set size stays selectable");
+        assert_eq!(views::resolution_choices("banana").1.to_string(),"Original · 1024 × 768");
+    }
     #[test]
     fn host_inputs_for_bp_and_codes_are_checked_before_sending() {
         assert_eq!((give_bp_amount(" 5000 "), give_bp_amount("0"), give_bp_amount("x"), give_bp_amount("1000001")), (Some(5000), None, None, None));

@@ -12,6 +12,7 @@ use subtle::ConstantTimeEq;
 pub mod components;
 pub mod attach;
 pub mod runtime;
+pub mod resolution;
 
 pub async fn authorize<R: AsyncRead + Unpin>(stream: &mut R, cookie: &Token) -> anyhow::Result<()> {
     let mut given = [0; 32];

@@ -644,6 +644,11 @@ impl App {
             install = install.push(action(Icon::Play, "Continue to Play", Some(Msg::Page(Page::Play))).style(ui::primary));
         }
         body=body.push(ui::section("Game installation",install));
+        let (choices,chosen)=resolution_choices(&self.settings.resolution);
+        let display=column![ui::label_help("Resolution", "Draws the game larger and sharp, in its own 4:3 shape: menus and text are redrawn at the new size; card pictures keep the detail their files have. The game's own Full screen option (title screen, Options) gives a borderless window the size of your screen. Applies the next time you press Play; opening yo3.exe directly always uses the original size."),
+            pick_list(choices,Some(chosen),|choice:ResolutionChoice|Msg::Resolution(choice.value)).width(Fill).padding(12).style(ui::pick),
+            muted("Fit my screen picks the largest size your screen holds. Any other size is the game window's size.")].spacing(12);
+        body=body.push(ui::section("Display",display));
         if self.advanced_game {
             let (label, tone) = match self.direct_state {
                 yo3_desktop::direct::State::Disabled => ("Disabled", ui::Tone::Neutral),
@@ -801,4 +806,24 @@ pub(super) fn friendly_logs(logs: &str) -> String {
     }).collect::<Vec<_>>();
     if hidden>0 {shown.push(format!("{hidden} Wine diagnostic line{} hidden; full output is kept in exported logs.",if hidden==1{""}else{"s"}));}
     shown.join("\n")
+}
+
+/// The Display section's choices: the original size, the screen's, and common 4:3 sizes; a saved size not in the list
+/// (set by hand) is kept as a choice of its own.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct ResolutionChoice { value: String, label: String }
+impl std::fmt::Display for ResolutionChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.label) }
+}
+pub(super) fn resolution_choices(saved: &str) -> (Vec<ResolutionChoice>, ResolutionChoice) {
+    let size = |w: u16, h: u16| ResolutionChoice { value: format!("{w}x{h}"), label: format!("{w} × {h}") };
+    let mut choices = vec![ResolutionChoice { value: "off".into(), label: "Original · 1024 × 768".into() },
+        ResolutionChoice { value: "auto".into(), label: "Fit my screen".into() }];
+    choices.extend([(1280, 960), (1440, 1080), (1600, 1200), (1920, 1440)].map(|(w, h)| size(w, h)));
+    let saved = saved.parse::<yo3_launcher::resolution::Resolution>().unwrap_or_default().to_string();
+    let chosen = match choices.iter().find(|c| c.value == saved) {
+        Some(choice) => choice.clone(),
+        None => { let (w, h) = saved.split_once('x').unwrap_or(("", "")); let custom = ResolutionChoice { value: saved.clone(), label: format!("{w} × {h}") }; choices.push(custom.clone()); custom }
+    };
+    (choices, chosen)
 }

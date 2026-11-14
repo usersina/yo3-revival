@@ -14,6 +14,8 @@ struct Args {
     #[arg(long)] injector: Option<PathBuf>,
     #[arg(long)] dll: Option<PathBuf>,
     #[arg(long)] trace_dll: Option<PathBuf>,
+    /// Draw the game larger, sharp and in 4:3: WIDTHxHEIGHT for a window, auto for the largest the screen holds, or off
+    #[arg(long)] resolution: Option<yo3_launcher::resolution::Resolution>,
     #[arg(long)] wine_prefix: Option<PathBuf>,
     /// Desktop lifecycle pipe. Closing stdin or sending `stop` closes the game and revokes its session.
     #[arg(long)] control_stdin: bool,
@@ -124,6 +126,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         if let Some(prefix) = &args.wine_prefix { cmd.env("WINEPREFIX", prefix); }
         cmd
     };
+    if let Some(resolution) = args.resolution { cmd.env(yo3_launcher::resolution::ENV, resolution.to_string()); }
     if let Some(trace) = &args.trace_dll {
         #[cfg(windows)] cmd.arg(yo3_launcher::runtime::native_path(trace)?);
         #[cfg(not(windows))] {let path=trace.canonicalize()?;cmd.arg(initializing!(windows_path(&path, args.wine_prefix.as_deref()))?);}

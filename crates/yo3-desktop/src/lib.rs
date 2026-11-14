@@ -57,12 +57,14 @@ pub struct Settings {
     pub player_name: String,
     pub selected_server: Option<i64>,
     pub local_account: String,
+    /// The connection DLL's higher resolution ("" or "off", "auto", "WIDTHxHEIGHT"); see yo3_launcher::resolution.
+    pub resolution: String,
 }
 impl Default for Settings {
     fn default() -> Self {
         Self { advanced_mode: false, server_options: Default::default(), game_dir: yo3_data::default_game_dir().to_string_lossy().into(), wine_prefix: String::new(),
             host_address: "localhost".into(), data_dir: String::new(), bind_address: "0.0.0.0".into(), bind_interface: None, listen_port: 7443,
-            player_name: "Duelist".into(), selected_server: None, local_account: String::new() }
+            player_name: "Duelist".into(), selected_server: None, local_account: String::new(), resolution: String::new() }
     }
 }
 
@@ -176,6 +178,11 @@ impl LauncherDb {
     }
     pub fn save_mode(&self, advanced: bool) -> anyhow::Result<()> {
         let mut saved = self.settings()?; saved.advanced_mode = advanced; self.save_settings(&saved)
+    }
+    /// The higher resolution for the next Play, stored in its normal form ("off", "auto" or "WIDTHxHEIGHT").
+    pub fn save_resolution(&self, value: &str) -> anyhow::Result<String> {
+        let value = value.parse::<yo3_launcher::resolution::Resolution>().map_err(anyhow::Error::msg)?.to_string();
+        let mut saved = self.settings()?; saved.resolution = value.clone(); self.save_settings(&saved)?; Ok(value)
     }
     pub fn servers(&self) -> anyhow::Result<Vec<SavedServer>> {
         let mut stmt = self.conn.prepare("SELECT id,body FROM servers ORDER BY id")?;
@@ -523,6 +530,8 @@ impl Backend {
         let mut cmd = Command::new(&self.runtime.launcher);
         cmd.arg("--control-stdin").arg("--profile").arg(profile).arg("--game-dir").arg(&settings.game_dir).arg("--injector").arg(&self.runtime.injector).arg("--dll").arg(&self.runtime.dll);
         if !settings.wine_prefix.is_empty() { cmd.arg("--wine-prefix").arg(&settings.wine_prefix); }
+        let resolution = settings.resolution.parse::<yo3_launcher::resolution::Resolution>().map_err(anyhow::Error::msg)?;
+        if resolution != yo3_launcher::resolution::Resolution::Off { cmd.arg("--resolution").arg(resolution.to_string()); }
         cmd.arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id());
         cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
         let ready = self.root.join("profiles").join(format!("game-ready-{}-{}.json", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos()));
@@ -969,6 +978,23 @@ mod tests {
         for bad in ["", "https://host", "host:0", "host:no", ":7443", "host/path", "a b"] {
             assert!(server_address(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn resolution_is_saved_in_its_normal_form_and_old_settings_mean_off() {
+        let root = std::env::temp_dir().join(format!("yo3-desktop-resolution-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let db = LauncherDb::open(&root).unwrap();
+        let old: Settings = serde_json::from_value(serde_json::json!({"game_dir": "saved game", "bind_address": "127.0.0.1"})).unwrap();
+        assert_eq!(old.resolution, "", "settings saved before the option exist mean the original size");
+        assert_eq!("".parse::<yo3_launcher::resolution::Resolution>(), Ok(yo3_launcher::resolution::Resolution::Off));
+        db.save_settings(&Settings { game_dir: "kept".into(), ..Settings::default() }).unwrap();
+        assert_eq!(db.save_resolution("1440X1080").unwrap(), "1440x1080");
+        assert_eq!(db.save_resolution("Auto").unwrap(), "auto");
+        assert!(db.save_resolution("100x100").is_err() && db.save_resolution("banana").is_err());
+        let saved = db.settings().unwrap();
+        assert_eq!((saved.resolution.as_str(), saved.game_dir.as_str()), ("auto", "kept"), "a refused value keeps the last one and nothing else changes");
+        drop(db); let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
