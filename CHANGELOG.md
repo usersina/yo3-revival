@@ -10,7 +10,16 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.0.16 (2026-11-14)
+
+Avatar Settings works again, and Pegasus has met his match. Choose **Desktop** for the graphical app or **Scripts** for
+terminal commands. Both editions include the server, rules engine and required connection components. Original game
+files are not included. **Windows 7 is not supported.**
+
+Only the host needs to update: these changes are all in the server, and friends on v0.0.13 or later can still join.
+Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.16/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.16/docs/scripts.md).
 
 - **Fixed: Avatar Settings had nothing to pick.** Hair styles, eyes, clothes, the duel disk and titles were empty
   lists. Every player now starts with the game's free parts and the BEGINNER DUELIST title, and items bought in the

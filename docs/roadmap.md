@@ -41,6 +41,13 @@ Desktop archives also carry `yo3-revival.ico` and `yo3-revival.png` for custom s
 both platform archives. The in-game login news no longer includes the deck-onboarding notice; a front contract
 checks its removal alongside the existing news-format and engine-warning coverage.
 
+v0.0.16 release preparation (2026-11-14):
+
+- [x] The workspace package version and the local lockfile entries are `0.0.16`. The changelog describes Avatar
+  Settings' filled part lists, a new look reaching others at once, and Pegasus blind against a Millennium Eye wearer.
+  Server-only changes, same connection interface (3): players of v0.0.13 and later can still join. Checked live on two
+  private clients (Avatar Settings, a purchase, an Auto Duel, Pegasus with and without the Eye).
+
 v0.0.15 release preparation (2026-11-14):
 
 - [x] The workspace package version and the local lockfile entries are `0.0.15`. The changelog describes the 38 cards
