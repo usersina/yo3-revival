@@ -50,6 +50,21 @@ def canonical(answer):
     return {**answer, 'messages': out}
 
 
+# Keys only the native engine reports, which the sidecar never did: each monster's attribute and race in the field
+# report (e6f70ea, changed Types and Attributes), a card's own words for an option, question or hint (option_texts,
+# description_text, hint_text: the dialogs the connection DLL words). Ignored where the sidecar's answer lacks them.
+NATIVE_ONLY = {'attribute', 'race', 'description_text', 'hint_text', 'option_texts'}
+
+
+def without_native_only(node, native):
+    """The native answer without the NATIVE_ONLY keys the sidecar's answer doesn't have at the same place."""
+    if isinstance(node, dict) and isinstance(native, dict):
+        return {k: without_native_only(node.get(k), v) for k, v in native.items() if k in node or k not in NATIVE_ONLY}
+    if isinstance(node, list) and isinstance(native, list):
+        return [without_native_only(node[i] if i < len(node) else None, v) for i, v in enumerate(native)]
+    return native
+
+
 def first_difference(a, b, path='$'):
     if type(a) is not type(b) and not (isinstance(a, (int, float)) and isinstance(b, (int, float))):
         return path, a, b
@@ -85,6 +100,7 @@ for line in sys.stdin:
         node.stdin.write(line if line.endswith('\n') else line + '\n'); node.stdin.flush()
         expected = node.stdout.readline()
         a, b = json.loads(expected or 'null'), json.loads(answer or 'null')
+        b = without_native_only(a, b)
         if norm(a) != norm(b) and norm(canonical(a)) != norm(canonical(b)):
             a, b = canonical(a), canonical(b)
             where, x, y = first_difference(a, b)

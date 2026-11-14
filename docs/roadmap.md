@@ -1339,6 +1339,9 @@ Stop finding missing fields one crash at a time.
       and player hints, which follows the memory allocator (the core walks those effects by address). The bundles drop
       Node.js and ocgcore-wasm; the Windows build is one self-contained `.exe` and answers byte for byte like Linux's (Wine).
       Desktop 0.0.9 and older check an update for the sidecar's files, so the bundles keep short notes at those paths
+      Since then the native engine also reports fields the sidecar never had (each monster's attribute and race, a
+      card's own words for options, questions and hints): `parity.py` skips those where the sidecar lacks them
+      (2026-11-14; the duel check through it, 8 duels a test, passes)
 - [x] Translator, first part: the engine drives the duel session; its draws, turns and phases become engine commands,
       the client's idle prompt a command map of the legal commands, the client's card commands its responses; the CPU
       ends its turns at once (a placeholder bot, later replaced: see the placeholder CPU below) and other prompts are answered with defaults
