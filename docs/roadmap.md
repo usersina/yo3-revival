@@ -1073,15 +1073,35 @@ activated card goes, which Konami's server made too.
       Blue-Eyes Ultimate Dragon, Allure of Darkness, Spiritual Earth Art - Kurogane; and Rampaging Rhynos, Storm
       Shooter, Alien Infiltrator and Senet Switch, whose ProjectIgnis pre-errata scripts differ only in when the zone
       is chosen (a ruling, not the text).
-- [ ] Issue #7 stays open for the broader review. A scripted pass (CARD_Desc against the database's text and
-      ProjectIgnis' `(Pre-Errata)` entries) found more real differences, not yet overridden: Crush Card Virus (checks
-      the hand, field and draws until the opponent's 3rd turn), Brain Control (any face-up monster), Necrovalley (cards
-      in the Graveyard unaffected by card effects), Darkness Approaches (face-down in the same position), Imperial Order
-      (pays in your own Standby Phase), Future Fusion (materials sent on activation), Ultimate Tyranno (must attack
-      first, every monster), Red-Eyes Darkness Metal Dragon ("Once per turn", soft), and the Union monsters' old rules
-      (Main Phase only, Attack Position, battle destruction only for some: Y-Dragon Head, Z-Metal Tank, W-Wing Catapult,
-      Heavy Mech Support Platform, Armored Cybern). Minor: Gilasaurus, Twin-Headed Behemoth, Night Assailant, Wulf,
-      Sorciere de Fleur. The shop's exchange, Special Packs and card rental are issue #8 (done 2026-11-14, see M4).
+- [x] Errata overrides, third slice (2026-11-14): the cards a scripted pass found (CARD_Desc against the database's
+      text and ProjectIgnis' `(Pre-Errata)` entries in `cards-unofficial.cdb`). Crush Card Virus checks the opponent's
+      draws until the end of their 3rd turn, with no Deck destruction or damage shield; Brain Control takes any face-up
+      monster; Necrovalley lets a Graveyard card use its own effects ("except for their own effects"); Darkness
+      Approaches keeps the battle position; Imperial Order is paid, optionally, in your own Standby Phase only; Future
+      Fusion sends its materials on activation; Ultimate Tyranno must attack first and attack every monster (from
+      ProjectIgnis' `pre-errata/c511003009.lua`, flagged only in face-up Attack Position at your Battle Phase's
+      start); Red-Eyes Darkness Metal Dragon has no limit on its own Special Summon and a per-copy "Once per turn";
+      Twin-Headed Behemoth's End Phase summon is mandatory; Night Assailant can return another Night Assailant. The
+      Union cards share one fix, `aux.AddUnionProcedure`'s own old-rule switches: Y-Dragon Head, Z-Metal Tank and
+      W-Wing Catapult (`true`: Attack Position, 1 Union per monster, battle-only protection), Heavy Mech Support
+      Platform, Armored Cybern, Machina Gearframe and Machina Peacekeeper (`true, false`: the same, protecting from
+      any destruction, as their "would be destroyed" says); every other Union in the client already used the old
+      rules. 13 more engine tests (`session/errata.rs`), each failing with only its card's override removed (each
+      Union in its loop). Checking Necrovalley showed a loop: under ProjectIgnis' Necrovalley, a Sinister Serpent with
+      no limit at all was negated and triggered again forever (the Standby Phase's event comes again after each
+      chain), so Serpent keeps a per-copy once per turn, which is what one Standby Phase a turn gave in 2010.
+      Full card sweep (one seed of every card): 4,684 duels, 0 failures; 10 more seeds of the 10 changed cards not
+      activated there: 0 failures, Machina Gearframe, Machina Peacekeeper, Heavy Mech Support Platform and Red-Eyes
+      Darkness Metal Dragon activated in 2-6 duels each. The sweep's Decks hold no X-Head Cannon, V-Tiger Jet, Cyber
+      Dragon or Fusion materials, so Y-Dragon Head, Z-Metal Tank, W-Wing Catapult, Armored Cybern and Future Fusion
+      can't be used there (summoned in 9-10 duels, the Unions); Ultimate Tyranno's effects don't activate (summoned in
+      9). The engine tests cover those.
+      Left as they are: Gilasaurus (the same effect; whether the opponent's summon starts a chain isn't in the text),
+      Wulf, Lightsworn Beast (today's "Must be Special Summoned by a card effect" only rules out summons that aren't
+      card effects, a Fusion or Synchro Summon, which it can't get anyway), Sorciere de Fleur (the client's "can only be activated once per turn" is already by name).
+- [ ] Issue #7 stays open for whatever players find next: the scripted pass catches limits, numbers and ProjectIgnis'
+      known pre-errata cards, not every ruling. The shop's exchange, Special Packs and card rental are issue #8 (done
+      2026-11-14, see M4).
 
 ## ▶ Higher resolution (2026-11-14): issue #1's sharp 4:3
 

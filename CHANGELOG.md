@@ -12,16 +12,23 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
-- **Cards play by the text you read.** 21 more cards whose rules changed after 2012 now do what the game's own card
+- **Cards play by the text you read.** 38 more cards whose rules changed after 2012 now do what the game's own card
   text says: Sangan, Witch of the Black Forest, Sinister Serpent, Rescue Cat, Dark Strike Fighter, Catapult Turtle,
-  Goddess of Whim, Brionac and Mind Master have no once-per-turn limit; each Ancient Fairy Dragon, Dewloren and Second
-  Coin Toss can use its effect once per turn on its own; Dark Magician of Chaos adds its Spell when it is summoned;
-  Disk Commander draws every time it comes back from the Graveyard; Exchange of the Spirit needs 15 cards in your
-  Graveyard only; Makyura lets you activate any number of Traps from your hand, however it reached the Graveyard; Ring
-  of Destruction takes any face-up monster in either turn and hits both players for its ATK; Chaos Emperor Dragon
-  deals 300 for every card it sends; Temple of the Kings lets every Trap be activated the turn it is Set; Mausoleum of
-  the Emperor's LP payment is part of your Normal Summon; Imperial Custom's Continuous Traps can't be destroyed at
-  all.
+  Goddess of Whim, Brionac and Mind Master have no once-per-turn limit; each Ancient Fairy Dragon, Dewloren, Second
+  Coin Toss and Red-Eyes Darkness Metal Dragon can use its effect once per turn on its own; Dark Magician of Chaos adds
+  its Spell when it is summoned; Disk Commander draws every time it comes back from the Graveyard; Exchange of the
+  Spirit needs 15 cards in your Graveyard only; Makyura lets you activate any number of Traps from your hand, however
+  it reached the Graveyard; Ring of Destruction takes any face-up monster in either turn and hits both players for its
+  ATK; Chaos Emperor Dragon deals 300 for every card it sends; Temple of the Kings lets every Trap be activated the
+  turn it is Set; Mausoleum of the Emperor's LP payment is part of your Normal Summon; Imperial Custom's Continuous
+  Traps can't be destroyed at all. Crush Card Virus also checks the cards your opponent draws until their 3rd turn;
+  Brain Control takes any face-up monster, Synchro and Fusion Monsters too; Necrovalley lets a card in the Graveyard
+  use its own effect; Darkness Approaches keeps the monster's battle position; you pay for Imperial Order only in your
+  own Standby Phase, and may choose not to; Future Fusion sends its materials as soon as it is activated; Ultimate
+  Tyranno must attack first, and attack every monster; Twin-Headed Behemoth comes back by itself; Night Assailant can
+  return another Night Assailant; and Y-Dragon Head, Z-Metal Tank, W-Wing Catapult, Heavy Mech Support Platform,
+  Armored Cybern and the Machina Unions follow the old Union rules on your card text (back in Attack Position, and
+  the first three only protect from battle).
 - **Give borrowed cards back early.** In **Main Menu → Rental Card List**, the **Borrowed** tab now has a Return button
   (the round arrow under the list): pick a rental and press it, and the cards go back to their owner straight away, as
   if its term had ended. It works for rentals from friends and from the shop, and with servers from v0.0.13 on, so
