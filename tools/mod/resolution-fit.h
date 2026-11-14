@@ -64,4 +64,12 @@ static int yo3_unfit_edge_y(const Yo3Fit *f, int y) { return yo3_floor_div((y - 
 static void yo3_fit_rect(const Yo3Fit *f, long *l, long *t, long *r, long *b) {
     *l = yo3_fit_x(f, (int)*l); *t = yo3_fit_y(f, (int)*t); *r = yo3_fit_x(f, (int)*r); *b = yo3_fit_y(f, (int)*b);
 }
+/* Where a window of w x h at (left, top) goes to lie inside the work area (al, at, ar, ab): moved as little as possible,
+ * to the area's top left when it is larger. Irrlicht centres its window on the whole screen, so a window sized for the
+ * work area ("auto") can reach under the taskbar. */
+static void yo3_keep_inside(int left, int top, int w, int h, int al, int at, int ar, int ab, int *x, int *y) {
+    *x = left + w > ar ? ar - w : left; if (*x < al) *x = al;
+    *y = top + h > ab ? ab - h : top; if (*y < at) *y = at;
+}
+
 #endif

@@ -63,6 +63,17 @@ int main(void) {
     /* "auto": the largest 4:3 frame in the space available. */
     yo3_fit_largest(1024, 768, 1920, 1040, &w, &h); assert(w == 1386 && h == 1040);
     yo3_fit_largest(1024, 768, 1280, 1024, &w, &h); assert(w == 1280 && h == 960);
+    /* The window kept inside the work area (its left, top and size; the area's left, top, right, bottom). On the
+     * Windows 11 VM "auto" made a 1249x754 window centred on the 1280x800 screen, top 23, so its bottom sat under a
+     * 48-pixel taskbar: it moves up to the area's top. */
+    int x, y;
+    yo3_keep_inside(15, 23, 1249, 754, 0, 0, 1280, 752, &x, &y); assert(x == 15 && y == 0);
+    yo3_keep_inside(100, 50, 800, 600, 0, 0, 1280, 752, &x, &y); assert(x == 100 && y == 50); /* inside: unchanged */
+    yo3_keep_inside(-20, -30, 800, 600, 0, 0, 1280, 752, &x, &y); assert(x == 0 && y == 0);
+    yo3_keep_inside(900, 400, 800, 600, 0, 0, 1280, 752, &x, &y); assert(x == 480 && y == 152);
+    yo3_keep_inside(10, 10, 800, 600, 0, 48, 1280, 800, &x, &y); assert(x == 10 && y == 48); /* taskbar at the top */
+    yo3_keep_inside(40, 40, 1400, 900, 0, 0, 1280, 752, &x, &y); assert(x == 0 && y == 0); /* larger: top left */
+    yo3_keep_inside(2000, 100, 800, 600, 1920, 0, 3840, 1040, &x, &y); assert(x == 2000 && y == 100); /* 2nd monitor */
     puts("PASS: higher-resolution parsing, fitting and mapping");
     return 0;
 }

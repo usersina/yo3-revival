@@ -1049,15 +1049,15 @@ activated card goes, which Konami's server made too.
 - [x] Native Windows 11 (VM, 1280×800 screen, `--resolution auto`, 2026-11-14): the game chose its 1024×600 frame and
       drew it at 1233×723, sharp; title, login, map (hover labels and the game's cursor under the pointer), NPC talk,
       deck choice, janken and the 3D duel field drew right on native Direct3D 9, and a summon by click worked.
-- [ ] **Exit crash, native Windows only:** closing the window in the middle of a duel with the higher resolution on
-      ends in an access violation in DuelManager's destructor (`0x50E639`, writing the "remove" flag `+0x28` of its
-      duel component `+0x70`, which the game has already destroyed): 2 of 2 runs; 0 of 2 with the resolution off, none
-      under Wine, none when closing on the map. The game is quitting anyway, but the launcher reports "Game exited with
-      an error". A latent use-after-free in the game's teardown that the resolution mode makes fatal; finding which
-      hook changes the order needs a debugger in the VM.
-- [ ] `auto` sizes the window for the work area but Irrlicht places it for the whole screen, so on the VM its bottom
-      25 px sat under the taskbar (once Windows moved it up by itself). Moving the new window into the work area
-      would fix it.
+- [x] Exit crash, native Windows: closing the window mid-duel with the higher resolution on faulted in DuelManager's
+      destructor (`0x50E639`, flagging its duel component `+0x70` whose pool was already decommitted; 2 of 2 runs, 0 of
+      2 with the resolution off). A temporary exception logger in the DLL showed the region `MEM_RESERVE`/no access and
+      the stack back to WinMain's end. Fixed by `tools/mod/teardown.h`, always on: the flag is written only while the
+      memory is there (`teardown-test.c`). Live: 0 of 2 after, and none under Wine.
+- [x] `auto` window placement: Irrlicht centres its window on the whole screen and moves it there again after showing
+      it, so one sized for the work area reached under the taskbar. `WM_WINDOWPOSCHANGING` now keeps the game's moves
+      in the monitor's work area (`yo3_keep_inside`, `resolution-test.c`), leaving the player's drags alone. Live on
+      the VM: the window's top at the screen's top, its bottom just above the taskbar, the map's bottom bar visible.
 - [ ] A Japanese or Korean IME, a second monitor.
 - [ ] Direct start: the DLL loads after the window exists, so `yo3.exe` opened directly stays 1024×768. The WINMM
       loader would have to install the window and Direct3D hooks itself.

@@ -103,13 +103,38 @@ static int res_window_fit(HWND window, Yo3Fit *f) {
 static int res_mouse_fit(Yo3Fit *f) { return res_window_fit(res_window, f); }
 static short res_clamp16(int v) { return (short)(v < -32768 ? -32768 : v > 32767 ? 32767 : v); }
 
+/* Every move the game makes of a captioned window lands in its monitor's work area (yo3_keep_inside): Irrlicht centres
+ * the window on the whole screen, and moves it there again after showing it, so one sized for the work area ("auto")
+ * reached under the taskbar (the Windows 11 VM). Moves the player makes by dragging are left alone. */
+static int res_dragging;
+static void res_keep_in_work_area(HWND window, WINDOWPOS *p) {
+    /* Minimizing moves the window to -32000,-32000 through this same message: minimized and maximized windows are left
+     * to Windows. */
+    if (res_fullscreen || res_dragging || !p || IsIconic(window) || IsZoomed(window) || p->x <= -32000 || p->y <= -32000) return;
+    RECT r;
+    if (!GetWindowRect(window, &r)) return;
+    if (p->flags & SWP_NOMOVE) { /* only when it is being shown where it was made: then it may move too */
+        if (!(p->flags & SWP_SHOWWINDOW)) return;
+        p->x = r.left; p->y = r.top;
+    }
+    int w = (p->flags & SWP_NOSIZE) ? r.right - r.left : p->cx, h = (p->flags & SWP_NOSIZE) ? r.bottom - r.top : p->cy;
+    RECT next = {p->x, p->y, p->x + w, p->y + h};
+    MONITORINFO mi; memset(&mi, 0, sizeof mi); mi.cbSize = sizeof mi;
+    if (!GetMonitorInfoA(MonitorFromRect(&next, MONITOR_DEFAULTTONEAREST), &mi)) return;
+    yo3_keep_inside(p->x, p->y, w, h, mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom, &p->x, &p->y);
+    if (p->x != r.left || p->y != r.top) p->flags &= ~SWP_NOMOVE;
+}
+
 static LRESULT CALLBACK res_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
     /* Each mode the game tries (0x40B370: fullscreen, then windowed, 768 then 600 high) makes a new window of this
      * class; the newest is the game's. All of them are translated, and the cursor follows the newest. */
     if (message == WM_NCCREATE || !res_window) res_window = window;
     Yo3Fit f;
+    if (message == WM_ENTERSIZEMOVE) res_dragging = 1;
+    else if (message == WM_EXITSIZEMOVE) res_dragging = 0;
     if (res_vw) {
-        if (message == WM_SIZE) l = MAKELPARAM(res_vw, res_vh);
+        if (message == WM_WINDOWPOSCHANGING) res_keep_in_work_area(window, (WINDOWPOS *)l);
+        else if (message == WM_SIZE) l = MAKELPARAM(res_vw, res_vh);
         else if (message >= WM_MOUSEFIRST && message <= 0x20e && res_window_fit(window, &f)) {
             if (message == WM_MOUSEWHEEL || message == 0x20e) { /* screen coordinates; 0x53A720 subtracts the client origin */
                 POINT origin = {0, 0}; ClientToScreen(window, &origin);
