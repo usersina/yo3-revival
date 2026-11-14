@@ -48,8 +48,8 @@ need_win() {
 # Game coordinates (the game's 1024x768 frame) -> window coordinates. With the connection DLL's higher resolution
 # (YO3_RESOLUTION) the window is larger and the frame sits in it scaled to fit and centred (tools/mod/resolution-fit.h).
 window_xy() {
-  local w=$1 x=$2 y=$3 gw gh
-  eval "$(xdotool getwindowgeometry --shell "$w" | sed -n 's/^WIDTH=/gw=/p; s/^HEIGHT=/gh=/p')"
+  local w=$1 x=$2 y=$3 gw=1024 gh=768
+  eval "$(xdotool getwindowgeometry --shell "$w" 2>/dev/null | sed -n 's/^WIDTH=\([0-9]*\)$/gw=\1/p; s/^HEIGHT=\([0-9]*\)$/gh=\1/p')"
   if (( gw == 1024 && (gh == 768 || gh == 600) )); then echo "$x $y"; return; fi
   local vh=768 cw ch
   if (( gw * vh <= gh * 1024 )); then cw=$gw; ch=$(( (gw * vh * 2 + 1024) / 2048 )); else ch=$gh; cw=$(( (gh * 1024 * 2 + vh) / (2 * vh) )); fi
