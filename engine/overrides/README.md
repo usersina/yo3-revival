@@ -12,7 +12,7 @@ says in a comment what it changes. These scripts are AGPL-3.0, like the ones the
 | `c24096228.lua` | Double Spell | Two Double Spells in the opponent's Graveyard checked each other forever (a Lua stack overflow). |
 | `c26202165.lua` | Sangan | No once-per-turn limit, and the added card's name isn't locked for the turn. |
 | `c78010363.lua` | Witch of the Black Forest | No once-per-turn limit, and the added card's name isn't locked for the turn. |
-| `c8131171.lua` | Sinister Serpent | No once-per-turn limit, and no "Sinister Serpent" banished afterwards. |
+| `c8131171.lua` | Sinister Serpent | No once-per-turn limit by name (each copy still returns once a turn), and no "Sinister Serpent" banished afterwards. |
 | `c14878871.lua` | Rescue Cat | No once-per-turn limit, and the summoned Beasts keep their effects. |
 | `c40737112.lua` | Dark Magician of Chaos | "When this card is Normal or Special Summoned" it adds a Spell (today: in the End Phase, once per turn); monsters it destroys by battle are removed from play instead of going to the Graveyard. |
 | `c50321796.lua` | Brionac, Dragon of the Ice Barrier | Returns cards "from the field", either player's; no once-per-turn limit. |

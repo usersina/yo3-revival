@@ -2,14 +2,17 @@
 --Sinister Serpent
 local s,id=GetID()
 function s.initial_effect(c)
-	--Add this card to the hand: the client's text has no once-per-turn limit and doesn't banish a "Sinister Serpent"
-	--afterwards (yo3-revival override: today's text adds both)
+	--Add this card to the hand: the client's text has no once-per-turn limit by name and doesn't banish a "Sinister
+	--Serpent" afterwards (yo3-revival override: today's text adds both). Each copy still returns once a turn: its one
+	--Standby Phase. Without that, a copy whose return was negated triggered again forever, as the phase's event
+	--comes again after each chain.
 	local e1=Effect.CreateEffect(c)
 	e1:SetDescription(aux.Stringid(id,0))
 	e1:SetCategory(CATEGORY_TOHAND)
 	e1:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_TRIGGER_O)
 	e1:SetCode(EVENT_PHASE|PHASE_STANDBY)
 	e1:SetRange(LOCATION_GRAVE)
+	e1:SetCountLimit(1)
 	e1:SetCondition(function(_,tp) return Duel.IsTurnPlayer(tp) end)
 	e1:SetTarget(s.target)
 	e1:SetOperation(s.operation)
