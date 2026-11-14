@@ -40,6 +40,13 @@ Desktop archives also carry `yo3-revival.ico` and `yo3-revival.png` for custom s
 both platform archives. The in-game login news no longer includes the deck-onboarding notice; a front contract
 checks its removal alongside the existing news-format and engine-warning coverage.
 
+v0.0.15 release preparation (2026-11-14):
+
+- [x] The workspace package version and the local lockfile entries are `0.0.15`. The changelog describes the 38 cards
+  that now play by their 2010–2012 text (#7) and the Rental Card List's Return button (#13). Same connection interface
+  (3) as v0.0.13: players of v0.0.13 and v0.0.14 can still join. The Return button was checked on two Linux clients and
+  on native Windows 11; duel music already changes with the LP gap (#14, checked live, docs corrected).
+
 v0.0.14 release preparation (2026-11-14):
 
 - [x] The workspace package version and the local lockfile entries are `0.0.14`. The changelog describes Season 16 as

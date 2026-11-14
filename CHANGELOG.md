@@ -10,7 +10,17 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.0.15 (2026-11-14)
+
+Cards that play by the text on them, and a way to give rented cards back early. Choose **Desktop** for the graphical
+app or **Scripts** for terminal commands. Both editions include the server, rules engine and required connection
+components. Original game files are not included. **Windows 7 is not supported.**
+
+Friends on v0.0.13 or v0.0.14 can still join a v0.0.15 host: the connection files work together. The card changes
+come from the host's rules engine, so they apply once the host updates; the Return button appears for each player who
+updates. Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.15/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.15/docs/scripts.md).
 
 - **Cards play by the text you read.** 38 more cards whose rules changed after 2012 now do what the game's own card
   text says: Sangan, Witch of the Black Forest, Sinister Serpent, Rescue Cat, Dark Strike Fighter, Catapult Turtle,
