@@ -30,6 +30,7 @@ says in a comment what it changes. These scripts are AGPL-3.0, like the ones the
 | `c70583986.lua` | Dewloren, Tiger King of the Ice Barrier | "Once per turn" for each copy (today: once per turn by name). |
 | `c96782886.lua` | Mind Master | Can't Tribute a "Mind Master"; no once-per-turn limit. |
 | `c9995766.lua` | Imperial Custom | Continuous Traps "cannot be destroyed", by anything (today: by battle or card effect). No engine test: it differs only for a Continuous Trap destroyed neither by battle nor by an effect (by a rule or as a cost). |
+| `c80921533.lua` | Mausoleum of the Emperor | Paying the LP is part of the Normal Summon or Set (today: an effect the turn player activates first). |
 
 When `engine/fetch.sh --update` moves the scripts' pin, compare each upstream script with the one it was copied from: an
 upstream fix may make an override unneeded, or need carrying over.

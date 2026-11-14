@@ -15,6 +15,8 @@ const MYSTICAL_SPACE_TYPHOON: u32 = 5318639; // a Spell
 const MONSTER_REBORN: u32 = 83764718;
 const UP: u32 = decode::POSITION_FACEUP_ATTACK;
 const SET: u32 = 0xA; // POS_FACEDOWN, for a Set Spell or Trap
+/// A location for `Play::new` only: the Field Zone (the Spell & Trap Zone's sixth).
+const FIELD_ZONE: u32 = 0x100;
 
 const MSG_RETRY: u64 = 1;
 const MSG_DAMAGE: u64 = 91;
@@ -58,6 +60,7 @@ impl Play {
         for &(team, code, location, position) in cards {
             let next = zones.entry((team, location)).or_default();
             let (location, sequence) = match location {
+                FIELD_ZONE => (LOCATION_SZONE, 5),
                 LOCATION_MZONE | LOCATION_SZONE => (location, *next),
                 _ => (location, 0),
             };
@@ -510,4 +513,21 @@ fn mind_master_cant_tribute_a_mind_master() {
     let mut play = play!(&cards);
     play.activate(MIND_MASTER);
     assert!(play.can_activate(MIND_MASTER), "no once-per-turn limit: {}", play.prompt);
+}
+
+#[test]
+fn mausoleum_of_the_emperor_is_part_of_the_normal_summon() {
+    // engine/overrides/c80921533.lua: "Both players can Normal Summon or Set monsters without Tributing, by paying 1000
+    // Life Points x the number of monsters needed"; today's text makes it an effect the turn player activates first.
+    const MAUSOLEUM_OF_THE_EMPEROR: u32 = 80921533;
+    let mut play = play!(&[(0, MAUSOLEUM_OF_THE_EMPEROR, FIELD_ZONE, UP), (0, SUMMONED_SKULL, LOCATION_HAND, UP), (0, BLUE_EYES_WHITE_DRAGON, LOCATION_HAND, UP), (1, SUMMONED_SKULL, LOCATION_HAND, UP)]);
+    assert!(!play.can_activate(MAUSOLEUM_OF_THE_EMPEROR), "{}", play.prompt);
+    play.summon(BLUE_EYES_WHITE_DRAGON);
+    assert_eq!(play.cards(0, LOCATION_MZONE), [BLUE_EYES_WHITE_DRAGON]);
+    assert_eq!(play.lp(0), 6000, "two Tributes' worth");
+    play.end_turn();
+    assert_eq!(play.idle()["player"], 1);
+    assert!(play.find("summons", SUMMONED_SKULL, None).is_some(), "the opponent's too: {}", play.prompt);
+    play.summon(SUMMONED_SKULL);
+    assert_eq!(play.lp(1), 7000);
 }
