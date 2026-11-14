@@ -11,7 +11,8 @@
  *     fullscreen request becomes a borderless window the size of the screen). The device has SetViewport,
  *     SetScissorRect, Clear and SetRenderTarget wrapped: while the back buffer is the render target, viewports,
  *     scissor rectangles and cleared rectangles in the game's frame are scaled into the content area; GetViewport and
- *     GetScissorRect answer in the game's frame. Every vertex the game, Irrlicht and Scaleform send is transformed
+ *     GetScissorRect answer in the game's frame. Only calls from yo3.exe (which links Irrlicht and Scaleform) are
+ *     scaled: Direct3D's own uses of these slots pass untouched. Every vertex the game, Irrlicht and Scaleform send is transformed
  *     (FVFs 0x152, 0x252, 0x140352, shaders), so the viewport carries all of it; textures stay their own size.
  *     Present clears the bars beside a content area that doesn't fill the buffer;
  *   - the mouse: Irrlicht's window procedure (0x53A720) is wrapped through the class registration (0x53B05A): mouse
@@ -36,8 +37,6 @@ static WNDPROC res_game_proc;
 static Yo3Fit res_draw;                 /* the game's frame in the back buffer */
 static int res_draw_ready, res_rt_back = 1, res_depth;
 static IDirect3DSurface9 *res_back;     /* identity only: the swap chain's back buffer */
-static D3DVIEWPORT9 res_viewport;       /* the game's frame */
-static RECT res_scissor;
 
 static void res_log(const char *format, ...) {
     char text[300]; va_list args; va_start(args, format);
@@ -198,7 +197,11 @@ static HRESULT (WINAPI *res_set_scissor)(IDirect3DDevice9 *, const RECT *);
 static HRESULT (WINAPI *res_get_scissor)(IDirect3DDevice9 *, RECT *);
 static HRESULT (WINAPI *res_stretch)(IDirect3DDevice9 *, IDirect3DSurface9 *, const RECT *, IDirect3DSurface9 *, const RECT *, D3DTEXTUREFILTERTYPE);
 
-static int res_active(void) { return res_draw_ready && res_rt_back && !res_depth; }
+/* Only the game's own calls are in its frame: Irrlicht and Scaleform are linked into yo3.exe. Direct3D itself may call
+ * these slots too (DXVK's state blocks re-apply a viewport they captured, which is already real), and those pass. */
+static uintptr_t res_image_size;
+static int res_game(void *caller) { return (uintptr_t)caller - yo3_game_image_base < res_image_size; }
+static int res_active(void *caller) { return res_draw_ready && res_rt_back && !res_depth && res_game(caller); }
 
 /* The game's present parameters, for the real window: its client area, windowed. Returns whether they changed. */
 static int res_parameters(D3DPRESENT_PARAMETERS *pp, HWND window) {
@@ -211,6 +214,21 @@ static int res_parameters(D3DPRESENT_PARAMETERS *pp, HWND window) {
     return 1;
 }
 
+/* A viewport or scissor rectangle in the game's frame, set scaled; and read back into the game's frame. */
+static HRESULT res_viewport_in_frame(IDirect3DDevice9 *device, const D3DVIEWPORT9 *v) {
+    long l = (long)v->X, t = (long)v->Y, r = (long)(v->X + v->Width), b = (long)(v->Y + v->Height);
+    yo3_fit_rect(&res_draw, &l, &t, &r, &b);
+    if (r <= l) r = l + 1;
+    if (b <= t) b = t + 1;
+    D3DVIEWPORT9 real = {(DWORD)l, (DWORD)t, (DWORD)(r - l), (DWORD)(b - t), v->MinZ, v->MaxZ};
+    return res_set_viewport(device, &real);
+}
+static HRESULT res_scissor_in_frame(IDirect3DDevice9 *device, const RECT *s) {
+    long l = s->left, t = s->top, r = s->right, b = s->bottom; yo3_fit_rect(&res_draw, &l, &t, &r, &b);
+    RECT real = {l, t, r, b};
+    return res_set_scissor(device, &real);
+}
+
 /* After a device is made or reset: the back buffer's identity, and the full viewport in the game's frame. */
 static void res_device_ready(IDirect3DDevice9 *device, const D3DPRESENT_PARAMETERS *pp) {
     IDirect3DSurface9 *back = NULL;
@@ -219,58 +237,53 @@ static void res_device_ready(IDirect3DDevice9 *device, const D3DPRESENT_PARAMETE
     }
     yo3_fit(&res_draw, res_vw, res_vh, (int)pp->BackBufferWidth, (int)pp->BackBufferHeight);
     res_draw_ready = 1; res_rt_back = 1;
-    D3DVIEWPORT9 full = {0, 0, (DWORD)res_vw, (DWORD)res_vh, 0.0f, 1.0f}; res_viewport = full;
-    SetRect(&res_scissor, 0, 0, res_vw, res_vh);
-    D3DVIEWPORT9 real = {(DWORD)res_draw.ox, (DWORD)res_draw.oy, (DWORD)res_draw.cw, (DWORD)res_draw.ch, 0.0f, 1.0f};
-    res_set_viewport(device, &real);
-    RECT scissor = {res_draw.ox, res_draw.oy, res_draw.ox + res_draw.cw, res_draw.oy + res_draw.ch};
-    res_set_scissor(device, &scissor);
+    D3DVIEWPORT9 full = {0, 0, (DWORD)res_vw, (DWORD)res_vh, 0.0f, 1.0f}; RECT all = {0, 0, res_vw, res_vh};
+    res_viewport_in_frame(device, &full); res_scissor_in_frame(device, &all);
 }
 
 static HRESULT WINAPI res_set_viewport_hook(IDirect3DDevice9 *device, const D3DVIEWPORT9 *v) {
-    if (!v || !res_active()) return res_set_viewport(device, v);
+    if (res_draw_ready && !res_game(__builtin_return_address(0))) res_first(11, "SetViewport passed through", __builtin_return_address(0));
+    if (!v || !res_active(__builtin_return_address(0))) return res_set_viewport(device, v);
     res_first(2, "SetViewport", __builtin_return_address(0));
-    long l = (long)v->X, t = (long)v->Y, r = (long)(v->X + v->Width), b = (long)(v->Y + v->Height);
-    yo3_fit_rect(&res_draw, &l, &t, &r, &b);
-    if (r <= l) r = l + 1;
-    if (b <= t) b = t + 1;
-    D3DVIEWPORT9 real = {(DWORD)l, (DWORD)t, (DWORD)(r - l), (DWORD)(b - t), v->MinZ, v->MaxZ};
-    HRESULT hr = res_set_viewport(device, &real);
-    if (SUCCEEDED(hr)) res_viewport = *v;
-    return hr;
+    return res_viewport_in_frame(device, v);
 }
 static HRESULT WINAPI res_get_viewport_hook(IDirect3DDevice9 *device, D3DVIEWPORT9 *v) {
-    if (!v || !res_active()) return res_get_viewport(device, v);
-    *v = res_viewport; return D3D_OK;
-}
-static HRESULT WINAPI res_set_scissor_hook(IDirect3DDevice9 *device, const RECT *s) {
-    if (!s || !res_active()) return res_set_scissor(device, s);
-    res_first(3, "SetScissorRect", __builtin_return_address(0));
-    long l = s->left, t = s->top, r = s->right, b = s->bottom; yo3_fit_rect(&res_draw, &l, &t, &r, &b);
-    RECT real = {l, t, r, b};
-    HRESULT hr = res_set_scissor(device, &real);
-    if (SUCCEEDED(hr)) res_scissor = *s;
+    HRESULT hr = res_get_viewport(device, v);
+    if (FAILED(hr) || !v || !res_active(__builtin_return_address(0))) return hr;
+    int l = yo3_unfit_edge_x(&res_draw, (int)v->X), t = yo3_unfit_edge_y(&res_draw, (int)v->Y);
+    int r = yo3_unfit_edge_x(&res_draw, (int)(v->X + v->Width)), b = yo3_unfit_edge_y(&res_draw, (int)(v->Y + v->Height));
+    v->X = (DWORD)(l < 0 ? 0 : l); v->Y = (DWORD)(t < 0 ? 0 : t);
+    v->Width = (DWORD)(r > l ? r - l : 1); v->Height = (DWORD)(b > t ? b - t : 1);
     return hr;
 }
+static HRESULT WINAPI res_set_scissor_hook(IDirect3DDevice9 *device, const RECT *s) {
+    if (res_draw_ready && !res_game(__builtin_return_address(0))) res_first(12, "SetScissorRect passed through", __builtin_return_address(0));
+    if (!s || !res_active(__builtin_return_address(0))) return res_set_scissor(device, s);
+    res_first(3, "SetScissorRect", __builtin_return_address(0));
+    return res_scissor_in_frame(device, s);
+}
 static HRESULT WINAPI res_get_scissor_hook(IDirect3DDevice9 *device, RECT *s) {
-    if (!s || !res_active()) return res_get_scissor(device, s);
-    *s = res_scissor; return D3D_OK;
+    HRESULT hr = res_get_scissor(device, s);
+    if (FAILED(hr) || !s || !res_active(__builtin_return_address(0))) return hr;
+    SetRect(s, yo3_unfit_edge_x(&res_draw, s->left), yo3_unfit_edge_y(&res_draw, s->top),
+        yo3_unfit_edge_x(&res_draw, s->right), yo3_unfit_edge_y(&res_draw, s->bottom));
+    return hr;
 }
 /* Setting a render target resets the viewport and scissor rectangle to the whole target: for the back buffer that
- * is the game's whole frame, so the content area. */
+ * is the game's whole frame, so the content area. Any caller's target counts for which one is set. */
 static HRESULT WINAPI res_set_target_hook(IDirect3DDevice9 *device, DWORD index, IDirect3DSurface9 *surface) {
     if (!res_draw_ready || res_depth || index) return res_set_target(device, index, surface);
     ++res_depth; HRESULT hr = res_set_target(device, index, surface); --res_depth;
     if (FAILED(hr)) return hr;
     res_rt_back = surface == res_back;
+    if (!res_game(__builtin_return_address(0))) return hr;
     if (!res_rt_back) { res_first(4, "SetRenderTarget (a texture)", __builtin_return_address(0)); return hr; }
-    D3DVIEWPORT9 full = {0, 0, (DWORD)res_vw, (DWORD)res_vh, 0.0f, 1.0f};
-    res_set_viewport_hook(device, &full);
-    RECT all = {0, 0, res_vw, res_vh}; res_set_scissor_hook(device, &all);
+    D3DVIEWPORT9 full = {0, 0, (DWORD)res_vw, (DWORD)res_vh, 0.0f, 1.0f}; RECT all = {0, 0, res_vw, res_vh};
+    res_viewport_in_frame(device, &full); res_scissor_in_frame(device, &all);
     return hr;
 }
 static HRESULT WINAPI res_clear_hook(IDirect3DDevice9 *device, DWORD count, const D3DRECT *rects, DWORD flags, D3DCOLOR color, float z, DWORD stencil) {
-    if (!count || !rects || !res_active()) return res_clear(device, count, rects, flags, color, z, stencil);
+    if (!count || !rects || !res_active(__builtin_return_address(0))) return res_clear(device, count, rects, flags, color, z, stencil);
     res_first(5, "Clear with rectangles", __builtin_return_address(0));
     D3DRECT real[16]; DWORD done = 0; HRESULT hr = D3D_OK;
     while (done < count && SUCCEEDED(hr)) {
@@ -285,7 +298,8 @@ static HRESULT WINAPI res_clear_hook(IDirect3DDevice9 *device, DWORD count, cons
 }
 static HRESULT WINAPI res_stretch_hook(IDirect3DDevice9 *device, IDirect3DSurface9 *from, const RECT *from_rect,
     IDirect3DSurface9 *to, const RECT *to_rect, D3DTEXTUREFILTERTYPE filter) {
-    if (!res_draw_ready || res_depth || (from != res_back && to != res_back)) return res_stretch(device, from, from_rect, to, to_rect, filter);
+    if (!res_draw_ready || res_depth || !res_game(__builtin_return_address(0)) || (from != res_back && to != res_back))
+        return res_stretch(device, from, from_rect, to, to_rect, filter);
     res_first(6, "StretchRect with the back buffer", __builtin_return_address(0));
     /* The back buffer's part is the game's frame: given in it, or all of it when no rectangle is given. */
     RECT a, b; long l, t, r, bt;
@@ -303,7 +317,7 @@ static HRESULT WINAPI res_stretch_hook(IDirect3DDevice9 *device, IDirect3DSurfac
 }
 /* The bars outside the content area are never drawn by the game: clear them before each frame is shown. */
 static HRESULT WINAPI res_present_hook(IDirect3DDevice9 *device, const RECT *from, const RECT *to, HWND window, const RGNDATA *dirty) {
-    if (res_draw_ready && !res_depth) {
+    if (res_draw_ready && !res_depth && res_game(__builtin_return_address(0))) {
         res_first(7, "Present", __builtin_return_address(0));
         if (from || to) res_first(8, "Present with rectangles", __builtin_return_address(0));
         if (res_rt_back && (res_draw.cw < res_draw.rw || res_draw.ch < res_draw.rh)) {
@@ -418,6 +432,7 @@ static const char *resolution_install(void) {
     BYTE *base = (BYTE *)GetModuleHandleA(NULL);
     IMAGE_NT_HEADERS32 *nt = (IMAGE_NT_HEADERS32 *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
     if (nt->OptionalHeader.SizeOfImage < 0x42e000) return unsupported; /* the contract fixtures: no game to scale */
+    res_image_size = nt->OptionalHeader.SizeOfImage;
     /* 0x5441FF: push "Direct3DCreate9"; push eax; call [GetProcAddress]. */
     static const BYTE d3d[] = {0x68,0x40,0x61,0x7b,0x00, 0x50, 0xff,0x15,0xb4,0x81,0x75,0x00};
     static const unsigned d3d_slots[] = {1, 8};
@@ -448,6 +463,15 @@ static const char *resolution_install(void) {
         || !res_code(0x53a620, cursor, sizeof cursor, cursor_slots, 1) || !res_code(0x53a65d, position, sizeof position, NULL, 0)
         || !res_code(0x53a37b, border, sizeof border, border_slots, 1))
         return unsupported;
+    /* The direct-start loader loads this DLL at the game's first [Yo3] INI read, after 0x40B370 made the window and
+     * the device: too late to scale either, so nothing is installed (the game runs at its own size). */
+    for (HWND window = NULL; (window = FindWindowExA(NULL, window, "CIrrDeviceWin32", NULL));) {
+        DWORD owner = 0; GetWindowThreadProcessId(window, &owner);
+        if (owner == GetCurrentProcessId()) {
+            res_log("[YO3 MOD] resolution: %s requested, but the game's window already exists (direct start); not used", text);
+            return NULL;
+        }
+    }
     if (!(hook("GetProcAddress", (void *)res_get_proc_hook, (void **)&res_get_proc)
         && hook("RegisterClassExA", (void *)res_register_hook, (void **)&res_register)
         && hook("AdjustWindowRect", (void *)res_adjust_hook, (void **)&res_adjust)

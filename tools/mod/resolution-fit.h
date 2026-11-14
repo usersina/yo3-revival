@@ -55,6 +55,11 @@ static int yo3_fit_y(const Yo3Fit *f, int y) { return f->oy + yo3_floor_div(y * 
 static int yo3_unfit_x(const Yo3Fit *f, int x) { return yo3_floor_div(((x - f->ox) * 2 + 1) * f->vw, 2 * f->cw); }
 static int yo3_unfit_y(const Yo3Fit *f, int y) { return yo3_floor_div(((y - f->oy) * 2 + 1) * f->vh, 2 * f->ch); }
 
+/* Real → virtual for an edge (of a viewport read back from Direct3D): the nearest virtual edge, which undoes
+ * yo3_fit_x/y exactly whenever the frame is drawn at least as large as it is. */
+static int yo3_unfit_edge_x(const Yo3Fit *f, int x) { return yo3_floor_div((x - f->ox) * f->vw * 2 + f->cw, 2 * f->cw); }
+static int yo3_unfit_edge_y(const Yo3Fit *f, int y) { return yo3_floor_div((y - f->oy) * f->vh * 2 + f->ch, 2 * f->ch); }
+
 /* A virtual rectangle (left, top, right, bottom exclusive) → real. */
 static void yo3_fit_rect(const Yo3Fit *f, long *l, long *t, long *r, long *b) {
     *l = yo3_fit_x(f, (int)*l); *t = yo3_fit_y(f, (int)*t); *r = yo3_fit_x(f, (int)*r); *b = yo3_fit_y(f, (int)*b);

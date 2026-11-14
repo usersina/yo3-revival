@@ -52,6 +52,14 @@ int main(void) {
     yo3_fit_rect(&f, &l, &t, &r, &b); yo3_fit_rect(&f, &l2, &t2, &r2, &b2);
     assert(l == 0 && r == l2 && r2 == 1600 && b == 1200);
 
+    /* Edges read back from Direct3D map to the edges that were set, at every size at least the frame's. */
+    const int sizes[][2] = {{1024, 768}, {1440, 1080}, {1440, 1060}, {1920, 1080}, {1600, 900}, {1397, 1048}, {2560, 1440}, {7680, 4320}};
+    for (unsigned i = 0; i < sizeof sizes / sizeof *sizes; ++i) {
+        yo3_fit(&f, 1024, 768, sizes[i][0], sizes[i][1]);
+        for (int v = 0; v <= 1024; ++v) assert(yo3_unfit_edge_x(&f, yo3_fit_x(&f, v)) == v);
+        for (int v = 0; v <= 768; ++v) assert(yo3_unfit_edge_y(&f, yo3_fit_y(&f, v)) == v);
+    }
+
     /* "auto": the largest 4:3 frame in the space available. */
     yo3_fit_largest(1024, 768, 1920, 1040, &w, &h); assert(w == 1386 && h == 1040);
     yo3_fit_largest(1024, 768, 1280, 1024, &w, &h); assert(w == 1280 && h == 960);
