@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
     SetEnvironmentVariableA("YO3_LOCAL_DUEL", port); SetEnvironmentVariableA("YO3_LOCAL_HTTP", port);
     SetEnvironmentVariableA("YO3_LOCAL_COOKIE", "0707070707070707070707070707070707070707070707070707070707070707");
     if(argc==3 && (!strcmp(argv[2],"mismatched-game") || !strcmp(argv[2],"mismatched-login")
-        || !strcmp(argv[2],"mismatched-duel") || !strcmp(argv[2],"mismatched-update"))) {
+        || !strcmp(argv[2],"mismatched-duel") || !strcmp(argv[2],"mismatched-update") || !strcmp(argv[2],"resolution"))) {
 #ifdef YO3_TEST_BAD_GAME_HOOK
         if(strcmp(argv[2],"mismatched-login")) {
             /* Let the login guard pass so the independent starter-dispatch guard is exercised too. */

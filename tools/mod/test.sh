@@ -27,6 +27,15 @@ for pair in 'mismatched-login:mod-login-hook' 'mismatched-game:mod-starter-hook'
   grep -q "stage=${pair#*:}" "$LOG" || { command cat "$LOG" >&2; exit 1; }
 done
 echo 'PASS: incompatible game hooks and missing launch state identify their failure stage'
+wine "$MOD/yo3-resolution-test.exe"
+# The higher resolution (resolution.h) is opt in: an invalid value, or a game whose drawing code isn't v1.153's (this
+# fixture has none), refuses to start; off loads as usual.
+for pair in 'banana:YO3_RESOLUTION must be' '1440x1080:drawing code is unsupported' 'auto:drawing code is unsupported'; do
+  YO3_RESOLUTION="${pair%%:*}" wine "$MOD/yo3-auth-test.exe" "$DLL" resolution >"$LOG" 2>&1 || { command cat "$LOG" >&2; exit 1; }
+  grep -q "stage=mod-resolution: .*${pair#*:}" "$LOG" || { command cat "$LOG" >&2; exit 1; }
+done
+YO3_RESOLUTION=off wine "$MOD/yo3-auth-test.exe" "$DLL" >"$LOG" 2>&1 || { command cat "$LOG" >&2; exit 1; }
+echo 'PASS: the higher resolution is off unless asked for, and refuses a bad value or an unsupported game'
 wine "$MOD/yo3-auth-launch.exe" --check-runtime "$(winepath -w "$MOD/yo3-auth-test.exe" 2>/dev/null)" >"$LOG" 2>&1 || { command cat "$LOG" >&2; exit 1; }
 grep -q 'Game runtime prerequisites available' "$LOG"
 wine "$MOD/yo3-auth-launch.exe" --check-runtime "$(winepath -w "$MOD/yo3-auth-runtime-test.exe" 2>/dev/null)" >"$LOG" 2>&1 || { command cat "$LOG" >&2; exit 1; }
