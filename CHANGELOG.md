@@ -38,6 +38,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Fixed:** a token equipped to Allure Queen stayed on the field after it left.
 - **Fixed:** summoning a Psychic with Brain Research Lab's extra Normal Summon could stop the duel with an error.
 - **Fixed:** Card Trooper could send a different number of cards than the one you picked.
+- **Goyo Guardian plays by its card text:** any Tuner will do for its Synchro Summon, not only an EARTH one.
+- **Fixed:** with two Double Spells in your opponent's Graveyard, a duel could freeze or stop with an error.
 
 ## v0.0.12 (2026-11-13)
 

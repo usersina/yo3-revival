@@ -682,4 +682,89 @@ mod tests {
         let lab = session.query(decode::QUERY_COUNTERS, 0, LOCATION_SZONE, 5).unwrap().expect("the Lab");
         assert_eq!(lab.counters, vec![(0x4, 1)], "the extra summon gave the Lab a Psychic Counter");
     }
+    /// A duel from `cards` (team, code, location, sequence, position) with ten Giant Orcs in each Deck, run to team 0's
+    /// first idle prompt, passing every chain chance: that prompt and what the core logged.
+    fn first_idle(cards: &[(u8, u32, u32, u32, u32)]) -> Option<(Json, Vec<String>)> {
+        let vendor = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../engine/vendor");
+        if !vendor.join("BabelCDB/cards.cdb").is_file() {
+            return None; // engine/fetch.sh not run
+        }
+        const GIANT_ORC: u32 = 73698349;
+        let mut session = Session::new(Cards::open(&vendor).expect("the card data"));
+        let mut duel = session.make_duel([1, 2, 3, 4], 8000, 0, session.log.clone()).unwrap();
+        for &(team, code, location, sequence, position) in cards {
+            duel.new_card(team, 0, code, team, location, sequence, position);
+        }
+        for team in 0..2 {
+            for _ in 0..10 {
+                duel.new_card(team, 0, GIANT_ORC, team, LOCATION_DECK, 0, POSITION_FACEDOWN_DEFENSE);
+            }
+        }
+        duel.start();
+        session.duel = Some(duel);
+        let (mut messages, mut status) = session.run().unwrap();
+        while status == "await" {
+            let prompt = messages.last().unwrap().clone();
+            match prompt["type"].as_u64() {
+                Some(16) => session.duel.as_mut().unwrap().respond(&crate::encode::response(&json!({"type": 8, "index": null}))),
+                Some(11) => return Some((prompt, std::mem::take(&mut session.log.borrow_mut().lines))),
+                _ => panic!("unexpected prompt before the first idle one: {prompt}"),
+            }
+            (messages, status) = session.run().unwrap();
+        }
+        panic!("the duel ended before an idle prompt");
+    }
+
+    #[test]
+    fn goyo_guardian_takes_any_tuner_as_its_2010_text_says() {
+        // engine/overrides/c7391448.lua: the client's text is "1 Tuner + 1 or more non-Tuner monsters"; ProjectIgnis'
+        // script (today's text) wants an EARTH Tuner, and Krebons is DARK.
+        const GOYO_GUARDIAN: u32 = 7391448; // Level 6
+        const KREBONS: u32 = 59575539; // a Level 2 DARK Tuner
+        const GIANT_ORC: u32 = 73698349; // a Level 4 DARK non-Tuner
+        let up = decode::POSITION_FACEUP_ATTACK;
+        let Some((idle, log)) = first_idle(&[
+            (0, KREBONS, LOCATION_MZONE, 0, up),
+            (0, GIANT_ORC, LOCATION_MZONE, 1, up),
+            (0, GOYO_GUARDIAN, LOCATION_EXTRA, 0, POSITION_FACEDOWN_DEFENSE),
+        ]) else {
+            return;
+        };
+        assert_eq!(log, Vec::<String>::new());
+        let summons = idle["special_summons"].as_array().unwrap();
+        assert!(
+            summons.iter().any(|m| m["code"] == GOYO_GUARDIAN && m["location"] == LOCATION_EXTRA),
+            "Goyo Guardian can be Synchro Summoned with Krebons: {idle}"
+        );
+    }
+
+    #[test]
+    fn double_spells_in_the_graveyard_dont_check_each_other_forever() {
+        // engine/overrides/c24096228.lua: with two Double Spells in the opponent's Graveyard, each one's activation
+        // check asked whether the other could be used, whose check asked the same of the first (a Lua stack overflow).
+        const DOUBLE_SPELL: u32 = 24096228;
+        const MYSTICAL_SPACE_TYPHOON: u32 = 5318639; // a Spell to discard, with nothing to target
+        const DIAN_KETO: u32 = 84257639; // a Spell Double Spell can use
+        let up = decode::POSITION_FACEUP_ATTACK;
+        let mut cards: Vec<(u8, u32, u32, u32, u32)> = vec![
+            (0, DOUBLE_SPELL, LOCATION_HAND, 0, up),
+            (0, MYSTICAL_SPACE_TYPHOON, LOCATION_HAND, 0, up),
+            (1, DOUBLE_SPELL, LOCATION_GRAVE, 0, up),
+            (1, DOUBLE_SPELL, LOCATION_GRAVE, 0, up),
+        ];
+        let can_activate = |idle: &Json| idle["activates"].as_array().unwrap().iter().any(|a| a["code"] == DOUBLE_SPELL && a["location"] == LOCATION_HAND);
+        // Without the override this position doesn't reach its idle prompt in ten minutes: give up after one.
+        let within_a_minute = |cards: Vec<(u8, u32, u32, u32, u32)>| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || tx.send(first_idle(&cards)));
+            rx.recv_timeout(std::time::Duration::from_secs(60)).expect("the idle prompt within a minute")
+        };
+        let Some((idle, log)) = within_a_minute(cards.clone()) else { return };
+        assert_eq!(log, Vec::<String>::new());
+        assert!(!can_activate(&idle), "only Double Spells to use, and each of those has only the other to use: {idle}");
+        cards.push((1, DIAN_KETO, LOCATION_GRAVE, 0, up));
+        let (idle, log) = within_a_minute(cards).unwrap();
+        assert_eq!(log, Vec::<String>::new());
+        assert!(can_activate(&idle), "Dian Keto can be used: {idle}");
+    }
 }

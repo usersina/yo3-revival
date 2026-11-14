@@ -1010,9 +1010,19 @@ activated card goes, which Konami's server made too.
       many cards" lists its numbers largest first (3, 2, 1), and the number dialog's answer took the first option at
       least as large, so 2 was sent as 3; it now takes the smallest such option (translate_contract). Double Spell's
       script recurses forever when the opponent's Graveyard holds two Double Spells (each one's activation check asks
-      the other's): ProjectIgnis' current script, not ours; with Goyo Guardian under issue #7's script overrides.
-- [ ] Found on the way, not ours: EDOPro's Goyo Guardian wants an EARTH Tuner (the 2010 text doesn't; issue #7, era
-      texts). The shop's exchange, Special Packs and card rental are issue #8 (done 2026-11-14, see M4).
+      the other's): ProjectIgnis' current script, not ours; fixed by an override, below.
+- [x] Card script overrides (2026-11-14, the first slice of issue #7, cards played by their 2010–2012 text): the engine
+      loads a script from `engine/overrides/` (tracked, AGPL like the scripts) before ProjectIgnis' of the same name;
+      both release editions ship it (`tools/engine-files.sh`, checked by `tools/test_package_editions.py`) and the
+      engine's `identity` fingerprints it with the scripts, so a recorded duel replays only on the same overrides.
+      Goyo Guardian takes any Tuner, as the client's own text (CARD_Desc, golden test) says; EDOPro's script wants an
+      EARTH Tuner (sweep, 10 seeds: summoned in 0 duels before, 2 after). Double Spell's activation check no longer
+      copies another Double Spell while one is being checked: before, the two in the Graveyard checked each other until
+      Lua's C stack overflowed, and with one in hand the idle prompt didn't come in ten minutes. Engine tests
+      `goyo_guardian_takes_any_tuner_as_its_2010_text_says`, `double_spells_in_the_graveyard_dont_check_each_other_forever`.
+- [ ] Issue #7 stays open for the broader review: other cards whose text changed after 2012 (errata) still play by
+      today's script. The shop's exchange, Special Packs and card rental are issue #8 (done 2026-11-14,
+      see M4).
 
 ## ▶ Higher resolution (2026-11-14): issue #1's sharp 4:3
 
