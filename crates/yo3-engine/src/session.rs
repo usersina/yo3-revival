@@ -593,4 +593,65 @@ mod tests {
         assert!(declarable(&card, &[0x2000, op(0x103), 0x1, op(0x102), op(0x4)]));
         assert!(declarable(&card, &[0xdd, op(0x101)]));
     }
+
+    #[test]
+    fn the_steps_queries_leave_the_cores_pending_arguments_alone() {
+        // Brain Research Lab (issue #9): a Psychic's extra Normal Summon hints the Lab, then queues its operation with
+        // the summoned card as its argument, and the core stops after the hint. The step loop's field report queried
+        // the monsters' stats there, and a stat effect's call took that argument, so the Lab's operation got no card.
+        let vendor = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../engine/vendor");
+        if !vendor.join("BabelCDB/cards.cdb").is_file() {
+            return; // engine/fetch.sh not run
+        }
+        const BRAIN_RESEARCH_LAB: u32 = 85668449;
+        const CHOSEN_BY_THE_WORLD_CHALICE: u32 = 22916281; // a Level 3 Psychic Normal Monster
+        const INSECT_QUEEN: u32 = 91512835; // its ATK is a Lua function's, called with (effect, card)
+        let mut session = Session::new(Cards::open(&vendor).expect("the card data"));
+        let mut duel = session.make_duel([1, 2, 3, 4], 8000, 0, session.log.clone()).unwrap();
+        duel.new_card(0, 0, BRAIN_RESEARCH_LAB, 0, LOCATION_SZONE, 5, decode::POSITION_FACEUP_ATTACK);
+        duel.new_card(1, 0, INSECT_QUEEN, 1, LOCATION_MZONE, 0, decode::POSITION_FACEUP_ATTACK);
+        for _ in 0..2 {
+            duel.new_card(0, 0, CHOSEN_BY_THE_WORLD_CHALICE, 0, LOCATION_HAND, 0, decode::POSITION_FACEUP_ATTACK);
+        }
+        for team in 0..2 {
+            for _ in 0..10 {
+                duel.new_card(team, 0, CHOSEN_BY_THE_WORLD_CHALICE, team, LOCATION_DECK, 0, POSITION_FACEDOWN_DEFENSE);
+            }
+        }
+        duel.start();
+        session.duel = Some(duel);
+        // Pass every chain chance; at each idle prompt summon the first Psychic in hand, the first time with the Lab's
+        // extra summon.
+        let (mut messages, mut status) = session.run().unwrap();
+        let mut summons = 0;
+        while status == "await" && summons < 3 {
+            let prompt = messages.last().unwrap().clone();
+            let response = match prompt["type"].as_u64() {
+                Some(16) => json!({"type": 8, "index": null}),
+                Some(11) if summons < 2 && !prompt["summons"].as_array().unwrap().is_empty() => {
+                    summons += 1;
+                    json!({"type": 1, "action": 0, "index": 0})
+                }
+                // Which summon to use, when both can: the Lab's (its description, code << 20).
+                Some(14) => {
+                    let lab = prompt["options"].as_array().unwrap().iter().position(|o| o.as_u64() == Some((BRAIN_RESEARCH_LAB as u64) << 20));
+                    json!({"type": 4, "index": lab.expect("the Lab's extra summon offered")})
+                }
+                // Where: the first free Main Monster Zone (a set bit of the mask is a zone that can't be used).
+                Some(18) => {
+                    let mask = prompt["field_mask"].as_u64().unwrap();
+                    let free = (0..5).find(|z| mask & 1 << z == 0).unwrap();
+                    json!({"type": 10, "places": [{"player": 0, "location": LOCATION_MZONE, "sequence": free}]})
+                }
+                _ => break,
+            };
+            session.duel.as_mut().unwrap().respond(&crate::encode::response(&response));
+            (messages, status) = session.run().unwrap();
+            assert!(messages.iter().all(|m| m["type"] != 1), "the core refused {response}: {prompt}");
+        }
+        assert_eq!(summons, 2, "both Psychics were summoned");
+        assert_eq!(session.log.borrow().lines, Vec::<String>::new());
+        let lab = session.query(decode::QUERY_COUNTERS, 0, LOCATION_SZONE, 5).unwrap().expect("the Lab");
+        assert_eq!(lab.counters, vec![(0x4, 1)], "the extra summon gave the Lab a Psychic Counter");
+    }
 }

@@ -78,9 +78,10 @@ unsafe extern "C" {
     fn OCG_DuelSetResponse(duel: *mut c_void, buffer: *const c_void, length: u32);
     fn OCG_LoadScript(duel: *mut c_void, buffer: *const c_char, length: u32, name: *const c_char) -> c_int;
     fn OCG_DuelQueryCount(duel: *mut c_void, team: u8, loc: u32) -> u32;
-    fn OCG_DuelQuery(duel: *mut c_void, length: *mut u32, info: *const QueryInfo) -> *mut c_void;
-    fn OCG_DuelQueryLocation(duel: *mut c_void, length: *mut u32, info: *const QueryInfo) -> *mut c_void;
-    fn OCG_DuelQueryField(duel: *mut c_void, length: *mut u32) -> *mut c_void;
+    // The core's queries through src/query.cpp, which keeps them from taking arguments the core has queued.
+    fn YO3_DuelQuery(duel: *mut c_void, length: *mut u32, info: *const QueryInfo) -> *mut c_void;
+    fn YO3_DuelQueryLocation(duel: *mut c_void, length: *mut u32, info: *const QueryInfo) -> *mut c_void;
+    fn YO3_DuelQueryField(duel: *mut c_void, length: *mut u32) -> *mut c_void;
 }
 
 /// A build without the core (`no_core`, see build.rs): the program says so instead of linking.
@@ -97,9 +98,9 @@ mod missing {
     pub unsafe fn OCG_DuelSetResponse(_: *mut c_void, _: *const c_void, _: u32) {}
     pub unsafe fn OCG_LoadScript(_: *mut c_void, _: *const c_char, _: u32, _: *const c_char) -> c_int { 0 }
     pub unsafe fn OCG_DuelQueryCount(_: *mut c_void, _: u8, _: u32) -> u32 { 0 }
-    pub unsafe fn OCG_DuelQuery(_: *mut c_void, length: *mut u32, _: *const QueryInfo) -> *mut c_void { unsafe { *length = 0 }; std::ptr::null_mut() }
-    pub unsafe fn OCG_DuelQueryLocation(_: *mut c_void, length: *mut u32, _: *const QueryInfo) -> *mut c_void { unsafe { *length = 0 }; std::ptr::null_mut() }
-    pub unsafe fn OCG_DuelQueryField(_: *mut c_void, length: *mut u32) -> *mut c_void { unsafe { *length = 0 }; std::ptr::null_mut() }
+    pub unsafe fn YO3_DuelQuery(_: *mut c_void, length: *mut u32, _: *const QueryInfo) -> *mut c_void { unsafe { *length = 0 }; std::ptr::null_mut() }
+    pub unsafe fn YO3_DuelQueryLocation(_: *mut c_void, length: *mut u32, _: *const QueryInfo) -> *mut c_void { unsafe { *length = 0 }; std::ptr::null_mut() }
+    pub unsafe fn YO3_DuelQueryField(_: *mut c_void, length: *mut u32) -> *mut c_void { unsafe { *length = 0 }; std::ptr::null_mut() }
 }
 #[cfg(no_core)]
 use missing::*;
@@ -283,7 +284,7 @@ impl Duel {
     pub fn query(&mut self, flags: u32, controller: u8, location: u32, sequence: u32, overlay_sequence: u32) -> Vec<u8> {
         let info = QueryInfo { flags, con: controller, loc: location, seq: sequence, overlay_seq: overlay_sequence };
         let mut length = 0;
-        let buffer = unsafe { OCG_DuelQuery(self.handle, &mut length, &info) };
+        let buffer = unsafe { YO3_DuelQuery(self.handle, &mut length, &info) };
         copy(buffer, length)
     }
 
@@ -291,13 +292,13 @@ impl Duel {
     pub fn query_location(&mut self, flags: u32, controller: u8, location: u32) -> Vec<u8> {
         let info = QueryInfo { flags, con: controller, loc: location, seq: 0, overlay_seq: 0 };
         let mut length = 0;
-        let buffer = unsafe { OCG_DuelQueryLocation(self.handle, &mut length, &info) };
+        let buffer = unsafe { YO3_DuelQueryLocation(self.handle, &mut length, &info) };
         copy(buffer, length)
     }
 
     pub fn query_field(&mut self) -> Vec<u8> {
         let mut length = 0;
-        let buffer = unsafe { OCG_DuelQueryField(self.handle, &mut length) };
+        let buffer = unsafe { YO3_DuelQueryField(self.handle, &mut length) };
         copy(buffer, length)
     }
 }

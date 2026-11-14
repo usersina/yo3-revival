@@ -49,6 +49,9 @@ fn main() {
     for f in CORE {
         core.file(dir.join(format!("{f}.cpp")));
     }
+    // Our queries over the core's (see the file).
+    println!("cargo::rerun-if-changed=src/query.cpp");
+    core.file("src/query.cpp");
     core.compile("ocgcore");
     let mut lua = cc::Build::new();
     common(&mut lua);
