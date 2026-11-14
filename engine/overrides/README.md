@@ -31,6 +31,16 @@ says in a comment what it changes. These scripts are AGPL-3.0, like the ones the
 | `c96782886.lua` | Mind Master | Can't Tribute a "Mind Master"; no once-per-turn limit. |
 | `c9995766.lua` | Imperial Custom | Continuous Traps "cannot be destroyed", by anything (today: by battle or card effect). No engine test: it differs only for a Continuous Trap destroyed neither by battle nor by an effect (by a rule or as a cost). |
 | `c80921533.lua` | Mausoleum of the Emperor | Paying the LP is part of the Normal Summon or Set (today: an effect the turn player activates first). |
+| `c57728570.lua` | Crush Card Virus | Checks the opponent's hand, field and the cards they draw until the end of their 3rd turn (today: hand and field once, then up to 3 from the Deck, and no damage to them for two turns). |
+| `c87910978.lua` | Brain Control | Takes any face-up monster (today: one that can be Normal Summoned/Set). |
+| `c47355498.lua` | Necrovalley | A card in the Graveyard can still use its own effects ("except for their own effects"). |
+| `c80168720.lua` | Darkness Approaches | Flips the monster face-down without changing its battle position (today: face-down Defense Position). |
+| `c61740673.lua` | Imperial Order | 700 LP in your own Standby Phases only, and you may choose not to pay (today: every Standby Phase, mandatory). |
+| `c77565204.lua` | Future Fusion | The materials go to the Graveyard when it is activated (today: in your 1st Standby Phase). |
+| `c15894048.lua` | Ultimate Tyranno | Must attack first and attack every monster if it is in face-up Attack Position when your Battle Phase begins (today: may attack them all, and locks your other monsters). From ProjectIgnis' `pre-errata/c511003009.lua`. |
+| `c88264978.lua` | Red-Eyes Darkness Metal Dragon | Its Special Summon from the hand has no limit, and "Once per turn" is for each copy (today: both once per turn by name). Today's script is ProjectIgnis' `pre-errata/c88264978.lua`. |
+| `c43586926.lua` | Twin-Headed Behemoth | Comes back in the End Phase by itself (today: "You can"). |
+| `c16226786.lua` | Night Assailant | Returns any Flip Effect Monster but itself, another Night Assailant too (today: not "Night Assailant"). |
 
 When `engine/fetch.sh --update` moves the scripts' pin, compare each upstream script with the one it was copied from: an
 upstream fix may make an override unneeded, or need carrying over.

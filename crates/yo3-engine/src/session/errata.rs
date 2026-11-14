@@ -226,6 +226,19 @@ impl Play {
     fn asked(&self, code: u32) -> usize {
         self.seen.iter().filter(|m| m["type"] == 12 && m["code"] == code).count()
     }
+
+    /// The position of the card in `team`'s Monster Zone `sequence`.
+    fn position(&mut self, team: u8, sequence: u32) -> u32 {
+        let card = self.session.query(decode::QUERY_POSITION, team, LOCATION_MZONE, sequence).unwrap().expect("a monster");
+        card.get(decode::QUERY_POSITION).unwrap()
+    }
+
+    /// From the idle prompt to the Battle Phase's prompt.
+    fn battle(&mut self) {
+        assert_eq!(self.idle()["to_bp"], true, "the Battle Phase can be entered: {}", self.prompt);
+        self.respond(json!({"type": 1, "action": 6, "index": 0}));
+        assert_eq!(self.prompt["type"], 10, "the battle prompt");
+    }
 }
 
 /// `Play::new`, or return from the test without the engine data.
@@ -530,4 +543,150 @@ fn mausoleum_of_the_emperor_is_part_of_the_normal_summon() {
     assert!(play.find("summons", SUMMONED_SKULL, None).is_some(), "the opponent's too: {}", play.prompt);
     play.summon(SUMMONED_SKULL);
     assert_eq!(play.lp(1), 7000);
+}
+
+#[test]
+fn crush_card_virus_checks_the_cards_the_opponent_draws() {
+    // engine/overrides/c57728570.lua: "... your opponent's hand, and all cards they draw (until the end of your
+    // opponent's 3rd turn after this card's activation)"; today's text checks the hand and field once.
+    const CRUSH_CARD_VIRUS: u32 = 57728570;
+    const SANGAN: u32 = 26202165; // a DARK monster with 1000 ATK
+    let mut play = play!(&[(0, CRUSH_CARD_VIRUS, LOCATION_SZONE, SET), (0, SANGAN, LOCATION_MZONE, UP), (1, GIANT_ORC, LOCATION_MZONE, UP)]);
+    play.activate(CRUSH_CARD_VIRUS);
+    assert_eq!(play.count(1, LOCATION_GRAVE, GIANT_ORC), 1, "the Giant Orc on the field");
+    play.end_turn();
+    assert_eq!(play.idle()["player"], 1);
+    assert_eq!(play.count(1, LOCATION_HAND, GIANT_ORC), 0, "the one drawn was destroyed: {}", play.prompt);
+    assert_eq!(play.count(1, LOCATION_GRAVE, GIANT_ORC), 2);
+}
+
+#[test]
+fn brain_control_takes_any_face_up_monster() {
+    // engine/overrides/c87910978.lua: "Select 1 face-up monster your opponent controls"; today's text wants one that
+    // can be Normal Summoned/Set, so not a Synchro Monster.
+    const BRAIN_CONTROL: u32 = 87910978;
+    const GOYO_GUARDIAN: u32 = 7391448;
+    let mut play = play!(&[(0, BRAIN_CONTROL, LOCATION_HAND, UP), (1, GOYO_GUARDIAN, LOCATION_MZONE, UP)]);
+    assert!(play.can_activate(BRAIN_CONTROL), "{}", play.prompt);
+    play.activate(BRAIN_CONTROL);
+    assert_eq!(play.cards(0, LOCATION_MZONE), [GOYO_GUARDIAN]);
+}
+
+#[test]
+fn necrovalley_lets_a_graveyard_card_use_its_own_effect() {
+    // engine/overrides/c47355498.lua: "Cards in either player's Graveyard cannot be affected by card effects, except
+    // for their own effects"; today's text negates a card's own effect that moves it out of the Graveyard.
+    const NECROVALLEY: u32 = 47355498;
+    const SINISTER_SERPENT: u32 = 8131171;
+    let mut play = play!(&[(0, NECROVALLEY, FIELD_ZONE, UP), (0, SINISTER_SERPENT, LOCATION_GRAVE, UP)]);
+    play.use_cards = vec![SINISTER_SERPENT];
+    play.end_turn();
+    play.end_turn();
+    assert_eq!(play.count(0, LOCATION_HAND, SINISTER_SERPENT), 1, "it returned itself");
+}
+
+#[test]
+fn darkness_approaches_keeps_the_battle_position() {
+    // engine/overrides/c80168720.lua: "flip it face-down, but do not change its battle position"; today's text makes it
+    // face-down Defense Position.
+    const DARKNESS_APPROACHES: u32 = 80168720;
+    let mut play =
+        play!(&[(0, DARKNESS_APPROACHES, LOCATION_HAND, UP), (0, GIANT_ORC, LOCATION_HAND, UP), (0, GIANT_ORC, LOCATION_HAND, UP), (1, GIANT_ORC, LOCATION_MZONE, UP)]);
+    play.activate(DARKNESS_APPROACHES);
+    assert_eq!(play.position(1, 0), 0x2, "face-down Attack Position");
+}
+
+#[test]
+fn imperial_order_is_paid_for_in_your_own_standby_phase() {
+    // engine/overrides/c61740673.lua: "Pay 700 Life Points during each of your Standby Phases"; today's text pays in
+    // every Standby Phase.
+    const IMPERIAL_ORDER: u32 = 61740673;
+    let mut play = play!(&[(0, IMPERIAL_ORDER, LOCATION_SZONE, UP)]);
+    assert_eq!(play.lp(0), 7300, "700 in your first Standby Phase");
+    play.end_turn();
+    assert_eq!(play.lp(0), 7300, "nothing in the opponent's");
+    play.end_turn();
+    assert_eq!(play.lp(0), 6600, "700 in your next");
+}
+
+#[test]
+fn future_fusion_sends_the_materials_when_activated() {
+    // engine/overrides/c77565204.lua: the materials go to the Graveyard on activation; today's text waits for your 1st
+    // Standby Phase. The Fusion Monster still comes in the 2nd.
+    const FUTURE_FUSION: u32 = 77565204;
+    const BLUE_EYES_ULTIMATE_DRAGON: u32 = 23995346;
+    let mut cards = vec![(0, FUTURE_FUSION, LOCATION_SZONE, SET), (0, BLUE_EYES_ULTIMATE_DRAGON, LOCATION_EXTRA, POSITION_FACEDOWN_DEFENSE)];
+    cards.extend([(0, BLUE_EYES_WHITE_DRAGON, LOCATION_DECK, POSITION_FACEDOWN_DEFENSE); 6]); // three left after the turns' draws
+    let mut play = play!(&cards);
+    play.activate(FUTURE_FUSION);
+    assert_eq!(play.count(0, LOCATION_GRAVE, BLUE_EYES_WHITE_DRAGON), 3, "{}", play.prompt);
+    for _ in 0..4 {
+        play.end_turn();
+    }
+    assert_eq!(play.count(0, LOCATION_MZONE, BLUE_EYES_ULTIMATE_DRAGON), 1, "in the 2nd Standby Phase");
+}
+
+#[test]
+fn ultimate_tyranno_must_attack() {
+    // engine/overrides/c15894048.lua: "it must attack first, and attack all monsters your opponent controls once
+    // each"; today's text lets it attack them all but doesn't make it.
+    const ULTIMATE_TYRANNO: u32 = 15894048;
+    let mut play = play!(&[(0, ULTIMATE_TYRANNO, LOCATION_MZONE, UP), (1, NEKOGAL_1, LOCATION_MZONE, UP), (1, NEKOGAL_1, LOCATION_MZONE, UP)]);
+    play.end_turn();
+    play.end_turn();
+    play.battle();
+    assert_eq!((play.prompt["to_m2"].clone(), play.prompt["to_ep"].clone()), (json!(false), json!(false)), "{}", play.prompt);
+}
+
+#[test]
+fn each_red_eyes_darkness_metal_dragon_summons_once_a_turn() {
+    // engine/overrides/c88264978.lua: "Once per turn", each copy for itself, and no limit on its own Special Summon;
+    // today's text allows each once per turn by name.
+    const RED_EYES_DARKNESS_METAL_DRAGON: u32 = 88264978;
+    let mut play = play!(&[
+        (0, BLUE_EYES_WHITE_DRAGON, LOCATION_MZONE, UP),
+        (0, BLUE_EYES_WHITE_DRAGON, LOCATION_MZONE, UP),
+        (0, RED_EYES_DARKNESS_METAL_DRAGON, LOCATION_HAND, UP),
+        (0, RED_EYES_DARKNESS_METAL_DRAGON, LOCATION_HAND, UP),
+        (0, BLUE_EYES_WHITE_DRAGON, LOCATION_HAND, UP),
+        (0, BLUE_EYES_WHITE_DRAGON, LOCATION_HAND, UP),
+    ]);
+    play.keep = vec![RED_EYES_DARKNESS_METAL_DRAGON];
+    play.act("special_summons", 1, RED_EYES_DARKNESS_METAL_DRAGON, None);
+    play.act("special_summons", 1, RED_EYES_DARKNESS_METAL_DRAGON, None);
+    assert_eq!(play.count(0, LOCATION_MZONE, RED_EYES_DARKNESS_METAL_DRAGON), 2);
+    play.activate_effect(RED_EYES_DARKNESS_METAL_DRAGON, 0);
+    assert!(play.can_activate_effect(RED_EYES_DARKNESS_METAL_DRAGON, 0), "the other copy: {}", play.prompt);
+}
+
+#[test]
+fn twin_headed_behemoth_comes_back_by_itself() {
+    // engine/overrides/c43586926.lua: "Special Summon it during the End Phase of this turn"; today's text says "You
+    // can".
+    const TWIN_HEADED_BEHEMOTH: u32 = 43586926;
+    const RING_OF_DESTRUCTION: u32 = 83555666;
+    let mut play = play!(&[(0, TWIN_HEADED_BEHEMOTH, LOCATION_MZONE, UP), (0, RING_OF_DESTRUCTION, LOCATION_SZONE, SET)]);
+    play.activate(RING_OF_DESTRUCTION);
+    assert_eq!(play.count(0, LOCATION_GRAVE, TWIN_HEADED_BEHEMOTH), 1);
+    play.end_turn();
+    assert_eq!(play.count(0, LOCATION_MZONE, TWIN_HEADED_BEHEMOTH), 1, "without being asked: {}", play.prompt);
+}
+
+#[test]
+fn night_assailant_returns_another_night_assailant() {
+    // engine/overrides/c16226786.lua: "select 1 Flip Effect Monster in your Graveyard, except this card"; today's text
+    // excludes every "Night Assailant". Brionac's cost discards it.
+    const NIGHT_ASSAILANT: u32 = 16226786;
+    const BRIONAC: u32 = 50321796;
+    let mut play = play!(&[
+        (0, BRIONAC, LOCATION_MZONE, UP),
+        (1, GIANT_ORC, LOCATION_MZONE, UP),
+        (0, NIGHT_ASSAILANT, LOCATION_HAND, UP),
+        (0, NIGHT_ASSAILANT, LOCATION_GRAVE, UP),
+    ]);
+    play.keep = vec![BRIONAC];
+    let drawn = play.cards(0, LOCATION_HAND).len() - 1;
+    play.activate(BRIONAC);
+    assert_eq!(play.count(0, LOCATION_HAND, NIGHT_ASSAILANT), 1, "the other one: {}", play.prompt);
+    assert_eq!(play.cards(0, LOCATION_HAND).len(), drawn + 1);
 }
