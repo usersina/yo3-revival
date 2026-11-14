@@ -102,8 +102,8 @@ async fn resolution_reaches_the_game_only_when_asked() {
             let file = bin.join(name); std::fs::write(&file, script).unwrap(); std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         std::fs::write(dir.join("yo3.exe"),common::game_fixture()).unwrap();
-        for name in ["injector.exe", "auth.dll"] { std::fs::write(dir.join(name), common::pe_fixture(2)).unwrap(); }
-        let digest=yo3_launcher::components::hash(&common::pe_fixture(2));
+        for name in ["injector.exe", "auth.dll"] { std::fs::write(dir.join(name), common::pe_fixture(yo3_tunnel::MOD_ABI as u32)).unwrap(); }
+        let digest=yo3_launcher::components::hash(&common::pe_fixture(yo3_tunnel::MOD_ABI as u32));
         std::fs::write(dir.join("bundle.json"),serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":yo3_tunnel::MOD_ABI,
             "components":{"injector":{"sha256":digest},"connection_mod":{"sha256":digest}}}).to_string()).unwrap();
         let profile = dir.join("client.json");
