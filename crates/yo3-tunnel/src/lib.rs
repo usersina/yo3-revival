@@ -17,7 +17,7 @@ pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub const MAGIC: &[u8; 8] = b"YO3TLS02";
 pub const PROTOCOL_VERSION: u16 = 2;
-pub const MOD_ABI: u16 = 2;
+pub const MOD_ABI: u16 = 3;
 pub const BUILD_VERSION: &str = env!("YO3_VERSION");
 pub const BUILD_COMMIT: &str = env!("YO3_COMMIT");
 pub const MAX_INFO: usize = 4096;

@@ -127,6 +127,41 @@ pub fn tick_tables(hub: &Arc<Mutex<Hub>>, now: std::time::Instant) {
     }
 }
 
+/// duelRequestName of a dialog text of the server's own {slot, text} (Revival, read by the connection DLL,
+/// `tools/mod/dialog-text.h`). The stock pump (0x5233A0) drops it: only cases 0x10-0x15 do anything (0x52341C).
+pub const REVIVAL_TEXT: u32 = 0x7A12;
+/// The duel prompt ids that name the server's texts: `TEXT_IDS + slot`, slots used in turn. The client's table
+/// (data manager +8, vector at +0x84) is a few hundred texts long; the DLL answers only ids past its end, and the
+/// Select dialog keeps 14 bits of a label's id (0x4C592E), so they sit at the top of that range.
+pub const TEXT_IDS: u32 = 0x3F00;
+pub const TEXT_SLOTS: u32 = 0x100;
+/// The most UTF-16 units of one text: a message is built in a 1024-unit buffer (0x519870).
+const TEXT_MAX: usize = 400;
+
+/// A text for the duel prompt id `TEXT_IDS + slot`, sent before the dialog that names it. The client's dialogs show
+/// HTML (Flash htmlText), so markup characters are escaped; `@n…@0` colours as in the client's own texts.
+pub fn text_message(slot: u32, text: &str) -> Message {
+    let (mut escaped, mut units) = (String::new(), 0);
+    for c in text.chars().filter(|&c| c != '\0') {
+        let mut one = [0; 4];
+        let piece = match c {
+            '<' => "&lt;",
+            '>' => "&gt;",
+            '&' => "&amp;",
+            c => &*c.encode_utf8(&mut one),
+        };
+        units += piece.encode_utf16().count();
+        if units > TEXT_MAX {
+            break;
+        }
+        escaped.push_str(piece);
+    }
+    Message::reply(SERVER_DUEL)
+        .with("duelRequestName", Value::U32(REVIVAL_TEXT))
+        .with("slot", Value::U32(slot))
+        .with("text", Value::text(&escaped))
+}
+
 /// An engine command, as pump case 0x11 reads it.
 pub fn command(id: u32, params: [u32; 4]) -> Message {
     let m = Message::reply(SERVER_DUEL).with("duelRequestName", Value::U32(ENGINE_COMMAND)).with("id", Value::U32(id));

@@ -145,6 +145,7 @@ static int WSAAPI hooked_close(SOCKET socket) {
 #include "documents.h"
 #include <stdarg.h>
 #include "ui-probe.h"
+#include "dialog-text.h"
 
 /* The automatic loader delegates the API call that triggered initialization here once, outside DllMain. */
 __declspec(dllexport) void *WINAPI Yo3ModApi(unsigned id) {
@@ -197,6 +198,7 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
     if (!deck_upload_install()) return mod_failure("stage=mod-deck-hook: Game deck editor code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!netlog_install()) return mod_failure("stage=mod-netlog: Game network code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!documents_install()) return mod_failure("stage=mod-documents: Game folder lookups are unsupported. Validate the original v1.153 executable.\r\n");
+    if (!dialog_text_install()) return mod_failure("stage=mod-dialog-text: Game duel dialog code is unsupported. Validate the original v1.153 executable.\r\n");
     ui_probe_install(); /* debugging aid, off unless YO3_UI_PROBE is set; never a reason to refuse the game */
     mod_ready = 1;
     return mod_ready;

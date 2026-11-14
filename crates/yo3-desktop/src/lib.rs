@@ -943,10 +943,10 @@ mod tests {
         let root=std::env::temp_dir().join(format!("yo3-desktop-launcher-hash-{}",std::process::id())); let _=std::fs::remove_dir_all(&root);
         let mut backend=Backend::new(root.clone()).unwrap(); let binary=root.join("connection-helper"); let injector=root.join("injector.exe"); let dll=root.join("mod.dll");
         std::fs::write(root.join("yo3.exe"),component_fixture::game_fixture()).unwrap();
-        std::fs::write(&injector,component_fixture::pe_fixture(2)).unwrap(); std::fs::write(&dll,component_fixture::pe_fixture(2)).unwrap(); std::fs::write(&binary,b"our verified helper").unwrap();
+        std::fs::write(&injector,component_fixture::pe_fixture(yo3_tunnel::MOD_ABI as u32)).unwrap(); std::fs::write(&dll,component_fixture::pe_fixture(yo3_tunnel::MOD_ABI as u32)).unwrap(); std::fs::write(&binary,b"our verified helper").unwrap();
         Arc::get_mut(&mut backend).unwrap().runtime=Runtime{server:root.join("server"),launcher:binary.clone(),injector,dll,engine:root.join("engine"),engine_program:root.join("yo3-engine")};
-        let digest=yo3_launcher::components::hash(&component_fixture::pe_fixture(2));
-        std::fs::write(root.join("bundle.json"),serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":2,"components":{
+        let digest=yo3_launcher::components::hash(&component_fixture::pe_fixture(yo3_tunnel::MOD_ABI as u32));
+        std::fs::write(root.join("bundle.json"),serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":yo3_tunnel::MOD_ABI,"components":{
             "injector":{"sha256":digest},"connection_mod":{"sha256":digest},"launcher":{"sha256":yo3_launcher::components::hash(b"our verified helper")}}}).to_string()).unwrap();
         let settings=Settings{game_dir:root.to_string_lossy().into(),..Settings::default()};
         backend.check_components(&settings).unwrap(); std::fs::write(binary,b"changed helper").unwrap();

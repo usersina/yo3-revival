@@ -516,11 +516,22 @@ fn card_at(controller: u32, location: u32, sequence: u32, cid: u32) -> serde_jso
     json!({ "code": cid, "cid": cid, "controller": controller, "location": location, "sequence": sequence, "position": 1 })
 }
 
+/// A prompt's engine commands, leaving out the server's dialog texts (see `server_texts`).
 fn client_commands(p: Prompt) -> Vec<(u32, [u32; 4])> {
     match p {
-        Prompt::Client(out) => out.iter().map(cmd).collect(),
+        Prompt::Client(out) => out.iter().filter(|m| m.get("duelRequestName") == Some(&Value::U32(0x11))).map(cmd).collect(),
         other => panic!("expected a client prompt, got {other:?}"),
     }
+}
+
+/// The server's own dialog texts a prompt sends ahead of its dialog: duelRequestName 0x7A12 {slot, text}, as the
+/// duel prompt id 0x3F00 + slot, which the connection DLL answers (tools/mod/dialog-text.h).
+fn server_texts(p: &Prompt) -> Vec<(u32, String)> {
+    let Prompt::Client(out) = p else { return vec![] };
+    out.iter()
+        .filter(|m| m.get("duelRequestName") == Some(&Value::U32(0x7A12)))
+        .map(|m| (0x3F00 + m.get("slot").and_then(Value::as_u32).unwrap(), m.get("text").and_then(Value::as_str).unwrap()))
+        .collect()
 }
 
 #[test]
@@ -555,9 +566,8 @@ fn selection_hints_read_as_the_clients_own_prompts() {
     // same: 502 destroy (Mystical Space Typhoon) → 281 "Select card to destroy.", 514 face-up (Spellbinding Circle's
     // target) → 94 "Select the card(s) to target.", 518 equip (an Equip Spell's monster) → 101 "Select a monster to
     // equip.", and the others listed in hint_text. Live, these lists opened with no message.
-    // 512 HINTMSG_SMATERIAL (a Synchro Summon's materials, picked one at a time) has no text of its own: the materials
-    // go to the Graveyard, 58 "Select the card to send to the Graveyard.". 515 face-down → 273, 550 an effect → 276.
-    let pairs = [(501, 347), (502, 281), (505, 348), (507, 78), (508, 39), (510, 46), (512, 58), (514, 94), (515, 273),
+    // 515 face-down → 273, 550 an effect → 276.
+    let pairs = [(501, 347), (502, 281), (505, 348), (507, 78), (508, 39), (510, 46), (514, 94), (515, 273),
         (518, 101), (520, 119), (526, 341), (528, 357), (550, 276)];
     let mut t = with_cards();
     for (hint, text) in pairs {
@@ -567,6 +577,47 @@ fn selection_hints_read_as_the_clients_own_prompts() {
         let out = client_commands(t.prompt(&select));
         assert!(out.contains(&(0x3ED, [1 << 28 | text, 0, 0, 0])), "hint {hint}: {out:?}");
     }
+}
+
+#[test]
+fn hints_the_client_has_no_text_for_are_worded_by_the_server() {
+    // A hint with no text in the duel prompt table (513 Xyz Material here) and a card's own string as the hint
+    // (code << 20 | n: the engine adds what it says as `hint_text`) go to the card list as the server's text: one
+    // message entry naming duel prompt id 0x3F00 + slot, which the connection DLL answers (0x40BB20 past the table's end).
+    let mut t = with_cards();
+    let select = json!({ "type": 15, "player": 0, "can_cancel": false, "min": 1, "max": 1,
+        "selects": [card_at(0, 2, 1, 4101), card_at(1, 4, 1, 4200)] });
+    t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 513 })]);
+    let prompt = t.prompt(&select);
+    assert_eq!(server_texts(&prompt), [(0x3F00, "Select the @3monsters@0 to use as @3Xyz Material@0.".into())]);
+    assert!(client_commands(prompt).contains(&(0x3ED, [1 << 28 | 0x3F00, 0, 0, 0])));
+    t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 4100u64 << 20 | 2, "hint_text": "Select a card to banish" })]);
+    let prompt = t.prompt(&select);
+    assert_eq!(server_texts(&prompt), [(0x3F01, "Select a card to banish".into())]);
+    // Taken once: a later list with no hint has no message.
+    let out = client_commands(t.prompt(&select));
+    assert!(!out.iter().any(|(id, _)| *id == 0x3ED), "{out:?}");
+    // A list that needs several picks keeps the count line after the server's text.
+    t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 513 })]);
+    let two = json!({ "type": 15, "player": 0, "can_cancel": false, "min": 2, "max": 2,
+        "selects": [card_at(0, 4, 0, 4100), card_at(0, 4, 1, 4101)] });
+    let out = client_commands(t.prompt(&two));
+    assert!(out.contains(&(0x3ED, [1 << 28 | 0x3F02, 2 << 28, 1 << 28 | 592, 8 << 28 | 2])), "{out:?}");
+}
+
+#[test]
+fn a_cards_own_question_is_shown_under_the_clients_line() {
+    // MSG_SELECT_YESNO with a card's string as its description (`description_text` from the engine): the client's
+    // 'Use the effect of "%s"?' with the card's name, a line break, then the card's own question as the server's text.
+    let mut t = with_cards();
+    let ask = json!({ "type": 13, "player": 0, "description": 4100u64 << 20 | 1, "description_cid": 4100,
+        "description_text": "Special Summon 1 monster from your hand?" });
+    let prompt = t.prompt(&ask);
+    assert_eq!(server_texts(&prompt), [(0x3F00, "Special Summon 1 monster from your hand?".into())]);
+    assert_eq!(
+        client_commands(prompt),
+        [(0x3EC, [4, 0, 0, 0]), (0x3ED, [1 << 28 | 226, 5 << 28 | 4100, 2 << 28, 1 << 28 | 0x3F00]), (0x36, [2, 1, 0, 0])]
+    );
 }
 
 #[test]
@@ -648,15 +699,18 @@ fn materials_are_picked_one_at_a_time_in_the_card_list() {
     // Fusion material choice, asked again after each pick: the card list of `select_cards` with one pick (kind 0x27),
     // or kind 1 (OK with no pick) when the engine lets the player finish or cancel. A pick answers its index; no pick
     // finishes (index null). HINTMSG_FMATERIAL (511) → "Select monsters to use as Fusion Material." (92); the client
-    // has no Synchro material text, so HINTMSG_SMATERIAL (512) reads where the materials go: 58 "Select the card to send
-    // to the Graveyard."
+    // has no Synchro material text, so HINTMSG_SMATERIAL (512) is the server's own, through the connection DLL.
     let mut t = with_cards();
     t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 512 })]);
     let first = json!({ "type": 26, "player": 0, "can_finish": false, "can_cancel": false, "min": 1, "max": 2,
         "select_cards": [card_at(0, 4, 0, 4100), card_at(0, 4, 1, 4101)], "unselect_cards": [] });
-    let out = client_commands(t.prompt(&first));
+    let prompt = t.prompt(&first);
+    let texts = server_texts(&prompt);
+    assert_eq!(texts.len(), 1);
+    assert_eq!(texts[0].1, "Select the @3monster(s)@0 to use as @3Synchro Material@0.");
+    let out = client_commands(prompt);
     assert_eq!(out[0], (0x3EF, [2, 1, 0, 0]));
-    assert_eq!(out[out.len() - 2..], [(0x3ED, [1 << 28 | 58, 0, 0, 0]), (0x37, [0, 0x27, 1, 0])]);
+    assert_eq!(out[out.len() - 2..], [(0x3ED, [1 << 28 | texts[0].0, 0, 0, 0]), (0x37, [0, 0x27, 1, 0])]);
     t.pick(1);
     assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 7, "index": 1 }))));
     t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 511 })]);
@@ -2188,16 +2242,47 @@ fn a_token_equipped_as_a_card_vanishes_when_it_leaves() {
 }
 
 #[test]
-fn options_without_a_label_are_spelled_out_in_the_chat_window() {
-    // A card's options the client has no label for open as the card list, the card once per option in the engine's
-    // order, which tells the player nothing about which is which; a duel dialog takes only ids from the client's tables
-    // (0x519870). The engine's own text for each option (the card's strings, `option_texts`) goes to the chat window
-    // as the list opens, numbered in its order (`take_notes`, sent by the duel as chat lines).
+fn options_without_a_label_are_worded_by_the_server() {
+    // A card's options the client has no label for: the Select dialog (0x36 kind 4, 0x4C5880) with the engine's own
+    // text for each (the card's strings, `option_texts`) as its labels, sent ahead as the server's texts (duel prompt
+    // ids 0x3F00 + slot, which the connection DLL answers: the Select dialog keeps 14 bits of a label, 0x4C592E). An
+    // option with a client label keeps it. The answer is the label's index, as for the client's own labels.
     let mut t = with_cards();
-    let card = json!({ "type": 14, "player": 0, "options": [4100u64 << 20, 4100u64 << 20 | 1], "option_cids": [4100, 4100],
-        "option_texts": ["Add 1 card to your hand", "Destroy 1 card"] });
+    let card = json!({ "type": 14, "player": 0, "options": [4100u64 << 20, 4100u64 << 20 | 1, 60], "option_cids": [4100, 4100, 0],
+        "option_texts": ["Add 1 card to your hand", "Destroy 1 <card> & more", ""] });
+    let prompt = t.prompt(&card);
+    let texts = server_texts(&prompt);
+    assert_eq!(texts, [(0x3F00, "Add 1 card to your hand".into()), (0x3F01, "Destroy 1 &lt;card&gt; &amp; more".into())]);
+    assert_eq!(
+        client_commands(prompt),
+        [
+            (0x3EF, [3, 0, 0, 0]),
+            (0x3F0, [0x8000 | 0x3F00, 0x8000 | 0x3F01, 0x8000 | 400, 0]),
+            (0x3EC, [1, 0, 0, 0]),
+            (0x3ED, [1 << 28 | 276, 0, 0, 0]),
+            (0x36, [4, 1, 0, 0]),
+        ]
+    );
+    assert!(t.take_notes().is_empty(), "no chat lines");
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 4, "index": 1 }))));
+    // The slots go round: the next text takes the next id. A label is one line: a longer text is cut at a word, with
+    // "…" (live: Pyramid Energy's options showed 57 of their 61 characters).
+    let long = "Increase the ATK of all face-up monsters on your field by 200";
+    let again = t.prompt(&json!({ "type": 14, "player": 0, "options": [4100u64 << 20, 61], "option_texts": [long, ""] }));
+    assert_eq!(server_texts(&again), [(0x3F02, "Increase the ATK of all face-up monsters on your field…".into())]);
+}
+
+#[test]
+fn options_beyond_the_dialogs_four_labels_are_spelled_out_in_the_chat_window() {
+    // More options than the Select dialog's four labels open as the card list, the card once per option in the engine's
+    // order; the engine's own text for each goes to the chat window as the list opens, numbered in its order
+    // (`take_notes`, sent by the duel as chat lines).
+    let mut t = with_cards();
+    let five: Vec<u64> = (0..5).map(|n| 4100u64 << 20 | n).collect();
+    let card = json!({ "type": 14, "player": 0, "options": five, "option_cids": [4100, 4100, 4100, 4100, 4100],
+        "option_texts": ["A", "B", "C", "D", "E"] });
     assert!(matches!(t.prompt(&card), Prompt::Client(_)));
-    assert_eq!(t.take_notes(), ["1: Add 1 card to your hand", "2: Destroy 1 card"]);
+    assert_eq!(t.take_notes(), ["1: A", "2: B", "3: C", "4: D", "5: E"]);
     assert!(t.take_notes().is_empty(), "taken once");
     // Labelled options (the select dialog) need none.
     t.prompt(&json!({ "type": 14, "player": 0, "options": [60, 61], "option_texts": ["Heads", "Tails"] }));

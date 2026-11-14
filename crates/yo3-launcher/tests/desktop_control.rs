@@ -35,8 +35,8 @@ async fn cancel_initialization(stalled: &str, interrupt:bool) {
         std::fs::set_permissions(file,std::fs::Permissions::from_mode(0o755)).unwrap();
     }
     std::fs::write(dir.join("yo3.exe"),common::game_fixture()).unwrap();
-    for name in ["injector.exe","auth.dll"] {std::fs::write(dir.join(name),common::pe_fixture(2)).unwrap();}
-    let digest=yo3_launcher::components::hash(&common::pe_fixture(2));
+    for name in ["injector.exe","auth.dll"] {std::fs::write(dir.join(name),common::pe_fixture(yo3_tunnel::MOD_ABI as u32)).unwrap();}
+    let digest=yo3_launcher::components::hash(&common::pe_fixture(yo3_tunnel::MOD_ABI as u32));
     std::fs::write(dir.join("bundle.json"),serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":yo3_tunnel::MOD_ABI,
         "components":{"injector":{"sha256":digest},"connection_mod":{"sha256":digest}}}).to_string()).unwrap();
     let profile=dir.join("client.json");std::fs::write(&profile,serde_json::json!({"server":server.auth.to_string(),"server_name":"localhost","certificate":certificate,"key":key}).to_string()).unwrap();
@@ -73,7 +73,7 @@ async fn missing_mod_is_reported_before_any_authentication_attempt() {
     let dir = std::env::temp_dir().join(format!("yo3-missing-mod-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir); std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("yo3.exe"),common::game_fixture()).unwrap();
-    std::fs::write(dir.join("injector.exe"),common::pe_fixture(2)).unwrap();
+    std::fs::write(dir.join("injector.exe"),common::pe_fixture(yo3_tunnel::MOD_ABI as u32)).unwrap();
     let tls = yo3_server::auth::initialize(&dir.join("identity"), vec!["localhost".into()]).unwrap();
     let profile = dir.join("client.json");
     std::fs::write(&profile, serde_json::json!({"server":"127.0.0.1:1","server_name":"localhost","certificate":tls.certificate,"key":"x".repeat(20)}).to_string()).unwrap();
@@ -98,8 +98,8 @@ async fn natural_game_exit_does_not_wait_for_the_desktop_to_close_stdin() {
         let file = bin.join(name); std::fs::write(&file, script).unwrap(); std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
     std::fs::write(dir.join("yo3.exe"),common::game_fixture()).unwrap();
-    for name in ["injector.exe", "auth.dll"] { std::fs::write(dir.join(name), common::pe_fixture(2)).unwrap(); }
-    let digest=yo3_launcher::components::hash(&common::pe_fixture(2));
+    for name in ["injector.exe", "auth.dll"] { std::fs::write(dir.join(name), common::pe_fixture(yo3_tunnel::MOD_ABI as u32)).unwrap(); }
+    let digest=yo3_launcher::components::hash(&common::pe_fixture(yo3_tunnel::MOD_ABI as u32));
     std::fs::write(dir.join("bundle.json"),serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":yo3_tunnel::MOD_ABI,
         "components":{"injector":{"sha256":digest},"connection_mod":{"sha256":digest}}}).to_string()).unwrap();
     let profile = dir.join("client.json");
@@ -138,9 +138,9 @@ async fn startup_failure(runtime: bool) {
         std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
     std::fs::write(dir.join("yo3.exe"), common::game_fixture()).unwrap();
-    for name in ["injector.exe", "auth.dll"] { std::fs::write(dir.join(name), common::pe_fixture(2)).unwrap(); }
-    let digest = yo3_launcher::components::hash(&common::pe_fixture(2));
-    std::fs::write(dir.join("bundle.json"), serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":2,
+    for name in ["injector.exe", "auth.dll"] { std::fs::write(dir.join(name), common::pe_fixture(yo3_tunnel::MOD_ABI as u32)).unwrap(); }
+    let digest = yo3_launcher::components::hash(&common::pe_fixture(yo3_tunnel::MOD_ABI as u32));
+    std::fs::write(dir.join("bundle.json"), serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":yo3_tunnel::MOD_ABI,
         "components":{"injector":{"sha256":digest},"connection_mod":{"sha256":digest}}}).to_string()).unwrap();
     let profile = dir.join("client.json");
     std::fs::write(&profile, serde_json::json!({"server":if runtime { "127.0.0.1:1".to_string() } else { server.auth.to_string() },

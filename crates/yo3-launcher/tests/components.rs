@@ -4,26 +4,26 @@ fn component_preflight_checks_architecture_interface_release_and_truncation() {
     let root = std::env::temp_dir().join(format!("yo3-component-preflight-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root); std::fs::create_dir_all(&root).unwrap();
     let dll = root.join("mod.dll");
-    std::fs::write(&dll, common::pe_fixture(2)).unwrap();
+    std::fs::write(&dll, common::pe_fixture(yo3_tunnel::MOD_ABI as u32)).unwrap();
     let info = yo3_launcher::components::inspect_mod(&dll).unwrap();
-    assert_eq!(info.abi, 2); assert_eq!(info.release, yo3_tunnel::BUILD_VERSION);
+    assert_eq!(info.abi, yo3_tunnel::MOD_ABI); assert_eq!(info.release, yo3_tunnel::BUILD_VERSION);
     std::fs::write(&dll, common::pe_fixture(999)).unwrap(); assert!(yo3_launcher::components::inspect_mod(&dll).is_err());
-    let mut wrong = common::pe_fixture(2); wrong[132..134].copy_from_slice(&0x8664u16.to_le_bytes());
+    let mut wrong = common::pe_fixture(yo3_tunnel::MOD_ABI as u32); wrong[132..134].copy_from_slice(&0x8664u16.to_le_bytes());
     std::fs::write(&dll, wrong).unwrap(); assert!(yo3_launcher::components::inspect_mod(&dll).is_err());
-    let mut wrong = common::pe_fixture(2); wrong[524] = b'X';
+    let mut wrong = common::pe_fixture(yo3_tunnel::MOD_ABI as u32); wrong[524] = b'X';
     std::fs::write(&dll, wrong).unwrap(); assert!(yo3_launcher::components::inspect_mod(&dll).is_err());
     for len in [0, 64, 152, 512, 550] {
-        std::fs::write(&dll, &common::pe_fixture(2)[..len]).unwrap(); assert!(yo3_launcher::components::inspect_mod(&dll).is_err());
+        std::fs::write(&dll, &common::pe_fixture(yo3_tunnel::MOD_ABI as u32)[..len]).unwrap(); assert!(yo3_launcher::components::inspect_mod(&dll).is_err());
     }
     let game = root.join("yo3.exe"); let injector = root.join("injector.exe");
     std::fs::write(&game, common::game_fixture()).unwrap();
-    for file in [&injector, &dll] { std::fs::write(file, common::pe_fixture(2)).unwrap(); }
-    let digest = yo3_launcher::components::hash(&common::pe_fixture(2));
-    let manifest = serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":2,"components":{
+    for file in [&injector, &dll] { std::fs::write(file, common::pe_fixture(yo3_tunnel::MOD_ABI as u32)).unwrap(); }
+    let digest = yo3_launcher::components::hash(&common::pe_fixture(yo3_tunnel::MOD_ABI as u32));
+    let manifest = serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":yo3_tunnel::MOD_ABI,"components":{
         "injector":{"sha256":digest},"connection_mod":{"sha256":digest}}});
     std::fs::write(root.join("bundle.json"), manifest.to_string()).unwrap();
     yo3_launcher::components::preflight(&game, &injector, &dll).unwrap();
-    let mut tampered = common::pe_fixture(2); tampered[700] = 1; std::fs::write(&dll, tampered).unwrap();
+    let mut tampered = common::pe_fixture(yo3_tunnel::MOD_ABI as u32); tampered[700] = 1; std::fs::write(&dll, tampered).unwrap();
     assert!(yo3_launcher::components::preflight(&game, &injector, &dll).is_err(), "manifest must detect changes outside the version header too");
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -33,9 +33,9 @@ fn game_validation_rejects_unsupported_hook_layouts_before_startup() {
     let root = std::env::temp_dir().join(format!("yo3-game-preflight-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let game = root.join("yo3.exe"); let injector = root.join("injector.exe"); let dll = root.join("auth.dll");
-    for path in [&injector, &dll] { std::fs::write(path, common::pe_fixture(2)).unwrap(); }
-    let digest = yo3_launcher::components::hash(&common::pe_fixture(2));
-    std::fs::write(root.join("bundle.json"), serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":2,
+    for path in [&injector, &dll] { std::fs::write(path, common::pe_fixture(yo3_tunnel::MOD_ABI as u32)).unwrap(); }
+    let digest = yo3_launcher::components::hash(&common::pe_fixture(yo3_tunnel::MOD_ABI as u32));
+    std::fs::write(root.join("bundle.json"), serde_json::json!({"release":yo3_tunnel::BUILD_VERSION,"mod_abi":yo3_tunnel::MOD_ABI,
         "components":{"injector":{"sha256":digest},"connection_mod":{"sha256":digest}}}).to_string()).unwrap();
     let valid = common::game_fixture(); std::fs::write(&game, &valid).unwrap();
     yo3_launcher::components::preflight(&game, &injector, &dll).unwrap();

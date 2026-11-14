@@ -493,6 +493,15 @@ pub fn with_cids(value: Json, cards: &Cards, prints: &Prints) -> Json {
             if let Some(owner) = out.get("description").and_then(Json::as_u64).and_then(|d| cards.cid_of.get(&((d >> 20) as u32))) {
                 out.insert("description_cid".into(), (*owner).into());
             }
+            // What a card's own string says where a question or a selection hint names one (code << 20 | n), for the
+            // dialogs the connection DLL lets the server word (`description_text`, `hint_text`).
+            for key in ["description", "hint"] {
+                let text = out.get(key).and_then(Json::as_u64).filter(|d| d >> 20 != 0)
+                    .and_then(|d| cards.string((d >> 20) as u32, (d & 0xF_FFFF) as u32)).filter(|t| !t.is_empty());
+                if let Some(text) = text {
+                    out.insert(format!("{key}_text"), text.into());
+                }
+            }
             let options = out.get("options").and_then(Json::as_array).filter(|o| o.iter().all(Json::is_number))
                 .map(|o| o.iter().map(|o| cards.cid_of.get(&((o.as_u64().unwrap_or(0) >> 20) as u32)).copied().unwrap_or(0)).collect::<Vec<_>>());
             if let Some(options) = options {
@@ -582,6 +591,25 @@ mod tests {
     #[test]
     fn counters_drop_the_empty_types_and_keep_two_types_with_the_same_count() {
         assert_eq!(counter_counts(&[(0x1, 2), (0x2, 2), (0x3, 0)]), BTreeMap::from([(1, 2), (2, 2)]));
+    }
+
+    #[test]
+    fn a_cards_own_string_as_a_hint_or_question_comes_with_its_text() {
+        // Issue #10: the server words the dialogs these name through the connection DLL. A description or hint that is
+        // a card's string (code << 20 | n) gets what it says as `description_text` / `hint_text`; the core's own
+        // numbers (a HINTMSG, a system string) get none.
+        let vendor = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../engine/vendor");
+        if !vendor.join("BabelCDB/cards.cdb").is_file() {
+            return; // engine/fetch.sh not run
+        }
+        let cards = Cards::open(&vendor).expect("the card data");
+        const ALLURE_QUEEN_LV3: u64 = 87257460;
+        let hint = with_cids(json!({ "type": 2, "hint_type": 3, "hint": ALLURE_QUEEN_LV3 << 20 | 1 }), &cards, &Prints::default());
+        assert_eq!(hint["hint_text"], "Special Summon 1 \"Allure Queen LV5\"");
+        let ask = with_cids(json!({ "type": 13, "description": ALLURE_QUEEN_LV3 << 20 }), &cards, &Prints::default());
+        assert_eq!(ask["description_text"], "Equip 1 opponent's Level 3 or lower monster to this card");
+        let core = with_cids(json!({ "type": 2, "hint_type": 3, "hint": 512, "description": 31 }), &cards, &Prints::default());
+        assert!(core.get("hint_text").is_none() && core.get("description_text").is_none());
     }
 
     #[test]

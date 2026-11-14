@@ -13,8 +13,8 @@ use yo3_proto::{Message, Value};
 
 use crate::card_options::CARD_OPTION_LABELS;
 use crate::duel::{
-    CARD, CHANGE_LP, CLIENT, CPU, CardCommand, DECK, DECK_RESET, HAND, INPUT, MOVE, PHASE, SET_LP, TURN, command, command_data,
-    move_place, table_place,
+    CARD, CHANGE_LP, CLIENT, CPU, CardCommand, DECK, DECK_RESET, HAND, INPUT, MOVE, PHASE, SET_LP, TEXT_IDS, TEXT_SLOTS, TURN, command,
+    command_data, move_place, table_place, text_message,
 };
 
 /// ocgcore message types (OcgMessageType).
@@ -487,8 +487,10 @@ pub struct Translator {
     /// A battle shown on the client and not ended yet, and whether the duel is in a Battle Phase.
     in_battle: bool,
     battle_phase: bool,
-    /// The last selection hint (HINTMSG_*) and the client's picks in the card list so far.
+    /// The last selection hint (HINTMSG_*), what it says when it is a card's own string, and the client's picks in the
+    /// card list so far.
     hint: u64,
+    hint_note: Option<(u64, String)>,
     picks: Vec<usize>,
     /// The duel's result for the client (1 won, 2 lost, 3 draw), once it ended.
     result: Option<u32>,
@@ -507,6 +509,8 @@ pub struct Translator {
     zone_picks: Option<Vec<Json>>,
     /// Lines for the player's chat window, for what a duel window can't say (`take_notes`).
     notes: Vec<String>,
+    /// The next slot of the server's own dialog texts (`text`).
+    next_text: u32,
     /// Both Decks turned over (Convulsion of Nature): each pile shows its top card's face.
     decks_reversed: bool,
     /// Each monster zone's position as last shown (face up, defense), by player and zone.
@@ -613,6 +617,8 @@ impl Translator {
             in_battle: false,
             battle_phase: false,
             hint: 0,
+            hint_note: None,
+            next_text: 0,
             picks: vec![],
             result: None,
             hidden,
@@ -649,6 +655,30 @@ impl Translator {
 
     /// The lines for the player's chat window since the last call (an option list's texts): what a duel window can't
     /// say, as the client takes only text ids there.
+    /// A text of the server's own for a dialog's message or label: the message carrying it (`duel::text_message`) goes
+    /// into `out`, ahead of the dialog, and the duel prompt id that names it is returned. The connection DLL keeps the
+    /// texts by slot and answers the client's lookups of those ids (`tools/mod/dialog-text.h`); slots are used in turn,
+    /// so a text stays until 256 more have been sent.
+    fn text(&mut self, out: &mut Vec<Message>, text: &str) -> u32 {
+        let slot = self.next_text % TEXT_SLOTS;
+        self.next_text = self.next_text.wrapping_add(1);
+        out.push(text_message(slot, text));
+        TEXT_IDS + slot
+    }
+
+    /// A card choice's message after the selection hint `hint`: the card's own string when the hint is one (code << 20
+    /// | n), the client's text where one says the same, else the server's own words for EDOPro's hint (`HINT_WORDS`).
+    fn hint_message(&mut self, out: &mut Vec<Message>, hint: u64) -> Option<u32> {
+        if let Some((_, note)) = self.hint_note.take().filter(|(h, _)| *h == hint && hint != 0) {
+            return Some(self.text(out, &note));
+        }
+        if let Some(id) = hint_text(hint) {
+            return Some(id);
+        }
+        let words = HINT_WORDS.iter().find(|(h, _)| *h == hint).map(|(_, w)| *w)?;
+        Some(self.text(out, words))
+    }
+
     pub fn take_notes(&mut self) -> Vec<String> {
         std::mem::take(&mut self.notes)
     }
@@ -727,6 +757,7 @@ impl Translator {
                 Some(MSG_FIELD_DISABLED) => out.extend(self.disabled_zones(m)),
                 Some(MSG_HINT) if m["hint_type"].as_u64() == Some(HINT_SELECTMSG) && self.player(&m["player"]) == CLIENT => {
                     self.hint = m["hint"].as_u64().unwrap_or(0);
+                    self.hint_note = m["hint_text"].as_str().filter(|t| !t.is_empty()).map(|t| (self.hint, t.to_owned()));
                 }
                 // Also a Set Spell/Trap turning face-up as it is activated.
                 Some(MSG_POS_CHANGE | MSG_FLIPSUMMONING) => out.extend(self.turn(m, m["position"].as_u64().unwrap_or(0))),
@@ -1780,14 +1811,23 @@ impl Translator {
                     (_, _, Some(cid), _) => vec![TEXT | USE_TEXT, CARD_NAME | cid as u32],
                     _ => vec![TEXT | USE_NOW_TEXT],
                 };
-                let mut out = message(&entries);
+                // A card's own question (its string as the description) under the client's line, through the DLL.
+                let mut out = vec![];
+                let mut entries = entries;
+                if let Some(question) = m["description_text"].as_str().filter(|t| !t.is_empty() && entries.len() <= 2) {
+                    let id = self.text(&mut out, question);
+                    entries.extend([LINE_BREAK, TEXT | id]);
+                }
+                out.extend(message(&entries));
                 out.push(command(DIALOG, [YES_NO, FROM_ENTRIES, 0, 0]));
                 self.pending = Some(m.clone());
                 Prompt::Client(out)
             }
             MSG_SELECT_CARD | MSG_SELECT_TRIBUTE => {
                 let hint = if kind == MSG_SELECT_TRIBUTE { HINTMSG_RELEASE } else { std::mem::take(&mut self.hint) };
-                let out = self.card_list(m, hint_text(hint));
+                let mut out = vec![];
+                let text = self.hint_message(&mut out, hint);
+                out.extend(self.card_list(m, text));
                 self.pending = Some(m.clone());
                 self.picks.clear();
                 Prompt::Client(out)
@@ -1796,8 +1836,10 @@ impl Translator {
             MSG_SELECT_UNSELECT_CARD if m["select_cards"].as_array().is_some_and(|s| !s.is_empty()) => {
                 let open = m["can_finish"] == true || m["can_cancel"] == true;
                 let list = json!({ "selects": m["select_cards"], "min": if open { 0 } else { 1 }, "max": 1 });
-                let text = hint_text(std::mem::take(&mut self.hint));
-                let out = self.card_list(&list, text);
+                let mut out = vec![];
+                let hint = std::mem::take(&mut self.hint);
+                let text = self.hint_message(&mut out, hint);
+                out.extend(self.card_list(&list, text));
                 self.pending = Some(m.clone());
                 self.picks.clear();
                 Prompt::Client(out)
@@ -1816,10 +1858,11 @@ impl Translator {
                 // The engine's hint (Machina Fortress: "Select the card(s) in your hand you want to discard."), kept for
                 // the list shown again, else the prompt table's 207 "Tribute the necessary monsters to match the
                 // required number of Level.".
-                let text = hint_text(std::mem::take(&mut self.hint)).or(self.sum_text).unwrap_or(SUM_TEXT);
+                let mut out = vec![];
+                let hint = std::mem::take(&mut self.hint);
+                let text = self.hint_message(&mut out, hint).or(self.sum_text).unwrap_or(SUM_TEXT);
                 self.sum_text = Some(text);
-                let text = Some(text);
-                let out = self.card_list(&list, text);
+                out.extend(self.card_list(&list, Some(text)));
                 self.pending = Some(m.clone());
                 self.picks.clear();
                 Prompt::Client(out)
@@ -1831,13 +1874,13 @@ impl Translator {
                 }
                 None => Prompt::Answer(cpu_answer(kind, m)),
             },
-            MSG_SELECT_OPTION => match option_list(m) {
+            MSG_SELECT_OPTION => match option_list(m).or_else(|| self.worded_options(m)) {
                 Some(out) => {
                     self.pending = Some(m.clone());
                     Prompt::Client(out)
                 }
-                // Options the client has no labels for: the card list, the option's card once per option in the
-                // engine's order, rather than the first option for the player.
+                // More options than the Select dialog's four labels, or one with no words: the card list, the option's
+                // card once per option in the engine's order, rather than the first option for the player.
                 None if m["options"].as_array().is_some_and(|o| o.len() > 1) => {
                     let card = |i: usize| m["option_cids"][i].as_u64().filter(|&c| c != 0)
                         .or_else(|| self.chaining.as_ref().and_then(|c| c["cid"].as_u64()))
@@ -1900,6 +1943,37 @@ impl Translator {
             // Where a summoned, Set or activated card goes: chosen for the player, centre out, as Konami's server did.
             _ => Prompt::Answer(cpu_answer(kind, m)),
         }
+    }
+
+    /// The Select dialog for options the client has no label for, worded by the server through the connection DLL
+    /// (`text`): each option the client's own label where it has one, else the engine's text for it (the card's
+    /// string). None for more than the dialog's four labels or an option with no words. The title is the hint's, else
+    /// "Select effect to activate." (276).
+    fn worded_options(&mut self, m: &Json) -> Option<Vec<Message>> {
+        let options = m["options"].as_array().filter(|o| !o.is_empty() && o.len() <= SELECT_MAX)?;
+        let texts: Vec<Option<&str>> = (0..options.len()).map(|i| m["option_texts"][i].as_str().filter(|t| !t.is_empty())).collect();
+        let own = |d: u64| OPTION_LABELS.iter().find(|(o, _, _)| *o == d).map(|&(_, label, _)| label)
+            .or_else(|| CARD_OPTION_LABELS.iter().find(|(o, _)| *o == d).map(|&(_, label)| label));
+        let codes: Vec<u64> = options.iter().map(|o| o.as_u64()).collect::<Option<_>>()?;
+        if codes.iter().zip(&texts).any(|(&d, t)| own(d).is_none() && t.is_none()) {
+            return None;
+        }
+        let mut out = vec![];
+        let mut labels = vec![];
+        for (&d, text) in codes.iter().zip(&texts) {
+            let label = match own(d) {
+                Some(label) => label,
+                None => self.text(&mut out, &shortened(text.unwrap_or_default(), LABEL_CHARS)),
+            };
+            labels.push(label | LISTED);
+        }
+        let hint = std::mem::take(&mut self.hint);
+        let title = self.hint_message(&mut out, hint).unwrap_or(SELECT_EFFECT_TEXT);
+        out.push(command(LIST_BEGIN, [labels.len() as u32, 0, 0, 0]));
+        out.extend(fours(LIST_VALUES, &labels));
+        out.extend(message(&[TEXT | title]));
+        out.push(command(DIALOG, [SELECT, FROM_ENTRIES, 0, 0]));
+        Some(out)
     }
 
     /// The CPU's card name declaration: the cards in the duel by turns, a new one each time it is asked.
@@ -2903,8 +2977,6 @@ fn hint_text(hint: u64) -> Option<u32> {
         509 => 25,  // HINTMSG_SPSUMMON: "Select the @3monster(s)@0 to @3Special Summon@0."
         510 => 46,  // HINTMSG_SET: "Select a @3Spell or Trap Card@0 to @3Set@0 on the field."
         511 => 92,  // HINTMSG_FMATERIAL: "Select @3monsters@0 to use as @3Fusion Material@0."
-        // HINTMSG_SMATERIAL: no Synchro text in the client's table; the materials go to the Graveyard.
-        512 => 58,
         // HINTMSG_FACEUP: the client has no "face-up card" prompt; EDOPro asks it for targets (Spellbinding Circle).
         514 => 94,
         515 => 273, // HINTMSG_FACEDOWN: "Select the @3monster(s)@0 in @3face-down@0 Position."
@@ -2917,6 +2989,62 @@ fn hint_text(hint: u64) -> Option<u32> {
         551 => 94,  // HINTMSG_TARGET: "Select the @3card(s)@0 to target."
         _ => return None,
     })
+}
+
+/// The server's words for EDOPro's selection hints (HINTMSG_*) that the client's prompt table has no text for, in
+/// the table's style (`@3` highlights, `@2` places). Shown through the connection DLL (`Translator::text`).
+const HINT_WORDS: [(u64, &str); 38] = [
+    (512, "Select the @3monster(s)@0 to use as @3Synchro Material@0."),
+    (513, "Select the @3monsters@0 to use as @3Xyz Material@0."),
+    (516, "Select a @3monster@0 in @3Attack Position@0."),
+    (517, "Select a @3monster@0 in @3Defense Position@0."),
+    (519, "Select the @3Xyz Material@0 to detach."),
+    (521, "Select the @3card@0 to destroy instead."),
+    (522, "Select a @3monster@0 in face-up @3Attack Position@0."),
+    (523, "Select a @3monster@0 in face-up @3Defense Position@0."),
+    (524, "Select a @3monster@0 in face-down @3Attack Position@0."),
+    (525, "Select a @3monster@0 in face-down @3Defense Position@0."),
+    (527, "Select the @3card@0 to place on the field."),
+    (529, "Select a @3card@0 you control."),
+    (530, "Select a @3card@0 your opponent controls."),
+    (531, "Select the @3monster(s)@0 to @3Tribute@0."),
+    (532, "Select the @3Xyz Monster@0 to detach material from."),
+    (533, "Select the @3monsters@0 to use as @3Link Material@0."),
+    (552, "Call heads or tails."),
+    (553, "Select a die result."),
+    (554, "Declare a @3card type@0."),
+    (555, "Select an option."),
+    (556, "Select the effect to apply."),
+    (560, "Select a @3card@0."),
+    (561, "Select a battle position."),
+    (562, "Declare an @3Attribute@0."),
+    (563, "Declare a @3Type@0."),
+    (564, "Declare a @3card name@0."),
+    (565, "Declare a number."),
+    (566, "Select the @3effect@0 to activate."),
+    (567, "Declare a @3Level@0."),
+    (568, "Select the @3card@0 whose effect to apply."),
+    (569, "Select a @3zone@0."),
+    (570, "Select a @3zone@0 to make unusable."),
+    (572, "Select the @3card@0 to place a @3counter@0 on."),
+    (575, "Select the @3card@0 to negate."),
+    (576, "Select the @3monster@0 whose @3ATK/DEF@0 changes."),
+    (577, "Select the @3card@0 to apply the effect to."),
+    (578, "Select the @3card(s)@0 to attach as @3Xyz Material@0."),
+    (579, "Select the @3banished card(s)@0 to return to the @2Graveyard@0."),
+];
+
+/// How many characters fit on one of the Select dialog's labels (one line; live, 57 of Pyramid Energy's 61 showed).
+const LABEL_CHARS: usize = 56;
+
+/// `text` cut to `max` characters at a word, with "…" to say so.
+fn shortened(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let cut: String = text.chars().take(max - 1).collect();
+    let cut = cut.rfind(' ').filter(|&at| at > max / 2).map_or(cut.as_str(), |at| &cut[..at]);
+    format!("{}…", cut.trim_end_matches([' ', ',', '.', ';']))
 }
 
 /// The client's duel-end reason (text 1999 + reason, 0x508650) for an EDOPro win reason.

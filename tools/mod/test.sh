@@ -67,6 +67,6 @@ echo 'PASS: injector loads its required DLL from a Unicode folder'
 wine "$MOD/yo3-auth-launch.exe" --inspect "$DLL" >"$LOG" 2>&1
 python3 - "$LOG" <<'PY'
 import json,sys
-info=json.load(open(sys.argv[1])); assert info['abi']==2 and info['release']
+info=json.load(open(sys.argv[1])); assert info['abi']==3 and info['release']
 PY
 echo 'PASS: injector inspects the required mod interface before starting a game'
