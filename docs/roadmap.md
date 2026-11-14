@@ -40,6 +40,13 @@ Desktop archives also carry `yo3-revival.ico` and `yo3-revival.png` for custom s
 both platform archives. The in-game login news no longer includes the deck-onboarding notice; a front contract
 checks its removal alongside the existing news-format and engine-warning coverage.
 
+v0.0.14 release preparation (2026-11-14):
+
+- [x] The workspace package version and the local lockfile entries are `0.0.14`. The changelog describes Season 16 as
+  the default banlist with Desktop's Banlist setting (#15) and the solid dropdown menus. Same connection interface (3)
+  as v0.0.13: players of v0.0.13 can still join. Checked live in Desktop (Normal mode's line, the Hosting dropdown) and
+  in the game (Edit Deck's Forbidden and Limited marks).
+
 v0.0.13 release preparation (2026-11-14):
 
 - [x] The workspace package version and the local lockfile entries are `0.0.13`. The changelog describes the duel

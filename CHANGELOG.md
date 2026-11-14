@@ -10,14 +10,21 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.0.14 (2026-11-14)
+
+A real banlist by default, and a host setting to choose it. Choose **Desktop** for the graphical app or **Scripts** for
+terminal commands. Both editions include the server, rules engine and required connection components. Original game
+files are not included. **Windows 7 is not supported.**
+
+Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.14/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.14/docs/scripts.md).
 
 - **A real banlist by default.** Auto Duel and duels against the computer now use **Season 16**, the newest
   Forbidden/Limited list the game has, as on the original server. Hosts can pick another one (or "unlimited") in
   Desktop under **Hosting → Overview → Banlist** (Normal mode shows it with a **Change** link), or with
-  `--regulation` in Scripts. The Yugi, Jaden and Yusei
-  character decks hold cards Season 16 forbids or limits, so edit them before using them there; your starter deck is
-  fine.
+  `--regulation` in Scripts. The Yugi, Jaden and Yusei character decks hold cards Season 16 forbids or limits, so edit
+  them before using them there; your starter deck is fine.
 - **Fixed:** Desktop's dropdown lists (Resolution, Connect to…) were see-through, their choices mixed with the page.
 
 ## v0.0.13 (2026-11-14)
