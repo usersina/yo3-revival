@@ -995,8 +995,11 @@ clients.
       now." is the help line). Live (2026-11-14, two private clients): Bravo returned Alpha's rental ("rental 1:
       returned early by its borrower"), Alpha lent the same cards again, the row greyed, a second press and a press with
       no row sent nothing, a shop rental returned the same way, the button hid on the Lent tab and came back, and
-      Alpha's open Lent tab survived both pushes. Native Windows still to check. A Deck rental's three lists are still
-      not seen live.
+      Alpha's open Lent tab survived both pushes. Native Windows 11 (VM build 22000, the Windows Scripts bundle from
+      main, ASLR): "mod interface 3 ready" with the three slots guarded; a shop rental's row, its Return button under
+      the list with its help line, "rental 1: returned early by its borrower", a second press sent nothing, the button
+      hid on the Lent tab, the reopened list showed the rental over with no cards, and closing the game left no crash.
+      A Deck rental's three lists are still not seen live.
 
 ## ✅ Duel windows (2026-11-13): every choice and reveal the client can show
 
