@@ -39,6 +39,13 @@ says in a comment what it changes. These scripts are AGPL-3.0, like the ones the
 | `c77565204.lua` | Future Fusion | The materials go to the Graveyard when it is activated (today: in your 1st Standby Phase). |
 | `c15894048.lua` | Ultimate Tyranno | Must attack first and attack every monster if it is in face-up Attack Position when your Battle Phase begins (today: may attack them all, and locks your other monsters). From ProjectIgnis' `pre-errata/c511003009.lua`. |
 | `c88264978.lua` | Red-Eyes Darkness Metal Dragon | Its Special Summon from the hand has no limit, and "Once per turn" is for each copy (today: both once per turn by name). Today's script is ProjectIgnis' `pre-errata/c88264978.lua`. |
+| `c65622692.lua` | Y-Dragon Head | The old Union rules (`aux.AddUnionProcedure(..., true)`): Special Summoned in face-up Attack Position, 1 Union per monster, protects from destruction by battle only. |
+| `c64500000.lua` | Z-Metal Tank | As Y-Dragon Head. |
+| `c96300057.lua` | W-Wing Catapult | As Y-Dragon Head. |
+| `c23265594.lua` | Heavy Mech Support Platform | The old Union rules, protecting from any destruction (`..., true, false)`), as the client's "would be destroyed" says. |
+| `c67159705.lua` | Armored Cybern | As Heavy Mech Support Platform. |
+| `c42940404.lua` | Machina Gearframe | As Heavy Mech Support Platform. |
+| `c78349103.lua` | Machina Peacekeeper | As Heavy Mech Support Platform. |
 | `c43586926.lua` | Twin-Headed Behemoth | Comes back in the End Phase by itself (today: "You can"). |
 | `c16226786.lua` | Night Assailant | Returns any Flip Effect Monster but itself, another Night Assailant too (today: not "Night Assailant"). |
 

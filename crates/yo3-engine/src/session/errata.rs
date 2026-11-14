@@ -660,6 +660,41 @@ fn each_red_eyes_darkness_metal_dragon_summons_once_a_turn() {
 }
 
 #[test]
+fn y_z_and_w_unions_protect_only_from_battle() {
+    // engine/overrides/c65622692.lua, c64500000.lua, c96300057.lua: "If the equipped monster would be destroyed by
+    // battle, destroy this card instead"; today's text protects from card effects too. Ring of Destruction destroys
+    // the equipped monster.
+    const RING_OF_DESTRUCTION: u32 = 83555666;
+    const X_HEAD_CANNON: u32 = 62651957;
+    const V_TIGER_JET: u32 = 51638941;
+    for (union, host) in [(65622692, X_HEAD_CANNON), (64500000, X_HEAD_CANNON), (96300057, V_TIGER_JET)] {
+        let mut play = play!(&[(0, host, LOCATION_MZONE, UP), (0, union, LOCATION_MZONE, UP), (0, RING_OF_DESTRUCTION, LOCATION_SZONE, SET)]);
+        play.activate(union);
+        assert_eq!(play.cards(0, LOCATION_MZONE), [host], "{union} equipped");
+        play.activate(RING_OF_DESTRUCTION);
+        assert_eq!(play.count(0, LOCATION_MZONE, host), 0, "{union} didn't take its place: {}", play.prompt);
+    }
+}
+
+#[test]
+fn old_rule_unions_come_back_in_attack_position() {
+    // engine/overrides/c23265594.lua, c67159705.lua, c42940404.lua, c78349103.lua: "unequip it to Special Summon this
+    // card in face-up Attack Position"; today's text lets you choose the position.
+    const X_HEAD_CANNON: u32 = 62651957; // a Machine
+    const CYBER_DRAGON: u32 = 70095154;
+    for (union, host) in [(23265594, X_HEAD_CANNON), (67159705, CYBER_DRAGON), (42940404, X_HEAD_CANNON), (78349103, X_HEAD_CANNON)] {
+        let mut play = play!(&[(0, host, LOCATION_MZONE, UP), (0, union, LOCATION_MZONE, UP)]);
+        play.activate(union);
+        play.end_turn();
+        play.end_turn();
+        let before = play.seen.len();
+        play.activate(union);
+        assert_eq!(play.count(0, LOCATION_MZONE, union), 1, "{union} unequipped");
+        assert!(play.seen[before..].iter().all(|m| m["type"] != 19), "{union}: no position to choose");
+    }
+}
+
+#[test]
 fn twin_headed_behemoth_comes_back_by_itself() {
     // engine/overrides/c43586926.lua: "Special Summon it during the End Phase of this turn"; today's text says "You
     // can".
