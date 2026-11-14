@@ -3,10 +3,11 @@
 #include <mmsystem.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "build/version.h"
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "FAIL loader line %d: %s\n", __LINE__, #x); return 1; } } while (0)
 int main(int argc, char **argv) {
     HMODULE loader = GetModuleHandleW(L"winmm.dll"); CHECK(loader != NULL);
-    unsigned (__cdecl *abi)(void) = (void *)GetProcAddress(loader, "Yo3LoaderAbi"); CHECK(abi != NULL && abi() == 2);
+    unsigned (__cdecl *abi)(void) = (void *)GetProcAddress(loader, "Yo3LoaderAbi"); CHECK(abi != NULL && abi() == YO3_MOD_ABI);
     DWORD (WINAPI *validate)(void) = (void *)GetProcAddress(loader, "Yo3LoaderValidate");
     CHECK(validate != NULL);
     DWORD expected = argc == 2 ? strtoul(argv[1], NULL, 10) : ERROR_FILE_NOT_FOUND;
