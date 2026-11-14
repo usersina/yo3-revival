@@ -9,7 +9,7 @@
 #   tools/client/vclient.sh start-stock    open the original executable using its installed automatic loader
 #   tools/client/vclient.sh login [SLOT]    title -> ONLINE -> player SLOT (0-3, default 0); `login select` stops at Select Player
 #   tools/client/vclient.sh shot NAME       screenshot the game window -> logs/shots/NAME.png
-#   tools/client/vclient.sh click X Y       left click at game-window coordinates (1024x768)
+#   tools/client/vclient.sh click X Y       left click at game coordinates (1024x768, mapped into a larger window)
 #   tools/client/vclient.sh key KEY...      xdotool key names, e.g. Return Escape
 #   tools/client/vclient.sh type TEXT       type text
 #   tools/client/vclient.sh pixel X Y       print the window's colour at X Y as "R G B"
@@ -45,10 +45,22 @@ need_win() {
   echo "$w"
 }
 
+# Game coordinates (the game's 1024x768 frame) -> window coordinates. With the connection DLL's higher resolution
+# (YO3_RESOLUTION) the window is larger and the frame sits in it scaled to fit and centred (tools/mod/resolution-fit.h).
+window_xy() {
+  local w=$1 x=$2 y=$3 gw gh
+  eval "$(xdotool getwindowgeometry --shell "$w" | sed -n 's/^WIDTH=/gw=/p; s/^HEIGHT=/gh=/p')"
+  if (( gw == 1024 && (gh == 768 || gh == 600) )); then echo "$x $y"; return; fi
+  local vh=768 cw ch
+  if (( gw * vh <= gh * 1024 )); then cw=$gw; ch=$(( (gw * vh * 2 + 1024) / 2048 )); else ch=$gh; cw=$(( (gh * 1024 * 2 + vh) / (2 * vh) )); fi
+  echo "$(( (gw - cw) / 2 + (2 * x + 1) * cw / 2048 )) $(( (gh - ch) / 2 + (2 * y + 1) * ch / (2 * vh) ))"
+}
+
 pixel() {
   local w; w="$(win)"
   [ -n "$w" ] || return 1
-  import -window "$w" -crop "1x1+$1+$2" -depth 8 txt:- 2>/dev/null | tail -1 |
+  local xy; xy="$(window_xy "$w" "$1" "$2")"
+  import -window "$w" -crop "1x1+${xy% *}+${xy#* }" -depth 8 txt:- 2>/dev/null | tail -1 |
     sed -E 's/.*\(([0-9]+),([0-9]+),([0-9]+).*/\1 \2 \3/'
 }
 
@@ -80,7 +92,7 @@ case "${1:-}" in
   xvfb)
     # Keep the display alive without holding a caller's captured input/output pipes open.
     xdpyinfo >/dev/null 2>&1 || {
-      nohup Xvfb "$DISPLAY" -screen 0 1280x960x24 -nolisten tcp </dev/null >"$LOGS/xvfb.log" 2>&1 &
+      nohup Xvfb "$DISPLAY" -screen 0 "${YO3_XVFB_SCREEN:-1280x960x24}" -nolisten tcp </dev/null >"$LOGS/xvfb.log" 2>&1 &
       sleep 1
     }
     xdpyinfo | grep dimensions ;;
@@ -110,7 +122,7 @@ case "${1:-}" in
       cmd+=(--trace-dll "$TRACER/yo3trace.dll")
     fi
     cd "$GAME"
-    WINEDEBUG=fixme-all nohup "${cmd[@]}" >"$LOGS/client-stdout.log" 2>"$LOGS/client-wine.log" &
+    WINEDEBUG="${WINEDEBUG:-fixme-all}" nohup "${cmd[@]}" >"$LOGS/client-stdout.log" 2>"$LOGS/client-wine.log" &
     for _ in $(seq 60); do [ -n "$(win)" ] && break; sleep 0.5; done
     echo "window $(win)" ;;
   login)
@@ -135,7 +147,8 @@ case "${1:-}" in
   shot)
     W="$(need_win)"; import -window "$W" "$LOGS/shots/${2:-shot}.png" && echo "$LOGS/shots/${2:-shot}.png" ;;
   click)
-    W="$(need_win)"; xdotool mousemove --window "$W" "$2" "$3"; sleep 0.15; xdotool click --delay 120 1 ;;
+    W="$(need_win)"; xy="$(window_xy "$W" "$2" "$3")"
+    xdotool mousemove --window "$W" "${xy% *}" "${xy#* }"; sleep 0.15; xdotool click --delay 120 1 ;;
   prefix)
     [ -n "${WINEPREFIX:-}" ] || { echo "the default instance uses ~/.wine itself" >&2; exit 2; }
     if [ ! -d "$WINEPREFIX" ]; then
