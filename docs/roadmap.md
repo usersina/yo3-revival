@@ -941,6 +941,24 @@ The engine message types the translator leaves alone, and why (the audit):
       each Graveyard) is held by the self-played duels only. Xyz can't come up: the client has no Xyz Monster (0 of the
       4,702 scripted cards).
 
+## ▶ Connection DLL wave (2026-11-14): issues #10–#13
+
+The four player-facing items the stock client can't do but our required connection DLL can, shipped together with one
+mod interface bump (`MOD_ABI` 3), so friends update once. Each has contract tests and a live check on the private
+clients.
+
+- [x] #10 Duel dialogs show the server's own text: `0x7A12 {slot, text}` on the duel connection, named as duel prompt
+      ids `0x3F00 + slot`, which the DLL answers past the end of the prompt table (`tools/mod/dialog-text.h`). Option
+      labels (the Select dialog, up to four), the Synchro, Xyz and Link Material prompts and EDOPro's other hints
+      without a client text, a card's own string as a hint, a card's own Yes/No question. Live: Pyramid Energy's two
+      options as labels (the ATK one answered right), Gaia Knight's materials under "Select the monster(s) to use as
+      Synchro Material.". Not seen live: a card's string as a hint, a Yes/No question's line, Xyz/Link (the client has
+      none). Kept for Destiny Draw (#1): any text in a dialog's message or labels.
+- [x] #12 NPC duel logs: the server keeps them (from whoever went first's side), the DLL lets DuelResult fetch them
+      (`tools/mod/npc-duel-log.h`). Live: fetched after a duel against Seto Kaiba, listed, replayed to the end.
+- [ ] #11 The client says when a batch's animations have played.
+- [ ] #13 Early rental return.
+
 ## ✅ Duel windows (2026-11-13): every choice and reveal the client can show
 
 Every choice the server used to make for the player and every engine event the client wasn't shown, measured with the
@@ -1380,9 +1398,9 @@ take: most of these are only out of reach for a server talking to the stock clie
 
 | What | Why the stock client can't | Evidence | Today | With the DLL or the server |
 | --- | --- | --- | --- | --- |
-| Server text inside a duel dialog | Every dialog message is built from entries that name the client's own texts, card names by Konami id or numbers | `0x519870` (entry kinds 1-8), Select dialog labels through it (`0x4C5880`); the Flash `setMessage` is fed only by the C++ | Option texts go to the chat window (`0x2455`) | Possible: the DLL's invoke hook could put server text in (#10) |
+| Server text inside a duel dialog | Every dialog message is built from entries that name the client's own texts, card names by Konami id or numbers | `0x519870` (entry kinds 1-8), Select dialog labels through it (`0x4C5880`); the Flash `setMessage` is fed only by the C++ | Done with the DLL (#10): the server's texts as prompt ids past the table's end (`0x40BB20`) | — |
 | Clocks that wait for the animations by themselves | The client never says when it has played a batch, and counts down regardless | Duel requests 1-15 (`0x49F990`'s 16 senders), DuelCockpit `0x502660` | An allowance per batch (**guess**) | Possible: the duel observer knows when the scene settles and could say so (#11) |
-| NPC duel logs | The client fetches a log only for duels against players | protocol.md, "Duel log files" (MainGamen `+0x804`) | Duel logs for duels between players | Possible: a patched check and a server-written log (#12) |
+| NPC duel logs | The client fetches a log only for duels against players | protocol.md, "Duel log files" (MainGamen `+0x804`) | Done with the DLL (#12): the jump removed, the server keeps NPC duels' logs | — |
 | Returning a rental early | The rental screen's Return button has no C++ callback | protocol.md, `0x481E00` | Rentals end at their term | Possible: the DLL registers the callback (#13) |
 | Music changing with the duel | BgmUpdate has no handler | No case 9 in the duel components or the pump `0x522A50` | Nothing sent | Possible after research: the DLL switches tracks itself (#14) |
 | Three or four positions in one choice | The position dialog has two buttons (face-up attack; face-up or face-down defense) | `dlg_selstand.swf` (`btn0`, `btn1` only), `0x4C5E50` (`param3 >> 16` the only switch) | The two the prompt allows; none came up in 1,200 self-played duels | Server-side: two dialogs in a row. Not done: no card of the client's needs it |
@@ -1457,8 +1475,9 @@ take: most of these are only out of reach for a server talking to the stock clie
 | Watching                                                                  | from seat 0's side (the first player to enter); the decisive janken round only; NPC duels can't be watched                                                                                                                                                                                                                                                                                                   | The original's spectator view and opening are unknown                                                                                                                                 |
 | Login banlist                                                             | regulation 3 ("unlimited", no banlist; the user's choice) unless `--regulation` names another                                                                                                                                                                                                                                                                                                                | Which list the original used for Auto Duel at each date is unknown; the client calls the login one "Latest Regulation"                                                                |
 | Declarations                                                              | several types at once and numbers outside the number dialog (min or step above 15 units, max above 255) answered automatically, though no card of the client's asks for them; "Declare monster level." only after the Level hint; the CPU names a card the filter allows (the engine's `fits`) | The client's dialogs pick one type and a range of numbers (see "Not possible with this client") |
-| Material choice                                                           | Synchro and Fusion materials one at a time in the card list (EDOPro's order: the Tuner first); Fusion materials under "Select monsters to use as Fusion Material." (92), Synchro materials under "Select the card to send to the Graveyard." (58) | The client has no Synchro material text; 58 says where the materials go; how the original asked is unknown |
-| Option labels                                                             | EDOPro's system strings 60/61 and 70–72 mapped to the client's labels; a card's own strings paired by hand with the prompt table's per-card labels (`card_options.rs`), else the card list (the option's card once per option, in order) with each option's text in the chat window (`Effect`, chat type 0) | The original server's label per card option is unknown; a duel dialog shows only the client's own text ids, so the chat window carries the rest |
+| Material choice                                                           | Synchro and Fusion materials one at a time in the card list (EDOPro's order: the Tuner first); Fusion materials under "Select monsters to use as Fusion Material." (92), Synchro materials under the server's own "Select the monster(s) to use as Synchro Material." (through the DLL, #10) | The client has no Synchro material text; how the original asked is unknown |
+| Option labels                                                             | EDOPro's system strings 60/61 and 70–72 mapped to the client's labels; a card's own strings paired by hand with the prompt table's per-card labels (`card_options.rs`), else the Select dialog with the card's own strings as the server's texts (#10, cut to 56 characters), and beyond four options the card list (the option's card once per option, in order) with each option's text in the chat window (`Effect`, chat type 0) | The original server's label per card option is unknown |
+| Server texts | `0x7A12 {slot, text}` (our id) named as duel prompt ids `0x3F00`–`0x3FFF`, 256 slots in turn; EDOPro's hints without a client text in our own words (`HINT_WORDS`) | Our choice: the ids only need to be past the client's table and within the Select dialog's 14 bits; the wording is ours |
 | Zone an effect takes                                                      | an OK dialog with the client's prompt (155, 324, 472), then a click per zone on the command map keyed as a card on that zone (Summon or Set as the command) | The client has no zone dialog; how the original asked is unknown, though its prompt texts exist |
 | Orders                                                                    | the card list as an ordered pick (kind 6, a badge per click) under 245 or 276 | The original's flow is unknown; the client's list orders picks by itself |
 | Chain chances                                                             | level 3 after an event, 1 at a phase or step, 0 when no card fits; messages 7/8 (Spell/Trap zone)/269                                                                                                                                                                                                                                                                                                        | Client side settled (`0x4C5560`: bands below 2, 2–3, 4+; Activation Message decides below 4); which windows the original judged low priority, and its message choice, are Konami-only |

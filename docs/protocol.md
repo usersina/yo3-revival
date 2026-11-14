@@ -971,6 +971,7 @@ We send request `0x200D` (**guess**: no reader).
 | `0x12`                   | `comIDsize`, `helpIDsize`, `otherFlagSize`, `COMIDDATA` (raw, u32 BE)                        | command ids per card, help ids, flags                                                                                                                                                                                                                                                    | shape                  |
 | `0x14` timers            | `timerKind`, `start`, `count1`, `total1`, `count2`, `total2`, `other` and their `_max`       | sets the engine's five clock slots (`0x520A00`: value, now, stopped, max) — 0 `count1`, 1 `count2`, 2 `total1`, 3 `total2`, 4 `other` — then `timerKind` 0 or 2 runs (`start` ≠ 0) or stops slots 0 and 2, 1 or 3 slots 1 and 3, 4 runs slot 4 (pump case `0x52396A`). See "Duel clocks" | confirmed (live below) |
 | `0x15` duel setup        | `FirstPlayer`, `PlayerNum`, `PlayerType001/002`, `MainDeckNum001/002`, `ExtraDeckNum001/002` | stored on the engine (`+0x1AC`…`+0x1E4`)                                                                                                                                                                                                                                                 | shape                  |
+| `0x7A12` (Revival)       | `slot`, `text` (UTF-8)                                                                       | dropped by the stock pump (cases `0x10`–`0x15` only, `0x52341C`); the connection DLL keeps the text as duel prompt id `0x3F00 + slot`. See "Server texts" | ours (DLL contract)    |
 
 | Client `duelRequestName` | Fields                                                                                                                                                           | Sender                                    |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
@@ -1363,9 +1364,9 @@ flow is unknown, the text is its own). EDOPro asks for Synchro and Fusion
 materials one at a time (MSG_SELECT_UNSELECT_CARD {can_finish, can_cancel, select_cards, unselect_cards}: the Tuner
 first); each round is the card list of `select_cards` with one pick (kind `0x27`, or 1 when the engine lets the player
 finish or cancel, where no pick answers index null), "Select monsters to use as Fusion Material." (92) for
-HINTMSG_FMATERIAL, and for HINTMSG_SMATERIAL (512) "Select the card to send to the Graveyard." (58): the client's
-table has no Synchro material text, and that is where the materials go (live 2026-11-13, Gaia Knight from Krebons and
-Giant Orc). Live
+HINTMSG_FMATERIAL, and for HINTMSG_SMATERIAL (512), which the client's table has no text for, the server's own
+"Select the monster(s) to use as Synchro Material." (see "Server texts"; before the DLL could show it, 58 "Select the
+card to send to the Graveyard."). Live 2026-11-14: Gaia Knight from Gilasaurus and Junk Synchron. Live
 (`--duel-deck 3339,1449 --duel-extra 3745`): with Junk Synchron and Giant Orc on the field, clicking the extra deck
 listed Junk Synchron, then Giant Orc; both went to the Graveyard, the position dialog asked for Ancient Fairy Dragon,
 and it stood in attack position on both clients with the extra deck pile down to 1. **Places.** Where a summoned, Set or activated card goes (MSG_SELECT_PLACE, 18) is the server's choice, as it was
@@ -1546,12 +1547,29 @@ CARD_Prop's gets its record again with the client's numbers (the place in its ty
 Magician DARK 2 / Spellcaster 18). Live: Scroll of Bewitchment's LIGHT showed on Giant Orc's field label and in the
 panel.
 
+**Server texts** (issue #10, through the connection DLL). A duel dialog takes only ids of the client's duel prompt
+table: a message (`0x519870`: an id, or entries of text ids, card names and numbers), a Select dialog's labels
+(`0x4C5880`, which keeps 14 bits of a label's id, `0x4C592E`) and every `%s`/`%d` text. Each looks its id up with
+`0x40BB20`, that table's `vector::at` (EDI the vector at data manager +8 `+0x84`, EBX the id; the text is the table's
+string base `+0x9C` plus the entry; past the end it throws, `0x537CF0`). So the server sends its own texts on the duel
+connection, `0x7A12 {slot, text}` ahead of the dialog (the stock pump drops the id), and names them as ids `0x3F00 +
+slot`, 256 slots used in turn; the DLL (`tools/mod/dialog-text.h`) keeps each text and answers lookups of those ids
+past the end of that one table with an entry pointing at it, so the client's own markup applies (`0x519F80`: `@n`
+colours; the server escapes `<`, `>`, `&`). Messages are built in a 1024-unit buffer, so a text is cut at 400.
+Live (2026-11-14): Pyramid Energy's two options showed as the Select dialog's labels and the first answered +200 ATK;
+the Synchro material list read "Select the monster(s) to use as Synchro Material." in the client's colours.
+
 **Option texts.** A card's options the client has no label for (`card_options.rs` pairs 44 cards' strings with the
-prompt table) open as the card list, the card once per option; a duel dialog takes only ids from the client's tables
-(`0x519870` builds every message from entries: text ids, card names by Konami id, numbers), so the engine sends each
-option's own text (the card's strings, `str1`–`str16` in `cards.cdb`) and the server puts them in the player's chat
-window as the list opens, numbered as listed: `0x2455 {from_id 0, pname "Effect", chat_type 0, chat_str "1: …"}`
-(**guess**: the name and type, chosen to show in the duel's chat window).
+prompt table) open as the Select dialog with the engine's own text for each option (the card's strings, `str1`–`str16`
+in `cards.cdb`) as the server's texts, an option with a client label keeping it; a label is one line, so a text longer
+than 56 characters is cut at a word with "…" (live: 57 of Pyramid Energy's 61 characters showed). The dialog has four
+labels: more options open as the card list, the card once per option, and the server puts their texts in the player's
+chat window as the list opens, numbered as listed: `0x2455 {from_id 0, pname "Effect", chat_type 0, chat_str "1: …"}`
+(**guess**: the name and type, chosen to show in the duel's chat window). A selection hint or a Yes/No question that
+is a card's own string (code << 20 | n) is shown too: the engine adds `hint_text` / `description_text`, a card list
+takes it as its message, and a Yes/No dialog adds it on a line under its client text ('Use the effect of "%s"?').
+EDOPro's hints with no client text (`HINT_WORDS` in `translate.rs`: Synchro, Xyz and Link Material, positions, …) are
+the server's own words in the table's style (**guess**: the original's wording is unknown).
 
 **Numbers.** The number dialog (`0x4C6430`: max `param3 >> 24`, step and min 4 bits each, format 302 thousands / 303
 hundreds / else ones; `NumberSprite` to five figures) says "Declare monster level." (280) only after the Level hint
@@ -1847,14 +1865,24 @@ After a duel the client records it itself from the `0x2009` it gets (front slot 
 result screen takes the other branch of `0x511200`) and the text isn't empty, starts the duel log task
 (`0x498700 (url)`): `0x498B10` makes a connection object (`0x4EF4B0`, id `-9973`: an HTTP download of the URL) writing
 to `duellogs\<temp>\<file name>`, and when it is done (state 10) copies the file into `myduels\` (`0x4980A0`) and
-deletes the oldest beyond 100 (`0x498510`). So the log is a file the **server** serves, and **a duel against an NPC
-leaves none** (the only other caller of `0x498700` is the Server Duel Logs tab's download). `dlogURL` is
+deletes the oldest beyond 100 (`0x498510`). So the log is a file the **server** serves, and the stock client fetches
+none after a duel against an NPC (the only other caller of `0x498700` is the Server Duel Logs tab's download; see
+"NPC duels" below for the DLL's change). `dlogURL` is
 `http://<host>:8080/duellogs/NAME.dlog` (the host is the address the client reached), served by our patch HTTP server from
 the `duel_logs` table of `server.db` (the newest 1000 are kept; older versions wrote `data/duellogs/`, which the
 server now reports as safe to delete); the name is the URL's, ours `END_TIME-DUEL_ID-PLAYER_ID.dlog`, one file per player. The log is
 that of the match's last duel. Live: both clients fetched theirs, Latest Duel Logs listed it ("Lv1 Yugi V.S. Lv1
 Kaiba"), Play replayed the duel on the field from the janken to the duel's end, then asked "Save this duel log?"
 (No) and returned to the main screen.
+
+**NPC duels** (issue #12). The connection DLL removes DuelResult's `+0x804` jump (`0x5122E6`, `tools/mod/npc-duel-log.h`),
+so the `dlogURL` step runs after NPC duels too (with no URL it does nothing, `0x512364`). The server keeps an NPC duel
+the engine played as it keeps one between players: from the side of whoever went first, the janken as that side saw
+it, every card with its row (the NPC's hidden cards are hidden in the duel, not in its replay). The NPC's block has its
+npc_id as `player_id`, its name, level 0 and no avatar, record or speeches (**guess**: what the original put there is
+unknown; the replay shows a default avatar). Live (2026-11-14, Seto Kaiba): the client fetched the log, Latest Duel
+Logs listed "Lv1 Alpha V.S. Lv0 Seto Kaiba", and Play replayed it from the janken to the last attack, then asked "Save
+this duel log?".
 
 The file (readers `0x538AB0` header, `0x5384F0` all, `0x538BD0` comment rewrite; little endian): u16 `0x09E7`, u16 1,
 then u32s at 4 (360, the header's size), 8 `duel_id`, 12 `player_1`, 16 `player_2`, 20 `match_type`, 24 `dlv_1`, 28 `dlv_2`,

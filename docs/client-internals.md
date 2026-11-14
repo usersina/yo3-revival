@@ -219,6 +219,22 @@ Names and paths are bounded and checked before filesystem operations. This chang
 wire format or exported mod ABI. Any existing local deck or nonempty saved selection prevents setup, regardless of validity. A per-player
 `revival-starter.initialized` file records setup or discovered existing decks/selection; automatic setup never undoes subsequent manual edits or deletions. Existing selections take precedence; no legal candidate leaves the profile untouched. See the [deck protocol](protocol.md#decks-deck-editor-deckedittest-handler-0x43fc60).
 
+### Server texts and NPC duel logs (issues #10 and #12)
+
+`tools/mod/dialog-text.h` lets duel dialogs show the server's own text. Two byte-guarded hooks: the duel pump's call
+to its `duelRequestName` reader (`0x523411`, `E8 8A CD FF FF` → `0x5201A0`, ESI the message) is redirected to a thunk
+that calls the reader and, for `0x7A12`, keeps the message's `text` (UTF-8, 512 UTF-16 units at most) for its `slot`;
+the id still reaches the pump's default case, which drops it. And `0x40BB20` (`55 8B EC 83 E4 F8`, the duel prompt
+table's `vector::at`: EDI the vector, EBX the id, returns a pointer to the entry the caller adds to the string base) is
+detoured: for EBX in `0x3F00`–`0x3FFF`, EDI the vector at data manager (`0x82EBA0`) +8 `+0x84`, and the id past the
+vector's end, it returns a pointer to `kept text − *(+8 +0x9C)`; every other call runs the original. Texts are kept on
+the game's thread (the pump) and read there (dialogs).
+
+`tools/mod/npc-duel-log.h` NOPs the six-byte `jne 0x5123BD` at `0x5122E6`, after `cmp dword [eax+0x804],0` at
+`0x5122DF` (13 bytes checked), so DuelResult's `dlogURL` step also runs for NPC duels. Both headers fail closed like
+the others (the mod refuses the game). The launcher's preflight (`yo3-launcher::components::inspect_game`) still checks
+only the four original sites; the DLL checks every site it patches.
+
 ### Native duel observer
 
 `tools/mod/duel-observer.h` installs two byte-guarded hooks for ver.1.153: the CALL at `0x514212`

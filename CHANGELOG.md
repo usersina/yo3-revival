@@ -21,8 +21,14 @@ Older entries describe their release at the time. For current setup, use the [RE
   the pile, a Set card shown to you flips up for a moment, and with Convulsion of Nature both Decks show their top card.
 - **Changed Types and Attributes show.** After Scroll of Bewitchment, DNA Surgery or Zombie World, the card's label and
   info panel show the new Attribute or Type.
-- **Clearer prompts.** Synchro Summons say which monsters to pick, a card's effect choices that the game has no label
-  for are spelled out in the chat window, and Big Eye no longer asks you to "Declare monster level".
+- **The duel windows speak for themselves.** A card's effect choices now show as buttons with the card's own words
+  (Pyramid Energy: ATK or DEF), Synchro Summons ask for "Synchro Material", and a card's own question or hint shows in
+  its window. Big Eye no longer asks you to "Declare monster level". Choices with more than four effects still list
+  them in the chat window.
+- **Duel logs for NPC duels.** A duel against an NPC is now saved like one against a player: find it in Duel Log →
+  Latest Duel Logs and press Play to watch it again.
+- **Update required:** everyone needs this version (the connection files changed); an older client can't join this
+  server, and this client can't join an older one.
 - **Fairer duel clocks.** Your clock no longer runs while the game is still playing animations.
 - Your avatar speaks its line when you flip a Set card or reveal a hand card to activate it, as in the original.
 - **Trade Card at the shop.** Give Blister 10 cards you don't need and get any card you pick from the first 48
