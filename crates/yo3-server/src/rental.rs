@@ -12,6 +12,9 @@ use yo3_proto::{Message, Value};
 
 /// The rental terms the lender's dialog offers (texts 14212-14215), in days.
 pub const TERMS: [u32; 4] = [1, 3, 7, 14];
+/// The lender id of a rental from the shop (no player has id 0): its records carry from_type 1, which the Rental Card
+/// List shows as "<Shop>" (text 14266).
+pub const SHOP: u32 = 0;
 /// How many rentals of each side the history lists carry (the screen scrolls; nothing asks for a next page).
 const HISTORY: usize = 50;
 
@@ -75,7 +78,7 @@ impl Rental {
         Message::record()
             .with("from_id", Value::U32(self.lender.0))
             .with("from_name", Value::text(&self.lender.1))
-            .with("from_type", Value::U32(0))
+            .with("from_type", Value::U32((self.lender.0 == SHOP) as u32))
             .with("to_id", Value::U32(self.borrower.0))
             .with("to_name", Value::text(&self.borrower.1))
             .with("rent_end", Value::text(&jst(self.end)))
@@ -140,6 +143,22 @@ impl Rentals {
         let [lender, borrower] = s.players.clone();
         let end = now + i64::from(s.days) * 86_400;
         self.all.push(Rental { id: self.last_id, lender, borrower, kind: s.kind, start: now, end, over: false, lists: s.lists.clone() });
+        self.save();
+        self.last_id
+    }
+
+    /// Starts a rental from the shop of `cards` (main) for `days` at `now`: it replaces the player's rental from the shop
+    /// still under way, which ends now ("When you rent a new card, current borrowed cards will be returned
+    /// automatically!", texts 15082 and 15084). Its id.
+    pub fn start_from_shop(&mut self, borrower: (u32, String), cards: Vec<u16>, days: u32, now: i64) -> u32 {
+        for r in self.all.iter_mut().filter(|r| !r.over && r.lender.0 == SHOP && r.borrower.0 == borrower.0) {
+            r.over = true;
+            r.end = now;
+        }
+        self.last_id += 1;
+        let end = now + i64::from(days) * 86_400;
+        let lender = (SHOP, String::new());
+        self.all.push(Rental { id: self.last_id, lender, borrower, kind: 0, start: now, end, over: false, lists: [cards, vec![], vec![]] });
         self.save();
         self.last_id
     }

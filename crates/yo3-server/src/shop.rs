@@ -21,6 +21,17 @@ const AVATAR_ITEM: u32 = 3;
 const ITEM_DATE: &str = "2010-03-23 00:00:00";
 /// A pack holds this many cards of its first rarity tier, then one of a higher tier (**guess**).
 const COMMONS: usize = 4;
+/// Card exchange (Blister's "Trade Card"): the client's exchange pools are its pack files 264-268 (pack_type 4), one
+/// per run of the first booster packs (1-14, 15-23, 24-32, 33-40, 41-48), and a card of one costs this many of the
+/// player's own cards (item_cost, "Cards Required:"; **guess**: the original costs are unknown).
+pub const EXCHANGE_POOLS: std::ops::RangeInclusive<u32> = 264..=268;
+pub const EXCHANGE_COST: u32 = 10;
+/// Shop rental: the client lists the cards of its pack file 10000 to pick from, and the server sets the offer, "You
+/// can borrow %d cards for %dBP for %d days." (**guess**: a pack's price, for a week).
+pub const RENTAL_POOL: u32 = 10000;
+pub const RENTAL_CARDS: u32 = 5;
+pub const RENTAL_BP: u32 = 100;
+pub const RENTAL_DAYS: u32 = 7;
 
 /// The BP a duel's result (1 won, 2 lost, 3 draw) pays into the player's account. The original's duels paid none (no
 /// reply after a duel sets the client's BP); a server choice, so friends can keep buying packs.
@@ -52,6 +63,15 @@ pub struct ShopDeck {
     pub deck: crate::front::Deck,
     /// The recipe's item (pbin_no): its bit puts the bought deck on Load Deck's Official tab.
     pub item: Option<u16>,
+}
+
+/// An exchange pool: its id (the client's pack file, which the client expands into one card per row), dates and cards.
+#[derive(Clone, Debug)]
+pub struct ExchangePool {
+    pub id: u32,
+    pub released: String,
+    pub modified: String,
+    pub cards: Vec<u16>,
 }
 
 /// What a sale id sells.
@@ -114,6 +134,9 @@ pub enum Present {
     Deck { id: u32, cards: Vec<u16> },
     Protector(u16),
     AvatarItem(u16, u16),
+    /// The card an exchange gave, with the booster pack it first came in (the window's title and line come from that
+    /// pack's file: an exchange pool's own file has neither, and the window showed "Card" over "Attack").
+    Card { pack: u32, card: u16 },
 }
 
 impl Present {
@@ -121,6 +144,7 @@ impl Present {
     pub fn cards(&self) -> &[u16] {
         match self {
             Present::Pack { cards, .. } | Present::Deck { cards, .. } => cards,
+            Present::Card { card, .. } => std::slice::from_ref(card),
             Present::Protector(_) | Present::AvatarItem(..) => &[],
         }
     }
@@ -140,6 +164,9 @@ impl Present {
         match self {
             Present::Pack { id, cards } => {
                 m.with("type", Value::U32(0)).with("item", Value::u16_be_array(cards)).with("pack_id", Value::U32(*id))
+            }
+            Present::Card { pack, card } => {
+                m.with("type", Value::U32(0)).with("item", Value::u16_be_array(&[*card])).with("pack_id", Value::U32(*pack))
             }
             Present::Deck { id, .. } => {
                 m.with("type", Value::U32(1)).with("item", Value::u16_be_array(&[*id as u16])).with("desc", Value::text("-1"))
@@ -238,4 +265,18 @@ pub fn shelf_protector(id: u16) -> Message {
 /// An avatar item on its shelf: item_type above 2 with item_param its pbin id, which the client hides once owned.
 pub fn shelf_avatar_item(id: u16) -> Message {
     shelf_entry(AVATAR_ITEM, id, AVATAR_ITEM_COST)
+}
+
+/// An exchange pool on Blister's Trade Card list (a 0x1C26 item, case 0x48AE5F's reply): the client expands item_id,
+/// its own pack file, into one card per row, each costing item_cost of the player's cards; item_trade 0 leaves the
+/// received card tradable, and the exchange names sale_id.
+pub fn exchange_item(pool: &ExchangePool) -> Message {
+    Message::record()
+        .with("item_type", Value::U32(0))
+        .with("item_id", Value::U32(pool.id))
+        .with("item_cost", Value::U32(EXCHANGE_COST))
+        .with("item_trade", Value::U32(0))
+        .with("sale_id", Value::U32(pool.id))
+        .with("modified", Value::text(&pool.modified))
+        .with("rel_time", Value::text(&pool.released))
 }

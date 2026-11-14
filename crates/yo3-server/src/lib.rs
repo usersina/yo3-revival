@@ -248,6 +248,16 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                     shop::ShopDeck { released: date("created"), modified: date("modified"), deck, item: d.pbin_no() }
                 })
                 .collect(),
+            exchange_pools: data
+                .packs
+                .iter()
+                .filter(|p| shop::EXCHANGE_POOLS.contains(&p.id) && !p.cards.is_empty())
+                .map(|p| {
+                    let date = |k: &str| p.record.get(k).and_then(Value::as_str).unwrap_or_default();
+                    shop::ExchangePool { id: p.id, released: date("created"), modified: date("modified"), cards: p.cards.clone() }
+                })
+                .collect(),
+            rental_pool: data.packs.iter().filter(|p| p.id == shop::RENTAL_POOL).flat_map(|p| p.cards.iter().copied()).collect(),
             protectors: data.protectors().iter().map(|e| e.id).collect(),
             avatar_items: data.avatar_items_for_sale().iter().map(|e| (e.id, e.b)).collect(),
             login_regulation: match &cfg.regulation {

@@ -131,6 +131,12 @@ side deck and the main or extra deck, then press the arrow at the top left to go
 The shop also sells card protectors (200 BP) and avatar items (100 BP): Avatar Settings and the deck editor offer
 them once bought.
 
+In the shop, Trade Card swaps cards you don't need for one you want: pick a card from Blister's list (cards from the
+first 48 booster packs), then choose 10 of your own cards (or press Auto Select) and confirm. Rented cards and cards
+you've lent out can't be given. Rental lends you 5 cards of your choice for 100 BP for 7 days: drag them into the list
+and confirm. They count as borrowed, like a rental from a friend, and a new rental from the shop returns the last one.
+Purchase Special Packs stays greyed out: those packs were event prizes and their contents are lost.
+
 To trade cards, open a player's Player Information and press Send Trade Request; once they accept, drag cards from
 your trunk into your half of the table, press Ready to Trade., and answer Yes to "Execute Trade?". A deck that used a
 card you traded away no longer counts as valid until you edit it.

@@ -25,6 +25,9 @@ Older entries describe their release at the time. For current setup, use the [RE
   for are spelled out in the chat window, and Big Eye no longer asks you to "Declare monster level".
 - **Fairer duel clocks.** Your clock no longer runs while the game is still playing animations.
 - Your avatar speaks its line when you flip a Set card or reveal a hand card to activate it, as in the original.
+- **Trade Card at the shop.** Give Blister 10 cards you don't need and get any card you pick from the first 48
+  booster packs.
+- **Rent from the shop.** Borrow 5 cards of your choice for 100 BP for 7 days, to try a deck before you build it.
 - **Fixed:** a token equipped to Allure Queen stayed on the field after it left.
 - **Fixed:** summoning a Psychic with Brain Research Lab's extra Normal Summon could stop the duel with an error.
 - **Fixed:** Card Trooper could send a different number of cards than the one you picked.

@@ -5,8 +5,8 @@ mod common;
 
 use common::{Server, one, req, req_with};
 use yo3_proto::{Message, Value};
-use yo3_server::front::{Deck, World};
-use yo3_server::shop::{self, ShopDeck, ShopPack};
+use yo3_server::front::{Deck, Player, World};
+use yo3_server::shop::{self, ExchangePool, ShopDeck, ShopPack};
 
 #[test]
 fn shop_text_carries_the_greeting() {
@@ -341,4 +341,175 @@ fn bp_given_during_a_session_can_be_spent_at_once() {
     let (left, stored) = d.purchase(player, START_BP + 400, None, |p| { p.cards.insert(10, 1); }).unwrap();
     assert_eq!((left, stored.cards.get(&10)), (100, Some(&1)));
     std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// Blister's counters: exchange pools 264 (rows 2, 10, 11) and 265 (row 40), whose cards first came in packs 1 and 271,
+/// and the rental pool of rows 2 to 9.
+fn blister() -> Server {
+    let pool = |id, cards: Vec<u16>| ExchangePool { id, released: "2010-03-23 17:19:41".into(), modified: "2010-03-23 17:19:41".into(), cards };
+    let pack = |id, tiers: Vec<Vec<u16>>| ShopPack { id, released: String::new(), modified: String::new(), tiers };
+    Server::with_world(World {
+        packs: vec![pack(1, vec![vec![2, 10, 11]]), pack(271, vec![vec![40]])],
+        exchange_pools: vec![pool(264, vec![2, 10, 11]), pool(265, vec![40])],
+        rental_pool: (2..=9).collect(),
+        card_rows: 50,
+        ..World::new((1..=20).collect())
+    })
+}
+
+/// A player owning `n` copies of each of `rows`.
+fn owner(rows: &[u16], n: u32) -> Player {
+    let mut p = Player::new(1001, "Yugi");
+    p.cards = rows.iter().map(|&r| (r, n)).collect();
+    p
+}
+
+fn bin(rows: &[u16]) -> Value {
+    Value::u16_be_array(rows)
+}
+
+fn trunk_count(c: &mut common::Client, row: u16) -> u8 {
+    let trunk = c.send(req_with(0x1FA4, &[("player_id", Value::U32(1001))]));
+    trunk[0].items[0].get("cards").and_then(Value::as_bytes).unwrap()[row as usize - 1]
+}
+
+#[test]
+fn the_trade_card_list_carries_the_exchange_pools() {
+    // 0x1C26 items (case 0x48AE5F's reply): the client loads its own pack file item_id and lists one card per row, each
+    // at item_cost of the player's cards ("Cards Required:"), with sale_id, item_trade, item_type, modified and rel_time.
+    // Live: the client's pools 264-268 listed 2,612 cards at 10 each.
+    let mut c = blister().join(1001, "Yugi");
+    let r = one(c.send(req(0x1B6F)));
+    assert_eq!(r.request(), Some(0x1C26));
+    assert_eq!(r.items.len(), 2);
+    let int = |k| r.items[0].get(k).and_then(Value::as_u32);
+    assert_eq!(["item_id", "sale_id", "item_cost", "item_trade", "item_type"].map(int), [Some(264), Some(264), Some(shop::EXCHANGE_COST), Some(0), Some(0)]);
+    for k in ["modified", "rel_time"] {
+        assert!(r.items[0].get(k).and_then(Value::as_str).is_some(), "{k}");
+    }
+}
+
+#[test]
+fn an_exchange_gives_the_card_picked_for_the_cost_in_cards() {
+    // 0x1B6A {sale_id: the pool, item_id: the card's row, kaban: the player's cards as big-endian u16 rows} (live:
+    // sale_id 264, item_id 2, kaban 20 bytes) -> 0x1C28 with no fields; the client then asks for presents (0x47C4A0).
+    // The card comes as a 0x2777 of type 0 named after the pack it first came in (the pool's own file has no name:
+    // live, the window showed "Card" over "Attack"; with pack 5, "Pack 5").
+    let mut c = blister().join_as(owner(&[20, 21], 5));
+    let given = [20, 20, 20, 20, 20, 21, 21, 21, 21, 21];
+    let r = one(c.send(req_with(0x1B6A, &[("sale_id", Value::U32(264)), ("item_id", Value::U32(2)), ("kaban", bin(&given))])));
+    assert_eq!(r.request(), Some(0x1C28));
+    assert_eq!(r.fields.len(), 1, "no fields: {r:?}");
+    let p = one(c.send(req(0x2775)));
+    let int = |k| p.get(k).and_then(Value::as_u32);
+    assert_eq!(["type", "pack_id"].map(int), [Some(0), Some(1)]);
+    assert_eq!(rows(&p), [2]);
+    assert_eq!(one(c.send(req(0x2775))).request(), Some(0x2778));
+    assert_eq!([2, 20, 21].map(|row| trunk_count(&mut c, row)), [1, 0, 0]);
+}
+
+#[test]
+fn an_exchange_needs_the_exact_cost_in_cards_the_player_owns() {
+    // 0x1C29 (an error dialog, 0x493D30) for a pool or card not on the list, a count other than item_cost, an odd byte,
+    // or cards the player doesn't own; nothing changes hands.
+    let mut c = blister().join_as(owner(&[20], 10));
+    let ten = [20u16; 10];
+    let exchange = |sale: u32, card: u32, kaban: Value| req_with(0x1B6A, &[("sale_id", Value::U32(sale)), ("item_id", Value::U32(card)), ("kaban", kaban)]);
+    let refused = [
+        exchange(266, 2, bin(&ten)),
+        exchange(264, 40, bin(&ten)),
+        exchange(264, 2, bin(&ten[..9])),
+        exchange(264, 2, bin(&[20; 11])),
+        exchange(264, 2, Value::Bin([bin(&ten).as_bytes().unwrap(), &[0][..]].concat())),
+        exchange(264, 2, bin(&[[20u16; 9].as_slice(), &[21]].concat())),
+        req_with(0x1B6A, &[("sale_id", Value::U32(264)), ("item_id", Value::U32(2))]),
+    ];
+    for (i, r) in refused.into_iter().enumerate() {
+        assert_eq!(one(c.send(r)).request(), Some(0x1C29), "case {i}");
+    }
+    assert_eq!(one(c.send(req(0x2775))).request(), Some(0x2778));
+    assert_eq!([2, 20].map(|row| trunk_count(&mut c, row)), [0, 10]);
+}
+
+#[test]
+fn an_exchange_checks_the_stored_cards() {
+    // Ownership is checked on the stored player under the accounts' lock (as trades do): a card the account no longer
+    // has can't be given, whatever the session saw.
+    use std::sync::{Arc, Mutex};
+    use yo3_server::accounts::Directory;
+    let server = blister();
+    let directory = Arc::new(Mutex::new(Directory::new(vec!["Yugi".into()])));
+    server.hub.lock().unwrap().set_directory(directory.clone());
+    let mut c = server.join_from(&directory, std::net::IpAddr::from([10, 0, 0, 4]));
+    let player = directory.lock().unwrap().accounts().next().unwrap().1.players[0].player_id;
+    let exchange = || req_with(0x1B6A, &[("sale_id", Value::U32(265)), ("item_id", Value::U32(40)), ("kaban", bin(&[20; 10]))]);
+    assert_eq!(one(c.send(exchange())).request(), Some(0x1C29));
+    directory.lock().unwrap().update_players(vec![(player, Box::new(|p: &mut Player| { p.cards.insert(20, 10); }))]);
+    assert_eq!(one(c.send(exchange())).request(), Some(0x1C28));
+    let stored = directory.lock().unwrap().player(player).cloned().unwrap();
+    assert_eq!((stored.cards.get(&20), stored.cards.get(&40)), (None, Some(&1)));
+    assert_eq!(one(c.send(exchange())).request(), Some(0x1C29), "the ten cards are gone");
+}
+
+#[test]
+fn the_shop_offers_a_rental_of_its_pool() {
+    // 0x2D75 (0x48C20E): "You can borrow %d cards for %dBP for 7 days." (text 15081); with the client's rental pool
+    // (pack 10000) the shop offers RENTAL_CARDS cards for RENTAL_BP for RENTAL_DAYS days. Live: "You can borrow 5 cards
+    // for 100BP for 7 days."
+    let mut c = blister().join(1001, "Yugi");
+    let r = one(c.send(req(0x2C40)));
+    let int = |k| r.get(k).and_then(Value::as_u32);
+    assert_eq!(["rental_cardnum", "rental_point", "rental_term"].map(int), [Some(shop::RENTAL_CARDS), Some(shop::RENTAL_BP), Some(shop::RENTAL_DAYS)]);
+}
+
+#[test]
+fn a_rental_from_the_shop_costs_bp_and_lends_the_cards() {
+    // 0x2C41 {main_list: big-endian u16 rows} -> 0x2D77 {dpoint} (the client sets its BP from it). Live, the client then
+    // asked for the rental records (0x2C34): one record from the shop (from_type 1, which the Rental Card List shows as
+    // "<Shop>", text 14266) with the cards as main, which the client adds to the collection.
+    let mut c = blister().join_with_bp(1001, "Yugi", 250);
+    let rent = |rows: &[u16]| req_with(0x2C41, &[("main_list", bin(rows))]);
+    let r = one(c.send(rent(&[2, 3, 4, 5, 5])));
+    assert_eq!((r.request(), r.get("dpoint")), (Some(0x2D77), Some(&Value::U32(250 - shop::RENTAL_BP))));
+    let records = one(c.send(req(0x2C34)));
+    assert_eq!(records.request(), Some(0x2D6C));
+    assert_eq!(records.items.len(), 1);
+    let record = &records.items[0];
+    let int = |k| record.get(k).and_then(Value::as_u32);
+    assert_eq!(["from_type", "from_id", "to_id", "deck_type", "confirm_to"].map(int), [Some(1), Some(0), Some(1001), Some(0), Some(0)]);
+    assert_eq!(rows_of(record, "main"), [2, 3, 4, 5, 5]);
+    // A second rental returns the first ("current borrowed cards will be returned automatically!", text 15082).
+    assert_eq!(one(c.send(rent(&[6, 7, 8, 9, 9]))).get("dpoint"), Some(&Value::U32(250 - 2 * shop::RENTAL_BP)));
+    let records = one(c.send(req(0x2C34)));
+    assert_eq!(records.items.len(), 1);
+    assert_eq!(rows_of(&records.items[0], "main"), [6, 7, 8, 9, 9]);
+    // The borrower's history keeps both.
+    let history = one(c.send(req_with(0x2C35, &[("rental_kind", Value::U32(1))])));
+    assert_eq!(history.items.len(), 2);
+}
+
+fn rows_of(record: &Message, key: &str) -> Vec<u16> {
+    record.get(key).and_then(Value::as_bytes).unwrap().chunks(2).map(|b| u16::from_be_bytes([b[0], b[1]])).collect()
+}
+
+#[test]
+fn a_rental_from_the_shop_needs_the_offer_the_pool_and_the_bp() {
+    // 0x2D78 (shopmain's error case) for another count than rental_cardnum, a card outside the pool, an odd byte or too
+    // few BP; no BP is taken and nothing is lent.
+    let mut c = blister().join_with_bp(1001, "Yugi", 150);
+    let rent = |main: Value| req_with(0x2C41, &[("main_list", main)]);
+    let refused = [
+        rent(bin(&[2, 3, 4, 5])),
+        rent(bin(&[2, 3, 4, 5, 6, 7])),
+        rent(bin(&[2, 3, 4, 5, 40])),
+        rent(Value::Bin(vec![0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0])),
+        req(0x2C41),
+    ];
+    for (i, r) in refused.into_iter().enumerate() {
+        assert_eq!(one(c.send(r)).request(), Some(0x2D78), "case {i}");
+    }
+    assert!(one(c.send(req(0x2C34))).items.is_empty());
+    assert_eq!(one(c.send(rent(bin(&[2, 3, 4, 5, 6])))).get("dpoint"), Some(&Value::U32(50)));
+    assert_eq!(one(c.send(rent(bin(&[2, 3, 4, 5, 6])))).request(), Some(0x2D78), "50 BP left");
+    assert_eq!(one(c.send(req(0x2C34))).items.len(), 1);
 }

@@ -568,6 +568,9 @@ pub struct World {
     /// The card protectors and avatar items (with their name text) on sale, by pbin id.
     pub protectors: Vec<u16>,
     pub avatar_items: Vec<(u16, u16)>,
+    /// Blister's exchange pools, and the cards the shop rents out (both from the client's pack files).
+    pub exchange_pools: Vec<crate::shop::ExchangePool>,
+    pub rental_pool: std::collections::HashSet<u16>,
 }
 
 /// The login news entry (title, body) while the rules engine can't run (`World::engine_problem`).
@@ -621,6 +624,8 @@ impl World {
             structure_decks: vec![],
             protectors: vec![],
             avatar_items: vec![],
+            exchange_pools: vec![],
+            rental_pool: Default::default(),
         }
     }
 
@@ -1188,7 +1193,7 @@ impl Hub {
     /// collections go back to what they own.
     pub fn tick_rentals(&mut self, now: i64) {
         for (lender, borrower) in self.rentals.expire(now) {
-            for p in [lender, borrower] {
+            for p in [lender, borrower].into_iter().filter(|&p| p != crate::rental::SHOP) {
                 self.push(p, &self.rentals.records_for(p));
             }
         }
@@ -2527,6 +2532,91 @@ impl FrontSession {
         Message::reply(0x1C24).with("dpoint", Value::U32(self.account.dpoint))
     }
 
+    /// A card exchange 0x1B6A {sale_id (the pool), item_id (the card picked), kaban (the player's cards given, big-endian
+    /// u16 rows)} -> 0x1C28 (no fields; the client then asks for presents, 0x47C4A0) or 0x1C29 (an error dialog): the
+    /// picked card must be in the pool, the cards given exactly its cost and all the player's own (not lent out;
+    /// borrowed cards are not theirs to give). The card arrives as a present.
+    fn exchange(&mut self, msg: &Message) -> Message {
+        let fail = Message::reply(0x1C29);
+        let int = |k| msg.get(k).and_then(Value::as_u32).unwrap_or(0);
+        let world = self.world.clone();
+        let Some(pool) = world.exchange_pools.iter().find(|p| p.id == int("sale_id")) else { return fail };
+        let Some(card) = u16::try_from(int("item_id")).ok().filter(|c| pool.cards.contains(c)) else { return fail };
+        let Some(kaban) = msg.get("kaban").and_then(Value::as_bytes) else { return fail };
+        let given: Vec<u16> = kaban.as_chunks::<2>().0.iter().map(|&b| u16::from_be_bytes(b)).collect();
+        let Some(at) = self.selected else { return fail };
+        if given.len() != crate::shop::EXCHANGE_COST as usize || kaban.len() % 2 != 0 {
+            return fail;
+        }
+        let me = self.account.players[at].player_id;
+        let lent = self.hub().rentals.lent_by(me);
+        let change = |p: &mut Player| {
+            crate::trade::give(p, &given);
+            *p.cards.entry(card).or_default() += 1;
+        };
+        // Checked and changed under the accounts' lock: the stored player is the one that must own the cards.
+        match &self.directory {
+            Some(d) => {
+                let mut d = d.locked();
+                if !d.player(me).is_some_and(|p| crate::trade::owns(&world, p, &lent, &given)) || !d.update_players(vec![(me, Box::new(change))]) {
+                    return fail;
+                }
+                if let Some(stored) = d.player(me) {
+                    self.account.players[at] = stored.clone();
+                }
+            }
+            None => {
+                if !crate::trade::owns(&world, &self.account.players[at], &lent, &given) {
+                    return fail;
+                }
+                change(&mut self.account.players[at]);
+            }
+        }
+        let pack = world.packs.iter().find(|p| p.tiers.iter().flatten().any(|&c| c == card)).map_or(pool.id, |p| p.id);
+        self.presents.push_back(crate::shop::Present::Card { pack, card });
+        Message::reply(0x1C28)
+    }
+
+    /// The shop's rental offer (0x2D75 for 0x2C40): how many cards, for how many BP, for how many days; all 0 (an offer
+    /// nobody can confirm) without the client's rental pool.
+    fn rental_terms(&self) -> Message {
+        use crate::shop::{RENTAL_BP, RENTAL_CARDS, RENTAL_DAYS};
+        let terms = if self.world.rental_pool.is_empty() { [0; 3] } else { [RENTAL_CARDS, RENTAL_BP, RENTAL_DAYS] };
+        ["rental_cardnum", "rental_point", "rental_term"].into_iter().zip(terms).fold(Message::reply(0x2D75), |m, (k, v)| m.with(k, Value::U32(v)))
+    }
+
+    /// A rental from the shop 0x2C41 {main_list (big-endian u16 rows)} -> 0x2D77 {dpoint} (the client sets its BP from
+    /// it) or 0x2D78: exactly the offer's number of cards, all from the rental pool, and the BP to pay. It replaces the
+    /// player's rental from the shop under way. The client then asks for the rental records itself (0x2C34, live), from
+    /// which it adds the cards to its collection.
+    fn rent_from_shop(&mut self, msg: &Message) -> Message {
+        use crate::shop::{RENTAL_BP, RENTAL_CARDS, RENTAL_DAYS};
+        let fail = Message::reply(0x2D78);
+        let Some(list) = msg.get("main_list").and_then(Value::as_bytes) else { return fail };
+        let cards: Vec<u16> = list.as_chunks::<2>().0.iter().map(|&b| u16::from_be_bytes(b)).collect();
+        let pool = &self.world.rental_pool;
+        if list.len() % 2 != 0 || cards.len() != RENTAL_CARDS as usize || pool.is_empty() || !cards.iter().all(|c| pool.contains(c)) {
+            return fail;
+        }
+        let Some(at) = self.selected else { return fail };
+        let me = (self.account.players[at].player_id, self.account.players[at].name.clone());
+        match &self.directory {
+            Some(d) => match d.locked().purchase(me.0, RENTAL_BP, None, |_| {}) {
+                Ok((left, _)) => self.account.dpoint = left,
+                Err(why) => {
+                    tracing::warn!("[shop] rental refused: {why}");
+                    return fail;
+                }
+            },
+            None => match self.account.dpoint.checked_sub(RENTAL_BP) {
+                Some(left) => self.account.dpoint = left,
+                None => return fail,
+            },
+        }
+        self.hub().rentals.start_from_shop(me, cards, RENTAL_DAYS, chrono::Utc::now().timestamp());
+        Message::reply(0x2D77).with("dpoint", Value::U32(self.account.dpoint))
+    }
+
     fn hub(&self) -> std::sync::MutexGuard<'_, Hub> {
         self.hub.locked()
     }
@@ -2554,7 +2644,7 @@ impl FrontSession {
         }
         // The login replies and purchases read the BP, which may have grown since this session began (duels pay
         // into the account).
-        if matches!(id, 0x1F47 | 0x1F48 | 0x1B68)
+        if matches!(id, 0x1F47 | 0x1F48 | 0x1B68 | 0x2C41)
             && let Some(bp) = self.directory.as_ref().and_then(|d| d.locked().dpoint(self.account.user_id))
         {
             self.account.dpoint = bp;
@@ -2657,14 +2747,14 @@ impl FrontSession {
                 packs.chain(decks).fold(Message::reply(0x1C22), Message::item)
             }
             0x1B68 => self.buy(msg),
-            0x1B6F => Message::reply(0x1C26),
+            0x1B6F => self.world.exchange_pools.iter().map(crate::shop::exchange_item).fold(Message::reply(0x1C26), Message::item),
+            0x1B6A => self.exchange(msg),
             0x1B6B => self.world.protectors.iter().map(|&id| crate::shop::shelf_protector(id)).fold(Message::reply(0x1C32), Message::item),
             0x1B6D => Message::reply(0x1C2E),
             // perk_num is compared with 500 to show _root.expack_del; meaning unknown.
             0x1B72 => Message::reply(0x1C36).with("perk_num", Value::U32(0)),
-            0x2C40 => ["rental_cardnum", "rental_point", "rental_term"]
-                .into_iter()
-                .fold(Message::reply(0x2D75), |m, k| m.with(k, Value::U32(0))),
+            0x2C40 => self.rental_terms(),
+            0x2C41 => self.rent_from_shop(msg),
             0x1B69 => self.world.avatar_items.iter().map(|&(id, _)| crate::shop::shelf_avatar_item(id)).fold(Message::reply(0x1C2A), Message::item),
             // Event list {event_type, status, event_id} (TournamentScene 0x4D0BB0) and event search
             // (UserEventScene 0x4D9E37): no events are held.
