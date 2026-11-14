@@ -522,7 +522,8 @@ native Windows, an IME, more than one monitor.
   wires them to GameDelegate calls: `btn0` Shop (`GoShop`), `btn1` Official Event, `btn2` Championship, `btn3` User
   event (all three `MenuSelect`, each only if `_root.ofseve_enable` / `wcup_enable` / `ueve_enable`), `btn4` NPC duel
   (`GoCpuDuel`), `btn7` character settings (`GoCharMake`, the tent on the right; Avatar Settings, CharMake.cpp:
-  update `0x51C960`, replies `0x42AC70`); `btn5` and `btn6` have no handler. While the screen is
+  update `0x51C960`, replies `0x42AC70`; its part and title lists show only owned items, and `0x433AC0` checks the
+  worn ones against the pbin); `btn5` and `btn6` have no handler. While the screen is
   locked, `sisetu_block.swf` lays an invisible block over them (`sisetuEnable` false).
 - In chat, the client prints its own lines only from the server's `0x2455` echo, its own name in cyan and others' in
   white.

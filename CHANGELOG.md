@@ -10,6 +10,15 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **Fixed: Avatar Settings had nothing to pick.** Hair styles, eyes, clothes, the duel disk and titles were empty
+  lists. Every player now starts with the game's free parts and the BEGINNER DUELIST title, and items bought in the
+  shop show up next to them.
+- **A new look shows straight away.** Other players see your changed avatar without you logging in again.
+- **Pegasus can't read a Millennium Eye holder.** Wear Bakura's Accessories (the Millennium Eye, sold in the shop) as
+  Facial Accessory 2, and Pegasus stops seeing your hand and Set cards, and lets you know he's not happy about it.
+
 ## v0.0.15 (2026-11-14)
 
 Cards that play by the text on them, and a way to give rented cards back early. Choose **Desktop** for the graphical

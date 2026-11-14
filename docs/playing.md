@@ -33,7 +33,8 @@ In a duel, left-click a hand card for its default action; right-click it for the
 Use the phase buttons to enter the Battle Phase, Main Phase 2 or End Phase.
 
 Each NPC plays in character and talks in the chat window below the field, with its name in red. Yami Yugi, Yugi,
-Jaden and Yusei draw the card they need, and Maximillion Pegasus can see your hand and your Set cards.
+Jaden and Yusei draw the card they need, and Maximillion Pegasus can see your hand and your Set cards, unless you wear
+a Millennium Eye of your own: Bakura's Accessories from the shop, worn as Facial Accessory 2 in Avatar Settings.
 
 Every duel, against an NPC or a player, is saved as a duel log: Main Menu → Duel Log → Latest Duel Logs, then click it
 and Play to watch it again (both players' cards are shown).
@@ -137,7 +138,8 @@ In Match Mode, a player whose deck has a side deck gets the Card Swap screen bet
 side deck and the main or extra deck, then press the arrow at the top left to go on. Build a side deck in Edit Deck.
 
 The shop also sells card protectors (200 BP) and avatar items (100 BP): Avatar Settings and the deck editor offer
-them once bought.
+them once bought. Avatar Settings is the tent on the right of the map; every player starts with a few hair styles,
+eyes, clothes, a duel disk and the BEGINNER DUELIST title.
 
 In the shop, Trade Card swaps cards you don't need for one you want: pick a card from Blister's list (cards from the
 first 48 booster packs), then choose 10 of your own cards (or press Auto Select) and confirm. Rented cards and cards

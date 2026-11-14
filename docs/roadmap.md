@@ -14,6 +14,7 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
   - [✅ Screenshot session (2026-11-08): two things seen playing NPC duels](#-screenshot-session-2026-11-08-two-things-seen-playing-npc-duels)
   - [▶ Duel check (2026-11-09): the client's view checked against the engine](#-duel-check-2026-11-09-the-clients-view-checked-against-the-engine)
   - [▶ Connection DLL wave (2026-11-14): issues #10–#13](#-connection-dll-wave-2026-11-14-issues-1013)
+  - [✅ Avatars (2026-11-14): Avatar Settings' parts, and the Millennium Eye against Pegasus](#-avatars-2026-11-14-avatar-settings-parts-and-the-millennium-eye-against-pegasus)
   - [✅ Duel windows (2026-11-13): every choice and reveal the client can show](#-duel-windows-2026-11-13-every-choice-and-reveal-the-client-can-show)
   - [▶ Higher resolution (2026-11-14): issue #1's sharp 4:3](#-higher-resolution-2026-11-14-issue-1s-sharp-43)
   - [✅ M0: Research and tooling](#-m0-research-and-tooling)
@@ -1007,6 +1008,31 @@ clients.
       the list with its help line, "rental 1: returned early by its borrower", a second press sent nothing, the button
       hid on the Lent tab, the reopened list showed the rental over with no cards, and closing the game left no crash.
       A Deck rental's three lists are still not seen live.
+
+## ✅ Avatars (2026-11-14): Avatar Settings' parts, and the Millennium Eye against Pegasus
+
+Every avatar feature checked end to end on the two private clients: Avatar Settings, buying an item, wearing it,
+saving it, and what the other player sees.
+
+- [x] Avatar Settings' part lists were empty but for the colours: it lists only owned parts and titles (pbin bits), and
+      the free ones were never owned. Every player's own record now owns the catalogue's free entries (`sub` 1 and 2 of
+      kinds 1, 2 and 10: 53, with the BEGINNER DUELIST title). Tests: `every_player_owns_the_free_avatar_parts_and_titles`
+      (contract) and the catalogue's golden test. Live: 6 hair styles, 6 eyes, 3 clothes, the duel disk and the title
+      listed; Spiky Hair, Rough and Bakura's Accessories worn and saved, the title shown.
+- [x] A changed look reaches what others see at once: the hub's copy of an online player's record (an opponent's
+      vsPlayerData, a user event's bracket, a duel log's side) was made at login only. Test:
+      `a_new_look_is_what_others_see_at_once`.
+- [x] Checked working, unchanged: buying an avatar item ("You have acquired Bakura's Accessories!", 100 BP), the shop's
+      preview model, the Dialogue, Greeting and Animation lists, and the new look on the janken screen and the duel
+      field for both players (Auto Duel).
+- [x] The game has no Millennium Puzzle item (no character outfit carries it), but "Bakura's Accessories" (84 male,
+      342 female, Facial Accessory 2) is the Millennium Eye over the left eye. Pegasus can't read a player wearing it:
+      his bot plays without `sees` (`npc::against`), and his chat says so (`blind_greet`, `blind`, `blind_lose` in
+      `npc_lines.txt`). Tests in `npc.rs` and `banter.rs`. Live: against Alpha wearing it, "Is that... my Millennium
+      Eye? Where did you get that, Alpha-boy?" and "I can't read a thing!"; against Bravo without it, his usual greeting
+      and "My Millennium Eye tells me you're holding Enemy Controller."
+- [ ] Titles other than BEGINNER DUELIST (159 in the catalogue, "THE AFRO KAISER", "THE CARD ENTHUSIAST", …) are
+      earned by something the server would decide; none is awarded yet.
 
 ## ✅ Duel windows (2026-11-13): every choice and reveal the client can show
 

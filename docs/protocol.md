@@ -188,9 +188,11 @@ team membership intact. Tests: `a_refused_last_player_deletion_preserves_their_s
   `0x42923F`), so we send 41 zero entries (82 bytes): a default male avatar. 41 is the client's own length (its update `0x2CEF` sends 82
   bytes; CharMake reads entries 0–40 through checked indexes), settled. `0x42CA60` copies entries 0, 1, 2, 4–10 into ten
   separate selection fields and `0x429210` entries 17–40 into a second table; 11–16 are not read there. The catalogue
-  (`yo3pbininfo.bin` kinds 1 and 2) has nine part categories per sex in its `a` field (hair, face mark, nose, eyes,
-  mouth, top, hair back, bottom, glasses); which slot holds which is not mapped, and all zero is what the client starts
-  from.
+  (`yo3pbininfo.bin` kinds 1 and 2) has nine part categories per sex in its `a` field; entry 0 is the gender and entry
+  *n* (1–9) holds the pbin id of a part of category *n* (live 2026-11-14, a saved avatar: hair front 3 "Spiky Hair" in
+  entry 1, clothes 1026 "Rough" in 6, Facial Accessory 2 84 "Bakura's Accessories" in 9; Konami's saved `.y3a`
+  avatars agree). All zero is what the client starts from. `0x433AC0` checks that the worn parts and the `title` are
+  owned (their pbin bits).
 - `pbin`: **binary**, required. The main screen reads byte `0x4B` at `0x4727DE`; without it the client crashes.
   We send 512 bytes: the deck editor's protector loop (`0x47E490`) tests `pbin[id >> 3] & (1 << (id & 7))` for ids
   1 to 4096 (the count in `yo3pbininfo.bin`) with no length check (`0x51C260`), so 4096 bits = 512 bytes is exactly the
@@ -406,7 +408,11 @@ ids 30000 + the pbin id), then the present: `type` 7 for a protector (PresentWin
 avatar item with `name_id` its name text (the shop's case: "You have acquired %s!"), `item` the pbin id as a
 big-endian u16. The client sets the pbin bit itself; the server keeps the owned ids with the player and sets their
 bits in every record's `pbin` (the deck editor's protector list `0x47E490` and Avatar Settings read them). A second
-purchase of one fails (`0x1C25`). Live: P-01K for 200 BP showed "P-01K Card Protector"; Domino: Red for 100 BP
+purchase of one fails (`0x1C25`). Avatar Settings lists **only owned** parts and titles, so every player's own record
+also owns the free entries: `sub` 1 and 2 of kinds 1, 2 and 10 (titles; its one free entry is 224 BEGINNER DUELIST,
+"Your first ever Title"), 53 in all (`World::free_items`). Without them every part list but the colour pickers was
+empty (live 2026-11-14); with them a new player has 6 hair styles, 6 eyes, 3 clothes, the Battle City duel disk and
+the title. Live: P-01K for 200 BP showed "P-01K Card Protector"; Domino: Red for 100 BP
 showed "You have acquired Domino: Red!".
 
 ### Card trade between players (agent step `0x4A91D0`, trade scene `CardTrade.cpp`, handler `0x4248F0`)
