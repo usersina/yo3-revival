@@ -22,6 +22,10 @@ Older entries describe their release at the time. For current setup, use the [RE
   deals 300 for every card it sends; Temple of the Kings lets every Trap be activated the turn it is Set; Mausoleum of
   the Emperor's LP payment is part of your Normal Summon; Imperial Custom's Continuous Traps can't be destroyed at
   all.
+- **Give borrowed cards back early.** In **Main Menu → Rental Card List**, the **Borrowed** tab now has a Return button
+  (the round arrow under the list): pick a rental and press it, and the cards go back to their owner straight away, as
+  if its term had ended. It works for rentals from friends and from the shop, and with servers from v0.0.13 on, so
+  hosts don't need to update for it.
 
 ## v0.0.14 (2026-11-14)
 

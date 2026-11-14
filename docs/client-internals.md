@@ -247,6 +247,41 @@ duel connection `[0x82D2C4]`'s vtable `+0x50`, as the phase button does (`0x5211
 `[0x82D2C0]` `+0` is 1) but not the player's input flag `+0x284`, which the input wait 4 and a card list `0x37` set
 (`0x523062`): the marker comes before them. Unsettled after 30 s it gives up (the server's allowance stands).
 
+### Rental Card List's Return button (issue #13)
+
+`tools/mod/rental-return.h` (pure parts in `rental-return-logic.h`, tested by `rental-return-test.c`) gives the Borrowed
+tab the Return button its movie wires but never places. It writes no code bytes and no movie bytes: it replaces three
+RentalRecord vtable entries in `.rdata`, after checking each still holds the game's own function at the actual base
+(else the mod refuses the game, stage `mod-rental-return`):
+
+- **Accept** (FxDelegateHandler vtable `0x7A7A54` slot 1, `0x7A7A58` → `0x481D70`, thiscall `(handler, processor)`):
+  after the original registers ExitRental … AdjustRental, the wrapper registers `BorrowReturan` the same way: a
+  `GString` (`0x5C8C90`, thiscall, one argument; released as the game does, refcount at node `+4`, freed by stdcall
+  `0x5BBC90`) and the processor's vtable `+4` `(name, callback)`. Callbacks are cdecl `(FxDelegateArgs *)`: `+0x10` the
+  handler (RentalRecord `+0x2C`), `+0x14` the movie, `+0x18` the GFx arguments, `+0x1C` their count.
+- **The callback** takes argument 0 (a number, the absolute row) and the borrowed list at RentalRecord `+0x90`/`+0x94`.
+  Its entries are field maps, not records: the `0x2D6E` handler stores each item's `+0x68` map's `+4` copy
+  (`0x48217C`–`0x4821A2`; reading them as records faulted in the map lookup `0x41A980`). It reads `rental_id` and
+  `confirm_to`, sends `0x7A14 {rental_id}` as the screen sends `0x2C34` (`0x482870`: a `YO3Request`, the front
+  connection RentalRecord `+0x34`, its sender `+0x74`, vtable `+0x50`) and asks the next tick to grey the row.
+- **The tick** (main vtable `0x7A7A14` slot 14, `0x7A7A4C` → `0x482250`, thiscall `(this, event)`, the step that
+  builds the movie at state `+0x40` 2): once built (state 3 on), the movie view is `*(*(RentalRecord+0x5C)+0x48)+4`.
+  GFxMovie's `SetVariable` is vtable `+0x40` `(path, value *, set type)` and `GetVariable` `+0x44` `(value *, path)`
+  (the game's `_root.canbtn.disabled`, `_root.xpos`); the movie root's Invoke `0x5CB1B0` `(name, args, count)` takes a
+  path. On `_root._currentframe` 3–8 (the Borrowed tab; 9–14 are Lent) with no `_root.borrow_btn1`, it calls
+  `_root.attachMovie("btn_main01", "borrow_btn1", 1000)` (the library's SoundButton with a return arrow, ~40 px),
+  sets `_x` 470, `_y` 470, `helpText` "$14282", `clickSound` "SE_DECIDE", `overSound` "SE_CURSOR", and adds the click
+  to `_root.click_return` (`addEventListener` with `_root` from GetVariable; managed values released with
+  `0x5C98C0`). Attached clips outlive the timeline's frames, so `_visible` follows the tab. A pending row gets
+  `call("BorrowSetFlag", row)`, the movie's own greying: invoked inside the callback it changed nothing (live).
+- **Events** (main vtable slot 6, `0x7A7A2C` → `0x482030`): a front `0x2D6C` reaching RentalRecord makes it ask for
+  its lists again (`0x482760`), and each `0x2D6E` answer is stored at `+0x6C + 0x18 × state` (`0x48211B`), counting the
+  state up: past the two lists into the card view's vectors and, from state 5, past them. So once the screen
+  asked for its lists (state ≠ 0) the wrapper keeps `0x2D6C` from it; the global dispatcher has already stored it
+  (dataset slot 8). Without this a return, or any rental's term ending, while the screen is open would corrupt it.
+
+Like the other wave hooks, the launcher's preflight (`inspect_game`) doesn't check these slots; the DLL does.
+
 ### Native duel observer
 
 `tools/mod/duel-observer.h` installs two byte-guarded hooks for ver.1.153: the CALL at `0x514212`

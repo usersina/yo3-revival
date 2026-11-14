@@ -985,17 +985,18 @@ clients.
       choice window showed both options in the card's words and the ATK one gave 2400; the NPC duel's log downloaded
       (`GET /duellogs/…dlog 200`) and was saved under the player's `duellogs\myduels`; in an Auto Duel against a Linux
       client every `0x5F1` was answered (3 of 3, the Windows player's own prompts among them) while the turn clock ran.
-- [ ] #13 Early rental return: **much bigger than planned, not done.** The Borrowed tab's script calls `BorrowReturan`
-      from `borrow_btn1`, but the shipped `rentalrecord.swf` never places that button (nor `borrow_btn0` or `btn_main`;
-      only `btn_main01` is in its library), so registering the callback (RentalRecord's Accept `0x481D70`, vtable slot
-      `0x7A7A58`) gives the player nothing to press: live, Bravo's Borrowed tab showed the rental and no button. Done:
-      the server's half, `0x7A14 {rental_id}` from the borrower ends the rental as at its term (records to both, the
-      history over, the lender's cards free again; `rental_contract`), every record carrying our `rental_id`. Left: a
-      button. Either the DLL attaches the library's `btn_main01` as `borrow_btn1` through the movie (GFx Invoke
-      `attachMovie`, then position and label it; the frame script registers its click when the tab is entered again),
-      or it patches the movie's frame 3 in memory as the game loads it; then the callback (registration and reading
-      the row's record from RentalRecord `+0x90` were written and built, then left out unreachable). A Deck rental's
-      three lists are still not seen live.
+- [x] #13 Early rental return: the Borrowed tab's Return button. The shipped `rentalrecord.swf` wires `borrow_btn1` to
+      `BorrowReturan` but never places it, and RentalRecord registers no such callback. `tools/mod/rental-return.h`
+      attaches the movie's own `btn_main01` (a return arrow) as `borrow_btn1` through GFx on the Borrowed frames, adds
+      its click to the frame's `click_return`, registers `BorrowReturan` (wrapping Accept `0x481D70`), which sends
+      `0x7A14 {rental_id}` and greys the row, and keeps rental pushes from the open screen, which would otherwise
+      store its re-asked lists past its vectors. Three vtable entries, no code or movie bytes; `MOD_ABI` stays 3, so
+      v0.0.13+ servers take it unchanged. No confirmation (the client has no question text; 14282 "Return these cards
+      now." is the help line). Live (2026-11-14, two private clients): Bravo returned Alpha's rental ("rental 1:
+      returned early by its borrower"), Alpha lent the same cards again, the row greyed, a second press and a press with
+      no row sent nothing, a shop rental returned the same way, the button hid on the Lent tab and came back, and
+      Alpha's open Lent tab survived both pushes. Native Windows still to check. A Deck rental's three lists are still
+      not seen live.
 
 ## ✅ Duel windows (2026-11-13): every choice and reveal the client can show
 
@@ -1521,7 +1522,7 @@ take: most of these are only out of reach for a server talking to the stock clie
 | Server text inside a duel dialog | Every dialog message is built from entries that name the client's own texts, card names by Konami id or numbers | `0x519870` (entry kinds 1-8), Select dialog labels through it (`0x4C5880`); the Flash `setMessage` is fed only by the C++ | Done with the DLL (#10): the server's texts as prompt ids past the table's end (`0x40BB20`) | — |
 | Clocks that wait for the animations by themselves | The client never says when it has played a batch, and counts down regardless | Duel requests 1-15 (`0x49F990`'s 16 senders), DuelCockpit `0x502660` | Done with the DLL (#11): the client answers a settle marker; the allowance is the fallback | — |
 | NPC duel logs | The client fetches a log only for duels against players | protocol.md, "Duel log files" (MainGamen `+0x804`) | Done with the DLL (#12): the jump removed, the server keeps NPC duels' logs | — |
-| Returning a rental early | The rental screen's Return button has no C++ callback, and the shipped movie has no button either | protocol.md, `0x481D70`; `rentalrecord.swf` places no `borrow_btn1` | Rentals end at their term; the server takes `0x7A14 {rental_id}` | Bigger: the DLL would have to add the button to the movie (#13) |
+| Returning a rental early | The rental screen's Return button has no C++ callback, and the shipped movie has no button either | protocol.md, `0x481D70`; `rentalrecord.swf` places no `borrow_btn1` | Done with the DLL (#13): it attaches the movie's `btn_main01` as the button and registers the callback; the server takes `0x7A14 {rental_id}` | — |
 | Music changing with the duel | BgmUpdate has no handler | No case 9 in the duel components or the pump `0x522A50` | Nothing sent | Possible after research: the DLL switches tracks itself (#14) |
 | Three or four positions in one choice | The position dialog has two buttons (face-up attack; face-up or face-down defense) | `dlg_selstand.swf` (`btn0`, `btn1` only), `0x4C5E50` (`param3 >> 16` the only switch) | The two the prompt allows; none came up in 1,200 self-played duels | Server-side: two dialogs in a row. Not done: no card of the client's needs it |
 | Several Types declared at once | The type dialog stops at the first pick | `dlg_seltype.swf` `onItemClick`, `0x4C5B50` (`selMax` 1) | Answered automatically | Server-side: one dialog per Type. Not done: no card of the client's asks (0 scripts) |

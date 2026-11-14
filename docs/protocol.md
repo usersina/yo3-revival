@@ -483,14 +483,24 @@ lent). Live: Yugi lent Tainted Wisdom and Windstorm of Etaqua to Kaiba for 3 day
 000, Kaiba's Edit Deck listed them (42 cards, a blue badge) and both Rental Card Lists had the row; a server restart
 kept it and an end time moved to the past ended it while both were online.
 
-Not seen: a Deck rental (`type 1`: three lists). **No early return** (issue #13): the Borrowed tab's script
-(`rentalrecord.swf`, frame 3) wires `borrow_btn0` (`BorrowDeckSave`) and `borrow_btn1` (`BorrowReturan` with the row's
-index) and the C++ registers no callbacks for them (RentalRecord's Accept `0x481D70`, slot 1 of the vtable at
-`0x7A7A54`), but the shipped movie never places either button (nor `btn_main`, AdjustRental): only `btn_main01` is in
-its library. Live (2026-11-14): Bravo's Borrowed tab listed Alpha's rental, with no button below it. So a rental ends at
-its term. The server already takes an early return, `0x7A14 {rental_id}` from the borrower (every record carries our
-`rental_id`, which the client ignores; contract `the_borrower_can_return_a_rental_early`), ending it as at its term;
-what the client lacks is a button to send it (see the roadmap, #13). The "Lender's / Borrower's Rental List is full" texts (14205/14206) have no code we know of.
+Not seen: a Deck rental (`type 1`: three lists). The "Lender's / Borrower's Rental List is full" texts (14205/14206)
+have no code we know of.
+
+**Early return** (issue #13, Revival; the connection DLL's button):
+
+| Request | Reply | Push | Evidence | Status |
+| ------- | ----- | ---- | -------- | ------ |
+| `0x7A14 {rental_id}` from the borrower (front connection), sent by the Borrowed tab's Return button | none | `0x2D6C` records to both players (to the borrower only for a shop rental), as at the term | the stock client has no sender: `rentalrecord.swf` frame 3 wires `borrow_btn1` to `click_return` → `BorrowReturan(listBorrowIndex + selectList)`, nothing while no row is selected, but places no `borrow_btn1` and RentalRecord's Accept (`0x481D70`) registers no `BorrowReturan`; `tools/mod/rental-return.h` adds both ([client internals](client-internals.md#rental-card-lists-return-button-issue-13)). Every record carries our `rental_id`, which the stock client ignores; contract `the_borrower_can_return_a_rental_early` | confirmed (live, Revival) |
+
+A press reads the row's `rental_id` and `confirm_to` from the borrowed list and sends the request only for a running
+rental not returned already in this session; the row then greys through the movie's own `BorrowSetFlag`. The open
+screen doesn't refresh from the pushes (RentalRecord would re-ask for its lists and store them out of place, so the DLL
+keeps `0x2D6C` from it once built), so the lender's open Lent tab shows the change when reopened. There is no
+confirmation: the client has no question for it (text 14282 "Return these cards now." is the button's help line) and
+the screen's own Exit asks none. Live (2026-11-14, two private clients): Bravo returned Alpha's rental and the server
+logged "rental 1: returned early by its borrower"; Alpha could lend the same two cards again; a second press on the
+grey row and a press with no row selected sent nothing; the shop rental (`<Shop>`) returned the same way; Alpha's open
+Lent tab took both pushes without a re-request.
 
 ### Country (flags)
 

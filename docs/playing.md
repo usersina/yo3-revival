@@ -155,8 +155,11 @@ To lend cards, open a player's Player Information and press Send Rental Request.
 conditions (a term of 1, 3, 7 or 14 days, and Free) and double-clicks cards from their trunk into the list, then presses
 Confirm; the borrower answers "Borrow these cards?" and the cards join their trunk (marked as borrowed, so they can be
 put in decks but not traded) while the lender's copies are out of theirs. When the term is over the cards are back with
-their owner, even across a server restart (they are kept in the SQLite rentals document); there is no early return. Both players'
-Main Menu → Rental Card List shows what they lent and borrowed. Editor saves live locally in
+their owner, even across a server restart (they are kept in the SQLite rentals document). Both players'
+Main Menu → Rental Card List shows what they lent and borrowed. To give cards back before the term ends, the borrower
+selects the rental on its **Borrowed** tab and presses the round-arrow Return button under the list ("Return these
+cards now."): the row greys out and the cards are back with their owner at once. There is no confirmation, so pick the
+row first. This works for shop rentals too. Editor saves live locally in
 `Documents\Yu-Gi-Oh! ONLINE 3`; saving a deck or selecting it for a duel also sends it to the server. A deck that used a borrowed
 card is no longer valid once the rental ends.
 
