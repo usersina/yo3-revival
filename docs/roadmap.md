@@ -13,7 +13,9 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
   - [▶ Monkey testing (2026-11-08): two monkeys, what they covered and found](#-monkey-testing-2026-11-08-two-monkeys-what-they-covered-and-found)
   - [✅ Screenshot session (2026-11-08): two things seen playing NPC duels](#-screenshot-session-2026-11-08-two-things-seen-playing-npc-duels)
   - [▶ Duel check (2026-11-09): the client's view checked against the engine](#-duel-check-2026-11-09-the-clients-view-checked-against-the-engine)
+  - [▶ Connection DLL wave (2026-11-14): issues #10–#13](#-connection-dll-wave-2026-11-14-issues-1013)
   - [✅ Duel windows (2026-11-13): every choice and reveal the client can show](#-duel-windows-2026-11-13-every-choice-and-reveal-the-client-can-show)
+  - [▶ Higher resolution (2026-11-14): issue #1's sharp 4:3](#-higher-resolution-2026-11-14-issue-1s-sharp-43)
   - [✅ M0: Research and tooling](#-m0-research-and-tooling)
   - [✅ M1: Stable world](#-m1-stable-world)
   - [✅ M2: An instrumented client](#-m2-an-instrumented-client)
@@ -37,6 +39,16 @@ Linux and Windows release builds pass; live X11 icon pixels and all nine embedde
 Desktop archives also carry `yo3-revival.ico` and `yo3-revival.png` for custom shortcuts, checked byte-for-byte in
 both platform archives. The in-game login news no longer includes the deck-onboarding notice; a front contract
 checks its removal alongside the existing news-format and engine-warning coverage.
+
+v0.0.13 release preparation (2026-11-14):
+
+- [x] The workspace package version and the local lockfile entries are `0.0.13`. The changelog describes the duel
+  dialogs in the card's words (#10), NPC duel logs (#12), the clock signal (#11), the higher resolution (#1, first
+  half), the shop's Trade Card and Rental (#8), Goyo Guardian and Double Spell (#7, first slice) and the Brain
+  Research Lab and Card Trooper fixes (#9). Connection interface 3: hosts and friends update together.
+- [x] Windows 11 VM (build 22000, the Windows Scripts bundle, private writable game copy): see "Connection DLL wave"
+  and "Higher resolution" below; the two problems the resolution showed there (an exit crash mid-duel, the `auto`
+  window under the taskbar) were fixed and re-checked before this release.
 
 v0.0.12 release preparation (2026-11-13):
 

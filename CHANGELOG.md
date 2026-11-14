@@ -10,7 +10,17 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.0.13 (2026-11-14)
+
+Duel windows that speak the card's words, a bigger and sharper game, NPC duel logs, fairer clocks and the shop's
+Trade Card and Rental. Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions
+include the server, rules engine and required connection components. Original game files are not included.
+**Windows 7 is not supported.**
+
+**Everyone needs this version:** the connection files changed, so a host and their friends must all update together.
+Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.13/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.13/docs/scripts.md).
 
 - **You choose the zones.** Ground Collapse, Seismic Shockwave and the other cards that make zones unusable now ask you
   with the game's own message, and you click the zones; Senet Switch asks where to move. Unusable zones show a red
@@ -27,8 +37,6 @@ Older entries describe their release at the time. For current setup, use the [RE
   them in the chat window.
 - **Duel logs for NPC duels.** A duel against an NPC is now saved like one against a player: find it in Duel Log →
   Latest Duel Logs and press Play to watch it again.
-- **Update required:** everyone needs this version (the connection files changed); an older client can't join this
-  server, and this client can't join an older one.
 - **Fairer duel clocks.** Your clock no longer runs while the game is still playing animations: your game now tells
   the server when it has finished them, so a slower computer no longer loses thinking time.
 - Your avatar speaks its line when you flip a Set card or reveal a hand card to activate it, as in the original.
