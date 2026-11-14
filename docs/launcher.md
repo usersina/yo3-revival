@@ -221,6 +221,10 @@ The choice is saved at once and applies the next time you press **Play**. Openin
 [directly](#open-the-game-directly) always uses the original size. If the higher resolution can't be used with your
 game files, the game doesn't start and the logs name `stage=mod-resolution`: choose **Original** to play.
 
+Known issue on Windows: with a higher resolution, closing the game window in the middle of a duel can end with "Game
+exited with an error". Nothing is lost, but finish or leave the duel before you close the game. With **Fit my screen**
+the bottom edge of the window may sit under the taskbar; drag the window up, or pick a smaller size.
+
 ## Logs and support
 
 Normal mode always shows logs below Play, with **Export logs…** in the log header. **Help & support → Copy logs**

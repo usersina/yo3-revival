@@ -961,6 +961,11 @@ clients.
       it, and that player's clocks count from the answer; the allowance stays the fallback (no answer, or one more than
       30 s late). Live (Auto Duel, two private clients): a summon's answer came 4.4 s after its batch against a 1.45 s
       allowance, and both clients' clocks were re-counted from it; the opening took 16 s against 8.7 s.
+- [x] Native Windows 11 (VM build 22000, 2026-11-14, the Windows Scripts bundle from main against a scratch server on
+      the host; ASLR put the game at `0x00b60000`): "mod interface 3 ready" with every hook installed; Pyramid Energy's
+      choice window showed both options in the card's words and the ATK one gave 2400; the NPC duel's log downloaded
+      (`GET /duellogs/…dlog 200`) and was saved under the player's `duellogs\myduels`; in an Auto Duel against a Linux
+      client every `0x5F1` was answered (3 of 3, the Windows player's own prompts among them) while the turn clock ran.
 - [ ] #13 Early rental return: **much bigger than planned, not done.** The Borrowed tab's script calls `BorrowReturan`
       from `borrow_btn1`, but the shipped `rentalrecord.swf` never places that button (nor `borrow_btn0` or `btn_main`;
       only `btn_main01` is in its library), so registering the callback (RentalRecord's Accept `0x481D70`, vtable slot
@@ -1041,7 +1046,19 @@ activated card goes, which Konami's server made too.
 - [x] Live under Wine with DXVK (private Xvfb 1920×1080): 1440×1080, 1600×900 with bars, `auto`, the game's Full
       (a borderless 1920×1080 window) and 1024×600; map, deck editor, dialogs, NPC talk, janken and duel field drew
       and answered clicks where they should (details in client internals).
-- [ ] Native Windows 10/11 (the VM, with the user's go-ahead), a Japanese or Korean IME, a second monitor.
+- [x] Native Windows 11 (VM, 1280×800 screen, `--resolution auto`, 2026-11-14): the game chose its 1024×600 frame and
+      drew it at 1233×723, sharp; title, login, map (hover labels and the game's cursor under the pointer), NPC talk,
+      deck choice, janken and the 3D duel field drew right on native Direct3D 9, and a summon by click worked.
+- [ ] **Exit crash, native Windows only:** closing the window in the middle of a duel with the higher resolution on
+      ends in an access violation in DuelManager's destructor (`0x50E639`, writing the "remove" flag `+0x28` of its
+      duel component `+0x70`, which the game has already destroyed): 2 of 2 runs; 0 of 2 with the resolution off, none
+      under Wine, none when closing on the map. The game is quitting anyway, but the launcher reports "Game exited with
+      an error". A latent use-after-free in the game's teardown that the resolution mode makes fatal; finding which
+      hook changes the order needs a debugger in the VM.
+- [ ] `auto` sizes the window for the work area but Irrlicht places it for the whole screen, so on the VM its bottom
+      25 px sat under the taskbar (once Windows moved it up by itself). Moving the new window into the work area
+      would fix it.
+- [ ] A Japanese or Korean IME, a second monitor.
 - [ ] Direct start: the DLL loads after the window exists, so `yo3.exe` opened directly stays 1024×768. The WINMM
       loader would have to install the window and Direct3D hooks itself.
 - Out of scope: true 16:9 (every screen laid out again).

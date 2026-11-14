@@ -206,3 +206,7 @@ size of the screen, whatever the value. The launcher hands the value to the game
 variable yourself works the same. A value the DLL refuses, or a game whose drawing code differs from v1.153's, stops
 startup with `stage=mod-resolution`. Opening `yo3.exe` directly always uses the original size. How it works:
 [client internals](client-internals.md#higher-resolution).
+
+Known issues (native Windows): closing the window in the middle of a duel with a higher resolution can end with
+`stage=game-exit process_exit_code=0xc0000005` (the game is quitting anyway; leave the duel first), and `auto` may
+leave the window's bottom edge under the taskbar. Both are on the [roadmap](roadmap.md#-higher-resolution-2026-11-14-issue-1s-sharp-43).
