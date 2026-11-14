@@ -63,18 +63,20 @@ fn lua_files(dir: &Path, prefix: &str, out: &mut Vec<String>) {
 }
 
 /// The engine's exact dependencies, for replaying a recorded duel: this program (the core and its bindings are built
-/// into it), the card scripts, the card database and the Konami ids.
+/// into it), the card scripts (ProjectIgnis' and our overrides), the card database and the Konami ids.
 pub fn identity(vendor: &Path) -> serde_json::Value {
     let exe = std::env::current_exe().map(|e| file_sha256(&e)).unwrap_or_else(|_| sha256(b""));
-    let scripts_dir = vendor.join("CardScripts");
-    let mut names = vec![];
-    lua_files(&scripts_dir, "", &mut names);
-    names.sort();
     let mut scripts = ring::digest::Context::new(&ring::digest::SHA256);
-    for name in &names {
-        scripts.update(name.as_bytes());
-        scripts.update(b"\0");
-        scripts.update(&std::fs::read(scripts_dir.join(name)).unwrap_or_default());
+    // ProjectIgnis' scripts, then ours (engine/overrides/, which take precedence) under a prefix of their own.
+    for (dir, prefix) in [(vendor.join("CardScripts"), ""), (cards::overrides_dir(vendor), "overrides/")] {
+        let mut names = vec![];
+        lua_files(&dir, "", &mut names);
+        names.sort();
+        for name in &names {
+            scripts.update(format!("{prefix}{name}").as_bytes());
+            scripts.update(b"\0");
+            scripts.update(&std::fs::read(dir.join(name)).unwrap_or_default());
+        }
     }
     let scripts: String = scripts.finish().as_ref().iter().map(|b| format!("{b:02x}")).collect();
     serde_json::json!({
@@ -117,5 +119,30 @@ fn main() {
         if writeln!(stdout, "{answer}").and_then(|_| stdout.flush()).is_err() {
             break;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_identity_covers_the_overrides() {
+        let engine = std::env::temp_dir().join(format!("yo3-identity-{}", std::process::id()));
+        std::fs::create_dir_all(engine.join("vendor/CardScripts/official")).unwrap();
+        std::fs::write(engine.join("vendor/CardScripts/official/c1.lua"), "upstream").unwrap();
+        let vendor = engine.join("vendor");
+        let scripts = || super::identity(&vendor)["scripts"].as_str().unwrap().to_string();
+        let upstream = scripts();
+        std::fs::create_dir_all(engine.join("overrides")).unwrap();
+        std::fs::write(engine.join("overrides/c1.lua"), "ours").unwrap();
+        let ours = scripts();
+        assert_ne!(upstream, ours, "an override changes the scripts' fingerprint");
+        std::fs::write(engine.join("overrides/c1.lua"), "ours, fixed").unwrap();
+        assert_ne!(ours, scripts(), "so does changing one");
+        // The same text moved from ProjectIgnis' folder to ours is a different engine too.
+        std::fs::remove_file(engine.join("overrides/c1.lua")).unwrap();
+        std::fs::write(engine.join("overrides/c1.lua"), "upstream").unwrap();
+        std::fs::remove_file(engine.join("vendor/CardScripts/official/c1.lua")).unwrap();
+        assert_ne!(upstream, scripts());
+        std::fs::remove_dir_all(engine).unwrap();
     }
 }

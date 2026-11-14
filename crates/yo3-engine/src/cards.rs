@@ -13,6 +13,12 @@ use crate::core::Card;
 /// `official/` (Red-Eyes Darkness Metal Dragon's in `pre-errata/`). Any other script is at the top.
 const CARD_SCRIPT_FOLDERS: [&str; 3] = ["official", "pre-errata", "pre-release"];
 
+/// Our own scripts, beside `vendor/` (`engine/overrides/`, tracked in git): a script there is loaded instead of
+/// ProjectIgnis' of the same name, for a card played by the client's 2010–2012 text or an upstream script's bug.
+pub fn overrides_dir(vendor: &Path) -> PathBuf {
+    vendor.parent().unwrap_or(vendor).join("overrides")
+}
+
 /// A card for card-name filters (`declarable`).
 pub struct Declarable {
     pub code: u32,
@@ -26,6 +32,8 @@ pub struct Declarable {
 /// Card data and scripts, shared by the duel and the bot's look-ahead copies of it (on threads of their own).
 pub struct Library {
     vendor: PathBuf,
+    /// `overrides_dir`: searched before the vendor's scripts.
+    overrides: PathBuf,
     /// Each card's data row: type, level column, atk, def, attribute, race, alias, setcode (a NULL column reads as 0,
     /// as the sidecar's Number(null) did).
     rows: HashMap<u32, [i64; 8]>,
@@ -56,13 +64,17 @@ impl Library {
         })
     }
 
-    /// A script's text by file name: a card's (`c<passcode>.lua`) from its folders, any other from the top.
+    /// A script's text by file name: our override of it if there is one, else a card's (`c<passcode>.lua`) from its
+    /// folders, any other from the top.
     pub fn script(&self, name: &str) -> Option<Arc<Vec<u8>>> {
         if let Some(known) = self.scripts.lock().unwrap_or_else(|e| e.into_inner()).get(name) {
             return known.clone();
         }
         let folders: &[&str] = if is_card_script(name) { &CARD_SCRIPT_FOLDERS } else { &[""] };
-        let text = folders.iter().find_map(|f| std::fs::read(self.vendor.join("CardScripts").join(f).join(name)).ok()).map(Arc::new);
+        let text = std::fs::read(self.overrides.join(name))
+            .ok()
+            .or_else(|| folders.iter().find_map(|f| std::fs::read(self.vendor.join("CardScripts").join(f).join(name)).ok()))
+            .map(Arc::new);
         self.scripts.lock().unwrap_or_else(|e| e.into_inner()).insert(name.to_string(), text.clone());
         text
     }
@@ -146,7 +158,7 @@ impl Cards {
                 }
             }
         }
-        let library = Arc::new(Library { vendor: vendor.to_path_buf(), rows, scripts: Mutex::default() });
+        let library = Arc::new(Library { vendor: vendor.to_path_buf(), overrides: overrides_dir(vendor), rows, scripts: Mutex::default() });
         Ok(Cards { vendor: vendor.to_path_buf(), library, db, passcode_of, cid_of, declarables: None })
     }
 
@@ -273,6 +285,30 @@ impl Prints {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_override_is_loaded_before_the_vendors_script() {
+        let engine = std::env::temp_dir().join(format!("yo3-overrides-{}", std::process::id()));
+        let official = engine.join("vendor/CardScripts/official");
+        std::fs::create_dir_all(&official).unwrap();
+        std::fs::create_dir_all(engine.join("overrides")).unwrap();
+        for (dir, name, text) in [
+            (&official, "c1.lua", "upstream 1"),
+            (&official, "c2.lua", "upstream 2"),
+            (&engine.join("overrides"), "c1.lua", "ours 1"),
+            (&engine.join("vendor/CardScripts"), "utility.lua", "upstream utility"),
+        ] {
+            std::fs::write(dir.join(name), text).unwrap();
+        }
+        let vendor = engine.join("vendor");
+        let library = Library { vendor: vendor.clone(), overrides: overrides_dir(&vendor), rows: HashMap::new(), scripts: Mutex::default() };
+        let text = |name: &str| library.script(name).map(|t| String::from_utf8(t.to_vec()).unwrap());
+        assert_eq!(text("c1.lua").as_deref(), Some("ours 1"));
+        assert_eq!(text("c2.lua").as_deref(), Some("upstream 2"), "a card without an override plays ProjectIgnis' script");
+        assert_eq!(text("utility.lua").as_deref(), Some("upstream utility"));
+        assert_eq!(text("c3.lua"), None);
+        std::fs::remove_dir_all(engine).unwrap();
+    }
 
     #[test]
     fn a_cards_strings_are_its_option_texts() {

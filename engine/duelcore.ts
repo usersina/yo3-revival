@@ -21,14 +21,24 @@ import createCore, { OcgDuelMode, OcgLocation, OcgPosition, OcgProcessResult, Oc
 
 const here = dirname(fileURLToPath(import.meta.url));
 const vendor = join(here, "vendor");
+/** Our own scripts, loaded before ProjectIgnis' of the same name (crates/yo3-engine/src/cards.rs, `overrides_dir`). */
+const overrides = join(here, "overrides");
 let identityCache: Record<string, string> | undefined;
 /** Exact dependencies for diagnostic replay, including uncommitted card-script changes. Only requested in checks. */
 function identity() {
   if (identityCache) return identityCache;
   const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
   const scripts = createHash("sha256");
-  for (const name of readdirSync(join(vendor, "CardScripts"), { recursive: true }).map(String).filter(n => n.endsWith(".lua")).sort()) {
-    scripts.update(name.replaceAll("\\", "/") + "\0").update(readFileSync(join(vendor, "CardScripts", name)));
+  for (const [dir, prefix] of [[join(vendor, "CardScripts"), ""], [overrides, "overrides/"]]) {
+    let names: string[] = [];
+    try {
+      names = readdirSync(dir, { recursive: true }).map(String).filter(n => n.endsWith(".lua")).sort();
+    } catch {
+      // no overrides
+    }
+    for (const name of names) {
+      scripts.update(prefix + name.replaceAll("\\", "/") + "\0").update(readFileSync(join(dir, name)));
+    }
   }
   identityCache = { node: process.version, sidecar: digest(fileURLToPath(import.meta.url)),
     core: digest(join(here, "node_modules/ocgcore-wasm/lib/ocgcore.sync.wasm")),
@@ -129,9 +139,10 @@ const CARD_SCRIPT_FOLDERS = ["official", "pre-errata", "pre-release"];
 
 function readScript(name: string) {
   const folders = /^c\d+\.lua$/.test(name) ? CARD_SCRIPT_FOLDERS : [""];
-  for (const folder of folders) {
+  const paths = [join(overrides, name), ...folders.map(folder => join(vendor, "CardScripts", folder, name))];
+  for (const path of paths) {
     try {
-      return readFileSync(join(vendor, "CardScripts", folder, name), "utf-8");
+      return readFileSync(path, "utf-8");
     } catch {
       // the next folder
     }

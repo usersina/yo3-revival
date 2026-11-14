@@ -161,6 +161,28 @@ YO3_CARD_SWEEP=all cargo nextest run --release -p yo3-server --test card_sweep -
 
 Commit `engine/fetch.sh` and `engine/card-ids.json` only when all of these pass.
 
+**Card script overrides.** `engine/overrides/` holds our own card scripts, AGPL like ProjectIgnis' scripts they start
+from: the engine loads `engine/overrides/c<passcode>.lua` instead of ProjectIgnis' script of that name. One is for a
+card that should play by the client's 2010–2012 text rather than today's (Goyo Guardian takes any Tuner), or for an
+upstream bug (Double Spell). The folder's
+[README](https://github.com/usersina/yo3-revival/blob/main/engine/overrides/README.md) lists each one and why. To add
+one:
+
+1. Read the client's text: `yo3_data::Card::desc` (CARD_Desc_E), against the database's (`texts.desc` in
+   `engine/vendor/BabelCDB/cards.cdb`).
+2. Write a failing engine test (`crates/yo3-engine/src/session.rs`: `first_idle` sets cards out and runs to the first
+   idle prompt).
+3. Copy ProjectIgnis' script from `engine/vendor/CardScripts/official/`, change it with a `yo3-revival override:`
+   comment saying what and why, and add a row to the README.
+4. Rebuild the engine and sweep the card: `YO3_CARD_SWEEP=<cid>, YO3_CARD_SWEEP_SEEDS=10 cargo nextest run --release -p
+   yo3-server --test card_sweep --no-capture` (the report counts the duels it was used in).
+
+Both release editions ship the folder as `engine/overrides/` (`tools/engine-files.sh`, checked by
+`tools/test_package_editions.py`). The engine's `identity` fingerprints the overrides with the scripts, so a recorded
+duel replays only with the same overrides. The old sidecar (`engine/duelcore.ts`) reads them too, so the parity check
+compares like with like. After `engine/fetch.sh --update`, compare each overridden card's new upstream script with the one it was copied
+from: carry an upstream change over, or delete an override upstream has fixed.
+
 The card sweep (`tests/card_sweep.rs`) plays each card in a self-played duel through the duel check: three copies in
 both decks, two in the opening hand (twice in each Extra Deck for Fusion and Synchro Monsters). Every duel check also
 runs the round trip: each answer the engine offers must be reachable through the client's windows, and choices the

@@ -73,6 +73,32 @@ class Editions(unittest.TestCase):
                     for name, content in archived_icons.items():
                         self.assertTrue(content == icons[name], f"{name} must match the launcher artwork")
 
+    def test_the_engine_files_carry_the_card_script_overrides(self):
+        repo = Path(__file__).resolve().parent.parent
+        with tempfile.TemporaryDirectory(prefix="yo3 engine files ") as tmp:
+            root = Path(tmp)
+            fixture = {
+                "engine/fetch.sh": "CORE_COMMIT=core\nLUA_COMMIT=lua\n",
+                "engine/vendor/CardScripts/utility.lua": "", "engine/vendor/CardScripts/COPYING": "",
+                "engine/vendor/CardScripts/README.md": "", "engine/vendor/CardScripts/official/c1.lua": "upstream",
+                "engine/vendor/CardScripts/pre-errata/c2.lua": "", "engine/vendor/CardScripts/pre-release/c3.lua": "",
+                "engine/vendor/BabelCDB/cards.cdb": "", "engine/vendor/BabelCDB/README.md": "",
+                "engine/vendor/cardinfo.json": "{}", "engine/vendor/ygopro-core/LICENSE": "",
+            }
+            for name in [p.relative_to(repo).as_posix() for p in (repo / "engine/overrides").iterdir()]:
+                fixture[name] = (repo / name).read_text()
+            for name, text in fixture.items():
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_text(text)
+            subprocess.run(["sh", repo / "tools/engine-files.sh", root / "bundle"], cwd=root, check=True)
+            engine = root / "bundle/engine"
+            self.assertEqual((engine / "vendor/CardScripts/official/c1.lua").read_text(), "upstream")
+            overrides = sorted(p.name for p in (repo / "engine/overrides").iterdir())
+            self.assertIn("c7391448.lua", overrides)
+            self.assertEqual(sorted(p.name for p in (engine / "overrides").iterdir()), overrides,
+                             "the engine reads engine/overrides/ beside vendor/: every override ships")
+            self.assertIn("overrides/", (engine / "THIRD-PARTY.md").read_text())
+
     def test_play_script_keeps_paths_and_arguments_literal(self):
         with tempfile.TemporaryDirectory(prefix="yo3 scripts ") as tmp:
             root = Path(tmp)
