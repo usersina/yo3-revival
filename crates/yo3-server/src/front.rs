@@ -2794,9 +2794,8 @@ impl FrontSession {
                 let kind = msg.get("rental_kind").and_then(Value::as_u32).unwrap_or(0);
                 self.hub().rental_history(self.player().player_id, kind)
             }
-            // An early return {rental_id} (Revival, issue #13): what the Rental Card List's Return would send through the
-            // connection DLL. Nothing sends it yet: the shipped rentalrecord.swf has no Return button to press (see the
-            // roadmap). No reply: the records come as pushes.
+            // An early return {rental_id} (Revival, issue #13): the Rental Card List's Return button, which the connection
+            // DLL adds to the Borrowed tab (tools/mod/rental-return.h). No reply: the records come as pushes.
             REVIVAL_RETURN => {
                 let id = msg.get("rental_id").and_then(Value::as_u32).unwrap_or(0);
                 let me = self.player().player_id;
