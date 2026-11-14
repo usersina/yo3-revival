@@ -969,9 +969,18 @@ activated card goes, which Konami's server made too.
 - [x] The number dialog's "Declare monster level." only for a Level (Big Eye's count read as a level).
 - [x] Found on the way: a token equipped as a card (Allure Queen LV3) stayed shown after leaving; the sweep can now
       replay one card's duel alone (`YO3_CARD_SWEEP_OFFSET`).
-- [ ] Found on the way, not ours: Brain Research Lab's script errors in the engine at the pinned version (an extra
-      summon callback's argument count; issue #9); EDOPro's Goyo Guardian wants an EARTH Tuner (the 2010 text doesn't;
-      issue #7, era texts). The shop's exchange, Special Packs and card rental are issue #8.
+- [x] Found on the way, and ours after all (2026-11-14, issue #9): Brain Research Lab's extra Normal Summon stopped
+      the duel with a script error. The core stops after the summon's hint with the Lab's operation already queued, its
+      argument (the summoned monster) waiting; the engine's field report then queried the monsters, a value function
+      (Insect Queen's ATK) took that argument, and the operation ran without its card. Queries now set the queue aside
+      (`crates/yo3-engine/src/query.cpp`); engine test `the_steps_queries_leave_the_cores_pending_arguments_alone`.
+- [x] A wider card sweep (2026-11-14, every card with three seeds, 14,052 duels) found two more. Card Trooper's "how
+      many cards" lists its numbers largest first (3, 2, 1), and the number dialog's answer took the first option at
+      least as large, so 2 was sent as 3; it now takes the smallest such option (translate_contract). Double Spell's
+      script recurses forever when the opponent's Graveyard holds two Double Spells (each one's activation check asks
+      the other's): ProjectIgnis' current script, not ours; with Goyo Guardian under issue #7's script overrides.
+- [ ] Found on the way, not ours: EDOPro's Goyo Guardian wants an EARTH Tuner (the 2010 text doesn't; issue #7, era
+      texts). The shop's exchange, Special Packs and card rental are issue #8.
 
 ## ✅ M0: Research and tooling
 

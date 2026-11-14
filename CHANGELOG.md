@@ -26,6 +26,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Fairer duel clocks.** Your clock no longer runs while the game is still playing animations.
 - Your avatar speaks its line when you flip a Set card or reveal a hand card to activate it, as in the original.
 - **Fixed:** a token equipped to Allure Queen stayed on the field after it left.
+- **Fixed:** summoning a Psychic with Brain Research Lab's extra Normal Summon could stop the duel with an error.
+- **Fixed:** Card Trooper could send a different number of cards than the one you picked.
 
 ## v0.0.12 (2026-11-13)
 
