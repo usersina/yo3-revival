@@ -10,6 +10,16 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **A real banlist by default.** Auto Duel and duels against the computer now use **Season 16**, the newest
+  Forbidden/Limited list the game has, as on the original server. Hosts can pick another one (or "unlimited") in
+  Desktop under **Hosting → Overview → Banlist** (Normal mode shows it with a **Change** link), or with
+  `--regulation` in Scripts. The Yugi, Jaden and Yusei
+  character decks hold cards Season 16 forbids or limits, so edit them before using them there; your starter deck is
+  fine.
+- **Fixed:** Desktop's dropdown lists (Resolution, Connect to…) were see-through, their choices mixed with the page.
+
 ## v0.0.13 (2026-11-14)
 
 Duel windows that speak the card's words, a bigger and sharper game, NPC duel logs, fairer clocks and the shop's

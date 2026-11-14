@@ -140,7 +140,7 @@ target/release/yo3-server profile Yugi client.json --advertise localhost
 cargo run --release -p yo3-server -- --log-dir logs     # run in the background; authenticated clients only
 ss -ltnp | rg ':7443 '                          # the server's pid, to stop it
 #   --bind 0.0.0.0 (default 127.0.0.1)  --advertise HOST (the address friends dial, for port forwarding)
-#   --regulation 1: the login banlist (an id or a name from the client's 20; default "unlimited", no banlist)
+#   --regulation 1: the login banlist (an id or a name from the client's 20; default "Season 16"; "unlimited": none)
 #   --auth-port --auth-cert --auth-key --http-port --data-dir --log-dir --game-dir: listeners, TLS identity and state
 #   testing aids: --duel-lp 1000 (reach a duel's end in one attack), --duel-deck 1149,1449 (the player's main deck as
 #   CARD_Prop rows repeated to 40: here Marauding Captain and Giant Orc, for a yes/no question and a card choice),

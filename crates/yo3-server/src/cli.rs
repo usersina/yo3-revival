@@ -62,7 +62,8 @@ pub struct Args {
     #[arg(long)]
     pub duel_check: bool,
     /// The banlist players log in with, for Auto Duel and NPC duels: a regulation id or name, e.g. "Season 16" or 1
-    /// (the Beta list). Default: "unlimited" (no banned or limited cards). Hosted duels use the host's choice.
+    /// (the Beta list), or "unlimited" for none. Default: "Season 16", the newest list the game has. Hosted duels use the
+    /// host's choice.
     #[arg(long)]
     pub regulation: Option<String>,
 }

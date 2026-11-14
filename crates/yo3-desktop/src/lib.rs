@@ -59,12 +59,16 @@ pub struct Settings {
     pub local_account: String,
     /// The connection DLL's higher resolution ("" or "off", "auto", "WIDTHxHEIGHT"); see yo3_launcher::resolution.
     pub resolution: String,
+    /// The server's banlist (`--regulation`): "" for the server's default (Season 16), else a regulation id, or a
+    /// name kept from an older `--regulation` server flag.
+    pub banlist: String,
 }
 impl Default for Settings {
     fn default() -> Self {
         Self { advanced_mode: false, server_options: Default::default(), game_dir: yo3_data::default_game_dir().to_string_lossy().into(), wine_prefix: String::new(),
             host_address: "localhost".into(), data_dir: String::new(), bind_address: "0.0.0.0".into(), bind_interface: None, listen_port: 7443,
-            player_name: "Duelist".into(), selected_server: None, local_account: String::new(), resolution: String::new() }
+            player_name: "Duelist".into(), selected_server: None, local_account: String::new(), resolution: String::new(),
+            banlist: String::new() }
     }
 }
 
@@ -170,6 +174,11 @@ impl LauncherDb {
             settings.host_address = name;
             self.save_settings(&settings)?;
         }
+        // A banlist chosen before Hosting had its own control was a --regulation server flag: it becomes the Banlist.
+        if let Some(regulation) = settings.server_options.remove("regulation") {
+            if settings.banlist.is_empty() { settings.banlist = regulation; }
+            self.save_settings(&settings)?;
+        }
         Ok(settings)
     }
     pub fn save_settings(&self, settings: &Settings) -> anyhow::Result<()> {
@@ -183,6 +192,17 @@ impl LauncherDb {
     pub fn save_resolution(&self, value: &str) -> anyhow::Result<String> {
         let value = value.parse::<yo3_launcher::resolution::Resolution>().map_err(anyhow::Error::msg)?.to_string();
         let mut saved = self.settings()?; saved.resolution = value.clone(); self.save_settings(&saved)?; Ok(value)
+    }
+    /// The banlist for the next server start: "" for the server's default, else a regulation id (1-255) or a name
+    /// (letters, digits, spaces and "/.-()"); the server checks it against the game's lists when it starts.
+    pub fn save_banlist(&self, value: &str) -> anyhow::Result<String> {
+        let value = value.trim().to_string();
+        let id = value.parse::<u32>().ok();
+        ensure!(value.is_empty() || id.is_some_and(|id| (1..=255).contains(&id))
+            || (id.is_none() && value.len() <= 64 && value.starts_with(|c: char| c.is_ascii_alphanumeric())
+                && value.chars().all(|c| c.is_ascii_alphanumeric() || " /.-()".contains(c))),
+            "Choose one of the game's banlists.");
+        let mut saved = self.settings()?; saved.banlist = value.clone(); self.save_settings(&saved)?; Ok(value)
     }
     pub fn servers(&self) -> anyhow::Result<Vec<SavedServer>> {
         let mut stmt = self.conn.prepare("SELECT id,body FROM servers ORDER BY id")?;
@@ -326,6 +346,7 @@ impl Backend {
             .env("YO3_ENGINE_DIR", &self.runtime.engine).env("YO3_ENGINE", &self.runtime.engine_program).env("NO_COLOR", "1").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         if !settings.server_options.contains_key("http-port") { cmd.args(["--http-port", "0"]); }
         if !settings.server_options.contains_key("no-packet-log") { cmd.arg("--no-packet-log"); }
+        if !settings.banlist.is_empty() { cmd.arg(format!("--regulation={}", settings.banlist)); }
         cmd.args(extra);
         Ok(cmd)
     }
@@ -615,6 +636,11 @@ impl Backend {
     }
 }
 
+/// The game's banlists (regulation id, name from its text table) for Hosting's Banlist choice; empty without game data.
+pub fn banlists(game_dir: &Path) -> Vec<(u32, String)> {
+    let Ok(data) = yo3_data::GameData::load(game_dir) else { return Vec::new() };
+    data.regulations.iter().filter_map(|r| Some((r.id, data.text(r.name_id)?.to_string()))).filter(|(_, name)| !name.is_empty()).collect()
+}
 pub fn validate_game(path: &Path) -> anyhow::Result<()> {
     ensure!(path.join("yo3.exe").is_file(), "Choose the installed game folder containing yo3.exe.");
     yo3_launcher::components::inspect_game(&path.join("yo3.exe"))?;
@@ -766,6 +792,34 @@ mod tests {
         assert!(!args.iter().any(|s|s=="--duel-check")); assert!(!args.iter().any(|s|s=="--http-port"));
         assert_eq!(args.iter().filter(|s|s.starts_with("--http-port=")).count(),1); assert!(args.contains(&"--http-port=18080".into()));
         drop(backend); std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn the_banlist_is_saved_reaches_the_server_and_an_old_regulation_flag_moves_to_it() {
+        let root=std::env::temp_dir().join(format!("yo3-desktop-banlist-{}",std::process::id()));
+        let _=std::fs::remove_dir_all(&root);
+        let backend=Backend::new(root.clone()).unwrap();
+        let db=LauncherDb::open(&root).unwrap();
+        // Before the option: the server's default (Season 16), nothing passed.
+        let old: Settings = serde_json::from_value(serde_json::json!({"game_dir": "saved game", "bind_address": "127.0.0.1"})).unwrap();
+        assert_eq!(old.banlist, "");
+        let cmd=backend.server_command(&old,std::net::Ipv4Addr::LOCALHOST.into()).unwrap();
+        assert!(!cmd.get_args().any(|a| a.to_string_lossy().contains("regulation")),"{cmd:?}");
+        // A chosen list: its id, passed as --regulation; back to the default with "".
+        db.save_settings(&Settings { game_dir: "kept".into(), ..Settings::default() }).unwrap();
+        assert_eq!(db.save_banlist(" 3 ").unwrap(), "3");
+        assert!(db.save_banlist("0").is_err() && db.save_banlist("--duel-lp=1").is_err() && db.save_banlist("1\n2").is_err());
+        let saved=db.settings().unwrap();
+        assert_eq!((saved.banlist.as_str(), saved.game_dir.as_str()), ("3", "kept"));
+        let cmd=backend.server_command(&saved,std::net::Ipv4Addr::LOCALHOST.into()).unwrap();
+        let args:Vec<_>=cmd.get_args().map(|s|s.to_string_lossy().to_string()).collect();
+        assert_eq!(args.iter().filter(|a| a.contains("regulation")).cloned().collect::<Vec<_>>(), ["--regulation=3"]);
+        assert_eq!(db.save_banlist("").unwrap(), "");
+        // A host who set --regulation under All server flags keeps it, now as the Banlist.
+        db.save_settings(&Settings { server_options: [("regulation".into(), "Season 14".into())].into(), ..Settings::default() }).unwrap();
+        let moved=db.settings().unwrap();
+        assert_eq!((moved.banlist.as_str(), moved.server_options.contains_key("regulation")), ("Season 14", false));
+        assert!(server_options::managed("regulation").is_some());
+        drop(db); drop(backend); let _=std::fs::remove_dir_all(&root);
     }
     #[test]
     fn automatic_diagnostics_keeps_expensive_duel_validation_an_explicit_server_option() {

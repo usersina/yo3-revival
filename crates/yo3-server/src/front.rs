@@ -22,8 +22,10 @@ pub const REVIVAL_BP: u32 = 0x7A11;
 pub const REVIVAL_RETURN: u32 = 0x7A14;
 pub const VERSION_VALID: u32 = 0x219F;
 /// The default banlist every account logs in with (0x2201 regulation_id), which Auto Duel's and the NPC duel's deck
-/// check uses (`World::login_regulation`, set by --regulation): 3, "unlimited", no banned or limited cards.
-pub const LOGIN_REGULATION: u32 = 3;
+/// check uses (`World::login_regulation`, set by --regulation): 20, "Season 16", the newest list this client ships, as
+/// Konami's server sent its current one (issue #15; its players' saved settings left Create Duel on "Latest
+/// Regulation"). The starter deck passes it; the character decks don't (Heavy Storm, Premature Burial...).
+pub const LOGIN_REGULATION: u32 = 20;
 /// The banlist the starter deck must pass: the client's first (the Beta list), so the starter stays legal whatever
 /// --regulation a host picks.
 pub const STARTER_REGULATION: u32 = 1;

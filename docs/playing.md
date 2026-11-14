@@ -52,7 +52,9 @@ First [join the same server](launcher.md#join-another-server). Each friend needs
 
 ![Auto Duel in the duel menu](../screenshots/auto-duel.png)
 
-The chosen banlist applies to Create Duel. The host controls the default banlist used for Auto Duel and computer duels.
+The chosen banlist applies to Create Duel. The host controls the banlist used for Auto Duel and computer duels:
+**Season 16** unless they chose another. The Yugi, Jaden and Yusei character decks hold cards Season 16 forbids or
+limits (Heavy Storm, Premature Burial...), so edit them before using them there; your starter deck is fine.
 
 ## Choose or edit a deck
 

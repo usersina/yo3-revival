@@ -1222,6 +1222,10 @@ Stop finding missing fields one crash at a time.
       the client ("check the official website"), and the server holds no events
       (`data/text/txttbl_E.bin`, now read by `yo3-data`), kept per player. Live: GADGET BOX was saved locally as
       "GADGET BOX.y3d", listed in Load Deck and loaded with its 40 + 1 cards
+- [x] The login banlist (issue #15): Season 16 (regulation 20) by default, as Konami's server sent its current list
+      (its players' saved Create Duel settings mostly "Latest Regulation"); Desktop's Hosting → Overview → Banlist
+      passes `--regulation`, an older `--regulation` server flag moving to it. The starter deck passes Season 16, the
+      nine character decks don't (`the_default_banlist_still_lets_a_new_player_duel`)
 - [x] Protectors and avatar items for BP: their shelves from the item catalogue, presents type 7 and 6, owned ids kept
       with the player in the record's pbin. Live: P-01K and Domino: Red bought
 - [x] Card trade between players: invitation, the trade scene's offers, OKs and confirmation; ownership checked and

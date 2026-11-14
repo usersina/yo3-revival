@@ -10,6 +10,7 @@ Both editions include the server, rules engine and required connection component
   - [Host friends](#host-friends)
   - [Connection help](#connection-help)
   - [Open the game directly](#open-the-game-directly)
+  - [Banlist](#banlist)
   - [Resolution](#resolution)
   - [Logs and support](#logs-and-support)
   - [Application updates](#application-updates)
@@ -204,6 +205,16 @@ Status shows Enabled, Disabled, Needs repair or Mod conflict; another mod is nev
 The loader checks required components and server compatibility before login. A missing DLL gives its expected path
 and offers a matching-file picker, followed by restart. A game with no loader at all can only show the original
 generic connection failure: the remote server cannot inspect files on your PC. Use the Desktop app to set it up.
+
+## Banlist
+
+**Hosting → Overview → Banlist** sets the Forbidden/Limited list your players log in with. Auto Duel and duels against
+the computer use it, and Edit Deck shows it as the **Latest Regulation**. **Season 16** is the default, the newest list
+the game has, as on the original server; choose **unlimited** for no banned or limited cards, or any of the game's other
+lists. **Create Duel** can still pick another list for one duel. A new banlist applies the next time you start the
+server. The Yugi, Jaden and Yusei character decks hold cards Season 16 forbids or limits, so players edit them first.
+In Normal mode, playing on this computer shows the current banlist under the game folder; **Change** opens this
+setting.
 
 ## Resolution
 

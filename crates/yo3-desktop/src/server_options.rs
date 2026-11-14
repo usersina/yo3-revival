@@ -8,6 +8,7 @@ pub fn managed(name: &str) -> Option<&'static str> {
         "bind" | "auth-port" | "advertise" => Some("Set in Hosting → Network."),
         "data-dir" | "players" => Some("Set in Hosting → Server data."),
         "game-dir" => Some("Set in Game setup."),
+        "regulation" => Some("Set in Hosting → Overview → Banlist."),
         "log-dir" | "diagnostics-dir" | "diagnostic-parent" => Some("Managed by the app for Activity and Export logs. Use Scripts edition to choose these paths directly."),
         _ => None,
     }

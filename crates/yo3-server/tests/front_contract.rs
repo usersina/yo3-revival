@@ -309,15 +309,6 @@ fn heartbeat_and_unknown_requests_get_no_reply() {
 }
 
 #[test]
-fn players_log_in_without_a_banlist_by_default() {
-    // Regulation 3 is "unlimited" in the client's list (no banned or limited cards): the default unless --regulation
-    // names another. The starter deck is still picked by the first (the Beta list), so it stays legal under any.
-    let r = login(fresh().handle(&req(0x1F48)));
-    assert_eq!(r.get("regulation_id"), Some(&Value::U32(3)));
-    assert_eq!(yo3_server::front::STARTER_REGULATION, 1);
-}
-
-#[test]
 fn the_login_carries_the_servers_banlist() {
     // Auto Duel's and the NPC duel's deck check (0x51AB00) uses the login's regulation_id (0x219A, and 0x2201's top
     // level, read by 0x469C00): the server's --regulation, e.g. 3 "unlimited".
@@ -326,6 +317,18 @@ fn the_login_carries_the_servers_banlist() {
     assert_eq!(auth.get("regulation_id"), Some(&Value::U32(3)));
     let login = login(fresh_in(world).handle(&req(0x1F48)));
     assert_eq!(login.get("regulation_id"), Some(&Value::U32(3)));
+}
+
+#[test]
+fn players_log_in_with_season_16_unless_the_host_chooses() {
+    // Konami's server sent its current list as the login banlist (Edit Deck's "Latest Regulation"); this client's newest
+    // is 20, "Season 16" (issue #15: "unlimited" left nothing Forbidden or Limited).
+    let world = Arc::new(World::new((1..=20).collect()));
+    assert_eq!(world.login_regulation, 20);
+    let login = login(fresh_in(world).handle(&req(0x1F48)));
+    assert_eq!(login.get("regulation_id"), Some(&Value::U32(20)));
+    // The starter deck is still picked by the first list (the Beta list), so new players get one either way.
+    assert_eq!(yo3_server::front::STARTER_REGULATION, 1);
 }
 
 #[test]

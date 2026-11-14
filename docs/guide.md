@@ -45,7 +45,7 @@ storage. Select the complete installation with `--game-dir` and retry; keep exis
 | `--log-dir`                 | Logs, default `logs/`                                                                                |
 | `--http-port`               | Internal loopback HTTP/admin listener, default `8080`; Desktop uses an automatically assigned port   |
 | `--auth-cert`, `--auth-key` | Explicit TLS certificate/key files                                                                   |
-| `--regulation`              | Login banlist by ID/name; default unlimited                                                          |
+| `--regulation`              | Login banlist by ID/name; default `Season 16`, `unlimited` for none                                  |
 | `--duel-check`              | Compare each player's modeled client state with the rules engine after each step                     |
 | `--no-packet-log`           | Disable separate raw packet files; decoded packet traces remain in bounded session diagnostics       |
 

@@ -65,7 +65,7 @@ enum GameDataDialog {
 enum Field { Game, Wine, Host, Data, Player, Label, Address, Key, Account, NewPlayer, Port, GiveBp, CodeText, CodeBp, CodeUses }
 #[derive(Clone)]
 enum Msg {
-    Mode(bool), Resolution(String), ServerOption(String, String), ResetOption(String), FindOption(String),
+    Mode(bool), Resolution(String), Banlist(String), Banlists(Vec<(u32, String)>), OpenBanlist, ServerOption(String, String), ResetOption(String), FindOption(String),
     Page(Page), HostTab(HostTab), Input(Field, String), Select(ServerChoice), AccountSelect(String), AdminAccountSelect(String),
     Start, Stop, Play, StopGame, TestConnection, Discover, TrustIdentity, RefreshBindings, BindSelect(yo3_desktop::network::BindAddress), Direct(bool),
     SaveSettings(Section), CancelSettings(Section), Browse(Field), UsePath, FolderPicked(u64,Field,Result<Option<String>,String>), Import, AddServer, SaveServer, EditServer, RemoveServer, ConfirmRemoveServer,
@@ -107,7 +107,7 @@ struct App {
     report_busy: bool, report_generation: u64, report_feedback: Option<Result<String,String>>, report_remove_personal: bool,
     bug_report: Option<BugReport>, github_account: Option<GitHubAccount>,
     advanced_game: bool, account_options: bool, account_form: bool,
-    option_filter: String,
+    option_filter: String, banlists: Vec<(u32, String)>,
     setup_result: Option<yo3_desktop::Readiness>, setup_missing_files: Vec<PathBuf>, direct_state: yo3_desktop::direct::State, first_setup: bool,
     game_data_dialog: Option<GameDataDialog>, game_data_generation: u64, game_data_backup: Option<PathBuf>,
     update_status: UpdateStatus, release_notes: Vec<widget::markdown::Item>, review_update: bool, transfer: Option<(updates::Release, updates::download::Transfer)>,
@@ -120,8 +120,13 @@ impl App {
     fn boot(startup: updates::activation::Startup, routing_error: Option<String>) -> (Self, Task<Msg>) {
         let mut app = Self::load(yo3_desktop::default_root()); app.startup = startup;
         if let Some(error) = routing_error { app.feedback(Err(error)); }
-        let status = app.update(Msg::Tick); let setup = app.inspect_setup();
-        (app, Task::batch([status, setup, check_updates()]))
+        let status = app.update(Msg::Tick); let setup = app.inspect_setup(); let banlists = app.load_banlists();
+        (app, Task::batch([status, setup, check_updates(), banlists]))
+    }
+    /// The game's banlist names for Hosting's Banlist choice, read in the background (the game's data takes a moment).
+    fn load_banlists(&self) -> Task<Msg> {
+        let game_dir = PathBuf::from(&self.settings.game_dir);
+        Task::perform(async move { tokio::task::spawn_blocking(move || yo3_desktop::banlists(&game_dir)).await.unwrap_or_default() }, Msg::Banlists)
     }
     fn load(root: PathBuf) -> Self {
         let mut error = String::new(); let db = LauncherDb::open(&root).map_err(|e| error = e.to_string()).ok();
@@ -140,12 +145,12 @@ impl App {
             picking: false, picker_generation: 0,
             identity: None, observed: None, checked: None, invitation_imported: false, invitation_checking: false, invitation_verified: false, invitation_generation: 0, bindings: yo3_desktop::network::defaults(), port, report: None, report_options: false, report_all: false,
             report_busy: false, report_generation: 0, report_feedback: None, report_remove_personal: false, bug_report: None, github_account: None,
-            advanced_game: false, account_options: false, account_form: false, option_filter: String::new(), setup_result: None, setup_missing_files: Vec::new(), direct_state: yo3_desktop::direct::State::Disabled, first_setup,
+            advanced_game: false, account_options: false, account_form: false, option_filter: String::new(), banlists: Vec::new(), setup_result: None, setup_missing_files: Vec::new(), direct_state: yo3_desktop::direct::State::Disabled, first_setup,
             game_data_dialog: None, game_data_generation: 0, game_data_backup: None,
             update_status: UpdateStatus::Checking, release_notes: Vec::new(), review_update: false, transfer: None, staged: None, applying: false, startup: Default::default() }
     }
     fn update(&mut self, message: Msg) -> Task<Msg> {
-        let background = matches!(message, Msg::Done(_) | Msg::FolderPicked(..) | Msg::Poll(_) | Msg::CodesRefreshed(_) | Msg::LogsPolled(_) | Msg::LogScrolled(_) | Msg::Tick | Msg::Animate | Msg::RunSetupCheck(_) | Msg::SetupSaved(..) | Msg::InvitationChecked(..) | Msg::Bug(_) | Msg::ReportPrepared(..) | Msg::ReportDestination(..) | Msg::ReportSaved(..) | Msg::UpdateChecked(_) | Msg::ExternalOpened(_) | Msg::SetupChecked(..) | Msg::GameDataPreviewed(..) | Msg::UpdatePrepared(_) | Msg::UpdateApplied(_) | Msg::WindowOpened);
+        let background = matches!(message, Msg::Done(_) | Msg::Banlists(_) | Msg::FolderPicked(..) | Msg::Poll(_) | Msg::CodesRefreshed(_) | Msg::LogsPolled(_) | Msg::LogScrolled(_) | Msg::Tick | Msg::Animate | Msg::RunSetupCheck(_) | Msg::SetupSaved(..) | Msg::InvitationChecked(..) | Msg::Bug(_) | Msg::ReportPrepared(..) | Msg::ReportDestination(..) | Msg::ReportSaved(..) | Msg::UpdateChecked(_) | Msg::ExternalOpened(_) | Msg::SetupChecked(..) | Msg::GameDataPreviewed(..) | Msg::UpdatePrepared(_) | Msg::UpdateApplied(_) | Msg::WindowOpened);
         let game_data_action=self.game_data_dialog.is_some() && matches!(message,Msg::Troubleshoot | Msg::KeepGameDataPlayers(_) | Msg::ConfirmGameDataReset | Msg::OpenGameDataBackup);
         let support_action=self.support && matches!(message,Msg::Help | Msg::GitHub | Msg::CopyVersion | Msg::CopyLogs | Msg::ExportLogs | Msg::ReportBug | Msg::Troubleshoot | Msg::Page(Page::About));
         let bug_action=self.report_options && self.bug_report.is_some() && matches!(message,Msg::Bug(_));
@@ -209,6 +214,17 @@ impl App {
                 Ok(saved) => { self.settings.resolution = saved.clone(); self.draft.resolution = saved; }
                 Err(error) => self.feedback(Err(error.to_string())),
             },
+            Msg::Banlist(value) => match LauncherDb::open(&self.root).and_then(|db| db.save_banlist(&value)) {
+                Ok(saved) => { self.settings.banlist = saved.clone(); self.draft.banlist = saved; }
+                Err(error) => self.feedback(Err(error.to_string())),
+            },
+            Msg::Banlists(lists) => self.banlists = lists,
+            // Normal mode's "Banlist: … · Change": Advanced, on Hosting's Overview, where the Banlist choice is.
+            Msg::OpenBanlist => {
+                let task = self.update(Msg::Mode(true));
+                if self.settings.advanced_mode { self.page = Page::Server; self.host_tab = HostTab::Overview; }
+                return task;
+            }
             Msg::ServerOption(name, value) => { if value.is_empty() { self.draft.server_options.remove(&name); } else { self.draft.server_options.insert(name, value); } }
             Msg::ResetOption(name) => { self.draft.server_options.remove(&name); }
             Msg::FindOption(value) => self.option_filter = value,
@@ -255,6 +271,7 @@ impl App {
                         self.setup_due=None;self.setup_checking=false;self.setup_result=Some(yo3_desktop::Readiness::Ready);self.setup_verified=Some(self.setup_candidate());
                         self.first_setup=false;
                         if self.failure_setup.is_some() {self.notice.clear();self.failed=false;self.failure_setup=None;}
+                        if self.banlists.is_empty() {return self.load_banlists()}
                     }
                     Err(error)=>{
                         self.setup_due=None;self.setup_checking=false;self.setup_verified=None;
@@ -945,6 +962,21 @@ fn wait_for_opener(cmd:&mut std::process::Command,limit:std::time::Duration)->an
 mod flow_tests {
     use super::*;
     #[test]
+    fn banlist_choices_name_the_games_lists_with_season_16_as_the_default() {
+        let lists: Vec<(u32, String)> = [(1, "Beta Forbidden/Limited"), (3, "unlimited"), (19, "Season 15"), (20, "Season 16")]
+            .map(|(id, n)| (id, n.to_string())).into();
+        let (choices, chosen) = views::banlist_choices("", &lists);
+        assert_eq!(choices.iter().map(ToString::to_string).collect::<Vec<_>>(), ["Season 16 (default)", "Beta Forbidden/Limited", "unlimited", "Season 15"]);
+        assert_eq!((chosen.to_string(), chosen.value.as_str()), ("Season 16 (default)".to_string(), ""), "the default passes nothing to the server");
+        assert_eq!(views::banlist_choices("3", &lists).1.to_string(), "unlimited");
+        assert_eq!(views::banlist_choices("20", &lists).1.value, "", "the default's own id is the default");
+        assert_eq!(views::banlist_choices("season 15", &lists).1.value, "19", "a name kept from an older flag finds its list");
+        let (choices, chosen) = views::banlist_choices("Season 99", &lists);
+        assert_eq!((chosen.to_string(), choices.len()), ("Season 99".to_string(), 5), "an unknown saved value stays visible");
+        let (choices, chosen) = views::banlist_choices("", &[]);
+        assert_eq!((choices.len(), chosen.to_string()), (1, "Server default".to_string()), "without the game's data");
+    }
+    #[test]
     fn resolution_choices_show_the_saved_size_even_one_set_by_hand() {
         let (choices,chosen)=views::resolution_choices("");
         assert_eq!((chosen.to_string().as_str(),choices.len()),("Original · 1024 × 768",6));
@@ -1207,6 +1239,19 @@ mod flow_tests {
         let _=app.update(Msg::CancelSettings(Section::Game));assert_eq!(app.draft.game_dir,saved);assert_eq!(app.draft.host_address,"unfinished sharing address");
         let _=app.update(Msg::SetupChecked(old,candidate,yo3_desktop::Readiness::Ready,yo3_desktop::direct::State::Disabled,Vec::new()));assert!(!app.busy);assert!(app.setup_saving.is_none());assert!(!app.can_play());assert!(app.setup_in_progress());
         std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn normal_modes_banlist_line_opens_the_hosting_overview_and_a_choice_is_saved() {
+        let root=std::env::temp_dir().join(format!("yo3-ui-banlist-{}",std::process::id()));let _=std::fs::remove_dir_all(&root);
+        let mut app=App::load(root.clone());
+        assert!(!app.settings.advanced_mode && app.selected==ServerChoice::Local);
+        let _=app.update(Msg::Banlists(vec![(3,"unlimited".into()),(20,"Season 16".into())]));
+        let _=app.update(Msg::OpenBanlist);
+        assert!(app.settings.advanced_mode && app.page==Page::Server && app.host_tab==HostTab::Overview);
+        let _=app.update(Msg::Banlist("3".into()));
+        assert_eq!((app.settings.banlist.as_str(), LauncherDb::open(&root).unwrap().settings().unwrap().banlist), ("3", "3".to_string()));
+        assert_eq!(views::banlist_choices(&app.settings.banlist,&app.banlists).1.to_string(),"unlimited");
+        drop(app);let _=std::fs::remove_dir_all(root);
     }
     #[test]
     fn switching_modes_during_a_check_keeps_it_current_and_empty_paths_never_launch_checks() {

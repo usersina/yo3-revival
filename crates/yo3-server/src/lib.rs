@@ -45,7 +45,7 @@ use front::{Deck, Hub, LOGIN_REGULATION, STARTER_REGULATION, World};
 /// The official character decks every player gets: the client's NPC decks of Yami Yugi (NPCs 120-122: "Attack of the
 /// Ancients", "Miracle Magic", "Slifer the Lightning"), Jaden Yuki (147-149) and Yusei Fudo (171-173), named after
 /// their duelist. The deck list sends each once, in the room its 10 decks leave.
-const OFFICIAL_DECKS: [(u32, &str); 9] = [
+pub const OFFICIAL_DECKS: [(u32, &str); 9] = [
     (121, "Yugi"),
     (147, "Jaden"),
     (171, "Yusei"),

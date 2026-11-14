@@ -230,8 +230,11 @@ Forbidden/Limited", 2 "Pre-Season", 3 "unlimited" (no lists: every card 3 times)
 "Season 12" to "Season 16". The client's deck check (`0x51AB00`) before Auto Duel and NPC duels
 uses the login's `regulation_id` (`0x219A`, `0x2201`), and a hosted duel uses the host's choice; the server repeats it
 at Select Deck (`0x1F4F`, below: sizes, cards owned, the duel's regulation), so a modified client gets no further. The server sends the
-one its `--regulation` setting names (an id, or a name such as "Season 16"; default 3, "unlimited", the user's
-choice since 2026-11-08). The starter is the first preset regulation 1 allows; other regulations can reject it. Live: the Starter Deck breaks regulation 4 (six cards
+one its `--regulation` setting names (an id, or a name such as "Season 16"; default 20, "Season 16", since 2026-11-14:
+issue #15. "unlimited", 3, was the default from 2026-11-08). Konami's server sent its current list: the 19 players'
+saved settings of 2010–12 (`.y3p` `duelMaking.regulation`) mostly leave Create Duel on 0, "Latest Regulation", and Auto
+Duel's settings have no banlist at all. Desktop's Hosting → Overview → **Banlist** passes `--regulation`. Under Season
+16 the starter deck is legal; the nine character decks are not (Heavy Storm, Premature Burial, Snatch Steal...). The starter is the first preset regulation 1 allows; other regulations can reject it. Live: the Starter Deck breaks regulation 4 (six cards
 newer than March 2004); with `--regulation 4` Kaiba Corporation answered "There are no valid Decks available.", with
 `--regulation unlimited` the same deck reached the janken. Create Duel → Customize → Regulations shows the login
 regulation as "Latest Regulation" (with "unlimited": no Forbidden cards, "Cards not listed are Unlimited.") and Select

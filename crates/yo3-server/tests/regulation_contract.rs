@@ -415,3 +415,18 @@ fn a_decks_row_counts_are_capped() {
     let deck = Deck::from_record(&record);
     assert!(deck.main.len() <= yo3_server::front::MAX_DECK_ROWS);
 }
+
+#[test]
+fn the_default_banlist_still_lets_a_new_player_duel() {
+    // With the game's own data: the starter deck (the first preset the Beta list allows) passes the default login
+    // banlist, so a new player has a legal deck for Auto Duel and NPC duels. The character decks don't (Heavy Storm,
+    // Premature Burial...): players edit them, or the host picks "unlimited". Skipped without the game.
+    let Ok(data) = yo3_data::GameData::load(&yo3_data::default_game_dir()) else { return };
+    let cids = |d: &yo3_data::Deck| d.cards().filter_map(|row| data.cards.by_row(row)).map(|c| c.cid).collect::<Vec<_>>();
+    let default = data.regulations.iter().find(|r| r.id == yo3_server::front::LOGIN_REGULATION).expect("the default list");
+    assert_eq!(data.text(default.name_id), Some("Season 16"));
+    let starter = data.starter_deck(yo3_server::front::STARTER_REGULATION).expect("a starter deck");
+    assert!(default.allows(cids(starter)), "the starter deck breaks the default banlist");
+    let characters = yo3_server::OFFICIAL_DECKS.iter().filter_map(|&(npc, _)| data.npc_deck(npc));
+    assert!(characters.clone().count() == 9 && characters.into_iter().all(|d| !default.allows(cids(d))), "the docs say the character decks break it");
+}
