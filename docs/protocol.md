@@ -856,7 +856,7 @@ to the map through `0x4A35F0`), which sets MainGamen `+0x8B8` = 5 and `+0x8BC` =
 | Reader     | Fields                                                                                                                                                                                                                                                                                                                                                                                    | Status |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | `0x4A3340` | `host` (string), `port` (int): DuelServerConnection `+0x78`, `+0x94`                                                                                                                                                                                                                                                                                                                      | code   |
-| `0x4A3650` | items found by `name` (`0x531EB0`): `avatar_1` and `avatar_2`, the two players' records (loaded into MainGamen's two PlayerData, as `vsPlayerData` is); top-level `card_protector_1`, `card_protector_2` (int); item `duelData` {`event_type`, `official`, `duel_id`}, copied in as the duel's rule (`0x41BB10`); `official` 0 and `event_type` not 5 pick the field `0x14 + duel_id % 8` | code   |
+| `0x4A3650` | items found by `name` (`0x531EB0`): `avatar_1` and `avatar_2`, the two players' records (loaded into MainGamen's two PlayerData, as `vsPlayerData` is); top-level `card_protector_1`, `card_protector_2` (int); item `duelData` {`event_type`, `official`, `duel_id`}, copied in as the duel's rule (`0x41BB10`); `official` 0 and `event_type` not 5 pick the duel's music, track `0x14 + duel_id % 8` (BGM 20–27, `DUEL_NPC4`–`DUEL_NPC11`; `event_type` 5 `DUEL_USER1`, `official` 1 `KAIBA_DOME`/`WORLDRALLY`) | code   |
 
 DuelManager then opens the duel scene in its watching state `0x50F320`: it connects DuelServerConnection and sends
 **`0x1838 {duel_id}` on the duel connection** (not `0x200C`), skips `0x17D4` (`0x50F030` goes straight to `0x50F690`
@@ -1541,7 +1541,12 @@ after a battle (its move kind 8; an effect's destruction got CardVanish), only d
 `0x20`): the shatter came from BattleRun's destroy bit, which the server leaves clear because the engine sets it
 before a protection (Fortress Warrior, Shield Wing) is known, so the server keeps CardVanish's shatter. BgmUpdate 9
 (after every summon cut-in and every finished LP change, 4,400 times) has no handler in any duel component or the pump:
-nothing to send. `0x45`, `0x49`–`0x4B` and `0x4E` have no handler either; 1013–1016, 1018, 1021, 1022 (the client's own
+nothing to send. The client changes the duel's music by itself instead: DuelCockpit `0x5040F0`, run on LP set `0xF`
+and each LP change `0x10`, plays `DUEL_ADVANTAGE` (BGM 28) at a lead of 3000 or more, `DUEL_DISADVANTAGE` (29) at
+3000 or more behind, and otherwise the duel's own track (`+0x8B0` of `0x46D820`, played at setup `0x5159E2`; NPC
+duels `DUEL_CPU1`–`CPU3`, 30–32), nothing while either LP is 0. Live (2026-11-14, NPC duel against Kaiba, traced
+`0x50414E`/`0x5041A7`): at 5000, 3400 and 2000 against his 8000 the Disadvantage track went to the sound component
+each time; the opening was track 30. `0x45`, `0x49`–`0x4B` and `0x4E` have no handler either; 1013–1016, 1018, 1021, 1022 (the client's own
 acknowledgement request), 1024 and 1025 are bookkeeping, and 1019/1020 a shown-data override for a few cards. CardCheat
 `0x1D` is sent with the reveals below. Konami's opening also differs (1013 for every
 place, 1006, pile counts 1023 with only the top card in the table); ours, a table entry for every card, works.
