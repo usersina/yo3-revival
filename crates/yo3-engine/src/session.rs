@@ -585,6 +585,9 @@ pub fn declarable(card: &Declarable, opcodes: &[u64]) -> bool {
 }
 
 #[cfg(test)]
+mod errata;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
