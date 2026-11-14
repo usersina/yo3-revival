@@ -162,6 +162,40 @@ fn an_engine_that_dies_in_an_npc_duel_ends_it_as_a_draw() {
     assert!(send(&mut session, 3, &[("phase", 5)]).is_empty(), "nothing more once it ended");
 }
 
+#[test]
+fn an_npc_duel_leaves_a_log_naming_the_npc() {
+    // Issue #12: an NPC duel's log, as a duel between players has one, from the side of whoever went first. The
+    // connection DLL lets DuelResult (0x512070) fetch its dlogURL for NPC duels too (tools/mod/npc-duel-log.h). Here
+    // the player goes first, and the engine dies after the opening: the duel ends as a draw with the opening to replay.
+    let Some((engine, flag)) = dying_engine("npc-log") else { return };
+    let dir = std::env::temp_dir().join(format!("yo3-npc-dlogs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut world = world(Some(engine));
+    world.npc_decks.insert(124, Deck { main: vec![2; 40], ..Deck::default() });
+    world.npc_names.insert(124, "Kaiba".into());
+    let mut hub = Hub::default();
+    hub.keep_duel_logs(&dir, 8080);
+    hub.enter_duel(1001, DuelEntry { deck: Deck { main: vec![1; 40], ..Deck::default() }, npc_id: Some(124), ..DuelEntry::default() });
+    let hub = Arc::new(Mutex::new(hub));
+    let mut session = DuelSession::new(Arc::new(world), hub.clone(), 9);
+    enter_session(&mut session, 1001);
+    let send = |s: &mut DuelSession, name: u32, fields: &[(&str, u32)]| {
+        let m = Message::reply(0x200C).with("duelRequestName", Value::U32(name));
+        s.handle(&Packet::Message(fields.iter().fold(m, |m, (k, v)| m.with(k, Value::U32(*v)))))
+    };
+    send(&mut session, 0xD, &[("choice", 1)]);
+    std::fs::write(flag, "").unwrap();
+    send(&mut session, 3, &[("phase", 5)]);
+    let names = yo3_server::store::duel_log_names(&dir).unwrap();
+    assert_eq!(names.len(), 1, "{names:?}");
+    let bytes = yo3_server::store::duel_log(&dir, &names[0]).unwrap().unwrap();
+    let int = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+    // player_1 is the one who went first (the player), player_2 the NPC by its npc_id, pname_2 its name.
+    assert_eq!([int(12), int(16)], [1001, 124]);
+    assert_eq!(&bytes[68..73], b"Kaiba");
+    assert!(int(356) > 0, "a body to replay");
+}
+
 fn enter_session(s: &mut DuelSession, player_id: u32) -> Vec<Message> {
     let m = Message::reply(0x200A).with("player_id", Value::U32(player_id)).with("autoSet", Value::U32(1));
     s.handle(&Packet::Message(m))

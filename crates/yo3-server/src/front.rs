@@ -825,9 +825,10 @@ impl Hub {
             Some(o) => (o.name.clone(), o.level),
             None => ("CPU".to_string(), 0),
         };
-        // Only a duel against a player is kept: the client downloads no log of one against an NPC (DuelResult
-        // `0x512070`: MainGamen `+0x804` is set, and the `dlogURL` step is skipped).
-        let saved = self.duel_logs.as_ref().filter(|_| !ended.npc).map(|dir| {
+        // A duel against an NPC is kept too: the stock client skips the `dlogURL` step for one (DuelResult `0x512070`:
+        // MainGamen `+0x804` is set), which the connection DLL lets it take (`tools/mod/npc-duel-log.h`, issue #12).
+        // One the engine didn't play has nothing to replay, and isn't kept.
+        let saved = self.duel_logs.as_ref().filter(|_| !ended.npc || ended.replay.is_some()).map(|dir| {
             let end_time = chrono::Utc::now().timestamp() as u32;
             let mut log = crate::duellog::Log {
                 duel_id: ended.duel_id,

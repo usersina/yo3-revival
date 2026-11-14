@@ -310,6 +310,11 @@ pub struct DuelSession {
     /// The NPC's lines in the chat window (crate::banter), its npc_id and name, and when the next line may go.
     banter: Option<(Banter, u32, String)>,
     chat_free: Instant,
+    /// For the NPC duel's log: the janken as the player saw it {result, the NPC's hand, the player's}, who went first,
+    /// and every engine message of the duel.
+    janken_seen: [u32; 3],
+    first: Option<u32>,
+    history: Vec<serde_json::Value>,
 }
 
 impl Drop for DuelSession {
@@ -341,6 +346,9 @@ impl DuelSession {
             check: None,
             banter: None,
             chat_free: Instant::now(),
+            janken_seen: [0; 3],
+            first: None,
+            history: vec![],
         }
     }
 
@@ -520,6 +528,7 @@ impl DuelSession {
         // Each hand beats the next one: rock > scissors > paper > rock.
         let result = if theirs == mine { 0 } else if theirs == (mine + 1) % 3 { 1 } else { 2 };
         let mut out = vec![command(JANKEN_RESOLVE, [result, theirs, mine, 0])];
+        self.janken_seen = [result, theirs, mine];
         match result {
             0 => {}
             1 => out.push(command(FIRST_BEGIN, [1, 0, 0, 0])),
@@ -598,6 +607,8 @@ impl DuelSession {
         translator.tokens(self.world.token_rows.clone());
         table.extend(translator.extra_decks([&entry.deck.extra, &npc.extra]));
         self.engine = Some((engine, translator));
+        self.first = Some(first);
+        self.history.clear();
         let player = self.player_id.and_then(|id| self.hub.locked().front_of(id));
         let you = player.map(|(name, _)| name).unwrap_or_default();
         self.banter = entry.npc_id.and_then(|id| {
@@ -669,6 +680,7 @@ impl DuelSession {
                 tracing::warn!("rules engine: {e}");
             }
             if let Some(model) = self.check.as_mut() { model.observe_engine(&a.messages); }
+            self.history.extend(a.messages.iter().cloned());
             out.extend(translator.events(&a.messages));
             if let Some((b, ..)) = self.banter.as_mut() {
                 said.extend(b.observe(&a.messages, &mut banter::Live { engine: &mut *engine, world: &self.world }));
@@ -747,9 +759,33 @@ impl DuelSession {
             self.reported = true;
             let opponent = self.entry.as_ref().and_then(|e| e.npc_id).unwrap_or(0);
             let duel_id = self.entry.as_ref().and_then(|e| e.duel_id).unwrap_or(0);
-            let ended = Ended { player_id, opponent, npc: true, duel_id, match_type: SINGLE_MODE, result, replay: None };
-            self.hub.locked().finish_duel(&ended);
+            let mut hub = self.hub.locked();
+            let replay = self.replay(&hub);
+            let ended = Ended { player_id, opponent, npc: true, duel_id, match_type: SINGLE_MODE, result, replay };
+            hub.finish_duel(&ended);
         }
+    }
+
+    /// The NPC duel as a replay (`duellog::Replay`, issue #12), as a duel between players is kept (`Table::replay`): from
+    /// the side of whoever went first, the player or the NPC, with that side first. None for a duel the engine didn't
+    /// play (no history). The client fetches it through the connection DLL, which lets DuelResult (0x512070) take its
+    /// dlogURL step for NPC duels too (`tools/mod/npc-duel-log.h`).
+    fn replay(&self, hub: &Hub) -> Option<crate::duellog::Replay> {
+        let (entry, first, player_id) = (self.entry.as_ref()?, self.first?, self.player_id?);
+        let npc_id = entry.npc_id?;
+        let npc = self.world.npc_decks.get(&npc_id)?;
+        if self.history.is_empty() {
+            return None;
+        }
+        let mut theirs = hub.side(player_id, npc, 1);
+        theirs.player_id = npc_id;
+        theirs.name = self.world.npc_names.get(&npc_id).cloned().unwrap_or_default();
+        (theirs.level, theirs.title, theirs.record, theirs.avatar, theirs.speeches) = (0, 0, [0; 3], vec![], vec![]);
+        let mine = hub.side(player_id, &entry.deck, 0);
+        let janken = lead_janken(self.janken_seen, first == CLIENT);
+        let (sides, decks) = if first == CLIENT { ([mine, theirs], [&entry.deck, npc]) } else { ([theirs, mine], [npc, &entry.deck]) };
+        let commands = replay_commands(&self.world, decks, janken, self.world.start_lp, &self.history);
+        Some(crate::duellog::Replay { sides, commands })
     }
 
     /// Setup (both decks' sizes), both shuffled decks in the card table, the duel start, both players'

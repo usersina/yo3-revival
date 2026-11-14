@@ -269,7 +269,8 @@ fn a_finished_duel_leaves_a_log_the_duel_log_screen_reads() {
     assert_eq!(bytes[100], 0);
     assert!(bytes.len() >= 360);
     assert_eq!(hub.record_result(1001, 1002, 1), [2, 0, 0], "the duel was counted");
-    // A duel against an NPC leaves no log: the client downloads none of those (DuelResult 0x512070, MainGamen +0x804).
+    // A duel against an NPC with nothing to replay (no engine played it) leaves no log; one the engine played does
+    // (robustness_contract, an_npc_duel_leaves_a_log_naming_the_npc).
     let npc = Ended { player_id: 1001, opponent: 125, npc: true, duel_id: 10, match_type: 1, result: 1, replay: None };
     assert_eq!(hub.finish_duel(&npc), None);
     assert_eq!(yo3_server::store::duel_log_names(&dir).unwrap(), [name], "one log, in the database, no loose files");
