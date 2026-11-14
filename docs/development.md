@@ -163,15 +163,19 @@ Commit `engine/fetch.sh` and `engine/card-ids.json` only when all of these pass.
 
 **Card script overrides.** `engine/overrides/` holds our own card scripts, AGPL like ProjectIgnis' scripts they start
 from: the engine loads `engine/overrides/c<passcode>.lua` instead of ProjectIgnis' script of that name. One is for a
-card that should play by the client's 2010–2012 text rather than today's (Goyo Guardian takes any Tuner), or for an
-upstream bug (Double Spell). The folder's
+card that should play by the client's 2010–2012 text rather than today's (Goyo Guardian takes any Tuner, Sangan has
+no once-per-turn limit), or for an upstream bug (Double Spell). The folder's
 [README](https://github.com/usersina/yo3-revival/blob/main/engine/overrides/README.md) lists each one and why. To add
 one:
 
 1. Read the client's text: `yo3_data::Card::desc` (CARD_Desc_E), against the database's (`texts.desc` in
    `engine/vendor/BabelCDB/cards.cdb`).
-2. Write a failing engine test (`crates/yo3-engine/src/session.rs`: `first_idle` sets cards out and runs to the first
-   idle prompt).
+2. Write a failing engine test in `crates/yo3-engine/src/session/errata.rs`: `Play` sets cards out, answers every
+   prompt but the idle and battle ones (using only the optional effects of `use_cards`, choosing other cards before
+   those in `keep`), and lets the test summon, activate, end turns and read hands, zones and LP. Check it fails with
+   the override moved aside.
+   ProjectIgnis' `pre-errata/` scripts and the `(Pre-Errata)` entries of `vendor/BabelCDB/cards-unofficial.cdb`
+   show many old rulings, under other passcodes: compare them with the client's text, and copy only what it says.
 3. Copy ProjectIgnis' script from `engine/vendor/CardScripts/official/`, change it with a `yo3-revival override:`
    comment saying what and why, and add a row to the README.
 4. Rebuild the engine and sweep the card: `YO3_CARD_SWEEP=<cid>, YO3_CARD_SWEEP_SEEDS=10 cargo nextest run --release -p

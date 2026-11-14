@@ -10,6 +10,19 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **Cards play by the text you read.** 21 more cards whose rules changed after 2012 now do what the game's own card
+  text says: Sangan, Witch of the Black Forest, Sinister Serpent, Rescue Cat, Dark Strike Fighter, Catapult Turtle,
+  Goddess of Whim, Brionac and Mind Master have no once-per-turn limit; each Ancient Fairy Dragon, Dewloren and Second
+  Coin Toss can use its effect once per turn on its own; Dark Magician of Chaos adds its Spell when it is summoned;
+  Disk Commander draws every time it comes back from the Graveyard; Exchange of the Spirit needs 15 cards in your
+  Graveyard only; Makyura lets you activate any number of Traps from your hand, however it reached the Graveyard; Ring
+  of Destruction takes any face-up monster in either turn and hits both players for its ATK; Chaos Emperor Dragon
+  deals 300 for every card it sends; Temple of the Kings lets every Trap be activated the turn it is Set; Mausoleum of
+  the Emperor's LP payment is part of your Normal Summon; Imperial Custom's Continuous Traps can't be destroyed at
+  all.
+
 ## v0.0.14 (2026-11-14)
 
 A real banlist by default, and a host setting to choose it. Choose **Desktop** for the graphical app or **Scripts** for

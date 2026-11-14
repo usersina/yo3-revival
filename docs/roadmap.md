@@ -1044,9 +1044,40 @@ activated card goes, which Konami's server made too.
       copies another Double Spell while one is being checked: before, the two in the Graveyard checked each other until
       Lua's C stack overflowed, and with one in hand the idle prompt didn't come in ten minutes. Engine tests
       `goyo_guardian_takes_any_tuner_as_its_2010_text_says`, `double_spells_in_the_graveyard_dont_check_each_other_forever`.
-- [ ] Issue #7 stays open for the broader review: other cards whose text changed after 2012 (errata) still play by
-      today's script. The shop's exchange, Special Packs and card rental are issue #8 (done 2026-11-14,
-      see M4).
+- [x] Errata overrides (2026-11-14, issue #7's second slice): 21 more cards play by the client's CARD_Desc where
+      today's text (and ProjectIgnis' script) changed it. No once-per-turn limit: Sangan, Witch of the Black Forest
+      (nor the lock on the added card's name), Sinister Serpent (nor the later banish), Rescue Cat (nor the negation),
+      Dark Strike Fighter (nor the Main Phase 1 condition), Catapult Turtle, Goddess of Whim, Brionac (which takes
+      either player's cards) and Mind Master (which can't Tribute a Mind Master). Once per turn for each copy, not by
+      name: Ancient Fairy Dragon, Dewloren, Second Coin Toss. Dark Magician of Chaos adds its Spell when summoned, and
+      what it destroys by battle is redirected; Disk Commander's draw is mandatory, every time; Exchange of the Spirit
+      needs 15 in your own Graveyard, with no once-per-Duel limit; Makyura's Traps-from-hand is not an effect that
+      activates, from any sending, for any number of Traps; Ring of Destruction takes any face-up monster in either
+      turn, both players taking its ATK at once; Chaos Emperor Dragon counts every card sent, with no lock or limit;
+      Temple of the Kings allows every Trap the turn it is Set, and any Extra Deck monster; Mausoleum of the Emperor is
+      a summon procedure (pay as you Normal Summon/Set), not an effect the turn player activates; Imperial Custom's
+      Continuous Traps can't be destroyed by anything. Each override is today's script with those parts changed and a
+      `yo3-revival override:` comment quoting the client's words, listed in `engine/overrides/README.md`. Engine tests
+      in `crates/yo3-engine/src/session/errata.rs` (a small scripted-duel driver, `Play`): 21 tests, each checked to
+      fail with only its own override removed (Imperial Custom has none: it differs only for destruction by a rule or
+      cost). Full card sweep (one seed of every card): 4,684 duels, 0 failures. The 11 changed cards whose effect
+      wasn't activated there got 10 seeds more (40 for Ancient Fairy Dragon, Dewloren and Dark Strike Fighter): 0
+      failures, and each effect activated in 1-5 duels except Makyura's (it doesn't activate; summoned in 9),
+      Dewloren (never summoned: its Synchro wants WATER non-Tuners) and Mind Master (its only other Psychics in the
+      sweep's Deck are Mind Masters, which its 2010 text won't Tribute).
+      Left as they are, the client's text matching today's: Spiritual Energy Settle Machine, Ultimate Offering,
+      Blue-Eyes Ultimate Dragon, Allure of Darkness, Spiritual Earth Art - Kurogane; and Rampaging Rhynos, Storm
+      Shooter, Alien Infiltrator and Senet Switch, whose ProjectIgnis pre-errata scripts differ only in when the zone
+      is chosen (a ruling, not the text).
+- [ ] Issue #7 stays open for the broader review. A scripted pass (CARD_Desc against the database's text and
+      ProjectIgnis' `(Pre-Errata)` entries) found more real differences, not yet overridden: Crush Card Virus (checks
+      the hand, field and draws until the opponent's 3rd turn), Brain Control (any face-up monster), Necrovalley (cards
+      in the Graveyard unaffected by card effects), Darkness Approaches (face-down in the same position), Imperial Order
+      (pays in your own Standby Phase), Future Fusion (materials sent on activation), Ultimate Tyranno (must attack
+      first, every monster), Red-Eyes Darkness Metal Dragon ("Once per turn", soft), and the Union monsters' old rules
+      (Main Phase only, Attack Position, battle destruction only for some: Y-Dragon Head, Z-Metal Tank, W-Wing Catapult,
+      Heavy Mech Support Platform, Armored Cybern). Minor: Gilasaurus, Twin-Headed Behemoth, Night Assailant, Wulf,
+      Sorciere de Fleur. The shop's exchange, Special Packs and card rental are issue #8 (done 2026-11-14, see M4).
 
 ## ▶ Higher resolution (2026-11-14): issue #1's sharp 4:3
 
