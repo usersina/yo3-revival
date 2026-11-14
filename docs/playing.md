@@ -104,6 +104,9 @@ Each account starts with **5000 BOOSTERPASS Points**. Packs cost 100 BP; duels e
 redeemed through **Main Menu → BOOSTERPASS**. Purchased cards stay on the server; a bought structure deck appears
 in Edit Deck's deck list.
 
+A bigger window: the game can be drawn larger and sharp, in its own 4:3 shape (Desktop: [Resolution](launcher.md#resolution);
+Scripts: [`--resolution`](guide.md#higher-resolution)).
+
 Duels between players have clocks: 3 minutes a turn and 10 minutes a duel (or the host's choice in Create Duel), and
 running out loses the duel.
 

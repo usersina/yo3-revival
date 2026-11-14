@@ -1014,6 +1014,28 @@ activated card goes, which Konami's server made too.
 - [ ] Found on the way, not ours: EDOPro's Goyo Guardian wants an EARTH Tuner (the 2010 text doesn't; issue #7, era
       texts). The shop's exchange, Special Packs and card rental are issue #8 (done 2026-11-14, see M4).
 
+## ▶ Higher resolution (2026-11-14): issue #1's sharp 4:3
+
+[Issue #1](https://github.com/usersina/yo3-revival/issues/1) asks for the game drawn larger and sharp, 4:3, e.g.
+1440×1080 on a 1920×1080 screen. Destiny Draw, the issue's other half, waits for its own rules.
+
+- [x] Research: the Direct3D 9 device and back buffer, the window and its procedure, the viewport and 3D camera,
+      Scaleform's per-movie viewports and the mouse paths, in [client internals](client-internals.md#rendering-the-window-and-the-mouse).
+- [x] The connection DLL's opt-in mode (`tools/mod/resolution.h`, `YO3_RESOLUTION`): the game keeps its 1024×768
+      frame; the window and back buffer are larger, the game's viewports, scissor and cleared rectangles are scaled
+      into them, and the mouse, cursor and IME are mapped back. Byte-guarded; a bad value or an unsupported game
+      stops startup (`stage=mod-resolution`). Tests: `resolution-test.c` and `tools/mod/test.sh`.
+- [x] Settings: `yo3-launcher --resolution` (Scripts' `play` passes it through), Desktop's Game setup → Display.
+      Tests: `resolution_reaches_the_game_only_when_asked`, `resolution_is_saved_in_its_normal_form_and_old_settings_mean_off`,
+      `resolution_choices_show_the_saved_size_even_one_set_by_hand`.
+- [x] Live under Wine with DXVK (private Xvfb 1920×1080): 1440×1080, 1600×900 with bars, `auto`, the game's Full
+      (a borderless 1920×1080 window) and 1024×600; map, deck editor, dialogs, NPC talk, janken and duel field drew
+      and answered clicks where they should (details in client internals).
+- [ ] Native Windows 10/11 (the VM, with the user's go-ahead), a Japanese or Korean IME, a second monitor.
+- [ ] Direct start: the DLL loads after the window exists, so `yo3.exe` opened directly stays 1024×768. The WINMM
+      loader would have to install the window and Direct3D hooks itself.
+- Out of scope: true 16:9 (every screen laid out again).
+
 ## ✅ M0: Research and tooling
 
 - [x] Feasibility study ([research.md](research.md))

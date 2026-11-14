@@ -13,6 +13,7 @@ PowerShell. Run from the extracted bundle, or substitute `./target/release/yo3-s
   - [Existing data and backups](#existing-data-and-backups)
   - [Windows SmartScreen and antivirus warnings](#windows-smartscreen-and-antivirus-warnings)
   - [Original game runtimes](#original-game-runtimes)
+  - [Higher resolution](#higher-resolution)
 
 ## Server options
 
@@ -184,3 +185,24 @@ that prefix's runtime setup. A successful dependency probe does not prove graphi
 Desktop and Scripts launch the original game with the current user's permissions, avoiding its obsolete administrator
 request. Run Revival normally. Keep the selected game folder and your game Documents writable by your account;
 hosting itself does not require elevation.
+
+## Higher resolution
+
+`play.sh` / `play.cmd` (and `yo3-launcher`) take `--resolution`:
+
+| Value          | The game                                                                                      |
+| -------------- | --------------------------------------------------------------------------------------------- |
+| `off` (absent) | the original 1024×768 (or 1024×600) window                                                    |
+| `WIDTHxHEIGHT` | a window with that client area, 320 to 8192 each, e.g. `1440x1080`                             |
+| `auto`         | the largest window of the game's shape that the screen's work area holds                       |
+
+```bash
+./play.sh --profile "$PWD/client.json" --game-dir "$HOME/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3" --resolution 1440x1080
+```
+
+The game keeps laying out its 1024×768 frame; the connection DLL draws it at the larger size, centred, with black bars
+when the shapes differ, and maps the mouse back. In the game's own **Full** screen mode the window is borderless and the
+size of the screen, whatever the value. The launcher hands the value to the game as `YO3_RESOLUTION`; setting that
+variable yourself works the same. A value the DLL refuses, or a game whose drawing code differs from v1.153's, stops
+startup with `stage=mod-resolution`. Opening `yo3.exe` directly always uses the original size. How it works:
+[client internals](client-internals.md#higher-resolution).

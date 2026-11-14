@@ -17,6 +17,8 @@ export, see [AGENTS.md](https://github.com/usersina/yo3-revival/blob/main/AGENTS
     - [Native duel observer](#native-duel-observer)
   - [The field tracer](#the-field-tracer)
   - [The UI probe](#the-ui-probe)
+  - [Rendering, the window and the mouse](#rendering-the-window-and-the-mouse)
+    - [Higher resolution](#higher-resolution)
   - [Data formats](#data-formats)
   - [Behaviours worth knowing](#behaviours-worth-knowing)
   - [Crash history (and the rule each one taught)](#crash-history-and-the-rule-each-one-taught)
@@ -337,6 +339,90 @@ Limits: words written into a movie itself never pass through the probe: the "Sta
 which one is showing still needs a click count or a screenshot; the card info panel's hover text uses neither path.
 A text id or a call seen means it happened, not that it is still on screen (read `ago_ms`). The duel field is the
 card manager's data, not the rendered card's rotation or animation.
+
+## Rendering, the window and the mouse
+
+The client draws one fixed frame, 1024×768 (or 1024×600, the third **Screen** choice in the title screen's
+**Options**), with Irrlicht's Direct3D 9 driver; Scaleform (GFx 3) draws the Flash screens through the same device.
+Everything below lays out, draws and hit-tests in that frame's pixels.
+
+- **Startup and the frame.** `0x40B370` refuses screens smaller than 1024×600 (`GetSystemMetrics`), then builds up to
+  three Irrlicht creation parameters from the `screen` option (`0x40B280`), `0x24` bytes each: driver type 4
+  (Direct3D 9) `+0`, width 1024 `+4`, height 768 or 600 `+8`, 32 bits `+0xC`, fullscreen `+0xE`, vsync `+0x10`.
+  `0x53C270` makes the first device that works; the mode it got goes back into `screen` (0 Full, 1 1024×768, 2
+  1024×600). Live (Xvfb, which offers no 1024×768 display mode): Full failed at 768, then at 600, and the game opened a
+  1024×600 window. Changing **Screen** in Options and confirming ends the game; the mode applies at the next start
+  (live, with and without the mod).
+- **The window.** `CIrrDeviceWin32` (`0x53AF30`) registers the class `CIrrDeviceWin32` with the window procedure
+  `0x53A720` (`0x53B05A`), sizes the window from the client size with `AdjustWindowRect` (`0x53B0F1`; style `WS_POPUP`
+  for fullscreen, else `0x06C80000`, captioned and not resizable), centres it, creates it (`0x53B158`) and moves it
+  there. `0x53BE20` (Irrlicht's `setResizable`) recomputes the same with the screen size. The window procedure's
+  `WM_SIZE` forces any client size other than the driver's screen size back to 1024 wide (`SetWindowPos`); Irrlicht's
+  own resize (`0x53B600`, "Resizing window") ignores sizes while the screen is 1024 wide.
+- **Direct3D 9.** `yo3.exe` doesn't import `d3d9.dll` (only `d3dx9_40.dll`, for `D3DXAssembleShader` and
+  `D3DXLoadSurfaceFromMemory`): the driver's init loads it (`0x5441CC`) and asks `GetProcAddress` for
+  `Direct3DCreate9` (`0x5441FF`). Present parameters sit at driver `+0x144` (back buffer = the screen size), the
+  device at `+0x480`. Fullscreen first requires an adapter mode of exactly the screen size (`EnumAdapterModes`).
+  Frames go out through `Present` at `0x544FF6`; "Resetting D3D9 device." is the reset path.
+- **Viewport and drawing.** Irrlicht's `setViewPort` (`0x545680`) clips to the screen size and calls `SetViewport`
+  (`0x54573F`); render-to-texture (`0x545460`) saves the back buffer with `GetRenderTarget`, draws into a texture
+  and restores the saved pointer. Only transformed vertex formats are set (`0x152`, `0x252`, `0x140352`, around
+  `0x547000`): no pre-transformed (`XYZRHW`) vertices, so the viewport places every 3D and 2D draw. 2D drawing uses
+  Irrlicht's orthographic mode, built from the screen size.
+- **The 3D camera.** The camera (`0x585D10`) takes its view rectangle (`0x5866B0`) from the driver's current
+  render-target size (vtable `+0xD4`), 1024×768 when there is none; its aspect ratio follows. The duel field's
+  picking (DuelFieldManager `0x50B700`, pick areas `0x509CD0`) casts from mouse positions in the frame.
+- **Scaleform.** Each Flash screen (`GFxMovieSprite`, vtable `0x7B1B3C`) sets its viewport through `0x473F10`: a
+  `GViewport` with the buffer = the driver's screen size, the position = the sprite's, the size = the movie's own,
+  scale and aspect 1.0, passed to the movie's `SetViewport` (vtable `+0x64`) by `0x4EFE60` (load) and `0x4F00C0` (move).
+  `0x4F0650` draws it (renderer `+0x10`, movie `Display` `+0x90`, renderer `+0x14`); the renderer sets the Direct3D
+  viewport itself (`0x6D56D0`, seen live). Mouse input reaches a movie through `HandleEvent` (`+0xA4`) as the position
+  minus the sprite's (`0x4F04C0`); keys and text through `0x4F03A0`.
+- **The mouse.** Irrlicht's events carry the client position from the messages' `lParam` (`WM_MOUSEWHEEL`: screen
+  position minus the client origin, `ClientToScreen`); the game's receiver `Yo3Mouse` reads `X` `+4`, `Y` `+8`
+  (`0x40ED10`). The cursor control (`CCursorControl`, vtable `0x7B5200`, made by `0x53A2C0`) works out the position
+  as `GetCursorPos` minus the window rectangle and a border (`0x53A620`): `SM_CXDLGFRAME`, `SM_CYDLGFRAME` +
+  `SM_CYCAPTION` for a window, none in fullscreen (`0x53A37B`); `0x53A480` moves the pointer with `SetCursorPos`
+  (a duel moves it onto the card that can act). The game hides the system cursor (`WM_SETCURSOR`) and draws its own
+  (`MouseCursol`), whose position it sends to Flash every frame (`MousePos`). The IME's composition window goes to
+  the text cursor (`0x53C300`, `CFS_POINT`).
+- **Not used.** Irrlicht's `createScreenShot` (`0x549140`, driver vtable slot 87) exists, but the game has no
+  screenshot feature that writes a file.
+
+### Higher resolution
+
+`tools/mod/resolution.h` (in the connection DLL), off unless `YO3_RESOLUTION` is set: `WIDTHxHEIGHT` (320 to 8192 each)
+for a window of that client size, `auto` for the largest the screen holds, `off`. The launcher sets it from
+`--resolution`, Desktop from **Game setup → Display**. The game is told nothing: it keeps its frame, and the window and
+back buffer are larger, the frame scaled to fit and centred, with black bars when the shapes differ
+(`tools/mod/resolution-fit.h`, integer arithmetic; tested by `resolution-test.c`).
+
+- `AdjustWindowRect` given a client of exactly the game's frame returns the real size: the request, or the work area
+  for `auto`, or the whole screen when the game asks for its fullscreen window (`WS_POPUP`), which stays a borderless
+  window.
+- `GetProcAddress("Direct3DCreate9")` returns a wrapper whose interface has `CreateDevice` wrapped: the back buffer is
+  the window's real client area, windowed. The device's `Reset`, `Present`, `SetRenderTarget`, `Clear`,
+  `SetViewport`/`GetViewport`, `SetScissorRect`/`GetScissorRect` and `StretchRect` slots are wrapped: while the back
+  buffer is the target, rectangles from `yo3.exe` (Irrlicht and Scaleform) are scaled into the content area and read
+  back in the frame. Calls from anywhere else pass untouched: a duel at 1600×900 showed `SetViewport` and
+  `SetScissorRect` called from outside `yo3.exe` (`0x759B4F0B`, `0x759B4F44`; most likely DXVK's state blocks, which
+  re-apply what they captured through the same slots), and those values are already real. `Present` clears the bars.
+- The class registration gets a window procedure in front of `0x53A720`: mouse messages arrive in the frame, and
+  `WM_SIZE` reports the frame. Every window of the class is translated: each mode the game tries makes a new one.
+- `GetCursorPos`/`SetCursorPos` give and take positions that make `0x53A620`'s sum come out in the frame;
+  `ImmSetCompositionWindow`/`ImmSetCandidateWindow` place the IME in the real client area.
+- Every site above is checked byte for byte first; a different executable, or a value the DLL doesn't accept, stops
+  startup with `stage=mod-resolution`. Direct start loads the DLL at the first `[Yo3]` INI read, after `0x40B370`
+  made the window, so there it logs that it isn't used and installs nothing.
+
+Live (2026-11-14, Wine with DXVK on a private 1920×1080 Xvfb display): `1440x1080` (Wine kept the window inside the
+screen at 1440×1060: frame 1413×1060, 13-pixel bars), `1600x900` (1200×900, 200-pixel bars), `auto` (1397×1048),
+the game's Full through a Wine virtual desktop (a borderless 1920×1080 window, frame 1440×1080) and its 1024×600 mode
+(1788×1048). The title, Options, login, map, main menu, deck editor (hover preview, card drag), NPC talk, "Start Duel?",
+deck choice, janken and duel field (hand-card menus, Summon by click, the BP button, the game moving the pointer)
+drew and answered where they should. Flash shapes and text are drawn at the new size; bitmaps (card art,
+backgrounds) are scaled up from their files, and render-to-texture effects keep their texture's size. Not checked:
+native Windows, an IME, more than one monitor.
 
 ## Data formats
 

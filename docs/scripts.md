@@ -128,7 +128,8 @@ Paths passed to that script are relative to the extracted bundle. `play` preserv
 so absolute profile/game paths avoid ambiguity. Arguments containing spaces must be quoted.
 
 Use `yo3-server.exe --help` on Windows or `./yo3-server --help` on Linux for every server option, including
-`--duel-check`. Use `play.cmd --help` or `./play.sh --help` for game-launch options.
+`--duel-check`. Use `play.cmd --help` or `./play.sh --help` for game-launch options. Add `--resolution 1440x1080`
+(or `--resolution auto`) to `play` to draw the game larger and sharp: [higher resolution](guide.md#higher-resolution).
 [Account commands and advanced configuration](guide.md) are in the command-line reference.
 
 Server logs default to `logs/`, with bounded diagnostic sessions under `logs/sessions/`. Game-helper sessions default

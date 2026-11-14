@@ -10,6 +10,7 @@ Both editions include the server, rules engine and required connection component
   - [Host friends](#host-friends)
   - [Connection help](#connection-help)
   - [Open the game directly](#open-the-game-directly)
+  - [Resolution](#resolution)
   - [Logs and support](#logs-and-support)
   - [Application updates](#application-updates)
   - [Your data and upgrades](#your-data-and-upgrades)
@@ -203,6 +204,22 @@ Status shows Enabled, Disabled, Needs repair or Mod conflict; another mod is nev
 The loader checks required components and server compatibility before login. A missing DLL gives its expected path
 and offers a matching-file picker, followed by restart. A game with no loader at all can only show the original
 generic connection failure: the remote server cannot inspect files on your PC. Use the Desktop app to set it up.
+
+## Resolution
+
+**Advanced → Game setup → Display → Resolution** draws the game larger and sharp, in its own 4:3 shape. Menus, text and
+the duel field are drawn at the new size; card pictures and backgrounds keep the detail their files have, so they are
+scaled up. **Original · 1024 × 768** is the game as it always was. **Fit my screen** picks the largest window your
+screen holds; a size such as **1440 × 1080** is the game window's size. If the window doesn't fit, Windows or Wine keeps
+it smaller and the game fits inside, with black bars when the shapes differ.
+
+The game's own **Full** screen setting (title screen → **Options** → **Screen**) becomes a borderless window the size
+of your screen, the game centred with black bars beside it: on a 1920 × 1080 screen it is drawn at 1440 × 1080.
+Changing **Screen** there closes the game, as it always has; the mode applies the next time you play.
+
+The choice is saved at once and applies the next time you press **Play**. Opening `yo3.exe`
+[directly](#open-the-game-directly) always uses the original size. If the higher resolution can't be used with your
+game files, the game doesn't start and the logs name `stage=mod-resolution`: choose **Original** to play.
 
 ## Logs and support
 
