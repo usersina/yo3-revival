@@ -28,6 +28,7 @@ for pair in 'mismatched-login:mod-login-hook' 'mismatched-game:mod-starter-hook'
 done
 echo 'PASS: incompatible game hooks and missing launch state identify their failure stage'
 wine "$MOD/yo3-resolution-test.exe"
+wine "$MOD/yo3-teardown-test.exe"
 # The higher resolution (resolution.h) is opt in: an invalid value, or a game whose drawing code isn't v1.153's (this
 # fixture has none), refuses to start; off loads as usual.
 for pair in 'banana:YO3_RESOLUTION must be' '1440x1080:drawing code is unsupported' 'auto:drawing code is unsupported'; do

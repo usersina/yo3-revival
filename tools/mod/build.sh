@@ -21,6 +21,7 @@ PY
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-duel-snapshot-test.exe duel-snapshot-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-ui-state-test.exe ui-state-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-resolution-test.exe resolution-test.c
+"$CC" -O2 -Wall -Wextra -Werror -o build/yo3-teardown-test.exe teardown-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-test.exe test.c -lws2_32 -lwininet -lwinmm
 # Link synthetic sites so the PE headers and callback relocation are valid on native Windows too.
 python3 - <<'PY'
