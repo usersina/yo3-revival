@@ -1679,8 +1679,8 @@ Summoned.
 | MSG_ANNOUNCE_CARD {opcodes}            | the card list `0x37 {player, 0x4C, 0}`: DuelCardListDialogEx (`0x5131E0`, `dlg_cardlistex.swf`) lists the client's own card database with a name search ("Input text.", Filter); kinds `0x4C`–`0x4F` pick its filter (CardDuelFilter `0x4976A0`: any card, no extra deck monsters, main deck monsters, monsters) | —                                                                                                                                                                                                                                                                                                                                  | the card's Konami id (`0x4C8290`, id & `0x3FFF`) | confirmed (live) |
 
 The answers carry EDOPro's terms: the type's and attributes' RACE_/ATTRIBUTE_ bits, the number's index among the
-options (the first at least as large as the one picked), and a card by Konami id, which the engine turns into a
-passcode; races go to the core as one 64-bit value. Several types at once and numbers out of the dialog's range keep the automatic answer. The CPU names a card
+options (the smallest at least as large as the one picked: the engine may list them largest first, Card Trooper's
+3, 2, 1), and a card by Konami id, which the engine turns into a passcode; races go to the core as one 64-bit value. Several types at once and numbers out of the dialog's range keep the automatic answer. The CPU names a card
 the effect's filter allows: the engine runs ANNOUNCE_CARD's `opcodes` (EDOPro's `card_data::is_declarable` stack
 program: type, race, attribute, archetype and code tests) over the card database and adds `fits`, the duel's own cards
 first; without `fits`, the duel's cards in turn (the core asks again when a name doesn't fit). The client has no other card name window

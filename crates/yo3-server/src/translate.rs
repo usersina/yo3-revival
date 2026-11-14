@@ -2200,8 +2200,11 @@ impl Translator {
                 let options: Vec<u64> = m["options"].as_array().into_iter().flatten().filter_map(Json::as_u64).collect();
                 let unit = number_unit(&options).map_or(1, |(unit, _)| unit);
                 let value = count as u64 * unit;
-                // The first option at least as large (the dialog's steps may pass between uneven options).
-                let index = options.iter().position(|&o| o >= value).unwrap_or(options.len().saturating_sub(1));
+                // The smallest option at least as large (the dialog's steps may pass between uneven options), else the
+                // largest. By value: the engine may list them largest first (Card Trooper's 3, 2, 1).
+                let index = options.iter().enumerate().filter(|(_, o)| **o >= value).min_by_key(|(_, o)| **o)
+                    .or_else(|| options.iter().enumerate().max_by_key(|(_, o)| **o))
+                    .map_or(0, |(i, _)| i);
                 json!({ "type": RESP_NUMBER, "value": index })
             }
             MSG_ANNOUNCE_CARD => json!({ "type": RESP_CARD_NAME, "cid": count }),

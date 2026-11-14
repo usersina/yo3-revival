@@ -1538,6 +1538,13 @@ fn type_attribute_and_number_declarations_open_the_clients_dialogs() {
     let lp = json!({ "type": 143, "player": 0, "options": [500, 1000, 1500, 2000] });
     assert_eq!(client_commands(t.prompt(&lp)).last(), Some(&(0x36, [11, 0, 20 << 24 | 5 << 20 | 5 << 16 | 303, 0])));
     assert_eq!(t.dialog_result(15), Some(Prompt::Answer(json!({ "type": 19, "value": 2 }))), "1500 LP");
+    // The engine may list them largest first (Card Trooper's "how many cards": 3, 2, 1): the answer is still the
+    // index of the number clicked (the card sweep found 2 sent as 3).
+    let trooper = json!({ "type": 143, "player": 0, "options": [3, 2, 1] });
+    assert_eq!(client_commands(t.prompt(&trooper)).last(), Some(&(0x36, [11, 0, 3 << 24 | 1 << 20 | 1 << 16 | 283, 0])));
+    assert_eq!(t.dialog_result(2), Some(Prompt::Answer(json!({ "type": 19, "value": 1 }))), "2 cards");
+    t.prompt(&trooper);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 19, "value": 2 }))), "1 card");
 }
 
 #[test]
