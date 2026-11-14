@@ -166,6 +166,13 @@ pub fn pick(_: &Theme, status: iced::widget::pick_list::Status) -> iced::widget:
         background: white(if open { 0.07 } else { 0.04 }).into(),
         border: iced::Border { color: if open { Color { a: 0.7, ..ACCENT } } else { white(0.16) }, width: 1.0, radius: radius(6.0) } }
 }
+/// A dropdown's open list: an opaque panel, so the page under it doesn't show through its rows.
+pub fn pick_menu(_: &Theme) -> iced::widget::overlay::menu::Style {
+    iced::widget::overlay::menu::Style { background: Color::from_rgb8(18, 30, 54).into(), text_color: TEXT,
+        border: iced::Border { color: Color { a: 0.7, ..ACCENT }, width: 1.0, radius: radius(6.0) },
+        selected_text_color: Color::WHITE, selected_background: Color::from_rgb8(32, 92, 168).into(),
+        shadow: iced::Shadow { color: Color { a: 0.5, ..Color::BLACK }, offset: iced::Vector::new(0.0, 6.0), blur_radius: 18.0 } }
+}
 /// A black box for code, identities and other monospace text.
 pub fn well(_: &Theme) -> container::Style {
     container::Style { background: Some(WELL.into()), text_color: Some(TEXT),

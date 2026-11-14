@@ -268,6 +268,13 @@ impl App {
         if let Some(error)=field_error {game=game.push(ui::inline_status(error,ui::Tone::Danger));}
         body=body.push(ui::section("Game folder",game.push(muted("Choose your original Yu-Gi-Oh! ONLINE 3 installation. It is checked and saved automatically. Game files are not included. Play rechecks the required files, then opens your game and prepares everything automatically."))));
         if self.picking {body=body.push(row![muted("No file dialog? You can paste the game folder path instead."),action(Icon::Close,"Use path instead",Some(Msg::UsePath))].spacing(12).align_y(iced::Alignment::Center));}
+        // Playing here runs this computer's server, whose banlist decides Auto Duel and computer duels; a friend's
+        // server decides its own.
+        if self.selected==ServerChoice::Local && !self.editor {
+            let (_,banlist)=banlist_choices(&self.settings.banlist,&self.banlists);
+            body=body.push(row![muted(format!("Banlist: {banlist}")),
+                action(Icon::Settings,"Change",(!self.locked()).then_some(Msg::OpenBanlist)).style(ui::ghost)].spacing(12).align_y(iced::Alignment::Center));
+        }
         if self.selected!=ServerChoice::Local || self.editor {
             body=body.push(row![muted(if self.editor {"Finish or cancel your connection in Advanced before playing.".into()}else{format!("Playing on {}",self.selected)}),
                 action(Icon::Settings,"Change in Advanced",(!self.locked()).then_some(Msg::Mode(true))).style(ui::ghost)].spacing(12).align_y(iced::Alignment::Center));
@@ -321,14 +328,14 @@ impl App {
         if !editable {
             connection = connection.push(container(text(self.selected.to_string()).color(ui::MUTED)).padding(12).width(Fill).style(ui::well));
         } else {
-            connection = connection.push(pick_list(servers, Some(self.selected.clone()), Msg::Select).width(Fill).padding(12).style(ui::pick));
+            connection = connection.push(pick_list(servers, Some(self.selected.clone()), Msg::Select).width(Fill).padding(12).style(ui::pick).menu_style(ui::pick_menu));
         }
         if self.selected == ServerChoice::Local {
             let names = account_names(&self.accounts);
             if !names.is_empty() {
                 connection = connection.push(ui::label_help("Your account", "This is the account used to play. Each account can have several players; choose your player inside the game. Managing another account under Hosting does not change this selection."));
                 if !editable { connection = connection.push(container(text(&self.account).color(ui::MUTED)).padding(12).width(Fill).style(ui::well)); }
-                else { connection = connection.push(pick_list(names, (!self.account.is_empty()).then_some(self.account.clone()), Msg::AccountSelect).width(Fill).padding(12).style(ui::pick)); }
+                else { connection = connection.push(pick_list(names, (!self.account.is_empty()).then_some(self.account.clone()), Msg::AccountSelect).width(Fill).padding(12).style(ui::pick).menu_style(ui::pick_menu)); }
             }
             connection = connection.push(muted("Your server starts automatically when you play."));
         } else {
@@ -429,6 +436,11 @@ impl App {
         if self.changed(Section::Hosting) {
             body=body.push(ui::inline_status("Unsaved hosting changes. Save them in Advanced before starting with the new settings.",ui::Tone::Warning));
         }
+        let (choices,chosen)=banlist_choices(&self.settings.banlist,&self.banlists);
+        let mut banlist=column![ui::label_help("Banlist", "The Forbidden/Limited list players log in with: Auto Duel and duels against the computer use it, and Edit Deck shows it as the Latest Regulation. Create Duel can still pick another list for one duel."),
+            pick_list(choices,Some(chosen),|choice:BanlistChoice|Msg::Banlist(choice.value)).width(Fill).padding(12).style(ui::pick).menu_style(ui::pick_menu)].spacing(12);
+        banlist=banlist.push(muted(if running {"Stop and start the server to apply a new banlist."} else {"Applies the next time you start the server."}));
+        body=body.push(ui::section("Banlist",banlist));
         let mut sharing=column![muted("Set a reachable address, then create an account and send its private invitation to your friend.")].spacing(14);
         match yo3_desktop::network::share_address(&self.settings){Ok(Some((address,_)))=>sharing=sharing.push(row![text(format!("Sharing address: {address}")).size(14).width(Fill),action(Icon::Copy,"Copy",Some(Msg::CopyAddress)).style(ui::ghost)].spacing(12))
             .push(action(Icon::Users,"Create invitations",Some(Msg::HostTab(HostTab::Invitations))).style(ui::ghost)),_=>sharing=sharing.push(muted("A sharing address is not configured. localhost is for local play."))
@@ -458,7 +470,7 @@ impl App {
             .style(move |theme,status|ui::input_style(theme,status,port_invalid))
             .on_input_maybe((!self.locked() && !self.modal_open()).then_some(|s|Msg::Input(Field::Port,s)))].spacing(8).width(150);
         let mut network=column![ui::label_help("Listen on", "The network interface the server accepts connections on. All interfaces (0.0.0.0) is the default. A specific interface limits access to that network; localhost allows only this computer."),muted("Keep All interfaces for hosting. Friends use the sharing address above, rather than 0.0.0.0. Until a sharing address is saved, All interfaces accepts only this computer."),
-            pick_list(self.bindings.clone(),selected,Msg::BindSelect).placeholder("Choose interface").padding(12).width(Fill).style(ui::pick),
+            pick_list(self.bindings.clone(),selected,Msg::BindSelect).placeholder("Choose interface").padding(12).width(Fill).style(ui::pick).menu_style(ui::pick_menu),
             row![port,widget::Space::new().width(Fill),action(Icon::Refresh,"Refresh interfaces",(!self.locked()).then_some(Msg::RefreshBindings)).style(ui::ghost)].spacing(12).align_y(iced::Alignment::End)].spacing(16);
         if port_invalid {network=network.push(ui::inline_status("TCP port: use a number from 1 to 65535.",ui::Tone::Danger));}
         if self.status.is_some(){network=network.push(ui::inline_status("Stop the running server before saving hosting changes. Start it again to apply them.",ui::Tone::Info));}
@@ -531,7 +543,7 @@ impl App {
         if names.is_empty(){return ui::section("No accounts yet",column![
             muted("Create your first account, then export a private invitation. Every friend should have their own account."),
             row![widget::Space::new().width(Fill),action(Icon::Plus,"Create account",(!self.locked()).then_some(Msg::NewAccount)).style(ui::primary)]].spacing(16)).into()}
-        let mut selected=column![row![ui::label_help("Account", "Manage this account’s players and invitation. This selection is separate from your account on Play."),widget::Space::new().width(Fill),action(Icon::Plus,"New account",(!self.locked()).then_some(Msg::NewAccount)).style(ui::ghost)].align_y(iced::Alignment::Center),pick_list(names,(!self.admin_account.is_empty()).then_some(self.admin_account.clone()),Msg::AdminAccountSelect).placeholder("Choose account").width(Fill).padding(12).style(ui::pick),
+        let mut selected=column![row![ui::label_help("Account", "Manage this account’s players and invitation. This selection is separate from your account on Play."),widget::Space::new().width(Fill),action(Icon::Plus,"New account",(!self.locked()).then_some(Msg::NewAccount)).style(ui::ghost)].align_y(iced::Alignment::Center),pick_list(names,(!self.admin_account.is_empty()).then_some(self.admin_account.clone()),Msg::AdminAccountSelect).placeholder("Choose account").width(Fill).padding(12).style(ui::pick).menu_style(ui::pick_menu),
             muted("This selection manages invitations and players. Your account on Play is unchanged.")].spacing(16);
         let account=self.accounts.as_array().and_then(|a|a.iter().find(|a|a["players"][0]["name"].as_str()==Some(&self.admin_account)));
         let player_count=account.and_then(|a|a["players"].as_array()).map_or(0,Vec::len);
@@ -646,7 +658,7 @@ impl App {
         body=body.push(ui::section("Game installation",install));
         let (choices,chosen)=resolution_choices(&self.settings.resolution);
         let display=column![ui::label_help("Resolution", "Draws the game larger and sharp, in its own 4:3 shape: menus and text are redrawn at the new size; card pictures keep the detail their files have. The game's own Full screen option (title screen, Options) gives a borderless window the size of your screen. Applies the next time you press Play; opening yo3.exe directly always uses the original size."),
-            pick_list(choices,Some(chosen),|choice:ResolutionChoice|Msg::Resolution(choice.value)).width(Fill).padding(12).style(ui::pick),
+            pick_list(choices,Some(chosen),|choice:ResolutionChoice|Msg::Resolution(choice.value)).width(Fill).padding(12).style(ui::pick).menu_style(ui::pick_menu),
             muted("Fit my screen picks the largest size your screen holds. Any other size is the game window's size.")].spacing(12);
         body=body.push(ui::section("Display",display));
         if self.advanced_game {
@@ -806,6 +818,30 @@ pub(super) fn friendly_logs(logs: &str) -> String {
     }).collect::<Vec<_>>();
     if hidden>0 {shown.push(format!("{hidden} Wine diagnostic line{} hidden; full output is kept in exported logs.",if hidden==1{""}else{"s"}));}
     shown.join("\n")
+}
+
+/// Hosting's Banlist choices: the game's lists by name, the server's default (Season 16) first and marked, its value
+/// "" (nothing passed); a saved value not among them (a name from an older --regulation flag) is kept as its own choice.
+/// Without the game's data only the default and the saved value are offered.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct BanlistChoice { pub(super) value: String, label: String }
+impl std::fmt::Display for BanlistChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.label) }
+}
+pub(super) fn banlist_choices(saved: &str, lists: &[(u32, String)]) -> (Vec<BanlistChoice>, BanlistChoice) {
+    let default_id = yo3_server::front::LOGIN_REGULATION;
+    let default_name = lists.iter().find(|(id, _)| *id == default_id).map_or("Server default".to_string(), |(_, n)| format!("{n} (default)"));
+    let mut choices = vec![BanlistChoice { value: String::new(), label: default_name }];
+    choices.extend(lists.iter().filter(|(id, _)| *id != default_id).map(|(id, name)| BanlistChoice { value: id.to_string(), label: name.clone() }));
+    let saved = if saved.trim() == default_id.to_string() { "" } else { saved.trim() };
+    let found = choices.iter().find(|c| c.value == saved).cloned().or_else(|| {
+        lists.iter().find(|(_, n)| n.eq_ignore_ascii_case(saved)).and_then(|(id, _)| choices.iter().find(|c| c.value == id.to_string() || (*id == default_id && c.value.is_empty()))).cloned()
+    });
+    let chosen = match found {
+        Some(choice) => choice,
+        None => { let custom = BanlistChoice { value: saved.to_string(), label: saved.to_string() }; choices.push(custom.clone()); custom }
+    };
+    (choices, chosen)
 }
 
 /// The Display section's choices: the original size, the screen's, and common 4:3 sizes; a saved size not in the list
