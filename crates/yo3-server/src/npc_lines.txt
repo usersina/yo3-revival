@@ -5,6 +5,7 @@
 #   hurt      it takes 2000+ damage at once       win/lose  the duel ends
 #   heart     a hero's draw (the Heart of the Cards: he draws what he needs)
 #   eye_hand  Pegasus reads a card in your hand   eye_set   Pegasus sees the card you just Set
+#   blind_greet, blind, blind_lose  Pegasus against a player wearing the Millennium Eye: his greeting, his turns, his defeat
 
 [Yami Yugi]
 greet: Let us see what your heart is made of, {you}. It's time to duel!
@@ -87,6 +88,13 @@ direct: No defenders? Oh, what a pity!
 hurt: Ouch! Now that was rather rude.
 win: Thank you for playing, {you}-boy. Do come again!
 lose: Impossible... my Millennium Eye couldn't have failed me!
+blind_greet: Is that... my Millennium Eye? Where did you get that, {you}-boy?
+blind_greet: You wear a Millennium Eye? How very rude! Very well, we'll play it fair.
+blind: Your thoughts are... hidden from me. How annoying!
+blind: I can't read a thing! Who taught you that trick?
+blind: My Eye shows me nothing but shadows... most unpleasant.
+blind_lose: Without my Millennium Eye's sight... I never stood a chance.
+blind_lose: Beaten by a Millennium Eye of all things? How ironic!
 
 [Yami Bakura]
 greet: Ahh, a new soul for my collection. Let's play, {you}.

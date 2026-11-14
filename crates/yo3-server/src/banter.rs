@@ -4,7 +4,8 @@
 //! 0 with the speaker's name in red, like the opponent's name plate; 2 and up don't). The lines are ours
 //! (`npc_lines.txt`), chosen at moments read from the rules engine's messages: the duel's start and end, the NPC's
 //! turns, its big monsters, its direct attacks, the damage it takes, a hero's draw, and Pegasus' Millennium Eye
-//! (a card in the player's hand or one the player just Set; his duel bot sees them too, `crate::npc`).
+//! (a card in the player's hand or one the player just Set; his duel bot sees them too, `crate::npc`), unless the
+//! player wears the Millennium Eye (`Banter::blind`).
 //!
 //! The engine runs a whole turn at once and the client then plays it out, so each line carries how far into those
 //! events it belongs (`Said::after`, a rough pace per event), and the session sends it then.
@@ -158,6 +159,8 @@ pub struct Banter {
     /// Seconds of events the client has yet to play, as the messages are read.
     clock: f64,
     over: bool,
+    /// The player wears the Millennium Eye (crate::npc::wears_millennium_eye): a character who sees can't, and says so.
+    blind: bool,
 }
 
 impl Banter {
@@ -178,12 +181,21 @@ impl Banter {
             aces: HashSet::new(),
             clock: 0.0,
             over: false,
+            blind: false,
         })
+    }
+
+    /// This NPC can't read the player (they wear the Millennium Eye): its `blind_greet`, `blind` and `blind_lose`
+    /// lines instead of its greeting, what it sees and its defeat. Only a character with `blind` lines is blinded.
+    pub fn blind(mut self) -> Banter {
+        self.blind = self.has("blind");
+        self
     }
 
     /// The opening line.
     pub fn greet(&mut self) -> Vec<Said> {
-        self.line("greet", None).map(|text| vec![Said { after: 1.0, text }]).unwrap_or_default()
+        let kind = if self.blind { "blind_greet" } else { "greet" };
+        self.line(kind, None).map(|text| vec![Said { after: 1.0, text }]).unwrap_or_default()
     }
 
     /// The client is about to play a new batch of events: the times start again (after the opening's setup, the
@@ -211,6 +223,8 @@ impl Banter {
                     self.kinds_this_turn.clear();
                     if player != Some(self.npc) {
                         None
+                    } else if self.blind {
+                        self.chance("blind", 0.35).then(|| self.line("blind", None)).flatten()
                     } else if self.has("eye_hand") && self.chance("eye_hand", 0.5) {
                         let hand = duel.hand(1 - self.npc);
                         let card = self.pick(&hand).and_then(|cid| duel.card_name(cid)).map(str::to_string);
@@ -225,7 +239,7 @@ impl Banter {
                 MSG_DRAW if player == Some(self.npc) && self.turn_player == Some(self.npc) && self.has("heart") => {
                     self.chance("heart", 0.35).then(|| self.line("heart", None)).flatten()
                 }
-                MSG_SET if controller == Some(1 - self.npc) && self.has("eye_set") => {
+                MSG_SET if controller == Some(1 - self.npc) && self.has("eye_set") && !self.blind => {
                     let card = cid(m).and_then(|c| duel.card_name(c)).map(str::to_string);
                     card.filter(|_| self.chance("eye_set", 0.5)).and_then(|card| self.line("eye_set", Some(&card)))
                 }
@@ -247,7 +261,7 @@ impl Banter {
                     self.over = true;
                     match player {
                         Some(p) if p == self.npc => self.say("win", None),
-                        Some(p) if p == 1 - self.npc => self.say("lose", None),
+                        Some(p) if p == 1 - self.npc => self.say(if self.blind { "blind_lose" } else { "lose" }, None),
                         _ => None,
                     }
                 }
@@ -386,6 +400,9 @@ mod tests {
         }
         assert!(table["Maximillion Pegasus"].contains_key("eye_hand"));
         assert!(table["Maximillion Pegasus"].contains_key("eye_set"));
+        for kind in ["blind_greet", "blind", "blind_lose"] {
+            assert!(table["Maximillion Pegasus"].contains_key(kind), "Pegasus has no {kind} line");
+        }
         assert_eq!(table.len(), crate::npc::CHARACTERS.len(), "a character without a style, or a misspelt name");
     }
 
@@ -402,6 +419,27 @@ mod tests {
         assert!(said[0].after > 1.5, "said after the Set shows, not before: {said:?}");
         let said = b.observe(&[json!({ "type": MSG_NEW_TURN, "player": 1 })], &mut d);
         assert!(said[0].text.contains("Dark Magician"), "his first turn reads the hand: {said:?}");
+    }
+
+    #[test]
+    fn the_millennium_eye_leaves_pegasus_blind() {
+        // A player wearing the Millennium Eye (crate::npc::wears_millennium_eye): Pegasus can't read them, and says so.
+        let mut d = duel();
+        let mut b = Banter::new("Maximillion Pegasus", 1, "Tester", 7).unwrap().blind();
+        let peg = &table()["Maximillion Pegasus"];
+        let greet = b.greet();
+        assert!(peg["blind_greet"].iter().any(|l| l.replace("{you}", "Tester") == greet[0].text), "{greet:?}");
+        let set = json!({ "type": MSG_SET, "cid": 1, "controller": 0, "location": 8, "sequence": 0, "position": 10 });
+        let mut said = vec![];
+        for _ in 0..6 {
+            said.extend(b.observe(&[json!({ "type": MSG_NEW_TURN, "player": 0 }), set.clone(), json!({ "type": MSG_NEW_TURN, "player": 1 })], &mut d));
+        }
+        assert!(said.iter().all(|s| !s.text.contains("Mirror Force") && !s.text.contains("Dark Magician")), "{said:?}");
+        assert!(said.iter().any(|s| peg["blind"].contains(&s.text.as_str())), "he notices he can't see: {said:?}");
+        let said = b.observe(&[json!({ "type": MSG_WIN, "player": 0, "reason": 1 })], &mut d);
+        assert!(peg["blind_lose"].contains(&said[0].text.as_str()), "{said:?}");
+        let kaiba = Banter::new("Seto Kaiba", 1, "Tester", 7).unwrap().blind();
+        assert!(!kaiba.blind, "only a character who sees can be blinded");
     }
 
     #[test]

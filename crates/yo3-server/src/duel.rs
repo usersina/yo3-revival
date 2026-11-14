@@ -309,6 +309,8 @@ pub struct DuelSession {
     check: Option<crate::duelcheck::ClientModel>,
     /// The NPC's lines in the chat window (crate::banter), its npc_id and name, and when the next line may go.
     banter: Option<(Banter, u32, String)>,
+    /// The NPC's duel bot style for this duel (crate::npc::against: Pegasus can't see a Millennium Eye wearer).
+    npc_style: serde_json::Value,
     chat_free: Instant,
     /// For the NPC duel's log: the janken as the player saw it {result, the NPC's hand, the player's}, who went first,
     /// and every engine message of the duel.
@@ -345,6 +347,7 @@ impl DuelSession {
             closed: false,
             check: None,
             banter: None,
+            npc_style: serde_json::Value::Null,
             chat_free: Instant::now(),
             janken_seen: [0; 3],
             first: None,
@@ -589,7 +592,11 @@ impl DuelSession {
         let lp = self.world.start_lp;
         // The NPC's hidden powers (crate::npc), for its engine team.
         let npc_team = if first == CLIENT { 1 } else { 0 };
-        let style = entry.npc_id.and_then(|id| self.world.npc_styles.get(&id));
+        let avatar = self.player_id.and_then(|id| self.hub.locked().avatar_of(id)).unwrap_or_default();
+        let base = entry.npc_id.and_then(|id| self.world.npc_styles.get(&id)).cloned().unwrap_or_default();
+        self.npc_style = crate::npc::against(&base, &avatar);
+        let blind = base["sees"] == true && self.npc_style["sees"] == false;
+        let style = Some(&self.npc_style);
         let skills: Vec<(u32, String)> = style.and_then(|s| s["skills"].as_array()).into_iter().flatten()
             .filter_map(|s| s.as_str()).map(|s| (npc_team, s.to_string())).collect();
         let answer = engine.new_duel_with(seed, lp, [(&m0, &e0), (&m1, &e1)], &self.world.card_names, &skills);
@@ -614,7 +621,8 @@ impl DuelSession {
         let you = player.map(|(name, _)| name).unwrap_or_default();
         self.banter = entry.npc_id.and_then(|id| {
             let name = self.world.npc_names.get(&id)?;
-            Some((Banter::new(name, npc_team as u64, &you, seed.rotate_left(17))?, id, name.clone()))
+            let banter = Banter::new(name, npc_team as u64, &you, seed.rotate_left(17))?;
+            Some((if blind { banter.blind() } else { banter }, id, name.clone()))
         });
         let greet = self.banter.as_mut().map(|(b, ..)| b.greet()).unwrap_or_default();
         self.speak(greet);
@@ -660,7 +668,7 @@ impl DuelSession {
     }
 
     fn advance(&mut self, mut answer: std::io::Result<Answer>) -> Vec<Message> {
-        let style = self.entry.as_ref().and_then(|e| e.npc_id).and_then(|id| self.world.npc_styles.get(&id)).cloned().unwrap_or_default();
+        let style = self.npc_style.clone();
         let Some((engine, translator)) = self.engine.as_mut() else { return vec![] };
         let mut out = vec![];
         let mut said: Vec<Said> = vec![];
