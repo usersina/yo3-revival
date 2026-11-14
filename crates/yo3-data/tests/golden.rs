@@ -66,6 +66,19 @@ fn card_database_uses_konami_card_ids() {
 }
 
 #[test]
+fn cards_carry_the_clients_text() {
+    // The 2010–2012 wording the engine's overrides follow (engine/overrides/): Goyo Guardian takes any Tuner.
+    let dir = need_game!();
+    let data = GameData::load(&dir).unwrap();
+    let goyo = data.cards.by_cid(7736).unwrap();
+    assert_eq!(goyo.name, "Goyo Guardian");
+    assert!(goyo.desc.starts_with("1 Tuner + 1 or more non-Tuner monsters"), "{}", goyo.desc);
+    let double_spell = data.cards.by_cid(5629).unwrap();
+    assert_eq!(double_spell.name, "Double Spell");
+    assert!(double_spell.desc.starts_with("Discard 1 Spell Card from your hand."), "{}", double_spell.desc);
+}
+
+#[test]
 fn card_kinds_tell_the_extra_deck_apart() {
     let dir = need_game!();
     let data = GameData::load(&dir).unwrap();

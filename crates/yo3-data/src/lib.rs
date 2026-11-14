@@ -124,6 +124,8 @@ pub struct Card {
     /// against the rules engine's types).
     pub kind: u32,
     pub name: String,
+    /// The card's text (CARD_Desc_E.bin): what the client shows, the 2010–2012 wording.
+    pub desc: String,
 }
 
 impl Card {
@@ -141,8 +143,9 @@ pub struct CardDb {
 }
 
 impl CardDb {
-    /// Parses CARD_Prop.bin (8 bytes per row) with names from CARD_Indx/CARD_Name.
-    pub fn parse(prop: &[u8], index: &[u8], names: &[u8]) -> CardDb {
+    /// Parses CARD_Prop.bin (8 bytes per row) with names and texts from CARD_Indx (a name and a text offset per row),
+    /// CARD_Name and CARD_Desc.
+    pub fn parse(prop: &[u8], index: &[u8], names: &[u8], descs: &[u8]) -> CardDb {
         let mut db = CardDb::default();
         for (row, p) in prop.as_chunks::<8>().0.iter().enumerate() {
             let a = u32::from_le_bytes(p[..4].try_into().unwrap());
@@ -151,11 +154,13 @@ impl CardDb {
             if cid == 0 {
                 continue;
             }
-            let name = index
-                .get(row * 8..row * 8 + 4)
-                .map(|o| u32::from_le_bytes(o.try_into().unwrap()) as usize)
-                .map(|off| utf16z(names.get(off..).unwrap_or_default()))
-                .unwrap_or_default();
+            let text = |at: usize, table: &[u8]| {
+                index
+                    .get(row * 8 + at..row * 8 + at + 4)
+                    .map(|o| u32::from_le_bytes(o.try_into().unwrap()) as usize)
+                    .map(|off| utf16z(table.get(off..).unwrap_or_default()))
+                    .unwrap_or_default()
+            };
             let card = Card {
                 row: row as u16,
                 cid,
@@ -165,7 +170,8 @@ impl CardDb {
                 attribute: (b >> 8) & 0xF,
                 race: (b >> 19) & 0x1F,
                 kind: (b >> 3) & 0x1F,
-                name,
+                name: text(0, names),
+                desc: text(4, descs),
             };
             db.by_cid.entry(cid).or_insert(db.cards.len());
             db.by_row.insert(card.row, db.cards.len());
@@ -317,6 +323,7 @@ impl GameData {
             &ypk.read_required("data/bin#/CARD_Prop.bin")?,
             &ypk.read_required("data/bin#/CARD_Indx_E.bin")?,
             &ypk.read_required("data/bin#/CARD_Name_E.bin")?,
+            &ypk.read_required("data/bin#/CARD_Desc_E.bin")?,
         );
         let mut regulations: Vec<Regulation> = ypk
             .records("data/regulation/", &[".y3r"])?
