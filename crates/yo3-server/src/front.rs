@@ -2786,7 +2786,7 @@ impl FrontSession {
             0x1793 => Message::reply(0x177B),
             0x19C8 => Message::reply(0x19C9),
             // Rental Card List (0x481A30) opens once all three come: the rental records, then the borrowed (rental_kind
-            // 0) and lent (1) lists. Nobody rents yet.
+            // 0) and lent (1) lists: rentals between players and from the shop.
             0x2C34 => self.hub().rental_records(self.player().player_id),
             0x2C35 => {
                 let kind = msg.get("rental_kind").and_then(Value::as_u32).unwrap_or(0);

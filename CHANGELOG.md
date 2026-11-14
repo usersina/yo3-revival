@@ -32,6 +32,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Fairer duel clocks.** Your clock no longer runs while the game is still playing animations: your game now tells
   the server when it has finished them, so a slower computer no longer loses thinking time.
 - Your avatar speaks its line when you flip a Set card or reveal a hand card to activate it, as in the original.
+- **A bigger, sharper game (optional).** Desktop: Advanced → Game setup → Display → Resolution; Scripts: add
+  `--resolution 1440x1080` (or `auto`) to `play`. The game keeps its 4:3 shape, with black bars on a wider screen;
+  card pictures stay as detailed as their files. Opening `yo3.exe` directly still uses the original size.
 - **Trade Card at the shop.** Give Blister 10 cards you don't need and get any card you pick from the first 48
   booster packs.
 - **Rent from the shop.** Borrow 5 cards of your choice for 100 BP for 7 days, to try a deck before you build it.
