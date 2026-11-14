@@ -528,6 +528,9 @@ pub struct World {
     /// The items (pbin ids) of the recipes on every player's Official tab in Load Deck (0x43D8D0): the starter deck's
     /// and the official decks'.
     pub official_items: Vec<u16>,
+    /// The avatar parts and the title every player owns from the start (pbin ids, `GameData::free_items`): Avatar
+    /// Settings lists only owned ones (0x433AC0 checks the worn ones), so without them its part lists are empty.
+    pub free_items: Vec<u16>,
     /// NPC opponents, every level of each (three consecutive ids per NPC, from 120).
     pub npcs: Vec<u32>,
     /// Each NPC's deck (from its preset), by npc_id.
@@ -595,6 +598,7 @@ impl World {
             starter_deck: None,
             official_decks: vec![],
             official_items: vec![],
+            free_items: vec![],
             npcs: vec![],
             npc_decks: HashMap::new(),
             npc_styles: HashMap::new(),
@@ -634,11 +638,12 @@ impl World {
         }
     }
 
-    /// The deck recipes on a player's Official tab in Load Deck (0x43D8D0), as items (pbin ids): every player's
+    /// The items (pbin ids) a player owns besides what they bought one by one: the free avatar parts and title
+    /// (`free_items`), and the deck recipes on their Official tab in Load Deck (0x43D8D0), every player's
     /// (`official_items`) and the structure decks they bought.
-    pub fn deck_items(&self, player: &Player) -> Vec<u16> {
+    pub fn granted_items(&self, player: &Player) -> Vec<u16> {
         let bought = player.decks.iter().filter_map(|&id| self.structure_decks.iter().find(|s| s.deck.id == id)?.item);
-        self.official_items.iter().copied().chain(bought).collect()
+        self.free_items.iter().chain(&self.official_items).copied().chain(bought).collect()
     }
 }
 
@@ -934,7 +939,7 @@ impl Hub {
     }
 
     /// A player's own record (the player list 0x2260, the refresh 0x2CF3): with their totals, team and NPC experience,
-    /// and `decks` (the deck recipes on their Official tab, `World::deck_items`) among the items in its pbin.
+    /// and `decks` (the items the world grants them, `World::granted_items`) among the items in its pbin.
     fn own_record(&self, player: &Player, decks: &[u16]) -> Message {
         let mut record = self.record(player).with("npcbin", Value::Bin(self.npcbin(player.player_id)));
         if let Some((_, pbin)) = record.fields.iter_mut().find(|(k, _)| k == "pbin") {
@@ -2240,6 +2245,20 @@ impl Hub {
         self.online.values().find(|o| o.player_id == player_id).map(|o| (o.name.clone(), o.outbox.clone()))
     }
 
+    /// An online player's appearance (`avatar1`) as others see it.
+    pub fn avatar_of(&self, player_id: u32) -> Option<Vec<u8>> {
+        let online = self.online.values().find(|o| o.player_id == player_id)?;
+        online.record.get("avatar1").and_then(Value::as_bytes).map(<[u8]>::to_vec)
+    }
+
+    /// The record others get of `player` (made at login) again, after their Avatar Settings changed it.
+    fn refresh(&mut self, player: &Player) {
+        let record = self.record(player);
+        for o in self.online.values_mut().filter(|o| o.player_id == player.player_id) {
+            o.record = record.clone();
+        }
+    }
+
     /// Sends to one player by id or name; false if they are not online.
     fn send_player(&self, to_id: Option<u32>, to_name: Option<&str>, msg: &Message) -> bool {
         let target = self.online.values().find(|o| Some(o.player_id) == to_id || Some(o.name.as_str()) == to_name);
@@ -2488,6 +2507,7 @@ impl FrontSession {
         if let Some(d) = &self.directory {
             d.locked().update_player(self.account.players[at].player_id, apply);
         }
+        self.hub().refresh(&self.account.players[at]);
         Message::reply(0x2CF5)
     }
 
@@ -2692,7 +2712,7 @@ impl FrontSession {
                 self.refresh_players();
                 let hub = self.hub.locked();
                 let world = &self.world;
-                self.account.players.iter().fold(Message::reply(0x2260), |m, p| m.item(hub.own_record(p, &world.deck_items(p))))
+                self.account.players.iter().fold(Message::reply(0x2260), |m, p| m.item(hub.own_record(p, &world.granted_items(p))))
             }
             0x1F4A => self.create_player(msg),
             0x1F4B => self.delete_player(msg),
@@ -2832,7 +2852,7 @@ impl FrontSession {
             // Deck list (deck editor 0x43FC60): the player's own decks, which it saves as local files when it lacks one
             // of the name (the client uses at most 10). The starter deck, then the decks this player's clients uploaded
             // (the newest account state: another machine may have uploaded since). The official and bought structure
-            // decks are on Load Deck's Official tab instead (their items in the player's pbin, `World::deck_items`).
+            // decks are on Load Deck's Official tab instead (their items in the player's pbin, `World::granted_items`).
             0x1F4E => {
                 let uploaded = self.uploaded_decks();
                 let decks = self.world.starter_deck.iter().chain(uploaded.iter().filter(|u| !self.world.starter_deck.iter().any(|s| s.name == u.name)));
@@ -3041,7 +3061,7 @@ impl FrontSession {
             0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_ids)),
             0x27D8 => Message::reply(0x27D9).item(Message::record()),
             0x2CEE => {
-                let record = self.hub().own_record(self.player(), &self.world.deck_items(self.player()));
+                let record = self.hub().own_record(self.player(), &self.world.granted_items(self.player()));
                 Message::reply(0x2CF3).item(record)
             }
             0x2CEF => self.update_player(msg),

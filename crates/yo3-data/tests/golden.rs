@@ -193,6 +193,21 @@ fn the_item_catalogue_names_avatar_items_and_protectors() {
 }
 
 #[test]
+fn every_player_owns_the_free_avatar_parts_and_the_first_title() {
+    // Avatar Settings lists only owned parts and titles (pbin bits; 0x433AC0 checks the worn ones), so the free ones,
+    // sub 1 and 2 of kinds 1, 2 (male, female parts) and 10 (titles), are every player's: 26 male, 26 female and
+    // BEGINNER DUELIST, "Your first ever Title" (224).
+    let dir = need_game!();
+    let data = GameData::load(&dir).unwrap();
+    let free = data.free_items();
+    assert_eq!(free.len(), 26 + 26 + 1);
+    assert!(free.iter().all(|e| matches!(e.kind, 1 | 2 | 10) && matches!(e.sub, 1 | 2)));
+    let name = |id: u16| free.iter().find(|e| e.id == id).and_then(|e| data.text(e.b as u32));
+    assert_eq!((name(0), name(1024), name(224)), (Some("Default"), Some("Satellite"), Some("BEGINNER DUELIST")));
+    assert!(free.iter().all(|e| e.id != 6), "Bald (6) is for sale");
+}
+
+#[test]
 fn the_client_has_flags_for_two_hundred_countries() {
     // data/text/countrytbl.bin: id 1 Albania ... 16 Germany ... 144 Japan ... 171 United States.
     let dir = need_game!();

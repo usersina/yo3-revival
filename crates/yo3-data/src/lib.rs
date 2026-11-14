@@ -369,6 +369,12 @@ impl GameData {
         self.catalogue.iter().filter(|e| matches!(e.kind, 1 | 2) && e.sub == 0 && e.id < AVATAR_IDS).copied().collect()
     }
 
+    /// What every player owns from the start: the avatar parts a new player can pick and the defaults (kinds 1 and 2,
+    /// sub 1 and 2) and the first title (kind 10, sub 1: BEGINNER DUELIST). Avatar Settings lists only owned ones.
+    pub fn free_items(&self) -> Vec<CatalogueEntry> {
+        self.catalogue.iter().filter(|e| matches!(e.kind, 1 | 2 | 10) && matches!(e.sub, 1 | 2)).copied().collect()
+    }
+
     /// The card protectors a player can own.
     pub fn protectors(&self) -> Vec<CatalogueEntry> {
         self.catalogue.iter().filter(|e| e.kind == 11 && PROTECTORS.contains(&e.id)).copied().collect()

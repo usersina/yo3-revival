@@ -260,6 +260,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             rental_pool: data.packs.iter().filter(|p| p.id == shop::RENTAL_POOL).flat_map(|p| p.cards.iter().copied()).collect(),
             protectors: data.protectors().iter().map(|e| e.id).collect(),
             avatar_items: data.avatar_items_for_sale().iter().map(|e| (e.id, e.b)).collect(),
+            free_items: data.free_items().iter().map(|e| e.id).collect(),
             login_regulation: match &cfg.regulation {
                 Some(arg) => {
                     let known: Vec<(u32, String)> =

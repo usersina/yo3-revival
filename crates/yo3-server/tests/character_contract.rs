@@ -37,6 +37,32 @@ fn the_character_settings_come_back_in_the_player_record() {
 }
 
 #[test]
+fn a_new_look_is_what_others_see_at_once() {
+    // The hub's copy of an online player's record (an opponent's vsPlayerData, a user event's bracket, a duel log's
+    // side, what Pegasus sees) was made at login and missed a later Confirm.
+    let s = Server::new();
+    let mut c = s.join(1001, "Yugi");
+    let avatar: Vec<u8> = (0..82).collect();
+    assert_eq!(one(c.send(update(&avatar))).request(), Some(0x2CF5));
+    assert_eq!(s.hub.lock().unwrap().avatar_of(1001), Some(avatar));
+}
+
+#[test]
+fn every_player_owns_the_free_avatar_parts_and_titles() {
+    // Avatar Settings lists only the parts and titles whose pbin bit is set in the player's own record (and 0x433AC0
+    // checks the worn ones), so without the free ones (World::free_items) every part list but the colours is empty.
+    // The player list (0x1F49 -> 0x2260) and the refresh (0x2CEE -> 0x2CF3) both carry them.
+    let world = yo3_server::front::World { free_items: vec![1, 224, 1024], ..yo3_server::front::World::new((1..=20).collect()) };
+    let mut c = Server::with_world(world).join(1001, "Yugi");
+    let owns = |p: &Message, bit: usize| p.get("pbin").and_then(Value::as_bytes).is_some_and(|b| b[bit >> 3] & 1 << (bit & 7) != 0);
+    let me = one(c.send(req(0x2CEE))).items.remove(0);
+    assert!([1, 224, 1024].iter().all(|&b| owns(&me, b)));
+    assert!(!owns(&me, 6), "a part for sale stays unowned");
+    let list = one(c.send(req(0x1F49)));
+    assert!(list.items.iter().all(|p| owns(p, 224)));
+}
+
+#[test]
 fn an_update_without_an_appearance_fails() {
     // avatar1 must be binary (as text it crashes the client's PlayerData loader, 0x46C750).
     let mut c = Server::new().join(1001, "Yugi");
