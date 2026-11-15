@@ -42,6 +42,13 @@ Desktop archives also carry `yo3-revival.ico` and `yo3-revival.png` for custom s
 both platform archives. The in-game login news no longer includes the deck-onboarding notice; a front contract
 checks its removal alongside the existing news-format and engine-warning coverage.
 
+v0.0.19 release preparation (2026-11-15):
+
+- [x] The workspace package version and the local lockfile entries are `0.0.19`. The changelog describes saves that
+  are refused and rolled back when they cannot be written, one server per data folder (an OS lock), direct start
+  following a game-folder change, and the watch, duel-entry and avatar checks. Same connection interface (3). The
+  roadmap is split into roadmap, features and history. Every release workflow step was run locally first.
+
 v0.0.18 release preparation (2026-11-15):
 
 - [x] The workspace package version and the local lockfile entries are `0.0.18`. The changelog describes titles,

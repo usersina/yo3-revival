@@ -10,7 +10,17 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.0.19 (2026-11-15)
+
+Safer saves and hosting. Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions
+include the server, rules engine and required connection components. Original game files are not included.
+**Windows 7 is not supported.**
+
+Hosts should update: most changes are in the server. Players need it too for the game-folder fix in Desktop. Friends on
+v0.0.13 or later can still join. Before updating, close the game and stop hosting. Keep your server data and local
+game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.19/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.19/docs/scripts.md).
 
 - **Nothing is reported as done unless it was saved.** If the server can't write its data (a full disk, a locked
   file), a BOOSTERPASS code, a duel's BP, a title, a trade, a rating, a deck upload or an avatar change is now refused

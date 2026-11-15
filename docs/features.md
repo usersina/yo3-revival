@@ -47,7 +47,7 @@ it; a live check is a person or script driving the real client. GitHub issue num
 | Authenticated TLS login by account key, single-use tickets | Implemented | `auth_flow.rs`, `auth_contract.rs`, `metadata_contract.rs`, `flow.rs`; native and Wine DLL tests; live; Windows VM | TLS port 7443 is the only game listener. No password login exists: the client never sends one. |
 | Host-made accounts, private profiles, up to four players per account | Implemented | `accounts.rs`, `manager_contract.rs`, `cli_options.rs`; live | `add-account`, `profile`, `add-player`, `rename`, `move-account` in [guide](guide.md). The old `/join` page is retired (`join.rs` checks 404). |
 | Create and delete players (Select Player) | Implemented | `player_contract.rs`; live | Four slots per account; names unique ignoring case (a guess in the guesses table). |
-| One server per data folder; saves refused when they cannot be written | Implemented | `data_lock.rs`, `save_failures.rs` | Unreleased at the time of writing (see the changelog). |
+| One server per data folder; saves refused when they cannot be written | Implemented | `data_lock.rs`, `save_failures.rs` | v0.0.19 (see the changelog). |
 | Server-side deck check and regulation at Select Deck | Implemented | `regulation_contract.rs`, `deck_contract.rs` | Refused with `0x22CB`. Default banlist Season 16, set in Desktop or with `--regulation` (#15). |
 | Country flags | Partial | `country_contract.rs`; live | The client sends no country, so the host sets it per account (`set-country`) or it follows the login language. |
 | Login news | Implemented | `front_contract.rs` | The news no longer includes the deck-onboarding notice. |
