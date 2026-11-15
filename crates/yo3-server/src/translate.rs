@@ -1106,16 +1106,22 @@ impl Translator {
                 self.summoning = Some(s);
                 return out;
             }
-            // This move's material and the others of this batch: (Konami id, place, uid, Tuner).
-            let mut materials: Vec<(u16, Place, u32, bool)> = rest
-                .iter()
-                .filter(|x| x["type"].as_u64() == Some(MSG_MOVE) && Family::of(x["reason"].as_u64().unwrap_or(0)) == Some(family))
-                .filter_map(|x| {
-                    let cid = x["cid"].as_u64().unwrap_or(0) as u16;
-                    let from = self.engine_place(&x["from"])?;
-                    Some((cid, from, self.uid_at(&from, cid)?, self.tuners.contains(&cid)))
-                })
-                .collect();
+            // This move's material and the others of this batch: (Konami id, place, uid, Tuner). Each move's place is
+            // the engine's as it happens, after the earlier ones: three materials from the hand all leave its index 0
+            // (Ancient Gear Ultimate Golem's two Golems: both were taken for the first one's card), so each is found
+            // among the cards the earlier ones left.
+            let mut materials: Vec<(u16, Place, u32, bool)> = vec![];
+            for x in rest {
+                if x["type"].as_u64() != Some(MSG_MOVE) || Family::of(x["reason"].as_u64().unwrap_or(0)) != Some(family) {
+                    continue;
+                }
+                let cid = x["cid"].as_u64().unwrap_or(0) as u16;
+                let Some(from) = self.engine_place(&x["from"]) else { continue };
+                let taken: Vec<u32> = materials.iter().map(|&(_, _, uid, _)| uid).collect();
+                if let Some(uid) = self.uid_left(&from, cid, &taken) {
+                    materials.push((cid, from, uid, self.tuners.contains(&cid)));
+                }
+            }
             materials.sort_by_key(|&(.., tuner)| !(family == Family::Synchro && tuner));
             let marks = family.set_and_run();
             for &(_, from, uid, _) in materials.iter().filter(|_| marks.is_some()) {
@@ -1193,6 +1199,15 @@ impl Translator {
         let zone = self.sides[place.player as usize].zones.get(&place.zone)?;
         let id = |c: &Card| self.cards.get(&c.row).map(|s| s.cid);
         zone.get(place.index).filter(|c| id(c) == Some(cid)).or_else(|| zone.iter().find(|c| id(c) == Some(cid))).map(|c| c.uid)
+    }
+
+    /// [`uid_at`](Self::uid_at) once the cards `taken` have left: a place the engine gives after earlier moves of the
+    /// same batch, which the translator hasn't followed yet.
+    fn uid_left(&self, place: &Place, cid: u16, taken: &[u32]) -> Option<u32> {
+        let zone = self.sides[place.player as usize].zones.get(&place.zone)?;
+        let id = |c: &Card| self.cards.get(&c.row).map(|s| s.cid);
+        let left: Vec<&Card> = zone.iter().filter(|c| !taken.contains(&c.uid)).collect();
+        left.get(place.index).filter(|c| id(c) == Some(cid)).or_else(|| left.iter().find(|c| id(c) == Some(cid))).map(|c| c.uid)
     }
 
     fn level_of(&self, cid: u16) -> u32 {

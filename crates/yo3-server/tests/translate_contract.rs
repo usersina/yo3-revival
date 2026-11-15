@@ -2454,6 +2454,37 @@ fn a_fusion_from_the_hand_plays_each_materials_effect_before_its_move() {
 }
 
 #[test]
+fn two_copies_from_the_hand_are_two_materials() {
+    // Ancient Gear Ultimate Golem from two Ancient Gear Golems and Gadjiltron Dragon in the hand (a deck from Konami's
+    // logs, found by the duel check's summon rules): the engine gives each move's place as it happens, after the
+    // earlier ones, so the first Golem and the second both leave the hand's index 0. Both were taken for the first
+    // Golem's card: it was marked and played twice, the second Golem never, and its Run came after it had left.
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 1000, def: 1000, level: 4, attribute: 2, race: 12 };
+    let client: Vec<u16> = [100, 100].into_iter().chain(102..110).collect();
+    let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let cpu: Vec<u16> = (200..210).collect();
+    let (mut t, _) = Translator::new(0, [&client, &cpu], cids);
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }, { "cid": 4102 }, { "cid": 4100 }] })]);
+    let material = 0x8 | 0x40000;
+    let out = t.events(&[
+        json!({ "type": 50, "cid": 4100, "reason": material, "from": loc(0, 2, 0, 10), "to": loc(0, 16, 0, 5) }),
+        json!({ "type": 50, "cid": 4102, "reason": material, "from": loc(0, 2, 0, 10), "to": loc(0, 16, 1, 5) }),
+        json!({ "type": 50, "cid": 4100, "reason": material, "from": loc(0, 2, 0, 10), "to": loc(0, 16, 2, 5) }),
+    ]);
+    let order = material_order(&out);
+    let sets: Vec<u32> = order.iter().filter(|(id, _)| *id == 0x2D).map(|&(_, uid)| uid).collect();
+    let mut distinct = sets.clone();
+    distinct.sort_unstable();
+    distinct.dedup();
+    assert_eq!((sets.len(), distinct.len()), (3, 3), "three different cards marked: {order:?}");
+    // Each Run right before its own card's move, and each card moved once.
+    let after_sets: Vec<(u32, u32)> = order[3..].to_vec();
+    for pair in after_sets.chunks(2) {
+        assert!(pair[0].0 == 0x2F && pair[1] == (0x1A, pair[0].1), "{order:?}");
+    }
+}
+
+#[test]
 fn a_synchro_summon_tunes_its_tuner_first() {
     // The engine may send the non-Tuner's move first (live: Giant Orc, then Krebons for Gaia Knight). TuningRun with
     // 1 in param4's second byte starts the client's level sums again (0x5165A0: the Tuners' at +0x64, the others' at
