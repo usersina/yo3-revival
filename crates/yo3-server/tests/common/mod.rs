@@ -59,6 +59,11 @@ impl Server {
         self.join_account(Account { players: vec![Player::new(player_id, name)], dpoint, ..Account::test() })
     }
 
+    /// A client of `player`, in an account with `dpoint` BOOSTERPASS Points.
+    pub fn join_as_with_bp(&self, player: Player, dpoint: u32) -> Client {
+        self.join_account(Account { players: vec![player], dpoint, ..Account::test() })
+    }
+
     pub fn join_as(&self, player: Player) -> Client {
         self.join_account(Account { players: vec![player], ..Account::test() })
     }

@@ -10,6 +10,11 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **Shop errors explained for hosts.** When a purchase fails, the game only says "An error occurred."; the host's
+  server log now says why, which player and which pack.
+
 ## v0.0.18 (2026-11-15)
 
 Titles to earn, working website links, Auto Card Placing, and opening the game directly with nothing to set up.

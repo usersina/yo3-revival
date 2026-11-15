@@ -513,3 +513,53 @@ fn a_rental_from_the_shop_needs_the_offer_the_pool_and_the_bp() {
     assert_eq!(one(c.send(rent(bin(&[2, 3, 4, 5, 6])))).request(), Some(0x2D78), "50 BP left");
     assert_eq!(one(c.send(req(0x2C34))).items.len(), 1);
 }
+
+/// What the server logs while `f` runs (on this thread).
+fn logged(f: impl FnOnce()) -> String {
+    #[derive(Clone, Default)]
+    struct Sink(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+    impl std::io::Write for Sink {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> { self.0.lock().unwrap().extend_from_slice(b); Ok(b.len()) }
+        fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+    }
+    let sink = Sink::default();
+    let writer = sink.clone();
+    let subscriber = tracing_subscriber::fmt().with_ansi(false).with_writer(move || writer.clone()).finish();
+    tracing::subscriber::with_default(subscriber, f);
+    String::from_utf8(sink.0.lock().unwrap().clone()).unwrap()
+}
+
+#[test]
+fn a_refused_purchase_says_why_in_the_hosts_log() {
+    // The client shows every refusal (0x1C25) as "An error occurred." (text 10504 through 0x4C2DE0), so the host's log
+    // is the only place that can tell a player why a purchase failed.
+    let mut c = shop().join_with_bp(1001, "Yugi", 150);
+    let buy = |sale_id, item_num| req_with(0x1B68, &[("sale_id", Value::U32(sale_id)), ("item_num", Value::U32(item_num))]);
+    for (sale_id, count, why) in [(99, 1, "not on sale"), (1, 0, "count"), (1, 11, "count"), (1, u32::MAX, "count"),
+        (1, 2, "not enough BP")] {
+        let mut reply = None;
+        let log = logged(|| reply = Some(one(c.send(buy(sale_id, count)))));
+        assert_eq!(reply.unwrap().request(), Some(0x1C25));
+        let line = log.lines().find(|l| l.contains("purchase refused")).unwrap_or_else(|| panic!("no log for {sale_id}x{count}: {log}"));
+        assert!(line.contains(why) && line.contains(&format!("sale_id={sale_id}")), "{line}");
+    }
+    // A purchase that goes through logs no refusal.
+    let log = logged(|| assert_eq!(one(c.send(buy(1, 1))).request(), Some(0x1C24)));
+    assert!(!log.contains("purchase refused"), "{log}");
+}
+
+#[test]
+fn a_huge_collection_still_buys_and_shows_in_the_trunk() {
+    // A report (2026-11-15) of failed purchases came from a player with 1.7M BP and most cards owned many times over.
+    // The trunk keeps one byte a card (0x410DB0), so counts past 255 show as 255; buying more must neither fail nor
+    // wrap a count. Checked live too: 445,825 cards, a pack bought, Edit Deck open.
+    let mut player = Player::new(1001, "Yugi");
+    for row in 1..=40u16 { player.cards.insert(row, 600); }
+    let server = shop();
+    let mut c = server.join_as_with_bp(player, 1_776_360);
+    let buy = req_with(0x1B68, &[("sale_id", Value::U32(1)), ("item_num", Value::U32(10))]);
+    assert_eq!(one(c.send(buy)).get("dpoint"), Some(&Value::U32(1_776_360 - 1000)));
+    let trunk = c.send(req_with(0x1FA4, &[("player_id", Value::U32(1001))]));
+    let counts = trunk[0].items[0].get("cards").and_then(Value::as_bytes).unwrap().to_vec();
+    assert!((1..=40).all(|row: usize| counts[row - 1] == 255), "{:?}", &counts[..40]);
+}

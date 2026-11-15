@@ -2578,23 +2578,37 @@ impl FrontSession {
     }
 
     /// A purchase 0x1B68 {sale_id, item_num, end_time} -> 0x1C24 {dpoint}: the BP left (shown as user_bp), or 0x1C25
-    /// (shop buy error) for goods not on sale, a count of 0 or beyond item_max, or too few BP. Each pack's or deck's
-    /// cards join the player's collection at once and wait as a present (0x2775) for the client to show.
+    /// (shop buy error, "An error occurred." on screen; the host's log says why) for goods not on sale, a count of 0 or
+    /// beyond item_max, or too few BP. Each pack's or deck's cards join the player's collection at once and wait as a
+    /// present (0x2775) for the client to show.
     fn buy(&mut self, msg: &Message) -> Message {
         let int = |k| msg.get(k).and_then(Value::as_u32).unwrap_or(0);
         let (sale_id, count) = (int("sale_id"), int("item_num"));
-        let world = self.world.clone();
-        let Some(goods) = crate::shop::Goods::find(&world, sale_id) else { return Message::reply(0x1C25) };
-        let (price, max) = goods.price();
-        // A count from the client: its price must not overflow (a panic in a debug build, a cheap bargain in release).
-        let Some(cost) = price.checked_mul(count) else { return Message::reply(0x1C25) };
-        let Some(at) = self.selected else { return Message::reply(0x1C25) };
-        if count == 0 || count > max {
-            return Message::reply(0x1C25);
+        match self.purchase(sale_id, count) {
+            Ok(dpoint) => Message::reply(0x1C24).with("dpoint", Value::U32(dpoint)),
+            Err(why) => {
+                // The client shows every refusal as "An error occurred." (text 10504): the host's log says which.
+                let player = self.selected.and_then(|at| self.account.players.get(at)).map(|p| p.name.clone()).unwrap_or_default();
+                tracing::warn!("[shop] purchase refused: {why} (player={player} sale_id={sale_id} count={count} bp={})", self.account.dpoint);
+                Message::reply(0x1C25)
+            }
         }
+    }
+
+    /// A purchase's work for `buy`: the BP left, or why it was refused.
+    fn purchase(&mut self, sale_id: u32, count: u32) -> Result<u32, String> {
+        let world = self.world.clone();
+        let goods = crate::shop::Goods::find(&world, sale_id).ok_or("not on sale")?;
+        let (price, max) = goods.price();
+        if count == 0 || count > max {
+            return Err(format!("count {count} outside 1..={max}"));
+        }
+        // A count from the client: its price must not overflow (a panic in a debug build, a cheap bargain in release).
+        let cost = price.checked_mul(count).ok_or("count too large")?;
+        let at = self.selected.ok_or("no player selected")?;
         let item = goods.item();
         if item.is_some_and(|id| self.account.players[at].items.contains(&id)) {
-            return Message::reply(0x1C25);
+            return Err("already owned".into());
         }
         let bought: Vec<crate::shop::Present> = (0..count).map(|_| goods.take(&mut self.rng)).collect();
         let add = |p: &mut Player| {
@@ -2615,24 +2629,18 @@ impl FrontSession {
         // The BP and the goods change together in the stored account under its lock: duel rewards paid since this
         // session last looked are neither lost nor spent twice, and a failed save neither takes BP nor gives cards.
         match &self.directory {
-            Some(d) => match d.locked().purchase(self.account.players[at].player_id, cost, item, add) {
-                Ok((left, stored)) => {
-                    self.account.dpoint = left;
-                    self.account.players[at] = stored;
-                }
-                Err(why) => {
-                    tracing::warn!("[shop] purchase refused: {why}");
-                    return Message::reply(0x1C25);
-                }
-            },
-            None => {
-                let Some(left) = self.account.dpoint.checked_sub(cost) else { return Message::reply(0x1C25) };
+            Some(d) => {
+                let (left, stored) = d.locked().purchase(self.account.players[at].player_id, cost, item, add)?;
                 self.account.dpoint = left;
+                self.account.players[at] = stored;
+            }
+            None => {
+                self.account.dpoint = self.account.dpoint.checked_sub(cost).ok_or("not enough BP")?;
                 add(&mut self.account.players[at]);
             }
         }
         self.presents.extend(bought);
-        Message::reply(0x1C24).with("dpoint", Value::U32(self.account.dpoint))
+        Ok(self.account.dpoint)
     }
 
     /// A card exchange 0x1B6A {sale_id (the pool), item_id (the card picked), kaban (the player's cards given, big-endian
