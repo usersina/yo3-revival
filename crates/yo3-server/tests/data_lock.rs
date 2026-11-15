@@ -13,7 +13,16 @@ const HOLDER: &str = "YO3_TEST_HOLD_DATA_LOCK";
 #[ignore = "a helper process for the tests below"]
 fn holder() {
     let Some(dir) = std::env::var_os(HOLDER) else { return };
-    let _lock = yo3_server::store::lock(Path::new(&dir)).expect("the holder takes the lock");
+    // The test polls by taking the lock itself for an instant, so a first try can meet the test's own hold (CI, the
+    // v0.0.21 release run): try again until it is ours.
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let _lock = loop {
+        match yo3_server::store::lock(Path::new(&dir)) {
+            Ok(lock) => break lock,
+            Err(_) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(5)),
+            Err(e) => panic!("the holder takes the lock: {e}"),
+        }
+    };
     println!("locked");
     std::thread::sleep(Duration::from_secs(120));
 }
