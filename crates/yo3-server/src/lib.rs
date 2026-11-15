@@ -197,6 +197,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                     (c.row, stats)
                 })
                 .collect(),
+            tuners: data.cards.iter().filter(|c| c.tuner()).map(|c| c.cid).collect(),
             token_rows: data.cards.iter().filter(|c| (3900..4000).contains(&c.cid)).fold(std::collections::HashMap::new(), |mut m, c| {
                 m.entry(c.name.clone()).or_insert_with(Vec::new).push(c.row);
                 m

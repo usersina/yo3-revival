@@ -41,6 +41,9 @@ fn card_data(game: &GameData) -> CardData {
         if (3900..4000).contains(&c.cid) {
             data.tokens.entry(c.name.clone()).or_default().push(c.row);
         }
+        if c.tuner() {
+            data.tuners.insert(c.cid);
+        }
     }
     data
 }

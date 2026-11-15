@@ -817,6 +817,8 @@ pub mod selfplay {
         pub cards: HashMap<u16, CardStats>,
         pub tokens: HashMap<String, Vec<u16>>,
         pub names: HashMap<u16, String>,
+        /// The Tuners' Konami ids.
+        pub tuners: std::collections::HashSet<u16>,
     }
 
     /// Plays a duel between two seeded random players (`decks` by engine team: main and extra deck, Konami ids), the
@@ -828,6 +830,7 @@ pub mod selfplay {
             cards: card_data(&decks),
             tokens: HashMap::from([("Sheep Token".to_string(), SHEEP_ROWS.to_vec())]),
             names: HashMap::new(),
+            tuners: Default::default(),
         };
         play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
     }
@@ -853,6 +856,7 @@ pub mod selfplay {
         let build = if hidden { Translator::against_player } else { Translator::new };
         let (mut t, mut table) = build(first, [mine.0, theirs.0], cards.clone());
         t.tokens(data.tokens.clone());
+        t.tuners(data.tuners.clone());
         table.extend(t.extra_decks([mine.1, theirs.1]));
         let mut model = ClientModel::new(first, cards.clone());
         // The rows the client isn't given: the same uids in the same order from a translator that hides nothing.

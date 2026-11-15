@@ -6,7 +6,7 @@
 //! numbering: field slots 0-4 (monsters), 5-9 (Spells/Traps), 10 (Field Spell), each holding one card at index 0;
 //! then the lists hand 0xB, extra 0xC, deck 0xD, graveyard 0xE, banished 0xF. The client's deck is a face-down
 //! bag, so a card leaving it is any deck card with that card's id.
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde_json::{Value as Json, json};
 use yo3_proto::{Message, Value};
@@ -253,6 +253,23 @@ const DAMAGE_BATTLE: u32 = 1;
 const DAMAGE_COST: u32 = 2;
 const DAMAGE_GAIN: u32 = 4;
 const RUN_SP_SUMMON: u32 = 0x39;
+/// DuelSummon (0x5165A0): Set marks a card {player, zone (11 the hand), uid, variant} with its family's effect, Run
+/// plays the family's effect on it, Reset clears the marks. Tribute (effects 0x25 / 0x24), Material (0x27 / 0x26),
+/// Tuning (0x2B / 0x2A; Run's param4 is the level, with 1 in the next byte for the first Tuner, 2 for another).
+const TRIBUTE_SET: u32 = 0x2A;
+const TRIBUTE_RUN: u32 = 0x2C;
+const MATERIAL_SET: u32 = 0x2D;
+const MATERIAL_RUN: u32 = 0x2F;
+const TUNING_SET: u32 = 0x30;
+const TUNING_RUN: u32 = 0x32;
+/// RunFusion {player, the summoned monster's uid, kind << 16 | the number of materials} (DuelScene 0x514290 by the
+/// kind: 0 or 1 the Fusion animation, 2 the Synchro's).
+const RUN_FUSION: u32 = 0x3A;
+/// The summon's materials for the Fusion and Synchro animations (the pump 0x522A50 into the engine state's list at
+/// +0x1330, which DuelSynchro 0x507940 walks from the Tuner count on to show the others): 1015 {count, uid, uid, uid}
+/// starts it, 1016 {uid, uid, uid, uid} adds more (Konami's logs: right before every RunFusion, the Tuner first).
+const MATERIAL_LIST: u32 = 1015;
+const MATERIAL_LIST_MORE: u32 = 1016;
 /// The chain's links (DuelChain 0x501560): a new link {player, zone it shows over, link number}, link 1 starting the
 /// list; a link resolving {_, _, link number}, which must come last link first (the list's end leaves).
 const CHAIN_SET: u32 = 0x33;
@@ -528,6 +545,10 @@ pub struct Translator {
     token_rows: HashMap<String, Vec<u16>>,
     tokens: Vec<u32>,
     next_token: u32,
+    /// The Tuners' Konami ids (a Synchro material's TuningRun says which levels are the Tuners').
+    tuners: HashSet<u16>,
+    /// A Tribute, Fusion or Synchro Summon whose materials are moving (see [`Summoning`]).
+    summoning: Option<Summoning>,
     /// How many card names the CPU has declared: each try names the next card of the duel's (the core asks again
     /// when a name doesn't fit).
     declared: usize,
@@ -586,6 +607,11 @@ impl Translator {
         self.token_rows = rows;
     }
 
+    /// The Tuners among the cards, by Konami id: a Synchro Summon's tuning tells the Tuners' levels from the others'.
+    pub fn tuners(&mut self, cids: HashSet<u16>) {
+        self.tuners = cids;
+    }
+
     /// The same for a spectator watching from player 0's side, who sees neither player's hidden cards.
     pub fn spectating(first: u32, decks: [&[u16]; 2], cards: HashMap<u16, CardStats>) -> (Translator, Vec<Message>) {
         Translator::build(first, decks, cards, [true, true])
@@ -635,6 +661,8 @@ impl Translator {
             token_rows: HashMap::new(),
             tokens: vec![],
             next_token: FIRST_TOKEN_UID,
+            tuners: HashSet::new(),
+            summoning: None,
             counters: HashMap::new(),
             declared: 0,
             revealing: vec![],
@@ -711,7 +739,7 @@ impl Translator {
     pub fn events(&mut self, messages: &[Json]) -> Vec<Message> {
         let staged = self.staged.take();
         let mut out = self.unstage_n(staged);
-        for m in messages {
+        for (i, m) in messages.iter().enumerate() {
             if m["type"] == "field" {
                 out.extend(self.field(m));
                 continue;
@@ -736,6 +764,7 @@ impl Translator {
                     }
                 }
                 Some(MSG_NEW_PHASE) => {
+                    self.summoning = None;
                     // Leaving a Battle Phase ends its battle mode even with no attack: the swords the client drew over
                     // the possible attackers (effect 0x3C) go only with BattleSelect, BattleAttack or BattleEnd.
                     let battle = (0x08..=0x80).contains(&m["phase"].as_u64().unwrap_or(0));
@@ -753,7 +782,10 @@ impl Translator {
                         }
                     }
                 }
-                Some(MSG_MOVE) => out.extend(self.move_card(m)),
+                Some(MSG_MOVE) => {
+                    out.extend(self.summon_before_move(&messages[i..]));
+                    out.extend(self.move_card(m));
+                }
                 Some(MSG_FIELD_DISABLED) => out.extend(self.disabled_zones(m)),
                 Some(MSG_HINT) if m["hint_type"].as_u64() == Some(HINT_SELECTMSG) && self.player(&m["player"]) == CLIENT => {
                     self.hint = m["hint"].as_u64().unwrap_or(0);
@@ -791,10 +823,21 @@ impl Translator {
                     let card = self.engine_place(m).and_then(|p| Some((p, self.sides[p.player as usize].zones.get(&p.zone)?.first()?.uid)));
                     // The place as moves give it, with its face and position bits (Konami's logs: 0x4000 | place for a
                     // Normal Summon, 0x4000/0xC000/0x8000 for a Special Summon).
+                    // A Fusion or Synchro Summon said its line as it arrived; a Tribute Summon's line has its own kind.
+                    let cid = m["cid"].as_u64().unwrap_or(0) as u16;
+                    let summoning = self.summoning.take();
+                    let spoken = summoning.as_ref().is_some_and(|s| s.arrived && s.cid == cid);
+                    let tribute = summoning.is_some_and(|s| s.family == Family::Tribute);
                     if let Some((place, uid)) = card {
-                        // The summon line first: 0 a Normal Summon, 5 a Special Summon (Konami's kinds).
-                        let kind = if kind == MSG_SUMMONING { 0 } else { 5 };
-                        out.push(command(SPEAK_SUMMON, [place.player, 0x8000 | uid, kind, 0]));
+                        // The summon line first: 0 a Normal Summon, 1 a Tribute Summon, 5 a Special Summon (Konami's).
+                        let kind = match kind {
+                            MSG_SUMMONING if tribute => SUMMON_TRIBUTE,
+                            MSG_SUMMONING => SUMMON_NORMAL,
+                            _ => SUMMON_SPECIAL,
+                        };
+                        if !spoken {
+                            out.push(command(SPEAK_SUMMON, [place.player, 0x8000 | uid, kind, 0]));
+                        }
                         out.push(command(id, [Place { index: 0, ..place }.packed(), uid, 0, 0]));
                     }
                 }
@@ -975,6 +1018,101 @@ impl Translator {
     }
 
     /// MSG_MOVE {card, cid, from, to}: the card leaves its place for the new one.
+    /// Before a MSG_MOVE (`rest[0]`, the rest of the batch after it): a Tribute, Fusion or Synchro Summon's commands
+    /// (see [`Summoning`]). The first material's move marks every material of the summon that moves in this batch and
+    /// plays their effects, a Synchro's Tuners first (the client's first Tuner starts its level sums again, 0x5165A0;
+    /// Konami's logs always tune the Tuner first, and the Synchro animation crashed on sums that left one out). An
+    /// Extra Deck monster's arrival plays RunFusion and its summon line. The engine may report a summon's materials
+    /// and its arrival in different batches (a Synchro Summon asks for its position in between).
+    fn summon_before_move(&mut self, rest: &[Json]) -> Vec<Message> {
+        let m = &rest[0];
+        let cid = m["cid"].as_u64().unwrap_or(0) as u16;
+        let reason = m["reason"].as_u64().unwrap_or(0);
+        let mut out = vec![];
+        if let Some(family) = Family::of(reason) {
+            let mut s = match self.summoning.take() {
+                Some(s) if s.family == family && !s.arrived => s,
+                _ => Summoning { family, count: 0, tuned: 0, arrived: false, cid: 0, played: vec![], uids: vec![] },
+            };
+            if let Some(at) = s.played.iter().position(|&c| c == cid) {
+                s.played.remove(at);
+                self.summoning = Some(s);
+                return out;
+            }
+            // This move's material and the others of this batch: (Konami id, place, uid, Tuner).
+            let mut materials: Vec<(u16, Place, u32, bool)> = rest
+                .iter()
+                .filter(|x| x["type"].as_u64() == Some(MSG_MOVE) && Family::of(x["reason"].as_u64().unwrap_or(0)) == Some(family))
+                .filter_map(|x| {
+                    let cid = x["cid"].as_u64().unwrap_or(0) as u16;
+                    let from = self.engine_place(&x["from"])?;
+                    Some((cid, from, self.uid_at(&from, cid)?, self.tuners.contains(&cid)))
+                })
+                .collect();
+            materials.sort_by_key(|&(.., tuner)| !(family == Family::Synchro && tuner));
+            let (set, run) = family.set_and_run();
+            for &(_, from, uid, _) in &materials {
+                out.push(command(set, [from.player, from.zone, uid, 0]));
+            }
+            for &(material, from, uid, tuner) in &materials {
+                let variant = match family {
+                    Family::Synchro if tuner => {
+                        s.tuned += 1;
+                        self.level_of(material) | if s.tuned == 1 { 0x100 } else { 0x200 }
+                    }
+                    Family::Synchro => self.level_of(material),
+                    _ => 0,
+                };
+                out.push(command(run, [from.player, from.zone, uid, variant]));
+            }
+            s.count += materials.len() as u32;
+            s.uids.extend(materials.iter().map(|&(_, _, uid, _)| uid));
+            // The others' moves come later in this batch: their effects are played.
+            let mut others: Vec<u16> = materials.iter().map(|&(c, ..)| c).collect();
+            if let Some(at) = others.iter().position(|&c| c == cid) {
+                others.remove(at);
+            }
+            s.played = others;
+            self.summoning = Some(s);
+            return out;
+        }
+        // A tribute for a Set: the monster goes to its zone face down and no summon follows.
+        let set = m["to"]["location"].as_u64() == Some(LOC_MZONE) && m["to"]["position"].as_u64().is_some_and(|p| p & 0xA != 0);
+        if set && self.summoning.as_ref().is_some_and(|s| s.family == Family::Tribute) {
+            self.summoning = None;
+        }
+        // The Extra Deck monster arrives: its animation and its line (Konami's logs: 8 for a Synchro, 6 for a Fusion).
+        let arriving = reason & REASON_SPSUMMON != 0 && m["from"]["location"].as_u64() == Some(LOC_EXTRA);
+        let place = self.engine_place(&m["from"]).and_then(|from| Some((from, self.uid_at(&from, cid)?)));
+        if let Some(s) = self.summoning.as_mut().filter(|s| arriving && s.family != Family::Tribute && !s.arrived)
+            && let Some((from, uid)) = place
+        {
+            let (kind, line) = if s.family == Family::Synchro { (2, SUMMON_SYNCHRO) } else { (0, SUMMON_EXTRA) };
+            let at = |i: usize| s.uids.get(i).copied().unwrap_or(0);
+            out.push(command(MATERIAL_LIST, [s.uids.len() as u32, at(0), at(1), at(2)]));
+            for more in s.uids.get(3..).unwrap_or_default().chunks(4) {
+                let at = |i: usize| more.get(i).copied().unwrap_or(0);
+                out.push(command(MATERIAL_LIST_MORE, [at(0), at(1), at(2), at(3)]));
+            }
+            out.push(command(RUN_FUSION, [from.player, uid, kind << 16 | s.count, 0]));
+            out.push(command(SPEAK_SUMMON, [from.player, 0x8000 | uid, line, 0]));
+            s.arrived = true;
+            s.cid = cid;
+        }
+        out
+    }
+
+    /// The uid of the card with Konami id `cid` at `place` (in a list zone, at the place's index if it is there).
+    fn uid_at(&self, place: &Place, cid: u16) -> Option<u32> {
+        let zone = self.sides[place.player as usize].zones.get(&place.zone)?;
+        let id = |c: &Card| self.cards.get(&c.row).map(|s| s.cid);
+        zone.get(place.index).filter(|c| id(c) == Some(cid)).or_else(|| zone.iter().find(|c| id(c) == Some(cid))).map(|c| c.uid)
+    }
+
+    fn level_of(&self, cid: u16) -> u32 {
+        self.cards.values().find(|c| c.cid == cid).map_or(0, |c| c.level)
+    }
+
     fn move_card(&mut self, m: &Json) -> Vec<Message> {
         let cid = m["cid"].as_u64().unwrap_or(0) as u16;
         if is_material(&m["to"]) && !is_material(&m["from"]) {
@@ -2796,6 +2934,65 @@ const REASON_RELEASE: u64 = 0x2;
 const REASON_SUMMON: u64 = 0x10;
 const REASON_BATTLE: u64 = 0x20;
 const REASON_SPSUMMON: u64 = 0x800;
+const REASON_MATERIAL: u64 = 0x8;
+const REASON_FUSION: u64 = 0x40000;
+const REASON_SYNCHRO: u64 = 0x80000;
+
+/// The summon line's kinds (SpeakSummon 0x44 param3) in Konami's logs: 0 a Normal Summon, 1 a Tribute Summon, 5 a
+/// Special Summon, 6 an Extra Deck monster's arrival (after RunFusion), 8 a Synchro Summon (DuelCutin: its own slot).
+const SUMMON_NORMAL: u32 = 0;
+const SUMMON_TRIBUTE: u32 = 1;
+const SUMMON_SPECIAL: u32 = 5;
+const SUMMON_EXTRA: u32 = 6;
+const SUMMON_SYNCHRO: u32 = 8;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Family {
+    Tribute,
+    Fusion,
+    Synchro,
+}
+
+impl Family {
+    /// The family of a material's move by its reason: a tribute for a summon, a Fusion or Synchro material.
+    fn of(reason: u64) -> Option<Family> {
+        if reason & REASON_RELEASE != 0 && reason & REASON_SUMMON != 0 {
+            Some(Family::Tribute)
+        } else if reason & REASON_MATERIAL != 0 && reason & REASON_SYNCHRO != 0 {
+            Some(Family::Synchro)
+        } else if reason & REASON_MATERIAL != 0 && reason & REASON_FUSION != 0 {
+            Some(Family::Fusion)
+        } else {
+            None
+        }
+    }
+
+    fn set_and_run(self) -> (u32, u32) {
+        match self {
+            Family::Tribute => (TRIBUTE_SET, TRIBUTE_RUN),
+            Family::Fusion => (MATERIAL_SET, MATERIAL_RUN),
+            Family::Synchro => (TUNING_SET, TUNING_RUN),
+        }
+    }
+}
+
+/// A Tribute, Fusion or Synchro Summon as Konami's server showed it: each material marked and playing its effect
+/// before its move, then (from the Extra Deck) RunFusion and the summon line before the monster arrives, or (a Tribute
+/// Summon) the line with its own kind; the summoned monster's line is then not said again.
+#[derive(Clone, Debug)]
+struct Summoning {
+    family: Family,
+    /// The materials moved, and the Tuners among them.
+    count: u32,
+    tuned: u32,
+    /// The Extra Deck monster arrived (its Konami id): its line was said.
+    arrived: bool,
+    cid: u16,
+    /// Materials whose effects were played ahead of their moves (later in the same batch).
+    played: Vec<u16>,
+    /// The materials' uids, the Tuners first (the animations' material list).
+    uids: Vec<u32>,
+}
 
 /// A move's kind (see [`MOVE_PLAIN`]) from MSG_MOVE's reason and the places.
 fn move_kind(reason: u64, from: Place, to: Place) -> u32 {

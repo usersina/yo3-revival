@@ -228,6 +228,7 @@ impl Table {
             }
             let (mut translator, mut table) = Translator::against_player(order, [&mine.main, &theirs.main], self.world.cards.clone());
             translator.tokens(self.world.token_rows.clone());
+            translator.tuners(self.world.tuners.clone());
             table.extend(translator.extra_decks([&mine.extra, &theirs.extra]));
             self.translators.push(translator);
             part.push(setup(order, mine, theirs));
@@ -264,6 +265,7 @@ impl Table {
         let order = if self.first == 0 { CLIENT } else { CPU };
         let (mut translator, mut table) = Translator::spectating(order, [&mine.main, &theirs.main], self.world.cards.clone());
         translator.tokens(self.world.token_rows.clone());
+        translator.tuners(self.world.tuners.clone());
         table.extend(translator.extra_decks([&mine.extra, &theirs.extra]));
         let [result, their_hand, my_hand] = self.janken;
         let mut out = vec![

@@ -133,6 +133,11 @@ impl Card {
     pub fn extra_deck(&self) -> bool {
         matches!(self.kind, 2 | 3 | 17..=19)
     }
+
+    /// A Tuner (kinds 15 and 16).
+    pub fn tuner(&self) -> bool {
+        matches!(self.kind, 15 | 16)
+    }
 }
 
 #[derive(Default)]

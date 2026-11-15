@@ -543,6 +543,8 @@ pub struct World {
     pub cards: HashMap<u16, crate::translate::CardStats>,
     /// The client's token cards (CARD_Prop rows with ids 3900-3999) by name, for the rules engine's tokens.
     pub token_rows: HashMap<String, Vec<u16>>,
+    /// The Tuners' Konami ids (a Synchro Summon's tuning, `Translator::tuners`).
+    pub tuners: std::collections::HashSet<u16>,
     /// Each Konami id's English name, for the rules engine to find another print of a card (`Engine::new_duel`).
     pub card_names: HashMap<u16, String>,
     /// The CARD_Prop rows of Fusion and Synchro Monsters, which belong in the Extra Deck (the deck check).
@@ -605,6 +607,7 @@ impl World {
             npc_names: HashMap::new(),
             cards: HashMap::new(),
             token_rows: HashMap::new(),
+            tuners: Default::default(),
             card_names: HashMap::new(),
             extra_deck_rows: Default::default(),
             engine_dir: None,

@@ -2307,3 +2307,139 @@ fn deck_top_cards_shown_to_the_player_turn_over_on_the_pile_too() {
     // A card from the middle of the Deck: no pile reveal.
     assert!(t.events(&[json!({ "type": 31, "player": 0, "cards": [card_at(1, 1, 3, 4204)] })]).is_empty());
 }
+
+/// The summon commands only: the DuelSummon family (0x2A-0x32), RunSummon/RunSpSummon, RunFusion and the summon line.
+fn summon_show(out: &[Message]) -> Vec<(u32, [u32; 4])> {
+    out.iter().map(cmd).filter(|(id, _)| matches!(id, 0x2A..=0x32 | 0x38 | 0x39 | 0x3A | 0x44 | 1015 | 1016)).collect()
+}
+
+/// A translator with the client's extra deck rows 150 and 151, cid 4101 a Tuner, and 4100 (uid 1) and 4101 (uid 2)
+/// face up in monster zones 1 and 2; the uid of extra deck row 150.
+fn with_materials() -> (Translator, u32) {
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: if r == 101 { 3 } else { 4 }, attribute: 2, race: 12 };
+    let cids = (100..110).chain(200..210).chain([150, 151]).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::new(0, [&client, &cpu], cids);
+    let table = t.extra_decks([&[150, 151][..], &[][..]]);
+    let uid = table.iter().map(cmd).find(|(id, p)| *id == 1000 && p[1] == 150).map(|(_, p)| p[0]).expect("row 150's entry");
+    t.tuners([4101].into());
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }, { "cid": 4101 }] })]);
+    for (cid, seq) in [(4100, 1), (4101, 2)] {
+        t.events(&[json!({ "type": 50, "cid": cid, "reason": 0x10, "from": loc(0, 2, 0, 10), "to": loc(0, 4, seq, 1) })]);
+    }
+    (t, uid)
+}
+
+#[test]
+fn a_tribute_summon_plays_its_tribute() {
+    // DuelSummon 0x5165A0: TributeSet 0x2A {player, zone (11 the hand), the tribute's uid, 0} marks it (effect 0x25),
+    // TributeRun 0x2C the same plays its tribute effect (0x24) before it goes; the summon line has kind 1 (Konami's
+    // logs, 40 Tribute Summons: the Set, the line, the Run, the tribute's move, the summoned card's, RunSummon).
+    let (mut t, _) = translator();
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }, { "cid": 4101 }] })]);
+    t.events(&[json!({ "type": 50, "cid": 4100, "reason": 0x10, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 2, 1) })]);
+    let out = t.events(&[
+        json!({ "type": 50, "cid": 4100, "reason": 0x12, "from": loc(0, 4, 2, 1), "to": loc(0, 16, 0, 1) }),
+        // The engine's reason for a Tribute Summon's arrival has no summon bit (live): the line still has kind 1.
+        json!({ "type": 50, "cid": 4101, "reason": 0, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 2, 1) }),
+        json!({ "type": 60, "cid": 4101, "controller": 0, "location": 4, "sequence": 2, "position": 1 }),
+    ]);
+    assert_eq!(
+        summon_show(&out),
+        [(0x2A, [0, 2, 1, 0]), (0x2C, [0, 2, 1, 0]), (0x44, [0, 0x8000 | 2, 1, 0]), (0x38, [2 << 1 | 1 << 14, 2, 0, 0])]
+    );
+    // A tribute for a Set (face down, no MSG_SUMMONING) leaves the next summon a Normal Summon.
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4103 }] })]);
+    t.events(&[
+        json!({ "type": 50, "cid": 4101, "reason": 0x12, "from": loc(0, 4, 2, 1), "to": loc(0, 16, 1, 1) }),
+        json!({ "type": 50, "cid": 4103, "reason": 0x10, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 2, 10) }),
+    ]);
+    t.events(&[json!({ "type": 50, "cid": 4103, "reason": 0x40, "from": loc(0, 4, 2, 10), "to": loc(0, 16, 2, 1) })]);
+    // The next summon is a Normal Summon again.
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4102 }] })]);
+    let out = t.events(&[
+        json!({ "type": 50, "cid": 4102, "reason": 0x10, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 2, 1) }),
+        json!({ "type": 60, "cid": 4102, "controller": 0, "location": 4, "sequence": 2, "position": 1 }),
+    ]);
+    assert_eq!(summon_show(&out)[0], (0x44, [0, 0x8000 | 3, 0, 0]), "{:?}", summon_show(&out));
+}
+
+#[test]
+fn a_synchro_summon_tunes_its_materials() {
+    // TuningSet 0x30 marks each material (effect 0x2B), TuningRun 0x32 plays its tuning (0x2A) with its level in
+    // param4's low byte and 1 in the next for the first Tuner (the client adds the Tuners' and the others' levels).
+    // As the Synchro arrives: its material list 1015 {count, the Tuner's uid, the others'} (DuelSynchro 0x507940 walks
+    // it; without it the animation crashed the client, live 2026-11-15), RunFusion 0x3A {player, its uid, 2 << 16 | the number of materials} (DuelScene
+    // 0x514290: 2 the Synchro animation) and the summon line with kind 8 (DuelCutin: a Synchro's own line). Konami's
+    // logs (45 Synchro Summons) mark all the materials and say the line first; the engine sends the materials' moves
+    // before it asks the Synchro's position and the arrival after, so each material is marked as it goes.
+    let (mut t, synchro) = with_materials();
+    let material = 0x8 | 0x80000;
+    let out = t.events(&[
+        json!({ "type": 50, "cid": 4101, "reason": material, "from": loc(0, 4, 2, 1), "to": loc(0, 16, 0, 1) }),
+        json!({ "type": 50, "cid": 4100, "reason": material, "from": loc(0, 4, 1, 1), "to": loc(0, 16, 1, 1) }),
+    ]);
+    assert_eq!(summon_show(&out), [(0x30, [0, 2, 2, 0]), (0x30, [0, 1, 1, 0]), (0x32, [0, 2, 2, 0x100 | 3]), (0x32, [0, 1, 1, 4])]);
+    let out = t.events(&[
+        json!({ "type": 50, "cid": 4150, "reason": 0x800 | 0x80000, "from": loc(0, 64, 0, 10), "to": loc(0, 4, 2, 1) }),
+        json!({ "type": 62, "cid": 4150, "controller": 0, "location": 4, "sequence": 2, "position": 1 }),
+    ]);
+    assert_eq!(
+        summon_show(&out),
+        [
+            (1015, [2, 2, 1, 0]),
+            (0x3A, [0, synchro, 2 << 16 | 2, 0]),
+            (0x44, [0, 0x8000 | synchro, 8, 0]),
+            (0x39, [2 << 1 | 1 << 14, synchro, 0, 0]),
+        ]
+    );
+}
+
+#[test]
+fn a_fusion_summon_plays_its_materials_and_the_fusion() {
+    // MaterialSet 0x2D / MaterialRun 0x2F (effects 0x27 / 0x26) for each material, then RunFusion {player, uid, the
+    // number of materials} (0 << 16: the Fusion animation) and the line with kind 6 (Konami's logs).
+    let (mut t, fusion) = with_materials();
+    let material = 0x8 | 0x40000;
+    let out = t.events(&[
+        json!({ "type": 50, "cid": 4100, "reason": material, "from": loc(0, 4, 1, 1), "to": loc(0, 16, 0, 1) }),
+        json!({ "type": 50, "cid": 4101, "reason": material, "from": loc(0, 4, 2, 1), "to": loc(0, 16, 1, 1) }),
+    ]);
+    assert_eq!(summon_show(&out), [(0x2D, [0, 1, 1, 0]), (0x2D, [0, 2, 2, 0]), (0x2F, [0, 1, 1, 0]), (0x2F, [0, 2, 2, 0])]);
+    let out = t.events(&[
+        json!({ "type": 50, "cid": 4150, "reason": 0x800 | 0x40000, "from": loc(0, 64, 0, 10), "to": loc(0, 4, 0, 1) }),
+        json!({ "type": 62, "cid": 4150, "controller": 0, "location": 4, "sequence": 0, "position": 1 }),
+    ]);
+    assert_eq!(
+        summon_show(&out),
+        [(1015, [2, 1, 2, 0]), (0x3A, [0, fusion, 2, 0]), (0x44, [0, 0x8000 | fusion, 6, 0]), (0x39, [1 << 14, fusion, 0, 0])]
+    );
+}
+
+#[test]
+fn a_synchro_summon_tunes_its_tuner_first() {
+    // The engine may send the non-Tuner's move first (live: Giant Orc, then Krebons for Gaia Knight). TuningRun with
+    // 1 in param4's second byte starts the client's level sums again (0x5165A0: the Tuners' at +0x64, the others' at
+    // +0x68 reset), so a Tuner tuned second dropped the others' levels, and the Synchro animation that reads the sums
+    // crashed the client (live, 2026-11-15). Konami's logs always tune the Tuner first: the materials of the batch
+    // are marked and tuned together at the first one's move, the Tuner first.
+    let (mut t, _) = with_materials();
+    let material = 0x8 | 0x80000;
+    let out = t.events(&[
+        json!({ "type": 50, "cid": 4100, "reason": material, "from": loc(0, 4, 1, 1), "to": loc(0, 16, 0, 1) }),
+        json!({ "type": 50, "cid": 4101, "reason": material, "from": loc(0, 4, 2, 1), "to": loc(0, 16, 1, 1) }),
+    ]);
+    let shown: Vec<_> = out.iter().map(cmd).filter(|(id, _)| matches!(id, 0x30 | 0x32 | 0x1A)).collect();
+    assert_eq!(
+        shown,
+        [
+            (0x30, [0, 2, 2, 0]),
+            (0x30, [0, 1, 1, 0]),
+            (0x32, [0, 2, 2, 0x100 | 3]),
+            (0x32, [0, 1, 1, 4]),
+            (0x1A, [1, 1 << 1 | 1 << 14, 0xE << 1 | 1 << 14, 0]),
+            (0x1A, [2, 2 << 1 | 1 << 14, 0xE << 1 | 1 << 14 | 1 << 6, 0]),
+        ],
+        "both tuned before either moves, the Tuner first"
+    );
+}

@@ -247,6 +247,7 @@ pub fn lead_janken([result, theirs, mine]: [u32; 3], lead_saw_it: bool) -> [u32;
 pub fn replay_commands(world: &World, decks: [&Deck; 2], janken: [u32; 3], lp: u32, history: &[serde_json::Value]) -> Vec<[u32; 6]> {
     let (mut translator, table) = Translator::new(CLIENT, [&decks[0].main, &decks[1].main], world.cards.clone());
     translator.tokens(world.token_rows.clone());
+    translator.tuners(world.tuners.clone());
     let [result, theirs, mine] = janken;
     let mut messages = vec![
         command(JANKEN_BEGIN, [0; 4]),
@@ -613,6 +614,7 @@ impl DuelSession {
             self.check = Some(model);
         }
         translator.tokens(self.world.token_rows.clone());
+        translator.tuners(self.world.tuners.clone());
         table.extend(translator.extra_decks([&entry.deck.extra, &npc.extra]));
         self.engine = Some((engine, translator));
         self.first = Some(first);

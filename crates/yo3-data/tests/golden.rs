@@ -91,6 +91,8 @@ fn card_kinds_tell_the_extra_deck_apart() {
     assert!(!card(7687).extra_deck() && !card(4007).extra_deck() && !card(4909).extra_deck());
     assert_eq!(card(4909).kind, 13);
     assert_eq!(data.cards.iter().filter(|c| c.extra_deck()).count(), 312);
+    // Junk Synchron is a Tuner (a Synchro Summon's tuning, Translator::tuners), Blue-Eyes and Junk Warrior aren't.
+    assert!(card(7687).tuner() && !card(4007).tuner() && !card(7696).tuner());
 }
 
 #[test]
