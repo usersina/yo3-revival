@@ -301,12 +301,13 @@ impl<M> canvas::Program<M> for Logo {
     }
 }
 /// The launcher's name with its diamond mark, for the title bar.
-/// The launcher's name for the title bar: after the app's own icon when given (the launcher passes its window
-/// icon), else after a drawn diamond (the examples, which have no icon of their own).
+/// The launcher's name for the title bar: after the app's own mark when given (the launcher passes its
+/// background-less icon, drawn a little larger than the text so the Duel Disk reads), else after a drawn diamond (the
+/// examples, which have no icon of their own).
 pub fn logo<'a, M: 'a>(icon: Option<image::Handle>, height: f32) -> Element<'a, M> {
     match icon {
         Some(icon) => iced::widget::row![
-            image(icon).width(height).height(height).border_radius(height * 0.18).filter_method(image::FilterMethod::Linear),
+            image(icon).width(height * 1.25).height(height * 1.25).filter_method(image::FilterMethod::Linear),
             canvas::Canvas::new(Logo { mark: false }).width(height * 4.4).height(height),
         ].spacing(8).align_y(iced::Alignment::Center).into(),
         None => canvas::Canvas::new(Logo { mark: true }).width(height * 5.2).height(height).into(),

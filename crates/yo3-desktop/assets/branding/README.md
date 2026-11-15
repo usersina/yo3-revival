@@ -8,6 +8,8 @@ The original extracted game assets are not included here.
 - `launcher-icon.png`: generated master.
 - `launcher-window.png`: 256×256 RGBA8 PNG, decoded at build time for Iced's native window icon.
 - `launcher.ico`: Windows executable icon, with 16, 20, 24, 32, 40, 48, 64, 128 and 256-pixel images.
+- `launcher-mark.png`: the same art without its blue background, 128×128 RGBA8, for the title bar. Exported from the
+  background-less master with `magick revival-logo-transparent.png -resize 128x128 -strip PNG32:launcher-mark.png`.
 
 Export the master with ImageMagick:
 

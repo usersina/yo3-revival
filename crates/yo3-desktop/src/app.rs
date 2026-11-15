@@ -242,9 +242,9 @@ impl App {
     }
 }
 
-/// The app's own icon (the Duel Disk with the Monster Reborn badge), decoded at build time for the window icon.
+/// The app's mark (the Duel Disk with the Monster Reborn badge, without its background), decoded at build time.
 static APP_ICON: std::sync::LazyLock<iced::widget::image::Handle> = std::sync::LazyLock::new(|| {
-    iced::widget::image::Handle::from_rgba(256, 256, include_bytes!(concat!(env!("OUT_DIR"), "/launcher-icon.rgba")).to_vec())
+    iced::widget::image::Handle::from_rgba(128, 128, include_bytes!(concat!(env!("OUT_DIR"), "/launcher-mark.rgba")).to_vec())
 });
 
 const GUIDE: &str = "https://github.com/usersina/yo3-revival/blob/main/docs/launcher.md";
