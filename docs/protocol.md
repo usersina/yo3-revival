@@ -643,9 +643,13 @@ a higher one in a pack (**guess**: the original's pack size and odds are unknown
 
 ### Events (TournamentScene, UserEventScene)
 
-The map's Official Event tile (`MenuSelect` 21) opens TournamentScene, Championship (20) a 64-player tournament map
-that sends nothing, and User event (22) UserEventScene. With no decks, Official Event and Championship stop at "There
-are no valid Decks available." and OK returns to the map.
+The map's three event tiles open three scenes (`0x46FA60` maps `MenuSelect` 20, 21, 22 to main states `0xA`, `0xB`,
+`0xC`): Championship (20) TournamentScene (`0x4CB570`, `+0x2D8` 0), Official Event (21) OfficialEventScene (`0x4B0110`,
+its own list of official events, not a bracket), and User event (22) UserEventScene, which opens TournamentScene with
+`+0x2D8` 1 for its lobby. With no decks, Official Event and Championship stop at "There are no valid Decks available."
+and OK returns to the map. (This said Official Event opened TournamentScene until the 2026-11-15 research; what each
+scene expects is in [history](history.md#-website-links-titles-and-official-events-planned-2026-11-15) and issues #17
+and the Official Events issue.)
 
 | Request                                                                                                          | Reply (error)                          | Fields                                                                                                                                                | Evidence                                                                 | Status                            |
 | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------- |
