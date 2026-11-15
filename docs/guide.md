@@ -48,6 +48,7 @@ storage. Select the complete installation with `--game-dir` and retry; keep exis
 | `--regulation`              | Login banlist by ID/name; default `Season 16`, `unlimited` for none                                  |
 | `--duel-check`              | Compare each player's modeled client state with the rules engine after each step                     |
 | `--no-packet-log`           | Disable separate raw packet files; decoded packet traces remain in bounded session diagnostics       |
+| `--owned`                   | The launcher's own server (Singleplayer, on the `beta` branch): standard input stays open while the launcher lives; once it closes, the server stops after nobody has played for `--owned-idle` seconds (default 120)|
 
 Desktop listens on `127.0.0.1` while no sharing address is saved, even when **Listen on** is all interfaces.
 

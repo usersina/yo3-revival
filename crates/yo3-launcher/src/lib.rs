@@ -129,24 +129,34 @@ async fn wait_for_session(active: &mut tokio::sync::watch::Receiver<Option<Token
 
 pub fn hex(bytes: &[u8]) -> String { bytes.iter().map(|b| format!("{b:02x}")).collect() }
 
-/// The desktop owns this pipe: a stop command or its exit must release the authenticated game session.
-pub async fn wait_for_desktop_stop(mut input: impl std::io::BufRead + Send + 'static) {
+/// How the desktop's control pipe ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DesktopStop {
+    /// The desktop asked for the game to stop (Close game, Cancel, quitting with the game open).
+    Asked,
+    /// The pipe closed: the desktop exited or crashed. A game still starting is cancelled; a game being played keeps
+    /// running, and its session ends with it (#29).
+    Gone,
+}
+
+/// The desktop owns this pipe: a stop command, or its end, decides what happens to the authenticated game session.
+pub async fn wait_for_desktop_stop(mut input: impl std::io::BufRead + Send + 'static) -> DesktopStop {
     let (done, stopped) = tokio::sync::oneshot::channel();
     // Tokio's stdin uses a blocking runtime task that cannot be cancelled. A detached OS thread instead lets
     // the launcher finish naturally even while the desktop still holds its input pipe open.
     std::thread::spawn(move || {
         let mut line = String::new();
-        loop {
+        let how = loop {
             line.clear();
             match input.read_line(&mut line) {
-                Ok(0) | Err(_) => break,
-                Ok(_) if line.trim() == "stop" => break,
+                Ok(0) | Err(_) => break DesktopStop::Gone,
+                Ok(_) if line.trim() == "stop" => break DesktopStop::Asked,
                 Ok(_) => {},
             }
-        }
-        let _ = done.send(());
+        };
+        let _ = done.send(how);
     });
-    let _ = stopped.await;
+    stopped.await.unwrap_or(DesktopStop::Gone)
 }
 
 /// The browser/WinINet uses the launch cookie in a local path, never an account credential in a remote URL.
@@ -175,11 +185,11 @@ async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, session: &Token, 
 mod tests {
     use super::*;
     #[tokio::test]
-    async fn desktop_control_stops_on_command_or_parent_exit() {
+    async fn desktop_control_tells_a_stop_from_the_desktop_going_away() {
         let task = tokio::spawn(wait_for_desktop_stop(std::io::Cursor::new(Vec::<u8>::new())));
-        tokio::time::timeout(Duration::from_secs(1), task).await.unwrap().unwrap();
+        assert_eq!(tokio::time::timeout(Duration::from_secs(1), task).await.unwrap().unwrap(), DesktopStop::Gone);
         let task = tokio::spawn(wait_for_desktop_stop(std::io::Cursor::new(b"ignored\nstop\n")));
-        tokio::time::timeout(Duration::from_secs(1), task).await.unwrap().unwrap();
+        assert_eq!(tokio::time::timeout(Duration::from_secs(1), task).await.unwrap().unwrap(), DesktopStop::Asked);
     }
     use tokio::io::AsyncWriteExt;
 

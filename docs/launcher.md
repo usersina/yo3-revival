@@ -60,6 +60,14 @@ The checklist:
 | Opening the game without the launcher | Amber only: the folder is protected (Windows asks for permission once, the first time it's needed) or read-only (the game then opens only from YO3 Revival) |
 | YO3 Revival needs repair | Shown only when YO3 Revival's own files are missing or changed, often after an antivirus scan: **Repair** explains how to restore them |
 
+**Singleplayer** (beta): **PLAY** starts your own server, then the game, and the line above the button names each
+step; after 30 seconds without the game, **Cancel** stops what it started. While you play, **Close game** asks the game
+to stop and forces it after 10 seconds. Your server stops 30 seconds after the game exits, so a quick relaunch reuses
+it. If YO3 Revival crashes, the game keeps playing and your server stops by itself once nobody has played for two
+minutes. A game opened without the launcher shows as **PLAYING**, so a second copy can't be started. Singleplayer data
+is in the app data folder's `singleplayer/`; if it can't be opened, the notice offers **Restore a backup** (the server
+keeps one from each of its last starts, newest first).
+
 Later starts are quick: YO3 Revival remembers a fingerprint of `yo3.exe` and runs the full check again only when the
 game changed. If the game folder disappears (moved, or a drive unplugged), the main screen says **We can't find your
 game** with **Fix**, which reopens Setup at the Game step. Settings → **Run setup again** reopens it from the start.

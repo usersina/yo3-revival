@@ -168,7 +168,14 @@ async fn main() -> anyhow::Result<()> {
         engine_problem: None,
         duel_check: a.duel_check,
     };
-    let running = match start(cfg).await { Ok(running) => running, Err(error) => { tracing::error!("Server startup failed: {error:#}"); return Err(error) } };
+    let mut running = match start(cfg).await { Ok(running) => running, Err(error) => { tracing::error!("Server startup failed: {error:#}"); return Err(error) } };
+    if a.owned {
+        // Standard input stays open while the owning launcher lives; end of input means it has gone.
+        let owner_gone = async {
+            let _ = tokio::task::spawn_blocking(|| { let _ = std::io::copy(&mut std::io::stdin().lock(), &mut std::io::sink()); }).await;
+        };
+        running.exit_when_idle_without_owner(owner_gone, std::time::Duration::from_secs(a.owned_idle));
+    }
     running.wait().await;
     Ok(())
 }

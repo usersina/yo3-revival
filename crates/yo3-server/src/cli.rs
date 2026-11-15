@@ -35,6 +35,10 @@ pub struct Args {
     pub log_dir: PathBuf,
     /// Disable separate raw packet files; bounded session diagnostics still include decoded packet traces.
     #[arg(long)] pub no_packet_log: bool,
+    /// Run as the launcher's own server (Singleplayer): the launcher holds standard input open, and once it closes
+    /// (the launcher exited or crashed) the server stops after nobody has played for --owned-idle seconds.
+    #[arg(long)] pub owned: bool,
+    #[arg(long, default_value_t = 120, requires = "owned")] pub owned_idle: u64,
     #[arg(long)] pub diagnostics_dir: Option<PathBuf>,
     #[arg(long)] pub diagnostic_parent: Option<String>,
     /// Default players for add-account, comma separated (at most 4); a name already

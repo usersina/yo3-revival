@@ -135,9 +135,32 @@ pub struct Running {
     pub http: SocketAddr,
     tasks: Vec<JoinHandle<()>>,
     shutdown: tokio::sync::watch::Sender<bool>,
+    hub: Arc<Mutex<Hub>>,
 }
 
 impl Running {
+    /// The launcher's own server (Singleplayer) stops itself once its owner has gone (`owner_gone` resolves: the
+    /// launcher closed or crashed) and nobody has been playing for `idle`. A game still open keeps it running.
+    pub fn exit_when_idle_without_owner(&mut self, owner_gone: impl Future<Output = ()> + Send + 'static, idle: std::time::Duration) {
+        let (hub, shutdown) = (self.hub.clone(), self.shutdown.clone());
+        self.tasks.push(tokio::spawn(async move {
+            owner_gone.await;
+            tracing::info!("the launcher that owns this server has gone; stopping once nobody plays for {}s", idle.as_secs());
+            let step = idle.min(std::time::Duration::from_secs(5)).max(std::time::Duration::from_millis(50));
+            let mut quiet_since = std::time::Instant::now();
+            loop {
+                tokio::time::sleep(step).await;
+                let busy = { let hub = hub.locked(); hub.online() > 0 || !hub.tables.is_empty() };
+                if busy { quiet_since = std::time::Instant::now(); continue }
+                if quiet_since.elapsed() >= idle {
+                    tracing::info!("idle with no owner: stopping");
+                    shutdown.send_replace(true);
+                    break;
+                }
+            }
+        }));
+    }
+
     pub async fn wait(mut self) {
         let mut stop = self.shutdown.subscribe();
         while !*stop.borrow_and_update() {
@@ -377,8 +400,9 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         admin::write_live(dir, http_addr.port()).map_err(|e| tracing::warn!("admin commands won't reach this server ({}): {e}", dir.display())).ok()
     });
     let (shutdown, _) = tokio::sync::watch::channel(false);
+    let running_hub = hub.clone();
     let manager = manager::Manager { accounts: directory.clone(), hub, shutdown: shutdown.clone(), engine_problem: world.engine_problem.clone(), listen: auth_addr, diagnostic_id: cfg.diagnostic_id };
     let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.clone(), directory, admin_token, manager));
     tracing::info!("authenticated TLS {} local management/assets HTTP {}; packets -> {}", auth_addr, http_addr, packets.path().display());
-    Ok(Running { auth: auth_addr, http: http_addr, tasks: vec![auth_task, http_task, clock_task], shutdown })
+    Ok(Running { auth: auth_addr, http: http_addr, tasks: vec![auth_task, http_task, clock_task], shutdown, hub: running_hub })
 }

@@ -25,6 +25,7 @@ pub mod game_data;
 pub mod instance;
 pub mod store;
 pub mod setup_check;
+pub mod singleplayer;
 pub mod shortcut;
 mod game_data_platform;
 mod process;
@@ -267,16 +268,18 @@ impl Runtime {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Readiness { Ready, GameProblem(String), ComponentProblem(String), ValidationProblem(String) }
 pub struct Backend { pub root: PathBuf, pub runtime: Runtime, pub diagnostics: yo3_tunnel::diagnostics::Session,
-    server_session: Mutex<Option<String>>, game: Mutex<Option<Child>>, game_errors: Mutex<Option<process::Errors>>, game_ready: Mutex<Option<PathBuf>>, server: Mutex<Option<Child>> }
+    server_session: Mutex<Option<String>>, game: Mutex<Option<Child>>, game_errors: Mutex<Option<process::Errors>>, game_ready: Mutex<Option<PathBuf>>, server: Mutex<Option<Child>>,
+    /// The write end of the server's standard input: while this launcher lives it stays open (`--owned`).
+    server_owner: Mutex<Option<std::process::ChildStdin>> }
 impl Backend {
     pub fn new(root: PathBuf) -> anyhow::Result<Arc<Self>> {
         yo3_tunnel::diagnostics::private_dir(&root.join("profiles"))?;
         std::fs::create_dir_all(root.join("logs"))?;
         let diagnostics = yo3_tunnel::diagnostics::Session::start(&root.join("logs/sessions"), "app", None)?;
-        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), game_errors: Mutex::new(None), game_ready: Mutex::new(None), server: Mutex::new(None) }))
+        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), game_errors: Mutex::new(None), game_ready: Mutex::new(None), server: Mutex::new(None), server_owner: Mutex::new(None) }))
     }
     pub fn data_dir(&self, settings: &Settings) -> PathBuf {
-        if settings.data_dir.trim().is_empty() { self.root.join("server") } else { PathBuf::from(&settings.data_dir) }
+        if settings.data_dir.trim().is_empty() { self.root.join("singleplayer") } else { PathBuf::from(&settings.data_dir) }
     }
     pub fn live(&self, settings: &Settings) -> Option<admin::Live> { admin::running(&self.data_dir(settings)) }
     pub fn status(&self, settings: &Settings) -> anyhow::Result<Value> {
@@ -317,7 +320,10 @@ impl Backend {
         drop(directory);
         detach_server(&mut cmd);
         *self.server_session.lock().unwrap() = None;
-        let (child,errors)=process::spawn(&mut cmd,&self.diagnostics,"Server")?;
+        // Your own server: it stops itself once this launcher has gone and nobody plays (#29).
+        cmd.arg("--owned").stdin(Stdio::piped());
+        let (mut child,errors)=process::spawn(&mut cmd,&self.diagnostics,"Server")?;
+        *self.server_owner.lock().unwrap() = child.stdin.take();
         *owned = Some(child);
         self.wait_server_ready(settings, &mut owned, errors, std::time::Duration::from_secs(10))
     }
@@ -369,6 +375,8 @@ impl Backend {
         // Serialize Start with the owned child's graceful exit and original endpoint closure. An old child
         // handle may already have exited while this app attached to a replacement server, so check both.
         // Never terminate an unowned process or send another shutdown to a replacement endpoint.
+        // This launcher no longer owns a server that is stopping.
+        *self.server_owner.lock().unwrap() = None;
         let address=std::net::SocketAddr::from(([127,0,0,1],live.port));
         let started=std::time::Instant::now();
         let timeout=std::time::Duration::from_secs(10);

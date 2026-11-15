@@ -62,8 +62,8 @@ async fn main() -> anyhow::Result<()> {
 
 async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Result<()> {
     let desktop_stop=async {
-        if args.control_stdin {yo3_launcher::wait_for_desktop_stop(std::io::BufReader::new(std::io::stdin())).await;}
-        else {std::future::pending::<()>().await;}
+        if args.control_stdin {yo3_launcher::wait_for_desktop_stop(std::io::BufReader::new(std::io::stdin())).await}
+        else {std::future::pending::<yo3_launcher::DesktopStop>().await}
     };
     tokio::pin!(desktop_stop);
     let interrupt=tokio::signal::ctrl_c();tokio::pin!(interrupt);
@@ -169,7 +169,17 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         let status = tokio::select! {
             status = child.wait() => Some(status?),
             result = &mut interrupt => { result?; child.kill().await?; None }
-            _ = &mut desktop_stop => { child.kill().await?; None }
+            stop = &mut desktop_stop => match stop {
+                yo3_launcher::DesktopStop::Asked => { child.kill().await?; None }
+                // The launcher closed or crashed while the game runs: keep playing; the session ends with the game.
+                yo3_launcher::DesktopStop::Gone => {
+                    log.line("The launcher went away; the game keeps running");
+                    tokio::select! {
+                        status = child.wait() => Some(status?),
+                        result = &mut interrupt => { result?; child.kill().await?; None }
+                    }
+                }
+            }
         };
         if let Some(status) = status { ensure!(status.success(), "Game or injector exited with an error ({status})"); }
         Ok(())

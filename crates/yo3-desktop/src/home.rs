@@ -1,9 +1,11 @@
 //! The main screen: Singleplayer (your own server on this computer) and Multiplayer, around one Play button that
-//! always says what happens next (#29 has the full table; this is the part that works without accounts yet).
-use std::time::Duration;
+//! always says what happens next (#29). Your own server starts with Play and stops a grace period after the game
+//! exits; a game opened without the launcher counts as playing.
+use std::time::{Duration, Instant};
 use iced::widget::{Space, column, container, pick_list, row, text};
 use iced::{Alignment::Center, Element, Length::Fill, Subscription, Task};
 use yo3_desktop::Readiness;
+use yo3_desktop::singleplayer::{self, Backup};
 use yo3_skin::{BODY_BOLD, Kind, color, pill};
 use crate::app::{Ctx, dot, job};
 use crate::error_presentation::{self, Hint};
@@ -11,28 +13,47 @@ use crate::error_presentation::{self, Hint};
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Tab { #[default] Single, Multi }
 
+/// After this long without the game, Starting offers Cancel.
+pub const CANCEL_AFTER: Duration = Duration::from_secs(30);
+
+/// Where a Play is.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Step { Server, Game }
+
 /// What the launcher knows about the game right now.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Game {
     /// The last check of the game folder and our files; `None` while it runs.
     pub readiness: Option<Readiness>,
-    /// Play was pressed and the game has not been seen yet.
-    pub starting: bool,
+    /// Play was pressed: the step it is on and since when.
+    pub starting: Option<(Step, Instant)>,
+    /// The game Play started is running.
     pub running: bool,
     /// The game's window is up (the connection DLL said so).
     pub ready: bool,
-    pub closing: bool,
+    /// When Close game (or Cancel) was asked for; forced after `singleplayer::CLOSE_TIMEOUT`.
+    pub closing: Option<Instant>,
+    /// A game of this prefix opened without the launcher.
+    pub outside: bool,
+}
+
+impl Game {
+    /// Play was pressed and the game hasn't shown its window yet: Starting, or Waiting.
+    pub fn launching(&self) -> Option<Instant> {
+        self.starting.map(|(_, since)| since)
+    }
 }
 
 /// The Play button's state: its label, what a click does and the line above it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Play { Checking, SetUp, Repair, Retry, Ready, Starting, Waiting, Playing, Closing }
+pub enum Play { Checking, SetUp, Repair, Retry, Ready, StartingServer, StartingGame, Waiting, Playing, Outside, Closing }
 
 impl Play {
     pub fn of(game: &Game) -> Self {
-        if game.closing { return Play::Closing }
-        if game.starting { return Play::Starting }
+        if game.closing.is_some() { return Play::Closing }
+        if let Some((step, _)) = game.starting { return match step { Step::Server => Play::StartingServer, Step::Game => Play::StartingGame } }
         if game.running { return if game.ready { Play::Playing } else { Play::Waiting } }
+        if game.outside { return Play::Outside }
         match &game.readiness {
             None => Play::Checking,
             Some(Readiness::Ready) => Play::Ready,
@@ -44,7 +65,8 @@ impl Play {
     pub fn label(self) -> &'static str {
         match self {
             Play::Checking => "CHECKING…", Play::SetUp => "SET UP", Play::Repair => "REPAIR", Play::Retry => "RETRY", Play::Ready => "PLAY",
-            Play::Starting | Play::Waiting => "STARTING…", Play::Playing => "PLAYING", Play::Closing => "CLOSING…",
+            Play::StartingServer | Play::StartingGame | Play::Waiting => "STARTING…", Play::Playing | Play::Outside => "PLAYING",
+            Play::Closing => "CLOSING…",
         }
     }
     /// What a click sends; `None` draws the button disabled.
@@ -61,12 +83,16 @@ impl Play {
             Play::Repair => "Some of YO3 Revival's files need repair.",
             Play::Retry => "The last check didn't finish.",
             Play::Ready => "",
-            Play::Starting => "Starting your server and the game…",
+            Play::StartingServer => "Starting your server…",
+            Play::StartingGame => "Starting the game…",
             Play::Waiting => "Waiting for the game's window…",
             Play::Playing => "The game is running.",
+            Play::Outside => "The game is open (started without the launcher).",
             Play::Closing => "Closing the game…",
         }
     }
+    /// Starting states, where Cancel appears after `CANCEL_AFTER`.
+    pub fn cancellable(self) -> bool { matches!(self, Play::StartingServer | Play::StartingGame | Play::Waiting) }
 }
 
 /// One plain sentence, with the technical text behind Details and at most one action.
@@ -79,18 +105,24 @@ pub struct Banlist { pub value: String, pub name: String }
 impl std::fmt::Display for Banlist { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.name) } }
 
 #[derive(Clone, Debug)]
-pub struct Live { running: bool, ready: bool, failure: Option<String> }
+pub struct Live { running: bool, ready: bool, outside: bool, failure: Option<String> }
 
 #[derive(Clone, Debug)]
 pub enum Message {
     Tab(Tab),
     Play,
+    ServerStarted(Result<(), String>),
     Started(Result<bool, String>),
+    Cancel,
+    Cancelled(Result<(), String>),
     /// Set up direct start in a protected game folder (asks for permission once).
     AllowDirect,
     DirectAllowed(Result<(), String>),
     CloseGame,
     GameClosed(Result<(), String>),
+    /// The grace period after the game exited is over (its generation).
+    GraceOver(u64),
+    ServerStopped(Result<(), String>),
     Banlist(Banlist),
     BanlistSaved(Result<String, String>),
     Banlists(Vec<(u32, String)>),
@@ -103,6 +135,10 @@ pub enum Message {
     SetUp,
     /// Handled by the window: explain the repair.
     Repair,
+    /// Handled by the window: list the server's backups to restore one.
+    Restore,
+    RestoreBackup(Backup),
+    Restored(Result<(), String>),
     ToggleDetails,
     Dismiss,
 }
@@ -114,6 +150,12 @@ pub struct State {
     banlists: Vec<(u32, String)>,
     notice: Option<Notice>,
     polling: bool,
+    /// Bumped by each Play and each game exit: only the latest grace period may stop your server.
+    grace: u64,
+    /// Cancel was asked for while a start job was still running; its result is cleaned up when it arrives.
+    cancelled: bool,
+    /// When the Play that is now waiting for the game's window was pressed.
+    waiting_since: Option<Instant>,
 }
 
 impl State {
@@ -124,33 +166,72 @@ impl State {
                 if Play::of(&self.game) != Play::Ready { return Task::none() }
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 let settings = ctx.settings.clone();
-                self.game.starting = true;
+                self.grace += 1;
+                self.cancelled = false;
+                self.game.starting = Some((Step::Server, Instant::now()));
                 self.notice = None;
-                return job(move || {
-                    backend.start_server(&settings)?;
-                    // Opening yo3.exe without the launcher keeps working with your own server, when setup chose it.
-                    let needs_permission = settings.direct_start && match backend.auto_direct(&settings, None) {
-                        yo3_desktop::direct::AutoDirect::Ready => false,
-                        yo3_desktop::direct::AutoDirect::NeedsPermission => true,
-                        yo3_desktop::direct::AutoDirect::Skipped(why) => { backend.diagnostics.line(&format!("Direct start not set up: {why}")); false }
-                    };
-                    backend.play(&settings, None, &settings.local_account)?;
-                    Ok(needs_permission)
-                }, Message::Started);
+                // Your own server first (reused when it is still running from the last game).
+                return job(move || backend.start_server(&settings).map(|_| ()), Message::ServerStarted);
+            }
+            Message::ServerStarted(result) => {
+                if self.cancelled { return self.clean_up(ctx) }
+                match result {
+                    Ok(()) => {
+                        let Some(backend) = ctx.backend.clone() else { return Task::none() };
+                        let settings = ctx.settings.clone();
+                        let since = self.game.launching().unwrap_or_else(Instant::now);
+                        self.game.starting = Some((Step::Game, since));
+                        return job(move || {
+                            // Opening yo3.exe without the launcher keeps working with your own server, when setup chose it.
+                            let needs_permission = settings.direct_start && match backend.auto_direct(&settings, None) {
+                                yo3_desktop::direct::AutoDirect::Ready => false,
+                                yo3_desktop::direct::AutoDirect::NeedsPermission => true,
+                                yo3_desktop::direct::AutoDirect::Skipped(why) => { backend.diagnostics.line(&format!("Direct start not set up: {why}")); false }
+                            };
+                            backend.play(&settings, None, &settings.local_account)?;
+                            Ok(needs_permission)
+                        }, Message::Started);
+                    }
+                    Err(error) => {
+                        self.game.starting = None;
+                        let damaged = singleplayer::damaged_database(&error);
+                        self.fail(ctx, error);
+                        if damaged && let Some(notice) = &mut self.notice {
+                            notice.summary = "Your singleplayer data couldn't be opened. A backup from an earlier start can replace it.".into();
+                            notice.action = Some(("Restore a backup", Message::Restore));
+                        }
+                        return self.check(ctx);
+                    }
+                }
             }
             Message::Started(result) => {
-                self.game.starting = false;
+                if self.cancelled { return self.clean_up(ctx) }
+                let since = self.game.launching();
+                self.game.starting = None;
                 match result {
                     Ok(needs_permission) => {
                         self.game.running = true;
                         self.game.ready = false;
+                        // Waiting for the window keeps the Play's start time, for Cancel.
+                        self.waiting_since = since;
                         if needs_permission {
                             self.notice = Some(Notice { summary: "Opening the game without the launcher needs permission once, because the game folder is protected.".into(),
                                 details: None, open: false, action: Some(("Allow", Message::AllowDirect)) });
                         }
                     }
-                    Err(error) => { self.fail(ctx, error); return self.check(ctx) }
+                    Err(error) => { self.fail(ctx, error); self.start_grace(); return Task::batch([self.check(ctx), self.grace_timer()]) }
                 }
+            }
+            Message::Cancel => {
+                self.cancelled = true;
+                return self.clean_up(ctx);
+            }
+            Message::Cancelled(result) => {
+                self.game = Game { readiness: self.game.readiness.clone(), ..Game::default() };
+                self.waiting_since = None;
+                self.cancelled = false;
+                if let Err(error) = result { self.fail(ctx, error) }
+                return self.check(ctx);
             }
             Message::AllowDirect => {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
@@ -161,13 +242,17 @@ impl State {
             Message::DirectAllowed(result) => if let Err(error) = result { self.fail(ctx, error) },
             Message::CloseGame => {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
-                self.game.closing = true;
+                self.game.closing = Some(Instant::now());
                 return job(move || backend.stop_game(), Message::GameClosed);
             }
-            Message::GameClosed(result) => {
-                self.game.closing = false;
-                if let Err(error) = result { self.fail(ctx, error) }
+            Message::GameClosed(result) => if let Err(error) = result { self.fail(ctx, error) },
+            Message::GraceOver(generation) => {
+                if generation != self.grace || self.game.running || self.game.starting.is_some() || self.game.outside { return Task::none() }
+                let Some(backend) = ctx.backend.clone() else { return Task::none() };
+                let settings = ctx.settings.clone();
+                return job(move || { if backend.live(&settings).is_some() { backend.stop_server(&settings)?; } Ok(()) }, Message::ServerStopped);
             }
+            Message::ServerStopped(result) => if let Err(error) = result { self.fail(ctx, error) },
             Message::Banlist(choice) => {
                 let Some(store) = ctx.store.clone() else { return Task::none() };
                 let value = choice.value;
@@ -177,21 +262,37 @@ impl State {
             Message::BanlistSaved(Err(error)) => self.fail(ctx, error),
             Message::Banlists(list) => self.banlists = list,
             Message::Tick => {
-                if self.polling || self.game.starting { return Task::none() }
+                // Close game that the game ignored: force it.
+                if let Some(since) = self.game.closing && since.elapsed() >= singleplayer::CLOSE_TIMEOUT && let Some(backend) = ctx.backend.clone() {
+                    let settings = ctx.settings.clone();
+                    self.game.closing = Some(Instant::now());
+                    return job(move || backend.force_stop_game(&settings), Message::GameClosed);
+                }
+                if self.polling || self.game.starting.is_some() { return Task::none() }
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
+                let settings = ctx.settings.clone();
                 self.polling = true;
-                return job(move || Ok(Live { running: backend.game_running(), ready: backend.game_ready(), failure: backend.game_failure() }), Message::Polled);
+                return job(move || Ok(Live { running: backend.game_running(), ready: backend.game_ready(),
+                    outside: backend.game_open_elsewhere(&settings), failure: backend.game_failure() }), Message::Polled);
             }
             Message::Polled(result) => {
                 self.polling = false;
                 let Ok(live) = result else { return Task::none() };
+                if self.game.starting.is_some() { return Task::none() }
                 let ended = self.game.running && !live.running;
-                if self.game.starting { return Task::none() }
                 self.game.running = live.running;
                 self.game.ready = live.ready;
-                if let Some(failure) = live.failure { self.fail(ctx, failure) }
-                // The game folder may have changed while it ran (an update, an antivirus): check again for the next Play.
-                if ended { return self.check(ctx) }
+                self.game.outside = live.outside;
+                if live.ready { self.waiting_since = None }
+                if ended {
+                    self.game.closing = None;
+                    self.waiting_since = None;
+                    if let Some(failure) = live.failure { self.fail(ctx, failure) }
+                    // Your server waits a little, so a quick relaunch reuses it; the game folder may have changed
+                    // while it ran (an update, an antivirus), so check again for the next Play.
+                    self.start_grace();
+                    return Task::batch([self.check(ctx), self.grace_timer()]);
+                }
             }
             Message::Recheck => return self.check(ctx),
             Message::Checked(readiness, fingerprint) => {
@@ -204,18 +305,47 @@ impl State {
                 }
             }
             Message::FingerprintSaved(result) => if let Err(error) = result { self.fail(ctx, error) },
+            Message::RestoreBackup(backup) => {
+                let Some(backend) = ctx.backend.clone() else { return Task::none() };
+                let settings = ctx.settings.clone();
+                self.notice = None;
+                return job(move || backend.restore_backup(&settings, &backup), Message::Restored);
+            }
+            Message::Restored(result) => match result {
+                Ok(()) => self.notice = Some(Notice { summary: "The backup is back in place. Press PLAY.".into(), details: None, open: false, action: None }),
+                Err(error) => self.fail(ctx, error),
+            },
             Message::ToggleDetails => if let Some(notice) = &mut self.notice { notice.open = !notice.open },
             Message::Dismiss => self.notice = None,
-            Message::SetUp | Message::Repair => {}
+            Message::SetUp | Message::Repair | Message::Restore => {}
         }
         Task::none()
+    }
+
+    /// Stops what a cancelled Play started: the game by force, then your server.
+    fn clean_up(&mut self, ctx: &Ctx) -> Task<Message> {
+        let Some(backend) = ctx.backend.clone() else { return Task::none() };
+        let settings = ctx.settings.clone();
+        self.game.closing = Some(Instant::now());
+        job(move || {
+            backend.force_stop_game(&settings)?;
+            if backend.live(&settings).is_some() { backend.stop_server(&settings)?; }
+            Ok(())
+        }, Message::Cancelled)
+    }
+
+    fn start_grace(&mut self) { self.grace += 1 }
+
+    fn grace_timer(&self) -> Task<Message> {
+        let generation = self.grace;
+        Task::perform(tokio::time::sleep(singleplayer::GRACE), move |()| Message::GraceOver(generation))
     }
 
     /// Checks the game folder and YO3 Revival's own files in the background. When `yo3.exe` is unchanged since the last
     /// full check, only YO3 Revival's own files are looked at again (#28); Play checks the game itself anyway.
     pub fn check(&mut self, ctx: &Ctx) -> Task<Message> {
         let Some(backend) = ctx.backend.clone() else { return Task::none() };
-        if self.game.running || self.game.starting { return Task::none() }
+        if self.game.running || self.game.starting.is_some() { return Task::none() }
         self.game.readiness = None;
         let settings = ctx.settings.clone();
         Task::perform(async move {
@@ -247,6 +377,9 @@ impl State {
         self.notice = Some(Notice { summary: shown.summary, details: shown.diagnosis, open: false, action: None });
     }
 
+    /// Since when Play has been starting or waiting for the game's window, for Cancel.
+    pub fn launching_since(&self) -> Option<Instant> { self.game.launching().or(self.waiting_since) }
+
     pub fn subscription(&self) -> Subscription<Message> {
         iced::time::every(Duration::from_secs(2)).map(|_| Message::Tick)
     }
@@ -275,13 +408,21 @@ impl State {
     fn singleplayer<'a>(&'a self, ctx: &'a Ctx) -> Element<'a, Message> {
         let play = Play::of(&self.game);
         let mut status = row![text(play.status()).size(14).color(color::INK_SOFT)].spacing(10).align_y(Center).height(22);
-        if play == Play::Playing { status = status.push(Space::new().width(Fill)).push(yo3_skin::link("Close game", Message::CloseGame, false)) }
+        if matches!(play, Play::Playing | Play::Waiting) && self.launching_since().is_none_or(|since| since.elapsed() < CANCEL_AFTER) {
+            status = status.push(Space::new().width(Fill)).push(yo3_skin::link("Close game", Message::CloseGame, false));
+        } else if play.cancellable() && self.launching_since().is_some_and(|since| since.elapsed() >= CANCEL_AFTER) {
+            status = status.push(Space::new().width(Fill)).push(yo3_skin::link("Cancel", Message::Cancel, false));
+        }
         let choices = banlist_choices(&self.banlists);
         let selected = choices.iter().find(|c| c.value == ctx.settings.banlist).cloned();
-        let editable = !self.game.running && !self.game.starting;
-        let banlist = pick_list(choices, selected, Message::Banlist).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu)
-            .width(Fill).padding([7, 10]).placeholder("Season 16");
-        let banlist: Element<'_, Message> = if editable { banlist.into() } else { container(banlist).into() };
+        // The banlist is read when your server starts: it can change only while nothing is starting or playing.
+        let editable = !self.game.running && self.game.starting.is_none() && !self.game.outside;
+        let banlist: Element<'_, Message> = if editable {
+            pick_list(choices, selected, Message::Banlist).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu)
+                .width(Fill).padding([7, 10]).placeholder("Season 16").into()
+        } else {
+            text(selected.map_or_else(|| "Season 16 (default)".to_owned(), |b| b.name)).size(15).color(color::INK).into()
+        };
         yo3_skin::panel(Some("Your own server"), column![
             text("Duel the NPCs, open packs and build decks. Cards you earn here stay on this PC.").size(15).color(color::INK),
             row![text("Banlist").font(BODY_BOLD).size(15).color(color::INK).width(74), banlist].align_y(Center),
@@ -355,32 +496,58 @@ mod tests {
     use super::*;
 
     fn game(readiness: Option<Readiness>) -> Game { Game { readiness, ..Game::default() } }
+    const ALL: [Play; 11] = [Play::Checking, Play::SetUp, Play::Repair, Play::Retry, Play::Ready, Play::StartingServer, Play::StartingGame,
+        Play::Waiting, Play::Playing, Play::Outside, Play::Closing];
 
+    /// Every Play state, from the facts that lead to it (#29's table without the Multiplayer rows, which need #30).
     #[test]
-    fn the_play_button_always_says_what_happens_next() {
-        assert_eq!(Play::of(&game(None)), Play::Checking);
-        assert_eq!(Play::of(&game(Some(Readiness::Ready))), Play::Ready);
-        assert_eq!(Play::of(&game(Some(Readiness::GameProblem("no yo3.exe".into())))), Play::SetUp);
-        assert_eq!(Play::of(&game(Some(Readiness::ComponentProblem("no dll".into())))), Play::Repair);
-        assert_eq!(Play::of(&game(Some(Readiness::ValidationProblem("timeout".into())))), Play::Retry);
-        let mut playing = game(Some(Readiness::Ready));
-        playing.starting = true;
-        assert_eq!(Play::of(&playing), Play::Starting);
-        playing.starting = false; playing.running = true;
-        assert_eq!(Play::of(&playing), Play::Waiting);
-        playing.ready = true;
-        assert_eq!(Play::of(&playing), Play::Playing);
-        playing.closing = true;
-        assert_eq!(Play::of(&playing), Play::Closing);
+    fn every_play_state_is_reached_from_its_facts() {
+        let now = Instant::now();
+        let ready = || game(Some(Readiness::Ready));
+        let cases: [(Game, Play); 11] = [
+            (game(None), Play::Checking),
+            (game(Some(Readiness::GameProblem("no yo3.exe".into()))), Play::SetUp),
+            (game(Some(Readiness::ComponentProblem("no dll".into()))), Play::Repair),
+            (game(Some(Readiness::ValidationProblem("timeout".into()))), Play::Retry),
+            (ready(), Play::Ready),
+            (Game { starting: Some((Step::Server, now)), ..ready() }, Play::StartingServer),
+            (Game { starting: Some((Step::Game, now)), ..ready() }, Play::StartingGame),
+            (Game { running: true, ..ready() }, Play::Waiting),
+            (Game { running: true, ready: true, ..ready() }, Play::Playing),
+            (Game { outside: true, ..ready() }, Play::Outside),
+            (Game { running: true, ready: true, closing: Some(now), ..ready() }, Play::Closing),
+        ];
+        let reached: Vec<Play> = cases.iter().map(|(facts, expected)| { assert_eq!(Play::of(facts), *expected, "{facts:?}"); *expected }).collect();
+        assert_eq!(reached, ALL, "every state has a case");
     }
 
     #[test]
     fn only_states_with_a_next_step_are_clickable_and_every_disabled_one_explains_itself() {
-        for play in [Play::Checking, Play::SetUp, Play::Repair, Play::Retry, Play::Ready, Play::Starting, Play::Waiting, Play::Playing, Play::Closing] {
-            let clickable = play.action().is_some();
-            assert_eq!(clickable, matches!(play, Play::SetUp | Play::Repair | Play::Retry | Play::Ready), "{play:?}");
+        for play in ALL {
+            assert_eq!(play.action().is_some(), matches!(play, Play::SetUp | Play::Repair | Play::Retry | Play::Ready), "{play:?}");
             assert!(play == Play::Ready || !play.status().is_empty(), "{play:?} needs a line saying why");
         }
+        assert!(ALL.iter().filter(|p| p.cancellable()).eq([Play::StartingServer, Play::StartingGame, Play::Waiting].iter()));
+    }
+
+    #[test]
+    fn a_game_open_without_the_launcher_blocks_a_second_one() {
+        let outside = Game { outside: true, ..game(Some(Readiness::Ready)) };
+        assert_eq!(Play::of(&outside), Play::Outside);
+        assert!(Play::of(&outside).action().is_none(), "a second game can't be started");
+    }
+
+    #[test]
+    fn only_the_latest_grace_period_may_stop_your_server() {
+        let mut state = State::default();
+        state.start_grace();
+        let first = state.grace;
+        state.start_grace(); // Play again, or the game exited again
+        assert_ne!(first, state.grace);
+        let mut ctx = crate::app::Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() };
+        // An old timer does nothing (and without a backend nothing could be stopped anyway).
+        let _ = state.update(Message::GraceOver(first), &mut ctx);
+        assert_eq!(state.game, Game::default());
     }
 
     #[test]

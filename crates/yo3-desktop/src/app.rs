@@ -20,7 +20,7 @@ pub struct Ctx {
 pub enum Claim { Now(instance::Owner), AfterUpdate }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Dialog { Help, Settings, Repair, ConfirmClose }
+pub enum Dialog { Help, Settings, Repair, ConfirmClose, Backups }
 
 #[derive(Clone, Debug)]
 pub enum Message {
@@ -90,6 +90,11 @@ impl App {
         match message {
             Message::Home(home::Message::SetUp) => return self.open_setup(setup::Step::Game),
             Message::Home(home::Message::Repair) => self.dialog = Some(Dialog::Repair),
+            Message::Home(home::Message::Restore) => self.dialog = Some(Dialog::Backups),
+            Message::Home(home::Message::RestoreBackup(backup)) => {
+                self.dialog = None;
+                return self.home.update(home::Message::RestoreBackup(backup), &mut self.ctx).map(Message::Home);
+            }
             Message::Home(message) => return self.home.update(message, &mut self.ctx).map(Message::Home),
             Message::Setup(setup::Message::Saved(Ok((settings, note)))) => {
                 self.ctx.settings = *settings;
@@ -108,7 +113,7 @@ impl App {
             Message::Drag => return window::latest().and_then(window::drag),
             Message::Minimize => return window::latest().and_then(|id| window::minimize(id, true)),
             Message::CloseRequested => {
-                if self.home.game.running || self.home.game.starting { self.dialog = Some(Dialog::ConfirmClose) } else { return self.update(Message::Quit) }
+                if self.home.game.running || self.home.game.starting.is_some() { self.dialog = Some(Dialog::ConfirmClose) } else { return self.update(Message::Quit) }
             }
             Message::Quit => {
                 if self.quitting { return Task::none() }
@@ -213,6 +218,19 @@ impl App {
             Dialog::Repair => ("YO3 Revival needs repair", "Some of YO3 Revival's own files are missing or changed, often after an \
                 antivirus scan. Download the latest release again and replace this folder with it; your settings are kept.".into(),
                 row![pill("Releases", Some(Message::OpenLink(RELEASES.into())), Kind::Primary, 120, 38), ok()].spacing(10).into(), 260.0),
+            Dialog::Backups => {
+                // Newest first; the damaged database is kept beside the restored one, renamed.
+                let backups = self.ctx.backend.as_ref().map(|b| b.backups(&self.ctx.settings)).unwrap_or_default();
+                let mut list = column![text(if backups.is_empty() { "There is no backup yet: your server makes one each time it starts." }
+                    else { "Your server keeps a backup from each of its last starts. Choose one to put back:" }).size(15).color(color::INK)].spacing(8);
+                for backup in backups.into_iter().take(5) {
+                    let label = backup.taken.clone();
+                    list = list.push(row![text(label).size(15).color(color::INK).width(Fill),
+                        pill("Restore", Some(Message::Home(home::Message::RestoreBackup(backup))), Kind::Primary, 110, 34)].align_y(Center));
+                }
+                return container(yo3_skin::panel(Some("Restore a backup"), column![list, Space::new().height(Fill),
+                    row![Space::new().width(Fill), pill("Cancel", Some(Message::CloseDialog), Kind::Primary, 120, 38)]])).width(470).height(380).into();
+            }
             Dialog::ConfirmClose => ("Close YO3 Revival?", "The game is open. Closing YO3 Revival also closes the game and your server.".into(),
                 row![pill("Cancel", Some(Message::CloseDialog), Kind::Primary, 120, 38), pill("Close", Some(Message::Quit), Kind::Primary, 120, 38)].spacing(10).into(), 230.0),
         };
