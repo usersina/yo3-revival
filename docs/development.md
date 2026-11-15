@@ -314,7 +314,8 @@ This checks Linux package activation; native Windows verification remains separa
 ## Publish a release
 
 1. Update the current **Unreleased** changelog entry with player-visible behavior, then give it the next unused
-   `## vX.Y.Z (YYYY-MM-DD)` heading. Never move or reuse a published tag.
+   `## vX.Y.Z (YYYY-MM-DD)` heading. Never move or reuse a published tag. In
+   [features](features.md), replace each "Unreleased" in the Since column with that version and date.
 2. Keep documentation/screenshots current, run required checks and live-test the extracted bundles.
 3. Commit in logical slices on a feature branch. Follow the working guide's local merge policy and ask before pushing.
 4. A push to `main` with an untagged top changelog version runs the release workflow: tests/lints, four bundles,

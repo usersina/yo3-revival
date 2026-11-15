@@ -37,8 +37,9 @@ checks and releases). Keep the root README short; link to those guides for detai
    `cargo nextest run --workspace` green and `cargo clippy --workspace --all-targets` clean before every commit.
 4. **Keep four places in step:** `docs/protocol.md`, `crates/yo3-server/src/front.rs`, the contract tests
    (`crates/yo3-server/tests/front_contract.rs`, `chat_contract.rs`, one file per screen family) and
-   `docs/features.md` (the feature's row: status and "Verified by" change with the work; `docs/roadmap.md` keeps only
-   open items and the guesses table, and `docs/history.md` the dated records). A change a host or player sees also
+   `docs/features.md` (the feature's row: status and "Verified by" change with the work, and "Since" says
+   "Unreleased" until the release that ships it; `docs/roadmap.md` keeps only open items and the guesses table, and
+   `docs/history.md` the dated records). A change a host or player sees also
    goes in the relevant Desktop/Scripts/playing guide; keep command details in `docs/guide.md`. Run `tools/docs-check.py` after
    moving or renaming anything in the docs: it checks every relative link and anchor.
 5. **Small, logical commits** (conventional style: `feat(server): …`, `fix(…)`, `docs: …`, `refactor(…)`,

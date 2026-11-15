@@ -18,6 +18,11 @@ live check on the private headless client (`tools/client/vclient.sh`), the Windo
 monkeys. "Not verified" means nothing did. Test files check what the client reads from a reply, not that a player enjoys
 it; a live check is a person or script driving the real client. GitHub issue numbers are in Notes.
 
+**Since** is the first release in which the row worked as described, with its date. Work done before the first
+release counts as v0.0.1. A row whose feature was broken until a fix (Avatar Settings) gives the release of that fix,
+and later changes are in Notes and the [changelog](../CHANGELOG.md). "Unreleased" marks work on `main` not yet in a
+release, and "—" a row that is not implemented or unsupported.
+
 **Contents**
 
 - [Features](#features)
@@ -42,180 +47,180 @@ it; a live check is a person or script driving the real client. GitHub issue num
 
 ## Accounts and login
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| Authenticated TLS login by account key, single-use tickets | Implemented | `auth_flow.rs`, `auth_contract.rs`, `metadata_contract.rs`, `flow.rs`; native and Wine DLL tests; live; Windows VM | TLS port 7443 is the only game listener. No password login exists: the client never sends one. |
-| Host-made accounts, private profiles, up to four players per account | Implemented | `accounts.rs`, `manager_contract.rs`, `cli_options.rs`; live | `add-account`, `profile`, `add-player`, `rename`, `move-account` in [guide](guide.md). The old `/join` page is retired (`join.rs` checks 404). |
-| Create and delete players (Select Player) | Implemented | `player_contract.rs`; live | Four slots per account; names unique ignoring case (a guess in the guesses table). |
-| One server per data folder | Implemented | `data_lock.rs` | v0.0.19: a second server cannot open the same data folder. |
-| Account/player changes rolled back when a save fails | Implemented | `save_failures.rs` | v0.0.19. Other stores, such as mail and duel-result records, still log write failures without rolling back. |
-| Server-side deck check and regulation at Select Deck | Implemented | `regulation_contract.rs`, `deck_contract.rs` | Refused with `0x22CB`. Default banlist Season 16, set in Desktop or with `--regulation` (#15). |
-| Country flags | Partial | `country_contract.rs`; live | The client sends no country, so the host sets it per account (`set-country`) or it follows the login language. |
-| Login news | Implemented | `front_contract.rs` | The news no longer includes the deck-onboarding notice. |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| Authenticated TLS login by account key, single-use tickets | Implemented | v0.0.4 (2026-11-10) | `auth_flow.rs`, `auth_contract.rs`, `metadata_contract.rs`, `flow.rs`; native and Wine DLL tests; live; Windows VM | TLS port 7443 is the only game listener. No password login exists: the client never sends one. |
+| Host-made accounts, private profiles, up to four players per account | Implemented | v0.0.4 (2026-11-10) | `accounts.rs`, `manager_contract.rs`, `cli_options.rs`; live | `add-account`, `profile`, `add-player`, `rename`, `move-account` in [guide](guide.md). The old `/join` page is retired (`join.rs` checks 404). |
+| Create and delete players (Select Player) | Implemented | v0.0.1 (2026-11-09) | `player_contract.rs`; live | Four slots per account; names unique ignoring case (a guess in the guesses table). |
+| One server per data folder | Implemented | v0.0.19 (2026-11-15) | `data_lock.rs` | v0.0.19: a second server cannot open the same data folder. |
+| Account/player changes rolled back when a save fails | Implemented | v0.0.19 (2026-11-15) | `save_failures.rs` | v0.0.19. Other stores, such as mail and duel-result records, still log write failures without rolling back. |
+| Server-side deck check and regulation at Select Deck | Implemented | v0.0.1 (2026-11-09) | `regulation_contract.rs`, `deck_contract.rs` | Refused with `0x22CB`. Default banlist Season 16, set in Desktop or with `--regulation` (#15). |
+| Country flags | Partial | v0.0.1 (2026-11-09) | `country_contract.rs`; live | The client sends no country, so the host sets it per account (`set-country`) or it follows the login language. |
+| Login news | Implemented | v0.0.1 (2026-11-09) | `front_contract.rs` | The news no longer includes the deck-onboarding notice. |
 
 ## Map and menus
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| Main screen polls, map unlock, startup steps | Implemented | `flow.rs`, `front_contract.rs`, `startup_contract.rs`; live on Linux and the Windows VM | A cold start reaches a stable main screen (milestone M1). |
-| Shop, NPC duel, Avatar Settings and Satellite Plaza tiles | Implemented | `menu_contract.rs`, `event_contract.rs`; live | Each opens and returns to the map. |
-| Official Event and Championship tiles | Partial | `event_contract.rs`; live | They open and report no valid event (see Events and tournaments). |
-| Main Menu: Rental Card List, My Profile, Duel Log, BOOSTERPASS, Friend List, Ignore List, D-Mail, Team | Implemented | `menu_contract.rs`, `bp_contract.rs`, `friends_contract.rs`, `mail_contract.rs`, `team_contract.rs`; live | Card Album and Duel Options need nothing from the server. |
-| Auto Card Placing OFF (choose the zone for each monster) | Implemented | `duel_contract.rs`, `duel_stream_contract.rs`; live | Shipped in v0.0.18. |
-| Map tiles UNIZAWA and market (`btn5`, `btn6`) | Unsupported | Client search | No handler in `main.swf`. |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| Main screen polls, map unlock, startup steps | Implemented | v0.0.1 (2026-11-09) | `flow.rs`, `front_contract.rs`, `startup_contract.rs`; live on Linux and the Windows VM | A cold start reaches a stable main screen (milestone M1). |
+| Shop, NPC duel, Avatar Settings and Satellite Plaza tiles | Implemented | v0.0.1 (2026-11-09) | `menu_contract.rs`, `event_contract.rs`; live | Each opens and returns to the map. |
+| Official Event and Championship tiles | Partial | v0.0.1 (2026-11-09) | `event_contract.rs`; live | They open and report no valid event (see Events and tournaments). |
+| Main Menu: Rental Card List, My Profile, Duel Log, BOOSTERPASS, Friend List, Ignore List, D-Mail, Team | Implemented | v0.0.1 (2026-11-09) | `menu_contract.rs`, `bp_contract.rs`, `friends_contract.rs`, `mail_contract.rs`, `team_contract.rs`; live | Card Album and Duel Options need nothing from the server. |
+| Auto Card Placing OFF (choose the zone for each monster) | Implemented | v0.0.18 (2026-11-15) | `duel_contract.rs`, `duel_stream_contract.rs`; live | Shipped in v0.0.18. |
+| Map tiles UNIZAWA and market (`btn5`, `btn6`) | Unsupported | — | Client search | No handler in `main.swf`. |
 
 ## Shop and economy
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| Booster packs for BP | Implemented | `shop_contract.rs`, `bp_contract.rs`; live | Pack prices and the rarity runs are guesses (guesses table). 5000 BP at the start of an account. |
-| BP from duels (win 100, draw 50, loss 30), BOOSTERPASS codes, `give-bp` | Implemented | `bp_contract.rs`, `shop_contract.rs`; live; Windows VM (a mid-duel BP gift) | `give-bp`, `add-code`, `remove-code`, `codes` also work while the server runs. |
-| Structure decks SD001-SD005 | Implemented | `shop_contract.rs`; live | The starters 1-3 have no art and are not on sale. |
-| Protectors and avatar items for BP | Implemented | `shop_contract.rs`; live |  |
-| Trade Card (Blister's exchange pools) | Implemented | `shop_contract.rs`; live | #8, done 2026-11-14. |
-| Shop rental (5 cards, 100 BP, 7 days) | Implemented | `shop_contract.rs`, `rental_contract.rs`; live | #8. Returned early with the Return button (see Social). |
-| Special Packs | Unsupported | Client search | Event prizes whose contents are not in the client. The list is kept empty on purpose (#8). |
-| Presents between players | Unsupported | Client search | No screen builds a send request. Cards move by trade and rental; the host gives BP. |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| Booster packs for BP | Implemented | v0.0.1 (2026-11-09) | `shop_contract.rs`, `bp_contract.rs`; live | Pack prices and the rarity runs are guesses (guesses table). 5000 BP at the start of an account. |
+| BP from duels (win 100, draw 50, loss 30), BOOSTERPASS codes, `give-bp` | Implemented | v0.0.2 (2026-11-09) | `bp_contract.rs`, `shop_contract.rs`; live; Windows VM (a mid-duel BP gift) | `give-bp`, `add-code`, `remove-code`, `codes` also work while the server runs. |
+| Structure decks SD001-SD005 | Implemented | v0.0.1 (2026-11-09) | `shop_contract.rs`; live | The starters 1-3 have no art and are not on sale. |
+| Protectors and avatar items for BP | Implemented | v0.0.1 (2026-11-09) | `shop_contract.rs`; live |  |
+| Trade Card (Blister's exchange pools) | Implemented | v0.0.13 (2026-11-14) | `shop_contract.rs`; live | #8, done 2026-11-14. |
+| Shop rental (5 cards, 100 BP, 7 days) | Implemented | v0.0.13 (2026-11-14) | `shop_contract.rs`, `rental_contract.rs`; live | #8. Returned early with the Return button (see Social). |
+| Special Packs | Unsupported | — | Client search | Event prizes whose contents are not in the client. The list is kept empty on purpose (#8). |
+| Presents between players | Unsupported | — | Client search | No screen builds a send request. Cards move by trade and rental; the host gives BP. |
 
 ## Deck editor and collection
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| Collection (trunk), the starter deck | Implemented | `deck_contract.rs`, `front_contract.rs`; live |  |
-| Official character decks on Load Deck's Official tab | Implemented | `original_decks.rs`, `deck_contract.rs`; live | Nine decks (Yami Yugi, Jaden, Yusei) plus CONCEALERS DECK. |
-| Decks follow the player to another machine (Select Deck and Edit Deck saves) | Implemented | `deck_contract.rs`; live on two machines; Windows VM (an Edit Deck save reached the server) | Edit Deck saves need the connection DLL. A same-named deck on another machine is not replaced (playing guide). |
-| Delete a deck; bought structure decks in the deck list | Implemented | `deck_contract.rs`; live |  |
-| Side deck and Card Swap between match duels | Implemented | `duel_stream_contract.rs`; live | Dragging cards needs the hover-then-press method in AGENTS.md. |
-| Forbidden and Limited marks in Edit Deck | Implemented | Live in the game (v0.0.14) | Follows the banlist chosen. |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| Collection (trunk), the starter deck | Implemented | v0.0.1 (2026-11-09) | `deck_contract.rs`, `front_contract.rs`; live |  |
+| Official character decks on Load Deck's Official tab | Implemented | v0.0.12 (2026-11-13) | `original_decks.rs`, `deck_contract.rs`; live | Nine decks (Yami Yugi, Jaden, Yusei) plus CONCEALERS DECK. |
+| Decks follow the player to another machine (Select Deck and Edit Deck saves) | Implemented | v0.0.12 (2026-11-13) | `deck_contract.rs`; live on two machines; Windows VM (an Edit Deck save reached the server) | Edit Deck saves need the connection DLL. A same-named deck on another machine is not replaced (playing guide). |
+| Delete a deck; bought structure decks in the deck list | Implemented | v0.0.1 (2026-11-09) | `deck_contract.rs`; live |  |
+| Side deck and Card Swap between match duels | Implemented | v0.0.1 (2026-11-09) | `duel_stream_contract.rs`; live | Dragging cards needs the hover-then-press method in AGENTS.md. |
+| Forbidden and Limited marks in Edit Deck | Implemented | v0.0.14 (2026-11-14) | Live in the game (v0.0.14) | Follows the banlist chosen. |
 
 ## Duels: rules and engine
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| Native rules engine (EDOPro core, MR2), one process per duel | Implemented | `engine.rs`, `engine_cards.rs`, `duel_check.rs`; `tools/engine/parity.py` against the old sidecar | #3. No Node.js since v0.0.10. |
-| Card data validation and seeded duel sweeps | Implemented | `card_data.rs`, `card_sweep.rs` (4,684 cards), `original_decks.rs` (2,270 duels) | The sweep adds each card to the decks and checks engine/client-model consistency. A pass does not require that card to be summoned or activated, or verify the native UI. |
-| Card effects match their 2010–2012 text and rulings | Partial | `engine_cards.rs`, `engine/overrides/`; card reports (#7) | Overrides restore historical behavior and fix known script bugs. Not every effect or ruling has been checked. |
-| Duel check: the client's view against the engine after each step | Partial | `duel_check.rs`, `duelcheck_model.rs` (240 self-played duels); native checkpoints logged by the DLL; live on two clients | Complete menu and effect coverage and automatic UI replay are not done (roadmap). |
-| Choice windows: targets, tributes, positions, options, declarations, sums, orders | Partial | `translate_contract.rs`, the duel check's round trip, the card sweep; live for those seen | Built wherever the client has a window (history: Duel windows). A few answers are automatic because the client cannot show them (limits table). |
-| Chain questions follow Activation Message | Implemented | `duel_contract.rs`; live |  |
-| Duel clocks (180 s turn, total clock, run-out loses) | Implemented | `clock_contract.rs`; live | The settle-marker clock (#11) needs the DLL; `--duel-time 0,0` turns clocks off. |
-| Match Mode (best of three), Single, host LP | Implemented | `pvp_contract.rs`, `duel_contract.rs`; live |  |
-| Borrowed and traded cards in decks | Implemented | `regulation_contract.rs`, `rental_contract.rs` | A deck that used a card no longer owned is invalid until edited. |
-| Xyz and Link Monsters | Unsupported | No card data in the client | CARD_Prop has 0 Xyz of 4,702. Materials stay handled. |
-| Tag duels, Extra Deck reveals, cards removed from the duel, reloaded fields | Unsupported | Scripts searched | No card of the client makes them; they would fail the duel check if they came. |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| Native rules engine (EDOPro core, MR2), one process per duel | Implemented | v0.0.10 (2026-11-13) | `engine.rs`, `engine_cards.rs`, `duel_check.rs`; `tools/engine/parity.py` against the old sidecar | #3. No Node.js since v0.0.10. |
+| Card data validation and seeded duel sweeps | Implemented | v0.0.9 (2026-11-12) | `card_data.rs`, `card_sweep.rs` (4,684 cards), `original_decks.rs` (2,270 duels) | The sweep adds each card to the decks and checks engine/client-model consistency. A pass does not require that card to be summoned or activated, or verify the native UI. |
+| Card effects match their 2010–2012 text and rulings | Partial | v0.0.13 (2026-11-14) | `engine_cards.rs`, `engine/overrides/`; card reports (#7) | Overrides restore historical behavior and fix known script bugs. Not every effect or ruling has been checked. |
+| Duel check: the client's view against the engine after each step | Partial | v0.0.1 (2026-11-09) | `duel_check.rs`, `duelcheck_model.rs` (240 self-played duels); native checkpoints logged by the DLL; live on two clients | Complete menu and effect coverage and automatic UI replay are not done (roadmap). |
+| Choice windows: targets, tributes, positions, options, declarations, sums, orders | Partial | v0.0.1 (2026-11-09) | `translate_contract.rs`, the duel check's round trip, the card sweep; live for those seen | Built wherever the client has a window (history: Duel windows). A few answers are automatic because the client cannot show them (limits table). |
+| Chain questions follow Activation Message | Implemented | v0.0.1 (2026-11-09) | `duel_contract.rs`; live |  |
+| Duel clocks (180 s turn, total clock, run-out loses) | Implemented | v0.0.1 (2026-11-09) | `clock_contract.rs`; live | The settle-marker clock (#11) needs the DLL; `--duel-time 0,0` turns clocks off. |
+| Match Mode (best of three), Single, host LP | Implemented | v0.0.1 (2026-11-09) | `pvp_contract.rs`, `duel_contract.rs`; live |  |
+| Borrowed and traded cards in decks | Implemented | v0.0.1 (2026-11-09) | `regulation_contract.rs`, `rental_contract.rs` | A deck that used a card no longer owned is invalid until edited. |
+| Xyz and Link Monsters | Unsupported | — | No card data in the client | CARD_Prop has 0 Xyz of 4,702. Materials stay handled. |
+| Tag duels, Extra Deck reveals, cards removed from the duel, reloaded fields | Unsupported | — | Scripts searched | No card of the client makes them; they would fail the duel check if they came. |
 
 ## Duels: presentation
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| Summon, battle, chain and destruction animations | Implemented | `duel_stream_contract.rs`, `translate_contract.rs`; live | Tribute, Fusion, Synchro and Flip Summons as the original showed them (v0.0.17). The original CardBreak shatter is not used; CardVanish stands in. |
-| Duel dialogs in the card's own words | Implemented | `duel_stream_contract.rs`, `tools/mod` dialog logic; live; Windows VM | #10, needs the DLL. A card string as a hint and a Yes/No line were not seen live. |
-| Duel music follows the LP gap (3000 LP) | Implemented | Live (Disadvantage track at 5000 against 8000) | #14. The client does it itself; choosing the opening track is not built. |
-| What targets what: markers on hover between related cards | Partial | `translate_contract.rs`; duel check (84 equips, 121 lasting targets); live (Axe of Despair on Vorse Raider, both ways) | Equips and lasting targets only. Swords of Revealing Light has no engine target, and what the other six marker types meant is unknown (#16). |
-| An NPC's face-down cards hidden | Implemented | `yusei_contract.rs`, `npc_bot.rs`; live | Fixed 2026-11-13. |
-| Position change at the end of the Battle Phase drawn sideways | Partial | Live, six tries | One upright case on an owner's screen was seen and not reproduced; the duel check agrees with the engine. |
-| Higher resolution (4:3, sharper) | Partial | `tools/mod/resolution-test.c`; live on Linux; Windows VM | #1. Not applied when `yo3.exe` is opened directly. A Japanese or Korean IME and a second monitor are untested. True 16:9 is out of scope. |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| Summon, battle, chain and destruction animations | Implemented | v0.0.1 (2026-11-09) | `duel_stream_contract.rs`, `translate_contract.rs`; live | Tribute, Fusion, Synchro and Flip Summons as the original showed them (v0.0.17). The original CardBreak shatter is not used; CardVanish stands in. |
+| Duel dialogs in the card's own words | Implemented | v0.0.13 (2026-11-14) | `duel_stream_contract.rs`, `tools/mod` dialog logic; live; Windows VM | #10, needs the DLL. A card string as a hint and a Yes/No line were not seen live. |
+| Duel music follows the LP gap (3000 LP) | Implemented | v0.0.1 (2026-11-09) | Live (Disadvantage track at 5000 against 8000) | #14. The client does it itself; choosing the opening track is not built. |
+| What targets what: markers on hover between related cards | Partial | v0.0.1 (2026-11-09) | `translate_contract.rs`; duel check (84 equips, 121 lasting targets); live (Axe of Despair on Vorse Raider, both ways) | Equips and lasting targets only. Swords of Revealing Light has no engine target, and what the other six marker types meant is unknown (#16). |
+| An NPC's face-down cards hidden | Implemented | v0.0.11 (2026-11-13) | `yusei_contract.rs`, `npc_bot.rs`; live | Fixed 2026-11-13. |
+| Position change at the end of the Battle Phase drawn sideways | Partial | v0.0.1 (2026-11-09) | Live, six tries | One upright case on an owner's screen was seen and not reproduced; the duel check agrees with the engine. |
+| Higher resolution (4:3, sharper) | Partial | v0.0.13 (2026-11-14) | `tools/mod/resolution-test.c`; live on Linux; Windows VM | #1. Not applied when `yo3.exe` is opened directly. A Japanese or Korean IME and a second monitor are untested. True 16:9 is out of scope. |
 
 ## NPCs
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| NPC roster (25 named NPCs), levels, experience | Implemented | `duel_contract.rs`, `npc_bot.rs`; live |  |
-| Duel bot (look-ahead within and through the turn) | Implemented | `npc_bot.rs` (against the old CPU), `duel_check.rs`; live | Plans only around cards you show. The heroes (Yugi, Jaden, Yusei) always draw what they need. |
-| NPC lines in the duel chat, hero skills | Implemented | Unit tests in `npc.rs` and `banter.rs`; live | Lines are ours (`npc_lines.txt`). |
-| NPC duel logs | Implemented | `tools/mod/` logic; live; Windows VM | #12, needs the DLL. |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| NPC roster (25 named NPCs), levels, experience | Implemented | v0.0.1 (2026-11-09) | `duel_contract.rs`, `npc_bot.rs`; live |  |
+| Duel bot (look-ahead within and through the turn) | Implemented | v0.0.10 (2026-11-13) | `npc_bot.rs` (against the old CPU), `duel_check.rs`; live | Plans only around cards you show. The heroes (Yugi, Jaden, Yusei) always draw what they need. |
+| NPC lines in the duel chat, hero skills | Implemented | v0.0.10 (2026-11-13) | Unit tests in `npc.rs` and `banter.rs`; live | Lines are ours (`npc_lines.txt`). |
+| NPC duel logs | Implemented | v0.0.13 (2026-11-14) | `tools/mod/` logic; live; Windows VM | #12, needs the DLL. |
 
 ## PvP and matching
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| Auto Duel pairing (rule format) | Implemented | `matching_contract.rs`; live | Two clients matched and played to the end. |
-| Create Duel, passwords, Opponent's Limits (Friend, Team) | Implemented | `pvp_contract.rs`, `friends_contract.rs`, `team_contract.rs`; live |  |
-| A duel between two players on one table | Implemented | `pvp_contract.rs`, `duel_check.rs`; live; Windows VM (Windows against Linux) | Both views are kept in step by the duel check. |
-| Manner ratings after a player duel | Implemented | `manner_contract.rs`; live | Not asked after NPC duels or trades (the client has none). |
-| Players on separate machines over a LAN or the internet | Partial | LAN address against loopback (2026-11-07); Windows VM against Linux | Real friends' independent PCs, separate Windows machines and internet connections are not yet checked (roadmap). |
-| Duel robustness: engine death, disconnects, unresponsive hosts, crafted traffic | Partial | `robustness_contract.rs`; protocol monkey and soak runs; live server kill and freeze | A closed connection returns to the title. A frozen server that keeps TCP connections open still leaves the duel waiting without an error ([roadmap](roadmap.md#open-now)). |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| Auto Duel pairing (rule format) | Implemented | v0.0.1 (2026-11-09) | `matching_contract.rs`; live | Two clients matched and played to the end. |
+| Create Duel, passwords, Opponent's Limits (Friend, Team) | Implemented | v0.0.1 (2026-11-09) | `pvp_contract.rs`, `friends_contract.rs`, `team_contract.rs`; live |  |
+| A duel between two players on one table | Implemented | v0.0.1 (2026-11-09) | `pvp_contract.rs`, `duel_check.rs`; live; Windows VM (Windows against Linux) | Both views are kept in step by the duel check. |
+| Manner ratings after a player duel | Implemented | v0.0.1 (2026-11-09) | `manner_contract.rs`; live | Not asked after NPC duels or trades (the client has none). |
+| Players on separate machines over a LAN or the internet | Partial | v0.0.1 (2026-11-09) | LAN address against loopback (2026-11-07); Windows VM against Linux | Real friends' independent PCs, separate Windows machines and internet connections are not yet checked (roadmap). |
+| Duel robustness: engine death, disconnects, unresponsive hosts, crafted traffic | Partial | v0.0.1 (2026-11-09) | `robustness_contract.rs`; protocol monkey and soak runs; live server kill and freeze | A closed connection returns to the title. A frozen server that keeps TCP connections open still leaves the duel waiting without an error ([roadmap](roadmap.md#open-now)). |
 
 ## Watching and duel logs
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| Watch Duel on a duelling player | Implemented | `duel_stream_contract.rs`, `pvp_contract.rs`; live | A duel closed to watchers cannot be watched by going around the menu (v0.0.19). |
-| Duel logs of player duels (Latest Duel Logs, replay) | Implemented | `duel_stream_contract.rs`; live | `duellog.rs`; a match keeps its last duel only. |
-| Duel logs of NPC duels | Implemented | See NPCs | #12. |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| Watch Duel on a duelling player | Implemented | v0.0.1 (2026-11-09) | `duel_stream_contract.rs`, `pvp_contract.rs`; live | A duel closed to watchers cannot be watched by going around the menu (v0.0.19). |
+| Duel logs of player duels (Latest Duel Logs, replay) | Implemented | v0.0.1 (2026-11-09) | `duel_stream_contract.rs`; live | `duellog.rs`; a match keeps its last duel only. |
+| Duel logs of NPC duels | Implemented | v0.0.13 (2026-11-14) | See NPCs | #12. |
 
 ## Social: chat, friends, mail, teams, trade, rental
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| Chat rooms, whispers, room list, team chat | Implemented | `chat_contract.rs`; live |  |
-| Player search by name, level, id, language, chat room, manner, status | Implemented | `search_contract.rs`; live | The events criterion lists nobody. |
-| Friends and the ignore list | Implemented | `friends_contract.rs`; live |  |
-| D-Mail, team mail | Implemented | `mail_contract.rs`, `team_contract.rs`; live | Mail waits for offline players. |
-| Teams | Implemented | `team_contract.rs`; live | The team ranking page is empty (see Website links). |
-| Card trade between players | Implemented | `trade_contract.rs`; live |  |
-| Card rental between players (1, 3, 7, 14 days) | Implemented | `rental_contract.rs`; live, including a term's end | A Deck rental (three lists) was not seen live. |
-| Return a rental early | Implemented | `tools/mod/rental-return-test.c`; live on two clients; Windows VM | #13, needs the DLL. There is no confirmation question. |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| Chat rooms, whispers, room list, team chat | Implemented | v0.0.1 (2026-11-09) | `chat_contract.rs`; live |  |
+| Player search by name, level, id, language, chat room, manner, status | Implemented | v0.0.1 (2026-11-09) | `search_contract.rs`; live | The events criterion lists nobody. |
+| Friends and the ignore list | Implemented | v0.0.1 (2026-11-09) | `friends_contract.rs`; live |  |
+| D-Mail, team mail | Implemented | v0.0.1 (2026-11-09) | `mail_contract.rs`, `team_contract.rs`; live | Mail waits for offline players. |
+| Teams | Implemented | v0.0.1 (2026-11-09) | `team_contract.rs`; live | The team ranking page is empty (see Website links). |
+| Card trade between players | Implemented | v0.0.1 (2026-11-09) | `trade_contract.rs`; live |  |
+| Card rental between players (1, 3, 7, 14 days) | Implemented | v0.0.1 (2026-11-09) | `rental_contract.rs`; live, including a term's end | A Deck rental (three lists) was not seen live. |
+| Return a rental early | Implemented | v0.0.15 (2026-11-14) | `tools/mod/rental-return-test.c`; live on two clients; Windows VM | #13, needs the DLL. There is no confirmation question. |
 
 ## Events and tournaments
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| User events (Satellite Plaza): create, list, join, lobby, bracket, knockout | Implemented | `user_event_contract.rs`; live with three players (a bye and a final) | Open events survive a restart; a running one ends at a restart. The client has no Ready/Standby request. |
-| Official Events (Stadium): Gunslinger, Duelist Trial, Evolution and other matches | Not implemented | `event_contract.rs` (the empty list only) | #18. The tile opens and reports no valid event. Research is in the history; planned for a public server (roadmap). |
-| Championship (Tournament Map) | Not implemented | `event_contract.rs` (the no-event path only) | #17. Needs a host-scheduled `event_type` 10 event. |
-| Leaderboard and team ranking from real results | Not implemented | Not verified | The pages exist but are empty (see Website links). Convenience features are tracked in #16. |
-| Official-event and Y.O.C titles | Not implemented | Not verified | They wait for those events. |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| User events (Satellite Plaza): create, list, join, lobby, bracket, knockout | Implemented | v0.0.1 (2026-11-09) | `user_event_contract.rs`; live with three players (a bye and a final) | Open events survive a restart; a running one ends at a restart. The client has no Ready/Standby request. |
+| Official Events (Stadium): Gunslinger, Duelist Trial, Evolution and other matches | Not implemented | — | `event_contract.rs` (the empty list only) | #18. The tile opens and reports no valid event. Research is in the history; planned for a public server (roadmap). |
+| Championship (Tournament Map) | Not implemented | — | `event_contract.rs` (the no-event path only) | #17. Needs a host-scheduled `event_type` 10 event. |
+| Leaderboard and team ranking from real results | Not implemented | — | Not verified | The pages exist but are empty (see Website links). Convenience features are tracked in #16. |
+| Official-event and Y.O.C titles | Not implemented | — | Not verified | They wait for those events. |
 
 ## Avatars and titles
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| Avatar Settings: save, parts lists, a new look reaching others at once | Implemented | `character_contract.rs`; live on two clients (v0.0.16) | An avatar must have the game's own size. |
-| Millennium Eye against Pegasus | Implemented | Unit tests in `npc.rs`; live with and without the Eye |  |
-| Titles earned by play (160 in the catalogue; thresholds are ours) | Partial | `titles_contract.rs`; live (RECKLESS DUELIST) | Some titles are not earned yet (roadmap). Staff and promotion titles come from `grant-title`. |
-| Event and Championship titles | Not implemented | Not verified | With those events. |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| Avatar Settings: save, parts lists, a new look reaching others at once | Implemented | v0.0.16 (2026-11-14) | `character_contract.rs`; live on two clients (v0.0.16) | An avatar must have the game's own size. |
+| Millennium Eye against Pegasus | Implemented | v0.0.16 (2026-11-14) | Unit tests in `npc.rs`; live with and without the Eye |  |
+| Titles earned by play (160 in the catalogue; thresholds are ours) | Partial | v0.0.18 (2026-11-15) | `titles_contract.rs`; live (RECKLESS DUELIST) | Some titles are not earned yet (roadmap). Staff and promotion titles come from `grant-title`. |
+| Event and Championship titles | Not implemented | — | Not verified | With those events. |
 
 ## Website links
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| Links to Konami's old website open the host's own `/web/` pages | Implemented | `tools/mod/web-links-test.c`; live (Leaderboard, Official Website); pages in `web.rs` | v0.0.18, needs the DLL (MOD_ABI 3). The pages say what this server has. |
-| Leaderboard, team ranking and BOOSTERPASS page contents | Partial | Live | Placeholder text only; no data (roadmap, later). |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| Links to Konami's old website open the host's own `/web/` pages | Implemented | v0.0.18 (2026-11-15) | `tools/mod/web-links-test.c`; live (Leaderboard, Official Website); pages in `web.rs` | v0.0.18, needs the DLL (MOD_ABI 3). The pages say what this server has. |
+| Leaderboard, team ranking and BOOSTERPASS page contents | Partial | v0.0.18 (2026-11-15) | Live | Placeholder text only; no data (roadmap, later). |
 
 ## Desktop app
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| Local play, join a server, host friends, activity, invitations | Implemented | `connections.rs`, `networking.rs`, `preferences.rs`, `server_options.rs`, `direct_install.rs`; live on Linux; Windows VM | Native Windows 10 is not verified. |
-| Application updates (release check, download, activation) | Partial | `update_check.rs`, `update_install.rs`, `update_activation.rs`; packaged-update test; Windows VM | The first published GUI-to-GUI update and native Windows UAC are not verified. |
-| Bug reports and diagnostic exports | Partial | `reports.rs`, `bug_evidence.rs`; Wine | Real GitHub sign-in and publishing were tested only with mocks. |
-| Banlist and Resolution settings | Implemented | `server_options.rs`, `preferences.rs`; live | #15, #1. |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| Local play, join a server, host friends, activity, invitations | Implemented | v0.0.4 (2026-11-10) | `connections.rs`, `networking.rs`, `preferences.rs`, `server_options.rs`, `direct_install.rs`; live on Linux; Windows VM | Native Windows 10 is not verified. |
+| Application updates (release check, download, activation) | Partial | v0.0.4 (2026-11-10) | `update_check.rs`, `update_install.rs`, `update_activation.rs`; packaged-update test; Windows VM | The first published GUI-to-GUI update and native Windows UAC are not verified. |
+| Bug reports and diagnostic exports | Partial | v0.0.7 (2026-11-12) | `reports.rs`, `bug_evidence.rs`; Wine | Real GitHub sign-in and publishing were tested only with mocks. |
+| Banlist and Resolution settings | Implemented | v0.0.13 (2026-11-14) | `server_options.rs`, `preferences.rs`; live | #15, #1. |
 
 ## Scripts and command line
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| Server, accounts, profiles, admin commands, `play.sh` and `play.cmd` | Implemented | `cli_options.rs`, `manager_contract.rs`; live; Windows VM (Scripts bundle) | See [guide](guide.md) and [scripts](scripts.md). |
-| Headless client and the monkeys | Implemented | `tools/client/test_vclient.py`; monkey runs | Developer tools (`vclient.sh`, `protocol-monkey.sh`, `ui-monkey.py`). |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| Server, accounts, profiles, admin commands, `play.sh` and `play.cmd` | Implemented | v0.0.1 (2026-11-09) | `cli_options.rs`, `manager_contract.rs`; live; Windows VM (Scripts bundle) | See [guide](guide.md) and [scripts](scripts.md). |
+| Headless client and the monkeys | Implemented | v0.0.1 (2026-11-09) | `tools/client/test_vclient.py`; monkey runs | Developer tools (`vclient.sh`, `protocol-monkey.sh`, `ui-monkey.py`). |
 
 ## Connection DLL and direct start
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| Connection DLL: login, ordinal imports, local cookies, fail-closed injection | Implemented | `tools/mod/test.sh`, `test-loader.sh`; Windows VM | Required. A failed hook byte check stops the game. |
-| Opening the game directly (WINMM loader) | Partial | `tools/mod/test-direct.sh`, `direct_install.rs`; Windows VM, standard user | Protected-folder installation and reinstalling a missing runtime are not verified; Windows 10 is not checked. |
-| Exit guard at teardown | Implemented | `tools/mod/teardown-test.c`; live | Fixed after a crash mid-duel on Windows. |
-| Native game exit `0xc0000005` from a player's recording | Partial | Not verified | Not reproduced in seven native Windows 11 launches; a crash dump is needed. |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| Connection DLL: login, ordinal imports, local cookies, fail-closed injection | Implemented | v0.0.4 (2026-11-10) | `tools/mod/test.sh`, `test-loader.sh`; Windows VM | Required. A failed hook byte check stops the game. |
+| Opening the game directly (WINMM loader) | Partial | v0.0.4 (2026-11-10) | `tools/mod/test-direct.sh`, `direct_install.rs`; Windows VM, standard user | Protected-folder installation and reinstalling a missing runtime are not verified; Windows 10 is not checked. |
+| Exit guard at teardown | Implemented | v0.0.13 (2026-11-14) | `tools/mod/teardown-test.c`; live | Fixed after a crash mid-duel on Windows. |
+| Native game exit `0xc0000005` from a player's recording | Partial | — | Not verified | Not reproduced in seven native Windows 11 launches; a crash dump is needed. |
 
 ## Platforms
 
-| Feature | Status | Verified by | Notes / issues |
-| --- | --- | --- | --- |
-| Linux with Wine | Implemented | Live on the private headless client; all tests | The development platform. |
-| Windows 10 and 11, 64-bit | Partial | Windows 11 VM (build 22000) | Windows 11 passed for Desktop and Scripts. Windows 10 and protected folders are not verified. |
-| Windows 7 | Unsupported | Out of scope | Do not pursue unless reopened. |
-| macOS | Unsupported | No supported build | See [launcher](launcher.md). |
+| Feature | Status | Since | Verified by | Notes / issues |
+| --- | --- | --- | --- | --- |
+| Linux with Wine | Implemented | v0.0.1 (2026-11-09) | Live on the private headless client; all tests | The development platform. |
+| Windows 10 and 11, 64-bit | Partial | v0.0.1 (2026-11-09) | Windows 11 VM (build 22000) | Windows 11 passed for Desktop and Scripts. Windows 10 and protected folders are not verified. |
+| Windows 7 | Unsupported | — | Out of scope | Do not pursue unless reopened. |
+| macOS | Unsupported | — | No supported build | See [launcher](launcher.md). |
 
 ## Client limits and what the DLL changed
 
