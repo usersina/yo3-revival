@@ -191,7 +191,7 @@ impl App {
             pill("", Some(Message::Minimize), Kind::Window(Glyph::Minimize), 34, 28),
             pill("", Some(Message::CloseRequested), Kind::Window(Glyph::Close), 34, 28),
         ].spacing(3);
-        let bar = row![yo3_skin::logo(30.0), Space::new().width(Fill), tabs, Space::new().width(Fill), controls]
+        let bar = row![yo3_skin::logo(Some(APP_ICON.clone()), 30.0), Space::new().width(Fill), tabs, Space::new().width(Fill), controls]
             .align_y(Center).padding([0, 12]).height(Fill);
         container(yo3_skin::title_strip(mouse_area(bar).on_press(Message::Drag))).height(50).into()
     }
@@ -241,6 +241,11 @@ impl App {
         ])).width(470).height(height).into()
     }
 }
+
+/// The app's own icon (the Duel Disk with the Monster Reborn badge), decoded at build time for the window icon.
+static APP_ICON: std::sync::LazyLock<iced::widget::image::Handle> = std::sync::LazyLock::new(|| {
+    iced::widget::image::Handle::from_rgba(256, 256, include_bytes!(concat!(env!("OUT_DIR"), "/launcher-icon.rgba")).to_vec())
+});
 
 const GUIDE: &str = "https://github.com/usersina/yo3-revival/blob/main/docs/launcher.md";
 const RELEASES: &str = "https://github.com/usersina/yo3-revival/releases/latest";

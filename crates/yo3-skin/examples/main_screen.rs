@@ -91,7 +91,7 @@ impl Spike {
             pill("", Some(Msg::Minimize), Kind::Window(Glyph::Minimize), 34, 28),
             pill("", Some(Msg::Exit), Kind::Window(Glyph::Close), 34, 28),
         ].spacing(3);
-        let bar = row![yo3_skin::logo(30.0), Space::new().width(Fill), tabs, Space::new().width(Fill), controls]
+        let bar = row![yo3_skin::logo(None, 30.0), Space::new().width(Fill), tabs, Space::new().width(Fill), controls]
             .align_y(Center).padding([0, 12]).height(Fill);
         let title = container(yo3_skin::title_strip(mouse_area(bar).on_press(Msg::Drag))).height(50);
 

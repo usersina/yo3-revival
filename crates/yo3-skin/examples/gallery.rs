@@ -29,7 +29,7 @@ impl Gallery {
 
     fn view(&self) -> Element<'_, Msg> {
         let title = container(yo3_skin::title_strip(row![
-            yo3_skin::logo(30.0), Space::new().width(Fill),
+            yo3_skin::logo(None, 30.0), Space::new().width(Fill),
             pill("ACTIVE TAB", Some(Msg::Click), Kind::Tab { active: true }, 176, 34),
             pill("TAB", Some(Msg::Click), Kind::Tab { active: false }, 176, 34),
             Space::new().width(Fill),

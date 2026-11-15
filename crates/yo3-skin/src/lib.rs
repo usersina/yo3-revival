@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::sync::LazyLock;
 use iced::font::{Style as FontStyle, Weight};
 use iced::widget::canvas::{self, Fill, Frame, Geometry, Path, Stroke, gradient::Linear};
-use iced::widget::{button, center, checkbox, container, mouse_area, opaque, pick_list, stack, svg, text, text_input};
+use iced::widget::{button, center, checkbox, container, image, mouse_area, opaque, pick_list, stack, svg, text, text_input};
 use iced::{Background, Border, Color, ContentFit, Element, Font, Length::Fill as Grow, Padding, Pixels, Point, Rectangle,
     Renderer, Size, Theme, mouse};
 
@@ -215,7 +215,18 @@ impl<M: Clone> canvas::Program<M> for Pill<M> {
                     frame.fill(&slant(shape, lean), vertical(shape, &[(0.0, CHROME_LIGHT), (0.5, CHROME), (1.0, CHROME_DARK)]));
                     let face = inset(shape, 2.0);
                     frame.fill(&slant(face, lean * face.height / shape.height), vertical(face, &[(0.0, NAVY_TOP), (0.49, NAVY), (0.51, NAVY_LOW), (1.0, NAVY_BASE)]));
-                    frame.fill_rectangle(Point::new(face.x + lean * 0.3, face.y + face.height - 2.5), Size::new(face.width - lean * 0.6, 2.5), GLOW);
+                    // The underline is the tab's own bottom edge, so it leans with the tab instead of poking out.
+                    let face_lean = lean * face.height / shape.height;
+                    // Along the slanted sides: at height y the left edge is at x + lean·(1 − y/h), the right one at
+                    // x + w − lean·y/h.
+                    let (top, bottom) = (face.height - 2.5, face.height);
+                    let left = |y: f32| face.x + face_lean * (1.0 - y / face.height);
+                    let right = |y: f32| face.x + face.width - face_lean * y / face.height;
+                    let edge = Path::new(|b| {
+                        b.move_to(Point::new(left(top), face.y + top)); b.line_to(Point::new(right(top), face.y + top));
+                        b.line_to(Point::new(right(bottom), face.y + bottom)); b.line_to(Point::new(left(bottom), face.y + bottom)); b.close();
+                    });
+                    frame.fill(&edge, GLOW);
                 } else {
                     let face = alpha(if hovered { BAR_TOP } else { BAR }, 0.9);
                     frame.fill(&slant(shape, lean), face);
@@ -266,19 +277,22 @@ pub fn pill<'a, M: Clone + 'a>(label: impl Into<String>, on_press: Option<M>, ki
     canvas::Canvas::new(Pill { label: label.into(), on_press, kind }).width(width).height(height).into()
 }
 
-struct Logo;
+/// The launcher's name, after a mark: the drawn diamond, or nothing when the real icon stands beside it.
+struct Logo { mark: bool }
 impl<M> canvas::Program<M> for Logo {
     type State = Memo;
     fn draw(&self, state: &Memo, renderer: &Renderer, _theme: &Theme, bounds: Rectangle, _cursor: mouse::Cursor) -> Vec<Geometry> {
-        vec![state.draw(renderer, bounds.size(), String::new(), |frame| {
+        vec![state.draw(renderer, bounds.size(), format!("{}", self.mark), |frame| {
         let (cy, r) = (bounds.height / 2.0, bounds.height * 0.3);
         let diamond = |r: f32| Path::new(|b| {
             b.move_to(Point::new(r + 4.0, cy - r)); b.line_to(Point::new(2.0 * r + 4.0, cy)); b.line_to(Point::new(r + 4.0, cy + r));
             b.line_to(Point::new(4.0, cy)); b.close();
         });
-        frame.stroke(&diamond(r), Stroke::default().with_color(alpha(GLOW, 0.35)).with_width(5.0));
-        frame.fill(&diamond(r), vertical(Rectangle::new(Point::new(4.0, cy - r), Size::new(2.0 * r, 2.0 * r)), &[(0.0, Color::WHITE), (0.5, GLOW), (1.0, PLAY)]));
-        let at = Point::new(2.0 * r + 14.0, cy);
+        if self.mark {
+            frame.stroke(&diamond(r), Stroke::default().with_color(alpha(GLOW, 0.35)).with_width(5.0));
+            frame.fill(&diamond(r), vertical(Rectangle::new(Point::new(4.0, cy - r), Size::new(2.0 * r, 2.0 * r)), &[(0.0, Color::WHITE), (0.5, GLOW), (1.0, PLAY)]));
+        }
+        let at = Point::new(if self.mark { 2.0 * r + 14.0 } else { 2.0 }, cy);
         let t = canvas::Text { content: "YO3 REVIVAL".into(), position: Point::new(at.x + 1.0, at.y + 1.0), color: alpha(Color::BLACK, 0.6), size: Pixels(bounds.height * 0.62),
             font: DISPLAY_ITALIC, align_y: iced::alignment::Vertical::Center, ..canvas::Text::default() };
         frame.fill_text(t.clone());
@@ -287,8 +301,16 @@ impl<M> canvas::Program<M> for Logo {
     }
 }
 /// The launcher's name with its diamond mark, for the title bar.
-pub fn logo<'a, M: 'a>(height: f32) -> Element<'a, M> {
-    canvas::Canvas::new(Logo).width(height * 5.2).height(height).into()
+/// The launcher's name for the title bar: after the app's own icon when given (the launcher passes its window
+/// icon), else after a drawn diamond (the examples, which have no icon of their own).
+pub fn logo<'a, M: 'a>(icon: Option<image::Handle>, height: f32) -> Element<'a, M> {
+    match icon {
+        Some(icon) => iced::widget::row![
+            image(icon).width(height).height(height).border_radius(height * 0.18).filter_method(image::FilterMethod::Linear),
+            canvas::Canvas::new(Logo { mark: false }).width(height * 4.4).height(height),
+        ].spacing(8).align_y(iced::Alignment::Center).into(),
+        None => canvas::Canvas::new(Logo { mark: true }).width(height * 5.2).height(height).into(),
+    }
 }
 
 /// The parts of the window that are not panels: the title bar strip, the footer strip.
