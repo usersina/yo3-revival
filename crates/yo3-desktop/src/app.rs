@@ -72,35 +72,38 @@ impl App {
             Err(error) => { problem.get_or_insert(format!("YO3 Revival needs repair: {error:#}")); None }
         };
         let ctx = Ctx { root, backend, store, settings };
-        let first_run = !std::path::Path::new(&ctx.settings.game_dir).join("yo3.exe").is_file();
         let mut home = home::State::default();
         if let Some(problem) = problem { home.fail(&ctx, problem) }
-        let setup = first_run.then(|| setup::State::new(&ctx, false));
+        // Until setup has been finished once, the launcher opens on it.
+        let mut setup = (!ctx.settings.setup_complete).then(|| setup::State::new(&ctx, setup::Step::Welcome, false));
         let mut tasks = vec![
             home.check(&ctx).map(Message::Home),
             home.load_banlists(&ctx).map(Message::Home),
             Task::perform(async { updates::check().await.map_err(|e| format!("{e:#}")) }, Message::UpdateChecked),
             listen_for_second_starts(&ctx.root, claim),
         ];
-        if let Some(setup) = &setup { tasks.push(setup.check(&ctx).map(Message::Setup)) }
+        if let Some(setup) = &mut setup { tasks.push(setup.start(&ctx).map(Message::Setup)) }
         (Self { ctx, home, setup, dialog: None, update: None, startup, quitting: false }, Task::batch(tasks))
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Home(home::Message::SetUp) => return self.open_setup(),
+            Message::Home(home::Message::SetUp) => return self.open_setup(setup::Step::Game),
             Message::Home(home::Message::Repair) => self.dialog = Some(Dialog::Repair),
             Message::Home(message) => return self.home.update(message, &mut self.ctx).map(Message::Home),
-            Message::Setup(setup::Message::Saved(Ok(settings))) => {
+            Message::Setup(setup::Message::Saved(Ok((settings, note)))) => {
                 self.ctx.settings = *settings;
                 self.setup = None;
+                if let Some(note) = note { self.home.fail(&self.ctx, note) }
                 return Task::batch([self.home.check(&self.ctx).map(Message::Home), self.home.load_banlists(&self.ctx).map(Message::Home)]);
             }
+            Message::Setup(setup::Message::Open(url)) => return self.update(Message::OpenLink(url.into())),
+            Message::Setup(setup::Message::Repair) => self.dialog = Some(Dialog::Repair),
             Message::Setup(setup::Message::Cancel) => self.setup = None,
             Message::Setup(message) => if let Some(setup) = &mut self.setup { return setup.update(message, &self.ctx).map(Message::Setup) },
             Message::Open(dialog) => self.dialog = Some(dialog),
             Message::CloseDialog => self.dialog = None,
-            Message::ChangeGame => { self.dialog = None; return self.open_setup() }
+            Message::ChangeGame => { self.dialog = None; return self.open_setup(setup::Step::Welcome) }
             Message::Show => return window::latest().and_then(|id| Task::batch([window::minimize(id, false), window::gain_focus(id)])),
             Message::Drag => return window::latest().and_then(window::drag),
             Message::Minimize => return window::latest().and_then(|id| window::minimize(id, true)),
@@ -141,9 +144,9 @@ impl App {
         Task::none()
     }
 
-    fn open_setup(&mut self) -> Task<Message> {
-        let setup = setup::State::new(&self.ctx, true);
-        let task = setup.check(&self.ctx).map(Message::Setup);
+    fn open_setup(&mut self, step: setup::Step) -> Task<Message> {
+        let mut setup = setup::State::new(&self.ctx, step, true);
+        let task = setup.start(&self.ctx).map(Message::Setup);
         self.setup = Some(setup);
         task
     }
@@ -206,7 +209,7 @@ impl App {
                 beta version. Until then, the Desktop guide and the project's issue tracker on GitHub have the answers.".into(),
                 row![pill("Guide", Some(Message::OpenLink(GUIDE.into())), Kind::Primary, 120, 38), ok()].spacing(10).into(), 250.0),
             Dialog::Settings => ("Settings", format!("Game folder:\n{}\n\nMore settings come in a later beta version.", self.ctx.settings.game_dir),
-                row![pill("Change", Some(Message::ChangeGame), Kind::Primary, 120, 38), ok()].spacing(10).into(), 270.0),
+                row![pill("Run setup again", Some(Message::ChangeGame), Kind::Primary, 170, 38), ok()].spacing(10).into(), 270.0),
             Dialog::Repair => ("YO3 Revival needs repair", "Some of YO3 Revival's own files are missing or changed, often after an \
                 antivirus scan. Download the latest release again and replace this folder with it; your settings are kept.".into(),
                 row![pill("Releases", Some(Message::OpenLink(RELEASES.into())), Kind::Primary, 120, 38), ok()].spacing(10).into(), 260.0),

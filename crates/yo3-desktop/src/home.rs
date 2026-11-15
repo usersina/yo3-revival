@@ -69,9 +69,9 @@ impl Play {
     }
 }
 
-/// One plain sentence, with the technical text behind Details.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Notice { pub summary: String, pub details: Option<String>, pub open: bool }
+/// One plain sentence, with the technical text behind Details and at most one action.
+#[derive(Clone, Debug)]
+pub struct Notice { pub summary: String, pub details: Option<String>, pub open: bool, pub action: Option<(&'static str, Message)> }
 
 /// A banlist choice: the value saved for the server, the name shown.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -85,7 +85,10 @@ pub struct Live { running: bool, ready: bool, failure: Option<String> }
 pub enum Message {
     Tab(Tab),
     Play,
-    Started(Result<(), String>),
+    Started(Result<bool, String>),
+    /// Set up direct start in a protected game folder (asks for permission once).
+    AllowDirect,
+    DirectAllowed(Result<(), String>),
     CloseGame,
     GameClosed(Result<(), String>),
     Banlist(Banlist),
@@ -94,8 +97,9 @@ pub enum Message {
     Tick,
     Polled(Result<Live, String>),
     Recheck,
-    Checked(Readiness),
-    /// Handled by the window: open the game folder screen.
+    Checked(Readiness, Option<String>),
+    FingerprintSaved(Result<(), String>),
+    /// Handled by the window: open setup at the Game step (Set up, or the missing-game banner's Fix).
     SetUp,
     /// Handled by the window: explain the repair.
     Repair,
@@ -124,20 +128,37 @@ impl State {
                 self.notice = None;
                 return job(move || {
                     backend.start_server(&settings)?;
-                    // Opening yo3.exe without the launcher keeps working with your own server.
-                    if let yo3_desktop::direct::AutoDirect::Skipped(why) = backend.auto_direct(&settings, None) {
-                        backend.diagnostics.line(&format!("Direct start not set up: {why}"));
-                    }
-                    backend.play(&settings, None, &settings.local_account)
+                    // Opening yo3.exe without the launcher keeps working with your own server, when setup chose it.
+                    let needs_permission = settings.direct_start && match backend.auto_direct(&settings, None) {
+                        yo3_desktop::direct::AutoDirect::Ready => false,
+                        yo3_desktop::direct::AutoDirect::NeedsPermission => true,
+                        yo3_desktop::direct::AutoDirect::Skipped(why) => { backend.diagnostics.line(&format!("Direct start not set up: {why}")); false }
+                    };
+                    backend.play(&settings, None, &settings.local_account)?;
+                    Ok(needs_permission)
                 }, Message::Started);
             }
             Message::Started(result) => {
                 self.game.starting = false;
                 match result {
-                    Ok(()) => { self.game.running = true; self.game.ready = false }
+                    Ok(needs_permission) => {
+                        self.game.running = true;
+                        self.game.ready = false;
+                        if needs_permission {
+                            self.notice = Some(Notice { summary: "Opening the game without the launcher needs permission once, because the game folder is protected.".into(),
+                                details: None, open: false, action: Some(("Allow", Message::AllowDirect)) });
+                        }
+                    }
                     Err(error) => { self.fail(ctx, error); return self.check(ctx) }
                 }
             }
+            Message::AllowDirect => {
+                let Some(backend) = ctx.backend.clone() else { return Task::none() };
+                let settings = ctx.settings.clone();
+                self.notice = None;
+                return job(move || backend.enable_direct(&settings, None), Message::DirectAllowed);
+            }
+            Message::DirectAllowed(result) => if let Err(error) = result { self.fail(ctx, error) },
             Message::CloseGame => {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 self.game.closing = true;
@@ -173,7 +194,16 @@ impl State {
                 if ended { return self.check(ctx) }
             }
             Message::Recheck => return self.check(ctx),
-            Message::Checked(readiness) => self.game.readiness = Some(readiness),
+            Message::Checked(readiness, fingerprint) => {
+                self.game.readiness = Some(readiness);
+                // The full check passed for a changed game: remember it, so the next start is quick again.
+                if let (Some(fingerprint), Some(store)) = (fingerprint, ctx.store.clone()) && fingerprint != ctx.settings.game_fingerprint {
+                    ctx.settings.game_fingerprint = fingerprint.clone();
+                    let settings = ctx.settings.clone();
+                    return Task::perform(async move { store.run(move |db| db.save_settings(&settings)).await.map_err(|e| format!("{e:#}")) }, Message::FingerprintSaved);
+                }
+            }
+            Message::FingerprintSaved(result) => if let Err(error) = result { self.fail(ctx, error) },
             Message::ToggleDetails => if let Some(notice) = &mut self.notice { notice.open = !notice.open },
             Message::Dismiss => self.notice = None,
             Message::SetUp | Message::Repair => {}
@@ -181,18 +211,22 @@ impl State {
         Task::none()
     }
 
-    /// Checks the game folder and YO3 Revival's own files in the background.
+    /// Checks the game folder and YO3 Revival's own files in the background. When `yo3.exe` is unchanged since the last
+    /// full check, only YO3 Revival's own files are looked at again (#28); Play checks the game itself anyway.
     pub fn check(&mut self, ctx: &Ctx) -> Task<Message> {
         let Some(backend) = ctx.backend.clone() else { return Task::none() };
         if self.game.running || self.game.starting { return Task::none() }
         self.game.readiness = None;
         let settings = ctx.settings.clone();
         Task::perform(async move {
-            tokio::task::spawn_blocking(move || match backend.verify_setup(&settings, None) {
-                Ok(()) => Readiness::Ready,
-                Err(error) => match backend.readiness(&settings) { Readiness::Ready => Readiness::ValidationProblem(format!("{error:#}")), problem => problem },
-            }).await.unwrap_or_else(|error| Readiness::ValidationProblem(error.to_string()))
-        }, Message::Checked)
+            tokio::task::spawn_blocking(move || {
+                if let Some(quick) = backend.quick_readiness(&settings) { return (quick, None) }
+                match backend.verify_setup(&settings, None) {
+                    Ok(()) => (Readiness::Ready, yo3_desktop::setup_check::fingerprint(std::path::Path::new(&settings.game_dir)).ok()),
+                    Err(error) => (match backend.readiness(&settings) { Readiness::Ready => Readiness::ValidationProblem(format!("{error:#}")), problem => problem }, None),
+                }
+            }).await.unwrap_or_else(|error| (Readiness::ValidationProblem(error.to_string()), None))
+        }, |(readiness, fingerprint)| Message::Checked(readiness, fingerprint))
     }
 
     /// The game's banlist names, read in the background (the game's data takes a moment).
@@ -210,7 +244,7 @@ impl State {
             _ => Hint::General,
         };
         let shown = error_presentation::present(&error, hint, &crate::app::masks(ctx));
-        self.notice = Some(Notice { summary: shown.summary, details: shown.diagnosis, open: false });
+        self.notice = Some(Notice { summary: shown.summary, details: shown.diagnosis, open: false, action: None });
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -220,10 +254,22 @@ impl State {
     pub fn view<'a>(&'a self, ctx: &'a Ctx) -> Element<'a, Message> {
         let side = match self.tab { Tab::Single => self.singleplayer(ctx), Tab::Multi => multiplayer() };
         let news = match self.tab { Tab::Single => news(&WELCOME), Tab::Multi => news(&MULTIPLAYER_NEWS) };
-        row![
+        let panels = row![
             container(yo3_skin::panel(Some("Information"), news)).width(Fill).height(Fill),
             container(side).width(372).height(Fill),
-        ].spacing(16).padding([16, 18]).height(Fill).into()
+        ].spacing(16).height(Fill);
+        let mut page = column![].spacing(10).padding([16, 18]).height(Fill);
+        // The game folder moved or was removed since setup: say so plainly, with the fix, instead of a broken button.
+        if game_missing(&ctx.settings) {
+            page = page.push(container(row![
+                container(Space::new().width(10).height(10)).style(|_| dot(color::BAD)),
+                text("We can't find your game.").size(15).font(BODY_BOLD).color(color::INK),
+                Space::new().width(Fill),
+                pill("Fix", Some(Message::SetUp), Kind::Primary, 90, 32),
+            ].spacing(10).align_y(Center)).padding([6, 12]).style(|_| container::Style {
+                background: Some(color::PANEL_TOP.into()), border: iced::Border { color: color::BAD, width: 1.5, radius: 4.0.into() }, ..container::Style::default() }));
+        }
+        page.push(panels).into()
     }
 
     fn singleplayer<'a>(&'a self, ctx: &'a Ctx) -> Element<'a, Message> {
@@ -248,7 +294,9 @@ impl State {
 
     fn notice(&self) -> Element<'_, Message> {
         let Some(notice) = &self.notice else { return Space::new().into() };
-        let mut links = row![yo3_skin::link("Dismiss", Message::Dismiss, false)].spacing(14);
+        let mut links = row![].spacing(14);
+        if let Some((label, action)) = &notice.action { links = links.push(yo3_skin::link(*label, action.clone(), false)) }
+        links = links.push(yo3_skin::link("Dismiss", Message::Dismiss, false));
         if notice.details.is_some() {
             links = links.push(yo3_skin::link(if notice.open { "Hide details" } else { "Details" }, Message::ToggleDetails, false));
         }
@@ -259,6 +307,11 @@ impl State {
         if notice.open && let Some(details) = &notice.details { body = body.push(text(details).size(13).color(color::INK_SOFT)) }
         body.push(links).into()
     }
+}
+
+/// Setup was finished, but `yo3.exe` isn't where it was.
+pub fn game_missing(settings: &yo3_desktop::Settings) -> bool {
+    settings.setup_complete && !std::path::Path::new(&settings.game_dir).join("yo3.exe").is_file()
 }
 
 /// The banlists to choose from: the server's default first, then the game's own lists.

@@ -1,9 +1,9 @@
 # Desktop guide
 
 > **On the `beta` branch** the Desktop window is being rebuilt for the public beta
-> ([#20](https://github.com/usersina/yo3-revival/issues/20)). It has Setup, Singleplayer and Help so far. Joining and
-> hosting, Activity, logs, Report a problem, Resolution and installing updates return in later beta versions
-> (#30, #31, #32, #37). This guide describes v0.0.19.
+> ([#20](https://github.com/usersina/yo3-revival/issues/20)). It has Setup ([First launch](#first-launch) describes it),
+> Singleplayer and Help so far. Joining and hosting, Activity, logs, Report a problem, Resolution and installing updates
+> return in later beta versions (#30, #31, #32, #37). The rest of this guide describes v0.0.19.
 
 Use **Desktop** for a window with game setup, a Play button and logs. Use [Scripts](scripts.md) if you prefer a terminal.
 Both editions include the server, rules engine and required connection components. Game files are separate.
@@ -35,46 +35,30 @@ macOS does not have a supported build. [Game installation help](#getting-the-ori
    archive for your system and extract **all** of it.
 2. Open `yo3-revival.exe` on Windows or `yo3-revival` on Linux inside `yo3-revival-desktop/`.
    On Windows, look for the Duel Disk icon with the Monster Reborn badge.
-   The folder also includes `yo3-revival.ico` and `yo3-revival.png` for custom shortcuts.
-3. Stay in **Normal** mode. Click **Browse…** and select the original game folder containing `yo3.exe`, `yo3.idx`
-   and `package/`. Select the installed folder, not a shortcut, installer or the extracted Revival folder.
-4. Wait for the automatic check, then click **Play**. A folder is saved only after its checks pass.
-5. In the game, choose **ONLINE**, then select your player. [Start your first duel](playing.md#your-first-duel).
+3. The first time, **Setup** opens. It has three steps: **Welcome**, **Game** and **Ready**.
+4. On **Game**, YO3 Revival lists the copies of the game it found: Program Files on every drive (Windows), or your
+   Wine prefixes, including Lutris and Bottles ones (Linux). Pick one, or use **Browse…** to choose the folder that
+   holds `yo3.exe`. On Linux, **More options** sets the Wine prefix.
+5. Wait for the checklist. Each line is green, amber (a warning) or red, with one sentence on how to fix it and
+   **Details** for the technical text. **Next** opens once nothing is red.
+6. On **Ready**, choose whether the game may open without the launcher, and whether to put a shortcut on your
+   desktop, then click **Done**.
+7. Click **PLAY**. In the game, choose **ONLINE**, then select your player. [Start your first duel](playing.md#your-first-duel).
 
-![Normal mode with automatic checks, Play and visible logs](../screenshots/desktop.png)
+The checklist:
 
-Choosing or pasting a folder checks the game, its legacy runtime, matching connection helper/DLL and the components
-needed for your saved connection. These checks also run when the app opens and when the game folder or Wine prefix
-changes. Pasted paths are checked after a short pause; a result for an older path cannot approve a newer one.
-Only a successfully checked setup is saved. **Play** rechecks required files before opening the game and loads the
-connection mod automatically; it does not change `yo3.exe` or `yo3.ini`.
-Local play also verifies the bundled server, the rules engine and its critical files, then checks that the engine can
-load its card data without starting a duel. These checks run before Play even when the local server is already running.
+| Line | Red or amber means |
+| --- | --- |
+| Yu-Gi-Oh! ONLINE 3, the supported version | No `yo3.exe` in that folder, or another version of the game |
+| Game data can be read | `yo3.idx` or the game's data files are missing or damaged: reinstall, or choose a complete copy |
+| Wine is installed (Linux) | Wine is missing (the line says how to install it on your distribution), or the chosen prefix doesn't exist |
+| DirectX 9 and Visual C++ 2008 runtimes | The line names the runtime to install, then **Retry** |
+| Opening the game without the launcher | Amber only: the folder is protected (Windows asks for permission once, the first time it's needed) or read-only (the game then opens only from YO3 Revival) |
+| YO3 Revival needs repair | Shown only when YO3 Revival's own files are missing or changed, often after an antivirus scan: **Repair** explains how to restore them |
 
-The main button stays in one place: **Checking… → Play → Starting…**, or **Retry check** after a failed check.
-Animated dots and nearby status text explain progress and why a button is unavailable. A game-folder problem appears
-beside that field; **Use saved folder**, when available, restores your previous setup without saving the invalid path.
-
-If Browse does not open a usable file dialog, choose **Use path instead** and paste the folder path into the box.
-Close any remaining file dialog; its late selection will be ignored. A failure shows a short title and a compact
-preview of its actual cause, including the affected filename, failure stage and Windows/native code when available.
-Background checks keep the original startup failure visible. The copy icon beside the error copies its full report;
-full diagnostics are also saved in the logs. Missing-file errors show the exact paths and a direct **Download Desktop…**
-action. **Export logs…** stays above the logs, and copied errors and exported logs include the complete file list.
-Restore missing Revival files from the complete matching Desktop
-download, then choose **Retry check**. If antivirus removed
-them, restore the files and exclude the affected Revival folder (after an in-app update,
-`%LOCALAPPDATA%\YO3 Revival\updates\installs\<version>-<platform>\`) or game folder from scans; choosing another game folder
-does not restore application files.
-
-**Normal** is one screen: game folder, Play and logs. **Advanced**, at the top right, adds the
-**Play**, **Hosting**, **Activity** and **Game setup** pages. Switching modes preserves saved settings and drafts.
-Game and Wine settings are checked and saved automatically in either mode; Wine controls appear only on Linux.
-Hosting settings still use **Save changes**.
-
-Throughout the app, icons and text accompany status colors: **blue** for checks and information, **green** for success,
-**amber** for warnings and **red** for errors. Field errors sit beside the affected setting; broader failures show a
-notice with details and recovery actions.
+Later starts are quick: YO3 Revival remembers a fingerprint of `yo3.exe` and runs the full check again only when the
+game changed. If the game folder disappears (moved, or a drive unplugged), the main screen says **We can't find your
+game** with **Fix**, which reopens Setup at the Game step. Settings → **Run setup again** reopens it from the start.
 
 ## Play locally
 

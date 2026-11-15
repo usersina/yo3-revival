@@ -24,6 +24,8 @@ pub mod server_options;
 pub mod game_data;
 pub mod instance;
 pub mod store;
+pub mod setup_check;
+pub mod shortcut;
 mod game_data_platform;
 mod process;
 
@@ -64,13 +66,19 @@ pub struct Settings {
     /// The server's banlist (`--regulation`): "" for the server's default (Season 16), else a regulation id, or a
     /// name kept from an older `--regulation` server flag.
     pub banlist: String,
+    /// The setup wizard was finished (#28); until then the launcher opens on it.
+    pub setup_complete: bool,
+    /// `yo3.exe` at the last full check (`setup_check::fingerprint`); a change means checking everything again.
+    pub game_fingerprint: String,
+    /// Open the game without the launcher (direct start), chosen in setup.
+    pub direct_start: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
         Self { advanced_mode: false, server_options: Default::default(), game_dir: yo3_data::default_game_dir().to_string_lossy().into(), wine_prefix: String::new(),
             host_address: "localhost".into(), data_dir: String::new(), bind_address: "0.0.0.0".into(), bind_interface: None, listen_port: 7443,
             player_name: "Duelist".into(), selected_server: None, local_account: String::new(), resolution: String::new(),
-            banlist: String::new() }
+            banlist: String::new(), setup_complete: false, game_fingerprint: String::new(), direct_start: true }
     }
 }
 
