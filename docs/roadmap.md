@@ -65,6 +65,10 @@ and Scripts.
 
 ## Later, with a public server and enough players
 
+The public beta itself (a player launcher, password accounts, a hosted server with remote administration) is tracked
+in GitHub issue [#20](https://github.com/usersina/yo3-revival/issues/20) and its sub-issues: the decisions, the order of
+work, and each part's spec and edge cases.
+
 The "Website links, titles and official events" plan (2026-11-15) split its work into what any server can do now (done,
 in [history](history.md#-website-links-titles-and-official-events-planned-2026-11-15)) and these, which only make sense
 with many players. GitHub issue #16 tracks convenience features, #17 the Championship and #18 Official Events.
