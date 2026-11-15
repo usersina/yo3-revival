@@ -178,7 +178,14 @@ Desktop UI refinement (2026-11-12):
 - [x] Update notes render formatted Markdown in a bounded scroll area, with restart warnings and confirmation buttons
   always visible. A geometry regression guards table layout against infinite bounds. Real release notes, long notes,
   tables and link errors each remain usable through 60 scroll actions at 900×640 on a private display.
-- [x] Direct launch uses a checkbox with contextual repair, installed-state feedback and prerequisite explanations.
+- [x] Direct launch is automatic (2026-11-15): Play sets it up, or refreshes it, before it starts the game
+  (`Backend::auto_direct`: never asks for permission, never replaces another mod; Game setup offers **Set up with
+  permission** and **Remove from game folder**). Delete Login Data's Yes (`0x4CA486`, the save after blanking
+  `lastLogin`; the game deletes no file there) deletes the saved sign-in (`tools/mod/signout.h`, `signout-test.c`), and
+  the loader then asks for one Play. Live (private prefix, a copy of the game): Play installed it, `yo3.exe` opened
+  directly reached the title, Delete Login Data removed `direct.json`, the next direct start showed the signed-out
+  message, and Play signed the PC in again.
+- [x] Direct launch used a checkbox with contextual repair, installed-state feedback and prerequisite explanations.
   Removal remains possible after failed validation or a removed connection; enabling requires verified settings and
   a running local server or saved remote connection. Normal/Advanced stay text-only with hover help and fit the
   sidebar. Busy server/account selectors show their saved values without offering ignored interactions.
@@ -1053,15 +1060,43 @@ they need: anything a host's own server can do now, and what only makes sense on
       THE SEEKER OF TRUTH), Téa's and Jim's (not NPCs here), and the event and Championship ones (below).
 - [x] A host command to grant the staff and promotion titles by hand: `yo3-server grant-title PLAYER TITLE`, `titles`
       lists them (guide.md).
-- [ ] Research only: what the client sends and expects for the official event formats (Duelist Trial, Gunslinger,
-      the weekend events) and the Championship, so the later work starts from evidence.
+- [x] Research only (2026-11-15, read in the client, nothing run): what the official events and the Championship expect.
+      Three scenes, not one (`0x46FA60`, MenuSelect 20/21/22 to main states `0xA`/`0xB`/`0xC`): Championship is
+      TournamentScene (`0x4CB570`, `+0x2D8`=0), Official Event is OfficialEventScene (`0x4B0110`), User Event is
+      UserEventScene, which opens TournamentScene with `+0x2D8`=1.
+      - Official Events: five kinds (texts 15211–15276), each premium, Special Pack prizes: GUNSLINGER (single, win
+        streak), DUELIST TRIAL (single, wins), EVOLUTION MATCH (match, stars), ULTIMATE MATCH (match, stars), ANNIVERSARY
+        TRIAL (single, wins). The `0x177B` list (`0x4B1060`) keeps items with `official`≠0; `event_name_type` 1–5 is
+        Gunslinger, Trial, Evolution, Anniversary, Ultimate; it reads `status` (10/11 coming soon, 12 running, 13
+        running and joinable), `event_start`, `event_end`, `player_num`, `event_id`. Joining: `0x1784`→`0x1785` needs
+        `join_id`, `server_id` (non-zero, or Participate never matches: `0x4A3F70`), `event_score` and the echoed
+        `event_id`; Participate `0x1798 {event_id, join_id}`, cancel `0x17A2`, leave `0x178E`; the match arrives as the
+        usual `0x1978`. The lobby polls `0x1780 {event_id}` every 60 s (`0x4B0B70`). After a duel, `0x2009`'s
+        `score_<player_id>` becomes `event_score` (DuelResult's star effect). My Profile shows `tp`, players `tprank`:
+        neither is sent today.
+      - Championship: setup (`0x4CBD70`) takes the first `0x177B` item with `event_type` 10 and `status` 12, then the same
+        bracket requests as user events (`0x1784`, `0x32C9`, `0x32CA`, `0x32D5`, `0x32CB`). Without one the MC
+        (`champ_mc.swf`, speech sets at `0x78FCD8`, texts 31000–31039) says it has not started: our state today.
+        `0x32FB.tournament_id` < 17 is a 512-seat preliminary (the 64 blocks of 8 of `0x32D5`), ≥ 17 the 16-seat Final;
+        `0x32FB` also carries `championship_id`, `year`, `season`. Extra pushes: `0x32D0 {phase, status}` (the entry draw,
+        text 15360), `0x32D1 {lot}` (15361 in, 15362 not). The Y.O.C titles follow 512 → 16 → 8 → 4 → 2 → 1.
+      - Konami's 227 readable duel logs: `event_type` 10 (`official` 1) is the Championship, 5 (`official` 0) a user
+        event; 11 (match) probably Evolution Match, 4 (on the anniversary weekends) probably Anniversary Trial, 3 Trial
+        or Gunslinger (guesses).
+      - Unknown: prizes and Special Pack contents, the formats' thresholds, `status` 10 versus 11, the official kinds'
+        `event_type` numbers, the entry draw's rules.
 
 **Later, with a public server and enough players:**
 
 - [ ] A leaderboard and team ranking page from real wins and losses (the page from the links above, filled in).
 - [ ] Official Events (Stadium): the Duelist Trial and Gunslinger formats (wins, win streaks over a period), host
       scheduled, much of it on the User Event code; their titles (TRIALIST … ULTIMATE GUNSLINGER, the CHAMPION ones).
-- [ ] The Championship (Tournament Map): the 64-player bracket, scheduled; Y.O.C WINNER / FINALIST.
+- [ ] Official Events, smallest slice first: the Stadium list and lobby (`0x177B`, `0x1785` with `server_id`, `0x1780`),
+      then Trial and Gunslinger matching on the Auto Duel queue with per-player counters as `event_score`, then the
+      Match formats with stars.
+- [ ] The Championship (Tournament Map): a host-scheduled `event_type` 10 event on the user-event bracket code, with the
+      `0x32FB` Championship fields and the draw pushes; a 512-seat preliminary needs far more players than a small
+      server has (a smaller block count, guess). Y.O.C WINNER / FINALIST.
 - Not possible: the map's UNIZAWA and market tiles (`btn5`, `btn6` have no handler in `main.swf`).
 
 ## ✅ Summon animations (2026-11-15): Tribute, Fusion and Synchro as the original showed them
