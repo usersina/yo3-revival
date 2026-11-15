@@ -99,6 +99,11 @@ while the server runs or stopped, and each applies at its own moment:
 | `turn-seconds`, `total-seconds` | 180, 600 | At the next duel | The clocks of duels between players that set none (0: off) |
 | `news` | A welcome | At the game's next request | The Information list: `TITLE \| BODY` for one entry, or a JSON list of `{title, body}` (1 to 10) |
 | `address-burst`, `address-refill-seconds`, `backoff-max-seconds` | 10, 3, 900 | At once | The [throttle](authentication.md#passwords-and-throttling) on account requests |
+| `max-players` | 500 | At once | Players signed in; one more is told "The server is full" (admins and moderators still come in) |
+| `max-duels` | 30 | At once | Duels running (an engine each, up to about 100 MB): beyond it an NPC duel or Create Duel is refused with "Duels are busy" in the player's chat, and Auto Duel waits until one ends |
+| `max-connections` | 2048 | At once | TLS connections at once; a player's game holds several |
+| `handshake-burst`, `handshakes-per-second` | 120, 10 | At once | New TLS connections one address may open; this PC's are not counted |
+| `maintenance-at`, `maintenance-message` | (none) | At once | Set by `maintenance` ([moderation](#moderation-and-maintenance)) |
 
 A value that doesn't pass its check is refused and changes nothing. Desktop writes its Banlist choice as
 `login-regulation` before it starts its server. The testing aids (`--duel-lp`, `--duel-time`, `--duel-deck` and the

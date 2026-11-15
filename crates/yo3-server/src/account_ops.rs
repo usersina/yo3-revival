@@ -100,6 +100,9 @@ fn start_session(user_id: u32, login: &Login, ctx: &Context<'_>) -> Result<Json,
         return Err(json!({ "ok": false, "error": "maintenance", "message": ctx.settings.maintenance_message }));
     }
     if !crate::store::healthy() { return Err(error("server_error")) }
+    // A full server says so (#27): the staff still comes in, and signing in again doesn't take another place.
+    let full = { let s = ctx.sessions.locked(); !s.signed_in(user_id) && s.users() >= ctx.settings.max_players };
+    if full && !login.staff() { return Err(error("server_full")) }
     let session = ctx.sessions.locked().login(user_id, Instant::now()).ok_or_else(|| error("server_full"))?;
     Ok(json!({ "ok": true, "session": hex(&session), "user": login.user }))
 }

@@ -462,6 +462,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     hub.set_round_delay(EVENT_ROUND_DELAY);
     hub.set_directory(directory.clone());
     hub.set_titles(world.titles.clone());
+    hub.set_settings(world.settings.clone());
     let hub = Arc::new(Mutex::new(hub));
     // The certificate is checked while running too, not only at start (#25).
     let identity_task = {
@@ -497,6 +498,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
                     duel::tick_tables(&hub, std::time::Instant::now());
                     let mut hub = hub.locked();
                     hub.tick_matches(std::time::Instant::now());
+                    hub.match_waiting();
                     hub.tick_events(std::time::Instant::now());
                     hub.tick_rentals(chrono::Utc::now().timestamp());
                 });

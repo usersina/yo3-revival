@@ -135,6 +135,8 @@ pub struct Engine {
     timeout: Duration,
     identity_timeout: Duration,
     recording: Option<(u64, u32)>,
+    /// Counted in [`running`] (an engine `start` made, not a test's stand-in).
+    counted: bool,
 }
 static RECORDING_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
@@ -146,11 +148,14 @@ impl Engine {
     }
 
     pub fn start(dir: &Path) -> io::Result<Engine> {
+        if RUNNING.load(std::sync::atomic::Ordering::Relaxed) >= HARD_CAP { return Err(io::Error::other("too many rules engines running")) }
         let mut command = Command::new(program(dir));
         command.arg(dir);
         #[cfg(windows)] {use std::os::windows::process::CommandExt;command.creation_flags(0x08000000);}
         let mut engine = Engine::spawn(command, CALL_TIMEOUT)?;
         engine.identity_timeout = IDENTITY_TIMEOUT;
+        engine.counted = true;
+        RUNNING.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Ok(engine)
     }
 
@@ -173,7 +178,7 @@ impl Engine {
                 }
             }
         });
-        Ok(Engine { child, stdin, lines, timeout, identity_timeout: timeout, recording: None })
+        Ok(Engine { child, stdin, lines, timeout, identity_timeout: timeout, recording: None, counted: false })
     }
 
     pub fn identity(&mut self) -> io::Result<Json> {
@@ -326,8 +331,17 @@ fn capture_errors(mut source: impl Read) {
     if !line.is_empty() || overflow { emit(&line, overflow); }
 }
 
+/// How many rules engines (one per duel) run now: the duel cap (#27, the `max-duels` setting) counts them.
+static RUNNING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// Beyond any setting: a server never runs more engines than this.
+const HARD_CAP: usize = 2000;
+
+/// The rules engines running now.
+pub fn running() -> usize { RUNNING.load(std::sync::atomic::Ordering::Relaxed) }
+
 impl Drop for Engine {
     fn drop(&mut self) {
+        if self.counted { RUNNING.fetch_sub(1, std::sync::atomic::Ordering::Relaxed); }
         let _ = self.child.kill();
         let _ = self.child.wait();
     }

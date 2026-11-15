@@ -152,6 +152,14 @@ impl Sessions {
         for token in theirs { self.logout(&token) }
     }
 
+    /// The users signed in now (each counted once).
+    pub fn users(&self) -> usize {
+        self.sessions.values().map(|s| s.identity.user_id).collect::<std::collections::HashSet<_>>().len()
+    }
+
+    /// Whether `user_id` is signed in now (signing in again replaces that session: the newest wins).
+    pub fn signed_in(&self, user_id: u32) -> bool { self.sessions.values().any(|s| s.identity.user_id == user_id) }
+
     /// Ends every session whose user `end` picks (maintenance: everyone but the staff).
     pub fn logout_where(&mut self, end: impl Fn(u32) -> bool) {
         let theirs: Vec<Token> = self.sessions.iter().filter(|(_, s)| end(s.identity.user_id)).map(|(t, _)| *t).collect();
@@ -171,7 +179,8 @@ impl Sessions {
     pub fn login(&mut self, user_id: u32, now: Instant) -> Option<Token> {
         self.prune(now);
         self.logout_user(user_id);
-        if self.sessions.len() >= 1024 { return None }
+        // A hard ceiling only: the `max-players` setting refuses well before it (#27).
+        if self.sessions.len() >= 100_000 { return None }
         self.next_id = self.next_id.checked_add(1)?;
         let token = random_token();
         let (revoked, _) = tokio::sync::watch::channel(false);

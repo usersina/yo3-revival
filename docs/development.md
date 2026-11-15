@@ -147,6 +147,28 @@ the accounts document alone took 115 ms, under the hub's lock. Re-measure with
 `cargo test --release -p yo3-server --test accounts save_cost -- --ignored --nocapture`. The smaller domains still build
 their whole document on each change and write only the changed rows.
 
+## Capacity (R7, #27)
+
+Measured on 2026-11-15 (release build, Ryzen 5 3600, 12 threads), by sampling each `yo3-engine` process's memory and
+CPU time from `/proc` while tests played whole duels:
+
+| What | Memory | CPU |
+| --- | --- | --- |
+| A duel between players (the duel check's self-play) | about 47 MB per engine | 0.16–0.3 s for the whole duel |
+| An NPC duel with the bot's look-ahead (`npc_bot`, both sides thinking) | 81–99 MB per engine | 3–45 s per duel; with one NPC about half, spread over the duel |
+| The server, idle / under 100 flooding connections | 17 MB / up to 275 MB | |
+| A save (#22) | | about 2 ms |
+
+So `max-duels` defaults to 30 (about 3 GB of engines at most) and `max-players` to 500: a 4 GB, 2–4 vCPU server
+covers the closed beta's expected peak (about 50 players, 15 duels) with room. Each NPC duel's bot can take a core
+while it thinks.
+
+The protocol monkey's soak passes at its standard load (24 flooding connections: canary median 231 ms, no stall) but not
+at 100 flooding connections, where the canary stalls for 2–9 s. All of those connections go through the monkey's single
+launcher proxy and send requests as fast as they can, which is not how players behave. The soak at twice the expected
+peak needs a monkey mode with one launcher per simulated player first. The monkey's `duel` mode also reaches no duel at the
+moment ("duel entry does not belong to the authenticated launcher session"), for the same reason.
+
 ## Which tool sees what
 
 Each debugging tool sees one layer. Start from the question and pick the tool that sees that layer. Commands are in

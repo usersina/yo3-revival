@@ -5,7 +5,6 @@ use std::time::Instant;
 use anyhow::Context;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Semaphore;
 use yo3_tunnel::{tokio_rustls::{TlsAcceptor, server::TlsStream}, Role, MAGIC, KEY_LEN, HANDSHAKE_TIMEOUT};
 use crate::accounts::Directory;
 use crate::auth::{Identity, Sessions};
@@ -38,6 +37,7 @@ impl Gate {
         info.registration = settings.registration.as_str().into();
         info.min_launcher = settings.min_launcher.clone();
         info.maintenance = settings.in_maintenance(crate::logins::now());
+        info.max_online = u32::try_from(settings.max_players).ok();
         // The news, each body shortened, and as many entries as fit in discovery's answer.
         let short = |text: &str, n: usize| if text.chars().count() > n { text.chars().take(n - 1).collect::<String>() + "…" } else { text.to_owned() };
         info.news = settings.news.iter().map(|(title, body)| yo3_tunnel::News { title: short(title, 128), body: short(body, 400) }).collect();
@@ -67,11 +67,14 @@ async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &yo3_tunnel
                 // no role, so it waits like any player).
                 let now = crate::logins::now();
                 let maintenance = gate.settings.now().in_maintenance(now);
+                let max_players = gate.settings.now().max_players;
                 let user = {
                     let d = accounts.locked();
-                    d.authenticate(&key).map(|a| a.user_id).filter(|&u| match d.login_by_id(u) {
-                        Some(login) => login.refusal(now).is_none() && (!maintenance || login.staff()),
-                        None => !maintenance,
+                    d.authenticate(&key).map(|a| a.user_id).filter(|&u| {
+                        let staff = d.login_by_id(u).is_some_and(|l| l.staff());
+                        let full = { let s = sessions.locked(); !s.signed_in(u) && s.users() >= max_players };
+                        let allowed = match d.login_by_id(u) { Some(login) => login.refusal(now).is_none(), None => true };
+                        allowed && (!maintenance || staff) && (!full || staff)
                     })
                 };
                 let token = user.and_then(|u| sessions.locked().login(u, Instant::now()));
@@ -145,13 +148,25 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
     sessions: Arc<Mutex<Sessions>>)
 {
     let gate = Arc::new(Gate::new(accounts.clone(), world.settings.clone(), sessions));
-    let slots = Arc::new(Semaphore::new(256));
+    // The connections open now, against the `max-connections` setting, and each address's handshake allowance (#27).
+    let open = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut buckets: std::collections::HashMap<std::net::IpAddr, (f64, Instant)> = Default::default();
     loop {
         let (tcp, peer) = match listener.accept().await {
             Ok(pair) => pair,
             Err(e) => { tracing::warn!("TLS accept: {e}"); tokio::time::sleep(std::time::Duration::from_millis(100)).await; continue }
         };
-        let Ok(permit) = slots.clone().try_acquire_owned() else { continue };
+        let settings = gate.settings.now();
+        if open.load(std::sync::atomic::Ordering::Relaxed) >= settings.max_connections {
+            tracing::warn!("[tls] {peer} refused: {} connections open (max-connections)", settings.max_connections);
+            continue;
+        }
+        // This PC's connections (a launcher's own, the host's tools) aren't counted: a game makes many.
+        if !peer.ip().is_loopback() && !handshake_allowed(&mut buckets, peer.ip(), Instant::now(), settings.handshake_burst, settings.handshakes_per_second) {
+            tracing::warn!("[tls] {peer} refused: too many connections from this address (handshake-burst)");
+            continue;
+        }
+        let permit = Slot::take(&open);
         // The current certificate: a renewal while running swaps it for the connections after (`lib.rs`).
         let acceptor = acceptor.read().unwrap_or_else(|e| e.into_inner()).clone();
         let (world, hub, accounts, log, gate) = (world.clone(), hub.clone(), accounts.clone(), log.clone(), gate.clone());
@@ -246,6 +261,39 @@ mod close_tests {
             "keep the read half alive until the client can return its TLS close_notify");
         tls.shutdown().await.unwrap();
         tokio::time::timeout(Duration::from_secs(1),peer).await.unwrap().unwrap();
+    }
+}
+
+/// One open connection, counted until it ends.
+struct Slot(Arc<std::sync::atomic::AtomicUsize>);
+impl Slot {
+    fn take(open: &Arc<std::sync::atomic::AtomicUsize>) -> Slot { open.fetch_add(1, std::sync::atomic::Ordering::Relaxed); Slot(open.clone()) }
+}
+impl Drop for Slot {
+    fn drop(&mut self) { self.0.fetch_sub(1, std::sync::atomic::Ordering::Relaxed); }
+}
+
+/// Takes one handshake from `addr`'s bucket (`burst` deep, `per_second` back each second); whether there was one.
+fn handshake_allowed(buckets: &mut std::collections::HashMap<std::net::IpAddr, (f64, Instant)>, addr: std::net::IpAddr, now: Instant, burst: u32, per_second: u32) -> bool {
+    let burst = f64::from(burst.max(1));
+    if buckets.len() > 100_000 { buckets.retain(|_, (t, at)| *t < burst && now.duration_since(*at) < std::time::Duration::from_secs(600)) }
+    let (tokens, at) = buckets.entry(addr).or_insert((burst, now));
+    *tokens = (*tokens + now.duration_since(*at).as_secs_f64() * f64::from(per_second.max(1))).min(burst);
+    *at = now;
+    if *tokens >= 1.0 { *tokens -= 1.0; true } else { false }
+}
+
+#[cfg(test)]
+mod handshake_tests {
+    #[test]
+    fn an_address_gets_its_burst_then_its_rate() {
+        let (mut buckets, now) = (Default::default(), std::time::Instant::now());
+        let addr: std::net::IpAddr = [203, 0, 113, 9].into();
+        assert!((0..5).all(|_| super::handshake_allowed(&mut buckets, addr, now, 5, 2)));
+        assert!(!super::handshake_allowed(&mut buckets, addr, now, 5, 2), "the sixth at once waits");
+        let later = now + std::time::Duration::from_millis(500);
+        assert!(super::handshake_allowed(&mut buckets, addr, later, 5, 2), "one back after half a second at 2 a second");
+        assert!(super::handshake_allowed(&mut buckets, [203, 0, 113, 10].into(), now, 5, 2), "another address has its own");
     }
 }
 

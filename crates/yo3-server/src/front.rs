@@ -707,6 +707,8 @@ pub struct Hub {
     directory: Option<Arc<Mutex<crate::accounts::Directory>>>,
     /// The client's titles, for those players earn (`crate::titles`).
     titles: Option<Arc<crate::titles::TitleData>>,
+    /// The live settings, for the duel cap (#27); none in tests that don't set them (no cap).
+    settings: Option<Arc<crate::settings::Live>>,
     /// Players waiting for an automatic match, in order, and the matched duels.
     waiting: Vec<Waiting>,
     matches: HashMap<u32, Match>,
@@ -804,6 +806,34 @@ impl Hub {
     /// The client's titles: players earn them from here on (`award_titles`).
     pub fn set_titles(&mut self, titles: Arc<crate::titles::TitleData>) {
         self.titles = Some(titles);
+    }
+
+    /// The duels matched now (started or not), by id.
+    pub fn match_ids(&self) -> Vec<u32> { self.matches.keys().copied().collect() }
+
+    pub fn set_settings(&mut self, settings: Arc<crate::settings::Live>) {
+        self.settings = Some(settings);
+    }
+
+    /// Whether the duels running (an engine each) and the ones matched but not started yet reach `max-duels` (#27).
+    pub fn duels_busy(&self) -> bool {
+        let Some(settings) = &self.settings else { return false };
+        let pending = self.matches.keys().filter(|d| !self.tables.contains_key(d)).count();
+        crate::engine::running() + pending >= settings.now().max_duels
+    }
+
+    /// Pairs the players waiting for an Auto Duel while the duel cap allows (called every second): at the cap a new
+    /// player waits rather than starting a duel the server can't run, and is matched once one ends.
+    pub fn match_waiting(&mut self) {
+        let fits = |a: u32, b: u32| a == b || a == EITHER_MODE || b == EITHER_MODE;
+        while !self.duels_busy() {
+            let n = self.waiting.len();
+            let Some((i, j)) = (0..n).find_map(|i| (i + 1..n).find(|&j| fits(self.waiting[i].match_type, self.waiting[j].match_type)).map(|j| (i, j))) else { return };
+            let me = self.waiting.remove(j);
+            let other = self.waiting.remove(i);
+            let (_, pushes) = self.pair(other, me);
+            for (player, push) in pushes { self.push(player, &push); }
+        }
     }
 
     /// The table of `duel_id` if others may watch it: its host allowed watching (a duel without match rules, such as
@@ -2290,11 +2320,18 @@ impl Hub {
         self.waiting.retain(|w| w.player_id != me.player_id);
         // The same Rule Format matches, and Both matches either (two Both players get a Single duel, **guess**).
         let fits = |a: u32, b: u32| a == b || a == EITHER_MODE || b == EITHER_MODE;
-        let Some(at) = self.waiting.iter().position(|w| fits(w.match_type, me.match_type)) else {
+        let at = self.waiting.iter().position(|w| fits(w.match_type, me.match_type));
+        // At the duel cap the player waits like anyone without an opponent (`match_waiting` pairs them later).
+        let Some(at) = at.filter(|_| !self.duels_busy()) else {
             self.waiting.push(me);
             return None;
         };
         let other = self.waiting.remove(at);
+        Some(self.pair(other, me))
+    }
+
+    /// A new Auto Duel between `other` (waiting first) and `me`: its id and both match pushes (`other`'s first).
+    fn pair(&mut self, other: Waiting, me: Waiting) -> (u32, [(u32, Message); 2]) {
         self.last_duel += 1;
         let duel_id = self.last_duel;
         let match_type = match (other.match_type, me.match_type) {
@@ -2308,7 +2345,7 @@ impl Hub {
         };
         let pushes = [(other.player_id, push(&me.record)), (me.player_id, push(&other.record))];
         self.matches.insert(duel_id, Match { players: [other.player_id, me.player_id], rule, times: None, watchable: true, made: std::time::Instant::now() });
-        Some((duel_id, pushes))
+        (duel_id, pushes)
     }
 
     fn set_room(&mut self, id: u64, room: Option<u32>) {
@@ -3186,6 +3223,12 @@ impl FrontSession {
             }
             // Duel (step 0x4A1790): for an NPC duel the client then opens DuelManager. The item holds
             // the duel's rule (cpu_id, match_type, regulation_id, surrender, time_turn, time_total...).
+            // At the duel cap (#27): the game's NPC duel and Create Duel error (0x17AE shows "A transmission error has
+            // occurred.", text 10508, whatever the code: `0x4A1790`), and the reason in the player's chat.
+            0x17AC if self.hub().duels_busy() => {
+                let _ = self.outbox.send(chat_note("Server", "Duels are busy: try again in a moment."));
+                Message::reply(0x17AE).with("error_code", Value::U32(1))
+            }
             0x17AC => {
                 let duel_id = {
                     let mut hub = self.hub();

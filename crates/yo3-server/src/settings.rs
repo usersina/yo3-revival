@@ -94,6 +94,17 @@ pub const REGISTRY: &[Setting] = &[
         kind: Kind::Number { min: 0, max: u32::MAX }, applies: Applies::AtOnce, default: || json!(0) },
     Setting { name: "maintenance-message", help: "What the game shows with the maintenance countdown", kind: Kind::Text { max: 200 },
         applies: Applies::AtOnce, default: || json!("The server goes down for maintenance.") },
+    Setting { name: "max-players", help: "Players signed in at once; one more is told the server is full (the staff still comes in)",
+        kind: Kind::Number { min: 1, max: 100_000 }, applies: Applies::AtOnce, default: || json!(500) },
+    // 30: an NPC duel's engine peaks near 100 MB and a player duel's near 50 MB (measured, #27): about 3 GB at most.
+    Setting { name: "max-duels", help: "Duels running at once, each with its rules engine; beyond it NPC duels and Create Duel are refused \
+        (\"Duels are busy\") and Auto Duel waits", kind: Kind::Number { min: 1, max: 2000 }, applies: Applies::AtOnce, default: || json!(30) },
+    Setting { name: "max-connections", help: "TLS connections at once (a player's game holds several)",
+        kind: Kind::Number { min: 16, max: 100_000 }, applies: Applies::AtOnce, default: || json!(2048) },
+    Setting { name: "handshake-burst", help: "TLS connections one address may open at once before it waits (this PC's are not counted)",
+        kind: Kind::Number { min: 1, max: 10_000 }, applies: Applies::AtOnce, default: || json!(120) },
+    Setting { name: "handshakes-per-second", help: "How fast an address gets its TLS connections back",
+        kind: Kind::Number { min: 1, max: 10_000 }, applies: Applies::AtOnce, default: || json!(10) },
     Setting { name: "address-burst", help: "Account requests one address may make at once before it waits",
         kind: Kind::Number { min: 1, max: 1000 }, applies: Applies::AtOnce, default: || json!(10) },
     Setting { name: "address-refill-seconds", help: "Seconds that give an address back one account request",
@@ -123,6 +134,12 @@ pub struct Settings {
     pub maintenance_at: Option<i64>,
     pub maintenance_message: String,
     pub limits: Limits,
+    /// The caps (#27).
+    pub max_players: usize,
+    pub max_duels: usize,
+    pub max_connections: usize,
+    pub handshake_burst: u32,
+    pub handshakes_per_second: u32,
     /// Every setting's value by name, defaults included.
     values: Map<String, Json>,
 }
@@ -155,6 +172,11 @@ impl Settings {
             news,
             maintenance_at: Some(i64::from(number("maintenance-at"))).filter(|&t| t > 0),
             maintenance_message: text("maintenance-message"),
+            max_players: number("max-players") as usize,
+            max_duels: number("max-duels") as usize,
+            max_connections: number("max-connections") as usize,
+            handshake_burst: number("handshake-burst"),
+            handshakes_per_second: number("handshakes-per-second"),
             limits: Limits { burst: number("address-burst"), refill_seconds: number("address-refill-seconds"), max_backoff_seconds: number("backoff-max-seconds") },
             values,
         })

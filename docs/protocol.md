@@ -898,6 +898,12 @@ checks the deck (`0x4A0E90`; the item may carry `regulation_id`, else the player
 | `0x4A1090` | `0x1784 {event_id}` (1 for an NPC duel)                                                                                                                                                                         | `0x1785` (`0x1786`)                    | `join_id` (agent `+0x58`); the whole reply is copied to MainGamen `+0x868`; the global dispatcher (`0x4F4AE7`) stores `event_id`, `join_id`, `server_id`, `event_score` (ints) | live: client then sends `0x17AC`, trace "event join offer notice" | confirmed; `join_id` = a server-wide counter (**guess**) |
 | `0x4A1790` | `0x17AC {event_id, join_id}` + item (tag 4) `{cpu_id, duel_server_id, match_type, regulation_id, surrender, time_total, time_turn}`; live: `cpu_id` 124 (the NPC id), `match_type` 4, `surrender` 1, the rest 0 | `0x17AD` (`0x17AE`, dialog `0x4F7940`) | `duel_id` (agent `+0x5C`); the reply is copied to MainGamen `+0x88C` with the agent's `regulation_id`; `country` is read from the player's own data                            | live: the scene opens DuelManager's Select Deck                   | confirmed; `duel_id` = a server-wide counter (**guess**) |
 
+**Duels busy** (#27): at the `max-duels` cap the server answers `0x17AC` with `0x17AE {error_code 1}`. Agent step
+`0x4A1790` shows text 10508 "A transmission error has occurred." whatever the code (`0x4A0C30`) and goes back to the map
+(`0x4A35F0`); the game has no busier text, so a `0x2455` line from "Server" first says "Duels are busy: try again in a
+moment." Auto Duel (`0x1798`) is not refused: the player waits, as for an opponent, and is matched when a duel ends.
+**Status: confirmed** (client code), `capacity_contract.rs`.
+
 Mode 1 then asks for a password (`duel_password_flag` from the agent's record), mode 2 goes to `0x4A1380`, mode 0
 (the DUEL panel) waits for a match in `0x4A1D10`. Mode 4 (watching a duel: PlayerInfoWindow's Watch Duel button for
 a player whose `duel_status` is duelling, shown only when the entry's `duel_watch` is not 0, `0x4B6510`; the server
