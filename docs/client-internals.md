@@ -180,7 +180,7 @@ their own transitions. No stock files are patched, and an unexpected call instru
 
 The shared C fixture checks both fresh and saved login data, preservation of unrelated native state, and byte-guard
 rejection. `tools/mod/test.sh` also runs it as 32-bit Windows code under Wine and independently checks changed
-login and starter hook sites. Live verification is recorded in [the roadmap](roadmap.md).
+login and starter hook sites. Live verification is recorded in [the history](history.md).
 
 ### Automatic local deck initialization
 

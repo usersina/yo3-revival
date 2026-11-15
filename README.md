@@ -14,7 +14,7 @@ original game world.
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | ![Meet Seto Kaiba at Kaiba Corporation](screenshots/kaiba.png) | ![Elemental Hero Shining Flare Wingman selected in the deck editor](screenshots/decks.png) |
 
-[Features and limitations](docs/playing.md#features-and-limitations) · [Development roadmap](docs/roadmap.md)
+[Features and limitations](docs/playing.md#features-and-limitations) · [Feature status](docs/features.md) · [Development roadmap](docs/roadmap.md)
 
 ## Start playing
 

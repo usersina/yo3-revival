@@ -131,7 +131,7 @@ once per duel connection: a second one is ignored (it would seat the same player
 | opener  | `0x21FE` | `host` text, `port` u32 (front server) | `LoginWindow.cpp L303/L314` | confirmed |
 
 The launcher also gives the connection DLL the server's id (`YO3_SERVER_ID`), which picks the game's local data folder
-(see the roadmap's "Local profile collisions" and `tools/mod/documents.h`); nothing of it reaches the server.
+(see the history's "Local profile collisions" and `tools/mod/documents.h`); nothing of it reaches the server.
 
 The local gate keeps its socket open after the redirect until the client closes it or the launcher proxy stops.
 Immediate EOF races the native receive thread during automatic login and reaches a null error logger at
@@ -1279,7 +1279,7 @@ manager built only from the rules above (the hand lists, field slots, pile count
 word), fed every command the server sends and compared with where the engine has every card (the engine's read-only
 `state` op) after each engine step. It catches a translator that drifts from the client or the engine at the first step
 where they differ. The tests self-play a few hundred seeded duels through it (`tests/duel_check.rs`); the protocol
-monkey's duels run the server with it. What it found is in the [roadmap](roadmap.md#-duel-check-2026-11-09-the-clients-view-checked-against-the-engine).
+monkey's duels run the server with it. What it found is in the [history](history.md#-duel-check-2026-11-09-the-clients-view-checked-against-the-engine).
 
 The independent `state` query also supplies LP, current/base ATK/DEF, Level and counters. Turn/phase expectations
 come from engine messages 40/41, independently of outgoing commands. Unknown engine events or native commands fail
@@ -1411,7 +1411,7 @@ command 4):
   hand card 1 → `{CommandID 4, player 0, position 11, index 1}`.
 
 Carrying out a command needs the rules: which cards may do what, and what follows. The server runs EDOPro's core for
-that (`crates/yo3-engine`, the `yo3-engine` program; see roadmap.md, M5); `translate.rs` maps its draws, turns and phases to the commands above (ocgcore phases
+that (`crates/yo3-engine`, the `yo3-engine` program; see history.md, M5); `translate.rs` maps its draws, turns and phases to the commands above (ocgcore phases
 1, 2, 4, 8–`0x80`, `0x100`, `0x200` → 0–5), its idle-command prompt to a command map (summons bit 4, special
 summons 2, position changes 5, 8 or 9 by the card's position as last shown (Flip Summon face down, to Attack
 Position in face-up defense, to Defence Position in attack: offering both showed "to Attack Position" on an attack

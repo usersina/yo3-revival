@@ -344,7 +344,7 @@ fn the_borrower_can_return_a_rental_early() {
     // rental as at its term: the records go to both (0x2D6C, none active), the history shows it over, and the lender's
     // cards are theirs again. Only the borrower can, only an active rental, and only once. The client's half needs a
     // Return button the shipped rentalrecord.swf doesn't have (its script wires `borrow_btn1`, which the movie never
-    // places), so nothing sends it yet; see the roadmap.
+    // places), so nothing sends it yet; see docs/features.md (Social).
     let mut t = table();
     rented(&mut t);
     let borrowed = send(&mut t.b, 0x2C35, &[("rental_kind", 1), ("base_id", 0)]);
