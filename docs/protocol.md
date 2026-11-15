@@ -75,7 +75,7 @@ to stdin only after that acknowledgement. EOF/failure kills the suspended child.
 mod interface, release and commit, while `bundle.json` inventories release hashes. Tests: launcher `components`,
 `desktop_control`, `tools/mod/test.sh`; this is our bootstrap protocol, not a game reply shape.
 
-Opt-in direct launch uses a game-local WINMM proxy (the seven imports in `tools/mod/loader.c`), leaving the executable
+Direct launch (set up by Desktop Play; Delete Login Data's Yes, `0x4CA486`, deletes its saved sign-in: `tools/mod/signout.h`) uses a game-local WINMM proxy (the seven imports in `tools/mod/loader.c`), leaving the executable
 unchanged. Its IAT wrappers defer process/UI/network work until a relevant INI/WinInet/connect call, outside DllMain.
 The user's private registry-selected config pins the connection DLL hash and private profile path. A Windows helper
 attaches to the verified game PID/executable, prepares local proxies, then publishes a bounded readiness JSON with

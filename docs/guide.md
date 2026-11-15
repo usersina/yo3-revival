@@ -148,9 +148,9 @@ or quarantine them. No exclusion is needed unless your security software actuall
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | Extracted Desktop or Scripts folder | `yo3-auth.dll` (required connection mod), `yo3-auth-launch.exe` (required injector), and the Revival executables |
 | Same folder                         | `yo3-engine.exe` (the rules engine, run by the server) and `engine\` (its card scripts and database)              |
-| Extracted Desktop folder            | `yo3-bootstrap.dll`, the loader used when enabling optional direct launch                                        |
+| Extracted Desktop folder            | `yo3-bootstrap.dll`, the loader that Play puts beside `yo3.exe` so the game can be opened directly             |
 | After a Desktop in-app update       | the same Desktop files in `%LOCALAPPDATA%\YO3 Revival\updates\installs\<version>-<platform>\`, a new folder per version      |
-| Game folder, beside `yo3.exe`       | `winmm.dll`, installed only when [direct launch](launcher.md#open-the-game-directly) is enabled                  |
+| Game folder, beside `yo3.exe`       | `winmm.dll`, put there by Desktop Play so [the game opens directly](launcher.md#open-the-game-directly)         |
 
 Desktop **Play** and Scripts **play** load `yo3-auth.dll` from the folder they run from (the extracted Revival folder,
 or Desktop's update folder after an in-app update); they do not copy it into the game folder. Excluding just

@@ -637,7 +637,7 @@ impl App {
             Some(yo3_desktop::Readiness::ComponentProblem(_)) => "Restore the required Revival files from the complete matching Desktop download, then retry.",
             Some(yo3_desktop::Readiness::ValidationProblem(_)) => "The check could not finish. Retry it; export logs if the problem continues.",
         }};
-        let page_title=if invalid{heading("Game setup","Set up your game and optional direct launch.")}else{self.page_heading("Game setup","Set up your game and optional direct launch.")};
+        let page_title=if invalid{heading("Game setup","Set up your game and opening it directly.")}else{self.page_heading("Game setup","Set up your game and opening it directly.")};
         let mut body=column![page_title].spacing(16);
         let mut install=column![game].spacing(16);
         if invalid && self.feedback_visible(){body=body.push(self.page_heading("",""));}
@@ -662,33 +662,30 @@ impl App {
             muted("Fit my screen picks the largest size your screen holds. Any other size is the game window's size.")].spacing(12);
         body=body.push(ui::section("Display",display));
         if self.advanced_game {
+            use yo3_desktop::direct::{AutoDirect, State};
             let (label, tone) = match self.direct_state {
-                yo3_desktop::direct::State::Disabled => ("Disabled", ui::Tone::Neutral),
-                yo3_desktop::direct::State::Enabled => ("Enabled", ui::Tone::Success),
-                yo3_desktop::direct::State::NeedsRepair(_) => ("Needs repair", ui::Tone::Warning),
-                yo3_desktop::direct::State::Conflict(_) => ("Mod conflict", ui::Tone::Danger),
+                State::Disabled => ("Not set up", ui::Tone::Neutral),
+                State::Enabled => ("Ready", ui::Tone::Success),
+                State::NeedsRepair(_) => ("Refreshes on Play", ui::Tone::Warning),
+                State::Conflict(_) => ("Mod conflict", ui::Tone::Danger),
             };
-            let mut direct = column![row![ui::label_help("Open yo3.exe directly", "Optional setup for opening yo3.exe or its original shortcut without this window. A small reversible loader checks the saved server and connection DLL before login. The original executable and INI are unchanged."),
-                    widget::Space::new().width(Fill), ui::status_badge(label.into(), tone)].spacing(12).align_y(iced::Alignment::Center),
-                checkbox(self.direct_checked()).label("Allow opening yo3.exe directly")
-                    .on_toggle_maybe(self.can_change_direct(!self.direct_checked()).then_some(Msg::Direct)),
-                muted("Use your original game shortcut with the saved server and account. Start the server first when playing locally.")].spacing(12);
-            match &self.direct_state {
-                yo3_desktop::direct::State::Disabled | yo3_desktop::direct::State::Enabled => {},
-                yo3_desktop::direct::State::NeedsRepair(reason) => direct = direct.push(ui::inline_status(reason,ui::Tone::Warning))
-                    .push(muted("Repair restores Revival's loader (winmm.dll) beside yo3.exe and refreshes its saved server and account."))
-                    .push(action(Icon::Refresh, "Repair direct launch", self.can_change_direct(true).then_some(Msg::Direct(true)))),
-                yo3_desktop::direct::State::Conflict(reason) => direct = direct.push(ui::inline_status(reason,ui::Tone::Danger)),
+            let mut direct = column![row![ui::label_help("Open yo3.exe directly", "Pressing Play sets up opening yo3.exe or its original shortcut without this window, with the server and account you played on. A small loader (winmm.dll) goes beside yo3.exe; the game's own files are never changed and your sign-in stays in this app's private data. Delete Login Data on the game's title screen signs this PC out."),
+                    widget::Space::new().width(Fill), ui::status_badge(label.into(), tone)].spacing(12).align_y(iced::Alignment::Center)].spacing(12);
+            direct = direct.push(muted(match &self.direct_state {
+                State::Enabled => "You can open yo3.exe or its shortcut directly; it uses the server and account you last played on. Delete Login Data on the game's title screen signs this PC out until you press Play again.",
+                State::Disabled => "Press Play once and opening yo3.exe directly is set up for you.",
+                State::NeedsRepair(_) => "Signed out, moved, or updated: the next Play sets it up again.",
+                State::Conflict(_) => "Another mod's winmm.dll is beside yo3.exe; it is never replaced. Play here still works.",
+            }));
+            if let State::Conflict(reason) = &self.direct_state { direct = direct.push(ui::inline_status(reason,ui::Tone::Danger)); }
+            if matches!(self.direct_auto, Some(AutoDirect::NeedsPermission)) && !matches!(self.direct_state, State::Enabled) {
+                direct = direct.push(ui::inline_status("This game folder needs permission to add the loader.",ui::Tone::Warning))
+                    .push(action(Icon::Refresh, "Set up with permission", self.can_change_direct(true).then_some(Msg::Direct(true))));
             }
-            if self.game_running {direct=direct.push(ui::inline_status("Close the game before changing direct launch.",ui::Tone::Info));}
-            else if changed || self.setup_in_progress() { direct = direct.push(ui::inline_status("Wait for the current game folder to pass its check before changing direct launch.",if self.setup_in_progress(){ui::Tone::Info}else{ui::Tone::Warning})); }
-            else if matches!(self.direct_state,yo3_desktop::direct::State::Disabled | yo3_desktop::direct::State::NeedsRepair(_)) && !matches!(self.setup_result,Some(yo3_desktop::Readiness::Ready)) {
-                direct=direct.push(ui::inline_status(if self.direct_checked(){"Fix game setup above before repairing direct launch. You can still turn it off."}else{"Fix game setup above before enabling direct launch."},ui::Tone::Warning));
+            if self.direct_checked() {
+                direct = direct.push(action(Icon::Close, "Remove from game folder", self.can_change_direct(false).then_some(Msg::Direct(false))).style(ui::ghost));
             }
-            else if matches!(self.direct_state,yo3_desktop::direct::State::Disabled | yo3_desktop::direct::State::NeedsRepair(_))
-                && self.selected==ServerChoice::Local && self.status.is_none() && !self.locked() {
-                direct=direct.push(ui::inline_status("Start your server in Hosting before enabling or repairing direct launch.",ui::Tone::Info));
-            }
+            if self.game_running && self.direct_checked() {direct=direct.push(ui::inline_status("Close the game before removing it.",ui::Tone::Info));}
             body = body.push(ui::section("Direct launch",direct));
         }
         page_scroll(body)

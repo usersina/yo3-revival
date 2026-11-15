@@ -31,6 +31,7 @@ wine "$MOD/yo3-resolution-test.exe"
 wine "$MOD/yo3-teardown-test.exe"
 wine "$MOD/yo3-rental-return-test.exe"
 wine "$MOD/yo3-web-links-test.exe"
+wine "$MOD/yo3-signout-test.exe"
 # The higher resolution (resolution.h) is opt in: an invalid value, or a game whose drawing code isn't v1.153's (this
 # fixture has none), refuses to start; off loads as usual.
 for pair in 'banana:YO3_RESOLUTION must be' '1440x1080:drawing code is unsupported' 'auto:drawing code is unsupported'; do

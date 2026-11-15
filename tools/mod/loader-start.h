@@ -60,7 +60,7 @@ static void setup_error(const LoaderConfig *config, DWORD status) {
     wchar_t message[LOADER_PATH + 700];
     if (config->dll[0] && (status == ERROR_MOD_NOT_FOUND || status == ERROR_CRC)) {
         swprintf(message, sizeof message / sizeof *message,
-            L"This server requires the matching Revival connection DLL.\n\nExpected path:\n%ls\n\nThe file is missing or differs from the installed release. Select the matching DLL now? You must restart the game afterwards.\n\nChoose No to repair setup using YO3 Revival → Settings → Enable direct start.", config->dll);
+            L"This server requires the matching Revival connection DLL.\n\nExpected path:\n%ls\n\nThe file is missing or differs from the installed release. Select the matching DLL now? You must restart the game afterwards.\n\nChoose No, then press Play once in YO3 Revival to repair the setup.", config->dll);
         if (MessageBoxW(NULL, message, L"YO3 Revival — connection blocked", MB_YESNO | MB_ICONERROR) == IDYES) {
             wchar_t selected[LOADER_PATH] = L""; OPENFILENAMEW pick = {0}; pick.lStructSize = sizeof pick;
             pick.lpstrFilter = L"Connection DLL (*.dll)\0*.dll\0"; pick.lpstrFile = selected; pick.nMaxFile = LOADER_PATH;
@@ -73,9 +73,12 @@ static void setup_error(const LoaderConfig *config, DWORD status) {
                     L"YO3 Revival", MB_OK | (copied ? MB_ICONINFORMATION : MB_ICONERROR));
             }
         }
+    } else if (status == ERROR_NOT_AUTHENTICATED) {
+        MessageBoxW(NULL, L"This PC is signed out of direct start (Delete Login Data on the title screen).\n\nOpen YO3 Revival and press Play once to sign in again. After that, opening the game directly works again.",
+            L"YO3 Revival — signed out", MB_OK | MB_ICONINFORMATION);
     } else {
         swprintf(message, sizeof message / sizeof *message,
-            L"Revival setup is incomplete (error %lu). The game cannot connect.\n\nOpen YO3 Revival, choose the game folder and server/account, and select Settings → Enable direct start. Then restart the game.\n\nThe original yo3.exe is unchanged.", status);
+            L"Revival setup is incomplete (error %lu). The game cannot connect.\n\nOpen YO3 Revival, choose the game folder and server/account, and press Play once: it sets up opening the game directly again. Then restart the game.\n\nThe original yo3.exe is unchanged.", status);
         MessageBoxW(NULL, message, L"YO3 Revival — setup required", MB_OK | MB_ICONERROR);
     }
 }

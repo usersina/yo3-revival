@@ -21,6 +21,9 @@ Older entries describe their release at the time. For current setup, use the [RE
   player need this version for it.
 - **Auto Card Placing works.** Turn it OFF in **Main Menu → DUEL OPTIONS** and you choose the zone for every monster
   you summon or set and every Spell or Trap you play; ON (the default), the game places them for you as before.
+- **Open the game directly, with nothing to switch on.** Press Play once in YO3 Revival and from then on `yo3.exe` or
+  its shortcut connects to the server and account you last played on. The "Allow opening yo3.exe directly" checkbox is
+  gone. **Delete Login Data** on the title screen signs that PC out until you press Play again.
 
 ## v0.0.17 (2026-11-15)
 

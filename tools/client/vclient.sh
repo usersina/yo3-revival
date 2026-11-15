@@ -99,7 +99,7 @@ case "${1:-}" in
   start-stock)
     # Installed automatic loader path: no injector or account credentials on this command line.
     if [ ! -f "$GAME/winmm.dll" ] || [ ! -f "$GAME/yo3-revival-loader.json" ]; then
-      echo 'Enable direct start in the GUI and wait for setup to complete before start-stock.' >&2
+      echo 'Press Play once in the GUI (it sets up direct start) before start-stock.' >&2
       exit 1
     fi
     ui_probe

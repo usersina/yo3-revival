@@ -186,21 +186,20 @@ are available for advanced setups.
 
 ## Open the game directly
 
-This is optional. First let the game-folder check finish and select the server/account on Advanced → Play. Then open
-**Advanced → Game setup → Advanced game options** and check **Allow opening yo3.exe directly**. If using your local
-server, start it in Hosting first; the checkbox explains when setup or a running game prevents a change.
-You can then open the original `yo3.exe` or its shortcut; direct launch uses the saved connection and does not start
-a stopped server for you.
+Press **Play** once and the game can afterwards be opened directly: `yo3.exe`, or its Start menu or desktop shortcut,
+connects to the server and account you last played on, without this window. There is nothing to switch on. Each
+Play keeps that saved server and account up to date. If you host on this computer, the server must be running
+(start it in Hosting, or press Play here): opening `yo3.exe` directly does not start it for you.
 
-The setup adds an owned `winmm.dll` loader and receipt beside the game, leaving the executable and INI unchanged.
-Credentials stay in private app storage. A protected game folder may request permission for this explicit setup or
-removal. It refuses to replace another mod.
+The setup adds an owned `winmm.dll` loader and a small receipt beside `yo3.exe`; the game's own files are never
+changed, and your sign-in stays in the app's private storage. It never replaces another mod's `winmm.dll` (Game setup
+then shows **Mod conflict**, and Play here still works). In a protected game folder, Play never asks for permission:
+**Advanced → Game setup → Advanced game options** then offers **Set up with permission**. **Remove from game folder**
+there takes it out again.
 
-Clear the checkbox to remove that setup. **Repair direct launch** appears when owned components need refreshing;
-it restores the bundled `winmm.dll` beside `yo3.exe` and refreshes the saved server/account. The checkbox stays checked
-with **Needs repair** until repaired or turned off. Removal remains available even when
-required Revival files are missing. Turn it off before moving the saved game location or changing the Wine prefix.
-Status shows Enabled, Disabled, Needs repair or Mod conflict; another mod is never overwritten.
+**Delete Login Data** on the game's title screen also signs this PC out of direct start. Opening `yo3.exe` directly
+then only says to press Play once in YO3 Revival, which signs it in again. After an update, a moved game folder or a
+changed Wine prefix, the next Play refreshes the setup the same way.
 
 The loader checks required components and server compatibility before login. A missing DLL gives its expected path
 and offers a matching-file picker, followed by restart. A game with no loader at all can only show the original
@@ -306,7 +305,7 @@ server data remain in place. Press **Play** yourself to reopen the game afterwar
 If verification or the new app's startup fails, the previous version remains available. Existing launcher shortcuts
 route to the active version; keep the original bundle if using its shortcut or an older direct-launch setup.
 Updates live under `updates/installs/` in private app storage, with the active/previous selections in `launcher.db`.
-Direct launch may need **Repair direct launch** after an update. Development builds stay in place.
+After an update, the next Play refreshes opening the game directly. Development builds stay in place.
 
 Archives have versioned filenames, but stable inner folders: `yo3-revival-desktop/` and `yo3-revival-scripts/`.
 Do not overwrite a running bundle. [Scripts updates](scripts.md#updates) are manual.

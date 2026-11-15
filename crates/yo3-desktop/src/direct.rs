@@ -1,4 +1,7 @@
-//! Reversible, opt-in game-local loader. Credentials/configuration stay in the current user's private app data.
+//! The game-local loader that lets `yo3.exe` open directly: set up by Play (`Backend::auto_direct`), signed out by the
+//! game's Delete Login Data (the connection DLL deletes the saved sign-in, `tools/mod/signout.h`), removable from the
+//! app. Credentials/configuration stay in the current user's private app data; the game folder gets only `winmm.dll`
+//! and its receipt, never a changed Konami file.
 use std::path::{Path, PathBuf};
 use anyhow::{Context, ensure};
 use serde::{Deserialize, Serialize};
@@ -108,6 +111,9 @@ fn registry(settings: &Settings, config: Option<&Path>) -> anyhow::Result<()> {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State { Disabled, Enabled, NeedsRepair(String), Conflict(String) }
+/// What Play's automatic setup did (`Backend::auto_direct`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AutoDirect { Ready, NeedsPermission, Skipped(String) }
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 struct Stamp { game: String, prefix: String, paths: Vec<PathBuf>, hashes: Vec<String>, ini: String }
 impl Backend {
@@ -173,6 +179,27 @@ impl Backend {
     }
     pub fn enable_direct(&self, settings: &Settings, remote: Option<SavedServer>) -> anyhow::Result<()> {
         ensure!(!self.game_running(), "Close the game before changing direct-start setup");
+        self.set_up_direct(settings, remote, true)
+    }
+
+    /// Play's automatic setup, just before it starts the game: sets up (or refreshes) opening `yo3.exe` directly with
+    /// the connection just used, never asking for permission. A game folder that needs it, another mod's `winmm.dll`
+    /// or any other problem leaves direct start as it was and says why.
+    pub fn auto_direct(&self, settings: &Settings, remote: Option<SavedServer>) -> AutoDirect {
+        let result = match self.direct_state(settings) {
+            State::Conflict(reason) => return AutoDirect::Skipped(reason),
+            // Already in place: only the saved connection follows this Play (no Wine registry round trip).
+            State::Enabled => self.direct_profile(settings, remote),
+            _ => self.set_up_direct(settings, remote, false),
+        };
+        match result {
+            Ok(()) => AutoDirect::Ready,
+            Err(error) if error.downcast_ref::<std::io::Error>().is_some_and(|e| e.kind() == std::io::ErrorKind::PermissionDenied) => AutoDirect::NeedsPermission,
+            Err(error) => AutoDirect::Skipped(format!("{error:#}")),
+        }
+    }
+
+    fn set_up_direct(&self, settings: &Settings, remote: Option<SavedServer>, elevate: bool) -> anyhow::Result<()> {
         let game = Path::new(&settings.game_dir); crate::validate_game(game)?;
         yo3_launcher::components::preflight(&game.join("yo3.exe"), &self.runtime.injector, &self.runtime.dll)?;
         let source = self.loader_source()?;
@@ -191,7 +218,7 @@ impl Backend {
         let bytes: Vec<u8> = std::iter::once(0xfeffu16).chain(ini.encode_utf16()).flat_map(u16::to_le_bytes).collect();
         private_write(&file, &bytes, true)?;
         if let Err(error) = install_files(game, &source) {
-            if error.downcast_ref::<std::io::Error>().is_some_and(|e| e.kind() == std::io::ErrorKind::PermissionDenied) {
+            if elevate && error.downcast_ref::<std::io::Error>().is_some_and(|e| e.kind() == std::io::ErrorKind::PermissionDenied) {
                 ensure!(crate::privileged::request_loader(game, false)? == crate::privileged::PermissionResult::Applied, "Direct-start installation cancelled");
             } else { return Err(error) }
         }

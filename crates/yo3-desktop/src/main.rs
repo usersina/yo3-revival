@@ -83,7 +83,7 @@ enum Msg {
 impl std::fmt::Debug for Msg { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("DesktopEvent") } }
 #[derive(Clone)]
 enum Outcome {
-    Info(String), Status(Value), GameStarted, Accounts(Value), Codes(Value, Option<String>), AccountsChanged(Value, String, Option<String>), Imported(SavedServer),
+    Info(String), Status(Value), GameStarted(yo3_desktop::direct::AutoDirect, yo3_desktop::direct::State), Accounts(Value), Codes(Value, Option<String>), AccountsChanged(Value, String, Option<String>), Imported(SavedServer),
     Observed(yo3_tunnel::ObservedServer), Checked(yo3_tunnel::ServerInfo), Bindings(Vec<yo3_desktop::network::BindAddress>),
     SettingsSaved(Section, Settings), SelectionSaved(Settings), ConnectionsSaved(Vec<SavedServer>, i64), ConnectionsRemoved(Vec<SavedServer>, Settings),
     Recovered(Settings, Vec<SavedServer>, Arc<Backend>), GameDataReset(PathBuf), Quit,
@@ -108,7 +108,7 @@ struct App {
     bug_report: Option<BugReport>, github_account: Option<GitHubAccount>,
     advanced_game: bool, account_options: bool, account_form: bool,
     option_filter: String, banlists: Vec<(u32, String)>,
-    setup_result: Option<yo3_desktop::Readiness>, setup_missing_files: Vec<PathBuf>, direct_state: yo3_desktop::direct::State, first_setup: bool,
+    setup_result: Option<yo3_desktop::Readiness>, setup_missing_files: Vec<PathBuf>, direct_state: yo3_desktop::direct::State, direct_auto: Option<yo3_desktop::direct::AutoDirect>, first_setup: bool,
     game_data_dialog: Option<GameDataDialog>, game_data_generation: u64, game_data_backup: Option<PathBuf>,
     update_status: UpdateStatus, release_notes: Vec<widget::markdown::Item>, review_update: bool, transfer: Option<(updates::Release, updates::download::Transfer)>,
     staged: Option<updates::install::Installed>, applying: bool, startup: updates::activation::Startup,
@@ -145,7 +145,7 @@ impl App {
             picking: false, picker_generation: 0,
             identity: None, observed: None, checked: None, invitation_imported: false, invitation_checking: false, invitation_verified: false, invitation_generation: 0, bindings: yo3_desktop::network::defaults(), port, report: None, report_options: false, report_all: false,
             report_busy: false, report_generation: 0, report_feedback: None, report_remove_personal: false, bug_report: None, github_account: None,
-            advanced_game: false, account_options: false, account_form: false, option_filter: String::new(), banlists: Vec::new(), setup_result: None, setup_missing_files: Vec::new(), direct_state: yo3_desktop::direct::State::Disabled, first_setup,
+            advanced_game: false, account_options: false, account_form: false, option_filter: String::new(), banlists: Vec::new(), setup_result: None, setup_missing_files: Vec::new(), direct_state: yo3_desktop::direct::State::Disabled, direct_auto: None, first_setup,
             game_data_dialog: None, game_data_generation: 0, game_data_backup: None,
             update_status: UpdateStatus::Checking, release_notes: Vec::new(), review_update: false, transfer: None, staged: None, applying: false, startup: Default::default() }
     }
@@ -391,7 +391,16 @@ impl App {
                     _ => {
                         let remote = match self.selected.remote(&self.servers) { Ok(remote) => remote, Err(e) => { self.feedback(Err(e.to_string())); return Task::none() } };
                         self.starting_game=true;self.begin("Rechecking files and preparing the game…");
-                        return job(move || { backend.play(&settings, remote, &who)?; Ok(Outcome::GameStarted) });
+                        // Play sets up opening yo3.exe directly with this connection (`Backend::auto_direct`).
+                        // Before the game opens: a loader the running game loaded can't be replaced on Windows. Your own
+                        // server is started first, as Play would, so its sign-in can be saved.
+                        return job(move || {
+                            if remote.is_none() { backend.start_server(&settings)?; }
+                            let auto = backend.auto_direct(&settings, remote.clone());
+                            if let yo3_desktop::direct::AutoDirect::Skipped(why) = &auto { backend.diagnostics.line(&format!("Direct start not set up: {why}")); }
+                            backend.play(&settings, remote, &who)?;
+                            Ok(Outcome::GameStarted(auto, backend.direct_state(&settings)))
+                        });
                     }
                 }
             }
@@ -549,7 +558,10 @@ impl App {
                 match result {
                     Ok(Outcome::Info(info)) => { self.completed(Ok(info)); return self.inspect_setup() }
                     Ok(Outcome::Status(status)) => { self.status = Some(status); self.completed(Ok("Server is running on this computer.".into())); self.startup.resume_hosting = false; return self.load_accounts() }
-                    Ok(Outcome::GameStarted) => { self.game_running = true; self.game_ready = false; self.game_start=Some(std::time::Instant::now()); }
+                    Ok(Outcome::GameStarted(auto, direct)) => {
+                        self.game_running = true; self.game_ready = false; self.game_start=Some(std::time::Instant::now());
+                        self.direct_auto = Some(auto); self.direct_state = direct;
+                    }
                     Ok(Outcome::Accounts(accounts)) => { self.accounts = accounts; self.reconcile_accounts(); }
                     Ok(Outcome::Codes(codes, message)) => {
                         self.codes = codes;

@@ -150,6 +150,7 @@ static int WSAAPI hooked_close(SOCKET socket) {
 #include "npc-duel-log.h"
 #include "rental-return.h"
 #include "web-links.h"
+#include "signout.h"
 #include "teardown.h"
 
 /* The automatic loader delegates the API call that triggered initialization here once, outside DllMain. */
@@ -209,6 +210,7 @@ BOOL WINAPI DllMain(HINSTANCE dll, DWORD reason, LPVOID reserved) {
     if (!npc_duel_log_install()) return mod_failure("stage=mod-duel-log: Game duel result code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!rental_return_install()) return mod_failure("stage=mod-rental-return: Game rental record code is unsupported. Validate the original v1.153 executable.\r\n");
     if (!teardown_install()) return mod_failure("stage=mod-teardown: Game exit code is unsupported. Validate the original v1.153 executable.\r\n");
+    signout_install(); /* Delete Login Data signs direct start out; another build keeps its own */
     web_links_install(); /* the old website links to the host's pages; a game without ShellExecuteA has none */
     ui_probe_install(); /* debugging aid, off unless YO3_UI_PROBE is set; never a reason to refuse the game */
     mod_ready = 1;

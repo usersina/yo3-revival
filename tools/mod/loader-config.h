@@ -59,8 +59,10 @@ static DWORD validate_config(LoaderConfig *config) {
     DWORD status = loader_config(config); if (status) return status;
     if (GetFileAttributesW(config->dll) == INVALID_FILE_ATTRIBUTES) return ERROR_MOD_NOT_FOUND;
     if (!mod_hash_matches(config->dll, config->sha256)) return ERROR_CRC;
-    if (GetFileAttributesW(config->launcher) == INVALID_FILE_ATTRIBUTES || GetFileAttributesW(config->injector) == INVALID_FILE_ATTRIBUTES
-        || GetFileAttributesW(config->profile) == INVALID_FILE_ATTRIBUTES) return ERROR_FILE_NOT_FOUND;
+    if (GetFileAttributesW(config->launcher) == INVALID_FILE_ATTRIBUTES || GetFileAttributesW(config->injector) == INVALID_FILE_ATTRIBUTES)
+        return ERROR_FILE_NOT_FOUND;
+    /* No saved sign-in: Delete Login Data signed this PC out (signout.h), or the app hasn't signed it in yet. */
+    if (GetFileAttributesW(config->profile) == INVALID_FILE_ATTRIBUTES) return ERROR_NOT_AUTHENTICATED;
     DWORD attributes = GetFileAttributesW(config->state);
     if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY)) return ERROR_PATH_NOT_FOUND;
     return ERROR_SUCCESS;
