@@ -31,7 +31,9 @@ An account holds up to four players with their in-game names, cards, decks and B
   - up to ten **signed-in devices** ("stay signed in").
   A new password account has no players yet; the game's Select Player makes them.
 - **Key accounts**. A 20-character key signs in. The launcher's own Singleplayer account uses one, and so do the
-  Scripts edition's private profiles until the launcher's sign-in form (#30) replaces them.
+  Scripts edition's private profiles. The beta launcher's Multiplayer tab (#30) signs in to password accounts instead:
+  it asks the server for a session (operation 6) and hands the helper that session in its private profile, never the
+  password.
 
 The address a client connects from never selects an account.
 

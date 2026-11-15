@@ -28,6 +28,7 @@ pub mod store;
 pub mod setup_check;
 pub mod singleplayer;
 pub mod shortcut;
+pub mod multiplayer;
 mod game_data_platform;
 mod process;
 
@@ -169,9 +170,11 @@ impl LauncherDb {
         let conn = Connection::open(path)?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         let version: u32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
-        ensure!(version <= 1, "Launcher database is newer than this application.");
+        ensure!(version <= 2, "Launcher database is newer than this application.");
+        // 2: the Multiplayer servers the player added or played on (#30), by their first identity.
         conn.execute_batch("BEGIN; CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS servers (id INTEGER PRIMARY KEY, body TEXT NOT NULL); PRAGMA user_version=1; COMMIT;")?;
+            CREATE TABLE IF NOT EXISTS servers (id INTEGER PRIMARY KEY, body TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS remote_servers (key TEXT PRIMARY KEY, body TEXT NOT NULL); PRAGMA user_version=2; COMMIT;")?;
         Ok(Self { conn })
     }
     pub fn settings(&self) -> anyhow::Result<Settings> {
@@ -215,6 +218,21 @@ impl LauncherDb {
                 && value.chars().all(|c| c.is_ascii_alphanumeric() || " /.-()".contains(c))),
             "Choose one of the game's banlists.");
         let mut saved = self.settings()?; saved.banlist = value.clone(); self.save_settings(&saved)?; Ok(value)
+    }
+    /// The Multiplayer servers the player added or played on.
+    pub fn remote_servers(&self) -> anyhow::Result<Vec<multiplayer::Server>> {
+        let mut stmt = self.conn.prepare("SELECT body FROM remote_servers")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        rows.map(|body| Ok(serde_json::from_str(&body?)?)).collect()
+    }
+    pub fn save_remote_server(&self, server: &multiplayer::Server) -> anyhow::Result<()> {
+        ensure!(!server.key().is_empty(), "A server needs its identity.");
+        self.conn.execute("INSERT INTO remote_servers VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET body=excluded.body", (server.key(), serde_json::to_string(server)?))?;
+        Ok(())
+    }
+    pub fn delete_remote_server(&self, key: &str) -> anyhow::Result<()> {
+        self.conn.execute("DELETE FROM remote_servers WHERE key=?1", [key])?;
+        Ok(())
     }
     pub fn servers(&self) -> anyhow::Result<Vec<SavedServer>> {
         let mut stmt = self.conn.prepare("SELECT id,body FROM servers ORDER BY id")?;
@@ -567,6 +585,23 @@ impl Backend {
         server.validate()?;
         self.sync_direct(settings, Some(server.clone()))?;
         let profile = self.write_profile(&server)?;
+        self.launch(settings, profile, game)
+    }
+    /// Plays on a Multiplayer server with a session the launcher signed in for (#30): the helper uses it for the game's
+    /// connections, through the server's pinned identity. The private profile holds the session, never a password.
+    pub fn play_signed_in(&self, settings: &Settings, server: &multiplayer::Server, session: &yo3_tunnel::Token) -> anyhow::Result<()> {
+        let game = self.game.lock().unwrap();
+        self.check_game(settings)?;
+        let file = self.root.join("profiles").join("multiplayer.json");
+        let session: String = session.iter().map(|b| format!("{b:02x}")).collect();
+        private_write(&file, serde_json::json!({ "server": server.address, "server_name": server.server_name, "identity": server.key(),
+            "session": session }).to_string().as_bytes(), true)?;
+        yo3_launcher::Profile::load(&file)?;
+        self.launch(settings, file, game)
+    }
+    /// Starts the game through the helper with the private profile `profile`.
+    fn launch(&self, settings: &Settings, profile: PathBuf, mut game: std::sync::MutexGuard<'_, Option<Child>>) -> anyhow::Result<()> {
+        ensure!(game.as_mut().is_none_or(|p| p.try_wait().ok().flatten().is_some()), "The game is already running.");
         ensure!(self.runtime.launcher.is_file() && self.runtime.dll.is_file() && self.runtime.injector.is_file(), "Connection files are missing. Extract the complete application bundle.");
         let mut cmd = Command::new(&self.runtime.launcher);
         cmd.arg("--control-stdin").arg("--profile").arg(profile).arg("--game-dir").arg(&settings.game_dir).arg("--injector").arg(&self.runtime.injector).arg("--dll").arg(&self.runtime.dll);

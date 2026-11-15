@@ -5583,6 +5583,7 @@ name = "yo3-desktop"
 version = "0.0.19"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "flate2",
  "iced",

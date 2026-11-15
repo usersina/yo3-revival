@@ -65,12 +65,12 @@ pub fn report_error(path: &Path, error: &str) {
 
 pub struct Attachment { pub pid: u32, pub game: PathBuf, pub ready: PathBuf, pub ack: PathBuf }
 #[cfg(windows)]
-pub async fn serve(request: Attachment, endpoint: Endpoint, key: &str, proxy: Proxy) -> anyhow::Result<()> {
+pub async fn serve(request: Attachment, endpoint: Endpoint, key: &crate::Credential, proxy: Proxy) -> anyhow::Result<()> {
     let owner = GameProcess::open(request.pid, &request.game)?;
     let files = ReadyFiles::prepare(&request.ready, &request.ack, request.pid, proxy.ports, &proxy.cookie, &proxy.server_id)?;
     wait_for_ack(&request.ack, &proxy.cookie, Duration::from_secs(30), || owner.alive()).await?;
     yo3_tunnel::diagnostics::event("Connection DLL acknowledged readiness; authenticating");
-    let session = endpoint.login(key).await.context("Authentication failed; game login remains blocked")?;
+    let session = key.sign_in(&endpoint).await.context("Authentication failed; game login remains blocked")?;
     let result = async {
         ensure!(owner.alive()?, "Game exited before authentication completed");
         proxy.activate(session); files.authenticated()?;
@@ -82,7 +82,7 @@ pub async fn serve(request: Attachment, endpoint: Endpoint, key: &str, proxy: Pr
     result
 }
 #[cfg(not(windows))]
-pub async fn serve(_: Attachment, _: Endpoint, _: &str, _: Proxy) -> anyhow::Result<()> {
+pub async fn serve(_: Attachment, _: Endpoint, _: &crate::Credential, _: Proxy) -> anyhow::Result<()> {
     anyhow::bail!("Direct game attachment uses the Windows helper, including the supplied helper under Wine")
 }
 

@@ -36,6 +36,10 @@ impl Gate {
         info.online = online;
         info.registration = settings.registration.as_str().into();
         info.min_launcher = settings.min_launcher.clone();
+        // The news, each body shortened, and as many entries as fit in discovery's answer.
+        let short = |text: &str, n: usize| if text.chars().count() > n { text.chars().take(n - 1).collect::<String>() + "…" } else { text.to_owned() };
+        info.news = settings.news.iter().map(|(title, body)| yo3_tunnel::News { title: short(title, 128), body: short(body, 400) }).collect();
+        while !info.news.is_empty() && serde_json::to_vec(&info).map_or(true, |b| b.len() > yo3_tunnel::MAX_INFO) { info.news.pop(); }
         info
     }
 }

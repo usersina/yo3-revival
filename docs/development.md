@@ -106,6 +106,37 @@ env -u WAYLAND_DISPLAY DISPLAY=:88 YO3_DESKTOP_DATA=$DATA ./target/release/yo3-r
 An empty `game_dir` opens Setup first. A development launcher needs a connection DLL built with the same version
 (`tools/mod/build.sh`); a release DLL left in `tools/mod/build/` shows Repair, and Setup's Details says why.
 
+Two more things keep a live check private:
+
+- **The credential store.** On Linux the launcher reaches the Secret Service through the session bus, which it finds
+  under `XDG_RUNTIME_DIR` even without `DBUS_SESSION_BUS_ADDRESS`. Start it with both pointing away from your desktop
+  (`env -u DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR=$DATA/run`, a private folder) so Multiplayer's Stay signed in can't
+  write to your own store; it then shows as unavailable, which is a state worth seeing too.
+- **The prefix's user folders.** A copied prefix keeps Wine's links from `drive_c/users/<you>/Documents` (and Desktop,
+  Downloads…) to your real home folders, so the game would write there. Replace those links with empty folders in the
+  copy, and point the launcher's game folder at the copy's own game.
+
+On Xvfb there is no window manager: give the launcher keyboard focus (`xdotool windowfocus`) before typing, and raise it
+(`xdotool windowraise`) before clicking it while the game is open.
+
+### The official server list
+
+The Multiplayer tab reads a server list signed with an ed25519 key whose public half is built into the launcher
+(`multiplayer::OFFICIAL_LIST_KEYS`, empty until the project publishes a list). `yo3-server-list` makes the key, signs a
+list and checks a signed file:
+
+```bash
+cargo build -p yo3-desktop --bin yo3-server-list
+target/debug/yo3-server-list keygen /safe/place/list.key          # prints the public key; keep the file private
+target/debug/yo3-server-list sign servers-list.json /safe/place/list.key servers.json
+target/debug/yo3-server-list verify servers.json PUBLIC_KEY_HEX
+```
+
+The list is `{"version": N, "servers": [{"name", "address", "identities": [...], "region", "description",
+"invite_only"}]}`: each server's identities are the SHA-256 of its public key (the one `yo3-server` shows), two while it
+rotates its key. A higher `version` replaces the cached list. To rotate the list's own key, ship a launcher that knows
+both public keys before signing with the new one.
+
 ## Storage cost
 
 The server keeps one row per account (with its players), record, friendship, mail, team, event and rental in

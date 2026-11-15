@@ -5,6 +5,7 @@ mod app;
 mod error_presentation;
 mod external;
 mod home;
+mod multi;
 mod setup;
 
 use std::sync::Mutex;

@@ -23,15 +23,40 @@ pub async fn authorize<R: AsyncRead + Unpin>(stream: &mut R, cookie: &Token) -> 
 
 #[derive(Deserialize)]
 pub struct Profile { pub server: String, pub server_name: String, #[serde(default)] pub certificate: String,
-    #[serde(default)] pub identity: Option<String>, pub key: String }
+    #[serde(default)] pub identity: Option<String>, #[serde(default)] pub key: String,
+    /// A session the launcher signed in for with a User ID and password (#30), instead of an account key.
+    #[serde(default)] pub session: Option<String> }
+
+/// How the helper signs in: with an account key (key accounts: Singleplayer, the Scripts profiles), or with a session
+/// the launcher already signed in for (password accounts, #30).
+#[derive(Clone)]
+pub enum Credential { Key(String), Session(yo3_tunnel::Token) }
+
+impl Credential {
+    /// A session for the game's connections.
+    pub async fn sign_in(&self, endpoint: &Endpoint) -> anyhow::Result<yo3_tunnel::Token> {
+        match self { Credential::Key(key) => endpoint.login(key).await, Credential::Session(session) => Ok(*session) }
+    }
+    /// The secret, for redacting logs.
+    pub fn secret(&self) -> String {
+        match self { Credential::Key(key) => key.clone(), Credential::Session(session) => hex(session) }
+    }
+}
 
 impl Profile {
-    pub fn load(path: &Path) -> anyhow::Result<(Endpoint, String)> {
+    pub fn load(path: &Path) -> anyhow::Result<(Endpoint, Credential)> {
         let p: Self = serde_json::from_slice(&std::fs::read(path)?)?;
         let certificate = path.parent().unwrap_or(Path::new(".")).join(p.certificate);
         let endpoint = match p.identity { Some(identity) => Endpoint::pinned(p.server, p.server_name, &identity)?,
             None => Endpoint::new(p.server, p.server_name, &certificate)? };
-        Ok((endpoint, p.key))
+        let credential = match p.session {
+            Some(hex) => {
+                let bytes: Vec<u8> = (0..hex.len() / 2).filter_map(|i| u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()).collect();
+                Credential::Session(bytes.try_into().map_err(|_| anyhow::anyhow!("the profile's session is malformed"))?)
+            }
+            None => Credential::Key(p.key),
+        };
+        Ok((endpoint, credential))
     }
 }
 

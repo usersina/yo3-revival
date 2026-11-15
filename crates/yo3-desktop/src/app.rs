@@ -90,6 +90,7 @@ impl App {
         match message {
             Message::Home(home::Message::SetUp) => return self.open_setup(setup::Step::Game),
             Message::Home(home::Message::Repair) => self.dialog = Some(Dialog::Repair),
+            Message::Home(home::Message::Releases) => return self.update(Message::OpenLink(RELEASES.into())),
             Message::Home(home::Message::Restore) => self.dialog = Some(Dialog::Backups),
             Message::Home(home::Message::RestoreBackup(backup)) => {
                 self.dialog = None;

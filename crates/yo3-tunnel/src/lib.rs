@@ -50,13 +50,21 @@ pub struct ServerInfo {
     pub min_launcher: Option<String>,
     #[serde(default)]
     pub maintenance: bool,
+    /// The server's news (the game's Information list), shortened to fit discovery's size, for the launcher's
+    /// Information panel before signing in (#30).
+    #[serde(default)]
+    pub news: Vec<News>,
 }
+
+/// One entry of a server's news.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct News { pub title: String, pub body: String }
 impl ServerInfo {
     pub fn current(ready: bool) -> Self {
         Self { release: BUILD_VERSION.into(), commit: BUILD_COMMIT.into(), protocol: PROTOCOL_VERSION,
             mod_abi: MOD_ABI, game_version: "1.153".into(), ready,
             problem: (!ready).then(|| "The host's rules engine is unavailable.".into()),
-            name: String::new(), headline: String::new(), online: None, max_online: None, registration: String::new(), min_launcher: None, maintenance: false }
+            name: String::new(), headline: String::new(), online: None, max_online: None, registration: String::new(), min_launcher: None, maintenance: false, news: vec![] }
     }
     pub fn ensure_compatible(&self, protocol: u16, mod_abi: u16) -> anyhow::Result<()> {
         if self.protocol != protocol { bail!("Server {} requires protocol {}; this application uses {}. Install a compatible release.", self.release, self.protocol, protocol) }

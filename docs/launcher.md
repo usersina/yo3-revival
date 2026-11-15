@@ -2,8 +2,8 @@
 
 > **On the `beta` branch** the Desktop window is being rebuilt for the public beta
 > ([#20](https://github.com/usersina/yo3-revival/issues/20)). It has Setup ([First launch](#first-launch) describes it),
-> Singleplayer and Help so far. Joining and hosting, Activity, logs, Report a problem, Resolution and installing updates
-> return in later beta versions (#30, #31, #32, #37). The rest of this guide describes v0.0.19.
+> Singleplayer, Multiplayer and Help so far. Hosting, Activity, logs, Report a problem, Resolution and installing updates
+> return in later beta versions (#31, #32, #37). The rest of this guide describes v0.0.19.
 
 Use **Desktop** for a window with game setup, a Play button and logs. Use [Scripts](scripts.md) if you prefer a terminal.
 Both editions include the server, rules engine and required connection components. Game files are separate.
@@ -67,6 +67,29 @@ it. If YO3 Revival crashes, the game keeps playing and your server stops by itse
 minutes. A game opened without the launcher shows as **PLAYING**, so a second copy can't be started. Singleplayer data
 is in the app data folder's `singleplayer/`; if it can't be opened, the notice offers **Restore a backup** (the server
 keeps one from each of its last starts, newest first).
+
+**Multiplayer** (beta) signs in to servers with a User ID and password ([accounts](authentication.md#accounts)):
+
+![The Multiplayer tab, signed in to a server](../screenshots/multiplayer.png)
+
+- **The server list**: the official servers (from a list signed by the project, once it publishes one) and the ones you
+  added under **Other servers**, the last one you played on first. Each shows whether it is online, with how many
+  players and its ping, or Maintenance, Offline, Needs a newer launcher, or Identity changed. The Information panel shows
+  the chosen server's news.
+- **Other servers**: type an address (`host` or `host:port`), or paste an invite link a host sent you
+  (`yo3revival://server?…`). An address shows the server's identity once, to compare with the one the host gave you;
+  YO3 Revival checks it on every connection after that. An invite link carries the identity, so there's no question.
+  If a server's identity ever changes, its row says so and nothing connects: remove the server and add it again only if
+  the host confirms the change.
+- **Create account**: a User ID (3 to 16 letters, digits, `_` or `-`), a password of at least 8 characters, typed twice,
+  and the server's invite code when it asks for one. You then see a **recovery code** once: save it.
+- **LOG IN**: **Save User ID** keeps only the name. **Stay signed in** keeps a sign-in token in your system's credential
+  store (Windows Credential Manager, or the Secret Service on Linux), never the password; without such a store it is
+  off and says why. Wrong User ID or password get the same message, and repeated tries wait longer each time.
+- **Forgot password?**: your recovery code (or a reset code from the server's moderators, who check it's you first) and
+  a new password. A recovery code is replaced by a new one, shown once.
+- **PLAY** starts the game signed in to the server; **Close game** works as in Singleplayer. **Sign out** forgets this
+  PC's sign-in. Signing in elsewhere ends this game's session: the newest sign-in wins.
 
 Later starts are quick: YO3 Revival remembers a fingerprint of `yo3.exe` and runs the full check again only when the
 game changed. If the game folder disappears (moved, or a drive unplugged), the main screen says **We can't find your

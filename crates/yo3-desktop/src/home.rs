@@ -8,6 +8,7 @@ use yo3_desktop::Readiness;
 use yo3_desktop::singleplayer::{self, Backup};
 use yo3_skin::{BODY_BOLD, Kind, color, pill};
 use crate::app::{Ctx, dot, job};
+use crate::multi;
 use crate::error_presentation::{self, Hint};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -141,6 +142,9 @@ pub enum Message {
     Restored(Result<(), String>),
     ToggleDetails,
     Dismiss,
+    Multi(multi::Message),
+    /// Handled by the window: the releases page, for a server that needs a newer launcher.
+    Releases,
 }
 
 #[derive(Default)]
@@ -156,12 +160,41 @@ pub struct State {
     cancelled: bool,
     /// When the Play that is now waiting for the game's window was pressed.
     waiting_since: Option<Instant>,
+    /// The Multiplayer tab (#30).
+    pub multi: multi::State,
 }
 
 impl State {
     pub fn update(&mut self, message: Message, ctx: &mut Ctx) -> Task<Message> {
         match message {
-            Message::Tab(tab) => self.tab = tab,
+            Message::Tab(tab) => {
+                self.tab = tab;
+                if tab == Tab::Multi { return self.multi.load(ctx).map(Message::Multi) }
+            }
+            Message::Multi(multi::Message::Play) => {
+                let busy = self.game.running || self.game.starting.is_some() || self.game.outside;
+                let (Some(backend), Some((server, signed)), false) = (ctx.backend.clone(), self.multi.session(), busy) else { return Task::none() };
+                let settings = ctx.settings.clone();
+                self.cancelled = false;
+                self.game.starting = Some((Step::Game, Instant::now()));
+                self.notice = None;
+                let played = self.multi.played(ctx).map(Message::Multi);
+                let start = job(move || {
+                    // A device that stays signed in gets a fresh session for each Play; otherwise the sign-in's own.
+                    let session = match &signed.device_token {
+                        Some(token) => tokio::runtime::Builder::new_current_thread().enable_all().build()?
+                            .block_on(yo3_desktop::multiplayer::resume(&server, token)).map_err(|p| anyhow::anyhow!(p.sentence()))?.session,
+                        None => signed.session,
+                    };
+                    backend.play_signed_in(&settings, &server, &session)?;
+                    Ok(false)
+                }, Message::Started);
+                return Task::batch([played, start]);
+            }
+            Message::Multi(multi::Message::Remedy(yo3_desktop::multiplayer::Remedy::Update)) => return Task::done(Message::Releases),
+            Message::Multi(multi::Message::CloseGame) => return self.update(Message::CloseGame, ctx),
+            Message::Multi(message) => return self.multi.update(message, ctx).map(Message::Multi),
+            Message::Releases => {}
             Message::Play => {
                 if Play::of(&self.game) != Play::Ready { return Task::none() }
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
@@ -385,8 +418,13 @@ impl State {
     }
 
     pub fn view<'a>(&'a self, ctx: &'a Ctx) -> Element<'a, Message> {
-        let side = match self.tab { Tab::Single => self.singleplayer(ctx), Tab::Multi => multiplayer() };
-        let news = match self.tab { Tab::Single => news(&WELCOME), Tab::Multi => news(&MULTIPLAYER_NEWS) };
+        let playing = self.game.running || self.game.starting.is_some() || self.game.outside;
+        let side = match self.tab { Tab::Single => self.singleplayer(ctx), Tab::Multi => self.multi.view(playing).map(Message::Multi) };
+        let server_news = self.multi.news();
+        let news = match self.tab {
+            Tab::Single => news(WELCOME.iter().map(|(t, h)| (t.to_string(), h.to_string())).collect()),
+            Tab::Multi => news(server_news),
+        };
         let panels = row![
             container(yo3_skin::panel(Some("Information"), news)).width(Fill).height(Fill),
             container(side).width(372).height(Fill),
@@ -462,30 +500,21 @@ fn banlist_choices(lists: &[(u32, String)]) -> Vec<Banlist> {
     choices
 }
 
-fn multiplayer<'a>() -> Element<'a, Message> {
-    yo3_skin::panel(Some("Server"), column![
-        text("Multiplayer opens with the beta's accounts: a User ID and password for each server.").size(15).color(color::INK),
-        text("Until then, play on your own server in Singleplayer.").size(15).color(color::INK_SOFT),
-        Space::new().height(Fill),
-        pill("LOG IN", None, Kind::Play, Fill, 70),
-    ].spacing(12))
-}
-
 const WELCOME: [(&str, &str); 3] = [
     ("Beta", "Welcome to the new YO3 Revival launcher"),
     ("Beta", "Your own server starts when you press Play"),
-    ("Beta", "Multiplayer accounts are on their way"),
+    ("Beta", "Multiplayer: sign in to a server with your User ID"),
 ];
-const MULTIPLAYER_NEWS: [(&str, &str); 1] = [("Beta", "The server list and accounts come in a later beta version")];
 
-fn news<'a>(items: &'a [(&'a str, &'a str)]) -> Element<'a, Message> {
+/// The Information panel: a title and a line per entry (Singleplayer's welcome, or the selected server's news).
+fn news<'a>(items: Vec<(String, String)>) -> Element<'a, Message> {
     let mut list = column![];
-    for (i, (tag, headline)) in items.iter().enumerate() {
+    for (i, (title, body)) in items.into_iter().enumerate() {
         let shade = if i % 2 == 0 { color::ROW } else { color::ROW_ALT };
-        list = list.push(container(row![
-            text(*tag).font(BODY_BOLD).size(15).color(color::NAVY).width(54),
-            text(*headline).size(15).color(color::INK),
-        ].align_y(Center)).padding([9, 12]).width(Fill)
+        list = list.push(container(column![
+            text(title).font(BODY_BOLD).size(15).color(color::NAVY),
+            text(body).size(15).color(color::INK),
+        ].spacing(2)).padding([9, 12]).width(Fill)
             .style(move |_| container::Style { background: Some(shade.into()), ..container::Style::default() }));
     }
     container(list).style(|_| container::Style { border: iced::Border { color: color::CHROME_DARK, width: 1.0, radius: 2.0.into() }, ..container::Style::default() }).into()

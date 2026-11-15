@@ -98,7 +98,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     }
     if let Some(trace) = &args.trace_dll { ensure!(trace.is_file(), "Trace DLL not found: {}", trace.display()); }
     let (endpoint, key) = Profile::load(&args.profile).context("read the private launcher profile and host certificate")?;
-    log.secret(&key); log.line("Checking server identity and compatibility");
+    log.secret(&key.secret()); log.line("Checking server identity and compatibility");
     initializing!(endpoint.info())?.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI)?;
     let proxy = initializing!(Proxy::prepare(endpoint.clone(), Ports { gate: args.gate_port, front: args.front_port, duel: args.duel_port, http: args.http_port }))?;
     log.secret(&hex(&proxy.cookie));
@@ -110,7 +110,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         return yo3_launcher::attach::serve(request, endpoint, &key, proxy).await;
     }
     if args.proxy_only {
-        let session = endpoint.login(&key).await?; proxy.activate(session);
+        let session = key.sign_in(&endpoint).await?; proxy.activate(session);
         let result = async { write_ready(&args, &proxy)?; (&mut interrupt).await?; Ok(()) }.await;
         let _ = endpoint.logout(&session).await; return result;
     }
@@ -149,14 +149,14 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     if let Err(error) = readiness {
         let _ = child.kill().await;
         let detail = tokio::time::timeout(std::time::Duration::from_secs(1), &mut error_output).await.ok().and_then(Result::ok).unwrap_or_default();
-        let clean = yo3_tunnel::diagnostics::redact(&detail, &[key.clone(), hex(&proxy.cookie)], None);
+        let clean = yo3_tunnel::diagnostics::redact(&detail, &[key.secret(), hex(&proxy.cookie)], None);
         let summary = clean.lines().filter(|line| line.starts_with("stage="))
             .find_map(|line| line.split_once(": ").map(|(_, message)| message))
             .unwrap_or("The game could not start safely. Validate the game and export logs if this repeats.");
         anyhow::bail!("{summary}\n{error:#}\n{}", if clean.trim().is_empty() { "The injector exited without a native diagnostic. Restore the matching application bundle, check security-software detection history and export logs for help." } else { clean.trim() });
     }
     log.line("Connection DLL loaded and interface ready; authenticating");
-    let session = initializing!(endpoint.login(&key)).context("Authentication failed; game was not resumed. Check the host's invitation in Advanced, or export logs for help")?; log.secret(&hex(&session));
+    let session = initializing!(key.sign_in(&endpoint)).context("Authentication failed; game was not resumed. Check the host's invitation in Advanced, or export logs for help")?; log.secret(&hex(&session));
     proxy.activate(session);
     let game_log = log.clone();
     let output = tokio::spawn(async move { capture(stdout, game_log, true).await; });
@@ -189,7 +189,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     let _ = tokio::time::timeout(std::time::Duration::from_secs(1), output).await;
     let detail = tokio::time::timeout(std::time::Duration::from_secs(1), error_output).await.ok().and_then(Result::ok).unwrap_or_default();
     if detail.trim().is_empty() { result }
-    else { result.with_context(|| yo3_tunnel::diagnostics::redact(&detail, &[key, hex(&proxy.cookie), hex(&session)], None)) }
+    else { result.with_context(|| yo3_tunnel::diagnostics::redact(&detail, &[key.secret(), hex(&proxy.cookie), hex(&session)], None)) }
 }
 
 async fn capture(mut source: impl tokio::io::AsyncRead + Unpin, log: yo3_tunnel::diagnostics::Session, client_trace: bool) -> String {
