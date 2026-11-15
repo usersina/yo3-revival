@@ -122,12 +122,26 @@ sharing address under **Advanced → Hosting → Advanced**, then start hosting.
 
 ## Existing data and backups
 
-`server.db` is SQLite. Old JSON state imports once and stays untouched as migration copies. A path change selects a
-different server's data; it does not move it. The running server holds its data directory: a second server on the same
-folder is refused, whatever its ports. A `server.lock` left after a crash holds nothing.
+`server.db` is SQLite in WAL mode, with one row per account (and its players), record, friendship, mail, team, event,
+rental and BP code; a save writes only the rows that changed. On the `beta` branch it is schema 2: a server from `main`
+(schema 1) can't open it, and a schema 1 database is converted once, in place. JSON files from versions before
+`server.db` are not read (the beta starts fresh). A path change selects a different server's data; it does not move it.
+The running server holds its data directory: a second server on the same folder is refused, whatever its ports. A
+`server.lock` left after a crash holds nothing.
 
-Back up the entire data folder securely, including `server.key`. Startup database snapshots in `backups/` do not
-contain that key. Keep players' local deck-editor folders too. Follow [the backup and upgrade procedure](launcher.md#your-data-and-upgrades)
+If a save fails (a full disk), the server says so in its log and refuses new logins until a save works again; players
+already in keep playing.
+
+The server backs up `server.db` into `backups/` when it starts, every hour while it runs, and when it stops, keeping the
+newest 24. With the server stopped:
+
+```bash
+./yo3-server --data-dir data backups          # list them, newest first
+./yo3-server --data-dir data restore latest   # or a name from the list; the replaced database is kept beside it
+```
+
+Back up the entire data folder securely, including `server.key`: the database backups in `backups/` don't contain that
+key. Keep players' local deck-editor folders too. Follow [the backup and upgrade procedure](launcher.md#your-data-and-upgrades)
 before moving data, restoring or downgrading.
 
 ## Windows SmartScreen and antivirus warnings

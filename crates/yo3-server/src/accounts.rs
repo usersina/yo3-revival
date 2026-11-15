@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::io;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value as Json, json};
@@ -69,7 +70,9 @@ struct Entry {
     key: Option<String>,
     /// The address that made it on the join page (for the page's per-address cap).
     joined_from: Option<IpAddr>,
-    account: Account,
+    /// Shared until changed (copy-on-write): a change gives this entry a new `Arc`, which is how a save finds the
+    /// accounts that changed without serializing the others (#22).
+    account: Arc<Account>,
 }
 
 /// A uniformly sampled account credential from the operating system's cryptographic RNG.
@@ -102,9 +105,31 @@ pub struct Directory {
     file: Option<PathBuf>,
     /// The host's BOOSTERPASS codes.
     codes: Vec<BpCode>,
+    /// Each account as last saved (by user id): its `Arc` and the entry's address, key and join address. A save writes
+    /// the accounts whose `Arc` or fields differ, and drops the ones that went.
+    saved: HashMap<u32, Saved>,
+}
+
+/// An account as last saved: compared by pointer, so an unchanged account costs nothing to check.
+#[derive(Clone)]
+struct Saved { account: Arc<Account>, address: Option<IpAddr>, key: Option<String>, joined_from: Option<IpAddr> }
+
+impl Saved {
+    fn of(e: &Entry) -> Saved { Saved { account: e.account.clone(), address: e.address, key: e.key.clone(), joined_from: e.joined_from } }
+    fn same(&self, e: &Entry) -> bool { Arc::ptr_eq(&self.account, &e.account) && self.address == e.address && self.key == e.key && self.joined_from == e.joined_from }
 }
 
 impl Directory {
+    /// The account `pred` picks, to change: only that account is copied (copy-on-write), the others stay shared.
+    fn account_mut_where(&mut self, pred: impl Fn(&Account) -> bool) -> Option<&mut Account> {
+        self.accounts.iter_mut().find(|e| pred(&e.account)).map(|e| Arc::make_mut(&mut e.account))
+    }
+
+    /// The player with `player_id`, to change (copying only their account).
+    fn player_mut(&mut self, player_id: u32) -> Option<&mut Player> {
+        self.account_mut_where(|a| a.players.iter().any(|p| p.player_id == player_id))?.players.iter_mut().find(|p| p.player_id == player_id)
+    }
+
     /// Publish a live administration change only after its entire snapshot commits. Failed writes restore memory.
     pub fn atomic<T>(&mut self, change: impl FnOnce(&mut Self) -> Result<T, String>) -> Result<T, String> {
         let before = self.clone();
@@ -122,7 +147,7 @@ impl Directory {
 
     /// `player_names`: the players every new account starts with (at most four are used).
     pub fn new(player_names: Vec<String>) -> Directory {
-        Directory { player_names, accounts: Vec::new(), presented: HashMap::new(), joins: Vec::new(), next_user: 1001, next_player: 1001, file: None, codes: vec![] }
+        Directory { player_names, accounts: Vec::new(), presented: HashMap::new(), joins: Vec::new(), next_user: 1001, next_player: 1001, file: None, codes: vec![], saved: HashMap::new() }
     }
 
     /// The accounts kept in `file` (none yet if it doesn't exist); changes are written back to it.
@@ -199,8 +224,9 @@ impl Directory {
                 p.country.clone_from(&account.country);
             }
             let joined_from = a["joined_from"].as_str().and_then(|s| s.parse().ok());
-            d.accounts.push(Entry { address, key, joined_from, account });
+            d.accounts.push(Entry { address, key, joined_from, account: Arc::new(account) });
         }
+        d.saved = d.accounts.iter().map(|e| (e.account.user_id, Saved::of(e))).collect();
         for c in saved["bp_codes"].as_array().into_iter().flatten() {
             let (Some(code), Some(bp)) = (c["code"].as_str(), c["bp"].as_u64()) else { continue };
             let used_by: Vec<u32> = c["used_by"].as_array().into_iter().flatten().filter_map(|u| u.as_u64()).map(|u| u as u32).collect();
@@ -218,7 +244,7 @@ impl Directory {
     /// The account of an address, made with the starting players (their names made unique) on first contact.
     pub fn account_for(&mut self, addr: IpAddr) -> Account {
         if let Some(e) = self.accounts.iter().find(|e| e.address == Some(addr)) {
-            return e.account.clone();
+            return Account::clone(&e.account);
         }
         let names: Vec<String> = self.player_names.iter().take(MAX_PLAYERS).cloned().collect();
         let names: Vec<String> = names.iter().map(|n| self.free_name(n)).collect();
@@ -229,7 +255,7 @@ impl Directory {
 
     fn create(&mut self, addr: IpAddr, names: &[String]) -> Account {
         let account = self.create_account(names);
-        self.accounts.push(Entry { address: Some(addr), key: None, joined_from: None, account: account.clone() });
+        self.accounts.push(Entry { address: Some(addr), key: None, joined_from: None, account: Arc::new(account.clone()) });
         account
     }
 
@@ -259,7 +285,7 @@ impl Directory {
             if now.saturating_duration_since(at) <= KEY_WINDOW
                 && let Some(e) = self.accounts.iter().find(|e| e.key.as_deref() == Some(key.as_str()))
             {
-                let account = e.account.clone();
+                let account = Account::clone(&e.account);
                 self.presented.insert(addr, (key, now));
                 return account;
             }
@@ -285,7 +311,7 @@ impl Directory {
         self.atomic(|d| {
             let account = d.create_account(&names);
             let key = new_key();
-            d.accounts.push(Entry { address: None, key: Some(key.clone()), joined_from: None, account });
+            d.accounts.push(Entry { address: None, key: Some(key.clone()), joined_from: None, account: Arc::new(account) });
             Ok(key)
         })
     }
@@ -300,7 +326,7 @@ impl Directory {
         use subtle::ConstantTimeEq;
         if key.len() != KEY_LEN { return None }
         self.accounts.iter().find(|e| e.key.as_ref().is_some_and(|k| bool::from(k.as_bytes().ct_eq(key))))
-            .map(|e| e.account.clone())
+            .map(|e| Account::clone(&e.account))
     }
 
     /// The join page's view of `addr`: the accounts with a key it made or has, and whether an address-only account
@@ -402,7 +428,7 @@ impl Directory {
         }
         self.atomic(|d| {
             let id = d.next_player;
-            let Some(a) = d.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
+            let Some(a) = d.account_mut_where(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
             if a.players.len() >= MAX_PLAYERS {
                 return Err(format!("account {user_id} already has {MAX_PLAYERS} players"));
             }
@@ -502,7 +528,7 @@ impl Directory {
         }
         let Some(at) = at else { return Err("no such account".into()) };
         self.atomic(|d| {
-            let account = &mut d.accounts[at].account;
+            let account = Arc::make_mut(&mut d.accounts[at].account);
             account.country = code;
             for p in &mut account.players {
                 p.country.clone_from(&account.country);
@@ -513,7 +539,7 @@ impl Directory {
 
     /// The account `user_id`, as kept now.
     pub fn account_of(&self, user_id: u32) -> Option<Account> {
-        self.accounts.iter().map(|e| &e.account).find(|a| a.user_id == user_id).cloned()
+        self.accounts.iter().map(|e| &*e.account).find(|a| a.user_id == user_id).cloned()
     }
 
     /// Makes a player named `name` in slot `index` (0-3, free) of account `user_id` (Select Player's 0x1F4A). Names
@@ -525,7 +551,7 @@ impl Directory {
         }
         self.atomic(|d| {
             let id = d.next_player;
-            let Some(a) = d.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
+            let Some(a) = d.account_mut_where(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
             if a.players.len() >= MAX_PLAYERS || index >= MAX_PLAYERS as u32 || a.players.iter().any(|p| p.index == index) {
                 return Err(format!("slot {index} of account {user_id} is not free"));
             }
@@ -542,7 +568,7 @@ impl Directory {
     /// least one player.
     pub fn delete_player(&mut self, user_id: u32, player_id: u32) -> Result<(), String> {
         self.atomic(|d| {
-            let Some(a) = d.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
+            let Some(a) = d.account_mut_where(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
             let Some(at) = a.players.iter().position(|p| p.player_id == player_id) else { return Err(format!("no player {player_id}")) };
             if a.players.len() == 1 {
                 return Err("an account keeps at least one player".into());
@@ -558,7 +584,7 @@ impl Directory {
             return Err(format!("the name {new:?} is taken or empty"));
         }
         self.atomic(|d| {
-            let player = d.accounts.iter_mut().map(|e| &mut e.account).flat_map(|a| &mut a.players).find(|p| p.name.eq_ignore_ascii_case(old));
+            let player = d.account_mut_where(|a| a.players.iter().any(|p| p.name.eq_ignore_ascii_case(old))).and_then(|a| a.players.iter_mut().find(|p| p.name.eq_ignore_ascii_case(old)));
             let Some(player) = player else { return Err(format!("no player named {old:?}")) };
             player.name = new.to_string();
             Ok(())
@@ -574,7 +600,7 @@ impl Directory {
     /// there is no such player or the save fails.
     pub fn update_player(&mut self, player_id: u32, change: impl FnOnce(&mut Player)) -> Result<(), String> {
         self.atomic(|d| {
-            let p = d.accounts.iter_mut().map(|e| &mut e.account).flat_map(|a| &mut a.players).find(|p| p.player_id == player_id);
+            let p = d.player_mut(player_id);
             change(p.ok_or_else(|| format!("no player {player_id}"))?);
             Ok(())
         })
@@ -583,7 +609,7 @@ impl Directory {
     /// Pays `bp` into the account of a player; its new BP, if the player has an account and the payment was saved.
     pub fn reward(&mut self, player_id: u32, bp: u32) -> Option<u32> {
         let paid = self.atomic(|d| {
-            let account = d.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.players.iter().any(|p| p.player_id == player_id)).ok_or("no such player")?;
+            let account = d.account_mut_where(|a| a.players.iter().any(|p| p.player_id == player_id)).ok_or("no such player")?;
             account.dpoint = account.dpoint.saturating_add(bp);
             Ok(account.dpoint)
         });
@@ -598,7 +624,7 @@ impl Directory {
         }
         let at = self.find(who).ok_or_else(|| format!("no account at or with a player named {who:?}"))?;
         self.atomic(|d| {
-            let account = &mut d.accounts[at].account;
+            let account = Arc::make_mut(&mut d.accounts[at].account);
             account.dpoint = account.dpoint.saturating_add(bp);
             let names: Vec<_> = account.players.iter().map(|p| p.name.as_str()).collect();
             Ok((format!("user {} ({})", account.user_id, names.join(", ")), account.dpoint))
@@ -656,7 +682,7 @@ impl Directory {
         }
         let bp = c.bp;
         self.atomic(|d| {
-            let account = d.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id).ok_or("no such account")?;
+            let account = d.account_mut_where(|a| a.user_id == user_id).ok_or("no such account")?;
             account.dpoint = account.dpoint.saturating_add(bp);
             let total = account.dpoint;
             d.codes[at].used_by.push(user_id);
@@ -684,7 +710,7 @@ impl Directory {
     /// if it has them; its BP left.
     pub fn charge(&mut self, user_id: u32, cost: u32) -> Option<u32> {
         self.atomic(|d| {
-            let account = d.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id).ok_or("no such account")?;
+            let account = d.account_mut_where(|a| a.user_id == user_id).ok_or("no such account")?;
             account.dpoint = account.dpoint.checked_sub(cost).ok_or("not enough BP")?;
             Ok(account.dpoint)
         }).ok()
@@ -697,8 +723,7 @@ impl Directory {
     pub fn purchase(&mut self, player_id: u32, cost: u32, item: Option<u16>, grant: impl FnOnce(&mut Player))
         -> Result<(u32, Player), String> {
         self.atomic(|d| {
-            let account = d.accounts.iter_mut().map(|e| &mut e.account)
-                .find(|a| a.players.iter().any(|p| p.player_id == player_id)).ok_or("no such player")?;
+            let account = d.account_mut_where(|a| a.players.iter().any(|p| p.player_id == player_id)).ok_or("no such player")?;
             account.dpoint = account.dpoint.checked_sub(cost).ok_or("not enough BP")?;
             let left = account.dpoint;
             let player = account.players.iter_mut().find(|p| p.player_id == player_id).ok_or("no such player")?;
@@ -718,7 +743,7 @@ impl Directory {
         }
         self.atomic(|d| {
             for (id, change) in changes {
-                if let Some(p) = d.accounts.iter_mut().map(|e| &mut e.account).flat_map(|a| &mut a.players).find(|p| p.player_id == id) {
+                if let Some(p) = d.player_mut(id) {
                     change(p);
                 }
             }
@@ -730,70 +755,70 @@ impl Directory {
     /// or the save fails.
     pub fn update_account(&mut self, user_id: u32, change: impl FnOnce(&mut Account)) -> Result<(), String> {
         self.atomic(|d| {
-            change(d.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id).ok_or_else(|| format!("no account {user_id}"))?);
+            change(d.account_mut_where(|a| a.user_id == user_id).ok_or_else(|| format!("no account {user_id}"))?);
             Ok(())
         })
     }
 
     /// Every account found by an address, with it, by address.
     pub fn accounts(&self) -> impl Iterator<Item = (IpAddr, &Account)> {
-        let mut all: Vec<_> = self.accounts.iter().filter_map(|e| Some((e.address?, &e.account))).collect();
+        let mut all: Vec<_> = self.accounts.iter().filter_map(|e| Some((e.address?, &*e.account))).collect();
         all.sort_by_key(|(addr, _)| *addr);
         all.into_iter()
     }
 
     /// Every account with its address and key, by user id.
     pub fn entries(&self) -> impl Iterator<Item = (Option<IpAddr>, Option<&str>, &Account)> {
-        let mut all: Vec<_> = self.accounts.iter().map(|e| (e.address, e.key.as_deref(), &e.account)).collect();
+        let mut all: Vec<_> = self.accounts.iter().map(|e| (e.address, e.key.as_deref(), &*e.account)).collect();
         all.sort_by_key(|(_, _, a)| a.user_id);
         all.into_iter()
     }
 
-    fn save(&self) {
+    fn save(&mut self) {
         if let Err(e) = self.persist() { tracing::warn!("accounts not saved: {e}"); }
     }
 
-    fn persist(&self) -> io::Result<()> {
-        let Some(file) = &self.file else { return Ok(()) };
-        let accounts: Vec<Json> = self
-            .entries()
-            .map(|(addr, key, a)| {
-                let players: Vec<Json> = a
-                    .players
-                    .iter()
-                    .map(|p| {
-                        let avatar: String = p.avatar.iter().map(|b| format!("{b:02x}")).collect();
-                        let cards: Vec<[u32; 2]> = p.cards.iter().map(|(&row, &n)| [row as u32, n]).collect();
-                        let given: Vec<[u32; 2]> = p.given.iter().map(|(&row, &n)| [row as u32, n]).collect();
-                        let uploaded: Vec<Json> = p
-                            .uploaded
-                            .iter()
-                            .map(|d| json!({ "id": d.id, "name": d.name, "main": d.main, "extra": d.extra, "side": d.side }))
-                            .collect();
-                        json!({ "player_id": p.player_id, "uploaded": uploaded, "name": p.name, "index": p.index, "level": p.level, "avatar": avatar,
-                            "speeches": p.speeches, "comments": p.comments, "title": p.title, "cards": cards, "decks": p.decks,
-                            "items": p.items, "given": given, "eval_num": p.eval_num, "eval_total": p.eval_total, "counters": p.counters })
-                    })
-                    .collect();
-                let mut account = json!({ "user_id": a.user_id, "dpoint": a.dpoint, "players": players });
-                if let Some(addr) = addr {
-                    account["address"] = json!(addr.to_string());
-                }
-                if let Some(key) = key {
-                    account["key"] = json!(key);
-                }
-                if let Some(from) = self.accounts.iter().find(|e| e.account.user_id == a.user_id).and_then(|e| e.joined_from) {
-                    account["joined_from"] = json!(from.to_string());
-                }
-                if !a.country.is_empty() {
-                    account["country"] = json!(a.country);
-                }
-                account
-            })
-            .collect();
+    /// One account as saved: its players with their collections and decks, and how the account is found.
+    fn account_json(e: &Entry) -> Json {
+        let a = &e.account;
+        let players: Vec<Json> = a.players.iter().map(|p| {
+            let avatar: String = p.avatar.iter().map(|b| format!("{b:02x}")).collect();
+            let cards: Vec<[u32; 2]> = p.cards.iter().map(|(&row, &n)| [row as u32, n]).collect();
+            let given: Vec<[u32; 2]> = p.given.iter().map(|(&row, &n)| [row as u32, n]).collect();
+            let uploaded: Vec<Json> = p.uploaded.iter().map(|d| json!({ "id": d.id, "name": d.name, "main": d.main, "extra": d.extra, "side": d.side })).collect();
+            json!({ "player_id": p.player_id, "uploaded": uploaded, "name": p.name, "index": p.index, "level": p.level, "avatar": avatar,
+                "speeches": p.speeches, "comments": p.comments, "title": p.title, "cards": cards, "decks": p.decks,
+                "items": p.items, "given": given, "eval_num": p.eval_num, "eval_total": p.eval_total, "counters": p.counters })
+        }).collect();
+        let mut account = json!({ "user_id": a.user_id, "dpoint": a.dpoint, "players": players });
+        if let Some(addr) = e.address { account["address"] = json!(addr.to_string()); }
+        if let Some(key) = &e.key { account["key"] = json!(key); }
+        if let Some(from) = e.joined_from { account["joined_from"] = json!(from.to_string()); }
+        if !a.country.is_empty() { account["country"] = json!(a.country); }
+        account
+    }
+
+    /// Saves what changed since the last save. In server.db only the accounts whose `Arc` or fields changed are
+    /// serialized and written (#22); outside it (tests, tools) the whole file.
+    fn persist(&mut self) -> io::Result<()> {
+        let Some(file) = self.file.clone() else { return Ok(()) };
         let codes: Vec<Json> = self.codes.iter().map(|c| json!({ "code": c.code, "bp": c.bp, "uses": c.uses, "used_by": c.used_by, "claimed_at": c.claimed_at })).collect();
-        let all = json!({ "next_user": self.next_user, "next_player": self.next_player, "accounts": accounts, "bp_codes": codes });
-        store::write(file, &all)
+        let mut whole = json!({ "next_user": self.next_user, "next_player": self.next_player, "bp_codes": codes });
+        if store::in_database(&file) {
+            let changed: Vec<(String, Json)> = self.accounts.iter()
+                .filter(|e| !self.saved.get(&e.account.user_id).is_some_and(|s| s.same(e)))
+                .map(|e| (e.account.user_id.to_string(), Self::account_json(e))).collect();
+            let present: std::collections::HashSet<u32> = self.accounts.iter().map(|e| e.account.user_id).collect();
+            let gone: Vec<String> = self.saved.keys().filter(|id| !present.contains(id)).map(u32::to_string).collect();
+            store::write_changes(&file, &whole, "accounts", &changed, &gone)?;
+        } else {
+            let mut all: Vec<&Entry> = self.accounts.iter().collect();
+            all.sort_by_key(|e| e.account.user_id);
+            whole["accounts"] = Json::Array(all.into_iter().map(Self::account_json).collect());
+            store::write(&file, &whole)?;
+        }
+        self.saved = self.accounts.iter().map(|e| (e.account.user_id, Saved::of(e))).collect();
+        Ok(())
     }
 }
 

@@ -112,6 +112,7 @@ pub(crate) fn test_config(log_dir: &std::path::Path) -> TlsConfig {
         TlsConfig { port: 0, certificate: dir.join("server.crt"), private_key: dir.join("server.key") }
     } else { initialize(&dir, vec!["localhost".into()]).expect("test certificate") };
     tls.port = 0;
+    crate::store::initialize(&dir.join("data")).expect("test database");
     let mut d = crate::accounts::Directory::open(vec!["test".into()], &dir.join("data/accounts.json")).expect("test accounts");
     if !dir.join("client.key").exists() {
         let key = d.add_account(&["test".into()]).expect("test account");

@@ -38,13 +38,9 @@ fn in_memory(d: &Directory) -> String {
 fn refused(name: &str, change: impl FnOnce(&mut Directory, u32, u32) -> bool) {
     let (mut d, dir, yugi, kaiba) = stored(name);
     let (memory, disk) = (in_memory(&d), on_disk(&dir));
-    let db = dir.join("server.db");
-    let aside = dir.join("server.db.aside");
-    std::fs::rename(&db, &aside).unwrap();
-    std::fs::create_dir(&db).unwrap(); // a folder where the database was: nothing can be written
+    yo3_server::store::fail_saves(&dir, true).unwrap(); // nothing can be written, as on a full disk
     let reported_success = change(&mut d, yugi, kaiba);
-    std::fs::remove_dir(&db).unwrap();
-    std::fs::rename(&aside, &db).unwrap();
+    yo3_server::store::fail_saves(&dir, false).unwrap();
     assert!(!reported_success, "{name}: reported as done");
     assert_eq!(in_memory(&d), memory, "{name}: memory changed");
     assert_eq!(on_disk(&dir), disk, "{name}: disk changed");
@@ -121,9 +117,7 @@ fn the_boosterpass_window_says_no_when_the_code_cannot_be_saved() {
     let user = d.entries().next().unwrap().2.user_id;
     let directory = std::sync::Arc::new(std::sync::Mutex::new(d));
     let mut c = Server::new().join_saved(&directory, user);
-    let db = dir.join("server.db");
-    std::fs::rename(&db, dir.join("server.db.aside")).unwrap();
-    std::fs::create_dir(&db).unwrap();
+    yo3_server::store::fail_saves(&dir, true).unwrap();
     let r = one(c.send(req_with(0x20D0, &[("dpcode", Value::text("ABCDEFGHIJKLMNOP"))])));
     assert_eq!(r.get("dpauth_result").and_then(Value::as_u32), Some(1), "{r:?}");
     assert_eq!(directory.lock().unwrap().dpoint(user), Some(START_BP));

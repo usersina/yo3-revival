@@ -136,6 +136,8 @@ pub struct Running {
     tasks: Vec<JoinHandle<()>>,
     shutdown: tokio::sync::watch::Sender<bool>,
     hub: Arc<Mutex<Hub>>,
+    /// Backed up once more when the server stops.
+    data_dir: Option<PathBuf>,
 }
 
 impl Running {
@@ -169,6 +171,13 @@ impl Running {
         // Let the management response reach its caller before the CLI shuts its runtime down.
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         for task in self.tasks.drain(..) { task.abort(); }
+        if let Some(dir) = self.data_dir.take() {
+            match tokio::task::spawn_blocking(move || store::back_up(&dir)).await {
+                Ok(Ok(())) => tracing::info!("backed up at shutdown"),
+                Ok(Err(e)) => tracing::error!("backup at shutdown failed: {e}"),
+                Err(e) => tracing::error!("backup at shutdown failed: {e}"),
+            }
+        }
     }
 }
 
@@ -348,6 +357,19 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         store::initialize(dir)?;
         store::back_up(dir)?;
     }
+    // A backup every hour while running (and one at each start and stop).
+    let backup_task = cfg.data_dir.clone().map(|dir| tokio::spawn(async move {
+        let mut every = tokio::time::interval_at(tokio::time::Instant::now() + store::BACKUP_EVERY, store::BACKUP_EVERY);
+        loop {
+            every.tick().await;
+            let dir = dir.clone();
+            match tokio::task::spawn_blocking(move || store::back_up(&dir)).await {
+                Ok(Ok(())) => tracing::info!("hourly backup taken"),
+                Ok(Err(e)) => tracing::error!("hourly backup failed: {e}"),
+                Err(e) => tracing::error!("hourly backup failed: {e}"),
+            }
+        }
+    }));
     let directory = Arc::new(Mutex::new(match &cfg.data_dir {
         Some(dir) => Directory::open(cfg.players.clone(), &dir.join("accounts.json"))?,
         None => Directory::new(cfg.players.clone()),
@@ -404,5 +426,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let manager = manager::Manager { accounts: directory.clone(), hub, shutdown: shutdown.clone(), engine_problem: world.engine_problem.clone(), listen: auth_addr, diagnostic_id: cfg.diagnostic_id };
     let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.clone(), directory, admin_token, manager));
     tracing::info!("authenticated TLS {} local management/assets HTTP {}; packets -> {}", auth_addr, http_addr, packets.path().display());
-    Ok(Running { auth: auth_addr, http: http_addr, tasks: vec![auth_task, http_task, clock_task], shutdown, hub: running_hub })
+    let mut tasks = vec![auth_task, http_task, clock_task];
+    tasks.extend(backup_task);
+    Ok(Running { auth: auth_addr, http: http_addr, tasks, shutdown, hub: running_hub, data_dir: cfg.data_dir.clone() })
 }

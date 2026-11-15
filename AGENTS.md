@@ -154,8 +154,8 @@ ss -ltnp | rg ':7443 '                          # the server's pid, to stop it
 #   --duel-time 0,0 (the turn and total clocks of duels between players off: live checks are slower than 180 s a turn),
 #   --duel-check (compare model/engine state; the required DLL also logs native checkpoints; ERROR duel check on drift)
 #   Detailed diagnostics also records exact engine inputs/answers and dependency fingerprints for replay.
-#   state: server.db (SQLite) in data/ (ignored; --data-dir), backed up into data/backups/ at each start
-#   old JSON files import once transactionally and remain untouched; storage.version prevents stale reimport
+#   state: server.db (SQLite, WAL, schema 2: one row per account, record, mail…) in data/ (ignored; --data-dir), backed up
+#   into data/backups/ at start, hourly and at stop (`backups` lists, `restore latest|NAME` puts one back, server stopped)
 
 # A dev server beside a live one: first check that 17443 and 18080 are free.
 SCRATCH=$(mktemp -d /tmp/yo3-dev.XXXXXXXX)

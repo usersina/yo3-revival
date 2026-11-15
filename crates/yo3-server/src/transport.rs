@@ -26,6 +26,8 @@ async fn handshake(mut tls: TlsStream<TcpStream>, sessions: &Mutex<Sessions>, ac
                 let abi = tls.read_u16().await?;
                 if info.ensure_compatible(protocol, abi).is_err() { tls.write_u8(1).await?; tls.shutdown().await?; return Ok(None) }
                 let mut key = [0; KEY_LEN]; tls.read_exact(&mut key).await?;
+                // While saves fail, nobody new comes in: their progress could not be kept (store::healthy).
+                if !crate::store::healthy() { tracing::warn!("login refused: the server can't save right now"); tls.write_u8(1).await?; tls.shutdown().await?; return Ok(None) }
                 let user = accounts.locked().authenticate(&key).map(|a| a.user_id);
                 let token = user.and_then(|u| sessions.locked().login(u, Instant::now()));
                 tls.write_u8(if token.is_some() { 0 } else { 1 }).await?;

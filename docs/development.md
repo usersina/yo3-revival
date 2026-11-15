@@ -106,6 +106,16 @@ env -u WAYLAND_DISPLAY DISPLAY=:88 YO3_DESKTOP_DATA=$DATA ./target/release/yo3-r
 An empty `game_dir` opens Setup first. A development launcher needs a connection DLL built with the same version
 (`tools/mod/build.sh`); a release DLL left in `tools/mod/build/` shows Repair, and Setup's Details says why.
 
+## Storage cost
+
+The server keeps one row per account (with its players), record, friendship, mail, team, event and rental in
+`server.db` (#22). The accounts are copy-on-write: a change copies only the account it touches, and a save serializes and
+writes only accounts whose copy changed. Measured on 2026-11-15 (release build, NVMe), with 300 accounts of 4 players
+owning 1,500 different cards each: one purchase, with its rollback copy and its save, takes about 2 ms; before, building
+the accounts document alone took 115 ms, under the hub's lock. Re-measure with
+`cargo test --release -p yo3-server --test accounts save_cost -- --ignored --nocapture`. The smaller domains still build
+their whole document on each change and write only the changed rows.
+
 ## Which tool sees what
 
 Each debugging tool sees one layer. Start from the question and pick the tool that sees that layer. Commands are in

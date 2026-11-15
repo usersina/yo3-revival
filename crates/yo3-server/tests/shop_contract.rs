@@ -313,7 +313,7 @@ fn a_purchase_that_cannot_be_saved_takes_no_bp_and_gives_no_cards() {
     // The BP and the cards used to be two saves: a failure between them took the BP and gave nothing.
     use yo3_server::accounts::START_BP;
     let (mut d, dir, player) = stored_account("unsaved");
-    std::fs::remove_file(dir.join("server.db")).unwrap();
+    yo3_server::store::fail_saves(&dir, true).unwrap();
     assert!(d.purchase(player, 100, None, |p| { p.cards.insert(10, 1); }).is_err());
     assert_eq!(d.accounts().next().unwrap().1.dpoint, START_BP);
     assert!(!d.player(player).unwrap().cards.contains_key(&10));

@@ -16,6 +16,7 @@ async fn setup(name: &str) -> (Running, Endpoint, [String; 2], PathBuf) {
     let certificate = dir.join("server.crt"); let private_key = dir.join("server.key");
     std::fs::write(&certificate, cert.cert.pem()).unwrap();
     std::fs::write(&private_key, cert.signing_key.serialize_pem()).unwrap();
+    yo3_server::store::initialize(&dir).unwrap();
     let mut d = yo3_server::accounts::Directory::open(vec![], &dir.join("accounts.json")).unwrap();
     let keys = [d.add_account(&["Alice".into()]).unwrap(), d.add_account(&["Bob".into()]).unwrap()];
     drop(d);

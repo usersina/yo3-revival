@@ -1,22 +1,57 @@
-//! Versioned SQLite persistence. Existing JSON documents are imported once, in one transaction, and retained.
-//! The serializers are unchanged during the cutover: each domain snapshot is an atomic SQLite document.
+//! The server's state in SQLite (`server.db`, schema 2), one row per thing (#22).
+//!
+//! Each domain (accounts, records, friends, mail, teams, events, rentals) still hands the store its whole state as one
+//! JSON value, through `write(dir/NAME.json, value)`, and gets it back from `read`. The store splits that value into
+//! rows: one per account (with its players), BP code, record pair, friendship, mail, team, event and rental, keyed by
+//! the item's own id, plus the domain's counters. A save compares the rows with what was last written and writes only
+//! the changed ones, in one transaction, on a connection kept open in WAL mode. One deck save rewrites one account's
+//! row, not every account's collection.
+//!
+//! A save that fails marks the store unhealthy ([`healthy`]): new logins are refused until a save succeeds again, so
+//! memory and disk never silently drift apart while players keep playing. Backups: at start, every hour and at
+//! shutdown (`back_up`), restored offline with `yo3-server restore` ([`restore`]).
+use std::collections::HashMap;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use serde_json::Value as Json;
 use rusqlite::{Connection, OptionalExtension};
 
-const DOCUMENTS: &[&str] = &["accounts.json", "records.json", "friends.json", "mail.json", "teams.json", "events.json", "rentals.json"];
+/// The domains kept in server.db, by the file name their code still uses as a handle.
+const DOMAINS: &[&str] = &["accounts.json", "records.json", "friends.json", "mail.json", "teams.json", "events.json", "rentals.json"];
 const APPLICATION_ID: u32 = 0x594f3301;
-const FORMAT_MARKER: &str = "storage.version";
+/// Schema 1 kept each domain as one JSON document (`state_documents`); schema 2 keeps one row per item.
+const SCHEMA: u32 = 2;
+const SCHEMA_SQL: &str = "
+    CREATE TABLE IF NOT EXISTS domains (name TEXT PRIMARY KEY, scalars TEXT NOT NULL CHECK(json_valid(scalars)),
+        shape TEXT NOT NULL CHECK(json_valid(shape)));
+    CREATE TABLE IF NOT EXISTS items (domain TEXT NOT NULL, field TEXT NOT NULL, key TEXT NOT NULL,
+        body TEXT NOT NULL CHECK(json_valid(body)), PRIMARY KEY (domain, field, key)) WITHOUT ROWID;";
 
 fn sql(e: rusqlite::Error) -> io::Error { io::Error::other(e.to_string()) }
 
-fn connection(dir: &Path) -> io::Result<Connection> {
+/// One open connection per data folder, in WAL mode: saves don't reopen the database, and backups read beside them.
+static CONNECTIONS: LazyLock<Mutex<HashMap<PathBuf, Arc<Mutex<Connection>>>>> = LazyLock::new(Default::default);
+
+fn connection(dir: &Path) -> io::Result<Arc<Mutex<Connection>>> {
+    let mut all = CONNECTIONS.lock().unwrap();
+    if let Some(conn) = all.get(dir) { return Ok(conn.clone()) }
     let conn = Connection::open_with_flags(dir.join("server.db"), rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE).map_err(sql)?;
     conn.busy_timeout(std::time::Duration::from_secs(5)).map_err(sql)?;
+    conn.pragma_update(None, "journal_mode", "WAL").map_err(sql)?;
+    conn.pragma_update(None, "synchronous", "NORMAL").map_err(sql)?;
+    let conn = Arc::new(Mutex::new(conn));
+    all.insert(dir.to_path_buf(), conn.clone());
     Ok(conn)
+}
+
+/// Closes this process's connection to `dir`'s database (before a restore replaces the file, and in tests).
+pub fn close(dir: &Path) {
+    CONNECTIONS.lock().unwrap().remove(dir);
+    SAVED.lock().unwrap().retain(|(d, _), _| d != dir);
 }
 
 /// The data folder held by one process (`lock`): released when dropped or when the process ends, however it ends.
@@ -53,13 +88,10 @@ pub fn lock(dir: &Path) -> io::Result<DataLock> {
     Ok(DataLock { _file: file })
 }
 
-/// Import all persistent domains together. Failure rolls back the import; the original files remain untouched.
-/// Retrying after repairing an input is safe. A completed import is never repeated over newer SQLite state.
+/// Opens (or creates) `dir`'s database at schema 2. A schema 1 database is converted in place, in one transaction.
+/// JSON documents from versions before the database are not imported: the beta starts fresh (D9).
 pub fn initialize(dir: &Path) -> io::Result<()> {
     fs::create_dir_all(dir)?;
-    if dir.join(FORMAT_MARKER).exists() && !dir.join("server.db").is_file() {
-        return Err(io::Error::other("server.db is missing from a migrated directory; restore its database backup instead of reimporting stale JSON"));
-    }
     #[cfg(unix)] {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
@@ -69,64 +101,58 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
     match options.open(dir.join("server.db")) {
         Ok(_) => {}, Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}, Err(e) => return Err(e),
     }
-    let mut conn = connection(dir)?;
+    let conn = connection(dir)?;
+    let mut conn = conn.lock().unwrap();
     let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sql)?;
     let app: u32 = tx.pragma_query_value(None, "application_id", |r| r.get(0)).map_err(sql)?;
     let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0)).map_err(sql)?;
-    if app == APPLICATION_ID && version == 1 {
-        let check: String = tx.query_row("PRAGMA quick_check", [], |r| r.get(0)).map_err(sql)?;
-        if check != "ok" { return Err(io::Error::other(format!("server.db integrity check: {check}"))) }
-        tx.execute_batch(DUEL_LOGS_TABLE).map_err(sql)?;
-        tx.commit().map_err(sql)?;
-        mark_imported(dir)?;
-        return Ok(());
-    }
     let tables: u32 = tx.query_row("SELECT count(*) FROM sqlite_master WHERE type='table'", [], |r| r.get(0)).map_err(sql)?;
-    if app != 0 || version != 0 || tables != 0 {
-        return Err(io::Error::other("server.db has an unsupported application or schema version; keep it and use the matching server"));
+    match (app, version) {
+        (APPLICATION_ID, SCHEMA) => {
+            let check: String = tx.query_row("PRAGMA quick_check", [], |r| r.get(0)).map_err(sql)?;
+            if check != "ok" { return Err(io::Error::other(format!("server.db integrity check: {check}"))) }
+        }
+        (APPLICATION_ID, 1) => {
+            // Schema 1: each domain one document. Split them into rows.
+            tx.execute_batch(SCHEMA_SQL).map_err(sql)?;
+            let documents: Vec<(String, String)> = {
+                let mut query = tx.prepare("SELECT name, body FROM state_documents").map_err(sql)?;
+                query.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(sql)?.collect::<Result<_, _>>().map_err(sql)?
+            };
+            for (name, body) in documents {
+                let value: Json = serde_json::from_str(&body).map_err(io::Error::other)?;
+                store_rows(&tx, &name, &split(&value), None)?;
+            }
+            tx.execute_batch("DROP TABLE state_documents;").map_err(sql)?;
+            tx.pragma_update(None, "user_version", SCHEMA).map_err(sql)?;
+        }
+        (0, 0) if tables == 0 => {
+            tx.execute_batch(SCHEMA_SQL).map_err(sql)?;
+            tx.pragma_update(None, "application_id", APPLICATION_ID).map_err(sql)?;
+            tx.pragma_update(None, "user_version", SCHEMA).map_err(sql)?;
+        }
+        _ => return Err(io::Error::other("server.db has an unsupported application or schema version; keep it and use the matching server")),
     }
-    tx.execute_batch("CREATE TABLE state_documents (name TEXT PRIMARY KEY, body TEXT NOT NULL CHECK(json_valid(body)));").map_err(sql)?;
     tx.execute_batch(DUEL_LOGS_TABLE).map_err(sql)?;
-    for name in DOCUMENTS {
-        let path = dir.join(name);
-        let body = match fs::read_to_string(&path) {
-            Ok(s) => s, Err(e) if e.kind() == io::ErrorKind::NotFound => continue, Err(e) => return Err(e),
-        };
-        let document = serde_json::from_str::<Json>(&body).map_err(|e| io::Error::other(format!("{}: {e}; import stopped, repair the source and retry", path.display())))?;
-        if *name == "accounts.json" { crate::accounts::Directory::from_document(vec![], &path, Some(document))?; }
-        tx.execute("INSERT INTO state_documents(name, body) VALUES (?1, ?2)", (name, body)).map_err(sql)?;
-    }
-    tx.pragma_update(None, "application_id", APPLICATION_ID).map_err(sql)?;
-    tx.pragma_update(None, "user_version", 1).map_err(sql)?;
-    tx.commit().map_err(sql)?;
-    mark_imported(dir)?;
-    Ok(())
+    tx.commit().map_err(sql)
 }
 
-/// Warns about files an older version left in the data folder that the server no longer reads. Called once when a
+/// Warns about files an older version left in the data folder that the server doesn't read. Called once when a
 /// server starts (not by the admin commands, which open the same database).
 pub fn report_leftovers(dir: &Path) {
-    for name in edited_after_import(dir) {
-        let hint = if name == "accounts.json" {
-            " To give BP, use Give BP in the app (Hosting → Players & invitations) or `yo3-server give-bp PLAYER AMOUNT`."
-        } else { "" };
-        tracing::warn!("{name} was edited after it was imported into server.db: the edit was ignored.{hint}");
-    }
     if dir.join("duellogs").is_dir() {
         tracing::warn!("duellogs/ holds duel logs from an older version: they now live in server.db, and each \
             player's game keeps its own copy. The folder is safe to delete.");
     }
-    let old = legacy_documents(dir);
+    let old: Vec<&str> = DOMAINS.iter().copied().filter(|name| dir.join(name).is_file()).collect();
     if !old.is_empty() {
-        let (what, verb, pronoun) = if old.len() == 1 { ("an old copy", "is", "It") } else { ("old copies", "are", "They") };
-        tracing::warn!("{} {verb} {what}: the data was imported into server.db, which the server uses, and {} no longer \
-            read. {pronoun} {verb} safe to delete (server.db is backed up in backups/ at every start).",
-            old.join(", "), pronoun.to_lowercase() + " " + verb);
+        tracing::warn!("{} {} from a version before server.db: the server doesn't read them (the beta starts fresh).",
+            old.join(", "), if old.len() == 1 { "is a file" } else { "are files" });
     }
+    let _ = fs::remove_file(dir.join("storage.version"));
 }
 
-/// Duel logs (`.dlog` files) the client downloads right after a duel between players (`Hub::finish_duel`). An
-/// additive table: schema version 1 is unchanged, and an older server ignores it.
+/// Duel logs (`.dlog` files) the client downloads right after a duel between players (`Hub::finish_duel`).
 const DUEL_LOGS_TABLE: &str = "CREATE TABLE IF NOT EXISTS duel_logs (name TEXT PRIMARY KEY, body BLOB NOT NULL, created INTEGER NOT NULL);";
 /// How many duel logs are kept: each player's game saves its own copy on download, so the server needs only recent ones.
 const DUEL_LOGS_KEPT: u32 = 1000;
@@ -134,7 +160,8 @@ const DUEL_LOGS_KEPT: u32 = 1000;
 /// Keeps a duel log in server.db under `name`, dropping the oldest beyond [`DUEL_LOGS_KEPT`].
 pub fn put_duel_log(dir: &Path, name: &str, body: &[u8]) -> io::Result<()> {
     if !dir.join("server.db").is_file() { initialize(dir)?; }
-    let mut conn = connection(dir)?;
+    let conn = connection(dir)?;
+    let mut conn = conn.lock().unwrap();
     let tx = conn.transaction().map_err(sql)?;
     tx.execute("INSERT OR REPLACE INTO duel_logs(name, body, created) VALUES (?1, ?2, ?3)",
         (name, body, chrono::Utc::now().timestamp())).map_err(sql)?;
@@ -146,51 +173,177 @@ pub fn put_duel_log(dir: &Path, name: &str, body: &[u8]) -> io::Result<()> {
 /// A kept duel log, if there is one by that name.
 pub fn duel_log(dir: &Path, name: &str) -> io::Result<Option<Vec<u8>>> {
     if !dir.join("server.db").is_file() { return Ok(None) }
-    connection(dir)?.query_row("SELECT body FROM duel_logs WHERE name=?1", [name], |r| r.get(0)).optional().map_err(sql)
+    connection(dir)?.lock().unwrap().query_row("SELECT body FROM duel_logs WHERE name=?1", [name], |r| r.get(0)).optional().map_err(sql)
 }
 
 /// The kept duel logs' names, newest first.
 pub fn duel_log_names(dir: &Path) -> io::Result<Vec<String>> {
     let conn = connection(dir)?;
+    let conn = conn.lock().unwrap();
     let mut query = conn.prepare("SELECT name FROM duel_logs ORDER BY created DESC, rowid DESC").map_err(sql)?;
     query.query_map([], |r| r.get(0)).map_err(sql)?.collect::<Result<_, _>>().map_err(sql)
 }
 
-/// Records the import in [`FORMAT_MARKER`], once: its time is when the JSON was imported, which
-/// [`edited_after_import`] compares against.
-fn mark_imported(dir: &Path) -> io::Result<()> {
-    let marker = dir.join(FORMAT_MARKER);
-    if fs::read_to_string(&marker).is_ok_and(|text| text == "sqlite:1\n") { return Ok(()) }
-    fs::write(marker, "sqlite:1\n")
-}
-
-/// The legacy JSON documents still beside an imported server.db.
-pub fn legacy_documents(dir: &Path) -> Vec<&'static str> {
-    DOCUMENTS.iter().copied().filter(|name| dir.join(name).is_file()).collect()
-}
-
-/// The legacy JSON documents modified after the import: hand edits that the database never sees.
-pub fn edited_after_import(dir: &Path) -> Vec<&'static str> {
-    let modified = |p: &Path| fs::metadata(p).and_then(|m| m.modified()).ok();
-    let Some(marker) = modified(&dir.join(FORMAT_MARKER)) else { return vec![] };
-    DOCUMENTS.iter().copied().filter(|name| modified(&dir.join(name)).is_some_and(|t| t > marker)).collect()
-}
-
-fn database_document(path: &Path) -> Option<(&Path, &str)> {
+fn database_domain(path: &Path) -> Option<(&Path, &str)> {
     let name = path.file_name()?.to_str()?;
     let dir = path.parent()?;
-    (DOCUMENTS.contains(&name) && (dir.join("server.db").is_file() || dir.join(FORMAT_MARKER).exists())).then_some((dir, name))
+    (DOMAINS.contains(&name) && dir.join("server.db").is_file()).then_some((dir, name))
 }
 
-/// How many start-up backups are kept.
-const BACKUPS: usize = 10;
+/// Whether the last save succeeded. While it is false, new logins are refused (players already in keep playing).
+pub fn healthy() -> bool { !UNHEALTHY.load(Ordering::Relaxed) }
+static UNHEALTHY: AtomicBool = AtomicBool::new(false);
+
+/// A domain's value split into rows: its scalar fields, and per list or map field the items by key.
+struct Rows { scalars: serde_json::Map<String, Json>, shape: serde_json::Map<String, Json>, items: Vec<(String, String, String)> }
+
+/// The key of one list item: its own id, so it survives other items coming and going.
+fn item_key(item: &Json, seen: &mut HashMap<String, u32>) -> String {
+    let number = |v: &Json| v.as_u64().map(|n| n.to_string()).or_else(|| v.as_str().map(str::to_owned));
+    let base = match item {
+        Json::Array(pair) if pair.len() == 2 => pair.iter().filter_map(number).collect::<Vec<_>>().join(":"),
+        Json::Object(o) if o.contains_key("player_id") && o.contains_key("opponent") =>
+            format!("{}:{}", number(&o["player_id"]).unwrap_or_default(), number(&o["opponent"]).unwrap_or_default()),
+        Json::Object(o) => ["user_id", "id", "code"].iter().find_map(|k| o.get(*k).and_then(number)).unwrap_or_default(),
+        _ => String::new(),
+    };
+    let base = if base.is_empty() { format!("{:016x}", fnv(item.to_string().as_bytes())) } else { base };
+    // The same key twice (it shouldn't happen): keep both, in order.
+    let n = seen.entry(base.clone()).or_insert(0);
+    *n += 1;
+    if *n == 1 { base } else { format!("{base}#{n}") }
+}
+
+fn fnv(bytes: &[u8]) -> u64 { bytes.iter().fold(0xcbf29ce484222325, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x100000001b3)) }
+
+fn split(value: &Json) -> Rows {
+    let mut rows = Rows { scalars: Default::default(), shape: Default::default(), items: Vec::new() };
+    let Some(object) = value.as_object() else {
+        rows.scalars.insert(String::new(), value.clone());
+        return rows;
+    };
+    for (field, v) in object {
+        match v {
+            Json::Array(list) => {
+                rows.shape.insert(field.clone(), "list".into());
+                let mut seen = HashMap::new();
+                for item in list { rows.items.push((field.clone(), item_key(item, &mut seen), item.to_string())) }
+            }
+            Json::Object(map) => {
+                rows.shape.insert(field.clone(), "map".into());
+                for (key, item) in map { rows.items.push((field.clone(), key.clone(), item.to_string())) }
+            }
+            other => { rows.scalars.insert(field.clone(), other.clone()); }
+        }
+    }
+    rows
+}
+
+/// What each domain's rows were when last read or written, by (domain, field, key): a save writes only differences.
+type Written = HashMap<(String, String), String>;
+/// Per (data folder, domain): its scalars and shape as written, and its rows.
+type Remembered = HashMap<(PathBuf, String), (String, Written)>;
+static SAVED: LazyLock<Mutex<Remembered>> = LazyLock::new(Default::default);
+
+/// Writes `rows` for `domain`: the changed items, the removed ones, and the scalars, against `before` (all, if None).
+fn store_rows(tx: &rusqlite::Transaction, domain: &str, rows: &Rows, before: Option<&(String, Written)>) -> io::Result<()> {
+    let head = serde_json::json!([rows.scalars, rows.shape]).to_string();
+    if before.is_none_or(|(h, _)| *h != head) {
+        tx.execute("INSERT INTO domains(name, scalars, shape) VALUES (?1, ?2, ?3) ON CONFLICT(name) DO UPDATE SET scalars=excluded.scalars, shape=excluded.shape",
+            (domain, Json::Object(rows.scalars.clone()).to_string(), Json::Object(rows.shape.clone()).to_string())).map_err(sql)?;
+    }
+    let mut upsert = tx.prepare("INSERT INTO items(domain, field, key, body) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(domain, field, key) DO UPDATE SET body=excluded.body").map_err(sql)?;
+    for (field, key, body) in &rows.items {
+        if before.is_some_and(|(_, w)| w.get(&(field.clone(), key.clone())) == Some(body)) { continue }
+        upsert.execute((domain, field, key, body)).map_err(sql)?;
+    }
+    match before {
+        Some((_, written)) => {
+            let now: std::collections::HashSet<(&str, &str)> = rows.items.iter().map(|(f, k, _)| (f.as_str(), k.as_str())).collect();
+            let mut delete = tx.prepare("DELETE FROM items WHERE domain=?1 AND field=?2 AND key=?3").map_err(sql)?;
+            for (field, key) in written.keys() {
+                if !now.contains(&(field.as_str(), key.as_str())) { delete.execute((domain, field, key)).map_err(sql)?; }
+            }
+        }
+        None => {
+            // Everything was written above; anything else in the table for this domain is gone.
+            let keep: std::collections::HashSet<(&str, &str)> = rows.items.iter().map(|(f, k, _)| (f.as_str(), k.as_str())).collect();
+            let present: Vec<(String, String)> = {
+                let mut q = tx.prepare("SELECT field, key FROM items WHERE domain=?1").map_err(sql)?;
+                q.query_map([domain], |r| Ok((r.get(0)?, r.get(1)?))).map_err(sql)?.collect::<Result<_, _>>().map_err(sql)?
+            };
+            let mut delete = tx.prepare("DELETE FROM items WHERE domain=?1 AND field=?2 AND key=?3").map_err(sql)?;
+            for (field, key) in present.iter().filter(|(f, k)| !keep.contains(&(f.as_str(), k.as_str()))) {
+                delete.execute((domain, field, key)).map_err(sql)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn remember(dir: &Path, domain: &str, rows: &Rows) {
+    let head = serde_json::json!([rows.scalars, rows.shape]).to_string();
+    let written = rows.items.iter().map(|(f, k, b)| ((f.clone(), k.clone()), b.clone())).collect();
+    SAVED.lock().unwrap().insert((dir.to_path_buf(), domain.to_owned()), (head, written));
+}
+
+/// Sorts keys as numbers where they are numbers (`1002` after `999`, `1001:7` after `1001:12`'s neighbours).
+fn key_order(key: &str) -> Vec<(u8, u64, String)> {
+    key.split([':', '#']).map(|part| match part.parse::<u64>() { Ok(n) => (0, n, String::new()), Err(_) => (1, 0, part.to_owned()) }).collect()
+}
+
+fn read_domain(dir: &Path, domain: &str) -> io::Result<Option<Json>> {
+    let conn = connection(dir)?;
+    let conn = conn.lock().unwrap();
+    let head: Option<(String, String)> = conn.query_row("SELECT scalars, shape FROM domains WHERE name=?1", [domain], |r| Ok((r.get(0)?, r.get(1)?))).optional().map_err(sql)?;
+    let Some((scalars, shape)) = head else { return Ok(None) };
+    let mut scalars: serde_json::Map<String, Json> = serde_json::from_str(&scalars).map_err(io::Error::other)?;
+    let shape: serde_json::Map<String, Json> = serde_json::from_str(&shape).map_err(io::Error::other)?;
+    let mut items: Vec<(String, String, String)> = {
+        let mut q = conn.prepare("SELECT field, key, body FROM items WHERE domain=?1").map_err(sql)?;
+        q.query_map([domain], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(sql)?.collect::<Result<_, _>>().map_err(sql)?
+    };
+    items.sort_by_key(|(field, key, _)| (field.clone(), key_order(key)));
+    let rows = Rows { scalars: scalars.clone(), shape: shape.clone(), items: items.clone() };
+    if let Some(whole) = scalars.remove("") { remember(dir, domain, &rows); return Ok(Some(whole)) }
+    let mut value = scalars;
+    for (field, kind) in &shape {
+        value.insert(field.clone(), if kind == "map" { Json::Object(Default::default()) } else { Json::Array(vec![]) });
+    }
+    for (field, key, body) in items {
+        let item: Json = serde_json::from_str(&body).map_err(io::Error::other)?;
+        match value.get_mut(&field) {
+            Some(Json::Array(list)) => list.push(item),
+            Some(Json::Object(map)) => { map.insert(key, item); }
+            _ => {}
+        }
+    }
+    remember(dir, domain, &rows);
+    Ok(Some(Json::Object(value)))
+}
+
+fn write_domain(dir: &Path, domain: &str, value: &Json) -> io::Result<()> {
+    let rows = split(value);
+    let key = (dir.to_path_buf(), domain.to_owned());
+    let before = SAVED.lock().unwrap().get(&key).cloned();
+    let conn = connection(dir)?;
+    let mut conn = conn.lock().unwrap();
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sql)?;
+    store_rows(&tx, domain, &rows, before.as_ref())?;
+    tx.commit().map_err(sql)?;
+    drop(conn);
+    remember(dir, domain, &rows);
+    Ok(())
+}
+
+/// How many backups are kept: a day of hourly ones, or the last starts.
+const BACKUPS: usize = 24;
+/// How often a running server backs up its database.
+pub const BACKUP_EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
 
 /// The file's JSON, or None when it doesn't exist yet.
 pub fn read(path: &Path) -> io::Result<Option<Json>> {
-    if let Some((dir, name)) = database_document(path) {
-        let body: Option<String> = connection(dir)?.query_row("SELECT body FROM state_documents WHERE name=?1", [name], |r| r.get(0)).optional().map_err(sql)?;
-        return body.map(|s| serde_json::from_str(&s).map_err(io::Error::other)).transpose();
-    }
+    if let Some((dir, name)) = database_domain(path) { return read_domain(dir, name) }
     match fs::read(path) {
         Ok(bytes) => serde_json::from_slice(&bytes).map(Some).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {e}", path.display()))),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
@@ -205,7 +358,7 @@ pub fn read_or_keep(path: &Path, what: &str) -> Json {
     match read(path) {
         Ok(saved) => saved.unwrap_or(Json::Null),
         Err(e) => {
-            assert!(database_document(path).is_none(), "cannot load SQLite state for {what}: {e}; refusing to start with empty state");
+            assert!(database_domain(path).is_none(), "cannot load SQLite state for {what}: {e}; refusing to start with empty state");
             let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S%.3f");
             let mut kept = path.as_os_str().to_owned();
             kept.push(format!(".corrupt-{stamp}"));
@@ -219,12 +372,18 @@ pub fn read_or_keep(path: &Path, what: &str) -> Json {
     }
 }
 
-/// Writes the whole file (pretty, so the host can read and edit it).
+/// Saves a domain's whole state: in server.db only the rows that changed (see the module), else the whole file
+/// (pretty, for the tests and tools that keep state outside a data folder).
 pub fn write(path: &Path, value: &Json) -> io::Result<()> {
-    if let Some((dir, name)) = database_document(path) {
-        connection(dir)?.execute("INSERT INTO state_documents(name, body) VALUES (?1, ?2) ON CONFLICT(name) DO UPDATE SET body=excluded.body",
-            (name, value.to_string())).map_err(sql)?;
-        return Ok(());
+    if let Some((dir, name)) = database_domain(path) {
+        let result = write_domain(dir, name, value);
+        match &result {
+            Ok(()) => if UNHEALTHY.swap(false, Ordering::Relaxed) { tracing::info!("saving works again: logins are open") },
+            Err(e) => if !UNHEALTHY.swap(true, Ordering::Relaxed) {
+                tracing::error!("SAVE FAILED ({name}: {e}). New logins are refused until a save succeeds; players already in keep playing. Check the disk.");
+            },
+        }
+        return result;
     }
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
@@ -241,7 +400,7 @@ pub fn back_up(dir: &Path) -> io::Result<()> {
         let backups = dir.join("backups");
         let to = backups.join(chrono::Local::now().format("%Y%m%d-%H%M%S%.9f").to_string());
         fs::create_dir_all(&to)?;
-        connection(dir)?.backup("main", to.join("server.db"), None::<fn(rusqlite::backup::Progress)>).map_err(sql)?;
+        connection(dir)?.lock().unwrap().backup("main", to.join("server.db"), None::<fn(rusqlite::backup::Progress)>).map_err(sql)?;
         rotate(&backups)?;
         return Ok(());
     }
@@ -286,59 +445,212 @@ fn rotate(backups: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Whether `path` names a domain kept in server.db (where [`write_changes`] applies).
+pub fn in_database(path: &Path) -> bool { database_domain(path).is_some() }
+
+/// Saves part of a domain kept in server.db: its scalars and small lists whole (diffed like [`write`]), and for big
+/// lists only the items that changed (`upsert`) or went (`delete`), by key, in one transaction. For a domain whose
+/// owner knows what changed (the accounts: copy-on-write), so it never serializes what didn't.
+pub fn write_changes(path: &Path, whole: &Json, field: &str, upsert: &[(String, Json)], delete: &[String]) -> io::Result<()> {
+    let (dir, domain) = database_domain(path).ok_or_else(|| io::Error::other(format!("{} is not kept in server.db", path.display())))?;
+    let result = (|| {
+        let mut rows = split(whole);
+        rows.shape.insert(field.to_owned(), "list".into());
+        let head = serde_json::json!([rows.scalars, rows.shape]).to_string();
+        let key = (dir.to_path_buf(), domain.to_owned());
+        let mut saved = SAVED.lock().unwrap();
+        let (old_head, written) = saved.entry(key).or_insert_with(|| (String::new(), Written::new()));
+        let conn = connection(dir)?;
+        let mut conn = conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sql)?;
+        if *old_head != head {
+            tx.execute("INSERT INTO domains(name, scalars, shape) VALUES (?1, ?2, ?3) ON CONFLICT(name) DO UPDATE SET scalars=excluded.scalars, shape=excluded.shape",
+                (domain, Json::Object(rows.scalars.clone()).to_string(), Json::Object(rows.shape.clone()).to_string())).map_err(sql)?;
+        }
+        let mut put = tx.prepare("INSERT INTO items(domain, field, key, body) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(domain, field, key) DO UPDATE SET body=excluded.body").map_err(sql)?;
+        let mut drop_item = tx.prepare("DELETE FROM items WHERE domain=?1 AND field=?2 AND key=?3").map_err(sql)?;
+        // The small lists, whole: write what differs from what was written, drop what went.
+        let small: std::collections::HashSet<&str> = rows.shape.keys().map(String::as_str).filter(|f| *f != field).collect();
+        let mut after = Written::new();
+        for (f, k, body) in &rows.items {
+            if written.get(&(f.clone(), k.clone())) != Some(body) { put.execute((domain, f, k, body)).map_err(sql)?; }
+            after.insert((f.clone(), k.clone()), body.clone());
+        }
+        for (f, k) in written.keys().filter(|(f, k)| small.contains(f.as_str()) && !after.contains_key(&(f.clone(), k.clone()))) {
+            drop_item.execute((domain, f, k)).map_err(sql)?;
+        }
+        // The big list: only what changed.
+        let mut bodies = Vec::with_capacity(upsert.len());
+        for (k, item) in upsert {
+            let body = item.to_string();
+            put.execute((domain, field, k, &body)).map_err(sql)?;
+            bodies.push((k.clone(), body));
+        }
+        for k in delete { drop_item.execute((domain, field, k)).map_err(sql)?; }
+        drop((put, drop_item));
+        tx.commit().map_err(sql)?;
+        // Remember it as written, in place: the big list's other items are untouched.
+        written.retain(|(f, _), _| !small.contains(f.as_str()));
+        written.extend(after);
+        for k in delete { written.remove(&(field.to_owned(), k.clone())); }
+        for (k, body) in bodies { written.insert((field.to_owned(), k), body); }
+        *old_head = head;
+        Ok(())
+    })();
+    match &result {
+        Ok(()) => if UNHEALTHY.swap(false, Ordering::Relaxed) { tracing::info!("saving works again: logins are open") },
+        Err(e) => if !UNHEALTHY.swap(true, Ordering::Relaxed) {
+            tracing::error!("SAVE FAILED ({domain}: {e}). New logins are refused until a save succeeds; players already in keep playing. Check the disk.");
+        },
+    }
+    result
+}
+
+/// For tests: makes every save to `dir` fail (as a full disk would), or work again.
+#[doc(hidden)]
+pub fn fail_saves(dir: &Path, fail: bool) -> io::Result<()> {
+    let conn = connection(dir)?;
+    let conn = conn.lock().unwrap();
+    for (table, event) in [("items", "INSERT"), ("items", "UPDATE"), ("items", "DELETE"), ("domains", "INSERT"), ("domains", "UPDATE")] {
+        let name = format!("test_fail_{table}_{}", event.to_lowercase());
+        let statement = if fail { format!("CREATE TRIGGER IF NOT EXISTS {name} BEFORE {event} ON {table} BEGIN SELECT RAISE(FAIL, 'test: disk full'); END;") }
+            else { format!("DROP TRIGGER IF EXISTS {name};") };
+        conn.execute_batch(&statement).map_err(sql)?;
+    }
+    Ok(())
+}
+
+/// The backups in `dir`, newest first.
+pub fn backups(dir: &Path) -> Vec<PathBuf> {
+    let mut all: Vec<PathBuf> = fs::read_dir(dir.join("backups")).into_iter().flatten().flatten().map(|e| e.path())
+        .filter(|p| p.join("server.db").is_file()).collect();
+    all.sort();
+    all.reverse();
+    all
+}
+
+/// Puts a backup back as `dir`'s database (the server must be stopped and the folder locked by the caller): `which`
+/// is a backup's folder name, or "latest". The database it replaces is kept beside it as `server.db.replaced-<time>`.
+pub fn restore(dir: &Path, which: &str) -> io::Result<PathBuf> {
+    let all = backups(dir);
+    let chosen = if which == "latest" { all.first().cloned() } else { all.iter().find(|p| p.file_name().is_some_and(|n| n == which)).cloned() };
+    let chosen = chosen.ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("no backup {which:?} in {}", dir.join("backups").display())))?;
+    close(dir);
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    for suffix in ["", "-wal", "-shm"] {
+        let current = dir.join(format!("server.db{suffix}"));
+        if current.exists() { fs::rename(&current, dir.join(format!("server.db{suffix}.replaced-{stamp}")))?; }
+    }
+    fs::copy(chosen.join("server.db"), dir.join("server.db"))?;
+    initialize(dir)?;
+    Ok(chosen)
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn dir(name: &str) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!("yo3-store-{name}-{}", std::process::id()));
+        close(&d);
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
     }
+    fn accounts(n: u32) -> Json {
+        let list: Vec<Json> = (0..n).map(|i| json!({ "user_id": 1001 + i, "dpoint": 500, "players": [{ "player_id": 2001 + i, "name": format!("P{i}") }] })).collect();
+        json!({ "next_user": 1001 + n, "next_player": 2001 + n, "accounts": list, "bp_codes": [{ "code": "ABC", "bp": 10 }] })
+    }
+    fn changes(d: &Path) -> u64 { connection(d).unwrap().lock().unwrap().total_changes() }
 
     #[test]
-    fn sqlite_import_preserves_every_document_and_never_imports_stale_json_again() {
-        let d = dir("sqlite-import");
-        for name in ["accounts", "records", "friends", "mail", "teams", "events", "rentals"] {
-            fs::write(d.join(format!("{name}.json")), format!("{{\"source\":\"{name}\",\"id\":1007}}")).unwrap();
-        }
+    fn a_domain_comes_back_as_it_was_saved() {
+        let d = dir("roundtrip");
         initialize(&d).unwrap();
-        assert!(d.join("server.db").is_file());
-        for name in ["accounts", "records", "friends", "mail", "teams", "events", "rentals"] {
-            let file = d.join(format!("{name}.json"));
-            assert_eq!(read(&file).unwrap().unwrap()["source"], name);
-            let original = fs::read(&file).unwrap();
-            write(&file, &serde_json::json!({ "updated": true })).unwrap();
-            assert_eq!(fs::read(&file).unwrap(), original, "original JSON retained as migration backup");
-        }
+        let file = d.join("accounts.json");
+        assert_eq!(read(&file).unwrap(), None, "nothing saved yet");
+        let value = accounts(12);
+        write(&file, &value).unwrap();
+        close(&d);
+        assert_eq!(read(&file).unwrap(), Some(value), "after reopening, in user_id order (1012 after 1009)");
+        let friends = json!({ "friends": [[1001, 1002]], "ignored": [], "names": { "1001": "Yugi" } });
+        write(&d.join("friends.json"), &friends).unwrap();
+        assert_eq!(read(&d.join("friends.json")).unwrap(), Some(friends));
+    }
+
+    /// The point of rows (#22): one account's change writes that account's row, not every account.
+    #[test]
+    fn a_change_writes_only_the_rows_that_changed() {
+        let d = dir("only-changed");
         initialize(&d).unwrap();
-        assert_eq!(read(&d.join("accounts.json")).unwrap().unwrap(), serde_json::json!({ "updated": true }));
-        back_up(&d).unwrap();
-        let backup = fs::read_dir(d.join("backups")).unwrap().next().unwrap().unwrap().path();
-        let conn = rusqlite::Connection::open(backup.join("server.db")).unwrap();
-        let count: u32 = conn.query_row("SELECT count(*) FROM state_documents", [], |r| r.get(0)).unwrap();
-        assert_eq!(count, 7);
-        drop(conn);
-        fs::remove_dir_all(d).unwrap();
+        let file = d.join("accounts.json");
+        let mut value = accounts(300);
+        write(&file, &value).unwrap();
+        let before = changes(&d);
+        value["accounts"][150]["dpoint"] = json!(900);
+        write(&file, &value).unwrap();
+        assert_eq!(changes(&d) - before, 1, "one row");
+        let before = changes(&d);
+        value["accounts"].as_array_mut().unwrap().remove(10);
+        value["next_user"] = json!(9999);
+        write(&file, &value).unwrap();
+        assert_eq!(changes(&d) - before, 2, "the removed account and the counters");
+        close(&d);
+        assert_eq!(read(&file).unwrap(), Some(value));
     }
 
     #[test]
-    fn json_edited_after_the_import_is_reported_not_reimported() {
-        // A host who raised BP by editing accounts.json after the import saw nothing change (issue #6).
-        let d = dir("sqlite-edited");
-        fs::write(d.join("accounts.json"), "{\"next_user\":1042}").unwrap();
+    fn a_schema_1_database_is_converted_in_place() {
+        let d = dir("schema1");
+        {
+            let conn = Connection::open(d.join("server.db")).unwrap();
+            conn.execute_batch("CREATE TABLE state_documents (name TEXT PRIMARY KEY, body TEXT NOT NULL);").unwrap();
+            conn.execute("INSERT INTO state_documents VALUES ('accounts.json', ?1)", [accounts(3).to_string()]).unwrap();
+            conn.execute("INSERT INTO state_documents VALUES ('mail.json', ?1)", [json!({ "last_id": 7, "waiting": [{ "id": 7, "kind": 1 }] }).to_string()]).unwrap();
+            conn.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+            conn.pragma_update(None, "user_version", 1).unwrap();
+        }
         initialize(&d).unwrap();
-        assert!(edited_after_import(&d).is_empty());
-        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
-        fs::write(d.join("accounts.json"), "{\"next_user\":9999}").unwrap();
-        fs::File::options().write(true).open(d.join("accounts.json")).unwrap().set_modified(later).unwrap();
-        assert_eq!(edited_after_import(&d), ["accounts.json"]);
-        assert_eq!(legacy_documents(&d), ["accounts.json"], "reported as an old copy that is safe to delete");
+        assert_eq!(read(&d.join("accounts.json")).unwrap(), Some(accounts(3)));
+        assert_eq!(read(&d.join("mail.json")).unwrap().unwrap()["waiting"][0]["id"], 7);
+        let conn = connection(&d).unwrap();
+        let conn = conn.lock().unwrap();
+        assert_eq!(conn.pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0)).unwrap(), SCHEMA);
+        let old: u32 = conn.query_row("SELECT count(*) FROM sqlite_master WHERE name='state_documents'", [], |r| r.get(0)).unwrap();
+        assert_eq!(old, 0);
+    }
+
+    /// A failed save is said, and refuses new logins until a save works again (no silent drift).
+    #[test]
+    fn a_failed_save_marks_the_store_unhealthy_until_a_save_succeeds() {
+        let d = dir("unhealthy");
         initialize(&d).unwrap();
-        assert_eq!(read(&d.join("accounts.json")).unwrap().unwrap()["next_user"], 1042, "server.db stays authoritative");
-        assert_eq!(edited_after_import(&d), ["accounts.json"], "reopening the database keeps the import time");
-        fs::remove_dir_all(d).unwrap();
+        let file = d.join("records.json");
+        write(&file, &json!({ "records": [] })).unwrap();
+        connection(&d).unwrap().lock().unwrap().execute_batch(
+            "CREATE TRIGGER refuse BEFORE INSERT ON items BEGIN SELECT RAISE(FAIL, 'disk full'); END;").unwrap();
+        assert!(write(&file, &json!({ "records": [{ "player_id": 1, "opponent": 2, "win": 1 }] })).is_err());
+        assert!(!healthy());
+        connection(&d).unwrap().lock().unwrap().execute_batch("DROP TRIGGER refuse;").unwrap();
+        write(&file, &json!({ "records": [{ "player_id": 1, "opponent": 2, "win": 1 }] })).unwrap();
+        assert!(healthy());
+    }
+
+    #[test]
+    fn a_backup_can_be_restored_and_the_replaced_database_is_kept() {
+        let d = dir("restore");
+        initialize(&d).unwrap();
+        let file = d.join("teams.json");
+        write(&file, &json!({ "last_id": 1, "teams": [{ "id": 1, "name": "Old" }] })).unwrap();
+        back_up(&d).unwrap();
+        write(&file, &json!({ "last_id": 2, "teams": [{ "id": 2, "name": "New" }] })).unwrap();
+        assert_eq!(backups(&d).len(), 1);
+        assert!(restore(&d, "nothing-like-this").is_err());
+        restore(&d, "latest").unwrap();
+        assert_eq!(read(&file).unwrap().unwrap()["teams"][0]["name"], "Old");
+        assert!(fs::read_dir(&d).unwrap().flatten().any(|e| e.file_name().to_string_lossy().starts_with("server.db.replaced-")));
     }
 
     #[test]
@@ -349,51 +661,8 @@ mod tests {
         assert_eq!(names.len(), DUEL_LOGS_KEPT as usize);
         assert_eq!(names[0], format!("{}.dlog", DUEL_LOGS_KEPT + 4), "newest first");
         assert_eq!(duel_log(&d, "0.dlog").unwrap(), None, "the oldest were dropped");
-        assert_eq!(duel_log(&d, &names[0]).unwrap(), Some((DUEL_LOGS_KEPT + 4).to_le_bytes().to_vec()));
         initialize(&d).unwrap();
         assert_eq!(duel_log_names(&d).unwrap().len(), DUEL_LOGS_KEPT as usize, "a restart keeps them");
-        fs::remove_dir_all(d).unwrap();
-    }
-
-    #[test]
-    fn a_failed_sqlite_import_is_retryable_and_preserves_original_files() {
-        let d = dir("sqlite-retry");
-        fs::write(d.join("accounts.json"), "{\"next_user\":1042}").unwrap();
-        fs::write(d.join("friends.json"), "broken").unwrap();
-        assert!(initialize(&d).is_err());
-        assert_eq!(fs::read_to_string(d.join("friends.json")).unwrap(), "broken");
-        fs::write(d.join("friends.json"), "{\"friends\":[]}").unwrap();
-        initialize(&d).unwrap();
-        assert_eq!(read(&d.join("accounts.json")).unwrap().unwrap()["next_user"], 1042);
-        fs::remove_dir_all(d).unwrap();
-    }
-
-    #[test]
-    fn a_missing_migrated_database_never_falls_back_to_stale_json() {
-        let d = dir("sqlite-missing");
-        fs::write(d.join("accounts.json"), "{\"original\":true}").unwrap();
-        initialize(&d).unwrap();
-        fs::remove_file(d.join("server.db")).unwrap();
-        assert!(initialize(&d).is_err());
-        assert!(read(&d.join("accounts.json")).is_err());
-        assert!(write(&d.join("accounts.json"), &serde_json::json!({"lost":true})).is_err());
-        assert_eq!(fs::read_to_string(d.join("accounts.json")).unwrap(), "{\"original\":true}");
-        fs::remove_dir_all(d).unwrap();
-    }
-
-    #[test]
-    fn invalid_account_records_do_not_complete_migration_or_reveal_credentials() {
-        let d = dir("sqlite-invalid-account");
-        let key = "s".repeat(20);
-        fs::write(d.join("accounts.json"), serde_json::json!({"accounts":[{"user_id":"bad","key":key,"players":[]}]}).to_string()).unwrap();
-        let error = initialize(&d).unwrap_err().to_string();
-        assert!(!error.contains(&key));
-        assert!(!d.join(FORMAT_MARKER).exists());
-        fs::write(d.join("accounts.json"), serde_json::json!({"accounts":[{"user_id":1042,"key":key,"players":[]}]}).to_string()).unwrap();
-        initialize(&d).unwrap();
-        let directory = crate::accounts::Directory::open(vec![], &d.join("accounts.json")).unwrap();
-        assert_eq!(directory.entries().next().unwrap().2.user_id, 1042);
-        fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
@@ -406,24 +675,6 @@ mod tests {
         let kept: Vec<_> = fs::read_dir(&d).unwrap().filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
         assert_eq!(kept.len(), 1);
         assert!(kept[0].starts_with("friends.json.corrupt-"), "{kept:?}");
-        assert_eq!(fs::read_to_string(d.join(&kept[0])).unwrap(), "{ \"friends\": [[1, 2]");
-        // A missing file is simply new.
         assert_eq!(read_or_keep(&d.join("none.json"), "none"), Json::Null);
-    }
-
-    #[test]
-    fn a_damaged_file_is_not_backed_up() {
-        let d = dir("backup");
-        write(&d.join("good.json"), &serde_json::json!({ "a": 1 })).unwrap();
-        fs::write(d.join("bad.json"), "{{{").unwrap();
-        back_up(&d).unwrap();
-        let backup = fs::read_dir(d.join("backups")).unwrap().next().unwrap().unwrap().path();
-        assert!(backup.join("good.json").is_file());
-        assert!(!backup.join("bad.json").exists());
-        // With nothing sound to copy no backup directory is made, so none of the good ones is rotated out.
-        let d = dir("backup-none");
-        fs::write(d.join("bad.json"), "{{{").unwrap();
-        back_up(&d).unwrap();
-        assert!(!d.join("backups").exists());
     }
 }

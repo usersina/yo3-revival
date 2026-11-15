@@ -131,6 +131,11 @@ pub enum Admin {
     RemoveCode { code: String },
     /// List the BOOSTERPASS codes and how often each was used. Works while the server runs.
     Codes,
+    /// Put a backup back as the server's database (the server must be stopped): WHICH is a folder name under
+    /// backups/ (`backups` lists them), or "latest". The database it replaces is kept beside it, renamed.
+    Restore { which: String },
+    /// List the backups, newest first: one at each start, every hour while running, and at each stop.
+    Backups,
 }
 
 /// Run flags (administrative subcommands are separate actions, not persistent server settings).

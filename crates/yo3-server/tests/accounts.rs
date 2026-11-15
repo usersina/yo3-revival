@@ -11,14 +11,12 @@ fn a_failed_manager_commit_restores_the_live_directory() {
     yo3_server::store::initialize(&dir).unwrap();
     let mut d = Directory::open(vec![], &dir.join("accounts.json")).unwrap();
     d.add_account(&["Original".into()]).unwrap();
-    let conn = rusqlite::Connection::open(dir.join("server.db")).unwrap();
-    conn.execute_batch("CREATE TRIGGER refuse_save BEFORE UPDATE ON state_documents BEGIN SELECT RAISE(FAIL, 'test write failure'); END;").unwrap();
+    yo3_server::store::fail_saves(&dir, true).unwrap();
     let failed = d.atomic(|d| d.add_account(&["MustNotExist".into()]));
     assert!(failed.is_err());
     assert_eq!(d.entries().count(), 1, "failed write cannot publish an in-memory account");
     let fresh = Directory::open(vec![], &dir.join("accounts.json")).unwrap();
     assert_eq!(fresh.entries().count(), 1);
-    drop(conn);
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -413,4 +411,31 @@ fn a_fetch_without_a_known_key_forgets_the_previous_key_of_that_address() {
     d.present_key(ip(1), &key, now);
     assert!(!d.present_key(ip(1), "wrongwrongwrongwrong", now));
     assert_eq!(d.login(ip(1), now).user_id, by_address.user_id);
+}
+
+/// The cost behind #22, end to end: one purchase in a directory of 300 accounts (1,200 players with full collections),
+/// including its rollback copy and its save. `cargo test --release -p yo3-server --test accounts save_cost -- --ignored --nocapture`.
+#[test]
+#[ignore = "a measurement, not a check"]
+fn save_cost() {
+    let dir = std::env::temp_dir().join(format!("yo3-save-cost-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    yo3_server::store::initialize(&dir).unwrap();
+    let mut d = Directory::open(vec!["A".into(), "B".into(), "C".into(), "D".into()], &dir.join("accounts.json")).unwrap();
+    for _ in 0..300 { d.add_account(&[]).unwrap(); }
+    let players: Vec<u32> = d.entries().flat_map(|(_, _, a)| a.players.iter().map(|p| p.player_id).collect::<Vec<_>>()).collect();
+    let started = std::time::Instant::now();
+    for &p in &players { d.purchase(p, 0, None, |player| { for c in 0..1500u16 { player.cards.insert(c * 3, 2); } }).unwrap(); }
+    let filled = started.elapsed();
+    let mut one = Vec::new();
+    for (n, &p) in players.iter().step_by(60).take(20).enumerate() {
+        let started = std::time::Instant::now();
+        d.purchase(p, 1, None, |player| { player.cards.insert(9000 + n as u16, 1); }).unwrap();
+        one.push(started.elapsed());
+    }
+    one.sort();
+    println!("{} players with 1,500 cards each (filled in {filled:?}); one purchase: median {:?}, worst {:?}", players.len(), one[10], one[19]);
+    let fresh = Directory::open(vec![], &dir.join("accounts.json")).unwrap();
+    assert_eq!(fresh.entries().count(), 300, "everything was kept");
+    std::fs::remove_dir_all(dir).unwrap();
 }

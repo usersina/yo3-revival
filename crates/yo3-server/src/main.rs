@@ -26,9 +26,22 @@ fn print_key(a: &Args, key: &str) {
 fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
     // Listings only read; the BP commands go to a running server (admin.rs) when there is one. Everything else owns
     // the data folder while it runs, as a server does (store::lock).
-    let read_only = matches!(command, Admin::Accounts | Admin::Countries | Admin::Codes | Admin::Titles);
+    let read_only = matches!(command, Admin::Accounts | Admin::Countries | Admin::Codes | Admin::Titles | Admin::Backups);
     let live_op = matches!(command, Admin::GiveBp { .. } | Admin::AddCode { .. } | Admin::RemoveCode { .. }) && live::running(&a.data_dir).is_some();
     let _lock = if read_only || live_op { None } else { Some(yo3_server::store::lock(&a.data_dir)?) };
+    // Restoring comes before opening the database: the one being replaced may be the damaged one.
+    match &command {
+        Admin::Restore { which } => {
+            let from = yo3_server::store::restore(&a.data_dir, which)?;
+            println!("Restored the backup from {}.", from.file_name().unwrap_or_default().to_string_lossy());
+            return Ok(());
+        }
+        Admin::Backups => {
+            for backup in yo3_server::store::backups(&a.data_dir) { println!("{}", backup.file_name().unwrap_or_default().to_string_lossy()) }
+            return Ok(());
+        }
+        _ => {}
+    }
     yo3_server::store::initialize(&a.data_dir)?;
     if let Admin::InitAuth { names } = command {
         let tls = yo3_server::auth::initialize(&a.data_dir, names)?;
@@ -119,7 +132,7 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
             d.update_player(player_id, |p| { p.items.insert(id); }).map_err(err)?;
             println!("{player} has the title {}", titles.name(id).unwrap_or(&title));
         }
-        Admin::GiveBp { .. } | Admin::AddCode { .. } | Admin::RemoveCode { .. } | Admin::Codes => unreachable!("handled above"),
+        Admin::GiveBp { .. } | Admin::AddCode { .. } | Admin::RemoveCode { .. } | Admin::Codes | Admin::Restore { .. } | Admin::Backups => unreachable!("handled above"),
     }
     Ok(())
 }
