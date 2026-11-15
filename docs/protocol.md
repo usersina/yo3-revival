@@ -1376,7 +1376,7 @@ a release for a summon, a Fusion or a Synchro material):
   and a Tuner tuned second reset the others' levels, which crashed the Synchro animation (live). The duel check holds
   every summon to these rules (`duelcheck/summon.rs`; Konami's 228 logs keep them all, `tests/summon_order.rs`). Each
   material's card is found as the engine's place says once the batch's earlier materials have left (from the hand they
-  all leave index 0): two copies of a card were once both taken for the first (Ancient Gear Ultimate Golem);
+  all leave index 0): two copies of a card were once both taken for the first (Ultimate Ancient Gear Golem);
 - as an Extra Deck monster arrives (its move from the Extra Deck, a batch after its materials: the engine asks its
   position in between), 1015 (and 1016) with the materials' uids, the Tuners first (without it the Synchro animation
   crashed the client, live), RunFusion, and the summon line `0x44` with kind 8 for a Synchro and 6 for a Fusion (Konami

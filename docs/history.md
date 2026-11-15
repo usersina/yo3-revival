@@ -42,6 +42,12 @@ Desktop archives also carry `yo3-revival.ico` and `yo3-revival.png` for custom s
 both platform archives. The in-game login news no longer includes the deck-onboarding notice; a front contract
 checks its removal alongside the existing news-format and engine-warning coverage.
 
+v0.0.20 release preparation (2026-11-15):
+
+- [x] The workspace package version and the local lockfile entries are `0.0.20`. The changelog describes Fusion
+  Summons from the hand no longer crashing the game (#40) and two copies of a card counted as two materials. The duel
+  check holds every summon to the order rules, which Konami's 228 duel logs keep. Same connection interface (3).
+
 v0.0.19 release preparation (2026-11-15):
 
 - [x] The workspace package version and the local lockfile entries are `0.0.19`. The changelog describes saves that
