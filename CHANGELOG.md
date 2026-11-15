@@ -10,7 +10,16 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.0.17 (2026-11-15)
+
+Summons look like the original game's again. Choose **Desktop** for the graphical app or **Scripts** for terminal
+commands. Both editions include the server, rules engine and required connection components. Original game files are
+not included. **Windows 7 is not supported.**
+
+Only the host needs to update: these changes are all in the server, and friends on v0.0.13 or later can still join.
+Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.17/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.17/docs/scripts.md).
 
 - **Summons look like the original again.** Tribute Summons show the tribute leaving, Fusion Summons play the full-screen
   Fusion vortex with the materials swirling away, and Synchro Summons play the original Synchro animation: the Tuner's

@@ -42,6 +42,12 @@ Desktop archives also carry `yo3-revival.ico` and `yo3-revival.png` for custom s
 both platform archives. The in-game login news no longer includes the deck-onboarding notice; a front contract
 checks its removal alongside the existing news-format and engine-warning coverage.
 
+v0.0.17 release preparation (2026-11-15):
+
+- [x] The workspace package version and the local lockfile entries are `0.0.17`. The changelog describes the original
+  summon animations: Tribute, Fusion (Polymerization and Contact), Synchro and Flip Summons. Server-only changes, same
+  connection interface (3). Checked live on the private client; the duel check and the full card sweep pass.
+
 v0.0.16 release preparation (2026-11-14):
 
 - [x] The workspace package version and the local lockfile entries are `0.0.16`. The changelog describes Avatar
