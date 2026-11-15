@@ -219,6 +219,7 @@ release, and "—" a row that is not implemented or unsupported.
 | Connection DLL: login, ordinal imports, local cookies, fail-closed injection | Implemented | v0.0.4 (2026-11-10) | `tools/mod/test.sh`, `test-loader.sh`; Windows VM | Required. A failed hook byte check stops the game. |
 | Opening the game directly (WINMM loader) | Partial | v0.0.4 (2026-11-10) | `tools/mod/test-direct.sh`, `direct_install.rs`; Windows VM, standard user | Protected-folder installation and reinstalling a missing runtime are not verified; Windows 10 is not checked. |
 | Exit guard at teardown | Implemented | v0.0.13 (2026-11-14) | `tools/mod/teardown-test.c`; live | Fixed after a crash mid-duel on Windows. |
+| Naming a DLL function the game lacks ([#41](https://github.com/usersina/yo3-revival/issues/41)) | Partial | Unreleased | `tools/mod/test.sh` (the runtime check names `yo3-missing-import-test.exe`'s missing function); `error_presentation.rs` | The injector's `stage=game-startup` report needs native Windows (Wine loads imports first): not yet checked on the VM. |
 | Native game exit `0xc0000005` from a player's recording | Partial | — | Not verified | Not reproduced in seven native Windows 11 launches; a crash dump is needed. |
 
 ## Platforms

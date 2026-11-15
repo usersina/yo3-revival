@@ -109,10 +109,10 @@ fn native_evidence(message:&str)->String {
         if yo3_tunnel::diagnostics::is_trace(line) || line.contains("[tls]") || line.contains("] <-") || line.contains("] ->"){continue}
         let Some(stage)=line.split_whitespace().find_map(|part|part.strip_prefix("stage=")).map(|stage|stage.trim_end_matches(':')) else {continue};
         // Match the known native stages used by error_presentation; arbitrary stage text stays local.
-        if !matches!(stage,"game-data-dir"|"runtime-path"|"runtime-image"|"runtime-manifest"|"runtime-dependency"
+        if !matches!(stage,"game-data-dir"|"runtime-path"|"runtime-image"|"runtime-manifest"|"runtime-dependency"|"runtime-import"
             |"inject-allocation"|"inject-loader"|"inject-write"|"inject-thread"|"inject-wait"|"inject-result"
             |"mod-load"|"mod-ready-thread"|"mod-ready-wait"|"mod-ready-result"|"mod-ready"|"mod-metadata"
-            |"game-job"|"game-create"|"game-job-assign"|"game-before-resume"|"game-resume-control"|"game-resume"|"game-exit"
+            |"game-job"|"game-create"|"game-job-assign"|"game-startup"|"game-before-resume"|"game-resume-control"|"game-resume"|"game-exit"
             |"mod-environment"|"mod-import-hooks"|"mod-login-hook"|"mod-starter-hook"|"mod-duel-hook"){continue}
         let mut row=format!("stage={stage}");
         for key in ["windows_error","process_exit_code","mod_status"] {

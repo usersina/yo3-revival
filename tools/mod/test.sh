@@ -54,6 +54,13 @@ for dependency in d3dx9_40 msvcp90; do
   if grep -q 'FAIL line' "$LOG"; then echo 'FAIL: runtime validation started the game' >&2; exit 1; fi
 done
 echo 'PASS: runtime validation identifies missing DirectX and VC90 without starting the game'
+# Every import of the game is looked up (#41): a function missing from its DLL is named before the game starts.
+if wine "$MOD/yo3-auth-launch.exe" --check-runtime "$(winepath -w "$MOD/yo3-missing-import-test.exe" 2>/dev/null)" >"$LOG" 2>&1; then
+  echo 'FAIL: a missing imported function passed validation' >&2; exit 1
+fi
+grep -q 'stage=runtime-import windows_error=127: .*Yo3MissingFunction from KERNEL32.dll' "$LOG" || { command cat "$LOG" >&2; exit 1; }
+if grep -q 'FAIL line' "$LOG"; then echo 'FAIL: runtime validation started the game' >&2; exit 1; fi
+echo 'PASS: runtime validation names a function missing from an imported DLL'
 if wine "$MOD/yo3-auth-launch.exe" "$(winepath -w "$MOD/yo3-auth-test.exe" 2>/dev/null)" 'Z:\missing-auth.dll' >"$LOG" 2>&1; then
   echo "FAIL: injector resumed with a missing connection mod" >&2
   exit 1

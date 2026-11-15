@@ -128,8 +128,21 @@ for identifying builds; the supported layout remains the contract, rather than t
 The original executable imports `d3dx9_40.dll`, `MSVCR90.dll` and `MSVCP90.dll`; its manifest requests the x86
 `Microsoft.VC90.CRT` assembly, version `9.0.21022.8`. The 32-bit injector's `--check-runtime GAME.exe` reads that
 manifest as data, activates its context and probes only these known dependencies from the game/system runtime
-locations. It does not invoke the game or its local WINMM loader. Desktop validation and script startup both run
-this check before connecting. This covers dependency loadability, not graphics initialization or UAC consent.
+locations. It then reads the executable's import table as data and looks up every imported function where the
+game's loader would find it (the game folder, then Windows; WINMM in Windows' copy, which our loader forwards to). A
+missing one is `stage=runtime-import windows_error=127`, naming the function, the DLL and which copy lacks it. It does
+not invoke the game or its local WINMM loader. Desktop validation and script startup both run this check before
+connecting. This covers dependency loadability, not graphics initialization or UAC consent.
+
+Windows loads a suspended game's DLLs when its first thread runs, and that is the injector's `LoadLibraryW` thread. A
+missing DLL or function ends the process there, and the thread's exit code is the process's, `0xc0000139`, not a
+module address ([#41](https://github.com/usersina/yo3-revival/issues/41), Windows 10 LTSC 2019: the injector used it
+as the DLL's base and reported `stage=mod-ready-thread windows_error=5`). The injector now checks the process after
+the loader thread and reports `stage=game-startup process_exit_code=…` with what the code means (`0xc0000139` entry
+point not found, `0xc0000135` DLL not found, `0xc0000142` DLL initialization failed, `0xc000007b` wrong architecture);
+Desktop shows "Windows stopped the game while loading its DLLs." Wine resolves the executable's imports before any
+injected thread runs, so only native Windows reproduces this; `yo3-missing-import-test.exe` (built by
+`tools/mod/build.sh`, it imports a function KERNEL32 lacks) is the fixture for both checks.
 
 Native Windows 11 (build 22000.2538) exposed a path-boundary failure: the same supported executable passed the
 32-bit checker with a normal drive path and failed `stage=runtime-image windows_error=2` with the `\\?\` form

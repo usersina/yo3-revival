@@ -64,10 +64,10 @@ fn compact(text:&str,limit:usize)->String {
 }
 fn native_evidence(line:&str)->Option<(u8,String,String)> {
     let stage=line.split_whitespace().find_map(|part|part.strip_prefix("stage="))?.trim_end_matches(':');
-    if !matches!(stage,"game-data-dir"|"runtime-path"|"runtime-image"|"runtime-manifest"|"runtime-dependency"
+    if !matches!(stage,"game-data-dir"|"runtime-path"|"runtime-image"|"runtime-manifest"|"runtime-dependency"|"runtime-import"
         |"inject-allocation"|"inject-loader"|"inject-write"|"inject-thread"|"inject-wait"|"inject-result"
         |"mod-load"|"mod-ready-thread"|"mod-ready-wait"|"mod-ready-result"|"mod-ready"|"mod-metadata"
-        |"game-job"|"game-create"|"game-job-assign"|"game-before-resume"|"game-resume-control"|"game-resume"|"game-exit"
+        |"game-job"|"game-create"|"game-job-assign"|"game-startup"|"game-before-resume"|"game-resume-control"|"game-resume"|"game-exit"
         |"mod-environment"|"mod-import-hooks"|"mod-login-hook"|"mod-starter-hook"|"mod-duel-hook") {return None}
     let number=|key:&str|line.split_whitespace().find_map(|part|part.strip_prefix(key)).and_then(|value| {
         let value=value.trim_end_matches(':');
@@ -76,7 +76,11 @@ fn native_evidence(line:&str)->Option<(u8,String,String)> {
     let code=number("process_exit_code=").filter(|code|*code!=0);
     let windows=number("windows_error=").filter(|code|*code!=0);
     let mut evidence=format!("stage={stage}");let mut rank=1;
-    let summary=if code==Some(0xC0000005) {evidence=format!("0xC0000005 · access violation · {evidence}");rank=4;"The game crashed."}
+    let summary=if stage=="game-startup" && let Some(code)=code {
+            // Windows ended the game while loading its DLLs (#41): the help names the missing piece.
+            evidence=format!("Game exit code 0x{code:08X} · {evidence}");rank=4;"Windows stopped the game while loading its DLLs."
+        }
+        else if code==Some(0xC0000005) {evidence=format!("0xC0000005 · access violation · {evidence}");rank=4;"The game crashed."}
         else if let Some(code)=code {evidence=format!("Game exit code 0x{code:08X} · {evidence}");rank=4;"The game exited with an error."}
         else {
             if let Some(error)=windows {evidence=format!("Windows error {error} · {evidence}");rank=3;}
@@ -86,7 +90,7 @@ fn native_evidence(line:&str)->Option<(u8,String,String)> {
             if let Some(result)=number("hresult=") {evidence.push_str(&format!(" · HRESULT 0x{result:08X}"));rank=rank.max(2);}
             if stage.starts_with("runtime-") {"The game runtime check failed."}else{"The game could not start."}
         };
-    if code.is_none() && let Some((_,help))=line.split_once("stage=").and_then(|(_,native)|native.split_once(": ")) {
+    if (code.is_none() || stage=="game-startup") && let Some((_,help))=line.split_once("stage=").and_then(|(_,native)|native.split_once(": ")) {
         evidence.push_str(": ");evidence.push_str(help);
     }
     Some((rank,summary.into(),evidence))
@@ -132,6 +136,17 @@ mod tests {
         assert!(loader.contains("remote_result=0") && !loader.contains("Windows error"));
         let abi=present("stage=mod-ready windows_error=0 mod_status=1 expected_abi=2: Connection DLL did not report the required interface.",Hint::General,&[]).diagnosis.unwrap();
         assert!(abi.contains("mod_status=1") && abi.contains("expected_abi=2") && !abi.contains("Windows error 0"));
+    }
+    #[test]
+    fn a_game_stopped_while_loading_its_dlls_says_so_not_that_the_connection_dll_failed() {
+        // #41: Windows 10 LTSC 2019 ended the suspended game with 0xc0000139 while our loader thread ran.
+        let display=present("The game could not start (exit code: 1).\nstage=game-startup process_exit_code=0xc0000139: The game closed while Windows loaded its DLLs: a DLL the game uses lacks a function it needs (entry point not found). Validate the game in Revival: it names the DLL and the function.\nconnection mod did not initialize; game terminated before startup",Hint::General,&[]);
+        assert_eq!(display.summary,"Windows stopped the game while loading its DLLs.");
+        let evidence=display.diagnosis.unwrap();
+        assert!(evidence.contains("0xC0000139") && evidence.contains("lacks a function") && !evidence.contains("readiness"),"{evidence}");
+        let import=present("Game runtime check failed.\nRuntime checker (exit code: 1): stage=runtime-import windows_error=127: yo3.exe needs D3DXFoo from d3dx9_40.dll, which the game folder's copy lacks. Install Microsoft's DirectX End-User Runtimes (June 2010).",Hint::General,&[]);
+        assert_eq!(import.summary,"The game runtime check failed.");
+        assert!(import.diagnosis.unwrap().contains("D3DXFoo from d3dx9_40.dll"));
     }
     #[test]
     fn network_evidence_retains_nested_tls_and_os_error_without_blaming_credentials() {

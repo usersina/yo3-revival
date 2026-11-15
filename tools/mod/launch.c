@@ -33,6 +33,96 @@ static int game_data_directory(void) {
 
 /* Probe only the game's known legacy runtimes, never its WINMM automatic loader or game entry point.
  * The game manifest selects the VC90 side-by-side assembly; the helper's own CRT is unrelated. */
+/* A pointer to `need` bytes at `rva` of a PE file read as data, or NULL when that range is not in one section. */
+static const BYTE *at_rva(const BYTE *file, DWORD size, const IMAGE_NT_HEADERS32 *nt, DWORD rva, DWORD need) {
+    const IMAGE_SECTION_HEADER *section = IMAGE_FIRST_SECTION(nt);
+    for (unsigned i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++section) {
+        DWORD start = section->VirtualAddress, length = section->SizeOfRawData;
+        if (rva < start || rva - start >= length || length - (rva - start) < need) continue;
+        DWORD offset = section->PointerToRawData + (rva - start);
+        if (offset < section->PointerToRawData || offset > size || size - offset < need) return NULL;
+        return file + offset;
+    }
+    return NULL;
+}
+
+/* What the help for a function missing from `dll` says: the runtimes the game ships for, or a Windows too old or
+ * changed for it (issue #41: Windows 10 LTSC 2019 stopped the game with 0xc0000139 before it began). */
+static const char *import_help(const char *dll) {
+    if (!_stricmp(dll, "d3dx9_40.dll")) return "Install Microsoft's DirectX End-User Runtimes (June 2010), remove any other d3dx9_40.dll from the game folder, then validate again.";
+    if (!_strnicmp(dll, "MSVC", 4)) return "Install or repair Microsoft Visual C++ 2008 Redistributable (x86), remove any other copy of this DLL from the game folder, then validate again.";
+    return "This Windows lacks a function the game needs, or a different copy of the DLL is in the game folder. Remove such copies; the supported systems are 64-bit Windows 10 and 11.";
+}
+
+/* Every function yo3.exe imports, looked up where the game's loader would find it: a missing one stops the game with
+ * 0xc0000139 before any of our code runs, so name it here instead. WINMM is checked in Windows' copy: the game
+ * folder's is our loader, which forwards to it. Runs inside the game's runtime activation context. */
+static int check_imports(const wchar_t *game, const wchar_t *directory) {
+    HANDLE handle = CreateFileW(game, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    if (handle == INVALID_HANDLE_VALUE) return !failure("runtime-image", GetLastError(), "Cannot read the game executable. Validate the original game files.");
+    DWORD size = GetFileSize(handle, NULL), read = 0;
+    BYTE *file = size != INVALID_FILE_SIZE && size <= 64u << 20 ? HeapAlloc(GetProcessHeap(), 0, size ? size : 1) : NULL;
+    int loaded = file && ReadFile(handle, file, size, &read, NULL) && read == size;
+    DWORD error = GetLastError(); CloseHandle(handle);
+    if (!loaded) { if (file) HeapFree(GetProcessHeap(), 0, file); return !failure("runtime-image", file ? error : ERROR_FILE_TOO_LARGE, "Cannot read the game executable. Validate the original game files."); }
+    const IMAGE_DOS_HEADER *dos = (const void *)file;
+    const IMAGE_NT_HEADERS32 *nt = size >= sizeof *dos && dos->e_magic == IMAGE_DOS_SIGNATURE && dos->e_lfanew > 0
+        && (DWORD)dos->e_lfanew < size && size - (DWORD)dos->e_lfanew >= sizeof *nt ? (const void *)(file + dos->e_lfanew) : NULL;
+    if (!nt || nt->Signature != IMAGE_NT_SIGNATURE || nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC
+        || (DWORD)((const BYTE *)IMAGE_FIRST_SECTION(nt) - file) + nt->FileHeader.NumberOfSections * sizeof(IMAGE_SECTION_HEADER) > size) {
+        HeapFree(GetProcessHeap(), 0, file);
+        return !failure("runtime-image", ERROR_BAD_EXE_FORMAT, "The game executable is not a 32-bit Windows program. Validate the original game files.");
+    }
+    const IMAGE_DATA_DIRECTORY *directory_entry = &nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    int ok = 1, reported = 0;
+    for (DWORD at = directory_entry->VirtualAddress; at && ok >= 0; at += sizeof(IMAGE_IMPORT_DESCRIPTOR)) {
+        const IMAGE_IMPORT_DESCRIPTOR *entry = (const void *)at_rva(file, size, nt, at, sizeof *entry);
+        if (!entry) { ok = -1; break; }
+        if (!entry->Name && !entry->FirstThunk) break;
+        const char *dll = (const char *)at_rva(file, size, nt, entry->Name, 1);
+        if (!dll || !memchr(dll, 0, size - (DWORD)((const BYTE *)dll - file)) || strlen(dll) >= MAX_PATH) { ok = -1; break; }
+        wchar_t name[MAX_PATH];
+        if (!MultiByteToWideChar(CP_ACP, 0, dll, -1, name, MAX_PATH)) { ok = -1; break; }
+        int system = !_stricmp(dll, "winmm.dll");
+        HMODULE module = LoadLibraryExW(name, NULL, system ? LOAD_LIBRARY_SEARCH_SYSTEM32 : LOAD_LIBRARY_SEARCH_USER_DIRS | LOAD_LIBRARY_SEARCH_SYSTEM32);
+        if (!module) {
+            fprintf(stderr, "stage=runtime-import windows_error=%lu: yo3.exe needs %s, which Windows cannot load. %s\n", GetLastError(), dll, import_help(dll));
+            ok = 0; if (++reported == 3) break; continue;
+        }
+        wchar_t path[MAX_PATH * 2] = {0};
+        DWORD path_length = GetModuleFileNameW(module, path, sizeof path / sizeof *path);
+        size_t folder = wcslen(directory);
+        const char *where = path_length && !_wcsnicmp(path, directory, folder) && path[folder] == L'\\' ? "the game folder's copy" : "Windows' copy";
+        DWORD thunk = entry->OriginalFirstThunk ? entry->OriginalFirstThunk : entry->FirstThunk;
+        for (;; thunk += sizeof(DWORD)) {
+            const DWORD *slot = (const void *)at_rva(file, size, nt, thunk, sizeof(DWORD));
+            if (!slot) { ok = -1; break; }
+            if (!*slot) break;
+            char wanted[32]; const char *function = wanted;
+            FARPROC found;
+            if (*slot & IMAGE_ORDINAL_FLAG32) {
+                snprintf(wanted, sizeof wanted, "ordinal %lu", (unsigned long)IMAGE_ORDINAL32(*slot));
+                found = GetProcAddress(module, MAKEINTRESOURCEA(IMAGE_ORDINAL32(*slot)));
+            } else {
+                const IMAGE_IMPORT_BY_NAME *by_name = (const void *)at_rva(file, size, nt, *slot, sizeof *by_name);
+                function = by_name ? (const char *)by_name->Name : NULL;
+                if (!function || !memchr(function, 0, size - (DWORD)((const BYTE *)function - file))) { ok = -1; break; }
+                found = GetProcAddress(module, function);
+            }
+            if (!found) {
+                fprintf(stderr, "stage=runtime-import windows_error=%lu: yo3.exe needs %s from %s, which %s lacks. %s\n",
+                    GetLastError(), function, dll, where, import_help(dll));
+                ok = 0; if (++reported == 3) break;
+            }
+        }
+        FreeLibrary(module);
+        if (reported == 3) break;
+    }
+    HeapFree(GetProcessHeap(), 0, file);
+    if (ok < 0) return !failure("runtime-image", ERROR_BAD_EXE_FORMAT, "The game executable's import table is damaged. Validate the original game files.");
+    return ok;
+}
+
 static int check_runtime(const wchar_t *game) {
     wchar_t directory[MAX_PATH];
     DWORD length = GetFullPathNameW(game, MAX_PATH, directory, NULL);
@@ -71,9 +161,27 @@ static int check_runtime(const wchar_t *game) {
         if (!module) { failure("runtime-dependency", GetLastError(), help[i]); ok = 0; break; }
         FreeLibrary(module);
     }
+    if (ok) ok = check_imports(game, directory);
     if (activation != INVALID_HANDLE_VALUE) { DeactivateActCtx(0, cookie); ReleaseActCtx(activation); }
     if (ok) fputs("Game runtime prerequisites available\n", stdout);
     return !ok;
+}
+
+/* Windows loads the suspended game's DLLs when its first thread runs: our loader thread. A missing DLL or function
+ * ends the process there, and the thread's exit code is the process's (0xc0000139), not a module address (#41). */
+static int startup_reported;
+static int game_died(HANDLE process) {
+    DWORD code = 0;
+    if (!GetExitCodeProcess(process, &code) || code == STILL_ACTIVE) return 0;
+    if (startup_reported) return 1;
+    startup_reported = 1;
+    const char *why = code == 0xC0000139 ? "a DLL the game uses lacks a function it needs (entry point not found). Validate the game in Revival: it names the DLL and the function."
+        : code == 0xC0000135 ? "a DLL the game needs was not found. Install DirectX End-User Runtimes (June 2010) and Microsoft Visual C++ 2008 Redistributable (x86), then validate again."
+        : code == 0xC0000142 ? "a DLL the game uses failed to initialize. Repair DirectX End-User Runtimes (June 2010) and Microsoft Visual C++ 2008 Redistributable (x86), then validate again."
+        : code == 0xC000007B ? "a DLL in the game folder is not a 32-bit DLL. Remove copies of Windows or runtime DLLs from the game folder, then validate again."
+        : "Windows closed it before the game began. Export logs for help.";
+    fprintf(stderr, "stage=game-startup process_exit_code=0x%08lx: The game closed while Windows loaded its DLLs: %s\n", code, why);
+    return 1;
 }
 
 static DWORD inject(HANDLE process, const wchar_t *dll) {
@@ -92,6 +200,7 @@ static DWORD inject(HANDLE process, const wchar_t *dll) {
         DWORD wait = WaitForSingleObject(thread, 15000);
         if (wait != WAIT_OBJECT_0) failure("inject-wait", wait == WAIT_TIMEOUT ? ERROR_TIMEOUT : GetLastError(), "The connection DLL loader did not finish; the game will be closed.");
         else if (!GetExitCodeThread(thread, &loaded)) failure("inject-result", GetLastError(), "Cannot read the connection DLL loader result.");
+        else if (game_died(process)) complete = 1; /* loaded is the process's exit code: not a module */
         else {
             complete = 1;
             /* A remote LoadLibrary result does not carry that thread's GetLastError; do not invent one. */
@@ -101,7 +210,7 @@ static DWORD inject(HANDLE process, const wchar_t *dll) {
     if (thread) CloseHandle(thread);
     /* If the loader timed out it might still be using this buffer; the caller terminates the whole process. */
     if (complete) VirtualFreeEx(process, remote, 0, MEM_RELEASE);
-    return complete ? loaded : 0;
+    return complete && !startup_reported ? loaded : 0;
 }
 
 static void json_text(const char *text) {
@@ -181,11 +290,7 @@ int wmain(int argc, wchar_t **argv) {
         ready = loaded && (i != 2 || initialized(child.hProcess, loaded, ready_offset));
     }
     if (!ready) {
-        DWORD code = 0;
-        if (GetExitCodeProcess(child.hProcess, &code)) {
-            if (code == STILL_ACTIVE) fputs("stage=game-before-resume process_status=suspended\n", stderr);
-            else fprintf(stderr, "stage=game-before-resume process_exit_code=0x%08lx\n", code);
-        }
+        if (!game_died(child.hProcess)) fputs("stage=game-before-resume process_status=suspended\n", stderr);
         fputs("connection mod did not initialize; game terminated before startup\n", stderr);
         TerminateProcess(child.hProcess, 1);
         CloseHandle(child.hThread); CloseHandle(child.hProcess); CloseHandle(job); return 1;

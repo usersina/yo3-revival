@@ -1,0 +1,4 @@
+; A fixture's import of a function no Windows has: the runtime check must name it (#41).
+LIBRARY KERNEL32.dll
+EXPORTS
+Yo3MissingFunction
