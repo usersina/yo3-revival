@@ -96,15 +96,34 @@ fn windows_paths(paths: &[&Path], settings: &Settings) -> anyhow::Result<Vec<Str
         decode_windows_paths(&result.stdout, paths.len())
     }
 }
+/// The registry change `registry` makes, replaced in a test (this thread only) to simulate a failing or working reg.exe.
+pub type RegistryChange = fn(&Settings, Option<&Path>) -> anyhow::Result<()>;
+thread_local! { static REGISTRY_FOR_TESTS: std::cell::Cell<Option<RegistryChange>> = const { std::cell::Cell::new(None) }; }
+#[doc(hidden)]
+pub fn set_registry_for_tests(change: Option<RegistryChange>) { REGISTRY_FOR_TESTS.set(change) }
+
+const LOADER_KEY: &str = "HKCU\\Software\\YO3 Revival";
+
+/// Deletes the LoaderConfig value with `run` (reg.exe's arguments; whether it succeeded). reg.exe fails to delete a
+/// value that is not there, which is what deleting wanted: only a value still there afterwards is an error.
+pub fn delete_registry_value(run: &mut dyn FnMut(&[&str]) -> anyhow::Result<bool>) -> anyhow::Result<()> {
+    if run(&["delete", LOADER_KEY, "/v", "LoaderConfig", "/f"])? { return Ok(()) }
+    ensure!(!run(&["query", LOADER_KEY, "/v", "LoaderConfig"])?, "Cannot remove the direct-start configuration for this user");
+    Ok(())
+}
+
 fn registry(settings: &Settings, config: Option<&Path>) -> anyhow::Result<()> {
-    #[cfg(windows)] let mut cmd = std::process::Command::new("reg.exe");
-    #[cfg(not(windows))] let mut cmd = { let mut c = wine_command(settings, "wine"); c.arg("reg.exe"); c };
-    let key = "HKCU\\Software\\YO3 Revival";
-    if let Some(config) = config { cmd.args(["add", key, "/v", "LoaderConfig", "/t", "REG_SZ", "/d", &windows_path(config, settings)?, "/f"]); }
-    else { cmd.args(["delete", key, "/v", "LoaderConfig", "/f"]); }
-    crate::hide_console(&mut cmd);
-    ensure!(cmd.output()?.status.success(), "Cannot update direct-start configuration for this user");
-    #[cfg(not(windows))] if config.is_some() {
+    if let Some(change) = REGISTRY_FOR_TESTS.get() { return change(settings, config) }
+    let mut run = |args: &[&str]| -> anyhow::Result<bool> {
+        #[cfg(windows)] let mut cmd = std::process::Command::new("reg.exe");
+        #[cfg(not(windows))] let mut cmd = { let mut c = wine_command(settings, "wine"); c.arg("reg.exe"); c };
+        cmd.args(args);
+        crate::hide_console(&mut cmd);
+        Ok(cmd.output()?.status.success())
+    };
+    let Some(config) = config else { return delete_registry_value(&mut run) };
+    ensure!(run(&["add", LOADER_KEY, "/v", "LoaderConfig", "/t", "REG_SZ", "/d", &windows_path(config, settings)?, "/f"])?, "Cannot update direct-start configuration for this user");
+    #[cfg(not(windows))] {
         ensure!(wine_command(settings, "wine").args(["reg.exe", "add", "HKCU\\Software\\Wine\\AppDefaults\\yo3.exe\\DllOverrides", "/v", "winmm", "/d", "native,builtin", "/f"]).output()?.status.success(), "Cannot enable the game-local loader in this Wine prefix");
     }
     Ok(())
@@ -234,9 +253,10 @@ impl Backend {
                 ensure!(crate::privileged::request_loader(Path::new(&settings.game_dir), true)? == crate::privileged::PermissionResult::Applied, "Direct-start removal cancelled");
             } else { return Err(error) }
         }
-        registry(settings, None)?;
+        // The private files go before the registry: a registry that cannot be changed leaves a value naming a missing
+        // configuration (the loader then asks for Play), never a half-removed setup that blocks a game-folder change.
         for name in ["loader.ini", "direct.json", "direct-setup.json"] { let _ = std::fs::remove_file(self.root.join("profiles").join(name)); }
-        Ok(())
+        registry(settings, None)
     }
 }
 

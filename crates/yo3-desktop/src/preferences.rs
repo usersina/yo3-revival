@@ -23,7 +23,15 @@ impl crate::Backend {
             Section::Game => {
                 if next.game_dir != saved.game_dir || next.wine_prefix != saved.wine_prefix {
                     ensure!(!self.game_running() && self.live(&saved).is_none(), "Close your game and stop your server before changing the game installation.");
-                    ensure!(!self.root.join("profiles/loader.ini").exists() && !std::path::Path::new(&saved.game_dir).join("yo3-revival-loader.json").exists(), "Disable direct launch for the old game location before changing it.");
+                    // Direct start goes with the old location; the next Play sets it up for the new one.
+                    let old_loader = std::path::Path::new(&saved.game_dir).join("yo3-revival-loader.json");
+                    if (self.root.join("profiles/loader.ini").exists() || old_loader.exists())
+                        && let Err(error) = self.disable_direct(&saved)
+                    {
+                        ensure!(!self.root.join("profiles/loader.ini").exists() && !old_loader.exists(),
+                            "Could not take direct start out of the old game folder ({error:#}). Use Remove from game folder, then change it.");
+                        self.diagnostics.line(&format!("Direct start removed; its registry entry stays: {error:#}"));
+                    }
                 }
                 crate::validate_game(std::path::Path::new(&next.game_dir))?;
             }

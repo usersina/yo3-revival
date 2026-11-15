@@ -198,8 +198,9 @@ then shows **Mod conflict**, and Play here still works). In a protected game fol
 there takes it out again.
 
 **Delete Login Data** on the game's title screen also signs this PC out of direct start. Opening `yo3.exe` directly
-then only says to press Play once in YO3 Revival, which signs it in again. After an update, a moved game folder or a
-changed Wine prefix, the next Play refreshes the setup the same way.
+then only says to press Play once in YO3 Revival, which signs it in again. After an update or a
+changed Wine prefix, the next Play refreshes the setup the same way. Choosing another game folder takes it out of the old
+one first.
 
 The loader checks required components and server compatibility before login. A missing DLL gives its expected path
 and offers a matching-file picker, followed by restart. A game with no loader at all can only show the original

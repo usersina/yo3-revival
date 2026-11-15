@@ -42,3 +42,64 @@ fn repair_refreshes_owned_loaders_and_missing_files_without_touching_the_game_or
     assert!(direct::install_files(&p,&source).is_err()); assert_eq!(std::fs::read(p.join("winmm.dll")).unwrap(),b"foreign replacement");
     std::fs::remove_dir_all(p).unwrap();
 }
+
+/// A Desktop data folder with direct start set up for `game` (an owned loader there, the private files here).
+fn set_up(root: &std::path::Path, game: &std::path::Path) -> std::sync::Arc<yo3_desktop::Backend> {
+    let backend = yo3_desktop::Backend::new(root.to_path_buf()).unwrap();
+    let source = root.join("bootstrap.dll"); std::fs::write(&source, b"our loader").unwrap();
+    direct::install_files(game, &source).unwrap();
+    for name in ["loader.ini", "direct.json", "direct-setup.json"] { std::fs::write(root.join("profiles").join(name), b"set up").unwrap(); }
+    backend
+}
+
+#[test]
+fn removal_finishes_here_even_when_the_registry_cannot_be_changed() {
+    // Review (2026-11-15): a failed registry change stopped the removal with loader.ini left, and that file then
+    // refused every game-folder change. The game folder and the private files go first; the registry error is still
+    // reported, and the state reads as not set up.
+    let p = scratch(); let game = p.join("game"); std::fs::create_dir(&game).unwrap(); std::fs::write(game.join("yo3.exe"), b"game").unwrap();
+    let root = p.join("app"); let backend = set_up(&root, &game);
+    direct::set_registry_for_tests(Some(|_, _| anyhow::bail!("reg.exe failed")));
+    let settings = yo3_desktop::Settings { game_dir: game.to_string_lossy().into(), ..Default::default() };
+    let error = backend.disable_direct(&settings).unwrap_err();
+    direct::set_registry_for_tests(None);
+    assert!(format!("{error:#}").contains("reg.exe failed"), "{error:#}");
+    assert!(!game.join("winmm.dll").exists() && !game.join("yo3-revival-loader.json").exists());
+    for name in ["loader.ini", "direct.json", "direct-setup.json"] { assert!(!root.join("profiles").join(name).exists(), "{name}"); }
+    assert_eq!(backend.direct_state(&settings), direct::State::Disabled);
+    std::fs::remove_dir_all(p).unwrap();
+}
+
+#[test]
+fn a_registry_value_that_is_not_there_is_already_removed() {
+    // reg.exe delete fails for a value that is absent; a removal must not stop on that.
+    let mut calls = vec![];
+    let absent = direct::delete_registry_value(&mut |args: &[&str]| { calls.push(args[0].to_string()); Ok(false) });
+    assert!(absent.is_ok(), "{absent:?}");
+    assert_eq!(calls, ["delete", "query"]);
+    let present = direct::delete_registry_value(&mut |args: &[&str]| Ok(args[0] == "query"));
+    assert!(present.is_err(), "a value still there after a failed delete is an error");
+    assert!(direct::delete_registry_value(&mut |args: &[&str]| Ok(args[0] == "delete")).is_ok());
+}
+
+#[test]
+fn changing_the_game_folder_takes_direct_start_out_of_the_old_one() {
+    // Before, the change was refused ("Disable direct launch for the old game location before changing it"), with no
+    // checkbox left to do that. The change now removes it from the old folder itself; the next Play sets it up in the
+    // new one. Needs a real game for the new folder's check.
+    let real = yo3_data::default_game_dir();
+    if !real.join("yo3.exe").is_file() { eprintln!("skipped: no game at {}", real.display()); return }
+    let p = scratch(); let old = p.join("old game"); std::fs::create_dir(&old).unwrap(); std::fs::write(old.join("yo3.exe"), b"game").unwrap();
+    let root = p.join("app"); let backend = set_up(&root, &old);
+    let db = yo3_desktop::LauncherDb::open(&root).unwrap();
+    db.save_settings(&yo3_desktop::Settings { game_dir: old.to_string_lossy().into(), ..Default::default() }).unwrap();
+    direct::set_registry_for_tests(Some(|_, _| Ok(())));
+    let draft = yo3_desktop::Settings { game_dir: real.to_string_lossy().into(), ..Default::default() };
+    let saved = backend.save_preferences(yo3_desktop::preferences::Section::Game, &draft);
+    direct::set_registry_for_tests(None);
+    assert_eq!(saved.expect("the folder change goes through").game_dir, draft.game_dir);
+    assert!(!old.join("winmm.dll").exists() && !old.join("yo3-revival-loader.json").exists(), "the old folder is left clean");
+    assert!(!root.join("profiles/loader.ini").exists());
+    assert!(!real.join("yo3-revival-loader.json").exists(), "nothing put in the new folder until Play");
+    std::fs::remove_dir_all(p).unwrap();
+}

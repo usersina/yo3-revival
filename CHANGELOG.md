@@ -17,6 +17,9 @@ Older entries describe their release at the time. For current setup, use the [RE
   instead of seeming to work and being lost at the next start.
 - **One server per data folder.** Starting a second server on the same data (Desktop and Scripts together, or the same
   server twice) is now refused instead of both running and overwriting each other's saves.
+- **Changing the game folder no longer gets stuck.** It used to ask you to turn off direct launch first, an option
+  that is gone. Now the old folder is cleaned up for you, and a Windows registry entry that was already missing no
+  longer stops the cleanup halfway.
 
 ## v0.0.18 (2026-11-15)
 
