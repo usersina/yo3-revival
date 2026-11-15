@@ -1199,7 +1199,7 @@ the card clicked at index 5 was the one the engine summoned). Missed, it put the
 engine's: see the hand-index rule under the moves above, and the crash it caused in
 [client-internals](client-internals.md#crash-history-and-the-rule-each-one-taught).
 
-**Card relations** (not sent yet). The client keeps a list of relations between field places (engine store `+0x90`,
+**Card relations** (equips and lasting targets sent; Swords of Revealing Light and the other types not). The client keeps a list of relations between field places (engine store `+0x90`,
 list at `+0xB8`/`+0xCC`) and draws them while the pointer is on a face-up field card (mouse move `0x50B700` →
 `0x50AC20` → `0x50B1C0`; command `0x26` redraws them too): every relation from the hovered card's place draws a
 marker on the related slot. Commands: 1017 (`0x3F9`) {param1 the source place `player | zone << 8` (client-relative,
