@@ -20,7 +20,7 @@ it; a live check is a person or script driving the real client. GitHub issue num
 
 **Since** is the first release in which the row worked as described, with its date. Work done before the first
 release counts as v0.0.1. A row whose feature was broken until a fix (Avatar Settings) gives the release of that fix,
-and later changes are in Notes and the [changelog](../CHANGELOG.md). "Unreleased" marks work on `main` not yet in a
+and later changes are in Notes and the [changelog](https://github.com/usersina/yo3-revival/blob/main/CHANGELOG.md). "Unreleased" marks work on `main` not yet in a
 release, and "—" a row that is not implemented or unsupported.
 
 **Contents**
