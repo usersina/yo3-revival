@@ -112,6 +112,10 @@ fn the_decks_played_on_konamis_server_play_with_the_client_view_matching_the_eng
         if (3900..4000).contains(&c.cid) {
             data.tokens.entry(c.name.clone()).or_default().push(c.row);
         }
+        // As the server does: a Synchro's tuning tells the Tuners from the others (the summon order rules).
+        if c.tuner() {
+            data.tuners.insert(c.cid);
+        }
     }
     let mut decks = vec![];
     for f in &files {

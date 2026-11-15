@@ -29,6 +29,10 @@
 //!   relation list (0x5224E0 appends; 0x522530 removes the entry matching all three). Every relation must join two
 //!   field slots that hold a card, or the client draws a marker on an empty slot when the source is hovered.
 //!
+//! - The summon commands (Set, Run, the material list 1015/1016, RunFusion 0x3A) follow the order rules of
+//!   [`summon`], learnt from client crashes and checked against Konami's own duel logs; a Set or Run names a card at
+//!   the place it gives (the hand 11, or a field zone).
+//!
 //! Where the model itself sees the client go wrong (a hand card taken out by an index that holds another card, a
 //! shuffle with an empty index) it notes a problem at once; [`ClientModel::check`] then compares every hand, field
 //! slot and pile with the engine's `state` (see crates/yo3-engine's session.rs). Cards whose row the client was never given
@@ -41,6 +45,7 @@ use yo3_proto::{Message, Value};
 use crate::translate::CardStats;
 pub mod native;
 pub mod coverage;
+pub mod summon;
 
 const SERVER_DUEL: u32 = crate::duel::SERVER_DUEL;
 /// Pump cases (duelRequestName): an engine command, the duel setup.
@@ -135,6 +140,8 @@ pub struct ClientModel {
     piles: [[i64; 4]; 2],
     problems: Vec<String>,
     recent: VecDeque<String>,
+    /// The summon commands' order (`summon.rs`).
+    summon: summon::SummonOrder,
 }
 
 impl ClientModel {
@@ -162,6 +169,7 @@ impl ClientModel {
             piles: Default::default(),
             problems: vec![],
             recent: VecDeque::new(),
+            summon: summon::SummonOrder::default(),
         }
     }
 
@@ -246,6 +254,23 @@ impl ClientModel {
     }
 
     fn command(&mut self, id: u32, [p1, p2, p3, p4]: [u32; 4]) {
+        if let Some(problem) = self.summon.command(id, [p1, p2, p3, p4]) {
+            self.problem(problem);
+        }
+        // A summon's Set or Run names a card at its place: in the hand (11) or a field zone. DuelSummon finds the card
+        // object by uid (0x500470) and plays the effect at the place.
+        if matches!(id, 0x2A | 0x2C | 0x2D | 0x2F | 0x30 | 0x32) {
+            let (player, zone, uid) = ((p1 & 1) as usize, p2, p3 & 0xFFFF);
+            let there = match zone {
+                HAND => self.hands[player].contains(&uid),
+                z if z <= FIELD_SPELL => self.slots[player][z as usize] == Some(uid),
+                _ => true,
+            };
+            self.note(format!("{id:#x} {{{p1}, {p2}, uid {uid}, {p4:#x}}}"));
+            if !there {
+                self.problem(format!("summon command {id:#x} names {} at player {player} zone {zone}, where the client doesn't hold it", self.describe(uid)));
+            }
+        }
         match id {
             5 => self.phase = Some(((p1 & 1) as usize, p2)),
             6 => self.turn = ((p1 & 1) as usize, self.turn.1 + 1),
@@ -743,6 +768,11 @@ pub mod selfplay {
     /// Synchro Monsters for the Tuners in the pool (Goyo Guardian, Stardust Dragon, Junk Warrior) and Xyz Monsters for its
     /// Level 4s (Gem-Knight Pearl, Number 39: Utopia).
     pub const EXTRA: [u16; 5] = [7736, 7734, 7696, 9601, 9575];
+    /// A Fusion package for every seventh deck (`deck`): Polymerization, Flame Manipulator and Masaki the Legendary
+    /// Swordsman for Flame Swordsman, and King of the Swamp in either's place, so that Fusion Summons from the hand
+    /// (issue #40) and with a substitute are played.
+    pub const FUSION: [u16; 7] = [4837, 4837, 4148, 4148, 4299, 4299, 6044];
+    pub const FUSION_EXTRA: [u16; 2] = [4021, 4021];
 
     /// A seeded deck: 40 cards drawn from the pool (about half monsters), at most three of a card, and the extra deck.
     pub fn deck(seed: u64) -> (Vec<u16>, Vec<u16>) {
@@ -762,7 +792,14 @@ pub mod selfplay {
                 }
             }
         }
-        (main, EXTRA.iter().flat_map(|&c| [c, c]).collect())
+        let mut extra: Vec<u16> = EXTRA.iter().flat_map(|&c| [c, c]).collect();
+        // Deck seeds 5 apart from a multiple of 7: none of the seeds the duel check keeps for its known cases.
+        if seed % 7 == 5 {
+            main.truncate(40 - FUSION.len());
+            main.extend(FUSION);
+            extra.extend(FUSION_EXTRA);
+        }
+        (main, extra)
     }
 
     /// The harness's card data: every card is its own row (row = Konami id), and the Sheep Tokens.
@@ -793,6 +830,9 @@ pub mod selfplay {
         /// The client's prompts the server answered itself although the player had a choice (see [`choices`]), by
         /// engine message type: windows the client lacks (a zone, a sum, a sort...).
         pub decided: BTreeMap<u64, u32>,
+        /// The client's summon animations (RunFusion 0x3A) by kind, and the Fusion materials played from the hand.
+        pub animations: BTreeMap<u32, u32>,
+        pub hand_materials: u32,
     }
 
     /// How many answers an engine prompt has, roughly, for the prompts the translator may answer itself: options,
@@ -830,9 +870,29 @@ pub mod selfplay {
             cards: card_data(&decks),
             tokens: HashMap::from([("Sheep Token".to_string(), SHEEP_ROWS.to_vec())]),
             names: HashMap::new(),
-            tuners: Default::default(),
+            tuners: tuners(dir, &decks)?,
         };
         play_with(dir, seed, decks, &data, [&[], &[]], client_team, hidden)
+    }
+
+    /// The Tuners among the decks' cards (Konami ids), as the rules engine's card data has them (TYPE_TUNER), asked once
+    /// per card for all duels: a Synchro's tuning tells them from the others, as the server does from the client's data.
+    fn tuners(dir: &Path, decks: &[(&[u16], &[u16]); 2]) -> Result<std::collections::HashSet<u16>, String> {
+        static KNOWN: std::sync::Mutex<BTreeMap<u16, bool>> = std::sync::Mutex::new(BTreeMap::new());
+        const TYPE_TUNER: u64 = 0x1000;
+        let mut known = KNOWN.lock().unwrap_or_else(|e| e.into_inner());
+        let mut ask: Vec<u16> = decks.iter().flat_map(|(m, e)| m.iter().chain(e.iter())).copied().filter(|c| !known.contains_key(c)).collect();
+        ask.sort_unstable();
+        ask.dedup();
+        if !ask.is_empty() {
+            let mut engine = Engine::start(dir).map_err(|e| format!("engine: {e}"))?;
+            let list: Vec<(u16, &str)> = ask.iter().map(|&c| (c, "")).collect();
+            let answers = engine.cards(&list).map_err(|e| format!("engine: {e}"))?;
+            for (cid, a) in ask.iter().zip(&answers) {
+                known.insert(*cid, a["data"]["type"].as_u64().is_some_and(|t| t & TYPE_TUNER != 0));
+            }
+        }
+        Ok(decks.iter().flat_map(|(m, e)| m.iter().chain(e.iter())).copied().filter(|c| known.get(c) == Some(&true)).collect())
     }
 
     /// [`play`] with real card data: `decks` are CARD_Prop rows of `data`, and each team's `top` rows (cards of its main
@@ -928,6 +988,14 @@ pub mod selfplay {
             let mut out = t.events(&a.messages);
             settle_positions(&mut out);
             model.apply_all(&out);
+            for m in &out {
+                let int = |k: &str| m.get(k).and_then(yo3_proto::Value::as_u32).unwrap_or(0);
+                match int("id") {
+                    0x3A => *played.animations.entry(int("param3") >> 16).or_default() += 1,
+                    0x2F if int("param2") == super::HAND => played.hand_materials += 1,
+                    _ => {}
+                }
+            }
             let state = engine.state().map_err(|e| format!("seed {seed}: engine state: {e}"))?;
             let fail = |problems: Vec<String>| {
                 let recent: Vec<String> = a.messages.iter().map(short).collect();
