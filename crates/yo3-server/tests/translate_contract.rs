@@ -2477,3 +2477,44 @@ fn a_contact_fusion_plays_the_fusion() {
         ]
     );
 }
+
+#[test]
+fn with_auto_placing_off_the_player_picks_the_zone() {
+    // The DUEL OPTIONS' auto card placing only reaches the server: ENTER 0x200A {player_id, autoSet} and the duel option
+    // request 0xF {player, autoSet} (0x50F690, 0x515790), from `duelOption.auto_place`; the client never picks a zone by
+    // itself. On (the default; every one of Konami's 19 saved players had it on) the server places the card centre out
+    // as Konami's did. Off, MSG_SELECT_PLACE (18), where a summoned, Set or activated card goes, is the player's: the
+    // client's own prompt (155 monster zones, 324 Spell/Trap zones) in an OK dialog, then a click on a free zone, as a
+    // zone an effect takes (MSG_SELECT_DISFIELD).
+    let mut t = with_cards();
+    // The client's monster zones 0, 2, 3 and 4 are free (1 taken).
+    let place = json!({ "type": 18, "player": 0, "count": 1, "field_mask": !0x1Fu32 | 1 << 1 });
+    assert_eq!(
+        t.prompt(&place),
+        Prompt::Answer(json!({ "type": 10, "places": [{ "player": 0, "location": 4, "sequence": 2 }] })),
+        "on: centre out"
+    );
+    t.auto_place(false);
+    // The client's own zone prompts are the disabling effects' ("Select Monster Card Zones to render unusable.", 155):
+    // a placement's words are the server's, through the connection DLL (0x7A12 {slot, text}, prompt 0x3F00 + slot).
+    let p = t.prompt(&place);
+    assert_eq!(server_texts(&p), [(0x3F00, "Select a Monster Card Zone to place the card in.".to_string())]);
+    let out = client_commands(p);
+    assert_eq!(out, [(0x3EC, [1, 0, 0, 0]), (0x3ED, [1 << 28 | 0x3F00, 0, 0, 0]), (0x36, [0, 1, 0, 0])]);
+    let Some(Prompt::Client(out)) = t.dialog_result(0) else { panic!("the zones to click") };
+    assert_eq!(cmd(&out[1]), (4, [2, 0, 0, 0]));
+    let click = |zone: u32| CardCommand { command: 4, player: 0, zone, index: 0 };
+    assert!(matches!(t.command(click(1)), Some(Prompt::Client(_))), "a taken zone: the zones again");
+    assert_eq!(
+        t.command(click(4)),
+        Some(Prompt::Answer(json!({ "type": 10, "places": [{ "player": 0, "location": 4, "sequence": 4 }] })))
+    );
+    // A Spell/Trap.
+    let spell = json!({ "type": 18, "player": 0, "count": 1, "field_mask": !(0x1Fu32 << 8) });
+    assert_eq!(server_texts(&t.prompt(&spell))[0].1, "Select a Spell &amp; Trap Card Zone to place the card in.", "escaped for the dialog's HTML");
+    t.dialog_result(0);
+    t.command(click(5));
+    // One free zone: nothing to choose.
+    let one = json!({ "type": 18, "player": 0, "count": 1, "field_mask": !(1u32 << 3) });
+    assert_eq!(t.prompt(&one), Prompt::Answer(json!({ "type": 10, "places": [{ "player": 0, "location": 4, "sequence": 3 }] })));
+}

@@ -354,6 +354,8 @@ pub struct DuelEntry {
     /// The address of the front connection that picked the deck: only a duel connection from there may claim it
     /// (none: any, as in tests).
     pub peer: Option<std::net::IpAddr>,
+    /// The player's DUEL OPTIONS auto card placing is off (`autoSet` 0 on the duel connection): they pick the zones.
+    pub manual_place: bool,
 }
 
 /// The rule's match_type (DuelMenu's table 0x790C50 by Rule Format button): Single Mode, Match Mode (best of three),

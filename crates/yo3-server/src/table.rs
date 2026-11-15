@@ -229,6 +229,7 @@ impl Table {
             let (mut translator, mut table) = Translator::against_player(order, [&mine.main, &theirs.main], self.world.cards.clone());
             translator.tokens(self.world.token_rows.clone());
             translator.tuners(self.world.tuners.clone());
+            translator.auto_place(!self.seats[s].entry.manual_place);
             table.extend(translator.extra_decks([&mine.extra, &theirs.extra]));
             self.translators.push(translator);
             part.push(setup(order, mine, theirs));
@@ -593,6 +594,23 @@ impl Table {
         let (Some(response), Some(engine)) = (response, self.engine.as_mut()) else { return Out::default() };
         let answer = engine.respond(response);
         self.advance(answer)
+    }
+
+    /// Whether a seat picks its zones itself (auto card placing off).
+    #[cfg(test)]
+    pub(crate) fn manual_place(&self, seat: usize) -> Option<bool> {
+        self.seats.get(seat).map(|s| s.entry.manual_place)
+    }
+
+    /// A seat's DUEL OPTIONS auto card placing changed (or was told on entering the field): kept for the next duel of
+    /// the match and given to the seat's translator.
+    pub fn auto_place(&mut self, seat: usize, on: bool) {
+        if let Some(s) = self.seats.get_mut(seat) {
+            s.entry.manual_place = !on;
+        }
+        if let Some(t) = self.translators.get_mut(seat) {
+            t.auto_place(on);
+        }
     }
 
     pub fn card_command(&mut self, seat: usize, cmd: CardCommand) -> Out {

@@ -1011,7 +1011,7 @@ We send request `0x200D` (**guess**: no reader).
 | 0xC                      | `selectHand` (janken: 0 rock, 1 scissors, 2 paper)                                                                                                               | `0x4F1330`                                |
 | 0xD                      | `choice` (1 first, 2 second)                                                                                                                                     | `0x4F1430`                                |
 | 0xE                      | none: Card Swap is done (state 4, once the front answered its `0x1F4F` with `0x22CA` or `0x22CB`); then the next janken (`0x50F690`), so the server answers 1500 | `0x50FDF0` (DuelManager)                  |
-| 0xF                      | `player`, `autoSet` (duel options; live on entering the duel field: `{player 0, autoSet 1}`)                                                                     | `0x515790`, `0x4A0390`                    |
+| 0xF                      | `player`, `autoSet` (duel options; live on entering the duel field: `{player 0, autoSet 1}`); `autoSet` 0: the player places cards (see "Places")                | `0x515790`, `0x4A0390`                    |
 | `0x7A13` (Revival)       | `seq`: the batch ending with settle marker `0x5F1 {seq}` has played (issue #11; see "Duel clocks")                                                                 | the connection DLL (`duel-observer.h`)    |
 
 **Janken** (who goes first; JankenScene `0x518400`, `duel_janken.swf`). Engine commands, all confirmed live:
@@ -1452,8 +1452,16 @@ HINTMSG_FMATERIAL, and for HINTMSG_SMATERIAL (512), which the client's table has
 card to send to the Graveyard."). Live 2026-11-14: Gaia Knight from Gilasaurus and Junk Synchron. Live
 (`--duel-deck 3339,1449 --duel-extra 3745`): with Junk Synchron and Giant Orc on the field, clicking the extra deck
 listed Junk Synchron, then Giant Orc; both went to the Graveyard, the position dialog asked for Ancient Fairy Dragon,
-and it stood in attack position on both clients with the extra deck pile down to 1. **Places.** Where a summoned, Set or activated card goes (MSG_SELECT_PLACE, 18) is the server's choice, as it was
-Konami's: every one of the 129 placements in Konami's logs fills the free zones centre out (2, 3, 1, 4, 0; Spell/Trap
+and it stood in attack position on both clients with the extra deck pile down to 1. **Places.** Where a summoned, Set or activated card goes (MSG_SELECT_PLACE, 18) is the server's choice while the
+player's DUEL OPTIONS **Auto Card Placing** is on ("The game will place the card on any available position for you."),
+as it was Konami's. The client never picks a zone itself: it only reports the option, `autoSet` in ENTER `0x200A`
+(`0x50F690`) and in the duel options request `0xF` {player, autoSet} (`0x515790`, on entering the field and when it
+changes). Off (`autoSet` 0; none of Konami's 19 saved players had it off), the placement is the player's with the zone
+prompt below, worded by the server through the connection DLL ("Select a Monster Card Zone to place the card in.",
+"Select a Spell & Trap Card Zone…": the client's own zone prompts are the disabling effects'); a single free zone asks
+nothing. Live (2026-11-15, Auto Card Placing OFF): Dream Clown went to the zone clicked (the rightmost), a Set Divine
+Wrath to the leftmost Spell/Trap zone; tests `with_auto_placing_off_the_player_picks_the_zone` (translate_contract),
+`a_seats_auto_card_placing_follows_its_duel_options` (duel.rs). On, every one of the 129 placements in Konami's logs fills the free zones centre out (2, 3, 1, 4, 0; Spell/Trap
 zones the same), so the server takes the first free zone of the prompt's `field_mask` in that order: own monster zones,
 own Spell/Trap zones, the opponent's (Give and Take and Black Garden place there), then the Field zone; as many as its
 `count`. A zone an effect takes (MSG_SELECT_DISFIELD, 24: Ground Collapse, Seismic Shockwave, Ojama King and Knight,

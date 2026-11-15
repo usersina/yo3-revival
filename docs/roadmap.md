@@ -1078,6 +1078,8 @@ Across 1,200 self-played duels of 600 cards, the only choice still made for the 
 activated card goes, which Konami's server made too.
 
 - [x] Placement centre out (2, 3, 1, 4, 0), as in all 129 placements of Konami's logs (was: first free from the left).
+- [x] DUEL OPTIONS' Auto Card Placing OFF (2026-11-15): the player picks the zone of a summoned, Set or activated card
+      (the server ignored the option before; the client only reports it). Live and tested; see "Places" in protocol.md.
 - [x] Zones an effect takes (Ground Collapse, Seismic Shockwave, Ojama King and Knight, Mystical Cards of Light,
       Numbing Grub, Senet Switch): the client's own prompt, then a click per zone. Live: the clicked zones came back.
 - [x] Unusable zones shown (1006, a red cross): live, Ground Collapse's two zones.

@@ -32,6 +32,10 @@ Your first starting deck is prepared and selected automatically. You can duel wi
 In a duel, left-click a hand card for its default action; right-click it for the available actions.
 Use the phase buttons to enter the Battle Phase, Main Phase 2 or End Phase.
 
+**Main Menu → DUEL OPTIONS** sets how duels behave for you. With **Auto Card Placing** OFF you choose the zone for each
+monster, Spell and Trap you put on the field (a prompt, then a click on a free zone); ON, the game picks for you.
+**Activation Message** decides how often the game asks whether to activate a card.
+
 Each NPC plays in character and talks in the chat window below the field, with its name in red. Yami Yugi, Yugi,
 Jaden and Yusei draw the card they need, and Maximillion Pegasus can see your hand and your Set cards, unless you wear
 a Millennium Eye of your own: Bakura's Accessories from the shop, worn as Facial Accessory 2 in Avatar Settings.

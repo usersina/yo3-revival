@@ -45,6 +45,9 @@ const SELECT_HAND: u32 = 0xC;
 const SELECT_FIRST: u32 = 0xD;
 /// Client duelRequestName (bare) of Card Swap's end, once the front took the swapped deck (DuelManager 0x50FDF0).
 const SWAPPED: u32 = 0xE;
+/// Client duelRequestName of the duel options {player, autoSet} (0x515790): on entering the field and when the player
+/// changes them; `autoSet` is DUEL OPTIONS' auto card placing.
+const DUEL_OPTIONS: u32 = 0xF;
 
 /// JankenScene commands (0x518400): begin, resolve, who chooses, chosen (its step leaves the scene by itself,
 /// 0x519230). 1505 there is the match's end {match result, ...} (0x5185A3), not part of the janken.
@@ -419,6 +422,10 @@ impl DuelSession {
             }
             (Some(CLIENT_DUEL), Some(DIALOG_RESULT)) => t.dialog_result(seat, int("DLGResult").unwrap_or(0)),
             (Some(CLIENT_DUEL), Some(SWAPPED)) => t.swapped(seat),
+            (Some(CLIENT_DUEL), Some(DUEL_OPTIONS)) => {
+                t.auto_place(seat, int("autoSet") != Some(0));
+                Default::default()
+            }
             (Some(CLIENT_DUEL), Some(crate::clock::SETTLED)) => t.settled(seat, int("seq").unwrap_or(0), Instant::now()),
             _ => Default::default(),
         };
@@ -478,6 +485,9 @@ impl DuelSession {
                     return vec![];
                 }
                 self.player_id = int("player_id");
+                if let Some(entry) = entry.as_mut() {
+                    entry.manual_place = int("autoSet") == Some(0);
+                }
                 if let (Some(entry), Some(rows)) = (entry.as_mut(), &self.world.test_deck) {
                     entry.deck.main = rows.iter().copied().cycle().take(40).collect();
                 }
@@ -493,6 +503,16 @@ impl DuelSession {
                 vec![command(JANKEN_BEGIN, [0; 4])]
             }
             _ if self.table.is_some() => self.at_table(msg),
+            (Some(CLIENT_DUEL), Some(DUEL_OPTIONS)) => {
+                let on = int("autoSet") != Some(0);
+                if let Some(entry) = self.entry.as_mut() {
+                    entry.manual_place = !on;
+                }
+                if let Some((_, t)) = self.engine.as_mut() {
+                    t.auto_place(on);
+                }
+                vec![]
+            }
             (Some(CLIENT_DUEL), Some(SELECT_HAND)) if !self.ordered => self.janken(int("selectHand").unwrap_or(0) % 3),
             (Some(CLIENT_DUEL), Some(CARD_COMMAND)) => {
                 let prompt = CardCommand::from_message(msg).and_then(|cmd| self.engine.as_mut().and_then(|(_, t)| t.command(cmd)));
@@ -615,6 +635,7 @@ impl DuelSession {
         }
         translator.tokens(self.world.token_rows.clone());
         translator.tuners(self.world.tuners.clone());
+        translator.auto_place(!entry.manual_place);
         table.extend(translator.extra_decks([&entry.deck.extra, &npc.extra]));
         self.engine = Some((engine, translator));
         self.first = Some(first);
@@ -873,6 +894,19 @@ mod tests {
     fn ended_as_draw(rx: &mut tokio::sync::mpsc::UnboundedReceiver<Message>) -> bool {
         std::iter::from_fn(|| rx.try_recv().ok())
             .any(|m| m.get("id") == Some(&Value::U32(DUEL_END)) && m.get("param1") == Some(&Value::U32(DRAW)))
+    }
+
+    #[test]
+    fn a_seats_auto_card_placing_follows_its_duel_options() {
+        // ENTER's autoSet (seated() sends 1: on), then the duel options 0xF {player, autoSet} as the player changes it.
+        let (hub, [(mut a, _ra), (_b, _rb)]) = seated();
+        let table = hub.locked().tables.get(&7).cloned().expect("the table");
+        assert_eq!(table.locked().manual_place(0), Some(false));
+        let options = |on| message(CLIENT_DUEL, &[("duelRequestName", DUEL_OPTIONS), ("player", 0), ("autoSet", on)]);
+        a.handle(&options(0));
+        assert_eq!(table.locked().manual_place(0), Some(true));
+        a.handle(&options(1));
+        assert_eq!(table.locked().manual_place(0), Some(false));
     }
 
     #[test]

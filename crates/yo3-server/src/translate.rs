@@ -321,6 +321,9 @@ const SUM_TEXT: u32 = 207;
 const MONSTER_ZONE_TEXT: u32 = 155;
 const SPELL_ZONE_TEXT: u32 = 324;
 const ADJACENT_ZONE_TEXT: u32 = 472;
+/// A placement's prompt with auto card placing off (the client has none of its own).
+const PLACE_MONSTER_WORDS: &str = "Select a Monster Card Zone to place the card in.";
+const PLACE_SPELL_WORDS: &str = "Select a Spell & Trap Card Zone to place the card in.";
 /// HINTMSG_TOZONE: Card.SelectAdjacent's hint (utility.lua) before its zone choice.
 const HINTMSG_TOZONE: u64 = 571;
 /// HINTMSG_LVRANK: the hint before a Level is declared (Reasoning).
@@ -549,6 +552,8 @@ pub struct Translator {
     tuners: HashSet<u16>,
     /// A Tribute, Fusion or Synchro Summon whose materials are moving (see [`Summoning`]).
     summoning: Option<Summoning>,
+    /// The player's DUEL OPTIONS auto card placing (`Translator::auto_place`): off, the player picks the zones.
+    auto_place: bool,
     /// How many card names the CPU has declared: each try names the next card of the duel's (the core asks again
     /// when a name doesn't fit).
     declared: usize,
@@ -607,6 +612,13 @@ impl Translator {
         self.token_rows = rows;
     }
 
+    /// The player's auto card placing (DUEL OPTIONS, `duelOption.auto_place`, sent as `autoSet` on entering the duel
+    /// and when it changes): on (the default) the server places a summoned, Set or activated card centre out, as
+    /// Konami's did; off, MSG_SELECT_PLACE is the player's, with the zone prompt of MSG_SELECT_DISFIELD.
+    pub fn auto_place(&mut self, on: bool) {
+        self.auto_place = on;
+    }
+
     /// The Tuners among the cards, by Konami id: a Synchro Summon's tuning tells the Tuners' levels from the others'.
     pub fn tuners(&mut self, cids: HashSet<u16>) {
         self.tuners = cids;
@@ -663,6 +675,7 @@ impl Translator {
             next_token: FIRST_TOKEN_UID,
             tuners: HashSet::new(),
             summoning: None,
+            auto_place: true,
             counters: HashMap::new(),
             declared: 0,
             revealing: vec![],
@@ -1004,7 +1017,8 @@ impl Translator {
             let places = std::mem::take(picks);
             self.zone_picks = None;
             self.pending = None;
-            return Prompt::Answer(json!({ "type": RESP_DISFIELD, "places": places }));
+            let kind = if m["type"] == MSG_SELECT_PLACE { RESP_PLACE } else { RESP_DISFIELD };
+            return Prompt::Answer(json!({ "type": kind, "places": places }));
         }
         Prompt::Client(self.zone_map(m))
     }
@@ -2079,25 +2093,39 @@ impl Translator {
             },
             // A zone an effect takes (Ground Collapse's, Senet Switch's move): the client's own prompt in an OK dialog, then
             // the zones as click targets (`zone_map`).
-            MSG_SELECT_DISFIELD if !free_zones(m).is_empty() => {
-                let hint = std::mem::take(&mut self.hint);
-                let zones = free_zones(m);
-                let text = if hint == HINTMSG_TOZONE {
-                    ADJACENT_ZONE_TEXT
-                } else if zones.iter().all(|&(_, location, _)| location == LOC_SZONE) {
-                    SPELL_ZONE_TEXT
-                } else {
-                    MONSTER_ZONE_TEXT
-                };
-                let mut out = message(&[TEXT | text]);
-                out.push(command(DIALOG, [OK, FROM_ENTRIES, 0, 0]));
-                self.pending = Some(m.clone());
-                self.zone_picks = None;
-                Prompt::Client(out)
+            MSG_SELECT_DISFIELD if !free_zones(m).is_empty() => self.zone_prompt(m),
+            // Where a summoned, Set or activated card goes, with auto card placing off and a choice to make.
+            MSG_SELECT_PLACE if !self.auto_place && free_zones(m).len() > m["count"].as_u64().unwrap_or(1).max(1) as usize => {
+                self.zone_prompt(m)
             }
             // Where a summoned, Set or activated card goes: chosen for the player, centre out, as Konami's server did.
             _ => Prompt::Answer(cpu_answer(kind, m)),
         }
+    }
+
+    /// A zone prompt (MSG_SELECT_DISFIELD, or MSG_SELECT_PLACE with auto card placing off): the client's own prompt in
+    /// an OK dialog, then the zones as click targets (`zone_map`).
+    fn zone_prompt(&mut self, m: &Json) -> Prompt {
+        let hint = std::mem::take(&mut self.hint);
+        let zones = free_zones(m);
+        let spells = zones.iter().all(|&(_, location, _)| location == LOC_SZONE);
+        let mut out = vec![];
+        // The client's prompts are the zone-disabling effects' ("Select Monster Card Zones to render unusable."); a
+        // placement is worded by the server through the connection DLL, in the client's terms.
+        let text = if m["type"] == MSG_SELECT_PLACE {
+            self.text(&mut out, if spells { PLACE_SPELL_WORDS } else { PLACE_MONSTER_WORDS })
+        } else if hint == HINTMSG_TOZONE {
+            ADJACENT_ZONE_TEXT
+        } else if spells {
+            SPELL_ZONE_TEXT
+        } else {
+            MONSTER_ZONE_TEXT
+        };
+        out.extend(message(&[TEXT | text]));
+        out.push(command(DIALOG, [OK, FROM_ENTRIES, 0, 0]));
+        self.pending = Some(m.clone());
+        self.zone_picks = None;
+        Prompt::Client(out)
     }
 
     /// The Select dialog for options the client has no label for, worded by the server through the connection DLL
@@ -2329,7 +2357,7 @@ impl Translator {
             return Some(if count == 1 { Prompt::Answer(response) } else { self.prompt(&m) });
         }
         let kind = self.pending.as_ref()?["type"].as_u64()?;
-        if kind == MSG_SELECT_DISFIELD && self.zone_picks.is_none() {
+        if matches!(kind, MSG_SELECT_DISFIELD | MSG_SELECT_PLACE) && self.zone_picks.is_none() {
             self.zone_picks = Some(vec![]);
             let m = self.pending.clone()?;
             return Some(Prompt::Client(self.zone_map(&m)));
@@ -2565,7 +2593,7 @@ impl Translator {
 
     fn command_for(&mut self, cmd: CardCommand) -> Option<Prompt> {
         let m = self.pending.clone()?;
-        if m["type"] == MSG_SELECT_DISFIELD && self.zone_picks.is_some() {
+        if (m["type"] == MSG_SELECT_DISFIELD || m["type"] == MSG_SELECT_PLACE) && self.zone_picks.is_some() {
             return Some(self.zone_click(&m, cmd));
         }
         if cmd.command == CONFIRM

@@ -10,6 +10,11 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **Auto Card Placing works.** Turn it OFF in **Main Menu → DUEL OPTIONS** and you choose the zone for every monster
+  you summon or set and every Spell or Trap you play; ON (the default), the game places them for you as before.
+
 ## v0.0.17 (2026-11-15)
 
 Summons look like the original game's again. Choose **Desktop** for the graphical app or **Scripts** for terminal
