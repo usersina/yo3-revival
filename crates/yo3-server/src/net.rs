@@ -235,11 +235,15 @@ pub async fn http_loop(
                 }
             } else if path.starts_with("/app/") {
                 ("200 OK", vec![])
+            } else if let Some(old) = path.strip_prefix("/web") {
+                // The game's links to Konami's old website (crate::web).
+                ("200 OK", crate::web::page(old).into_bytes())
             } else {
                 ("404 Not Found", vec![])
             };
             tracing::info!("[http] GET {} -> {status} ({} B)", if path.ends_with("/yo3.idx") { "/yo3/yo3.idx" } else { path.split('?').next().unwrap_or_default() }, body.len());
-            let head = format!("HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+            let kind = if path.starts_with("/web") { "Content-Type: text/html; charset=utf-8\r\n" } else { "" };
+            let head = format!("HTTP/1.1 {status}\r\n{kind}Content-Length: {}\r\nConnection: close\r\n\r\n", body.len());
             let _ = stream.write_all(head.as_bytes()).await;
             let _ = stream.write_all(&body).await;
             let _ = stream.shutdown().await;

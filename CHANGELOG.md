@@ -12,6 +12,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- **No more dead links.** Leaderboard, team ranking, the BOOSTERPASS page and the title screen's Official Website used
+  to open Konami's long-gone website. They now open a short page from your host's server instead. Both the host and the
+  player need this version for it.
 - **Auto Card Placing works.** Turn it OFF in **Main Menu → DUEL OPTIONS** and you choose the zone for every monster
   you summon or set and every Spell or Trap you play; ON (the default), the game places them for you as before.
 

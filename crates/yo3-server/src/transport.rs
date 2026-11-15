@@ -129,7 +129,7 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: TlsAcceptor, wo
                         }).await.map_err(std::io::Error::other)??;
                         let request = String::from_utf8_lossy(&header);
                         let path = request.split_whitespace().nth(1).unwrap_or_default();
-                        if !request.starts_with("GET ") || !(path.starts_with("/yo3/") || path.starts_with("/app/") || path.starts_with("/duellogs/") || path.starts_with("/ygoda/patch/")) {
+                        if !request.starts_with("GET ") || !public_http(path) {
                             tls.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await?;
                             return tls.shutdown().await;
                         }
@@ -177,5 +177,24 @@ mod close_tests {
             "keep the read half alive until the client can return its TLS close_notify");
         tls.shutdown().await.unwrap();
         tokio::time::timeout(Duration::from_secs(1),peer).await.unwrap().unwrap();
+    }
+}
+
+/// The local server's HTTP paths an authenticated launcher may reach: the game's patch and data downloads, duel logs, and
+/// the pages behind its old website links (`/web/`, crate::web); never the admin or manager routes.
+fn public_http(path: &str) -> bool {
+    ["/yo3/", "/app/", "/duellogs/", "/ygoda/patch/", "/web/"].iter().any(|p| path.starts_with(p))
+}
+
+#[cfg(test)]
+mod public_http_tests {
+    #[test]
+    fn launchers_reach_the_games_files_logs_and_web_pages_only() {
+        for ok in ["/yo3/yo3.idx", "/app/", "/duellogs/a.dlog", "/ygoda/patch/x", "/web/v3/bpass/index/"] {
+            assert!(super::public_http(ok), "{ok}");
+        }
+        for no in ["/admin", "/manager", "/web", "/", "/session/x/web/"] {
+            assert!(!super::public_http(no), "{no}");
+        }
     }
 }

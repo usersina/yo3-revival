@@ -28,6 +28,7 @@ mod events;
 pub mod clock;
 mod log;
 mod net;
+mod web;
 pub use net::IDLE_TIMEOUT;
 
 use crate::lock::Locked;

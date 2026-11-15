@@ -1031,11 +1031,16 @@ they need: anything a host's own server can do now, and what only makes sense on
 
 **Now, on any server:**
 
-- [ ] The old website links. Leaderboard (`http://www.yugioh-online.net/v3/events/rank_info?country=`, opened at
+- [x] The old website links. Leaderboard (`http://www.yugioh-online.net/v3/events/rank_info?country=`, opened at
       `0x46FC14` with ShellExecute), team ranking (`…/v3/events/ranking/team/?country=`), the BOOSTERPASS page
       (`…/v3/bpass/index/`) and the title screen's Official Website open Konami's domain, which no longer resolves; if
-      someone registers it, every click goes to them. The connection DLL sends them to the host's server instead, which
-      serves a page for each (to start: the server's own players and what is not there yet).
+      someone registered it, every click would go to them. The connection DLL wraps the game's `ShellExecuteA` import
+      (`tools/mod/web-links.h`, logic tested by `web-links-test.c`) and sends any link to Konami's old sites to the
+      host's server, `/web/` plus the old path, through the launcher's local relay; the server's `web.rs` has a page for
+      each (what this server has, nothing to fill in yet), and the TLS transport allows `/web/` (`public_http`). Same
+      interface (MOD_ABI 3): a player who updates gets the pages, the host needs v0.0.18. Live (2026-11-15, the test
+      prefix's browser a recording script): Leaderboard opened `…/web/v3/events/rank_info?country=GB` ("There is no
+      leaderboard on this server yet."), Official Website `…/web/`, both served by the scratch server.
 - [ ] Titles earned on any server (catalogue kind 10, 160 titles; only BEGINNER DUELIST is given today). The NPC
       friendship titles: one per NPC (KING OF DOMINO CITY, THE KC OPERATIVE, MAI FAN, …) and EVERYBODY'S FRIEND, from the
       NPC friendship levels the server already keeps (`npcbin`). Progress titles: BRONZE DUELIST and the like (level),

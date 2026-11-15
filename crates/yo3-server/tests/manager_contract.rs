@@ -47,6 +47,10 @@ async fn accounts_can_be_created_and_exported_while_the_tls_server_stays_online(
     assert!(found.starts_with("HTTP/1.1 200") && found.ends_with("log bytes"), "{found}");
     assert!(get("/duellogs/..%2Fserver.key").await.starts_with("HTTP/1.1 404"));
     assert!(get("/duellogs/missing.dlog").await.starts_with("HTTP/1.1 404"));
+    // The game's links to Konami's old website, sent here by the connection DLL (tools/mod/web-links.h): a page each.
+    let leaderboard = get("/web/v3/events/rank_info?country=GB").await;
+    assert!(leaderboard.starts_with("HTTP/1.1 200") && leaderboard.contains("Content-Type: text/html"), "{leaderboard}");
+    assert!(leaderboard.contains("<title>Leaderboard</title>"));
     tokio::task::spawn_blocking(move || admin::manage(&live, &ManagerOp::Shutdown)).await.unwrap().unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(3), server.wait()).await.unwrap();
 }
