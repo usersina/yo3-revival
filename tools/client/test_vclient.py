@@ -106,7 +106,7 @@ Path(os.environ['TEST_GAME_RAN']).write_text('started')
         self.program("xdotool", "print('999')")
         result = subprocess.run([str(VCLIENT), "start-stock"], env=self.env, capture_output=True, text=True, timeout=5)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Enable direct start", result.stderr)
+        self.assertIn("Press Play once in the GUI", result.stderr)
         self.assertFalse((self.directory / "game-ran").exists())
 
     def test_online_goes_straight_to_player_selection_without_a_form_click(self):

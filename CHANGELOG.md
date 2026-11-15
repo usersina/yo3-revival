@@ -10,11 +10,6 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
-
-- **Shop errors explained for hosts.** When a purchase fails, the game only says "An error occurred."; the host's
-  server log now says why, which player and which pack.
-
 ## v0.0.18 (2026-11-15)
 
 Titles to earn, working website links, Auto Card Placing, and opening the game directly with nothing to set up.
@@ -39,6 +34,8 @@ close the game and stop hosting. Keep your server data and local game Documents;
 - **Open the game directly, with nothing to switch on.** Press Play once in YO3 Revival and from then on `yo3.exe` or
   its shortcut connects to the server and account you last played on. The "Allow opening yo3.exe directly" checkbox is
   gone. **Delete Login Data** on the title screen signs that PC out until you press Play again.
+- **Shop errors explained for hosts.** When a purchase fails, the game only says "An error occurred."; the host's
+  server log now says why, which player and which pack.
 
 ## v0.0.17 (2026-11-15)
 
