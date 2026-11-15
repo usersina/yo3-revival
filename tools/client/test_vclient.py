@@ -109,8 +109,12 @@ Path(os.environ['TEST_GAME_RAN']).write_text('started')
         self.assertIn("Press Play once in the GUI", result.stderr)
         self.assertFalse((self.directory / "game-ran").exists())
 
-    def test_online_goes_straight_to_player_selection_without_a_form_click(self):
+    def login(self, height, online, menu_low, slot):
+        """`login select` against fake X tools: a window `height` high whose title menu fingerprints are at
+        (297, online) and (297, menu_low), and whose first player slot is at (600, slot). The clicks made."""
         self.env["TEST_LOGIN_STATE"] = str(self.directory / "login-state")
+        self.env["TEST_HEIGHT"] = str(height)
+        self.env["TEST_PIXELS"] = f"{online},{menu_low},{slot}"
         self.program("sleep", "pass")
         self.program("xdotool", """
 from pathlib import Path
@@ -118,6 +122,7 @@ import os, sys
 state = Path(os.environ['TEST_LOGIN_STATE'])
 args = sys.argv[1:]
 if args[0] == 'search': print('999')
+elif args[0] == 'getwindowgeometry': print('WINDOW=999\\nX=0\\nY=0\\nWIDTH=1024\\nHEIGHT=' + os.environ['TEST_HEIGHT'])
 elif args[0] == 'mousemove': state.with_suffix('.position').write_text(' '.join(args[-2:]))
 elif args[0] == 'click':
     with state.open('a') as clicks: clicks.write(state.with_suffix('.position').read_text() + '\\n')
@@ -130,17 +135,26 @@ args = sys.argv[1:]
 if '-crop' not in args:
     Path(args[-1]).write_bytes(b'fixture'); sys.exit(0)
 pixel = args[args.index('-crop') + 1]
-online = state.exists()
-rgb = (39,61,117) if pixel == '1x1+297+301' else (0,0,0)
-if pixel == '1x1+297+434': rgb = (38,60,116)
-if online and pixel == '1x1+600+231': rgb = (38,60,116)
+online, low, slot = os.environ['TEST_PIXELS'].split(',')
+title = not state.exists() or state.read_text().count('\\n') == 0
+rgb = (0,0,0)
+if pixel == f'1x1+297+{online}': rgb = (39,61,117)
+if pixel == f'1x1+297+{low}': rgb = (38,60,116)
+if state.exists() and pixel == f'1x1+600+{slot}': rgb = (38,60,116)
 print('0,0: (%d,%d,%d)' % rgb)
 """)
         result = subprocess.run([str(VCLIENT), "login", "select"], env=self.env,
             capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.directory / "login-state").read_text(), "297 301\n")
+        return (self.directory / "login-state").read_text()
 
+    def test_online_goes_straight_to_player_selection_without_a_form_click(self):
+        self.assertEqual(self.login(768, 301, 434, 231), "297 301\n")
+
+    def test_a_1024x600_window_logs_in_with_its_own_title_layout(self):
+        # Review (2026-11-15): at the game's 1024x600 size (Options -> Screen, or a screen too small for 768) the title
+        # menu sits 75 px higher than in the 768 frame (live, Xvfb 1024x600); the player list does not move.
+        self.assertEqual(self.login(600, 226, 359, 231), "297 226\n")
 
 if __name__ == "__main__":
     unittest.main()

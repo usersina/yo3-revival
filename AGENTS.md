@@ -198,6 +198,8 @@ tools/client/vclient.sh stop                       # only your own instance; als
 
 # In a second terminal, use YO3_INSTANCE=c (:79), a separate prefix, and another account's profile.
 # Each account's first player is slot 0; login 1 means the second player within the same account.
+# Coordinates below are the 1024x768 frame's. A 1024x600 window (YO3_XVFB_SCREEN=1024x600x24, or Options -> Screen)
+# lays screens out differently: `login` knows its title (75 px higher); other clicks need that frame's own positions.
 #   a duel between two clients: on each, the menu bar's duel button (195,752) -> Auto Duel (503,401) -> Confirm
 #   (420,522), then Select Deck OK (393,533). The mod prepares a legal starting deck once after a fresh player's login;
 #   Edit Deck is optional. NPC duel: map -> Kaiba Corporation (765,275), click through the talk, Yes (270,277),

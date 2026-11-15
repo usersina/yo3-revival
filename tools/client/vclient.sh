@@ -9,7 +9,8 @@
 #   tools/client/vclient.sh start-stock    open the original executable using its installed automatic loader
 #   tools/client/vclient.sh login [SLOT]    title -> ONLINE -> player SLOT (0-3, default 0); `login select` stops at Select Player
 #   tools/client/vclient.sh shot NAME       screenshot the game window -> logs/shots/NAME.png
-#   tools/client/vclient.sh click X Y       left click at game coordinates (1024x768, mapped into a larger window)
+#   tools/client/vclient.sh click X Y       left click at game coordinates (1024x768, mapped into a larger window;
+#                                           a 1024x600 window takes its own frame's coordinates)
 #   tools/client/vclient.sh key KEY...      xdotool key names, e.g. Return Escape
 #   tools/client/vclient.sh type TEXT       type text
 #   tools/client/vclient.sh pixel X Y       print the window's colour at X Y as "R G B"
@@ -131,14 +132,19 @@ case "${1:-}" in
     # (inert on the title itself) every 3 s until the title's ONLINE button shows.
     # The menu is ONLINE *and* OFFICIAL WEBSITE buttons both blue; the logo screen shares
     # the first colour for a frame or two, never the second.
-    menu() { near 297 301 39 61 117 && near 297 434 38 60 116; }
+    # The 1024x600 frame (Options -> Screen, or a screen too small for 768) crops the title: its menu is 75 px higher.
+    # Select Player does not move. Larger windows scale the 768 frame (window_xy), so they keep its coordinates.
+    ty=0
+    for _ in $(seq 60); do [ -n "$(win)" ] && break; sleep 0.5; done
+    if [ -n "$(win)" ] && xdotool getwindowgeometry --shell "$(win)" 2>/dev/null | grep -qx 'HEIGHT=600'; then ty=75; fi
+    menu() { near 297 $((301 - ty)) 39 61 117 && near 297 $((434 - ty)) 38 60 116; }
     for i in $(seq 240); do
       menu && break
-      (( i % 6 == 0 )) && [ -n "$(win)" ] && "$0" click 900 700
+      (( i % 6 == 0 )) && [ -n "$(win)" ] && "$0" click 900 $((700 - 2 * ty))
       sleep 0.5
     done
     menu || { echo "timed out waiting for the title menu" >&2; "$0" shot timeout-title >&2; exit 1; }
-    "$0" click 297 301
+    "$0" click 297 $((301 - ty))
     wait_for players 30 600 231 38 60 116                     # first player slot
     [ "${2:-}" = select ] && { "$0" shot select; exit 0; }       # `login select` stops at Select Player
     "$0" click 656 $((231 + ${2:-0} * 46))                     # slot rows are 46 px apart
