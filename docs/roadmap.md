@@ -14,6 +14,7 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
   - [✅ Screenshot session (2026-11-08): two things seen playing NPC duels](#-screenshot-session-2026-11-08-two-things-seen-playing-npc-duels)
   - [▶ Duel check (2026-11-09): the client's view checked against the engine](#-duel-check-2026-11-09-the-clients-view-checked-against-the-engine)
   - [▶ Connection DLL wave (2026-11-14): issues #10–#13](#-connection-dll-wave-2026-11-14-issues-1013)
+  - [▶ Website links, titles and official events (planned 2026-11-15)](#-website-links-titles-and-official-events-planned-2026-11-15)
   - [✅ Summon animations (2026-11-15): Tribute, Fusion and Synchro as the original showed them](#-summon-animations-2026-11-15-tribute-fusion-and-synchro-as-the-original-showed-them)
   - [✅ Avatars (2026-11-14): Avatar Settings' parts, and the Millennium Eye against Pegasus](#-avatars-2026-11-14-avatar-settings-parts-and-the-millennium-eye-against-pegasus)
   - [✅ Duel windows (2026-11-13): every choice and reveal the client can show](#-duel-windows-2026-11-13-every-choice-and-reveal-the-client-can-show)
@@ -1022,6 +1023,36 @@ clients.
       the list with its help line, "rental 1: returned early by its borrower", a second press sent nothing, the button
       hid on the Lent tab, the reopened list showed the rental over with no cards, and closing the game left no crash.
       A Deck rental's three lists are still not seen live.
+
+## ▶ Website links, titles and official events (planned 2026-11-15)
+
+From the UI survey (every map tile and menu, 2026-11-15): what works is recorded above; these never did. Split by what
+they need: anything a host's own server can do now, and what only makes sense on a public server with many players.
+
+**Now, on any server:**
+
+- [ ] The old website links. Leaderboard (`http://www.yugioh-online.net/v3/events/rank_info?country=`, opened at
+      `0x46FC14` with ShellExecute), team ranking (`…/v3/events/ranking/team/?country=`), the BOOSTERPASS page
+      (`…/v3/bpass/index/`) and the title screen's Official Website open Konami's domain, which no longer resolves; if
+      someone registers it, every click goes to them. The connection DLL sends them to the host's server instead, which
+      serves a page for each (to start: the server's own players and what is not there yet).
+- [ ] Titles earned on any server (catalogue kind 10, 160 titles; only BEGINNER DUELIST is given today). The NPC
+      friendship titles: one per NPC (KING OF DOMINO CITY, THE KC OPERATIVE, MAI FAN, …) and EVERYBODY'S FRIEND, from the
+      NPC friendship levels the server already keeps (`npcbin`). Progress titles: BRONZE DUELIST and the like (level),
+      THE CARD COLLECTOR / HOARDER (collection size), BRONZE/SILVER/GOLDEN SUMMONER and FUSIONIST (summon counts), THE
+      AFRO KAISER and other looks; the client only says "many", so the thresholds are the host's (defaults to choose).
+      Earning one sets its pbin bit (Avatar Settings lists it) and could be announced in chat.
+- [ ] A host command to grant the staff and promotion titles by hand (GAME MASTER, KONAMI, JUMP FESTA, …).
+- [ ] Research only: what the client sends and expects for the official event formats (Duelist Trial, Gunslinger,
+      the weekend events) and the Championship, so the later work starts from evidence.
+
+**Later, with a public server and enough players:**
+
+- [ ] A leaderboard and team ranking page from real wins and losses (the page from the links above, filled in).
+- [ ] Official Events (Stadium): the Duelist Trial and Gunslinger formats (wins, win streaks over a period), host
+      scheduled, much of it on the User Event code; their titles (TRIALIST … ULTIMATE GUNSLINGER, the CHAMPION ones).
+- [ ] The Championship (Tournament Map): the 64-player bracket, scheduled; Y.O.C WINNER / FINALIST.
+- Not possible: the map's UNIZAWA and market tiles (`btn5`, `btn6` have no handler in `main.swf`).
 
 ## ✅ Summon animations (2026-11-15): Tribute, Fusion and Synchro as the original showed them
 
