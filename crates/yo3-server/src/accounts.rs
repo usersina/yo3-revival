@@ -1,14 +1,14 @@
-//! Persistent accounts, keys and imported address metadata.
+//! Persistent accounts: password accounts (a User ID and password, #23) and key accounts (the launcher's own
+//! Singleplayer account and the host's tools), each with up to four players.
 //!
-//! Game connections authenticate directly with a key through the TLS transport (`authenticate`); their source
-//! address never selects the account. Address/IP-presentation helpers below remain for historical data fixtures
-//! and offline migration, not a network login path. Player ids and the JSON schema survive the transport change.
+//! Launchers sign in through the TLS transport: by password or a device's token (`account_ops`), or with a key
+//! (`authenticate`). The address a client connects from never selects an account.
 use std::collections::HashMap;
 use std::io;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+
 
 use serde_json::{Value as Json, json};
 
@@ -22,26 +22,9 @@ pub const MAX_NAME: usize = 16;
 /// The BOOSTERPASS Points (the shop's BP, the account's dpoint) a new account starts with: 50 packs (**guess**).
 pub const START_BP: u32 = 5000;
 
-/// How many accounts one address may make on the join page.
-pub const JOIN_PER_ADDRESS: usize = 4;
-/// How many accounts the join page makes per hour in all (**guess**: a stop to abuse, a group of friends is far below).
-pub const JOIN_PER_HOUR: usize = 20;
-
-/// What the join page shows an address: the accounts it has (key and player names) and whether an address-only
-/// account could be given a key.
-pub struct JoinState {
-    pub accounts: Vec<(String, Vec<String>)>,
-    pub keepable: bool,
-    /// Whether the address may still make an account (`JOIN_PER_ADDRESS`).
-    pub can_join: bool,
-}
-
 /// A change to one player (`Directory::update_players`).
 pub type PlayerChange<'a> = (u32, Box<dyn FnOnce(&mut Player) + 'a>);
 
-/// How long a key an address presented counts for its next login (a client fetches it just before connecting; a
-/// reconnect through the same address refreshes it).
-pub const KEY_WINDOW: Duration = Duration::from_secs(600);
 /// The characters of a key (URL-safe).
 const KEY_CHARS: &[u8] = b"abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 /// The characters in a key.
@@ -63,13 +46,13 @@ pub struct BpCode {
     pub claimed_at: Vec<Option<String>>,
 }
 
-/// An account with how a client finds it: by the address it connects from, by its key, or both.
+/// An account with how a launcher finds it: by its key, or by its User ID and password.
 #[derive(Clone)]
 struct Entry {
-    address: Option<IpAddr>,
     key: Option<String>,
-    /// The address that made it on the join page (for the page's per-address cap).
-    joined_from: Option<IpAddr>,
+    /// A password account's User ID, password, role, standing, recovery code and signed-in devices (#23). Accounts
+    /// with only a key are the launcher's own (Singleplayer) and the host's tools'.
+    login: Option<crate::logins::Login>,
     /// Shared until changed (copy-on-write): a change gives this entry a new `Arc`, which is how a save finds the
     /// accounts that changed without serializing the others (#22).
     account: Arc<Account>,
@@ -91,32 +74,33 @@ pub(crate) fn new_key() -> String {
     key
 }
 
+/// The key of the test fixture account named by `addr` (`Directory::account_for`).
+fn fixture_key(addr: IpAddr) -> String { crate::logins::digest(&format!("fixture {addr}"))[..KEY_LEN].to_string() }
+
 #[derive(Clone)]
 pub struct Directory {
     player_names: Vec<String>,
     accounts: Vec<Entry>,
-    /// The key each address presented last, and when (not saved: a client presents it again at every start).
-    presented: HashMap<IpAddr, (String, Instant)>,
-    /// When the join page made its accounts, for the hourly cap (not saved).
-    joins: Vec<Instant>,
     next_user: u32,
     next_player: u32,
     /// Where the accounts are kept (none: in memory only).
     file: Option<PathBuf>,
     /// The host's BOOSTERPASS codes.
     codes: Vec<BpCode>,
-    /// Each account as last saved (by user id): its `Arc` and the entry's address, key and join address. A save writes
+    /// Invite codes for new password accounts (#23).
+    invites: Vec<crate::logins::Invite>,
+    /// Each account as last saved (by user id): its `Arc` and the entry's key and login. A save writes
     /// the accounts whose `Arc` or fields differ, and drops the ones that went.
     saved: HashMap<u32, Saved>,
 }
 
 /// An account as last saved: compared by pointer, so an unchanged account costs nothing to check.
 #[derive(Clone)]
-struct Saved { account: Arc<Account>, address: Option<IpAddr>, key: Option<String>, joined_from: Option<IpAddr> }
+struct Saved { account: Arc<Account>, key: Option<String>, login: Option<crate::logins::Login> }
 
 impl Saved {
-    fn of(e: &Entry) -> Saved { Saved { account: e.account.clone(), address: e.address, key: e.key.clone(), joined_from: e.joined_from } }
-    fn same(&self, e: &Entry) -> bool { Arc::ptr_eq(&self.account, &e.account) && self.address == e.address && self.key == e.key && self.joined_from == e.joined_from }
+    fn of(e: &Entry) -> Saved { Saved { account: e.account.clone(), key: e.key.clone(), login: e.login.clone() } }
+    fn same(&self, e: &Entry) -> bool { Arc::ptr_eq(&self.account, &e.account) && self.key == e.key && self.login == e.login }
 }
 
 impl Directory {
@@ -129,6 +113,138 @@ impl Directory {
     fn player_mut(&mut self, player_id: u32) -> Option<&mut Player> {
         self.account_mut_where(|a| a.players.iter().any(|p| p.player_id == player_id))?.players.iter_mut().find(|p| p.player_id == player_id)
     }
+
+    /// The entry of the password account with User ID `user` (ignoring case).
+    fn login_at(&self, user: &str) -> Option<usize> {
+        self.accounts.iter().position(|e| e.login.as_ref().is_some_and(|l| l.user.eq_ignore_ascii_case(user)))
+    }
+
+    fn login_mut(&mut self, user_id: u32) -> Option<&mut crate::logins::Login> {
+        self.accounts.iter_mut().find(|e| e.account.user_id == user_id).and_then(|e| e.login.as_mut())
+    }
+
+    /// The password account with User ID `user` (ignoring case): its user id and login.
+    pub fn login_of(&self, user: &str) -> Option<(u32, crate::logins::Login)> {
+        let e = &self.accounts[self.login_at(user)?];
+        Some((e.account.user_id, e.login.clone()?))
+    }
+
+    /// The login of the account `user_id`, if it is a password account.
+    pub fn login_by_id(&self, user_id: u32) -> Option<&crate::logins::Login> {
+        self.accounts.iter().find(|e| e.account.user_id == user_id).and_then(|e| e.login.as_ref())
+    }
+
+    /// Makes a password account with no players yet (they are made in the game's Select Player), under the server's
+    /// registration mode: an invite code is used up when one is needed. Its user id.
+    pub fn register(&mut self, login: crate::logins::Login, invite: Option<&str>, mode: crate::logins::Registration) -> Result<u32, String> {
+        use crate::logins::Registration;
+        if self.login_at(&login.user).is_some() { return Err("user_id_taken".into()) }
+        let now = crate::logins::now();
+        let invite_at = match mode {
+            Registration::Closed => return Err("registration_closed".into()),
+            Registration::Open => None,
+            Registration::Invite => {
+                let code = crate::logins::normalize_code(invite.ok_or("invite_required")?);
+                Some(self.invites.iter().position(|i| crate::logins::normalize_code(&i.code) == code && i.usable(now)).ok_or("invite_invalid")?)
+            }
+        };
+        self.atomic(|d| {
+            let account = d.create_account(&[]);
+            let user_id = account.user_id;
+            if let Some(at) = invite_at {
+                let invite = &mut d.invites[at];
+                invite.uses = invite.uses.map(|n| n.saturating_sub(1));
+                invite.used_by.push(user_id);
+            }
+            d.accounts.push(Entry { key: None, login: Some(login), account: Arc::new(account) });
+            Ok(user_id)
+        })
+    }
+
+    /// The account a device's sign-in belongs to (`digest` of its token), if it is still valid at `now`.
+    pub fn device_user(&self, digest: &str, now: i64) -> Option<u32> {
+        self.accounts.iter().find(|e| e.login.as_ref().is_some_and(|l| l.devices.iter().any(|d| d.token == digest && d.expires > now)))
+            .map(|e| e.account.user_id)
+    }
+
+    /// Keeps a device signed in to `user_id` (the oldest goes when there are too many).
+    pub fn add_device(&mut self, user_id: u32, device: crate::logins::Device) -> Result<(), String> {
+        self.atomic(|d| {
+            let login = d.login_mut(user_id).ok_or("no such account")?;
+            login.devices.retain(|x| x.expires > device.created);
+            while login.devices.len() >= crate::logins::MAX_DEVICES { login.devices.remove(0); }
+            login.devices.push(device);
+            Ok(())
+        })
+    }
+
+    /// A device's sign-in was used: it lasts another [`crate::logins::DEVICE_TTL`] from `now`.
+    pub fn touch_device(&mut self, user_id: u32, digest: &str, now: i64) -> Result<(), String> {
+        self.atomic(|d| {
+            let device = d.login_mut(user_id).and_then(|l| l.devices.iter_mut().find(|x| x.token == digest)).ok_or("no such device")?;
+            device.last_used = now;
+            device.expires = now + crate::logins::DEVICE_TTL;
+            Ok(())
+        })
+    }
+
+    /// Signs one device out (by its token's digest); whether it was signed in.
+    pub fn revoke_device(&mut self, digest: &str) -> Result<bool, String> {
+        let Some(user_id) = self.device_user(digest, i64::MIN) else { return Ok(false) };
+        self.atomic(|d| { d.login_mut(user_id).ok_or("no such account")?.devices.retain(|x| x.token != digest); Ok(true) })
+    }
+
+    /// Signs every device of `user_id` out.
+    pub fn revoke_devices(&mut self, user_id: u32) -> Result<(), String> {
+        self.atomic(|d| { d.login_mut(user_id).ok_or("no such account")?.devices.clear(); Ok(()) })
+    }
+
+    /// A new password (its PHC hash): every device is signed out and any reset code is used up.
+    pub fn set_password(&mut self, user_id: u32, hash: String) -> Result<(), String> {
+        self.atomic(|d| {
+            let login = d.login_mut(user_id).ok_or("no such account")?;
+            login.password = hash;
+            login.devices.clear();
+            login.reset = None;
+            Ok(())
+        })
+    }
+
+    /// A new recovery code (its digest), after the old one was used.
+    pub fn set_recovery(&mut self, user_id: u32, digest: String) -> Result<(), String> {
+        self.atomic(|d| { d.login_mut(user_id).ok_or("no such account")?.recovery = digest; Ok(()) })
+    }
+
+    /// A moderator's reset code for User ID `user`: a new code, working until `expires`.
+    pub fn issue_reset(&mut self, user: &str, digest: String, expires: i64) -> Result<u32, String> {
+        let at = self.login_at(user).ok_or("no such User ID")?;
+        let user_id = self.accounts[at].account.user_id;
+        self.atomic(|d| { d.login_mut(user_id).ok_or("no such account")?.reset = Some((digest, expires)); Ok(user_id) })
+    }
+
+    /// Sets the role of User ID `user`.
+    pub fn set_role(&mut self, user: &str, role: crate::logins::Role) -> Result<(), String> {
+        let at = self.login_at(user).ok_or("no such User ID")?;
+        let user_id = self.accounts[at].account.user_id;
+        self.atomic(|d| { d.login_mut(user_id).ok_or("no such account")?.role = role; Ok(()) })
+    }
+
+    /// Sets the standing of User ID `user` (active, restricted or banned; #26 makes the moderation around it).
+    pub fn set_standing(&mut self, user: &str, standing: crate::logins::Standing) -> Result<u32, String> {
+        let at = self.login_at(user).ok_or("no such User ID")?;
+        let user_id = self.accounts[at].account.user_id;
+        self.atomic(|d| { d.login_mut(user_id).ok_or("no such account")?.standing = standing; Ok(user_id) })
+    }
+
+    /// Makes an invite code: for `uses` accounts (any number if `None`), until `expires`, recorded as `issued_by`'s.
+    pub fn add_invite(&mut self, uses: Option<u32>, expires: Option<i64>, issued_by: &str) -> Result<String, String> {
+        let code = crate::logins::new_code();
+        let invite = crate::logins::Invite { code: code.clone(), uses, expires, issued_by: issued_by.into(), used_by: vec![] };
+        self.atomic(|d| { d.invites.push(invite); Ok(code) })
+    }
+
+    /// The invite codes, oldest first.
+    pub fn invites(&self) -> &[crate::logins::Invite] { &self.invites }
 
     /// Publish a live administration change only after its entire snapshot commits. Failed writes restore memory.
     pub fn atomic<T>(&mut self, change: impl FnOnce(&mut Self) -> Result<T, String>) -> Result<T, String> {
@@ -147,7 +263,7 @@ impl Directory {
 
     /// `player_names`: the players every new account starts with (at most four are used).
     pub fn new(player_names: Vec<String>) -> Directory {
-        Directory { player_names, accounts: Vec::new(), presented: HashMap::new(), joins: Vec::new(), next_user: 1001, next_player: 1001, file: None, codes: vec![], saved: HashMap::new() }
+        Directory { player_names, accounts: Vec::new(), next_user: 1001, next_player: 1001, file: None, codes: vec![], invites: vec![], saved: HashMap::new() }
     }
 
     /// The accounts kept in `file` (none yet if it doesn't exist); changes are written back to it.
@@ -164,11 +280,12 @@ impl Directory {
         d.next_user = d.next_user.max(saved["next_user"].as_u64().unwrap_or(0) as u32);
         for a in saved["accounts"].as_array().into_iter().flatten() {
             let bad = || io::Error::new(io::ErrorKind::InvalidData, format!("{}: invalid account record (check its ids and identity)", file.display()));
-            // Old files have an address and no key; a key account may have no address.
-            let address: Option<IpAddr> = a["address"].as_str().map(|s| s.parse().map_err(|_| bad())).transpose()?;
             let key = a["key"].as_str().filter(|k| !k.is_empty()).map(str::to_string);
-            if address.is_none() && key.is_none() {
-                return Err(bad());
+            let login: Option<crate::logins::Login> = match a.get("login") { Some(l) => Some(serde_json::from_value(l.clone()).map_err(|_| bad())?), None => None };
+            if key.is_none() && login.is_none() {
+                // Found only by the address it connected from: that login is gone (#23), and so is the account.
+                tracing::warn!("account {} has neither a key nor a password and is no longer loaded", a["user_id"]);
+                continue;
             }
             let user_id = a["user_id"].as_u64().ok_or_else(bad)? as u32;
             let mut players = vec![];
@@ -223,10 +340,10 @@ impl Directory {
             for p in &mut account.players {
                 p.country.clone_from(&account.country);
             }
-            let joined_from = a["joined_from"].as_str().and_then(|s| s.parse().ok());
-            d.accounts.push(Entry { address, key, joined_from, account: Arc::new(account) });
+            d.accounts.push(Entry { key, login, account: Arc::new(account) });
         }
         d.saved = d.accounts.iter().map(|e| (e.account.user_id, Saved::of(e))).collect();
+        d.invites = saved["invites"].as_array().into_iter().flatten().filter_map(|i| serde_json::from_value(i.clone()).ok()).collect();
         for c in saved["bp_codes"].as_array().into_iter().flatten() {
             let (Some(code), Some(bp)) = (c["code"].as_str(), c["bp"].as_u64()) else { continue };
             let used_by: Vec<u32> = c["used_by"].as_array().into_iter().flatten().filter_map(|u| u.as_u64()).map(|u| u as u32).collect();
@@ -241,9 +358,12 @@ impl Directory {
         Account { user_id, name: format!("user{user_id}"), dpoint: START_BP, players, country: String::new() }
     }
 
-    /// The account of an address, made with the starting players (their names made unique) on first contact.
+    /// Tests only: the fixture account named by a made-up address (through a key made from it, so it survives a
+    /// restart), made with the starting players (their names made unique) the first time.
+    #[doc(hidden)]
     pub fn account_for(&mut self, addr: IpAddr) -> Account {
-        if let Some(e) = self.accounts.iter().find(|e| e.address == Some(addr)) {
+        let key = fixture_key(addr);
+        if let Some(e) = self.accounts.iter().find(|e| e.key.as_deref() == Some(key.as_str())) {
             return Account::clone(&e.account);
         }
         let names: Vec<String> = self.player_names.iter().take(MAX_PLAYERS).cloned().collect();
@@ -255,43 +375,8 @@ impl Directory {
 
     fn create(&mut self, addr: IpAddr, names: &[String]) -> Account {
         let account = self.create_account(names);
-        self.accounts.push(Entry { address: Some(addr), key: None, joined_from: None, account: Arc::new(account.clone()) });
+        self.accounts.push(Entry { key: Some(fixture_key(addr)), login: None, account: Arc::new(account.clone()) });
         account
-    }
-
-    /// Notes that `addr` presented `key` (the patch server saw `/yo3/<key>/yo3.idx`) at `now`; whether the key is
-    /// an account's. An unknown key counts as none: it forgets what the address presented before, so its login
-    /// goes to its address account (the most recent fetch decides, and a client without a key is the most recent).
-    pub fn present_key(&mut self, addr: IpAddr, key: &str, now: Instant) -> bool {
-        let known = self.accounts.iter().any(|e| e.key.as_deref() == Some(key));
-        if known {
-            self.presented.insert(addr, (key.to_string(), now));
-        } else {
-            self.presented.remove(&addr);
-        }
-        known
-    }
-
-    /// A fetch of the patch index from `addr` with no key in the URL: see `present_key`.
-    pub fn present_no_key(&mut self, addr: IpAddr) {
-        self.presented.remove(&addr);
-    }
-
-    /// The account a client connecting from `addr` logs in to at `now`: that of the key the address presented most
-    /// recently within `KEY_WINDOW` (and the window starts over, so a reconnect later in a long session finds it),
-    /// else the address account.
-    pub fn login(&mut self, addr: IpAddr, now: Instant) -> Account {
-        if let Some((key, at)) = self.presented.get(&addr).cloned() {
-            if now.saturating_duration_since(at) <= KEY_WINDOW
-                && let Some(e) = self.accounts.iter().find(|e| e.key.as_deref() == Some(key.as_str()))
-            {
-                let account = Account::clone(&e.account);
-                self.presented.insert(addr, (key, now));
-                return account;
-            }
-            self.presented.remove(&addr);
-        }
-        self.account_for(addr)
     }
 
     /// Makes an account found by key only, with players named `names` (at most four, made unique; the starting
@@ -311,7 +396,7 @@ impl Directory {
         self.atomic(|d| {
             let account = d.create_account(&names);
             let key = new_key();
-            d.accounts.push(Entry { address: None, key: Some(key.clone()), joined_from: None, account: Arc::new(account) });
+            d.accounts.push(Entry { key: Some(key.clone()), login: None, account: Arc::new(account) });
             Ok(key)
         })
     }
@@ -329,52 +414,9 @@ impl Directory {
             .map(|e| Account::clone(&e.account))
     }
 
-    /// The join page's view of `addr`: the accounts with a key it made or has, and whether an address-only account
-    /// could be given a key.
-    pub fn join_state(&self, addr: IpAddr) -> JoinState {
-        let mine = |e: &&Entry| e.key.is_some() && (e.joined_from == Some(addr) || e.address == Some(addr));
-        let accounts = self.accounts.iter().filter(mine).filter_map(|e| Some((e.key.clone()?, e.account.players.iter().map(|p| p.name.clone()).collect()))).collect();
-        let keepable = self.accounts.iter().any(|e| e.address == Some(addr) && e.key.is_none());
-        let can_join = self.accounts.iter().filter(|e| e.joined_from == Some(addr)).count() < JOIN_PER_ADDRESS;
-        JoinState { accounts, keepable, can_join }
-    }
-
-    /// The join page makes an account with one player `name` for `addr` at `now`; its key. Refused for a bad or
-    /// taken name (the rules of Create Player), more than `JOIN_PER_ADDRESS` accounts for the address or
-    /// `JOIN_PER_HOUR` in the last hour.
-    pub fn join(&mut self, addr: IpAddr, name: &str, now: Instant) -> Result<String, String> {
-        let name = name.trim();
-        if name.is_empty() || name.chars().count() > MAX_NAME || name.chars().any(char::is_control) {
-            return Err(format!("a name is 1 to {MAX_NAME} characters, with no control characters"));
-        }
-        if self.taken(name) {
-            return Err(format!("the name {name:?} is taken, pick another"));
-        }
-        if self.accounts.iter().filter(|e| e.joined_from == Some(addr)).count() >= JOIN_PER_ADDRESS {
-            return Err(format!("this address already made {JOIN_PER_ADDRESS} accounts"));
-        }
-        self.joins.retain(|t| now.saturating_duration_since(*t) < Duration::from_secs(3600));
-        if self.joins.len() >= JOIN_PER_HOUR {
-            return Err("too many accounts were made in the last hour, try again later".to_string());
-        }
-        self.atomic(|d| {
-            let key = d.add_account(&[name.to_string()])?;
-            if let Some(e) = d.accounts.last_mut() {
-                e.joined_from = Some(addr);
-            }
-            d.joins.push(now);
-            Ok(key)
-        })
-    }
-
-    /// The key of the address-only account at `addr` ("keep my account"), made if it has none.
-    pub fn keep(&mut self, addr: IpAddr) -> Result<String, String> {
-        self.key_of(&addr.to_string())
-    }
-
-    /// The key of the account at `who` (an address, or a player's name), made if the account has none.
+    /// The key of the account at `who` (a User ID, or a player's name), made if the account has none.
     pub fn key_of(&mut self, who: &str) -> Result<String, String> {
-        let at = self.find(who).ok_or_else(|| format!("no account at or with a player named {who:?}"))?;
+        let at = self.find(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
         if let Some(key) = &self.accounts[at].key {
             return Ok(key.clone());
         }
@@ -382,15 +424,12 @@ impl Directory {
         self.atomic(|d| { d.accounts[at].key = Some(key.clone()); Ok(key) })
     }
 
-    /// The account an admin argument names: an address, or a player's name.
+    /// The account an admin argument names: a User ID, or a player's name (ignoring case).
     fn find(&self, who: &str) -> Option<usize> {
-        match who.parse::<IpAddr>() {
-            Ok(addr) => self.accounts.iter().position(|e| e.address == Some(addr)),
-            Err(_) => self.accounts.iter().position(|e| e.account.players.iter().any(|p| p.name.eq_ignore_ascii_case(who))),
-        }
+        self.login_at(who).or_else(|| self.accounts.iter().position(|e| e.account.players.iter().any(|p| p.name.eq_ignore_ascii_case(who))))
     }
 
-    /// The player ids of the account at `who` (an address, or a player's name): who sees a BP change (`Hub::push_bp`).
+    /// The player ids of the account at `who` (a User ID, or a player's name): who sees a BP change (`Hub::push_bp`).
     pub fn players_of(&self, who: &str) -> Vec<u32> {
         self.find(who).map(|at| self.accounts[at].account.players.iter().map(|p| p.player_id).collect()).unwrap_or_default()
     }
@@ -400,7 +439,7 @@ impl Directory {
         self.accounts.iter().map(|e| &e.account).find(|a| a.players.iter().any(|p| p.player_id == player_id)).map(|a| a.dpoint)
     }
 
-    /// The players (id and name) of the account at `who` (an address, or a player's name).
+    /// The players (id and name) of the account at `who` (a User ID, or a player's name).
     pub fn named_players_of(&self, who: &str) -> Vec<(u32, String)> {
         self.find(who).map(|at| self.accounts[at].account.players.iter().map(|p| (p.player_id, p.name.clone())).collect()).unwrap_or_default()
     }
@@ -416,7 +455,7 @@ impl Directory {
         self.accounts.iter().flat_map(|e| &e.account.players).find(|p| p.name.eq_ignore_ascii_case(name)).map(|p| p.player_id)
     }
 
-    /// The user id of the account at `who` (an address, or a player's name).
+    /// The user id of the account at `who` (a User ID, or a player's name).
     pub fn user_of(&self, who: &str) -> Option<u32> {
         self.find(who).map(|i| self.accounts[i].account.user_id)
     }
@@ -469,52 +508,16 @@ impl Directory {
         std::iter::once(name.to_string()).chain((2..).map(|n| format!("{name}{n}"))).find(|n| !self.taken(n)).unwrap_or_default()
     }
 
-    /// Gives the account at `addr` a player named `name` (making the account, with only that player, if new).
-    pub fn add_player(&mut self, addr: IpAddr, name: &str) -> Result<(), String> {
-        if name.is_empty() || self.taken(name) {
-            return Err(format!("the name {name:?} is taken or empty"));
-        }
-        match self.accounts.iter().position(|e| e.address == Some(addr)) {
-            None => self.atomic(|d| { d.create(addr, &[name.to_string()]); Ok(()) }),
-            Some(at) => self.add_player_to(self.accounts[at].account.user_id, name),
-        }
-    }
-
-    /// Moves the account at `from` to `to`, for a friend whose address changed (everything else keys players and
-    /// accounts by id). An account already at `to` (made when the friend first connected from there) is discarded
-    /// only with `replace`.
-    pub fn move_account(&mut self, from: IpAddr, to: IpAddr, replace: bool) -> Result<(), String> {
-        if from == to {
-            return Err(format!("{from} is already the account's address"));
-        }
-        let Some(from_at) = self.accounts.iter().position(|e| e.address == Some(from)) else {
-            return Err(format!("no account at {from}"));
-        };
-        let there = self.accounts.iter().position(|e| e.address == Some(to));
-        if let Some(there) = there
-            && !replace
-        {
-            let names: Vec<&str> = self.accounts[there].account.players.iter().map(|p| p.name.as_str()).collect();
-            return Err(format!("{to} already has an account ({}); pass --replace to discard it", names.join(", ")));
-        }
-        self.atomic(|d| {
-            d.accounts[from_at].address = Some(to);
-            if let Some(there) = there {
-                // The discarded account goes whole, key included (a key it had stops working).
-                d.accounts.remove(there);
-            }
-            Ok(())
-        })
-    }
-
-    /// Sets the country flag of the account at `addr` (an ISO code of the client's `countrytbl.bin`, two letters in
+    /// Tests only: sets the country flag of the fixture account at `addr` (an ISO code of the client's `countrytbl.bin`, two letters in
     /// any case); an empty code clears it, so the flag follows the client's language again.
+    #[doc(hidden)]
     pub fn set_country(&mut self, addr: IpAddr, code: &str) -> Result<(), String> {
         let code = code.trim().to_ascii_uppercase();
         if !code.is_empty() && !(code.len() == 2 && code.bytes().all(|b| b.is_ascii_uppercase())) {
             return Err(format!("{code:?} is not a two-letter country code"));
         }
-        let at = self.accounts.iter().position(|e| e.address == Some(addr));
+        let key = fixture_key(addr);
+        let at = self.accounts.iter().position(|e| e.key.as_deref() == Some(key.as_str()));
         if at.is_none() {
             return Err(format!("no account at {addr}"));
         }
@@ -616,13 +619,13 @@ impl Directory {
         paid.inspect_err(|why| tracing::warn!("duel reward of {bp} BP to player {player_id} not paid: {why}")).ok()
     }
 
-    /// Gives `bp` to the account at `who` (an address, or one of its players' names): who it went to, and the
+    /// Gives `bp` to the account at `who` (a User ID, or one of its players' names): who it went to, and the
     /// account's BP now.
     pub fn give_bp(&mut self, who: &str, bp: u32) -> Result<(String, u32), String> {
         if bp == 0 {
             return Err("give at least 1 BP".into());
         }
-        let at = self.find(who).ok_or_else(|| format!("no account at or with a player named {who:?}"))?;
+        let at = self.find(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
         self.atomic(|d| {
             let account = Arc::make_mut(&mut d.accounts[at].account);
             account.dpoint = account.dpoint.saturating_add(bp);
@@ -760,16 +763,15 @@ impl Directory {
         })
     }
 
-    /// Every account found by an address, with it, by address.
-    pub fn accounts(&self) -> impl Iterator<Item = (IpAddr, &Account)> {
-        let mut all: Vec<_> = self.accounts.iter().filter_map(|e| Some((e.address?, &*e.account))).collect();
-        all.sort_by_key(|(addr, _)| *addr);
-        all.into_iter()
+    /// Tests only: every account with its user id, by user id.
+    #[doc(hidden)]
+    pub fn accounts(&self) -> impl Iterator<Item = (u32, &Account)> {
+        self.entries().map(|(_, _, a)| (a.user_id, a))
     }
 
-    /// Every account with its address and key, by user id.
-    pub fn entries(&self) -> impl Iterator<Item = (Option<IpAddr>, Option<&str>, &Account)> {
-        let mut all: Vec<_> = self.accounts.iter().map(|e| (e.address, e.key.as_deref(), &*e.account)).collect();
+    /// Every account with its User ID (a password account) and key (a key account), by user id.
+    pub fn entries(&self) -> impl Iterator<Item = (Option<&str>, Option<&str>, &Account)> {
+        let mut all: Vec<_> = self.accounts.iter().map(|e| (e.login.as_ref().map(|l| l.user.as_str()), e.key.as_deref(), &*e.account)).collect();
         all.sort_by_key(|(_, _, a)| a.user_id);
         all.into_iter()
     }
@@ -791,9 +793,8 @@ impl Directory {
                 "items": p.items, "given": given, "eval_num": p.eval_num, "eval_total": p.eval_total, "counters": p.counters })
         }).collect();
         let mut account = json!({ "user_id": a.user_id, "dpoint": a.dpoint, "players": players });
-        if let Some(addr) = e.address { account["address"] = json!(addr.to_string()); }
         if let Some(key) = &e.key { account["key"] = json!(key); }
-        if let Some(from) = e.joined_from { account["joined_from"] = json!(from.to_string()); }
+        if let Some(login) = &e.login { account["login"] = serde_json::to_value(login).unwrap_or_default(); }
         if !a.country.is_empty() { account["country"] = json!(a.country); }
         account
     }
@@ -803,7 +804,7 @@ impl Directory {
     fn persist(&mut self) -> io::Result<()> {
         let Some(file) = self.file.clone() else { return Ok(()) };
         let codes: Vec<Json> = self.codes.iter().map(|c| json!({ "code": c.code, "bp": c.bp, "uses": c.uses, "used_by": c.used_by, "claimed_at": c.claimed_at })).collect();
-        let mut whole = json!({ "next_user": self.next_user, "next_player": self.next_player, "bp_codes": codes });
+        let mut whole = json!({ "next_user": self.next_user, "next_player": self.next_player, "bp_codes": codes, "invites": self.invites });
         if store::in_database(&file) {
             let changed: Vec<(String, Json)> = self.accounts.iter()
                 .filter(|e| !self.saved.get(&e.account.user_id).is_some_and(|s| s.same(e)))

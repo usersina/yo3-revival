@@ -27,12 +27,14 @@ pub struct Supervisor {
     extra: Vec<String>,
     child: Option<Child>,
     proxy: Option<Child>,
+    /// The server's TLS port (a free one, picked at each start).
+    pub auth: u16,
     pub starts: usize,
 }
 
 impl Supervisor {
     pub fn new(bin: PathBuf, cwd: PathBuf, scratch: PathBuf, ports: Ports, extra: Vec<String>) -> Supervisor {
-        Supervisor { bin, cwd, scratch, ports, extra, child: None, proxy: None, starts: 0 }
+        Supervisor { bin, cwd, scratch, ports, extra, child: None, proxy: None, auth: 0, starts: 0 }
     }
 
     pub fn log_path(&self) -> PathBuf {
@@ -48,13 +50,16 @@ impl Supervisor {
     pub fn start(&mut self) -> anyhow::Result<()> {
         std::fs::create_dir_all(self.data_dir())?;
         let auth = std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port();
+        self.auth = auth;
         let admin = |args: &[&str]| -> anyhow::Result<()> {
             anyhow::ensure!(Command::new(&self.bin).args(args).arg("--data-dir").arg(self.data_dir())
                 .stdout(Stdio::null()).status()?.success(), "prepare authenticated monkey account");
             Ok(())
         };
         if !self.data_dir().join("server.crt").exists() { admin(&["init-auth", "localhost"])?; }
-        if !self.data_dir().join("accounts.json").exists() { admin(&["add-account", "--players", "Yugi,Kaiba"])?; }
+        // The account is made once; after a restart its players' names are taken and this does nothing.
+        let _ = Command::new(&self.bin).args(["add-account", "--players", "Yugi,Kaiba", "--data-dir"]).arg(self.data_dir())
+            .stdout(Stdio::null()).stderr(Stdio::null()).status();
         let profile = self.scratch.join("client.json"); let ready = self.scratch.join("proxy.json");
         let _ = std::fs::remove_file(&profile); let _ = std::fs::remove_file(&ready);
         admin(&["profile", "Yugi", profile.to_str().unwrap(), "--advertise", "localhost", "--auth-port", &auth.to_string()])?;

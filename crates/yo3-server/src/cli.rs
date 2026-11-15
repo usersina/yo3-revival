@@ -8,7 +8,8 @@ use clap::{Parser, Subcommand, CommandFactory};
 #[command(version = yo3_tunnel::BUILD_VERSION)]
 pub struct Args {
     /// An admin command on the data directory instead of running the server. The BP ones (give-bp, add-code,
-    /// remove-code, codes) reach a running server; the others need it stopped (it rewrites the accounts file).
+    /// remove-code, codes) and the account ones (invite, invites, reset-code, set-role, add-user) reach a running server;
+    /// the others need it stopped.
     #[command(subcommand)]
     pub admin: Option<Admin>,
     /// Where persistent state (SQLite server.db) is kept; each start backs it up into backups/.
@@ -70,6 +71,16 @@ pub struct Args {
     /// host's choice.
     #[arg(long)]
     pub regulation: Option<String>,
+    /// The server's name in the launcher's server list.
+    #[arg(long, default_value = "Yu-Gi-Oh! ONLINE 3 server")]
+    pub name: String,
+    /// How new accounts are made: open (anyone may sign up), invite (with an invite code: `invite` makes one) or closed
+    /// (only the host's `add-account`).
+    #[arg(long, value_enum, default_value_t = crate::logins::Registration::Invite)]
+    pub registration: crate::logins::Registration,
+    /// Refuse sign-ins from launchers older than this version (for example 0.1.0); they are told to update.
+    #[arg(long)]
+    pub min_launcher: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -78,7 +89,7 @@ pub enum Admin {
     InitAuth { #[arg(required = true)] names: Vec<String> },
     /// Export an existing account's private launcher profile. Send it and the public server.crt to that friend.
     Profile { who: String, output: PathBuf },
-    /// List every account: its address (or none), key and players.
+    /// List every account: its User ID (or that it has a key), role, country and players.
     Accounts,
     /// Make an account found by a secret key, not an address: NAME is its first player (the starting players when
     /// omitted), --also adds up to three more. Prints a private launcher profile (the host in
@@ -88,24 +99,14 @@ pub enum Admin {
         #[arg(long, value_delimiter = ',')]
         also: Vec<String>,
     },
-    /// Print a private launcher profile for an existing account, ADDRESS or one of its PLAYER names (assigning
+    /// Print a private launcher profile for an existing account, by its User ID or one of its PLAYER names (assigning
     /// a key if needed; existing player data stays in place).
     Key { who: String },
-    /// Give an account (its ADDRESS or one of its PLAYER names) a player named NAME; a new address gets an account
-    /// with only that player.
+    /// Give an account (its User ID or one of its PLAYER names) a player named NAME.
     AddPlayer { who: String, name: String },
     /// Rename a player.
     Rename { old: String, new: String },
-    /// Move the account at OLD to NEW, for a friend whose address changed (an account with a key needs no move: the
-    /// key follows the friend): players, cards, BP, decks and records go along. An account already at NEW (made
-    /// when the friend first connected from there) is only discarded with --replace.
-    MoveAccount {
-        old: IpAddr,
-        new: IpAddr,
-        #[arg(long)]
-        replace: bool,
-    },
-    /// Set the country flag the account at WHO (an address or a player's name) shows to others (a code from the
+    /// Set the country flag the account WHO (a User ID or a player's name) shows to others (a code from the
     /// client's table, such as FR or JP: `countries` lists them); "auto" goes back to the one the client's language
     /// implies.
     SetCountry { who: String, code: String },
@@ -116,7 +117,7 @@ pub enum Admin {
     GrantTitle { player: String, title: String },
     /// List the titles in the client.
     Titles,
-    /// Give BOOSTERPASS Points to the account at WHO (an address or one of its players' names). Works while the server
+    /// Give BOOSTERPASS Points to the account WHO (a User ID or one of its players' names). Works while the server
     /// runs (on the server's PC).
     GiveBp { who: String, amount: u32 },
     /// Make a BOOSTERPASS code: CODE (16 letters and digits, the game's window) gives BP to each account that enters it
@@ -131,6 +132,25 @@ pub enum Admin {
     RemoveCode { code: String },
     /// List the BOOSTERPASS codes and how often each was used. Works while the server runs.
     Codes,
+    /// Make an invite code for the launcher's sign-up (the server's --registration invite): --uses N sign-ups (1 when
+    /// omitted, 0 for any number), working for --days D (for good when omitted). Works while the server runs.
+    Invite {
+        #[arg(long, default_value_t = 1)]
+        uses: u32,
+        #[arg(long)]
+        days: Option<u32>,
+    },
+    /// List the invite codes: whether each still works, who issued it and how many accounts used it. Works while the
+    /// server runs.
+    Invites,
+    /// Make a reset code for a player who lost their password and recovery code (check it is them first): it works once,
+    /// for 24 hours, in the launcher's "Forgot password". Works while the server runs.
+    ResetCode { user: String },
+    /// Make USER a player, moderator or admin. Works while the server runs.
+    SetRole { user: String, role: String },
+    /// Make a password account with User ID USER and print its first password and recovery code, to hand to that
+    /// player (for a server with --registration closed). Works while the server runs.
+    AddUser { user: String },
     /// Put a backup back as the server's database (the server must be stopped): WHICH is a folder name under
     /// backups/ (`backups` lists them), or "latest". The database it replaces is kept beside it, renamed.
     Restore { which: String },

@@ -303,7 +303,7 @@ fn stored_account(name: &str) -> (yo3_server::accounts::Directory, std::path::Pa
     let _ = std::fs::remove_dir_all(&dir);
     yo3_server::store::initialize(&dir).unwrap();
     let mut d = yo3_server::accounts::Directory::open(vec!["Yugi".into()], &dir.join("accounts.json")).unwrap();
-    d.login(std::net::IpAddr::from([10, 0, 0, 9]), std::time::Instant::now());
+    d.account_for(std::net::IpAddr::from([10, 0, 0, 9]));
     let player = d.accounts().next().unwrap().1.players[0].player_id;
     (d, dir, player)
 }

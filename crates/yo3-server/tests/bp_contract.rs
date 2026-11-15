@@ -98,7 +98,7 @@ fn codes_and_their_uses_are_kept_across_restarts() {
     let user = {
         let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
         d.add_code(CODE, 300, Some(5)).unwrap();
-        let user = d.login(ADDR, std::time::Instant::now()).user_id;
+        let user = d.account_for(ADDR).user_id;
         assert_eq!(d.redeem(user, CODE), Ok((300, START_BP + 300)));
         user
     };
@@ -110,12 +110,12 @@ fn codes_and_their_uses_are_kept_across_restarts() {
 }
 
 #[test]
-fn give_bp_pays_an_account_by_a_players_name_or_address() {
+fn give_bp_pays_an_account_by_a_players_name() {
     let d = directory();
     let mut d = d.lock().unwrap();
-    d.login(ADDR, std::time::Instant::now());
+    d.account_for(ADDR);
     assert_eq!(d.give_bp("Kaiba", 2500).map(|(_, total)| total), Ok(START_BP + 2500), "the account's second player");
-    assert_eq!(d.give_bp(&ADDR.to_string(), 500).map(|(_, total)| total), Ok(START_BP + 3000));
+    assert_eq!(d.give_bp("yugi", 500).map(|(_, total)| total), Ok(START_BP + 3000), "ignoring case");
     assert!(d.give_bp("Nobody", 1).is_err());
     assert!(d.give_bp("Kaiba", 0).is_err());
 }
@@ -205,7 +205,7 @@ fn a_claim_records_the_account_and_when_and_older_claims_load_without_a_time() {
         let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
         assert_eq!(d.codes()[0].claimed_at, vec![None]);
         d.add_code(CODE, 300, None).unwrap();
-        let user = d.login(ADDR, std::time::Instant::now()).user_id;
+        let user = d.account_for(ADDR).user_id;
         d.redeem(user, CODE).unwrap();
         user
     };

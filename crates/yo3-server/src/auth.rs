@@ -146,6 +146,12 @@ impl Sessions {
         self.tickets.retain(|_, t| &t.session != session);
     }
 
+    /// Ends every session of `user_id` (Sign out everywhere): their games are disconnected.
+    pub fn logout_user(&mut self, user_id: u32) {
+        let theirs: Vec<Token> = self.sessions.iter().filter(|(_, s)| s.identity.user_id == user_id).map(|(t, _)| *t).collect();
+        for token in theirs { self.logout(&token) }
+    }
+
     pub fn lease(&self, identity: Identity) -> Option<tokio::sync::watch::Receiver<bool>> {
         self.sessions.values().find(|s| s.identity == identity).map(|s| s.revoked.subscribe())
     }
@@ -154,8 +160,11 @@ impl Sessions {
         self.tickets.retain(|_, t| now < t.expires && self.sessions.contains_key(&t.session));
     }
 
+    /// A new session for `user_id`. The newest login wins (D12): the account's older sessions end now, which closes
+    /// their connections (the game shows its own disconnect dialog), so a crashed client never locks its owner out.
     pub fn login(&mut self, user_id: u32, now: Instant) -> Option<Token> {
         self.prune(now);
+        self.logout_user(user_id);
         if self.sessions.len() >= 1024 { return None }
         self.next_id = self.next_id.checked_add(1)?;
         let token = random_token();
@@ -290,17 +299,17 @@ mod tests {
     }
 
     #[test]
-    fn separate_logins_remain_separate_even_for_one_account() {
+    fn the_newest_login_of_an_account_ends_its_older_session() {
         let mut sessions = Sessions::default();
         let now = Instant::now();
-        let ids: Vec<_> = [1001, 1002, 1001].into_iter().map(|user| {
-            let login = sessions.login(user, now).unwrap();
-            let ticket = sessions.ticket(&login, Role::Front, now).unwrap();
-            sessions.consume(&ticket, Role::Front, now).unwrap().0
-        }).collect();
-        assert_eq!(ids.iter().map(|i| i.user_id).collect::<Vec<_>>(), [1001, 1002, 1001]);
-        assert_ne!(ids[0].session_id, ids[1].session_id);
-        assert_ne!(ids[0].session_id, ids[2].session_id);
+        let first = sessions.login(1001, now).unwrap();
+        let other = sessions.login(1002, now).unwrap();
+        let lease = sessions.lease(sessions.sessions[&first].identity).unwrap();
+        let second = sessions.login(1001, now).unwrap();
+        assert!(sessions.ticket(&first, Role::Front, now).is_none(), "the older session of 1001 is gone");
+        assert!(lease.has_changed().is_err(), "its connections see it end");
+        assert!(sessions.ticket(&second, Role::Front, now).is_some());
+        assert!(sessions.ticket(&other, Role::Front, now).is_some(), "another account is untouched");
     }
 
     #[test]

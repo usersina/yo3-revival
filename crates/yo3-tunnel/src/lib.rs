@@ -21,6 +21,8 @@ pub const MOD_ABI: u16 = 3;
 pub const BUILD_VERSION: &str = env!("YO3_VERSION");
 pub const BUILD_COMMIT: &str = env!("YO3_COMMIT");
 pub const MAX_INFO: usize = 4096;
+/// The largest account request or reply (operation 6).
+pub const MAX_ACCOUNT_REQUEST: usize = 4096;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ServerInfo {
@@ -31,12 +33,30 @@ pub struct ServerInfo {
     pub game_version: String,
     pub ready: bool,
     pub problem: Option<String>,
+    /// For the launcher's server list (#23, #30): the server's name, its news headline, who is online out of how many
+    /// it takes, how accounts are made ("open", "invite" or "closed"), the oldest launcher it accepts and whether it is
+    /// in maintenance. Absent from older servers.
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub headline: String,
+    #[serde(default)]
+    pub online: Option<u32>,
+    #[serde(default)]
+    pub max_online: Option<u32>,
+    #[serde(default)]
+    pub registration: String,
+    #[serde(default)]
+    pub min_launcher: Option<String>,
+    #[serde(default)]
+    pub maintenance: bool,
 }
 impl ServerInfo {
     pub fn current(ready: bool) -> Self {
         Self { release: BUILD_VERSION.into(), commit: BUILD_COMMIT.into(), protocol: PROTOCOL_VERSION,
             mod_abi: MOD_ABI, game_version: "1.153".into(), ready,
-            problem: (!ready).then(|| "The host's rules engine is unavailable.".into()) }
+            problem: (!ready).then(|| "The host's rules engine is unavailable.".into()),
+            name: String::new(), headline: String::new(), online: None, max_online: None, registration: String::new(), min_launcher: None, maintenance: false }
     }
     pub fn ensure_compatible(&self, protocol: u16, mod_abi: u16) -> anyhow::Result<()> {
         if self.protocol != protocol { bail!("Server {} requires protocol {}; this application uses {}. Install a compatible release.", self.release, self.protocol, protocol) }
@@ -90,13 +110,34 @@ pub struct Endpoint {
     /// The host's key identity (SHA-256 of its public key, hex), when known: it stays the same across certificate
     /// renewals and address changes, so it names the server (the game's per-server data folder, `server_id`).
     identity: Option<String>,
+    /// The local address to connect from (none: the system's choice); the protocol monkey spreads its requests over many.
+    local: Option<std::net::IpAddr>,
 }
 
 impl Endpoint {
+    /// Connects from `local` (an address of this machine, such as one of 127.0.0.0/8) instead of the system's choice.
+    #[doc(hidden)]
+    pub fn bound_to(mut self, local: std::net::IpAddr) -> Self { self.local = Some(local); self }
+
+    /// Testing aid: sends `body` after operation `op`'s opener as it is, and reads what comes back until the server
+    /// closes (the protocol monkey's malformed requests).
+    #[doc(hidden)]
+    pub async fn raw(&self, op: u8, body: &[u8]) -> anyhow::Result<Vec<u8>> {
+        let mut stage = "TCP connect";
+        tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
+            let mut tls = self.open(op, &mut stage).await?;
+            tls.write_all(body).await?;
+            // Nothing more comes: a body shorter than its length ends here, not at the server's handshake timeout.
+            let _ = tls.shutdown().await;
+            let mut reply = vec![];
+            let _ = tls.read_to_end(&mut reply).await;
+            Ok(reply)
+        }).await.with_context(|| format!("raw request timed out during {stage}"))?
+    }
     /// A user/invitation-approved identity authenticates the public key independently of its changing address.
     pub fn pinned(address: String, name: String, identity: &str) -> anyhow::Result<Self> {
         Ok(Self { address, name: ServerName::try_from(name)?, connector: identity::connector(Some(identity))?.0,
-            identity: Some(identity.to_ascii_lowercase()) })
+            identity: Some(identity.to_ascii_lowercase()), local: None })
     }
     pub fn new(address: String, name: String, certificate: &Path) -> anyhow::Result<Self> {
         Self::from_pem(address, name, &std::fs::read(certificate)?)
@@ -108,7 +149,7 @@ impl Endpoint {
         if roots.is_empty() { bail!("host certificate is empty or invalid") }
         let config = rustls::ClientConfig::builder().with_root_certificates(roots).with_no_client_auth();
         Ok(Self { address, name: ServerName::try_from(name)?, connector: TlsConnector::from(Arc::new(config)),
-            identity: identity::identity_from_pem(certificate).ok() })
+            identity: identity::identity_from_pem(certificate).ok(), local: None })
     }
 
     /// A short name for the host, from its key: the first 16 hex digits of its identity (`identity`), or of the address
@@ -127,7 +168,15 @@ impl Endpoint {
 
     async fn open(&self, op: u8, stage: &mut &'static str) -> anyhow::Result<Stream> {
         *stage = "TCP connect";
-        let tcp = TcpStream::connect(&self.address).await.context("connect to server")?;
+        let tcp = match self.local {
+            None => TcpStream::connect(&self.address).await.context("connect to server")?,
+            Some(local) => {
+                let to = tokio::net::lookup_host(&self.address).await?.find(|a| a.is_ipv4() == local.is_ipv4()).context("no address of the server's kind")?;
+                let socket = if local.is_ipv4() { tokio::net::TcpSocket::new_v4()? } else { tokio::net::TcpSocket::new_v6()? };
+                socket.bind((local, 0).into())?;
+                socket.connect(to).await.context("connect to server")?
+            }
+        };
         tcp.set_nodelay(true)?;
         keep_alive(&tcp)?;
         *stage = "TLS handshake";
@@ -167,6 +216,25 @@ impl Endpoint {
             Ok::<_,anyhow::Error>((info,tls))
         }).await.with_context(|| format!("server discovery timed out during {stage}"))?.context("Server discovery failed; verify its address, identity and revival version")?;
         finish_response(info,&mut tls).await
+    }
+
+    /// An account operation (#23): `request` is a JSON object with an "op" (register, login, resume, sign_out,
+    /// change_password, recover); the reply is a JSON object with "ok", and "error" when it isn't.
+    pub async fn account(&self, request: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let body = serde_json::to_vec(request)?;
+        if body.len() > MAX_ACCOUNT_REQUEST { bail!("account request too large") }
+        let mut stage = "TCP connect";
+        let (reply, mut tls) = tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
+            let mut tls = self.open(6, &mut stage).await?;
+            tls.write_u16(body.len() as u16).await?;
+            tls.write_all(&body).await?;
+            stage = "read account reply";
+            let length = tls.read_u16().await.context("read account reply length")? as usize;
+            if length == 0 || length > MAX_ACCOUNT_REQUEST { bail!("invalid account reply length") }
+            let mut reply = vec![0; length]; tls.read_exact(&mut reply).await.context("read account reply")?;
+            Ok::<_, anyhow::Error>((serde_json::from_slice(&reply).context("invalid account reply")?, tls))
+        }).await.with_context(|| format!("account request timed out during {stage}"))??;
+        finish_response(reply, &mut tls).await
     }
 
     pub async fn ticket(&self, session: &Token, role: Role) -> anyhow::Result<Token> {

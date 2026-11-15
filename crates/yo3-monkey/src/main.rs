@@ -5,6 +5,7 @@
 //!   yo3-monkey duel   --seed 1 --pairs 10        Auto Duel between two scripted clients, then random duel commands
 //!   yo3-monkey repro  FILE                       replay a saved plan against a fresh server
 //!   yo3-monkey minimize FILE                     cut a failing plan down to the steps that matter
+mod accounts;
 mod plans;
 mod run;
 mod wire;
@@ -90,11 +91,16 @@ enum Cmd {
         #[arg(long, default_value_t = 10)]
         pairs: u64,
     },
-    /// Connects from many different local addresses (127.x.y.z): the server keeps one account per client address, so
-    /// this is what the accounts file does when new addresses keep arriving.
-    Addrs {
-        #[arg(long, default_value_t = 2000)]
-        n: u32,
+    /// Account requests (TLS operation 6): valid flows, mutated fields and garbage bodies, each from its own local
+    /// address (127.2.x.y), then a check that the server lives and a game connection still works.
+    Accounts {
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
+        #[arg(long, default_value_t = 1000)]
+        requests: u64,
+        /// Requests at once.
+        #[arg(long, default_value_t = 8)]
+        par: u64,
     },
     Repro {
         file: PathBuf,
@@ -217,6 +223,9 @@ async fn setup(a: &Args) -> anyhow::Result<Arc<Env>> {
     let mut ports = ports;
     let cwd = std::env::current_dir()?;
     let mut server_args = a.server_arg.clone();
+    if matches!(a.cmd, Cmd::Accounts { .. }) && !server_args.iter().any(|s| s.starts_with("--registration")) {
+        server_args.extend(["--registration".into(), "open".into()]);
+    }
     if matches!(a.cmd, Cmd::Duel { .. } | Cmd::Soak { .. }) && !a.no_duel_check && !server_args.iter().any(|s| s == "--duel-check") {
         server_args.push("--duel-check".into());
     }
@@ -403,24 +412,25 @@ async fn main() -> anyhow::Result<()> {
             print_duel(&stats);
             finish(&env, base, &canary).await
         }
-        Cmd::Addrs { n } => {
-            let mut slowest = Duration::ZERO;
-            for i in 0..n {
-                let ip = std::net::Ipv4Addr::new(127, 1 + (i / 65_000) as u8, ((i / 250) % 250) as u8, (i % 250) as u8 + 1);
-                let t = Instant::now();
-                let ok = async {
-                    let mut c = wire::Conn::open_from(&env.ports.addr(Target::Front), Some(ip.into())).await?;
-                    c.send_version().await?;
-                    Ok::<_, std::io::Error>(c.expect(0x219F, Duration::from_secs(10)).await.0.is_some())
+        Cmd::Accounts { seed, requests, par } => {
+            let auth = lock(&env.sup).auth;
+            let endpoint = yo3_tunnel::Endpoint::new(format!("127.0.0.1:{auth}"), "localhost".into(), &env.scratch.join("data/server.crt"))?;
+            let stats = Arc::new(std::sync::Mutex::new(accounts::Stats::default()));
+            accounts::run(&endpoint, seed, requests, par, stats.clone()).await;
+            {
+                let s = lock(&stats);
+                let mut answers: Vec<_> = s.answers.iter().collect();
+                answers.sort_by_key(|(_, n)| std::cmp::Reverse(**n));
+                println!("accounts: {} requests in {:?}; answers {answers:?}", s.sent, started.elapsed());
+                for problem in s.problems.iter().take(20) {
+                    env.reporter.fail("accounts", problem, &[], "");
                 }
-                .await;
-                slowest = slowest.max(t.elapsed());
-                if !matches!(ok, Ok(true)) {
-                    env.reporter.fail("addrs", &format!("address {ip} (#{i}): {ok:?}"), &[], &lock(&env.log).tail(10));
-                }
-                if i % 500 == 499 {
-                    print_sample(&format!("after {} addresses (slowest connect so far {slowest:?})", i + 1), &stats_line(&env));
-                }
+            }
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            env.revive(&[]).await;
+            env.look(&[]);
+            if let Err(e) = canary_round(&env.ports, env.ports.pids[1]).await {
+                env.reporter.fail("canary", &format!("after the account requests: {e}"), &[], &lock(&env.log).tail(20));
             }
             finish(&env, base, &canary).await
         }

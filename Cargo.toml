@@ -12,6 +12,7 @@ rust-version = "1.98.1"
 [workspace.dependencies]
 # Shared versions and common features. Platform-specific features stay with the consuming crate.
 anyhow = "1.0.104"
+argon2 = "0.6.0"
 base64 = "0.22.1"
 blowfish = "0.10.0"
 chrono = "0.4.45"

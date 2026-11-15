@@ -34,6 +34,14 @@ pub enum Op {
     AddCode { code: String, bp: u32, uses: Option<u32> },
     RemoveCode { code: String },
     Codes,
+    /// An invite code for `uses` sign-ups (any number if none), working for `days` (for good if none).
+    Invite { uses: Option<u32>, days: Option<u32> },
+    Invites,
+    /// A reset code for a player who lost their password and recovery code (checked with them first).
+    ResetCode { user: String },
+    SetRole { user: String, role: String },
+    /// A password account made by the host: `hash` is its first password's PHC string, made by the command.
+    AddUser { user: String, hash: String },
 }
 
 impl Op {
@@ -45,6 +53,12 @@ impl Op {
             }
             Op::RemoveCode { code } => format!("op=remove-code&code={}", encode(code)),
             Op::Codes => "op=codes".into(),
+            Op::Invite { uses, days } => "op=invite".to_string() + &uses.map(|n| format!("&uses={n}")).unwrap_or_default()
+                + &days.map(|n| format!("&days={n}")).unwrap_or_default(),
+            Op::Invites => "op=invites".into(),
+            Op::ResetCode { user } => format!("op=reset-code&user={}", encode(user)),
+            Op::SetRole { user, role } => format!("op=set-role&user={}&role={}", encode(user), encode(role)),
+            Op::AddUser { user, hash } => format!("op=add-user&user={}&hash={}", encode(user), encode(hash)),
         }
     }
 
@@ -56,6 +70,11 @@ impl Op {
             Some("add-code") => Ok(Op::AddCode { code: get("code").ok_or("code missing")?, bp: num("bp")?, uses: num("uses").ok() }),
             Some("remove-code") => Ok(Op::RemoveCode { code: get("code").ok_or("code missing")? }),
             Some("codes") => Ok(Op::Codes),
+            Some("invite") => Ok(Op::Invite { uses: num("uses").ok(), days: num("days").ok() }),
+            Some("invites") => Ok(Op::Invites),
+            Some("reset-code") => Ok(Op::ResetCode { user: get("user").ok_or("user missing")? }),
+            Some("set-role") => Ok(Op::SetRole { user: get("user").ok_or("user missing")?, role: get("role").ok_or("role missing")? }),
+            Some("add-user") => Ok(Op::AddUser { user: get("user").ok_or("user missing")?, hash: get("hash").ok_or("hash missing")? }),
             _ => Err("unknown operation".into()),
         }
     }
@@ -85,6 +104,43 @@ pub fn apply(d: &mut Directory, op: &Op) -> Result<String, String> {
                 .collect::<Vec<_>>()
                 .join("\n")
         }),
+        Op::Invite { uses, days } => {
+            let expires = days.map(|n| crate::logins::now() + i64::from(n) * 24 * 3600);
+            let code = d.add_invite(*uses, expires, "host")?;
+            let uses = uses.map_or("any number of sign-ups".to_string(), |n| format!("{n} sign-up(s)"));
+            let until = days.map_or("with no end date".to_string(), |n| format!("for {n} day(s)"));
+            Ok(format!("invite code {code}: {uses}, {until}. Players enter it when they make their account in the launcher."))
+        }
+        Op::Invites => {
+            let now = crate::logins::now();
+            Ok(if d.invites().is_empty() { "no invite codes (make one with invite)".into() } else {
+                d.invites().iter().map(|i| {
+                    let state = if i.usable(now) { "usable" } else { "used up or expired" };
+                    let left = i.uses.map_or("unlimited".to_string(), |n| format!("{n} left"));
+                    let until = i.expires.and_then(|t| chrono::DateTime::from_timestamp(t, 0)).map_or("no end".to_string(), |t| format!("until {}", t.format("%Y-%m-%d %H:%M UTC")));
+                    format!("{}\t{state}\t{left}\t{until}\tissued by {}\tused by {} account(s)", i.code, i.issued_by, i.used_by.len())
+                }).collect::<Vec<_>>().join("\n")
+            })
+        }
+        Op::ResetCode { user } => {
+            let code = crate::logins::new_code();
+            let expires = crate::logins::now() + crate::logins::RESET_TTL;
+            d.issue_reset(user, crate::logins::digest(&crate::logins::normalize_code(&code)), expires)?;
+            Ok(format!("reset code for {user}: {code}. It works once, for 24 hours, in the launcher's \"Forgot password\"."))
+        }
+        Op::SetRole { user, role } => {
+            let parsed: crate::logins::Role = role.parse()?;
+            d.set_role(user, parsed).map(|()| format!("{user} is now {}", role.to_ascii_lowercase()))
+        }
+        Op::AddUser { user, hash } => {
+            if !crate::logins::valid_user_id(user) { return Err(format!("{user:?} is not a User ID: 3 to 16 letters, digits, _ or -")) }
+            if !hash.starts_with("$argon2id$") { return Err("the password hash is not argon2id".into()) }
+            let recovery = crate::logins::new_code();
+            let login = crate::logins::Login { user: user.clone(), password: hash.clone(), role: Default::default(), standing: Default::default(),
+                recovery: crate::logins::digest(&crate::logins::normalize_code(&recovery)), reset: None, devices: vec![] };
+            d.register(login, None, crate::logins::Registration::Open).map_err(|e| if e == "user_id_taken" { format!("the User ID {user} is taken") } else { e })?;
+            Ok(format!("recovery code: {recovery}"))
+        }
     }
 }
 
@@ -164,7 +220,11 @@ pub fn handle(path: &str, peer: IpAddr, token: Option<&str>, accounts: &Arc<Mute
     });
     Some(match applied {
         Ok(done) => {
-            tracing::info!("[admin] {done}");
+            // Codes and recovery codes are secrets: their answers stay out of the log.
+            match op {
+                Ok(Op::Invite { .. } | Op::ResetCode { .. } | Op::AddUser { .. } | Op::Invites) => tracing::info!("[admin] {} done", q.iter().find(|(k, _)| k == "op").map_or("", |(_, v)| v.as_str())),
+                _ => tracing::info!("[admin] {done}"),
+            }
             text("200 OK", done)
         }
         Err(why) => text("400 Bad Request", why),

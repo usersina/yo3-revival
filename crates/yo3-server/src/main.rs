@@ -26,8 +26,9 @@ fn print_key(a: &Args, key: &str) {
 fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
     // Listings only read; the BP commands go to a running server (admin.rs) when there is one. Everything else owns
     // the data folder while it runs, as a server does (store::lock).
-    let read_only = matches!(command, Admin::Accounts | Admin::Countries | Admin::Codes | Admin::Titles | Admin::Backups);
-    let live_op = matches!(command, Admin::GiveBp { .. } | Admin::AddCode { .. } | Admin::RemoveCode { .. }) && live::running(&a.data_dir).is_some();
+    let read_only = matches!(command, Admin::Accounts | Admin::Countries | Admin::Codes | Admin::Titles | Admin::Backups | Admin::Invites);
+    let live_op = matches!(command, Admin::GiveBp { .. } | Admin::AddCode { .. } | Admin::RemoveCode { .. } | Admin::Invite { .. }
+        | Admin::ResetCode { .. } | Admin::SetRole { .. } | Admin::AddUser { .. }) && live::running(&a.data_dir).is_some();
     let _lock = if read_only || live_op { None } else { Some(yo3_server::store::lock(&a.data_dir)?) };
     // Restoring comes before opening the database: the one being replaced may be the damaged one.
     match &command {
@@ -48,11 +49,22 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         println!("Public certificate: {}\nPrivate server key: {}", tls.certificate.display(), tls.private_key.display());
         return Ok(());
     }
+    let mut handed = None;
     let op = match &command {
         Admin::GiveBp { who, amount } => Some(Op::GiveBp { who: who.clone(), amount: *amount }),
         Admin::AddCode { code, bp, uses } => Some(Op::AddCode { code: code.clone(), bp: *bp, uses: *uses }),
         Admin::RemoveCode { code } => Some(Op::RemoveCode { code: code.clone() }),
         Admin::Codes => Some(Op::Codes),
+        Admin::Invite { uses, days } => Some(Op::Invite { uses: (*uses > 0).then_some(*uses), days: *days }),
+        Admin::Invites => Some(Op::Invites),
+        Admin::ResetCode { user } => Some(Op::ResetCode { user: user.clone() }),
+        Admin::SetRole { user, role } => Some(Op::SetRole { user: user.clone(), role: role.clone() }),
+        Admin::AddUser { user } => {
+            let password = yo3_server::logins::new_password();
+            let hash = yo3_server::logins::hash_password_now(&password)?;
+            handed = Some(format!("User ID: {user}\nPassword: {password} (they change it in the launcher)"));
+            Some(Op::AddUser { user: user.clone(), hash })
+        }
         _ => None,
     };
     let server = live::running(&a.data_dir);
@@ -61,7 +73,9 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
             Some(server) => live::send(server, &op),
             None => live::apply(&mut Directory::open(a.players.clone(), &a.data_dir.join("accounts.json"))?, &op),
         };
-        println!("{}", done.map_err(anyhow::Error::msg)?);
+        let done = done.map_err(anyhow::Error::msg)?;
+        if let Some(handed) = handed { println!("{handed}") }
+        println!("{done}");
         return Ok(());
     }
     // The rest edit the accounts file, which a running server would overwrite.
@@ -84,11 +98,13 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
             options.open(output)?.write_all(profile(a, &key).as_bytes())?;
         }
         Admin::Accounts => {
-            for (addr, key, acc) in d.entries() {
+            for (login, key, acc) in d.entries() {
                 let names: Vec<_> = acc.players.iter().map(|p| format!("{} (#{})", p.name, p.player_id)).collect();
                 let country = if acc.country.is_empty() { "auto".to_string() } else { acc.country.clone() };
-                let addr = addr.map_or("no address".to_string(), |a| a.to_string());
-                println!("{addr}\tuser {}\tkey {}\tcountry {country}\t{}", acc.user_id, key.unwrap_or("none"), names.join(", "));
+                // A key is a password: the listing says an account has one, `key WHO` prints it.
+                let found_by = match (login, key) { (Some(user), _) => format!("User ID {user}"), (None, Some(_)) => "key".into(), (None, None) => "-".into() };
+                let role = d.login_of(login.unwrap_or_default()).map(|(_, l)| format!("\t{:?}", l.role).to_lowercase()).unwrap_or_default();
+                println!("user {}\t{found_by}{role}\tcountry {country}\t{}", acc.user_id, names.join(", "));
             }
         }
         Admin::AddAccount { name, also } => {
@@ -100,22 +116,18 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
             let key = d.key_of(&who).map_err(err)?;
             print_key(a, &key);
         }
-        Admin::AddPlayer { who, name } => match who.parse::<IpAddr>() {
-            Ok(address) => d.add_player(address, &name).map_err(err)?,
-            Err(_) => {
-                let user = d.user_of(&who).ok_or_else(|| err(format!("no player named {who:?}")))?;
-                d.add_player_to(user, &name).map_err(err)?
-            }
-        },
+        Admin::AddPlayer { who, name } => {
+            let user = d.user_of(&who).ok_or_else(|| err(format!("no account with the User ID or a player named {who:?}")))?;
+            d.add_player_to(user, &name).map_err(err)?
+        }
         Admin::Rename { old, new } => d.rename(&old, &new).map_err(err)?,
-        Admin::MoveAccount { old, new, replace } => d.move_account(old, new, replace).map_err(err)?,
         Admin::SetCountry { who, code } => {
             let code = if code.eq_ignore_ascii_case("auto") { String::new() } else { code.to_ascii_uppercase() };
             let known = yo3_data::countries(&game_dir)?;
             if !code.is_empty() && !known.contains(&code) {
                 anyhow::bail!("{code} is not in the client's country table; `countries` lists them");
             }
-            let user = d.user_of(&who).ok_or_else(|| err(format!("no account at or with a player named {who:?}")))?;
+            let user = d.user_of(&who).ok_or_else(|| err(format!("no account with the User ID or a player named {who:?}")))?;
             d.set_country_of(user, &code).map_err(err)?
         }
         Admin::Countries => println!("{}", yo3_data::countries(&game_dir)?.join(" ")),
@@ -132,7 +144,8 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
             d.update_player(player_id, |p| { p.items.insert(id); }).map_err(err)?;
             println!("{player} has the title {}", titles.name(id).unwrap_or(&title));
         }
-        Admin::GiveBp { .. } | Admin::AddCode { .. } | Admin::RemoveCode { .. } | Admin::Codes | Admin::Restore { .. } | Admin::Backups => unreachable!("handled above"),
+        Admin::GiveBp { .. } | Admin::AddCode { .. } | Admin::RemoveCode { .. } | Admin::Codes | Admin::Restore { .. } | Admin::Backups
+        | Admin::Invite { .. } | Admin::Invites | Admin::ResetCode { .. } | Admin::SetRole { .. } | Admin::AddUser { .. } => unreachable!("handled above"),
     }
     Ok(())
 }
@@ -180,6 +193,7 @@ async fn main() -> anyhow::Result<()> {
         idle_timeout: yo3_server::IDLE_TIMEOUT,
         engine_problem: None,
         duel_check: a.duel_check,
+        access: yo3_server::account_ops::Access { name: a.name, registration: a.registration, min_launcher: a.min_launcher },
     };
     let mut running = match start(cfg).await { Ok(running) => running, Err(error) => { tracing::error!("Server startup failed: {error:#}"); return Err(error) } };
     if a.owned {

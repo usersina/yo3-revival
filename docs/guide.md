@@ -48,6 +48,9 @@ storage. Select the complete installation with `--game-dir` and retry; keep exis
 | `--regulation`              | Login banlist by ID/name; default `Season 16`, `unlimited` for none                                  |
 | `--duel-check`              | Compare each player's modeled client state with the rules engine after each step                     |
 | `--no-packet-log`           | Disable separate raw packet files; decoded packet traces remain in bounded session diagnostics       |
+| `--name`                    | The server's name in the launcher's server list (beta)                                               |
+| `--registration`            | How accounts are made (beta): `invite` (default, with an invite code), `open` or `closed` ([accounts](authentication.md#accounts)) |
+| `--min-launcher`            | Refuse sign-ins from launchers older than this version; they are told to update (beta)               |
 | `--owned`                   | The launcher's own server (Singleplayer, on the `beta` branch): standard input stays open while the launcher lives; once it closes, the server stops after nobody has played for `--owned-idle` seconds (default 120)|
 
 Desktop listens on `127.0.0.1` while no sharing address is saved, even when **Listen on** is all interfaces.
@@ -59,8 +62,8 @@ The game's connection ports are private loopback endpoints assigned by its launc
 
 Most commands require the server **stopped**: a server, and each command that changes data, holds its data folder
 (`server.lock`), and a second one on the same folder is refused with "in use by another YO3 Revival server or
-command". BP/code commands can reach a running server through its private local admin token; `accounts`, `codes`,
-`countries` and `titles` only read. Add `--data-dir PATH` to target a non-default setup. Keep each friend's profile/key private.
+command". BP/code and invite/reset/role commands can reach a running server through its private local admin token;
+`accounts`, `codes`, `invites`, `countries` and `titles` only read. Add `--data-dir PATH` to target a non-default setup. Keep each friend's profile/key private.
 
 ```bash
 ./yo3-server init-auth localhost 127.0.0.1 192.168.1.50
@@ -73,6 +76,10 @@ command". BP/code commands can reach a running server through its private local 
 ./yo3-server give-bp Alice 5000
 ./yo3-server grant-title Alice "GAME MASTER"
 ./yo3-server add-code ABCD1234EFGH5678 2500
+./yo3-server invite --uses 5 --days 7
+./yo3-server add-user Alice
+./yo3-server reset-code Alice
+./yo3-server set-role Alice moderator
 ```
 
 - `init-auth` creates the host's TLS identity once; include every hostname/IP friends will use. It refuses to replace
@@ -82,6 +89,12 @@ command". BP/code commands can reach a running server through its private local 
   players to that account, up to four total.
 - `profile PLAYER FILE --advertise HOST` exports a CLI profile for an existing account. The profile references
   `server.crt`; copy the host's public certificate beside it. Existing profile files are not overwritten.
+- `invite`, `invites`, `add-user`, `reset-code` and `set-role` manage password accounts (beta) and work while the
+  server runs: invite codes for sign-up, an account the host makes with a first password, a one-day reset code for a
+  player who lost their password and recovery code, and roles. [Accounts](authentication.md#making-accounts-invites-and-recovery)
+  explains each.
+- Commands that name an account (`key`, `add-player`, `set-country`, `give-bp`) take its User ID or one of its
+  players' names.
 - `add-player`, `rename` and `set-country` manage an account's players. `countries` lists accepted country codes;
   `auto` clears an override.
 - `grant-title PLAYER TITLE` gives a player a title by its name as the game shows it (`titles` lists them), such as

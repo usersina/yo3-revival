@@ -13,9 +13,33 @@ use crate::front::{FrontSession, Hub, World};
 use crate::lock::Locked;
 use crate::{log::PacketLog, net};
 
-async fn handshake(mut tls: TlsStream<TcpStream>, sessions: &Mutex<Sessions>, accounts: &Mutex<Directory>, info: &yo3_tunnel::ServerInfo)
+/// What every connection's handshake shares: sessions, accounts, the login throttle and the server's access settings.
+pub(crate) struct Gate {
+    pub sessions: Mutex<Sessions>,
+    pub accounts: Arc<Mutex<Directory>>,
+    pub throttle: Mutex<crate::logins::Throttle>,
+    pub access: crate::account_ops::Access,
+}
+
+impl Gate {
+    pub fn new(accounts: Arc<Mutex<Directory>>, access: crate::account_ops::Access) -> Self {
+        Gate { sessions: Mutex::default(), accounts, throttle: Mutex::default(), access }
+    }
+    /// Discovery's answer: the build, and for the server list its name, who is online and how accounts are made.
+    fn info(&self, ready: bool, online: Option<u32>) -> yo3_tunnel::ServerInfo {
+        let mut info = yo3_tunnel::ServerInfo::current(ready);
+        info.name = self.access.name.clone();
+        info.online = online;
+        info.registration = self.access.registration.as_str().into();
+        info.min_launcher = self.access.min_launcher.clone();
+        info
+    }
+}
+
+async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &yo3_tunnel::ServerInfo, peer: std::net::IpAddr)
     -> anyhow::Result<Option<(TlsStream<TcpStream>, Identity, Instant, Role, u16)>>
 {
+    let (sessions, accounts) = (&gate.sessions, &*gate.accounts);
     let mut magic = [0; 8]; tls.read_exact(&mut magic).await.context("read transport opener")?;
     anyhow::ensure!(&magic == MAGIC, "unsupported transport version");
     let operation=tls.read_u8().await.context("read transport operation")?;
@@ -60,6 +84,22 @@ async fn handshake(mut tls: TlsStream<TcpStream>, sessions: &Mutex<Sessions>, ac
                 tls.write_u16(body.len() as u16).await?;
                 tls.write_all(&body).await?;
             }
+            6 => {
+                // Account requests (account_ops): a length and a JSON object each way. Never logged as they come.
+                let length = tls.read_u16().await? as usize;
+                anyhow::ensure!(length <= yo3_tunnel::MAX_ACCOUNT_REQUEST, "account request too large");
+                let mut body = vec![0; length]; tls.read_exact(&mut body).await?;
+                let reply = match serde_json::from_slice::<serde_json::Value>(&body) {
+                    Ok(request) if request.is_object() => {
+                        let ctx = crate::account_ops::Context { accounts, sessions, throttle: &gate.throttle, access: &gate.access, peer };
+                        crate::account_ops::handle(&request, &ctx).await
+                    }
+                    _ => serde_json::json!({ "ok": false, "error": "bad_request" }),
+                };
+                let body = serde_json::to_vec(&reply)?;
+                tls.write_u16(body.len() as u16).await?;
+                tls.write_all(&body).await?;
+            }
             _ => anyhow::bail!("unsupported transport operation"),
         }
         tls.shutdown().await.context("send response close_notify")?;
@@ -79,9 +119,10 @@ async fn handshake(mut tls: TlsStream<TcpStream>, sessions: &Mutex<Sessions>, ac
 
 #[expect(clippy::too_many_arguments, reason = "Each authenticated stream shares the server state, framing limits and HTTP endpoint.")]
 pub(crate) async fn accept_loop(listener: TcpListener, acceptor: TlsAcceptor, world: Arc<World>, hub: Arc<Mutex<Hub>>,
-    accounts: Arc<Mutex<Directory>>, log: Arc<PacketLog>, quiet: net::Idle, heartbeats: net::Idle, http: SocketAddr)
+    accounts: Arc<Mutex<Directory>>, log: Arc<PacketLog>, quiet: net::Idle, heartbeats: net::Idle, http: SocketAddr,
+    access: crate::account_ops::Access)
 {
-    let sessions = Arc::new(Mutex::new(Sessions::default()));
+    let gate = Arc::new(Gate::new(accounts.clone(), access));
     let slots = Arc::new(Semaphore::new(256));
     loop {
         let (tcp, peer) = match listener.accept().await {
@@ -89,14 +130,15 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: TlsAcceptor, wo
             Err(e) => { tracing::warn!("TLS accept: {e}"); tokio::time::sleep(std::time::Duration::from_millis(100)).await; continue }
         };
         let Ok(permit) = slots.clone().try_acquire_owned() else { continue };
-        let (acceptor, world, hub, accounts, log, sessions) = (acceptor.clone(), world.clone(), hub.clone(), accounts.clone(), log.clone(), sessions.clone());
+        let (acceptor, world, hub, accounts, log, gate) = (acceptor.clone(), world.clone(), hub.clone(), accounts.clone(), log.clone(), gate.clone());
         tokio::spawn(async move {
             let _permit = permit;
             let mut stage = "TLS handshake";
             let hello = tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
                 let tls = acceptor.accept(tcp).await.context("TLS handshake")?;
                 stage = "transport handshake";
-                handshake(tls, &sessions, &accounts, &yo3_tunnel::ServerInfo::current(world.engine_problem.is_none())).await
+                let online = u32::try_from(hub.locked().online()).ok();
+                handshake(tls, &gate, &gate.info(world.engine_problem.is_none(), online), peer.ip()).await
             }).await;
             let (mut tls, identity, expires, role, port)=match hello {
                 Ok(Ok(Some(connection)))=>connection,
@@ -104,7 +146,7 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: TlsAcceptor, wo
                 Ok(Err(error))=>{tracing::warn!("[tls] {peer} handshake failed: {error:#}");return},
                 Err(_)=>{tracing::warn!("[tls] {peer} handshake timed out during {stage}");return},
             };
-            let Some(mut lease) = sessions.locked().lease(identity) else { return };
+            let Some(mut lease) = gate.sessions.locked().lease(identity) else { return };
             tracing::info!("[tls] {peer} user {} launcher {} {role:?}", identity.user_id, identity.session_id);
             let work = async move {
                 match role {
@@ -168,7 +210,8 @@ mod close_tests {
         let listener=TcpListener::bind(("127.0.0.1",0)).await.unwrap();let address=listener.local_addr().unwrap();
         let mut peer=tokio::spawn(async move {
             let (tcp,_)=listener.accept().await.unwrap();let tls=acceptor.accept(tcp).await.unwrap();
-            handshake(tls,&Mutex::new(Sessions::default()),&Mutex::new(Directory::new(vec![])),&yo3_tunnel::ServerInfo::current(true)).await.unwrap();
+            let gate=Gate::new(Arc::new(Mutex::new(Directory::new(vec![]))),Default::default());
+            handshake(tls,&gate,&yo3_tunnel::ServerInfo::current(true),std::net::Ipv4Addr::LOCALHOST.into()).await.unwrap();
         });
         let tcp=TcpStream::connect(address).await.unwrap();
         let mut tls=TlsConnector::from(Arc::new(client)).connect("localhost".try_into().unwrap(),tcp).await.unwrap();

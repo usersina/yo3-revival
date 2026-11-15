@@ -1,6 +1,8 @@
 //! Yu-Gi-Oh! ONLINE 3 private server: authenticated TLS front/duel transport and internal asset/admin HTTP.
 pub mod cli;
 pub mod accounts;
+pub mod logins;
+pub mod account_ops;
 pub mod auth;
 mod transport;
 pub mod admin;
@@ -99,6 +101,8 @@ pub struct Config {
     /// Testing aid: check every duel's client view against the rules engine after each step and log an ERROR where they
     /// differ (`duelcheck.rs`; the protocol monkey's duels run with it).
     pub duel_check: bool,
+    /// The server's name, how accounts are made and the oldest launcher it accepts (#23; `account_ops`).
+    pub access: account_ops::Access,
 }
 
 impl Config {
@@ -125,6 +129,7 @@ impl Config {
             idle_timeout: net::IDLE_TIMEOUT,
             engine_problem: None,
             duel_check: false,
+            access: account_ops::Access { name: "Test server".into(), registration: logins::Registration::Open, min_launcher: None },
         }
     }
 }
@@ -393,7 +398,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     hub.set_titles(world.titles.clone());
     let hub = Arc::new(Mutex::new(hub));
     let auth_task = tokio::spawn(transport::accept_loop(authenticated, tls, world.clone(), hub.clone(), directory.clone(),
-        packets.clone(), quiet, heartbeats, http_addr));
+        packets.clone(), quiet, heartbeats, http_addr, cfg.access.clone()));
     // Duel clocks between players run out on the server's side: checked once a second.
     let clock_task = {
         let hub = hub.clone();

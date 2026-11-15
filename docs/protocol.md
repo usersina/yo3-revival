@@ -61,7 +61,8 @@ Old transports are refused.
 | 2 ticket  | session token, role byte                             | status byte, then ticket on success                      | role 1 front, 2 duel, 3 assets; ticket lasts 30 seconds                                                    |
 | 3 connect | ticket, role, u16 launcher-local duel port           | status byte, then stock game frames (or HTTP for role 3) | consume ticket once, including failed wrong-role attempts; a front needs a nonzero local duel port         |
 | 4 logout  | session token                                        | status byte                                              | invalidate session, queued tickets and live connections; retry is harmless                                 |
-| 5 info    | none                                                 | u16 byte length, UTF-8 JSON (1–4096 bytes)               | credential-free build, commit, protocol, DLL interface, game version, readiness and generic engine problem |
+| 5 info    | none                                                 | u16 byte length, UTF-8 JSON (1–4096 bytes)               | credential-free build, commit, protocol, DLL interface, game version, readiness and generic engine problem; for the server list (#23) its name, players online, registration mode and minimum launcher |
+| 6 account | u16 byte length, a UTF-8 JSON object (at most 4096)  | u16 byte length, a UTF-8 JSON object                     | password accounts (#23): register, login, resume, sign_out, change_password, recover; see [authentication.md](authentication.md#account-requests). `tests/account_contract.rs` |
 
 `tests/metadata_contract.rs` verifies discovery without an account, compatibility independent of patch-release labels,
 wrong host names/keys, certificate renewal preserving the identity, expired certificates and bounded metadata.
@@ -2028,13 +2029,14 @@ The client never serializes a user id or password: its login credentials stay on
 (`+0x118`/`+0x134`, on `0x219F`), `0x1F47` is bare and `0x1F48` has only `lang`. Delete Player's password prompt
 sends no password either (`0x1F4B {player_id}`, live packet). The authenticated TLS transport therefore chooses the
 account before the original login protocol runs. `Directory::authenticate` checks the account key directly and
-never falls back to the source address. Separate launcher sessions have distinct front/duel identities.
+never falls back to the source address; a password account signs in through TLS operation 6 instead. The newest
+login of an account ends its older session (#23).
 
 Select Player still chooses one of up to four account players (`0x1F4C`), and creates/deletes them (`0x1F4A`/`0x1F4B`,
 slot `pindex` 0–3). `CharMake.cpp` (`0x2CF5`/`0x2CF6`, the map's GoCharMake) remains the appearance editor. Account
 and player records keep their existing document schema and ids, stored in SQLite's `accounts` document.
 `profile EXISTING_PLAYER FILE --advertise HOST` exports
-a private launcher profile, adding a key to an old address-only account without moving its cards or other data.
+a key account's private launcher profile. Accounts found only by an address are no longer loaded (#23).
 
 The old patch-URL/IP association and HTTP self-service join page have been retired. `/join` and INI downloads now
 return 404; fetching `yo3.idx` cannot select or create an account. The internal asset service serves the client's
@@ -2042,12 +2044,10 @@ index, `/duellogs/NAME.dlog` and `/app/`; the launcher carries these requests ov
 WinINet calls to its local authenticated asset proxy, including duel-log URLs (`0x498700`). No account key is put
 into a remote URL. See [authentication.md](authentication.md) for setup and credential lifetimes.
 
-Persistence uses `data/server.db`, schema version 1. The `state_documents` table stores each domain's existing
-serialized document: accounts, records, friends, mail, teams, events and rentals. References elsewhere in this
-catalog to `accounts.json`, `friends.json`, etc. name their original formats, now imported once into SQLite.
-The importer commits all documents together, preserves source JSON and validates accounts before recording success.
-`storage.version` prevents an accidentally deleted database from causing a stale reimport. This changes storage,
-not Konami request/reply fields; tests live in `store.rs` and `tests/accounts.rs`.
+Persistence uses `data/server.db`, schema version 2 (#22): one row per account, record, mail and so on, in WAL mode,
+with backups at start, hourly and at stop. References elsewhere in this catalog to `accounts.json`, `friends.json`,
+etc. name the domains' original formats. This changes storage, not Konami request/reply fields; tests live in
+`store.rs` and `tests/accounts.rs`.
 
 The desktop's **own** local protocol is `POST /manager` with a private admin bearer token and JSON `op`:
 `status`, `accounts`, `create_account {name}`, `add_player {who,name}`, `export_account {who}`, or `shutdown`.
