@@ -7,7 +7,8 @@ use anyhow::{Context, ensure};
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
-use yo3_server::admin::{self, ManagerOp};
+use yo3_server::admin;
+use yo3_server::api::{self, Op};
 pub mod network;
 pub mod privileged;
 pub mod direct;
@@ -284,22 +285,22 @@ impl Backend {
     pub fn live(&self, settings: &Settings) -> Option<admin::Live> { admin::running(&self.data_dir(settings)) }
     pub fn status(&self, settings: &Settings) -> anyhow::Result<Value> {
         let live = self.live(settings).context("Server stopped")?;
-        let status = admin::manage(&live, &ManagerOp::Status).map_err(anyhow::Error::msg)?;
+        let status = api::call(&live, &Op::Status).map_err(anyhow::Error::msg)?;
         if let Some(id) = status["diagnostic_id"].as_str().filter(|id| yo3_tunnel::diagnostics::valid_id(id)) { *self.server_session.lock().unwrap() = Some(id.into()); }
         Ok(status)
     }
     pub fn accounts(&self, settings: &Settings) -> anyhow::Result<Value> {
         let live = self.live(settings).context("Start your server to manage accounts.")?;
-        admin::manage(&live, &ManagerOp::Accounts).map_err(anyhow::Error::msg)
+        api::call(&live, &Op::Accounts).map_err(anyhow::Error::msg)
     }
-    pub fn manage(&self, settings: &Settings, op: ManagerOp) -> anyhow::Result<Value> {
+    pub fn manage(&self, settings: &Settings, op: Op) -> anyhow::Result<Value> {
         let live = self.live(settings).context("Start your server first.")?;
-        admin::manage(&live, &op).map_err(anyhow::Error::msg)
+        api::call(&live, &op).map_err(anyhow::Error::msg)
     }
     pub fn start_server(&self, settings: &Settings) -> anyhow::Result<Value> {
         let mut owned = self.server.lock().unwrap();
         self.check_server_resources()?;
-        if let Some(live) = self.live(settings) { return admin::manage(&live, &ManagerOp::Status).map_err(anyhow::Error::msg) }
+        if let Some(live) = self.live(settings) { return api::call(&live, &Op::Status).map_err(anyhow::Error::msg) }
         ensure!(owned.as_mut().is_none_or(|p| p.try_wait().ok().flatten().is_some()), "Server is still starting.");
         // No live file for this data folder, yet something answers on the port: another server (a Scripts `run.cmd` or
         // another Revival with its own data) or another program. Starting would only fail to bind, with a vaguer error.
@@ -371,7 +372,7 @@ impl Backend {
         let mut owned = self.server.lock().unwrap();
         let live=self.live(settings).context("Start your server first.")?;
         // Keep the captured endpoint: another app can replace the profile's live file during shutdown.
-        let reply=admin::manage(&live,&ManagerOp::Shutdown).map_err(anyhow::Error::msg)?;
+        let reply=api::call(&live,&Op::Shutdown).map_err(anyhow::Error::msg)?;
         // The management response acknowledges the request before ports and data files are released.
         // Serialize Start with the owned child's graceful exit and original endpoint closure. An old child
         // handle may already have exited while this app attached to a replacement server, so check both.
@@ -403,7 +404,7 @@ impl Backend {
         self.account_connection(settings, who)
     }
     fn account_connection(&self, settings: &Settings, who: &str) -> anyhow::Result<SavedServer> {
-        let key = self.manage(settings, ManagerOp::ExportAccount { who: who.into() })?["key"].as_str().context("Missing account key")?.to_string();
+        let key = self.manage(settings, Op::Key { who: who.into() })?["key"].as_str().context("Missing account key")?.to_string();
         let (address, server_name) = network::advertised(settings)?;
         Ok(SavedServer { id: 0, label: format!("{}'s server", who), address, server_name,
             certificate: std::fs::read_to_string(settings.server_options.get("auth-cert").map(PathBuf::from)
@@ -748,7 +749,7 @@ mod tests {
             while !request.ends_with(b"\r\n\r\n") { stream.read_exact(&mut byte).unwrap(); request.push(byte[0]); }
             let mut body=vec![0;b"{\"op\":\"shutdown\"}".len()]; stream.read_exact(&mut body).unwrap();
             assert_eq!(body,b"{\"op\":\"shutdown\"}");
-            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 17\r\nConnection: close\r\n\r\n{\"stopping\":true}").unwrap();
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 38\r\nConnection: close\r\n\r\n{\"ok\":true,\"result\":{\"stopping\":true}}").unwrap();
             drop(stream); finish.write_all(b"done\n").unwrap();
         });
         let reply=backend.stop_server(&settings).unwrap();
@@ -778,7 +779,7 @@ mod tests {
             let mut request=Vec::new();let mut byte=[0];
             while !request.ends_with(b"\r\n\r\n") {stream.read_exact(&mut byte).unwrap();request.push(byte[0]);}
             let mut body=vec![0;b"{\"op\":\"shutdown\"}".len()];stream.read_exact(&mut body).unwrap();assert_eq!(body,b"{\"op\":\"shutdown\"}");
-            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 17\r\nConnection: close\r\n\r\n{\"stopping\":true}").unwrap();
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 38\r\nConnection: close\r\n\r\n{\"ok\":true,\"result\":{\"stopping\":true}}").unwrap();
             drop(stream);std::thread::sleep(std::time::Duration::from_millis(150));drop(listener);finished.send(()).unwrap();
         });
         let reply=backend.stop_server(&settings).unwrap();let waited=closed.try_recv().is_ok();

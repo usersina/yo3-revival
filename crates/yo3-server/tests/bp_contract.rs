@@ -12,7 +12,8 @@ use std::sync::{Arc, Mutex};
 use common::{Client, Server, one, req, req_with};
 use yo3_proto::Value;
 use yo3_server::accounts::{Directory, START_BP};
-use yo3_server::admin::{self, Op};
+use yo3_server::admin;
+use yo3_server::api::{self, Op};
 use yo3_server::{Config, start};
 
 const ADDR: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 7));
@@ -147,10 +148,10 @@ async fn the_running_server_takes_admin_commands_from_its_own_pc_with_its_token(
     }
     let (live2, dir2) = (live.clone(), dir.clone());
     let out = tokio::task::spawn_blocking(move || {
-        let made = admin::send(&live2, &Op::AddCode { code: CODE.into(), bp: 700, uses: None });
-        let listed = admin::send(&live2, &Op::Codes);
+        let made = api::call(&live2, &Op::AddCode { code: CODE.into(), bp: 700, uses: None });
+        let listed = api::call(&live2, &Op::Codes).map(|l| l.to_string());
         // A wrong token is refused.
-        let forged = admin::send(&admin::Live { token: "x".repeat(20), ..live2.clone() }, &Op::Codes);
+        let forged = api::call(&admin::Live { token: "x".repeat(20), ..live2.clone() }, &Op::Codes);
         let _ = dir2;
         (made, listed, forged)
     })
@@ -167,13 +168,13 @@ async fn the_running_server_takes_admin_commands_from_its_own_pc_with_its_token(
 }
 
 #[tokio::test]
-async fn the_commands_reach_a_running_server_and_the_file_editing_ones_wait_for_it_to_stop() {
+async fn every_command_reaches_a_running_server() {
     let dir = std::env::temp_dir().join(format!("yo3-bp-cli-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let _running = start(Config { data_dir: Some(dir.clone()), players: vec!["Yugi".into()], ..Config::ephemeral(dir.join("logs")) })
         .await
         .unwrap();
-    // An account for the running server to hold (as a friend connecting would make).
+    // The running server holds the accounts; every command goes to it (#25), the ones that rename players too.
     let data = dir.clone();
     let cli = move |args: &[&str]| {
         let out = std::process::Command::new(env!("CARGO_BIN_EXE_yo3-server")).args(args).arg("--data-dir").arg(&data).output().unwrap();
@@ -182,14 +183,22 @@ async fn the_commands_reach_a_running_server_and_the_file_editing_ones_wait_for_
     let (ok, out) = tokio::task::spawn_blocking(move || {
         let made = cli(&["add-code", CODE, "250", "--uses", "3"]);
         let listed = cli(&["codes"]);
+        assert!(cli(&["add-account", "Yugi"]).0);
         let renamed = cli(&["rename", "Yugi", "Atem"]);
-        (vec![made.0, listed.0, !renamed.0], vec![made.1, listed.1, renamed.1])
+        let accounts = cli(&["accounts"]);
+        let audit = cli(&["audit"]);
+        (vec![made.0, listed.0, renamed.0, accounts.0, audit.0], vec![made.1, listed.1, renamed.1, accounts.1, audit.1])
     })
     .await
     .unwrap();
-    assert_eq!(ok, [true, true, true], "{out:#?}");
+    assert_eq!(ok, [true; 5], "{out:#?}");
     assert!(out[1].contains(CODE) && out[1].contains("3 of 3 left"), "{}", out[1]);
-    assert!(out[2].contains("stop it first"), "{}", out[2]);
+    assert!(out[2].contains("Yugi is now Atem"), "{}", out[2]);
+    assert!(out[3].contains("Atem (#"), "{}", out[3]);
+    // The newest change first, each from the running server.
+    let rows: Vec<&str> = out[4].lines().collect();
+    assert!(rows[0].contains("host (server)\trename\tYugi\t\"Yugi\" -> \"Atem\""), "{}", out[4]);
+    assert!(rows[1].contains("create-account") && rows[2].contains("add-code"), "{}", out[4]);
     let _ = std::fs::remove_dir_all(&dir);
 }
 

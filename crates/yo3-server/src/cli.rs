@@ -7,9 +7,8 @@ use clap::{Parser, Subcommand, CommandFactory};
 #[derive(Parser)]
 #[command(version = yo3_tunnel::BUILD_VERSION)]
 pub struct Args {
-    /// An admin command on the data directory instead of running the server. The BP ones (give-bp, add-code,
-    /// remove-code, codes) and the account ones (invite, invites, reset-code, set-role, add-user) reach a running server;
-    /// the others need it stopped.
+    /// An admin command instead of running the server: through the running server's admin API when one runs on the
+    /// data directory, else on the directory itself. Every change is in the audit log (`audit`).
     #[command(subcommand)]
     pub admin: Option<Admin>,
     /// The server's TOML file of restart-only settings (listeners, TLS files, folders, the engine); default
@@ -155,6 +154,13 @@ pub enum Admin {
     Set { name: String, value: String },
     /// Put a live setting back to its default. Works while the server runs.
     Reset { name: String },
+    /// The newest administrative changes: when, who, from where, what, on what, before and after.
+    Audit {
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+    },
+    /// Stop the running server gracefully: logins close, duels end, everything is saved and backed up.
+    Stop,
 }
 
 /// Run flags (administrative subcommands are separate actions, not persistent server settings).

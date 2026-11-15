@@ -5,10 +5,10 @@ pub mod logins;
 pub mod account_ops;
 pub mod settings;
 pub mod config;
+pub mod api;
 pub mod auth;
 mod transport;
 pub mod admin;
-mod manager;
 pub mod store;
 pub(crate) mod lock;
 pub mod duel;
@@ -103,6 +103,9 @@ pub struct Config {
     pub duel_check: bool,
     /// Testing aid: live settings (#24) set at start, by name and value, as `yo3-server set` would.
     pub settings: Vec<(String, String)>,
+    /// How often a running server checks its TLS certificate (`IDENTITY_CHECK`; shorter only to test): it renews its
+    /// own identity near expiry and serves a certificate that changed on disk, without a restart (#25).
+    pub identity_check: std::time::Duration,
 }
 
 impl Config {
@@ -129,7 +132,27 @@ impl Config {
             engine_problem: None,
             duel_check: false,
             settings: vec![("server-name".into(), "Test server".into()), ("registration".into(), "open".into())],
+            identity_check: IDENTITY_CHECK,
         }
+    }
+}
+
+/// How often a running server checks its certificate: renewing happens within 30 days of expiry, so a few checks a day
+/// are plenty.
+pub const IDENTITY_CHECK: std::time::Duration = std::time::Duration::from_secs(6 * 3600);
+
+/// Renews the server's own identity near expiry (the same key and names: pinned launchers keep working) and, when the
+/// certificate file changed (renewed here, or replaced by the host), a TLS acceptor for it. An identity it doesn't
+/// manage (`--auth-cert` and `--auth-key` naming other files) is only reloaded, never renewed.
+fn check_identity(tls: &auth::TlsConfig, served: &mut Vec<u8>) -> Option<yo3_tunnel::tokio_rustls::TlsAcceptor> {
+    let dir = tls.certificate.parent()?;
+    let own = tls.certificate.file_name()? == "server.crt" && tls.private_key == dir.join("server.key");
+    if own { auth::renew_on_start(dir); }
+    let now = std::fs::read(&tls.certificate).ok()?;
+    if now == *served { return None }
+    match yo3_tunnel::acceptor(&tls.certificate, &tls.private_key) {
+        Ok(acceptor) => { *served = now; tracing::info!("serving the new certificate (launchers keep connecting: same key)"); Some(acceptor) }
+        Err(e) => { tracing::error!("the changed certificate can't be used, the old one is still served: {e:#}"); None }
     }
 }
 
@@ -167,14 +190,29 @@ impl Running {
         }));
     }
 
+    /// Stops the server as `yo3-server stop` does (a signal handler's way in).
+    pub fn stopper(&self) -> tokio::sync::watch::Sender<bool> { self.shutdown.clone() }
+
+    /// Runs until asked to stop, then stops gracefully (#25): no new logins or connections, the duels between players
+    /// end as draws (each recorded, both clients told), and a last backup. Every change is saved as it happens, so
+    /// there is nothing else to write. (The game's maintenance countdown before a stop comes with #26.)
     pub async fn wait(mut self) {
         let mut stop = self.shutdown.subscribe();
         while !*stop.borrow_and_update() {
             if stop.changed().await.is_err() { break }
         }
-        // Let the management response reach its caller before the CLI shuts its runtime down.
+        tracing::info!("stopping: no new logins");
+        // Let the stop request's answer reach its caller before the listeners go.
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         for task in self.tasks.drain(..) { task.abort(); }
+        // The table locks the hub to record its result: collected first, ended outside the hub's lock.
+        let tables: Vec<_> = self.hub.locked().tables.values().cloned().collect();
+        if !tables.is_empty() { tracing::info!("stopping: ending {} duel(s) as draws", tables.len()) }
+        for table in tables {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| table.locked().abort()));
+        }
+        // The clients' last messages (the duels' end) leave before the process does.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         if let Some(dir) = self.data_dir.take() {
             match tokio::task::spawn_blocking(move || store::back_up(&dir)).await {
                 Ok(Ok(())) => tracing::info!("backed up at shutdown"),
@@ -325,7 +363,8 @@ const EVENT_ROUND_DELAY: std::time::Duration = std::time::Duration::from_secs(20
 
 pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let packets = Arc::new(if cfg.packet_logging { log::PacketLog::create(&cfg.log_dir)? } else { log::PacketLog::disabled()? });
-    let tls = yo3_tunnel::acceptor(&cfg.tls.certificate, &cfg.tls.private_key)?;
+    let mut served = std::fs::read(&cfg.tls.certificate)?;
+    let tls = Arc::new(std::sync::RwLock::new(yo3_tunnel::acceptor(&cfg.tls.certificate, &cfg.tls.private_key)?));
     let authenticated = TcpListener::bind((cfg.bind, cfg.tls.port)).await?;
     let http = TcpListener::bind((Ipv4Addr::LOCALHOST, cfg.http_port)).await?;
     let (auth_addr, http_addr) = (authenticated.local_addr()?, http.local_addr()?);
@@ -391,6 +430,21 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     hub.set_directory(directory.clone());
     hub.set_titles(world.titles.clone());
     let hub = Arc::new(Mutex::new(hub));
+    // The certificate is checked while running too, not only at start (#25).
+    let identity_task = {
+        let (tls, config, every) = (tls.clone(), cfg.tls.clone(), cfg.identity_check);
+        tokio::spawn(async move {
+            let mut ticks = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
+            loop {
+                ticks.tick().await;
+                let (config, mut known) = (config.clone(), std::mem::take(&mut served));
+                let checked = tokio::task::spawn_blocking(move || { let next = check_identity(&config, &mut known); (next, known) }).await;
+                let Ok((next, known)) = checked else { continue };
+                served = known;
+                if let Some(next) = next { *tls.write().unwrap_or_else(|e| e.into_inner()) = next; }
+            }
+        })
+    };
     let auth_task = tokio::spawn(transport::accept_loop(authenticated, tls, world.clone(), hub.clone(), directory.clone(),
         packets.clone(), quiet, heartbeats, http_addr));
     // Duel clocks between players run out on the server's side: checked once a second.
@@ -422,10 +476,14 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     });
     let (shutdown, _) = tokio::sync::watch::channel(false);
     let running_hub = hub.clone();
-    let manager = manager::Manager { accounts: directory.clone(), hub, shutdown: shutdown.clone(), engine_problem: world.engine_problem.clone(), listen: auth_addr, diagnostic_id: cfg.diagnostic_id, settings: world.settings.clone() };
-    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.clone(), directory, admin_token, manager));
+    let mut api = api::Api::new(directory.clone(), world.settings.clone(), cfg.data_dir.clone(), cfg.game_dir.clone(), "server");
+    api.hub = Some(hub);
+    api.shutdown = Some(shutdown.clone());
+    api.status = api::Status { engine_problem: world.engine_problem.clone(), listen: Some(auth_addr), diagnostic_id: cfg.diagnostic_id };
+    api.titles = Some(world.titles.clone());
+    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.clone(), admin_token, Arc::new(api)));
     tracing::info!("authenticated TLS {} local management/assets HTTP {}; packets -> {}", auth_addr, http_addr, packets.path().display());
-    let mut tasks = vec![auth_task, http_task, clock_task];
+    let mut tasks = vec![auth_task, http_task, clock_task, identity_task];
     tasks.extend(backup_task);
     Ok(Running { auth: auth_addr, http: http_addr, tasks, shutdown, hub: running_hub, data_dir: cfg.data_dir.clone() })
 }

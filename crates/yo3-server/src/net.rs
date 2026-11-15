@@ -1,6 +1,6 @@
 //! Connection loops: framing, decryption, logging, and the patch-HTTP endpoint.
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -8,7 +8,6 @@ use tokio::net::TcpListener;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use yo3_proto::{MAX_FRAME, Message, Packet, decrypt, frame, frame_len};
 
-use crate::accounts::Directory;
 use crate::front::Outbox;
 use crate::log::PacketLog;
 
@@ -160,9 +159,8 @@ pub async fn http_loop(
     listener: TcpListener,
     game_dir: PathBuf,
     data_dir: Option<PathBuf>,
-    accounts: Arc<Mutex<Directory>>,
     admin_token: Option<String>,
-    manager: crate::manager::Manager,
+    api: Arc<crate::api::Api>,
 ) {
     let mut backoff = Duration::from_millis(50);
     loop {
@@ -178,8 +176,8 @@ pub async fn http_loop(
                 continue;
             }
         };
-        let (game_dir, data_dir, accounts, admin_token) = (game_dir.clone(), data_dir.clone(), accounts.clone(), admin_token.clone());
-        let manager = manager.clone();
+        let (game_dir, data_dir, admin_token) = (game_dir.clone(), data_dir.clone(), admin_token.clone());
+        let api = api.clone();
         tokio::spawn(async move {
             let mut buf = Vec::new();
             let mut chunk = [0u8; 1024];
@@ -205,13 +203,9 @@ pub async fn http_loop(
             }
             let request = String::from_utf8_lossy(&buf);
             let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
-            let response = if path == "/manager" {
-                Some(manager.handle(&request, peer.ip(), admin_token.as_deref()))
-            } else { crate::admin::handle(&path, peer.ip(), admin_token.as_deref(), &accounts, &manager.hub, &manager.settings) };
+            // The admin API (#25); the old /admin and /manager routes are gone.
+            let response = crate::api::handle(&request, peer.ip(), admin_token.as_deref(), &api);
             if let Some(response) = response {
-                if path != "/manager" {
-                    tracing::info!("[http] GET {} -> {} ({} B)", path.split('?').next().unwrap_or_default(), response.status, response.body.len());
-                }
                 let mut head = format!("HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n", response.status, response.content_type, response.body.len());
                 for (name, value) in &response.headers {
                     head += &format!("{name}: {value}\r\n");

@@ -123,7 +123,7 @@ async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &yo3_tunnel
 }
 
 #[expect(clippy::too_many_arguments, reason = "Each authenticated stream shares the server state, framing limits and HTTP endpoint.")]
-pub(crate) async fn accept_loop(listener: TcpListener, acceptor: TlsAcceptor, world: Arc<World>, hub: Arc<Mutex<Hub>>,
+pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::RwLock<TlsAcceptor>>, world: Arc<World>, hub: Arc<Mutex<Hub>>,
     accounts: Arc<Mutex<Directory>>, log: Arc<PacketLog>, quiet: net::Idle, heartbeats: net::Idle, http: SocketAddr)
 {
     let gate = Arc::new(Gate::new(accounts.clone(), world.settings.clone()));
@@ -134,7 +134,9 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: TlsAcceptor, wo
             Err(e) => { tracing::warn!("TLS accept: {e}"); tokio::time::sleep(std::time::Duration::from_millis(100)).await; continue }
         };
         let Ok(permit) = slots.clone().try_acquire_owned() else { continue };
-        let (acceptor, world, hub, accounts, log, gate) = (acceptor.clone(), world.clone(), hub.clone(), accounts.clone(), log.clone(), gate.clone());
+        // The current certificate: a renewal while running swaps it for the connections after (`lib.rs`).
+        let acceptor = acceptor.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let (world, hub, accounts, log, gate) = (world.clone(), hub.clone(), accounts.clone(), log.clone(), gate.clone());
         tokio::spawn(async move {
             let _permit = permit;
             let mut stage = "TLS handshake";
@@ -230,7 +232,7 @@ mod close_tests {
 }
 
 /// The local server's HTTP paths an authenticated launcher may reach: the game's patch and data downloads, duel logs, and
-/// the pages behind its old website links (`/web/`, crate::web); never the admin or manager routes.
+/// the pages behind its old website links (`/web/`, crate::web); never the admin API (`/api/admin/v1/`, api.rs).
 fn public_http(path: &str) -> bool {
     ["/yo3/", "/app/", "/duellogs/", "/ygoda/patch/", "/web/"].iter().any(|p| path.starts_with(p))
 }
@@ -242,7 +244,7 @@ mod public_http_tests {
         for ok in ["/yo3/yo3.idx", "/app/", "/duellogs/a.dlog", "/ygoda/patch/x", "/web/v3/bpass/index/"] {
             assert!(super::public_http(ok), "{ok}");
         }
-        for no in ["/admin", "/manager", "/web", "/", "/session/x/web/"] {
+        for no in ["/admin", "/manager", "/api/admin/v1/status", "/web", "/", "/session/x/web/"] {
             assert!(!super::public_http(no), "{no}");
         }
     }

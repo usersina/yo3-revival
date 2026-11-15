@@ -4,7 +4,8 @@
 use std::path::PathBuf;
 
 use serde_json::json;
-use yo3_server::admin::{self, Op};
+use yo3_server::admin;
+use yo3_server::api::{self, Op};
 use yo3_server::{Config, Running, start};
 use yo3_tunnel::Endpoint;
 
@@ -25,7 +26,7 @@ impl Server {
     /// What the host's command prints, sent to the running server as the CLI does.
     async fn admin(&self, op: Op) -> Result<String, String> {
         let live = admin::running(&self.data).expect("the server's admin port");
-        tokio::task::spawn_blocking(move || admin::send(&live, &op)).await.unwrap()
+        tokio::task::spawn_blocking(move || api::call(&live, &op).map(|r| r["message"].as_str().unwrap_or_default().to_string())).await.unwrap()
     }
     async fn set(&self, name: &str, value: &str) -> String {
         self.admin(Op::Set { name: name.into(), value: value.into() }).await.unwrap()

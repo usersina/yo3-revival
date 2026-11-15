@@ -134,7 +134,47 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
         _ => return Err(io::Error::other("server.db has an unsupported application or schema version; keep it and use the matching server")),
     }
     tx.execute_batch(DUEL_LOGS_TABLE).map_err(sql)?;
+    tx.execute_batch(AUDIT_TABLE).map_err(sql)?;
     tx.commit().map_err(sql)
+}
+
+/// Every administrative change (#25, `api.rs`): who made it, from where, what and on what, the values before and after.
+const AUDIT_TABLE: &str = "CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, at TEXT NOT NULL, actor TEXT NOT NULL,
+    origin TEXT NOT NULL, op TEXT NOT NULL, target TEXT NOT NULL, before TEXT, after TEXT, detail TEXT);";
+
+/// One administrative change, as the audit log keeps it.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AuditRow {
+    pub at: String,
+    pub actor: String,
+    pub origin: String,
+    pub op: String,
+    pub target: String,
+    pub before: Option<Json>,
+    pub after: Option<Json>,
+    /// The request's other values (secrets left out).
+    pub detail: Option<Json>,
+}
+
+/// Adds `row` to `dir`'s audit log.
+pub fn audit(dir: &Path, row: &AuditRow) -> io::Result<()> {
+    let conn = connection(dir)?;
+    let conn = conn.lock().unwrap();
+    let text = |v: &Option<Json>| v.as_ref().map(Json::to_string);
+    conn.execute("INSERT INTO audit (at, actor, origin, op, target, before, after, detail) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![row.at, row.actor, row.origin, row.op, row.target, text(&row.before), text(&row.after), text(&row.detail)]).map_err(sql)?;
+    Ok(())
+}
+
+/// The newest `limit` rows of `dir`'s audit log, newest first.
+pub fn audit_rows(dir: &Path, limit: u32) -> io::Result<Vec<AuditRow>> {
+    let conn = connection(dir)?;
+    let conn = conn.lock().unwrap();
+    let mut query = conn.prepare("SELECT at, actor, origin, op, target, before, after, detail FROM audit ORDER BY id DESC LIMIT ?1").map_err(sql)?;
+    let json = |s: Option<String>| s.and_then(|s| serde_json::from_str(&s).ok());
+    query.query_map([limit], |r| Ok(AuditRow { at: r.get(0)?, actor: r.get(1)?, origin: r.get(2)?, op: r.get(3)?, target: r.get(4)?,
+        before: json(r.get(5)?), after: json(r.get(6)?), detail: json(r.get(7)?) }))
+        .map_err(sql)?.collect::<Result<_, _>>().map_err(sql)
 }
 
 /// Warns about files an older version left in the data folder that the server doesn't read. Called once when a

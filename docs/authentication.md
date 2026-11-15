@@ -83,7 +83,7 @@ account check leaves the game unresumed and terminates it.
 
 ## Making accounts, invites and recovery
 
-These admin commands work on a running server too (through its loopback admin port and token, like the BP ones):
+These admin commands work on a running server too, through its admin API ([guide](guide.md#account-commands)):
 
 | Command | What it does |
 | --- | --- |
@@ -216,9 +216,10 @@ are no longer loaded (the server logs each one it skips): they had no way in sin
 removed what was left of that login, with `move-account` and address arguments to the admin commands. Key accounts
 keep their key.
 
-The internal HTTP service binds loopback only; the TLS asset role cannot reach `/admin` or `/manager`. The desktop
-uses the private local admin token to list/create accounts, add players, export invitations, query readiness and
-shut down its server. Credential-bearing bodies and replies are not logged.
+The internal HTTP service binds loopback only; the TLS asset role cannot reach the admin API (`/api/admin/v1/`),
+which also requires the private token even from the same machine. The desktop and the CLI use it to list and create
+accounts, add players, export keys, query readiness, change settings and stop the server. Only each operation's name
+is logged; every change has an audit row, without passwords or keys.
 
 Deploy the server, launcher and DLL together. Old clients are intentionally unsupported. A rollback restores the
 previous binary and backed-up data only when the host deliberately chooses it.

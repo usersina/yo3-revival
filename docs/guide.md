@@ -106,10 +106,12 @@ like) stay flags and win over the settings.
 
 ## Account commands
 
-Most commands require the server **stopped**: a server, and each command that changes data, holds its data folder
-(`server.lock`), and a second one on the same folder is refused with "in use by another YO3 Revival server or
-command". BP/code and invite/reset/role commands can reach a running server through its private local admin token;
-`accounts`, `codes`, `invites`, `countries` and `titles` only read. Add `--data-dir PATH` to target a non-default setup. Keep each friend's profile/key private.
+On the `beta` branch every command works while the server runs (#25): it goes to the running server's admin API
+(loopback, with the private token in `data/admin.json`) and changes it at once. With no server running, the command
+works on the data folder itself, holding its lock (`server.lock`) meanwhile. Only `init-auth`, `restore` and
+`backups` always work on the files. Every change is recorded in the audit log: `audit` lists the newest, with who,
+from where, what, on what, and the values before and after. Released versions still need the server stopped for all
+but the BP and code commands. Add `--data-dir PATH` to target a non-default setup. Keep each friend's profile/key private.
 
 ```bash
 ./yo3-server init-auth localhost 127.0.0.1 192.168.1.50
@@ -126,11 +128,16 @@ command". BP/code and invite/reset/role commands can reach a running server thro
 ./yo3-server add-user Alice
 ./yo3-server reset-code Alice
 ./yo3-server set-role Alice moderator
+./yo3-server audit --limit 20
+./yo3-server stop
 ```
 
 - `init-auth` creates the host's TLS identity once; include every hostname/IP friends will use. It refuses to replace
-  an existing identity. Its certificate lasts a year; the server renews it at start within 30 days of expiry, with
-  the same key and names, so existing profiles and their copy of `server.crt` keep working.
+  an existing identity. Its certificate lasts a year; the server renews it within 30 days of expiry, with the same
+  key and names, so existing profiles and their copy of `server.crt` keep working. On the `beta` branch it also
+  checks while running (every six hours), and serves a certificate replaced on disk without a restart.
+- `stop` stops the running server gracefully, as SIGTERM and Ctrl+C do: no new logins, the duels between players end
+  as draws, and a last backup. Every change is already saved as it happens.
 - `add-account NAME` creates an account and first player. Names are 1–16 characters and unique. `--also B,C` adds
   players to that account, up to four total.
 - `profile PLAYER FILE --advertise HOST` exports a CLI profile for an existing account. The profile references
@@ -144,8 +151,8 @@ command". BP/code and invite/reset/role commands can reach a running server thro
 - `add-player`, `rename` and `set-country` manage an account's players. `countries` lists accepted country codes;
   `auto` clears an override.
 - `grant-title PLAYER TITLE` gives a player a title by its name as the game shows it (`titles` lists them), such as
-  GAME MASTER or JUMP FESTA, which no duel earns. The player wears it in Avatar Settings. Like `rename`, it needs the
-  server stopped.
+  GAME MASTER or JUMP FESTA, which no duel earns. The player wears it in Avatar Settings. A rename or title reaches
+  a player who is online at their next login.
 - `give-bp`, `add-code`, `remove-code` and `codes` manage points and redemption codes while hosting can continue.
   Use them rather than editing `accounts.json`: after the first start of a current server, accounts live in
   `server.db`. The JSON files are old copies the server no longer reads; it warns while they exist, and they are safe

@@ -88,7 +88,7 @@ skips the automatic bootstrap. Tests: launcher `attach`, desktop `direct_install
 the live fixture `tools/mod/test-direct.sh`. These fields belong to our private bootstrap, never stock login replies.
 
 Status 0 succeeds, 1 refuses. Handshakes time out after 10 seconds. Authentication bytes never enter the game packet
-logger. The asset role permits public patch/app/duel-log routes only; `/admin` is inaccessible through TLS. Internal
+logger. The asset role permits public patch/app/duel-log routes only; the admin API is inaccessible through TLS. Internal
 HTTP listens on loopback. New keys and tokens use OS cryptographic randomness. Store/connection caps are documented
 in [authentication.md](authentication.md).
 
@@ -2049,12 +2049,14 @@ with backups at start, hourly and at stop. References elsewhere in this catalog 
 etc. name the domains' original formats. This changes storage, not Konami request/reply fields; tests live in
 `store.rs` and `tests/accounts.rs`.
 
-The desktop's **own** local protocol is `POST /manager` with a private admin bearer token and JSON `op`:
-`status`, `accounts`, `create_account {name}`, `add_player {who,name}`, `export_account {who}`, or `shutdown`.
-It binds loopback and the TLS asset-role whitelist denies access. Account listings omit credentials; export is the
-explicit credential-bearing operation. Unknown operations/fields and incorrect tokens are refused. Mutations persist
-once and restore memory if saving fails. **Status: implemented/tested**, evidence `tests/manager_contract.rs` and
-the GUI's live account/create/play check; these are our API definitions, not inferred game-client reply shapes.
+The host's tools (the desktop, the CLI, later the admin panel) use our admin API (#25, `api.rs`): `POST
+/api/admin/v1/<op>` with a private bearer token and a JSON `op` (`status`, `accounts`, `create-account`, `key`,
+`give-bp`, `set`, `audit`, `shutdown` and the rest; `yo3-server --help` lists the commands). It binds loopback and the
+TLS asset role denies access (it forwards only GETs of the game's files). Answers are `{"ok", "result" | "error"}`.
+Account listings omit credentials; `key` is the explicit credential-bearing operation. Unknown operations/fields and
+incorrect tokens are refused. Each change writes an audit row. Mutations persist once and restore memory if saving
+fails. **Status: implemented/tested**, evidence `tests/api_contract.rs`; these are our API definitions, not inferred
+game-client reply shapes. It replaced `/manager` and `/admin`.
 Status also reports the actual `listen` socket and `release`, so a reopened manager and local game use the active
 listener rather than guessing from saved settings. Only the authenticated game/discovery port is public; internal
 management/assets HTTP stays loopback.

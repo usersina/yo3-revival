@@ -1,7 +1,7 @@
 //! Desktop invitations carry the host identity and account together, including certificates without localhost.
 use std::path::Path;
 use yo3_desktop::{Backend, LauncherDb, SavedServer, Settings};
-use yo3_server::{Config, admin::{self, ManagerOp}};
+use yo3_server::{Config, admin, api::{self, Op}};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn invitation_roundtrip_keeps_remote_identity_when_dialling_the_host_locally() {
@@ -17,7 +17,7 @@ async fn invitation_roundtrip_keeps_remote_identity_when_dialling_the_host_local
     let backend = Backend::new(root.join("desktop")).unwrap();
     let worker = backend.clone();
     tokio::task::spawn_blocking(move || {
-        worker.manage(&settings, ManagerOp::CreateAccount { name: "Guest".into() }).unwrap();
+        worker.manage(&settings, Op::CreateAccount { names: vec!["Guest".into()] }).unwrap();
         let local_only = Settings { host_address: "localhost".into(), ..settings.clone() };
         assert!(worker.invitation(&local_only, "Guest").is_err(), "a loopback invitation must not be handed to a friend");
         worker.local_connection(&local_only, "Guest").unwrap();
@@ -35,7 +35,7 @@ async fn invitation_roundtrip_keeps_remote_identity_when_dialling_the_host_local
         remembered.key = local.key; remembered.identity = Some("00".repeat(32)); assert!(worker.check_connection(&remembered).is_err());
         assert!(worker.root.join("launcher.db").exists());
         assert!(Path::new(&settings.data_dir).join("server.db").exists());
-        let live = admin::running(Path::new(&settings.data_dir)).unwrap(); admin::manage(&live, &ManagerOp::Shutdown).unwrap();
+        let live = admin::running(Path::new(&settings.data_dir)).unwrap(); api::call(&live, &Op::Shutdown).unwrap();
     }).await.unwrap();
     server.wait().await;
 }
