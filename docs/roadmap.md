@@ -43,6 +43,12 @@ Desktop archives also carry `yo3-revival.ico` and `yo3-revival.png` for custom s
 both platform archives. The in-game login news no longer includes the deck-onboarding notice; a front contract
 checks its removal alongside the existing news-format and engine-warning coverage.
 
+v0.0.18 release preparation (2026-11-15):
+
+- [x] The workspace package version and the local lockfile entries are `0.0.18`. The changelog describes titles,
+  the website links, Auto Card Placing and automatic direct start. Same connection interface (3). Each checked live on
+  the private client; the full test suite, clippy and the DLL and loader tests pass.
+
 v0.0.17 release preparation (2026-11-15):
 
 - [x] The workspace package version and the local lockfile entries are `0.0.17`. The changelog describes the original

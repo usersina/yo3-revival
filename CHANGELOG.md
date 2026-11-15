@@ -10,7 +10,17 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.0.18 (2026-11-15)
+
+Titles to earn, working website links, Auto Card Placing, and opening the game directly with nothing to set up.
+Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the server, rules
+engine and required connection components. Original game files are not included. **Windows 7 is not supported.**
+
+Hosts and players should both update: titles and Auto Card Placing come from the server, the website links need
+both, and opening the game directly comes with the app. Friends on v0.0.13 or later can still join. Before updating,
+close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.18/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.18/docs/scripts.md).
 
 - **Titles you can earn.** Lose to an NPC, master all its levels, win 10 times against it, play duels, summon high-level,
   Fusion and Synchro Monsters, win with Exodia or after falling to 1000 LP, collect cards, wear an Afro… about 120
