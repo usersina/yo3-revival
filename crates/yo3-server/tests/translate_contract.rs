@@ -2455,7 +2455,7 @@ fn a_fusion_from_the_hand_plays_each_materials_effect_before_its_move() {
 
 #[test]
 fn two_copies_from_the_hand_are_two_materials() {
-    // Ancient Gear Ultimate Golem from two Ancient Gear Golems and Gadjiltron Dragon in the hand (a deck from Konami's
+    // Ultimate Ancient Gear Golem from two Ancient Gear Golems and Gadjiltron Dragon in the hand (a deck from Konami's
     // logs, found by the duel check's summon rules): the engine gives each move's place as it happens, after the
     // earlier ones, so the first Golem and the second both leave the hand's index 0. Both were taken for the first
     // Golem's card: it was marked and played twice, the second Golem never, and its Run came after it had left.

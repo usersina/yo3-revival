@@ -1108,7 +1108,7 @@ impl Translator {
             }
             // This move's material and the others of this batch: (Konami id, place, uid, Tuner). Each move's place is
             // the engine's as it happens, after the earlier ones: three materials from the hand all leave its index 0
-            // (Ancient Gear Ultimate Golem's two Golems: both were taken for the first one's card), so each is found
+            // (Ultimate Ancient Gear Golem's two Golems: both were taken for the first one's card), so each is found
             // among the cards the earlier ones left.
             let mut materials: Vec<(u16, Place, u32, bool)> = vec![];
             for x in rest {
