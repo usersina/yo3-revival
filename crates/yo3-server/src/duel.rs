@@ -636,6 +636,7 @@ impl DuelSession {
         translator.tokens(self.world.token_rows.clone());
         translator.tuners(self.world.tuners.clone());
         translator.auto_place(!entry.manual_place);
+        translator.card_kinds(self.world.card_kinds.clone());
         table.extend(translator.extra_decks([&entry.deck.extra, &npc.extra]));
         self.engine = Some((engine, translator));
         self.first = Some(first);
@@ -793,7 +794,9 @@ impl DuelSession {
             let duel_id = self.entry.as_ref().and_then(|e| e.duel_id).unwrap_or(0);
             let mut hub = self.hub.locked();
             let replay = self.replay(&hub);
-            let ended = Ended { player_id, opponent, npc: true, duel_id, match_type: SINGLE_MODE, result, replay };
+            let stats = self.engine.as_ref().map(|(_, t)| t.stats().clone());
+            let start_lp = self.world.start_lp;
+            let ended = Ended { player_id, opponent, npc: true, duel_id, match_type: SINGLE_MODE, result, replay, stats, start_lp };
             hub.finish_duel(&ended);
         }
     }

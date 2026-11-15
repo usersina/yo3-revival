@@ -554,6 +554,11 @@ pub struct Translator {
     summoning: Option<Summoning>,
     /// The player's DUEL OPTIONS auto card placing (`Translator::auto_place`): off, the player picks the zones.
     auto_place: bool,
+    /// What the client's player did in the duel, for titles (`Translator::stats`), and each card's kind to tell Spells
+    /// from Traps (`Translator::card_kinds`).
+    stats: crate::titles::DuelStats,
+    card_kinds: HashMap<u16, u32>,
+    lp_change: i64,
     /// How many card names the CPU has declared: each try names the next card of the duel's (the core asks again
     /// when a name doesn't fit).
     declared: usize,
@@ -619,6 +624,17 @@ impl Translator {
         self.auto_place = on;
     }
 
+    /// Each Konami id's card kind (CARD_Prop: 13 a Spell, 14 a Trap): a duel's stats count the client's activations.
+    pub fn card_kinds(&mut self, kinds: HashMap<u16, u32>) {
+        self.card_kinds = kinds;
+    }
+
+    /// What the client's player did in the duel so far: their summons, Spells and Traps, how low their LP went, and
+    /// the win's reason (`crate::titles`).
+    pub fn stats(&self) -> &crate::titles::DuelStats {
+        &self.stats
+    }
+
     /// The Tuners among the cards, by Konami id: a Synchro Summon's tuning tells the Tuners' levels from the others'.
     pub fn tuners(&mut self, cids: HashSet<u16>) {
         self.tuners = cids;
@@ -676,6 +692,9 @@ impl Translator {
             tuners: HashSet::new(),
             summoning: None,
             auto_place: true,
+            stats: Default::default(),
+            card_kinds: HashMap::new(),
+            lp_change: 0,
             counters: HashMap::new(),
             declared: 0,
             revealing: vec![],
@@ -820,6 +839,13 @@ impl Translator {
                     out.extend(turned);
                 }
                 Some(MSG_CHAINING) => {
+                    if self.player(&m["controller"]) == CLIENT {
+                        match self.card_kinds.get(&(m["cid"].as_u64().unwrap_or(0) as u16)) {
+                            Some(13) => self.stats.spells += 1,
+                            Some(14) => self.stats.traps += 1,
+                            _ => {}
+                        }
+                    }
                     out.extend(self.activation(m));
                     let link = self.chain_link(m);
                     let param = |k: &str| link.get(k).and_then(Value::as_u32).unwrap_or(0);
@@ -851,6 +877,12 @@ impl Translator {
                     // Normal Summon, 0x4000/0xC000/0x8000 for a Special Summon).
                     // A Fusion or Synchro Summon said its line as it arrived; a Tribute Summon's line has its own kind.
                     let cid = m["cid"].as_u64().unwrap_or(0) as u16;
+                    if self.player(&m["controller"]) == CLIENT {
+                        self.stats.summoned.push(cid);
+                        if self.cards.values().find(|c| c.cid == cid).is_some_and(|c| c.level >= crate::titles::HIGH) {
+                            self.stats.high_level += 1;
+                        }
+                    }
                     let summoning = self.summoning.take();
                     let spoken = summoning.as_ref().is_some_and(|s| s.arrived && s.cid == cid);
                     let tribute = summoning.is_some_and(|s| s.family == Family::Tribute);
@@ -890,6 +922,9 @@ impl Translator {
                         _ if self.player(&m["player"]) == CLIENT => WON,
                         _ => LOST,
                     };
+                    if result == WON {
+                        self.stats.win_reason = m["reason"].as_u64();
+                    }
                     let reason = end_reason(m["reason"].as_u64().unwrap_or(1));
                     out.push(command(DUEL_END, [result, reason, 0, 0]));
                     self.result = Some(result);
@@ -906,6 +941,10 @@ impl Translator {
                     // As Konami's server sent it: the change shown (param3's low byte 1: its number and sound), the
                     // damage line, then the change applied (low byte 0). One message with 0 changed the LP silently.
                     let p = self.player(&m["player"]);
+                    if p == CLIENT {
+                        self.lp_change += change as i64;
+                        self.stats.lowest_change = self.stats.lowest_change.min(self.lp_change);
+                    }
                     out.push(command(CHANGE_LP, [p, change as u32, damage << 8 | 1, 0]));
                     out.push(command(SPEAK_DAMAGE, [p, change as u32, damage, 0]));
                     out.push(command(CHANGE_LP, [p, change as u32, damage << 8, 0]));
@@ -1124,6 +1163,12 @@ impl Translator {
             for more in s.uids.get(3..).unwrap_or_default().chunks(4) {
                 let at = |i: usize| more.get(i).copied().unwrap_or(0);
                 out.push(command(MATERIAL_LIST_MORE, [at(0), at(1), at(2), at(3)]));
+            }
+            if from.player == CLIENT {
+                match s.family {
+                    Family::Synchro => self.stats.synchros += 1,
+                    _ => self.stats.fusions += 1,
+                }
             }
             out.push(command(RUN_FUSION, [from.player, uid, kind << 16 | s.count, 0]));
             out.push(command(SPEAK_SUMMON, [from.player, 0x8000 | uid, line, 0]));

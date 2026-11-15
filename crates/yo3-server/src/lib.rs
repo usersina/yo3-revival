@@ -29,6 +29,7 @@ pub mod clock;
 mod log;
 mod net;
 mod web;
+pub mod titles;
 pub use net::IDLE_TIMEOUT;
 
 use crate::lock::Locked;
@@ -199,6 +200,8 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                 })
                 .collect(),
             tuners: data.cards.iter().filter(|c| c.tuner()).map(|c| c.cid).collect(),
+            card_kinds: data.cards.iter().map(|c| (c.cid, c.kind)).collect(),
+            titles: Arc::new(titles::TitleData::from_game(&data)),
             token_rows: data.cards.iter().filter(|c| (3900..4000).contains(&c.cid)).fold(std::collections::HashMap::new(), |mut m, c| {
                 m.entry(c.name.clone()).or_insert_with(Vec::new).push(c.row);
                 m
@@ -342,6 +345,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     }
     hub.set_round_delay(EVENT_ROUND_DELAY);
     hub.set_directory(directory.clone());
+    hub.set_titles(world.titles.clone());
     let hub = Arc::new(Mutex::new(hub));
     let auth_task = tokio::spawn(transport::accept_loop(authenticated, tls, world.clone(), hub.clone(), directory.clone(),
         packets.clone(), quiet, heartbeats, http_addr));

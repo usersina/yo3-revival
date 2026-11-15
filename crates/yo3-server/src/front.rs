@@ -93,6 +93,8 @@ pub struct Player {
     /// The country flag others see (`country`, an ISO code of the client's `countrytbl.bin`): the account's setting,
     /// or the one its session derives from the client's language. Empty: none sent (the client then shows Germany).
     pub country: String,
+    /// What the server counts of the player's duels for titles (`titles::count`), by name.
+    pub counters: BTreeMap<String, u32>,
 }
 
 /// The client language a session starts with (0x1F48 lang 1).
@@ -168,6 +170,7 @@ impl Player {
             given: BTreeMap::new(),
             eval_num: 0,
             eval_total: 0,
+            counters: BTreeMap::new(),
             country: String::new(),
         }
     }
@@ -492,6 +495,9 @@ pub struct Ended {
     pub result: u32,
     /// The duel to replay, when the duel server kept it (a duel between players).
     pub replay: Option<crate::duellog::Replay>,
+    /// What the player did in the duel (their side's translator), and the LP it started with: for titles.
+    pub stats: Option<crate::titles::DuelStats>,
+    pub start_lp: u32,
 }
 
 /// A chat room, as listed in 0x2458 (fields read by 0x434D20).
@@ -547,6 +553,10 @@ pub struct World {
     pub token_rows: HashMap<String, Vec<u16>>,
     /// The Tuners' Konami ids (a Synchro Summon's tuning, `Translator::tuners`).
     pub tuners: std::collections::HashSet<u16>,
+    /// Each Konami id's card kind (CARD_Prop, `yo3_data::Card::kind`: 13 a Spell, 14 a Trap), for a duel's stats.
+    pub card_kinds: HashMap<u16, u32>,
+    /// The client's titles (`crate::titles`).
+    pub titles: Arc<crate::titles::TitleData>,
     /// Each Konami id's English name, for the rules engine to find another print of a card (`Engine::new_duel`).
     pub card_names: HashMap<u16, String>,
     /// The CARD_Prop rows of Fusion and Synchro Monsters, which belong in the Extra Deck (the deck check).
@@ -610,6 +620,8 @@ impl World {
             cards: HashMap::new(),
             token_rows: HashMap::new(),
             tuners: Default::default(),
+            card_kinds: HashMap::new(),
+            titles: Default::default(),
             card_names: HashMap::new(),
             extra_deck_rows: Default::default(),
             engine_dir: None,
@@ -667,6 +679,8 @@ pub struct Hub {
     records_file: Option<std::path::PathBuf>,
     /// The accounts, which each counted duel pays BP into (none: no pay).
     directory: Option<Arc<Mutex<crate::accounts::Directory>>>,
+    /// The client's titles, for those players earn (`crate::titles`).
+    titles: Option<Arc<crate::titles::TitleData>>,
     /// Players waiting for an automatic match, in order, and the matched duels.
     waiting: Vec<Waiting>,
     matches: HashMap<u32, Match>,
@@ -756,6 +770,11 @@ impl Hub {
         self.directory = Some(directory);
     }
 
+    /// The client's titles: players earn them from here on (`award_titles`).
+    pub fn set_titles(&mut self, titles: Arc<crate::titles::TitleData>) {
+        self.titles = Some(titles);
+    }
+
     pub fn enter_duel(&mut self, player_id: u32, entry: DuelEntry) {
         self.duel_entries.insert(player_id, entry);
     }
@@ -834,6 +853,8 @@ impl Hub {
     /// client download it. Returns the log's file name (none without a log directory).
     pub fn finish_duel(&mut self, ended: &Ended) -> Option<String> {
         let record = self.record_result(ended.player_id, ended.opponent, ended.result);
+        let stats = ended.stats.clone().unwrap_or_default();
+        self.award_titles(ended.player_id, Some((&stats, ended.result, ended.start_lp)));
         let me = self.online.values().find(|o| o.player_id == ended.player_id);
         let (host, name, level) = me.map(|o| (o.host.clone(), o.name.clone(), o.level)).unwrap_or_default();
         let (opponent_name, opponent_level) = match self.online.values().find(|o| !ended.npc && o.player_id == ended.opponent) {
@@ -882,6 +903,36 @@ impl Hub {
             self.ask_to_rate(ended.player_id, ended.opponent);
         }
         file
+    }
+
+    /// The titles a player has earned and doesn't own yet (`crate::titles`): added to their items (Avatar Settings
+    /// lists them) and announced in their chat window. `stats`: a duel just played, counted first. None without the
+    /// client's titles or an account for the player.
+    pub fn award_titles(&mut self, player_id: u32, stats: Option<(&crate::titles::DuelStats, u32, u32)>) -> Vec<u16> {
+        let (Some(titles), Some(directory)) = (self.titles.clone(), self.directory.clone()) else { return vec![] };
+        let records: HashMap<u32, [u32; 3]> =
+            self.records.iter().filter(|((me, them), _)| *me == player_id && *them <= 256).map(|((_, them), r)| (*them, *r)).collect();
+        let npcs = titles.npc_progress(&records);
+        let mut new = vec![];
+        directory.locked().update_player(player_id, |p| {
+            if let Some((s, result, lp)) = stats {
+                crate::titles::count(&mut p.counters, s, result, lp as i64);
+            }
+            let collection: std::collections::HashSet<u16> = p.cards.keys().filter_map(|r| titles.row_cids.get(r)).copied().collect();
+            let wearing: Vec<u16> = p.avatar.chunks(2).map(|c| u16::from_be_bytes([c[0], *c.get(1).unwrap_or(&0)])).collect();
+            let progress = crate::titles::Progress { counters: &p.counters, collection: collection.len(), wearing, npcs };
+            for id in crate::titles::earned(&titles, &progress, stats.map(|(s, ..)| s)) {
+                if p.items.insert(id) {
+                    new.push(id);
+                }
+            }
+        });
+        for &id in &new {
+            if let Some(name) = titles.name(id) {
+                self.push(player_id, &crate::titles::note(name));
+            }
+        }
+        new
     }
 
     /// Counts a duel's `result` (1 won, 2 lost, 3 draw), pays its BP into the player's account (`shop::duel_bp`), and
@@ -2512,7 +2563,17 @@ impl FrontSession {
         if let Some(d) = &self.directory {
             d.locked().update_player(self.account.players[at].player_id, apply);
         }
-        self.hub().refresh(&self.account.players[at]);
+        let player_id = self.account.players[at].player_id;
+        let earned = {
+            let mut hub = self.hub();
+            hub.refresh(&self.account.players[at]);
+            // A new look may earn a title (THE AFRO KAISER).
+            !hub.award_titles(player_id, None).is_empty()
+        };
+        // The new title's bit comes back with the record the client reads next.
+        if earned && let Some(p) = self.directory.as_ref().and_then(|d| d.locked().player(player_id).cloned()) {
+            self.account.players[at].items = p.items;
+        }
         Message::reply(0x2CF5)
     }
 
@@ -3066,6 +3127,12 @@ impl FrontSession {
             0x2072 => Message::reply(0x2398).with("regulations", Value::u16_be_array(&self.world.regulation_ids)),
             0x27D8 => Message::reply(0x27D9).item(Message::record()),
             0x2CEE => {
+                // The client reads its player again after a duel: the accounts' copy, with any titles the duel earned.
+                if let Some(at) = self.selected
+                    && let Some(p) = self.directory.as_ref().and_then(|d| d.locked().player(self.account.players[at].player_id).cloned())
+                {
+                    self.account.players[at] = p;
+                }
                 let record = self.hub().own_record(self.player(), &self.world.granted_items(self.player()));
                 Message::reply(0x2CF3).item(record)
             }

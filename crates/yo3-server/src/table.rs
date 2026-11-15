@@ -59,6 +59,9 @@ pub struct Table {
     engine: Option<Engine>,
     /// By seat, once the duel opened.
     translators: Vec<Translator>,
+    /// What each seat did in the match's earlier duels, and the duels' starting LP: for titles.
+    earlier: [crate::titles::DuelStats; 2],
+    start_lp: u32,
     /// The duel check (`--duel-check`): each seat's view of the duel, compared with the engine after each step.
     checks: Vec<crate::duelcheck::ClientModel>,
     /// Duels won so far in the match, by seat, and how many it takes.
@@ -101,6 +104,8 @@ impl Table {
             picker: None,
             engine: None,
             translators: vec![],
+            earlier: Default::default(),
+            start_lp: 0,
             checks: vec![],
             wins: [0; 2],
             best_of: 1,
@@ -201,6 +206,7 @@ impl Table {
         // A hosted duel's starting LP (Create Duel's lp_start), unless the server's was set to test (--duel-lp).
         let hosted = self.seats.iter().find_map(|s| s.entry.lp);
         let lp = hosted.filter(|_| self.world.start_lp == DEFAULT_LP).unwrap_or(self.world.start_lp);
+        self.start_lp = lp;
         let answer = engine.new_duel_named(crate::duel::next(&mut self.rng), lp, [(&m0, &e0), (&m1, &e1)], &self.world.card_names);
         self.engine = Some(engine);
         // A hosted duel's time_turn and time_total, else Create Duel's defaults, unless the server's were set to test.
@@ -230,6 +236,7 @@ impl Table {
             translator.tokens(self.world.token_rows.clone());
             translator.tuners(self.world.tuners.clone());
             translator.auto_place(!self.seats[s].entry.manual_place);
+            translator.card_kinds(self.world.card_kinds.clone());
             table.extend(translator.extra_decks([&mine.extra, &theirs.extra]));
             self.translators.push(translator);
             part.push(setup(order, mine, theirs));
@@ -532,6 +539,10 @@ impl Table {
             self.report(match_results);
             return Out::default();
         }
+        // A match's earlier duels count for titles too.
+        for (earlier, t) in self.earlier.iter_mut().zip(&self.translators) {
+            earlier.merge(t.stats());
+        }
         self.translators.clear();
         // Retain engine/model until deliver checks the final moves and LP, including between match duels.
         self.hands = [None; 2];
@@ -579,7 +590,21 @@ impl Table {
         for (s, result) in results.into_iter().enumerate() {
             let (me, them) = (self.seats[s].player_id, self.seats[1 - s].player_id);
             let match_type = if self.best_of > 1 { MATCH_MODE } else { SINGLE_MODE };
-            let ended = Ended { player_id: me, opponent: them, npc: false, duel_id: self.duel_id, match_type, result, replay: replay.clone() };
+            let mut stats = self.earlier[s].clone();
+            if let Some(t) = self.translators.get(s) {
+                stats.merge(t.stats());
+            }
+            let ended = Ended {
+                player_id: me,
+                opponent: them,
+                npc: false,
+                duel_id: self.duel_id,
+                match_type,
+                result,
+                replay: replay.clone(),
+                stats: Some(stats),
+                start_lp: self.start_lp,
+            };
             hub.finish_duel(&ended);
         }
         let winner = results.iter().position(|&r| r == WON).map(|s| self.seats[s].player_id);

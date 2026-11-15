@@ -107,6 +107,11 @@ pub enum Admin {
     SetCountry { who: String, code: String },
     /// List the country codes the client has flags for.
     Countries,
+    /// Give a player a title by its name, as the game shows it (the staff and promotion ones, GAME MASTER or JUMP
+    /// FESTA, or any other); `titles` lists them. They wear it in Avatar Settings.
+    GrantTitle { player: String, title: String },
+    /// List the titles in the client.
+    Titles,
     /// Give BOOSTERPASS Points to the account at WHO (an address or one of its players' names). Works while the server
     /// runs (on the server's PC).
     GiveBp { who: String, amount: u32 },

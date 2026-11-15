@@ -185,6 +185,9 @@ impl Directory {
                 }
                 player.eval_num = p["eval_num"].as_u64().unwrap_or(0) as u32;
                 player.eval_total = p["eval_total"].as_i64().unwrap_or(0) as i32;
+                if let Some(counters) = p["counters"].as_object() {
+                    player.counters = counters.iter().filter_map(|(k, v)| Some((k.clone(), v.as_u64()? as u32))).collect();
+                }
                 d.next_player = d.next_player.max(player.player_id + 1);
                 players.push(player);
             }
@@ -380,6 +383,11 @@ impl Directory {
     pub fn account_players(&self, player_id: u32) -> Vec<u32> {
         self.accounts.iter().map(|e| &e.account).find(|a| a.players.iter().any(|p| p.player_id == player_id))
             .map(|a| a.players.iter().map(|p| p.player_id).collect()).unwrap_or_default()
+    }
+
+    /// The id of the player named `name` (ignoring case).
+    pub fn player_id_named(&self, name: &str) -> Option<u32> {
+        self.accounts.iter().flat_map(|e| &e.account.players).find(|p| p.name.eq_ignore_ascii_case(name)).map(|p| p.player_id)
     }
 
     /// The user id of the account at `who` (an address, or a player's name).
@@ -755,7 +763,7 @@ impl Directory {
                             .collect();
                         json!({ "player_id": p.player_id, "uploaded": uploaded, "name": p.name, "index": p.index, "level": p.level, "avatar": avatar,
                             "speeches": p.speeches, "comments": p.comments, "title": p.title, "cards": cards, "decks": p.decks,
-                            "items": p.items, "given": given, "eval_num": p.eval_num, "eval_total": p.eval_total })
+                            "items": p.items, "given": given, "eval_num": p.eval_num, "eval_total": p.eval_total, "counters": p.counters })
                     })
                     .collect();
                 let mut account = json!({ "user_id": a.user_id, "dpoint": a.dpoint, "players": players });

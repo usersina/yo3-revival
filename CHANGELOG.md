@@ -12,6 +12,10 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- **Titles you can earn.** Lose to an NPC, master all its levels, win 10 times against it, play duels, summon high-level,
+  Fusion and Synchro Monsters, win with Exodia or after falling to 1000 LP, collect cards, wear an Afro… about 120
+  titles now come from playing, each announced in chat. Wear them in Avatar Settings. Hosts can hand out the special
+  ones with `yo3-server grant-title`.
 - **No more dead links.** Leaderboard, team ranking, the BOOSTERPASS page and the title screen's Official Website used
   to open Konami's long-gone website. They now open a short page from your host's server instead. Both the host and the
   player need this version for it.

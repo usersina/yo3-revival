@@ -68,6 +68,7 @@ admin token. Add `--data-dir PATH` to target a non-default setup. Keep each frie
 ./yo3-server rename Joey Joseph
 ./yo3-server set-country Alice TN
 ./yo3-server give-bp Alice 5000
+./yo3-server grant-title Alice "GAME MASTER"
 ./yo3-server add-code ABCD1234EFGH5678 2500
 ```
 
@@ -80,6 +81,9 @@ admin token. Add `--data-dir PATH` to target a non-default setup. Keep each frie
   `server.crt`; copy the host's public certificate beside it. Existing profile files are not overwritten.
 - `add-player`, `rename` and `set-country` manage an account's players. `countries` lists accepted country codes;
   `auto` clears an override.
+- `grant-title PLAYER TITLE` gives a player a title by its name as the game shows it (`titles` lists them), such as
+  GAME MASTER or JUMP FESTA, which no duel earns. The player wears it in Avatar Settings. Like `rename`, it needs the
+  server stopped.
 - `give-bp`, `add-code`, `remove-code` and `codes` manage points and redemption codes while hosting can continue.
   Use them rather than editing `accounts.json`: after the first start of a current server, accounts live in
   `server.db`. The JSON files are old copies the server no longer reads; it warns while they exist, and they are safe

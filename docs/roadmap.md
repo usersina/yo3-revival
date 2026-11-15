@@ -1041,13 +1041,18 @@ they need: anything a host's own server can do now, and what only makes sense on
       interface (MOD_ABI 3): a player who updates gets the pages, the host needs v0.0.18. Live (2026-11-15, the test
       prefix's browser a recording script): Leaderboard opened `…/web/v3/events/rank_info?country=GB` ("There is no
       leaderboard on this server yet."), Official Website `…/web/`, both served by the scratch server.
-- [ ] Titles earned on any server (catalogue kind 10, 160 titles; only BEGINNER DUELIST is given today). The NPC
-      friendship titles: one per NPC (KING OF DOMINO CITY, THE KC OPERATIVE, MAI FAN, …) and EVERYBODY'S FRIEND, from the
-      NPC friendship levels the server already keeps (`npcbin`). Progress titles: BRONZE DUELIST and the like (level),
-      THE CARD COLLECTOR / HOARDER (collection size), BRONZE/SILVER/GOLDEN SUMMONER and FUSIONIST (summon counts), THE
-      AFRO KAISER and other looks; the client only says "many", so the thresholds are the host's (defaults to choose).
-      Earning one sets its pbin bit (Avatar Settings lists it) and could be announced in chat.
-- [ ] A host command to grant the staff and promotion titles by hand (GAME MASTER, KONAMI, JUMP FESTA, …).
+- [x] Titles earned on any server (catalogue kind 10, 160 titles; before, only BEGINNER DUELIST). `titles.rs` holds the
+      rules (thresholds are ours, the client says only "many"; listed in playing.md); each side's translator collects
+      a duel's stats (`Translator::stats`: summons, Spells and Traps by card kind, the lowest LP, the win's reason; a
+      match's duels merged); the hub counts them per player (`Player::counters`, kept in the accounts) and
+      `award_titles` adds new titles to the player's items at a duel's end and after an Avatar Settings save, announced
+      in chat; the client's refresh `0x2CEE` takes the player from the accounts. Tests: `titles.rs`,
+      `titles_contract.rs`. Live (2026-11-15): a loss to Syrus earned RECKLESS DUELIST ("You earned the title…"), listed
+      in Avatar Settings with GAME MASTER from `grant-title`. Not earned yet: KING OF DESTRUCTION (meaning unclear),
+      MR. 1 TURN SURRENDER, MARITIME PILOT (invites), the second Jaden titles (TRUE JADEN FAN, MAGNET FOR DESTRUCTION,
+      THE SEEKER OF TRUTH), Téa's and Jim's (not NPCs here), and the event and Championship ones (below).
+- [x] A host command to grant the staff and promotion titles by hand: `yo3-server grant-title PLAYER TITLE`, `titles`
+      lists them (guide.md).
 - [ ] Research only: what the client sends and expects for the official event formats (Duelist Trial, Gunslinger,
       the weekend events) and the Championship, so the later work starts from evidence.
 

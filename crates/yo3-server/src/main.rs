@@ -101,6 +101,19 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
             d.set_country_of(user, &code).map_err(err)?
         }
         Admin::Countries => println!("{}", yo3_data::countries(&game_dir)?.join(" ")),
+        Admin::Titles => {
+            let titles = yo3_server::titles::TitleData::from_game(&yo3_data::GameData::load(&game_dir)?);
+            let mut names: Vec<_> = titles.by_name.keys().cloned().collect();
+            names.sort();
+            println!("{}", names.join("\n"));
+        }
+        Admin::GrantTitle { player, title } => {
+            let titles = yo3_server::titles::TitleData::from_game(&yo3_data::GameData::load(&game_dir)?);
+            let id = yo3_server::titles::by_name(&titles, &title).ok_or_else(|| err(format!("no title named {title:?}; `titles` lists them")))?;
+            let player_id = d.player_id_named(&player).ok_or_else(|| err(format!("no player named {player:?}")))?;
+            d.update_player(player_id, |p| { p.items.insert(id); });
+            println!("{player} has the title {}", titles.name(id).unwrap_or(&title));
+        }
         Admin::GiveBp { .. } | Admin::AddCode { .. } | Admin::RemoveCode { .. } | Admin::Codes => unreachable!("handled above"),
     }
     Ok(())

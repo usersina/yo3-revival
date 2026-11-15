@@ -145,6 +145,19 @@ The shop also sells card protectors (200 BP) and avatar items (100 BP): Avatar S
 them once bought. Avatar Settings is the tent on the right of the map; every player starts with a few hair styles,
 eyes, clothes, a duel disk and the BEGINNER DUELIST title.
 
+**Titles** are earned as you play, and a chat line tells you when; wear one in Avatar Settings → Title:
+
+- **NPCs:** a title for losing to each NPC, one for friendship (all three of its levels mastered, the gold stars) and
+  a "FAN" title for 10 wins against it; EVERYBODY'S FRIEND for friendship with all of them.
+- **Duels:** BRONZE/SILVER/GOLDEN… DUELIST for duels played (10, 50, 100, 300, 1000), SUMMONER for level 7+ summons
+  (10, 50, 200), FUSIONIST and TUNER for Fusion and Synchro Summons (5, 25, 100), TRAP ARTIST and SPELLCASTER for
+  Traps and Spells activated (20, 100, 500), NEVER SAY DIE for wins after falling to 1000 LP or less (1, 10, 30).
+- **Feats:** winning with Exodia, Final Countdown, Vennominaga or Destiny Board, and summoning each Egyptian God Card.
+- **Collection and looks:** THE CARD ENTHUSIAST / COLLECTOR / HOARDER for 100, 500 and 1000 different cards from packs
+  and trades, THE AFRO KAISER and THE KING OF QUIFFS for wearing that hair.
+
+The official event and Championship titles wait for those events; your host can give the special ones (GAME MASTER…).
+
 In the shop, Trade Card swaps cards you don't need for one you want: pick a card from Blister's list (cards from the
 first 48 booster packs), then choose 10 of your own cards (or press Auto Select) and confirm. Rented cards and cards
 you've lent out can't be given. Rental lends you 5 cards of your choice for 100 BP for 7 days: drag them into the list
