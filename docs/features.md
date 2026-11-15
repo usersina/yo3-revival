@@ -160,7 +160,7 @@ it; a live check is a person or script driving the real client. GitHub issue num
 | Feature | Status | Verified by | Notes / issues |
 | --- | --- | --- | --- |
 | User events (Satellite Plaza): create, list, join, lobby, bracket, knockout | Implemented | `user_event_contract.rs`; live with three players (a bye and a final) | Open events survive a restart; a running one ends at a restart. The client has no Ready/Standby request. |
-| Official Events (Stadium): Gunslinger, Duelist Trial, Evolution and other matches | Not implemented | `event_contract.rs` (the empty list only) | The tile opens and reports no valid event. Research is in the history; planned for a public server (roadmap). |
+| Official Events (Stadium): Gunslinger, Duelist Trial, Evolution and other matches | Not implemented | `event_contract.rs` (the empty list only) | #18. The tile opens and reports no valid event. Research is in the history; planned for a public server (roadmap). |
 | Championship (Tournament Map) | Not implemented | `event_contract.rs` (the no-event path only) | #17. Needs a host-scheduled `event_type` 10 event. |
 | Leaderboard and team ranking from real results | Not implemented | Not verified | The pages exist but are empty (see Website links). Convenience features are tracked in #16. |
 | Official-event and Y.O.C titles | Not implemented | Not verified | They wait for those events. |

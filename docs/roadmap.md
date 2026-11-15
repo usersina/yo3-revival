@@ -63,7 +63,7 @@ and Scripts.
 
 The "Website links, titles and official events" plan (2026-11-15) split its work into what any server can do now (done,
 in [history](history.md#-website-links-titles-and-official-events-planned-2026-11-15)) and these, which only make sense
-with many players. GitHub issue #16 tracks convenience features and issue #17 the Championship.
+with many players. GitHub issue #16 tracks convenience features, #17 the Championship and #18 Official Events.
 
 - [ ] A leaderboard and team ranking page from real wins and losses (the page from the links above, filled in).
 - [ ] Official Events (Stadium): the Duelist Trial and Gunslinger formats (wins, win streaks over a period), host

@@ -649,7 +649,7 @@ its own list of official events, not a bracket), and User event (22) UserEventSc
 `+0x2D8` 1 for its lobby. With no decks, Official Event and Championship stop at "There are no valid Decks available."
 and OK returns to the map. (This said Official Event opened TournamentScene until the 2026-11-15 research; what each
 scene expects is in [history](history.md#-website-links-titles-and-official-events-planned-2026-11-15) and issues #17
-and the Official Events issue.)
+(Championship) and #18 (Official Events).)
 
 | Request                                                                                                          | Reply (error)                          | Fields                                                                                                                                                | Evidence                                                                 | Status                            |
 | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------- |
