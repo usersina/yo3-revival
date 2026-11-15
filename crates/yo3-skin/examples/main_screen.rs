@@ -1,6 +1,7 @@
 //! The look spike for issue #21: the launcher's main screen, Singleplayer and Multiplayer, built only from the skin
 //! kit. Nothing here is wired to a server or the game; the states are simulated so every part of the screen can be
 //! seen and clicked. `cargo run -p yo3-skin --example main_screen [-- --system-frame]`.
+#![cfg_attr(windows, windows_subsystem = "windows")]
 use std::time::Duration;
 use iced::widget::{Space, column, container, mouse_area, operation, pick_list, row, stack, text, text_input, checkbox};
 use iced::{Alignment::Center, Color, Element, Length::Fill, Subscription, Task, keyboard, window};

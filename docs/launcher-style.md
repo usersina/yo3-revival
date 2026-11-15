@@ -8,6 +8,9 @@ is the reference for anyone adding a screen. Try it with:
 cargo run --release -p yo3-skin --example main_screen   # add -- --system-frame for the window manager's frame
 ```
 
+The spike was checked on 2026-11-15 on X11 (headless), Wayland (a nested KWin), Wine, and Windows 11 in the VM: hover,
+tabs, typing with Tab and Enter, sign-in errors, dialogs, dragging, minimising and closing the borderless window.
+
 **Contents**
 
 - [Launcher style guide](#launcher-style-guide)
