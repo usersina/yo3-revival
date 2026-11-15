@@ -93,6 +93,8 @@ fn vertical(r: Rectangle, stops: &[(f32, Color)]) -> Fill {
 }
 /// The game's button outline: a bar with chamfered ends.
 fn chamfer(r: Rectangle, cut: f32) -> Path {
+    // A button squeezed narrower than its own ends stays a hexagon instead of folding over itself.
+    let cut = cut.min((r.width / 2.0 - 1.0).max(0.0));
     Path::new(|b| {
         let (mid, right, bottom) = (r.y + r.height / 2.0, r.x + r.width, r.y + r.height);
         b.move_to(Point::new(r.x + cut, r.y)); b.line_to(Point::new(right - cut, r.y)); b.line_to(Point::new(right, mid));
@@ -234,7 +236,7 @@ impl<M: Clone> canvas::Program<M> for Pill<M> {
                 frame.stroke(&path, Stroke::default().with_color(alpha(CHROME, if hovered { 0.8 } else { 0.35 })).with_width(1.0));
                 let c = Point::new(whole.center_x(), whole.center_y() + shift);
                 let s = whole.height.min(whole.width) * 0.2;
-                let pen = Stroke::default().with_color(ON_DARK).with_width(1.8).with_line_cap(canvas::LineCap::Round);
+                let pen = Stroke::default().with_color(if enabled { ON_DARK } else { alpha(ON_DARK_SOFT, 0.35) }).with_width(1.8).with_line_cap(canvas::LineCap::Round);
                 match glyph {
                     Glyph::Minimize => frame.stroke(&Path::line(Point::new(c.x - s, c.y + s * 0.6), Point::new(c.x + s, c.y + s * 0.6)), pen),
                     Glyph::Close => {
@@ -401,7 +403,7 @@ pub fn modal<'a, M: Clone + 'a>(base: impl Into<Element<'a, M>>, dialog: impl In
 }
 
 /// A text link: on a panel (`on_dark` false) or on the dark bars.
-pub fn link<'a, M: Clone + 'a>(label: &'a str, on_press: M, on_dark: bool) -> Element<'a, M> {
+pub fn link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_press: M, on_dark: bool) -> Element<'a, M> {
     button(text(label).size(14).font(BODY_BOLD)).padding(0).on_press(on_press).style(move |_, status| {
         let hover = matches!(status, button::Status::Hovered | button::Status::Pressed);
         let ink = match (on_dark, hover) { (true, false) => ON_DARK_SOFT, (true, true) => Color::WHITE, (false, false) => LINK, (false, true) => LINK_HOVER };
