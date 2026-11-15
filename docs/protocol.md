@@ -1368,10 +1368,11 @@ levels, `+0x6C` their count, `+0x68` the others' levels, reset), 2 for another T
 material list from the Tuner count on to show the others. What the server sends, from the engine's moves (their reason:
 a release for a summon, a Fusion or a Synchro material):
 
-- each material's Set, then its Run (a Synchro's Tuners first), before the materials' moves; Konami's server sent the
-  same, Set for all then Run before each move. The engine sends the non-Tuner first at times, and a Tuner tuned second
-  reset the others' levels: the Synchro animation crashed the client (live), so all of a batch's materials are tuned
-  at the first one's move;
+- as Konami's server sent them: every material's Set at the first one's move, then each one's Run right before its
+  own move. Run ahead of the first move, a Fusion's materials from the hand crashed the client (a null card model read
+  at `0x4FC4A9`, under DuelSummon's Run `0x51649D`; issue #40, live 2026-11-15), and Konami's order played the Fusion.
+  A Synchro's are all tuned at the first one's move, the Tuners first: the engine sends the non-Tuner first at times,
+  and a Tuner tuned second reset the others' levels, which crashed the Synchro animation (live);
 - as an Extra Deck monster arrives (its move from the Extra Deck, a batch after its materials: the engine asks its
   position in between), 1015 (and 1016) with the materials' uids, the Tuners first (without it the Synchro animation
   crashed the client, live), RunFusion, and the summon line `0x44` with kind 8 for a Synchro and 6 for a Fusion (Konami

@@ -113,7 +113,7 @@ release, and "—" a row that is not implemented or unsupported.
 
 | Feature | Status | Since | Verified by | Notes / issues |
 | --- | --- | --- | --- | --- |
-| Summon, battle, chain and destruction animations | Implemented | v0.0.1 (2026-11-09) | `duel_stream_contract.rs`, `translate_contract.rs`; live | Tribute, Fusion, Synchro and Flip Summons as the original showed them (v0.0.17). The original CardBreak shatter is not used; CardVanish stands in. |
+| Summon, battle, chain and destruction animations | Implemented | v0.0.1 (2026-11-09) | `duel_stream_contract.rs`, `translate_contract.rs`; live | Tribute, Fusion, Synchro and Flip Summons as the original showed them (v0.0.17); a Fusion with its materials in the hand no longer crashes the client (Unreleased, #40: live with King of the Swamp). The original CardBreak shatter is not used; CardVanish stands in. |
 | Duel dialogs in the card's own words | Implemented | v0.0.13 (2026-11-14) | `duel_stream_contract.rs`, `tools/mod` dialog logic; live; Windows VM | #10, needs the DLL. A card string as a hint and a Yes/No line were not seen live. |
 | Duel music follows the LP gap (3000 LP) | Implemented | v0.0.1 (2026-11-09) | Live (Disadvantage track at 5000 against 8000) | #14. The client does it itself; choosing the opening track is not built. |
 | What targets what: markers on hover between related cards | Partial | v0.0.1 (2026-11-09) | `translate_contract.rs`; duel check (84 equips, 121 lasting targets); live (Axe of Despair on Vorse Raider, both ways) | Equips and lasting targets only. Swords of Revealing Light has no engine target, and what the other six marker types meant is unknown (#16). |
