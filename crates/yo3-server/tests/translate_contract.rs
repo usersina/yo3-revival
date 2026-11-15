@@ -1099,7 +1099,13 @@ fn a_flipped_card_of_the_opponent_shows_its_row_first() {
     let out: Vec<_> = t.events(&[flip]).iter().map(cmd).collect();
     assert_eq!(out.first(), Some(&(1000, [11, 200, 4200, 1 | 2 << 8])), "{out:?}");
     assert!(out.iter().any(|(id, _)| *id == 0x3EB), "its field record");
-    assert_eq!(out.last(), Some(&(0x1C, [1 | 2 << 1 | 1 << 14, 0, 0, 0])));
+    // A Flip Summon as Konami's logs show it (7 of them): the summon line with kind 4, the flip, then RunSummon with 1
+    // (DuelScene 0x514290 reads only the place and the uid: the summon effect at the card).
+    let at = |c: u32| out.iter().position(|(id, _)| *id == c).unwrap_or_else(|| panic!("{c:#x} in {out:?}"));
+    assert_eq!(out[at(0x44)], (0x44, [1, 0x8000 | 11, 4, 0]));
+    assert_eq!(out[at(0x1C)], (0x1C, [1 | 2 << 1 | 1 << 14, 0, 0, 0]));
+    assert!(at(0x44) < at(0x1C) && at(0x1C) < at(0x38));
+    assert_eq!(out.last(), Some(&(0x38, [1 | 2 << 1 | 1 << 14, 11, 1, 0])));
 }
 
 #[test]
@@ -2441,5 +2447,33 @@ fn a_synchro_summon_tunes_its_tuner_first() {
             (0x1A, [2, 2 << 1 | 1 << 14, 0xE << 1 | 1 << 14 | 1 << 6, 0]),
         ],
         "both tuned before either moves, the Tuner first"
+    );
+}
+
+#[test]
+fn a_contact_fusion_plays_the_fusion() {
+    // Gladiator Beast Gyzarus in Konami's logs: its materials go back to the Deck (ProjectIgnis' contact procedures
+    // send them with REASON_COST | REASON_MATERIAL, no Fusion reason) with no Material commands, then the material
+    // list 1015, RunFusion {player, uid, 1 << 16 | the number of materials} (kind 1: the Fusion animation) and the
+    // line with kind 6.
+    let (mut t, fusion) = with_materials();
+    let material = 0x80 | 0x8;
+    let out = t.events(&[
+        json!({ "type": 50, "cid": 4100, "reason": material, "from": loc(0, 4, 1, 1), "to": loc(0, 1, 0, 10) }),
+        json!({ "type": 50, "cid": 4101, "reason": material, "from": loc(0, 4, 2, 1), "to": loc(0, 1, 0, 10) }),
+    ]);
+    assert!(summon_show(&out).is_empty(), "{:?}", summon_show(&out));
+    let out = t.events(&[
+        json!({ "type": 50, "cid": 4150, "reason": 0x800, "from": loc(0, 64, 0, 10), "to": loc(0, 4, 1, 1) }),
+        json!({ "type": 62, "cid": 4150, "controller": 0, "location": 4, "sequence": 1, "position": 1 }),
+    ]);
+    assert_eq!(
+        summon_show(&out),
+        [
+            (1015, [2, 1, 2, 0]),
+            (0x3A, [0, fusion, 1 << 16 | 2, 0]),
+            (0x44, [0, 0x8000 | fusion, 6, 0]),
+            (0x39, [1 << 1 | 1 << 14, fusion, 0, 0]),
+        ]
     );
 }

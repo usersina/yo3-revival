@@ -15,7 +15,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Summons look like the original again.** Tribute Summons show the tribute leaving, Fusion Summons play the full-screen
   Fusion vortex with the materials swirling away, and Synchro Summons play the original Synchro animation: the Tuner's
   rings, the materials passing through, the monster bursting out of the light. Synchro Summons also use the avatar's
-  Synchro line.
+  Synchro line. Contact Fusions (Gladiator Beasts) play the Fusion animation too, and Flip Summons play the avatar's
+  summon cut-in.
 
 ## v0.0.16 (2026-11-14)
 

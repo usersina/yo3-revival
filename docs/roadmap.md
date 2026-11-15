@@ -1031,8 +1031,12 @@ Details in protocol.md, "Tribute, Fusion and Synchro Summons".
 - [x] Live on the private client: Polymerization (Flame Swordsman), a Synchro Summon (Gaia Knight from Krebons and
       Giant Orc) and a Tribute Summon (Summoned Skull); the duel check and the full card sweep pass. Two crashes found
       live and fixed on the way: the Synchro animation needs the Tuner tuned first and the material list.
-- [ ] Not sent: Reset (`0x2B`/`0x2E`/`0x31`; Konami sent it 4 times), the variant-1 tribute effect, `0x45` {player, uid, 2}
-      before RunFusion (no handler found), RunFusion kind 1 (2 of Konami's Fusions), Ritual Summons (no command seen).
+- [x] Flip Summons (the line with kind 4, RunSummon with 1) and Contact Fusions (RunFusion kind 1, no Material commands),
+      as Konami's logs show them. Tests: `a_flipped_card_of_the_opponent_shows_its_row_first`,
+      `a_contact_fusion_plays_the_fusion`. Live: Bestiari's Flip Summon cut-in, Gyzarus' Fusion animation.
+- [x] Looked into and left out, with reasons in protocol.md: Reset (Konami's server marked materials during the choice),
+      the variant-1 tribute effect (never sent), `0x45` (no handler), kind 5 against 6 for other Special Summons (the
+      engine doesn't say which came by their own procedure), Ritual Summons (none in Konami's logs).
 
 ## ✅ Avatars (2026-11-14): Avatar Settings' parts, and the Millennium Eye against Pegasus
 

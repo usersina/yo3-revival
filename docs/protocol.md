@@ -1368,9 +1368,24 @@ a release for a summon, a Fusion or a Synchro material):
   crashed the client, live), RunFusion, and the summon line `0x44` with kind 8 for a Synchro and 6 for a Fusion (Konami
   sent 8 before the materials and 6 after RunFusion for a Synchro); its own line at MSG_SPSUMMONING is then not said;
 - a Tribute Summon's line has kind 1 (a Tribute Summon's arrival has no summon reason in the engine's move). A tribute
-  for a Set (face down, no summon message) leaves no Tribute Summon behind.
+  for a Set (face down, no summon message) leaves no Tribute Summon behind;
+- a Contact Fusion (Konami's logs: Gladiator Beast Gyzarus, twice) sends no Material commands: its materials go back
+  to the Deck (ProjectIgnis' contact procedures: `REASON_COST | REASON_MATERIAL`, no Fusion reason), then 1015, RunFusion
+  with kind 1 (`0x10002`: the Fusion animation) and the line with kind 6;
+- a Flip Summon (MSG_FLIPSUMMONING; Konami's logs: Ryko, Spirit Reaper, Gladiator Beast Hoplomus…, 7) has the line with
+  kind 4 before the flip and RunSummon with 1 after it (RunSummon's third value isn't read: the 1 marks Konami's Flip
+  Summons, 7 of the 8 RunSummons with 1).
 
-Live (2026-11-15, NPC duels with `--duel-deck`): Polymerization's materials swirled away from the hand and the Fusion
+Not sent, with reasons: Reset (Konami's 4 came while a player was still choosing materials: their server marked the
+picked cards during the choice and cleared them when it changed; ours marks materials only as they go), the tribute
+variant 1 (never in the logs), `0x45` {player, uid, RunFusion's kind} before RunFusion (no handler in the client), the
+line's kind 5 against 6 for other Special Summons (Konami's 6 went to monsters Special Summoned by their own procedure,
+Bora the Spear, Dark Armed Dragon; MSG_SPSUMMONING doesn't tell us which; the cut-in only treats 8 apart, `0x505A70`),
+`0x105`/`0x106` (meaning open), and Ritual Summons (none in the 228 duels).
+
+Live (2026-11-15, NPC duels with `--duel-deck`): a Flip Summon of Gladiator Beast Bestiari played the avatar's summon
+cut-in (before, the card only turned); Gyzarus' Contact Fusion played the Fusion animation with both materials;
+Polymerization's materials swirled away from the hand and the Fusion
 animation played (Flame Swordsman out of a purple vortex); Krebons and Giant Orc tuned (cyan glows) and the Synchro
 animation played (Giant Orc through Krebons' rings, Gaia Knight out of the light); Krebons tributed for Summoned Skull
 flashed white. The duel check (`coverage.rs`: presentation) and the card sweep pass.
@@ -1550,7 +1565,7 @@ way (all from the 227 original duel logs, their handlers read in the client):
 | `0x1E` CardSet | player, zone, 1 for a monster | after a Set's move | DuelScene: the Set effect `0x22` |
 | `0x22` CardActivate | the card's place as moves give it (face up), Konami id, uid | before an activation's ChainSet | DuelScene: the activation effect by card type (`0x1A`–`0x20`; `0x20` for the player's "trump card"), waited for |
 | `0x43` | player, 1, 0 | the turn player's Draw Phase | DuelCutin `0x505A70`: the draw line (param3 non-zero: none) |
-| `0x44` | player, `0x8000` \| uid, kind | before a summon's effect | the summon line (the "ace monster" line for the configured card; kind 8 a Synchro's). Kinds in the logs: 0 Normal, 1 Tribute, 5 Special, 6 an Extra Deck monster's arrival, 8 Synchro (also 4, `0x105`, `0x106`, meaning open); we send 0, 1, 5, 6 and 8 (see "Tribute, Fusion and Synchro Summons") |
+| `0x44` | player, `0x8000` \| uid, kind | before a summon's effect | the summon line (the "ace monster" line for the configured card; kind 8 a Synchro's). Kinds in the logs: 0 Normal, 1 Tribute, 5 Special, 6 an Extra Deck monster's arrival, 8 Synchro, 4 Flip (also `0x105`, `0x106`, meaning open); we send 0, 1, 4, 5, 6 and 8 (see "Tribute, Fusion and Synchro Summons") |
 | `0x47` | player, `0x8000` \| uid, step | before `0x22` | steps 1 (a Set card) or 2 (from the hand) only note how the card came, 3 and up speak (the "trump card" line, else by card type); a Spell/Trap gets 2 then 3, a monster's effect 4 |
 | `0x48` | player, Konami id, face up, to a Spell/Trap zone | before a card's move from the hand to the field (Normal Summon, activation, Set) | a Set's line (`param3` 0), none otherwise; the id is never read, so a Set the client may not see goes with 0 |
 | `0x4C` | player | the turn's end, before the turn change | the turn-end line |

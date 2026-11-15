@@ -792,7 +792,20 @@ impl Translator {
                     self.hint_note = m["hint_text"].as_str().filter(|t| !t.is_empty()).map(|t| (self.hint, t.to_owned()));
                 }
                 // Also a Set Spell/Trap turning face-up as it is activated.
-                Some(MSG_POS_CHANGE | MSG_FLIPSUMMONING) => out.extend(self.turn(m, m["position"].as_u64().unwrap_or(0))),
+                Some(MSG_POS_CHANGE) => out.extend(self.turn(m, m["position"].as_u64().unwrap_or(0))),
+                // A Flip Summon as Konami's logs show it: the summon line with kind 4 before the flip, RunSummon with 1
+                // after it (DuelScene reads only its place and uid: the summon effect at the card).
+                Some(MSG_FLIPSUMMONING) => {
+                    let mut turned = self.turn(m, m["position"].as_u64().unwrap_or(0));
+                    let card = self.engine_place(m).and_then(|p| Some((p, self.sides[p.player as usize].zones.get(&p.zone)?.first()?.uid)));
+                    if let Some((place, uid)) = card {
+                        let flip = turned.iter().position(|c| c.get("id").and_then(Value::as_u32) == Some(FLIP_TURN)).unwrap_or(turned.len());
+                        turned.insert(flip, command(SPEAK_SUMMON, [place.player, 0x8000 | uid, SUMMON_FLIP, 0]));
+                        let place = Place { index: 0, face_up: true, ..place };
+                        turned.push(command(RUN_SUMMON, [place.packed(), uid, 1, 0]));
+                    }
+                    out.extend(turned);
+                }
                 Some(MSG_CHAINING) => {
                     out.extend(self.activation(m));
                     let link = self.chain_link(m);
@@ -1050,11 +1063,11 @@ impl Translator {
                 })
                 .collect();
             materials.sort_by_key(|&(.., tuner)| !(family == Family::Synchro && tuner));
-            let (set, run) = family.set_and_run();
-            for &(_, from, uid, _) in &materials {
-                out.push(command(set, [from.player, from.zone, uid, 0]));
+            let marks = family.set_and_run();
+            for &(_, from, uid, _) in materials.iter().filter(|_| marks.is_some()) {
+                out.push(command(marks.map_or(0, |m| m.0), [from.player, from.zone, uid, 0]));
             }
-            for &(material, from, uid, tuner) in &materials {
+            for &(material, from, uid, tuner) in materials.iter().filter(|_| marks.is_some()) {
                 let variant = match family {
                     Family::Synchro if tuner => {
                         s.tuned += 1;
@@ -1063,7 +1076,7 @@ impl Translator {
                     Family::Synchro => self.level_of(material),
                     _ => 0,
                 };
-                out.push(command(run, [from.player, from.zone, uid, variant]));
+                out.push(command(marks.map_or(0, |m| m.1), [from.player, from.zone, uid, variant]));
             }
             s.count += materials.len() as u32;
             s.uids.extend(materials.iter().map(|&(_, _, uid, _)| uid));
@@ -1087,7 +1100,11 @@ impl Translator {
         if let Some(s) = self.summoning.as_mut().filter(|s| arriving && s.family != Family::Tribute && !s.arrived)
             && let Some((from, uid)) = place
         {
-            let (kind, line) = if s.family == Family::Synchro { (2, SUMMON_SYNCHRO) } else { (0, SUMMON_EXTRA) };
+            let (kind, line) = match s.family {
+                Family::Synchro => (2, SUMMON_SYNCHRO),
+                Family::Contact => (1, SUMMON_EXTRA),
+                _ => (0, SUMMON_EXTRA),
+            };
             let at = |i: usize| s.uids.get(i).copied().unwrap_or(0);
             out.push(command(MATERIAL_LIST, [s.uids.len() as u32, at(0), at(1), at(2)]));
             for more in s.uids.get(3..).unwrap_or_default().chunks(4) {
@@ -2937,11 +2954,14 @@ const REASON_SPSUMMON: u64 = 0x800;
 const REASON_MATERIAL: u64 = 0x8;
 const REASON_FUSION: u64 = 0x40000;
 const REASON_SYNCHRO: u64 = 0x80000;
+const REASON_RITUAL: u64 = 0x100000;
+const REASON_XYZ: u64 = 0x200000;
 
 /// The summon line's kinds (SpeakSummon 0x44 param3) in Konami's logs: 0 a Normal Summon, 1 a Tribute Summon, 5 a
 /// Special Summon, 6 an Extra Deck monster's arrival (after RunFusion), 8 a Synchro Summon (DuelCutin: its own slot).
 const SUMMON_NORMAL: u32 = 0;
 const SUMMON_TRIBUTE: u32 = 1;
+const SUMMON_FLIP: u32 = 4;
 const SUMMON_SPECIAL: u32 = 5;
 const SUMMON_EXTRA: u32 = 6;
 const SUMMON_SYNCHRO: u32 = 8;
@@ -2951,6 +2971,9 @@ enum Family {
     Tribute,
     Fusion,
     Synchro,
+    /// A Contact Fusion's materials (Gladiator Beasts, Elemental HEROes' Neos fusions): ProjectIgnis' contact
+    /// procedures send them as a cost, with no Fusion reason. Konami's logs show no Material commands for them.
+    Contact,
 }
 
 impl Family {
@@ -2962,16 +2985,20 @@ impl Family {
             Some(Family::Synchro)
         } else if reason & REASON_MATERIAL != 0 && reason & REASON_FUSION != 0 {
             Some(Family::Fusion)
+        } else if reason & REASON_MATERIAL != 0 && reason & (REASON_RELEASE | REASON_RITUAL | REASON_XYZ) == 0 {
+            Some(Family::Contact)
         } else {
             None
         }
     }
 
-    fn set_and_run(self) -> (u32, u32) {
+    /// The DuelSummon commands that mark a material and play its effect (none for a Contact Fusion's).
+    fn set_and_run(self) -> Option<(u32, u32)> {
         match self {
-            Family::Tribute => (TRIBUTE_SET, TRIBUTE_RUN),
-            Family::Fusion => (MATERIAL_SET, MATERIAL_RUN),
-            Family::Synchro => (TUNING_SET, TUNING_RUN),
+            Family::Tribute => Some((TRIBUTE_SET, TRIBUTE_RUN)),
+            Family::Fusion => Some((MATERIAL_SET, MATERIAL_RUN)),
+            Family::Synchro => Some((TUNING_SET, TUNING_RUN)),
+            Family::Contact => None,
         }
     }
 }
