@@ -192,7 +192,7 @@ impl App {
     }
 
     fn footer(&self) -> Element<'_, Message> {
-        let mut line = row![text(format!("v{}", yo3_tunnel::BUILD_VERSION)).size(14).color(color::ON_DARK_SOFT)].spacing(10).align_y(Center);
+        let mut line = row![text(format!("v{}", yo3_tunnel::BUILD_VERSION.trim_start_matches('v'))).size(14).color(color::ON_DARK_SOFT)].spacing(10).align_y(Center);
         if let Some(updates::Decision::Available(release)) = &self.update {
             line = line.push(container(Space::new().width(9).height(9)).style(|_| dot(color::WARN)))
                 .push(yo3_skin::link(update_line(&release.tag), Message::OpenLink(release.url.clone()), true));

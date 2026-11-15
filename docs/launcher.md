@@ -45,6 +45,10 @@ macOS does not have a supported build. [Game installation help](#getting-the-ori
    desktop, then click **Done**.
 7. Click **PLAY**. In the game, choose **ONLINE**, then select your player. [Start your first duel](playing.md#your-first-duel).
 
+![Setup's Game step: the copy found in Program Files and its checklist](../screenshots/setup-game.png)
+
+![Setup's Ready step: direct start and the desktop shortcut](../screenshots/setup-ready.png)
+
 The checklist:
 
 | Line | Red or amber means |
