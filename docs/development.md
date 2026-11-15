@@ -160,7 +160,7 @@ the [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#
 | `YO3_TRACE_HITS` (with `--trace`) | Whether given client addresses ran | Where a screen's startup steps stopped | Only the addresses you name |
 | UI probe (`vclient.sh ui`, [details](client-internals.md#the-ui-probe)) | Open screens, windows and dialogs by class; the last UI texts looked up, by id; the game's calls into its Flash screens (NPC talk, dialogs opening, janken, list data); each duel slot's card, face and position | Which screen or dialog is open, which menu, prompt or line just appeared, what the client holds on the field | Words written into a movie itself (the "Start Duel?" box's wording); which talk line is showing; rendering and animation |
 | `vclient.sh shot`, `pixel` | The rendered frame, or one pixel's colour | Final visual checks, Flash-only prompts, animations | Needs reading an image; a pixel is only a colour |
-| Duel check (`--duel-check`), native checkpoints, `duel-report.py` | The server's model of each client, the engine, and the client's own card manager, compared after every step | State drift between engine, server and client | Rendering, menus, animations |
+| Duel check (`--duel-check`), native checkpoints, `duel-report.py` | The server's model of each client, the engine, and the client's own card manager, compared after every step; the summon commands' order (`duelcheck/summon.rs`) | State drift between engine, server and client; summon commands in an order the client's animations crash on | Rendering, menus, animations themselves |
 | Duel replay (`duel-replay.py`) | The engine run again on the recorded inputs | Reproducing an engine-side problem exactly | Mouse input and the client |
 | Self-play tests (`duel_check.rs`, card sweep, real-deck sweep, `npc_bot.rs`) | Thousands of duel steps through translator and engine, offline | Regressions after translator, engine or bot changes | The real client |
 | Protocol monkey (`protocol-monkey.sh`) | The server under replayed, mutated, random and garbage traffic and floods | Server crashes, hangs and leaks | The client's reaction |
@@ -211,7 +211,12 @@ options after a time budget, so its answer depends on the machine, and the answe
 Replay exercises the engine, not mouse input or pixels. Use focused live checks for remaining UI behavior.
 
 After translator or engine changes, run the full duel check: its 240 self-played duels compare modeled client and
-engine state after every step. A failure reports the seed, step and preceding engine messages.
+engine state after every step. A failure reports the seed, step and preceding engine messages. It also checks the
+summon commands against rules learnt from client crashes (`duelcheck/summon.rs`: each material's effect right before
+its own move, a Synchro's Tuner first, an animation's material list); `tests/summon_order.rs` replays Konami's own duel
+logs through the same rules, which must find nothing there (`YO3_ORIGINAL_LOGS`, skipped without the logs). When a
+client crash comes from the order or state of duel commands, add its cause there as a rule, check it against the logs,
+and keep a seed that reaches it in `the_seeds_reach_the_cases_that_drifted`.
 
 The card check (`crates/yo3-server/tests/card_data.rs`, with the game installed and the engine fetched) loads each of
 the client's 4,771 cards in the engine: every one must be found, load its script without an error and have the

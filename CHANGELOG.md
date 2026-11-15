@@ -10,6 +10,14 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- A Fusion Summon with its materials in the hand no longer crashes the game as they swirl into the vortex, whether
+  they are the listed materials or King of the Swamp in one's place ([#40](https://github.com/usersina/yo3-revival/issues/40)).
+  Hosts need this update.
+- A Fusion Summon with two copies of the same card from the hand (Ancient Gear Ultimate Golem's two Ancient Gear
+  Golems) now shows both copies going into the vortex, not one of them twice.
+
 ## v0.0.19 (2026-11-15)
 
 Safer saves and hosting. Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions

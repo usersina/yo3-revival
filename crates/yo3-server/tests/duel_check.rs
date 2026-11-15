@@ -1,5 +1,5 @@
 //! The duel check (`duelcheck.rs`): self-played duels through the rules engine, two seeded random players with seeded
-//! decks from a pool of searches, discards, control changes, swaps, flips, tokens, Synchro and Xyz Summons, the client's
+//! decks from a pool of searches, discards, control changes, swaps, flips, tokens, Fusion, Synchro and Xyz Summons, the client's
 //! view (a model of its card manager, fed the commands the translator sends) compared with the engine after every engine
 //! step. A difference fails with the seed, the step and the engine messages before it. Skipped unless engine/fetch.sh
 //! has run. `YO3_CHECK_DUELS=n` plays n duels per test instead of 30 (8 tests).
@@ -79,19 +79,27 @@ fn the_seeds_reach_the_cases_that_drifted() {
     // stay covered: a hand shuffle after a search (33; the client crash at 0x516185) and Magical Hats' Set card shuffle
     // (36) in seed 1, Creature Swap (55) and an Xyz Summon's materials in seed 36, Exchange of the Spirit (35) in seed 152;
     // and the links shown as hover markers, which must never join an empty slot: a lasting target (96) in seed 4, an
-    // equip (93) in seed 8.
+    // equip (93) in seed 8. A Fusion Summon with both materials from the hand (issue #40: the client crashed at
+    // 0x4FC4A9 when both materials' effects came before their moves) in seed 69, and a Synchro Summon in seed 152.
     let Some(dir) = engine_dir() else { return };
     let mut kinds: BTreeMap<u64, u32> = BTreeMap::new();
-    let mut materials = 0;
-    for seed in [1, 4, 8, 36, 152] {
+    let mut animations: BTreeMap<u32, u32> = BTreeMap::new();
+    let (mut materials, mut hand_materials) = (0, 0);
+    for seed in [1, 4, 8, 36, 69, 152] {
         let played = play(&dir, seed).unwrap_or_else(|e| panic!("{e}"));
         materials += played.materials;
+        hand_materials += played.hand_materials;
         for (k, n) in played.kinds {
             *kinds.entry(k).or_default() += n;
+        }
+        for (k, n) in played.animations {
+            *animations.entry(k).or_default() += n;
         }
     }
     for (kind, what) in [(33, "a hand shuffle"), (35, "a Graveyard and Deck swap"), (36, "a Set card shuffle"), (55, "a control swap"), (93, "an equip"), (96, "a lasting target")] {
         assert!(kinds.contains_key(&kind), "no {what} ({kind}) in the seeds: {kinds:?}");
     }
     assert!(materials > 0, "no Xyz material moved in the seeds");
+    assert!(animations.contains_key(&0) && hand_materials >= 2, "no Fusion from the hand in the seeds: {animations:?}, {hand_materials}");
+    assert!(animations.contains_key(&2), "no Synchro Summon in the seeds: {animations:?}");
 }

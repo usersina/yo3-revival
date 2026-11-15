@@ -1085,11 +1085,12 @@ impl Translator {
 
     /// MSG_MOVE {card, cid, from, to}: the card leaves its place for the new one.
     /// Before a MSG_MOVE (`rest[0]`, the rest of the batch after it): a Tribute, Fusion or Synchro Summon's commands
-    /// (see [`Summoning`]). The first material's move marks every material of the summon that moves in this batch and
-    /// plays their effects, a Synchro's Tuners first (the client's first Tuner starts its level sums again, 0x5165A0;
-    /// Konami's logs always tune the Tuner first, and the Synchro animation crashed on sums that left one out). An
-    /// Extra Deck monster's arrival plays RunFusion and its summon line. The engine may report a summon's materials
-    /// and its arrival in different batches (a Synchro Summon asks for its position in between).
+    /// (see [`Summoning`]). The first material's move marks every material of the summon that moves in this batch; each
+    /// plays its effect before its own move, but a Synchro's are all tuned at the first, the Tuners first (the client's
+    /// first Tuner starts its level sums again, 0x5165A0; Konami's logs always tune the Tuner first, and the Synchro
+    /// animation crashed on sums that left one out). An Extra Deck monster's arrival plays RunFusion and its summon
+    /// line. The engine may report a summon's materials and its arrival in different batches (a Synchro Summon asks
+    /// for its position in between).
     fn summon_before_move(&mut self, rest: &[Json]) -> Vec<Message> {
         let m = &rest[0];
         let cid = m["cid"].as_u64().unwrap_or(0) as u16;
@@ -1100,27 +1101,35 @@ impl Translator {
                 Some(s) if s.family == family && !s.arrived => s,
                 _ => Summoning { family, count: 0, tuned: 0, arrived: false, cid: 0, played: vec![], uids: vec![] },
             };
-            if let Some(at) = s.played.iter().position(|&c| c == cid) {
-                s.played.remove(at);
+            if let Some(at) = s.played.iter().position(|(c, _)| *c == cid) {
+                out.extend(s.played.remove(at).1);
                 self.summoning = Some(s);
                 return out;
             }
-            // This move's material and the others of this batch: (Konami id, place, uid, Tuner).
-            let mut materials: Vec<(u16, Place, u32, bool)> = rest
-                .iter()
-                .filter(|x| x["type"].as_u64() == Some(MSG_MOVE) && Family::of(x["reason"].as_u64().unwrap_or(0)) == Some(family))
-                .filter_map(|x| {
-                    let cid = x["cid"].as_u64().unwrap_or(0) as u16;
-                    let from = self.engine_place(&x["from"])?;
-                    Some((cid, from, self.uid_at(&from, cid)?, self.tuners.contains(&cid)))
-                })
-                .collect();
+            // This move's material and the others of this batch: (Konami id, place, uid, Tuner). Each move's place is
+            // the engine's as it happens, after the earlier ones: three materials from the hand all leave its index 0
+            // (Ancient Gear Ultimate Golem's two Golems: both were taken for the first one's card), so each is found
+            // among the cards the earlier ones left.
+            let mut materials: Vec<(u16, Place, u32, bool)> = vec![];
+            for x in rest {
+                if x["type"].as_u64() != Some(MSG_MOVE) || Family::of(x["reason"].as_u64().unwrap_or(0)) != Some(family) {
+                    continue;
+                }
+                let cid = x["cid"].as_u64().unwrap_or(0) as u16;
+                let Some(from) = self.engine_place(&x["from"]) else { continue };
+                let taken: Vec<u32> = materials.iter().map(|&(_, _, uid, _)| uid).collect();
+                if let Some(uid) = self.uid_left(&from, cid, &taken) {
+                    materials.push((cid, from, uid, self.tuners.contains(&cid)));
+                }
+            }
             materials.sort_by_key(|&(.., tuner)| !(family == Family::Synchro && tuner));
             let marks = family.set_and_run();
             for &(_, from, uid, _) in materials.iter().filter(|_| marks.is_some()) {
                 out.push(command(marks.map_or(0, |m| m.0), [from.player, from.zone, uid, 0]));
             }
-            for &(material, from, uid, tuner) in materials.iter().filter(|_| marks.is_some()) {
+            // Each material's effect (none for a Contact Fusion's), by its Konami id.
+            let mut runs: Vec<(u16, Option<Message>)> = vec![];
+            for &(material, from, uid, tuner) in &materials {
                 let variant = match family {
                     Family::Synchro if tuner => {
                         s.tuned += 1;
@@ -1129,16 +1138,23 @@ impl Translator {
                     Family::Synchro => self.level_of(material),
                     _ => 0,
                 };
-                out.push(command(marks.map_or(0, |m| m.1), [from.player, from.zone, uid, variant]));
+                runs.push((material, marks.map(|m| command(m.1, [from.player, from.zone, uid, variant]))));
             }
             s.count += materials.len() as u32;
             s.uids.extend(materials.iter().map(|&(_, _, uid, _)| uid));
-            // The others' moves come later in this batch: their effects are played.
-            let mut others: Vec<u16> = materials.iter().map(|&(c, ..)| c).collect();
-            if let Some(at) = others.iter().position(|&c| c == cid) {
-                others.remove(at);
+            // A Synchro tunes them all now, the Tuners first. A Fusion's or a Tribute's material plays its effect right
+            // before its own move, as in Konami's logs: run ahead of the first move, a Fusion's materials from the hand
+            // crashed the client (0x4FC4A9, live 2026-11-15, issue #40).
+            if family == Family::Synchro {
+                for (_, run) in &mut runs {
+                    out.extend(run.take());
+                }
             }
-            s.played = others;
+            if let Some(at) = runs.iter().position(|(c, _)| *c == cid) {
+                out.extend(runs.remove(at).1);
+            }
+            // The others' moves come later in this batch, with their effects if not yet played.
+            s.played = runs;
             self.summoning = Some(s);
             return out;
         }
@@ -1183,6 +1199,15 @@ impl Translator {
         let zone = self.sides[place.player as usize].zones.get(&place.zone)?;
         let id = |c: &Card| self.cards.get(&c.row).map(|s| s.cid);
         zone.get(place.index).filter(|c| id(c) == Some(cid)).or_else(|| zone.iter().find(|c| id(c) == Some(cid))).map(|c| c.uid)
+    }
+
+    /// [`uid_at`](Self::uid_at) once the cards `taken` have left: a place the engine gives after earlier moves of the
+    /// same batch, which the translator hasn't followed yet.
+    fn uid_left(&self, place: &Place, cid: u16, taken: &[u32]) -> Option<u32> {
+        let zone = self.sides[place.player as usize].zones.get(&place.zone)?;
+        let id = |c: &Card| self.cards.get(&c.row).map(|s| s.cid);
+        let left: Vec<&Card> = zone.iter().filter(|c| !taken.contains(&c.uid)).collect();
+        left.get(place.index).filter(|c| id(c) == Some(cid)).or_else(|| left.iter().find(|c| id(c) == Some(cid))).map(|c| c.uid)
     }
 
     fn level_of(&self, cid: u16) -> u32 {
@@ -3088,8 +3113,9 @@ struct Summoning {
     /// The Extra Deck monster arrived (its Konami id): its line was said.
     arrived: bool,
     cid: u16,
-    /// Materials whose effects were played ahead of their moves (later in the same batch).
-    played: Vec<u16>,
+    /// Materials marked ahead of their moves (later in the same batch), with the effect each plays as it goes (none
+    /// when it was played already: a Synchro's).
+    played: Vec<(u16, Option<Message>)>,
     /// The materials' uids, the Tuners first (the animations' material list).
     uids: Vec<u32>,
 }

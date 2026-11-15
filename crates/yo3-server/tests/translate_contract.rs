@@ -2412,6 +2412,7 @@ fn a_fusion_summon_plays_its_materials_and_the_fusion() {
         json!({ "type": 50, "cid": 4101, "reason": material, "from": loc(0, 4, 2, 1), "to": loc(0, 16, 1, 1) }),
     ]);
     assert_eq!(summon_show(&out), [(0x2D, [0, 1, 1, 0]), (0x2D, [0, 2, 2, 0]), (0x2F, [0, 1, 1, 0]), (0x2F, [0, 2, 2, 0])]);
+    assert_eq!(material_order(&out), [(0x2D, 1), (0x2D, 2), (0x2F, 1), (0x1A, 1), (0x2F, 2), (0x1A, 2)]);
     let out = t.events(&[
         json!({ "type": 50, "cid": 4150, "reason": 0x800 | 0x40000, "from": loc(0, 64, 0, 10), "to": loc(0, 4, 0, 1) }),
         json!({ "type": 62, "cid": 4150, "controller": 0, "location": 4, "sequence": 0, "position": 1 }),
@@ -2420,6 +2421,67 @@ fn a_fusion_summon_plays_its_materials_and_the_fusion() {
         summon_show(&out),
         [(1015, [2, 1, 2, 0]), (0x3A, [0, fusion, 2, 0]), (0x44, [0, 0x8000 | fusion, 6, 0]), (0x39, [1 << 14, fusion, 0, 0])]
     );
+}
+
+/// The material commands and the moves, in order: (id, the card's uid).
+fn material_order(out: &[Message]) -> Vec<(u32, u32)> {
+    out.iter()
+        .map(cmd)
+        .filter_map(|(id, p)| match id {
+            0x2A..=0x32 => Some((id, p[2])),
+            0x1A => Some((id, p[0])),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_fusion_from_the_hand_plays_each_materials_effect_before_its_move() {
+    // Issue #40: Polymerization with its materials in the hand crashed the client (a null card model read at
+    // 0x4FC4A9, under DuelSummon's Run 0x51649D) when both MaterialRuns came before the first material's move. Konami's
+    // logs (5 Fusion Summons) mark the materials, then play each one's effect right before its own move. Live
+    // (2026-11-15): Flame Swordsman from Flame Manipulator, or King of the Swamp in its place, and Masaki.
+    let (mut t, _) = with_materials();
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4102 }, { "cid": 4103 }] })]);
+    let material = 0x8 | 0x40000;
+    let out = t.events(&[
+        json!({ "type": 50, "cid": 4103, "reason": material, "from": loc(0, 2, 1, 10), "to": loc(0, 16, 0, 5) }),
+        json!({ "type": 50, "cid": 4102, "reason": material, "from": loc(0, 2, 0, 10), "to": loc(0, 16, 1, 5) }),
+    ]);
+    let shown = summon_show(&out);
+    assert_eq!(shown[..2], [(0x2D, [0, 11, 4, 0]), (0x2D, [0, 11, 3, 0])], "both marked in the hand (zone 11): {shown:?}");
+    assert_eq!(material_order(&out), [(0x2D, 4), (0x2D, 3), (0x2F, 4), (0x1A, 4), (0x2F, 3), (0x1A, 3)]);
+}
+
+#[test]
+fn two_copies_from_the_hand_are_two_materials() {
+    // Ancient Gear Ultimate Golem from two Ancient Gear Golems and Gadjiltron Dragon in the hand (a deck from Konami's
+    // logs, found by the duel check's summon rules): the engine gives each move's place as it happens, after the
+    // earlier ones, so the first Golem and the second both leave the hand's index 0. Both were taken for the first
+    // Golem's card: it was marked and played twice, the second Golem never, and its Run came after it had left.
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 1000, def: 1000, level: 4, attribute: 2, race: 12 };
+    let client: Vec<u16> = [100, 100].into_iter().chain(102..110).collect();
+    let cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    let cpu: Vec<u16> = (200..210).collect();
+    let (mut t, _) = Translator::new(0, [&client, &cpu], cids);
+    t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }, { "cid": 4102 }, { "cid": 4100 }] })]);
+    let material = 0x8 | 0x40000;
+    let out = t.events(&[
+        json!({ "type": 50, "cid": 4100, "reason": material, "from": loc(0, 2, 0, 10), "to": loc(0, 16, 0, 5) }),
+        json!({ "type": 50, "cid": 4102, "reason": material, "from": loc(0, 2, 0, 10), "to": loc(0, 16, 1, 5) }),
+        json!({ "type": 50, "cid": 4100, "reason": material, "from": loc(0, 2, 0, 10), "to": loc(0, 16, 2, 5) }),
+    ]);
+    let order = material_order(&out);
+    let sets: Vec<u32> = order.iter().filter(|(id, _)| *id == 0x2D).map(|&(_, uid)| uid).collect();
+    let mut distinct = sets.clone();
+    distinct.sort_unstable();
+    distinct.dedup();
+    assert_eq!((sets.len(), distinct.len()), (3, 3), "three different cards marked: {order:?}");
+    // Each Run right before its own card's move, and each card moved once.
+    let after_sets: Vec<(u32, u32)> = order[3..].to_vec();
+    for pair in after_sets.chunks(2) {
+        assert!(pair[0].0 == 0x2F && pair[1] == (0x1A, pair[0].1), "{order:?}");
+    }
 }
 
 #[test]
