@@ -259,7 +259,8 @@ impl Account {
 pub const MAX_DECK_NAME: usize = 64;
 /// The decks of a deck list the client uses (0x43FC60).
 const MAX_LISTED_DECKS: usize = 10;
-const MAX_AVATAR: usize = 256;
+/// The avatar's length: 41 BE u16 entries, the client's own (its 0x2CEF; fewer abort CharMake at 0x42923F).
+const AVATAR_BYTES: usize = 82;
 const MAX_LINE: usize = 200;
 const MAX_FORM_FIELDS: usize = 64;
 const MAX_FORM_TEXT: usize = 256;
@@ -773,6 +774,19 @@ impl Hub {
     /// The client's titles: players earn them from here on (`award_titles`).
     pub fn set_titles(&mut self, titles: Arc<crate::titles::TitleData>) {
         self.titles = Some(titles);
+    }
+
+    /// The table of `duel_id` if others may watch it: its host allowed watching (a duel without match rules, such as
+    /// an Auto Duel, does). The front's 0x1838 and the duel connection's both ask here.
+    pub fn watchable_table(&self, duel_id: u32) -> Option<Arc<Mutex<crate::table::Table>>> {
+        self.matches.get(&duel_id).is_none_or(|m| m.watchable).then(|| self.tables.get(&duel_id).cloned()).flatten()
+    }
+
+    /// Sets whether others may watch `duel_id` between `players` (a hosted duel's Allow Watch Duel).
+    pub fn set_watchable(&mut self, duel_id: u32, players: [u32; 2], watchable: bool) {
+        self.matches.entry(duel_id)
+            .and_modify(|m| m.watchable = watchable)
+            .or_insert(Match { players, rule: vec![], times: None, watchable, made: std::time::Instant::now() });
     }
 
     pub fn enter_duel(&mut self, player_id: u32, entry: DuelEntry) {
@@ -2556,7 +2570,7 @@ impl FrontSession {
     fn update_player(&mut self, msg: &Message) -> Message {
         let body = msg.items.first().filter(|i| i.get("avatar1").is_some()).unwrap_or(msg);
         let Some(Value::Bin(avatar)) = body.get("avatar1").cloned() else { return Message::reply(0x2CF6) };
-        if avatar.len() > MAX_AVATAR {
+        if avatar.len() != AVATAR_BYTES {
             return Message::reply(0x2CF6);
         }
         let text = |k: String| clip(&body.get(&k).and_then(Value::as_str).unwrap_or_default(), MAX_LINE);
@@ -3311,13 +3325,13 @@ impl FrontSession {
     fn watch(&self, msg: &Message) -> Message {
         let refused = Message::reply(0x183A);
         let Some(duel_id) = msg.get("duel_id").and_then(Value::as_u32) else { return refused };
-        let (table, allowed, match_type) = {
+        let (table, match_type) = {
             let hub = self.hub();
             let m = hub.matches.get(&duel_id);
             let rule = m.and_then(|m| m.rule.iter().find(|(k, _)| k == "match_type").and_then(|(_, v)| v.as_u32()));
-            (hub.tables.get(&duel_id).cloned(), m.is_none_or(|m| m.watchable), rule.unwrap_or(SINGLE_MODE))
+            (hub.watchable_table(duel_id), rule.unwrap_or(SINGLE_MODE))
         };
-        let (Some(table), true) = (table, allowed) else { return refused };
+        let Some(table) = table else { return refused };
         // The hub is free while the table is locked (the table locks the hub when a duel ends).
         let Some(players) = table.locked().players() else { return refused };
         let hub = self.hub();

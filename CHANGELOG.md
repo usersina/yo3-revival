@@ -20,6 +20,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Changing the game folder no longer gets stuck.** It used to ask you to turn off direct launch first, an option
   that is gone. Now the old folder is cleaned up for you, and a Windows registry entry that was already missing no
   longer stops the cleanup halfway.
+- **Tighter checks against modified clients.** A duel closed to watchers can no longer be watched by going around the
+  menu, one player can't take both seats of a duel, and an avatar must have the game's own size.
 
 ## v0.0.18 (2026-11-15)
 

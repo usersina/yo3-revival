@@ -90,3 +90,18 @@ fn the_settings_are_kept_with_the_account() {
     let p = d.account_for(addr).players.into_iter().find(|p| p.player_id == player_id).unwrap();
     assert_eq!((p.avatar, p.speeches[0].as_str(), p.title), (vec![7; 82], "Hello", 2));
 }
+
+#[test]
+fn an_avatar_of_another_length_is_refused_and_the_old_one_kept() {
+    // The client's avatar is 41 BE u16 entries, 82 bytes (its own 0x2CEF; the record's reader copies entries from
+    // PlayerData+0x28). Review (2026-11-15): a 34-byte avatar was accepted and sent back to every client that shows
+    // this player. 0x2CF6 refuses it.
+    let mut c = Server::new().join(1001, "Yugi");
+    let good: Vec<u8> = (0..82).collect();
+    assert_eq!(one(c.send(update(&good))).request(), Some(0x2CF5));
+    for bad in [vec![1u8; 34], vec![1u8; 81], vec![1u8; 84], vec![]] {
+        assert_eq!(one(c.send(update(&bad))).request(), Some(0x2CF6), "{} bytes", bad.len());
+    }
+    let r = one(c.send(req(0x2CEE)));
+    assert_eq!(r.items[0].get("avatar1").and_then(Value::as_bytes), Some(good.as_slice()), "the last good one stays");
+}

@@ -124,9 +124,9 @@ impl Table {
         }
     }
 
-    /// Seats a player (None when the table is full); once both sit, the janken begins.
+    /// Seats a player (None when the table is full or the player sits already); once both sit, the janken begins.
     pub fn sit(&mut self, player_id: u32, entry: DuelEntry, outbox: Outbox) -> Option<(usize, Out)> {
-        if self.seats.len() == 2 {
+        if self.seats.len() == 2 || self.seats.iter().any(|s| s.player_id == player_id) {
             return None;
         }
         self.best_of = self.best_of.max(entry.best_of);

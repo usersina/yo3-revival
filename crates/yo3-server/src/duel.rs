@@ -463,12 +463,18 @@ impl DuelSession {
         match (msg.request(), int("duelRequestName")) {
             // A spectator: the table's catch-up, then (through the outbox) every event of the duel.
             (Some(WATCH), _) => {
-                let table = int("duel_id").and_then(|id| self.hub.locked().tables.get(&id).cloned());
+                // Only a duel its host opened to watchers (the front's 0x1838 asks the same).
+                let table = int("duel_id").and_then(|id| self.hub.locked().watchable_table(id));
                 let (Some(table), Some(outbox)) = (table, self.outbox.clone()) else { return vec![] };
                 self.watching = true;
                 table.locked().watch(outbox)
             }
             (Some(ENTER), _) => {
+                // Once per duel connection (0x50F690): a second ENTER would sit the same player again.
+                if self.player_id.is_some() || self.table.is_some() {
+                    tracing::warn!("a second duel entry on one duel connection (player {:?}); ignored", int("player_id"));
+                    return vec![];
+                }
                 let mut entry = int("player_id").and_then(|id| self.hub.locked().duel_entry(id));
                 if entry.as_ref().is_some_and(|e| e.identity != self.identity)
                     || (self.identity.is_some() && entry.is_none())

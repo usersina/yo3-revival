@@ -483,3 +483,32 @@ fn a_duel_between_players_leaves_a_replay_in_the_log() {
     assert_eq!((id(2), id(1)), (2, 1505), "command 2 ends the duel, 1505 the match");
     assert_eq!(u32::from_le_bytes(body[body.len() - 16..][..4].try_into().unwrap()), 2);
 }
+
+#[test]
+fn a_duel_its_host_closed_to_watchers_cannot_be_watched_from_the_duel_connection_either() {
+    // Review (2026-11-15): the front refused 0x1838 for such a duel, but the same request sent straight to the duel
+    // connection subscribed. Both now ask the hub (Hub::watchable_table).
+    let Some((mut a, mut b, hub)) = after_janken(true) else { return };
+    a.send(0xD, &[("choice", 1)]);
+    b.pushed();
+    hub.lock().unwrap().set_watchable(DUEL, [1001, 1002], false);
+    let (mut s, caught_up) = spectator(&hub);
+    assert!(caught_up.is_empty(), "no catch-up for a closed duel: {} messages", caught_up.len());
+    a.send(2, &[("CommandID", 4), ("player", 0), ("position", 0xB), ("index", 0)]);
+    assert!(s.pushed().is_empty(), "and no events after");
+    hub.lock().unwrap().set_watchable(DUEL, [1001, 1002], true);
+    let (_, open) = spectator(&hub);
+    assert!(!open.is_empty(), "an open duel can be watched");
+}
+
+#[test]
+fn a_second_enter_from_one_connection_does_not_take_the_other_seat() {
+    // Review (2026-11-15): ENTER sent twice on one connection sat that player in both seats and began the janken
+    // without the opponent. The real client sends it once per duel connection (0x50F690).
+    let (mut a, mut b, _) = table(false).unwrap();
+    assert!(enter(&mut a, 1001).is_empty());
+    assert!(commands(&enter(&mut a, 1001)).is_empty(), "no janken from one player twice");
+    assert!(commands(&a.pushed()).is_empty());
+    assert_eq!(commands(&enter(&mut b, 1002)), [(1500, [0; 4])], "the opponent still gets the second seat");
+    assert_eq!(commands(&a.pushed()), [(1500, [0; 4])]);
+}
