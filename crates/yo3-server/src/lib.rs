@@ -3,6 +3,8 @@ pub mod cli;
 pub mod accounts;
 pub mod logins;
 pub mod account_ops;
+pub mod settings;
+pub mod config;
 pub mod auth;
 mod transport;
 pub mod admin;
@@ -44,7 +46,7 @@ use tokio::task::JoinHandle;
 use yo3_proto::Value;
 
 use accounts::Directory;
-use front::{Deck, Hub, LOGIN_REGULATION, STARTER_REGULATION, World};
+use front::{Deck, Hub, STARTER_REGULATION, World};
 
 /// The official character decks every player gets: the client's NPC decks of Yami Yugi (NPCs 120-122: "Attack of the
 /// Ancients", "Miracle Magic", "Slifer the Lightning"), Jaden Yuki (147-149) and Yusei Fudo (171-173), named after
@@ -79,8 +81,8 @@ pub struct Config {
     pub diagnostic_id: Option<String>,
     /// Default players for offline account administration; login never creates an account.
     pub players: Vec<String>,
-    /// Each player's LP at the start of a duel (8000; lower only to test).
-    pub duel_lp: u32,
+    /// Testing aid: each player's LP at the start of every duel (none: the `start-lp` setting, or a hosted duel's).
+    pub duel_lp: Option<u32>,
     /// Testing aid: every duel's deck is checked against this regulation, not the duel's own.
     pub duel_regulation: Option<u32>,
     /// Testing aid: every player's main deck in a duel, as CARD_Prop rows repeated to 40 cards (empty: their own).
@@ -92,8 +94,6 @@ pub struct Config {
     /// Where accounts and duel records are kept (none: in memory only).
     pub data_dir: Option<PathBuf>,
     /// The banlist players log in with (Auto Duel and NPC duels), as a regulation id or name ("unlimited"); none:
-    /// regulation 1.
-    pub regulation: Option<String>,
     /// How long a connection may stay silent before it is closed (the client heartbeats every 30 s).
     pub idle_timeout: std::time::Duration,
     /// Testing aid: pretend the rules engine can't run, with this reason (none: check for real at start).
@@ -101,8 +101,8 @@ pub struct Config {
     /// Testing aid: check every duel's client view against the rules engine after each step and log an ERROR where they
     /// differ (`duelcheck.rs`; the protocol monkey's duels run with it).
     pub duel_check: bool,
-    /// The server's name, how accounts are made and the oldest launcher it accepts (#23; `account_ops`).
-    pub access: account_ops::Access,
+    /// Testing aid: live settings (#24) set at start, by name and value, as `yo3-server set` would.
+    pub settings: Vec<(String, String)>,
 }
 
 impl Config {
@@ -119,17 +119,16 @@ impl Config {
             log_dir: log_dir.clone(),
             packet_logging: true, diagnostic_id: None,
             players: vec!["test".into()],
-            duel_lp: 8000,
+            duel_lp: None,
             duel_regulation: None,
             duel_deck: vec![],
             duel_extra: vec![],
             duel_time: None,
             data_dir: Some(log_dir.join("test-auth/data")),
-            regulation: None,
             idle_timeout: net::IDLE_TIMEOUT,
             engine_problem: None,
             duel_check: false,
-            access: account_ops::Access { name: "Test server".into(), registration: logins::Registration::Open, min_launcher: None },
+            settings: vec![("server-name".into(), "Test server".into()), ("registration".into(), "open".into())],
         }
     }
 }
@@ -249,7 +248,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             }),
             extra_deck_rows: data.cards.iter().filter(|c| c.extra_deck()).map(|c| c.row).collect(),
             engine_dir: engine::Engine::dir(),
-            start_lp: cfg.duel_lp,
+            test_lp: cfg.duel_lp,
             test_regulation: cfg.duel_regulation,
             test_deck: (!cfg.duel_deck.is_empty()).then(|| cfg.duel_deck.clone()),
             test_extra: (!cfg.duel_extra.is_empty()).then(|| cfg.duel_extra.clone()),
@@ -303,14 +302,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             protectors: data.protectors().iter().map(|e| e.id).collect(),
             avatar_items: data.avatar_items_for_sale().iter().map(|e| (e.id, e.b)).collect(),
             free_items: data.free_items().iter().map(|e| e.id).collect(),
-            login_regulation: match &cfg.regulation {
-                Some(arg) => {
-                    let known: Vec<(u32, String)> =
-                        data.regulations.iter().map(|r| (r.id, data.text(r.name_id).unwrap_or_default().to_string())).collect();
-                    regulation_by(arg, &known).map_err(anyhow::Error::msg)?
-                }
-                None => LOGIN_REGULATION,
-            },
+            banlists: data.regulations.iter().map(|r| (r.id, data.text(r.name_id).unwrap_or_default().to_string())).collect(),
             regulations: data.regulations.iter().map(|r| (r.id, r.clone())).collect(),
             ..World::new(data.regulations.iter().map(|r| r.id as u16).collect())
         },
@@ -319,18 +311,12 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
                 anyhow::bail!("Cannot load the host's game data from {}: {e}. Select a complete Yu-Gi-Oh! ONLINE 3 v1.153 installation with --game-dir (Desktop: Game setup). Hosting was not started; existing accounts and decks were preserved.", cfg.game_dir.display());
             }
             tracing::warn!("game data not loaded ({e}); using regulation ids 1-20");
-            let login_regulation = match cfg.regulation.as_deref().map(str::parse::<u32>) {
-                Some(Ok(id)) => id,
-                Some(Err(_)) => anyhow::bail!("--regulation by name needs the game's data"),
-                None => LOGIN_REGULATION,
-            };
-            World { duel_server, http_port, login_regulation, ..World::new((1..=20).collect()) }
+            World { duel_server, http_port, ..World::new((1..=20).collect()) }
         }
     };
     if !cfg.allow_missing_game_data && (world.cards.is_empty() || (world.starter_deck.is_none() && world.official_decks.is_empty())) {
         anyhow::bail!("The host's game data has no usable cards or starting decks. Select a complete Yu-Gi-Oh! ONLINE 3 v1.153 installation with --game-dir (Desktop: Game setup). Hosting was not started; existing accounts and decks were preserved.");
     }
-    tracing::info!("players log in with regulation {}", world.login_regulation);
     Ok(world)
 }
 
@@ -343,8 +329,20 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let authenticated = TcpListener::bind((cfg.bind, cfg.tls.port)).await?;
     let http = TcpListener::bind((Ipv4Addr::LOCALHOST, cfg.http_port)).await?;
     let (auth_addr, http_addr) = (authenticated.local_addr()?, http.local_addr()?);
-    // The launcher supplies its local duel port for each front connection's handoff.
+    // The launcher supplies its local duel port for each front connection's handoff. The game's data comes first: a
+    // server that can't load it stops before it opens (or makes) the database.
     let mut world = world(&cfg, 0, http_addr.port())?;
+    if let Some(dir) = &cfg.data_dir {
+        store::initialize(dir)?;
+        store::back_up(dir)?;
+    }
+    // The live settings (#24), saved in the database, read with the game's banlist names.
+    let settings = settings::Live::open(cfg.data_dir.as_ref().map(|d| d.join("settings.json")).as_deref(), world.banlists.clone())?;
+    for (name, value) in &cfg.settings {
+        settings.set(name, value).map_err(anyhow::Error::msg)?;
+    }
+    world.settings = Arc::new(settings);
+    tracing::info!("players log in with regulation {}", world.settings.now().login_regulation);
     world.engine_problem = cfg.engine_problem.clone().or_else(|| engine::problem(world.engine_dir.as_deref(), &engine::program(world.engine_dir.as_deref().unwrap_or(std::path::Path::new("engine")))));
     if cfg.duel_check {
         tracing::info!("duel check on: every duel's client view is compared with the rules engine after each step");
@@ -358,10 +356,6 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
 
     let quiet = net::Idle { limit: cfg.idle_timeout, heartbeats: false };
     let heartbeats = net::Idle { limit: cfg.idle_timeout, heartbeats: true };
-    if let Some(dir) = &cfg.data_dir {
-        store::initialize(dir)?;
-        store::back_up(dir)?;
-    }
     // A backup every hour while running (and one at each start and stop).
     let backup_task = cfg.data_dir.clone().map(|dir| tokio::spawn(async move {
         let mut every = tokio::time::interval_at(tokio::time::Instant::now() + store::BACKUP_EVERY, store::BACKUP_EVERY);
@@ -398,7 +392,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     hub.set_titles(world.titles.clone());
     let hub = Arc::new(Mutex::new(hub));
     let auth_task = tokio::spawn(transport::accept_loop(authenticated, tls, world.clone(), hub.clone(), directory.clone(),
-        packets.clone(), quiet, heartbeats, http_addr, cfg.access.clone()));
+        packets.clone(), quiet, heartbeats, http_addr));
     // Duel clocks between players run out on the server's side: checked once a second.
     let clock_task = {
         let hub = hub.clone();
@@ -428,7 +422,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     });
     let (shutdown, _) = tokio::sync::watch::channel(false);
     let running_hub = hub.clone();
-    let manager = manager::Manager { accounts: directory.clone(), hub, shutdown: shutdown.clone(), engine_problem: world.engine_problem.clone(), listen: auth_addr, diagnostic_id: cfg.diagnostic_id };
+    let manager = manager::Manager { accounts: directory.clone(), hub, shutdown: shutdown.clone(), engine_problem: world.engine_problem.clone(), listen: auth_addr, diagnostic_id: cfg.diagnostic_id, settings: world.settings.clone() };
     let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.clone(), directory, admin_token, manager));
     tracing::info!("authenticated TLS {} local management/assets HTTP {}; packets -> {}", auth_addr, http_addr, packets.path().display());
     let mut tasks = vec![auth_task, http_task, clock_task];

@@ -26,7 +26,11 @@ fn world(login: u32) -> World {
         starter_deck: Some(starter),
         cards: (1..=100).map(|row| (row, stats(row))).collect::<HashMap<_, _>>(),
         regulations: regulations.into_iter().map(|r| (r.id, r)).collect(),
-        login_regulation: login,
+        settings: {
+            let settings = yo3_server::settings::Live::open(None, vec![]).unwrap();
+            settings.set("login-regulation", &login.to_string()).unwrap();
+            std::sync::Arc::new(settings)
+        },
         // NPC 124 is the one the duels name (an NPC the server lacks is refused at Select Deck).
         npcs: vec![124],
         ..World::new(vec![3, 5])

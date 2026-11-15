@@ -226,23 +226,32 @@ impl Invite {
 }
 
 /// Throttling in front of the account operations: a token bucket per address, and per User ID a backoff after failed
-/// passwords or codes (1 s, doubling to 15 minutes, reset by a success). No lockout: waiting always works.
+/// passwords or codes (1 s, doubling to 15 minutes by default, reset by a success). No lockout: waiting always works.
 #[derive(Default)]
-pub struct Throttle { addresses: HashMap<IpAddr, (f64, Instant)>, users: HashMap<String, (u32, Instant)> }
+pub struct Throttle { addresses: HashMap<IpAddr, (f64, Instant)>, users: HashMap<String, (u32, Instant)>, limits: Limits }
 
-/// The burst an address may make, and how fast its allowance comes back.
-const BUCKET: f64 = 10.0;
-const REFILL_PER_SECOND: f64 = 1.0 / 3.0;
-const MAX_BACKOFF: Duration = Duration::from_secs(15 * 60);
+/// The throttle's limits, live settings (#24): the burst an address may make, how many seconds bring back one request,
+/// and the longest backoff after failures.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Limits { pub burst: u32, pub refill_seconds: u32, pub max_backoff_seconds: u32 }
+
+impl Default for Limits {
+    fn default() -> Self { Limits { burst: 10, refill_seconds: 3, max_backoff_seconds: 15 * 60 } }
+}
 
 impl Throttle {
+    /// The limits from now on (allowances already taken stay taken).
+    pub fn set_limits(&mut self, limits: Limits) { self.limits = limits }
+
     /// Takes one request from `addr`'s allowance; how long to wait if there is none left.
     pub fn address(&mut self, addr: IpAddr, now: Instant) -> Result<(), Duration> {
-        if self.addresses.len() > 100_000 { self.addresses.retain(|_, (tokens, at)| *tokens < BUCKET && now.duration_since(*at) < Duration::from_secs(60)) }
-        let (tokens, at) = self.addresses.entry(addr).or_insert((BUCKET, now));
-        *tokens = (*tokens + now.duration_since(*at).as_secs_f64() * REFILL_PER_SECOND).min(BUCKET);
+        let bucket = f64::from(self.limits.burst.max(1));
+        let refill = 1.0 / f64::from(self.limits.refill_seconds.max(1));
+        if self.addresses.len() > 100_000 { self.addresses.retain(|_, (tokens, at)| *tokens < bucket && now.duration_since(*at) < Duration::from_secs(3600)) }
+        let (tokens, at) = self.addresses.entry(addr).or_insert((bucket, now));
+        *tokens = (*tokens + now.duration_since(*at).as_secs_f64() * refill).min(bucket);
         *at = now;
-        if *tokens >= 1.0 { *tokens -= 1.0; Ok(()) } else { Err(Duration::from_secs_f64((1.0 - *tokens) / REFILL_PER_SECOND)) }
+        if *tokens >= 1.0 { *tokens -= 1.0; Ok(()) } else { Err(Duration::from_secs_f64((1.0 - *tokens) / refill)) }
     }
 
     /// How long `user` must still wait after failures, if at all.
@@ -255,7 +264,7 @@ impl Throttle {
         if self.users.len() > 100_000 { self.users.retain(|_, (_, until)| *until > now) }
         let (count, until) = self.users.entry(user.to_lowercase()).or_insert((0, now));
         *count = count.saturating_add(1);
-        let wait = Duration::from_secs(1u64 << (*count - 1).min(10)).min(MAX_BACKOFF);
+        let wait = Duration::from_secs(1u64 << (*count - 1).min(20)).min(Duration::from_secs(self.limits.max_backoff_seconds.max(1).into()));
         *until = now + wait;
     }
 
@@ -326,7 +335,7 @@ mod tests {
         t.failed("YUGI", now);
         assert_eq!(t.user_wait("Yugi", now), Some(Duration::from_secs(2)));
         for _ in 0..20 { t.failed("yugi", now) }
-        assert_eq!(t.user_wait("yugi", now), Some(MAX_BACKOFF));
+        assert_eq!(t.user_wait("yugi", now), Some(Duration::from_secs(15 * 60)));
         t.succeeded("Yugi");
         assert_eq!(t.user_wait("yugi", now), None);
     }

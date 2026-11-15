@@ -315,6 +315,7 @@ impl Backend {
         let data = self.data_dir(settings);
         yo3_server::auth::maintain_identity(&data, vec!["localhost".into(), "127.0.0.1".into(), name.clone()])?;
         yo3_server::store::initialize(&data)?;
+        apply_banlist(&data, settings)?;
         let mut directory = yo3_server::accounts::Directory::open(vec![], &data.join("accounts.json"))?;
         if directory.entries().next().is_none() { directory.add_account(std::slice::from_ref(&settings.player_name)).map_err(anyhow::Error::msg)?; }
         drop(directory);
@@ -353,6 +354,7 @@ impl Backend {
         }
     }
     fn server_command(&self, settings: &Settings, bind: std::net::IpAddr) -> anyhow::Result<Command> {
+        // The banlist is a live setting in the server's data (#24, `apply_banlist`), not a flag.
         let extra = server_options::arguments(settings)?;
         let port = settings.listen_port.to_string();
         let mut cmd = Command::new(&self.runtime.server);
@@ -362,7 +364,6 @@ impl Backend {
             .env("YO3_ENGINE_DIR", &self.runtime.engine).env("YO3_ENGINE", &self.runtime.engine_program).env("NO_COLOR", "1").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         if !settings.server_options.contains_key("http-port") { cmd.args(["--http-port", "0"]); }
         if !settings.server_options.contains_key("no-packet-log") { cmd.arg("--no-packet-log"); }
-        if !settings.banlist.is_empty() { cmd.arg(format!("--regulation={}", settings.banlist)); }
         cmd.args(extra);
         Ok(cmd)
     }
@@ -654,6 +655,14 @@ impl Backend {
     }
 }
 
+/// Writes the saved Banlist into the server's data as its `login-regulation` setting (#24), before the server starts:
+/// "" puts the setting back to its default (Season 16).
+pub fn apply_banlist(data: &Path, settings: &Settings) -> anyhow::Result<()> {
+    let live = yo3_server::settings::Live::open(Some(&data.join("settings.json")), banlists(Path::new(&settings.game_dir)))?;
+    let done = if settings.banlist.is_empty() { live.reset("login-regulation") } else { live.set("login-regulation", &settings.banlist) };
+    done.map(|_| ()).map_err(|e| anyhow::anyhow!("The Banlist {:?} can't be used: {e}", settings.banlist))
+}
+
 /// The game's banlists (regulation id, name from its text table) for Hosting's Banlist choice; empty without game data.
 pub fn banlists(game_dir: &Path) -> Vec<(u32, String)> {
     let Ok(data) = yo3_data::GameData::load(game_dir) else { return Vec::new() };
@@ -822,16 +831,22 @@ mod tests {
         assert_eq!(old.banlist, "");
         let cmd=backend.server_command(&old,std::net::Ipv4Addr::LOCALHOST.into()).unwrap();
         assert!(!cmd.get_args().any(|a| a.to_string_lossy().contains("regulation")),"{cmd:?}");
-        // A chosen list: its id, passed as --regulation; back to the default with "".
+        // A chosen list: its id, written as the server's login-regulation setting (#24); back to the default with "".
         db.save_settings(&Settings { game_dir: "kept".into(), ..Settings::default() }).unwrap();
         assert_eq!(db.save_banlist(" 3 ").unwrap(), "3");
         assert!(db.save_banlist("0").is_err() && db.save_banlist("--duel-lp=1").is_err() && db.save_banlist("1\n2").is_err());
         let saved=db.settings().unwrap();
         assert_eq!((saved.banlist.as_str(), saved.game_dir.as_str()), ("3", "kept"));
         let cmd=backend.server_command(&saved,std::net::Ipv4Addr::LOCALHOST.into()).unwrap();
-        let args:Vec<_>=cmd.get_args().map(|s|s.to_string_lossy().to_string()).collect();
-        assert_eq!(args.iter().filter(|a| a.contains("regulation")).cloned().collect::<Vec<_>>(), ["--regulation=3"]);
+        assert!(!cmd.get_args().any(|a| a.to_string_lossy().contains("regulation")),"{cmd:?}");
+        let data=root.join("server-data");
+        yo3_server::store::initialize(&data).unwrap();
+        apply_banlist(&data,&saved).unwrap();
+        let login=|| yo3_server::settings::Live::open(Some(&data.join("settings.json")),vec![]).unwrap().now().login_regulation;
+        assert_eq!(login(),3);
         assert_eq!(db.save_banlist("").unwrap(), "");
+        apply_banlist(&data,&db.settings().unwrap()).unwrap();
+        assert_eq!(login(),yo3_server::front::LOGIN_REGULATION);
         // A host who set --regulation under All server flags keeps it, now as the Banlist.
         db.save_settings(&Settings { server_options: [("regulation".into(), "Season 14".into())].into(), ..Settings::default() }).unwrap();
         let moved=db.settings().unwrap();

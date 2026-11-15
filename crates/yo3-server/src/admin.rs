@@ -42,6 +42,10 @@ pub enum Op {
     SetRole { user: String, role: String },
     /// A password account made by the host: `hash` is its first password's PHC string, made by the command.
     AddUser { user: String, hash: String },
+    /// The live settings (#24): every one with its value and when it applies.
+    Settings,
+    Set { name: String, value: String },
+    Reset { name: String },
 }
 
 impl Op {
@@ -59,6 +63,9 @@ impl Op {
             Op::ResetCode { user } => format!("op=reset-code&user={}", encode(user)),
             Op::SetRole { user, role } => format!("op=set-role&user={}&role={}", encode(user), encode(role)),
             Op::AddUser { user, hash } => format!("op=add-user&user={}&hash={}", encode(user), encode(hash)),
+            Op::Settings => "op=settings".into(),
+            Op::Set { name, value } => format!("op=set&name={}&value={}", encode(name), encode(value)),
+            Op::Reset { name } => format!("op=reset&name={}", encode(name)),
         }
     }
 
@@ -75,8 +82,21 @@ impl Op {
             Some("reset-code") => Ok(Op::ResetCode { user: get("user").ok_or("user missing")? }),
             Some("set-role") => Ok(Op::SetRole { user: get("user").ok_or("user missing")?, role: get("role").ok_or("role missing")? }),
             Some("add-user") => Ok(Op::AddUser { user: get("user").ok_or("user missing")?, hash: get("hash").ok_or("hash missing")? }),
+            Some("settings") => Ok(Op::Settings),
+            Some("set") => Ok(Op::Set { name: get("name").ok_or("name missing")?, value: get("value").unwrap_or_default() }),
+            Some("reset") => Ok(Op::Reset { name: get("name").ok_or("name missing")? }),
             _ => Err("unknown operation".into()),
         }
+    }
+}
+
+/// Applies a settings operation (`Settings`, `Set`, `Reset`); None for the others, which go to [`apply`].
+pub fn apply_settings(live: &crate::settings::Live, op: &Op) -> Option<Result<String, String>> {
+    match op {
+        Op::Settings => Some(Ok(live.list())),
+        Op::Set { name, value } => Some(live.set(name, value)),
+        Op::Reset { name } => Some(live.reset(name)),
+        _ => None,
     }
 }
 
@@ -141,6 +161,7 @@ pub fn apply(d: &mut Directory, op: &Op) -> Result<String, String> {
             d.register(login, None, crate::logins::Registration::Open).map_err(|e| if e == "user_id_taken" { format!("the User ID {user} is taken") } else { e })?;
             Ok(format!("recovery code: {recovery}"))
         }
+        Op::Settings | Op::Set { .. } | Op::Reset { .. } => Err("a settings operation (apply_settings)".into()),
     }
 }
 
@@ -189,7 +210,8 @@ pub fn send(live: &Live, op: &Op) -> Result<String, String> {
 
 /// The patch HTTP server's `/admin`: `path` (with its query) is an admin request, if so its answer. Only from this PC
 /// (a loopback peer) with the token; the server logs the route, never the query.
-pub fn handle(path: &str, peer: IpAddr, token: Option<&str>, accounts: &Arc<Mutex<Directory>>, hub: &Arc<Mutex<crate::front::Hub>>) -> Option<Response> {
+pub fn handle(path: &str, peer: IpAddr, token: Option<&str>, accounts: &Arc<Mutex<Directory>>, hub: &Arc<Mutex<crate::front::Hub>>,
+    settings: &crate::settings::Live) -> Option<Response> {
     let (route, query) = path.split_once('?').unwrap_or((path, ""));
     if route.trim_end_matches('/') != "/admin" {
         return None;
@@ -204,6 +226,7 @@ pub fn handle(path: &str, peer: IpAddr, token: Option<&str>, accounts: &Arc<Mute
     }
     let op = Op::from_query(&q);
     let applied = op.clone().and_then(|op| {
+        if let Some(done) = apply_settings(settings, &op) { return done }
         let mut d = accounts.locked();
         let done = apply(&mut d, &op)?;
         // A running server shows the gift at once (Hub::push_bp), not only at the player's next login or purchase.

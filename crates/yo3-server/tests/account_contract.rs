@@ -88,7 +88,7 @@ async fn sign_up_checks_the_user_id_the_password_and_the_rules() {
 #[tokio::test]
 async fn an_invite_only_server_takes_each_code_for_its_uses() {
     let mut cfg = config("invite");
-    cfg.access.registration = Registration::Invite;
+    cfg.settings.push(("registration".into(), "invite".into()));
     let code = Directory::open(vec![], &accounts_file(&cfg)).unwrap().add_invite(Some(1), None, "host").unwrap();
     let s = serve(cfg).await;
     let with = |user: &str, invite: Option<&str>| s.ask(json!({ "op": "register", "user": user, "password": PASSWORD, "rules": true, "invite": invite }));
@@ -103,8 +103,7 @@ async fn an_invite_only_server_takes_each_code_for_its_uses() {
 #[tokio::test]
 async fn a_closed_server_makes_no_accounts_and_discovery_says_so() {
     let mut cfg = config("closed");
-    cfg.access.registration = Registration::Closed;
-    cfg.access.name = "Kaiba Land".into();
+    cfg.settings.extend([("registration".into(), "closed".into()), ("server-name".into(), "Kaiba Land".into())]);
     let s = serve(cfg).await;
     assert_eq!(s.register("Yugi", PASSWORD).await["error"], "registration_closed");
     let info = s.endpoint.info().await.unwrap();
@@ -242,7 +241,7 @@ async fn a_banned_account_is_refused_with_the_reason_and_a_restricted_one_signs_
 #[tokio::test]
 async fn an_older_launcher_is_told_to_update() {
     let mut cfg = config("update");
-    cfg.access.min_launcher = Some("0.2.0".into());
+    cfg.settings.push(("min-launcher".into(), "0.2.0".into()));
     let s = serve(cfg).await;
     let old = s.ask(json!({ "op": "login", "user": "Yugi", "password": PASSWORD, "launcher": "0.1.9" })).await;
     assert_eq!((&old["error"], &old["min_launcher"]), (&json!("update_required"), &json!("0.2.0")));

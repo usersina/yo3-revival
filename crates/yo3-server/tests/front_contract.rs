@@ -257,6 +257,24 @@ fn news_list_is_nested_under_a_lang_record() {
 }
 
 #[test]
+fn the_news_setting_reaches_the_next_request() {
+    // A live setting (#24): the host's news shows the next time the game asks (Information, 0x1F41), no relogin.
+    let world = Arc::new(World::new((1..=20).collect()));
+    let mut s = fresh_in(world.clone());
+    for id in [0x1F47, 0x1F48, 0x1F49] {
+        s.handle(&req(id));
+    }
+    s.handle(&req_with(0x1F4C, "player_id", 1001));
+    s.handle(&req_with(0x1FA4, "player_id", 1001));
+    let titles = |s: &mut FrontSession| -> Vec<String> {
+        one(s.handle(&req(0x1F41))).items[0].items.iter().map(|e| e.get("title").and_then(Value::as_str).unwrap().to_string()).collect()
+    };
+    assert_eq!(titles(&mut s), ["Welcome back to Yu-Gi-Oh! ONLINE"]);
+    world.settings.set("news", r#"[{"title": "Maintenance", "body": "Sunday at 10:00"}, {"title": "Season 16", "body": "The new banlist"}]"#).unwrap();
+    assert_eq!(titles(&mut s), ["Maintenance", "Season 16"]);
+}
+
+#[test]
 fn login_news_omits_the_starting_deck_onboarding_notice() {
     let r = one(in_world().handle(&req(0x1F41)));
     let entries = &r.items[0].items;
@@ -311,8 +329,9 @@ fn heartbeat_and_unknown_requests_get_no_reply() {
 #[test]
 fn the_login_carries_the_servers_banlist() {
     // Auto Duel's and the NPC duel's deck check (0x51AB00) uses the login's regulation_id (0x219A, and 0x2201's top
-    // level, read by 0x469C00): the server's --regulation, e.g. 3 "unlimited".
-    let world = Arc::new(World { login_regulation: 3, ..World::new((1..=20).collect()) });
+    // level, read by 0x469C00): the server's login-regulation setting, e.g. 3 "unlimited".
+    let world = Arc::new(World::new((1..=20).collect()));
+    world.settings.set("login-regulation", "3").unwrap();
     let auth = one(fresh_in(world.clone()).handle(&req(0x1F47)));
     assert_eq!(auth.get("regulation_id"), Some(&Value::U32(3)));
     let login = login(fresh_in(world).handle(&req(0x1F48)));
@@ -320,11 +339,23 @@ fn the_login_carries_the_servers_banlist() {
 }
 
 #[test]
+fn a_banlist_change_reaches_each_player_at_their_next_login() {
+    // A live setting (#24): a player already online keeps the banlist they logged in with, so Edit Deck and the deck
+    // check don't change under them; a new login gets the new one.
+    let world = Arc::new(World::new((1..=20).collect()));
+    let mut online = fresh_in(world.clone());
+    assert_eq!(login(online.handle(&req(0x1F48))).get("regulation_id"), Some(&Value::U32(20)));
+    world.settings.set("login-regulation", "3").unwrap();
+    assert_eq!(login(online.handle(&req(0x1F48))).get("regulation_id"), Some(&Value::U32(20)), "kept until they log in again");
+    assert_eq!(login(fresh_in(world).handle(&req(0x1F48))).get("regulation_id"), Some(&Value::U32(3)), "the next login");
+}
+
+#[test]
 fn players_log_in_with_season_16_unless_the_host_chooses() {
     // Konami's server sent its current list as the login banlist (Edit Deck's "Latest Regulation"); this client's newest
     // is 20, "Season 16" (issue #15: "unlimited" left nothing Forbidden or Limited).
     let world = Arc::new(World::new((1..=20).collect()));
-    assert_eq!(world.login_regulation, 20);
+    assert_eq!(world.settings.now().login_regulation, 20);
     let login = login(fresh_in(world).handle(&req(0x1F48)));
     assert_eq!(login.get("regulation_id"), Some(&Value::U32(20)));
     // The starter deck is still picked by the first list (the Beta list), so new players get one either way.
@@ -333,7 +364,7 @@ fn players_log_in_with_season_16_unless_the_host_chooses() {
 
 #[test]
 fn a_banlist_is_named_by_id_or_name() {
-    // --regulation takes a regulation id or its name in the client's text table, ignoring case.
+    // The login-regulation setting takes a regulation id or its name in the client's text table, ignoring case.
     let known = [(1, "Beta Forbidden/Limited".to_string()), (3, "unlimited".to_string()), (20, "Season 16".to_string())];
     assert_eq!(yo3_server::regulation_by("unlimited", &known), Ok(3));
     assert_eq!(yo3_server::regulation_by("UNLIMITED", &known), Ok(3));

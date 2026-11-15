@@ -207,7 +207,7 @@ pub async fn http_loop(
             let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
             let response = if path == "/manager" {
                 Some(manager.handle(&request, peer.ip(), admin_token.as_deref()))
-            } else { crate::admin::handle(&path, peer.ip(), admin_token.as_deref(), &accounts, &manager.hub) };
+            } else { crate::admin::handle(&path, peer.ip(), admin_token.as_deref(), &accounts, &manager.hub, &manager.settings) };
             if let Some(response) = response {
                 if path != "/manager" {
                     tracing::info!("[http] GET {} -> {} ({} B)", path.split('?').next().unwrap_or_default(), response.status, response.body.len());

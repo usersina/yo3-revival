@@ -66,5 +66,5 @@ pub fn check(world: &World, regulation: u32, owned: &BTreeMap<u16, u32>, deck: &
 }
 
 fn pick(world: &World, regulation: u32) -> Option<&Regulation> {
-    world.regulations.get(&regulation).or_else(|| world.regulations.get(&world.login_regulation))
+    world.regulations.get(&regulation).or_else(|| world.regulations.get(&crate::front::LOGIN_REGULATION))
 }

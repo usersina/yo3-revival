@@ -10,7 +10,7 @@
 //! | change_password | user, password, new_password | — (every device is signed out) |
 //! | recover | user, code (the recovery code or a moderator's reset code), new_password | recovery_code (a new one) |
 //!
-//! Every request may carry "launcher" (its version): an older one than the server's `--min-launcher` gets
+//! Every request may carry "launcher" (its version): an older one than the server's `min-launcher` setting gets
 //! `update_required`. The game's own connections still use the session through tickets (operations 2 and 3).
 use std::net::IpAddr;
 use std::sync::Mutex;
@@ -22,16 +22,14 @@ use crate::accounts::Directory;
 use crate::auth::Sessions;
 use crate::lock::Locked;
 use crate::logins::{self, Device, Login, Registration, Throttle};
-
-/// Who may come in, and how: the server's name, how accounts are made and the oldest launcher it accepts.
-#[derive(Clone, Debug, Default)]
-pub struct Access { pub name: String, pub registration: Registration, pub min_launcher: Option<String> }
+use crate::settings::Settings;
 
 pub struct Context<'a> {
     pub accounts: &'a Mutex<Directory>,
     pub sessions: &'a Mutex<Sessions>,
     pub throttle: &'a Mutex<Throttle>,
-    pub access: &'a Access,
+    /// The live settings at this request (#24): registration, the oldest launcher, the throttle's limits.
+    pub settings: &'a Settings,
     pub peer: IpAddr,
 }
 
@@ -43,11 +41,12 @@ fn hex(token: &[u8]) -> String { token.iter().map(|b| format!("{b:02x}")).collec
 /// Answers one account request. Never logs passwords, tokens or codes.
 pub async fn handle(request: &Json, ctx: &Context<'_>) -> Json {
     let op = text(request, "op");
-    if let Err(wait) = ctx.throttle.locked().address(ctx.peer, Instant::now()) {
+    let allowed = { let mut throttle = ctx.throttle.locked(); throttle.set_limits(ctx.settings.limits); throttle.address(ctx.peer, Instant::now()) };
+    if let Err(wait) = allowed {
         tracing::warn!("[account] {} {op}: throttled", ctx.peer);
         return waiting(wait);
     }
-    if let (Some(need), Some(have)) = (&ctx.access.min_launcher, request["launcher"].as_str())
+    if let (Some(need), Some(have)) = (&ctx.settings.min_launcher, request["launcher"].as_str())
         && !logins::version_at_least(have, need) { return json!({ "ok": false, "error": "update_required", "min_launcher": need }) }
     let reply = match op {
         "register" => register(request, ctx).await,
@@ -67,14 +66,14 @@ async fn register(request: &Json, ctx: &Context<'_>) -> Json {
     if !logins::valid_user_id(user) { return error("invalid_user_id") }
     if let Some(problem) = logins::password_problem(user, password) { return error(problem) }
     if request["rules"].as_bool() != Some(true) { return error("rules_not_accepted") }
-    if ctx.access.registration == Registration::Closed { return error("registration_closed") }
+    if ctx.settings.registration == Registration::Closed { return error("registration_closed") }
     if ctx.accounts.locked().login_of(user).is_some() { return error("user_id_taken") }
     let Ok(hash) = logins::hash_password(password.to_owned()).await else { return error("server_error") };
     let recovery = logins::new_code();
     let login = Login { user: user.to_owned(), password: hash, role: Default::default(), standing: Default::default(),
         recovery: logins::digest(&logins::normalize_code(&recovery)), reset: None, devices: vec![] };
     let invite = request["invite"].as_str().filter(|c| !c.trim().is_empty());
-    match ctx.accounts.locked().register(login, invite, ctx.access.registration) {
+    match ctx.accounts.locked().register(login, invite, ctx.settings.registration) {
         Ok(_) => json!({ "ok": true, "user": user, "recovery_code": recovery }),
         Err(code) if ["user_id_taken", "invite_required", "invite_invalid", "registration_closed"].contains(&code.as_str()) => error(&code),
         Err(_) => error("server_error"),

@@ -22,7 +22,7 @@ PowerShell. Run from the extracted bundle, or substitute `./target/release/yo3-s
 ```bash
 ./yo3-server --bind 0.0.0.0 --game-dir "/absolute/path/Yu-Gi-Oh! ONLINE 3"
 ./yo3-server --data-dir "/absolute/path/server data" --auth-port 17443 --http-port 18080
-./yo3-server --regulation "Season 16" --duel-check
+./yo3-server --config "/absolute/path/server.toml"
 ```
 
 Initialize the identity and accounts before running; [Scripts setup](scripts.md#play-on-your-own-pc) shows the sequence.
@@ -45,18 +45,64 @@ storage. Select the complete installation with `--game-dir` and retry; keep exis
 | `--log-dir`                 | Logs, default `logs/`                                                                                |
 | `--http-port`               | Internal loopback HTTP/admin listener, default `8080`; Desktop uses an automatically assigned port   |
 | `--auth-cert`, `--auth-key` | Explicit TLS certificate/key files                                                                   |
-| `--regulation`              | Login banlist by ID/name; default `Season 16`, `unlimited` for none                                  |
 | `--duel-check`              | Compare each player's modeled client state with the rules engine after each step                     |
 | `--no-packet-log`           | Disable separate raw packet files; decoded packet traces remain in bounded session diagnostics       |
-| `--name`                    | The server's name in the launcher's server list (beta)                                               |
-| `--registration`            | How accounts are made (beta): `invite` (default, with an invite code), `open` or `closed` ([accounts](authentication.md#accounts)) |
-| `--min-launcher`            | Refuse sign-ins from launchers older than this version; they are told to update (beta)               |
+| `--config`                  | The [server file](#the-server-file) (beta); default `server.toml` in the current folder when it is there |
 | `--owned`                   | The launcher's own server (Singleplayer, on the `beta` branch): standard input stays open while the launcher lives; once it closes, the server stops after nobody has played for `--owned-idle` seconds (default 120)|
 
 Desktop listens on `127.0.0.1` while no sharing address is saved, even when **Listen on** is all interfaces.
 
+The banlist, a duel's LP and clocks, the news and the account rules are [live settings](#live-settings), not flags.
 Other duel-testing flags and diagnostic paths are listed by `--help`; see [duel diagnostics](development.md#duel-diagnostics).
 The game's connection ports are private loopback endpoints assigned by its launcher. Do not configure those in `yo3.ini`.
+
+## The server file
+
+On the `beta` branch, what only a restart changes can live in a TOML file instead of flags: the listeners, the TLS
+files, the folders and the rules engine's program. The server reads `--config FILE`, or `server.toml` in the current
+folder when there is one. A flag wins over the file, and relative paths in the file are from its folder.
+
+```toml
+bind = "0.0.0.0"
+auth_port = 7443
+http_port = 8080
+advertise = "play.example"
+game_dir = "/games/Yu-Gi-Oh! ONLINE 3"
+data_dir = "data"
+log_dir = "logs"
+engine = "yo3-engine"
+```
+
+`auth_cert` and `auth_key` name explicit TLS files. A key the server doesn't know, such as a live setting, is refused
+at start with the list of keys it takes.
+
+## Live settings
+
+On the `beta` branch, these change without a restart. They are kept in the server's database (`server.db`), work
+while the server runs or stopped, and each applies at its own moment:
+
+```bash
+./yo3-server settings                             # each one's value, whether it is the default, when it applies
+./yo3-server set login-regulation "Season 14"
+./yo3-server set news "Maintenance | Sunday at 10:00"
+./yo3-server reset login-regulation
+```
+
+| Setting | Default | Applies | What |
+| --- | --- | --- | --- |
+| `server-name` | Yu-Gi-Oh! ONLINE 3 server | At once | The name in the launcher's server list |
+| `headline` | (none) | At once | A line of news under the name in the server list |
+| `registration` | `invite` | At once | How accounts are made: `invite`, `open` or `closed` ([accounts](authentication.md#accounts)) |
+| `min-launcher` | (none) | At once | Refuse sign-ins from older launchers; they are told to update |
+| `login-regulation` | Season 16 | At each player's next login | The banlist for Auto Duel and NPC duels, by id or name. Players already online keep theirs |
+| `start-lp` | 8000 | At the next duel | LP at the start of an Auto Duel or NPC duel; a hosted duel has its own |
+| `turn-seconds`, `total-seconds` | 180, 600 | At the next duel | The clocks of duels between players that set none (0: off) |
+| `news` | A welcome | At the game's next request | The Information list: `TITLE \| BODY` for one entry, or a JSON list of `{title, body}` (1 to 10) |
+| `address-burst`, `address-refill-seconds`, `backoff-max-seconds` | 10, 3, 900 | At once | The [throttle](authentication.md#passwords-and-throttling) on account requests |
+
+A value that doesn't pass its check is refused and changes nothing. Desktop writes its Banlist choice as
+`login-regulation` before it starts its server. The testing aids (`--duel-lp`, `--duel-time`, `--duel-deck` and the
+like) stay flags and win over the settings.
 
 ## Account commands
 

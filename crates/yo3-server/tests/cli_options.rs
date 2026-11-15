@@ -10,11 +10,15 @@ fn script_defaults_can_be_overridden_by_the_users_explicit_options() {
 #[test]
 fn the_option_catalogue_exposes_defaults_types_and_all_duel_controls() {
     let options = cli::server_options();
-    for name in ["data-dir", "bind", "auth-port", "auth-cert", "auth-key", "http-port", "advertise", "game-dir", "log-dir", "no-packet-log", "diagnostics-dir", "diagnostic-parent", "players", "duel-lp", "duel-deck", "duel-extra", "duel-time", "duel-regulation", "duel-check", "regulation"] {
+    for name in ["data-dir", "bind", "auth-port", "auth-cert", "auth-key", "http-port", "advertise", "game-dir", "log-dir", "no-packet-log", "diagnostics-dir", "diagnostic-parent", "players", "duel-lp", "duel-deck", "duel-extra", "duel-time", "duel-regulation", "duel-check", "config"] {
         assert!(options.iter().any(|o| o.name == name), "missing --{name}");
     }
     assert!(options.iter().find(|o| o.name == "duel-check").unwrap().toggle);
-    assert_eq!(options.iter().find(|o| o.name == "duel-lp").unwrap().default, "8000");
+    assert_eq!(options.iter().find(|o| o.name == "duel-lp").unwrap().default, "", "a testing aid, off unless given");
+    // Live settings (#24) are not flags: `yo3-server set` changes them, on a running server too.
+    for live in ["regulation", "registration", "name", "min-launcher"] {
+        assert!(!options.iter().any(|o| o.name == live), "--{live} is a live setting");
+    }
     assert!(!options.iter().any(|o| o.name == "help" || o.name == "version"));
 }
 #[test]

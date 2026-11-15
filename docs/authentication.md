@@ -31,7 +31,7 @@ An account holds up to four players with their in-game names, cards, decks and B
   - up to ten **signed-in devices** ("stay signed in").
   A new password account has no players yet; the game's Select Player makes them.
 - **Key accounts**. A 20-character key signs in. The launcher's own Singleplayer account uses one, and so do the
-  Scripts edition's private profiles until the launcher's sign-in form (#32) replaces them.
+  Scripts edition's private profiles until the launcher's sign-in form (#30) replaces them.
 
 The address a client connects from never selects an account.
 
@@ -47,7 +47,8 @@ The host initializes a certificate with the DNS names/IPs friends will connect t
 ./yo3-server init-auth localhost 127.0.0.1 play.example
 ```
 
-Then it chooses how accounts are made, with `--registration` when the server starts:
+Then it chooses how accounts are made, with the `registration` [live setting](guide.md#live-settings) (`yo3-server
+set registration open`), which applies at once:
 
 | Mode | Who makes an account |
 | --- | --- |
@@ -55,8 +56,8 @@ Then it chooses how accounts are made, with `--registration` when the server sta
 | `open` | Anyone who reaches the server |
 | `closed` | Only the host, with `add-user` |
 
-`--name` sets the server's name in the launcher's server list and `--min-launcher VERSION` refuses launchers older
-than that version, which are told to update.
+The `server-name` and `headline` settings show in the launcher's server list, and `min-launcher VERSION` refuses
+launchers older than that version, which are told to update.
 
 A key account still works as before: `add-account Alice` makes it and `profile Alice Alice.json --advertise
 play.example` exports its private profile. Send `Alice.json` privately to Alice with the public `data/server.crt`,
@@ -152,7 +153,7 @@ account from malware running as the same OS user.
 ## Account requests
 
 Operation 6 carries one JSON object with an `"op"`. Each reply has `"ok"`, and `"error"` when it is false. Any
-request may carry `"launcher"`, its version: one older than the server's `--min-launcher` gets `update_required`
+request may carry `"launcher"`, its version: one older than the server's `min-launcher` setting gets `update_required`
 with `min_launcher`.
 
 | op | Asks for | Replies |
@@ -190,7 +191,8 @@ times and an expiry 90 days after the last use. An account keeps at most ten; th
   hash so it takes as long as a wrong password.
 - **Per address:** a bucket of ten requests that refills one every three seconds.
 - **Per User ID:** after a failed password or recovery code, the next try waits 1 second, doubling with each
-  failure up to 15 minutes, and resets on success. There is no hard lockout, which an attacker could use to lock
+  failure up to 15 minutes, and resets on success.
+- The three numbers are live settings: `address-burst`, `address-refill-seconds` and `backoff-max-seconds`. There is no hard lockout, which an attacker could use to lock
   players out.
 - **Logs:** the server logs each request's op, address and result, never a password, token or code.
 

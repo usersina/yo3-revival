@@ -223,8 +223,11 @@ async fn setup(a: &Args) -> anyhow::Result<Arc<Env>> {
     let mut ports = ports;
     let cwd = std::env::current_dir()?;
     let mut server_args = a.server_arg.clone();
-    if matches!(a.cmd, Cmd::Accounts { .. }) && !server_args.iter().any(|s| s.starts_with("--registration")) {
-        server_args.extend(["--registration".into(), "open".into()]);
+    if matches!(a.cmd, Cmd::Accounts { .. }) {
+        // Anyone may sign up on the monkey's server: a live setting (#24), set in its data before it starts.
+        let set = std::process::Command::new(&a.server_bin).args(["set", "registration", "open", "--data-dir"]).arg(scratch.join("data"))
+            .stdout(std::process::Stdio::null()).status()?;
+        anyhow::ensure!(set.success(), "could not open registration on the monkey's server");
     }
     if matches!(a.cmd, Cmd::Duel { .. } | Cmd::Soak { .. }) && !a.no_duel_check && !server_args.iter().any(|s| s == "--duel-check") {
         server_args.push("--duel-check".into());

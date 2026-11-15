@@ -22,12 +22,12 @@ pub const REVIVAL_BP: u32 = 0x7A11;
 pub const REVIVAL_RETURN: u32 = 0x7A14;
 pub const VERSION_VALID: u32 = 0x219F;
 /// The default banlist every account logs in with (0x2201 regulation_id), which Auto Duel's and the NPC duel's deck
-/// check uses (`World::login_regulation`, set by --regulation): 20, "Season 16", the newest list this client ships, as
+/// check uses (the `login-regulation` setting's default, settings.rs): 20, "Season 16", the newest list this client ships, as
 /// Konami's server sent its current one (issue #15; its players' saved settings left Create Duel on "Latest
 /// Regulation"). The starter deck passes it; the character decks don't (Heavy Storm, Premature Burial...).
 pub const LOGIN_REGULATION: u32 = 20;
 /// The banlist the starter deck must pass: the client's first (the Beta list), so the starter stays legal whatever
-/// --regulation a host picks.
+/// banlist a host picks.
 pub const STARTER_REGULATION: u32 = 1;
 pub const HEARTBEAT: u32 = 0x2724;
 
@@ -526,8 +526,10 @@ pub struct World {
     /// The client's banlists by id (`regulation_ids` with their cards), which a duel's deck is checked against. Empty
     /// without the game's data: then no deck is checked.
     pub regulations: HashMap<u32, yo3_data::Regulation>,
-    /// The banlist accounts log in with (0x219A, 0x2201 regulation_id): Auto Duel's and the NPC duel's deck check.
-    pub login_regulation: u32,
+    /// The live settings (#24): the login banlist, a duel's LP and clocks, the news, the account rules.
+    pub settings: Arc<crate::settings::Live>,
+    /// The client's banlists, id and name (from its text table), to read a banlist setting by name.
+    pub banlists: Vec<(u32, String)>,
     /// The highest CARD_Prop row: the client's per-card arrays have one byte per row (row 0 is a dummy).
     pub card_rows: usize,
     /// Every player's deck until decks are stored per player (from the client's preset decks).
@@ -562,8 +564,8 @@ pub struct World {
     pub card_names: HashMap<u16, String>,
     /// The CARD_Prop rows of Fusion and Synchro Monsters, which belong in the Extra Deck (the deck check).
     pub extra_deck_rows: std::collections::HashSet<u16>,
-    /// Each player's LP at the start of a duel (8000; lower only to test).
-    pub start_lp: u32,
+    /// Testing aid: each player's LP at the start of every duel, over the `start-lp` setting and a hosted duel's own.
+    pub test_lp: Option<u32>,
     /// Testing aid: the regulation every duel's deck is checked against, over the duel's own.
     pub test_regulation: Option<u32>,
     /// Testing aid: every player's main deck in a duel, as CARD_Prop rows repeated to 40 cards.
@@ -583,7 +585,6 @@ pub struct World {
     pub duel_server: (String, u16),
     /// The patch server's port, which also serves the duel logs.
     pub http_port: u16,
-    pub news: Vec<(String, String)>,
     pub rooms: Vec<Room>,
     /// The booster packs and structure decks on the shop's shelves (from the client's pack and recipe files).
     pub packs: Vec<crate::shop::ShopPack>,
@@ -608,7 +609,8 @@ impl World {
         World {
             regulation_ids,
             regulations: HashMap::new(),
-            login_regulation: LOGIN_REGULATION,
+            settings: Arc::new(crate::settings::Live::open(None, vec![]).expect("the default settings are valid")),
+            banlists: vec![],
             card_rows: 0,
             starter_deck: None,
             official_decks: vec![],
@@ -627,7 +629,7 @@ impl World {
             extra_deck_rows: Default::default(),
             engine_dir: None,
             engine_problem: None,
-            start_lp: 8000,
+            test_lp: None,
             test_regulation: None,
             test_deck: None,
             test_extra: None,
@@ -635,12 +637,6 @@ impl World {
             duel_check: false,
             duel_server: ("127.0.0.1".into(), 0),
             http_port: 0,
-            news: vec![
-                (
-                    "Welcome back to Yu-Gi-Oh! ONLINE".into(),
-                    "This is a private revival server. Have fun duelling with your friends!".into(),
-                ),
-            ],
             rooms: vec![
                 Room::new(1, "Lobby"),
                 Room::new(2, "Free Talk"),
@@ -2355,6 +2351,8 @@ pub struct FrontSession {
     selected: Option<usize>,
     /// Supply deck initialization only with the first trunk after a successful player selection.
     starter_pending: bool,
+    /// The banlist this session logged in with (`login_regulation`).
+    login_regulation: Option<u32>,
     /// Hub registration once a player is selected.
     online: Option<u64>,
     /// The rule (0x17AC item fields) of each duel this session asked for, by duel_id.
@@ -2394,6 +2392,7 @@ impl FrontSession {
             opened: false,
             selected: None,
             starter_pending: false,
+            login_regulation: None,
             online: None,
             duels: HashMap::new(),
             reached_at: None,
@@ -2454,6 +2453,13 @@ impl FrontSession {
         }
     }
 
+    /// The banlist this session logged in with: the `login-regulation` setting at its login, kept until the player
+    /// logs in again (a change reaches players at their next login, #24).
+    fn login_regulation(&mut self) -> u32 {
+        let world = &self.world;
+        *self.login_regulation.get_or_insert_with(|| world.settings.now().login_regulation)
+    }
+
     /// The regulation a duel is played under (its rule's `regulation_id`; 0 means the login one).
     fn duel_regulation(&self, duel_id: Option<u32>) -> u32 {
         let find = |rule: &[(String, Value)]| rule.iter().find(|(k, _)| k == "regulation_id").and_then(|(_, v)| v.as_u32());
@@ -2477,7 +2483,10 @@ impl FrontSession {
         for row in self.hub().rentals.borrowed_by(me.player_id) {
             *owned.entry(row).or_default() += 1;
         }
-        crate::deckcheck::check(&self.world, self.duel_regulation(duel_id), &owned, deck)
+        // A duel that names no banlist, or one the client doesn't have, uses the one this player logged in with.
+        let login = self.login_regulation.unwrap_or_else(|| self.world.settings.now().login_regulation);
+        let regulation = Some(self.duel_regulation(duel_id)).filter(|id| self.world.regulations.contains_key(id)).unwrap_or(login);
+        crate::deckcheck::check(&self.world, regulation, &owned, deck)
     }
 
     /// The decks the selected player's clients uploaded, as the accounts keep them now.
@@ -2794,15 +2803,16 @@ impl FrontSession {
             tracing::debug!("request {id:#x} before a player was selected; ignored");
             return vec![];
         }
+        let regulation = self.login_regulation();
         let a = &self.account;
         let reply = match id {
             0x1F47 => Message::reply(0x219A)
-                .with("regulation_id", Value::U32(self.world.login_regulation))
+                .with("regulation_id", Value::U32(regulation))
                 .with("user_id", Value::U32(a.user_id))
                 .with("uname", Value::text(&a.name))
                 .with("dpoint", Value::U32(a.dpoint)),
             // premium (UserData+4, 0x4BF520): every NPC, Form Team and Create Event open.
-            0x1F48 => Message::reply(0x2201).with("regulation_id", Value::U32(self.world.login_regulation)).item(
+            0x1F48 => Message::reply(0x2201).with("regulation_id", Value::U32(regulation)).item(
                 Message::record()
                     .with("user_id", Value::U32(a.user_id))
                     .with("uname", Value::text(&a.name))
@@ -3199,7 +3209,7 @@ impl FrontSession {
             0x1F41 => {
                 let now = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
                 let unavailable = self.world.engine_problem.is_some().then(|| (DUELS_UNAVAILABLE.0.to_string(), DUELS_UNAVAILABLE.1.to_string()));
-                let entries = self.world.news.iter().cloned().chain(unavailable).map(|(title, body)| {
+                let entries = self.world.settings.now().news.clone().into_iter().chain(unavailable).map(|(title, body)| {
                     Message::record()
                         .with("starttime", Value::text(&now))
                         .with("title", Value::text(&title))

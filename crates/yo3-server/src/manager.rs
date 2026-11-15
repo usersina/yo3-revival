@@ -51,6 +51,8 @@ pub(crate) struct Manager {
     pub engine_problem: Option<String>,
     pub listen: SocketAddr,
     pub diagnostic_id: Option<String>,
+    /// The live settings (`/admin`'s settings, set and reset).
+    pub settings: Arc<crate::settings::Live>,
 }
 
 impl Manager {

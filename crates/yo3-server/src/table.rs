@@ -12,7 +12,7 @@ use crate::duel::{
     CLIENT, CPU, CardCommand, DUEL_START, FIRST, FIRST_BEGIN, FIRST_RESOLVE, JANKEN_BEGIN, JANKEN_RESOLVE, SECOND, SET_LP,
     command, piles, setup, shuffle,
 };
-use crate::clock::{Clocks, DEFAULT_TOTAL, DEFAULT_TURN};
+use crate::clock::Clocks;
 use crate::engine::{Answer, Engine};
 use crate::front::{DuelEntry, Ended, Hub, MATCH_MODE, Outbox, SINGLE_MODE, World};
 use crate::translate::{DRAW, DUEL_END, LOST, Prompt, Repeats, Translator, WON};
@@ -203,15 +203,18 @@ impl Table {
             }
         };
         if self.world.duel_check { engine.record(); }
-        // A hosted duel's starting LP (Create Duel's lp_start), unless the server's was set to test (--duel-lp).
+        // The settings at this duel's start (#24): a hosted duel's starting LP (Create Duel's lp_start), else the
+        // `start-lp` setting, unless a test set every duel's (--duel-lp).
+        let settings = self.world.settings.now();
         let hosted = self.seats.iter().find_map(|s| s.entry.lp);
-        let lp = hosted.filter(|_| self.world.start_lp == DEFAULT_LP).unwrap_or(self.world.start_lp);
+        let lp = self.world.test_lp.or(hosted).unwrap_or(settings.start_lp);
         self.start_lp = lp;
         let answer = engine.new_duel_named(crate::duel::next(&mut self.rng), lp, [(&m0, &e0), (&m1, &e1)], &self.world.card_names);
         self.engine = Some(engine);
-        // A hosted duel's time_turn and time_total, else Create Duel's defaults, unless the server's were set to test.
+        // A hosted duel's time_turn and time_total, else the `turn-seconds` and `total-seconds` settings, unless a test
+        // set every duel's.
         let hosted = self.seats.iter().find_map(|s| s.entry.times);
-        let (turn, total) = self.world.test_times.or(hosted).unwrap_or((DEFAULT_TURN, DEFAULT_TOTAL));
+        let (turn, total) = self.world.test_times.or(hosted).unwrap_or((settings.turn_seconds, settings.total_seconds));
         self.first = first;
         self.clocks = Clocks::new(turn, total);
         self.lp = lp;

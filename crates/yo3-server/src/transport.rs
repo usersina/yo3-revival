@@ -18,20 +18,24 @@ pub(crate) struct Gate {
     pub sessions: Mutex<Sessions>,
     pub accounts: Arc<Mutex<Directory>>,
     pub throttle: Mutex<crate::logins::Throttle>,
-    pub access: crate::account_ops::Access,
+    /// The live settings (#24): the account rules and the server list's name and headline.
+    pub settings: Arc<crate::settings::Live>,
 }
 
 impl Gate {
-    pub fn new(accounts: Arc<Mutex<Directory>>, access: crate::account_ops::Access) -> Self {
-        Gate { sessions: Mutex::default(), accounts, throttle: Mutex::default(), access }
+    pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>) -> Self {
+        Gate { sessions: Mutex::default(), accounts, throttle: Mutex::default(), settings }
     }
-    /// Discovery's answer: the build, and for the server list its name, who is online and how accounts are made.
+    /// Discovery's answer: the build, and for the server list its name, headline, who is online and how accounts
+    /// are made, from the settings now.
     fn info(&self, ready: bool, online: Option<u32>) -> yo3_tunnel::ServerInfo {
+        let settings = self.settings.now();
         let mut info = yo3_tunnel::ServerInfo::current(ready);
-        info.name = self.access.name.clone();
+        info.name = settings.server_name.clone();
+        info.headline = settings.headline.clone();
         info.online = online;
-        info.registration = self.access.registration.as_str().into();
-        info.min_launcher = self.access.min_launcher.clone();
+        info.registration = settings.registration.as_str().into();
+        info.min_launcher = settings.min_launcher.clone();
         info
     }
 }
@@ -91,7 +95,8 @@ async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &yo3_tunnel
                 let mut body = vec![0; length]; tls.read_exact(&mut body).await?;
                 let reply = match serde_json::from_slice::<serde_json::Value>(&body) {
                     Ok(request) if request.is_object() => {
-                        let ctx = crate::account_ops::Context { accounts, sessions, throttle: &gate.throttle, access: &gate.access, peer };
+                        let settings = gate.settings.now();
+                        let ctx = crate::account_ops::Context { accounts, sessions, throttle: &gate.throttle, settings: &settings, peer };
                         crate::account_ops::handle(&request, &ctx).await
                     }
                     _ => serde_json::json!({ "ok": false, "error": "bad_request" }),
@@ -119,10 +124,9 @@ async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &yo3_tunnel
 
 #[expect(clippy::too_many_arguments, reason = "Each authenticated stream shares the server state, framing limits and HTTP endpoint.")]
 pub(crate) async fn accept_loop(listener: TcpListener, acceptor: TlsAcceptor, world: Arc<World>, hub: Arc<Mutex<Hub>>,
-    accounts: Arc<Mutex<Directory>>, log: Arc<PacketLog>, quiet: net::Idle, heartbeats: net::Idle, http: SocketAddr,
-    access: crate::account_ops::Access)
+    accounts: Arc<Mutex<Directory>>, log: Arc<PacketLog>, quiet: net::Idle, heartbeats: net::Idle, http: SocketAddr)
 {
-    let gate = Arc::new(Gate::new(accounts.clone(), access));
+    let gate = Arc::new(Gate::new(accounts.clone(), world.settings.clone()));
     let slots = Arc::new(Semaphore::new(256));
     loop {
         let (tcp, peer) = match listener.accept().await {
@@ -210,7 +214,7 @@ mod close_tests {
         let listener=TcpListener::bind(("127.0.0.1",0)).await.unwrap();let address=listener.local_addr().unwrap();
         let mut peer=tokio::spawn(async move {
             let (tcp,_)=listener.accept().await.unwrap();let tls=acceptor.accept(tcp).await.unwrap();
-            let gate=Gate::new(Arc::new(Mutex::new(Directory::new(vec![]))),Default::default());
+            let gate=Gate::new(Arc::new(Mutex::new(Directory::new(vec![]))),Arc::new(crate::settings::Live::open(None,vec![]).unwrap()));
             handshake(tls,&gate,&yo3_tunnel::ServerInfo::current(true),std::net::Ipv4Addr::LOCALHOST.into()).await.unwrap();
         });
         let tcp=TcpStream::connect(address).await.unwrap();

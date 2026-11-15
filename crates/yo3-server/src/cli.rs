@@ -12,6 +12,11 @@ pub struct Args {
     /// the others need it stopped.
     #[command(subcommand)]
     pub admin: Option<Admin>,
+    /// The server's TOML file of restart-only settings (listeners, TLS files, folders, the engine); default
+    /// server.toml in the current folder when it is there. A flag wins over the file. Live settings are not in it:
+    /// `settings` lists them and `set` changes them.
+    #[arg(long, global = true)]
+    pub config: Option<PathBuf>,
     /// Where persistent state (SQLite server.db) is kept; each start backs it up into backups/.
     #[arg(long, default_value = "data", global = true, overrides_with = "data_dir")]
     pub data_dir: PathBuf,
@@ -46,9 +51,10 @@ pub struct Args {
     /// in use gets a number (Duelist2...).
     #[arg(long, value_delimiter = ',', default_value = "Duelist", global = true)]
     pub players: Vec<String>,
-    /// Each player's LP at the start of a duel (lower it to reach a duel's end quickly when testing).
-    #[arg(long, default_value_t = 8000)]
-    pub duel_lp: u32,
+    /// Testing aid: each player's LP at the start of every duel (lower it to reach a duel's end quickly). Hosts set
+    /// the start-lp setting instead.
+    #[arg(long)]
+    pub duel_lp: Option<u32>,
     /// Every player's main deck in a duel, as CARD_Prop rows repeated to 40 cards (to test a card's prompts).
     #[arg(long, value_delimiter = ',')]
     pub duel_deck: Vec<u16>,
@@ -66,21 +72,6 @@ pub struct Args {
     /// testing aid: the protocol monkey's duels run with it; each step costs an extra engine query).
     #[arg(long)]
     pub duel_check: bool,
-    /// The banlist players log in with, for Auto Duel and NPC duels: a regulation id or name, e.g. "Season 16" or 1
-    /// (the Beta list), or "unlimited" for none. Default: "Season 16", the newest list the game has. Hosted duels use the
-    /// host's choice.
-    #[arg(long)]
-    pub regulation: Option<String>,
-    /// The server's name in the launcher's server list.
-    #[arg(long, default_value = "Yu-Gi-Oh! ONLINE 3 server")]
-    pub name: String,
-    /// How new accounts are made: open (anyone may sign up), invite (with an invite code: `invite` makes one) or closed
-    /// (only the host's `add-account`).
-    #[arg(long, value_enum, default_value_t = crate::logins::Registration::Invite)]
-    pub registration: crate::logins::Registration,
-    /// Refuse sign-ins from launchers older than this version (for example 0.1.0); they are told to update.
-    #[arg(long)]
-    pub min_launcher: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -132,7 +123,7 @@ pub enum Admin {
     RemoveCode { code: String },
     /// List the BOOSTERPASS codes and how often each was used. Works while the server runs.
     Codes,
-    /// Make an invite code for the launcher's sign-up (the server's --registration invite): --uses N sign-ups (1 when
+    /// Make an invite code for the launcher's sign-up (the registration setting's invite mode): --uses N sign-ups (1 when
     /// omitted, 0 for any number), working for --days D (for good when omitted). Works while the server runs.
     Invite {
         #[arg(long, default_value_t = 1)]
@@ -149,13 +140,21 @@ pub enum Admin {
     /// Make USER a player, moderator or admin. Works while the server runs.
     SetRole { user: String, role: String },
     /// Make a password account with User ID USER and print its first password and recovery code, to hand to that
-    /// player (for a server with --registration closed). Works while the server runs.
+    /// player (for a server whose registration setting is closed). Works while the server runs.
     AddUser { user: String },
     /// Put a backup back as the server's database (the server must be stopped): WHICH is a folder name under
     /// backups/ (`backups` lists them), or "latest". The database it replaces is kept beside it, renamed.
     Restore { which: String },
     /// List the backups, newest first: one at each start, every hour while running, and at each stop.
     Backups,
+    /// List the live settings: each one's value, whether it is the default, and when a change applies. Works while
+    /// the server runs.
+    Settings,
+    /// Change a live setting (`settings` lists them), saved in the database: on a running server it applies without a
+    /// restart, at the moment the setting says (at once, at the next login or at the next duel).
+    Set { name: String, value: String },
+    /// Put a live setting back to its default. Works while the server runs.
+    Reset { name: String },
 }
 
 /// Run flags (administrative subcommands are separate actions, not persistent server settings).

@@ -25,6 +25,7 @@ fn world(engine: bool) -> World {
 struct Seat {
     session: DuelSession,
     inbox: UnboundedReceiver<Message>,
+    world: Arc<World>,
 }
 
 impl Seat {
@@ -51,7 +52,8 @@ fn table_of(engine: bool, best_of: u32, lp: u32) -> Option<(Seat, Seat, Arc<Mute
 
 /// The same with these decks for 1001 and 1002.
 fn table_with(engine: bool, best_of: u32, lp: u32, decks: [Deck; 2]) -> Option<(Seat, Seat, Arc<Mutex<Hub>>)> {
-    let world = Arc::new(World { start_lp: lp, ..world(engine) });
+    let world = Arc::new(world(engine));
+    world.settings.set("start-lp", &lp.to_string()).unwrap();
     if engine && world.engine_dir.is_none() {
         eprintln!("engine not fetched; skipping");
         return None;
@@ -63,7 +65,7 @@ fn table_with(engine: bool, best_of: u32, lp: u32, decks: [Deck; 2]) -> Option<(
     }
     let seat = |seed| {
         let (tx, inbox) = unbounded_channel();
-        Seat { session: DuelSession::new(world.clone(), hub.clone(), seed).with_outbox(tx), inbox }
+        Seat { session: DuelSession::new(world.clone(), hub.clone(), seed).with_outbox(tx), inbox, world: world.clone() }
     };
     Some((seat(3), seat(5), hub))
 }
@@ -95,6 +97,26 @@ fn after_janken(engine: bool) -> Option<(Seat, Seat, Arc<Mutex<Hub>>)> {
     b.send(0xC, &[("selectHand", 1)]);
     a.pushed();
     Some((a, b, hub))
+}
+
+#[test]
+fn a_duel_starts_with_the_lp_and_clocks_the_settings_have_then() {
+    // Live settings (#24) apply at the next duel: what they are when the turn order is chosen is this duel's, and a
+    // later change waits for the next one.
+    let Some((mut a, mut b, _)) = after_janken(true) else { return };
+    a.world.settings.set("start-lp", "4000").unwrap();
+    a.world.settings.set("turn-seconds", "90").unwrap();
+    let to_a = a.send(0xD, &[("choice", 2)]);
+    a.world.settings.set("start-lp", "2000").unwrap();
+    a.world.settings.set("turn-seconds", "30").unwrap();
+    let to_b = b.pushed();
+    for out in [&to_a, &to_b] {
+        // SetLp, command 0xF {player, lp}.
+        let lps: Vec<u32> = commands(out).iter().filter(|(id, _)| *id == 0xF).map(|(_, p)| p[1]).collect();
+        assert_eq!(lps, [4000, 4000], "both players' LP");
+        let timers = out.iter().find(|m| m.get("duelRequestName") == Some(&Value::U32(0x14))).expect("the clocks");
+        assert_eq!(timers.get("count1_max"), Some(&Value::U32(90)));
+    }
 }
 
 #[test]
@@ -349,7 +371,8 @@ fn the_waited_on_client_starts_its_clocks_when_it_has_played_the_batch() {
 /// instead of 0x200A.
 fn spectator(hub: &Arc<Mutex<Hub>>) -> (Seat, Vec<Message>) {
     let (tx, inbox) = unbounded_channel();
-    let mut s = Seat { session: DuelSession::new(Arc::new(world(true)), hub.clone(), 9).with_outbox(tx), inbox };
+    let world = Arc::new(world(true));
+    let mut s = Seat { session: DuelSession::new(world.clone(), hub.clone(), 9).with_outbox(tx), inbox, world };
     let watch = Message::reply(0x1838).with("duel_id", Value::U32(DUEL));
     let caught_up = s.session.handle(&Packet::Message(watch));
     (s, caught_up)

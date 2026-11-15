@@ -287,6 +287,8 @@ pub(crate) fn next(rng: &mut u64) -> u64 {
 /// One client's duel connection: against the server as the CPU, or at a table against another player.
 pub struct DuelSession {
     identity: Option<crate::auth::Identity>,
+    /// The LP this NPC duel started with (the `start-lp` setting at its start).
+    start_lp: u32,
     world: Arc<World>,
     hub: Arc<Mutex<Hub>>,
     /// What the player brought (found by the player_id of 0x200A).
@@ -336,6 +338,7 @@ impl DuelSession {
     pub fn new(world: Arc<World>, hub: Arc<Mutex<Hub>>, seed: u64) -> DuelSession {
         DuelSession {
             identity: None,
+            start_lp: world.test_lp.unwrap_or_else(|| world.settings.now().start_lp),
             world,
             hub,
             entry: None,
@@ -616,7 +619,9 @@ impl DuelSession {
         let mut engine = Engine::start(dir).map_err(|e| tracing::warn!("rules engine not started: {e}")).ok()?;
         if self.world.duel_check { engine.record(); }
         let seed = self.next();
-        let lp = self.world.start_lp;
+        // The LP at this duel's start (the `start-lp` setting now, #24), kept for the whole duel.
+        let lp = self.world.test_lp.unwrap_or_else(|| self.world.settings.now().start_lp);
+        self.start_lp = lp;
         // The NPC's hidden powers (crate::npc), for its engine team.
         let npc_team = if first == CLIENT { 1 } else { 0 };
         let avatar = self.player_id.and_then(|id| self.hub.locked().avatar_of(id)).unwrap_or_default();
@@ -801,7 +806,7 @@ impl DuelSession {
             let mut hub = self.hub.locked();
             let replay = self.replay(&hub);
             let stats = self.engine.as_ref().map(|(_, t)| t.stats().clone());
-            let start_lp = self.world.start_lp;
+            let start_lp = self.start_lp;
             let ended = Ended { player_id, opponent, npc: true, duel_id, match_type: SINGLE_MODE, result, replay, stats, start_lp };
             hub.finish_duel(&ended);
         }
@@ -825,7 +830,7 @@ impl DuelSession {
         let mine = hub.side(player_id, &entry.deck, 0);
         let janken = lead_janken(self.janken_seen, first == CLIENT);
         let (sides, decks) = if first == CLIENT { ([mine, theirs], [&entry.deck, npc]) } else { ([theirs, mine], [npc, &entry.deck]) };
-        let commands = replay_commands(&self.world, decks, janken, self.world.start_lp, &self.history);
+        let commands = replay_commands(&self.world, decks, janken, self.start_lp, &self.history);
         Some(crate::duellog::Replay { sides, commands })
     }
 
@@ -849,8 +854,8 @@ impl DuelSession {
         }
         out.extend([
             command(DUEL_START, [0; 4]),
-            command(SET_LP, [CLIENT, self.world.start_lp, 0, 0]),
-            command(SET_LP, [CPU, self.world.start_lp, 0, 0]),
+            command(SET_LP, [CLIENT, self.start_lp, 0, 0]),
+            command(SET_LP, [CPU, self.start_lp, 0, 0]),
         ]);
         out.extend(piles());
         for player in [first, 1 - first] {
