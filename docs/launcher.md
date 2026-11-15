@@ -329,10 +329,10 @@ To reuse an existing server, **stop it and back up its entire data folder first*
 **Advanced → Hosting → Advanced → Data folder**, save, then start hosting. Changing the path selects data; it does
 not move existing data. The default is the app's `server/` directory; the page shows the folder in use.
 
-**Coming from the Scripts edition?** Desktop does not use a Scripts bundle's `data/` folder on its own. Stop the
-Scripts server (`run.cmd` / `run.sh`), then choose that `data/` folder as the Data folder above to keep its
-accounts, cards, BP and invitations. If you start Desktop while the Scripts server still runs on the same port,
-Start reports that the port is taken.
+**Coming from the Scripts edition?** Desktop does not use a Scripts bundle's `data/` folder on its own. Press
+**Ctrl+C** in the terminal running `start-server.cmd` / `start-server.sh`, then choose that `data/` folder as the
+Data folder above to keep its accounts, cards, BP and invitations. If you start Desktop while the Scripts server
+still runs on the same port, Start reports that the port is taken.
 
 Old JSON state imports into SQLite in one transaction. Account/player IDs and credentials are preserved. Original
 JSON files remain as migration copies and no longer receive writes; edits to them after the upgrade are ignored
@@ -389,6 +389,7 @@ upgrade their data lives in `server.db`, the files are no longer read, and you c
 | Antivirus flags Revival / a file disappeared | Check protection history and the official download. For a verified false positive, allow the affected file or exclude only the extracted Desktop folder (after an update, that version's `updates\installs\` folder). [Exact files, folders and recovery steps](guide.md#windows-smartscreen-and-antivirus-warnings). |
 | App settings/logs cannot open                | Check the data folder's permissions/free space, then **Retry app setup**. Copy the error if it continues; keep your saved data.                                                                                                                          |
 | Game startup fails or stalls                 | Read the visible error and logs. Use **Close game** when available, then try **Play** again; export logs if it repeats.                                                                                                                                 |
+| A duel waits indefinitely without an error | A frozen host can leave its connections open, so the game keeps waiting ([known limitation](roadmap.md#open-now)). Ask the host to check the server and export logs. Use **Close game** if needed. |
 | Old game preferences or saved login details  | Try [Reset local game data](#reset-local-game-data), keeping player files and decks selected first. Review the target and backup before confirming.                                                                                                        |
 | DLL did not initialize / unexpected EOF      | Current builds include the native failure stage and Windows error/exit code in details and logs. Keep those details when reporting; an EOF alone does not identify the cause.                                                                            |
 | Intermittent discovery/login reset (10054)   | Update both Desktop/Scripts and the host's server. A response-cleanup bug was reproduced on Windows 11. If it continues, export logs from the failed attempt; a native `0xc0000005` game crash needs separate investigation.                                  |

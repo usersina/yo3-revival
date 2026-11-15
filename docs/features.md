@@ -47,7 +47,8 @@ it; a live check is a person or script driving the real client. GitHub issue num
 | Authenticated TLS login by account key, single-use tickets | Implemented | `auth_flow.rs`, `auth_contract.rs`, `metadata_contract.rs`, `flow.rs`; native and Wine DLL tests; live; Windows VM | TLS port 7443 is the only game listener. No password login exists: the client never sends one. |
 | Host-made accounts, private profiles, up to four players per account | Implemented | `accounts.rs`, `manager_contract.rs`, `cli_options.rs`; live | `add-account`, `profile`, `add-player`, `rename`, `move-account` in [guide](guide.md). The old `/join` page is retired (`join.rs` checks 404). |
 | Create and delete players (Select Player) | Implemented | `player_contract.rs`; live | Four slots per account; names unique ignoring case (a guess in the guesses table). |
-| One server per data folder; saves refused when they cannot be written | Implemented | `data_lock.rs`, `save_failures.rs` | v0.0.19 (see the changelog). |
+| One server per data folder | Implemented | `data_lock.rs` | v0.0.19: a second server cannot open the same data folder. |
+| Account/player changes rolled back when a save fails | Implemented | `save_failures.rs` | v0.0.19. Other stores, such as mail and duel-result records, still log write failures without rolling back. |
 | Server-side deck check and regulation at Select Deck | Implemented | `regulation_contract.rs`, `deck_contract.rs` | Refused with `0x22CB`. Default banlist Season 16, set in Desktop or with `--regulation` (#15). |
 | Country flags | Partial | `country_contract.rs`; live | The client sends no country, so the host sets it per account (`set-country`) or it follows the login language. |
 | Login news | Implemented | `front_contract.rs` | The news no longer includes the deck-onboarding notice. |
@@ -92,7 +93,8 @@ it; a live check is a person or script driving the real client. GitHub issue num
 | Feature | Status | Verified by | Notes / issues |
 | --- | --- | --- | --- |
 | Native rules engine (EDOPro core, MR2), one process per duel | Implemented | `engine.rs`, `engine_cards.rs`, `duel_check.rs`; `tools/engine/parity.py` against the old sidecar | #3. No Node.js since v0.0.10. |
-| Every client card loads and plays as the client shows it | Implemented | `card_data.rs`, `card_sweep.rs` (4,684 cards), `original_decks.rs` (2,270 duels) | Some cards play by their 2010-2012 text through `engine/overrides/` (#7, 38 cards so far). Not every ruling is checked. |
+| Card data validation and seeded duel sweeps | Implemented | `card_data.rs`, `card_sweep.rs` (4,684 cards), `original_decks.rs` (2,270 duels) | The sweep adds each card to the decks and checks engine/client-model consistency. A pass does not require that card to be summoned or activated, or verify the native UI. |
+| Card effects match their 2010–2012 text and rulings | Partial | `engine_cards.rs`, `engine/overrides/`; card reports (#7) | Overrides restore historical behavior and fix known script bugs. Not every effect or ruling has been checked. |
 | Duel check: the client's view against the engine after each step | Partial | `duel_check.rs`, `duelcheck_model.rs` (240 self-played duels); native checkpoints logged by the DLL; live on two clients | Complete menu and effect coverage and automatic UI replay are not done (roadmap). |
 | Choice windows: targets, tributes, positions, options, declarations, sums, orders | Partial | `translate_contract.rs`, the duel check's round trip, the card sweep; live for those seen | Built wherever the client has a window (history: Duel windows). A few answers are automatic because the client cannot show them (limits table). |
 | Chain questions follow Activation Message | Implemented | `duel_contract.rs`; live |  |
@@ -131,14 +133,14 @@ it; a live check is a person or script driving the real client. GitHub issue num
 | Create Duel, passwords, Opponent's Limits (Friend, Team) | Implemented | `pvp_contract.rs`, `friends_contract.rs`, `team_contract.rs`; live |  |
 | A duel between two players on one table | Implemented | `pvp_contract.rs`, `duel_check.rs`; live; Windows VM (Windows against Linux) | Both views are kept in step by the duel check. |
 | Manner ratings after a player duel | Implemented | `manner_contract.rs`; live | Not asked after NPC duels or trades (the client has none). |
-| Players on separate machines over a LAN or the internet | Partial | One machine, a LAN address against loopback (2026-11-07) | Real friends' machines and separate Windows machines are not yet checked (roadmap). |
-| Duel robustness: engine death, disconnects, crafted traffic | Implemented | `robustness_contract.rs`; protocol monkey and soak runs | Windows VM: a server killed mid-duel gave a clean return to the title. |
+| Players on separate machines over a LAN or the internet | Partial | LAN address against loopback (2026-11-07); Windows VM against Linux | Real friends' independent PCs, separate Windows machines and internet connections are not yet checked (roadmap). |
+| Duel robustness: engine death, disconnects, unresponsive hosts, crafted traffic | Partial | `robustness_contract.rs`; protocol monkey and soak runs; live server kill and freeze | A closed connection returns to the title. A frozen server that keeps TCP connections open still leaves the duel waiting without an error ([roadmap](roadmap.md#open-now)). |
 
 ## Watching and duel logs
 
 | Feature | Status | Verified by | Notes / issues |
 | --- | --- | --- | --- |
-| Watch Duel on a duelling player | Implemented | `duel_stream_contract.rs`, `pvp_contract.rs`; live | A duel closed to watchers cannot be watched by going around the menu (unreleased). |
+| Watch Duel on a duelling player | Implemented | `duel_stream_contract.rs`, `pvp_contract.rs`; live | A duel closed to watchers cannot be watched by going around the menu (v0.0.19). |
 | Duel logs of player duels (Latest Duel Logs, replay) | Implemented | `duel_stream_contract.rs`; live | `duellog.rs`; a match keeps its last duel only. |
 | Duel logs of NPC duels | Implemented | See NPCs | #12. |
 

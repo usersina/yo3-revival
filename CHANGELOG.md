@@ -22,8 +22,8 @@ game Documents; see the
 [Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.19/docs/launcher.md#application-updates) or
 [Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.19/docs/scripts.md).
 
-- **Nothing is reported as done unless it was saved.** If the server can't write its data (a full disk, a locked
-  file), a BOOSTERPASS code, a duel's BP, a title, a trade, a rating, a deck upload or an avatar change is now refused
+- **Failed account and player saves are now refused.** If the server can't save those changes (a full disk, a
+  locked file), a BOOSTERPASS code, a duel's BP, a title, a trade, a rating, a deck upload or an avatar change is refused
   instead of seeming to work and being lost at the next start.
 - **One server per data folder.** Starting a second server on the same data (Desktop and Scripts together, or the same
   server twice) is now refused instead of both running and overwriting each other's saves.

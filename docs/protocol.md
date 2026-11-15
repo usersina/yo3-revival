@@ -52,7 +52,8 @@ with two accounts on one IP, private displays :78/:79, named and ordinal DLL tes
 
 The outer handshake is our own protocol, not inferred Konami fields. Inside validated TLS each connection starts
 with ASCII `YO3TLS02` and a one-byte operation. Numbers are big-endian; tokens are opaque 32-byte random values.
-The compiled protocol version is 2 and the required DLL interface is 2. Old transports are refused.
+The compiled protocol version is 2 and the required DLL interface is 3 (`yo3-tunnel::PROTOCOL_VERSION` / `MOD_ABI`).
+Old transports are refused.
 
 | Operation | Payload after operation                              | Reply                                                    | Meaning                                                                                                    |
 | --------- | ---------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -70,7 +71,7 @@ user approves it or compares it to the host's invitation. It can issue only the 
 does not save trust. Certificate-only CLI profiles retain their existing CA/name verification behavior.
 
 The local injector's own startup protocol is `YO3_MOD_READY` (LF/CRLF accepted) on stdout after the required mod's
-`Yo3ModReady` confirms DLL interface 2; the game stays suspended. The parent authenticates and writes `resume\n`
+`Yo3ModReady` confirms DLL interface 3; the game stays suspended. The parent authenticates and writes `resume\n`
 to stdin only after that acknowledgement. EOF/failure kills the suspended child. `.yo3` PE metadata carries the
 mod interface, release and commit, while `bundle.json` inventories release hashes. Tests: launcher `components`,
 `desktop_control`, `tools/mod/test.sh`; this is our bootstrap protocol, not a game reply shape.
@@ -170,7 +171,7 @@ The stock request named "auth" carries no credential: the opener is a version st
 | `0x1F4C` select `{player_id}`                                                                      | `0x2266`                                  | none                                                                                                                                                                                                                                                                                                                                                                                                                                          | "my player use success" L577                                                                                                                                                                                                                                                                              | confirmed                                                                                                                                  |
 | `0x1F4A` create `{pindex, pname}` (an empty slot's Create Player: name dialog, builder `0x4F2D50`) | `0x2262` (`0x2263`)                       | none                                                                                                                                                                                                                                                                                                                                                                                                                                          | "my player sub success" `LoginWindow.cpp L608`: the client asks `0x1F49` again, finds the new player and selects it (`0x1F4C`), then opens Avatar Settings; `0x2263` shows `$10525` ("This Player Name is already in use. Please create another.") and returns to the avatar screen; live: Joey in slot 3 | confirmed; name rules (unique ignoring case, 1-16 characters, no control characters) and the full-account/slot-taken errors **guess**      |
 | `0x1F4B` delete `{player_id}` (Delete, after a warning and a password prompt; builder `0x4F2EB0`)  | `0x2264` (`0x2265`)                       | none                                                                                                                                                                                                                                                                                                                                                                                                                                          | "my player unsub success" L626: the client lists again (`0x1F49`) and shows "Player Deleted."; `0x2265` is "Login Error!!"; live: the slot is empty again, and the client removed the player's local deck file (its profile folder stays)                                                                 | confirmed; we refuse (`0x2265`) a player the account lacks, its last player and a team's leader (**guess**), a member leaves their team    |
-| `0x1FA4` trunk `{player_id}`                                                                       | `9000` (`0x2328`)                         | exactly one record; item[0] is copied wholesale into `UserData+0x8C8`, and the global dispatcher keeps the reply in slot 18. The record holds `cards` and `noTrade` (binary): owned and untradeable count per card, one byte at index row − 1 (CARD_Prop rows, row 0 a dummy, so 4,833 bytes). `0x410DB0` reads them bounds-checked; the collection builder `0x4F6340` writes into both unchecked (crash at `0x4F6A82`, opening the NPC duel) | "trunk data success" L666, `0x46AFA8`, `0x410DB0`                                                                                                                                                                                                                                                         | confirmed; `cards` = one copy per card of the starter deck (**guess**: a real collection comes with the economy); other contents **guess** |
+| `0x1FA4` trunk `{player_id}`                                                                       | `9000` (`0x2328`)                         | exactly one record; item[0] is copied wholesale into `UserData+0x8C8`, and the global dispatcher keeps the reply in slot 18. The record holds `cards` and `noTrade` (binary): owned and untradeable count per card, one byte at index row − 1 (CARD_Prop rows, row 0 a dummy, so 4,833 bytes). `0x410DB0` reads them bounds-checked; the collection builder `0x4F6340` writes into both unchecked (crash at `0x4F6A82`, opening the NPC duel) | "trunk data success" L666, `0x46AFA8`, `0x410DB0`                                                                                                                                                                                                                                                         | confirmed shape; server collection = starter and official decks' copies + acquired cards − given-away cards, capped at 255 per row; `noTrade` starts at 0 (rental records adjust the client's collection). Grants are a server choice (`trade::collection` / `trunk`). |
 | (server push after `9000`)                                                                         | `0x251C` friend list, `0x252A` black list | items `{friend_id, friend_name, login_flag}` / `{black_id, black_name, login_flag}` (`0x475A20` modes 2 and 3); see "Friends and the ignore list"                                                                                                                                                                                                                                                                                             | the global dispatcher stores them in dataset slots 6 and 7; the client never asks, and listing any player crashes without them (`0x45E734`)                                                                                                                                                               | shape; push timing **guess**                                                                                                               |
 | (server push after `9000`)                                                                         | `0x2D6C` rental records                   | one item per rental not over that the player lent or borrowed (fields in "Card rental" below); the shop checks `from_type` for 1 (we send 0)                                                                                                                                                                                                                                                                                                  | the global dispatcher stores it in slot 8 (`0x4F5FBA`); opening the shop reads slot 8 unchecked (`0x48F0F6`); the collection builder `0x4F6340` reads it. `RentalRecord`/`CardRental` ask for it with `0x2C34` (bare), but not before the shop opens                                                      | live; push timing **guess**                                                                                                                |
 | (server push after rental records on the first trunk following player selection)                   | `0x22C8` automatic starting decks         | Existing tag-6 deck records, legal starter then official alternatives, at most ten; omitted without eligible candidates. See [Decks](#decks-deck-editor-deckedittest-handler-0x43fc60).                                                                                                                                                                                                                                                       | required mod post-dispatch hook `0x4F44BD`, native check `0x51AA80`, serializer `0x52C320`; fresh-player NPC duel without editor                                                                                                                                                                          | confirmed (revival behavior)                                                                                                               |
@@ -434,8 +435,9 @@ and the two offers. The scene's replies and pushes (ids from its jump table at `
 | "Execute Trade?" `0x2BC9 {answer: 2 yes, 1 no}` (`0x427640`)                       | `0x2BE7`                                                                                                                                  | once both answered: `0x2BCA {error_code, own_status, other_status, trade_result}` to both (LAST_CONFIRM_NOTICE; `trade_result` 1 "Trade Completed"), then a new trunk `9000` (no request asks for one there) | live: Yes sent 2; "Trade Completed", the cards changed sides | confirmed. `0x2BCA` (`0x424F71`): `trade_result` 1 plays "TradeSucess"; otherwise with `error_code` 0 the scene stays with both Ready marks on (`0x427730`), with `error_code` non-zero `0x427400` shows `$14313` "Trade Cancelled" and leaves (no other use of that text). So a No sends a non-zero `error_code` (503, `TRADE_ERROR`; the client only tests for 0). Live (2026-11-08): Yugi said Yes and Kaiba No; both screens showed "Trade Cancelled" with OK, then closed back to the main screen, the cards unchanged, and a second trade opened fresh and completed ("Trade Completed"). `own_status`/`other_status` are read and unused. The Yes/No buttons are 1/0 in the dialog and `answer` 2/1 (No inferred) |
 | leave `0x2BCB`                                                                     | `0x2BE9`                                                                                                                                  | `0x2BCD` to the partner: "The trade partner has cancelled." (also when a player goes offline)                                                                                                                | research, test                                               | shape                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
-The server checks each offer against what the player owns (their starter deck's cards, the ones bought or got, less
-the ones given away) and moves both offers when both said yes, in the accounts (`server.db`, once `data/accounts.json`: `cards` and
+The server checks each offer against what the player owns (their starter and official decks' cards, the ones bought
+or got, less the ones given away) and moves both offers when both said yes, in the accounts (`server.db`, once
+`data/accounts.json`: `cards` and
 `given` per player). A session refreshes its player's collection from there on each trunk request, so the partner's
 next shop visit shows it too. Live: Yugi's Tainted Wisdom for Kaiba's Windstorm of Etaqua.
 Saved collections are looked up by player id across every account, including `/join` and `add-account` accounts with
@@ -760,7 +762,7 @@ since `0x4159B0` still writes and deletes it. Select Deck always names a duel, s
 save: kept unchecked (a save is not a duel; Select Deck checks it later) and **unanswered**, because the editor reloads its
 deck list on `0x22CA` (`0x4F33D0` sends `0x1F4E`, and the list's cursor resets) and opens a dialog (`0x444BE0`) on
 `0x22CB`, and no timer waits for `0x1F4F` (see "Requests with a timeout"). The server keeps both kinds per player, by
-name (a newer upload replaces it, ten at most, the oldest goes), and lists them after the starter and bought decks in
+name (a newer upload replaces it, ten at most, the oldest goes), and lists them after the starter deck in
 `0x22C8`; a client that lacks a deck of the name saves it (`0x43E550`), so a deck saved or used on one machine appears on
 another. A machine that already has a deck of that name keeps its own copy (the client saves only missing names). Not
 kept: a Card Swap's deck (`update_type` 2), the starter deck's name (the server's own copy wins), an empty deck. Live
@@ -774,8 +776,8 @@ machine, after a server restart and with its local file deleted, Load Deck broug
 `an_editor_save_is_kept_unchecked_but_not_an_empty_deck_or_the_starters_name`.
 
 **Decks checked on the server.** At Select Deck (`update_type` 1) the server checks the deck as the client does
-(`0x51AB00`): main 40-60 cards, extra and side under 16 (`0x51AC50`), every card owned (the starter deck, bought and
-traded cards, rentals; counted per Konami id, so a bit more lenient than the client's per row), and the duel's
+(`0x51AB00`): main 40-60 cards, extra and side under 16 (`0x51AC50`), every card owned (the starter and official
+decks, bought and traded cards, rentals; counted per Konami id, so a bit more lenient than the client's per row), and the duel's
 regulation (`0x51A9A0`): the rule's `regulation_id` (an NPC duel's `0x17AC` item, a hosted duel's or event's rule),
 else the login one. A refused deck gets `0x22CB`: the client shows "You have been disconnected from the Duel Server."
 (text `0x2919`, the only text that path has; `0x50ECF0` state 2 compares only `0x22CA` and `0x22CB`, stores `error_code` at `+0x90` and `0x510610` never uses it, and the texts "Invalid Deck" `0x2940`, "This Deck can not be used." `0x2942` and `0x295C` have no code that shows them: settled, no other reply or code is expected) and, at OK, leaves the duel scene for the map; nothing is kept for the
@@ -798,10 +800,11 @@ the `0x22C4` handoff (`0x50F030`, `0x50F690`). These are server authorization ru
 `an_outsider_is_not_sent_another_matches_duel_server_handoff`.
 
 Every player gets one deck, "Starter Deck": the first `deck_type` 1 preset (`data/recipe`, ids 1–6, 501, 502; they
-look like the starter decks) that the login regulation allows. Preset 1 holds a card regulation 1 forbids (4966), so
-it is preset 2 (**guess**: the original let a new player choose). The server lists it every time, so a deleted
-starter deck comes back the next time Edit Deck opens. After it the list holds only the decks the player's clients
-uploaded (see "Decks follow the player"), so the ten the client takes are the player's own.
+look like the starter decks) that fixed `STARTER_REGULATION` 1 allows, independently of the host's login banlist.
+Preset 1 holds a card regulation 1 forbids (4966), so it is preset 2 (**guess**: the original let a new player choose).
+The server lists it every time, so a deleted starter deck comes back the next time Edit Deck opens. After it the list
+holds only the decks the player's clients uploaded (see "Decks follow the player"), so the ten the client takes are
+the player's own.
 
 **The Official tab.** Load Deck's Official tab (`0x43D8D0`, "Show official Recipe.") reads nothing from the server:
 for each entry of the item catalogue (`yo3pbininfo.bin`, data manager `+0x1C`, 8 bytes each) whose bit is set in the
@@ -1311,8 +1314,8 @@ seats, rejects mismatches/crashes, and rejects a fully validated result when `[Y
 observer it reports missing acknowledgements. No credential or account identifier is sent in the checkpoint.
 
 `0x14` HandOpen {player, open flag, uid or 0 for the whole hand} (`0x4FF1E7`: effect mode `0xD` closes, `0xC` opens, the
-card's face bit set to the flag) is the way to hold a hand open; not used. Cards revealed elsewhere (a Set card, the
-top of the Deck) are not shown: **open**. CardLockon `0x19` and RunDetail `0x3B` were not needed (`0x3B` has no case in
+card's face bit set to the flag) is the way to hold a hand open; not used. Temporary Set-card and Deck-top reveals,
+including CardLockon `0x19`, are implemented: see **Reveals** below. RunDetail `0x3B` is not sent (it has no case in
 DuelScene `0x514290`).
 
 **The command queue and effects** (DuelScene busy check `0x515300`). A command waits for its component before the next
@@ -1529,11 +1532,13 @@ after each one its common tail (`0x4FFF14`) re-reads both players' monster-zone 
 player`): a face-up monster (`+0x44` bit 0, face-up bit `0x4000`) whose record differs from its copy (`+0xA8`) takes
 the new one and has its label redrawn (`+0xD5` → `0x4FBAA0`: label fields 6 ATK, 7 DEF, 4 and 5 from values 7 and 8).
 So a changed record shows at the next command, and needs no command of its own. The rules engine reports no stat
-changes, so the engine queries both players' monster zones (position, level, ATK, DEF, base ATK, base DEF) after each
-processing step and, when they changed, adds `{type: "field", monsters: [{controller, sequence, position, level,
-attack, defense, base_attack, base_defense}]}` before the step's prompt. The server re-sends the record of a face-up
-monster whose values differ from those it last sent (level from CARD_Prop when the engine has none, as for Xyz
-monsters); race and attribute stay CARD_Prop's. Live: Axe of Despair equipped to Giant Orc sent its record again
+changes, so the engine queries both players' monster zones (position, level, ATK, DEF, base ATK, base DEF, race,
+attribute) after each processing step and, when they changed, adds `{type: "field", monsters: [{controller, sequence,
+position, level, attack, defense, base_attack, base_defense, race, attribute}]}` before the step's prompt. The server
+re-sends the record of a face-up monster whose values differ from those it last sent (level from CARD_Prop when the
+engine has none, as for Xyz monsters); race and attribute use the engine's current values, mapped to the client's
+numbers, with CARD_Prop as the fallback (see **Changed Types and Attributes** below). Live: Axe of Despair equipped
+to Giant Orc sent its record again
 (`0x3EA {_, 4, 3200, 0}`, `0x3EB {0, 2200, 0, cid}`), and at the next prompt its label and card info read ATK 3200,
 in blue.
 
@@ -1665,8 +1670,9 @@ the Synchro material list read "Select the monster(s) to use as Synchro Material
 prompt table) open as the Select dialog with the engine's own text for each option (the card's strings, `str1`–`str16`
 in `cards.cdb`) as the server's texts, an option with a client label keeping it; a label is one line, so a text longer
 than 56 characters is cut at a word with "…" (live: 57 of Pyramid Energy's 61 characters showed). The dialog has four
-labels: more options open as the card list, the card once per option, and the server puts their texts in the player's
-chat window as the list opens, numbered as listed: `0x2455 {from_id 0, pname "Effect", chat_type 0, chat_str "1: …"}`
+labels: more options, or multiple options with a missing label and no engine text, open as the card list, the card
+once per option, and the server puts their available texts in the player's chat window as the list opens, numbered
+as listed: `0x2455 {from_id 0, pname "Effect", chat_type 0, chat_str "1: …"}`
 (**guess**: the name and type, chosen to show in the duel's chat window). A selection hint or a Yes/No question that
 is a card's own string (code << 20 | n) is shown too: the engine adds `hint_text` / `description_text`, a card list
 takes it as its message, and a Yes/No dialog adds it on a line under its client text ('Use the effect of "%s"?').
@@ -1844,9 +1850,12 @@ DECLTYPE_MONSTER/SPELL/TRAP 70–72 → "Monster Cards", "Spell Cards", "Trap Ca
 (260). Options that are a card's own strings (EDOPro's `aux.Stringid`, `code << 20 | n`, not `<< 4`) get the prompt
 table's per-card labels (400–495, 369/370 for a side of the field), which the original server listed per card and
 `card_options.rs` pairs by hand with EDOPro's strings where both say the same thing: 110 options of 44 cards
-(**guess**: the original pairing is unknown), under "Select effect to activate." (276). A card with an option the table
-lacks takes the first. Live (`--duel-deck 1404,1449`): Card Shuffle's effect from the field paid 300 LP and listed
-"Your Deck" and "Opponent's Deck"; the second sent `DLGResult 1` and the engine shuffled Kaiba's deck. Live (Time Wizard):
+(**guess**: the original pairing is unknown), under "Select effect to activate." (276). Missing client labels use the
+engine's option texts through the DLL; more than four options, or multiple options with a missing label and no
+engine text, use a card-list choice with available texts numbered in chat (see **Option texts** above). A single
+unworded option needs no player choice. Live (`--duel-deck 1404,1449`): Card Shuffle's effect from the field paid
+300 LP and listed "Your Deck" and "Opponent's Deck"; the second sent `DLGResult 1` and the engine shuffled Kaiba's
+deck. Live (Time Wizard):
 "Coin Toss Selection:" listed Heads and Tails; Tails sent `DLGResult 1`, the coin came up heads, and Time Wizard was
 destroyed with 250 LP lost.
 
