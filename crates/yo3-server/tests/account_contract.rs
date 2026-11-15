@@ -47,8 +47,7 @@ fn session(reply: &Json) -> Token {
 /// A password account made before the server starts (as the host's `add-user` does), with `change` applied.
 fn made(file: &Path, user: &str, password: &str, change: impl FnOnce(&mut Directory, &str)) {
     let mut d = Directory::open(vec![], file).unwrap();
-    let login = Login { user: user.into(), password: logins::hash_password_now(password).unwrap(), role: Default::default(),
-        standing: Default::default(), recovery: logins::digest("unused"), reset: None, devices: vec![] };
+    let login = Login::new(user, logins::hash_password_now(password).unwrap(), logins::digest("unused"));
     d.register(login, None, Registration::Open).unwrap();
     change(&mut d, user);
 }
@@ -220,7 +219,7 @@ async fn a_moderators_reset_code_works_once_for_a_day() {
 }
 
 #[tokio::test]
-async fn a_banned_account_is_refused_with_the_reason_and_a_restricted_one_signs_in() {
+async fn a_banned_or_restricted_account_is_refused_with_the_reason() {
     let cfg = config("ban");
     made(&accounts_file(&cfg), "Yugi", PASSWORD, |d, user| {
         d.set_standing(user, Standing::Banned { reason: "cheating".into(), until: None }).unwrap();
@@ -234,7 +233,8 @@ async fn a_banned_account_is_refused_with_the_reason_and_a_restricted_one_signs_
     let s = serve(cfg).await;
     let banned = s.login("Yugi", PASSWORD).await;
     assert_eq!((&banned["error"], &banned["reason"], &banned["until"]), (&json!("banned"), &json!("cheating"), &Json::Null));
-    assert_eq!(s.login("Kaiba", PASSWORD).await["ok"], true, "a restriction limits the game, not the sign-in (#26)");
+    let restricted = s.login("Kaiba", PASSWORD).await;
+    assert_eq!((&restricted["error"], &restricted["reason"]), (&json!("restricted"), &json!("chat")), "a restriction refuses the next sign-in (#26)");
     assert_eq!(s.login("Joey", PASSWORD).await["ok"], true, "a ban that ended");
 }
 

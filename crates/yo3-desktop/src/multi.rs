@@ -526,7 +526,7 @@ mod tests {
     fn each_refusal_shows_its_sentence() {
         let ctx = ctx();
         for problem in [Problem::WrongUserOrPassword, Problem::TooManyTries { wait_seconds: 90 }, Problem::Banned { reason: "cheating".into(), until: None },
-            Problem::Maintenance, Problem::Full, Problem::NeedsUpdate { min: "0.2.0".into() }, Problem::IdentityChanged, Problem::Unreachable, Problem::SignInAgain] {
+            Problem::Maintenance { message: String::new() }, Problem::Full, Problem::NeedsUpdate { min: "0.2.0".into() }, Problem::IdentityChanged, Problem::Unreachable, Problem::SignInAgain] {
             let mut state = tab(online(), None);
             let key = state.servers[0].key().to_string();
             let _ = state.update(Message::SignedIn(key, Err(problem.clone())), &ctx);

@@ -15,7 +15,8 @@ use crate::{log::PacketLog, net};
 
 /// What every connection's handshake shares: sessions, accounts, the login throttle and the server's access settings.
 pub(crate) struct Gate {
-    pub sessions: Mutex<Sessions>,
+    /// Shared with the admin API, which ends them (a kick, a ban, maintenance, #26).
+    pub sessions: Arc<Mutex<Sessions>>,
     pub accounts: Arc<Mutex<Directory>>,
     pub throttle: Mutex<crate::logins::Throttle>,
     /// The live settings (#24): the account rules and the server list's name and headline.
@@ -23,8 +24,8 @@ pub(crate) struct Gate {
 }
 
 impl Gate {
-    pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>) -> Self {
-        Gate { sessions: Mutex::default(), accounts, throttle: Mutex::default(), settings }
+    pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, sessions: Arc<Mutex<Sessions>>) -> Self {
+        Gate { sessions, accounts, throttle: Mutex::default(), settings }
     }
     /// Discovery's answer: the build, and for the server list its name, headline, who is online and how accounts
     /// are made, from the settings now.
@@ -36,6 +37,7 @@ impl Gate {
         info.online = online;
         info.registration = settings.registration.as_str().into();
         info.min_launcher = settings.min_launcher.clone();
+        info.maintenance = settings.in_maintenance(crate::logins::now());
         // The news, each body shortened, and as many entries as fit in discovery's answer.
         let short = |text: &str, n: usize| if text.chars().count() > n { text.chars().take(n - 1).collect::<String>() + "…" } else { text.to_owned() };
         info.news = settings.news.iter().map(|(title, body)| yo3_tunnel::News { title: short(title, 128), body: short(body, 400) }).collect();
@@ -47,7 +49,7 @@ impl Gate {
 async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &yo3_tunnel::ServerInfo, peer: std::net::IpAddr)
     -> anyhow::Result<Option<(TlsStream<TcpStream>, Identity, Instant, Role, u16)>>
 {
-    let (sessions, accounts) = (&gate.sessions, &*gate.accounts);
+    let (sessions, accounts) = (&*gate.sessions, &*gate.accounts);
     let mut magic = [0; 8]; tls.read_exact(&mut magic).await.context("read transport opener")?;
     anyhow::ensure!(&magic == MAGIC, "unsupported transport version");
     let operation=tls.read_u8().await.context("read transport operation")?;
@@ -60,7 +62,18 @@ async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &yo3_tunnel
                 let mut key = [0; KEY_LEN]; tls.read_exact(&mut key).await?;
                 // While saves fail, nobody new comes in: their progress could not be kept (store::healthy).
                 if !crate::store::healthy() { tracing::warn!("login refused: the server can't save right now"); tls.write_u8(1).await?; tls.shutdown().await?; return Ok(None) }
-                let user = accounts.locked().authenticate(&key).map(|a| a.user_id);
+                // A key doesn't get past what a password wouldn't (#26): an account that also has a User ID is refused
+                // while banned or restricted, and during maintenance only the staff comes in (a key-only account has
+                // no role, so it waits like any player).
+                let now = crate::logins::now();
+                let maintenance = gate.settings.now().in_maintenance(now);
+                let user = {
+                    let d = accounts.locked();
+                    d.authenticate(&key).map(|a| a.user_id).filter(|&u| match d.login_by_id(u) {
+                        Some(login) => login.refusal(now).is_none() && (!maintenance || login.staff()),
+                        None => !maintenance,
+                    })
+                };
                 let token = user.and_then(|u| sessions.locked().login(u, Instant::now()));
                 tls.write_u8(if token.is_some() { 0 } else { 1 }).await?;
                 if let Some(token) = token { tls.write_all(&token).await?; }
@@ -128,9 +141,10 @@ async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &yo3_tunnel
 
 #[expect(clippy::too_many_arguments, reason = "Each authenticated stream shares the server state, framing limits and HTTP endpoint.")]
 pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::RwLock<TlsAcceptor>>, world: Arc<World>, hub: Arc<Mutex<Hub>>,
-    accounts: Arc<Mutex<Directory>>, log: Arc<PacketLog>, quiet: net::Idle, heartbeats: net::Idle, http: SocketAddr)
+    accounts: Arc<Mutex<Directory>>, log: Arc<PacketLog>, quiet: net::Idle, heartbeats: net::Idle, http: SocketAddr,
+    sessions: Arc<Mutex<Sessions>>)
 {
-    let gate = Arc::new(Gate::new(accounts.clone(), world.settings.clone()));
+    let gate = Arc::new(Gate::new(accounts.clone(), world.settings.clone(), sessions));
     let slots = Arc::new(Semaphore::new(256));
     loop {
         let (tcp, peer) = match listener.accept().await {
@@ -220,7 +234,7 @@ mod close_tests {
         let listener=TcpListener::bind(("127.0.0.1",0)).await.unwrap();let address=listener.local_addr().unwrap();
         let mut peer=tokio::spawn(async move {
             let (tcp,_)=listener.accept().await.unwrap();let tls=acceptor.accept(tcp).await.unwrap();
-            let gate=Gate::new(Arc::new(Mutex::new(Directory::new(vec![]))),Arc::new(crate::settings::Live::open(None,vec![]).unwrap()));
+            let gate=Gate::new(Arc::new(Mutex::new(Directory::new(vec![]))),Arc::new(crate::settings::Live::open(None,vec![]).unwrap()),Arc::default());
             handshake(tls,&gate,&yo3_tunnel::ServerInfo::current(true),std::net::Ipv4Addr::LOCALHOST.into()).await.unwrap();
         });
         let tcp=TcpStream::connect(address).await.unwrap();

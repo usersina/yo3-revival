@@ -171,7 +171,7 @@ with many players. GitHub issue #16 tracks convenience features, #17 the Champio
 
 Evidence for each is in docs/protocol.md: `pbin` 512 bytes (`0x47E490`); `avatar1` length 41; `0x21FC lang`, chat room
 `region`/`status`/`type`, `0x2458.lang`, `PlayerType001/002`, `join_id`/`duel_id` (opaque echoes), ChainRun
-`param1`/`param2`; `bgm`, `icon`/`lefttime`/`maintenance`, `npc_id` (omitted is right); menu bits 6/7 for Set (the icons
+`param1`/`param2`; `bgm`, `icon`, `npc_id` (omitted is right); `lefttime`/`maintenance` (sent for a planned maintenance, #26); menu bits 6/7 for Set (the icons
 and `0x520F00`); card list kinds and marks (`0x4C72D0`, `CardAttr`); the NPC tabs; the `0x17C1` and `0x2D68` ids (no
 reader). `cpuUse`/`notRelease` (`0x27D9`) are real but only drive the main screen's completion percentages: left out
 (every card counts) because the key type isn't verified. From Konami's own logs: placement fills zones centre out (2, 3, 1,

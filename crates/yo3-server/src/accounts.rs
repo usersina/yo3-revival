@@ -236,6 +236,29 @@ impl Directory {
         self.atomic(|d| { d.login_mut(user_id).ok_or("no such account")?.standing = standing; Ok(user_id) })
     }
 
+    /// The password account a moderator names (a User ID, or one of its players' names): its user id and login.
+    pub fn login_named(&self, who: &str) -> Result<(u32, crate::logins::Login), String> {
+        let user_id = self.user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
+        let login = self.login_by_id(user_id).cloned().ok_or_else(|| format!("{who:?} is a key account: only password accounts have a standing"))?;
+        Ok((user_id, login))
+    }
+
+    /// Sets the standing of account `user_id` (#26).
+    pub fn set_standing_of(&mut self, user_id: u32, standing: crate::logins::Standing) -> Result<(), String> {
+        self.atomic(|d| { d.login_mut(user_id).ok_or("no such account")?.standing = standing; Ok(()) })
+    }
+
+    /// Mutes account `user_id`, or lifts its mute (`None`).
+    pub fn set_mute(&mut self, user_id: u32, mute: Option<crate::logins::Mute>) -> Result<(), String> {
+        self.atomic(|d| { d.login_mut(user_id).ok_or("no such account")?.muted = mute; Ok(()) })
+    }
+
+    /// The mute of the account holding `player_id` that is still running at `now`, if any.
+    pub fn mute_of_player(&self, player_id: u32, now: i64) -> Option<crate::logins::Mute> {
+        self.accounts.iter().find(|e| e.account.players.iter().any(|p| p.player_id == player_id))
+            .and_then(|e| e.login.as_ref()).and_then(|l| l.mute(now)).cloned()
+    }
+
     /// Makes an invite code: for `uses` accounts (any number if `None`), until `expires`, recorded as `issued_by`'s.
     pub fn add_invite(&mut self, uses: Option<u32>, expires: Option<i64>, issued_by: &str) -> Result<String, String> {
         let code = crate::logins::new_code();

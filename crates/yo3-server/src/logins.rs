@@ -175,16 +175,41 @@ pub struct Login {
     pub reset: Option<(String, i64)>,
     #[serde(default)]
     pub devices: Vec<Device>,
+    /// A moderator's mute (#26): the player's chat lines go nowhere until it ends.
+    #[serde(default)]
+    pub muted: Option<Mute>,
 }
 
+/// A mute: why, and until when (Unix seconds; none: until lifted).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Mute { pub reason: String, pub until: Option<i64> }
+
 impl Login {
-    /// Why a login is refused, if it is: a ban still running at `now`. A restriction still lets the player in; what it
-    /// stops is the game's actions (#26).
-    pub fn refusal(&self, now: i64) -> Option<serde_json::Value> {
-        let Standing::Banned { reason, until } = &self.standing else { return None };
-        if until.is_some_and(|t| t <= now) { return None }
-        Some(serde_json::json!({ "ok": false, "error": "banned", "reason": reason, "until": until }))
+    /// A new password account: User ID `user`, its password's PHC hash and its recovery code's digest.
+    pub fn new(user: &str, password: String, recovery: String) -> Login {
+        Login { user: user.into(), password, role: Role::default(), standing: Standing::default(), recovery, reset: None, devices: vec![], muted: None }
     }
+
+    /// Why a sign-in is refused, if it is (#26): a ban or a restriction still running at `now`. A ban also ended the
+    /// player's sessions when it was made; a restriction lets a game already signed in play on, and refuses the next
+    /// sign-in, the game's own ONLINE included ("This User ID is currently restricted.").
+    pub fn refusal(&self, now: i64) -> Option<serde_json::Value> {
+        let (error, reason, until) = match &self.standing {
+            Standing::Active => return None,
+            Standing::Restricted { reason, until } => ("restricted", reason, until),
+            Standing::Banned { reason, until } => ("banned", reason, until),
+        };
+        if until.is_some_and(|t| t <= now) { return None }
+        Some(serde_json::json!({ "ok": false, "error": error, "reason": reason, "until": until }))
+    }
+
+    /// The mute still running at `now`, if any.
+    pub fn mute(&self, now: i64) -> Option<&Mute> {
+        self.muted.as_ref().filter(|m| m.until.is_none_or(|t| t > now))
+    }
+
+    /// Whether the role may come in during maintenance.
+    pub fn staff(&self) -> bool { matches!(self.role, Role::Admin | Role::Moderator) }
 }
 
 /// How new accounts are made on a server.
@@ -350,7 +375,7 @@ mod tests {
 
     #[test]
     fn a_ban_refuses_until_it_ends() {
-        let mut login = Login { user: "Yugi".into(), password: String::new(), role: Role::Player, standing: Standing::Active, recovery: String::new(), reset: None, devices: vec![] };
+        let mut login = Login::new("Yugi", String::new(), String::new());
         assert!(login.refusal(100).is_none());
         login.standing = Standing::Banned { reason: "cheating".into(), until: Some(200) };
         assert_eq!(login.refusal(100).unwrap()["error"], "banned");

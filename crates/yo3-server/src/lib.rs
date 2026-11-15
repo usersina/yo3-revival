@@ -156,6 +156,39 @@ fn check_identity(tls: &auth::TlsConfig, served: &mut Vec<u8>) -> Option<yo3_tun
     }
 }
 
+/// Maintenance (#26): while one is planned, the game's countdown is pushed every minute (it shows the time left from
+/// the last push); when it starts, everyone but the staff is disconnected and the duels between players end as draws.
+/// New sign-ins are refused meanwhile (`account_ops`, `transport`), and discovery says so.
+async fn maintenance(world: Arc<World>, hub: Arc<Mutex<Hub>>, directory: Arc<Mutex<Directory>>, sessions: Arc<Mutex<auth::Sessions>>) {
+    let mut every = tokio::time::interval(std::time::Duration::from_secs(1));
+    let (mut started, mut pushed): (Option<i64>, i64) = (None, 0);
+    loop {
+        every.tick().await;
+        let settings = world.settings.now();
+        let now = logins::now();
+        let Some(at) = settings.maintenance_at else { started = None; continue };
+        if now < at {
+            if now - pushed >= 60 {
+                pushed = now;
+                hub.locked().push_everyone(&front::information(&settings, world.engine_problem.is_some(), now));
+            }
+            continue;
+        }
+        if started == Some(at) { continue }
+        started = Some(at);
+        tracing::info!("maintenance started: everyone but admins and moderators is disconnected");
+        let tables: Vec<_> = hub.locked().tables.values().cloned().collect();
+        for table in tables {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| table.locked().abort()));
+        }
+        let staff: std::collections::HashSet<u32> = {
+            let d = directory.locked();
+            d.entries().filter_map(|(user, _, a)| user.and_then(|u| d.login_of(u)).filter(|(_, l)| l.staff()).map(|_| a.user_id)).collect()
+        };
+        sessions.locked().logout_where(|user| !staff.contains(&user));
+    }
+}
+
 /// Addresses the services actually bound to.
 pub struct Running {
     pub auth: SocketAddr,
@@ -445,8 +478,11 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
             }
         })
     };
+    // The signed-in sessions: the TLS gate makes them, the admin API ends them (a kick, a ban, maintenance).
+    let sessions = Arc::new(Mutex::new(auth::Sessions::default()));
     let auth_task = tokio::spawn(transport::accept_loop(authenticated, tls, world.clone(), hub.clone(), directory.clone(),
-        packets.clone(), quiet, heartbeats, http_addr));
+        packets.clone(), quiet, heartbeats, http_addr, sessions.clone()));
+    let maintenance_task = tokio::spawn(maintenance(world.clone(), hub.clone(), directory.clone(), sessions.clone()));
     // Duel clocks between players run out on the server's side: checked once a second.
     let clock_task = {
         let hub = hub.clone();
@@ -478,12 +514,13 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let running_hub = hub.clone();
     let mut api = api::Api::new(directory.clone(), world.settings.clone(), cfg.data_dir.clone(), cfg.game_dir.clone(), "server");
     api.hub = Some(hub);
+    api.sessions = Some(sessions);
     api.shutdown = Some(shutdown.clone());
     api.status = api::Status { engine_problem: world.engine_problem.clone(), listen: Some(auth_addr), diagnostic_id: cfg.diagnostic_id };
     api.titles = Some(world.titles.clone());
     let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.clone(), admin_token, Arc::new(api)));
     tracing::info!("authenticated TLS {} local management/assets HTTP {}; packets -> {}", auth_addr, http_addr, packets.path().display());
-    let mut tasks = vec![auth_task, http_task, clock_task, identity_task];
+    let mut tasks = vec![auth_task, http_task, clock_task, identity_task, maintenance_task];
     tasks.extend(backup_task);
     Ok(Running { auth: auth_addr, http: http_addr, tasks, shutdown, hub: running_hub, data_dir: cfg.data_dir.clone() })
 }

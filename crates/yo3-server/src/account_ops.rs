@@ -70,8 +70,7 @@ async fn register(request: &Json, ctx: &Context<'_>) -> Json {
     if ctx.accounts.locked().login_of(user).is_some() { return error("user_id_taken") }
     let Ok(hash) = logins::hash_password(password.to_owned()).await else { return error("server_error") };
     let recovery = logins::new_code();
-    let login = Login { user: user.to_owned(), password: hash, role: Default::default(), standing: Default::default(),
-        recovery: logins::digest(&logins::normalize_code(&recovery)), reset: None, devices: vec![] };
+    let login = Login::new(user, hash, logins::digest(&logins::normalize_code(&recovery)));
     let invite = request["invite"].as_str().filter(|c| !c.trim().is_empty());
     match ctx.accounts.locked().register(login, invite, ctx.settings.registration) {
         Ok(_) => json!({ "ok": true, "user": user, "recovery_code": recovery }),
@@ -96,6 +95,10 @@ async fn check_password(user: &str, password: &str, ctx: &Context<'_>) -> Result
 /// A session for `user_id` (ending its older one) and the reply around it.
 fn start_session(user_id: u32, login: &Login, ctx: &Context<'_>) -> Result<Json, Json> {
     if let Some(refused) = login.refusal(logins::now()) { return Err(refused) }
+    // During maintenance only the staff comes in (#26); the others see the server's message.
+    if ctx.settings.in_maintenance(logins::now()) && !login.staff() {
+        return Err(json!({ "ok": false, "error": "maintenance", "message": ctx.settings.maintenance_message }));
+    }
     if !crate::store::healthy() { return Err(error("server_error")) }
     let session = ctx.sessions.locked().login(user_id, Instant::now()).ok_or_else(|| error("server_full"))?;
     Ok(json!({ "ok": true, "session": hex(&session), "user": login.user }))

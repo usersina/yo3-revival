@@ -16,6 +16,9 @@ pub struct Args {
     /// `settings` lists them and `set` changes them.
     #[arg(long, global = true)]
     pub config: Option<PathBuf>,
+    /// The moderator's name an admin command is recorded under in the audit log (default: host).
+    #[arg(long, global = true, default_value = "host")]
+    pub by: String,
     /// Where persistent state (SQLite server.db) is kept; each start backs it up into backups/.
     #[arg(long, default_value = "data", global = true, overrides_with = "data_dir")]
     pub data_dir: PathBuf,
@@ -161,6 +164,31 @@ pub enum Admin {
     },
     /// Stop the running server gracefully: logins close, duels end, everything is saved and backed up.
     Stop,
+    /// Disconnect WHO's game (a User ID or one of its players' names); it shows its own disconnect dialog.
+    Kick { who: String },
+    /// Ban WHO: sign-in refused (for --days, or until `lift`), every device signed out, the game disconnected. The
+    /// launcher shows the reason and the end.
+    Ban { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] days: Option<u32> },
+    /// Restrict WHO: sign-in refused (for --days, or until `lift`); a game already signed in plays on until it logs in
+    /// again, when the game says "This User ID is currently restricted."
+    Restrict { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] days: Option<u32> },
+    /// Lift WHO's ban or restriction.
+    Lift { who: String },
+    /// Mute WHO: their chat lines go nowhere (for --minutes, or until `unmute`), and they are told why.
+    Mute { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] minutes: Option<u32> },
+    Unmute { who: String },
+    /// Sign WHO out of every device and disconnect their game.
+    SignOut { who: String },
+    /// Plan maintenance in --in MINUTES (0: now): the game counts down with --message, then only admins and moderators
+    /// stay, duels end and sign-ins wait; --off calls it off.
+    Maintenance {
+        #[arg(long = "in")]
+        minutes: Option<u32>,
+        #[arg(long)]
+        message: Option<String>,
+        #[arg(long)]
+        off: bool,
+    },
 }
 
 /// Run flags (administrative subcommands are separate actions, not persistent server settings).

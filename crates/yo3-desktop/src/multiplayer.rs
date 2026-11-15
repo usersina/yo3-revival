@@ -246,7 +246,10 @@ pub enum Problem {
     WrongUserOrPassword,
     TooManyTries { wait_seconds: u64 },
     Banned { reason: String, until: Option<i64> },
-    Maintenance,
+    /// A restriction: sign-in refused for a while (#26).
+    Restricted { reason: String, until: Option<i64> },
+    /// The server's own words, when it gave some.
+    Maintenance { message: String },
     Full,
     NeedsUpdate { min: String },
     IdentityChanged,
@@ -278,7 +281,8 @@ impl Problem {
             "invalid_credentials" => Problem::WrongUserOrPassword,
             "throttled" => Problem::TooManyTries { wait_seconds: reply["retry_after"].as_u64().unwrap_or(1) },
             "banned" => Problem::Banned { reason: reply["reason"].as_str().unwrap_or_default().to_string(), until: reply["until"].as_i64() },
-            "maintenance" => Problem::Maintenance,
+            "restricted" => Problem::Restricted { reason: reply["reason"].as_str().unwrap_or_default().to_string(), until: reply["until"].as_i64() },
+            "maintenance" => Problem::Maintenance { message: reply["message"].as_str().unwrap_or_default().to_string() },
             "server_full" => Problem::Full,
             "update_required" => Problem::NeedsUpdate { min: reply["min_launcher"].as_str().unwrap_or_default().to_string() },
             "signed_out" => Problem::SignInAgain,
@@ -300,12 +304,10 @@ impl Problem {
         match self {
             Problem::WrongUserOrPassword => "The User ID or password is wrong.".into(),
             Problem::TooManyTries { wait_seconds } => format!("Too many attempts. Try again in {}.", wait(*wait_seconds)),
-            Problem::Banned { reason, until } => {
-                let until = until.and_then(|t| chrono::DateTime::from_timestamp(t, 0))
-                    .map_or("for good".to_string(), |t| format!("until {}", t.with_timezone(&chrono::Local).format("%d %B %Y, %H:%M")));
-                if reason.trim().is_empty() { format!("This account is banned {until}.") } else { format!("This account is banned {until}: {reason}") }
-            }
-            Problem::Maintenance => "The server is in maintenance. Try again later.".into(),
+            Problem::Banned { reason, until } => standing("banned", reason, *until, "for good"),
+            Problem::Restricted { reason, until } => standing("restricted", reason, *until, "until a moderator lifts it"),
+            Problem::Maintenance { message } if !message.trim().is_empty() => format!("The server is in maintenance: {}", message.trim()),
+            Problem::Maintenance { .. } => "The server is in maintenance. Try again later.".into(),
             Problem::Full => "The server is full.".into(),
             Problem::NeedsUpdate { min } => format!("This server needs YO3 Revival {min} or newer."),
             Problem::IdentityChanged => "This server's identity changed. It may not be the server you added: don't sign in.".into(),
@@ -328,13 +330,20 @@ impl Problem {
 
     pub fn remedy(&self) -> Option<Remedy> {
         match self {
-            Problem::Maintenance | Problem::Full | Problem::Unreachable => Some(Remedy::Retry),
+            Problem::Maintenance { .. } | Problem::Full | Problem::Unreachable => Some(Remedy::Retry),
             Problem::NeedsUpdate { .. } => Some(Remedy::Update),
             Problem::SignInAgain => Some(Remedy::SignInAgain),
             Problem::IdentityChanged => Some(Remedy::RemoveServer),
             _ => None,
         }
     }
+}
+
+/// A ban or a restriction as one sentence: what, until when (local time), and the moderator's reason.
+fn standing(what: &str, reason: &str, until: Option<i64>, forever: &str) -> String {
+    let until = until.and_then(|t| chrono::DateTime::from_timestamp(t, 0))
+        .map_or(forever.to_string(), |t| format!("until {}", t.with_timezone(&chrono::Local).format("%d %B %Y, %H:%M")));
+    if reason.trim().is_empty() { format!("This account is {what} {until}.") } else { format!("This account is {what} {until}: {}", reason.trim()) }
 }
 
 fn wait(seconds: u64) -> String {
@@ -538,6 +547,8 @@ mod tests {
             (reply("throttled", json!({ "retry_after": 1 })), "Too many attempts. Try again in 1 second.", None),
             (reply("banned", json!({ "reason": "cheating", "until": null })), "This account is banned for good: cheating", None),
             (reply("maintenance", json!({})), "The server is in maintenance. Try again later.", Some(Remedy::Retry)),
+            (reply("maintenance", json!({ "message": "Back at 10:00" })), "The server is in maintenance: Back at 10:00", Some(Remedy::Retry)),
+            (reply("restricted", json!({ "reason": "spam", "until": null })), "This account is restricted until a moderator lifts it: spam", None),
             (reply("server_full", json!({})), "The server is full.", Some(Remedy::Retry)),
             (reply("update_required", json!({ "min_launcher": "0.2.0" })), "This server needs YO3 Revival 0.2.0 or newer.", Some(Remedy::Update)),
             (reply("signed_out", json!({})), "Please sign in again.", Some(Remedy::SignInAgain)),

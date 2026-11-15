@@ -597,6 +597,35 @@ pub struct World {
     pub rental_pool: std::collections::HashSet<u16>,
 }
 
+/// The Information list (0x21FC, read by the global dispatcher `0x4F4700` whenever it arrives, so the server may push
+/// it): the news, a notice while the rules engine can't run, and before a planned maintenance the game's countdown. The
+/// countdown is an entry of its own with `lefttime` (seconds) and `maintenance` (a text, not "-1"): InfoIcon `0x44E130`
+/// walks the `{lang}` item's entries and keeps the soonest such one, its title and body as the notice and its time for
+/// the maintenance icon, whose help (`menteHelp`, `0x451700`) writes text 11311 "Maintenance will be performed
+/// shortly." with the hours and minutes left into the chat window. R3, #26.
+pub fn information(settings: &crate::settings::Settings, engine_problem: bool, now: i64) -> Message {
+    let shown = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let unavailable = engine_problem.then(|| (DUELS_UNAVAILABLE.0.to_string(), DUELS_UNAVAILABLE.1.to_string()));
+    let entries = settings.news.clone().into_iter().chain(unavailable).map(|(title, body)| {
+        Message::record().with("starttime", Value::text(&shown)).with("title", Value::text(&title)).with("body", Value::text(&body))
+    });
+    let mut lang = Message::record().with("lang", Value::text("1"));
+    if let Some(left) = settings.maintenance_in(now) {
+        let message = if settings.maintenance_message.trim().is_empty() { "Maintenance" } else { settings.maintenance_message.as_str() };
+        lang = lang.item(Message::record().with("starttime", Value::text(&shown)).with("title", Value::text("Maintenance"))
+            .with("body", Value::text(message)).with("lefttime", Value::U32(left.min(i64::from(u32::MAX)) as u32))
+            .with("maintenance", Value::text(message)));
+    }
+    Message::reply(0x21FC).item(entries.fold(lang, Message::item))
+}
+
+/// A line from the server in one player's chat window (a 0x2455 push from no one, as title awards are announced).
+pub fn chat_note(from: &str, text: &str) -> Message {
+    let line = Message::record().with("from_id", Value::U32(0)).with("pname", Value::text(from))
+        .with("chat_type", Value::U32(crate::banter::NPC_CHAT)).with("chat_str", Value::text(text));
+    Message::reply(0x2455).item(line)
+}
+
 /// The login news entry (title, body) while the rules engine can't run (`World::engine_problem`).
 pub const DUELS_UNAVAILABLE: (&str, &str) = (
     "Duels are unavailable on this server",
@@ -749,6 +778,11 @@ impl Hub {
 
     pub fn online(&self) -> usize {
         self.online.len()
+    }
+
+    /// Pushes `msg` to every player online (news and the maintenance countdown, #26).
+    pub fn push_everyone(&self, msg: &Message) {
+        for o in self.online.values() { let _ = o.outbox.send(msg.clone()); }
     }
 
     /// A hub whose duel records are kept in `file` (read now if it exists, written after each duel).
@@ -2803,6 +2837,14 @@ impl FrontSession {
             tracing::debug!("request {id:#x} before a player was selected; ignored");
             return vec![];
         }
+        // The game's own login (ONLINE): a restricted or banned account is refused with the game's text, 0x219E
+        // "This User ID is currently restricted." (LoginWindow `0x469C00`, dialog kind 6; R2, #26). A game signed in
+        // before a restriction plays on until here.
+        if id == 0x1F47 && let Some(d) = &self.directory
+            && d.locked().login_by_id(self.account.user_id).is_some_and(|l| l.refusal(crate::logins::now()).is_some())
+        {
+            return vec![Message::reply(0x219E)];
+        }
         let regulation = self.login_regulation();
         let a = &self.account;
         let reply = match id {
@@ -3206,18 +3248,7 @@ impl FrontSession {
                 let (title, body) = (clip(&text("title"), 128), clip(&text("body"), 2048));
                 self.hub().send_mail(from, int("mail_type"), int("to_id"), &title, &body)
             }
-            0x1F41 => {
-                let now = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
-                let unavailable = self.world.engine_problem.is_some().then(|| (DUELS_UNAVAILABLE.0.to_string(), DUELS_UNAVAILABLE.1.to_string()));
-                let entries = self.world.settings.now().news.clone().into_iter().chain(unavailable).map(|(title, body)| {
-                    Message::record()
-                        .with("starttime", Value::text(&now))
-                        .with("title", Value::text(&title))
-                        .with("body", Value::text(&body))
-                });
-                let lang = entries.fold(Message::record().with("lang", Value::text("1")), Message::item);
-                Message::reply(0x21FC).item(lang)
-            }
+            0x1F41 => information(&self.world.settings.now(), self.world.engine_problem.is_some(), crate::logins::now()),
             0x2CF0 => {
                 let found = self.player_search(msg);
                 // The left panel's friend and ignore list views (tabs 9 and 10, 0x45B920 / 0x45BA70) search with no
@@ -3560,6 +3591,15 @@ impl FrontSession {
         const ROOM_CHAT: u32 = 1;
         const TEAM_CHAT: u32 = 3;
         let Some(id) = self.online else { return vec![Message::reply(0x2457)] };
+        // A muted player's lines go nowhere; they are told why in their own chat window (the game has no muted reply
+        // or text of its own: R6, #26).
+        let muted = self.directory.as_ref().and_then(|d| d.locked().mute_of_player(self.player().player_id, crate::logins::now()));
+        if let Some(mute) = muted {
+            let until = mute.until.and_then(|t| chrono::DateTime::from_timestamp(t, 0))
+                .map_or("until a moderator lifts it".to_string(), |t| format!("until {}", t.format("%Y-%m-%d %H:%M UTC")));
+            let why = if mute.reason.trim().is_empty() { String::new() } else { format!(": {}", mute.reason) };
+            return vec![Message::reply(0x2456), chat_note("Moderator", &format!("You are muted {until}{why}"))];
+        }
         let body = msg.items.first().unwrap_or(msg);
         let chat_type = body.get("chat_type").and_then(Value::as_u32).unwrap_or(0);
         let player = self.player();

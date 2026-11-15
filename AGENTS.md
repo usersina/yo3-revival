@@ -179,6 +179,8 @@ target/release/yo3-server accounts                # list: User ID or key, role, 
 #   give-bp WHO N, add-code CODE BP [--uses N], remove-code CODE, codes: BP and BOOSTERPASS codes
 #   invite [--uses N] [--days D], invites, add-user USER, reset-code USER, set-role USER ROLE: password accounts (#23)
 #   audit [--limit N]: the newest changes; stop: a graceful stop (as SIGTERM and Ctrl+C)
+#   kick, ban, restrict, lift, mute, unmute, sign-out WHO; maintenance --in MINUTES [--message TEXT] | --off (#26);
+#   --by NAME records the moderator in the audit log
 #   settings, set NAME VALUE, reset NAME: live settings (#24, settings.rs): login-regulation (the login banlist, an id
 #   or a name; default "Season 16"), start-lp, turn-seconds, total-seconds, news, registration, server-name, headline,
 #   min-launcher, the throttle's; saved in server.db, on a running server too. Restart-only ones: server.toml

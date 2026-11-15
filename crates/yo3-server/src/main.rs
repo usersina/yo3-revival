@@ -83,6 +83,14 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::Reset { name } => Op::Reset { name: name.clone() },
         Admin::Audit { limit } => Op::Audit { limit: Some(*limit) },
         Admin::Stop => Op::Shutdown,
+        Admin::Kick { who } => Op::Kick { who: who.clone() },
+        Admin::Ban { who, reason, days } => Op::Ban { who: who.clone(), reason: reason.clone(), days: *days },
+        Admin::Restrict { who, reason, days } => Op::Restrict { who: who.clone(), reason: reason.clone(), days: *days },
+        Admin::Lift { who } => Op::Lift { who: who.clone() },
+        Admin::Mute { who, reason, minutes } => Op::Mute { who: who.clone(), reason: reason.clone(), minutes: *minutes },
+        Admin::Unmute { who } => Op::Unmute { who: who.clone() },
+        Admin::SignOut { who } => Op::SignOut { who: who.clone() },
+        Admin::Maintenance { minutes, message, off } => Op::Maintenance { minutes: *minutes, message: message.clone(), off: *off },
     }))
 }
 
@@ -116,15 +124,15 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         handed = Some(format!("User ID: {user}\nPassword: {password} (they change it in the launcher)"));
     }
     let result = match live::running(&a.data_dir) {
-        Some(server) => api::call(&server, &op),
+        Some(server) => api::call_as(&server, &op, &a.by),
         None => {
-            if matches!(op, Op::Shutdown) { anyhow::bail!("no server is running on {}", a.data_dir.display()) }
+            if matches!(op, Op::Shutdown | Op::Kick { .. }) { anyhow::bail!("no server is running on {}", a.data_dir.display()) }
             let _lock = if op.changes() { Some(yo3_server::store::lock(&a.data_dir)?) } else { None };
             yo3_server::store::initialize(&a.data_dir)?;
             let accounts = Directory::open(a.players.clone(), &a.data_dir.join("accounts.json"))?;
             let settings = offline_settings(&a.data_dir, &game_dir, matches!(op, Op::Set { .. }))?;
             let offline = api::Api::new(Arc::new(Mutex::new(accounts)), Arc::new(settings), Some(a.data_dir.clone()), game_dir.clone(), "offline");
-            offline.apply(&op, "host")
+            offline.apply(&op, &a.by)
         }
     }.map_err(anyhow::Error::msg)?;
     show(a, &command, &result, handed)

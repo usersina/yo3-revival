@@ -104,6 +104,31 @@ A value that doesn't pass its check is refused and changes nothing. Desktop writ
 `login-regulation` before it starts its server. The testing aids (`--duel-lp`, `--duel-time`, `--duel-deck` and the
 like) stay flags and win over the settings.
 
+## Moderation and maintenance
+
+On the `beta` branch. WHO is a User ID or one of its players' names; `--by NAME` records the moderator in the audit
+log (default: host). They work on a running server; the ones that change an account also work with it stopped.
+
+```bash
+./yo3-server --by Anna kick Yugi                                  # the game shows its own disconnect dialog
+./yo3-server --by Anna mute Yugi --reason "flooding" --minutes 30 # their lines go nowhere; their chat says why
+./yo3-server --by Anna unmute Yugi
+./yo3-server --by Anna restrict Yugi --reason "spam" --days 1     # sign-in refused; a game already in plays on
+./yo3-server --by Anna ban Yugi --reason "cheating" --days 7      # sign-in refused, devices signed out, game disconnected
+./yo3-server --by Anna lift Yugi                                  # ends a ban or a restriction
+./yo3-server --by Anna sign-out Yugi                              # every device signed out, the game disconnected
+./yo3-server maintenance --in 30 --message "Back at 10:00"        # the game counts down; --off calls it off
+./yo3-server set news "Season 16 | The new banlist is live"        # pushed to everyone online
+```
+
+- **Restricted or banned**: the launcher shows the reason and the end. The game itself can only say "This User ID is
+  currently restricted." (it has no ban text it uses), which a restricted player's game shows at its next ONLINE.
+- **Maintenance**: until it starts, the game shows a wrench with the time left, and its notice (the message). Then
+  everyone but admins and moderators (`set-role`) is disconnected, duels between players end as draws, sign-ins wait
+  and the launcher's server list says Maintenance. Run `maintenance --off` when it is over. `stop` after the countdown
+  shuts the server down for an update.
+- **News**: the `news` setting; a change reaches the Information panel of everyone online at once.
+
 ## Account commands
 
 On the `beta` branch every command works while the server runs (#25): it goes to the running server's admin API

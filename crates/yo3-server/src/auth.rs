@@ -152,6 +152,12 @@ impl Sessions {
         for token in theirs { self.logout(&token) }
     }
 
+    /// Ends every session whose user `end` picks (maintenance: everyone but the staff).
+    pub fn logout_where(&mut self, end: impl Fn(u32) -> bool) {
+        let theirs: Vec<Token> = self.sessions.iter().filter(|(_, s)| end(s.identity.user_id)).map(|(t, _)| *t).collect();
+        for token in theirs { self.logout(&token) }
+    }
+
     pub fn lease(&self, identity: Identity) -> Option<tokio::sync::watch::Receiver<bool>> {
         self.sessions.values().find(|s| s.identity == identity).map(|s| s.revoked.subscribe())
     }

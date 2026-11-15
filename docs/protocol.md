@@ -177,6 +177,25 @@ The stock request named "auth" carries no credential: the opener is a version st
 | (server push after `9000`)                                                                         | `0x2D6C` rental records                   | one item per rental not over that the player lent or borrowed (fields in "Card rental" below); the shop checks `from_type` for 1 (we send 0)                                                                                                                                                                                                                                                                                                  | the global dispatcher stores it in slot 8 (`0x4F5FBA`); opening the shop reads slot 8 unchecked (`0x48F0F6`); the collection builder `0x4F6340` reads it. `RentalRecord`/`CardRental` ask for it with `0x2C34` (bare), but not before the shop opens                                                      | live; push timing **guess**                                                                                                                |
 | (server push after rental records on the first trunk following player selection)                   | `0x22C8` automatic starting decks         | Existing tag-6 deck records, legal starter then official alternatives, at most ten; omitted without eligible candidates. See [Decks](#decks-deck-editor-deckedittest-handler-0x43fc60).                                                                                                                                                                                                                                                       | required mod post-dispatch hook `0x4F44BD`, native check `0x51AA80`, serializer `0x52C320`; fresh-player NPC duel without editor                                                                                                                                                                          | confirmed (revival behavior)                                                                                                               |
 
+**Login refusals** (R2, #26). The `0x1F47` replies, from LoginWindow `0x469C00`'s switch (its index table at
+`0x46B170`, targets at `0x46B128`) and the login error dialog `0x46D050`, whose kinds 0–8 show texts 10500–10503,
+10589, 10357, 10600, 10599 and 10598:
+
+| Reply | Dialog kind | Text |
+| --- | --- | --- |
+| `0x219B`, `0x219C` | 4 | 10589 "Incorrect User ID or Password" |
+| `0x219D` | 7 | 10599 "This User ID has not been used for over 180 days." |
+| `0x219E` | 6 | 10600 "This User ID is currently restricted." |
+| `0x21A0` | 1 | 10501 "Failed to connect to server." ("version invalid") |
+
+`0x2202 {error_code}` (to `0x1F48`) shows 10598 "This User ID is already logged in." for 5000 and "Failed to connect"
+for anything else. The texts "You have a Login ban." (10574), "Undergoing Maintenance" (10608), "This User ID is for
+Beta testing…" (10531), the Trade/Chat/Duel bans (10571–10573) and "Certain functions are currently restricted."
+(11310) are never referenced by the client: no instruction pushes their ids, no data holds them, no Flash script or
+`$id` string names them. The server sends `0x219E` to `0x1F47` while the account is banned or restricted
+(`front.rs`; a restriction lets a game already signed in play on, so its next ONLINE gets it). **Status: confirmed**,
+`moderation_contract.rs`, live on the private client ("Login Error!! This User ID is currently restricted.").
+
 Deleting a player checks current account ownership, the last-player rule and team leadership before changing any
 associated data. A refused `0x1F4B` (`0x2265`, `LoginWindow 0x469C00`) keeps friends, ignores, waiting mail, rentals and
 team membership intact. Tests: `a_refused_last_player_deletion_preserves_their_social_data`,
@@ -257,7 +276,19 @@ and Total Wait Time (Standard, Any, 5, 10, 20 minutes): Standard is the 180 s / 
 | `0x2724` heartbeat                                                                                                                                                                        | none                | none                                                                                                                  | builders `0x4F17DF` (every 30 s) and `0x4F45A5` (after 120 s); no reply is checked                                    | confirmed                                                                                                                                                                                                                                                                                  |
 
 Revival's default info list contains the welcome entry only; the deck-onboarding notice has been removed.
-The optional engine-unavailable warning is appended using the same record shape.
+The optional engine-unavailable warning is appended using the same record shape. The entries are the `news` live
+setting, and a change is pushed to everyone online.
+
+**Pushing it, and the maintenance countdown** (R3, #26). The global dispatcher's `0x21FC` case (`0x4F4E01`) keeps the
+message in the user data and walks its items through `0x4F4700` whatever screen is open, so the server can push it at
+any time: live, a news change showed in the open Information panel at once. InfoIcon `0x44E130` walks the entries of
+the `{lang}` item (and `0x21FD`'s item[0], the same fields) and keeps the soonest one with `lefttime` > 0 and a
+`maintenance` text that is neither empty nor "-1": its seconds (`+0x48`) and end time (`+0x4C`) for the maintenance
+icon (a wrench with the hours and minutes left), its `title` and `body` for the notice the icon opens. The icon's help
+(`menteHelp`, `0x451700`) writes text 11311 "Maintenance will be performed shortly." with the time left. The server
+sends that entry while a maintenance is planned (`front::information`) and pushes the list every minute until it
+starts. **Status: confirmed**, `moderation_contract.rs`, live: the wrench, the "Maintenance / Back at 10:00" notice and
+text 11311 in the ticker.
 
 **Player search** (`0x2CF0`, built by InfoWindow `0x45F390`):
 
@@ -291,6 +322,11 @@ back_num 0}`.
   Live: with Kaiba hosting, the waiting tab listed only him with the hosting icon.
 
 ### Chat (ChatWindow dispatcher `0x435950`)
+
+**A mute** (R6, #26): the client has no muted reply, error or text (the chat handlers and the text table searched; the
+"You have a Chat ban." text, 10572, is never referenced). The server drops a muted player's lines and answers
+`0x2456` with a `0x2455` line from "Moderator" (chat type `NPC_CHAT`, from_id 0, as title awards are announced) saying
+until when and why. **Status: confirmed**, `moderation_contract.rs`, live ("[Moderator] You are muted until …").
 
 | Request                    | Reply (error)                              | Fields                                                                                                                                                            | Evidence                                                                                               | Status                                                                                                                                                                                                                                                   |
 | -------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2073,7 +2109,7 @@ NULL, which these callers check. Send them when we know what they mean.
 | Reply             | Field                                                                     | Where it's read                    | Notes                                                                                                 |
 | ----------------- | ------------------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `0x2201`          | `bgm` int (top level)                                                     | global dispatcher `0x4F506A`       | probably the lobby music                                                                              |
-| `0x21FC`          | `icon`, `lefttime` (int), `maintenance` (string), in the `{lang}` item    | `0x4F477C`, `0x44E6EF`, `0x44E72D` | a maintenance countdown; absent = none                                                                |
+| `0x21FC`          | `icon`, `endtime` (int) in the `{lang}` item's entries                    | `0x4F477C`, `0x44E6EF`             | the bell badge; absent = none (`lefttime`/`maintenance` are sent: see "Info and chat windows")        |
 | player record     | `npc_id` int                                                              | `0x51BFE2`                         | 0 = a human player                                                                                    |
 | `0x27D9`          | `cpuUse`, `notRelease` (raw) in its record                                | `0x4F2080`, `0x4F20BA`             | meaning open (CPU duels? unreleased cards?)                                                           |
 | (around `0x2CF7`) | `premium` uint, from **another dataset**, not the reply                   | `0x44F3E7`                         | probably the account's Duelist Premium flag                                                           |
@@ -2082,9 +2118,8 @@ NULL, which these callers check. Send them when we know what they mean.
 Settled from the client's code (no value to send):
 
 - `0x2201` `bgm` is stored at `UserData+0xCC` (`0x4F506A`); no read of that field was found (heuristic sweep): omit.
-- `0x21FC` `icon`, `lefttime`, `maintenance` (`0x4F4700`, `0x44E130`): `lefttime` > 0 sets flag 2; `icon` 1 or 2 with `endtime`
-  sets bell flag 4 or 8 until then; InfoIcon shows the maintenance notice only when `maintenance` is non-empty, not
-  "-1", and `lefttime` > 0. Absent = no badge, no notice, which is right.
+- `0x21FC` `icon` (`0x4F4700`, `0x44E130`): `icon` 1 or 2 with `endtime` sets bell flag 4 or 8 until then. Absent = no
+  badge, which is right. Its `lefttime` and `maintenance` are now sent for a planned maintenance (#26).
 - player record `npc_id`: `0x51BF90` picks the loader: 0 the human one (`0x51C260`), non-zero the NPC one (`0x51C4F0`).
   Omitted = 0 = right for players.
 - `0x27D9` `cpuUse` / `notRelease`: raw lists of u16 card keys in the class built by `0x4F2010`; `notRelease` keys map to

@@ -89,6 +89,11 @@ pub const REGISTRY: &[Setting] = &[
         kind: Kind::Number { min: 0, max: 36_000 }, applies: Applies::NextDuel, default: || json!(crate::clock::DEFAULT_TOTAL) },
     Setting { name: "news", help: "The game's Information list: \"TITLE | BODY\" for one entry, or a JSON list of {title, body}",
         kind: Kind::News, applies: Applies::NextRequest, default: default_news },
+    Setting { name: "maintenance-at", help: "When maintenance starts, in Unix seconds (0: none); `maintenance --in MINUTES` sets it. \
+        Before: the game's countdown. From then: only admins and moderators sign in, the others are disconnected",
+        kind: Kind::Number { min: 0, max: u32::MAX }, applies: Applies::AtOnce, default: || json!(0) },
+    Setting { name: "maintenance-message", help: "What the game shows with the maintenance countdown", kind: Kind::Text { max: 200 },
+        applies: Applies::AtOnce, default: || json!("The server goes down for maintenance.") },
     Setting { name: "address-burst", help: "Account requests one address may make at once before it waits",
         kind: Kind::Number { min: 1, max: 1000 }, applies: Applies::AtOnce, default: || json!(10) },
     Setting { name: "address-refill-seconds", help: "Seconds that give an address back one account request",
@@ -114,12 +119,21 @@ pub struct Settings {
     pub turn_seconds: u32,
     pub total_seconds: u32,
     pub news: Vec<(String, String)>,
+    /// When maintenance starts (Unix seconds), if one is planned or running.
+    pub maintenance_at: Option<i64>,
+    pub maintenance_message: String,
     pub limits: Limits,
     /// Every setting's value by name, defaults included.
     values: Map<String, Json>,
 }
 
 impl Settings {
+    /// Whether maintenance is on at `now` (it started and wasn't called off).
+    pub fn in_maintenance(&self, now: i64) -> bool { self.maintenance_at.is_some_and(|t| t <= now) }
+
+    /// Seconds until a planned maintenance starts, for the game's countdown.
+    pub fn maintenance_in(&self, now: i64) -> Option<i64> { self.maintenance_at.map(|t| t - now).filter(|&s| s > 0) }
+
     /// The value of `name` (its default unless set).
     pub fn value(&self, name: &str) -> &Json { &self.values[name] }
 
@@ -139,6 +153,8 @@ impl Settings {
             turn_seconds: number("turn-seconds"),
             total_seconds: number("total-seconds"),
             news,
+            maintenance_at: Some(i64::from(number("maintenance-at"))).filter(|&t| t > 0),
+            maintenance_message: text("maintenance-message"),
             limits: Limits { burst: number("address-burst"), refill_seconds: number("address-refill-seconds"), max_backoff_seconds: number("backoff-max-seconds") },
             values,
         })

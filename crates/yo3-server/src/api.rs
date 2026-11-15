@@ -64,6 +64,22 @@ pub enum Op {
     /// The newest audit rows (50 when no limit is given).
     Audit { #[serde(default)] limit: Option<u32> },
     Shutdown,
+    /// Moderation (#26). WHO is a User ID or one of its players' names.
+    /// Disconnects the account's game: it shows its own disconnect dialog.
+    Kick { who: String },
+    /// Sign-in refused (for `days`, or until lifted), every device signed out, the game disconnected.
+    Ban { who: String, #[serde(default)] reason: String, #[serde(default)] days: Option<u32> },
+    /// Sign-in refused (for `days`, or until lifted); a game already signed in plays on until it logs in again.
+    Restrict { who: String, #[serde(default)] reason: String, #[serde(default)] days: Option<u32> },
+    /// Lifts a ban or a restriction.
+    Lift { who: String },
+    /// The account's chat lines go nowhere (for `minutes`, or until lifted).
+    Mute { who: String, #[serde(default)] reason: String, #[serde(default)] minutes: Option<u32> },
+    Unmute { who: String },
+    /// Every device signed out and the game disconnected (a moderator's Sign out everywhere).
+    SignOut { who: String },
+    /// Maintenance in `minutes` (the game's countdown until then) with `message`; `off` calls it off.
+    Maintenance { #[serde(default)] minutes: Option<u32>, #[serde(default)] message: Option<String>, #[serde(default)] off: bool },
 }
 
 impl Op {
@@ -84,6 +100,8 @@ impl Op {
             Op::Rename { old, .. } => old.clone(),
             Op::GrantTitle { player, .. } => player.clone(),
             Op::AddUser { user, .. } | Op::ResetCode { user } | Op::SetRole { user, .. } => user.clone(),
+            Op::Kick { who } | Op::Ban { who, .. } | Op::Restrict { who, .. } | Op::Lift { who } | Op::Mute { who, .. }
+            | Op::Unmute { who } | Op::SignOut { who } => who.clone(),
             Op::Set { name, .. } | Op::Reset { name } => name.clone(),
             Op::CreateAccount { names } => names.join(", "),
             Op::AddCode { code, .. } | Op::RemoveCode { code } => code.clone(),
@@ -111,6 +129,8 @@ pub struct Api {
     pub settings: Arc<crate::settings::Live>,
     /// The online players (none when the server isn't running).
     pub hub: Option<Arc<Mutex<Hub>>>,
+    /// The signed-in sessions, which a kick, a ban or maintenance ends (none when the server isn't running).
+    pub sessions: Option<Arc<Mutex<crate::auth::Sessions>>>,
     /// Stops the running server.
     pub shutdown: Option<tokio::sync::watch::Sender<bool>>,
     pub status: Status,
@@ -128,7 +148,7 @@ type Done = Result<(Value, Option<Value>, Option<Value>), String>;
 
 impl Api {
     pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, data_dir: Option<PathBuf>, game_dir: PathBuf, origin: &'static str) -> Api {
-        Api { accounts, settings, hub: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, origin, memory: Mutex::default() }
+        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, origin, memory: Mutex::default() }
     }
 
     /// Runs `op` for `actor` and writes its audit row: its result, or why it was refused.
@@ -151,6 +171,20 @@ impl Api {
             Some(dir) => crate::store::audit_rows(dir, limit).map_err(|e| e.to_string()),
             None => Ok(self.memory.locked().iter().rev().take(limit as usize).cloned().collect()),
         }
+    }
+
+    /// Ends the sessions of `user_id`: their game shows its own disconnect dialog.
+    fn end_sessions(&self, user_id: u32) {
+        if let Some(sessions) = &self.sessions { sessions.locked().logout_user(user_id) }
+    }
+
+    /// What a changed setting does at once on a running server: the news and the maintenance countdown are pushed to
+    /// everyone online (the game takes 0x21FC whenever it arrives: R3, #26).
+    fn after_setting(&self, name: &str) {
+        let pushed = ["news", "maintenance-at", "maintenance-message"];
+        let (Some(hub), true) = (&self.hub, pushed.iter().any(|n| n.eq_ignore_ascii_case(name.trim()))) else { return };
+        let info = crate::front::information(&self.settings.now(), self.status.engine_problem.is_some(), crate::logins::now());
+        hub.locked().push_everyone(&info);
     }
 
     fn titles(&self) -> Result<Arc<crate::titles::TitleData>, String> {
@@ -183,13 +217,81 @@ impl Api {
                 let before = crate::settings::find(name).map(|s| self.settings.now().value(s.name).clone());
                 let done = self.settings.set(name, value)?;
                 let after = crate::settings::find(name).map(|s| self.settings.now().value(s.name).clone());
+                self.after_setting(name);
                 Ok((message(done), before, after))
             }
             Op::Reset { name } => {
                 let before = crate::settings::find(name).map(|s| self.settings.now().value(s.name).clone());
                 let done = self.settings.reset(name)?;
                 let after = crate::settings::find(name).map(|s| self.settings.now().value(s.name).clone());
+                self.after_setting(name);
                 Ok((message(done), before, after))
+            }
+            Op::Maintenance { minutes, message: text, off } => {
+                let before = self.settings.now().maintenance_at;
+                if *off {
+                    self.settings.reset("maintenance-at")?;
+                    self.after_setting("maintenance-at");
+                    return Ok((message("maintenance is off".into()), before.map(|t| json!(t)), None));
+                }
+                let minutes = minutes.ok_or("maintenance needs --in MINUTES (0: now), or --off")?;
+                if let Some(text) = text { self.settings.set("maintenance-message", text)?; }
+                let at = crate::logins::now() + i64::from(minutes) * 60;
+                self.settings.set("maintenance-at", &at.to_string())?;
+                self.after_setting("maintenance-at");
+                let when = chrono::DateTime::from_timestamp(at, 0).map_or(String::new(), |t| t.format("%Y-%m-%d %H:%M UTC").to_string());
+                Ok((message(format!("maintenance starts at {when}: the game counts down until then; then only admins and moderators stay")),
+                    before.map(|t| json!(t)), Some(json!(at))))
+            }
+            Op::Kick { who } => {
+                let user_id = self.accounts.locked().user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
+                self.end_sessions(user_id);
+                Ok((message(format!("{who} was disconnected")), None, None))
+            }
+            Op::Ban { who, reason, days } | Op::Restrict { who, reason, days } => {
+                let ban = matches!(op, Op::Ban { .. });
+                let until = days.map(|d| crate::logins::now() + i64::from(d) * 86_400);
+                let standing = if ban { crate::logins::Standing::Banned { reason: reason.clone(), until } }
+                    else { crate::logins::Standing::Restricted { reason: reason.clone(), until } };
+                let mut d = self.accounts.locked();
+                let (user_id, login) = d.login_named(who)?;
+                d.set_standing_of(user_id, standing.clone())?;
+                if ban { d.revoke_devices(user_id)?; }
+                drop(d);
+                // A ban takes effect at once; a restriction at the account's next sign-in.
+                if ban { self.end_sessions(user_id) }
+                let until = until.and_then(|t| chrono::DateTime::from_timestamp(t, 0)).map_or("until lifted".to_string(), |t| format!("until {}", t.format("%Y-%m-%d %H:%M UTC")));
+                let what = if ban { "banned (devices signed out, game disconnected)" } else { "restricted (refused at the next sign-in)" };
+                Ok((message(format!("{} is {what} {until}", login.user)), Some(json!(login.standing)), Some(json!(standing))))
+            }
+            Op::Lift { who } => {
+                let mut d = self.accounts.locked();
+                let (user_id, login) = d.login_named(who)?;
+                d.set_standing_of(user_id, crate::logins::Standing::Active)?;
+                Ok((message(format!("{} may sign in again", login.user)), Some(json!(login.standing)), Some(json!(crate::logins::Standing::Active))))
+            }
+            Op::Mute { who, reason, minutes } => {
+                let until = minutes.map(|m| crate::logins::now() + i64::from(m) * 60);
+                let mut d = self.accounts.locked();
+                let (user_id, login) = d.login_named(who)?;
+                let mute = crate::logins::Mute { reason: reason.clone(), until };
+                d.set_mute(user_id, Some(mute.clone()))?;
+                let until = until.and_then(|t| chrono::DateTime::from_timestamp(t, 0)).map_or("until unmuted".to_string(), |t| format!("until {}", t.format("%Y-%m-%d %H:%M UTC")));
+                Ok((message(format!("{} is muted {until}", login.user)), login.muted.map(|m| json!(m)), Some(json!(mute))))
+            }
+            Op::Unmute { who } => {
+                let mut d = self.accounts.locked();
+                let (user_id, login) = d.login_named(who)?;
+                d.set_mute(user_id, None)?;
+                Ok((message(format!("{} may chat again", login.user)), login.muted.map(|m| json!(m)), None))
+            }
+            Op::SignOut { who } => {
+                let mut d = self.accounts.locked();
+                let (user_id, login) = d.login_named(who)?;
+                d.revoke_devices(user_id)?;
+                drop(d);
+                self.end_sessions(user_id);
+                Ok((message(format!("{} is signed out everywhere", login.user)), Some(json!(login.devices.len())), Some(json!(0))))
             }
             Op::Audit { limit } => {
                 let rows = self.audit(limit.unwrap_or(50).min(10_000))?;
@@ -317,8 +419,7 @@ impl Api {
                 if !crate::logins::valid_user_id(user) { return Err(format!("{user:?} is not a User ID: 3 to 16 letters, digits, _ or -")) }
                 if !hash.starts_with("$argon2id$") { return Err("the password hash is not argon2id".into()) }
                 let recovery = crate::logins::new_code();
-                let login = crate::logins::Login { user: user.clone(), password: hash.clone(), role: Default::default(), standing: Default::default(),
-                    recovery: crate::logins::digest(&crate::logins::normalize_code(&recovery)), reset: None, devices: vec![] };
+                let login = crate::logins::Login::new(user, hash.clone(), crate::logins::digest(&crate::logins::normalize_code(&recovery)));
                 d.register(login, None, crate::logins::Registration::Open).map_err(|e| if e == "user_id_taken" { format!("the User ID {user} is taken") } else { e })?;
                 done(json!({ "recovery_code": recovery, "message": format!("recovery code: {recovery}") }))
             }
@@ -348,8 +449,13 @@ pub fn handle(request: &str, peer: IpAddr, token: Option<&str>, api: &Api) -> Op
         Err(e) => return Some(reply("400 Bad Request", json!({ "ok": false, "error": format!("invalid request: {e}") }))),
     };
     if op.name() != name { return Some(reply("400 Bad Request", json!({ "ok": false, "error": "the path and the operation differ" }))) }
+    // Who acts, for the audit log: a moderator's name the tool passes on (`--by`), else the host.
+    let actor = head.lines().find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        key.eq_ignore_ascii_case("x-yo3-actor").then(|| value.trim().chars().filter(|c| !c.is_control()).take(40).collect::<String>())
+    }).filter(|a| !a.is_empty()).unwrap_or_else(|| "host".into());
     // Only the operation's name is logged: answers can hold keys and codes.
-    match api.apply(&op, "host") {
+    match api.apply(&op, &actor) {
         Ok(result) => {
             if op.changes() { tracing::info!("[api] {name} done") }
             Some(reply("200 OK", json!({ "ok": true, "result": result })))
@@ -362,13 +468,17 @@ pub fn handle(request: &str, peer: IpAddr, token: Option<&str>, api: &Api) -> Op
 }
 
 /// Sends `op` to the running server `live`: its result, or why not.
-pub fn call(live: &Live, op: &Op) -> Result<Value, String> {
+pub fn call(live: &Live, op: &Op) -> Result<Value, String> { call_as(live, op, "host") }
+
+/// The same, recorded in the audit log as `actor`'s (a moderator's name).
+pub fn call_as(live: &Live, op: &Op, actor: &str) -> Result<Value, String> {
+    let actor: String = actor.chars().filter(|c| c.is_ascii_graphic() || *c == ' ').take(40).collect();
     let send = || -> anyhow::Result<Value> {
         let mut stream = TcpStream::connect_timeout(&SocketAddr::from(([127, 0, 0, 1], live.port)), Duration::from_secs(3))?;
         stream.set_read_timeout(Some(Duration::from_secs(30)))?;
         stream.set_write_timeout(Some(Duration::from_secs(10)))?;
         let body = serde_json::to_vec(op)?;
-        write!(stream, "POST {PREFIX}{} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        write!(stream, "POST {PREFIX}{} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\nX-YO3-Actor: {actor}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             op.name(), live.token, body.len())?;
         stream.write_all(&body)?;
         let mut response = String::new();

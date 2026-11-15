@@ -25,8 +25,10 @@ An account holds up to four players with their in-game names, cards, decks and B
   - a **User ID**: 3–16 letters, digits, `_` or `-`, unique ignoring case, never shown to other players;
   - a **password**: 8–128 characters, not one of a short list of common passwords and not the User ID;
   - a **role**: player, moderator or admin;
-  - a **standing**: active, restricted or banned, with a reason and an optional end. A ban keeps the player out;
-    a restriction lets them sign in and limits what they can do in the game (#26);
+  - a **standing**: active, restricted or banned, with a reason and an optional end ([moderation](guide.md#moderation-and-maintenance)).
+    Both refuse sign-in, by password, device or key. A ban also signs every device out and disconnects the game at
+    once; a restriction lets a game already signed in play on until it logs in again;
+  - a **mute**, with a reason and an optional end: the player's chat lines go nowhere;
   - a one-time **recovery code**, shown once at sign-up;
   - up to ten **signed-in devices** ("stay signed in").
   A new password account has no players yet; the game's Select Player makes them.
@@ -173,7 +175,8 @@ The errors:
 | --- | --- |
 | `invalid_credentials` | A wrong password or an unknown User ID: one answer for both |
 | `throttled` | Too many requests or failures; `retry_after` says how many seconds to wait |
-| `banned` | With `reason`, and `until` (Unix seconds) unless it is for good |
+| `banned`, `restricted` | With `reason`, and `until` (Unix seconds) unless it is for good |
+| `maintenance` | During maintenance, for everyone but admins and moderators; with the server's `message` |
 | `signed_out` | A device token that was revoked, expired or never existed |
 | `invalid_recovery` | A wrong, used or expired recovery or reset code |
 | `invalid_user_id`, `user_id_taken` | Sign-up |
