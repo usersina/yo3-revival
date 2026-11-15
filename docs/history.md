@@ -42,6 +42,13 @@ Desktop archives also carry `yo3-revival.ico` and `yo3-revival.png` for custom s
 both platform archives. The in-game login news no longer includes the deck-onboarding notice; a front contract
 checks its removal alongside the existing news-format and engine-warning coverage.
 
+v0.0.21 release preparation (2026-11-15):
+
+- [x] The workspace package version and the local lockfile entries are `0.0.21`. The changelog describes a token's
+  position window no longer freezing the duel (Gorz the Emissary of Darkness, reproduced and checked live) and Sweet
+  Corn's Grain Corn Token appearing. `tests/tokens.rs` checks the 60 tokens client cards make; the duel check flags a
+  position window without a card. Same connection interface (3).
+
 v0.0.20 release preparation (2026-11-15):
 
 - [x] The workspace package version and the local lockfile entries are `0.0.20`. The changelog describes Fusion

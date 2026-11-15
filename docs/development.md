@@ -238,7 +238,13 @@ summon commands against rules learnt from client crashes (`duelcheck/summon.rs`:
 its own move, a Synchro's Tuner first, an animation's material list); `tests/summon_order.rs` replays Konami's own duel
 logs through the same rules, which must find nothing there (`YO3_ORIGINAL_LOGS`, skipped without the logs). When a
 client crash comes from the order or state of duel commands, add its cause there as a rule, check it against the logs,
-and keep a seed that reaches it in `the_seeds_reach_the_cases_that_drifted`.
+and keep a seed that reaches it in `the_seeds_reach_the_cases_that_drifted`. The client's dialogs are checked too: a
+position dialog must name a card the client's card table has, or it shows nothing to click and the duel stops (a
+token's position is asked before it appears; every seventh self-play deck carries cards that make such tokens).
+
+The token check (`tests/tokens.rs`, with the game installed and the engine fetched) finds every token a client card's
+script makes and requires a client token card for it (by Konami id, by name, or by `TOKEN_ALIASES` in `lib.rs` when the
+names differ) and a position dialog that shows it. A new script or a data update that makes an unknown token fails it.
 
 The card check (`crates/yo3-server/tests/card_data.rs`, with the game installed and the engine fetched) loads each of
 the client's 4,771 cards in the engine: every one must be found, load its script without an error and have the

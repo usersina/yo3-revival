@@ -247,3 +247,22 @@ fn swaps_keep_counters_on_the_card_and_face_down_transitions_clear_them() {
     core[0]["mzone"][0]["counters"] = json!({});
     assert!(m.check(&core).is_empty(), "native 0x4FBE50 clears counters on the face transition");
 }
+
+#[test]
+fn a_position_dialog_needs_a_card_the_client_has() {
+    // The position dialog 0x36 {kind 8, _, uid | flag << 16} (DuelSelectStandDialog 0x4C5E50) draws both buttons from
+    // the uid's row in the card table. Live, Gorz the Emissary of Darkness's token was asked its position before it
+    // appeared: the server sent 0x36 {8, 1, 0 | 1 << 16}, the dialog showed no card and no click answered it, so the
+    // duel stopped there.
+    let mut m = drawn();
+    m.apply(&command(0x36, [8, 1, 1 << 16, 0]));
+    let problems = m.take_problems();
+    assert!(problems.iter().any(|p| p.contains("position dialog names uid 0")), "{problems:?}");
+    // A hand card the table has: fine.
+    m.apply(&command(0x36, [8, 1, 2 | 1 << 16, 0]));
+    assert_eq!(m.take_problems(), Vec::<String>::new());
+    // A token given its table entry before the dialog (the fix): fine too.
+    m.apply(&command(1000, [0x4000, 110, 0, 3 << 8]));
+    m.apply(&command(0x36, [8, 1, 0x4000 | 1 << 16, 0]));
+    assert_eq!(m.take_problems(), Vec::<String>::new());
+}

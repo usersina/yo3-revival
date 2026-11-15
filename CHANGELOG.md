@@ -10,6 +10,22 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## v0.0.21 (2026-11-15)
+
+Token fixes. Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the
+server, rules engine and required connection components. Original game files are not included.
+**Windows 7 is not supported.**
+
+Hosts should update: the fixes are in the server, and players need nothing new. Friends on v0.0.13 or later can still
+join. Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.21/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.21/docs/scripts.md).
+
+- **Choosing a token's position no longer freezes the duel.** Gorz the Emissary of Darkness's token (and those of
+  Fiend's Sanctuary, Phantom Skyblaster and others) showed an empty position window that couldn't be clicked; it now
+  shows the token.
+- **Sweet Corn's Grain Corn Token now appears on the field.**
+
 ## v0.0.20 (2026-11-15)
 
 Fusion Summons fixed. Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions
