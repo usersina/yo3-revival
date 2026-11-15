@@ -83,7 +83,7 @@ fn the_settings_are_kept_with_the_account() {
             p.avatar = vec![7; 82];
             p.speeches[0] = "Hello".into();
             p.title = 2;
-        });
+        }).unwrap();
         id
     };
     let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();

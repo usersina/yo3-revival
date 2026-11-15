@@ -160,7 +160,7 @@ fn a_refused_last_player_deletion_preserves_their_social_data() {
     let me = list(&mut c)[0].1;
     let mut other = server.join_from(&d, "10.0.0.8".parse().unwrap());
     let partner = list(&mut other)[0].1;
-    d.lock().unwrap().update_player(me, |p| { p.cards.insert(10, 1); });
+    d.lock().unwrap().update_player(me, |p| { p.cards.insert(10, 1); }).unwrap();
     server.hub.lock().unwrap().befriend((me, "Yugi"), (partner, "Yugi2"));
     let ask = |id, fields: &[(&str, u32)]| req_with(id, &fields.iter().map(|(k, v)| (*k, Value::U32(*v))).collect::<Vec<_>>());
     one(c.send(ask(0x24C2, &[("to_id", partner)])));

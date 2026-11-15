@@ -10,6 +10,12 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **Nothing is reported as done unless it was saved.** If the server can't write its data (a full disk, a locked
+  file), a BOOSTERPASS code, a duel's BP, a title, a trade, a rating, a deck upload or an avatar change is now refused
+  instead of seeming to work and being lost at the next start.
+
 ## v0.0.18 (2026-11-15)
 
 Titles to earn, working website links, Auto Card Placing, and opening the game directly with nothing to set up.

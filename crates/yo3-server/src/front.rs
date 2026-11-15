@@ -816,10 +816,13 @@ impl Hub {
         self.evals.remove(&eval_id);
         let (num, total) = self.ratings(target);
         let (num, total) = (num + 1, total + value);
-        self.ratings.insert(target, (num, total));
-        if let Some(d) = &self.directory {
-            d.locked().update_player(target, |p| (p.eval_num, p.eval_total) = (num, total));
+        if let Some(d) = &self.directory
+            && let Err(why) = d.locked().update_player(target, |p| (p.eval_num, p.eval_total) = (num, total))
+        {
+            tracing::warn!("rating of player {target} not kept: {why}");
+            return false;
         }
+        self.ratings.insert(target, (num, total));
         true
     }
 
@@ -914,7 +917,7 @@ impl Hub {
             self.records.iter().filter(|((me, them), _)| *me == player_id && *them <= 256).map(|((_, them), r)| (*them, *r)).collect();
         let npcs = titles.npc_progress(&records);
         let mut new = vec![];
-        directory.locked().update_player(player_id, |p| {
+        let saved = directory.locked().update_player(player_id, |p| {
             if let Some((s, result, lp)) = stats {
                 crate::titles::count(&mut p.counters, s, result, lp as i64);
             }
@@ -927,6 +930,11 @@ impl Hub {
                 }
             }
         });
+        if let Err(why) = saved {
+            // Nothing was kept: no title is announced, and the next duel or save counts again.
+            tracing::warn!("titles and duel counts of player {player_id} not kept: {why}");
+            return vec![];
+        }
         for &id in &new {
             if let Some(name) = titles.name(id) {
                 self.push(player_id, &crate::titles::note(name));
@@ -2471,10 +2479,13 @@ impl FrontSession {
         let Some(at) = self.selected else { return };
         let mut decks = self.uploaded_decks();
         change(&mut decks);
-        self.account.players[at].uploaded.clone_from(&decks);
-        if let Some(d) = &self.directory {
-            d.locked().update_player(self.account.players[at].player_id, |p| p.uploaded = decks);
+        if let Some(d) = &self.directory
+            && let Err(why) = d.locked().update_player(self.account.players[at].player_id, |p| p.uploaded.clone_from(&decks))
+        {
+            tracing::warn!("uploaded decks not kept: {why}");
+            return;
         }
+        self.account.players[at].uploaded = decks;
     }
 
     /// A deck the player picked at Select Deck or saved in Edit Deck: kept by name (a newer upload replaces it; the
@@ -2559,10 +2570,13 @@ impl FrontSession {
             p.title = title;
         };
         let Some(at) = self.selected else { return Message::reply(0x2CF6) };
-        apply(&mut self.account.players[at]);
-        if let Some(d) = &self.directory {
-            d.locked().update_player(self.account.players[at].player_id, apply);
+        if let Some(d) = &self.directory
+            && let Err(why) = d.locked().update_player(self.account.players[at].player_id, apply.clone())
+        {
+            tracing::warn!("player settings not saved: {why}");
+            return Message::reply(0x2CF6);
         }
+        apply(&mut self.account.players[at]);
         let player_id = self.account.players[at].player_id;
         let earned = {
             let mut hub = self.hub();

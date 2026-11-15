@@ -49,10 +49,10 @@ fn table() -> Table {
     dir.lock().unwrap().update_player(a_id, |p| {
         p.cards.insert(10, 2);
         p.cards.insert(11, 1);
-    });
+    }).unwrap();
     dir.lock().unwrap().update_player(b_id, |p| {
         p.cards.insert(20, 1);
-    });
+    }).unwrap();
     let server = Server::with_world(World { card_rows: 50, ..World::new((1..=20).collect()) });
     server.hub.lock().unwrap().set_directory(dir.clone());
     let (a, b) = (server.join_from(&dir, a_addr), server.join_from(&dir, b_addr));
@@ -170,7 +170,7 @@ fn a_key_only_lenders_offer_is_checked_against_their_saved_cards() {
     d.add_account(&["KeyLender".into()]).unwrap();
     let user = d.user_of("KeyLender").unwrap();
     t.a_id = d.account_of(user).unwrap().players[0].player_id;
-    d.update_player(t.a_id, |p| { p.cards.insert(10, 1); });
+    d.update_player(t.a_id, |p| { p.cards.insert(10, 1); }).unwrap();
     drop(d);
     t.a = t.server.join_saved(&t.dir, user);
     in_scene(&mut t);

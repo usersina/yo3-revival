@@ -45,10 +45,10 @@ fn table() -> Table {
     let b_id = dir.lock().unwrap().account_for(b_addr).players[0].player_id;
     dir.lock().unwrap().update_player(a_id, |p| {
         p.cards.insert(10, 2);
-    });
+    }).unwrap();
     dir.lock().unwrap().update_player(b_id, |p| {
         p.cards.insert(20, 1);
-    });
+    }).unwrap();
     let server = Server::with_world(World { card_rows: 50, ..World::new((1..=20).collect()) });
     server.hub.lock().unwrap().set_directory(dir.clone());
     let (a, b) = (server.join_from(&dir, a_addr), server.join_from(&dir, b_addr));
@@ -201,7 +201,7 @@ fn two_key_only_accounts_can_complete_a_trade() {
         d.add_account(&[name.into()]).unwrap();
         let user = d.user_of(name).unwrap();
         let id = d.account_of(user).unwrap().players[0].player_id;
-        d.update_player(id, |p| { p.cards.insert(row, n); });
+        d.update_player(id, |p| { p.cards.insert(row, n); }).unwrap();
         drop(d);
         let c = t.server.join_saved(&t.dir, user);
         if seat == 0 { (t.a, t.a_id) = (c, id); } else { (t.b, t.b_id) = (c, id); }
@@ -228,10 +228,10 @@ fn a_key_only_accounts_trunk_refreshes_its_saved_collection() {
     d.add_account(&["KeyA".into()]).unwrap();
     let user = d.user_of("KeyA").unwrap();
     let id = d.account_of(user).unwrap().players[0].player_id;
-    d.update_player(id, |p| { p.cards.insert(10, 2); });
+    d.update_player(id, |p| { p.cards.insert(10, 2); }).unwrap();
     drop(d);
     let mut c = t.server.join_saved(&t.dir, user);
-    t.dir.lock().unwrap().update_player(id, |p| { p.cards.insert(10, 1); });
+    t.dir.lock().unwrap().update_player(id, |p| { p.cards.insert(10, 1); }).unwrap();
     let replies = c.send(req_with(0x1FA4, &[("player_id", Value::U32(id))]));
     let trunk = replies.iter().find(|m| m.request() == Some(9000)).unwrap();
     assert_eq!(count(trunk, 10), 1);

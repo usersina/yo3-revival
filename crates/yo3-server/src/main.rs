@@ -111,7 +111,7 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
             let titles = yo3_server::titles::TitleData::from_game(&yo3_data::GameData::load(&game_dir)?);
             let id = yo3_server::titles::by_name(&titles, &title).ok_or_else(|| err(format!("no title named {title:?}; `titles` lists them")))?;
             let player_id = d.player_id_named(&player).ok_or_else(|| err(format!("no player named {player:?}")))?;
-            d.update_player(player_id, |p| { p.items.insert(id); });
+            d.update_player(player_id, |p| { p.items.insert(id); }).map_err(err)?;
             println!("{player} has the title {}", titles.name(id).unwrap_or(&title));
         }
         Admin::GiveBp { .. } | Admin::AddCode { .. } | Admin::RemoveCode { .. } | Admin::Codes => unreachable!("handled above"),

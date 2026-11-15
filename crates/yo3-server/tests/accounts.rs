@@ -122,10 +122,10 @@ fn bp_and_bought_cards_are_kept_with_the_account() {
         let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
         let a = d.account_for(addr);
         assert_eq!(a.dpoint, yo3_server::accounts::START_BP);
-        d.update_account(a.user_id, |a| a.dpoint = 123);
+        d.update_account(a.user_id, |a| a.dpoint = 123).unwrap();
         d.update_player(a.players[0].player_id, |p| {
             p.cards.insert(38, 2);
-        });
+        }).unwrap();
         (a.user_id, a.players[0].player_id)
     };
     let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
@@ -144,7 +144,7 @@ fn bought_structure_decks_are_kept_with_the_player() {
     let player_id = {
         let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
         let id = d.account_for(addr).players[0].player_id;
-        d.update_player(id, |p| p.decks = vec![502, 4]);
+        d.update_player(id, |p| p.decks = vec![502, 4]).unwrap();
         id
     };
     let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
@@ -159,7 +159,7 @@ fn manner_ratings_are_kept_across_restarts() {
     let file = dir.join("accounts.json");
     let mut d = Directory::open(vec!["Yugi".into()], &file).unwrap();
     let id = d.account_for(ip(1)).players[0].player_id;
-    d.update_player(id, |p| (p.eval_num, p.eval_total) = (3, -15));
+    d.update_player(id, |p| (p.eval_num, p.eval_total) = (3, -15)).unwrap();
     let d = Directory::open(vec!["Yugi".into()], &file).unwrap();
     let p = d.player(id).unwrap();
     assert_eq!((p.eval_num, p.eval_total), (3, -15));
@@ -228,7 +228,7 @@ fn the_host_moves_an_account_to_a_friends_new_address() {
     let old = d.account_for(ip(1));
     d.update_player(old.players[0].player_id, |p| {
         p.cards.insert(10, 2);
-    });
+    }).unwrap();
     d.move_account(ip(1), ip(9), false).unwrap();
     let d = Directory::open(vec!["Yugi".into()], &file).unwrap();
     let moved: Vec<_> = d.accounts().map(|(addr, a)| (addr, a.user_id, a.players[0].player_id)).collect();
@@ -354,7 +354,7 @@ fn the_host_gives_an_address_account_a_key_without_losing_anything() {
     let before = d.account_for(ip(1));
     d.update_player(before.players[0].player_id, |p| {
         p.cards.insert(10, 2);
-    });
+    }).unwrap();
     let key = d.key_of("10.0.0.1").unwrap();
     assert_eq!(d.key_of("duelist").unwrap(), key, "by a player's name, ignoring case; the same key again");
     assert!(d.key_of("10.0.0.9").is_err() && d.key_of("Nobody").is_err());

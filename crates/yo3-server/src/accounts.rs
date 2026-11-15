@@ -282,11 +282,12 @@ impl Directory {
         if let Some(n) = names.iter().enumerate().find_map(|(i, n)| (self.taken(n) || names[..i].iter().any(|m| m.eq_ignore_ascii_case(n))).then_some(n)) {
             return Err(format!("the name {n:?} is taken"));
         }
-        let account = self.create_account(&names);
-        let key = new_key();
-        self.accounts.push(Entry { address: None, key: Some(key.clone()), joined_from: None, account });
-        self.save();
-        Ok(key)
+        self.atomic(|d| {
+            let account = d.create_account(&names);
+            let key = new_key();
+            d.accounts.push(Entry { address: None, key: Some(key.clone()), joined_from: None, account });
+            Ok(key)
+        })
     }
 
     /// Whether `key` is an account's.
@@ -330,13 +331,14 @@ impl Directory {
         if self.joins.len() >= JOIN_PER_HOUR {
             return Err("too many accounts were made in the last hour, try again later".to_string());
         }
-        let key = self.add_account(&[name.to_string()])?;
-        if let Some(e) = self.accounts.last_mut() {
-            e.joined_from = Some(addr);
-        }
-        self.joins.push(now);
-        self.save();
-        Ok(key)
+        self.atomic(|d| {
+            let key = d.add_account(&[name.to_string()])?;
+            if let Some(e) = d.accounts.last_mut() {
+                e.joined_from = Some(addr);
+            }
+            d.joins.push(now);
+            Ok(key)
+        })
     }
 
     /// The key of the address-only account at `addr` ("keep my account"), made if it has none.
@@ -351,9 +353,7 @@ impl Directory {
             return Ok(key.clone());
         }
         let key = new_key();
-        self.accounts[at].key = Some(key.clone());
-        self.save();
-        Ok(key)
+        self.atomic(|d| { d.accounts[at].key = Some(key.clone()); Ok(key) })
     }
 
     /// The account an admin argument names: an address, or a player's name.
@@ -400,17 +400,19 @@ impl Directory {
         if name.is_empty() || self.taken(name) {
             return Err(format!("the name {name:?} is taken or empty"));
         }
-        let Some(a) = self.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
-        if a.players.len() >= MAX_PLAYERS {
-            return Err(format!("account {user_id} already has {MAX_PLAYERS} players"));
-        }
-        let mut p = Player::new(self.next_player, name);
-        p.index = free_slot(&a.players).unwrap_or_default();
-        p.country.clone_from(&a.country);
-        self.next_player += 1;
-        a.players.push(p);
-        self.save();
-        Ok(())
+        self.atomic(|d| {
+            let id = d.next_player;
+            let Some(a) = d.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
+            if a.players.len() >= MAX_PLAYERS {
+                return Err(format!("account {user_id} already has {MAX_PLAYERS} players"));
+            }
+            let mut p = Player::new(id, name);
+            p.index = free_slot(&a.players).unwrap_or_default();
+            p.country.clone_from(&a.country);
+            a.players.push(p);
+            d.next_player += 1;
+            Ok(())
+        })
     }
 
     /// Sets the country of account `user_id` (see `set_country`).
@@ -447,11 +449,7 @@ impl Directory {
             return Err(format!("the name {name:?} is taken or empty"));
         }
         match self.accounts.iter().position(|e| e.address == Some(addr)) {
-            None => {
-                self.create(addr, &[name.to_string()]);
-                self.save();
-                Ok(())
-            }
+            None => self.atomic(|d| { d.create(addr, &[name.to_string()]); Ok(()) }),
             Some(at) => self.add_player_to(self.accounts[at].account.user_id, name),
         }
     }
@@ -473,13 +471,14 @@ impl Directory {
             let names: Vec<&str> = self.accounts[there].account.players.iter().map(|p| p.name.as_str()).collect();
             return Err(format!("{to} already has an account ({}); pass --replace to discard it", names.join(", ")));
         }
-        self.accounts[from_at].address = Some(to);
-        if let Some(there) = there {
-            // The discarded account goes whole, key included (a key it had stops working).
-            self.accounts.remove(there);
-        }
-        self.save();
-        Ok(())
+        self.atomic(|d| {
+            d.accounts[from_at].address = Some(to);
+            if let Some(there) = there {
+                // The discarded account goes whole, key included (a key it had stops working).
+                d.accounts.remove(there);
+            }
+            Ok(())
+        })
     }
 
     /// Sets the country flag of the account at `addr` (an ISO code of the client's `countrytbl.bin`, two letters in
@@ -502,13 +501,14 @@ impl Directory {
             return Err(format!("{code:?} is not a two-letter country code"));
         }
         let Some(at) = at else { return Err("no such account".into()) };
-        let account = &mut self.accounts[at].account;
-        account.country = code;
-        for p in &mut account.players {
-            p.country.clone_from(&account.country);
-        }
-        self.save();
-        Ok(())
+        self.atomic(|d| {
+            let account = &mut d.accounts[at].account;
+            account.country = code;
+            for p in &mut account.players {
+                p.country.clone_from(&account.country);
+            }
+            Ok(())
+        })
     }
 
     /// The account `user_id`, as kept now.
@@ -523,31 +523,33 @@ impl Directory {
         if name.is_empty() || name.chars().count() > MAX_NAME || name.chars().any(char::is_control) || self.taken(name) {
             return Err(format!("the name {name:?} is empty, too long or taken"));
         }
-        let id = self.next_player;
-        let Some(a) = self.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
-        if a.players.len() >= MAX_PLAYERS || index >= MAX_PLAYERS as u32 || a.players.iter().any(|p| p.index == index) {
-            return Err(format!("slot {index} of account {user_id} is not free"));
-        }
-        let mut p = Player::new(id, name);
-        p.index = index;
-        p.country.clone_from(&a.country);
-        a.players.push(p);
-        self.next_player += 1;
-        self.save();
-        Ok(())
+        self.atomic(|d| {
+            let id = d.next_player;
+            let Some(a) = d.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
+            if a.players.len() >= MAX_PLAYERS || index >= MAX_PLAYERS as u32 || a.players.iter().any(|p| p.index == index) {
+                return Err(format!("slot {index} of account {user_id} is not free"));
+            }
+            let mut p = Player::new(id, name);
+            p.index = index;
+            p.country.clone_from(&a.country);
+            a.players.push(p);
+            d.next_player += 1;
+            Ok(())
+        })
     }
 
     /// Deletes a player of account `user_id` (Select Player's 0x1F4B), whose slot is then free. An account keeps at
     /// least one player.
     pub fn delete_player(&mut self, user_id: u32, player_id: u32) -> Result<(), String> {
-        let Some(a) = self.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
-        let Some(at) = a.players.iter().position(|p| p.player_id == player_id) else { return Err(format!("no player {player_id}")) };
-        if a.players.len() == 1 {
-            return Err("an account keeps at least one player".into());
-        }
-        a.players.remove(at);
-        self.save();
-        Ok(())
+        self.atomic(|d| {
+            let Some(a) = d.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
+            let Some(at) = a.players.iter().position(|p| p.player_id == player_id) else { return Err(format!("no player {player_id}")) };
+            if a.players.len() == 1 {
+                return Err("an account keeps at least one player".into());
+            }
+            a.players.remove(at);
+            Ok(())
+        })
     }
 
     /// Renames a player (names are unique, ignoring case).
@@ -555,11 +557,12 @@ impl Directory {
         if new.is_empty() || (self.taken(new) && !old.eq_ignore_ascii_case(new)) {
             return Err(format!("the name {new:?} is taken or empty"));
         }
-        let player = self.accounts.iter_mut().map(|e| &mut e.account).flat_map(|a| &mut a.players).find(|p| p.name.eq_ignore_ascii_case(old));
-        let Some(player) = player else { return Err(format!("no player named {old:?}")) };
-        player.name = new.to_string();
-        self.save();
-        Ok(())
+        self.atomic(|d| {
+            let player = d.accounts.iter_mut().map(|e| &mut e.account).flat_map(|a| &mut a.players).find(|p| p.name.eq_ignore_ascii_case(old));
+            let Some(player) = player else { return Err(format!("no player named {old:?}")) };
+            player.name = new.to_string();
+            Ok(())
+        })
     }
 
     /// A player by id.
@@ -567,21 +570,24 @@ impl Directory {
         self.accounts.iter().map(|e| &e.account).flat_map(|a| &a.players).find(|p| p.player_id == player_id)
     }
 
-    /// Changes a player (their saved character settings) and saves the accounts.
-    pub fn update_player(&mut self, player_id: u32, change: impl FnOnce(&mut Player)) {
-        if let Some(p) = self.accounts.iter_mut().map(|e| &mut e.account).flat_map(|a| &mut a.players).find(|p| p.player_id == player_id) {
-            change(p);
-            self.save();
-        }
+    /// Changes a player (their saved character settings) and saves the accounts: refused, and nothing changed, when
+    /// there is no such player or the save fails.
+    pub fn update_player(&mut self, player_id: u32, change: impl FnOnce(&mut Player)) -> Result<(), String> {
+        self.atomic(|d| {
+            let p = d.accounts.iter_mut().map(|e| &mut e.account).flat_map(|a| &mut a.players).find(|p| p.player_id == player_id);
+            change(p.ok_or_else(|| format!("no player {player_id}"))?);
+            Ok(())
+        })
     }
 
-    /// Pays `bp` into the account of a player; its new BP, if the player has an account.
+    /// Pays `bp` into the account of a player; its new BP, if the player has an account and the payment was saved.
     pub fn reward(&mut self, player_id: u32, bp: u32) -> Option<u32> {
-        let account = self.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.players.iter().any(|p| p.player_id == player_id))?;
-        account.dpoint = account.dpoint.saturating_add(bp);
-        let total = account.dpoint;
-        self.save();
-        Some(total)
+        let paid = self.atomic(|d| {
+            let account = d.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.players.iter().any(|p| p.player_id == player_id)).ok_or("no such player")?;
+            account.dpoint = account.dpoint.saturating_add(bp);
+            Ok(account.dpoint)
+        });
+        paid.inspect_err(|why| tracing::warn!("duel reward of {bp} BP to player {player_id} not paid: {why}")).ok()
     }
 
     /// Gives `bp` to the account at `who` (an address, or one of its players' names): who it went to, and the
@@ -649,13 +655,14 @@ impl Directory {
             return Err("the code is used up".into());
         }
         let bp = c.bp;
-        let account = self.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id).ok_or("no such account")?;
-        account.dpoint = account.dpoint.saturating_add(bp);
-        let total = account.dpoint;
-        self.codes[at].used_by.push(user_id);
-        self.codes[at].claimed_at.push(Some(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()));
-        self.save();
-        Ok((bp, total))
+        self.atomic(|d| {
+            let account = d.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id).ok_or("no such account")?;
+            account.dpoint = account.dpoint.saturating_add(bp);
+            let total = account.dpoint;
+            d.codes[at].used_by.push(user_id);
+            d.codes[at].claimed_at.push(Some(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()));
+            Ok((bp, total))
+        })
     }
 
     fn code_at(&self, code: &str) -> Option<usize> {
@@ -676,11 +683,11 @@ impl Directory {
     /// Takes `cost` BP from the account's stored BP (not a copy a session cached, which duel rewards may have outgrown)
     /// if it has them; its BP left.
     pub fn charge(&mut self, user_id: u32, cost: u32) -> Option<u32> {
-        let account = self.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id)?;
-        account.dpoint = account.dpoint.checked_sub(cost)?;
-        let left = account.dpoint;
-        self.save();
-        Some(left)
+        self.atomic(|d| {
+            let account = d.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id).ok_or("no such account")?;
+            account.dpoint = account.dpoint.checked_sub(cost).ok_or("not enough BP")?;
+            Ok(account.dpoint)
+        }).ok()
     }
 
     /// A shop purchase: charges `cost` to the account holding `player_id` and applies `grant` to that player in one
@@ -704,26 +711,28 @@ impl Directory {
     }
 
     /// Changes several players in one step and one save (a trade hands cards both ways): all of them or, when one is
-    /// not there, none. Whether it was done.
+    /// not there or the save fails, none. Whether it was done.
     pub fn update_players(&mut self, changes: Vec<PlayerChange<'_>>) -> bool {
         if changes.iter().any(|(id, _)| self.player(*id).is_none()) {
             return false;
         }
-        for (id, change) in changes {
-            if let Some(p) = self.accounts.iter_mut().map(|e| &mut e.account).flat_map(|a| &mut a.players).find(|p| p.player_id == id) {
-                change(p);
+        self.atomic(|d| {
+            for (id, change) in changes {
+                if let Some(p) = d.accounts.iter_mut().map(|e| &mut e.account).flat_map(|a| &mut a.players).find(|p| p.player_id == id) {
+                    change(p);
+                }
             }
-        }
-        self.save();
-        true
+            Ok(())
+        }).inspect_err(|why| tracing::warn!("players not changed: {why}")).is_ok()
     }
 
-    /// Changes an account (its BP) and saves the accounts.
-    pub fn update_account(&mut self, user_id: u32, change: impl FnOnce(&mut Account)) {
-        if let Some(a) = self.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id) {
-            change(a);
-            self.save();
-        }
+    /// Changes an account (its BP) and saves the accounts: refused, and nothing changed, when there is no such account
+    /// or the save fails.
+    pub fn update_account(&mut self, user_id: u32, change: impl FnOnce(&mut Account)) -> Result<(), String> {
+        self.atomic(|d| {
+            change(d.accounts.iter_mut().map(|e| &mut e.account).find(|a| a.user_id == user_id).ok_or_else(|| format!("no account {user_id}"))?);
+            Ok(())
+        })
     }
 
     /// Every account found by an address, with it, by address.
