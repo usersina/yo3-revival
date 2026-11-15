@@ -23,7 +23,7 @@ jobs:
       version: ${{ steps.changelog.outputs.version }}
       release: ${{ steps.changelog.outputs.release }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: The newest version in CHANGELOG.md, and whether it is released
@@ -50,7 +50,7 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Rust (with the Windows target) and mingw-w64, which links it
         run: |
           rustup update stable --no-self-update
