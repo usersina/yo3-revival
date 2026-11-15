@@ -1345,6 +1345,36 @@ or `0x23` for the player's `ace_monster`); `0x39` RunSpSummon {player, uid} the 
 server sends them for MSG_SUMMONING / MSG_SPSUMMONING, which come once the card is in its zone. Live: sparkles around
 a summoned Giant Orc. Confirmed.
 
+**Tribute, Fusion and Synchro Summons** (Konami's logs: 40 Tribute, 5 Fusion and 45 Synchro Summons; confirmed live
+2026-11-15). DuelSummon `0x5165A0` handles three families of {player, zone (11 the hand), uid, variant}: Set marks a
+card with its family's effect, Run plays the family's effect on it, Reset clears the marks (Konami sent Reset 4 times;
+we don't). Tribute `0x2A` / `0x2C` (effects `0x25` / `0x24`, or `0x29` / `0x28` with variant 1, never seen), Material
+`0x2D` / `0x2F` (`0x27` / `0x26`), Tuning `0x30` / `0x32` (`0x2B` / `0x2A`). Tuning Run's variant is the material's level
+in its low byte and, in the next, 1 for the first Tuner (it starts the level sums again: DuelSummon `+0x64` the Tuners'
+levels, `+0x6C` their count, `+0x68` the others' levels, reset), 2 for another Tuner, 0 for the others. Command 1015
+(`0x3F7`) {count, uid, uid, uid} fills the engine state's material list (`+0x1330`, the pump `0x522A50`), 1016 (`0x3F8`)
+{uid ×4} adds more. RunFusion `0x3A` {player, the summoned monster's uid, kind << 16 | the number of materials} (DuelScene
+`0x514290` by the kind: 0 or 1 DuelFusion `0x506FA0` with `duel_fusion.swf`, 2 DuelSynchro `0x507750` with
+`duel_synchro.swf`) plays the full-screen animation; DuelSynchro (`0x507940`) reads the level sums and walks the
+material list from the Tuner count on to show the others. What the server sends, from the engine's moves (their reason:
+a release for a summon, a Fusion or a Synchro material):
+
+- each material's Set, then its Run (a Synchro's Tuners first), before the materials' moves; Konami's server sent the
+  same, Set for all then Run before each move. The engine sends the non-Tuner first at times, and a Tuner tuned second
+  reset the others' levels: the Synchro animation crashed the client (live), so all of a batch's materials are tuned
+  at the first one's move;
+- as an Extra Deck monster arrives (its move from the Extra Deck, a batch after its materials: the engine asks its
+  position in between), 1015 (and 1016) with the materials' uids, the Tuners first (without it the Synchro animation
+  crashed the client, live), RunFusion, and the summon line `0x44` with kind 8 for a Synchro and 6 for a Fusion (Konami
+  sent 8 before the materials and 6 after RunFusion for a Synchro); its own line at MSG_SPSUMMONING is then not said;
+- a Tribute Summon's line has kind 1 (a Tribute Summon's arrival has no summon reason in the engine's move). A tribute
+  for a Set (face down, no summon message) leaves no Tribute Summon behind.
+
+Live (2026-11-15, NPC duels with `--duel-deck`): Polymerization's materials swirled away from the hand and the Fusion
+animation played (Flame Swordsman out of a purple vortex); Krebons and Giant Orc tuned (cyan glows) and the Synchro
+animation played (Giant Orc through Krebons' rings, Gaia Knight out of the light); Krebons tributed for Summoned Skull
+flashed white. The duel check (`coverage.rs`: presentation) and the card sweep pass.
+
 **Player actions** (confirmed live with a test build that gave every hand card all command bits, then sent phase 2 and
 command 4):
 
@@ -1520,7 +1550,7 @@ way (all from the 227 original duel logs, their handlers read in the client):
 | `0x1E` CardSet | player, zone, 1 for a monster | after a Set's move | DuelScene: the Set effect `0x22` |
 | `0x22` CardActivate | the card's place as moves give it (face up), Konami id, uid | before an activation's ChainSet | DuelScene: the activation effect by card type (`0x1A`–`0x20`; `0x20` for the player's "trump card"), waited for |
 | `0x43` | player, 1, 0 | the turn player's Draw Phase | DuelCutin `0x505A70`: the draw line (param3 non-zero: none) |
-| `0x44` | player, `0x8000` \| uid, kind | before a summon's effect | the summon line (the "ace monster" line for the configured card; kind 8 a Synchro's). Kinds in the logs: 0 Normal, 1–2 Tribute, 5 Special, 6 Fusion, 8 Synchro; we send 0 and 5 |
+| `0x44` | player, `0x8000` \| uid, kind | before a summon's effect | the summon line (the "ace monster" line for the configured card; kind 8 a Synchro's). Kinds in the logs: 0 Normal, 1 Tribute, 5 Special, 6 an Extra Deck monster's arrival, 8 Synchro (also 4, `0x105`, `0x106`, meaning open); we send 0, 1, 5, 6 and 8 (see "Tribute, Fusion and Synchro Summons") |
 | `0x47` | player, `0x8000` \| uid, step | before `0x22` | steps 1 (a Set card) or 2 (from the hand) only note how the card came, 3 and up speak (the "trump card" line, else by card type); a Spell/Trap gets 2 then 3, a monster's effect 4 |
 | `0x48` | player, Konami id, face up, to a Spell/Trap zone | before a card's move from the hand to the field (Normal Summon, activation, Set) | a Set's line (`param3` 0), none otherwise; the id is never read, so a Set the client may not see goes with 0 |
 | `0x4C` | player | the turn's end, before the turn change | the turn-end line |

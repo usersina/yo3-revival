@@ -14,6 +14,7 @@ real client (`tools/client/vclient.sh`), not just against tests. Tick boxes in t
   - [✅ Screenshot session (2026-11-08): two things seen playing NPC duels](#-screenshot-session-2026-11-08-two-things-seen-playing-npc-duels)
   - [▶ Duel check (2026-11-09): the client's view checked against the engine](#-duel-check-2026-11-09-the-clients-view-checked-against-the-engine)
   - [▶ Connection DLL wave (2026-11-14): issues #10–#13](#-connection-dll-wave-2026-11-14-issues-1013)
+  - [✅ Summon animations (2026-11-15): Tribute, Fusion and Synchro as the original showed them](#-summon-animations-2026-11-15-tribute-fusion-and-synchro-as-the-original-showed-them)
   - [✅ Avatars (2026-11-14): Avatar Settings' parts, and the Millennium Eye against Pegasus](#-avatars-2026-11-14-avatar-settings-parts-and-the-millennium-eye-against-pegasus)
   - [✅ Duel windows (2026-11-13): every choice and reveal the client can show](#-duel-windows-2026-11-13-every-choice-and-reveal-the-client-can-show)
   - [▶ Higher resolution (2026-11-14): issue #1's sharp 4:3](#-higher-resolution-2026-11-14-issue-1s-sharp-43)
@@ -1015,6 +1016,23 @@ clients.
       the list with its help line, "rental 1: returned early by its borrower", a second press sent nothing, the button
       hid on the Lent tab, the reopened list showed the rental over with no cards, and closing the game left no crash.
       A Deck rental's three lists are still not seen live.
+
+## ✅ Summon animations (2026-11-15): Tribute, Fusion and Synchro as the original showed them
+
+A player asked for the original's summoning effects. The client's DuelSummon component (Tribute, Material and Tuning
+commands `0x2A`–`0x32`) and the Fusion and Synchro animations (RunFusion `0x3A`, material list 1015/1016) were never fed.
+Details in protocol.md, "Tribute, Fusion and Synchro Summons".
+
+- [x] Tribute, Material and Tuning effects before the materials' moves, Konami's parameters (Tuning's level and Tuner
+      flag, the Tuners first). Tests: `a_tribute_summon_plays_its_tribute`, `a_synchro_summon_tunes_its_materials`,
+      `a_synchro_summon_tunes_its_tuner_first`, `a_fusion_summon_plays_its_materials_and_the_fusion` (translate_contract).
+- [x] The Fusion and Synchro animations as the Extra Deck monster arrives, with its material list; the summon line's
+      kinds 1, 6 and 8. The Tuners come from the client's card kinds (`Card::tuner`, golden test).
+- [x] Live on the private client: Polymerization (Flame Swordsman), a Synchro Summon (Gaia Knight from Krebons and
+      Giant Orc) and a Tribute Summon (Summoned Skull); the duel check and the full card sweep pass. Two crashes found
+      live and fixed on the way: the Synchro animation needs the Tuner tuned first and the material list.
+- [ ] Not sent: Reset (`0x2B`/`0x2E`/`0x31`; Konami sent it 4 times), the variant-1 tribute effect, `0x45` {player, uid, 2}
+      before RunFusion (no handler found), RunFusion kind 1 (2 of Konami's Fusions), Ritual Summons (no command seen).
 
 ## ✅ Avatars (2026-11-14): Avatar Settings' parts, and the Millennium Eye against Pegasus
 

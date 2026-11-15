@@ -10,6 +10,13 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- **Summons look like the original again.** Tribute Summons show the tribute leaving, Fusion Summons play the full-screen
+  Fusion vortex with the materials swirling away, and Synchro Summons play the original Synchro animation: the Tuner's
+  rings, the materials passing through, the monster bursting out of the light. Synchro Summons also use the avatar's
+  Synchro line.
+
 ## v0.0.16 (2026-11-14)
 
 Avatar Settings works again, and Pegasus has met his match. Choose **Desktop** for the graphical app or **Scripts** for
