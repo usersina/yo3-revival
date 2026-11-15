@@ -1506,6 +1506,17 @@ Grinder Golem's 3936, Jam Breeding Machine's Slime Token 3907), else of its name
 uid of its own (from `0x4000`), and sends its card table entry, its field record and a move from its slot onto
 itself (`0x1A` finds no object by uid and makes one, `0x5003A0`). A token leaving the field (to location 0, or to a
 pile) gets CardVanish and leaves the mirror; one that changes sides (Snatch Steal on a Sheep Token) moves like any card. A card list finds a token at its place (it has no id to find it by).
+One engine name differs from the client's: Sweet Corn's token is "Maize Token" in `cards.cdb` and "Grain Corn Token"
+in the client (its text), so the server maps it (`TOKEN_ALIASES`, `lib.rs`); `tests/tokens.rs` checks every token a
+client card's script makes (60) against the client's token cards.
+
+A token whose position the player picks (Gorz the Emissary of Darkness, Fiend's Sanctuary, Phantom Skyblaster: its
+script summons it `POS_FACEUP`) is asked before it exists: MSG_SELECT_PLACE, MSG_SELECT_POSITION, then its MSG_MOVE
+from nowhere. The position dialog needs a card by uid (below), so the server gives the token its uid and token card at
+the dialog: a card table entry (1000) at a free monster zone of its player, then the dialog naming that uid; the
+token's move then re-sends that entry at its own zone and lands with the same uid. A token without a Konami id is named
+in the dialog by its client card's id. Live (Gorz, before this): the dialog came up with no card on either button, no
+click answered it and the duel stopped there.
 Live (Scapegoat): four Sheep Tokens in four colours, in defense, on both clients; Witch of the Black Forest's attack
 listed them as their own cards and the one destroyed shattered and left no Graveyard card.
 
@@ -1740,6 +1751,8 @@ picks in the card list, which needs no banner.
 - Position (`DuelSelectStandDialog`, `0x4C5E50`, `dlg_selstand.swf`): param3 is a card uid (low 16 bits), whose
   CARD_Prop row from the card table (`0x5220B0`) shows on both buttons, and a flag (bit 16): button 0 is "head_atk",
   button 1 "head_def" with the flag, else "tail_def" (the card's back). param2 is the message. `DLGResult` is the button.
+  A uid the card table has no row for draws no card and leaves nothing to click: the duel stops (live, uid 0; see
+  Tokens). The duel check reports it.
 - `0x37 {player, kind, message}` (`0x514CCB`) opens the card list (`DuelCardListDialog`, `0x4C72D0`; kinds `0x4C`–`0x4F`
   the extended one, `0x5131E0`), `dlg_cardlist.swf`. It shows the list the data commands left in the engine state
   (pop `0x522A50`): `0x3EF {count, max picks, _}` (`+0x2A8`, `+0x9B8`; max 0 = view only) resets the lists, `0x3F2`

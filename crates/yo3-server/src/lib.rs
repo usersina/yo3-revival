@@ -161,6 +161,25 @@ pub fn regulation_by(arg: &str, known: &[(u32, String)]) -> Result<u32, String> 
     })
 }
 
+/// Tokens the rules engine names differently from the client's token card: (EDOPro's name, the client's).
+/// Sweet Corn's token is "Maize Token" in EDOPro's database and "Grain Corn Token" in the client's (its text).
+pub const TOKEN_ALIASES: [(&str, &str); 1] = [("Maize Token", "Grain Corn Token")];
+
+/// The client's token cards (Konami ids 3900-3999) by name, as the rules engine names them: the translator finds a
+/// token without a Konami id by its name (`Translator::tokens`).
+pub fn token_rows(cards: &yo3_data::CardDb) -> std::collections::HashMap<String, Vec<u16>> {
+    let mut rows = std::collections::HashMap::new();
+    for c in cards.iter().filter(|c| (3900..4000).contains(&c.cid)) {
+        rows.entry(c.name.clone()).or_insert_with(Vec::new).push(c.row);
+    }
+    for (engine, client) in TOKEN_ALIASES {
+        if let Some(found) = rows.get(client).cloned() {
+            rows.insert(engine.to_string(), found);
+        }
+    }
+    rows
+}
+
 fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> {
     let duel_server = (cfg.advertise.clone().unwrap_or_default(), duel_port);
     let world = match yo3_data::GameData::load(&cfg.game_dir) {
@@ -202,10 +221,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
             tuners: data.cards.iter().filter(|c| c.tuner()).map(|c| c.cid).collect(),
             card_kinds: data.cards.iter().map(|c| (c.cid, c.kind)).collect(),
             titles: Arc::new(titles::TitleData::from_game(&data)),
-            token_rows: data.cards.iter().filter(|c| (3900..4000).contains(&c.cid)).fold(std::collections::HashMap::new(), |mut m, c| {
-                m.entry(c.name.clone()).or_insert_with(Vec::new).push(c.row);
-                m
-            }),
+            token_rows: token_rows(&data.cards),
             card_names: data.cards.iter().fold(std::collections::HashMap::new(), |mut m, c| {
                 m.entry(c.cid).or_insert_with(|| c.name.clone());
                 m

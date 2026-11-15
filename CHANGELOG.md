@@ -10,6 +10,15 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+Hosts should update: the fixes are in the server, and players need nothing new.
+
+- A token whose position you choose no longer freezes the duel. Gorz the Emissary of Darkness's token (and those of
+  Fiend's Sanctuary, Phantom Skyblaster and others) showed an empty position window that couldn't be clicked; it now
+  shows the token.
+- Sweet Corn's Grain Corn Token now appears on the field.
+
 ## v0.0.20 (2026-11-15)
 
 Fusion Summons fixed. Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions

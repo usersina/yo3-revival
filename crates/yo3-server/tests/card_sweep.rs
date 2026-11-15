@@ -34,13 +34,10 @@ fn dirs() -> Option<(PathBuf, PathBuf)> {
 
 /// The card data a server builds from the client's (`lib.rs`).
 fn card_data(game: &GameData) -> CardData {
-    let mut data = CardData::default();
+    let mut data = CardData { tokens: yo3_server::token_rows(&game.cards), ..CardData::default() };
     for c in game.cards.iter() {
         data.cards.insert(c.row, CardStats { cid: c.cid, atk: c.atk, def: c.def, level: c.level, attribute: c.attribute, race: c.race });
         data.names.entry(c.cid).or_insert_with(|| c.name.clone());
-        if (3900..4000).contains(&c.cid) {
-            data.tokens.entry(c.name.clone()).or_default().push(c.row);
-        }
         if c.tuner() {
             data.tuners.insert(c.cid);
         }

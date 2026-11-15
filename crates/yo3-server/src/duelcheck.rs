@@ -32,6 +32,9 @@
 //! - The summon commands (Set, Run, the material list 1015/1016, RunFusion 0x3A) follow the order rules of
 //!   [`summon`], learnt from client crashes and checked against Konami's own duel logs; a Set or Run names a card at
 //!   the place it gives (the hand 11, or a field zone).
+//! - The position dialog 0x36 {kind 8, _, uid | flag << 16} (DuelSelectStandDialog 0x4C5E50) draws its two buttons from
+//!   the uid's row in the card table: a uid the table has no row for leaves them blank, nothing to click, and the duel
+//!   stops there (a token asked its position before it appeared, Gorz the Emissary of Darkness's).
 //!
 //! Where the model itself sees the client go wrong (a hand card taken out by an index that holds another card, a
 //! shuffle with an empty index) it notes a problem at once; [`ClientModel::check`] then compares every hand, field
@@ -64,6 +67,9 @@ const BATTLE_ATTACK: u32 = 0xC;
 const BATTLE_RUN: u32 = 0xD;
 const BATTLE_END: u32 = 0xE;
 const RELATION: u32 = 0x3F9;
+/// The dialog command and its position kind.
+const DIALOG: u32 = 0x36;
+const POSITION_DIALOG: u32 = 8;
 /// Zones: field slots 0-10 (monsters 0-4, Spell/Trap 5-9, Field Spell 10), then the hand and the piles.
 const FIELD_SPELL: u32 = 10;
 const HAND: u32 = 0xB;
@@ -269,6 +275,13 @@ impl ClientModel {
             self.note(format!("{id:#x} {{{p1}, {p2}, uid {uid}, {p4:#x}}}"));
             if !there {
                 self.problem(format!("summon command {id:#x} names {} at player {player} zone {zone}, where the client doesn't hold it", self.describe(uid)));
+            }
+        }
+        if id == DIALOG && p1 == POSITION_DIALOG {
+            let uid = p3 & 0xFFFF;
+            self.note(format!("0x36 position {{uid {uid}}}"));
+            if self.rows.get(&uid).is_none_or(|&row| row == 0) {
+                self.problem(format!("the position dialog names {}, which has no card in the client's card table: its buttons show no card to click", self.describe(uid)));
             }
         }
         match id {
@@ -773,6 +786,14 @@ pub mod selfplay {
     /// (issue #40) and with a substitute are played.
     pub const FUSION: [u16; 7] = [4837, 4837, 4148, 4148, 4299, 4299, 6044];
     pub const FUSION_EXTRA: [u16; 2] = [4021, 4021];
+    /// A token package for every seventh deck (`deck`): cards whose tokens may come in Attack or Defense Position, so
+    /// the player is asked the position of a token that doesn't exist yet (Gorz the Emissary of Darkness's froze the
+    /// duel: a dialog with no card to click). Fiend's Sanctuary and Physical Double (tokens without a Konami id, found
+    /// by name), Phantom Skyblaster (Skyblaster Tokens, 3935) and Gorz (Emissary of Darkness Token, 3922).
+    pub const TOKENS: [u16; 7] = [5632, 5632, 5632, 7384, 7384, 5621, 6558];
+    /// The client's token cards for the token package: (row, Konami id, name).
+    const TOKEN_CARDS: [(u16, u16, &str); 4] =
+        [(60010, 3914, "Metal Fiend Token"), (60011, 3913, "Mirage Token"), (60012, 3935, "Skyblaster Token"), (60013, 3922, "Emissary of Darkness Token")];
 
     /// A seeded deck: 40 cards drawn from the pool (about half monsters), at most three of a card, and the extra deck.
     pub fn deck(seed: u64) -> (Vec<u16>, Vec<u16>) {
@@ -799,10 +820,15 @@ pub mod selfplay {
             main.extend(FUSION);
             extra.extend(FUSION_EXTRA);
         }
+        // And multiples of 7, which none of them are either.
+        if seed.is_multiple_of(7) {
+            main.truncate(40 - TOKENS.len());
+            main.extend(TOKENS);
+        }
         (main, extra)
     }
 
-    /// The harness's card data: every card is its own row (row = Konami id), and the Sheep Tokens.
+    /// The harness's card data: every card is its own row (row = Konami id), the Sheep Tokens and the token package's.
     fn card_data(decks: &[(&[u16], &[u16]); 2]) -> HashMap<u16, CardStats> {
         let mut cards: HashMap<u16, CardStats> = decks
             .iter()
@@ -812,7 +838,17 @@ pub mod selfplay {
         for row in SHEEP_ROWS {
             cards.insert(row, CardStats { cid: 0, atk: 0, def: 0, level: 1, attribute: 1, race: 1 });
         }
+        for (row, cid, _) in TOKEN_CARDS {
+            cards.insert(row, CardStats { cid, atk: 0, def: 0, level: 1, attribute: 1, race: 1 });
+        }
         cards
+    }
+
+    /// The harness's token cards by name, as the server's (`token_rows`).
+    fn token_rows() -> HashMap<String, Vec<u16>> {
+        let mut rows = HashMap::from([("Sheep Token".to_string(), SHEEP_ROWS.to_vec())]);
+        rows.extend(TOKEN_CARDS.iter().map(|&(row, _, name)| (name.to_string(), vec![row])));
+        rows
     }
 
     /// What a self-played duel did: engine steps, turns, how each engine message type came up, how many moves were Xyz
@@ -833,6 +869,8 @@ pub mod selfplay {
         /// The client's summon animations (RunFusion 0x3A) by kind, and the Fusion materials played from the hand.
         pub animations: BTreeMap<u32, u32>,
         pub hand_materials: u32,
+        /// The position dialogs the client was shown for a token about to appear.
+        pub token_positions: u32,
     }
 
     /// How many answers an engine prompt has, roughly, for the prompts the translator may answer itself: options,
@@ -868,7 +906,7 @@ pub mod selfplay {
     pub fn play(dir: &Path, seed: u64, decks: [(&[u16], &[u16]); 2], client_team: usize, hidden: bool) -> Result<Played, String> {
         let data = CardData {
             cards: card_data(&decks),
-            tokens: HashMap::from([("Sheep Token".to_string(), SHEEP_ROWS.to_vec())]),
+            tokens: token_rows(),
             names: HashMap::new(),
             tuners: tuners(dir, &decks)?,
         };
@@ -1030,6 +1068,10 @@ pub mod selfplay {
                 // asked (the translator's own answer for the CPU is the placeholder AI's).
                 match t.prompt(&last) {
                     Prompt::Client(mut msgs) => {
+                        let int = |m: &yo3_proto::Message, k: &str| m.get(k).and_then(yo3_proto::Value::as_u32).unwrap_or(0);
+                        if msgs.iter().any(|m| int(m, "id") == 0x36 && int(m, "param1") == 8 && int(m, "param3") & 0xFFFF >= super::FIRST_TOKEN) {
+                            played.token_positions += 1;
+                        }
                         settle_positions(&mut msgs);
                         model.apply_all(&msgs);
                         let mut problems = model.check(&state);

@@ -548,6 +548,8 @@ pub struct Translator {
     token_rows: HashMap<String, Vec<u16>>,
     tokens: Vec<u32>,
     next_token: u32,
+    /// The uid and row a token's position dialog gave the token about to appear (see `position_dialog`).
+    reserved_token: Option<(u32, u16)>,
     /// The Tuners' Konami ids (a Synchro material's TuningRun says which levels are the Tuners').
     tuners: HashSet<u16>,
     /// A Tribute, Fusion or Synchro Summon whose materials are moving (see [`Summoning`]).
@@ -689,6 +691,7 @@ impl Translator {
             token_rows: HashMap::new(),
             tokens: vec![],
             next_token: FIRST_TOKEN_UID,
+            reserved_token: None,
             tuners: HashSet::new(),
             summoning: None,
             auto_place: true,
@@ -1625,24 +1628,19 @@ impl Translator {
     /// the four Sheep Tokens), a card table entry, its record and a move onto its own slot, which makes the card
     /// object (0x1A finds none by uid, 0x5003A0). A token with no card of its name isn't shown.
     fn token(&mut self, m: &Json, to: Place) -> Vec<Message> {
-        // A token with a Konami id (Doomsday Token, 3940) is the client's card of that id; one without, by its name.
-        let cid = m["cid"].as_u64().filter(|&c| c != 0).map(|c| c as u16);
-        let by_id: Option<Vec<u16>> = cid.map(|c| {
-            let mut rows: Vec<u16> = self.cards.iter().filter(|(_, s)| s.cid == c).map(|(&r, _)| r).collect();
-            rows.sort_unstable();
-            rows
-        });
-        let by_name = || m["name"].as_str().and_then(|n| self.token_rows.get(n)).cloned();
-        let Some(rows) = by_id.filter(|r| !r.is_empty()).or_else(by_name).filter(|r| !r.is_empty()) else {
+        let reserved = self.reserved_token.take();
+        let Some(rows) = self.token_card_rows(m) else {
             tracing::warn!("a token the client has no card for: {} {}", m["cid"], m["name"]);
             return vec![];
         };
         if to.zone >= 5 {
             return vec![];
         }
-        let row = rows[(self.next_token - FIRST_TOKEN_UID) as usize % rows.len()];
-        let uid = self.next_token;
-        self.next_token += 1;
+        // The uid and card its position dialog showed, so the dialog's card is the one that appears.
+        let (uid, row) = match reserved {
+            Some((uid, row)) if rows.contains(&row) => (uid, row),
+            _ => self.next_token_card(&rows),
+        };
         self.tokens.push(uid);
         let zone = self.sides[to.player as usize].zone(to.zone);
         zone.clear();
@@ -1652,6 +1650,27 @@ impl Translator {
         out.extend(self.monster_record(to.player, to.zone, row));
         out.push(command(MOVE, [uid | MOVE_SPECIAL_SUMMON << 16, to.packed(), to.packed(), 0]));
         out
+    }
+
+    /// The client's token cards (CARD_Prop rows) for an engine token: a token with a Konami id (Doomsday Token, 3940)
+    /// is the client's card of that id; one without, by its name. None for a card that isn't a token the client has.
+    fn token_card_rows(&self, m: &Json) -> Option<Vec<u16>> {
+        let cid = m["cid"].as_u64().filter(|&c| c != 0).map(|c| c as u16);
+        let by_id: Option<Vec<u16>> = cid.map(|c| {
+            let mut rows: Vec<u16> = self.cards.iter().filter(|(_, s)| s.cid == c).map(|(&r, _)| r).collect();
+            rows.sort_unstable();
+            rows
+        });
+        let by_name = || m["name"].as_str().and_then(|n| self.token_rows.get(n)).cloned();
+        by_id.filter(|r| !r.is_empty()).or_else(by_name).filter(|r| !r.is_empty())
+    }
+
+    /// A new token's uid and card: the next of its cards in turn (the four Sheep Tokens' colours).
+    fn next_token_card(&mut self, rows: &[u16]) -> (u32, u16) {
+        let row = rows[(self.next_token - FIRST_TOKEN_UID) as usize % rows.len()];
+        let uid = self.next_token;
+        self.next_token += 1;
+        (uid, row)
     }
 
     /// Moves a card in the mirror and on the client: the card table entry (1000), then on screen (0x1A); the
@@ -2246,17 +2265,41 @@ impl Translator {
 
     /// The position dialog for MSG_SELECT_POSITION {cid, positions}, with the card's image (any uid with its id) and
     /// name. None without an attack position: the first button is always attack.
-    fn position_dialog(&self, m: &Json) -> Option<Vec<Message>> {
+    ///
+    /// A token is asked its position before it exists (MSG_SELECT_PLACE, MSG_SELECT_POSITION, then its MSG_MOVE from
+    /// nowhere): the dialog finds no card by uid and shows nothing to click, so the duel stops there (Gorz the
+    /// Emissary of Darkness's token, live). It gets the uid and token card it will appear as now, in the card table at
+    /// a free monster zone of its player (`token` puts it at its own zone).
+    fn position_dialog(&mut self, m: &Json) -> Option<Vec<Message>> {
         let allowed = m["positions"].as_u64().unwrap_or(0);
         if allowed & (POS_FACEUP_ATTACK | POS_FACEDOWN_ATTACK) == 0 {
             return None;
         }
         let cid = m["cid"].as_u64().unwrap_or(0) as u16;
-        let has_cid = |c: &&Card| self.cards.get(&c.row).map(|s| s.cid) == Some(cid);
-        let uid = self.sides.iter().flat_map(|s| s.zones.values().flatten()).find(has_cid);
+        let has_cid = |c: &&Card| cid != 0 && self.cards.get(&c.row).map(|s| s.cid) == Some(cid);
+        let held = self.sides.iter().flat_map(|s| s.zones.values().flatten()).find(has_cid).map(|c| c.uid);
+        let mut out = vec![];
+        let (uid, name) = match (held, self.token_card_rows(m)) {
+            (Some(uid), _) => (uid, cid),
+            (None, Some(rows)) => {
+                // The same one when the dialog opens again (after a look at a pile).
+                let (uid, row) = match self.reserved_token {
+                    Some((uid, row)) if rows.contains(&row) => (uid, row),
+                    _ => self.next_token_card(&rows),
+                };
+                self.reserved_token = Some((uid, row));
+                let player = self.player(&m["player"]);
+                let side = &self.sides[player as usize];
+                let zone = (0..5).find(|z| side.zones.get(z).is_none_or(Vec::is_empty)).unwrap_or(0);
+                out.push(command(CARD, [uid, row as u32, 0, table_place(player, zone, 0)]));
+                // A token without a Konami id is named by its client card's.
+                (uid, self.cards.get(&row).map_or(cid, |s| s.cid))
+            }
+            (None, None) => (0, cid),
+        };
         let face_up = if allowed & POS_FACEUP_DEFENSE != 0 { FACE_UP_DEFENSE } else { 0 };
-        let mut out = message(&[TEXT | POSITION_TEXT, CARD_NAME | cid as u32]);
-        out.push(command(DIALOG, [POSITION, FROM_ENTRIES, uid.map_or(0, |c| c.uid) | face_up, 0]));
+        out.extend(message(&[TEXT | POSITION_TEXT, CARD_NAME | name as u32]));
+        out.push(command(DIALOG, [POSITION, FROM_ENTRIES, uid | face_up, 0]));
         Some(out)
     }
 

@@ -80,15 +80,18 @@ fn the_seeds_reach_the_cases_that_drifted() {
     // (36) in seed 1, Creature Swap (55) and an Xyz Summon's materials in seed 36, Exchange of the Spirit (35) in seed 152;
     // and the links shown as hover markers, which must never join an empty slot: a lasting target (96) in seed 4, an
     // equip (93) in seed 8. A Fusion Summon with both materials from the hand (issue #40: the client crashed at
-    // 0x4FC4A9 when both materials' effects came before their moves) in seed 69, and a Synchro Summon in seed 152.
+    // 0x4FC4A9 when both materials' effects came before their moves) in seed 69, and a Synchro Summon in seed 152. The
+    // position of a token about to appear, asked of the client (Gorz the Emissary of Darkness's froze the duel: a dialog
+    // with no card to click), twice in seed 28.
     let Some(dir) = engine_dir() else { return };
     let mut kinds: BTreeMap<u64, u32> = BTreeMap::new();
     let mut animations: BTreeMap<u32, u32> = BTreeMap::new();
-    let (mut materials, mut hand_materials) = (0, 0);
-    for seed in [1, 4, 8, 36, 69, 152] {
+    let (mut materials, mut hand_materials, mut token_positions) = (0, 0, 0);
+    for seed in [1, 4, 8, 28, 36, 69, 152] {
         let played = play(&dir, seed).unwrap_or_else(|e| panic!("{e}"));
         materials += played.materials;
         hand_materials += played.hand_materials;
+        token_positions += played.token_positions;
         for (k, n) in played.kinds {
             *kinds.entry(k).or_default() += n;
         }
@@ -102,4 +105,5 @@ fn the_seeds_reach_the_cases_that_drifted() {
     assert!(materials > 0, "no Xyz material moved in the seeds");
     assert!(animations.contains_key(&0) && hand_materials >= 2, "no Fusion from the hand in the seeds: {animations:?}, {hand_materials}");
     assert!(animations.contains_key(&2), "no Synchro Summon in the seeds: {animations:?}");
+    assert!(token_positions > 0, "no token's position asked of the client in the seeds");
 }

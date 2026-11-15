@@ -806,6 +806,65 @@ fn a_position_choice_opens_the_position_dialog() {
     assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 11, "position": 8 }))));
 }
 
+/// A translator with two token cards: row 300 the Emissary of Darkness Token (Konami id 3922), row 301 a token the
+/// engine knows by name only (Metal Fiend Token, the client's 3914).
+fn with_token_cards() -> Translator {
+    let stats = |r: u16| CardStats { cid: 4000 + r, atk: 10 * r as u32, def: 1000, level: 4, attribute: 2, race: 12 };
+    let mut cids = (100..110).chain(200..210).map(|r| (r, stats(r))).collect::<HashMap<_, _>>();
+    cids.insert(300, CardStats { cid: 3922, atk: 0, def: 0, level: 7, attribute: 16, race: 3 });
+    cids.insert(301, CardStats { cid: 3914, atk: 0, def: 0, level: 1, attribute: 32, race: 8 });
+    let (client, cpu): (Vec<u16>, Vec<u16>) = ((100..110).collect(), (200..210).collect());
+    let (mut t, _) = Translator::new(0, [&client, &cpu], cids);
+    t.tokens(HashMap::from([("Metal Fiend Token".to_string(), vec![301])]));
+    t
+}
+
+#[test]
+fn a_tokens_position_dialog_shows_the_token_it_will_be() {
+    // A token is asked its position before it exists: MSG_SELECT_PLACE, MSG_SELECT_POSITION, then its MSG_MOVE from
+    // nowhere. The dialog (DuelSelectStandDialog 0x4C5E50) draws its buttons from the uid's row in the card table, so
+    // with no card by its id anywhere it sent uid 0: live, Gorz the Emissary of Darkness's token got a dialog with
+    // nothing to click and the duel stopped. The token gets its uid and card now (1000, at a free monster zone), the
+    // dialog shows it, and the token appears as that card with that uid.
+    let mut t = with_token_cards();
+    let ask = json!({ "type": 19, "player": 0, "code": 44330099, "cid": 3922, "positions": 5 });
+    let out = client_commands(t.prompt(&ask));
+    let (id, [uid, row, _, place]) = out[0];
+    assert_eq!((id, row, place), (1000, 300, 0), "{out:?}");
+    assert!(uid >= 0x4000, "a token's uid: {out:?}");
+    assert_eq!(out[1..], [(0x3EC, [2, 0, 0, 0]), (0x3ED, [1 << 28 | 327, 5 << 28 | 3922, 0, 0]), (0x36, [8, 1, uid | 1 << 16, 0])]);
+    // Opened again (after a look at a pile): the same card, no second one.
+    assert_eq!(client_commands(t.prompt(&ask))[0], (1000, [uid, 300, 3922, 0]));
+    assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 11, "position": 1 }))));
+    // It appears in zone 3, the one the engine chose: its table entry moves there, and it lands with the same uid.
+    let nowhere = loc(0, 0, 0, 0);
+    let out: Vec<_> = t.events(&[json!({ "type": 50, "code": 44330099, "cid": 3922, "from": nowhere, "to": loc(0, 4, 3, 1) })])
+        .iter().map(cmd).collect();
+    assert_eq!(out[0], (1000, [uid, 300, 3922, 3 << 8]), "{out:?}");
+    let to = 3 << 1 | 1 << 14;
+    assert_eq!(out.last(), Some(&(0x1A, [uid | 3 << 16, to, to, 0])), "{out:?}");
+    // The next one's dialog shows the first, which has its id (as for any card); it appears as a new card.
+    assert_eq!(client_commands(t.prompt(&ask)).last(), Some(&(0x36, [8, 1, uid | 1 << 16, 0])));
+    t.dialog_result(0);
+    let out: Vec<_> = t.events(&[json!({ "type": 50, "code": 44330099, "cid": 3922, "from": nowhere, "to": loc(0, 4, 4, 1) })])
+        .iter().map(cmd).collect();
+    assert!(out[0].0 == 1000 && out[0].1[0] > uid && out[0].1[3] == 4 << 8, "{out:?}");
+}
+
+#[test]
+fn a_token_without_a_konami_id_is_named_by_its_client_card() {
+    // A token the engine knows by name only (no Konami id: cid 0) is found among the client's token cards by that
+    // name; its dialog names the client card's id, as the client's "%s" takes a Konami id (0x5374B0).
+    let mut t = with_token_cards();
+    // The client's monster zone 0 is taken: the token's table entry goes to the next free one.
+    t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 1, 0, 10), "to": loc(0, 4, 0, 1) })]);
+    let ask = json!({ "type": 19, "player": 0, "code": 24874631, "cid": 0, "name": "Metal Fiend Token", "positions": 5 });
+    let out = client_commands(t.prompt(&ask));
+    let (id, [uid, row, _, place]) = out[0];
+    assert_eq!((id, row, place), (1000, 301, 1 << 8), "{out:?}");
+    assert_eq!(out[1..], [(0x3EC, [2, 0, 0, 0]), (0x3ED, [1 << 28 | 327, 5 << 28 | 3914, 0, 0]), (0x36, [8, 1, uid | 1 << 16, 0])]);
+}
+
 #[test]
 fn an_option_the_client_has_labels_for_opens_the_select_dialog() {
     // MSG_SELECT_OPTION (14) {options: descriptions}: dialog command 0x36 {kind 4} (DuelSelectDialog 0x4C5750,
