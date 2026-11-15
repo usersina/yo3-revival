@@ -6,6 +6,7 @@ is the reference for anyone adding a screen. Try it with:
 
 ```bash
 cargo run --release -p yo3-skin --example main_screen   # add -- --system-frame for the window manager's frame
+cargo run --release -p yo3-skin --example gallery       # every component and its states, for checking a change
 ```
 
 The spike was checked on 2026-11-15 on X11 (headless), Wayland (a nested KWin), Wine, and Windows 11 in the VM: hover,

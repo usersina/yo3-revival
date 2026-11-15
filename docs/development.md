@@ -75,6 +75,37 @@ Keep the user's screen, default ports, live data and `:77` client untouched. Use
 Wine prefixes/documents, scratch server data and free alternate ports through `tools/client/vclient.sh`.
 Never run `cargo fmt` across this repository; match its existing style.
 
+## Check the launcher
+
+The beta launcher ([#20](https://github.com/usersina/yo3-revival/issues/20), on the `beta` branch) is built from the
+skin kit ([style guide](launcher-style.md)). Two example programs show the kit without the game:
+
+```bash
+cargo run --release -p yo3-skin --example gallery       # every component and state
+cargo run --release -p yo3-skin --example main_screen   # the #21 look spike
+```
+
+The launcher itself has no hosting settings yet, so a live check beside a real setup starts from a scratch app-data
+folder whose settings already name free ports and a private Wine prefix. Run it on a private display only:
+
+```bash
+YO3_INSTANCE=d tools/client/vclient.sh prefix          # .wine-d: a private prefix, not shared with a running client
+DATA=$(mktemp -d /tmp/yo3-gui.XXXXXXXX)
+python3 - "$DATA" "$PWD/.wine-d" <<'PY'
+import json, os, sqlite3, sys
+db = sqlite3.connect(os.path.join(sys.argv[1], "launcher.db"))
+db.executescript("CREATE TABLE settings (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);"
+                 "CREATE TABLE servers (id INTEGER PRIMARY KEY, body TEXT NOT NULL); PRAGMA user_version=1;")
+db.execute("INSERT INTO settings VALUES (1, ?)", (json.dumps({"wine_prefix": sys.argv[2], "listen_port": 17443,
+           "bind_address": "127.0.0.1", "host_address": "localhost", "game_dir": ""}),))
+db.commit()
+PY
+env -u WAYLAND_DISPLAY DISPLAY=:88 YO3_DESKTOP_DATA=$DATA ./target/release/yo3-revival
+```
+
+An empty `game_dir` opens Setup first. A development launcher needs a connection DLL built with the same version
+(`tools/mod/build.sh`); a release DLL left in `tools/mod/build/` shows Repair, and Setup's Details says why.
+
 ## Which tool sees what
 
 Each debugging tool sees one layer. Start from the question and pick the tool that sees that layer. Commands are in

@@ -1,5 +1,10 @@
 # Desktop guide
 
+> **On the `beta` branch** the Desktop window is being rebuilt for the public beta
+> ([#20](https://github.com/usersina/yo3-revival/issues/20)). It has Setup, Singleplayer and Help so far. Joining and
+> hosting, Activity, logs, Report a problem, Resolution and installing updates return in later beta versions
+> (#30, #31, #32, #37). This guide describes v0.0.19.
+
 Use **Desktop** for a window with game setup, a Play button and logs. Use [Scripts](scripts.md) if you prefer a terminal.
 Both editions include the server, rules engine and required connection components. Game files are separate.
 

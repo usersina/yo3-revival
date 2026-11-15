@@ -196,6 +196,7 @@ release, and "—" a row that is not implemented or unsupported.
 | Application updates (release check, download, activation) | Partial | v0.0.4 (2026-11-10) | `update_check.rs`, `update_install.rs`, `update_activation.rs`; packaged-update test; Windows VM | The first published GUI-to-GUI update and native Windows UAC are not verified. |
 | Bug reports and diagnostic exports | Partial | v0.0.7 (2026-11-12) | `reports.rs`, `bug_evidence.rs`; Wine | Real GitHub sign-in and publishing were tested only with mocks. |
 | Banlist and Resolution settings | Implemented | v0.0.13 (2026-11-14) | `server_options.rs`, `preferences.rs`; live | #15, #1. |
+| Beta launcher: skin kit, Setup, Singleplayer, single instance | Partial | Unreleased (`beta` branch) | `yo3-skin` tests, `home.rs`, `instance.rs`, `store.rs`; live on X11 (Setup, Play to Playing, Close game, a second start, closing stops the server); spike on Windows 11, Wayland, Wine | #21. Replaces the rows above on the `beta` branch: joining, hosting, Activity, logs, bug reports, Resolution and installing updates are not in the new window yet (#30, #31, #32, #37). |
 
 ## Scripts and command line
 

@@ -50,6 +50,7 @@ yo3-data = { path = "crates/yo3-data" }
 yo3-launcher = { path = "crates/yo3-launcher" }
 yo3-proto = { path = "crates/yo3-proto" }
 yo3-server = { path = "crates/yo3-server" }
+yo3-skin = { path = "crates/yo3-skin" }
 yo3-tunnel = { path = "crates/yo3-tunnel" }
 
 [workspace.lints.rust]

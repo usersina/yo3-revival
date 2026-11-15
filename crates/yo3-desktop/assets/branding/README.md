@@ -16,9 +16,7 @@ magick launcher-icon.png -resize 256x256 -alpha on PNG32:launcher-window.png
 magick launcher-icon.png -define icon:auto-resize=256,128,64,48,40,32,24,20,16 launcher.ico
 ```
 
-The app also draws `launcher-window.png` itself (sidebar, Normal header, About), from the same decoded pixels.
-`backdrop.svg` is the app's original background (a blue glow and faint circuit traces after the icon's circuitry),
-drawn by hand for this project; it contains no game artwork.
+The window's own art (frames, buttons, the circuit backdrop) is drawn by the skin kit, `crates/yo3-skin`.
 The build checks the window image's dimensions and pixel format. Windows resource compilation embeds the ICO in
 `yo3-revival.exe`; the PNG is embedded in the application, so neither needs to be copied beside the executable.
 Desktop bundles also include optional `yo3-revival.ico` and `yo3-revival.png` copies for custom shortcuts.

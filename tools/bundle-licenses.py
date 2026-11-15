@@ -25,7 +25,7 @@ while pending:
 
 if edition == "desktop":
     shutil.copytree(Path("crates/yo3-desktop/notices"), out / "licenses/desktop", dirs_exist_ok=True)
-    shutil.copyfile(Path("crates/yo3-desktop/assets/icons/LICENSE"), out / "licenses/LUCIDE.txt")
+    shutil.copyfile(Path("crates/yo3-skin/assets/fonts/OFL.txt"), out / "licenses/desktop/Barlow-OFL.txt")
 rows = []
 for package in sorted((packages[p] for p in used), key=lambda p: (p["name"], p["version"])):
     if package["source"] is None:  # This project's own license is already in the bundle.
@@ -49,9 +49,8 @@ for package in sorted((packages[p] for p in used), key=lambda p: (p["name"], p["
     "# Third-party notices\n\nThis project's code is MIT licensed (LICENSE). Rust dependency notices are collected below.\n"
     "The rules engine (yo3-engine, AGPL-3.0-or-later: EDOPro's core is built into it) and its data are described in "
     "[engine/THIRD-PARTY.md](engine/THIRD-PARTY.md). No game files are included.\n\n"
-    + ("The embedded Fira Sans font (SIL OFL 1.1) and Iced's MIT notice are in [licenses/desktop/](licenses/desktop/). "
-       "Lucide icons (ISC and MIT notices) are in [licenses/LUCIDE.txt](licenses/LUCIDE.txt). "
-       "Sources: https://github.com/mozilla/Fira , https://github.com/iced-rs/iced/tree/0.14.0 , https://github.com/lucide-icons/lucide .\n\n"
+    + ("The embedded Barlow and Barlow Condensed fonts (SIL OFL 1.1) and Iced's MIT notice are in "
+       "[licenses/desktop/](licenses/desktop/). Sources: https://github.com/jpt/barlow , https://github.com/iced-rs/iced/tree/0.14.0 .\n\n"
        if edition == "desktop" else "") +
     "| Crate | Version | License | Included notices |\n|---|---|---|---|\n" + "\n".join(rows) + "\n")
 print(f"Collected Rust notices for {len(rows)} dependencies ({target}).")

@@ -22,6 +22,8 @@ pub mod updates;
 pub mod preferences;
 pub mod server_options;
 pub mod game_data;
+pub mod instance;
+pub mod store;
 mod game_data_platform;
 mod process;
 
