@@ -24,6 +24,11 @@ fn print_key(a: &Args, key: &str) {
 
 /// Runs an admin command against persisted accounts, or for the BP commands, the running server.
 fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
+    // Listings only read; the BP commands go to a running server (admin.rs) when there is one. Everything else owns
+    // the data folder while it runs, as a server does (store::lock).
+    let read_only = matches!(command, Admin::Accounts | Admin::Countries | Admin::Codes | Admin::Titles);
+    let live_op = matches!(command, Admin::GiveBp { .. } | Admin::AddCode { .. } | Admin::RemoveCode { .. }) && live::running(&a.data_dir).is_some();
+    let _lock = if read_only || live_op { None } else { Some(yo3_server::store::lock(&a.data_dir)?) };
     yo3_server::store::initialize(&a.data_dir)?;
     if let Admin::InitAuth { names } = command {
         let tls = yo3_server::auth::initialize(&a.data_dir, names)?;
@@ -135,6 +140,8 @@ async fn main() -> anyhow::Result<()> {
         let game_dir = a.game_dir.clone().unwrap_or_else(yo3_data::default_game_dir);
         return admin(&a, command, game_dir);
     }
+    // Held until the server ends: a second server on this folder is refused before it renews or reads anything.
+    let _lock = yo3_server::store::lock(&a.data_dir).inspect_err(|e| tracing::error!("Server startup failed: {e}"))?;
     if a.auth_cert.is_none() && a.auth_key.is_none() {
         yo3_server::auth::renew_on_start(&a.data_dir);
     }

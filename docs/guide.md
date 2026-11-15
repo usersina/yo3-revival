@@ -56,8 +56,10 @@ The game's connection ports are private loopback endpoints assigned by its launc
 
 ## Account commands
 
-Most commands require the server **stopped**. BP/code commands can reach a running server through its private local
-admin token. Add `--data-dir PATH` to target a non-default setup. Keep each friend's profile/key private.
+Most commands require the server **stopped**: a server, and each command that changes data, holds its data folder
+(`server.lock`), and a second one on the same folder is refused with "in use by another YO3 Revival server or
+command". BP/code commands can reach a running server through its private local admin token; `accounts`, `codes`,
+`countries` and `titles` only read. Add `--data-dir PATH` to target a non-default setup. Keep each friend's profile/key private.
 
 ```bash
 ./yo3-server init-auth localhost 127.0.0.1 192.168.1.50
@@ -120,7 +122,8 @@ sharing address under **Advanced → Hosting → Advanced**, then start hosting.
 ## Existing data and backups
 
 `server.db` is SQLite. Old JSON state imports once and stays untouched as migration copies. A path change selects a
-different server's data; it does not move it. The running server locks its data directory.
+different server's data; it does not move it. The running server holds its data directory: a second server on the same
+folder is refused, whatever its ports. A `server.lock` left after a crash holds nothing.
 
 Back up the entire data folder securely, including `server.key`. Startup database snapshots in `backups/` do not
 contain that key. Keep players' local deck-editor folders too. Follow [the backup and upgrade procedure](launcher.md#your-data-and-upgrades)

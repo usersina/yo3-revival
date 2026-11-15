@@ -19,6 +19,40 @@ fn connection(dir: &Path) -> io::Result<Connection> {
     Ok(conn)
 }
 
+/// The data folder held by one process (`lock`): released when dropped or when the process ends, however it ends.
+#[derive(Debug)]
+pub struct DataLock {
+    _file: fs::File,
+}
+
+/// Takes the data folder for this process: an exclusive OS lock on its `server.lock`, refused while another process
+/// (or another handle in this one) holds it. The file left behind after a crash holds nothing. Two owners of one
+/// folder each saved their own copy of the accounts over the other's.
+pub fn lock(dir: &Path) -> io::Result<DataLock> {
+    use std::io::{Read, Seek, Write};
+    fs::create_dir_all(dir)?;
+    let path = dir.join("server.lock");
+    let mut file = fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path)?;
+    match file.try_lock() {
+        Ok(()) => {}
+        Err(fs::TryLockError::WouldBlock) => {
+            let mut holder = String::new();
+            let _ = file.read_to_string(&mut holder);
+            let holder = holder.trim();
+            let holder = if holder.is_empty() { String::new() } else { format!(" ({holder})") };
+            return Err(io::Error::new(io::ErrorKind::WouldBlock, format!(
+                "{} is in use by another YO3 Revival server or command{holder}. Stop it first, or choose another --data-dir",
+                dir.display())));
+        }
+        Err(fs::TryLockError::Error(e)) => return Err(e),
+    }
+    // Who holds it, for the message above (a note only: the lock is the OS's hold, not this text).
+    file.set_len(0)?;
+    file.seek(io::SeekFrom::Start(0))?;
+    let _ = writeln!(file, "pid {}", std::process::id());
+    Ok(DataLock { _file: file })
+}
+
 /// Import all persistent domains together. Failure rolls back the import; the original files remain untouched.
 /// Retrying after repairing an input is safe. A completed import is never repeated over newer SQLite state.
 pub fn initialize(dir: &Path) -> io::Result<()> {

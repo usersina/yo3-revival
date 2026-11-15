@@ -15,6 +15,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 - **Nothing is reported as done unless it was saved.** If the server can't write its data (a full disk, a locked
   file), a BOOSTERPASS code, a duel's BP, a title, a trade, a rating, a deck upload or an avatar change is now refused
   instead of seeming to work and being lost at the next start.
+- **One server per data folder.** Starting a second server on the same data (Desktop and Scripts together, or the same
+  server twice) is now refused instead of both running and overwriting each other's saves.
 
 ## v0.0.18 (2026-11-15)
 
