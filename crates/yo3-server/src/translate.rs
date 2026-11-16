@@ -2276,9 +2276,32 @@ impl Translator {
             return None;
         }
         let cid = m["cid"].as_u64().unwrap_or(0) as u16;
-        let has_cid = |c: &&Card| cid != 0 && self.cards.get(&c.row).map(|s| s.cid) == Some(cid);
-        let held = self.sides.iter().flat_map(|s| s.zones.values().flatten()).find(has_cid).map(|c| c.uid);
         let mut out = vec![];
+        // The message names only the card's id, so the dialog shows a copy of it: one the client can see. The
+        // opponent's hidden copies (hand, deck, extra deck) have row 0 there and draw nothing (live: Doom Shaman
+        // summoned from an NPC's Graveyard while another sat in its hand). When every copy is hidden, the one shown
+        // gets its row first: it is about to be summoned from where it is.
+        let mut copies: Vec<(u32, u16, Place)> = vec![];
+        for (p, side) in self.sides.iter().enumerate() {
+            for (&zone, cards) in &side.zones {
+                for (index, c) in cards.iter().enumerate() {
+                    if cid != 0 && self.cards.get(&c.row).map(|s| s.cid) == Some(cid) {
+                        copies.push((c.uid, c.row, Place { player: p as u32, zone, index, face_up: true, defense: false }));
+                    }
+                }
+            }
+        }
+        copies.sort_by_key(|(uid, ..)| *uid);
+        let seen = copies.iter().find(|(_, row, place)| self.shown_row(place, *row) != 0);
+        let held = match seen.or(copies.first()) {
+            Some(&(uid, row, ref place)) => {
+                if self.shown_row(place, row) == 0 {
+                    out.push(command(CARD, [uid, row as u32, 0, table_place(place.player, place.zone, place.index)]));
+                }
+                Some(uid)
+            }
+            None => None,
+        };
         let (uid, name) = match (held, self.token_card_rows(m)) {
             (Some(uid), _) => (uid, cid),
             (None, Some(rows)) => {
