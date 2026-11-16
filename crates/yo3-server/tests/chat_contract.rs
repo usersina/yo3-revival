@@ -89,6 +89,21 @@ fn room_chat_reaches_the_room_and_echoes_to_the_sender() {
 }
 
 #[test]
+fn a_chat_line_is_cut_to_a_line_and_loses_control_characters() {
+    // Security review (#39): one 1 MiB line would otherwise be copied to everyone in the room (and to every queue of a
+    // player who isn't reading); control characters never reach another player's chat window.
+    let s = Server::new();
+    let (mut a, mut b) = (s.join(1001, "Yugi"), s.join(1002, "Kaiba"));
+    enter(&mut a, 1);
+    enter(&mut b, 1);
+    a.send(say(1, &format!("hi\r\nthere\u{7}{}", "x".repeat(500_000))));
+    let got = b.pushed();
+    let Some(Value::Text(line)) = got[0].items[0].get("chat_str") else { panic!("a text line: {got:?}") };
+    assert!(line.len() <= 200, "{} bytes", line.len());
+    assert!(line.starts_with(b"hi  there") && !line.iter().any(|c| *c < 0x20), "{:?}", String::from_utf8_lossy(&line[..20]));
+}
+
+#[test]
 fn leaving_a_room_stops_its_chat() {
     let s = Server::new();
     let (mut a, mut b) = (s.join(1001, "Yugi"), s.join(1002, "Kaiba"));

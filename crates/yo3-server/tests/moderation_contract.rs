@@ -46,6 +46,23 @@ fn say(room: u32, text: &str) -> Packet {
 }
 
 #[test]
+fn a_muted_player_sends_no_d_mail_either() {
+    // Security review (#39): a mute covers D-Mail too, which reaches players who are offline.
+    let (d, yugi, kaiba) = directory();
+    let s = Server::new();
+    let to = d.lock().unwrap().account_of(kaiba).unwrap().players[0].player_id;
+    let mut a = s.join_saved(&d, yugi);
+    let mut b = s.join_saved(&d, kaiba);
+    d.lock().unwrap().set_mute(yugi, Some(Mute { reason: "spam".into(), until: None })).unwrap();
+    let mail = |c: &mut common::Client| one(c.send(req_with(0x2580, &[("mail_type", Value::U32(0)), ("title", Value::text("hi")),
+        ("body", Value::text("spam")), ("to_id", Value::U32(to))])));
+    assert_eq!(mail(&mut a).request(), Some(0x2585), "refused");
+    assert_eq!(one(b.send(req(0x2583))).get("count"), Some(&Value::U32(0)), "nothing waits for the recipient");
+    d.lock().unwrap().set_mute(yugi, None).unwrap();
+    assert_eq!(mail(&mut a).request(), Some(0x2584), "unmuted: sent");
+}
+
+#[test]
 fn a_muted_players_lines_go_nowhere_and_they_are_told_why() {
     // The game has no muted reply or text (R6): the line is dropped, and the sender's own chat window says why.
     let (d, yugi, kaiba) = directory();

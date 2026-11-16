@@ -51,17 +51,28 @@ pub fn collection(world: &World, player: &Player) -> BTreeMap<u16, u32> {
 /// trade and rental scenes' collection takes them away, flag 8 of 0x4F6340). Borrowed cards are not in the player's
 /// collection here: the client adds them itself and keeps them out of offers (`noTrade`).
 pub fn owns(world: &World, player: &Player, lent: &[u16], offer: &[u16]) -> bool {
+    let owned = usable(world, player, lent, &[]);
+    let mut wanted: BTreeMap<u16, u32> = BTreeMap::new();
+    for &row in offer {
+        *wanted.entry(row).or_default() += 1;
+    }
+    wanted.iter().all(|(row, n)| owned.get(row).copied().unwrap_or(0) >= *n)
+}
+
+/// What a player can put in a deck now: their [`collection`] less the cards they lent and plus the ones they borrowed
+/// (a lent card is out of the lender's hands until the rental ends, #39).
+pub fn usable(world: &World, player: &Player, lent: &[u16], borrowed: &[u16]) -> BTreeMap<u16, u32> {
     let mut owned = collection(world, player);
     for row in lent {
         if let Some(n) = owned.get_mut(row) {
             *n = n.saturating_sub(1);
         }
     }
-    let mut wanted: BTreeMap<u16, u32> = BTreeMap::new();
-    for &row in offer {
-        *wanted.entry(row).or_default() += 1;
+    for &row in borrowed {
+        *owned.entry(row).or_default() += 1;
     }
-    wanted.iter().all(|(row, n)| owned.get(row).copied().unwrap_or(0) >= *n)
+    owned.retain(|_, n| *n > 0);
+    owned
 }
 
 /// Moves an offer's cards out of a player's collection: the bought ones first, then the starter deck's.
@@ -105,4 +116,22 @@ pub fn trunk(world: &World, player: &Player) -> Message {
     }
     let no_trade = Value::Bin(vec![0; world.card_rows]);
     Message::reply(9000).item(Message::record().with("cards", Value::Bin(cards)).with("noTrade", no_trade))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_lent_card_is_not_the_lenders_to_play_and_a_borrowed_one_is_the_borrowers() {
+        // Security review (#39): the lender's deck check took the whole collection, so a lent card was in two decks.
+        let world = World::new(vec![]);
+        let mut player = Player::new(1001, "Lender");
+        player.cards.insert(10, 2);
+        player.cards.insert(11, 1);
+        let lender = usable(&world, &player, &[10, 11], &[]);
+        assert_eq!((lender.get(&10), lender.get(&11)), (Some(&1), None));
+        let borrower = usable(&world, &Player::new(1002, "Borrower"), &[], &[10]);
+        assert_eq!(borrower.get(&10), Some(&1));
+    }
 }

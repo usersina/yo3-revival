@@ -41,6 +41,18 @@ fn friends(server: &Server) {
 }
 
 #[test]
+fn a_full_mailbox_takes_no_more_player_mail() {
+    // Security review (#39): one player can't fill another's mailbox without end (the fetch sends it all at once).
+    let server = Server::new();
+    friends(&server);
+    let (mut yugi, mut kaiba) = (server.join(1001, "Yugi"), server.join(1002, "Kaiba"));
+    for i in 0..100 { assert_eq!(send(&mut yugi, 1002, "hi", &format!("mail {i}")).request(), Some(0x2584), "mail {i}") }
+    let full = send(&mut yugi, 1002, "hi", "one too many");
+    assert_eq!((full.request(), int(&full, "error_code")), (Some(0x2585), Some(700)));
+    assert_eq!(int(&one(kaiba.send(req(0x2583))), "count"), Some(100));
+}
+
+#[test]
 fn a_mail_reaches_an_online_friend() {
     // 0x2584 {mail_id} closes the sender's window ("Your message has been sent."). The recipient gets 0x2581, which
     // sets flag 0x1000 (the mail icon on the bell); their window then fetches it: 0x2586 items {mail_id, mail_type,
