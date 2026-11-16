@@ -277,6 +277,11 @@ fn clip(text: &str, max: usize) -> String {
     text[..end].to_string()
 }
 
+/// A player's chat line as others get it: one line (`MAX_LINE` bytes), control characters as spaces (#39).
+fn chat_line(text: &str) -> String {
+    clip(text, MAX_LINE).chars().map(|c| if c.is_control() { ' ' } else { c }).collect()
+}
+
 /// A form's fields as kept: at most `MAX_FORM_FIELDS`, their texts and binaries cut to `MAX_FORM_TEXT`.
 fn clip_fields(fields: impl IntoIterator<Item = (String, Value)>) -> Vec<(String, Value)> {
     fields
@@ -1747,6 +1752,11 @@ impl Hub {
         if recipients.iter().any(|(_, name)| name.is_empty()) {
             return refuse(301);
         }
+        // A full mailbox takes no more from players (#39): the host's own mail still arrives.
+        let recipients: Vec<_> = recipients.into_iter().filter(|(id, _)| self.mail.count(*id) < crate::mail::MAX_WAITING).collect();
+        if recipients.is_empty() {
+            return refuse(700);
+        }
         let team = self.teams.of(from.0).filter(|_| kind == MAIL_TO_TEAM).map(|t| (t.id, t.name.clone())).unwrap_or_default();
         let sent = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
         let mut mail_id = 0;
@@ -2609,10 +2619,9 @@ impl FrontSession {
     fn check_deck(&self, duel_id: Option<u32>, deck: &Deck) -> Result<(), crate::deckcheck::Refusal> {
         let me = self.player();
         let saved = self.directory.as_ref().and_then(|d| d.locked().player(me.player_id).cloned());
-        let mut owned = crate::trade::collection(&self.world, saved.as_ref().unwrap_or(me));
-        for row in self.hub().rentals.borrowed_by(me.player_id) {
-            *owned.entry(row).or_default() += 1;
-        }
+        // Lent cards are the borrower's to play until the rental ends, not the lender's too (#39).
+        let (lent, borrowed) = { let hub = self.hub(); (hub.rentals.lent_by(me.player_id), hub.rentals.borrowed_by(me.player_id)) };
+        let owned = crate::trade::usable(&self.world, saved.as_ref().unwrap_or(me), &lent, &borrowed);
         // A duel that names no banlist, or one the client doesn't have, uses the one this player logged in with.
         let login = self.login_regulation.unwrap_or_else(|| self.world.settings.now().login_regulation);
         let regulation = Some(self.duel_regulation(duel_id)).filter(|id| self.world.regulations.contains_key(id)).unwrap_or(login);
@@ -3348,6 +3357,9 @@ impl FrontSession {
                 let int = |k: &str| msg.get(k).and_then(Value::as_u32).unwrap_or(0);
                 // What waits for the recipient is kept in a file: a title and a body of a sane size.
                 let (title, body) = (clip(&text("title"), 128), clip(&text("body"), 2048));
+                // A mute covers D-Mail too (#39): "a transmission error", as the game has no text for a mute.
+                let muted = self.directory.as_ref().is_some_and(|d| d.locked().mute_of_player(p.player_id, crate::logins::now()).is_some());
+                if muted { return vec![Message::reply(0x2585).with("error_code", Value::U32(700))] }
                 self.hub().send_mail(from, int("mail_type"), int("to_id"), &title, &body)
             }
             0x1F41 => information(&self.world.settings.now(), self.world.engine_problem.is_some(), crate::logins::now()),
@@ -3713,7 +3725,7 @@ impl FrontSession {
             .with("from_id", Value::U32(player.player_id))
             .with("pname", Value::text(&player.name))
             .with("chat_type", Value::U32(chat_type))
-            .with("chat_str", Value::text(&body.get("chat_str").and_then(Value::as_str).unwrap_or_default()));
+            .with("chat_str", Value::text(&chat_line(&body.get("chat_str").and_then(Value::as_str).unwrap_or_default())));
         let push = Message::reply(0x2455).item(line);
         let to_id = body.get("to_id").and_then(Value::as_u32);
         let to_name = body.get("to_name").and_then(Value::as_str);

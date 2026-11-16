@@ -67,11 +67,12 @@ async fn register(request: &Json, ctx: &Context<'_>) -> Json {
     if let Some(problem) = logins::password_problem(user, password) { return error(problem) }
     if request["rules"].as_bool() != Some(true) { return error("rules_not_accepted") }
     if ctx.settings.registration == Registration::Closed { return error("registration_closed") }
-    if ctx.accounts.locked().login_of(user).is_some() { return error("user_id_taken") }
+    let invite = request["invite"].as_str().filter(|c| !c.trim().is_empty());
+    // The User ID and the invite before the costly hash (#39); `register` checks both again under its lock.
+    if let Err(code) = ctx.accounts.locked().can_register(user, invite, ctx.settings.registration) { return error(&code) }
     let Ok(hash) = logins::hash_password(password.to_owned()).await else { return error("server_error") };
     let recovery = logins::new_code();
     let login = Login::new(user, hash, logins::digest(&logins::normalize_code(&recovery)));
-    let invite = request["invite"].as_str().filter(|c| !c.trim().is_empty());
     match ctx.accounts.locked().register(login, invite, ctx.settings.registration) {
         Ok(_) => json!({ "ok": true, "user": user, "recovery_code": recovery }),
         Err(code) if ["user_id_taken", "invite_required", "invite_invalid", "registration_closed"].contains(&code.as_str()) => error(&code),
@@ -81,6 +82,8 @@ async fn register(request: &Json, ctx: &Context<'_>) -> Json {
 
 /// Checks `user`'s password, with the backoff after failures; the account's user id when it matches.
 async fn check_password(user: &str, password: &str, ctx: &Context<'_>) -> Result<(u32, Login), Json> {
+    // No account has a name that isn't a User ID: refused without a hash or a backoff entry (#39).
+    if !logins::valid_user_id(user) { return Err(error("invalid_credentials")) }
     if let Some(wait) = ctx.throttle.locked().user_wait(user, Instant::now()) { return Err(waiting(wait)) }
     let found = ctx.accounts.locked().login_of(user);
     let hash = found.as_ref().map(|(_, l)| l.password.clone());
@@ -151,11 +154,15 @@ async fn change_password(request: &Json, ctx: &Context<'_>) -> Json {
     let new = text(request, "new_password");
     if let Some(problem) = logins::password_problem(&login.user, new) { return error(problem) }
     let Ok(hash) = logins::hash_password(new.to_owned()).await else { return error("server_error") };
-    match ctx.accounts.locked().set_password(user_id, hash) { Ok(()) => json!({ "ok": true }), Err(_) => error("server_error") }
+    if ctx.accounts.locked().set_password(user_id, hash).is_err() { return error("server_error") }
+    // Every device is signed out (set_password), and every game session ends with them (#39).
+    ctx.sessions.locked().logout_user(user_id);
+    json!({ "ok": true })
 }
 
 async fn recover(request: &Json, ctx: &Context<'_>) -> Json {
     let user = text(request, "user").trim();
+    if !logins::valid_user_id(user) { return error("invalid_recovery") }
     if let Some(wait) = ctx.throttle.locked().user_wait(user, Instant::now()) { return waiting(wait) }
     let code = logins::digest(&logins::normalize_code(text(request, "code")));
     let found = ctx.accounts.locked().login_of(user);
@@ -174,9 +181,10 @@ async fn recover(request: &Json, ctx: &Context<'_>) -> Json {
     let mut accounts = ctx.accounts.locked();
     if accounts.set_password(user_id, hash).is_err() { return error("server_error") }
     // A used recovery code is replaced; a reset code leaves the recovery code as it was (set_password ended the reset).
-    if by == "recovery" {
-        if accounts.set_recovery(user_id, logins::digest(&logins::normalize_code(&recovery))).is_err() { return error("server_error") }
-        return json!({ "ok": true, "recovery_code": recovery });
-    }
-    json!({ "ok": true })
+    let failed = by == "recovery" && accounts.set_recovery(user_id, logins::digest(&logins::normalize_code(&recovery))).is_err();
+    drop(accounts);
+    // Whoever had the account before is signed out of the game too, not only off its devices (#39).
+    ctx.sessions.locked().logout_user(user_id);
+    if failed { return error("server_error") }
+    if by == "recovery" { json!({ "ok": true, "recovery_code": recovery }) } else { json!({ "ok": true }) }
 }

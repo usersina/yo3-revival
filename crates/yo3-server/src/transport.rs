@@ -150,7 +150,7 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
     let gate = Arc::new(Gate::new(accounts.clone(), world.settings.clone(), sessions));
     // The connections open now, against the `max-connections` setting, and each address's handshake allowance (#27).
     let open = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let mut buckets: std::collections::HashMap<std::net::IpAddr, (f64, Instant)> = Default::default();
+    let mut buckets = crate::logins::Buckets::default();
     loop {
         let (tcp, peer) = match listener.accept().await {
             Ok(pair) => pair,
@@ -274,20 +274,15 @@ impl Drop for Slot {
 }
 
 /// Takes one handshake from `addr`'s bucket (`burst` deep, `per_second` back each second); whether there was one.
-fn handshake_allowed(buckets: &mut std::collections::HashMap<std::net::IpAddr, (f64, Instant)>, addr: std::net::IpAddr, now: Instant, burst: u32, per_second: u32) -> bool {
-    let burst = f64::from(burst.max(1));
-    if buckets.len() > 100_000 { buckets.retain(|_, (t, at)| *t < burst && now.duration_since(*at) < std::time::Duration::from_secs(600)) }
-    let (tokens, at) = buckets.entry(addr).or_insert((burst, now));
-    *tokens = (*tokens + now.duration_since(*at).as_secs_f64() * f64::from(per_second.max(1))).min(burst);
-    *at = now;
-    if *tokens >= 1.0 { *tokens -= 1.0; true } else { false }
+fn handshake_allowed(buckets: &mut crate::logins::Buckets, addr: std::net::IpAddr, now: Instant, burst: u32, per_second: u32) -> bool {
+    buckets.take(addr, now, f64::from(burst.max(1)), f64::from(per_second.max(1))).is_ok()
 }
 
 #[cfg(test)]
 mod handshake_tests {
     #[test]
     fn an_address_gets_its_burst_then_its_rate() {
-        let (mut buckets, now) = (Default::default(), std::time::Instant::now());
+        let (mut buckets, now) = (crate::logins::Buckets::default(), std::time::Instant::now());
         let addr: std::net::IpAddr = [203, 0, 113, 9].into();
         assert!((0..5).all(|_| super::handshake_allowed(&mut buckets, addr, now, 5, 2)));
         assert!(!super::handshake_allowed(&mut buckets, addr, now, 5, 2), "the sixth at once waits");
@@ -300,7 +295,11 @@ mod handshake_tests {
 /// The local server's HTTP paths an authenticated launcher may reach: the game's patch and data downloads, duel logs, and
 /// the pages behind its old website links (`/web/`, crate::web); never the admin API (`/api/admin/v1/`, api.rs).
 fn public_http(path: &str) -> bool {
-    ["/yo3/", "/app/", "/duellogs/", "/ygoda/patch/", "/web/"].iter().any(|p| path.starts_with(p))
+    // No way out of those folders either (#39): the local server routes by prefix, so `..` must never pass (it
+    // decodes no `%`, and a duel log's name may carry a player's name, so those stay).
+    let path = path.split('?').next().unwrap_or_default();
+    !path.contains("..") && !path.contains('\\')
+        && ["/yo3/", "/app/", "/duellogs/", "/ygoda/patch/", "/web/"].iter().any(|p| path.starts_with(p))
 }
 
 #[cfg(test)]
@@ -310,7 +309,8 @@ mod public_http_tests {
         for ok in ["/yo3/yo3.idx", "/app/", "/duellogs/a.dlog", "/ygoda/patch/x", "/web/v3/bpass/index/"] {
             assert!(super::public_http(ok), "{ok}");
         }
-        for no in ["/admin", "/manager", "/api/admin/v1/status", "/web", "/", "/session/x/web/"] {
+        for no in ["/admin", "/manager", "/api/admin/v1/status", "/web", "/", "/session/x/web/", "/web/../api/admin/v1/status",
+            "/yo3/../panel/", "/duellogs/..\\x"] {
             assert!(!super::public_http(no), "{no}");
         }
     }

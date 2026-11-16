@@ -114,10 +114,11 @@ impl Backend {
         Ok(Hosted { link: multiplayer::link_for(&server), server, local_network })
     }
 
-    /// The hosted server's command: every interface on the hosting port, no packet logs (players' privacy).
+    /// The hosted server's command: every interface on the hosting port, no packet files or traces (friends' chat lines
+    /// stay out of every log, #39).
     pub fn hosting_command(&self, settings: &Settings) -> anyhow::Result<Command> {
         let mut cmd = Command::new(&self.runtime.server);
-        cmd.args(["--bind", "0.0.0.0", "--auth-port", &settings.host_port.to_string(), "--http-port", "0", "--no-packet-log"])
+        cmd.args(["--bind", "0.0.0.0", "--auth-port", &settings.host_port.to_string(), "--http-port", "0", "--no-packet-log", "--no-packet-trace"])
             .arg("--data-dir").arg(self.hosting_dir()).arg("--game-dir").arg(&settings.game_dir).arg("--log-dir").arg(self.root.join("logs/hosting"))
             .arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id())
             .env("YO3_ENGINE_DIR", &self.runtime.engine).env("YO3_ENGINE", &self.runtime.engine_program).env("NO_COLOR", "1")
@@ -224,6 +225,8 @@ mod tests {
         let args: Vec<String> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
         for pair in [["--bind", "0.0.0.0"], ["--auth-port", "7450"]] { assert!(args.windows(2).any(|w| w == pair), "{pair:?} in {args:?}") }
         assert!(args.contains(&"--no-packet-log".to_string()));
+        // Friends' chat lines and names stay out of the session logs too (they go into Report a problem's export).
+        assert!(args.contains(&"--no-packet-trace".to_string()), "{args:?}");
         assert!(args.windows(2).any(|w| w[0] == "--data-dir" && w[1] == backend.hosting_dir().to_string_lossy()));
         drop(backend);
         std::fs::remove_dir_all(root).unwrap();

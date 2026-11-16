@@ -6,6 +6,9 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value as Json, json};
 use yo3_proto::{Message, Value};
 
+/// The most mail that waits for one player from other players (#39); the host's own mail always arrives.
+pub const MAX_WAITING: u32 = 100;
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Mail {
     pub id: u32,

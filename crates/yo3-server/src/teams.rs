@@ -70,6 +70,8 @@ impl Team {
 /// Why a team can't be formed (0x2B10's error_code, 0x4A6490).
 pub const NAME_TAKEN: u32 = 409;
 pub const BAD_NAME: u32 = 808;
+/// The longest team name kept (#39): the game's own field takes fewer; a modified client could send a megabyte.
+pub const MAX_NAME: usize = 32;
 
 #[derive(Default)]
 pub struct Teams {
@@ -125,7 +127,7 @@ impl Teams {
     /// A new team led by `leader`; its id, or why not (NAME_TAKEN, BAD_NAME).
     pub fn form(&mut self, (id, name): (u32, &str), team_name: &str, created: String) -> Result<u32, u32> {
         let team_name = team_name.trim();
-        if team_name.is_empty() || team_name.chars().any(char::is_control) {
+        if team_name.is_empty() || team_name.chars().count() > MAX_NAME || team_name.chars().any(char::is_control) {
             return Err(BAD_NAME);
         }
         if self.teams.values().any(|t| t.name.eq_ignore_ascii_case(team_name)) {
