@@ -91,6 +91,7 @@ impl State {
 pub fn topic_for(sentence: &str) -> &'static str {
     let lower = sentence.to_lowercase();
     if lower.contains("port") { "port" }
+    else if lower.contains("antivirus") { "antivirus" }
     else if lower.contains("repair") || lower.contains("rules engine") { "repair" }
     else if lower.contains("wine") { "wine" }
     else if lower.contains("game") && (lower.contains("start") || lower.contains("crash") || lower.contains("stopped") || lower.contains("exited")) { "game-start" }

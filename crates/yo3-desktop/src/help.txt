@@ -60,7 +60,17 @@ If it keeps failing, use Report a problem: your logs are attached for you.
 # repair | YO3 Revival needs repair
 Some of YO3 Revival's own files are missing or changed, often after an antivirus scan.
 Download the latest release again and replace YO3 Revival's folder with it. Your settings and Singleplayer data are kept.
-If your antivirus removed a file, restore it from the antivirus's quarantine and allow it.
+If your antivirus removed a file, restore it from the antivirus's quarantine, or extract the release again. Check the download first: Antivirus warnings says how.
+> Antivirus warnings and checking a download | https://github.com/usersina/yo3-revival/blob/main/docs/antivirus.md
+
+# antivirus | Antivirus warnings
+YO3 Revival starts the game with a small helper that connects it to your server. Cheats work in a similar way, so Windows or an antivirus may warn about YO3 Revival, or put one of its files in quarantine. Our files aren't signed with a certificate yet, which makes warnings more likely.
+- Download YO3 Revival only from the project's releases page, and check your download against the checksum published with it.
+- If a file was removed, restore it from your antivirus's quarantine (in Windows Security: Protection history), or extract the release again.
+- Allow only files from a download you checked, and keep your antivirus on.
+- Report the false alarm to your antivirus: Microsoft has a form for Defender.
+The page below shows each step:
+> Antivirus warnings and checking a download | https://github.com/usersina/yo3-revival/blob/main/docs/antivirus.md
 
 # port | Another program is using the port
 Your server needs a network port, and another program already has it: often another server, or a second YO3 Revival.
