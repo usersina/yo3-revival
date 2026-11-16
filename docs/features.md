@@ -210,7 +210,7 @@ release, and "—" a row that is not implemented or unsupported.
 | Feature | Status | Since | Verified by | Notes / issues |
 | --- | --- | --- | --- | --- |
 | Connection DLL: login, ordinal imports, local cookies, fail-closed injection | Implemented | v0.0.4 (2026-11-10) | `tools/mod/test.sh`, `test-loader.sh`; Windows VM | Required. A failed hook byte check stops the game. |
-| Opening the game directly (WINMM loader) | Partial | v0.0.4 (2026-11-10) | `tools/mod/test-direct.sh`, `direct_install.rs`; Windows VM, standard user | Protected-folder installation and reinstalling a missing runtime are not verified; Windows 10 is not checked. |
+| Opening the game directly (WINMM loader) | Partial | v0.0.4 (2026-11-10) | `tools/mod/test-direct.sh`, `direct_install.rs`; Windows VM, standard user; `tools/mod/test_winmm_exports.py` (every export of Windows' 32-bit `winmm.dll`) and `loader-test.c` (forwarded calls under Wine and natively on the Windows 11 VM, 2026-11-16) | Protected-folder installation and reinstalling a missing runtime are not verified. Windows 10 1809 (LTSC 2019): its `DSOUND.dll` imports `waveInGetDevCapsW` from the game folder's `winmm.dll`, which had only the game's seven functions, so the game closed at startup with `0xc0000139` (#41); the loader now forwards all of WINMM (Unreleased). Not yet confirmed on 1809 itself. |
 | Exit guard at teardown | Implemented | v0.0.13 (2026-11-14) | `tools/mod/teardown-test.c`; live | Fixed after a crash mid-duel on Windows. |
 | Native game exit `0xc0000005` from a player's recording | Partial | — | Not verified | Not reproduced in seven native Windows 11 launches; a crash dump is needed. |
 

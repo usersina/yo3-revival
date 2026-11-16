@@ -1,4 +1,5 @@
-/* A reversible game-local WINMM proxy. The original executable imports these seven functions.
+/* A reversible game-local WINMM proxy. The original executable imports these seven functions; winmm-forward.c forwards
+ * the rest of WINMM, which Windows' own DLLs in the game process may import from here too (#41).
  * System API loading is deferred to API calls; DllMain performs no process, UI or network work.
  */
 #define _WINMM_
@@ -28,6 +29,18 @@ static BOOL CALLBACK load_system(PINIT_ONCE once, PVOID arg, PVOID *context) {
 static FARPROC system_api(const char *name) {
     if (!InitOnceExecuteOnce(&system_once, load_system, NULL, NULL)) return NULL;
     return GetProcAddress(system_winmm, name);
+}
+/* The other WINMM exports' first call (winmm-forward.c): the system's function, kept in `slot` for the next calls. A
+ * function this Windows lacks can't be answered without knowing its arguments, so it ends the process, naming it. */
+FARPROC yo3_winmm_resolve(const char *name, FARPROC *slot) {
+    FARPROC fn = system_api(name);
+    if (!fn) {
+        char message[160];
+        snprintf(message, sizeof message, "YO3 Revival: this Windows has no winmm.dll function %s.", name);
+        FatalAppExitA(0, message);
+    }
+    InterlockedExchangePointer((void **)slot, (void *)fn);
+    return fn;
 }
 __declspec(dllexport) unsigned __cdecl Yo3LoaderAbi(void) { return YO3_MOD_ABI; }
 __declspec(dllexport) DWORD WINAPI Yo3LoaderValidate(void) { LoaderConfig config = {0}; return validate_config(&config); }

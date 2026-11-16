@@ -10,6 +10,22 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+A startup fix for Windows 10 version 1809 (LTSC 2019). Choose **Desktop** for the graphical app or **Scripts** for
+terminal commands. Both editions include the server, rules engine and required connection components. Original game
+files are not included. **Windows 7 is not supported.**
+
+Players on Windows should update; hosts need nothing new. Friends on v0.0.13 or later can still join. Before updating,
+close the game and stop hosting. Keep your server data and local game Documents.
+
+- **The game starts on Windows 10 version 1809 (LTSC 2019) again.** It closed at once with `0xc0000139`, or with
+  "The procedure entry point waveInGetDevCapsW could not be located", when opened directly. On that Windows, its own
+  sound library loads the `winmm.dll` YO3 Revival puts beside `yo3.exe`, and that file had only the few functions the
+  game itself uses. It now passes every other Windows multimedia function on to Windows. The next **Play** updates
+  the file in your game folder. If you replaced it with a copy of Windows' own `winmm.dll` as a workaround, delete
+  that copy first, so YO3 Revival can put its own back.
+
 ## v0.0.24 (2026-11-16)
 
 A duel fix. Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the
