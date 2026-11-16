@@ -256,8 +256,12 @@ updates** asks at once). When one is out:
 
 - **A dot on the version** in the footer. Click the version for **What's new**: that version's section of the
   [changelog](../CHANGELOG.md), where its download is, and a link to the release page.
-- **It downloads in the background** and is checked against the SHA-256 that GitHub reports for the archive. One that
-  doesn't match is refused, written to the logs and never installed; it is tried again at the next check. The new
+- **It downloads in the background, only if the project signed it.** Each release carries `SHA256SUMS` and the
+  project's signature over it, `SHA256SUMS.sig`. Before downloading, YO3 Revival checks that signature with the
+  project's key, which is built into the launcher, and checks that the signed list has the same SHA-256 that GitHub reports
+  for the archive. The download is then checked against that SHA-256. A release without the signature, or with a
+  signature or checksum that doesn't match, is refused with the reason, written to the logs and never installed. A
+  download is tried again at the next check. The new
   version is unpacked beside this one: your settings, accounts, decks and server data stay where they are, and game
   files are never part of an update.
 - **A ribbon above PLAY: "Update X is ready · Restart to install".** **Restart to install** (or the same button in What's
@@ -273,8 +277,13 @@ updates** asks at once). When one is out:
   new (or the release page before the update is known). Singleplayer and other servers keep working.
 
 You can still update by hand: download the new Desktop archive and extract it in place of the old folder, with
-YO3 Revival closed. Your settings and data are kept in the app's storage. Signed release manifests, on top of the
-checksum, are prepared but not switched on yet (#32).
+YO3 Revival closed. Your settings and data are kept in the app's storage.
+
+**From v0.0.21 or older:** those versions update to the beta as before: version → **Review & install…** →
+**Download & restart**. They
+don't check signatures, only GitHub's checksum. After the update, the shortcut or folder you opened the old version
+from still opens the new one, because the old version hands over to the installed update. Your settings stay in the
+same `launcher.db`, and the old version can still read it. Keep that original folder: it is what the shortcut opens.
 
 Archives have versioned filenames, but stable inner folders: `yo3-revival-desktop/` and `yo3-revival-scripts/`.
 Do not overwrite a running bundle. [Scripts updates](scripts.md#updates) are manual.

@@ -94,9 +94,17 @@ jobs:
             YO3_ENGINE="$PWD/dist/engine-check/yo3-revival-desktop/yo3-engine" cargo nextest run -p yo3-server --test engine_cards
       - name: Packaged Desktop updater opens before activation
         if: needs.prepare.outputs.release == 'true'
-        timeout-minutes: 5
-        run: tools/test-packaged-update.sh "$VERSION" "dist/yo3-revival-desktop-$VERSION-linux-x86_64.tar.gz"
-      - name: Notes and SHA256SUMS
+        timeout-minutes: 8
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Also from v0.0.21, the last release before the beta: its launcher must still open launcher.db and hand
+          # its original shortcut over to this version.
+          mkdir -p dist/released
+          gh release download v0.0.21 --dir dist/released --clobber -p 'yo3-revival-desktop-v0.0.21-linux-x86_64.tar.gz'
+          tools/test-packaged-update.sh "$VERSION" "dist/yo3-revival-desktop-$VERSION-linux-x86_64.tar.gz" \
+            --from dist/released/yo3-revival-desktop-v0.0.21-linux-x86_64.tar.gz
+      - name: SHA256SUMS
         if: needs.prepare.outputs.release == 'true'
         run: |
           mkdir assets
@@ -107,6 +115,21 @@ jobs:
           cp "dist/yo3-revival-server-$VERSION-linux-x86_64.tar.gz" assets/
           python3 .github/scripts/release_notes.py sums assets
           (cd assets && sha256sum -c SHA256SUMS)
+      - name: Sign SHA256SUMS
+        if: needs.prepare.outputs.release == 'true'
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          # Desktop refuses an update whose SHA256SUMS.sig is missing or not the project's key (#32). The private key
+          # only ever sits in a private temporary file, removed whatever happens; it is never echoed.
+          [ -n "$UPDATE_SIGNING_KEY" ] || { echo "The UPDATE_SIGNING_KEY secret is missing" >&2; exit 1; }
+          key="$(umask 077 && mktemp)"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$UPDATE_SIGNING_KEY" > "$key"
+          .github/scripts/sign_release.sh assets "$key"
+      - name: Release notes
+        if: needs.prepare.outputs.release == 'true'
+        run: |
           ls -l assets
           python3 .github/scripts/release_notes.py notes CHANGELOG.md assets > notes.md
           cat notes.md

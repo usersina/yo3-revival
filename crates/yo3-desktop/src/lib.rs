@@ -133,6 +133,21 @@ pub fn private_write(path: &Path, bytes: &[u8], replace: bool) -> anyhow::Result
     Ok(())
 }
 
+/// The `user_version` every released launcher accepts (see `LauncherDb::migrate`). Raising it locks out every launcher
+/// before the change, including an original shortcut's forwarding to the installed update.
+pub const COMPATIBLE: u32 = 1;
+/// The launcher database's steps in order: step N (from 1) brings the schema from N-1 to N. Append only, never edit a
+/// released step. Released launchers recreate their own tables (`settings`, `servers`) if a step drops them.
+const MIGRATIONS: &[&str] = &[
+    // 1: what v0.0.x launchers made (their `update_state` is created where it is used, `updates::install`).
+    "CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
+     CREATE TABLE IF NOT EXISTS servers (id INTEGER PRIMARY KEY, body TEXT NOT NULL);",
+    // 2: the Multiplayer servers the player added or played on (#30), by their first identity.
+    "CREATE TABLE IF NOT EXISTS remote_servers (key TEXT PRIMARY KEY, body TEXT NOT NULL);",
+];
+/// The schema this launcher writes.
+pub const LAUNCHER_SCHEMA: u32 = MIGRATIONS.len() as u32;
+
 pub struct LauncherDb { conn: Connection }
 impl LauncherDb {
     pub fn open(root: &Path) -> anyhow::Result<Self> {
@@ -142,13 +157,36 @@ impl LauncherDb {
         if !path.exists() { private_write(&path, &[], false)?; }
         let conn = Connection::open(path)?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        Self::migrate(&conn)?;
+        Ok(Self { conn })
+    }
+    /// Brings the database to `LAUNCHER_SCHEMA` and keeps it openable by every released launcher.
+    ///
+    /// `user_version` is the *compatibility* marker, not the schema: released launchers (v0.0.21 and older) refuse a
+    /// database whose `user_version` is above 1, and they open this database on every start (to forward an original
+    /// shortcut to the installed update) and to promote an update they launched. A database they refuse strands the
+    /// player on the old version, so `user_version` stays `COMPATIBLE` while every change keeps their tables
+    /// (`settings`, `servers`, `update_state`) readable. The schema's own revision lives in `launcher_schema`; a step
+    /// that drops or reshapes data goes in `MIGRATIONS` without touching `user_version`. Beta development builds wrote
+    /// `user_version` 2 for the additive `remote_servers` table; such a database is accepted and set back to 1.
+    fn migrate(conn: &Connection) -> anyhow::Result<()> {
         let version: u32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
         ensure!(version <= 2, "Launcher database is newer than this application.");
-        // 2: the Multiplayer servers the player added or played on (#30), by their first identity.
-        conn.execute_batch("BEGIN; CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS servers (id INTEGER PRIMARY KEY, body TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS remote_servers (key TEXT PRIMARY KEY, body TEXT NOT NULL); PRAGMA user_version=2; COMMIT;")?;
-        Ok(Self { conn })
+        conn.execute_batch("BEGIN IMMEDIATE; CREATE TABLE IF NOT EXISTS launcher_schema (id INTEGER PRIMARY KEY CHECK(id=1), version INTEGER NOT NULL);")?;
+        let result = (|| -> anyhow::Result<()> {
+            let saved: Option<u32> = conn.query_row("SELECT version FROM launcher_schema WHERE id=1", [], |r| r.get(0)).optional()?;
+            // Without the table: a new database (0), a released launcher's (1) or a beta development build's (2).
+            let schema = saved.unwrap_or(version);
+            for (step, sql) in MIGRATIONS.iter().enumerate().skip(schema as usize) { conn.execute_batch(sql).with_context(|| format!("Launcher database step {}", step + 1))?; }
+            // Never lower it: a newer launcher that kept the database compatible may have moved it further.
+            conn.execute("INSERT INTO launcher_schema VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET version=max(version,excluded.version)", [LAUNCHER_SCHEMA])?;
+            conn.execute_batch(&format!("PRAGMA user_version={COMPATIBLE};"))?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => { conn.execute_batch("COMMIT;")?; Ok(()) }
+            Err(error) => { let _ = conn.execute_batch("ROLLBACK;"); Err(error) }
+        }
     }
     pub fn settings(&self) -> anyhow::Result<Settings> {
         let data: Option<String> = self.conn.query_row("SELECT body FROM settings WHERE id=1", [], |r| r.get(0)).optional()?;
@@ -1026,6 +1064,56 @@ mod tests {
         backend.check_components(&settings).unwrap(); std::fs::write(binary,b"changed helper").unwrap();
         assert!(backend.check_components(&settings).is_err()); drop(backend); std::fs::remove_dir_all(root).unwrap();
     }
+    /// What v0.0.21 (and every release before the beta) does with launcher.db on each start and when it promotes an
+    /// update it launched: refuse `user_version` above 1, recreate its tables, read and write `update_state`.
+    fn released_launcher_opens(path: &Path) -> anyhow::Result<()> {
+        let conn = Connection::open(path)?;
+        let version: u32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+        ensure!(version <= 1, "Launcher database is newer than this application.");
+        conn.execute_batch("BEGIN; CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS servers (id INTEGER PRIMARY KEY, body TEXT NOT NULL); PRAGMA user_version=1; COMMIT;
+            CREATE TABLE IF NOT EXISTS update_state (id INTEGER PRIMARY KEY CHECK(id IN (1,2)), body TEXT NOT NULL);
+            INSERT INTO update_state VALUES(1,'{}') ON CONFLICT(id) DO UPDATE SET body=excluded.body;")?;
+        Ok(())
+    }
+
+    #[test]
+    fn released_launchers_still_open_the_database_so_their_shortcuts_reach_the_update() {
+        let root = std::env::temp_dir().join(format!("yo3-desktop-compatible-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let path = root.join("launcher.db");
+        let schema = |path: &Path| -> (u32, u32) { let conn = Connection::open(path).unwrap();
+            (conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap(), conn.query_row("SELECT version FROM launcher_schema", [], |r| r.get(0)).unwrap()) };
+
+        // A v0.0.21 database (with a saved server row) opens here, and v0.0.21 still opens it afterwards.
+        std::fs::create_dir_all(&root).unwrap();
+        released_launcher_opens(&path).unwrap();
+        Connection::open(&path).unwrap().execute("INSERT INTO servers(body) VALUES('{}')", []).unwrap();
+        LauncherDb::open(&root).unwrap().remote_servers().unwrap();
+        assert_eq!(schema(&path), (COMPATIBLE, LAUNCHER_SCHEMA));
+        assert_eq!(COMPATIBLE, 1, "raising user_version strands every released launcher: see LauncherDb::migrate");
+        released_launcher_opens(&path).expect("a released launcher must still open the database");
+        LauncherDb::open(&root).unwrap();
+        assert_eq!(schema(&path), (1, LAUNCHER_SCHEMA), "the old launcher's visit changes nothing here");
+
+        // A beta development build's database (user_version 2, no launcher_schema) is set back to 1.
+        std::fs::remove_dir_all(&root).unwrap(); std::fs::create_dir_all(&root).unwrap();
+        Connection::open(&path).unwrap().execute_batch("CREATE TABLE settings (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
+            CREATE TABLE remote_servers (key TEXT PRIMARY KEY, body TEXT NOT NULL); INSERT INTO remote_servers VALUES('k','{}'); PRAGMA user_version=2;").unwrap();
+        LauncherDb::open(&root).unwrap();
+        assert_eq!(schema(&path), (1, LAUNCHER_SCHEMA));
+        assert_eq!(Connection::open(&path).unwrap().query_row("SELECT count(*) FROM remote_servers", [], |r| r.get::<_, u32>(0)).unwrap(), 1, "kept");
+        released_launcher_opens(&path).unwrap();
+
+        // A later launcher's schema is never lowered, and an incompatible database is refused.
+        Connection::open(&path).unwrap().execute("UPDATE launcher_schema SET version=?1", [LAUNCHER_SCHEMA + 5]).unwrap();
+        LauncherDb::open(&root).unwrap();
+        assert_eq!(schema(&path), (1, LAUNCHER_SCHEMA + 5));
+        Connection::open(&path).unwrap().execute_batch("PRAGMA user_version=3;").unwrap();
+        assert!(LauncherDb::open(&root).err().unwrap().to_string().contains("newer than this application"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn addresses_are_explicit_and_do_not_accept_urls_or_missing_hosts() {
         assert_eq!(server_address(" play.example ").unwrap(), ("play.example:7443".into(), "play.example".into()));

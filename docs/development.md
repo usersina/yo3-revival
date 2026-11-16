@@ -121,7 +121,8 @@ Two more things keep a live check private:
 
 **Updates (#32) without publishing a release.** A development build (debug assertions on) reads a fake newer release
 from `YO3_UPDATE_FAKE_METADATA` (GitHub's release JSON: `tag_name`, `body`, and one asset with its `sha256:` digest) and
-stages `YO3_UPDATE_FAKE_ARCHIVE` in place of the download; release builds ignore both. Build it with a stable version
+stages `YO3_UPDATE_FAKE_ARCHIVE` in place of the download, without the signature check (`tools/test-packaged-update.sh`
+checks that); release builds ignore both. Build it with a stable version
 (`YO3_BUILD_VERSION=v0.0.21`, in its own `CARGO_TARGET_DIR` so the main build isn't rebuilt), or the check says it is a
 development build. The archive needs a `bundle.json` whose components' checksums match, like the fixtures in
 `crates/yo3-desktop/tests/update_activation.rs`; a `yo3-revival` script that writes the readiness acknowledgement plays
@@ -439,9 +440,60 @@ tools/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-linux-x86_6
 
 Use the version being tested. Building with a stable version label does not publish or create a Git tag; `-dev`
 archives are rejected by the production updater. The helper owns its Xvfb display and creates/removes fresh
-application storage. It does not start the game or a server. The integration test stays ignored in ordinary
-workspace runs because it needs the final archive; the release gate selects it explicitly and fails if no test matches.
-This checks Linux package activation; native Windows verification remains separate.
+application storage. It does not start the game or a server. The integration tests stay ignored in ordinary
+workspace runs because they need the final archive; the release gate selects them explicitly and fails if none matches.
+This checks Linux package activation; native Windows verification remains separate. What it checks:
+
+- **The signature** (#32): it makes a throwaway Ed25519 key, writes `SHA256SUMS` over the archive and signs it with the
+  Release workflow's own `.github/scripts/sign_release.sh`. That script refuses this key as Desktop's. The launcher's
+  check (`signature::vouch`) then accepts the signed manifest and refuses a changed signature, the project's key, a
+  missing `SHA256SUMS.sig` and a download the manifest doesn't list.
+- **Activation:** the archive is staged, marked pending and installed at the next start once its window is up.
+- **From a released version**, with `--from` and that release's Linux Desktop archive. The release gate runs it from
+  v0.0.21, the last release before the beta:
+
+  ```bash
+  gh release download v0.0.21 --dir /tmp/released -p 'yo3-revival-desktop-v0.0.21-linux-x86_64.tar.gz'
+  tools/test-packaged-update.sh v0.1.0 dist/yo3-revival-desktop-v0.1.0-linux-x86_64.tar.gz \
+    --from /tmp/released/yo3-revival-desktop-v0.0.21-linux-x86_64.tar.gz
+  ```
+
+  First the released launcher opens and makes its `launcher.db`. Then this release opens on that data and is
+  promoted. Finally the released binary is started again, as the player's original shortcut is. It must hand over to
+  the installed update and exit. That step runs the old version's own code: its `launcher.db` check, and its bundle
+  checks (components, the old engine paths) on the new archive.
+
+### Signing releases
+
+The Release workflow signs `SHA256SUMS` with the repository secret `UPDATE_SIGNING_KEY`, an Ed25519 private key in
+PEM. The step writes the secret to a private temporary file, removes it afterwards and never prints it. It then runs
+`.github/scripts/sign_release.sh assets KEY`, which:
+
+1. checks that the key's public half is the one built into Desktop (`updates/signature.rs` `PUBLIC_KEY`);
+2. writes `SHA256SUMS.sig` (64 raw bytes, `openssl pkeyutl -sign -rawin`);
+3. verifies the signature with the public key alone.
+
+Both files are attached to the release, and the notes don't list the signature among the downloads. A release
+Desktop would refuse is never published. To replace the key, generate a new one
+(`openssl genpkey -algorithm ed25519`). Put its public half
+(`openssl pkey -pubout -outform DER | tail -c 32 | od -An -tx1`) in `PUBLIC_KEY`, release that version signed with the
+**old** key, and only then change the secret: launchers check with the key they were built with.
+
+Desktop refuses a release without `SHA256SUMS.sig`. A launcher is only offered releases newer than itself, and every
+release since the key was built in is signed, so an unsigned one is broken or substituted. v0.0.21 and older don't check
+signatures, so they still update to a signed release.
+
+### launcher.db and released launchers
+
+Every released launcher (v0.0.21 and older) refuses a `launcher.db` whose `PRAGMA user_version` is above 1. It
+opens the database on every start, to hand its original shortcut over to the installed update, and when it promotes
+an update it launched. So `user_version` is a compatibility marker that stays `COMPATIBLE` (1). The schema revision
+lives in the `launcher_schema` table, and its steps are `MIGRATIONS` in `crates/yo3-desktop/src/lib.rs`, append only.
+A step may drop or reshape the beta's own tables. Released launchers recreate the tables they use (`settings`,
+`servers`, `update_state`) when missing, so dropping the unused `servers` table is fine. A database at user_version 2
+(beta development builds before this) is accepted and set back to 1. Raising `user_version` locks out every older
+launcher and its shortcut. The test
+`released_launchers_still_open_the_database_so_their_shortcuts_reach_the_update` replays v0.0.21's statements.
 
 ## Publish a release
 
@@ -454,7 +506,8 @@ signing, subject to approval and CI integration; it does not mean existing downl
 2. Keep documentation/screenshots current, run required checks and live-test the extracted bundles.
 3. Commit in logical slices on a feature branch. Follow the working guide's local merge policy and ask before pushing.
 4. A push to `main` with an untagged top changelog version runs the release workflow: tests/lints, four bundles,
-   the mandatory packaged-updater check, a `SHA256SUMS` file and the same checksums in the release notes (with how
+   the mandatory packaged-updater check (also from v0.0.21), a `SHA256SUMS` file signed as `SHA256SUMS.sig` with the
+   `UPDATE_SIGNING_KEY` secret ([signing releases](#signing-releases)), the same checksums in the release notes (with how
    to check them; players read [antivirus warnings](antivirus.md)), and a GitHub release. An already published top
    version skips verification, bundling and publishing after the changelog check.
 

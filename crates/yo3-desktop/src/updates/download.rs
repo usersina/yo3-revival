@@ -23,6 +23,11 @@ fn allowed(url: &reqwest::Url) -> bool {
     url.scheme() == "https" && url.username().is_empty() && url.password().is_none() && url.port_or_known_default() == Some(443)
         && matches!(url.host_str(), Some("github.com" | "release-assets.githubusercontent.com" | "objects.githubusercontent.com"))
 }
+/// The release has no such file (HTTP 404).
+#[derive(Debug)]
+struct Missing;
+impl std::fmt::Display for Missing { fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result { f.write_str("Update file not found (HTTP 404)") } }
+impl std::error::Error for Missing {}
 async fn response(client: &reqwest::Client, url: &str, transfer: &Transfer) -> anyhow::Result<reqwest::Response> {
     let mut url = reqwest::Url::parse(url)?;
     for _ in 0..6 {
@@ -31,7 +36,7 @@ async fn response(client: &reqwest::Client, url: &str, transfer: &Transfer) -> a
         if result.status().is_redirection() {
             let location = result.headers().get(reqwest::header::LOCATION).context("Update redirect has no destination")?.to_str()?;
             url = url.join(location)?;
-        } else { ensure!(result.status().is_success(), "Update download failed (HTTP {})", result.status().as_u16()); return Ok(result) }
+        } else if result.status() == reqwest::StatusCode::NOT_FOUND { return Err(Missing.into()) } else { ensure!(result.status().is_success(), "Update download failed (HTTP {})", result.status().as_u16()); return Ok(result) }
     }
     anyhow::bail!("Update download redirected too many times")
 }
@@ -50,15 +55,18 @@ async fn save(mut response: reqwest::Response, path: &std::path::Path, release: 
     ensure!(received == release.asset.bytes && digest == release.asset.sha256, "Update download checksum or length does not match GitHub");
     Ok(())
 }
-/// A small release file (the manifest or its signature), bounded.
-async fn small(client: &reqwest::Client, url: &str, transfer: &Transfer) -> anyhow::Result<Vec<u8>> {
-    let mut reply = response(client, url, transfer).await?;
+/// A small release file (the manifest or its signature), bounded; `None` when the release doesn't have it.
+async fn small(client: &reqwest::Client, url: &str, transfer: &Transfer) -> anyhow::Result<Option<Vec<u8>>> {
+    let mut reply = match response(client, url, transfer).await {
+        Err(error) if error.is::<Missing>() => return Ok(None),
+        other => other?,
+    };
     let mut body = Vec::new();
     while let Some(chunk) = transfer.wait(reply.chunk()).await?? {
         ensure!(body.len() + chunk.len() <= super::signature::MAX_MANIFEST, "The update's manifest is too large");
         body.extend_from_slice(&chunk);
     }
-    Ok(body)
+    Ok(Some(body))
 }
 pub async fn prepare(root: PathBuf, release: Release, transfer: Transfer) -> anyhow::Result<install::Installed> {
     install::platform(&release)?;
@@ -71,13 +79,13 @@ pub async fn prepare(root: PathBuf, release: Release, transfer: Transfer) -> any
     }
     let job = install::job_directory(&root)?; let archive = job.0.join("download");
     let client = super::client(Duration::from_secs(15 * 60))?;
-    // SIGNING SEAM (#32): off until the project's key exists (`signature::PUBLIC_KEY`); then the signed manifest must
-    // vouch for this download before it is fetched.
+    // Signed updates (#32): the release's signed manifest must vouch for this download before it is fetched; a release
+    // without one is refused (`signature::vouch`).
     if let Some(key) = super::signature::PUBLIC_KEY {
         let base = format!("{}/releases/download/{}", super::REPOSITORY, release.tag);
         let manifest = small(&client, &format!("{base}/{}", super::signature::MANIFEST), &transfer).await?;
         let signature = small(&client, &format!("{base}/{}", super::signature::SIGNATURE), &transfer).await?;
-        super::signature::check(&release, &manifest, &signature, &key)?;
+        super::signature::vouch(&release, manifest.as_deref(), signature.as_deref(), &key)?;
     }
     let reply = response(&client, &release.asset.url, &transfer).await?;
     save(reply, &archive, &release, &transfer).await?; transfer.0.phase.store(1, Ordering::Relaxed);
