@@ -115,7 +115,12 @@ pub enum Admin {
     Titles,
     /// Give BOOSTERPASS Points to the account WHO (a User ID or one of its players' names). Works while the server
     /// runs (on the server's PC).
-    GiveBp { who: String, amount: u32 },
+    GiveBp {
+        who: String,
+        amount: u32,
+        /// Reuse the printed request ID after a timeout or lost answer; a committed grant is never repeated.
+        #[arg(long)] request_id: Option<String>,
+    },
     /// Give PLAYER copies of a card no pack hands out, or another artwork of one (#19): CARD is its English name or Konami
     /// id, --art N which artwork (its first when omitted), --count N how many (1 when omitted, at most 255). Their trunk
     /// has them at its next request (Edit Deck, the shop). Works while the server runs.

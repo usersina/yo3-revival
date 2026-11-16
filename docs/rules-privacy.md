@@ -45,6 +45,7 @@ host removes it.
 | D-Mail | The server's database, until the recipient's mail window fetches it | Then only on the recipient's PC. At most 100 wait from players. |
 | Duel logs (replays) | The server's database | The newest 1,000 on the server |
 | Admin audit log: who changed what, including moderation | The server's database | 365 days, then removed (the host's `audit-keep-days` setting; 0 keeps it for ever) |
+| BP grant retry receipts: request ID, host or staff account number, input fingerprint, target account number, resulting BP and time | The server's database | No expiry, independent of audit pruning, so a retry cannot pay twice. No player names, passwords or recovery codes. |
 | Recent server log lines (admin panel) | Server memory | The last 2,000 lines, until the server restarts |
 | Backups of the database | The server's `backups/` folder | The newest 24, taken hourly and at each start and stop |
 | Off-site backups (if the host sets them up) | The host's storage | restic: 14 daily and 8 weekly copies (about 2 months). rclone: 30 days by default. |

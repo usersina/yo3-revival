@@ -2175,7 +2175,7 @@ requests over TLS. The patch index is the game's own, answered by the launcher, 
 WinINet calls to its local authenticated asset proxy, including duel-log URLs (`0x498700`). No account key is put
 into a remote URL. See [authentication.md](authentication.md) for setup and credential lifetimes.
 
-Persistence uses `data/server.db`, schema version 2 (#22): one row per account, record, mail and so on, in WAL mode,
+Persistence uses `data/server.db`, schema version 3 (#22): one row per account, record, mail and so on, in WAL mode,
 with backups at start, hourly and at stop. References elsewhere in this catalog to `accounts.json`, `friends.json`,
 etc. name the domains' original formats. This changes storage, not Konami request/reply fields; tests live in
 `store.rs` and `tests/accounts.rs`.
@@ -2185,8 +2185,14 @@ The host's tools (the desktop, the CLI, the admin panel at `/panel/`, #36) use o
 `give-bp`, `set`, `audit`, `shutdown` and the rest; `yo3-server --help` lists the commands). It binds loopback and the
 TLS asset role denies access (it forwards only GETs of the game's files). Answers are `{"ok", "result" | "error"}`.
 Account listings omit credentials; `key` is the explicit credential-bearing operation. Unknown operations/fields and
-incorrect tokens are refused. Each change writes an audit row. Mutations persist once and restore memory if saving
-fails. **Status: implemented/tested**, evidence `tests/api_contract.rs`; these are our API definitions, not inferred
+incorrect tokens are refused. Give BP requires one `Idempotency-Key` header (16–128 letters, digits, hyphens or
+underscores), and returns `user_id`, `bp`, `message`, `request_id`; its errors also carry a stable `code`. Schema 3
+adds separate operation receipts. Balance, D-Mail, audit and receipt commit together before memory and client pushes
+are published. A retry returns its original result without another grant, letter or audit row; changed input with
+the same ID is a conflict. Host-token/offline calls share fixed scope `host` regardless of `--by`; staff scope is the
+account number. Receipts have no expiry and do not follow audit pruning. Other operations retain their existing
+domain save paths and are being adapted. **Status: implemented/tested**, evidence `tests/api_contract.rs` and
+`tests/grant_contract.rs`; these are our API definitions, not inferred
 game-client reply shapes. It replaced `/manager` and `/admin`.
 The panel runs the same operations in the server (`Api::apply_as`) as its signed-in staff account: a moderator runs only
 the looking, moderation, invite and reset-code operations, and none on a staff account. `account`, `backups`, `back-up` and

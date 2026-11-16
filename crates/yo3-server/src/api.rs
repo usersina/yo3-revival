@@ -7,7 +7,8 @@
 //!
 //! Each operation is one function ([`Api::apply`]): it checks its values, applies the change to the running server's
 //! state (in memory and in the database together), then writes an audit row: who, from where, what, on what, the
-//! values before and after. With no server running, the CLI runs the same function on the data folder itself (it
+//! values before and after. Give BP commits the change, mail, audit and retry receipt together before publishing.
+//! Other operations are being adapted to that boundary. With no server running, the CLI runs on the data folder (it
 //! holds the folder's lock meanwhile), and those changes are audited too, from "offline".
 //!
 //! No player connection reaches these routes: the TLS HTTP role forwards only the game's files (`transport.rs`), and
@@ -26,6 +27,9 @@ use crate::admin::{Live, Response, same};
 use crate::front::Hub;
 use crate::lock::Locked;
 use crate::store::AuditRow;
+
+pub mod give_bp;
+pub use give_bp::{GiveBpRequest, GiveBpResult, GrantActor, GrantError, GrantErrorCode};
 
 /// The path every operation is under.
 pub const PREFIX: &str = "/api/admin/v1/";
@@ -209,13 +213,14 @@ pub struct Api {
     /// "server" for a running server's operations, "offline" for the CLI's on a stopped server's folder.
     pub origin: &'static str,
     memory: Mutex<Vec<AuditRow>>,
+    grant_receipts: Mutex<std::collections::HashMap<(String, String), crate::store::Receipt>>,
 }
 
 type Done = Result<(Value, Option<Value>, Option<Value>), String>;
 
 impl Api {
     pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, data_dir: Option<PathBuf>, game_dir: PathBuf, origin: &'static str) -> Api {
-        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), origin, memory: Mutex::default() }
+        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), origin, memory: Mutex::default(), grant_receipts: Mutex::default() }
     }
 
     /// Runs `op` for `actor` and writes its audit row: its result, or why it was refused.
@@ -225,6 +230,11 @@ impl Api {
     /// runs only [`Op::for_moderators`], and not on a staff account (no moderator resets an admin's password). With no
     /// role, the host's token holder, everything.
     pub fn apply_as(&self, op: &Op, actor: &str, origin: &str, role: Option<crate::logins::Role>) -> Result<Value, String> {
+        self.apply_request(op, actor, origin, role, &crate::logins::new_token())
+    }
+
+    /// The same operation with a caller's stable retry ID (currently Give BP).
+    pub fn apply_request(&self, op: &Op, actor: &str, origin: &str, role: Option<crate::logins::Role>, request_id: &str) -> Result<Value, String> {
         use crate::logins::Role;
         match role {
             None | Some(Role::Admin) => {}
@@ -236,6 +246,14 @@ impl Api {
                 let own = op.account().is_some_and(|who| who.eq_ignore_ascii_case(actor));
                 if staff && !own && !matches!(op, Op::Account { .. }) { return Err("a moderator can't act on an admin's or another moderator's account".into()) }
             }
+        }
+        if let Op::GiveBp { who, amount } = op {
+            let caller = if role.is_none() { GrantActor::Host { by: actor } } else {
+                let id = self.accounts.locked().login_of(actor).map(|(id, _)| id).ok_or("only an admin may give BP")?;
+                GrantActor::Staff { user_id: id }
+            };
+            return self.give_bp(&GiveBpRequest { who: who.clone(), amount: *amount }, request_id, caller, origin)
+                .map(|r| serde_json::to_value(r).expect("GiveBpResult serializes")).map_err(|e| e.to_string())
         }
         let (result, before, after) = self.run(op)?;
         if op.changes() {
@@ -567,20 +585,6 @@ or after your next duel.", recipe.title)
                 let lines: Vec<String> = gifts.recipes.iter().map(|r| format!("{}\t{}\t{} cards", r.id, r.title, r.cards.len())).collect();
                 Ok((json!({ "recipes": rows, "message": lines.join("\n") }), None, None))
             }
-            Op::GiveBp { who, amount } => {
-                let mut d = self.accounts.locked();
-                let before = d.user_of(who).and_then(|u| d.dpoint(u));
-                let (to, total) = d.give_bp(who, *amount)?;
-                let (players, named) = (d.players_of(who), d.named_players_of(who));
-                drop(d);
-                // A running server shows the gift at once (Hub::push_bp), not only at the player's next login or purchase.
-                if let Some(hub) = &self.hub {
-                    let mut hub = hub.locked();
-                    hub.push_bp(&players, total);
-                    hub.mail_bp_gift(&named, *amount, total);
-                }
-                Ok((json!({ "bp": total, "message": format!("gave {amount} BP to {to}: {total} BP now") }), before.map(|b| json!(b)), Some(json!(total))))
-            }
             Op::SetRole { user, role } => {
                 let parsed: crate::logins::Role = role.parse()?;
                 let mut d = self.accounts.locked();
@@ -710,6 +714,26 @@ pub fn handle(request: &str, peer: IpAddr, token: Option<&str>, api: &Api) -> Op
         let (key, value) = line.split_once(':')?;
         key.eq_ignore_ascii_case("x-yo3-actor").then(|| value.trim().chars().filter(|c| !c.is_control()).take(40).collect::<String>())
     }).filter(|a| !a.is_empty()).unwrap_or_else(|| "host".into());
+    if let Op::GiveBp { who, amount } = &op {
+        let ids: Vec<&str> = head.lines().filter_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            key.eq_ignore_ascii_case("idempotency-key").then(|| value.trim())
+        }).collect();
+        if ids.len() != 1 {
+            return Some(reply("400 Bad Request", json!({ "ok": false, "code": "invalid_request", "error": "Give BP requires one Idempotency-Key header." })))
+        }
+        return Some(match api.give_bp(&GiveBpRequest { who: who.clone(), amount: *amount }, ids[0], GrantActor::Host { by: &actor }, api.origin) {
+            Ok(result) => reply("200 OK", json!({ "ok": true, "result": result })),
+            Err(error) => {
+                let status = match error.code {
+                    GrantErrorCode::RequestConflict => "409 Conflict", GrantErrorCode::Forbidden => "403 Forbidden",
+                    GrantErrorCode::NotFound => "404 Not Found", GrantErrorCode::PersistenceFailed => "503 Service Unavailable",
+                    GrantErrorCode::InvalidRequest => "400 Bad Request",
+                };
+                reply(status, json!({ "ok": false, "code": error.code, "error": error.message }))
+            }
+        })
+    }
     // Only the operation's name is logged: answers can hold keys and codes.
     match api.apply(&op, &actor) {
         Ok(result) => {
@@ -743,13 +767,19 @@ pub fn call(live: &Live, op: &Op) -> Result<Value, String> { call_as(live, op, "
 
 /// The same, recorded in the audit log as `actor`'s (a moderator's name).
 pub fn call_as(live: &Live, op: &Op, actor: &str) -> Result<Value, String> {
+    call_as_request(live, op, actor, &crate::logins::new_token())
+}
+
+/// Reuse `request_id` after an uncertain response: a committed Give BP returns its original result.
+pub fn call_as_request(live: &Live, op: &Op, actor: &str, request_id: &str) -> Result<Value, String> {
+    if !give_bp::valid_request_id(request_id) { return Err("invalid request ID (16–128 letters, digits, hyphens or underscores)".into()) }
     let actor: String = actor.chars().filter(|c| c.is_ascii_graphic() || *c == ' ').take(40).collect();
     let send = || -> anyhow::Result<Value> {
         let mut stream = TcpStream::connect_timeout(&SocketAddr::from(([127, 0, 0, 1], live.port)), Duration::from_secs(3))?;
         stream.set_read_timeout(Some(Duration::from_secs(30)))?;
         stream.set_write_timeout(Some(Duration::from_secs(10)))?;
         let body = serde_json::to_vec(op)?;
-        write!(stream, "POST {PREFIX}{} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\nX-YO3-Actor: {actor}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        write!(stream, "POST {PREFIX}{} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\nX-YO3-Actor: {actor}\r\nIdempotency-Key: {request_id}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             op.name(), live.token, body.len())?;
         stream.write_all(&body)?;
         let mut response = String::new();

@@ -696,6 +696,15 @@ impl Directory {
         })
     }
 
+    /// A BP grant prepared on a copy. Nothing is written or published until its caller commits the whole operation.
+    pub(crate) fn prepare_bp(&self, who: &str, bp: u32) -> Result<(Self, String, u32), String> {
+        let mut next = self.clone();
+        let file = next.file.take();
+        let (label, total) = next.give_bp(who, bp)?;
+        next.file = file;
+        Ok((next, label, total))
+    }
+
     /// The host's BOOSTERPASS codes.
     pub fn codes(&self) -> &[BpCode] {
         &self.codes
@@ -863,7 +872,7 @@ impl Directory {
 
     /// Saves what changed since the last save. In server.db only the accounts whose `Arc` or fields changed are
     /// serialized and written (#22); outside it (tests, tools) the whole file.
-    fn persist(&mut self) -> io::Result<()> {
+    pub(crate) fn persist(&mut self) -> io::Result<()> {
         let Some(file) = self.file.clone() else { return Ok(()) };
         let codes: Vec<Json> = self.codes.iter().map(|c| json!({ "code": c.code, "bp": c.bp, "uses": c.uses, "used_by": c.used_by, "claimed_at": c.claimed_at })).collect();
         let mut whole = json!({ "next_user": self.next_user, "next_player": self.next_player, "bp_codes": codes, "invites": self.invites });

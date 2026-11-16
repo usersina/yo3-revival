@@ -23,6 +23,16 @@ and Scripts.
 
 ## Open now
 
+**Standalone management dashboard**
+
+- [ ] Extend the typed, atomic Give BP operation to other admin operations, including proper save-failure handling.
+- [ ] Axum with separate host-token/local and staff-session/web routers; generated OpenAPI and dashboard client.
+- [ ] Connect the approved React UI to real server data and preserve the existing panel's capabilities.
+- [ ] Public management gate: staff MFA and recovery (#43), session revocation, trusted nginx proxy, HTTPS renewal,
+      route/header contract tests through nginx and a public-access security review. Do not expose the existing panel.
+- [ ] Compose packaging, thin Taskfile and hosting/backup/restore verification (#47), then gradual schema normalization.
+      Accepted boundaries and nginx requirements: [dashboard plan](dashboard.md).
+
 **Duels**
 
 - [ ] Complete menu/effect coverage and automatic native UI replay/minimization. Known reveal/reversal/disabled-zone

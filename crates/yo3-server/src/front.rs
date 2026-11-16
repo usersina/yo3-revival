@@ -1770,17 +1770,20 @@ impl Hub {
         Message::reply(0x2584).with("mail_id", Value::U32(mail_id))
     }
 
-    /// The host's gift of `amount` BP, `total` now, told to every player of the account by D-Mail from "Host". The game
+    /// A snapshot for preparing the host's BP gift on a copy, told to every player by D-Mail from "Host". The game
     /// has no message that opens its BOOSTERPASS result unasked (that box belongs to the window the player opened),
     /// but `0x2581` lights the bell's mail icon from the global dispatcher (`0x4F5565`: only the connection's flag
     /// `0x1000`, no fields, no window), so it is safe on any screen, a duel included.
-    pub fn mail_bp_gift(&mut self, players: &[(u32, String)], amount: u32, total: u32) {
-        for (id, name) in players {
-            self.mail_from_host((*id, name), "BP received", format!("The host gave your account {amount} BP. You have {total} BP now."));
-        }
+    pub(crate) fn bp_mail(&self) -> Mailbox { self.mail.clone() }
+
+    /// Publishes an already committed grant: the mailbox and balance become visible together under the hub lock.
+    pub(crate) fn publish_bp(&mut self, mail: Mailbox, players: &[(u32, String)], total: u32) {
+        self.mail = mail;
+        self.push_bp(&players.iter().map(|(id, _)| *id).collect::<Vec<_>>(), total);
+        for (id, _) in players { self.push(*id, &Message::reply(0x2581)); }
     }
 
-    /// A D-Mail from "Host" to a player, with the bell's mail icon if they are online (`mail_bp_gift`).
+    /// A D-Mail from "Host" to a player, with the bell's mail icon if they are online.
     fn mail_from_host(&mut self, (id, name): (u32, &str), title: &str, body: String) {
         let sent = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
         let mail = Mail { kind: MAIL_TO_PLAYER, from: (0, "Host".into()), to: (id, name.into()), title: title.into(), body, sent, ..Mail::default() };

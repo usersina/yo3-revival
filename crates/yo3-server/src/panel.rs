@@ -181,7 +181,7 @@ struct Viewer { user: String, role: Role, csrf: String }
 impl Viewer {
     fn admin(&self) -> bool { self.role == Role::Admin }
     /// The hidden field every form carries.
-    fn token(&self) -> String { format!("<input type=\"hidden\" name=\"csrf\" value=\"{}\">", esc(&self.csrf)) }
+    fn token(&self) -> String { format!("<input type=\"hidden\" name=\"csrf\" value=\"{}\"><input type=\"hidden\" name=\"request_id\" value=\"{}\">", esc(&self.csrf), crate::logins::new_token()) }
 }
 
 impl Panel {
@@ -368,7 +368,7 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
                 }
                 other => return Err(format!("unknown action {other:?}")),
             }))();
-            let outcome = op.and_then(|op| run(api, viewer, &op).map(|v| match &op {
+            let outcome = op.and_then(|op| api.apply_request(&op, &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id")).map(|v| match &op {
                 Op::ResetCode { .. } => format!("Reset code for {who}: {}. Hand it to the player: it works once, for 24 hours, in the launcher's \"Forgot password\".", text(&v["code"])),
                 _ => said(&v),
             }));

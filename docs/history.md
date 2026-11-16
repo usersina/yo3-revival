@@ -32,6 +32,13 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 
 ## Status
 
+2026-11-16, standalone dashboard branch: Give BP now prepares copies and commits balance, D-Mail, audit and a
+separate retry receipt before publishing. The first audit/mail failure regressions failed on the original code;
+`grant_contract.rs` now covers all four write failures (including a deferred constraint that fails at COMMIT),
+concurrency with duel rewards, restart, audit pruning, role rechecks, CLI `--by` changes and a real discarded HTTP
+answer followed by a server restart and retry. Schema 3 adds receipts, without player names, independently of the
+audit's retention. Public management and the React connection are still pending: [accepted plan](dashboard.md).
+
 Platform scope: **64-bit Windows 10/11** and **Linux with Wine**. **Windows 7 support is out of scope for now**,
 for both Desktop and Scripts. Current compatibility and native Windows verification work targets Windows 10/11.
 

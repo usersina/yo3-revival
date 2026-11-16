@@ -60,7 +60,7 @@ impl Mail {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Mailbox {
     last_id: u32,
     /// Mail not fetched yet, by recipient.
@@ -71,8 +71,16 @@ pub struct Mailbox {
 impl Mailbox {
     /// The mail kept in `file` (read now if it exists, written after each change).
     pub fn load(file: &Path) -> Mailbox {
-        let mut mailbox = Mailbox { file: Some(file.to_path_buf()), ..Mailbox::default() };
         let saved = crate::store::read_or_keep(file, "mail");
+        Self::from_saved(file, &saved)
+    }
+
+    pub(crate) fn try_load(file: &Path) -> std::io::Result<Mailbox> {
+        Ok(Self::from_saved(file, &crate::store::read(file)?.unwrap_or_default()))
+    }
+
+    fn from_saved(file: &Path, saved: &Json) -> Mailbox {
+        let mut mailbox = Mailbox { file: Some(file.to_path_buf()), ..Mailbox::default() };
         mailbox.last_id = saved["last_id"].as_u64().unwrap_or(0) as u32;
         for mail in saved["waiting"].as_array().into_iter().flatten().filter_map(Mail::from_json) {
             mailbox.waiting.entry(mail.to.0).or_default().push(mail);
@@ -98,11 +106,29 @@ impl Mailbox {
     }
 
     fn save(&self) {
-        let Some(file) = &self.file else { return };
-        let waiting: Vec<Json> = self.waiting.values().flatten().map(Mail::to_json).collect();
-        if let Err(e) = crate::store::write(file, &json!({ "last_id": self.last_id, "waiting": waiting })) {
+        if let Some(file) = &self.file && let Err(e) = self.persist() {
             tracing::warn!("mail not saved to {}: {e}", file.display());
         }
+    }
+
+    /// Writes a prepared mailbox; callers publish it only after the enclosing transaction commits.
+    pub(crate) fn persist(&self) -> std::io::Result<()> {
+        let Some(file) = &self.file else { return Ok(()) };
+        let waiting: Vec<Json> = self.waiting.values().flatten().map(Mail::to_json).collect();
+        crate::store::write(file, &json!({ "last_id": self.last_id, "waiting": waiting }))
+    }
+
+    /// The existing Host BP letter, staged without saving or notifying a player (0x2581, front.rs).
+    pub(crate) fn prepare_bp(&self, players: &[(u32, String)], amount: u32, total: u32) -> Self {
+        let mut next = self.clone();
+        let sent = (chrono::Utc::now() + chrono::Duration::hours(9)).format("%Y-%m-%d %H:%M:%S").to_string();
+        for (id, name) in players {
+            next.last_id += 1;
+            let mail = Mail { id: next.last_id, from: (0, "Host".into()), to: (*id, name.clone()), title: "BP received".into(),
+                body: format!("The host gave your account {amount} BP. You have {total} BP now."), sent: sent.clone(), ..Mail::default() };
+            next.waiting.entry(*id).or_default().push(mail);
+        }
+        next
     }
 
     /// Mail waiting for a player.

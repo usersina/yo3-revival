@@ -1,4 +1,4 @@
-//! The server's state in SQLite (`server.db`, schema 2), one row per thing (#22).
+//! The server's state in SQLite (`server.db`, schema 3), one row per thing (#22), with durable operation receipts.
 //!
 //! Each domain (accounts, records, friends, mail, teams, events, rentals) still hands the store its whole state as one
 //! JSON value, through `write(dir/NAME.json, value)`, and gets it back from `read`. The store splits that value into
@@ -28,7 +28,7 @@ use rusqlite::{Connection, OptionalExtension};
 const DOMAINS: &[&str] = &["accounts.json", "records.json", "friends.json", "mail.json", "teams.json", "events.json", "rentals.json", "settings.json"];
 const APPLICATION_ID: u32 = 0x594f3301;
 /// Schema 1 kept each domain as one JSON document (`state_documents`); schema 2 keeps one row per item.
-const SCHEMA: u32 = 2;
+const SCHEMA: u32 = 3;
 const SCHEMA_SQL: &str = "
     CREATE TABLE IF NOT EXISTS domains (name TEXT PRIMARY KEY, scalars TEXT NOT NULL CHECK(json_valid(scalars)),
         shape TEXT NOT NULL CHECK(json_valid(shape)));
@@ -49,6 +49,7 @@ fn connection(dir: &Path) -> io::Result<Arc<Slot>> {
     conn.busy_timeout(std::time::Duration::from_secs(5)).map_err(sql)?;
     conn.pragma_update(None, "journal_mode", "WAL").map_err(sql)?;
     conn.pragma_update(None, "synchronous", "NORMAL").map_err(sql)?;
+    conn.pragma_update(None, "foreign_keys", true).map_err(sql)?;
     let slot = Arc::new(Slot { conn: Mutex::new(Some(conn)), back: std::sync::Condvar::new() });
     all.insert(dir.to_path_buf(), slot.clone());
     Ok(slot)
@@ -187,7 +188,7 @@ pub fn lock(dir: &Path) -> io::Result<DataLock> {
     Ok(DataLock { _file: file })
 }
 
-/// Opens (or creates) `dir`'s database at schema 2. A schema 1 database is converted in place, in one transaction.
+/// Opens (or creates) `dir`'s database. Older schemas are converted in place, in one transaction.
 /// JSON documents from versions before the database are not imported: the beta starts fresh (D9).
 pub fn initialize(dir: &Path) -> io::Result<()> {
     fs::create_dir_all(dir)?;
@@ -224,6 +225,7 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
             tx.execute_batch("DROP TABLE state_documents;").map_err(sql)?;
             tx.pragma_update(None, "user_version", SCHEMA).map_err(sql)?;
         }
+        (APPLICATION_ID, 2) => { tx.pragma_update(None, "user_version", SCHEMA).map_err(sql)?; }
         (0, 0) if tables == 0 => {
             tx.execute_batch(SCHEMA_SQL).map_err(sql)?;
             tx.pragma_update(None, "application_id", APPLICATION_ID).map_err(sql)?;
@@ -233,7 +235,33 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
     }
     tx.execute_batch(DUEL_LOGS_TABLE).map_err(sql)?;
     tx.execute_batch(AUDIT_TABLE).map_err(sql)?;
+    tx.execute_batch(RECEIPTS_TABLE).map_err(sql)?;
     tx.commit().map_err(sql)
+}
+
+// Receipts deliberately survive audit pruning. No expiry: a request ID is never silently reusable.
+const RECEIPTS_TABLE: &str = "CREATE TABLE IF NOT EXISTS operation_receipts (
+    actor TEXT NOT NULL, request_id TEXT NOT NULL, operation TEXT NOT NULL, input TEXT NOT NULL CHECK(json_valid(input)),
+    result TEXT NOT NULL CHECK(json_valid(result)), created INTEGER NOT NULL,
+    PRIMARY KEY(actor, request_id)) WITHOUT ROWID;";
+
+#[derive(Clone)]
+pub(crate) struct Receipt { pub operation: String, pub input: String, pub result: Json }
+
+pub(crate) fn receipt(dir: &Path, actor: &str, request_id: &str) -> io::Result<Option<Receipt>> {
+    hold(dir)?.query_row("SELECT operation, input, result FROM operation_receipts WHERE actor=?1 AND request_id=?2", (actor, request_id), |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+    }).optional().map_err(sql)?.map(|(operation, input, result)| {
+        Ok(Receipt { operation, input, result: serde_json::from_str(&result).map_err(io::Error::other)? })
+    }).transpose()
+}
+
+/// A receipt is written only as part of the operation's transaction, never on its own.
+pub(crate) fn put_receipt(dir: &Path, actor: &str, request_id: &str, receipt: &Receipt) -> io::Result<()> {
+    if !in_batch(dir) { return Err(io::Error::other("an operation receipt needs its operation's transaction")) }
+    hold(dir)?.execute("INSERT INTO operation_receipts(actor, request_id, operation, input, result, created) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        rusqlite::params![actor, request_id, receipt.operation, receipt.input, receipt.result.to_string(), crate::logins::now()]).map_err(sql)?;
+    Ok(())
 }
 
 /// Every administrative change (#25, `api.rs`): who made it, from where, what and on what, the values before and after.

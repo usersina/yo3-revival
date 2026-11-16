@@ -73,7 +73,7 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::Countries => Op::Countries,
         Admin::GrantTitle { player, title } => Op::GrantTitle { player: player.clone(), title: title.clone() },
         Admin::Titles => Op::Titles,
-        Admin::GiveBp { who, amount } => Op::GiveBp { who: who.clone(), amount: *amount },
+        Admin::GiveBp { who, amount, .. } => Op::GiveBp { who: who.clone(), amount: *amount },
         Admin::GiveCards { player, card, art, count } => Op::GiveCards { player: player.clone(), card: card.clone(), art: *art, count: *count },
         Admin::GiveRecipe { player, deck, cards } => Op::GiveRecipe { player: player.clone(), deck: deck.clone(), cards: *cards },
         Admin::Recipes => Op::Recipes,
@@ -139,7 +139,12 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         // Before any request: what friends dial is the host's to say.
         anyhow::ensure!(a.advertise.is_some(), "pass --advertise ADDRESS: the address friends reach this server at (an IP or a name in its certificate)");
     }
-    let mut result = call(a, &op, &game_dir)?;
+    let mut result = if let Admin::GiveBp { request_id, .. } = &command {
+        let id = request_id.clone().unwrap_or_else(yo3_server::logins::new_token);
+        anyhow::ensure!(api::give_bp::valid_request_id(&id), "invalid request ID (16–128 letters, digits, hyphens or underscores)");
+        eprintln!("Request ID: {id} (reuse with --request-id if the answer is lost)");
+        call_request(a, &op, &game_dir, &id)?
+    } else { call(a, &op, &game_dir)? };
     if let Admin::Share { invite: true } = &command {
         result["invite"] = call(a, &Op::Invite { uses: Some(1), days: Some(7) }, &game_dir)?;
     }
@@ -148,8 +153,12 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
 
 /// One admin operation, on the running server or on its stopped data folder.
 fn call(a: &Args, op: &Op, game_dir: &std::path::Path) -> anyhow::Result<Value> {
+    call_request(a, op, game_dir, &yo3_server::logins::new_token())
+}
+
+fn call_request(a: &Args, op: &Op, game_dir: &std::path::Path, request_id: &str) -> anyhow::Result<Value> {
     match live::running(&a.data_dir) {
-        Some(server) => api::call_as(&server, op, &a.by),
+        Some(server) => api::call_as_request(&server, op, &a.by, request_id),
         None => {
             if matches!(op, Op::Shutdown | Op::Kick { .. }) { anyhow::bail!("no server is running on {}", a.data_dir.display()) }
             let _lock = if op.changes() { Some(yo3_server::store::lock(&a.data_dir)?) } else { None };
@@ -168,7 +177,7 @@ fn call(a: &Args, op: &Op, game_dir: &std::path::Path) -> anyhow::Result<Value> 
                 hub.keep_rentals(&dir.join("rentals.json"));
                 offline.hub = Some(Arc::new(Mutex::new(hub)));
             }
-            offline.apply(op, &a.by)
+            offline.apply_request(op, &a.by, "offline", None, request_id)
         }
     }.map_err(anyhow::Error::msg)
 }

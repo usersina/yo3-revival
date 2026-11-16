@@ -18,6 +18,7 @@
 ## Build and contribute
 
 - [Development guide](development.md): source builds, checks, duel diagnostics and release packaging.
+- [Standalone dashboard](dashboard.md): current preview, transactional admin operations and the accepted public-management/nginx plan.
 - [Code signing policy](code-signing.md): proposed signing scope, release approval, privacy and current unsigned status.
 - [Working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md): repository rules, tools and live-test safety.
 - [Features](features.md): what works today, area by area, with status and how each row was verified.

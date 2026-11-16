@@ -81,8 +81,10 @@ impl Browser {
 
     /// Posts a form of `page` with that page's CSRF token; the page shown after it (its flash message).
     async fn act(&self, page: &str, to: &str, fields: &[(&str, &str)]) -> Answer {
-        let csrf = self.get(page).await.csrf();
-        let mut all = vec![("csrf", csrf.as_str())];
+        let page = self.get(page).await;
+        let csrf = page.csrf();
+        let request_id = page.body.split("name=\"request_id\" value=\"").nth(1).expect("retry ID in form").split('"').next().unwrap();
+        let mut all = vec![("csrf", csrf.as_str()), ("request_id", request_id)];
         all.extend_from_slice(fields);
         let done = self.post(to, &all).await;
         assert_eq!(done.status, 303, "{}", done.body);
