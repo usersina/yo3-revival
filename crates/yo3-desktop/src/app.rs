@@ -6,7 +6,7 @@ use iced::widget::{Space, column, container, mouse_area, operation, row, stack, 
 use iced::{Alignment::Center, Color, Element, Length::Fill, Subscription, Task, keyboard, window};
 use yo3_desktop::{Backend, Settings, instance, store::Store, updates};
 use yo3_skin::{Glyph, Kind, color, pill};
-use crate::{external, help, home, settings, setup};
+use crate::{external, help, home, host, settings, setup};
 
 /// What the window shares with every screen.
 pub struct Ctx {
@@ -20,7 +20,7 @@ pub struct Ctx {
 pub enum Claim { Now(instance::Owner), AfterUpdate }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Dialog { Help, Report, Repair, ConfirmClose, Backups }
+pub enum Dialog { Help, Report, Repair, ConfirmClose, Backups, Host }
 
 /// Report a problem: what the player says happened, the error it is about, and how far it got.
 #[derive(Clone, Debug, Default)]
@@ -40,6 +40,7 @@ pub enum Message {
     OpenReport(String),
     Report(ReportMessage),
     Copy(String),
+    Host(host::Message),
     CloseDialog,
     Show,
     Drag,
@@ -61,6 +62,7 @@ pub struct App {
     settings: Option<settings::State>,
     help: help::State,
     report: Report,
+    host: host::State,
     dialog: Option<Dialog>,
     update: Option<updates::Decision>,
     startup: updates::activation::Startup,
@@ -98,7 +100,7 @@ impl App {
             listen_for_second_starts(&ctx.root, claim),
         ];
         if let Some(setup) = &mut setup { tasks.push(setup.start(&ctx).map(Message::Setup)) }
-        (Self { ctx, home, setup, settings: None, help: help::State::at(None), report: Report::default(), dialog: None, update: None, startup, quitting: false },
+        (Self { ctx, home, setup, settings: None, help: help::State::at(None), report: Report::default(), host: host::State::default(), dialog: None, update: None, startup, quitting: false },
             Task::batch(tasks))
     }
 
@@ -112,6 +114,7 @@ impl App {
             Message::Home(home::Message::Report(error)) => return self.update(Message::OpenReport(error)),
             Message::Home(home::Message::Help(topic)) => return self.update(Message::OpenHelp(Some(topic))),
             Message::Home(home::Message::Copy(text)) => return self.update(Message::Copy(text)),
+            Message::Home(home::Message::Multi(crate::multi::Message::Host)) => { self.host.open(&self.ctx); self.dialog = Some(Dialog::Host) }
             Message::Home(home::Message::RestoreBackup(backup)) => {
                 self.dialog = None;
                 return self.home.update(home::Message::RestoreBackup(backup), &mut self.ctx).map(Message::Home);
@@ -163,12 +166,28 @@ impl App {
                 self.report.result = Some(result);
             }
             Message::Copy(text) => return iced::clipboard::write(text),
+            Message::Host(host::Message::Copy(text)) => return self.update(Message::Copy(text)),
+            Message::Host(host::Message::Open(url)) => return self.update(Message::OpenLink(url)),
+            Message::Host(host::Message::Help(topic)) => return self.update(Message::OpenHelp(Some(topic))),
+            Message::Host(host::Message::Close) => self.dialog = None,
+            Message::Host(message) => {
+                // Your hosted server goes in your own Multiplayer list, at this PC's own address.
+                let own = match &message {
+                    host::Message::Started(Ok(started)) => yo3_desktop::hosting::hosted_server(&format!("{} (yours)", started.1.server.name), "localhost",
+                        started.0.host_port, started.1.server.key()).ok(),
+                    _ => None,
+                };
+                let task = self.host.update(message, &mut self.ctx).map(Message::Host);
+                let Some(own) = own else { return task };
+                return Task::batch([task, self.home.update(home::Message::Multi(crate::multi::Message::Hosted(Box::new(own))), &mut self.ctx).map(Message::Home)]);
+            }
             Message::CloseDialog => self.dialog = None,
             Message::Show => return window::latest().and_then(|id| Task::batch([window::minimize(id, false), window::gain_focus(id)])),
             Message::Drag => return window::latest().and_then(window::drag),
             Message::Minimize => return window::latest().and_then(|id| window::minimize(id, true)),
             Message::CloseRequested => {
-                if self.home.game.running || self.home.game.starting.is_some() { self.dialog = Some(Dialog::ConfirmClose) } else { return self.update(Message::Quit) }
+                let friends = self.host.hosted.is_some() && self.host.activity.online > 0;
+                if self.home.game.running || self.home.game.starting.is_some() || friends { self.dialog = Some(Dialog::ConfirmClose) } else { return self.update(Message::Quit) }
             }
             Message::Quit => {
                 if self.quitting { return Task::none() }
@@ -179,6 +198,7 @@ impl App {
                 // Your own server lives as long as the launcher (until #29 ties it to the game).
                 return job(move || {
                     backend.stop_game()?;
+                    let _ = backend.stop_hosting();
                     if backend.live(&settings).is_some() { backend.stop_server(&settings)?; }
                     Ok(())
                 }, |_| Message::Exit);
@@ -240,6 +260,7 @@ impl App {
             keyboard::listen().map(Message::Key),
         ];
         if self.setup.is_none() { all.push(self.home.subscription().map(Message::Home)) }
+        all.push(self.host.subscription().map(Message::Host));
         Subscription::batch(all)
     }
 
@@ -283,6 +304,12 @@ impl App {
             line = line.push(container(Space::new().width(9).height(9)).style(|_| dot(color::WARN)))
                 .push(yo3_skin::link(update_line(&release.tag), Message::OpenLink(release.url.clone()), true));
         }
+        if self.host.hosted.is_some() {
+            // Hosting for friends runs while the launcher is open: the footer says so and opens its dialog.
+            let online = self.host.activity.online;
+            line = line.push(container(Space::new().width(9).height(9)).style(|_| dot(color::GOOD)))
+                .push(yo3_skin::link(format!("Hosting for friends · {online} online"), Message::Home(home::Message::Multi(crate::multi::Message::Host)), true));
+        }
         let footer = line.push(Space::new().width(Fill)).push(yo3_skin::link("Report a problem", Message::OpenReport(String::new()), true))
             .push(Space::new().width(18)).push(yo3_skin::link("Help", Message::OpenHelp(None), true))
             .padding([0, 16]).height(Fill);
@@ -294,6 +321,7 @@ impl App {
         let (title, body, buttons, height): (&str, String, Element<'_, Message>, f32) = match which {
             Dialog::Help => return self.help.view().map(Message::Help),
             Dialog::Report => return self.report_dialog(),
+            Dialog::Host => return self.host.view().map(Message::Host),
             Dialog::Repair => ("YO3 Revival needs repair", "Some of YO3 Revival's own files are missing or changed, often after an \
                 antivirus scan. Download the latest release again and replace this folder with it; your settings are kept.".into(),
                 row![pill("Releases", Some(Message::OpenLink(RELEASES.into())), Kind::Primary, 120, 38), ok()].spacing(10).into(), 260.0),
@@ -310,7 +338,9 @@ impl App {
                 return container(yo3_skin::panel(Some("Restore a backup"), column![list, Space::new().height(Fill),
                     row![Space::new().width(Fill), pill("Cancel", Some(Message::CloseDialog), Kind::Primary, 120, 38)]])).width(470).height(380).into();
             }
-            Dialog::ConfirmClose => ("Close YO3 Revival?", "The game is open. Closing YO3 Revival also closes the game and your server.".into(),
+            Dialog::ConfirmClose => ("Close YO3 Revival?", if self.host.hosted.is_some() && self.host.activity.online > 0 {
+                    "Friends are playing on your server. Closing YO3 Revival stops it, and the game too if it is open.".into()
+                } else { "The game is open. Closing YO3 Revival also closes the game and your server.".into() },
                 row![pill("Cancel", Some(Message::CloseDialog), Kind::Primary, 120, 38), pill("Close", Some(Message::Quit), Kind::Primary, 120, 38)].spacing(10).into(), 230.0),
         };
         container(yo3_skin::panel(Some(title), column![

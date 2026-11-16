@@ -6,6 +6,7 @@ mod error_presentation;
 mod external;
 mod help;
 mod home;
+mod host;
 mod multi;
 mod settings;
 mod setup;

@@ -31,6 +31,7 @@ pub mod shortcut;
 pub mod multiplayer;
 pub mod options;
 pub mod words;
+pub mod hosting;
 mod game_data_platform;
 mod process;
 
@@ -295,13 +296,15 @@ pub enum Readiness { Ready, GameProblem(String), ComponentProblem(String), Valid
 pub struct Backend { pub root: PathBuf, pub runtime: Runtime, pub diagnostics: yo3_tunnel::diagnostics::Session,
     server_session: Mutex<Option<String>>, game: Mutex<Option<Child>>, game_errors: Mutex<Option<process::Errors>>, game_ready: Mutex<Option<PathBuf>>, server: Mutex<Option<Child>>,
     /// The write end of the server's standard input: while this launcher lives it stays open (`--owned`).
-    server_owner: Mutex<Option<std::process::ChildStdin>> }
+    server_owner: Mutex<Option<std::process::ChildStdin>>,
+    /// Host for friends' server (#37) and the write end of its standard input (`--owned`), like your own server's.
+    hosted: Mutex<Option<Child>>, hosted_owner: Mutex<Option<std::process::ChildStdin>> }
 impl Backend {
     pub fn new(root: PathBuf) -> anyhow::Result<Arc<Self>> {
         yo3_tunnel::diagnostics::private_dir(&root.join("profiles"))?;
         std::fs::create_dir_all(root.join("logs"))?;
         let diagnostics = yo3_tunnel::diagnostics::Session::start(&root.join("logs/sessions"), "app", None)?;
-        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), game_errors: Mutex::new(None), game_ready: Mutex::new(None), server: Mutex::new(None), server_owner: Mutex::new(None) }))
+        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), game_errors: Mutex::new(None), game_ready: Mutex::new(None), server: Mutex::new(None), server_owner: Mutex::new(None), hosted: Mutex::new(None), hosted_owner: Mutex::new(None) }))
     }
     pub fn data_dir(&self, settings: &Settings) -> PathBuf {
         if settings.data_dir.trim().is_empty() { self.root.join("singleplayer") } else { PathBuf::from(&settings.data_dir) }
@@ -326,6 +329,7 @@ impl Backend {
         self.check_server_resources()?;
         if let Some(live) = self.live(settings) { return api::call(&live, &Op::Status).map_err(anyhow::Error::msg) }
         ensure!(owned.as_mut().is_none_or(|p| p.try_wait().ok().flatten().is_some()), "Server is still starting.");
+        ensure!(settings.host_port != settings.listen_port || self.hosting_live().is_none(), "Stop hosting to play Singleplayer: both use the same port.");
         // No live file for this data folder, yet something answers on the port: another server (a Scripts `run.cmd` or
         // another Revival with its own data) or another program. Starting would only fail to bind, with a vaguer error.
         ensure!(!local_port_answers(settings.listen_port), "TCP port {} is already used by another program, such as a \

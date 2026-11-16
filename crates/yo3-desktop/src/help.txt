@@ -25,6 +25,23 @@ Stay signed in keeps a sign-in token in your system's password store, never your
 Other servers adds a server by its address, or by an invite link a host sent you.
 Settings, Accounts signs you out, signs you out everywhere, or changes your password.
 
+# host | Host for friends
+Host for friends, on the Multiplayer tab, runs a server on this computer that your friends can join.
+- It has its own data, apart from Singleplayer.
+- Copy the invite link and send it to your friends. They paste it under Other servers.
+- Make an invite code for each friend: they need one to create an account.
+- Your server is added to your own list too, so you play on it like everyone else.
+Friends outside your home network need your public address and a forwarded port. See: Friends can't reach your server.
+The server runs while YO3 Revival is open. Stop hosting ends it.
+
+# reach | Friends can't reach your server
+Friends on the same network use the address YO3 Revival shows. Friends elsewhere need more:
+- Your router must forward the port (7443 unless you changed it) to this computer. Look for Port forwarding in your router's settings page.
+- Use your public address as the address to share. A search for "what is my IP" shows it.
+- When Windows asks whether YO3 Revival's server may use the network, allow it for private networks.
+- Some internet providers share one public address between many homes (it is called CGNAT). Forwarding can't work then; ask your provider for a public address, or use a virtual network such as a VPN both of you join.
+Check reachability tests the port from this computer's side.
+
 # settings | Settings
 The gear at the top right opens Settings. Every change applies at the next PLAY, without restarting YO3 Revival.
 - Game: the game folder, Verify and repair, the screen size, opening the game without the launcher, and a desktop shortcut.
@@ -47,7 +64,7 @@ If your antivirus removed a file, restore it from the antivirus's quarantine and
 
 # port | Another program is using the port
 Your server needs a network port, and another program already has it: often another server, or a second YO3 Revival.
-Close the other program and try again.
+Close the other program and try again. For Host for friends, Change port picks another one; tell your friends the new invite link.
 
 # wine | Wine on Linux
 YO3 Revival runs the game with Wine. Install Wine from your distribution's packages.

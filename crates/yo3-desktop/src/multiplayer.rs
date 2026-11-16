@@ -315,7 +315,7 @@ impl Problem {
             Problem::IdentityChanged => "This server's identity changed. It may not be the server you added: don't sign in.".into(),
             Problem::Unreachable => "We can't reach the server. Check your internet connection, or try again later.".into(),
             Problem::SignInAgain => "Please sign in again.".into(),
-            Problem::SessionEnded => "Your sign-in ended: a moderator ended it, or this account signed in somewhere else.".into(),
+            Problem::SessionEnded => "Your sign-in ended: the server restarted, a moderator ended it, or this account signed in somewhere else.".into(),
             Problem::InviteNeeded => "This server needs an invite code to make an account.".into(),
             Problem::InviteInvalid => "That invite code doesn't work: it may be used up or expired.".into(),
             Problem::RegistrationClosed => "This server isn't taking new accounts.".into(),

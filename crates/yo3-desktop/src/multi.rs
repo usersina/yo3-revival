@@ -76,6 +76,10 @@ pub enum Message {
     Remedy(Remedy),
     /// The trust form's identity, behind Details.
     ShowIdentity,
+    /// Handled by the window: Host for friends (#37).
+    Host,
+    /// Your hosted server, added to your own list (#37).
+    Hosted(Box<Server>),
     /// Settings → Accounts: open (or close) a form for a server.
     AccountForm(String, Option<AccountForm>),
     AccountEdit(AccountField, String),
@@ -324,6 +328,16 @@ impl State {
             Message::Remedy(Remedy::RemoveServer) => return self.update(Message::Remove, ctx),
             Message::Remedy(Remedy::Update) | Message::Play | Message::CloseGame => {}
             Message::ShowIdentity => self.show_identity = !self.show_identity,
+            Message::Host => {}
+            Message::Hosted(server) => {
+                if self.servers.iter().any(|s| s.key() == server.key()) {
+                    // Known already (an earlier hosting, or its link): its address follows this hosting's port.
+                    if let Some(known) = self.servers.iter_mut().find(|s| s.key() == server.key()) { known.address = server.address.clone(); known.server_name = server.server_name.clone() }
+                    let saved = self.servers.iter().find(|s| s.key() == server.key()).cloned().unwrap_or(*server);
+                    return Task::batch([self.probe(&saved), self.save(ctx, saved)]);
+                }
+                return self.add(ctx, *server);
+            }
             Message::AccountForm(key, form) => {
                 self.account = form.map(|f| (key, f));
                 self.account_password.clear(); self.account_new.clear(); self.account_again.clear();
@@ -651,7 +665,7 @@ impl State {
     }
 
     fn other_servers(&self) -> Element<'_, Message> {
-        let mut links = row![yo3_skin::link("▸ Other servers", Message::Show(Form::Add), false)].spacing(14);
+        let mut links = row![yo3_skin::link("▸ Other servers", Message::Show(Form::Add), false), yo3_skin::link("Host for friends", Message::Host, false)].spacing(14);
         if self.selected().is_some_and(|s| !s.official) { links = links.push(yo3_skin::link("Remove this server", Message::Remove, false)) }
         links.into()
     }

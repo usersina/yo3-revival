@@ -5,15 +5,15 @@
 use yo3_desktop::words::technical;
 
 /// The window's code, up to its tests.
-const SCREENS: [(&str, &str); 6] = [
+const SCREENS: [(&str, &str); 7] = [
     ("app.rs", include_str!("app.rs")), ("home.rs", include_str!("home.rs")), ("multi.rs", include_str!("multi.rs")), ("setup.rs", include_str!("setup.rs")),
-    ("settings.rs", include_str!("settings.rs")), ("help.rs", include_str!("help.rs")),
+    ("settings.rs", include_str!("settings.rs")), ("help.rs", include_str!("help.rs")), ("host.rs", include_str!("host.rs")),
 ];
 
 /// Library code whose error messages can reach a notice.
-const LIBRARY: [(&str, &str); 7] = [
+const LIBRARY: [(&str, &str); 8] = [
     ("lib.rs", include_str!("lib.rs")), ("singleplayer.rs", include_str!("singleplayer.rs")), ("direct.rs", include_str!("direct.rs")),
-    ("game_data.rs", include_str!("game_data.rs")), ("options.rs", include_str!("options.rs")),
+    ("game_data.rs", include_str!("game_data.rs")), ("options.rs", include_str!("options.rs")), ("hosting.rs", include_str!("hosting.rs")),
     ("reports.rs", include_str!("reports.rs")), ("external.rs", include_str!("external.rs")),
 ];
 
