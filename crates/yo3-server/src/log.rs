@@ -33,6 +33,8 @@ struct Current {
 
 pub struct PacketLog {
     enabled: bool,
+    /// Whether decoded traces go to the session log ([`diagnostic`]).
+    traces: bool,
     dir: PathBuf,
     name: String,
     max_bytes: u64,
@@ -64,13 +66,19 @@ impl PacketLog {
         let name = format!("packets-{stamp}-{}-{seq}", std::process::id());
         let path = dir.join(format!("{name}.jsonl"));
         let cur = Current { file: File::create(&path)?, path, bytes: 0, older: VecDeque::new(), parts: 0 };
-        Ok(PacketLog { enabled: true, dir: dir.to_path_buf(), name, max_bytes: FILE_MAX, keep: FILES_KEPT, cur: Mutex::new(cur) })
+        Ok(PacketLog { enabled: true, traces: true, dir: dir.to_path_buf(), name, max_bytes: FILE_MAX, keep: FILES_KEPT, cur: Mutex::new(cur) })
     }
     pub fn disabled() -> std::io::Result<PacketLog> {
         let path = PathBuf::from(if cfg!(windows) { "NUL" } else { "/dev/null" });
         let file = std::fs::OpenOptions::new().write(true).open(&path)?;
         let cur = Current { file, path: PathBuf::from("disabled"), bytes: 0, older: VecDeque::new(), parts: 0 };
-        Ok(PacketLog { enabled: false, dir: PathBuf::new(), name: String::new(), max_bytes: FILE_MAX, keep: 1, cur: Mutex::new(cur) })
+        Ok(PacketLog { enabled: false, traces: true, dir: PathBuf::new(), name: String::new(), max_bytes: FILE_MAX, keep: 1, cur: Mutex::new(cur) })
+    }
+
+    /// With `traces` false, no packet reaches the session log either (a hosted server's privacy, #37).
+    pub fn with_traces(mut self, traces: bool) -> PacketLog {
+        self.traces = traces;
+        self
     }
 
     /// Other limits (a file's size in bytes, how many files are kept); for tests.
@@ -92,13 +100,13 @@ impl PacketLog {
             Some(Packet::Message(m)) => (format!("<- {}", summarize(m)), message_json(m)),
             None => (format!("<- undecodable: {}", error.unwrap_or("?")), Json::Null),
         };
-        diagnostic(who, "<-", &summary, &msg, error);
+        if self.traces { diagnostic(who, "<-", &summary, &msg, error); }
         if self.enabled { self.write(who, "<-", plain, msg, error); }
     }
 
     pub fn outgoing(&self, who: &str, plain: &[u8], msg: &Message) {
         let data = message_json(msg);
-        diagnostic(who, "->", &summarize(msg), &data, None);
+        if self.traces { diagnostic(who, "->", &summarize(msg), &data, None); }
         if self.enabled { self.write(who, "->", plain, data, None); }
     }
 
@@ -198,6 +206,24 @@ mod tests {
         let text = yo3_tunnel::diagnostics::records(&dir).unwrap().into_iter().filter(|r| r.name.ends_with(".log")).map(|r| std::fs::read_to_string(dir.join(r.name)).unwrap()).collect::<String>();
         assert!(text.contains("[YO3 PACKET]") && text.contains("TestDuelist") && text.contains("3437"), "nested packet evidence was lost: {text}");
         assert!(text.contains("<-") && text.contains("->"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_private_server_keeps_packets_out_of_the_session_log() {
+        // A hosted server's `packet_log = false` (#37): players' chat lines and names stay out of every log.
+        let dir = std::env::temp_dir().join(format!("yo3-session-private-{}", std::process::id())); let _ = std::fs::remove_dir_all(&dir);
+        let session = yo3_tunnel::diagnostics::Session::start(&dir, "server", None).unwrap();
+        let writer = session.clone();
+        let subscriber = tracing_subscriber::fmt().without_time().with_ansi(false).with_writer(move || writer.writer()).finish();
+        let message = Message::reply(0x2455).item(Message::record().with("chat_str", Value::text("PrivateChatLine")));
+        tracing::subscriber::with_default(subscriber, || {
+            let packets = PacketLog::disabled().unwrap().with_traces(false);
+            packets.incoming("front", &message.encode(), Some(&Packet::Message(message.clone())), None);
+            packets.outgoing("front", &message.encode(), &message);
+        });
+        let text = yo3_tunnel::diagnostics::records(&dir).unwrap().into_iter().filter(|r| r.name.ends_with(".log")).map(|r| std::fs::read_to_string(dir.join(r.name)).unwrap()).collect::<String>();
+        assert!(!text.contains("PrivateChatLine") && !text.contains("[YO3 PACKET]"), "{text}");
         std::fs::remove_dir_all(dir).unwrap();
     }
 

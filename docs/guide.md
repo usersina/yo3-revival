@@ -47,6 +47,7 @@ storage. Select the complete installation with `--game-dir` and retry; keep exis
 | `--auth-cert`, `--auth-key` | Explicit TLS certificate/key files                                                                   |
 | `--duel-check`              | Compare each player's modeled client state with the rules engine after each step                     |
 | `--no-packet-log`           | Disable separate raw packet files; decoded packet traces remain in bounded session diagnostics       |
+| `--no-packet-trace`         | Keep decoded packet traces out of the session diagnostics too (beta; `packet_log = false` sets both) |
 | `--config`                  | The [server file](#the-server-file) (beta); default `server.toml` in the current folder when it is there |
 | `--owned`                   | The launcher's own server (Singleplayer, on the `beta` branch): standard input stays open while the launcher lives; once it closes, the server stops after nobody has played for `--owned-idle` seconds (default 120)|
 
@@ -71,9 +72,13 @@ game_dir = "/games/Yu-Gi-Oh! ONLINE 3"
 data_dir = "data"
 log_dir = "logs"
 engine = "yo3-engine"
+packet_log = false
 ```
 
-`auth_cert` and `auth_key` name explicit TLS files. A key the server doesn't know, such as a live setting, is refused
+`packet_log = false` keeps players' packets out of every log: no raw packet files (`--no-packet-log`) and no packet
+traces in the session logs (`--no-packet-trace`), which otherwise carry chat lines and names. A hosted server should
+use it ([hosting](hosting.md#logs-and-privacy)); the server bundle's `server.toml.example` does. `auth_cert` and
+`auth_key` name explicit TLS files. A key the server doesn't know, such as a live setting, is refused
 at start with the list of keys it takes.
 
 ## Live settings

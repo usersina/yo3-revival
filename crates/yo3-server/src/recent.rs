@@ -40,6 +40,12 @@ pub fn lines(limit: usize, problems: bool) -> Vec<Line> {
     lines.iter().rev().filter(|l| !problems || matches!(l.level, "ERROR" | "WARN")).take(limit).cloned().collect()
 }
 
+/// How many errors were logged in the last `seconds`.
+pub fn errors_within(seconds: i64) -> usize {
+    let since = chrono::Utc::now().timestamp() - seconds;
+    LINES.lock().unwrap_or_else(|e| e.into_inner()).iter().rev().take_while(|l| l.at >= since).filter(|l| l.level == "ERROR").count()
+}
+
 /// A log writer that also keeps each finished line here.
 pub struct Tee<W> { inner: W, line: Vec<u8> }
 

@@ -207,7 +207,8 @@ pub async fn http_loop(
             let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
             // The admin API (#25); the old /admin and /manager routes are gone.
             let mut response = crate::api::handle(&request, peer.ip(), admin_token.as_deref(), &api);
-            // The admin panel (#36).
+            // The monitor's health check (#37) and the admin panel (#36).
+            if response.is_none() && request.starts_with("GET /health ") && peer.ip().is_loopback() { response = Some(crate::api::health(&api)) }
             if response.is_none() { response = crate::panel::handle(&request, peer.ip(), &panel, &api).await }
             if let Some(response) = response {
                 let mut head = format!("HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n", response.status, response.content_type, response.body.len());

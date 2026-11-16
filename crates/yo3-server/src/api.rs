@@ -598,6 +598,21 @@ pub fn handle(request: &str, peer: IpAddr, token: Option<&str>, api: &Api) -> Op
     }
 }
 
+/// The answer to `GET /health` on the loopback HTTP port (#37), for the host's monitor: 200 when the server can save
+/// and duel, 503 when it can't. No token: it says nothing about players beyond how many are online.
+pub fn health(api: &Api) -> Response {
+    let now = crate::logins::now();
+    let (online, duels) = api.hub.as_ref().map_or((0, 0), |h| { let h = h.locked(); (h.online(), h.tables.len()) });
+    let saving = crate::store::healthy();
+    let engine = api.status.engine_problem.is_none();
+    let backup = api.data_dir.as_deref().and_then(last_backup);
+    let body = json!({ "ok": saving && engine, "saving": saving, "engine": engine, "backup_age_seconds": backup.map(|b| b.1),
+        "errors_recent": crate::recent::errors_within(600), "online": online, "duels": duels,
+        "maintenance": api.settings.now().in_maintenance(now), "release": yo3_tunnel::BUILD_VERSION });
+    let status = if saving && engine { "200 OK" } else { "503 Service Unavailable" };
+    Response { status, content_type: "application/json", headers: vec![("Cache-Control", "no-store".into())], body: body.to_string().into_bytes() }
+}
+
 /// Sends `op` to the running server `live`: its result, or why not.
 pub fn call(live: &Live, op: &Op) -> Result<Value, String> { call_as(live, op, "host") }
 

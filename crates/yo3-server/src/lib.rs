@@ -80,6 +80,8 @@ pub struct Config {
     pub allow_missing_game_data: bool,
     pub log_dir: PathBuf,
     pub packet_logging: bool,
+    /// Decoded packet traces in the session log (off: no player's chat or names there; the server file's `packet_log = false`).
+    pub packet_traces: bool,
     pub diagnostic_id: Option<String>,
     /// Default players for offline account administration; login never creates an account.
     pub players: Vec<String>,
@@ -122,7 +124,7 @@ impl Config {
             game_dir: yo3_data::default_game_dir(),
             allow_missing_game_data: true,
             log_dir: log_dir.clone(),
-            packet_logging: true, diagnostic_id: None,
+            packet_logging: true, packet_traces: true, diagnostic_id: None,
             players: vec!["test".into()],
             duel_lp: None,
             duel_regulation: None,
@@ -413,7 +415,7 @@ fn world(cfg: &Config, duel_port: u16, http_port: u16) -> anyhow::Result<World> 
 const EVENT_ROUND_DELAY: std::time::Duration = std::time::Duration::from_secs(20);
 
 pub async fn start(cfg: Config) -> anyhow::Result<Running> {
-    let packets = Arc::new(if cfg.packet_logging { log::PacketLog::create(&cfg.log_dir)? } else { log::PacketLog::disabled()? });
+    let packets = Arc::new(if cfg.packet_logging { log::PacketLog::create(&cfg.log_dir)? } else { log::PacketLog::disabled()? }.with_traces(cfg.packet_traces));
     let mut served = std::fs::read(&cfg.tls.certificate)?;
     let tls = Arc::new(std::sync::RwLock::new(yo3_tunnel::acceptor(&cfg.tls.certificate, &cfg.tls.private_key)?));
     let authenticated = TcpListener::bind((cfg.bind, cfg.tls.port)).await?;

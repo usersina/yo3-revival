@@ -341,3 +341,18 @@ async fn the_api_refuses_a_moderator_what_only_an_admin_may_do() {
     assert!(a.apply_as(&Op::Settings, "Yugi", "panel", Some(logins::Role::Player)).is_err());
     assert!(a.apply_as(&Op::Set { name: "start-lp".into(), value: "100".into() }, "Pegasus", "panel", Some(logins::Role::Admin)).is_ok());
 }
+
+#[tokio::test]
+async fn the_health_check_answers_on_loopback_without_a_token() {
+    // The host's monitor (#37, tools/host/yo3-monitor.sh) reads these fields.
+    let s = server("health").await;
+    let a = send(s.http, "GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n".into()).await;
+    let health: Json = serde_json::from_str(&a.body).unwrap();
+    // 200 when it can save and duel; a checkout without the rules engine fetched answers 503 and says why.
+    assert_eq!(health["saving"], true);
+    assert_eq!(a.status == 200, health["engine"] == true, "{}", a.body);
+    assert!(health["backup_age_seconds"].as_u64().is_some_and(|age| age < 60), "the start's backup: {health}");
+    assert_eq!((&health["online"], &health["errors_recent"]), (&json!(0), &json!(0)));
+    // The monitor's parsing: bare values, no spaces.
+    assert!(a.body.contains("\"saving\":true") && a.body.contains("\"engine\":"), "{}", a.body);
+}
