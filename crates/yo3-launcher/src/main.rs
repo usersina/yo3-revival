@@ -267,7 +267,7 @@ async fn sign_in(args: &Args) -> anyhow::Result<()> {
         let code = input.line("Invite code from the host (Enter if the server needs none): ")?;
         let password = input.secret("Choose a password (8 to 16 letters or digits): ")?;
         anyhow::ensure!(input.secret("The password again: ")? == password, "The two passwords differ.");
-        eprintln!("The server's rules are on its website page (in the game: the menu's links), or ask its host.");
+        eprintln!("The rules are in docs/rules-privacy.md (in this folder), plus the host's own announcements.");
         let rules = input.line("Do you accept this server's rules? Type yes: ")?.eq_ignore_ascii_case("yes");
         anyhow::ensure!(rules, "Accept the server's rules to make an account.");
         let recovery = signin::register(&endpoint, user, &password, &code, rules).await?;
@@ -303,7 +303,8 @@ impl Input {
         use std::io::IsTerminal;
         let echo = std::io::stdin().is_terminal().then(echo_off).flatten();
         let read = self.line(prompt);
-        if let Some(restore) = echo { restore(); eprintln!(); }
+        // The terminal ends the hidden line itself (ECHONL); Windows' console doesn't.
+        if let Some(restore) = echo { restore(); if cfg!(windows) { eprintln!() } }
         let secret = read?;
         anyhow::ensure!(!secret.is_empty(), "no password given");
         Ok(secret)

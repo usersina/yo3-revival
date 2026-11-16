@@ -377,8 +377,9 @@ impl Backend {
         let helper = self.direct_helper()?;
         ensure!(helper.is_file(), "The Windows connection helper is missing. Extract the complete bundle.");
         self.check_game(settings)?;
-        self.direct_profile(settings, target)?;
         let [helper, dll, injector] = self.stable_components()?;
+        // After the helper's copy is in place: under Wine it copies Singleplayer's key into the prefix's store (#23).
+        self.direct_profile(settings, target)?;
         let state = self.root.join("profiles"); let file = state.join("loader.ini");
         let mut ini = String::from("[revival]\r\n");
         let profile = state.join("direct.json"); let logs = self.root.join("logs/sessions");
