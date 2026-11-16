@@ -15,6 +15,7 @@
 ## Build and contribute
 
 - [Development guide](development.md): source builds, checks, duel diagnostics and release packaging.
+- [Code signing policy](code-signing.md): proposed signing scope, release approval, privacy and current unsigned status.
 - [Working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md): repository rules, tools and live-test safety.
 - [Features](features.md): what works today, area by area, with status and how each row was verified.
 - [Roadmap](roadmap.md): what is open and next, and the table of guesses to revisit.
