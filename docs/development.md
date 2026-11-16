@@ -190,7 +190,7 @@ pairs (Auto Duels between two accounts, and NPC duels), 40 sending fuzzing plans
 944 ms, worst 1.86 s against the 2 s limit); the server peaked at 317 MB and 639 file descriptors and restarted cleanly
 on the run's data. The in-process proxies report each dropped connection on stderr, hence `2>proxies.log`. The same
 soak through the one key account's proxy (no `--players`) stalls at 100 flooding connections: that proxy, not the
-server, is the bottleneck. #39 repeats the soak on the VPS.
+server, is the bottleneck. The same soak on a VPS waits with the VPS (#47).
 
 ## Which tool sees what
 
