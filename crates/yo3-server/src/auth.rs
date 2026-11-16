@@ -36,11 +36,16 @@ pub fn initialize(dir: &std::path::Path, names: Vec<String>) -> anyhow::Result<T
     Ok(TlsConfig { port: 7443, certificate, private_key })
 }
 
+/// How far behind the host's clock a client's may be and still accept a new or renewed identity.
+const CLOCK_SLACK: std::time::Duration = std::time::Duration::from_secs(86400);
+
 fn certificate_parameters(names: Vec<String>) -> anyhow::Result<rcgen::CertificateParams> {
     let mut params = rcgen::CertificateParams::new(names)?;
-    params.not_before = std::time::SystemTime::now().into();
-    params.not_before -= std::time::Duration::from_secs(300);
-    params.not_after = params.not_before + std::time::Duration::from_secs(365 * 86400 + 300);
+    // Backdated a day: a friend whose clock is behind (a wrong time zone is up to 14 hours) still accepts a server just
+    // set up. Clients pin the key, so the earlier start costs nothing.
+    let now = std::time::SystemTime::now();
+    params.not_before = (now - CLOCK_SLACK).into();
+    params.not_after = (now + std::time::Duration::from_secs(365 * 86400)).into();
     Ok(params)
 }
 
@@ -227,6 +232,23 @@ mod tests {
         std::fs::write(&tls.certificate, "broken certificate").unwrap();
         assert!(maintain_identity(&dir, vec!["localhost".into()]).is_err());
         assert_eq!(std::fs::read(&tls.private_key).unwrap(), private);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    /// Host for friends (#37) on a PC whose clock runs 9 hours ahead of a friend's (a wrong time zone): the friend
+    /// refused the new server as "not yet valid". A new identity is valid from a day before its host's clock.
+    #[test]
+    fn a_new_identity_is_valid_for_a_client_whose_clock_is_behind() {
+        let dir = std::env::temp_dir().join(format!("yo3-clock-slack-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let tls = initialize(&dir, vec!["localhost".into()]).unwrap();
+        let bytes = std::fs::read(&tls.certificate).unwrap();
+        let (_, pem) = x509_parser::pem::parse_x509_pem(&bytes).unwrap();
+        let (_, cert) = x509_parser::parse_x509_certificate(&pem.contents).unwrap();
+        let now = chrono::Utc::now().timestamp();
+        let behind = x509_parser::time::ASN1Time::from_timestamp(now - 14 * 3600).unwrap();
+        assert!(cert.validity().is_valid_at(behind), "valid for a clock 14 hours behind: {:?}", cert.validity());
+        assert!(cert.validity().not_after.timestamp() >= now + 365 * 86400 - 60, "still a year ahead");
+        assert!(!renew_on_start(&dir), "a fresh backdated certificate is kept");
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
