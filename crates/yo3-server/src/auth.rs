@@ -88,7 +88,7 @@ pub fn renew_on_start(dir: &std::path::Path) -> bool {
     match maintain_identity(dir, vec![]) {
         Ok(_) => {
             let renewed = std::fs::read(dir.join("server.crt")).ok() != before;
-            if renewed { tracing::info!("server certificate renewed for another year (same key: invitations stay valid)"); }
+            if renewed { tracing::info!("server certificate renewed for another year (same key: launchers that trust it keep working)"); }
             renewed
         }
         Err(e) => { tracing::warn!("server certificate not renewed: {e:#}"); false }

@@ -442,7 +442,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     }
     let world = Arc::new(world);
     match (&world.engine_problem, &world.engine_dir) {
-        (Some(why), _) => tracing::error!("DUELS WON'T WORK: {why}. Duels will end at once as draws; players are told in the news and on the join page."),
+        (Some(why), _) => tracing::error!("DUELS WON'T WORK: {why}. Duels will end at once as draws; players are told in the news."),
         (None, Some(dir)) => tracing::info!("rules engine: {}", dir.display()),
         (None, None) => {}
     }

@@ -169,7 +169,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         anyhow::bail!("{summary}\n{error:#}\n{}", if clean.trim().is_empty() { "The injector exited without a native diagnostic. Restore the matching application bundle, check security-software detection history and export logs for help." } else { clean.trim() });
     }
     log.line("Connection DLL loaded and interface ready; authenticating");
-    let session = initializing!(key.sign_in(&endpoint)).context("Authentication failed; game was not resumed. Check the host's invitation in Advanced, or export logs for help")?; log.secret(&hex(&session));
+    let session = initializing!(key.sign_in(&endpoint)).context("Authentication failed; game was not resumed. Check the profile and that the server is running, or export logs for help")?; log.secret(&hex(&session));
     proxy.activate(session);
     let game_log = log.clone();
     let output = tokio::spawn(async move { capture(stdout, game_log, true).await; });
