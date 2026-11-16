@@ -2344,6 +2344,50 @@ impl Hub {
         self.rentals.forget(player_id);
     }
 
+    /// A deleted account's players (`delete-account`, security review #39): what in-game Delete Player removes
+    /// ([`Self::forget_player`]), and also a team they lead (disbanded, its members told as by the leader's own
+    /// Disband), the mail they sent, their duel records, the user events they host or entered while still open, and what
+    /// this run keeps for them. Their sessions are ended by the caller; leaving the hub then does the rest.
+    pub fn forget_account(&mut self, players: &[u32]) {
+        for &id in players {
+            if let Some(team) = self.teams.of(id).filter(|t| t.authority(id) == Some(LEADER)).cloned() {
+                self.teams.disband(team.id);
+                self.tell_team(&team.ids(), Some(id), &Message::reply(0x2B07).with("team_name", Value::text(&team.name)));
+            }
+            self.forget_player(id);
+            self.mail.forget_from(id);
+            self.host_presents.remove(&id);
+            self.ratings.remove(&id);
+            self.evals.retain(|_, (rater, rated)| *rater != id && *rated != id);
+        }
+        let mine = |p: &u32| players.contains(p);
+        let before = self.records.len();
+        self.records.retain(|(me, _), _| !mine(me));
+        if self.records.len() != before { self.save_records(); }
+        let hosted: Vec<usize> = (0..self.events.len()).rev().filter(|&at| mine(&self.events[at].host.0)).collect();
+        let changed = !hosted.is_empty() || self.events.iter().any(|e| e.status == crate::events::OPEN && e.entrants.iter().any(|(p, _)| mine(p)));
+        for at in hosted {
+            let event = self.events.remove(at);
+            for (p, _) in event.entrants.iter().filter(|(p, _)| !mine(p)) { self.push(*p, &Message::reply(0x3394)); }
+        }
+        for e in self.events.iter_mut().filter(|e| e.status == crate::events::OPEN) {
+            e.entrants.retain(|(p, _)| !mine(p));
+            e.alive.retain(|p| !mine(p));
+        }
+        if changed { self.save_events(); }
+    }
+
+    /// Writes the duel records as they are (after [`Self::forget_account`]).
+    fn save_records(&self) {
+        let Some(file) = &self.records_file else { return };
+        let mut all: Vec<_> = self.records.iter().collect();
+        all.sort();
+        let rows: Vec<serde_json::Value> = all.into_iter()
+            .map(|((me, them), [w, l, d])| serde_json::json!({ "player_id": me, "opponent": them, "win": w, "lose": l, "draw": d }))
+            .collect();
+        if let Err(e) = crate::store::write(file, &serde_json::json!({ "records": rows })) { tracing::warn!("duel records not saved: {e}") }
+    }
+
     /// A challenger's offer is gone: the host's offer dialog closes (0x17C0) and it waits again.
     fn withdraw(&mut self, duel_id: u32, host: u32) {
         if let Some(h) = self.hosts.get_mut(&duel_id) {

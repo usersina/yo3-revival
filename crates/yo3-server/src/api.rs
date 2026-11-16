@@ -88,6 +88,9 @@ pub enum Op {
     SignOut { who: String },
     /// Maintenance in `minutes` (the game's countdown until then) with `message`; `off` calls it off.
     Maintenance { #[serde(default)] minutes: Option<u32>, #[serde(default)] message: Option<String>, #[serde(default)] off: bool },
+    /// Deletes an account (security review #39): its players and everything kept for them, its sign-ins and devices;
+    /// its game is disconnected. The audit log keeps only who deleted which User ID and when.
+    DeleteAccount { who: String },
     /// One account in full (#36): its User ID, role, standing, mute, devices, BP, and each player's collection and record.
     Account { who: String },
     /// The database backups, newest first, with their times and sizes.
@@ -126,7 +129,7 @@ impl Op {
             Op::Rename { old, .. } => Some(old),
             Op::Kick { who } | Op::Ban { who, .. } | Op::Restrict { who, .. } | Op::Lift { who } | Op::Mute { who, .. }
             | Op::Unmute { who } | Op::SignOut { who } | Op::GiveBp { who, .. } | Op::SetCountry { who, .. } | Op::Key { who }
-            | Op::AddPlayer { who, .. } => Some(who),
+            | Op::AddPlayer { who, .. } | Op::DeleteAccount { who } => Some(who),
             Op::GrantTitle { player, .. } | Op::GiveCards { player, .. } | Op::GiveRecipe { player, .. } => Some(player),
             _ => None,
         }
@@ -144,7 +147,7 @@ impl Op {
             Op::Set { name, .. } | Op::Reset { name } => name.clone(),
             Op::CreateAccount { names } => names.join(", "),
             Op::AddCode { code, .. } | Op::RemoveCode { code } => code.clone(),
-            Op::Account { who } => who.clone(),
+            Op::Account { who } | Op::DeleteAccount { who } => who.clone(),
             _ => String::new(),
         }
     }
@@ -236,8 +239,20 @@ impl Api {
         }
         let (result, before, after) = self.run(op)?;
         if op.changes() {
+            let (target, detail) = match op {
+                // A deleted account: the rows about it go, and this one names only its User ID (#39).
+                Op::DeleteAccount { .. } => {
+                    let names: Vec<String> = result["names"].as_array().into_iter().flatten().filter_map(|n| n.as_str().map(str::to_owned)).collect();
+                    match &self.data_dir {
+                        Some(dir) => if let Err(e) = crate::store::forget_in_audit(dir, &names) { tracing::error!("audit rows of a deleted account not removed: {e}") },
+                        None => self.memory.locked().retain(|r| !crate::store::mentions(&names, &r.target, r.detail.as_ref())),
+                    }
+                    (result["deleted"].as_str().unwrap_or_default().to_string(), None)
+                }
+                _ => (op.target(), op.detail()),
+            };
             let row = AuditRow { at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true), actor: actor.into(),
-                origin: origin.into(), op: op.name(), target: op.target(), before, after, detail: op.detail() };
+                origin: origin.into(), op: op.name(), target, before, after, detail };
             match &self.data_dir {
                 Some(dir) => if let Err(e) = crate::store::audit(dir, &row) { tracing::error!("audit row not written ({}): {e}", row.op) },
                 None => self.memory.locked().push(row),
@@ -361,6 +376,22 @@ impl Api {
                     "muted": login.as_ref().and_then(|l| l.mute(now)), "devices": login.as_ref().map(|l| l.devices.len()),
                     "reset_pending": login.as_ref().and_then(|l| l.reset.as_ref()).is_some_and(|(_, until)| *until > now),
                     "players": players }), None, None))
+            }
+            Op::DeleteAccount { who } => {
+                // Hub first, then accounts, as everywhere (duel results pay BP).
+                let mut hub = self.hub.as_ref().map(|h| h.locked());
+                let user_id = self.accounts.locked().user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
+                let (label, players) = self.accounts.locked().delete_account(user_id)?;
+                let ids: Vec<u32> = players.iter().map(|(id, _)| *id).collect();
+                if let Some(hub) = hub.as_mut() { hub.forget_account(&ids) }
+                drop(hub);
+                self.end_sessions(user_id);
+                if let Some(dir) = &self.data_dir && let Err(e) = crate::store::delete_duel_logs_of(dir, &ids) {
+                    tracing::error!("duel logs of a deleted account not removed: {e}");
+                }
+                let names: Vec<String> = std::iter::once(label.clone()).chain(players.iter().map(|(_, n)| n.clone())).collect();
+                Ok((json!({ "deleted": label, "names": names, "players": players.len(),
+                    "message": format!("{label} is deleted with {} player(s); its game was disconnected", players.len()) }), None, None))
             }
             Op::Shutdown => {
                 let stop = self.shutdown.as_ref().ok_or("the server isn't running")?;

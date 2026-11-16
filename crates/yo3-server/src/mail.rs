@@ -87,6 +87,16 @@ impl Mailbox {
         }
     }
 
+    /// A deleted account's mail goes from the mailboxes it was sent to, too.
+    pub fn forget_from(&mut self, player_id: u32) {
+        let before: usize = self.waiting.values().map(Vec::len).sum();
+        self.waiting.values_mut().for_each(|m| m.retain(|mail| mail.from.0 != player_id));
+        self.waiting.retain(|_, m| !m.is_empty());
+        if self.waiting.values().map(Vec::len).sum::<usize>() != before {
+            self.save();
+        }
+    }
+
     fn save(&self) {
         let Some(file) = &self.file else { return };
         let waiting: Vec<Json> = self.waiting.values().flatten().map(Mail::to_json).collect();

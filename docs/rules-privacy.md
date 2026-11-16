@@ -34,7 +34,7 @@ host removes it.
 
 | What | Where | How long |
 | --- | --- | --- |
-| Your account: User ID, password hash (argon2id; nobody can read your password), a digest of your recovery code, role, standing and mute with their reasons | The server's database | As long as the account exists (see [deleting your account](#deleting-your-account)) |
+| Your account: User ID, password hash (argon2id; nobody can read your password), a digest of your recovery code, role, standing and mute with their reasons | The server's database | Until the account is deleted ([deleting your account](#deleting-your-account)) |
 | Your players: names, level, cards, decks, BP, items and titles, wins and losses, friends, ignore list, team | The server's database | As long as the account exists. Deleting a player in the game takes it off your account. |
 | Country | The server's database | Set from your game's language, or by a moderator. It is not looked up from your IP address. |
 | Signed-in devices ("Stay signed in") | A digest of each device's token, labelled only "Windows PC" or "Linux PC" | 90 days after the device was last used, at most 10 devices. A password change, a recovery or "sign out everywhere" ends them all. |
@@ -65,10 +65,26 @@ host removes it.
 ## Deleting your account
 
 Ask the host or a moderator through the server's support channel, from the account's User ID (or show that you own
-it).
+it). An admin deletes it with `delete-account` or the admin panel's **Delete account**.
 
-> **Open:** the server has no delete-account command yet. A moderator can sign you out everywhere and ban the
-> account, but your data stays in the database. It also stays in backups until they age out, as listed above.
-> Deleting an account is planned as an admin operation (see the [security review](security.md#open-needs-the-owner)).
+What goes, at once:
 
-You can delete one of your players yourself in the game.
+- your account: User ID, password hash, recovery code digest, role, standing, mute and every signed-in device;
+- your players, with their cards, decks, BP, items, titles and wins and losses;
+- your friends and ignore lists, and your place in other players' lists;
+- invitations from or to you (friend, trade, rental, team), your rentals, and a team you lead (it is disbanded) or
+  your place in one;
+- D-Mail you sent that hasn't been read yet, and D-Mail waiting for you;
+- user events you host, and your entry in those not started yet;
+- your own copy of each duel log;
+- the admin audit log's rows about your account.
+
+What stays:
+
+- one audit row: which admin deleted which User ID, and when;
+- other players' own records of their duels against you, and their copy of a duel log;
+- the database **backups**, until they are replaced: on the server the newest 24 (taken hourly, so about a day), and
+  off-site copies as long as the host keeps them (see [what the server keeps](#what-the-server-keeps));
+- the server's session logs (IP addresses with your account number), until they age out after 14 days.
+
+Your game is disconnected. You can delete one of your players yourself in the game.

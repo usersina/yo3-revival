@@ -273,6 +273,42 @@ pub fn audit_rows(dir: &Path, limit: u32) -> io::Result<Vec<AuditRow>> {
         .map_err(sql)?.collect::<Result<_, _>>().map_err(sql)
 }
 
+/// Takes out of `dir`'s audit log every row about one of `names` (a deleted account's User ID and players, compared
+/// ignoring case): its target, a name in a list target, or a new name in its details. How many went.
+pub fn forget_in_audit(dir: &Path, names: &[String]) -> io::Result<usize> {
+    let conn = hold(dir)?;
+    let rows: Vec<(i64, String, Option<String>)> = {
+        let mut query = conn.prepare("SELECT id, target, detail FROM audit").map_err(sql)?;
+        query.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(sql)?.collect::<Result<_, _>>().map_err(sql)?
+    };
+    let mut gone = 0;
+    for (id, target, detail) in rows {
+        let detail = detail.and_then(|d| serde_json::from_str::<Json>(&d).ok());
+        if mentions(names, &target, detail.as_ref()) {
+            gone += conn.execute("DELETE FROM audit WHERE id=?1", [id]).map_err(sql)?;
+        }
+    }
+    Ok(gone)
+}
+
+/// Whether an audit row with `target` and `detail` is about one of `names`.
+pub fn mentions(names: &[String], target: &str, detail: Option<&Json>) -> bool {
+    let named = |n: &str| names.iter().any(|m| m.eq_ignore_ascii_case(n.trim()));
+    target.split(", ").any(named)
+        || detail.is_some_and(|d| ["new", "name", "who", "player", "user", "old"].iter().any(|k| d[*k].as_str().is_some_and(named)))
+}
+
+/// Deletes the duel logs kept for `players` (each player's own copy: `…-<player id>.dlog`).
+pub fn delete_duel_logs_of(dir: &Path, players: &[u32]) -> io::Result<usize> {
+    if !dir.join("server.db").is_file() { return Ok(0) }
+    let conn = hold(dir)?;
+    let mut gone = 0;
+    for p in players {
+        gone += conn.execute("DELETE FROM duel_logs WHERE name LIKE ?1", [format!("%-{p}.dlog")]).map_err(sql)?;
+    }
+    Ok(gone)
+}
+
 /// Warns about files an older version left in the data folder that the server doesn't read. Called once when a
 /// server starts (not by the admin commands, which open the same database).
 pub fn report_leftovers(dir: &Path) {

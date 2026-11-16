@@ -392,3 +392,25 @@ async fn an_admin_gives_cards_and_recipes_from_a_players_page_and_a_moderator_se
     assert_eq!(rows.iter().map(|r| (r.op.as_str(), r.actor.as_str(), r.target.as_str())).collect::<Vec<_>>(),
         [("give-recipe", "Pegasus", "Yugi"), ("give-cards", "Pegasus", "Yugi")]);
 }
+
+#[tokio::test]
+async fn an_admin_deletes_an_account_only_by_typing_its_user_id() {
+    // Security review (#39): the account page's Delete account, an admin's alone, asks for the User ID typed out.
+    let s = Live::staffed("delete").await;
+    let b = s.browser("Pegasus").await;
+    let account = "/panel/account?who=Kaiba";
+    assert!(b.get(account).await.body.contains("Delete account"), "the admin sees the form");
+    let wrong = b.act(account, "/panel/account", &[("who", "Kaiba"), ("action", "delete-account"), ("confirm", "Kaib")]).await;
+    assert!(wrong.body.contains("Not done") && wrong.body.contains("type the User ID"), "{}", wrong.body);
+    assert!(s.host(Op::Account { who: "Kaiba".into() }).await["user_id"].is_number(), "still there");
+    let done = b.act(account, "/panel/account", &[("who", "Kaiba"), ("action", "delete-account"), ("confirm", "kaiba")]).await;
+    assert!(done.body.contains("Kaiba is deleted"), "{}", done.body);
+    let admin = s.admin.clone();
+    let gone = tokio::task::spawn_blocking(move || api::call(&admin, &Op::Account { who: "Kaiba".into() })).await.unwrap();
+    assert!(gone.is_err(), "{gone:?}");
+    // A moderator has no such form, and the API refuses them.
+    let m = s.browser("Croquet").await;
+    assert!(!m.get("/panel/account?who=Yugi").await.body.contains("Delete account"));
+    let refused = m.act("/panel/account?who=Yugi", "/panel/account", &[("who", "Yugi"), ("action", "delete-account"), ("confirm", "Yugi")]).await;
+    assert!(refused.body.contains("only an admin may do that"), "{}", refused.body);
+}

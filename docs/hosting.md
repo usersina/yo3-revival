@@ -176,9 +176,11 @@ yo3 accounts
 yo3 --by <your-user-id> ban Someone --reason "cheating" --days 7
 yo3 maintenance --in 15 --message "Updating, back in 20 minutes"
 yo3 audit --limit 20
+yo3 delete-account Someone --yes      # a player asked for their account to go: everything kept for it, for good
 ```
 
-[Moderation](guide.md#moderation-and-maintenance) and [account commands](guide.md#account-commands) list them all.
+A deleted account still sits in the backups until they are replaced: the newest 24 on the server (a day), and the
+off-machine copies for as long as they keep them (below). [Moderation](guide.md#moderation-and-maintenance) and [account commands](guide.md#account-commands) list them all.
 
 ## Backups
 
