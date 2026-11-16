@@ -124,8 +124,8 @@ async fn server(test: &str) -> Live {
 
 impl Live {
     async fn account(&self, request: Json) -> Json { self.endpoint.account(&request).await.unwrap() }
-    async fn sign_up(&self, user: &str) { assert_eq!(self.account(json!({ "op": "register", "user": user, "password": "a long passphrase", "rules": true })).await["ok"], true) }
-    async fn sign_in(&self, user: &str, stay: bool) -> Json { self.account(json!({ "op": "login", "user": user, "password": "a long passphrase", "stay": stay })).await }
+    async fn sign_up(&self, user: &str) { assert_eq!(self.account(json!({ "op": "register", "user": user, "password": "LongPassphrase1", "rules": true })).await["ok"], true) }
+    async fn sign_in(&self, user: &str, stay: bool) -> Json { self.account(json!({ "op": "login", "user": user, "password": "LongPassphrase1", "stay": stay })).await }
     /// A moderator's action, as `yo3-server --by Anna …` sends it.
     async fn moderate(&self, op: Op) -> Result<Json, String> {
         let admin = self.admin.clone();

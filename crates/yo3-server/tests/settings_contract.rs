@@ -33,7 +33,7 @@ impl Server {
     }
     async fn account(&self, request: serde_json::Value) -> serde_json::Value { self.endpoint.account(&request).await.unwrap() }
     async fn register(&self, user: &str) -> serde_json::Value {
-        self.account(json!({ "op": "register", "user": user, "password": "a long passphrase", "rules": true })).await
+        self.account(json!({ "op": "register", "user": user, "password": "LongPassphrase1", "rules": true })).await
     }
     /// The settings as saved in the database.
     fn saved(&self) -> std::sync::Arc<yo3_server::settings::Settings> {

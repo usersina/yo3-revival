@@ -12,7 +12,7 @@ use yo3_tunnel::Endpoint;
 
 use crate::wire::Rng;
 
-const PASSWORD: &str = "monkey passphrase";
+const PASSWORD: &str = "MonkeyPass1";
 
 /// What the monkey saw: answers by error code, and what went wrong.
 #[derive(Default)]

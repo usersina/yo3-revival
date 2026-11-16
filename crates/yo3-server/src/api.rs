@@ -547,7 +547,7 @@ impl Api {
                 done(json!({ "code": code, "message": format!("reset code for {user}: {code}. It works once, for 24 hours, in the launcher's \"Forgot password\".") }))
             }
             Op::AddUser { user, hash } => {
-                if !crate::logins::valid_user_id(user) { return Err(format!("{user:?} is not a User ID: 3 to 16 letters, digits, _ or -")) }
+                if !crate::logins::valid_user_id(user) { return Err(format!("{user:?} is not a User ID: 3 to 16 letters or digits")) }
                 if !hash.starts_with("$argon2id$") { return Err("the password hash is not argon2id".into()) }
                 let recovery = crate::logins::new_code();
                 let login = crate::logins::Login::new(user, hash.clone(), crate::logins::digest(&crate::logins::normalize_code(&recovery)));

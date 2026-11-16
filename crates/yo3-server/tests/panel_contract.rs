@@ -11,7 +11,7 @@ use yo3_server::logins;
 use yo3_server::{Config, Running, start};
 use yo3_tunnel::Endpoint;
 
-const PASSWORD: &str = "a long passphrase";
+const PASSWORD: &str = "LongPassphrase1";
 
 struct Live { http: SocketAddr, endpoint: Endpoint, admin: yo3_server::admin::Live, data: std::path::PathBuf, _running: Running }
 

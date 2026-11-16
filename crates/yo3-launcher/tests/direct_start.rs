@@ -71,9 +71,9 @@ async fn a_saved_sign_in_resumes_and_delete_login_data_revokes_it() {
     let cert = cfg.tls.certificate.clone();
     let server = yo3_server::start(cfg).await.unwrap();
     let endpoint = Endpoint::new(server.auth.to_string(), "localhost".into(), &cert).unwrap();
-    let made = endpoint.account(&serde_json::json!({ "op": "register", "user": "direct", "password": "a long passphrase", "rules": true })).await.unwrap();
+    let made = endpoint.account(&serde_json::json!({ "op": "register", "user": "direct", "password": "LongPassphrase1", "rules": true })).await.unwrap();
     assert_eq!(made["ok"], true, "{made}");
-    let signed = endpoint.account(&serde_json::json!({ "op": "login", "user": "direct", "password": "a long passphrase", "stay": true, "device": "test" })).await.unwrap();
+    let signed = endpoint.account(&serde_json::json!({ "op": "login", "user": "direct", "password": "LongPassphrase1", "stay": true, "device": "test" })).await.unwrap();
     let token = signed["device_token"].as_str().unwrap().to_string();
     let vault = MemoryVault::default();
     let account = "server:test";
@@ -164,7 +164,7 @@ async fn the_games_login_form_signs_in_with_what_the_player_typed() {
     let cert = cfg.tls.certificate.clone();
     let server = yo3_server::start(cfg).await.unwrap();
     let endpoint = Endpoint::new(server.auth.to_string(), "localhost".into(), &cert).unwrap();
-    let made = endpoint.account(&serde_json::json!({ "op": "register", "user": "former", "password": "a long passphrase", "rules": true })).await.unwrap();
+    let made = endpoint.account(&serde_json::json!({ "op": "register", "user": "former", "password": "LongPassphrase1", "rules": true })).await.unwrap();
     assert_eq!(made["ok"], true, "{made}");
     let proxy = Proxy::prepare(endpoint.clone(), Ports::default()).await.unwrap();
     let cookie = yo3_launcher::hex(&proxy.cookie);
@@ -180,7 +180,7 @@ async fn the_games_login_form_signs_in_with_what_the_player_typed() {
     proxy.refuse(Refusal::SignedOut);
     // What the DLL posts when the game connects to the front after goLogin.
     let mut typed = proxy.typed_logins().unwrap();
-    let body = serde_json::json!({ "user": "former", "password": "a long passphrase", "stay": true }).to_string();
+    let body = serde_json::json!({ "user": "former", "password": "LongPassphrase1", "stay": true }).to_string();
     let reply = http(&proxy, format!("POST /session/{cookie}/{} HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\n\r\n{body}",
         yo3_launcher::LOGIN_PATH, body.len())).await;
     assert!(reply.starts_with("HTTP/1.1 204"), "{reply}");
@@ -194,7 +194,7 @@ async fn the_games_login_form_signs_in_with_what_the_player_typed() {
     let read = |a: &str| vault.get(a).unwrap();
     direct::sign_in(&endpoint, &Credential::Device("server:typed".into()), &read).await.unwrap();
     assert_eq!(token.len(), 64);
-    let plain = direct::Typed { user: "former".into(), password: "a long passphrase".into(), stay: false };
+    let plain = direct::Typed { user: "former".into(), password: "LongPassphrase1".into(), stay: false };
     let other = MemoryVault::default();
     direct::sign_in_typed(&endpoint, &plain, Some("server:typed"), &other).await.unwrap();
     assert_eq!(other.get("server:typed").unwrap(), None, "without Save Password nothing is kept");

@@ -95,7 +95,7 @@ The **Multiplayer** tab signs in to servers with a User ID and password ([accoun
   name first; **Details** shows its identity, to compare with one the host gave you. YO3 Revival checks the identity on
   every connection after that. If it ever changes, the server's row says so and nothing connects: remove the server and
   add it again only if the host confirms the change.
-- **Create account**: a User ID (3 to 16 letters, digits, `_` or `-`), a password of at least 8 characters, typed twice,
+- **Create account**: a User ID (3 to 16 letters or digits), a password of 8 to 16 letters or digits, typed twice,
   and the server's invite code when it asks for one. You then see a **recovery code** once: save it.
 - **LOG IN**: **Save User ID** keeps only the name. **Stay signed in** keeps a sign-in token in your system's credential
   store (Windows Credential Manager, or the Secret Service on Linux), never the password; without such a store it is
@@ -191,8 +191,7 @@ it.
 - **Multiplayer:** with **Stay signed in**, the game goes straight to Select Player. Without it, or once that sign-in
   has ended, **ONLINE** shows the game's own login screen: type your User ID and password there. **Save Password**
   keeps this PC signed in (the next start skips the screen); **Save User ID** fills in your User ID next time. The game
-  never stores the password itself. Its screen takes letters and digits only, up to 16 characters: with a longer
-  password, or spaces or symbols in it, sign in with YO3 Revival instead. A wrong password gets "Incorrect User ID or
+  never stores the password itself. A wrong password gets "Incorrect User ID or
   Password", a ban "This User ID is currently restricted.", a server that is down or in maintenance "Failed to connect
   to server."; a server that needs a newer YO3 Revival adds one line saying to open it and update.
 

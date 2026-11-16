@@ -13,15 +13,15 @@ async fn a_session_ended_elsewhere_asks_to_sign_in_again() {
     let data = cfg.data_dir.clone().unwrap();
     let running = yo3_server::start(cfg).await.unwrap();
     let server = mp::first_contact(&format!("localhost:{}", running.auth.port())).await.unwrap();
-    mp::register(&server, "Yugi", "a long passphrase", "a long passphrase", "", true).await.unwrap();
-    let signed = mp::sign_in(&server, "Yugi", "a long passphrase", false).await.unwrap();
+    mp::register(&server, "Yugi", "LongPassphrase1", "LongPassphrase1", "", true).await.unwrap();
+    let signed = mp::sign_in(&server, "Yugi", "LongPassphrase1", false).await.unwrap();
     assert_eq!(mp::session_alive(&server, &signed.session).await, Ok(()), "a fresh sign-in plays");
     let admin = |op: Op| { let live = admin::running(&data).unwrap(); tokio::task::spawn_blocking(move || api::call(&live, &op)) };
     admin(Op::Kick { who: "Yugi".into() }).await.unwrap().unwrap();
     assert_eq!(mp::session_alive(&server, &signed.session).await, Err(Problem::SignInAgain), "kicked: sign in again");
     // A newer sign-in elsewhere ends this one too (the newest wins).
-    let first = mp::sign_in(&server, "Yugi", "a long passphrase", false).await.unwrap();
-    let _second = mp::sign_in(&server, "Yugi", "a long passphrase", false).await.unwrap();
+    let first = mp::sign_in(&server, "Yugi", "LongPassphrase1", false).await.unwrap();
+    let _second = mp::sign_in(&server, "Yugi", "LongPassphrase1", false).await.unwrap();
     assert_eq!(mp::session_alive(&server, &first.session).await, Err(Problem::SignInAgain));
     admin(Op::Shutdown).await.unwrap().unwrap();
     running.wait().await;
@@ -40,7 +40,7 @@ async fn sign_out_everywhere_and_a_new_password_end_every_sign_in() {
     cfg.settings.push(("address-burst".into(), "100".into())); // many requests from this one address
     let running = yo3_server::start(cfg).await.unwrap();
     let server = mp::first_contact(&format!("localhost:{}", running.auth.port())).await.unwrap();
-    let pass = "a long passphrase";
+    let pass = "LongPassphrase1";
     mp::register(&server, "Yugi", pass, pass, "", true).await.unwrap();
     let laptop = mp::sign_in(&server, "Yugi", pass, true).await.unwrap();
     let here = mp::sign_in(&server, "Yugi", pass, false).await.unwrap();
@@ -51,12 +51,12 @@ async fn sign_out_everywhere_and_a_new_password_end_every_sign_in() {
     mp::sign_out_everywhere(&server, None, "Yugi", pass).await.unwrap();
     assert_eq!(mp::resume(&server, laptop.device_token.as_deref().unwrap()).await.map(|_| ()), Err(Problem::SignInAgain), "the other PC is signed out");
     let laptop = mp::sign_in(&server, "Yugi", pass, true).await.unwrap();
-    assert_eq!(mp::change_password(&server, "Yugi", pass, "a newer passphrase", "a different one").await, Err(Problem::PasswordsDiffer));
-    assert_eq!(mp::change_password(&server, "Yugi", "wrong password", "a newer passphrase", "a newer passphrase").await, Err(Problem::WrongUserOrPassword));
+    assert_eq!(mp::change_password(&server, "Yugi", pass, "NewerPassword2", "a different one").await, Err(Problem::PasswordsDiffer));
+    assert_eq!(mp::change_password(&server, "Yugi", "wrong password", "NewerPassword2", "NewerPassword2").await, Err(Problem::WrongUserOrPassword));
     throttled().await;
-    mp::change_password(&server, "Yugi", pass, "a newer passphrase", "a newer passphrase").await.unwrap();
+    mp::change_password(&server, "Yugi", pass, "NewerPassword2", "NewerPassword2").await.unwrap();
     assert_eq!(mp::resume(&server, laptop.device_token.as_deref().unwrap()).await.map(|_| ()), Err(Problem::SignInAgain));
     assert_eq!(mp::sign_in(&server, "Yugi", pass, false).await.map(|_| ()), Err(Problem::WrongUserOrPassword));
     throttled().await;
-    mp::sign_in(&server, "Yugi", "a newer passphrase", false).await.unwrap();
+    mp::sign_in(&server, "Yugi", "NewerPassword2", false).await.unwrap();
 }

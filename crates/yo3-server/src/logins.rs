@@ -13,16 +13,22 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
-/// What a User ID may be: 3–16 letters, digits, `_` or `-`; unique ignoring case.
-pub fn valid_user_id(user: &str) -> bool {
-    (3..=16).contains(&user.len()) && user.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-}
+/// The longest User ID or password the game's own login form takes (`login.swf` sprite 67, #34).
+pub const FORM_MAX: usize = 16;
 
-/// Why a password can't be used, if it can't: 8–128 characters, not a common one, not the User ID.
+/// What the game's login form lets a player type: letters and digits (`restrict` "A-Z a-z 0-9", #34).
+fn form_typeable(text: &str) -> bool { text.bytes().all(|b| b.is_ascii_alphanumeric()) }
+
+/// What a User ID may be: 3–16 letters or digits, as the game's login form takes them; unique ignoring case.
+pub fn valid_user_id(user: &str) -> bool { (3..=FORM_MAX).contains(&user.len()) && form_typeable(user) }
+
+/// Why a password can't be used, if it can't: 8–16 letters or digits (the game's login form takes no others), not a
+/// common one, not the User ID.
 pub fn password_problem(user: &str, password: &str) -> Option<&'static str> {
     let len = password.chars().count();
     if len < 8 { return Some("password_too_short") }
-    if len > 128 { return Some("password_too_long") }
+    if len > FORM_MAX { return Some("password_too_long") }
+    if !form_typeable(password) { return Some("password_characters") }
     let lower = password.to_lowercase();
     if lower == user.to_lowercase() || COMMON.iter().any(|c| *c == lower) { return Some("password_too_common") }
     None
@@ -320,11 +326,16 @@ mod tests {
 
     #[test]
     fn user_ids_and_passwords_follow_the_rules() {
-        assert!(valid_user_id("Yugi_M-1") && !valid_user_id("yu") && !valid_user_id("a".repeat(17).as_str()) && !valid_user_id("yugi muto"));
+        assert!(valid_user_id("YugiM1") && !valid_user_id("yu") && !valid_user_id("a".repeat(17).as_str()) && !valid_user_id("yugi muto"));
+        assert!(!valid_user_id("Yugi_M") && !valid_user_id("Yugi-M"), "the game's login form can't type _ or -");
         assert_eq!(password_problem("yugi", "short"), Some("password_too_short"));
+        assert_eq!(password_problem("yugi", &"a1".repeat(9)), Some("password_too_long"), "the form takes 16 characters");
+        assert_eq!(password_problem("yugi", "heart of the cards"), Some("password_too_long"));
+        assert_eq!(password_problem("yugi", "heart of cards"), Some("password_characters"), "no spaces in the form");
+        assert_eq!(password_problem("yugi", "Kuriboh!42"), Some("password_characters"));
         assert_eq!(password_problem("yugi", "Password"), Some("password_too_common"));
         assert_eq!(password_problem("yugimuto", "YugiMuto"), Some("password_too_common"), "not the User ID either");
-        assert_eq!(password_problem("yugi", "heart of the cards"), None, "spaces and length, no composition rules");
+        assert_eq!(password_problem("yugi", "HeartOfCards16"), None, "no composition rules");
     }
 
     #[test]

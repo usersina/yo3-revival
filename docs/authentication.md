@@ -22,8 +22,9 @@ the game still writes its normal player files.
 An account holds up to four players with their in-game names, cards, decks and BP. There are two kinds:
 
 - **Password accounts** (the beta, #23). They have:
-  - a **User ID**: 3–16 letters, digits, `_` or `-`, unique ignoring case, never shown to other players;
-  - a **password**: 8–128 characters, not one of a short list of common passwords and not the User ID;
+  - a **User ID**: 3–16 letters or digits, unique ignoring case, never shown to other players;
+  - a **password**: 8–16 letters or digits, not one of a short list of common passwords and not the User ID. Both
+    follow what the game's own login form lets a player type ([client internals](client-internals.md#the-games-own-login-form-34-research-r1));
   - a **role**: player, moderator or admin;
   - a **standing**: active, restricted or banned, with a reason and an optional end ([moderation](guide.md#moderation-and-maintenance)).
     Both refuse sign-in, by password, device or key. A ban also signs every device out and disconnects the game at
@@ -180,7 +181,7 @@ The errors:
 | `signed_out` | A device token that was revoked, expired or never existed |
 | `invalid_recovery` | A wrong, used or expired recovery or reset code |
 | `invalid_user_id`, `user_id_taken` | Sign-up |
-| `password_too_short`, `password_too_long`, `password_too_common` | Sign-up, a password change or recovery |
+| `password_too_short`, `password_too_long`, `password_characters`, `password_too_common` | Sign-up, a password change or recovery |
 | `rules_not_accepted`, `invite_required`, `invite_invalid`, `registration_closed` | Sign-up |
 | `update_required` | The launcher is older than `min_launcher` |
 | `bad_request`, `unknown_op`, `server_error`, `server_full` | Malformed requests; a save that failed; 1024 sessions |

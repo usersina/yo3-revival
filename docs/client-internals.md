@@ -219,8 +219,8 @@ The required mod skips the form at ONLINE (above), except when the helper has no
   `{"isSavePassword": 1, "password": "", "uname": "formtester"}` and `lastLogin` "formtester"; the password appears in no
   file of the game folder, Documents or the Wine prefix. UserData `+0x354` keeps it in memory, as the stock client did.
 - **The form's limits** (`login.swf` sprite 67): `uid.restrict` and `pwd.restrict` are `"A-Z a-z 0-9"`, and the boxes
-  take 16 characters (live: 16 asterisks for 17 typed). A password with spaces or symbols, or longer than 16, cannot be
-  typed there; such an account signs in with the launcher instead.
+  take 16 characters (live: 16 asterisks for 17 typed). So the server takes User IDs of 3–16 and
+  passwords of 8–16 letters or digits only (`logins.rs`), and every account can sign in through the form.
 - **Delete Player's prompt** (R4, #23) compares locally in Flash: `login.swf` frame 60 checks
   `_root.passWord == _root.delpassword` and sends only `goDelete(player)`. `passWord` is the form's password, so with the
   form it is the real one; when the form was skipped it is empty.

@@ -81,12 +81,12 @@ async fn a_full_server_says_so_and_lets_the_staff_and_a_second_sign_in_through()
     let e = yo3_tunnel::Endpoint::new(running.auth.to_string(), "localhost".into(), &certificate).unwrap();
     let ask = |request: serde_json::Value| { let e = e.clone(); async move { e.account(&request).await.unwrap() } };
     for user in ["Yugi", "Kaiba", "Pegasus"] {
-        assert_eq!(ask(json!({ "op": "register", "user": user, "password": "a long passphrase", "rules": true })).await["ok"], true);
+        assert_eq!(ask(json!({ "op": "register", "user": user, "password": "LongPassphrase1", "rules": true })).await["ok"], true);
     }
     let live = yo3_server::admin::running(&data).unwrap();
     tokio::task::spawn_blocking(move || yo3_server::api::call(&live, &yo3_server::api::Op::SetRole { user: "Pegasus".into(), role: "moderator".into() }))
         .await.unwrap().unwrap();
-    let login = |user: &str| ask(json!({ "op": "login", "user": user, "password": "a long passphrase" }));
+    let login = |user: &str| ask(json!({ "op": "login", "user": user, "password": "LongPassphrase1" }));
     assert_eq!(login("Yugi").await["ok"], true);
     assert_eq!(login("Kaiba").await["error"], "server_full", "the launcher shows \"The server is full\" with Retry");
     assert_eq!(login("Yugi").await["ok"], true, "signing in again takes no other place");

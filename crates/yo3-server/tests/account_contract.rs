@@ -52,7 +52,7 @@ fn made(file: &Path, user: &str, password: &str, change: impl FnOnce(&mut Direct
     change(&mut d, user);
 }
 
-const PASSWORD: &str = "correct horse battery";
+const PASSWORD: &str = "CorrectHorse42";
 
 #[tokio::test]
 async fn a_new_account_signs_in_and_its_session_gets_tickets() {
@@ -76,7 +76,10 @@ async fn sign_up_checks_the_user_id_the_password_and_the_rules() {
     let s = server("sign-up").await;
     let error = |reply: Json| reply["error"].as_str().unwrap_or("ok").to_string();
     assert_eq!(error(s.register("ab", PASSWORD).await), "invalid_user_id", "3 to 16 characters");
-    assert_eq!(error(s.register("bad name", PASSWORD).await), "invalid_user_id", "letters, digits, _ and -");
+    assert_eq!(error(s.register("bad name", PASSWORD).await), "invalid_user_id", "letters and digits");
+    assert_eq!(error(s.register("Yugi_M", PASSWORD).await), "invalid_user_id", "the game's login form types no _ or -");
+    assert_eq!(error(s.register("Yugi", "heart of cards").await), "password_characters", "nor spaces");
+    assert_eq!(error(s.register("Yugi", "HeartOfTheCards99").await), "password_too_long", "16 at most");
     assert_eq!(error(s.register("Yugi", "short").await), "password_too_short");
     assert_eq!(error(s.register("Yugi", "password1").await), "password_too_common");
     assert_eq!(error(s.ask(json!({ "op": "register", "user": "Yugi", "password": PASSWORD })).await), "rules_not_accepted");
@@ -181,9 +184,9 @@ async fn a_new_password_signs_every_device_out() {
     let token = s.ask(json!({ "op": "login", "user": "Yugi", "password": PASSWORD, "stay": true })).await["device_token"].clone();
     let change = |new: &str| s.ask(json!({ "op": "change_password", "user": "Yugi", "password": PASSWORD, "new_password": new }));
     assert_eq!(change("short").await["error"], "password_too_short");
-    assert_eq!(change("a new long passphrase").await["ok"], true);
+    assert_eq!(change("NewLongPass7").await["ok"], true);
     assert_eq!(s.ask(json!({ "op": "resume", "device_token": token })).await["error"], "signed_out");
-    assert_eq!(s.login("Yugi", "a new long passphrase").await["ok"], true);
+    assert_eq!(s.login("Yugi", "NewLongPass7").await["ok"], true);
     assert_eq!(s.login("Yugi", PASSWORD).await["error"], "invalid_credentials");
 }
 
@@ -191,12 +194,12 @@ async fn a_new_password_signs_every_device_out() {
 async fn a_recovery_code_works_once_and_a_new_one_replaces_it() {
     let s = server("recover").await;
     let code = s.register("Yugi", PASSWORD).await["recovery_code"].as_str().unwrap().to_string();
-    let recover = |code: &str| s.ask(json!({ "op": "recover", "user": "Yugi", "code": code, "new_password": "a new long passphrase" }));
+    let recover = |code: &str| s.ask(json!({ "op": "recover", "user": "Yugi", "code": code, "new_password": "NewLongPass7" }));
     let done = recover(&code.to_lowercase()).await;
     assert_eq!(done["ok"], true, "{done}");
     let next = done["recovery_code"].as_str().unwrap();
     assert_ne!(next, code);
-    assert_eq!(s.login("Yugi", "a new long passphrase").await["ok"], true);
+    assert_eq!(s.login("Yugi", "NewLongPass7").await["ok"], true);
     assert_eq!(recover(&code).await["error"], "invalid_recovery", "used");
 }
 
@@ -209,7 +212,7 @@ async fn a_moderators_reset_code_works_once_for_a_day() {
     });
     let before = Directory::open(vec![], &accounts_file(&cfg)).unwrap().login_of("Yugi").unwrap().1.recovery;
     let s = serve(cfg).await;
-    let recover = || s.ask(json!({ "op": "recover", "user": "Yugi", "code": code, "new_password": "a new long passphrase" }));
+    let recover = || s.ask(json!({ "op": "recover", "user": "Yugi", "code": code, "new_password": "NewLongPass7" }));
     let done = recover().await;
     assert_eq!(done["ok"], true, "{done}");
     assert!(done.get("recovery_code").is_none(), "the player's own recovery code stays as it was");

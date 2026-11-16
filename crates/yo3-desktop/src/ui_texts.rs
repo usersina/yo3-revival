@@ -121,7 +121,7 @@ mod tests {
             Problem::Restricted { reason: String::new(), until: Some(0) }, Problem::Maintenance { message: String::new() }, Problem::Full,
             Problem::NeedsUpdate { min: "0.2.0".into() }, Problem::IdentityChanged, Problem::Unreachable, Problem::SignInAgain, Problem::SessionEnded,
             Problem::InviteNeeded, Problem::InviteInvalid, Problem::RegistrationClosed, Problem::UserIdTaken, Problem::UserIdInvalid, Problem::PasswordTooShort,
-            Problem::PasswordTooLong, Problem::PasswordTooCommon, Problem::PasswordsDiffer, Problem::RulesNotAccepted, Problem::RecoveryInvalid,
+            Problem::PasswordTooLong, Problem::PasswordTooCommon, Problem::PasswordCharacters, Problem::PasswordsDiffer, Problem::RulesNotAccepted, Problem::RecoveryInvalid,
             Problem::Other("server_error".into())] {
             assert_eq!(technical(&problem.sentence()), None, "{problem:?}");
         }

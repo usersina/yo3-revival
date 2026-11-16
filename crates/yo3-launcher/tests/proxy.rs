@@ -78,9 +78,9 @@ async fn a_modded_client_logs_in_and_its_duel_is_bound_to_that_launcher() {
     assert_eq!(rpc(&mut duel, Message::reply(0x200A).with("player_id", pid.clone())).await.request(), Some(0x200D));
     // Another account's launcher (a second login of the same account would end this one's session: the newest wins).
     yo3_server::logins::use_fast_hashing();
-    let made = e.account(&serde_json::json!({ "op": "register", "user": "thief", "password": "a long passphrase", "rules": true })).await.unwrap();
+    let made = e.account(&serde_json::json!({ "op": "register", "user": "thief", "password": "LongPassphrase1", "rules": true })).await.unwrap();
     assert_eq!(made["ok"], true, "{made}");
-    let signed = e.account(&serde_json::json!({ "op": "login", "user": "thief", "password": "a long passphrase" })).await.unwrap();
+    let signed = e.account(&serde_json::json!({ "op": "login", "user": "thief", "password": "LongPassphrase1" })).await.unwrap();
     let hex = signed["session"].as_str().unwrap();
     let other_session: [u8; 32] = (0..32).map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).unwrap()).collect::<Vec<_>>().try_into().unwrap();
     let other = Proxy::start(e, other_session, Ports::default()).await.unwrap();

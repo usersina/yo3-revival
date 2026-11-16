@@ -9,7 +9,7 @@ use yo3_tunnel::Endpoint;
 
 use crate::wire::{Ports, authenticate_proxy, unhex};
 
-const PASSWORD: &str = "monkey passphrase";
+const PASSWORD: &str = "MonkeyPass1";
 
 /// One simulated player: the local ports its plans and duels use, and the proxy that keeps them open.
 pub struct Player {

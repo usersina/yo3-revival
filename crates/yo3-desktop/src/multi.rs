@@ -451,7 +451,7 @@ impl State {
                     AccountForm::Password => column![
                         text("A new password signs out every PC, this one too.").size(14).color(color::INK),
                         row![text("Current password").size(14).font(BODY_BOLD).color(color::INK).width(130), field("", &self.account_password, AccountField::Password)].align_y(Center),
-                        row![text("New password").size(14).font(BODY_BOLD).color(color::INK).width(130), field("8 characters or more", &self.account_new, AccountField::New)].align_y(Center),
+                        row![text("New password").size(14).font(BODY_BOLD).color(color::INK).width(130), field("8 to 16 letters or digits", &self.account_new, AccountField::New)].align_y(Center),
                         row![text("Again").size(14).font(BODY_BOLD).color(color::INK).width(130), field("", &self.account_again, AccountField::Again)].align_y(Center),
                         row![pill("Change password", (!busy && !self.account_password.is_empty() && !self.account_new.is_empty()).then_some(Message::AccountSubmit), Kind::Primary, 180, 34),
                             Space::new().width(Fill), cancel].align_y(Center),
@@ -617,7 +617,7 @@ impl State {
                 let mut col = column![
                     text("Create an account").size(15).font(BODY_BOLD).color(color::INK),
                     labelled("User ID", input("3 to 16 letters or digits", &self.user, Field::User, false)),
-                    labelled("Password", input("8 characters or more", &self.password, Field::Password, true)),
+                    labelled("Password", input("8 to 16 letters or digits", &self.password, Field::Password, true)),
                     labelled("Again", input("", &self.again, Field::Again, true)),
                 ].spacing(8);
                 if invite { col = col.push(labelled("Invite code", input("ABCD-EFGH-JKLM-NPQR", &self.invite, Field::Invite, false))) }
@@ -630,7 +630,7 @@ impl State {
                 text("With the recovery code you saved at sign-up, or a reset code from the server's moderators.").size(13).color(color::INK_SOFT),
                 labelled("User ID", input("", &self.user, Field::User, false)),
                 labelled("Code", input("ABCD-EFGH-JKLM-NPQR", &self.code, Field::Code, false)),
-                labelled("Password", input("8 characters or more", &self.password, Field::Password, true)),
+                labelled("Password", input("8 to 16 letters or digits", &self.password, Field::Password, true)),
                 labelled("Again", input("", &self.again, Field::Again, true)),
                 row![pill("Set password", (!self.busy).then_some(Message::Recover), Kind::Primary, 150, 34), Space::new().width(Fill), back()].align_y(Center),
             ].spacing(8).into(),
@@ -712,7 +712,7 @@ mod tests {
         assert_eq!(label(&state), ("LOG IN", false, String::new()), "nothing typed yet");
         let ctx = ctx();
         let _ = state.update(Message::Edit(Field::User, "yugi".into()), &ctx);
-        let _ = state.update(Message::Edit(Field::Password, "a long passphrase".into()), &ctx);
+        let _ = state.update(Message::Edit(Field::Password, "LongPassphrase1".into()), &ctx);
         assert_eq!(label(&state).0, "LOG IN");
         assert!(label(&state).1);
         let key = state.servers[0].key().to_string();
