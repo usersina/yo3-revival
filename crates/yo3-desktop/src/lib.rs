@@ -143,11 +143,13 @@ impl LauncherDb {
         let conn = Connection::open(path)?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         let version: u32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
-        ensure!(version <= 2, "Launcher database is newer than this application.");
+        ensure!(version <= 3, "Launcher database is newer than this application.");
         // 2: the Multiplayer servers the player added or played on (#30), by their first identity.
-        conn.execute_batch("BEGIN; CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS servers (id INTEGER PRIMARY KEY, body TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS remote_servers (key TEXT PRIMARY KEY, body TEXT NOT NULL); PRAGMA user_version=2; COMMIT;")?;
+        // 3: no `servers`, v0.0.21's connections saved with a friend's account key (#23); secure_delete overwrites the
+        // keys' bytes instead of leaving them in free pages.
+        conn.execute_batch("PRAGMA secure_delete=ON; BEGIN; CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS remote_servers (key TEXT PRIMARY KEY, body TEXT NOT NULL);
+            DROP TABLE IF EXISTS servers; PRAGMA user_version=3; COMMIT;")?;
         Ok(Self { conn })
     }
     pub fn settings(&self) -> anyhow::Result<Settings> {
