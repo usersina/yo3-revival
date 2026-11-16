@@ -38,6 +38,27 @@ pub fn create(exe: &Path) -> anyhow::Result<Vec<PathBuf>> {
     }
 }
 
+/// Whether the shortcut [`create`] makes is there: on Windows the `.lnk` on the Desktop, on Linux the menu entry.
+pub fn exists() -> bool {
+    #[cfg(windows)] {
+        use windows_sys::Win32::UI::Shell::{FOLDERID_Desktop, SHGetKnownFolderPath};
+        let mut raw: windows_sys::core::PWSTR = std::ptr::null_mut();
+        // SAFETY: the out pointer is ours; Windows allocates the path, freed below whatever the result.
+        let ok = unsafe { SHGetKnownFolderPath(&FOLDERID_Desktop, 0, std::ptr::null_mut(), &mut raw) } == 0;
+        let desktop = (ok && !raw.is_null()).then(|| {
+            let len = (0..).take_while(|&i| unsafe { *raw.add(i) } != 0).count();
+            PathBuf::from(String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(raw, len) }))
+        });
+        unsafe { windows_sys::Win32::System::Com::CoTaskMemFree(raw as _) };
+        desktop.is_some_and(|d| d.join("YO3 Revival.lnk").is_file())
+    }
+    #[cfg(not(windows))] {
+        let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+        let data = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".local/share"));
+        data.join("applications/yo3-revival.desktop").is_file()
+    }
+}
+
 /// The user's Desktop folder, if they have one (`xdg-user-dir DESKTOP`, else `~/Desktop`).
 #[cfg(not(windows))]
 fn desktop_dir(home: &Path) -> Option<PathBuf> {

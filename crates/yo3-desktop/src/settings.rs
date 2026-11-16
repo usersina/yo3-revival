@@ -108,6 +108,8 @@ pub struct State {
     confirm_game_reset: bool,
     licences: bool,
     update: Option<String>,
+    /// The desktop shortcut is already there: its row offers to make it again (after an update moved the launcher).
+    shortcut: bool,
 }
 
 pub const LICENCES: &str = "YO3 Revival is free software under the MIT licence. Its rules engine is built on EDOPro's core and ProjectIgnis' \
@@ -118,7 +120,7 @@ The full licences come with YO3 Revival, in its notices folder.";
 impl State {
     pub fn new(ctx: &Ctx, section: Section) -> Self {
         Self { section, note: None, busy: None, direct: Direct::Unknown, prefix: ctx.settings.wine_prefix.clone(), wine: ctx.settings.wine_binary.clone(),
-            confirm_reset: false, confirm_game_reset: false, licences: false, update: None }
+            confirm_reset: false, confirm_game_reset: false, licences: false, update: None, shortcut: yo3_desktop::shortcut::exists() }
     }
 
     /// The first tasks: what direct start is like now.
@@ -217,7 +219,10 @@ impl State {
                 self.busy = Some("Adding the shortcut…");
                 return job(|| yo3_desktop::shortcut::create(&std::env::current_exe()?).map(|_| ()), Message::ShortcutDone);
             }
-            Message::ShortcutDone(result) => self.result(ctx, result, "The shortcut is on your desktop."),
+            Message::ShortcutDone(result) => {
+                if result.is_ok() { self.shortcut = true }
+                self.result(ctx, result, "The shortcut is on your desktop.")
+            }
             Message::BackUp => {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 let settings = ctx.settings.clone();
@@ -370,8 +375,10 @@ impl State {
                 text("The game keeps its picture and draws it larger. From the next PLAY.").size(14).color(color::INK_SOFT),
             ].spacing(6).into()),
             item("Without the launcher", direct.into()),
-            item("Desktop shortcut", row![text("A shortcut to YO3 Revival on your desktop.").size(14).color(color::INK_SOFT).width(Fill),
-                pill("Add", self.busy.is_none().then_some(Message::Shortcut), Kind::Primary, 120, 32)].spacing(10).align_y(Center).into()),
+            item("Desktop shortcut", row![text(if self.shortcut { "On your desktop. Make it again if it no longer opens YO3 Revival." }
+                    else { "A shortcut to YO3 Revival on your desktop." }).size(14).color(color::INK_SOFT).width(Fill),
+                pill(if self.shortcut { "Make again" } else { "Add" }, self.busy.is_none().then_some(Message::Shortcut), Kind::Primary, 120, 32)]
+                .spacing(10).align_y(Center).into()),
         ].spacing(16).into()
     }
 
