@@ -10,6 +10,22 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## v0.0.24 (2026-11-16)
+
+A duel fix. Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the
+server, rules engine and required connection components. Original game files are not included.
+**Windows 7 is not supported.**
+
+Hosts should update: the fix is in the server, and players need nothing new. Friends on v0.0.13 or later can still
+join. Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.24/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.24/docs/scripts.md).
+
+- **Coin tosses and dice rolls are shown.** A card that tossed a coin or rolled a die (Time Wizard, Sasuke Samurai #4,
+  Graceful Dice and others) showed nothing, only its outcome, so it could look as if the result was always the same.
+  The duel now plays the coin and dice animations with the real result: each coin's face, highlighted when it lands
+  on the side you called, and the die's number. The results were always random; now you can see them.
+
 ## v0.0.23 (2026-11-16)
 
 A duel fix. Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the
