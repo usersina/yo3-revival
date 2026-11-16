@@ -1,8 +1,8 @@
 # Desktop guide
 
 > **On the `beta` branch** the Desktop window is the new launcher of the public beta
-> ([#20](https://github.com/usersina/yo3-revival/issues/20)). Installing an update from inside the window returns with
-> [#32](https://github.com/usersina/yo3-revival/issues/32); until then the footer says when one is out and links to it.
+> ([#20](https://github.com/usersina/yo3-revival/issues/20)). It downloads updates in the background and installs them
+> when it restarts ([#32](https://github.com/usersina/yo3-revival/issues/32), [Application updates](#application-updates)).
 
 Use **Desktop** for a window with setup, a Play button, settings and help. Use [Scripts](scripts.md) if you prefer a
 terminal. Both editions include the server, rules engine and required connection components. Game files are separate.
@@ -251,10 +251,30 @@ the server with `--duel-check` ([developer replay and validation](development.md
 
 ## Application updates
 
-The footer shows the version. When a newer release is out, it says **Update X is available: see what's new**, which
-opens the release page; Settings → About → **Check for updates** asks again. Download the new Desktop archive and
-extract it in place of the old folder: your settings and data are kept in the app's storage. Installing an update from
-inside the window returns in a later beta version ([#32](https://github.com/usersina/yo3-revival/issues/32)).
+YO3 Revival checks for a new release when it starts and every 6 hours while it is open (Settings → About → **Check for
+updates** asks at once). When one is out:
+
+- **A dot on the version** in the footer. Click the version for **What's new**: that version's section of the
+  [changelog](../CHANGELOG.md), where its download is, and a link to the release page.
+- **It downloads in the background** and is checked against the SHA-256 that GitHub reports for the archive. One that
+  doesn't match is refused, written to the logs and never installed; it is tried again at the next check. The new
+  version is unpacked beside this one: your settings, accounts, decks and server data stay where they are, and game
+  files are never part of an update.
+- **A ribbon above PLAY: "Update X is ready · Restart to install".** **Restart to install** (or the same button in What's
+  new) opens the new version and closes this one once the new window is up. If you are hosting for friends it asks
+  first, because restarting stops your server.
+- **Never while the game runs.** While you play, the ribbon says the update installs after you close the game. Closing
+  YO3 Revival is enough too: the next time you open it, it installs the update before its window opens (and waits again
+  if a game is still open).
+- **If the new version doesn't start,** this version stays, says "Update X didn't start, so YO3 Revival kept
+  version Y" with the reason behind **Details**, and doesn't download that version again by itself (the release page
+  still has it).
+- **A server that needs a newer YO3 Revival** shows **UPDATE** on its Play button in Multiplayer, which opens What's
+  new (or the release page before the update is known). Singleplayer and other servers keep working.
+
+You can still update by hand: download the new Desktop archive and extract it in place of the old folder, with
+YO3 Revival closed. Your settings and data are kept in the app's storage. Signed release manifests, on top of the
+checksum, are prepared but not switched on yet (#32).
 
 Archives have versioned filenames, but stable inner folders: `yo3-revival-desktop/` and `yo3-revival-scripts/`.
 Do not overwrite a running bundle. [Scripts updates](scripts.md#updates) are manual.

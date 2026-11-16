@@ -20,7 +20,7 @@ pub struct Ctx {
 pub enum Claim { Now(instance::Owner), AfterUpdate }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Dialog { Help, Report, Repair, ConfirmClose, Backups, Host, Support }
+pub enum Dialog { Help, Report, Repair, ConfirmClose, Backups, Host, Support, WhatsNew, ConfirmRestart }
 
 /// Report a problem: what the player says happened, the error it is about, and how far it got.
 #[derive(Clone, Debug, Default)]
@@ -52,7 +52,15 @@ pub enum Message {
     Exit,
     WindowOpened,
     Key(keyboard::Event),
+    /// Every few minutes: checks for updates when `updates::flow::CHECK_EVERY` has passed (#32).
+    UpdateTick,
     UpdateChecked(Result<updates::Decision, String>),
+    /// The background download of this version finished: staged and waiting for a restart, or refused.
+    UpdatePrepared(String, Result<updates::install::Installed, String>),
+    /// Restart into the downloaded update (the game is closed; hosting confirmed).
+    Restart,
+    /// The restart didn't happen: this version stays.
+    Restarted(Result<(), String>),
     OpenLink(String),
     LinkOpened(Result<(), String>),
 }
@@ -66,7 +74,7 @@ pub struct App {
     report: Report,
     host: host::State,
     dialog: Option<Dialog>,
-    update: Option<updates::Decision>,
+    updater: updates::flow::Updater,
     startup: updates::activation::Startup,
     quitting: bool,
 }
@@ -80,7 +88,8 @@ pub fn job<T: Send + 'static, M: Send + 'static>(work: impl FnOnce() -> anyhow::
 }
 
 impl App {
-    pub fn boot(root: PathBuf, startup: updates::activation::Startup, routing_error: Option<String>, claim: Claim) -> (Self, Task<Message>) {
+    pub fn boot(root: PathBuf, startup: updates::activation::Startup, routing_error: Option<String>, update_failed: Option<(String, String)>,
+        claim: Claim) -> (Self, Task<Message>) {
         let mut problem = routing_error;
         let (store, settings) = match Store::open(&root) {
             Ok((store, settings)) => (Some(store), settings),
@@ -93,16 +102,19 @@ impl App {
         let ctx = Ctx { root, backend, store, settings };
         let mut home = home::State::default();
         if let Some(problem) = problem { home.fail(&ctx, problem) }
+        // The update downloaded last time didn't start, and this version was kept (#32).
+        if let Some((summary, details)) = update_failed { home.update_notice(&ctx, summary, details) }
+        let updater = updates::flow::Updater::new(updates::install::failed_start(&ctx.root).ok().flatten());
         // Until setup has been finished once, the launcher opens on it.
         let mut setup = (!ctx.settings.setup_complete).then(|| setup::State::new(&ctx, setup::Step::Welcome, false));
         let mut tasks = vec![
             home.check(&ctx).map(Message::Home),
             home.load_banlists(&ctx).map(Message::Home),
-            Task::perform(async { updates::check().await.map_err(|e| format!("{e:#}")) }, Message::UpdateChecked),
+            Task::done(Message::UpdateTick),
             listen_for_second_starts(&ctx.root, claim),
         ];
         if let Some(setup) = &mut setup { tasks.push(setup.start(&ctx).map(Message::Setup)) }
-        (Self { ctx, home, setup, settings: None, help: help::State::at(None), report: Report::default(), host: host::State::default(), dialog: None, update: None, startup, quitting: false },
+        (Self { ctx, home, setup, settings: None, help: help::State::at(None), report: Report::default(), host: host::State::default(), dialog: None, updater, startup, quitting: false },
             Task::batch(tasks))
     }
 
@@ -110,7 +122,17 @@ impl App {
         match message {
             Message::Home(home::Message::SetUp) => return self.open_setup(setup::Step::Game),
             Message::Home(home::Message::Repair) => self.dialog = Some(Dialog::Repair),
-            Message::Home(home::Message::Releases) => return self.update(Message::OpenLink(RELEASES.into())),
+            // A server needs a newer launcher: What's new (with Restart to install) when the update is known.
+            Message::Home(home::Message::Releases) => match self.updater.remedy() {
+                updates::flow::Remedy::WhatsNew => self.dialog = Some(Dialog::WhatsNew),
+                updates::flow::Remedy::Releases => return self.update(Message::OpenLink(RELEASES.into())),
+            },
+            Message::Home(home::Message::WhatsNew) => self.dialog = Some(Dialog::WhatsNew),
+            Message::Home(home::Message::RestartToInstall) => {
+                // Never while the game runs; hosting for friends stops, so that is asked first.
+                if self.home.playing() || self.updater.ready().is_none() { return Task::none() }
+                if self.host.hosted.is_some() { self.dialog = Some(Dialog::ConfirmRestart) } else { return self.update(Message::Restart) }
+            }
             Message::Home(home::Message::Restore) => self.dialog = Some(Dialog::Backups),
             Message::Home(home::Message::Settings(section)) => return self.update(Message::OpenSettings(section)),
             Message::Home(home::Message::Report(error)) => return self.update(Message::OpenReport(error)),
@@ -230,7 +252,61 @@ impl App {
                 _ => {}
             },
             Message::Key(_) => {}
-            Message::UpdateChecked(result) => self.update = result.ok(),
+            Message::UpdateTick => {
+                let now = std::time::Instant::now();
+                if !self.updater.due(now) { return Task::none() }
+                self.updater.checking(now);
+                return Task::perform(async { updates::check().await.map_err(|e| format!("{e:#}")) }, Message::UpdateChecked);
+            }
+            Message::UpdateChecked(result) => {
+                // A new version downloads and is checked in the background; it installs only on restart.
+                let Some(release) = self.updater.checked(result) else { return Task::none() };
+                let (root, tag) = (self.ctx.root.clone(), release.tag.clone());
+                return Task::perform(async move {
+                    let installed = updates::download::prepare(root.clone(), release, Default::default()).await?;
+                    let pending = installed.clone();
+                    tokio::task::spawn_blocking(move || updates::install::set_pending(&root, &pending)).await??;
+                    anyhow::Ok(installed)
+                }, move |result| Message::UpdatePrepared(tag.clone(), result.map_err(|e| format!("{e:#}"))));
+            }
+            Message::UpdatePrepared(tag, result) => {
+                // Refused (a checksum or signature that doesn't match) is reported, and never installed.
+                if let Err(error) = &result && let Some(backend) = &self.ctx.backend { backend.diagnostics.line(&format!("Update {tag} not installed: {error}")) }
+                self.updater.prepared(&tag, result);
+                self.home.update_ready = self.updater.ready().map(|i| i.tag.trim_start_matches('v').to_owned());
+            }
+            Message::Restart => {
+                let (Some(installed), Some(backend)) = (self.updater.ready().cloned(), self.ctx.backend.clone()) else { return Task::none() };
+                if self.home.playing() || self.quitting { return Task::none() }
+                self.quitting = true;
+                self.dialog = None;
+                let (settings, root) = (self.ctx.settings.clone(), self.ctx.root.clone());
+                return job(move || {
+                    anyhow::ensure!(!backend.game_running() && !backend.game_open_elsewhere(&settings), "{GAME_OPEN}");
+                    let _ = backend.stop_hosting();
+                    if backend.live(&settings).is_some() { backend.stop_server(&settings)?; }
+                    // The new version opens its window, then this one exits; if it doesn't, this one stays.
+                    match updates::activation::launch(&root, &installed, false, std::time::Duration::from_secs(25)) {
+                        Ok(_ready) => { let _ = updates::install::clear_pending(&root, None); Ok(()) }
+                        Err(error) => { let _ = updates::install::clear_pending(&root, Some(&installed.tag)); Err(error) }
+                    }
+                }, Message::Restarted);
+            }
+            Message::Restarted(Ok(())) => return iced::exit(),
+            Message::Restarted(Err(error)) => {
+                self.quitting = false;
+                let tag = self.updater.ready().map(|i| i.tag.clone()).unwrap_or_default();
+                let stopped = self.host.hosted.is_some();
+                if error == GAME_OPEN {
+                    // A game opened since: the update waits, and installs after it closes.
+                    self.home.update_notice(&self.ctx, "Close the game first, then Restart to install.".into(), error);
+                } else {
+                    self.updater.start_failed(&tag);
+                    self.home.update_ready = None;
+                    self.home.update_notice(&self.ctx, updates::activation::failed_summary(&tag, yo3_tunnel::BUILD_VERSION), error);
+                }
+                if stopped { return self.host.update(host::Message::Stopped(Ok(())), &mut self.ctx).map(Message::Host) }
+            }
             Message::OpenLink(url) => return job(move || external::open(&url), Message::LinkOpened),
             Message::LinkOpened(result) => if let Err(error) = result { self.home.fail(&self.ctx, error) },
         }
@@ -246,6 +322,11 @@ impl App {
             settings::Message::Open(url) => self.update(Message::OpenLink(url)),
             settings::Message::Copy(text) => self.update(Message::Copy(text)),
             settings::Message::Report(error) => self.update(Message::OpenReport(error)),
+            // Settings → About's check counts as one (#32): a new version downloads as after the timed check.
+            settings::Message::UpdatesChecked(result) => {
+                let task = self.settings.as_mut().map_or_else(Task::none, |state| state.update(settings::Message::UpdatesChecked(result.clone()), &mut self.ctx, false).map(Message::Settings));
+                Task::batch([task, self.update(Message::UpdateChecked(result))])
+            }
             message => {
                 let Some(state) = &mut self.settings else { return Task::none() };
                 let playing = self.home.playing();
@@ -276,6 +357,7 @@ impl App {
         ];
         if self.setup.is_none() { all.push(self.home.subscription().map(Message::Home)) }
         all.push(self.host.subscription().map(Message::Host));
+        all.push(iced::time::every(std::time::Duration::from_secs(10 * 60)).map(|_| Message::UpdateTick));
         Subscription::batch(all)
     }
 
@@ -314,11 +396,16 @@ impl App {
     }
 
     fn footer(&self) -> Element<'_, Message> {
-        let mut line = row![text(format!("v{}", yo3_tunnel::BUILD_VERSION.trim_start_matches('v'))).size(14).color(color::ON_DARK_SOFT)].spacing(10).align_y(Center);
-        if let Some(updates::Decision::Available(release)) = &self.update {
-            line = line.push(container(Space::new().width(9).height(9)).style(|_| dot(color::WARN)))
-                .push(yo3_skin::link(update_line(&release.tag), Message::OpenLink(release.url.clone()), true));
-        }
+        let version = format!("v{}", yo3_tunnel::BUILD_VERSION.trim_start_matches('v'));
+        // A newer version is known: a dot on the version, which opens What's new (#32).
+        let mut line = match self.updater.offered() {
+            Some(offered) => row![
+                row![yo3_skin::link(version, Message::Home(home::Message::WhatsNew), true),
+                    container(container(Space::new().width(8).height(8)).style(|_| dot(color::WARN))).height(20).align_y(iced::alignment::Vertical::Top)].spacing(1),
+                yo3_skin::link(update_line(offered, self.updater.ready().is_some()), Message::Home(home::Message::WhatsNew), true),
+            ],
+            None => row![text(version).size(14).color(color::ON_DARK_SOFT)],
+        }.spacing(10).align_y(Center);
         if self.host.hosted.is_some() {
             // Hosting for friends runs while the launcher is open: the footer says so and opens its dialog.
             let online = self.host.activity.online;
@@ -338,6 +425,10 @@ impl App {
             Dialog::Help => return self.help.view().map(Message::Help),
             Dialog::Report => return self.report_dialog(),
             Dialog::Host => return self.host.view().map(Message::Host),
+            Dialog::WhatsNew => return self.whats_new(),
+            Dialog::ConfirmRestart => ("Restart to install?", "You are hosting for friends. Restarting YO3 Revival stops your server; \
+                start hosting again after the update.".into(),
+                row![pill("Cancel", Some(Message::CloseDialog), Kind::Primary, 120, 38), pill("Restart", Some(Message::Restart), Kind::Primary, 120, 38)].spacing(10).into(), 210.0),
             Dialog::Support => ("Support YO3 Revival", "YO3 Revival is free, and stays free: nothing in the game is for sale, and \
                 giving changes nothing in it. If you enjoy it, a donation helps pay for the time it takes and for the server. Questions, \
                 ideas and servers to join are in the project's discussions.".into(),
@@ -376,6 +467,31 @@ impl App {
 }
 
 impl App {
+    /// What's new in the offered version: its changelog section, where its download is, and Restart to install.
+    fn whats_new(&self) -> Element<'_, Message> {
+        let Some(release) = self.updater.release() else {
+            return container(yo3_skin::panel(Some("What's new"), column![text("You have the latest version.").size(15).color(color::INK),
+                Space::new().height(Fill), row![Space::new().width(Fill), pill("Close", Some(Message::CloseDialog), Kind::Primary, 120, 38)]])).width(470).height(200).into()
+        };
+        let playing = self.home.playing();
+        let mut notes = column![].spacing(8);
+        for block in updates::flow::blocks(&updates::flow::whats_new(&release.notes)) {
+            let spans: Vec<iced::widget::text::Span<'static, (), iced::Font>> = block.runs.into_iter()
+                .map(|(words, bold)| iced::widget::span(words).font(if bold { yo3_skin::BODY_BOLD } else { yo3_skin::BODY })).collect();
+            let paragraph = iced::widget::rich_text(spans).size(15).color(color::INK).width(Fill);
+            notes = notes.push(if block.bullet { row![text("•").size(15).color(color::INK), paragraph].spacing(8).into() } else { Element::from(paragraph) });
+        }
+        let restart = self.updater.ready().is_some() && !playing && !self.quitting;
+        let mut buttons = row![yo3_skin::link("Release page", Message::OpenLink(release.url.clone()), false), Space::new().width(Fill)].spacing(10).align_y(Center);
+        if self.updater.ready().is_some() { buttons = buttons.push(pill("Restart to install", restart.then_some(Message::Home(home::Message::RestartToInstall)), Kind::Primary, 190, 38)) }
+        buttons = buttons.push(pill("Close", Some(Message::CloseDialog), Kind::Primary, 120, 38));
+        container(yo3_skin::panel(Some(&format!("What's new in {}", release.tag.trim_start_matches('v'))), column![
+            iced::widget::scrollable(notes).height(Fill),
+            text(self.updater.status(playing)).size(14).font(yo3_skin::BODY_BOLD).color(color::INK_SOFT),
+            buttons,
+        ].spacing(12))).width(620).height(440).into()
+    }
+
     fn report_dialog(&self) -> Element<'_, Message> {
         let report = &self.report;
         let mut col = column![
@@ -402,6 +518,8 @@ static APP_ICON: std::sync::LazyLock<iced::widget::image::Handle> = std::sync::L
     iced::widget::image::Handle::from_rgba(128, 128, include_bytes!(concat!(env!("OUT_DIR"), "/launcher-mark.rgba")).to_vec())
 });
 
+/// Why a restart into the update waited: the game is open.
+const GAME_OPEN: &str = "The game is open.";
 const RELEASES: &str = "https://github.com/usersina/yo3-revival/releases/latest";
 /// The antivirus help page (#38): why our files get flagged, checking a download, restoring a quarantined file.
 pub const ANTIVIRUS: &str = "https://github.com/usersina/yo3-revival/blob/main/docs/antivirus.md";
@@ -410,7 +528,10 @@ pub const DISCUSSIONS: &str = "https://github.com/usersina/yo3-revival/discussio
 /// Where a donation goes (the footer's Support).
 pub const DONATE: &str = "https://donatr.ee/usersina/";
 
-fn update_line(tag: &str) -> String { format!("Update {} is available: see what's new", tag.trim_start_matches('v')) }
+/// Beside the version's dot: which version, and whether it waits for a restart.
+fn update_line(version: &str, ready: bool) -> String {
+    if ready { format!("Update {version} is ready") } else { format!("Update {version} is available") }
+}
 
 pub fn dot(c: Color) -> container::Style {
     container::Style { background: Some(c.into()), border: iced::Border { color: Color { a: 0.5, ..Color::BLACK }, width: 1.0, radius: 5.0.into() },

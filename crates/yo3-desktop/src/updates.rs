@@ -6,6 +6,8 @@ use std::time::Duration;
 pub mod install;
 pub mod activation;
 pub mod download;
+pub mod flow;
+pub mod signature;
 pub const REPOSITORY: &str = "https://github.com/usersina/yo3-revival";
 pub const RELEASES: &str = "https://github.com/usersina/yo3-revival/releases";
 const LATEST: &str = "https://api.github.com/repos/usersina/yo3-revival/releases/latest";
@@ -64,6 +66,10 @@ fn client(timeout: Duration) -> anyhow::Result<reqwest::Client> {
         .user_agent(format!("yo3-revival/{}", yo3_tunnel::BUILD_VERSION)).build()?)
 }
 pub async fn check() -> anyhow::Result<Decision> {
+    // Development builds only: a fake newer release from a local file, to check the window live (#32). Release builds
+    // (no debug assertions) never read it.
+    #[cfg(debug_assertions)]
+    if let Some(path) = std::env::var_os("YO3_UPDATE_FAKE_METADATA") { return inspect(yo3_tunnel::BUILD_VERSION, Platform::current(), &std::fs::read(path)?) }
     fetch(&client(Duration::from_secs(10))?, LATEST, yo3_tunnel::BUILD_VERSION, Platform::current()).await
 }
 async fn fetch(client: &reqwest::Client, url: &str, current: &str, platform: Platform) -> anyhow::Result<Decision> {

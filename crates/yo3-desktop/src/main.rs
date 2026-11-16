@@ -60,11 +60,27 @@ fn run() -> iced::Result {
             Err(error) => { startup_error(&format!("{error:#}")); return Ok(()) }
         }
     };
-    let boot = Mutex::new(Some((root, startup, routing_error, claim)));
+    // An update downloaded while the launcher was open installs now, at its next start (#32): only by the one launcher
+    // (a second start just brings the open window forward), and never while the game runs. If the new version doesn't
+    // open its window, this one stays and says so. The new version claims the launcher once this one has exited.
+    let mut update_failed = None;
+    if let app::Claim::Now(_) = &claim && root.is_dir() {
+        let game_open = || {
+            let settings = yo3_desktop::LauncherDb::open(&root).and_then(|db| db.settings()).unwrap_or_default();
+            yo3_desktop::Backend::new(root.clone()).is_ok_and(|backend| backend.game_running() || backend.game_open_elsewhere(&settings))
+        };
+        match updates::activation::install_pending(&root, yo3_tunnel::BUILD_VERSION, &std::env::current_exe().unwrap_or_default(), game_open,
+            std::time::Duration::from_secs(25)) {
+            updates::activation::Pending::Installed => return Ok(()),
+            updates::activation::Pending::Failed { summary, details } => update_failed = Some((summary, details)),
+            updates::activation::Pending::Nothing => {}
+        }
+    }
+    let boot = Mutex::new(Some((root, startup, routing_error, update_failed, claim)));
     let mut application = iced::application(
         move || {
-            let (root, startup, routing_error, claim) = boot.lock().expect("boot").take().expect("the application boots once");
-            app::App::boot(root, startup, routing_error, claim)
+            let (root, startup, routing_error, update_failed, claim) = boot.lock().expect("boot").take().expect("the application boots once");
+            app::App::boot(root, startup, routing_error, update_failed, claim)
         },
         app::App::update, app::App::view)
         .title("YO3 Revival").default_font(yo3_skin::BODY).subscription(app::App::subscription)

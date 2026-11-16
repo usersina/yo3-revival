@@ -119,6 +119,15 @@ Two more things keep a live check private:
   Downloads…) to your real home folders, so the game would write there. Replace those links with empty folders in the
   copy, and point the launcher's game folder at the copy's own game.
 
+**Updates (#32) without publishing a release.** A development build (debug assertions on) reads a fake newer release
+from `YO3_UPDATE_FAKE_METADATA` (GitHub's release JSON: `tag_name`, `body`, and one asset with its `sha256:` digest) and
+stages `YO3_UPDATE_FAKE_ARCHIVE` in place of the download; release builds ignore both. Build it with a stable version
+(`YO3_BUILD_VERSION=v0.0.21`, in its own `CARGO_TARGET_DIR` so the main build isn't rebuilt), or the check says it is a
+development build. The archive needs a `bundle.json` whose components' checksums match, like the fixtures in
+`crates/yo3-desktop/tests/update_activation.rs`; a `yo3-revival` script that writes the readiness acknowledgement plays
+the new version. The ribbon, What's new and Restart to install then work as with a real release, and a script that
+exits shows the failed-start notice. The debug window redraws slowly on Xvfb: wait a few seconds after each click.
+
 On Xvfb there is no window manager: give the launcher keyboard focus (`xdotool windowfocus`) before typing, and raise it
 (`xdotool windowraise`) before clicking it while the game is open. Copy in the launcher reaches that display's
 clipboard (`DISPLAY=:88 xsel -o -b` reads it).

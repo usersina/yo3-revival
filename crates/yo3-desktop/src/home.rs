@@ -158,8 +158,12 @@ pub enum Message {
     /// A direct start's problem was shown, and forgotten.
     DirectShown,
     Multi(multi::Message),
-    /// Handled by the window: the releases page, for a server that needs a newer launcher.
+    /// Handled by the window: a server needs a newer launcher (What's new when the update is known, else the releases page).
     Releases,
+    /// Handled by the window: the What's new dialog of the update (#32).
+    WhatsNew,
+    /// Handled by the window: restart into the downloaded update (#32).
+    RestartToInstall,
     /// Handled by the window: Settings at a section.
     Settings(crate::settings::Section),
     /// Handled by the window: Report a problem with this error's text.
@@ -189,6 +193,8 @@ pub struct State {
     pub direct_permission: bool,
     /// The Multiplayer server the last Play was for, so its Allow sets direct start up for it (None: Singleplayer).
     allow_for: Option<yo3_desktop::multiplayer::Server>,
+    /// A downloaded, checked update (its version): the ribbon above PLAY (#32). Set by the window.
+    pub update_ready: Option<String>,
 }
 
 impl State {
@@ -241,7 +247,7 @@ impl State {
             Message::Multi(multi::Message::Remedy(yo3_desktop::multiplayer::Remedy::Update)) => return Task::done(Message::Releases),
             Message::Multi(multi::Message::CloseGame) => return self.update(Message::CloseGame, ctx),
             Message::Multi(message) => return self.multi.update(message, ctx).map(Message::Multi),
-            Message::Releases => {}
+            Message::Releases | Message::WhatsNew | Message::RestartToInstall => {}
             Message::Play => {
                 if Play::of(&self.game) != Play::Ready { return Task::none() }
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
@@ -450,6 +456,13 @@ impl State {
         Task::perform(async move { tokio::task::spawn_blocking(move || yo3_desktop::banlists(&game_dir)).await.unwrap_or_default() }, Message::Banlists)
     }
 
+    /// A notice about an update (one that didn't start, or a failed restart), on both tabs, the reason behind Details.
+    pub fn update_notice(&mut self, ctx: &Ctx, summary: String, details: String) {
+        if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("{summary} {details}")) }
+        let details = error_presentation::present(&details, Hint::General, &crate::app::masks(ctx)).diagnosis.or(Some(details));
+        self.notice = Some(Notice { details, everywhere: true, ..Notice::problem(summary, None) });
+    }
+
     /// Shows one plain sentence for `error`, with the technical text (paths masked) behind Details.
     pub fn fail(&mut self, ctx: &Ctx, error: String) {
         if let Some(backend) = &ctx.backend { backend.diagnostics.line(&error) }
@@ -486,7 +499,7 @@ impl State {
         };
         let panels = row![
             container(yo3_skin::panel(Some("Information"), news)).width(Fill).height(Fill),
-            container(side).width(372).height(Fill),
+            container(column![self.ribbon(playing), side].spacing(8)).width(372).height(Fill),
         ].spacing(16).height(Fill);
         let mut page = column![].spacing(10).padding([16, 18]).height(Fill);
         // The game folder moved or was removed since setup: say so plainly, with the fix, instead of a broken button.
@@ -528,6 +541,21 @@ impl State {
             status,
             pill(play.label(), play.action(), Kind::Play, Fill, 70),
         ].spacing(14))
+    }
+
+    /// "Update X is ready · Restart to install" above PLAY, on both tabs; while the game runs it says when instead.
+    fn ribbon(&self, playing: bool) -> Element<'_, Message> {
+        let Some(version) = &self.update_ready else { return Space::new().into() };
+        let (line, restart) = yo3_desktop::updates::flow::ribbon(version, playing);
+        let mut content = row![
+            container(Space::new().width(9).height(9)).style(|_| dot(color::WARN)),
+            iced::widget::mouse_area(text(line).size(14).font(BODY_BOLD).color(color::ON_DARK)).on_press(Message::WhatsNew)
+                .interaction(iced::mouse::Interaction::Pointer),
+        ].spacing(8).align_y(Center);
+        if restart { content = content.push(yo3_skin::link("Restart to install", Message::RestartToInstall, true)) }
+        container(content).padding([7, 12]).width(Fill).style(|_| container::Style {
+            background: Some(iced::Background::Gradient(iced::gradient::Linear::new(0.0).add_stop(0.0, color::STRIP_LOW).add_stop(1.0, color::STRIP_TOP).into())),
+            border: iced::Border { color: color::WARN, width: 1.5, radius: 4.0.into() }, ..container::Style::default() }).into()
     }
 
     fn notice(&self) -> Element<'_, Message> {
