@@ -56,6 +56,12 @@ and Scripts.
 - [ ] The Discord recording's native game exit `0xc0000005` is a separate failure. A crash dump or faulting address from
       a failing machine is still needed; seven fresh native Windows 11 launches did not reproduce it.
 
+**Moderation**
+
+- [ ] Cancelling maintenance (`maintenance --off`) pushes the Information list without its countdown entry: the notice
+      goes, but the game keeps counting down on the wrench icon (seen on native Windows 11, 2026-11-16). Find what
+      InfoIcon 0x44E130 needs to clear it (an entry with `maintenance` 0, or `lefttime` 0) and send that (#26).
+
 **Higher resolution**
 
 - [ ] A Japanese or Korean IME, a second monitor.
