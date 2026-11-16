@@ -5,7 +5,7 @@ use iced::widget::{Space, column, container, row, text, text_input};
 use iced::{Alignment::Center, Element, Length::Fill, Subscription, Task};
 use yo3_desktop::hosting::{self, Activity, Hosted};
 use yo3_desktop::options::Change;
-use yo3_skin::{BODY_BOLD, Kind, color, pill};
+use yo3_skin::{BODY_BOLD, Icon, Kind, Rule, color, pill};
 use crate::app::{Ctx, dot, job};
 use crate::error_presentation;
 
@@ -53,7 +53,8 @@ pub struct State {
     share: String,
     busy: Option<&'static str>,
     note: Option<Note>,
-    codes: Vec<String>,
+    /// The invites made this time, newest first: each a code for one friend and the link that carries it.
+    invites: Vec<(String, String)>,
     panel: Option<String>,
     polling: bool,
     /// The User ID to make an admin (yours, on your server).
@@ -106,9 +107,9 @@ impl State {
                         let (settings, hosted) = *started;
                         ctx.settings = settings;
                         self.hosted = Some(hosted);
-                        self.codes.clear();
+                        self.invites.clear();
                         self.note = None;
-                        return Task::batch([Task::done(Message::Tick), Task::done(Message::Invite)]);
+                        return Task::done(Message::Tick);
                     }
                     Err(error) => self.fail(ctx, &error),
                 }
@@ -121,7 +122,7 @@ impl State {
             Message::Stopped(result) => {
                 self.busy = None;
                 match result {
-                    Ok(()) => { self.hosted = None; self.activity = Activity::default(); self.panel = None; self.codes.clear(); self.good("Your server is stopped.") }
+                    Ok(()) => { self.hosted = None; self.activity = Activity::default(); self.panel = None; self.invites.clear(); self.good("Your server is stopped.") }
                     Err(error) => self.fail(ctx, &error),
                 }
             }
@@ -143,7 +144,14 @@ impl State {
                     Err(error) => self.fail(ctx, &error),
                 }
             }
-            Message::Invited(Ok(code)) => { self.codes.insert(0, code); self.codes.truncate(3) }
+            // Each friend gets their own link: it carries a single-use code, and goes to the clipboard at once.
+            Message::Invited(Ok(code)) => {
+                let Some(hosted) = &self.hosted else { return Task::none() };
+                let link = yo3_desktop::multiplayer::link_with_code(&hosted.server, &code);
+                self.invites.insert(0, (code, link.clone()));
+                self.invites.truncate(3);
+                return Task::done(Message::Copy(link));
+            }
             Message::Invited(Err(error)) => self.fail(ctx, &error),
             Message::Reach => {
                 let Some(hosted) = self.hosted.clone() else { return Task::none() };
@@ -192,66 +200,68 @@ impl State {
         let mut col = column![body].spacing(12);
         if let Some(busy) = self.busy { col = col.push(text(busy).size(14).color(color::INK_SOFT)) }
         if let Some(note) = &self.note { col = col.push(self.note(note)) }
-        let close = pill("Close", Some(Message::Close), Kind::Primary, 120, 38);
-        let buttons = match &self.hosted {
-            Some(_) => row![yo3_skin::link("Help", Message::Help("host"), false), Space::new().width(Fill),
-                pill("Stop hosting", self.busy.is_none().then_some(Message::Stop), Kind::Primary, 160, 38), close],
-            None => row![yo3_skin::link("Help", Message::Help("host"), false), Space::new().width(Fill),
-                pill("Start hosting", self.busy.is_none().then_some(Message::Start), Kind::Play, 190, 42), close],
-        }.spacing(10).align_y(Center);
-        container(yo3_skin::panel(Some("Host for friends"), column![col, Space::new().height(Fill), buttons])).width(640).height(540).into()
+        let action = match &self.hosted {
+            Some(_) => pill("Stop hosting", self.busy.is_none().then_some(Message::Stop), Kind::Danger, 150, 38),
+            None => pill("Start hosting", self.busy.is_none().then_some(Message::Start), Kind::Primary, 170, 38),
+        };
+        let height = if self.hosted.is_some() { 560.0 } else { 360.0 };
+        yo3_skin::dialog("Host for friends", Some(Message::Help("host")), Message::Close, 600.0, height,
+            column![col, Space::new().height(Fill), row![Space::new().width(Fill), action]])
     }
 
     fn form(&self) -> Element<'_, Message> {
-        let input = |label: &'static str, placeholder: &'static str, value: &str, field: Field| row![
-            text(label).size(14).font(BODY_BOLD).color(color::INK).width(150),
+        let input = |label: &'static str, placeholder: &str, value: &str, field: Field| row![
+            text(label).size(14).font(BODY_BOLD).color(color::INK).width(140),
             text_input(placeholder, value).on_input(move |v| Message::Edit(field, v)).on_submit(Message::Start).style(yo3_skin::field).padding(7).size(15),
         ].align_y(Center);
         let lan = hosting::lan_address().map_or_else(|| "this PC's network address".to_owned(), |ip| ip.to_string());
         column![
-            text("Run a server on this PC that your friends join. It has its own cards and accounts, apart from Singleplayer, and runs while YO3 Revival is open.")
-                .size(15).color(color::INK),
+            text("A server on this PC for your friends, with its own cards and accounts. It runs while YO3 Revival is open.").size(15).color(color::INK),
             input("Server name", hosting::DEFAULT_NAME, &self.name, Field::Name),
             input("Port", "7443", &self.port, Field::Port),
-            input("Address to share", "", &self.share, Field::Share),
-            text(format!("Leave the address empty for {lan}, which friends on your network reach. Friends elsewhere need your public address and \
-                the port forwarded on your router.")).size(13).color(color::INK_SOFT),
+            input("Address to share", &lan, &self.share, Field::Share),
+            text("Empty: your network address, for friends on your network. Friends elsewhere need your public address, with the port forwarded on your router.")
+                .size(13).color(color::INK_SOFT),
         ].spacing(10).into()
     }
 
     fn running<'a>(&'a self, hosted: &'a Hosted) -> Element<'a, Message> {
-        // A long value (the link) is shown cut to one line; Copy copies all of it.
-        let copyable = |label: &'static str, value: &'a str| row![
-            text(label).size(14).font(BODY_BOLD).color(color::INK).width(110),
-            container(text(shorten(value, 52)).size(14).color(color::INK)).padding([5, 8]).width(Fill).style(|_| container::Style { background: Some(color::PANEL_TOP.into()),
-                border: iced::Border { color: color::CHROME_DARK, width: 1.0, radius: 3.0.into() }, ..container::Style::default() }),
-            yo3_skin::link("Copy", Message::Copy(value.to_owned()), false),
-        ].spacing(10).align_y(Center);
-        let online = match self.activity.online { 0 => "Nobody is online yet.".to_owned(), 1 => "1 player online.".to_owned(), n => format!("{n} players online.") };
+        let heading = |words: &'static str| text(words).size(16).font(yo3_skin::DISPLAY).color(color::NAVY);
+        let well = |content: Element<'a, Message>| container(content).padding(iced::Padding { top: 2.0, right: 2.0, bottom: 2.0, left: 10.0 }).width(Fill)
+            .style(|_| container::Style { background: Some(color::PANEL_TOP.into()), border: iced::Border { color: color::CHROME_DARK, width: 1.0, radius: 3.0.into() }, ..container::Style::default() });
+        let online = match self.activity.online { 0 => "Nobody online yet".to_owned(), 1 => "1 player online".to_owned(), n => format!("{n} players online") };
         let mut col = column![
             row![container(Space::new().width(10).height(10)).style(|_| dot(color::GOOD)),
-                text(format!("{} is running. {online}", hosted.server.name)).size(15).font(BODY_BOLD).color(color::INK)].spacing(8).align_y(Center),
-            copyable("Address", &hosted.server.address),
-            copyable("Invite link", &hosted.link),
+                text(format!("{} is running", hosted.server.name)).size(15).font(BODY_BOLD).color(color::INK), Space::new().width(Fill),
+                text(online).size(14).color(color::INK_SOFT)].spacing(8).align_y(Center),
+            heading("Invite a friend"),
+            text("Each friend gets their own link. It works once, for a week, and fills in their sign-up: they paste it under Multiplayer, ⋯, Add a server.")
+                .size(13).color(color::INK_SOFT),
+            row![pill("Copy an invite link", self.busy.is_none().then_some(Message::Invite), Kind::Primary, 200, 34)],
         ].spacing(10);
-        if hosted.local_network {
-            col = col.push(text("This address works for friends on your network. For friends elsewhere, stop hosting and type your public address.").size(13).color(color::INK_SOFT));
+        for (i, (code, link)) in self.invites.iter().enumerate() {
+            let words = if i == 0 { format!("Copied: {code}. Send it to one friend.") } else { format!("Earlier: {code}") };
+            col = col.push(row![yo3_skin::rule(if i == 0 { Rule::Met } else { Rule::Pending }, words), Space::new().width(Fill),
+                yo3_skin::icon_button(Icon::Copy, Some(Message::Copy(link.clone())), "Copy this invite again", false)].align_y(Center));
         }
-        let mut codes = row![text("Invite codes").size(14).font(BODY_BOLD).color(color::INK).width(110)].spacing(10).align_y(Center);
-        for code in &self.codes { codes = codes.push(yo3_skin::link(code.clone(), Message::Copy(code.clone()), false)) }
-        codes = codes.push(Space::new().width(Fill)).push(pill("New code", self.busy.is_none().then_some(Message::Invite), Kind::Primary, 120, 30));
-        col = col.push(codes).push(text("A friend pastes the link under Multiplayer, Other servers, then creates an account with a code. Each code works once, for a week. \
-            Your server is in your own list too, so you create your account the same way.").size(13).color(color::INK_SOFT));
-        let mut links = row![yo3_skin::link("Check reachability", Message::Reach, false)].spacing(18);
-        if let Some(panel) = &self.panel { links = links.push(yo3_skin::link("Admin panel", Message::Open(panel.clone()), false)) }
-        col = col.push(links);
+        col = col.push(heading("Your server")).push(row![
+            text("Address").size(14).font(BODY_BOLD).color(color::INK).width(80),
+            well(row![text(&hosted.server.address).size(14).color(color::INK).width(Fill),
+                yo3_skin::icon_button(Icon::Copy, Some(Message::Copy(hosted.server.address.clone())), "Copy the address", false)].align_y(Center).into()),
+        ].spacing(10).align_y(Center));
+        if hosted.local_network {
+            col = col.push(text("This address works on your network. For friends elsewhere, stop hosting and type your public address.").size(13).color(color::INK_SOFT));
+        }
+        let mut tools = row![pill("Check reachability", self.busy.is_none().then_some(Message::Reach), Kind::Secondary, 170, 32)].spacing(8);
+        if let Some(panel) = &self.panel { tools = tools.push(pill("Admin panel", Some(Message::Open(panel.clone())), Kind::Secondary, 130, 32)) }
+        col = col.push(tools);
         if self.panel.is_some() {
             // The panel signs in with an admin account: the host's own, made here (it has no terminal on the server).
-            col = col.push(row![text("Admin").size(14).font(BODY_BOLD).color(color::INK).width(110),
+            col = col.push(text("The admin panel signs in with an admin account: make yours one.").size(13).color(color::INK_SOFT)).push(row![
                 text_input("Your User ID on this server", &self.admin).on_input(|v| Message::Edit(Field::Admin, v))
                     .on_submit(Message::MakeAdmin).style(yo3_skin::field).padding(6).size(14).width(Fill),
-                pill("Make admin", (self.busy.is_none() && !self.admin.trim().is_empty()).then_some(Message::MakeAdmin), Kind::Primary, 130, 30)]
-                .spacing(10).align_y(Center));
+                pill("Make admin", (self.busy.is_none() && !self.admin.trim().is_empty()).then_some(Message::MakeAdmin), Kind::Primary, 120, 32)]
+                .spacing(8).align_y(Center));
         }
         col.into()
     }
@@ -267,12 +277,6 @@ impl State {
         if note.open && let Some(details) = &note.details { col = col.push(text(details).size(13).color(color::INK_SOFT)).push(yo3_skin::link("Copy", Message::Copy(details.clone()), false)) }
         col.push(links).into()
     }
-}
-
-/// `value` cut to `limit` characters, with an ellipsis.
-fn shorten(value: &str, limit: usize) -> String {
-    if value.chars().count() <= limit { return value.to_owned() }
-    format!("{}…", value.chars().take(limit - 1).collect::<String>())
 }
 
 #[cfg(test)]
@@ -295,10 +299,12 @@ mod tests {
         let _ = state.update(Message::Started(Ok(Box::new((settings, hosted())))), &mut ctx);
         assert_eq!(ctx.settings.host_name, "Friday duels", "the choices are the window's at once");
         assert!(state.hosted.as_ref().is_some_and(|h| h.link.starts_with("yo3revival://server?")));
+        // One invite per friend: its link carries the code, for their sign-up.
         let _ = state.update(Message::Invited(Ok("ABCD-EFGH-JKLM-NPQR".into())), &mut ctx);
-        assert_eq!(state.codes, ["ABCD-EFGH-JKLM-NPQR"]);
+        assert_eq!(state.invites[0].0, "ABCD-EFGH-JKLM-NPQR");
+        assert_eq!(yo3_desktop::multiplayer::invite_code(&state.invites[0].1).as_deref(), Some("ABCD-EFGH-JKLM-NPQR"));
         let _ = state.update(Message::Stopped(Ok(())), &mut ctx);
-        assert!(state.hosted.is_none() && state.codes.is_empty());
+        assert!(state.hosted.is_none() && state.invites.is_empty());
     }
 
     #[test]

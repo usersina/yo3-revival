@@ -19,17 +19,18 @@ Cards you earn in Singleplayer stay on this computer. Settings, Singleplayer has
 If your data can't be opened, the notice offers a backup from an earlier start.
 
 # multiplayer | Multiplayer and accounts
-Choose a server, then sign in with your User ID and password. Create account makes one; some servers need an invite code.
-Save your recovery code when you make an account: it is the only way back in if you forget your password.
+Choose a server, then sign in with your User ID and password. New here? Create account makes one; some servers need an invite code.
+The list under the form ticks each rule green as you type.
+Save your recovery code when you make an account (Copy, or Save as a text file): it is the only way back in if you forget your password.
 Stay signed in keeps a sign-in token in your system's password store, never your password.
-Other servers adds a server by its address, or by an invite link a host sent you.
+The ⋯ beside the server list adds a server (by its address, or an invite link a host sent you), hosts one, or removes one.
 Settings, Accounts signs you out, signs you out everywhere, or changes your password.
 
 # host | Host for friends
-Host for friends, on the Multiplayer tab, runs a server on this computer that your friends can join.
+Host for friends (Multiplayer, the ⋯ beside the server list) runs a server on this computer that your friends can join.
 - It has its own data, apart from Singleplayer.
-- Copy the invite link and send it to your friends. They paste it under Other servers.
-- Make an invite code for each friend: they need one to create an account.
+- Copy an invite link for each friend and send it to them. It works once, for a week, and fills in their sign-up.
+- They paste it under Multiplayer, ⋯, Add a server.
 - Your server is added to your own list too, so you play on it like everyone else.
 Friends outside your home network need your public address and a forwarded port. See: Friends can't reach your server.
 The server runs while YO3 Revival is open. Stop hosting ends it.

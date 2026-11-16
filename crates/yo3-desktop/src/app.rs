@@ -2,10 +2,10 @@
 //! Each screen keeps its own state and messages; this module routes between them and owns what they share.
 use std::path::PathBuf;
 use std::sync::Arc;
-use iced::widget::{Space, column, container, mouse_area, operation, row, stack, text, text_input};
+use iced::widget::{Space, column, container, mouse_area, operation, row, stack, text};
 use iced::{Alignment::Center, Color, Element, Length::Fill, Subscription, Task, keyboard, window};
 use yo3_desktop::{Backend, Settings, instance, store::Store, updates};
-use yo3_skin::{Glyph, Kind, color, pill};
+use yo3_skin::{Glyph, Icon, Kind, color, pill};
 use crate::{external, help, home, host, settings, setup};
 
 /// What the window shares with every screen.
@@ -23,11 +23,11 @@ pub enum Claim { Now(instance::Owner), AfterUpdate }
 pub enum Dialog { Help, Report, Repair, ConfirmClose, Backups, Host, Support, WhatsNew, ConfirmRestart }
 
 /// Report a problem: what the player says happened, the error it is about, and how far it got.
-#[derive(Clone, Debug, Default)]
-pub struct Report { pub what: String, pub error: String, pub busy: bool, pub result: Option<Result<(), String>> }
+#[derive(Debug, Default)]
+pub struct Report { pub what: iced::widget::text_editor::Content, pub error: String, pub busy: bool, pub result: Option<Result<(), String>> }
 
 #[derive(Clone, Debug)]
-pub enum ReportMessage { Edit(String), Send, Sent(Result<(), String>) }
+pub enum ReportMessage { Edit(iced::widget::text_editor::Action), Send, Sent(Result<(), String>) }
 
 #[derive(Clone, Debug)]
 pub enum Message {
@@ -140,7 +140,12 @@ impl App {
             Message::Home(home::Message::Report(error)) => return self.update(Message::OpenReport(error)),
             Message::Home(home::Message::Help(topic)) => return self.update(Message::OpenHelp(Some(topic))),
             Message::Home(home::Message::Copy(text)) => return self.update(Message::Copy(text)),
-            Message::Home(home::Message::Multi(crate::multi::Message::Host)) => { self.host.open(&self.ctx); self.dialog = Some(Dialog::Host) }
+            Message::Home(home::Message::Multi(crate::multi::Message::Host)) => {
+                self.host.open(&self.ctx);
+                self.dialog = Some(Dialog::Host);
+                // The server tools' menu it was chosen from closes.
+                return self.home.update(home::Message::Multi(crate::multi::Message::Menu(false)), &mut self.ctx).map(Message::Home);
+            }
             Message::Home(home::Message::RestoreBackup(backup)) => {
                 self.dialog = None;
                 return self.home.update(home::Message::RestoreBackup(backup), &mut self.ctx).map(Message::Home);
@@ -174,10 +179,17 @@ impl App {
             Message::OpenSupport => self.dialog = Some(Dialog::Support),
             Message::OpenHelp(topic) => { self.help = help::State::at(topic); self.dialog = Some(Dialog::Help) }
             Message::OpenReport(error) => { self.report = Report { error, ..Report::default() }; self.dialog = Some(Dialog::Report) }
-            Message::Report(ReportMessage::Edit(what)) => self.report.what = what.chars().filter(|c| *c == '\n' || !c.is_control()).take(2000).collect(),
+            Message::Report(ReportMessage::Edit(action)) => {
+                // At most 2,000 characters: an edit that would go past it is dropped.
+                let edits = action.is_edit();
+                let before = self.report.what.text();
+                self.report.what.perform(action);
+                if edits && self.report.what.text().chars().count() > 2000 { self.report.what = iced::widget::text_editor::Content::with_text(&before) }
+            }
             Message::Report(ReportMessage::Send) => {
                 let Some(backend) = self.ctx.backend.clone() else { return Task::none() };
-                let (what, error) = (self.report.what.clone(), self.report.error.clone());
+                let what: String = self.report.what.text().chars().filter(|c| *c == '\n' || !c.is_control()).collect();
+                let (what, error) = (what.trim().to_owned(), self.report.error.clone());
                 self.report.busy = true;
                 self.report.result = None;
                 return job(move || {
@@ -370,7 +382,13 @@ impl App {
             (None, None) => self.home.view(&self.ctx).map(Message::Home),
         };
         let page = column![self.title_bar(), container(body).height(Fill), self.footer()];
-        let screen = stack![yo3_skin::backdrop(), page];
+        let mut screen = stack![yo3_skin::backdrop(), page];
+        if self.home.bell_open && self.setup.is_none() {
+            // The notifications drop down from the bell; a click anywhere else closes them.
+            screen = screen.push(mouse_area(Space::new().width(Fill).height(Fill)).on_press(Message::Home(home::Message::Bell(false))))
+                .push(container(self.home.inbox_view().map(Message::Home)).padding(iced::Padding { top: 46.0, right: 96.0, ..iced::Padding::ZERO })
+                    .width(Fill).align_x(iced::alignment::Horizontal::Right));
+        }
         match self.dialog {
             Some(dialog) => yo3_skin::modal(screen, self.dialog(dialog), Message::CloseDialog),
             None => screen.into(),
@@ -386,7 +404,14 @@ impl App {
         } else {
             Space::new().into()
         };
+        // The bell: notices about both tabs, with how many came since it was last opened.
+        let bell_open = self.home.bell_open;
+        let bell: Element<'_, Message> = if self.setup.is_some() { Space::new().width(34).into() } else if self.home.unread > 0 {
+            stack![pill("", Some(Message::Home(home::Message::Bell(!bell_open))), Kind::Window(Glyph::Bell), 34, 28),
+                container(yo3_skin::badge(self.home.unread)).width(34).align_x(iced::alignment::Horizontal::Right)].into()
+        } else { pill("", Some(Message::Home(home::Message::Bell(!bell_open))), Kind::Window(Glyph::Bell), 34, 28) };
         let controls = row![
+            bell,
             pill("", (self.setup.is_none()).then_some(if self.settings.is_some() { Message::Settings(settings::Message::Close) } else { Message::OpenSettings(settings::Section::Game) }),
                 Kind::Window(Glyph::Settings), 34, 28),
             pill("", Some(Message::Minimize), Kind::Window(Glyph::Minimize), 34, 28),
@@ -415,33 +440,34 @@ impl App {
                 .push(yo3_skin::link(format!("Hosting for friends · {online} online"), Message::Home(home::Message::Multi(crate::multi::Message::Host)), true));
         }
         let footer = line.push(Space::new().width(Fill)).push(yo3_skin::heart_link("Support", Message::OpenSupport))
-            .push(Space::new().width(18)).push(yo3_skin::link("Report a problem", Message::OpenReport(String::new()), true))
-            .push(Space::new().width(18)).push(yo3_skin::link("Help", Message::OpenHelp(None), true))
+            .push(Space::new().width(18)).push(yo3_skin::icon_link(Icon::Flag, "Report a problem", Message::OpenReport(String::new()), true))
+            .push(Space::new().width(18)).push(yo3_skin::icon_link(Icon::Help, "Help", Message::OpenHelp(None), true))
             .padding([0, 16]).height(Fill);
         container(yo3_skin::footer_strip(footer)).height(34).into()
     }
 
     fn dialog(&self, which: Dialog) -> Element<'_, Message> {
-        let ok = || pill("OK", Some(Message::CloseDialog), Kind::Primary, 120, 38);
-        let (title, body, buttons, height): (&str, String, Element<'_, Message>, f32) = match which {
-            Dialog::Help => return self.help.view().map(Message::Help),
-            Dialog::Report => return self.report_dialog(),
-            Dialog::Host => return self.host.view().map(Message::Host),
-            Dialog::WhatsNew => return self.whats_new(),
-            Dialog::ConfirmRestart => ("Restart to install?", "You are hosting for friends. Restarting YO3 Revival stops your server; \
-                start hosting again after the update.".into(),
-                row![pill("Cancel", Some(Message::CloseDialog), Kind::Primary, 120, 38), pill("Restart", Some(Message::Restart), Kind::Primary, 120, 38)].spacing(10).into(), 210.0),
-            Dialog::Support => ("Support YO3 Revival", "YO3 Revival is free, and stays free: nothing in the game is for sale, and \
-                giving changes nothing in it. If you enjoy it, a donation helps pay for the time it takes and for the server. Questions, \
-                ideas and servers to join are in the project's discussions.".into(),
-                row![pill("Discussions", Some(Message::OpenLink(DISCUSSIONS.into())), Kind::Primary, 140, 38),
-                    pill("Donate", Some(Message::OpenLink(DONATE.into())), Kind::Primary, 120, 38),
-                    pill("Close", Some(Message::CloseDialog), Kind::Primary, 120, 38)].spacing(10).into(), 225.0),
-            Dialog::Repair => ("YO3 Revival needs repair", "Some of YO3 Revival's own files are missing or changed, often after an \
-                antivirus scan. Download the latest release again, check it, and replace this folder with it; your settings are kept. \
-                Antivirus help says how to check the download and get a removed file back.".into(),
-                row![pill("Antivirus help", Some(Message::OpenLink(ANTIVIRUS.into())), Kind::Primary, 160, 38),
-                    pill("Releases", Some(Message::OpenLink(RELEASES.into())), Kind::Primary, 120, 38), ok()].spacing(10).into(), 280.0),
+        let close = Message::CloseDialog;
+        // A short dialog: a sentence or two, then its actions (the main one rightmost); the × closes it.
+        let short = |title: &'static str, help: Option<&'static str>, body: String, actions: iced::widget::Row<'static, Message>, height: f32| {
+            yo3_skin::dialog(title, help.map(|t| Message::OpenHelp(Some(t))), Message::CloseDialog, 470.0, height, column![
+                text(body).size(15).color(color::INK), Space::new().height(Fill), row![Space::new().width(Fill), actions.spacing(10)],
+            ])
+        };
+        match which {
+            Dialog::Help => self.help.view().map(Message::Help),
+            Dialog::Report => self.report_dialog(),
+            Dialog::Host => self.host.view().map(Message::Host),
+            Dialog::WhatsNew => self.whats_new(),
+            Dialog::ConfirmRestart => short("Restart to install?", None, "You are hosting for friends: restarting stops your server. Start hosting again after the update.".into(),
+                row![pill("Cancel", Some(close), Kind::Secondary, 110, 38), pill("Restart", Some(Message::Restart), Kind::Primary, 120, 38)], 200.0),
+            Dialog::Support => short("Support YO3 Revival", None, "YO3 Revival is free, and nothing in it is for sale. If you enjoy it, a donation helps keep it going.".into(),
+                row![pill("Discussions", Some(Message::OpenLink(DISCUSSIONS.into())), Kind::Secondary, 140, 38),
+                    pill("Donate", Some(Message::OpenLink(DONATE.into())), Kind::Primary, 130, 38)], 190.0),
+            Dialog::Repair => short("YO3 Revival needs repair", Some("repair"), "Some of YO3 Revival's own files are missing or changed, often after an antivirus scan. \
+                Download the latest release and replace this folder with it: your settings are kept.".into(),
+                row![pill("Antivirus help", Some(Message::OpenLink(ANTIVIRUS.into())), Kind::Secondary, 160, 38),
+                    pill("Download", Some(Message::OpenLink(RELEASES.into())), Kind::Primary, 130, 38)], 230.0),
             Dialog::Backups => {
                 // Newest first; the damaged database is kept beside the restored one, renamed.
                 let backups = self.ctx.backend.as_ref().map(|b| b.backups(&self.ctx.settings)).unwrap_or_default();
@@ -452,19 +478,13 @@ impl App {
                     list = list.push(row![text(label).size(15).color(color::INK).width(Fill),
                         pill("Restore", Some(Message::Home(home::Message::RestoreBackup(backup))), Kind::Primary, 110, 34)].align_y(Center));
                 }
-                return container(yo3_skin::panel(Some("Restore a backup"), column![list, Space::new().height(Fill),
-                    row![Space::new().width(Fill), pill("Cancel", Some(Message::CloseDialog), Kind::Primary, 120, 38)]])).width(470).height(380).into();
+                yo3_skin::dialog("Restore a backup", None, close, 470.0, 340.0, list)
             }
-            Dialog::ConfirmClose => ("Close YO3 Revival?", if self.host.hosted.is_some() && self.host.activity.online > 0 {
+            Dialog::ConfirmClose => short("Close YO3 Revival?", None, if self.host.hosted.is_some() && self.host.activity.online > 0 {
                     "Friends are playing on your server. Closing YO3 Revival stops it, and the game too if it is open.".into()
                 } else { "The game is open. Closing YO3 Revival also closes the game and your server.".into() },
-                row![pill("Cancel", Some(Message::CloseDialog), Kind::Primary, 120, 38), pill("Close", Some(Message::Quit), Kind::Primary, 120, 38)].spacing(10).into(), 230.0),
-        };
-        container(yo3_skin::panel(Some(title), column![
-            text(body).size(15).color(color::INK),
-            Space::new().height(Fill),
-            row![Space::new().width(Fill), buttons],
-        ])).width(470).height(height).into()
+                row![pill("Cancel", Some(close), Kind::Secondary, 110, 38), pill("Close", Some(Message::Quit), Kind::Danger, 120, 38)], 210.0),
+        }
     }
 }
 
@@ -472,8 +492,7 @@ impl App {
     /// What's new in the offered version: its changelog section, where its download is, and Restart to install.
     fn whats_new(&self) -> Element<'_, Message> {
         let Some(release) = self.updater.release() else {
-            return container(yo3_skin::panel(Some("What's new"), column![text("You have the latest version.").size(15).color(color::INK),
-                Space::new().height(Fill), row![Space::new().width(Fill), pill("Close", Some(Message::CloseDialog), Kind::Primary, 120, 38)]])).width(470).height(200).into()
+            return yo3_skin::dialog("What's new", None, Message::CloseDialog, 470.0, 170.0, text("You have the latest version.").size(15).color(color::INK));
         };
         let playing = self.home.playing();
         let mut notes = column![].spacing(8);
@@ -484,34 +503,50 @@ impl App {
             notes = notes.push(if block.bullet { row![text("•").size(15).color(color::INK), paragraph].spacing(8).into() } else { Element::from(paragraph) });
         }
         let restart = self.updater.ready().is_some() && !playing && !self.quitting;
-        let mut buttons = row![yo3_skin::link("Release page", Message::OpenLink(release.url.clone()), false), Space::new().width(Fill)].spacing(10).align_y(Center);
+        let mut buttons = row![yo3_skin::icon_link(Icon::Open, "Release page", Message::OpenLink(release.url.clone()), false), Space::new().width(Fill)].spacing(10).align_y(Center);
         if self.updater.ready().is_some() { buttons = buttons.push(pill("Restart to install", restart.then_some(Message::Home(home::Message::RestartToInstall)), Kind::Primary, 190, 38)) }
-        buttons = buttons.push(pill("Close", Some(Message::CloseDialog), Kind::Primary, 120, 38));
-        container(yo3_skin::panel(Some(&format!("What's new in {}", release.tag.trim_start_matches('v'))), column![
+        yo3_skin::dialog(&format!("What's new in {}", release.tag.trim_start_matches('v')), None, Message::CloseDialog, 620.0, 440.0, column![
             iced::widget::scrollable(notes).height(Fill),
             text(self.updater.status(playing)).size(14).font(yo3_skin::BODY_BOLD).color(color::INK_SOFT),
             buttons,
-        ].spacing(12))).width(620).height(440).into()
+        ].spacing(12))
     }
 
     fn report_dialog(&self) -> Element<'_, Message> {
         let report = &self.report;
-        let mut col = column![
-            text("Tell us what happened. YO3 Revival saves your recent logs in a file (personal details removed) and opens the project's \
-                report form in your browser: drag the file into it. Nothing is sent until you submit the form yourself.").size(15).color(color::INK),
-            text_input("What were you doing, and what went wrong?", &report.what).on_input(|v| Message::Report(ReportMessage::Edit(v)))
-                .on_submit(Message::Report(ReportMessage::Send)).style(yo3_skin::field).padding(8).size(15),
-        ].spacing(12);
-        if !report.error.is_empty() { col = col.push(text("The error you saw is included.").size(14).color(color::INK_SOFT)) }
-        match &report.result {
-            Some(Ok(())) => col = col.push(text("Done: the form is open in your browser, and the logs' folder beside it.").size(14).font(yo3_skin::BODY_BOLD).color(color::GOOD)),
-            Some(Err(_)) => col = col.push(text("The report couldn't be prepared. Settings, Advanced, Export logs saves the logs on their own.").size(14).font(yo3_skin::BODY_BOLD).color(color::BAD)),
-            None if report.busy => col = col.push(text("Saving the logs…").size(14).color(color::INK_SOFT)),
-            None => {}
+        let help = Some(Message::OpenHelp(Some("report")));
+        if let Some(Ok(())) = &report.result {
+            // Done here: what is left happens in the browser.
+            return yo3_skin::dialog("Report a problem", help, Message::CloseDialog, 520.0, 250.0, column![
+                yo3_skin::rule(yo3_skin::Rule::Met, "The report form is open in your browser."),
+                text("Drag the logs file from the folder that opened into the form, then press Submit there.").size(15).color(color::INK),
+                Space::new().height(Fill),
+                row![Space::new().width(Fill), pill("Done", Some(Message::CloseDialog), Kind::Primary, 120, 38)],
+            ].spacing(10));
         }
-        let buttons = row![Space::new().width(Fill), pill("Open the report form", (!report.busy).then_some(Message::Report(ReportMessage::Send)), Kind::Primary, 210, 38),
-            pill("Close", Some(Message::CloseDialog), Kind::Primary, 120, 38)].spacing(10);
-        container(yo3_skin::panel(Some("Report a problem"), column![col, Space::new().height(Fill), buttons])).width(560).height(340).into()
+        let mut col = column![
+            text("What happened?").size(15).font(yo3_skin::BODY_BOLD).color(color::INK),
+            iced::widget::text_editor(&report.what).placeholder("What were you doing, and what went wrong?").on_action(|a| Message::Report(ReportMessage::Edit(a)))
+                .height(110).padding(8).size(15).style(|theme, status| {
+                    let field = yo3_skin::field(theme, match status {
+                        iced::widget::text_editor::Status::Focused { is_hovered } => iced::widget::text_input::Status::Focused { is_hovered },
+                        iced::widget::text_editor::Status::Hovered => iced::widget::text_input::Status::Hovered,
+                        iced::widget::text_editor::Status::Disabled => iced::widget::text_input::Status::Disabled,
+                        iced::widget::text_editor::Status::Active => iced::widget::text_input::Status::Active,
+                    });
+                    iced::widget::text_editor::Style { background: field.background, border: field.border, placeholder: field.placeholder, value: field.value, selection: field.selection }
+                }),
+            text(if report.error.is_empty() { "Your recent logs go with it, personal details removed. You send it yourself, on GitHub." }
+                else { "The error you saw and your recent logs go with it, personal details removed. You send it yourself, on GitHub." }).size(13).color(color::INK_SOFT),
+        ].spacing(8);
+        match &report.result {
+            Some(Err(_)) => col = col.push(yo3_skin::rule(yo3_skin::Rule::Broken, "The report couldn't be prepared. Settings, Advanced, Export logs saves the logs alone.")),
+            _ if report.busy => col = col.push(text("Saving the logs…").size(14).color(color::INK_SOFT)),
+            _ => {}
+        }
+        let ready = !report.busy && !report.what.text().trim().is_empty();
+        let buttons = row![Space::new().width(Fill), pill("Continue on GitHub", ready.then_some(Message::Report(ReportMessage::Send)), Kind::Primary, 200, 38)];
+        yo3_skin::dialog("Report a problem", help, Message::CloseDialog, 520.0, 330.0, column![col, Space::new().height(Fill), buttons])
     }
 }
 

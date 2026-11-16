@@ -95,7 +95,28 @@ impl Play {
     }
     /// Starting states, where Cancel appears after `CANCEL_AFTER`.
     pub fn cancellable(self) -> bool { matches!(self, Play::StartingServer | Play::StartingGame | Play::Waiting) }
+
+    /// While the game is starting, open or closing, the big button on either tab follows it: CLOSE GAME while it is
+    /// open, CANCEL once a start has hung for `CANCEL_AFTER`, else a disabled label. `None`: the game isn't busy.
+    pub fn busy(self, launching_since: Option<Instant>) -> Option<Busy> {
+        let hung = launching_since.is_some_and(|since| since.elapsed() >= CANCEL_AFTER);
+        let button = |label, action, line| Some(Busy { label, action, line });
+        match self {
+            _ if self.cancellable() && hung => button("CANCEL", Some(BusyAction::Cancel), "This is taking longer than usual."),
+            Play::Playing | Play::Waiting => button("CLOSE GAME", Some(BusyAction::Close), self.status()),
+            Play::StartingServer | Play::StartingGame | Play::Outside | Play::Closing => button(self.label(), None, self.status()),
+            _ => None,
+        }
+    }
 }
+
+/// What the big button does while the game is busy.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BusyAction { Close, Cancel }
+
+/// The big button while the game is busy: its label, what it does (none: disabled) and the line above it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Busy { pub label: &'static str, pub action: Option<BusyAction>, pub line: &'static str }
 
 /// One plain sentence, with the technical text behind Details and one action: its own (Retry, Fix…) or Report.
 #[derive(Clone, Debug)]
@@ -110,7 +131,6 @@ impl Notice {
     pub fn problem(summary: impl Into<String>, action: Option<(&'static str, Message)>) -> Self { Self { summary: summary.into(), details: None, open: false, action, good: false, everywhere: false } }
     /// A game opened directly couldn't play (#33): said once, on whichever tab is open.
     pub fn direct(problem: &DirectProblem) -> Self { Self { details: Some(problem.reason.clone()), everywhere: true, ..Self::problem(problem.summary(), None) } }
-    pub fn shown_on(&self, tab: Tab) -> bool { tab == Tab::Single || self.everywhere }
 }
 
 /// A banlist choice: the value saved for the server, the name shown.
@@ -157,6 +177,11 @@ pub enum Message {
     Dismiss,
     /// A direct start's problem was shown, and forgotten.
     DirectShown,
+    /// The title bar's bell: open or close the notifications.
+    Bell(bool),
+    /// A notification's Details (its place in the list).
+    InboxDetails(usize),
+    InboxDismiss(usize),
     Multi(multi::Message),
     /// Handled by the window: a server needs a newer launcher (What's new when the update is known, else the releases page).
     Releases,
@@ -195,13 +220,34 @@ pub struct State {
     allow_for: Option<yo3_desktop::multiplayer::Server>,
     /// A downloaded, checked update (its version): the ribbon above PLAY (#32). Set by the window.
     pub update_ready: Option<String>,
+    /// The notifications behind the title bar's bell: notices about both tabs (a game opened directly that couldn't
+    /// play, an update that didn't install, a permission to give), newest first.
+    pub inbox: Vec<Notice>,
+    /// How many came since the bell was last opened.
+    pub unread: usize,
+    pub bell_open: bool,
 }
 
 impl State {
     /// Direct start is set up in the protected game folder (the notice's Allow, or Settings' Fix permission): stop asking.
     pub fn permission_granted(&mut self) {
         self.direct_permission = false;
-        if self.notice.as_ref().is_some_and(|n| matches!(n.action, Some((_, Message::AllowDirect)))) { self.notice = None }
+        let asks = |n: &Notice| matches!(n.action, Some((_, Message::AllowDirect)));
+        if self.notice.as_ref().is_some_and(asks) { self.notice = None }
+        self.inbox.retain(|n| !asks(n));
+        self.unread = self.unread.min(self.inbox.len());
+    }
+
+    /// A notice for the bell (one about both tabs), or for your own server's panel.
+    fn tell(&mut self, notice: Notice) {
+        if notice.everywhere {
+            self.inbox.retain(|n| n.summary != notice.summary);
+            self.inbox.insert(0, notice);
+            self.inbox.truncate(20);
+            if !self.bell_open { self.unread += 1 }
+        } else {
+            self.notice = Some(notice);
+        }
     }
 
     /// Multiplayer's Play, once its sign-in is known to play: the game on the selected server.
@@ -246,6 +292,11 @@ impl State {
             }
             Message::Multi(multi::Message::Remedy(yo3_desktop::multiplayer::Remedy::Update)) => return Task::done(Message::Releases),
             Message::Multi(multi::Message::CloseGame) => return self.update(Message::CloseGame, ctx),
+            Message::Multi(multi::Message::Cancel) => return self.update(Message::Cancel, ctx),
+            Message::Multi(multi::Message::Copy(text)) => {
+                let task = self.multi.update(multi::Message::Copy(text.clone()), ctx).map(Message::Multi);
+                return Task::batch([task, Task::done(Message::Copy(text))]);
+            }
             Message::Multi(message) => return self.multi.update(message, ctx).map(Message::Multi),
             Message::Releases | Message::WhatsNew | Message::RestartToInstall => {}
             Message::Play => {
@@ -303,7 +354,7 @@ impl State {
                         self.waiting_since = since;
                         self.direct_permission = needs_permission;
                         if needs_permission {
-                            self.notice = Some(Notice { everywhere: self.allow_for.is_some(), ..Notice::problem("Opening the game without the launcher needs permission once, because the game folder is protected.",
+                            self.tell(Notice { everywhere: self.allow_for.is_some(), ..Notice::problem("Opening the game without the launcher needs permission once, because the game folder is protected.",
                                 Some(("Allow", Message::AllowDirect))) });
                         }
                     }
@@ -370,8 +421,8 @@ impl State {
                 self.game.outside = live.outside;
                 if live.ready { self.waiting_since = None }
                 // A game opened directly that couldn't play (#33): said once, after it closed.
-                if let Some(problem) = live.direct && !live.outside && !live.running && self.notice.is_none() && let Some(backend) = ctx.backend.clone() {
-                    self.notice = Some(Notice::direct(&problem));
+                if let Some(problem) = live.direct && !live.outside && !live.running && let Some(backend) = ctx.backend.clone() {
+                    self.tell(Notice::direct(&problem));
                     return job(move || { backend.clear_direct_problem(&problem); Ok(()) }, |_: Result<(), String>| Message::DirectShown);
                 }
                 if ended {
@@ -408,6 +459,9 @@ impl State {
             Message::ToggleDetails => if let Some(notice) = &mut self.notice { notice.open = !notice.open },
             Message::Dismiss => self.notice = None,
             Message::DirectShown => {}
+            Message::Bell(open) => { self.bell_open = open; if open { self.unread = 0 } }
+            Message::InboxDetails(i) => if let Some(n) = self.inbox.get_mut(i) { n.open = !n.open },
+            Message::InboxDismiss(i) => if i < self.inbox.len() { self.inbox.remove(i); },
             Message::SetUp | Message::Repair | Message::Restore | Message::Settings(_) | Message::Report(_) | Message::Help(_) | Message::Copy(_) => {}
         }
         Task::none()
@@ -460,7 +514,7 @@ impl State {
     pub fn update_notice(&mut self, ctx: &Ctx, summary: String, details: String) {
         if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("{summary} {details}")) }
         let details = error_presentation::present(&details, Hint::General, &crate::app::masks(ctx)).diagnosis.or(Some(details));
-        self.notice = Some(Notice { details, everywhere: true, ..Notice::problem(summary, None) });
+        self.tell(Notice { details, everywhere: true, ..Notice::problem(summary, None) });
     }
 
     /// Shows one plain sentence for `error`, with the technical text (paths masked) behind Details.
@@ -490,8 +544,9 @@ impl State {
     }
 
     pub fn view<'a>(&'a self, ctx: &'a Ctx) -> Element<'a, Message> {
-        let playing = self.game.running || self.game.starting.is_some() || self.game.outside;
-        let side = match self.tab { Tab::Single => self.singleplayer(ctx), Tab::Multi => self.multi.view(playing).map(Message::Multi) };
+        let playing = self.playing();
+        let busy = Play::of(&self.game).busy(self.launching_since());
+        let side = match self.tab { Tab::Single => self.singleplayer(ctx), Tab::Multi => self.multi.view(busy).map(Message::Multi) };
         let server_news = self.multi.news();
         let news = match self.tab {
             Tab::Single => news(WELCOME.iter().map(|(t, h)| (t.to_string(), h.to_string())).collect()),
@@ -512,22 +567,17 @@ impl State {
             ].spacing(10).align_y(Center)).padding([6, 12]).style(|_| container::Style {
                 background: Some(color::PANEL_TOP.into()), border: iced::Border { color: color::BAD, width: 1.5, radius: 4.0.into() }, ..container::Style::default() }));
         }
-        // Your own server's panel holds its notices; on Multiplayer, one about a game opened directly shows above.
-        if self.tab == Tab::Multi && self.notice.as_ref().is_some_and(|n| n.shown_on(Tab::Multi)) {
-            page = page.push(container(self.notice()).padding([8, 12]).width(Fill).style(|_| container::Style {
-                background: Some(color::PANEL_TOP.into()), border: iced::Border { color: color::BAD, width: 1.5, radius: 4.0.into() }, ..container::Style::default() }));
-        }
+        // Your own server's panel holds its notices; those about both tabs are behind the title bar's bell.
         page.push(panels).into()
     }
 
     fn singleplayer<'a>(&'a self, ctx: &'a Ctx) -> Element<'a, Message> {
         let play = Play::of(&self.game);
-        let mut status = row![text(play.status()).size(14).color(color::INK_SOFT)].spacing(10).align_y(Center).height(22);
-        if matches!(play, Play::Playing | Play::Waiting) && self.launching_since().is_none_or(|since| since.elapsed() < CANCEL_AFTER) {
-            status = status.push(Space::new().width(Fill)).push(yo3_skin::link("Close game", Message::CloseGame, false));
-        } else if play.cancellable() && self.launching_since().is_some_and(|since| since.elapsed() >= CANCEL_AFTER) {
-            status = status.push(Space::new().width(Fill)).push(yo3_skin::link("Cancel", Message::Cancel, false));
-        }
+        let (label, action, line, kind) = match play.busy(self.launching_since()) {
+            Some(busy) => (busy.label, busy.action.map(|a| match a { BusyAction::Close => Message::CloseGame, BusyAction::Cancel => Message::Cancel }), busy.line,
+                if busy.action.is_some() { Kind::Primary } else { Kind::Play }),
+            None => (play.label(), play.action(), play.status(), Kind::Play),
+        };
         let choices = banlist_choices(&self.banlists);
         let selected = choices.iter().find(|c| c.value == ctx.settings.banlist).cloned();
         // The banlist is chosen in Settings → Singleplayer; it is read when your server starts.
@@ -538,8 +588,8 @@ impl State {
                 yo3_skin::link("Change", Message::Settings(crate::settings::Section::Singleplayer), false)].align_y(Center),
             self.notice(),
             Space::new().height(Fill),
-            status,
-            pill(play.label(), play.action(), Kind::Play, Fill, 70),
+            text(line).size(14).color(color::INK_SOFT),
+            pill(label, action, kind, Fill, 70),
         ].spacing(14))
     }
 
@@ -560,6 +610,27 @@ impl State {
 
     fn notice(&self) -> Element<'_, Message> {
         let Some(notice) = &self.notice else { return Space::new().into() };
+        notice_view(notice, Message::ToggleDetails, Message::Dismiss)
+    }
+
+    /// The bell's list: each notice with its links, or a line saying there is nothing.
+    pub fn inbox_view(&self) -> Element<'_, Message> {
+        let mut list = column![text("Notifications").size(16).font(yo3_skin::DISPLAY).color(color::NAVY)].spacing(10);
+        if self.inbox.is_empty() { list = list.push(text("Nothing new.").size(14).color(color::INK_SOFT)) }
+        for (i, notice) in self.inbox.iter().enumerate() {
+            list = list.push(container(notice_view(notice, Message::InboxDetails(i), Message::InboxDismiss(i))).padding([8, 10]).width(Fill)
+                .style(|_| container::Style { background: Some(color::ROW.into()), border: iced::Border { color: color::CHROME_DARK, width: 1.0, radius: 3.0.into() }, ..container::Style::default() }));
+        }
+        container(iced::widget::scrollable(list).height(iced::Length::Shrink)).padding(12).width(380).max_height(420).style(|_| container::Style {
+            background: Some(color::PANEL_TOP.into()), border: iced::Border { color: color::CHROME_EDGE, width: 1.0, radius: 4.0.into() },
+            shadow: iced::Shadow { color: iced::Color { a: 0.45, ..iced::Color::BLACK }, offset: iced::Vector::new(0.0, 4.0), blur_radius: 12.0 },
+            ..container::Style::default() }).into()
+    }
+}
+
+/// A notice: its sentence, then its links: its own action (or Report), Help, Details, Dismiss.
+fn notice_view(notice: &Notice, details: Message, dismiss: Message) -> Element<'_, Message> {
+    {
         let mut links = row![].spacing(14);
         match &notice.action {
             Some((label, action)) => links = links.push(yo3_skin::link(*label, action.clone(), false)),
@@ -568,12 +639,12 @@ impl State {
         }
         if !notice.good { links = links.push(yo3_skin::link("Help", Message::Help(crate::help::topic_for(&notice.summary)), false)) }
         if notice.details.is_some() {
-            links = links.push(yo3_skin::link(if notice.open { "Hide details" } else { "Details" }, Message::ToggleDetails, false));
+            links = links.push(yo3_skin::link(if notice.open { "Hide details" } else { "Details" }, details, false));
         }
-        links = links.push(yo3_skin::link("Dismiss", Message::Dismiss, false));
+        links = links.push(yo3_skin::link("Dismiss", dismiss, false));
         let shade = if notice.good { color::GOOD } else { color::BAD };
         let mut body = column![
-            row![container(Space::new().width(9).height(9)).style(move |_| dot(shade)), text(&notice.summary).size(14).font(BODY_BOLD).color(color::INK)]
+            row![container(Space::new().width(9).height(9)).style(move |_| dot(shade)), text(&notice.summary).size(14).font(BODY_BOLD).color(color::INK).width(Fill)]
                 .spacing(8).align_y(Center),
         ].spacing(6);
         if notice.open && let Some(details) = &notice.details {
@@ -654,6 +725,23 @@ mod tests {
         assert!(ALL.iter().filter(|p| p.cancellable()).eq([Play::StartingServer, Play::StartingGame, Play::Waiting].iter()));
     }
 
+    /// While the game is busy the big button follows it on either tab: CLOSE GAME while it is open, CANCEL once a start
+    /// hangs, a disabled label otherwise; never a disabled PLAYING with a small link beside it.
+    #[test]
+    fn the_big_button_closes_the_game_and_cancels_a_hung_start() {
+        let now = Instant::now();
+        let long_ago = now.checked_sub(CANCEL_AFTER + Duration::from_secs(1)).unwrap();
+        let busy = |play: Play, since| play.busy(since).map(|b| (b.label, b.action));
+        assert_eq!(busy(Play::Playing, None), Some(("CLOSE GAME", Some(BusyAction::Close))));
+        assert_eq!(busy(Play::Waiting, Some(now)), Some(("CLOSE GAME", Some(BusyAction::Close))));
+        assert_eq!(busy(Play::Waiting, Some(long_ago)), Some(("CANCEL", Some(BusyAction::Cancel))));
+        assert_eq!(busy(Play::StartingGame, Some(now)), Some(("STARTING…", None)));
+        assert_eq!(busy(Play::StartingServer, Some(long_ago)), Some(("CANCEL", Some(BusyAction::Cancel))));
+        assert_eq!(busy(Play::Outside, None), Some(("PLAYING", None)), "a game opened elsewhere isn't ours to close");
+        assert_eq!(busy(Play::Closing, None), Some(("CLOSING…", None)));
+        for idle in [Play::Ready, Play::Checking, Play::SetUp, Play::Repair, Play::Retry] { assert_eq!(busy(idle, None), None) }
+    }
+
     #[test]
     fn a_game_open_without_the_launcher_blocks_a_second_one() {
         let outside = Game { outside: true, ..game(Some(Readiness::Ready)) };
@@ -680,11 +768,17 @@ mod tests {
     #[test]
     fn a_direct_starts_problem_shows_on_either_tab() {
         let problem = DirectProblem { refusal: "FailedToConnect".into(), reason: "refused".into(), at: "now".into() };
-        let notice = Notice::direct(&problem);
-        assert!(notice.shown_on(Tab::Single) && notice.shown_on(Tab::Multi), "the game opened directly may have played either");
-        assert_eq!(notice.details.as_deref(), Some("refused"));
-        let own = Notice::problem("Your singleplayer data couldn't be opened.", None);
-        assert!(own.shown_on(Tab::Single) && !own.shown_on(Tab::Multi), "your own server's notices stay on its panel");
+        let mut state = State::default();
+        state.tell(Notice::direct(&problem));
+        assert!(state.notice.is_none(), "not on your own server's panel: the game opened directly may have played either");
+        assert_eq!((state.inbox.len(), state.unread), (1, 1), "behind the bell, counted");
+        assert_eq!(state.inbox[0].details.as_deref(), Some("refused"));
+        state.tell(Notice::direct(&problem));
+        assert_eq!(state.inbox.len(), 1, "the same notice once");
+        let _ = state.update(Message::Bell(true), &mut crate::app::Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() });
+        assert_eq!(state.unread, 0, "opening the bell reads them");
+        state.tell(Notice::problem("Your singleplayer data couldn't be opened.", None));
+        assert!(state.notice.is_some() && state.inbox.len() == 1, "your own server's notices stay on its panel");
     }
 
     #[test]
@@ -695,13 +789,15 @@ mod tests {
             ..State::default() };
         let _ = state.update(Message::Started(Ok(true)), &mut ctx);
         assert!(state.direct_permission);
-        let notice = state.notice.as_ref().expect("the Allow notice");
+        let notice = state.inbox.first().expect("the Allow notice, behind the bell");
         assert!(matches!(notice.action, Some((_, Message::AllowDirect))));
-        assert!(notice.shown_on(Tab::Multi), "a Multiplayer Play's notice shows where the player is");
+        assert!(state.notice.is_none() && state.unread == 1, "a Multiplayer Play's notice is counted on the bell, seen from either tab");
+        state.permission_granted();
+        assert!(state.inbox.is_empty() && state.unread == 0, "allowed: the notice goes");
         // Singleplayer's stays on its own panel.
         let mut state = State::default();
         let _ = state.update(Message::Started(Ok(true)), &mut ctx);
-        assert!(!state.notice.as_ref().unwrap().shown_on(Tab::Multi));
+        assert!(state.notice.is_some() && state.inbox.is_empty());
     }
 
     #[test]

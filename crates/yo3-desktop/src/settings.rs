@@ -310,7 +310,7 @@ impl State {
         for section in Section::ALL {
             tabs = tabs.push(pill(section.title(), (section != self.section).then_some(Message::Section(section)), Kind::Tab { active: section == self.section }, Fill, 36));
         }
-        tabs = tabs.push(Space::new().height(Fill)).push(pill("Back", Some(Message::Close), Kind::Primary, Fill, 38));
+        tabs = tabs.push(Space::new().height(Fill)).push(pill("Back", Some(Message::Close), Kind::Secondary, Fill, 38));
         let body = match self.section {
             Section::Game => self.game(ctx, playing, home.direct_permission),
             Section::Accounts => home.multi.accounts_view().map(Message::Account),
@@ -365,11 +365,11 @@ impl State {
         column![
             item("Game folder", column![
                 row![text(format!("{folder}{}", if found { "" } else { " (we can't find the game there)" })).size(15).color(color::INK).width(Fill),
-                    pill("Change…", (!playing).then_some(Message::ChangeGame), Kind::Primary, 120, 32)].spacing(10).align_y(Center),
+                    pill("Change…", (!playing).then_some(Message::ChangeGame), Kind::Secondary, 120, 32)].spacing(10).align_y(Center),
             ].into()),
             item("Verify and repair", row![
                 text("Checks the game and YO3 Revival's own files, and says how to fix what isn't right.").size(14).color(color::INK_SOFT).width(Fill),
-                pill("Verify", (self.busy.is_none() && !playing).then_some(Message::Verify), Kind::Primary, 120, 32)].spacing(10).align_y(Center).into()),
+                pill("Verify", (self.busy.is_none() && !playing).then_some(Message::Verify), Kind::Secondary, 120, 32)].spacing(10).align_y(Center).into()),
             item("Screen size", column![
                 pick_list(size, chosen, |s: Size| Message::Change(Change::Resolution(s.value))).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu).width(280).padding([6, 10]),
                 text("The game keeps its picture and draws it larger. From the next PLAY.").size(14).color(color::INK_SOFT),
@@ -377,7 +377,7 @@ impl State {
             item("Without the launcher", direct.into()),
             item("Desktop shortcut", row![text(if self.shortcut { "On your desktop. Make it again if it no longer opens YO3 Revival." }
                     else { "A shortcut to YO3 Revival on your desktop." }).size(14).color(color::INK_SOFT).width(Fill),
-                pill(if self.shortcut { "Make again" } else { "Add" }, self.busy.is_none().then_some(Message::Shortcut), Kind::Primary, 120, 32)]
+                pill(if self.shortcut { "Make again" } else { "Add" }, self.busy.is_none().then_some(Message::Shortcut), Kind::Secondary, 120, 32)]
                 .spacing(10).align_y(Center).into()),
         ].spacing(16).into()
     }
@@ -392,18 +392,18 @@ impl State {
                 .width(280).padding([6, 10]).placeholder("Season 16 (default)").into()
         };
         let mut reset = row![text("Starts your singleplayer collection, decks and duel record again.").size(14).color(color::INK_SOFT).width(Fill),
-            pill("Reset…", (self.busy.is_none() && !playing).then_some(Message::ResetData(false)), Kind::Primary, 120, 32)].spacing(10).align_y(Center);
+            pill("Reset…", (self.busy.is_none() && !playing).then_some(Message::ResetData(false)), Kind::Secondary, 120, 32)].spacing(10).align_y(Center);
         if self.confirm_reset {
             reset = row![text("Reset your singleplayer data? The old data is kept beside it.").size(14).font(BODY_BOLD).color(color::BAD).width(Fill),
-                pill("Reset", Some(Message::ResetData(true)), Kind::Primary, 100, 32), yo3_skin::link("Cancel", Message::ResetData(false), false)].spacing(10).align_y(Center);
+                pill("Reset", Some(Message::ResetData(true)), Kind::Danger, 100, 32), yo3_skin::link("Cancel", Message::ResetData(false), false)].spacing(10).align_y(Center);
         }
         column![
             item("Banlist", column![banlist, text("The banlist your own server checks decks against. From the next PLAY.").size(14).color(color::INK_SOFT)].spacing(6).into()),
             item("Backups", column![
                 text("Your server keeps a backup from each of its last starts.").size(14).color(color::INK_SOFT),
-                row![pill("Back up now", self.busy.is_none().then_some(Message::BackUp), Kind::Primary, 150, 32),
-                    pill("Restore…", (!playing).then_some(Message::Restore), Kind::Primary, 130, 32),
-                    pill("Open data folder", Some(Message::OpenData), Kind::Primary, 170, 32)].spacing(10),
+                row![pill("Back up now", self.busy.is_none().then_some(Message::BackUp), Kind::Secondary, 150, 32),
+                    pill("Restore…", (!playing).then_some(Message::Restore), Kind::Secondary, 130, 32),
+                    pill("Open data folder", Some(Message::OpenData), Kind::Secondary, 170, 32)].spacing(10),
             ].spacing(8).into()),
             item("Reset", reset.into()),
         ].spacing(16).into()
@@ -415,7 +415,7 @@ impl State {
             let field = |label: &'static str, value: &'a str, which: Field, hint: &'static str| column![
                 text(label).size(15).font(BODY_BOLD).color(color::INK),
                 row![text_input(hint, value).on_input(move |v| Message::Draft(which, v)).on_submit(Message::Save(which)).style(yo3_skin::field).padding(7).size(15),
-                    pill("Browse…", Some(Message::Browse(which)), Kind::Primary, 110, 32), pill("Save", Some(Message::Save(which)), Kind::Primary, 90, 32)].spacing(8).align_y(Center),
+                    pill("Browse…", Some(Message::Browse(which)), Kind::Secondary, 110, 32), pill("Save", Some(Message::Save(which)), Kind::Primary, 90, 32)].spacing(8).align_y(Center),
             ].spacing(6);
             col = col.push(item("Wine", column![
                 field("Wine prefix", &self.prefix, Field::Prefix, "Wine's default prefix"),
@@ -426,24 +426,24 @@ impl State {
         col.push(item("Logs", column![
             checkbox(options::detailed(&_ctx.settings)).label("Detailed logs").on_toggle(|on| Message::Change(Change::DetailedLogs(on))).style(yo3_skin::tick).size(16).text_size(15),
             text("Your servers write more about what they do, for a problem report. From their next start.").size(14).color(color::INK_SOFT),
-            row![pill("Export logs…", Some(Message::ExportLogs), Kind::Primary, 150, 32), pill("Open logs folder", Some(Message::OpenLogs), Kind::Primary, 170, 32)].spacing(10),
+            row![pill("Export logs…", Some(Message::ExportLogs), Kind::Secondary, 150, 32), pill("Open logs folder", Some(Message::OpenLogs), Kind::Secondary, 170, 32)].spacing(10),
         ].spacing(8).into()))
         .push(item("Reset local game data", if self.confirm_game_reset {
             column![
                 text("Which data? The old data is kept in a backup folder either way.").size(14).font(BODY_BOLD).color(color::INK),
-                row![pill("Display and login settings", self.busy.is_none().then_some(Message::ResetGame(Some(false))), Kind::Primary, 240, 32),
-                    pill("All local game data", self.busy.is_none().then_some(Message::ResetGame(Some(true))), Kind::Primary, 190, 32),
+                row![pill("Display and login settings", self.busy.is_none().then_some(Message::ResetGame(Some(false))), Kind::Danger, 240, 32),
+                    pill("All local game data", self.busy.is_none().then_some(Message::ResetGame(Some(true))), Kind::Danger, 190, 32),
                     yo3_skin::link("Cancel", Message::ResetGame(None), false)].spacing(10).align_y(Center),
             ].spacing(8).into()
         } else {
             row![text("When the game's screen or saved login settings are stuck, the game can start from fresh ones.").size(14).color(color::INK_SOFT).width(Fill),
-                pill("Reset…", Some(Message::ResetGame(None)), Kind::Primary, 120, 32)].spacing(10).align_y(Center).into()
+                pill("Reset…", Some(Message::ResetGame(None)), Kind::Secondary, 120, 32)].spacing(10).align_y(Center).into()
         }))
         .into()
     }
 
     fn about(&self) -> Element<'_, Message> {
-        let mut updates = row![pill("Check for updates", self.busy.is_none().then_some(Message::CheckUpdates), Kind::Primary, 190, 32)].spacing(14).align_y(Center);
+        let mut updates = row![pill("Check for updates", self.busy.is_none().then_some(Message::CheckUpdates), Kind::Secondary, 190, 32)].spacing(14).align_y(Center);
         if let Some(url) = &self.update { updates = updates.push(yo3_skin::link("See what's new", Message::Open(url.clone()), false)) }
         let mut col = column![
             text(format!("YO3 Revival {} (beta)", yo3_tunnel::BUILD_VERSION.trim_start_matches('v'))).font(DISPLAY).size(22).color(color::NAVY),

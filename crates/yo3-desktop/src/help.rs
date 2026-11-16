@@ -2,7 +2,7 @@
 //! `# id | Title`, then paragraphs and `- ` points. An error's notice opens Help at its own topic.
 use iced::widget::{Space, column, container, row, scrollable, text};
 use iced::{Element, Length::Fill};
-use yo3_skin::{BODY_BOLD, DISPLAY, Kind, color, pill};
+use yo3_skin::{BODY_BOLD, DISPLAY, color};
 
 const SOURCE: &str = include_str!("help.txt");
 
@@ -70,11 +70,7 @@ impl State {
                 Block::Link(label, url) => yo3_skin::link(label.clone(), Message::Open(url.clone()), false),
             });
         }
-        let buttons = row![
-            pill("Report a problem", Some(Message::Report), Kind::Primary, 180, 38),
-            Space::new().width(Fill),
-            pill("Close", Some(Message::Close), Kind::Primary, 120, 38),
-        ].spacing(10);
+        let buttons = row![yo3_skin::icon_link(yo3_skin::Icon::Flag, "Report a problem", Message::Report, false)];
         let content = column![
             row![
                 container(scrollable(list).height(Fill)).width(230),
@@ -83,7 +79,7 @@ impl State {
             ].spacing(12).height(Fill),
             buttons,
         ].spacing(12);
-        container(yo3_skin::panel(Some("Help"), content)).width(860).height(520).into()
+        yo3_skin::dialog("Help", None, Message::Close, 860.0, 520.0, content)
     }
 }
 

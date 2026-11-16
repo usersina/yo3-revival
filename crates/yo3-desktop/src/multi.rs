@@ -5,7 +5,7 @@ use std::sync::Arc;
 use iced::widget::{Space, checkbox, column, container, pick_list, row, text, text_input};
 use iced::{Alignment::Center, Element, Length::Fill, Task};
 use yo3_desktop::multiplayer::{self as mp, Problem, Remedy, Server, SignedIn, Status, Vault};
-use yo3_skin::{BODY_BOLD, Kind, color, pill};
+use yo3_skin::{BODY_BOLD, Icon, Item, Kind, Rule, color, pill};
 use crate::app::{Ctx, dot};
 
 /// Which form the server panel shows.
@@ -21,6 +21,50 @@ pub enum Form {
     Trust(Box<Server>),
     /// A recovery code to save, shown once.
     Code(String),
+}
+
+/// The address typed under Add a server, as checked so far.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum Found {
+    #[default]
+    Nothing,
+    /// Waiting for typing to pause, or for the server to answer.
+    Looking,
+    /// A server answered there.
+    Server(Box<Server>),
+    /// An invite link, complete: its server and the invite code it carries.
+    Link(Box<Server>, Option<String>),
+    /// Not an address or a link, or nobody answered: why, in one sentence.
+    No(String),
+}
+
+/// How long typing pauses before the address is looked up.
+const LOOK_AFTER: std::time::Duration = std::time::Duration::from_millis(600);
+
+/// Whether `text` is a User ID or password as the game's login screen takes it: `min` to 16 letters or digits.
+fn typeable(text: &str, min: usize) -> bool { (min..=16).contains(&text.len()) && text.bytes().all(|b| b.is_ascii_alphanumeric()) }
+
+/// A rule for a field: nothing typed yet, met, or broken.
+fn rule_for(typed: &str, met: bool) -> Rule { if typed.is_empty() { Rule::Pending } else if met { Rule::Met } else { Rule::Broken } }
+
+/// A new password's rules, as lines: 8 to 16 letters or digits, not the User ID, and typed twice the same.
+pub fn password_rules(user: &str, password: &str, again: &str) -> Vec<(Rule, &'static str)> {
+    vec![
+        (rule_for(password, typeable(password, 8)), "Password: 8 to 16 letters or digits"),
+        (rule_for(password, !password.eq_ignore_ascii_case(user.trim())), "Not the same as the User ID"),
+        (rule_for(again, again == password), "Both passwords match"),
+    ]
+}
+
+/// Making an account's rules, as lines that turn green as they are met (the server checks them again).
+pub fn register_rules(user: &str, password: &str, again: &str, invite: Option<&str>) -> Vec<(Rule, &'static str)> {
+    let mut rules = vec![(rule_for(user.trim(), typeable(user.trim(), 3)), "User ID: 3 to 16 letters or digits")];
+    rules.extend(password_rules(user, password, again));
+    if let Some(code) = invite {
+        let bare: String = code.trim().chars().filter(|c| *c != '-').collect();
+        rules.push((rule_for(code.trim(), bare.len() == 16 && bare.bytes().all(|b| b.is_ascii_alphanumeric())), "Invite code from the host"));
+    }
+    rules
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,7 +108,6 @@ pub enum Message {
     Recover,
     Recovered(Result<Option<String>, Problem>),
     Add,
-    Contacted(Result<Server, String>),
     Trust,
     Remove,
     Saved(Result<(), String>),
@@ -82,6 +125,19 @@ pub enum Message {
     Hosted(Box<Server>),
     /// Check this server's status again now (your hosted server, just stopped).
     Recheck(String),
+    /// The server tools' menu beside the picker: open or closed.
+    Menu(bool),
+    /// The address typed under Add a server is checked once typing pauses (the check's number).
+    CheckAddress(u64),
+    Checked(u64, Result<Server, String>),
+    /// The recovery code: to the clipboard (handled by the window), or saved as a text file.
+    Copy(String),
+    SaveCode,
+    /// I saved it: the account just made (or recovered) signs in.
+    CodeKept,
+    CodeSaved(Result<Option<String>, String>),
+    /// Handled by the main screen: stop a Play that hangs.
+    Cancel,
     /// Settings → Accounts: open (or close) a form for a server.
     AccountForm(String, Option<AccountForm>),
     AccountEdit(AccountField, String),
@@ -117,6 +173,13 @@ pub struct State {
     /// The servers this PC stays signed in to (a token in the vault).
     stays: std::collections::HashSet<String>,
     show_identity: bool,
+    /// The server tools' menu is open.
+    menu: bool,
+    /// What the address under Add a server is, as far as it has been checked, and the latest check's number.
+    found: Found,
+    check: u64,
+    /// Where the recovery code went: copied, or saved in a file.
+    code_note: Option<String>,
     account: Option<(String, AccountForm)>,
     account_password: String,
     account_new: String,
@@ -204,10 +267,59 @@ impl State {
             Message::Edit(field, value) => {
                 let value = value.chars().filter(|c| !c.is_control()).take(200).collect();
                 match field { Field::User => self.user = value, Field::Password => self.password = value, Field::Again => self.again = value,
-                    Field::Invite => self.invite = value, Field::Code => self.code = value, Field::Address => self.address = value }
+                    Field::Invite => self.invite = value, Field::Code => self.code = value, Field::Address => { self.address = value; return self.look_up() } }
             }
+            Message::Menu(open) => self.menu = open,
+            Message::CheckAddress(check) => {
+                if check != self.check || self.found != Found::Looking { return Task::none() }
+                let input = self.address.trim().to_string();
+                return Task::perform(async move { mp::first_contact(&input).await.map_err(|e| format!("{e:#}")) }, move |r| Message::Checked(check, r));
+            }
+            Message::Checked(check, result) => if check == self.check {
+                self.found = match result {
+                    Ok(server) => Found::Server(Box::new(server)),
+                    Err(error) => {
+                        if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("No server at {}: {error}", self.address.trim())) }
+                        Found::No("No YO3 Revival server answers there.".into())
+                    }
+                };
+            },
+            Message::Copy(_) => self.code_note = Some("Copied. Paste it somewhere safe.".into()),
+            Message::Cancel => {}
+            Message::CodeKept => {
+                self.form = Form::SignIn;
+                self.code_note = None;
+                if !self.user.trim().is_empty() && !self.password.is_empty() { return self.update(Message::SignIn, ctx) }
+            }
+            Message::SaveCode => {
+                let Form::Code(code) = &self.form else { return Task::none() };
+                let server = self.selected().map(|s| s.name.clone()).unwrap_or_default();
+                let body = recovery_file(&server, self.user.trim(), code);
+                let name = format!("YO3 Revival recovery code - {}.txt", sanitize(&server));
+                return Task::perform(async move {
+                    let Some(file) = rfd::AsyncFileDialog::new().set_title("Save your recovery code").set_file_name(&name).add_filter("Text", &["txt"]).save_file().await
+                        else { return Ok(None) };
+                    tokio::fs::write(file.path(), body).await.map_err(|e| e.to_string())?;
+                    Ok(Some(file.file_name()))
+                }, Message::CodeSaved);
+            }
+            Message::CodeSaved(result) => match result {
+                Ok(Some(name)) => self.code_note = Some(format!("Saved as {name}.")),
+                Ok(None) => {}
+                Err(error) => {
+                    if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("Saving the recovery code failed: {error}")) }
+                    self.code_note = Some("That file couldn't be saved. Copy the code instead.".into());
+                }
+            },
             Message::Toggle(tick, on) => match tick { Tick::SaveUser => self.save_user = on, Tick::Stay => self.stay = on && self.vault.is_some(), Tick::Rules => self.rules = on },
-            Message::Show(form) => { self.form = form; self.problem = None; self.note = None; self.password.clear(); self.again.clear(); }
+            Message::Show(form) => {
+                self.menu = false;
+                if form == Form::Add { self.address.clear(); self.found = Found::Nothing }
+                // The form's first field takes the typing.
+                let first = match form { Form::Add => Some(Field::Address), Form::Register | Form::Recover => Some(Field::User), _ => None };
+                self.form = form; self.problem = None; self.note = None; self.code_note = None; self.password.clear(); self.again.clear();
+                if let Some(field) = first { return iced::widget::operation::focus(field_id(field)) }
+            }
             Message::SignIn => {
                 let Some(server) = self.selected().cloned() else { return Task::none() };
                 self.busy = true;
@@ -255,7 +367,8 @@ impl State {
             Message::Registered(result) => {
                 self.busy = false;
                 match result {
-                    Ok(code) => { self.password.clear(); self.again.clear(); self.invite.clear(); self.form = Form::Code(code); }
+                    // The password stays until the code is saved: then the new account signs in on its own.
+                    Ok(code) => { self.again.clear(); self.invite.clear(); self.form = Form::Code(code); }
                     Err(problem) => self.problem = Some(problem),
                 }
             }
@@ -270,41 +383,32 @@ impl State {
                 self.busy = false;
                 match result {
                     Ok(next) => {
-                        self.password.clear(); self.again.clear(); self.code.clear();
+                        self.again.clear(); self.code.clear();
                         match next {
                             Some(code) => self.form = Form::Code(code),
-                            None => { self.form = Form::SignIn; self.note = Some("Your new password is set. Sign in with it.".into()) }
+                            None => { self.form = Form::SignIn; return self.update(Message::SignIn, ctx) }
                         }
                     }
                     Err(problem) => self.problem = Some(problem),
                 }
             }
             Message::Add => {
-                let input = self.address.trim().to_string();
                 self.problem = None;
-                if input.starts_with("yo3revival://") {
-                    // An invite link carries the identity: no first-use question.
-                    return match mp::invite_link(&input) {
-                        Ok(server) => self.add(ctx, server),
-                        Err(error) => {
-                            if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("Invite link refused: {error:#}")) }
-                            self.note = Some("That invite link isn't complete. Ask the host to send it again.".into());
-                            Task::none()
-                        }
-                    };
-                }
-                self.busy = true;
-                return Task::perform(async move { mp::first_contact(&input).await.map_err(|e| format!("{e:#}")) }, Message::Contacted);
-            }
-            Message::Contacted(result) => {
-                self.busy = false;
-                match result {
-                    Ok(server) => { self.show_identity = false; self.form = Form::Trust(Box::new(server)) }
-                    Err(_) => self.problem = Some(Problem::Unreachable),
+                match std::mem::take(&mut self.found) {
+                    // An invite link carries the identity: no first-use question. One made for a friend carries their
+                    // invite code too: straight to making the account, the code filled in.
+                    Found::Link(server, code) => {
+                        let task = self.add(ctx, *server);
+                        if let Some(code) = code { self.invite = code; self.form = Form::Register }
+                        return task;
+                    }
+                    Found::Server(server) => { self.show_identity = false; self.form = Form::Trust(server) }
+                    other => self.found = other,
                 }
             }
             Message::Trust => if let Form::Trust(server) = std::mem::take(&mut self.form) { return self.add(ctx, *server) },
             Message::Remove => {
+                self.menu = false;
                 let Some(server) = self.selected().cloned() else { return Task::none() };
                 if server.official { return Task::none() }
                 if let Some(vault) = &self.vault { let _ = vault.delete(&mp::vault_account(&server)); }
@@ -330,7 +434,7 @@ impl State {
             Message::Remedy(Remedy::RemoveServer) => return self.update(Message::Remove, ctx),
             Message::Remedy(Remedy::Update) | Message::Play | Message::CloseGame => {}
             Message::ShowIdentity => self.show_identity = !self.show_identity,
-            Message::Host => {}
+            Message::Host => self.menu = false,
             Message::Recheck(key) => {
                 self.status.remove(&key);
                 if let Some(server) = self.servers.iter().find(|s| s.key() == key).cloned() { return self.probe(&server) }
@@ -479,9 +583,28 @@ impl State {
         col.into()
     }
 
+    /// What the typed address is: an invite link is read at once; an address is looked up once typing pauses.
+    fn look_up(&mut self) -> Task<Message> {
+        self.check += 1;
+        let input = self.address.trim();
+        if input.is_empty() { self.found = Found::Nothing; return Task::none() }
+        if input.starts_with("yo3revival://") {
+            self.found = match mp::invite_link(input) {
+                Ok(server) => Found::Link(Box::new(server), mp::invite_code(input)),
+                Err(_) => Found::No("That invite link isn't complete. Ask the host to send it again.".into()),
+            };
+            return Task::none();
+        }
+        if yo3_tunnel::invite::address(input).is_err() { self.found = Found::No("That isn't an address: a name or an IP, and a port if it isn't 7443.".into()); return Task::none() }
+        self.found = Found::Looking;
+        let check = self.check;
+        Task::perform(async { tokio::time::sleep(LOOK_AFTER).await }, move |()| Message::CheckAddress(check))
+    }
+
     fn add(&mut self, ctx: &Ctx, server: Server) -> Task<Message> {
         if !self.servers.iter().any(|s| s.key() == server.key()) { self.servers.insert(0, server.clone()) }
         self.address.clear();
+        self.found = Found::Nothing;
         self.form = Form::SignIn;
         let key = server.key().to_string();
         Task::batch([self.save(ctx, server), self.select(key)])
@@ -527,13 +650,12 @@ impl State {
         }
     }
 
-    /// The Play button's label and action for the selected server, and the line above it.
-    fn play(&self, playing: bool) -> (&'static str, Option<Message>, String) {
-        let Some(server) = self.selected() else { return ("LOG IN", None, "Add a server under Other servers.".into()) };
-        let status = self.status.get(server.key());
-        if playing { return ("PLAYING", None, "The game is running.".into()) }
-        match status {
-            Some(Status::Offline) => return ("RETRY", Some(Message::Retry), "We can't reach this server.".into()),
+    /// The Play button's label and action for the selected server, and the line above it (empty when the button and
+    /// the server's row already say it).
+    fn play(&self) -> (&'static str, Option<Message>, String) {
+        let Some(server) = self.selected() else { return ("LOG IN", None, "Add a server first.".into()) };
+        match self.status.get(server.key()) {
+            Some(Status::Offline) => return ("RETRY", Some(Message::Retry), String::new()),
             Some(Status::Maintenance) => return ("RETRY", Some(Message::Retry), "The server is in maintenance.".into()),
             Some(Status::NeedsUpdate { min }) => return ("UPDATE", Some(Message::Remedy(Remedy::Update)), format!("This server needs YO3 Revival {min} or newer.")),
             Some(Status::IdentityChanged) => return ("LOG IN", None, Problem::IdentityChanged.sentence()),
@@ -544,43 +666,65 @@ impl State {
         ("LOG IN", ready.then_some(Message::SignIn), if self.busy { "Signing in…".into() } else { String::new() })
     }
 
-    pub fn view<'a>(&'a self, playing: bool) -> Element<'a, Message> {
+    /// The server panel. `busy` is the game's state while it is starting, open or closing: the big button follows it.
+    pub fn view<'a>(&'a self, busy: Option<crate::home::Busy>) -> Element<'a, Message> {
         let choices: Vec<Choice> = self.servers.iter().map(|s| Choice { key: s.key().to_string(),
             label: format!("{}{}  ·  {}", if s.official { "★ " } else { "" }, s.name, Self::row_status(self.status.get(s.key())).1) }).collect();
         let selected = choices.iter().find(|c| Some(&c.key) == self.selected.as_ref()).cloned();
         let picker: Element<'_, Message> = if choices.is_empty() {
-            text("No servers yet.").size(15).color(color::INK_SOFT).into()
+            container(text("No servers yet.").size(15).color(color::INK_SOFT)).padding([7, 0]).width(Fill).into()
         } else {
-            pick_list(choices, selected, Message::Select).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu).width(Fill).padding([7, 10]).into()
+            // The selected server's state as a coloured dot inside the picker, so it isn't said twice.
+            let shade = Self::row_status(self.selected.as_ref().and_then(|k| self.status.get(k))).0;
+            iced::widget::stack![
+                pick_list(choices, selected, Message::Select).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu).width(Fill)
+                    .padding(iced::Padding { top: 7.0, right: 10.0, bottom: 7.0, left: 26.0 }),
+                container(container(Space::new().width(9).height(9)).style(move |_| dot(shade))).padding(iced::Padding { left: 10.0, ..iced::Padding::ZERO }).height(34).center_y(34),
+            ].into()
         };
-        let (label, action, status) = self.play(playing);
+        let tools = yo3_skin::icon_button(Icon::More, Some(Message::Menu(!self.menu)), "Server tools", false);
+        let top = row![picker, tools].spacing(6).align_y(Center);
         let body = match &self.selected {
-            Some(key) => {
-                let (dot_color, line) = Self::row_status(self.status.get(key));
-                let state = row![container(Space::new().width(9).height(9)).style(move |_| dot(dot_color)), text(line).size(13).color(color::INK_SOFT)]
-                    .spacing(8).align_y(Center);
-                column![picker, state, self.form()].spacing(10)
-            }
-            // Nothing to sign in to yet: only the way to add a server (or the add form itself).
-            None if matches!(self.form, Form::Add | Form::Trust(_)) => column![picker, self.form()].spacing(10),
-            None => column![picker, self.other_servers()].spacing(10),
+            Some(_) => column![top, self.form()].spacing(12),
+            None if matches!(self.form, Form::Add | Form::Trust(_)) => column![top, self.form()].spacing(12),
+            // Nothing to sign in to yet: the way to add one.
+            None => column![top, text("Add a server by its address, or with an invite link a host sent you.").size(14).color(color::INK),
+                pill("Add a server", Some(Message::Show(Form::Add)), Kind::Primary, 160, 34)].spacing(12),
         };
         let mut panel = column![body, self.messages(), Space::new().height(Fill)].spacing(10);
-        // The forms with their own button (making an account, recovering, adding a server) hide the big one.
-        if matches!(self.form, Form::SignIn) || self.selected.is_none() {
-            let mut line = row![text(status).size(14).color(color::INK_SOFT)].align_y(Center);
-            if playing { line = line.push(Space::new().width(Fill)).push(yo3_skin::link("Close game", Message::CloseGame, false)) }
-            panel = panel.push(line).push(pill(label, action, Kind::Play, Fill, 70));
+        // The forms with their own button (making an account, recovering, adding a server) hide the big one, and so
+        // does an empty list: its way forward is Add a server.
+        if matches!(self.form, Form::SignIn) && self.selected.is_some() {
+            let (label, action, line, kind) = match busy {
+                Some(busy) => (busy.label, busy.action.map(|a| match a { crate::home::BusyAction::Close => Message::CloseGame, crate::home::BusyAction::Cancel => Message::Cancel }),
+                    busy.line.to_owned(), if busy.action.is_some() { Kind::Primary } else { Kind::Play }),
+                None => { let (label, action, line) = self.play(); (label, action, line, Kind::Play) }
+            };
+            if !line.is_empty() { panel = panel.push(text(line).size(14).color(color::INK_SOFT)) }
+            panel = panel.push(pill(label, action, kind, Fill, 70));
         }
-        yo3_skin::panel(Some("Server"), panel)
+        let mut layers = iced::widget::stack![panel];
+        if self.menu {
+            // The tools drop down from their button; a click anywhere else closes them.
+            let mut items = vec![
+                Item { icon: Icon::Plus, label: "Add a server".into(), on_press: Message::Show(Form::Add), danger: false },
+                Item { icon: Icon::Server, label: "Host for friends".into(), on_press: Message::Host, danger: false },
+            ];
+            if self.selected().is_some_and(|s| !s.official) { items.push(Item { icon: Icon::Trash, label: "Remove this server".into(), on_press: Message::Remove, danger: true }) }
+            layers = layers.push(iced::widget::mouse_area(Space::new().width(Fill).height(Fill)).on_press(Message::Menu(false)))
+                .push(column![Space::new().height(36), row![Space::new().width(Fill), yo3_skin::menu(items, 210.0)]]);
+        }
+        yo3_skin::panel(Some("Server"), layers)
     }
 
     fn messages(&self) -> Element<'_, Message> {
         let mut out = column![].spacing(6);
-        if let Some(problem) = &self.problem {
+        // A server that doesn't answer is already said by its row and the RETRY button.
+        let offline = self.selected.as_ref().is_some_and(|k| self.status.get(k) == Some(&Status::Offline));
+        if let Some(problem) = &self.problem && !(offline && *problem == Problem::Unreachable) {
             let mut line = row![container(Space::new().width(9).height(9)).style(|_| dot(color::BAD)),
                 text(problem.sentence()).size(14).font(BODY_BOLD).color(color::INK).width(Fill)].spacing(8).align_y(Center);
-            if let Some(remedy) = problem.remedy() {
+            if let Some(remedy) = problem.remedy() && !(remedy == Remedy::Retry && matches!(self.form, Form::SignIn)) {
                 let label = match remedy { Remedy::Retry => "Retry", Remedy::Update => "Update", Remedy::SignInAgain => "Sign in", Remedy::RemoveServer => "Remove server" };
                 line = line.push(yo3_skin::link(label, Message::Remedy(remedy), false));
             }
@@ -592,23 +736,29 @@ impl State {
 
     fn form(&self) -> Element<'_, Message> {
         let input = |placeholder: &'static str, value: &str, field: Field, secret: bool| {
-            let mut field_input = text_input(placeholder, value).on_input(move |v| Message::Edit(field, v)).style(yo3_skin::field).padding(8).size(15);
+            let mut field_input = text_input(placeholder, value).id(field_id(field)).on_input(move |v| Message::Edit(field, v)).style(yo3_skin::field).padding(8).size(15);
             if secret { field_input = field_input.secure(true) }
             if !self.busy { field_input = field_input.on_submit(match field { Field::Address => Message::Add, _ => match self.form {
                 Form::Register => Message::Register, Form::Recover => Message::Recover, _ => Message::SignIn } }) }
             field_input
         };
         let labelled = |label: &'static str, input: iced::widget::TextInput<'static, Message>| row![text(label).font(BODY_BOLD).size(14).color(color::INK).width(92), input].align_y(Center);
-        let back = || yo3_skin::link("Back", Message::Show(Form::SignIn), false);
+        let heading = |words: &'static str| text(words).size(16).font(yo3_skin::DISPLAY).color(color::NAVY);
+        // A form's actions: the way back quiet on the left, the main action filling the rest.
+        let actions = |main: &'static str, go: Option<Message>| row![pill("Back", Some(Message::Show(Form::SignIn)), Kind::Secondary, 96, 36),
+            pill(main, go, Kind::Primary, Fill, 36)].spacing(8);
+        let checklist = |rules: Vec<(Rule, &'static str)>| rules.into_iter().fold(column![].spacing(3), |c, (state, words)| c.push(yo3_skin::rule(state, words)));
         let tick = |label: &'static str, on: bool, which: Tick| checkbox(on).label(label).on_toggle(move |v| Message::Toggle(which, v)).style(yo3_skin::tick).size(16).text_size(14);
         let selected = self.selected();
         let signed = selected.and_then(|s| self.signed_in.get(s.key()));
         match &self.form {
-            Form::SignIn if signed.is_some() => column![
-                row![text(format!("Signed in as {}", signed.map_or("", |s| s.user.as_str()))).size(15).font(BODY_BOLD).color(color::INK),
-                    Space::new().width(Fill), yo3_skin::link("Sign out", Message::SignOut, false)].align_y(Center),
-                self.other_servers(),
-            ].spacing(10).into(),
+            Form::SignIn if signed.is_some() => container(row![
+                yo3_skin::icon(Icon::User, 18.0, color::NAVY),
+                column![text("Signed in as").size(12).color(color::INK_SOFT), text(signed.map_or("", |s| s.user.as_str())).size(16).font(BODY_BOLD).color(color::INK)],
+                Space::new().width(Fill),
+                pill("Sign out", Some(Message::SignOut), Kind::Danger, 96, 30),
+            ].spacing(10).align_y(Center)).padding([8, 10]).width(Fill).style(|_| container::Style { background: Some(color::ROW.into()),
+                border: iced::Border { color: color::CHROME_DARK, width: 1.0, radius: 4.0.into() }, ..container::Style::default() }).into(),
             Form::SignIn => {
                 let mut stay = tick("Stay signed in", self.stay, Tick::Stay);
                 if self.vault.is_none() { stay = checkbox(false).label("Stay signed in").style(yo3_skin::tick).size(16).text_size(14) }
@@ -618,67 +768,101 @@ impl State {
                     row![tick("Save User ID", self.save_user, Tick::SaveUser), Space::new().width(16), stay].align_y(Center),
                 ].spacing(8);
                 if let Some(why) = &self.vault_problem { col = col.push(text(why).size(13).color(color::INK_SOFT)) }
-                col.push(row![yo3_skin::link("Create account", Message::Show(Form::Register), false), text("·").color(color::INK_SOFT),
-                    yo3_skin::link("Forgot password?", Message::Show(Form::Recover), false)].spacing(8).align_y(Center))
-                    .push(self.other_servers()).into()
+                col.push(row![yo3_skin::link("Forgot password?", Message::Show(Form::Recover), false), Space::new().width(Fill),
+                    text("New here?").size(14).color(color::INK_SOFT), yo3_skin::link("Create account", Message::Show(Form::Register), false)].spacing(6).align_y(Center))
+                    .into()
             }
             Form::Register => {
                 let invite = matches!(selected.and_then(|s| self.status.get(s.key())), Some(Status::Online { registration, .. }) if registration != "open");
+                let rules = register_rules(&self.user, &self.password, &self.again, invite.then_some(self.invite.as_str()));
+                let ready = !self.busy && self.rules && rules.iter().all(|(r, _)| *r == Rule::Met);
                 let mut col = column![
-                    text("Create an account").size(15).font(BODY_BOLD).color(color::INK),
-                    labelled("User ID", input("3 to 16 letters or digits", &self.user, Field::User, false)),
-                    labelled("Password", input("8 to 16 letters or digits", &self.password, Field::Password, true)),
+                    heading("Create an account"),
+                    labelled("User ID", input("", &self.user, Field::User, false)),
+                    labelled("Password", input("", &self.password, Field::Password, true)),
                     labelled("Again", input("", &self.again, Field::Again, true)),
                 ].spacing(8);
                 if invite { col = col.push(labelled("Invite code", input("ABCD-EFGH-JKLM-NPQR", &self.invite, Field::Invite, false))) }
-                col.push(tick("I accept this server's rules", self.rules, Tick::Rules))
-                    .push(row![pill("Create", (!self.busy).then_some(Message::Register), Kind::Primary, 120, 34), Space::new().width(Fill), back()].align_y(Center))
-                    .into()
+                col.push(checklist(rules)).push(tick("I accept this server's rules", self.rules, Tick::Rules))
+                    .push(actions(if self.busy { "Creating…" } else { "Create account" }, ready.then_some(Message::Register))).into()
             }
-            Form::Recover => column![
-                text("A new password").size(15).font(BODY_BOLD).color(color::INK),
-                text("With the recovery code you saved at sign-up, or a reset code from the server's moderators.").size(13).color(color::INK_SOFT),
-                labelled("User ID", input("", &self.user, Field::User, false)),
-                labelled("Code", input("ABCD-EFGH-JKLM-NPQR", &self.code, Field::Code, false)),
-                labelled("Password", input("8 to 16 letters or digits", &self.password, Field::Password, true)),
-                labelled("Again", input("", &self.again, Field::Again, true)),
-                row![pill("Set password", (!self.busy).then_some(Message::Recover), Kind::Primary, 150, 34), Space::new().width(Fill), back()].align_y(Center),
-            ].spacing(8).into(),
-            Form::Add => column![
-                text("Another server").size(15).font(BODY_BOLD).color(color::INK),
-                text("Its address (host or host:port), or an invite link a host sent you.").size(13).color(color::INK_SOFT),
-                input("play.example.com or yo3revival://…", &self.address, Field::Address, false),
-                row![pill("Add", (!self.busy && !self.address.trim().is_empty()).then_some(Message::Add), Kind::Primary, 110, 34), Space::new().width(Fill), back()].align_y(Center),
-            ].spacing(8).into(),
+            Form::Recover => {
+                let rules = password_rules(&self.user, &self.password, &self.again);
+                let ready = !self.busy && !self.user.trim().is_empty() && !self.code.trim().is_empty() && rules.iter().all(|(r, _)| *r == Rule::Met);
+                column![
+                    heading("Set a new password"),
+                    text("With the recovery code you saved at sign-up, or a reset code from the server's moderators.").size(13).color(color::INK_SOFT),
+                    labelled("User ID", input("", &self.user, Field::User, false)),
+                    labelled("Code", input("ABCD-EFGH-JKLM-NPQR", &self.code, Field::Code, false)),
+                    labelled("Password", input("", &self.password, Field::Password, true)),
+                    labelled("Again", input("", &self.again, Field::Again, true)),
+                    checklist(rules),
+                    actions(if self.busy { "Setting…" } else { "Set password" }, ready.then_some(Message::Recover)),
+                ].spacing(8).into()
+            }
+            Form::Add => {
+                let (state, words) = match &self.found {
+                    Found::Nothing => (Rule::Pending, "A name or an IP (and :port), or an invite link".to_owned()),
+                    Found::Looking => (Rule::Pending, "Looking for a server there…".to_owned()),
+                    Found::Server(server) if self.servers.iter().any(|s| s.key() == server.key()) => (Rule::Met, format!("“{}” answers: it's already in your list", server.name)),
+                    Found::Server(server) => (Rule::Met, format!("“{}” answers there", server.name)),
+                    Found::Link(server, Some(_)) => (Rule::Met, format!("Invite to “{}”, with your invite code", server.name)),
+                    Found::Link(server, None) => (Rule::Met, format!("Invite to “{}”", server.name)),
+                    Found::No(why) => (Rule::Broken, why.clone()),
+                };
+                let ready = matches!(self.found, Found::Server(_) | Found::Link(..));
+                column![
+                    heading("Add a server"),
+                    input("play.example.com or yo3revival://…", &self.address, Field::Address, false),
+                    yo3_skin::rule(state, words),
+                    actions("Add", ready.then_some(Message::Add)),
+                ].spacing(10).into()
+            }
             Form::Trust(server) => {
                 let mut col = column![
-                    text("First connection to this server").size(15).font(BODY_BOLD).color(color::INK),
-                    text(format!("{} at {}", server.name, server.address)).size(14).color(color::INK),
-                    text("YO3 Revival remembers this server and checks it is the same one each time. If the host gave you an invite link, use it instead.")
+                    heading("First connection to this server"),
+                    text(format!("{} at {}", server.name, server.address)).size(14).font(BODY_BOLD).color(color::INK),
+                    text("YO3 Revival remembers this server and checks it is the same one each time. An invite link from the host does this for you.")
                         .size(13).color(color::INK_SOFT),
                     yo3_skin::link(if self.show_identity { "Hide details" } else { "Details" }, Message::ShowIdentity, false),
                 ].spacing(8);
                 if self.show_identity {
                     col = col.push(text(format!("Identity: {}", fingerprint(server.key()))).size(13).color(color::INK_SOFT));
                 }
-                col.push(row![pill("Add server", Some(Message::Trust), Kind::Primary, 130, 34), Space::new().width(Fill), back()].align_y(Center)).into()
+                col.push(actions("Add server", Some(Message::Trust))).into()
             }
-            Form::Code(code) => column![
-                text("Save your recovery code").size(15).font(BODY_BOLD).color(color::INK),
-                text("It's the only way back in if you forget your password. It's shown once: write it down or keep it in a password manager.")
-                    .size(13).color(color::INK_SOFT),
-                container(text(code).size(20).font(BODY_BOLD).color(color::INK)).padding([8, 12]).style(|_| container::Style {
-                    background: Some(color::PANEL_TOP.into()), border: iced::Border { color: color::CHROME_DARK, width: 1.0, radius: 3.0.into() }, ..container::Style::default() }),
-                row![pill("I saved it", Some(Message::Show(Form::SignIn)), Kind::Primary, 140, 34)],
-            ].spacing(10).into(),
+            Form::Code(code) => {
+                let mut col = column![
+                    heading("Save your recovery code"),
+                    text("It sets a new password if you forget yours. It's shown only once.").size(13).color(color::INK_SOFT),
+                    container(row![text(code).size(18).font(BODY_BOLD).color(color::INK).width(Fill),
+                        yo3_skin::icon_button(Icon::Copy, Some(Message::Copy(code.clone())), "Copy", false),
+                        yo3_skin::icon_button(Icon::Save, Some(Message::SaveCode), "Save as a text file", false)].spacing(2).align_y(Center))
+                        .padding(iced::Padding { top: 4.0, right: 4.0, bottom: 4.0, left: 12.0 }).style(|_| container::Style {
+                        background: Some(color::PANEL_TOP.into()), border: iced::Border { color: color::CHROME_DARK, width: 1.0, radius: 3.0.into() }, ..container::Style::default() }),
+                ].spacing(8);
+                if let Some(note) = &self.code_note { col = col.push(yo3_skin::rule(Rule::Met, note.clone())) }
+                col.push(pill("I saved it", Some(Message::CodeKept), Kind::Primary, Fill, 36)).into()
+            }
         }
     }
+}
 
-    fn other_servers(&self) -> Element<'_, Message> {
-        let mut links = row![yo3_skin::link("▸ Other servers", Message::Show(Form::Add), false), yo3_skin::link("Host for friends", Message::Host, false)].spacing(14);
-        if self.selected().is_some_and(|s| !s.official) { links = links.push(yo3_skin::link("Remove this server", Message::Remove, false)) }
-        links.into()
-    }
+/// A form field's id, to give it the typing.
+fn field_id(field: Field) -> iced::widget::Id { iced::widget::Id::new(match field { Field::User => "user", Field::Password => "password", Field::Again => "again",
+    Field::Invite => "invite", Field::Code => "code", Field::Address => "address" }) }
+
+/// The text file a recovery code is saved in: the server, the User ID and the code, a line each (Windows line ends).
+fn recovery_file(server: &str, user: &str, code: &str) -> String {
+    let lines = ["YO3 Revival recovery code".to_owned(), String::new(), format!("Server: {server}"), format!("User ID: {user}"),
+        format!("Recovery code: {code}"), String::new(), "It sets a new password if you forget yours. Keep it private.".to_owned()];
+    lines.join("\r\n") + "\r\n"
+}
+
+/// `name` fit for a file name: letters, digits, spaces and dashes.
+fn sanitize(name: &str) -> String {
+    let kept: String = name.chars().filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_')).take(40).collect();
+    if kept.trim().is_empty() { "server".into() } else { kept.trim().to_owned() }
 }
 
 /// An identity as people compare it: groups of four.
@@ -722,8 +906,8 @@ mod tests {
 
     #[test]
     fn the_button_says_what_the_server_allows() {
-        let label = |state: &State| { let (label, action, line) = state.play(false); (label, action.is_some(), line) };
-        assert_eq!(label(&tab(Status::Offline, None)), ("RETRY", true, "We can't reach this server.".into()));
+        let label = |state: &State| { let (label, action, line) = state.play(); (label, action.is_some(), line) };
+        assert_eq!(label(&tab(Status::Offline, None)), ("RETRY", true, String::new()), "the row already says Offline");
         assert_eq!(label(&tab(Status::Maintenance, None)).0, "RETRY");
         assert_eq!(label(&tab(Status::NeedsUpdate { min: "0.2.0".into() }, None)), ("UPDATE", true, "This server needs YO3 Revival 0.2.0 or newer.".into()));
         assert_eq!(label(&tab(Status::IdentityChanged, None)), ("LOG IN", false, Problem::IdentityChanged.sentence()));
@@ -737,8 +921,7 @@ mod tests {
         let key = state.servers[0].key().to_string();
         let _ = state.update(Message::SignedIn(key, Ok(signed("Yugi", None))), &ctx);
         assert_eq!(label(&state), ("PLAY", true, String::new()), "the form already says who is signed in");
-        assert_eq!(state.play(true).0, "PLAYING");
-        assert!(State::default().play(false).1.is_none(), "no server: nothing to press");
+        assert!(State::default().play().1.is_none(), "no server: nothing to press");
     }
 
     #[test]
@@ -756,7 +939,7 @@ mod tests {
         assert!(!state.signed_in.contains_key(&key));
         assert_eq!(state.problem, Some(Problem::SessionEnded));
         assert_eq!(Problem::SessionEnded.remedy(), Some(Remedy::SignInAgain));
-        assert_eq!(state.play(false).0, "LOG IN");
+        assert_eq!(state.play().0, "LOG IN");
         // A saved sign-in whose resume is refused at Play (a ban signs every device out) is forgotten too.
         let vault = Arc::new(MemoryVault::default());
         let mut state = tab(online(), Some(vault.clone()));
@@ -816,17 +999,57 @@ mod tests {
         let _ = state.update(Message::Show(Form::Register), &ctx);
         let _ = state.update(Message::Registered(Ok("ABCD-EFGH-JKLM-NPQR".into())), &ctx);
         assert_eq!(state.form, Form::Code("ABCD-EFGH-JKLM-NPQR".into()));
-        let _ = state.update(Message::Show(Form::SignIn), &ctx);
+        let _ = state.update(Message::CodeKept, &ctx);
         assert_eq!(state.form, Form::SignIn, "gone once saved");
         let met = server("Friends");
-        let _ = state.update(Message::Contacted(Ok(met.clone())), &ctx);
+        let _ = state.update(Message::Show(Form::Add), &ctx);
+        let _ = state.update(Message::Edit(Field::Address, "friends.example".into()), &ctx);
+        assert_eq!(state.found, Found::Looking, "looked up once typing pauses");
+        let _ = state.update(Message::Add, &ctx);
+        assert_eq!(state.form, Form::Add, "Add waits for the server to answer");
+        let _ = state.update(Message::Checked(state.check, Ok(met.clone())), &ctx);
+        let _ = state.update(Message::Add, &ctx);
         assert_eq!(state.form, Form::Trust(Box::new(met.clone())));
         let _ = state.update(Message::Trust, &ctx);
         assert_eq!((state.servers.len(), state.selected.as_deref()), (2, Some(met.key())));
         let _ = state.update(Message::Remove, &ctx);
         assert_eq!(state.servers.len(), 1, "a server the player added can be removed");
-        let _ = state.update(Message::Contacted(Err("refused".into())), &ctx);
-        assert_eq!(state.problem, Some(Problem::Unreachable));
+        let _ = state.update(Message::Show(Form::Add), &ctx);
+        let _ = state.update(Message::Edit(Field::Address, "nobody.example".into()), &ctx);
+        let stale = state.check;
+        let _ = state.update(Message::Edit(Field::Address, "nobody.example:7444".into()), &ctx);
+        let _ = state.update(Message::Checked(stale, Ok(met.clone())), &ctx);
+        assert_eq!(state.found, Found::Looking, "an older check's answer is ignored");
+        let _ = state.update(Message::Checked(state.check, Err("refused".into())), &ctx);
+        assert!(matches!(state.found, Found::No(_)));
+        let _ = state.update(Message::Edit(Field::Address, "not an address".into()), &ctx);
+        assert!(matches!(state.found, Found::No(_)), "said at once, nothing looked up");
+    }
+
+    /// An invite link made for one friend adds its server and opens making the account, the invite code filled in.
+    #[test]
+    fn an_invite_link_for_one_friend_opens_the_sign_up_with_its_code() {
+        let ctx = ctx();
+        let mut state = tab(online(), None);
+        let link = mp::link_with_code(&server("Friends"), "QUPM-Y9GG-BFAS-9WJ6");
+        let _ = state.update(Message::Show(Form::Add), &ctx);
+        let _ = state.update(Message::Edit(Field::Address, link), &ctx);
+        assert!(matches!(&state.found, Found::Link(_, Some(code)) if code == "QUPM-Y9GG-BFAS-9WJ6"), "a link is read at once");
+        let _ = state.update(Message::Add, &ctx);
+        assert_eq!((state.form.clone(), state.invite.as_str(), state.servers.len()), (Form::Register, "QUPM-Y9GG-BFAS-9WJ6", 2));
+    }
+
+    /// Making an account says each rule as the player types, by the game's login screen's rules (the server checks them again).
+    #[test]
+    fn making_an_account_checks_each_rule_as_it_is_typed() {
+        let states = |rules: Vec<(Rule, &str)>| rules.into_iter().map(|(r, _)| r).collect::<Vec<_>>();
+        assert_eq!(states(register_rules("", "", "", Some(""))), [Rule::Pending; 5], "nothing typed: nothing red");
+        assert_eq!(states(register_rules("Yu", "short", "shor", None)), [Rule::Broken, Rule::Broken, Rule::Met, Rule::Broken]);
+        assert_eq!(states(register_rules("Yugi", "Yugi", "", None))[2], Rule::Broken, "not the User ID");
+        assert_eq!(states(register_rules("Yugi", "Pass-word1", "", None))[1], Rule::Broken, "letters and digits only");
+        assert_eq!(states(register_rules("Yugi", "Seventeen17chars1", "", None))[1], Rule::Broken, "16 at most");
+        assert_eq!(states(register_rules("Yugi", "LongPass1", "LongPass1", Some("QUPM-Y9GG-BFAS-9WJ6"))), [Rule::Met; 5]);
+        assert_eq!(states(register_rules("Yugi", "LongPass1", "LongPass1", Some("QUPM")))[4], Rule::Broken);
     }
 
     #[test]

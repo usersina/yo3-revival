@@ -204,9 +204,9 @@ impl State {
     pub fn view(&self) -> Element<'_, Message> {
         let body = match self.step { Step::Welcome => self.welcome(), Step::Game => self.game(), Step::Ready => self.ready() };
         let mut buttons = row![].spacing(10).align_y(Center);
-        if self.cancellable { buttons = buttons.push(pill("Cancel", Some(Message::Cancel), Kind::Primary, 110, 38)) }
+        if self.cancellable { buttons = buttons.push(pill("Cancel", Some(Message::Cancel), Kind::Secondary, 110, 38)) }
         buttons = buttons.push(Space::new().width(Fill));
-        if self.step != Step::Welcome { buttons = buttons.push(pill("Back", Some(Message::Back), Kind::Primary, 110, 38)) }
+        if self.step != Step::Welcome { buttons = buttons.push(pill("Back", Some(Message::Back), Kind::Secondary, 110, 38)) }
         buttons = buttons.push(match self.step {
             Step::Welcome => pill("Next", Some(Message::Next), Kind::Primary, 110, 38),
             Step::Game => pill("Next", self.can_continue().then_some(Message::Next), Kind::Primary, 110, 38),
@@ -251,7 +251,7 @@ impl State {
         }
         let folder = row![
             text_input("The folder with yo3.exe", &self.path).on_input(Message::Path).style(yo3_skin::field).padding(8).size(14),
-            pill("Browse…", (!self.picking).then_some(Message::Browse { prefix: false }), Kind::Primary, 110, 36),
+            pill("Browse…", (!self.picking).then_some(Message::Browse { prefix: false }), Kind::Secondary, 110, 36),
         ].spacing(10).align_y(Center);
         let mut column = column![text("Where is Yu-Gi-Oh! ONLINE 3 installed?").size(15).font(BODY_BOLD).color(color::INK)].spacing(8);
         if self.candidates.is_empty() {
@@ -267,7 +267,7 @@ impl State {
                 column = column.push(row![
                     text("Wine prefix").size(14).font(BODY_BOLD).color(color::INK).width(90),
                     text_input("Wine's default prefix", &self.prefix).on_input(Message::Prefix).style(yo3_skin::field).padding(7).size(14),
-                    pill("Browse…", (!self.picking).then_some(Message::Browse { prefix: true }), Kind::Primary, 110, 34),
+                    pill("Browse…", (!self.picking).then_some(Message::Browse { prefix: true }), Kind::Secondary, 110, 34),
                 ].spacing(10).align_y(Center));
             }
         }

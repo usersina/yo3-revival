@@ -180,8 +180,18 @@ pub fn invite_link(link: &str) -> anyhow::Result<Server> {
 /// The invite link for `server`.
 pub fn link_for(server: &Server) -> String {
     yo3_tunnel::invite::Invite { address: server.address.clone(), server_name: server.server_name.clone(), identity: server.key().to_string(),
-        name: server.name.clone() }.link()
+        name: server.name.clone(), code: None }.link()
 }
+
+/// The invite link for `server` made for one friend: it carries their single-use invite `code`.
+pub fn link_with_code(server: &Server, code: &str) -> String {
+    let mut invite = yo3_tunnel::invite::Invite::parse(&link_for(server)).expect("a server's own link parses");
+    invite.code = Some(code.to_owned());
+    invite.link()
+}
+
+/// The invite code an invite link carries, if it was made for one friend.
+pub fn invite_code(link: &str) -> Option<String> { yo3_tunnel::invite::Invite::parse(link).ok().and_then(|i| i.code) }
 
 /// What a server's row shows.
 #[derive(Clone, Debug, PartialEq)]

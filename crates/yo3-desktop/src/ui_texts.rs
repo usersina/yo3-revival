@@ -147,7 +147,7 @@ mod tests {
         assert_eq!(topic_for("Your antivirus removed a file."), "antivirus");
         // The Repair dialog (Play's REPAIR, Setup's row, the notice's Repair) has a button for it.
         let app = include_str!("app.rs");
-        let repair = &app[app.find("Dialog::Repair => (").expect("the Repair dialog")..];
+        let repair = &app[app.find("Dialog::Repair => short(").expect("the Repair dialog")..];
         assert!(repair[..repair.find("Dialog::Backups").unwrap()].contains("OpenLink(ANTIVIRUS.into())"));
     }
 
