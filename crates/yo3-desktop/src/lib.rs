@@ -574,6 +574,7 @@ impl Backend {
         let mut game = self.game.lock().unwrap();
         ensure!(game.as_mut().is_none_or(|p| p.try_wait().ok().flatten().is_some()), "The game is already running.");
         self.check_game(settings)?;
+        let local = remote.is_none();
         let mut server = match remote {
             Some(s) => s,
             None => {
@@ -583,7 +584,7 @@ impl Backend {
         };
         server.id = server.id.max(0);
         server.validate()?;
-        self.sync_direct(settings, Some(server.clone()))?;
+        self.sync_direct_target(settings, if local { direct::Target::Local } else { direct::Target::Saved(server.clone()) })?;
         let profile = self.write_profile(&server)?;
         self.launch(settings, profile, game)
     }
@@ -594,8 +595,17 @@ impl Backend {
         self.check_game(settings)?;
         let file = self.root.join("profiles").join("multiplayer.json");
         let session: String = session.iter().map(|b| format!("{b:02x}")).collect();
+        // The vault entry lets the game's Delete Login Data forget this device's saved sign-in (#33).
         private_write(&file, serde_json::json!({ "server": server.address, "server_name": server.server_name, "identity": server.key(),
-            "session": session }).to_string().as_bytes(), true)?;
+            "session": session, "vault": multiplayer::vault_account(server) }).to_string().as_bytes(), true)?;
+        // Opening yo3.exe directly plays this server next, with the saved sign-in if the device keeps one (#33).
+        if settings.direct_start {
+            match self.auto_direct_target(settings, direct::Target::SignedIn(server.clone())) {
+                direct::AutoDirect::Ready => self.mirror_sign_in(settings, server),
+                direct::AutoDirect::NeedsPermission => self.diagnostics.line("Direct start not set up: the game folder needs permission once (Play in Singleplayer asks)"),
+                direct::AutoDirect::Skipped(why) => self.diagnostics.line(&format!("Direct start not set up: {why}")),
+            }
+        }
         yo3_launcher::Profile::load(&file)?;
         self.launch(settings, file, game)
     }

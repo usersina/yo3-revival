@@ -1,19 +1,28 @@
 #ifndef YO3_SIGNOUT_H
 #define YO3_SIGNOUT_H
-/* Delete Login Data signs this PC out of direct start too (signout-logic.h): the Yes branch's save call (0x4CA488)
- * goes through signout_save, which first deletes the saved sign-in the direct-start loader uses (the `profile` of
- * the loader configuration that HKCU\Software\YO3 Revival\LoaderConfig names), then saves as the game would. The
- * loader then tells the player to press Play once in YO3 Revival (loader-start.h), which signs this PC in again. A
- * game started from the app is unaffected until then: it uses its own session. */
+/* Delete Login Data forgets this device's saved sign-in for the server (signout-logic.h, #33): the Yes branch's save call
+ * (0x4CA488) goes through signout_save, which first asks the helper, over this launch's local HTTP port, to revoke the
+ * device token on the server and delete it from the credential vault, then saves as the game would (which blanks the
+ * game's saved User ID). The next direct start then has no saved sign-in. Singleplayer has none: nothing changes. */
 #include "signout-logic.h"
 
 static void signout_direct_start(void) {
-    wchar_t ini[4096], profile[4096];
-    DWORD bytes = sizeof ini;
-    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\YO3 Revival", L"LoaderConfig", RRF_RT_REG_SZ, NULL, ini, &bytes) != ERROR_SUCCESS) return;
-    DWORD n = GetPrivateProfileStringW(L"revival", L"profile", L"", profile, sizeof profile / sizeof *profile, ini);
-    if (!n || n >= sizeof profile / sizeof *profile - 1) return;
-    if (DeleteFileW(profile)) starter_log("[YO3 MOD] Delete Login Data: direct start is signed out on this PC.\r\n");
+    char cookie[80], port[16], request[256];
+    DWORD n = GetEnvironmentVariableA("YO3_LOCAL_COOKIE", cookie, sizeof cookie);
+    if (!n || n >= sizeof cookie || !GetEnvironmentVariableA("YO3_LOCAL_HTTP", port, sizeof port)) return;
+    int length = yo3_signout_request(request, sizeof request, cookie);
+    unsigned long number = strtoul(port, NULL, 10);
+    if (!length || !number || number > 65535) return;
+    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s == INVALID_SOCKET) return;
+    DWORD wait = 3000; setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *)&wait, sizeof wait);
+    struct sockaddr_in helper = {0}; helper.sin_family = AF_INET; helper.sin_port = htons((u_short)number);
+    helper.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    char reply[64]; int got = 0;
+    if (connect(s, (struct sockaddr *)&helper, sizeof helper) == 0 && send(s, request, length, 0) == length)
+        got = recv(s, reply, sizeof reply - 1, 0);
+    closesocket(s);
+    if (got > 12 && !memcmp(reply, "HTTP/1.1 204", 12)) starter_log("[YO3 MOD] Delete Login Data: the saved sign-in is forgotten.\r\n");
 }
 
 /* 0x51D1C0, UserSettings' save (thiscall, ECX the settings), after the sign-out. */

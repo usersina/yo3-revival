@@ -1,11 +1,14 @@
-//! The game-local loader that lets `yo3.exe` open directly: set up by Play (`Backend::auto_direct`), signed out by the
-//! game's Delete Login Data (the connection DLL deletes the saved sign-in, `tools/mod/signout.h`), removable from the
-//! app. Credentials/configuration stay in the current user's private app data; the game folder gets only `winmm.dll`
-//! and its receipt, never a changed Konami file.
+//! The game-local loader that lets `yo3.exe` open directly: set up by Play (`Backend::auto_direct`), removable from the
+//! app. Each Play saves the mode and server it played (#33): Singleplayer with how to start your own server, Multiplayer
+//! with the vault entry of the device's saved sign-in, which the game's Delete Login Data forgets (`tools/mod/signout.h`).
+//! The helper, the connection DLL and the injector are copied to `<app data>/direct/`, a path every update's Play
+//! rewrites, so a moved or updated launcher leaves direct start working. Credentials/configuration stay in the current
+//! user's private app data; the game folder gets only `winmm.dll` and its receipt, never a changed Konami file.
 use std::path::{Path, PathBuf};
 use anyhow::{Context, ensure};
 use serde::{Deserialize, Serialize};
 use crate::{Backend, Settings, SavedServer, private_write};
+use crate::multiplayer;
 use yo3_launcher::components::hash;
 const RECEIPT: &str = "yo3-revival-loader.json";
 fn publish(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
@@ -130,6 +133,17 @@ fn registry(settings: &Settings, config: Option<&Path>) -> anyhow::Result<()> {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State { Disabled, Enabled, NeedsRepair(String), Conflict(String) }
+/// What opening `yo3.exe` directly plays: what was last played from the launcher (#33).
+#[derive(Clone)]
+pub enum Target {
+    /// Singleplayer: your own server, started by the helper when it isn't running.
+    Local,
+    /// A server saved with an account key (Scripts-style invitations).
+    Saved(SavedServer),
+    /// A Multiplayer server: the device's saved sign-in ("Stay signed in"), if it keeps one.
+    SignedIn(multiplayer::Server),
+}
+
 /// What Play's automatic setup did (`Backend::auto_direct`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AutoDirect { Ready, NeedsPermission, Skipped(String) }
@@ -151,6 +165,69 @@ impl Backend {
             Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/x86_64-pc-windows-gnu/release/yo3-launcher.exe").canonicalize()?)
         }
     }
+    /// The helper, connection DLL and injector at the stable path the loader names (`<app data>/direct/`), copied from
+    /// this version's bundle when they differ (with its manifest, which the helper checks them against).
+    fn stable_components(&self) -> anyhow::Result<[PathBuf; 3]> {
+        let folder = self.root.join("direct");
+        std::fs::create_dir_all(&folder)?;
+        let helper = self.direct_helper()?;
+        let sources = [(helper, "yo3-launcher.exe"), (self.runtime.dll.clone(), "yo3-auth.dll"), (self.runtime.injector.clone(), "yo3-auth-launch.exe")];
+        let manifest = self.runtime.injector.with_file_name("bundle.json");
+        let mut copies = Vec::new();
+        for (source, name) in sources.iter().map(|(s, n)| (s.as_path(), *n)).chain(manifest.is_file().then_some((manifest.as_path(), "bundle.json"))) {
+            let bytes = regular(source)?; let target = folder.join(name);
+            if !regular(&target).is_ok_and(|have| have == bytes) {
+                let stage = folder.join(format!(".{name}.{}", std::process::id()));
+                std::fs::write(&stage, &bytes)?;
+                #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; std::fs::set_permissions(&stage, std::fs::Permissions::from_mode(0o755))?; }
+                if let Err(error) = std::fs::rename(&stage, &target) { let _ = std::fs::remove_file(&stage); return Err(error).context("Cannot update the direct-start copy (is the game open?)") }
+            }
+            copies.push(target);
+        }
+        if !manifest.is_file() { let _ = std::fs::remove_file(folder.join("bundle.json")); }
+        Ok([copies[0].clone(), copies[1].clone(), copies[2].clone()])
+    }
+    /// How your own server starts for Singleplayer's direct start: Play's own command (`server_command`), run by the
+    /// helper, which is a Windows program (under Wine on Linux, which starts the Linux server just the same).
+    fn singleplayer_start(&self, settings: &Settings) -> anyhow::Result<yo3_launcher::direct::ServerStart> {
+        let bind = crate::network::effective_bind(settings, crate::network::resolve_bind(settings, &crate::network::bindings()?)?);
+        let cmd = self.server_command(settings, bind)?;
+        let mut args = Vec::new(); let mut given = cmd.get_args();
+        while let Some(arg) = given.next() {
+            // The launcher's own diagnostics session is not the game's.
+            if arg == "--diagnostic-parent" { given.next(); continue }
+            args.push(arg.to_str().context("A server path is not valid Unicode")?.to_owned());
+        }
+        let env = cmd.get_envs().filter_map(|(k, v)| Some((k.to_str()?.to_owned(), v?.to_str()?.to_owned()))).collect();
+        Ok(yo3_launcher::direct::ServerStart { program: windows_path(&self.runtime.server, settings)?, args, env })
+    }
+    /// Linux: the direct-start helper runs under Wine and reads Wine's own credential store, so the device token this
+    /// launcher keeps for `server` (the Secret Service) is copied there, or removed there when there is none. Windows
+    /// has the one Credential Manager: nothing to do.
+    pub fn mirror_sign_in(&self, settings: &Settings, server: &multiplayer::Server) {
+        #[cfg(windows)] { let _ = (settings, server); }
+        #[cfg(not(windows))] {
+            use multiplayer::Vault;
+            let account = multiplayer::vault_account(server);
+            let token = multiplayer::SystemVault.get(&account).ok().flatten();
+            let result = (|| -> anyhow::Result<()> {
+                let mut cmd = wine_command(settings, "wine");
+                cmd.arg(self.root.join("direct/yo3-launcher.exe")).arg(if token.is_some() { "--vault-set" } else { "--vault-delete" }).arg(&account)
+                    .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+                let mut child = cmd.spawn()?;
+                if let Some(token) = &token { use std::io::Write; child.stdin.take().context("no input")?.write_all(token.as_bytes())?; }
+                drop(child.stdin.take());
+                ensure!(child.wait()?.success(), "the Wine credential store refused it");
+                Ok(())
+            })();
+            if let Err(error) = result { self.diagnostics.line(&format!("Direct start could not keep the saved sign-in: {error:#}")); }
+        }
+    }
+    /// The last direct start's problem (a server that would not start, a refused sign-in), for the launcher to show.
+    pub fn direct_problem(&self) -> Option<String> {
+        let value: serde_json::Value = serde_json::from_slice(&std::fs::read(self.root.join("profiles/problem-direct.json")).ok()?).ok()?;
+        value["reason"].as_str().map(str::to_owned)
+    }
     fn direct_stamp(&self, settings: &Settings) -> anyhow::Result<Stamp> {
         let paths = vec![self.loader_source()?, self.runtime.dll.clone(), self.runtime.injector.clone(), self.direct_helper()?];
         let hashes = paths.iter().map(|p| regular(p).map(|bytes| hash(&bytes))).collect::<anyhow::Result<_>>()?;
@@ -167,6 +244,7 @@ impl Backend {
             ensure!(game.join("winmm.dll").is_file(), "The owned loader is missing.");
             let saved: Stamp = serde_json::from_slice(&regular(&self.root.join("profiles/direct-setup.json"))?)?;
             ensure!(saved == self.direct_stamp(settings)?, "The game location or connection components changed.");
+            ensure!(self.root.join("direct/yo3-launcher.exe").is_file(), "The direct-start copy of the connection helper is missing.");
             yo3_launcher::Profile::load(&self.root.join("profiles/direct.json"))?; Ok(())
         })();
         match result { Ok(()) => State::Enabled, Err(error) => State::NeedsRepair(format!("{error:#}")) }
@@ -181,35 +259,62 @@ impl Backend {
         }
         Ok(source)
     }
-    pub fn direct_profile(&self, settings: &Settings, remote: Option<SavedServer>) -> anyhow::Result<()> {
+    /// Saves what opening `yo3.exe` directly plays (`profiles/direct.json`, read by the helper).
+    pub fn direct_profile(&self, settings: &Settings, target: Target) -> anyhow::Result<()> {
         let file = self.root.join("profiles/direct.json");
         // Clear stale credentials first; a failed selection change must never reconnect to the previous account.
         if file.exists() { std::fs::remove_file(&file)?; }
-        ensure!(settings.selected_server.is_none() || remote.is_some(), "The saved connection is missing; select a server/account and enable direct start again");
-        let server = match remote { Some(s) => s, None => self.local_connection(settings, &settings.local_account)? };
-        server.validate()?;
-        let identity = server.identity.clone().unwrap_or(yo3_tunnel::identity_from_pem(server.certificate.as_bytes())?);
-        private_write(&file, serde_json::json!({"server":server.address,"server_name":server.server_name,"identity":identity,"key":server.key}).to_string().as_bytes(), true)?;
+        let body = match target {
+            Target::SignedIn(server) => {
+                // No password and no token here: the token stays in the vault, under this entry.
+                ensure!(!server.key().is_empty(), "The server's identity is missing");
+                serde_json::json!({"server":server.address,"server_name":server.server_name,"identity":server.key(),"vault":multiplayer::vault_account(&server)})
+            }
+            target => {
+                let local = matches!(target, Target::Local);
+                let server = match target { Target::Saved(s) => s, _ => self.local_connection(settings, &settings.local_account)? };
+                server.validate()?;
+                let identity = server.identity.clone().unwrap_or(yo3_tunnel::identity_from_pem(server.certificate.as_bytes())?);
+                let mut body = serde_json::json!({"server":server.address,"server_name":server.server_name,"identity":identity,"key":server.key});
+                if local { body["start"] = serde_json::to_value(self.singleplayer_start(settings)?)?; }
+                body
+            }
+        };
+        private_write(&file, body.to_string().as_bytes(), true)?;
         Ok(())
     }
+    /// The target of a server saved in settings: a selected remote server, or your own.
+    fn saved_target(settings: &Settings, remote: Option<SavedServer>) -> anyhow::Result<Target> {
+        ensure!(settings.selected_server.is_none() || remote.is_some(), "The saved connection is missing; select a server/account and enable direct start again");
+        Ok(remote.map_or(Target::Local, Target::Saved))
+    }
     pub fn sync_direct(&self, settings: &Settings, remote: Option<SavedServer>) -> anyhow::Result<()> {
-        if self.root.join("profiles/loader.ini").is_file() { self.direct_profile(settings, remote)?; }
+        self.sync_direct_target(settings, Self::saved_target(settings, remote)?)
+    }
+    pub fn sync_direct_target(&self, settings: &Settings, target: Target) -> anyhow::Result<()> {
+        if self.root.join("profiles/loader.ini").is_file() { self.direct_profile(settings, target)?; }
         Ok(())
     }
     pub fn enable_direct(&self, settings: &Settings, remote: Option<SavedServer>) -> anyhow::Result<()> {
         ensure!(!self.game_running(), "Close the game before changing direct-start setup");
-        self.set_up_direct(settings, remote, true)
+        self.set_up_direct(settings, Self::saved_target(settings, remote)?, true)
     }
 
     /// Play's automatic setup, just before it starts the game: sets up (or refreshes) opening `yo3.exe` directly with
     /// the connection just used, never asking for permission. A game folder that needs it, another mod's `winmm.dll`
     /// or any other problem leaves direct start as it was and says why.
     pub fn auto_direct(&self, settings: &Settings, remote: Option<SavedServer>) -> AutoDirect {
+        match Self::saved_target(settings, remote) {
+            Ok(target) => self.auto_direct_target(settings, target),
+            Err(error) => AutoDirect::Skipped(format!("{error:#}")),
+        }
+    }
+    pub fn auto_direct_target(&self, settings: &Settings, target: Target) -> AutoDirect {
         let result = match self.direct_state(settings) {
             State::Conflict(reason) => return AutoDirect::Skipped(reason),
             // Already in place: only the saved connection follows this Play (no Wine registry round trip).
-            State::Enabled => self.direct_profile(settings, remote),
-            _ => self.set_up_direct(settings, remote, false),
+            State::Enabled => self.direct_profile(settings, target),
+            _ => self.set_up_direct(settings, target, false),
         };
         match result {
             Ok(()) => AutoDirect::Ready,
@@ -218,22 +323,23 @@ impl Backend {
         }
     }
 
-    fn set_up_direct(&self, settings: &Settings, remote: Option<SavedServer>, elevate: bool) -> anyhow::Result<()> {
+    fn set_up_direct(&self, settings: &Settings, target: Target, elevate: bool) -> anyhow::Result<()> {
         let game = Path::new(&settings.game_dir); crate::validate_game(game)?;
         yo3_launcher::components::preflight(&game.join("yo3.exe"), &self.runtime.injector, &self.runtime.dll)?;
         let source = self.loader_source()?;
         let helper = self.direct_helper()?;
         ensure!(helper.is_file(), "The Windows connection helper is missing. Extract the complete bundle.");
         self.check_game(settings)?;
-        self.direct_profile(settings, remote)?;
+        self.direct_profile(settings, target)?;
+        let [helper, dll, injector] = self.stable_components()?;
         let state = self.root.join("profiles"); let file = state.join("loader.ini");
         let mut ini = String::from("[revival]\r\n");
         let profile = state.join("direct.json"); let logs = self.root.join("logs/sessions");
-        let values = windows_paths(&[&helper, &self.runtime.injector, &self.runtime.dll, &profile, &state, &logs], settings)?;
+        let values = windows_paths(&[&helper, &injector, &dll, &profile, &state, &logs], settings)?;
         for (key, value) in ["launcher", "injector", "dll", "profile", "state", "logs"].into_iter().zip(values) {
             ensure!(!value.contains(['\r', '\n']), "Invalid setup path"); ini.push_str(&format!("{key}={value}\r\n"));
         }
-        ini.push_str(&format!("sha256={}\r\n", hash(&regular(&self.runtime.dll)?)));
+        ini.push_str(&format!("sha256={}\r\n", hash(&regular(&dll)?)));
         let bytes: Vec<u8> = std::iter::once(0xfeffu16).chain(ini.encode_utf16()).flat_map(u16::to_le_bytes).collect();
         private_write(&file, &bytes, true)?;
         if let Err(error) = install_files(game, &source) {
@@ -255,7 +361,8 @@ impl Backend {
         }
         // The private files go before the registry: a registry that cannot be changed leaves a value naming a missing
         // configuration (the loader then asks for Play), never a half-removed setup that blocks a game-folder change.
-        for name in ["loader.ini", "direct.json", "direct-setup.json"] { let _ = std::fs::remove_file(self.root.join("profiles").join(name)); }
+        for name in ["loader.ini", "direct.json", "direct-setup.json", "problem-direct.json"] { let _ = std::fs::remove_file(self.root.join("profiles").join(name)); }
+        let _ = std::fs::remove_dir_all(self.root.join("direct"));
         registry(settings, None)
     }
 }
@@ -289,6 +396,26 @@ mod tests {
         assert_eq!(backend.direct_helper().unwrap(), helper);
         std::fs::write(&helper, b"changed helper").unwrap();
         assert!(backend.direct_helper().is_err(), "direct start must reject mismatched helper code");
+        drop(backend); std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn a_multiplayer_direct_profile_names_the_vault_entry_and_holds_no_secret() {
+        use super::*;
+        let root = std::env::temp_dir().join(format!("yo3-direct-signed-in-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let backend = Backend::new(root.clone()).unwrap();
+        std::fs::create_dir_all(root.join("profiles")).unwrap();
+        let identity = "a".repeat(64);
+        let server = multiplayer::Server { name: "Beta".into(), address: "beta.example:7443".into(), server_name: "beta.example".into(),
+            identities: vec![identity.clone()], official: true, description: String::new(), saved_user: Some("me".into()), last_used: 0 };
+        backend.direct_profile(&Settings::default(), Target::SignedIn(server.clone())).unwrap();
+        let text = std::fs::read_to_string(root.join("profiles/direct.json")).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["vault"], multiplayer::vault_account(&server));
+        assert_eq!(value["identity"], identity);
+        for secret in ["key", "session", "password", "token"] { assert!(value.get(secret).is_none(), "{secret} in {text}") }
+        let loaded = yo3_launcher::Profile::read(&root.join("profiles/direct.json")).unwrap();
+        assert!(matches!(loaded.credential, yo3_launcher::Credential::Device(_)));
         drop(backend); std::fs::remove_dir_all(root).unwrap();
     }
     #[test]

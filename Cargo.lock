@@ -5627,6 +5627,7 @@ dependencies = [
  "clap",
  "dunce",
  "getrandom 0.4.3",
+ "keyring",
  "ring",
  "serde",
  "serde_json",

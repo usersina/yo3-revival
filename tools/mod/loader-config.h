@@ -61,7 +61,7 @@ static DWORD validate_config(LoaderConfig *config) {
     if (!mod_hash_matches(config->dll, config->sha256)) return ERROR_CRC;
     if (GetFileAttributesW(config->launcher) == INVALID_FILE_ATTRIBUTES || GetFileAttributesW(config->injector) == INVALID_FILE_ATTRIBUTES)
         return ERROR_FILE_NOT_FOUND;
-    /* No saved sign-in: Delete Login Data signed this PC out (signout.h), or the app hasn't signed it in yet. */
+    /* The profile names the mode and server last played; a missing one means the app never set direct start up. */
     if (GetFileAttributesW(config->profile) == INVALID_FILE_ATTRIBUTES) return ERROR_NOT_AUTHENTICATED;
     DWORD attributes = GetFileAttributesW(config->state);
     if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY)) return ERROR_PATH_NOT_FOUND;

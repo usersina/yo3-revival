@@ -13,6 +13,8 @@ pub mod components;
 pub mod attach;
 pub mod runtime;
 pub mod resolution;
+pub mod direct;
+pub mod vault;
 
 pub async fn authorize<R: AsyncRead + Unpin>(stream: &mut R, cookie: &Token) -> anyhow::Result<()> {
     let mut given = [0; 32];
@@ -25,29 +27,41 @@ pub async fn authorize<R: AsyncRead + Unpin>(stream: &mut R, cookie: &Token) -> 
 pub struct Profile { pub server: String, pub server_name: String, #[serde(default)] pub certificate: String,
     #[serde(default)] pub identity: Option<String>, #[serde(default)] pub key: String,
     /// A session the launcher signed in for with a User ID and password (#30), instead of an account key.
-    #[serde(default)] pub session: Option<String> }
+    #[serde(default)] pub session: Option<String>,
+    /// The vault entry of this device's saved sign-in for the server ("Stay signed in"): direct start resumes it when
+    /// there is neither a key nor a session, and Delete Login Data forgets it (#33).
+    #[serde(default)] pub vault: Option<String>,
+    /// Singleplayer's direct start: how to start your own server when it isn't running (#33).
+    #[serde(default)] pub start: Option<direct::ServerStart> }
+
+/// A profile, read.
+pub struct Loaded { pub endpoint: Endpoint, pub credential: Credential, pub vault: Option<String>, pub start: Option<direct::ServerStart> }
 
 /// How the helper signs in: with an account key (key accounts: Singleplayer, the Scripts profiles), or with a session
-/// the launcher already signed in for (password accounts, #30).
+/// the launcher already signed in for (password accounts, #30), or with the device's saved sign-in (direct start, #33).
 #[derive(Clone)]
-pub enum Credential { Key(String), Session(yo3_tunnel::Token) }
+pub enum Credential { Key(String), Session(yo3_tunnel::Token), Device(String) }
 
 impl Credential {
     /// A session for the game's connections.
     pub async fn sign_in(&self, endpoint: &Endpoint) -> anyhow::Result<yo3_tunnel::Token> {
-        match self { Credential::Key(key) => endpoint.login(key).await, Credential::Session(session) => Ok(*session) }
+        let read = |account: &str| vault::Vault::get(&vault::SystemVault, account).ok().flatten();
+        direct::sign_in(endpoint, self, &read).await.map_err(|failure| anyhow::anyhow!("{}", failure.reason))
     }
     /// Whether the helper ends the session when the game exits: only one it signed in itself (a key). A session the
     /// launcher handed over is the launcher's own sign-in, reused by its next Play; its Sign out ends it.
-    pub fn owns_session(&self) -> bool { matches!(self, Credential::Key(_)) }
+    pub fn owns_session(&self) -> bool { matches!(self, Credential::Key(_) | Credential::Device(_)) }
     /// The secret, for redacting logs.
     pub fn secret(&self) -> String {
-        match self { Credential::Key(key) => key.clone(), Credential::Session(session) => hex(session) }
+        match self { Credential::Key(key) => key.clone(), Credential::Session(session) => hex(session), Credential::Device(_) => String::new() }
     }
 }
 
 impl Profile {
     pub fn load(path: &Path) -> anyhow::Result<(Endpoint, Credential)> {
+        let loaded = Self::read(path)?; Ok((loaded.endpoint, loaded.credential))
+    }
+    pub fn read(path: &Path) -> anyhow::Result<Loaded> {
         let p: Self = serde_json::from_slice(&std::fs::read(path)?)?;
         let certificate = path.parent().unwrap_or(Path::new(".")).join(p.certificate);
         let endpoint = match p.identity { Some(identity) => Endpoint::pinned(p.server, p.server_name, &identity)?,
@@ -57,16 +71,22 @@ impl Profile {
                 let bytes: Vec<u8> = (0..hex.len() / 2).filter_map(|i| u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()).collect();
                 Credential::Session(bytes.try_into().map_err(|_| anyhow::anyhow!("the profile's session is malformed"))?)
             }
+            None if p.key.is_empty() && p.vault.is_some() => Credential::Device(p.vault.clone().unwrap()),
             None => Credential::Key(p.key),
         };
-        Ok((endpoint, credential))
+        Ok(Loaded { endpoint, credential, vault: p.vault, start: p.start })
     }
 }
 
 #[derive(Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Ports { pub gate: u16, pub front: u16, pub duel: u16, pub http: u16 }
 
-pub struct Proxy { pub ports: Ports, pub cookie: Token, pub server_id: String, tasks: Vec<JoinHandle<()>>, session: tokio::sync::watch::Sender<Option<Token>> }
+/// How the game's sign-in ended: a session for its connections, or a refusal its login dialog shows (#33).
+#[derive(Clone, Copy, Debug)]
+pub enum Outcome { Session(Token), Refused(direct::Refusal) }
+
+pub struct Proxy { pub ports: Ports, pub cookie: Token, pub server_id: String, tasks: Vec<JoinHandle<()>>,
+    session: tokio::sync::watch::Sender<Option<Outcome>>, sign_outs: std::sync::Arc<tokio::sync::Notify> }
 
 impl Drop for Proxy { fn drop(&mut self) { for task in &self.tasks { task.abort(); } } }
 
@@ -74,7 +94,11 @@ impl Proxy {
     pub async fn start(endpoint: Endpoint, session: Token, ports: Ports) -> anyhow::Result<Self> {
         let proxy = Self::prepare(endpoint, ports).await?; proxy.activate(session); Ok(proxy)
     }
-    pub fn activate(&self, session: Token) { self.session.send_replace(Some(session)); }
+    pub fn activate(&self, session: Token) { self.session.send_replace(Some(Outcome::Session(session))); }
+    /// The sign-in failed: the game's login gets `refusal` from the front (and the duel and HTTP ports nothing).
+    pub fn refuse(&self, refusal: direct::Refusal) { self.session.send_replace(Some(Outcome::Refused(refusal))); }
+    /// Signalled when the game's Delete Login Data asks to forget this device's sign-in (tools/mod/signout.h).
+    pub fn sign_outs(&self) -> std::sync::Arc<tokio::sync::Notify> { self.sign_outs.clone() }
     pub async fn prepare(endpoint: Endpoint, ports: Ports) -> anyhow::Result<Self> {
         let (active, _) = tokio::sync::watch::channel(None);
         let gate = TcpListener::bind((Ipv4Addr::LOCALHOST, ports.gate)).await?;
@@ -84,6 +108,7 @@ impl Proxy {
         let ports = Ports { gate: gate.local_addr()?.port(), front: front.local_addr()?.port(), duel: duel.local_addr()?.port(), http: http.local_addr()?.port() };
         let mut cookie = [0; 32]; getrandom::fill(&mut cookie)?;
         let server_id = endpoint.server_id();
+        let sign_outs = std::sync::Arc::new(tokio::sync::Notify::new());
         let mut tasks = vec![];
         tasks.push(tokio::spawn(async move {
             // Keep accepted gates owned by this task so dropping the proxy also closes idle redirects.
@@ -121,7 +146,11 @@ impl Proxy {
                     tokio::spawn(async move {
                         let result = async {
                             authorize(&mut local, &cookie).await?;
-                            let session = wait_for_session(&mut active).await?;
+                            let session = match wait_for_outcome(&mut active).await? {
+                                Outcome::Session(session) => session,
+                                Outcome::Refused(refusal) if role == Role::Front => return refuse_login(local, refusal).await,
+                                Outcome::Refused(_) => anyhow::bail!("the sign-in was refused"),
+                            };
                             let ticket = endpoint.ticket(&session, role).await?;
                             let mut remote = endpoint.connect(&ticket, role, ports.duel).await?;
                             tokio::io::copy_bidirectional(&mut local, &mut remote).await?;
@@ -133,14 +162,16 @@ impl Proxy {
             }));
         }
         let http_active = active.clone();
+        let http_sign_outs = sign_outs.clone();
         tasks.push(tokio::spawn(async move {
             while let Ok((local, _)) = http.accept().await {
                 let endpoint = endpoint.clone();
-                let mut active = http_active.subscribe();
-                tokio::spawn(async move { if let Ok(session) = wait_for_session(&mut active).await { let _ = relay_http(local, &endpoint, &session, &cookie).await; } });
+                let active = http_active.subscribe();
+                let sign_outs = http_sign_outs.clone();
+                tokio::spawn(async move { let _ = relay_http(local, &endpoint, active, &cookie, &sign_outs).await; });
             }
         }));
-        Ok(Self { ports, cookie, server_id, tasks, session: active })
+        Ok(Self { ports, cookie, server_id, tasks, session: active, sign_outs })
     }
 
     pub fn environment(&self) -> Vec<(&'static str, String)> {
@@ -150,9 +181,35 @@ impl Proxy {
     }
 }
 
-async fn wait_for_session(active: &mut tokio::sync::watch::Receiver<Option<Token>>) -> anyhow::Result<Token> {
-    let token = *tokio::time::timeout(Duration::from_secs(10), active.wait_for(|session| session.is_some())).await??;
-    token.ok_or_else(|| anyhow::anyhow!("launcher session is not ready"))
+/// How long the game's connections wait for the sign-in: direct start may be starting your own server meanwhile.
+const SIGN_IN_WAIT: Duration = Duration::from_secs(60);
+
+async fn wait_for_outcome(active: &mut tokio::sync::watch::Receiver<Option<Outcome>>) -> anyhow::Result<Outcome> {
+    let outcome = *tokio::time::timeout(SIGN_IN_WAIT, active.wait_for(|outcome| outcome.is_some())).await??;
+    outcome.ok_or_else(|| anyhow::anyhow!("launcher session is not ready"))
+}
+
+/// The front of a refused sign-in, answered here: the version opener gets `0x219F` and the game's login (`0x1F47`) the
+/// refusal, which LoginWindow `0x469C00` shows in its error dialog `0x46D050` before going back to the title screen.
+/// The socket stays open until the game closes it, like the gate's (an early end reaches the null logger `0x535210`).
+async fn refuse_login(mut local: TcpStream, refusal: direct::Refusal) -> anyhow::Result<()> {
+    let mut told = false;
+    loop {
+        let mut head = [0; 4];
+        if local.read_exact(&mut head).await.is_err() { return Ok(()) }
+        let n = frame_len(head); anyhow::ensure!(n > 0 && n <= MAX_FRAME, "bad front frame");
+        let mut data = vec![0; n]; local.read_exact(&mut data).await?;
+        let reply = match yo3_proto::Packet::decode(&yo3_proto::decrypt(&data)?)? {
+            yo3_proto::Packet::Version(_) => Message::reply(0x219F),
+            yo3_proto::Packet::Message(m) if m.request() == Some(0x1F47) => Message::reply(refusal.reply()),
+            yo3_proto::Packet::Message(_) => continue,
+        };
+        local.write_all(&frame(&reply.encode())).await?;
+        if reply.request() == Some(refusal.reply()) && !told {
+            told = true;
+            if let Some(line) = refusal.notice() { direct::notify(line) }
+        }
+    }
 }
 
 pub fn hex(bytes: &[u8]) -> String { bytes.iter().map(|b| format!("{b:02x}")).collect() }
@@ -187,8 +244,12 @@ pub async fn wait_for_desktop_stop(mut input: impl std::io::BufRead + Send + 'st
     stopped.await.unwrap_or(DesktopStop::Gone)
 }
 
+/// The path the connection DLL asks on Delete Login Data (tools/mod/signout.h), under the launch cookie.
+pub const SIGN_OUT_PATH: &str = "revival/sign-out";
+
 /// The browser/WinINet uses the launch cookie in a local path, never an account credential in a remote URL.
-async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, session: &Token, cookie: &Token) -> anyhow::Result<()> {
+async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, mut active: tokio::sync::watch::Receiver<Option<Outcome>>, cookie: &Token,
+    sign_outs: &tokio::sync::Notify) -> anyhow::Result<()> {
     let mut request = vec![];
     tokio::time::timeout(Duration::from_secs(5), async {
         while request.len() < 8192 && !request.ends_with(b"\r\n\r\n") {
@@ -200,8 +261,14 @@ async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, session: &Token, 
     let path = text.split_whitespace().nth(1).unwrap_or_default();
     let prefix = format!("/session/{}/", hex(cookie));
     let path = path.strip_prefix(&prefix).filter(|_| text.starts_with("GET ")).ok_or_else(|| anyhow::anyhow!("local HTTP refused"))?;
+    if path == SIGN_OUT_PATH {
+        sign_outs.notify_one();
+        local.write_all(b"HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n").await?;
+        return Ok(local.shutdown().await?)
+    }
     anyhow::ensure!(!path.starts_with("admin") && !path.starts_with("join"), "private HTTP route refused");
-    let ticket = endpoint.ticket(session, Role::Http).await?;
+    let Outcome::Session(session) = wait_for_outcome(&mut active).await? else { anyhow::bail!("the sign-in was refused") };
+    let ticket = endpoint.ticket(&session, Role::Http).await?;
     let mut remote = endpoint.connect(&ticket, Role::Http, 0).await?;
     remote.write_all(format!("GET /{path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").as_bytes()).await?;
     tokio::io::copy(&mut remote, &mut local).await?;

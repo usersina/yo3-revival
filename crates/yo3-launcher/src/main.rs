@@ -9,8 +9,13 @@ use yo3_launcher::runtime::windows_path;
 #[derive(Parser)]
 #[command(version = yo3_tunnel::BUILD_VERSION, about = "Authenticate, start private TLS proxies, and inject the revival connection mod into the game")]
 struct Args {
-    #[arg(long)] profile: PathBuf,
-    #[arg(long, required_unless_present = "proxy_only")] game_dir: Option<PathBuf>,
+    #[arg(long, required_unless_present_any = ["vault_set", "vault_delete"])] profile: Option<PathBuf>,
+    /// Keep a device token (read from standard input) in this system's credential vault under NAME: the Linux launcher
+    /// copies its saved sign-in into Wine's store for direct start (#33).
+    #[arg(long, value_name = "NAME", conflicts_with = "vault_delete")] vault_set: Option<String>,
+    /// Remove the device token kept under NAME.
+    #[arg(long, value_name = "NAME")] vault_delete: Option<String>,
+    #[arg(long, required_unless_present_any = ["proxy_only", "vault_set", "vault_delete"])] game_dir: Option<PathBuf>,
     #[arg(long)] injector: Option<PathBuf>,
     #[arg(long)] dll: Option<PathBuf>,
     #[arg(long)] trace_dll: Option<PathBuf>,
@@ -49,8 +54,10 @@ fn windows_injector(injector: &std::path::Path, game: &std::path::Path, dll: &st
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+    if args.vault_set.is_some() || args.vault_delete.is_some() { return vault(&args) }
+    let profile = args.profile.clone().context("--profile is required")?;
     let report = args.attach_game.and(args.ready_file.clone());
-    let directory = args.diagnostics_dir.clone().unwrap_or_else(|| args.profile.parent().unwrap_or(std::path::Path::new(".")).join("logs/sessions"));
+    let directory = args.diagnostics_dir.clone().unwrap_or_else(|| profile.parent().unwrap_or(std::path::Path::new(".")).join("logs/sessions"));
     let log = yo3_tunnel::diagnostics::Session::start(&directory, if args.attach_game.is_some() { "direct" } else { "game" }, args.diagnostic_parent.clone())?;
     yo3_tunnel::diagnostics::set_current(log.clone());
     let result = run(args, log.clone()).await;
@@ -97,9 +104,15 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         }
     }
     if let Some(trace) = &args.trace_dll { ensure!(trace.is_file(), "Trace DLL not found: {}", trace.display()); }
-    let (endpoint, key) = Profile::load(&args.profile).context("read the private launcher profile and host certificate")?;
-    log.secret(&key.secret()); log.line("Checking server identity and compatibility");
-    initializing!(endpoint.info())?.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI)?;
+    let profile = args.profile.clone().context("--profile is required")?;
+    let loaded = Profile::read(&profile).context("read the private launcher profile and host certificate")?;
+    let (endpoint, key, vault) = (loaded.endpoint.clone(), loaded.credential.clone(), loaded.vault.clone());
+    log.secret(&key.secret());
+    // Direct start checks the server after the game is released: a refusal is the game's own login dialog (#33).
+    if args.attach_game.is_none() {
+        log.line("Checking server identity and compatibility");
+        initializing!(endpoint.info())?.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI)?;
+    }
     let proxy = initializing!(Proxy::prepare(endpoint.clone(), Ports { gate: args.gate_port, front: args.front_port, duel: args.duel_port, http: args.http_port }))?;
     log.secret(&hex(&proxy.cookie));
     if let Some(pid) = args.attach_game {
@@ -107,7 +120,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
             ready: args.ready_file.context("Direct game attachment requires a private ready file")?,
             ack: args.mod_ready_file.context("Direct game attachment requires a private acknowledgement file")? };
         log.line("Waiting for the direct loader to acknowledge mod readiness");
-        return yo3_launcher::attach::serve(request, endpoint, &key, proxy).await;
+        return yo3_launcher::attach::serve(request, loaded, &profile, proxy).await;
     }
     if args.proxy_only {
         let session = key.sign_in(&endpoint).await?; proxy.activate(session);
@@ -166,18 +179,25 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         write_ready(&args, &proxy)?;
         eprintln!("Authenticated with mod interface {} ready. Local gate {}, front {}, duel {}, HTTP {}.", yo3_tunnel::MOD_ABI, proxy.ports.gate, proxy.ports.front, proxy.ports.duel, proxy.ports.http);
         log.line("Authenticated; game resumed");
-        let status = tokio::select! {
-            status = child.wait() => Some(status?),
-            result = &mut interrupt => { result?; child.kill().await?; None }
-            stop = &mut desktop_stop => match stop {
-                yo3_launcher::DesktopStop::Asked => { child.kill().await?; None }
-                // The launcher closed or crashed while the game runs: keep playing; the session ends with the game.
-                yo3_launcher::DesktopStop::Gone => {
-                    log.line("The launcher went away; the game keeps running");
-                    tokio::select! {
-                        status = child.wait() => Some(status?),
-                        result = &mut interrupt => { result?; child.kill().await?; None }
-                    }
+        // Delete Login Data in the game forgets this device's saved sign-in for the server (#33).
+        let sign_outs = proxy.sign_outs();
+        let forget = || async {
+            match yo3_launcher::direct::sign_out(&endpoint, vault.as_deref(), &yo3_launcher::vault::SystemVault).await {
+                Ok(true) => log.line("Delete Login Data: this device's saved sign-in is forgotten"),
+                Ok(false) => {}
+                Err(error) => log.line(&format!("Delete Login Data failed: {error:#}")),
+            }
+        };
+        let mut launcher_gone = false;
+        let status = loop {
+            tokio::select! {
+                status = child.wait() => break Some(status?),
+                result = &mut interrupt => { result?; child.kill().await?; break None }
+                _ = sign_outs.notified() => forget().await,
+                stop = &mut desktop_stop, if !launcher_gone => match stop {
+                    yo3_launcher::DesktopStop::Asked => { child.kill().await?; break None }
+                    // The launcher closed or crashed while the game runs: keep playing; the session ends with the game.
+                    yo3_launcher::DesktopStop::Gone => { log.line("The launcher went away; the game keeps running"); launcher_gone = true }
                 }
             }
         };
@@ -190,6 +210,16 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     let detail = tokio::time::timeout(std::time::Duration::from_secs(1), error_output).await.ok().and_then(Result::ok).unwrap_or_default();
     if detail.trim().is_empty() { result }
     else { result.with_context(|| yo3_tunnel::diagnostics::redact(&detail, &[key.secret(), hex(&proxy.cookie), hex(&session)], None)) }
+}
+
+fn vault(args: &Args) -> anyhow::Result<()> {
+    use yo3_launcher::vault::{SystemVault, Vault};
+    if let Some(account) = &args.vault_delete { return SystemVault.delete(account) }
+    let account = args.vault_set.as_deref().context("no vault entry named")?;
+    use std::io::Read; let mut token = String::new(); std::io::stdin().take(4096).read_to_string(&mut token)?;
+    let token = token.trim();
+    ensure!(!token.is_empty() && token.bytes().all(|b| b.is_ascii_graphic()), "no device token on standard input");
+    SystemVault.set(account, token)
 }
 
 async fn capture(mut source: impl tokio::io::AsyncRead + Unpin, log: yo3_tunnel::diagnostics::Session, client_trace: bool) -> String {
