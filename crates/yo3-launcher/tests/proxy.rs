@@ -44,7 +44,6 @@ async fn gate_redirect_stays_open_until_the_client_or_proxy_closes_it() {
 async fn a_modded_client_logs_in_and_its_duel_is_bound_to_that_launcher() {
     let dir = std::env::temp_dir().join(format!("yo3-proxy-{}", std::process::id()));
     let cfg = yo3_server::Config::ephemeral(dir.clone());
-    let has_index = cfg.game_dir.join("yo3.idx").is_file();
     let cert = cfg.tls.certificate.clone();
     let key = std::fs::read_to_string(dir.join("test-auth/client.key")).unwrap();
     let server = yo3_server::start(cfg).await.unwrap();
@@ -91,5 +90,44 @@ async fn a_modded_client_logs_in_and_its_duel_is_bound_to_that_launcher() {
     let path = format!("/session/{}/yo3/yo3.idx", yo3_launcher::hex(&p.cookie));
     http.write_all(format!("GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n").as_bytes()).await.unwrap();
     let mut reply = vec![]; http.read_to_end(&mut reply).await.unwrap();
-    assert!(reply.starts_with(if has_index { b"HTTP/1.1 200" } else { b"HTTP/1.1 404" }));
+    assert!(reply.starts_with(b"HTTP/1.1 404"), "no local index given: the server's isn't relayed either (#39)");
+}
+
+async fn http_get(p: &Proxy, path: &str) -> Vec<u8> {
+    let mut http = TcpStream::connect(("127.0.0.1", p.ports.http)).await.unwrap();
+    let path = format!("/session/{}/{path}", yo3_launcher::hex(&p.cookie));
+    http.write_all(format!("GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n").as_bytes()).await.unwrap();
+    let mut reply = vec![]; http.read_to_end(&mut reply).await.unwrap(); reply
+}
+
+#[tokio::test]
+async fn the_patch_check_gets_the_games_own_index_and_no_server_reaches_the_patcher() {
+    // Security review (#39): the stock patcher (PatchComponent 0x4EA470, 0x4EAA50) writes the files of a patch archive
+    // the index leads it to into the game folder under their own names, and swaps yo3.exe itself. A server joined on a
+    // normal Play must never answer the index or the patch files: the game's own index means "nothing to update".
+    let dir = std::env::temp_dir().join(format!("yo3-proxy-index-{}", std::process::id()));
+    let mut cfg = yo3_server::Config::ephemeral(dir.clone());
+    let game = dir.join("server-game"); std::fs::create_dir_all(&game).unwrap();
+    std::fs::write(game.join("yo3.idx"), b"SERVER INDEX").unwrap();
+    cfg.game_dir = game; cfg.allow_missing_game_data = true;
+    let cert = cfg.tls.certificate.clone();
+    let key = std::fs::read_to_string(dir.join("test-auth/client.key")).unwrap();
+    let server = yo3_server::start(cfg).await.unwrap();
+    let e = Endpoint::new(server.auth.to_string(), "localhost".into(), &cert).unwrap();
+    let session = e.login(&key).await.unwrap();
+    let p = Proxy::start(e, session, Ports::default()).await.unwrap();
+    // No local index known: the server's still isn't relayed.
+    let reply = http_get(&p, "yo3/yo3.idx").await;
+    assert!(reply.starts_with(b"HTTP/1.1 404") && !reply.ends_with(b"SERVER INDEX"), "{}", String::from_utf8_lossy(&reply));
+    p.local_index(b"LOCAL INDEX".to_vec());
+    let reply = http_get(&p, "yo3/yo3.idx").await;
+    assert!(reply.starts_with(b"HTTP/1.1 200") && reply.ends_with(b"\r\n\r\nLOCAL INDEX"), "{}", String::from_utf8_lossy(&reply));
+    for path in ["ygoda/patch/yo3.exe", "ygoda/patch/00000001.ypt", "yo3/other", "YO3/yo3.idx"] {
+        let reply = http_get(&p, path).await;
+        assert!(reply.starts_with(b"HTTP/1.1 404"), "{path}: {}", String::from_utf8_lossy(&reply));
+    }
+    // The other files the game fetches still come from the server.
+    assert!(http_get(&p, "web/v3/bpass/index/").await.starts_with(b"HTTP/1.1 200"));
+    drop(p); drop(server);
+    let _ = std::fs::remove_dir_all(dir);
 }

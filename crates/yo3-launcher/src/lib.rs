@@ -90,7 +90,7 @@ pub struct Proxy { pub ports: Ports, pub cookie: Token, pub server_id: String, t
     typed: std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<direct::Typed>>>, form_again: std::sync::Arc<std::sync::atomic::AtomicBool>,
     index: LocalIndex }
 
-/// The game's own patch index (`yo3.idx` beside `yo3.exe`), answered while there is no sign-in to fetch the server's.
+/// The game's own patch index (`yo3.idx` beside `yo3.exe`), the only answer the game's patch check ever gets.
 type LocalIndex = std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>>;
 /// The patch index's path under the launch cookie (the connection DLL maps the game's request to it, tools/mod/auth.c).
 const INDEX_PATH: &str = "yo3/yo3.idx";
@@ -112,10 +112,14 @@ impl Proxy {
     pub fn activate_typed(&self, session: Token) {
         self.form_again.store(false, std::sync::atomic::Ordering::SeqCst); self.activate(session);
     }
-    /// The game's own patch index: while the sign-in is refused (no saved sign-in, a wrong password, a server that is
-    /// down), the game's startup patch check gets it (nothing to update) and goes on to its title and login, where the
-    /// form or the refusal shows. Without it the game says it needs an Internet connection and closes.
+    /// The game's own patch index: the game's startup patch check gets it (nothing to update) and goes on to its title
+    /// and login, also while the sign-in is refused (the form or the refusal shows there). Without it the game says it
+    /// needs an Internet connection and closes. No server's index is ever relayed (#39).
     pub fn local_index(&self, bytes: Vec<u8>) { *self.index.lock().unwrap() = Some(bytes); }
+    /// The game folder's own `yo3.idx` as [`Self::local_index`], if it is there (at most 1 MiB).
+    pub fn local_index_from(&self, game_dir: &std::path::Path) {
+        if let Ok(bytes) = std::fs::read(game_dir.join("yo3.idx")) && bytes.len() <= 1 << 20 { self.local_index(bytes) }
+    }
     /// Signalled when the game's Delete Login Data asks to forget this device's sign-in (tools/mod/signout.h).
     pub fn sign_outs(&self) -> std::sync::Arc<tokio::sync::Notify> { self.sign_outs.clone() }
     /// What the player typed in the game's own login form (#34), once: the DLL hands it over when the game connects to
@@ -303,6 +307,12 @@ fn web_page(answer: &[u8]) -> Vec<u8> {
     page
 }
 
+/// The paths the proxy carries to the server: the game's old website links (`web/`), duel logs (`duellogs/`) and its
+/// info URL (`app/`). The patch index and the patch files never go there: the stock patcher writes what a patch
+/// archive holds into the game folder under the archive's own names and replaces `yo3.exe` itself (PatchComponent
+/// `0x4EA470`, `0x4EAA50`), so a server's answer could put any file there (docs/client-internals.md, "The patcher").
+fn relayed(path: &str) -> bool { ["web/", "duellogs/", "app/"].iter().any(|p| path.starts_with(p)) }
+
 /// The browser/WinINet uses the launch cookie in a local path, never an account credential in a remote URL.
 async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, mut active: tokio::sync::watch::Receiver<Option<Outcome>>, cookie: &Token,
     control: &Control) -> anyhow::Result<()> {
@@ -347,16 +357,17 @@ async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, mut active: tokio
         local.write_all(b"HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n").await?;
         return Ok(local.shutdown().await?)
     }
-    anyhow::ensure!(!path.starts_with("admin") && !path.starts_with("join"), "private HTTP route refused");
-    let outcome = wait_for_outcome(&mut active).await?;
-    let index = if path == INDEX_PATH { control.index.lock().unwrap().clone() } else { None };
-    let session = match outcome {
+    if path == INDEX_PATH || !relayed(path) {
+        // The patch check gets the game's own index, whatever the server or the sign-in: the game has nothing to update.
+        // Nothing else of the patcher's (`ygoda/patch/…`) or any other path reaches a server (security review, #39).
+        let index = if path == INDEX_PATH { control.index.lock().unwrap().clone() } else { None };
+        let (status, body) = match index { Some(index) => ("200 OK", index), None => ("404 Not Found", vec![]) };
+        local.write_all(format!("HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).as_bytes()).await?;
+        local.write_all(&body).await?;
+        return Ok(local.shutdown().await?)
+    }
+    let session = match wait_for_outcome(&mut active).await? {
         Outcome::Session(session) => session,
-        Outcome::Refused(_) if let Some(index) = index => {
-            local.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", index.len()).as_bytes()).await?;
-            local.write_all(&index).await?;
-            return Ok(local.shutdown().await?)
-        }
         Outcome::Refused(_) => anyhow::bail!("the sign-in was refused"),
     };
     let ticket = endpoint.ticket(&session, Role::Http).await?;

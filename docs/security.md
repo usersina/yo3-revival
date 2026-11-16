@@ -28,6 +28,7 @@ This was a code review. Each fix has a test that failed before it. No live clien
 
 | Severity | Finding | Fix | Test |
 | --- | --- | --- | --- |
+| High | A normal Play relayed the game's patch check (`yo3/yo3.idx`) and patch files (`ygoda/patch/…`) to the server. The stock patcher writes a patch archive's entries into the game folder under their own names and replaces `yo3.exe` ([client internals](client-internals.md#the-patcher)), so any server a player joined could run code on their PC. | The launcher answers the index with the game's own `yo3.idx` on every Play, and carries only `web/`, `duellogs/` and `app/` to the server. | `yo3-launcher` `proxy.rs` `the_patch_check_gets_the_games_own_index_and_no_server_reaches_the_patcher` |
 | Medium | A 1 MiB chat line was copied to everyone in the room, and to the queue of every player who wasn't reading. Control characters reached other players' chat windows. | A chat line is cut to 200 bytes. Control characters become spaces. | `chat_contract.rs` `a_chat_line_is_cut_to_a_line_and_loses_control_characters` |
 | Medium | A password change or an account recovery signed out devices but left game sessions open for up to 12 hours. Someone who had taken the account stayed in. | Both end every session of the account. | `account_contract.rs` `a_new_password_ends_the_sessions…`, `a_recovered_account_ends_the_sessions…` |
 | Medium | Sign-up hashed the password (64 MiB argon2id) before checking the invite. Sign-ups without an invite could keep both hashing slots busy and slow everyone's sign-in. | The User ID and the invite are checked first. | `account_contract.rs` `a_sign_up_without_a_usable_invite_hashes_no_password` |
@@ -46,13 +47,6 @@ This was a code review. Each fix has a test that failed before it. No live clien
 
 Ordered by severity. Each needs a decision or a larger change than this review should make.
 
-1. **High (unconfirmed): a malicious server can answer the game's patch check.** On a normal Play the launcher's
-   proxy relays `yo3/yo3.idx` and the other `yo3/…` paths from the server (`yo3-launcher/src/lib.rs`, `relay_http`).
-   If the stock patcher downloads and writes the files that index names, any server a player joins could write into
-   the game folder. That includes DLLs, which would mean code execution. Direct start already answers the index from
-   the game's own `yo3.idx` (`Proxy::local_index`).
-   - Proposed: always answer `yo3/yo3.idx` from the local game folder, and refuse the other patch paths.
-   - First confirm the patcher's behaviour with a changed index on the private client. That needs a live run.
 2. **Medium: updates are verified only by a digest from the same GitHub response.** Anyone who can publish a release,
    such as a stolen maintainer token, can ship an update. Proposed: a detached ed25519 signature checked against a
    key built into the launcher, as the signed server list already does. This needs key handling decided.

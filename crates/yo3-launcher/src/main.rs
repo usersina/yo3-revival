@@ -115,6 +115,8 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     }
     let proxy = initializing!(Proxy::prepare(endpoint.clone(), Ports { gate: args.gate_port, front: args.front_port, duel: args.duel_port, http: args.http_port }))?;
     log.secret(&hex(&proxy.cookie));
+    // The game's patch check gets the game's own index on every Play, never a server's (security review, #39).
+    if let Some(dir) = &args.game_dir { proxy.local_index_from(dir) }
     if let Some(pid) = args.attach_game {
         let request = yo3_launcher::attach::Attachment { pid, game: game.unwrap(),
             ready: args.ready_file.context("Direct game attachment requires a private ready file")?,

@@ -116,9 +116,9 @@ and `tools/mod/test-direct.sh` (each row, under Wine, with the real helper and l
 HTTP port, under the launch cookie: `GET …/revival/login-state` answers `form` when there is no saved sign-in (or the
 form's last sign-in was refused), else `ready`; `POST …/revival/login` with `{user, password, stay}` (the boxes and Save
 Password) clears the outcome, and the front's answer to the next `0x1F47` waits for the sign-in made with it. The
-password never reaches a log or the game's files. While the sign-in is refused, the game's startup patch check
-(`…/yo3/yo3.idx`, the first WinINet request) gets the game's own `yo3.idx` from the helper, so nothing is updated and
-the game reaches its title; with no answer the real game said "You will need an active Internet connection to play
+password never reaches a log or the game's files. The game's startup patch check (`…/yo3/yo3.idx`, the first WinINet
+request) always gets the game's own `yo3.idx` from the helper, also while the sign-in is refused, so nothing is updated
+and the game reaches its title (no server's index or patch file is ever relayed: client internals, "The patcher"); with no answer the real game said "You will need an active Internet connection to play
 ONLINE." and closed before the form (found on Windows 11, 2026-11-16; launcher `direct_start.rs`). **Status: confirmed live** (2026-11-16: the form, "Incorrect User ID or
 Password", Select Player, "This User ID is currently restricted.", and "Failed to connect to server." with the server
 down).
@@ -2169,8 +2169,9 @@ slot `pindex` 0–3). `CharMake.cpp` (`0x2CF5`/`0x2CF6`, the map's GoCharMake) r
 and player records keep their existing document schema and ids, stored in SQLite's `accounts` document.
 Key accounts (Singleplayer, the Scripts edition's profiles) and password accounts share that schema. No account is
 chosen by an address, and plain HTTP never makes or reveals one: fetching `yo3.idx` cannot select or create an
-account. The internal asset service serves the client's
-index, `/duellogs/NAME.dlog` and `/app/`; the launcher carries these requests over TLS. The DLL routes the client's
+account. The internal asset service serves `/duellogs/NAME.dlog`, `/app/` and `/web/`; the launcher carries these
+requests over TLS. The patch index is the game's own, answered by the launcher, and patch files are never fetched
+(#39, [client internals](client-internals.md#the-patcher)); the server's own `yo3.idx` route stays for older launchers. The DLL routes the client's
 WinINet calls to its local authenticated asset proxy, including duel-log URLs (`0x498700`). No account key is put
 into a remote URL. See [authentication.md](authentication.md) for setup and credential lifetimes.
 
