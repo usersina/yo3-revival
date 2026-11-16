@@ -219,6 +219,13 @@ Game output, native mod diagnostics, decoded packet traces and engine stderr are
 logs. The viewer hides verbose payloads until searched; exports include them by default. Privacy filtering at export
 omits payload traces and player activity and masks common personal paths/addresses without changing local evidence.
 
+**Engine messages the client doesn't see.** `ENGINE_MESSAGES` in `crates/yo3-server/src/translate.rs` lists every
+message type the rules engine sends, as shown, asked (a prompt), ignored with a reason, or undecided (#52). The test
+`every_engine_message_type_is_accounted_for` fails when the engine decodes a type the list doesn't have, and a duel logs
+`engine message N (NAME) is not shown to the player` the first time it drops an undecided or unknown one. The duel check
+can't catch these: a message that shows something without changing the cards (a coin toss, a die) leaves both views
+equal. When a feature handles a new type, change its entry from `Undecided` to `Shown`.
+
 For state validation and exact engine replay, run the server with `--duel-check` (the Desktop launcher has no server
 flags on the `beta` branch: use a server from the command line or the Scripts edition). Each player's play command
 already captures client output. This extra engine work is optional and separate from automatic logging.
