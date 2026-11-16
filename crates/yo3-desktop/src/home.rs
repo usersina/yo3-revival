@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use iced::widget::{Space, column, container, row, text};
 use iced::{Alignment::Center, Element, Length::Fill, Subscription, Task};
 use yo3_desktop::Readiness;
+use yo3_desktop::direct::DirectProblem;
 use yo3_desktop::singleplayer::{self, Backup};
 use yo3_skin::{BODY_BOLD, Kind, color, pill};
 use crate::app::{Ctx, dot, job};
@@ -113,7 +114,7 @@ pub struct Banlist { pub value: String, pub name: String }
 impl std::fmt::Display for Banlist { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.name) } }
 
 #[derive(Clone, Debug)]
-pub struct Live { running: bool, ready: bool, outside: bool, failure: Option<String> }
+pub struct Live { running: bool, ready: bool, outside: bool, failure: Option<String>, direct: Option<DirectProblem> }
 
 #[derive(Clone, Debug)]
 pub enum Message {
@@ -149,6 +150,8 @@ pub enum Message {
     Restored(Result<(), String>),
     ToggleDetails,
     Dismiss,
+    /// A direct start's problem was shown, and forgotten.
+    DirectShown,
     Multi(multi::Message),
     /// Handled by the window: the releases page, for a server that needs a newer launcher.
     Releases,
@@ -330,7 +333,7 @@ impl State {
                 let settings = ctx.settings.clone();
                 self.polling = true;
                 return job(move || Ok(Live { running: backend.game_running(), ready: backend.game_ready(),
-                    outside: backend.game_open_elsewhere(&settings), failure: backend.game_failure() }), Message::Polled);
+                    outside: backend.game_open_elsewhere(&settings), failure: backend.game_failure(), direct: backend.direct_problem() }), Message::Polled);
             }
             Message::Polled(result) => {
                 self.polling = false;
@@ -341,6 +344,11 @@ impl State {
                 self.game.ready = live.ready;
                 self.game.outside = live.outside;
                 if live.ready { self.waiting_since = None }
+                // A game opened directly that couldn't play (#33): said once, after it closed.
+                if let Some(problem) = live.direct && !live.outside && !live.running && self.notice.is_none() && let Some(backend) = ctx.backend.clone() {
+                    self.notice = Some(Notice { summary: problem.summary().into(), details: Some(problem.reason.clone()), open: false, action: None, good: false });
+                    return job(move || { backend.clear_direct_problem(&problem); Ok(()) }, |_: Result<(), String>| Message::DirectShown);
+                }
                 if ended {
                     self.game.closing = None;
                     self.waiting_since = None;
@@ -374,6 +382,7 @@ impl State {
             },
             Message::ToggleDetails => if let Some(notice) = &mut self.notice { notice.open = !notice.open },
             Message::Dismiss => self.notice = None,
+            Message::DirectShown => {}
             Message::SetUp | Message::Repair | Message::Restore | Message::Settings(_) | Message::Report(_) | Message::Help(_) | Message::Copy(_) => {}
         }
         Task::none()

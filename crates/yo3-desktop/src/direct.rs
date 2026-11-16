@@ -144,6 +144,25 @@ pub enum Target {
     SignedIn(multiplayer::Server),
 }
 
+/// Where the helper keeps the last direct start's problem (`yo3_launcher::direct::record_problem`, beside the profile).
+const PROBLEM: &str = "profiles/problem-direct.json";
+
+/// A direct start that went wrong, as the helper recorded it: shown once on the launcher's main screen.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DirectProblem { pub refusal: String, pub reason: String, pub at: String }
+
+impl DirectProblem {
+    /// One plain sentence for the player, from the refusal (`yo3_launcher::direct::Refusal`).
+    pub fn summary(&self) -> &'static str {
+        match self.refusal.as_str() {
+            "Restricted" => "When the game was opened directly, its server refused the sign-in: this account is restricted.",
+            "NeedsUpdate" => "When the game was opened directly, its server asked for a newer YO3 Revival. Update it in Settings, About.",
+            "SignedOut" => "When the game was opened directly, its saved sign-in had ended. Press PLAY in Multiplayer to sign in again.",
+            _ => "When the game was opened directly, it couldn't connect to its server.",
+        }
+    }
+}
+
 /// What Play's automatic setup did (`Backend::auto_direct`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AutoDirect { Ready, NeedsPermission, Skipped(String) }
@@ -235,9 +254,18 @@ impl Backend {
         }
     }
     /// The last direct start's problem (a server that would not start, a refused sign-in), for the launcher to show.
-    pub fn direct_problem(&self) -> Option<String> {
-        let value: serde_json::Value = serde_json::from_slice(&std::fs::read(self.root.join("profiles/problem-direct.json")).ok()?).ok()?;
-        value["reason"].as_str().map(str::to_owned)
+    /// A wrong password isn't one: the game's own dialog already said so, and the player typed it.
+    pub fn direct_problem(&self) -> Option<DirectProblem> {
+        let value: serde_json::Value = serde_json::from_slice(&std::fs::read(self.root.join(PROBLEM)).ok()?).ok()?;
+        let problem = DirectProblem { refusal: value["refusal"].as_str()?.into(), reason: value["reason"].as_str().unwrap_or_default().into(),
+            at: value["at"].as_str().unwrap_or_default().into() };
+        (problem.refusal != "WrongPassword").then_some(problem)
+    }
+    /// The launcher showed `problem`: forget it, unless a newer direct start wrote another since.
+    pub fn clear_direct_problem(&self, problem: &DirectProblem) {
+        let file = self.root.join(PROBLEM);
+        let current: Option<serde_json::Value> = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice(&b).ok());
+        if current.is_none_or(|v| v["at"].as_str().unwrap_or_default() == problem.at) { let _ = std::fs::remove_file(file); }
     }
     fn direct_stamp(&self, settings: &Settings) -> anyhow::Result<Stamp> {
         let paths = vec![self.loader_source()?, self.runtime.dll.clone(), self.runtime.injector.clone(), self.direct_helper()?];
@@ -436,5 +464,37 @@ mod tests {
         assert!(super::decode_windows_paths(text.as_bytes(), 1).is_err());
         assert!(super::decode_windows_paths(b"C:\\game\0", 2).is_err());
         assert!(super::decode_windows_paths(b"\xff\0", 1).is_err());
+    }
+}
+
+#[cfg(test)]
+mod problem_tests {
+    use super::*;
+
+    #[test]
+    fn a_direct_starts_problem_is_shown_once_and_a_newer_one_survives() {
+        let root = std::env::temp_dir().join(format!("yo3-direct-problem-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let backend = Backend::new(root.clone()).unwrap();
+        let profile = root.join("profiles/direct.json");
+        std::fs::create_dir_all(profile.parent().unwrap()).unwrap();
+        assert_eq!(backend.direct_problem(), None);
+        let failure = |refusal, reason: &str| yo3_launcher::direct::Failure::new(refusal, reason);
+        yo3_launcher::direct::record_problem(&profile, Some(&failure(yo3_launcher::direct::Refusal::WrongPassword, "the server refused the sign-in")));
+        assert_eq!(backend.direct_problem(), None, "the game's own dialog said it");
+        yo3_launcher::direct::record_problem(&profile, Some(&failure(yo3_launcher::direct::Refusal::FailedToConnect, "your server didn't start")));
+        let shown = backend.direct_problem().expect("recorded by the helper");
+        assert_eq!((shown.summary(), shown.reason.as_str()), ("When the game was opened directly, it couldn't connect to its server.", "your server didn't start"));
+        let newer = DirectProblem { at: "a later start".into(), ..shown.clone() };
+        backend.clear_direct_problem(&newer);
+        assert_eq!(backend.direct_problem().as_ref(), Some(&shown), "a newer problem than the one shown is kept");
+        backend.clear_direct_problem(&shown);
+        assert_eq!(backend.direct_problem(), None);
+        for refusal in ["Restricted", "NeedsUpdate", "SignedOut", "FailedToConnect"] {
+            let summary = DirectProblem { refusal: refusal.into(), reason: String::new(), at: String::new() }.summary();
+            assert!(summary.starts_with("When the game was opened directly") && !summary.contains('/'), "{summary}");
+        }
+        drop(backend);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

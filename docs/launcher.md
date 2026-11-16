@@ -187,7 +187,7 @@ Singleplayer or Multiplayer, keeps it up to date. Settings → Game says whether
 it.
 
 - **Singleplayer:** your own server starts with the game if it isn't running, and stops about 30 seconds after the
-  game closes. If it can't start, the game says "Failed to connect to server." and YO3 Revival's logs say why.
+  game closes. If it can't start, the game says "Failed to connect to server.".
 - **Multiplayer:** with **Stay signed in**, the game goes straight to Select Player. Without it, or once that sign-in
   has ended, **ONLINE** shows the game's own login screen: type your User ID and password there. **Save Password**
   keeps this PC signed in (the next start skips the screen); **Save User ID** fills in your User ID next time. The game
@@ -202,6 +202,9 @@ direct start working; if that copy is gone, the game opens offline and one line 
 replaces another mod's file of that name: the setting then says so, and PLAY here still works. In a protected game
 folder, PLAY never asks for permission by itself: its notice offers **Allow**, and Settings → Game offers **Fix
 permission**. Turning the setting off takes the loader out of the game folder again.
+
+When a game opened this way couldn't play (its server didn't start or refused the sign-in), YO3 Revival's main screen
+says so once, the next time it is open with the game closed, with the technical reason behind **Details**.
 
 **Delete Login Data** on the game's title screen ends this PC's saved sign-in for the server you last played on: the
 server forgets it too, and the game's saved User ID is cleared. Singleplayer has nothing to delete. After an update or
