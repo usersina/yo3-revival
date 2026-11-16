@@ -7,7 +7,7 @@ async fn main() -> anyhow::Result<()> {
     let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
     let scratch = std::env::temp_dir().join(format!("yo3-dashboard-dev-{}-{stamp}", std::process::id()));
     let mut cfg = Config::ephemeral(scratch.clone());
-    cfg.http_port = port;
+    cfg.dashboard_port = Some(port);
     cfg.game_dir = scratch.join("no-game-files-needed");
     cfg.engine_problem = Some("Dashboard-only development server".into());
     cfg.packet_logging = false;
@@ -24,7 +24,8 @@ async fn main() -> anyhow::Result<()> {
     }
     drop(accounts);
     let running = yo3_server::start(cfg).await?;
-    println!("Disposable dashboard API: http://{} (TestAdmin / DashboardDemo123!)", running.http);
+    println!("Disposable dashboard API: http://{} (TestAdmin / DashboardDemo123!)", running.dashboard.unwrap());
+    println!("Separate local management/assets: http://{}", running.http);
     tokio::signal::ctrl_c().await?;
     running.stopper().send_replace(true);
     running.wait().await;

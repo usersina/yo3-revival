@@ -140,7 +140,9 @@ The paths below are the ones the unit and the example file use: the bundle in `/
 
 ## The admin panel through an SSH tunnel
 
-The panel is a web page the server serves on its loopback HTTP port (D7: no public admin page in the beta). From your
+The panel is a web page the server serves on its loopback HTTP port (D7: no public admin page in the beta). The
+[React dashboard under development](dashboard.md) uses a separate opt-in loopback API socket; it does not change
+this panel's port or the CLI's access, and must not be proxied publicly before its MFA/proxy gate is complete. From your
 own PC, open a tunnel to the server and leave it open while you use the panel:
 
 ```bash

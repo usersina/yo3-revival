@@ -36,6 +36,10 @@ pub struct Args {
     pub auth_key: Option<PathBuf>,
     #[arg(long, default_value_t = 8080, global = true)]
     pub http_port: u16,
+    /// Enable the staff dashboard JSON API on a separate loopback-only port (off by default; 0 assigns a free port).
+    /// This does not expose the API to a network; public access awaits the MFA and proxy gate.
+    #[arg(long, global = true)]
+    pub dashboard_port: Option<u16>,
     /// Game install (for the patch index and the client's own data files).
     #[arg(long)]
     pub game_dir: Option<PathBuf>,

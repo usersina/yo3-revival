@@ -7,14 +7,15 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 
 - The approved React/Vite/SWC/Tailwind dashboard is in `dashboard/`. The main pages remain a labelled design preview.
   `/connected` uses the real local API for staff sign-in/out, accounts and Give BP. It never falls back to fixtures.
-- Axum handles local HTTP. The staff JSON router is separate from host-token operations; both still use the existing
-  loopback listener. There is no public listener or network binding option in this slice.
+- Axum handles HTTP on separate sockets. Host-token operations, assets and the old HTML panel stay on `--http-port`.
+  The staff JSON router has its own opt-in `--dashboard-port`, disabled by default and always bound to loopback.
+  There is no public dashboard binding option before the MFA/proxy gate.
 - Rust handlers and DTOs generate `dashboard/api/openapi.json` through utoipa-axum. Orval generates the committed
   fetch functions, TanStack Query hooks and Zod validators in `dashboard/src/api/generated/`.
 - Give BP commits balance, D-Mail, audit and operation receipt together, then publishes state and notifications.
   The dashboard targets a numeric account ID and retains an uncertain request across reloads for safe retry.
 - SQLite schema 3 adds `operation_receipts`. Schemas 1 and 2 upgrade transactionally. Other domains are not normalized.
-- Remaining work: the other dashboard operations, separate public/private listeners, staff MFA, nginx and Compose.
+- Remaining work: the other dashboard operations, staff MFA, the public-access/proxy gate, nginx and Compose.
 
 ## Operation boundary
 
@@ -70,8 +71,10 @@ Connected routes in this slice:
 
 Every route checks the loopback peer and local Host. Posts also require same-origin evidence, and authenticated posts
 require the CSRF header. Host-token, restore and credential-export operations are absent from the staff router. The
-existing HTML panel remains available, sharing sessions and the sign-in throttle. Password/recovery changes invalidate
-its cookies as well as JSON API cookies. Full sign-out-everywhere/MFA revocation remains part of the public gate.
+existing HTML panel remains on the local management listener, sharing sessions and the sign-in throttle.
+Password/recovery changes invalidate its cookies as well as JSON API cookies. Full sign-out-everywhere/MFA revocation
+remains part of the public gate. The management listener does not mount the staff API or its schema; the dashboard
+listener never falls through to host-token operations, the HTML panel, backups, health details or game assets.
 
 For a disposable local server and the connected page, see [local development](#local-development).
 
@@ -94,8 +97,15 @@ npm run dev
 
 Open `http://127.0.0.1:5173/connected`. Use `TestAdmin` or `TestModerator`, password `DashboardDemo123!`.
 These are example accounts in a fresh temporary directory; no existing data is opened. Ctrl+C stops the example and
-removes its directory. Vite's proxy targets loopback port 18080; set `YO3_DASHBOARD_API` before `npm run dev` for a
-scratch server on another local port. Keep both ports private.
+removes its directory. Its dashboard API uses loopback port 18080; local management/assets use a separate, automatically
+assigned loopback port printed at startup. Vite's proxy targets the dashboard port; set `YO3_DASHBOARD_API` before
+`npm run dev` for a scratch server on another local port. Keep development ports private.
+
+For a normal source server, opt in with `--dashboard-port 18081`, or `dashboard_port = 18081` in its TOML file.
+Omitting it leaves the API disabled; `0` assigns a free port, reported at startup. `--bind` affects only game TLS,
+even when set to `0.0.0.0`. A dashboard port conflict stops startup before database initialization/migration or live
+CLI discovery, rather than silently dropping the requested service. All listeners stop with the server. These
+options support private development only; do not proxy this unfinished API publicly.
 
 From `dashboard/`, `npm run api:generate` regenerates Rust's spec and the frontend. `npm run api:check` checks client
 drift without writing. From the root, `cargo nextest run -p yo3-server --test dashboard_contract` checks the schema
@@ -111,8 +121,8 @@ safety checks. Public access stays disabled until the gate below is implemented 
 | Listener | Access and authority |
 | --- | --- |
 | Game TLS | Public TCP 7443, existing authenticated game transport |
-| Local management | Loopback, unpublished; host-token CLI API |
-| Dashboard API | Private Compose network; staff-session router only, never host-token authority even from 127.0.0.1 |
+| Local management | Loopback, unpublished; host-token CLI API, assets and existing HTML panel |
+| Dashboard API | Separate loopback socket today, disabled by default; private Compose network only after the public-access gate; staff-session router only, never host-token authority even from 127.0.0.1 |
 | nginx | Public HTTPS; dashboard files and an explicit allowlist of dashboard API routes on one browser origin |
 
 Restore remains an offline CLI command with the server stopped and the data folder exclusively locked. Host-token

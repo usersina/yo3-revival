@@ -237,11 +237,19 @@ pub async fn http_loop(
     listener: TcpListener, game_dir: PathBuf, data_dir: Option<PathBuf>, admin_token: Option<String>,
     api: Arc<crate::api::Api>, panel: Arc<crate::panel::Panel>,
 ) {
-    let typed = crate::dashboard::router(crate::dashboard::Dashboard { api: api.clone(), panel: panel.clone() });
-    let router = axum::Router::new().merge(typed).fallback(move |axum::extract::ConnectInfo(peer): axum::extract::ConnectInfo<std::net::SocketAddr>, request: axum::extract::Request| {
+    let router = axum::Router::new().fallback(move |axum::extract::ConnectInfo(peer): axum::extract::ConnectInfo<std::net::SocketAddr>, request: axum::extract::Request| {
         let (game, data, token, api, panel) = (game_dir.clone(), data_dir.clone(), admin_token.clone(), api.clone(), panel.clone());
         async move { legacy_http(request, peer.ip(), game, data, token, api, panel).await }
     });
+    serve_http(listener, router).await;
+}
+
+/// The staff socket has only the staff router. It cannot fall through to host commands, HTML forms or game assets.
+pub async fn dashboard_loop(listener: TcpListener, state: crate::dashboard::Dashboard) {
+    serve_http(listener, crate::dashboard::router(state)).await;
+}
+
+async fn serve_http(listener: TcpListener, router: axum::Router) {
     let mut backoff = Duration::from_millis(50);
     loop {
         let (stream, peer) = match listener.accept().await {
@@ -274,8 +282,8 @@ async fn legacy_http(
     use axum::{body::{Body, to_bytes}, http::{HeaderName, HeaderValue, StatusCode}, response::IntoResponse};
     let (parts, body) = request.into_parts();
     let path = parts.uri.path();
-    // Unknown staff paths never fall through to the host API or the HTML panel.
-    if path.starts_with("/panel/api/") { return crate::dashboard::not_found() }
+    // The staff API belongs to its dedicated listener, including its schema and unknown routes.
+    if path.starts_with("/panel/api/") || path == "/panel/openapi.json" { return crate::dashboard::not_found() }
     let body = match tokio::time::timeout(Duration::from_secs(10), to_bytes(body, 64 * 1024)).await {
         Ok(Ok(body)) => body,
         Ok(Err(_)) => return StatusCode::PAYLOAD_TOO_LARGE.into_response(),

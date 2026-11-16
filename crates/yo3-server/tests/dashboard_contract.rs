@@ -37,10 +37,14 @@ struct Browser { live: Running, admin: yo3_server::admin::Live, endpoint: yo3_tu
 struct Answer { status: u16, headers: String, body: Value }
 impl Browser {
     async fn new(name: &str) -> Self {
+        Self::with_dashboard(name, true).await
+    }
+    async fn with_dashboard(name: &str, enabled: bool) -> Self {
         logins::use_fast_hashing();
         let dir = std::env::temp_dir().join(format!("yo3-dashboard-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let cfg = Config::ephemeral(dir);
+        let mut cfg = Config::ephemeral(dir);
+        cfg.dashboard_port = enabled.then_some(0);
         let data = cfg.data_dir.clone().unwrap();
         let cert = cfg.tls.certificate.clone();
         let live = yo3_server::start(cfg).await.unwrap();
@@ -55,7 +59,9 @@ impl Browser {
         Self { live, admin, endpoint, cookie: String::new(), csrf: String::new() }
     }
     async fn raw(&self, method: &str, path: &str, body: &str, extra: &str) -> Answer {
-        let addr = self.live.http;
+        self.raw_on(self.live.dashboard.unwrap_or(self.live.http), method, path, body, extra).await
+    }
+    async fn raw_on(&self, addr: std::net::SocketAddr, method: &str, path: &str, body: &str, extra: &str) -> Answer {
         let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
         let raw = format!("{method} {path} HTTP/1.1\r\nHost: localhost:{}\r\nOrigin: http://localhost:{}\r\nCookie: {}\r\nX-CSRF-Token: {}\r\n{extra}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", addr.port(), addr.port(), self.cookie, self.csrf, body.len());
         stream.write_all(raw.as_bytes()).await.unwrap();
@@ -75,6 +81,102 @@ impl Browser {
         self.csrf = a.body["csrf_token"].as_str().unwrap().to_string();
         for flag in ["HttpOnly", "Secure", "SameSite=Strict", "Path=/panel"] { assert!(a.headers.contains(flag)); }
     }
+}
+
+#[tokio::test]
+async fn management_does_not_mount_dashboard_routes_by_default() {
+    let b = Browser::with_dashboard("management-only", false).await;
+    assert!(b.live.dashboard.is_none());
+    for (method, path, body) in [
+        ("GET", "/panel/api/v1/session", json!(null)),
+        ("GET", "/panel/api/v1/accounts", json!(null)),
+        ("POST", "/panel/api/v1/sign-in", json!({ "user": "Pegasus", "password": PASSWORD })),
+        ("GET", "/panel/openapi.json", json!(null)),
+    ] {
+        let response = b.call(method, path, body).await;
+        assert_eq!(response.status, 404, "{path} belongs only to the dedicated dashboard listener");
+    }
+    let admin = b.admin.clone();
+    let status = tokio::task::spawn_blocking(move || api::call(&admin, &Op::Status)).await.unwrap().unwrap();
+    assert!(status.is_object(), "local host administration remains available");
+}
+
+#[tokio::test]
+async fn real_listeners_keep_host_authority_assets_and_staff_routes_separate() {
+    let mut b = Browser::new("listeners").await;
+    let dashboard = b.live.dashboard.expect("dashboard explicitly enabled");
+    assert_ne!(dashboard, b.live.http);
+    assert!(dashboard.ip().is_loopback());
+    assert_eq!(b.admin.port, b.live.http.port(), "CLI discovery must never name the staff port");
+    let token = format!("Authorization: Bearer {}\r\n", b.admin.token);
+    assert_eq!(b.raw("GET", "/panel/api/v1/accounts", "", &token).await.status, 401);
+    for signed_in in [false, true] {
+        if signed_in { b.sign_in("Pegasus").await; }
+        for (method, path, body) in [
+            ("POST", "/api/admin/v1/status", json!({ "op": "status" })),
+            ("POST", "/api/admin/v1/give-bp", json!({ "op": "give-bp", "who": "Yugi", "amount": 99 })),
+            ("POST", "/api/admin/v1/key", json!({ "op": "key", "who": "Yugi" })),
+            ("POST", "/api/admin/v1/restore", json!({ "which": "latest" })),
+            ("POST", "/panel/api/v1/restore", json!({ "which": "latest" })),
+            ("GET", "/panel/backups", json!(null)),
+            ("GET", "/panel/", json!(null)),
+            ("GET", "/health", json!(null)),
+            ("GET", "/yo3/yo3.idx", json!(null)),
+            ("GET", "/web/v3/bpass/index/", json!(null)),
+        ] {
+            let reply = b.raw(method, path, &body.to_string(), &token).await;
+            assert_eq!((reply.status, reply.body["code"].as_str()), (404, Some("not_found")), "{path}; staff cookie: {signed_in}");
+            assert!(reply.headers.to_ascii_lowercase().contains("cache-control: no-store"));
+        }
+    }
+    for path in ["/panel/api/v1/session", "/panel/api/v1/accounts", "/panel/openapi.json"] {
+        assert_eq!(b.raw_on(b.live.http, "GET", path, "", &token).await.status, 404);
+    }
+    assert_eq!(b.raw_on(b.live.http, "POST", "/panel/api/v1/sign-in",
+        &json!({ "user": "Pegasus", "password": PASSWORD }).to_string(), &format!("Idempotency-Key: {KEY}\r\n")).await.status, 404);
+    assert_eq!(b.call("GET", "/panel/api/v1/accounts", json!(null)).await.status, 200);
+    // Local commands still work when a staff listener exists, and stop closes all three listeners.
+    let local = b.live.http;
+    let auth = b.live.auth;
+    let admin = b.admin.clone();
+    tokio::task::spawn_blocking(move || {
+        api::call(&admin, &Op::GiveBp { who: "Yugi".into(), amount: 17 }).unwrap();
+        api::call(&admin, &Op::Shutdown).unwrap();
+    }).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), b.live.wait()).await.unwrap();
+    for addr in [local, auth, dashboard] {
+        assert!(tokio::net::TcpStream::connect(addr).await.is_err(), "{addr} closed at shutdown");
+    }
+}
+
+#[tokio::test]
+async fn dashboard_bind_failure_stops_startup_before_opening_the_database() {
+    let blocked = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = blocked.local_addr().unwrap().port();
+    let root = std::env::temp_dir().join(format!("yo3-dashboard-bind-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let mut cfg = Config::ephemeral(root.clone());
+    cfg.dashboard_port = Some(port);
+    // Config::ephemeral seeds a fixture database for TLS tests; use a separate unopened data folder here.
+    cfg.data_dir = Some(root.join("unopened-data"));
+    let data = cfg.data_dir.clone().unwrap();
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(data.join("existing-data"), b"preserve").unwrap();
+    let error = match yo3_server::start(cfg.clone()).await { Ok(_) => panic!("a requested dashboard must not silently disappear"), Err(e) => e.to_string() };
+    assert!(error.contains("dashboard") && error.contains(&port.to_string()), "{error}");
+    assert!(!data.join("server.db").exists(), "failed bind must not migrate or initialize state");
+    assert!(!data.join("admin.json").exists(), "failed startup must not publish live management discovery");
+    assert_eq!(std::fs::read(data.join("existing-data")).unwrap(), b"preserve");
+    drop(blocked);
+    cfg.bind = "0.0.0.0".parse().unwrap();
+    let running = yo3_server::start(cfg).await.unwrap();
+    assert!(running.auth.ip().is_unspecified());
+    assert!(running.http.ip().is_loopback(), "the game's bind never exposes local management");
+    assert!(running.dashboard.unwrap().ip().is_loopback(), "nor the unfinished dashboard API");
+    running.stopper().send_replace(true);
+    running.wait().await;
+    yo3_server::store::close(&data);
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[tokio::test]
@@ -182,7 +284,7 @@ async fn password_changes_and_recovery_end_existing_html_and_json_staff_cookies(
     assert_eq!(changed["ok"], true, "{changed}");
     assert_eq!(b.call("GET", "/panel/api/v1/session", json!(null)).await.status, 401);
     // The legacy panel and JSON API share the same cookie and validation.
-    let old_panel = b.call("GET", "/panel/", json!(null)).await;
+    let old_panel = b.raw_on(b.live.http, "GET", "/panel/", "", "").await;
     assert_eq!(old_panel.status, 303);
     b.sign_in("Croquet").await;
     let admin = b.admin.clone();
@@ -191,5 +293,5 @@ async fn password_changes_and_recovery_end_existing_html_and_json_staff_cookies(
         "new_password": "RecoveryPass123" })).await.unwrap();
     assert_eq!(recovered["ok"], true, "{recovered}");
     assert_eq!(b.call("GET", "/panel/api/v1/session", json!(null)).await.status, 401);
-    assert_eq!(b.call("GET", "/panel/", json!(null)).await.status, 303);
+    assert_eq!(b.raw_on(b.live.http, "GET", "/panel/", "", "").await.status, 303);
 }

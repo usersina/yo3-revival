@@ -26,8 +26,8 @@ and Scripts.
 **Standalone management dashboard**
 
 - [ ] Extend the typed, atomic Give BP operation to other admin operations, including proper save-failure handling.
-- [ ] Extend the generated staff API beyond sign-in/out, accounts and Give BP; separate the private dashboard
-      listener from local host management before the public gate. The first generated client and offline drift checks are implemented.
+- [ ] Extend the generated staff API beyond sign-in/out, accounts and Give BP. The generated client, offline drift
+      checks and separate opt-in loopback dashboard listener are implemented; public binding awaits the access gate.
 - [ ] Connect the approved React UI to real server data and preserve the existing panel's capabilities.
 - [ ] Public management gate: staff MFA and recovery (#43), session revocation, trusted nginx proxy, HTTPS renewal,
       route/header contract tests through nginx and a public-access security review. Do not expose the existing panel.

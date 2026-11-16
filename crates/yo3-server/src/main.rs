@@ -46,6 +46,7 @@ fn apply_file(a: &mut Args, matches: &clap::ArgMatches) -> anyhow::Result<Option
     if let Some(v) = file.bind && unset("bind") { a.bind = v }
     if let Some(v) = file.auth_port && unset("auth_port") { a.auth_port = v }
     if let Some(v) = file.http_port && unset("http_port") { a.http_port = v }
+    if let Some(v) = file.dashboard_port && unset("dashboard_port") { a.dashboard_port = Some(v) }
     if let Some(v) = file.advertise && unset("advertise") { a.advertise = Some(v) }
     if let Some(v) = file.game_dir && unset("game_dir") { a.game_dir = Some(v) }
     if let Some(v) = file.data_dir && unset("data_dir") { a.data_dir = v }
@@ -290,6 +291,7 @@ async fn run(mut a: Args) -> anyhow::Result<()> {
         bind: a.bind,
         advertise: a.advertise,
         http_port: a.http_port,
+        dashboard_port: a.dashboard_port,
         game_dir: a.game_dir.unwrap_or_else(yo3_data::default_game_dir),
         allow_missing_game_data: false,
         log_dir: a.log_dir,
@@ -344,6 +346,26 @@ async fn stop_signal() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn dashboard_port_comes_from_toml_unless_the_cli_overrides_it() {
+        let dir = std::env::temp_dir().join(format!("yo3-dashboard-config-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("server.toml");
+        std::fs::write(&file, "bind = \"0.0.0.0\"\nhttp_port = 18080\ndashboard_port = 18081\n").unwrap();
+        for (flags, expected) in [(vec![], 18081), (vec!["--dashboard-port", "18082"], 18082), (vec!["--dashboard-port", "0"], 0)] {
+            let args: Vec<std::ffi::OsString> = ["yo3-server".into(), "--config".into(), file.clone().into_os_string()].into_iter()
+                .chain(flags.into_iter().map(Into::into)).collect();
+            let matches = Args::command().try_get_matches_from(args).unwrap();
+            let mut args = Args::from_arg_matches(&matches).unwrap();
+            apply_file(&mut args, &matches).unwrap();
+            assert_eq!(args.dashboard_port, Some(expected));
+            assert_eq!(args.http_port, 18080);
+            assert_eq!(args.bind.to_string(), "0.0.0.0", "game bind is independent from web listeners");
+        }
+        std::fs::write(&file, "dashboard_bind = \"0.0.0.0\"\n").unwrap();
+        assert!(yo3_server::config::FileConfig::read(&file).is_err(), "no public dashboard configuration before the MFA gate");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn an_ipv6_profile_has_a_bracketed_address_and_an_unbracketed_certificate_name() {
         let args = <Args as clap::Parser>::try_parse_from(["yo3-server", "--advertise", "::1"]).unwrap();

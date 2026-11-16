@@ -44,6 +44,7 @@ storage. Select the complete installation with `--game-dir` and retry; keep exis
 | `--data-dir`                | Persistent SQLite state and server identity, default `data/`                                         |
 | `--log-dir`                 | Logs, default `logs/`                                                                                |
 | `--http-port`               | Internal loopback HTTP/admin listener, default `8080`; Desktop uses an automatically assigned port   |
+| `--dashboard-port`          | Opt-in staff JSON API on a separate loopback-only socket; disabled when omitted, `0` assigns a free port. Private development only until the [public-access gate](dashboard.md#public-access-gate) is complete |
 | `--auth-cert`, `--auth-key` | Explicit TLS certificate/key files                                                                   |
 | `--duel-check`              | Compare each player's modeled client state with the rules engine after each step                     |
 | `--no-packet-log`           | Disable separate raw packet files; decoded packet traces remain in bounded session diagnostics       |

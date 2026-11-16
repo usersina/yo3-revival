@@ -31,6 +31,8 @@ pub struct FileConfig {
     pub bind: Option<IpAddr>,
     pub auth_port: Option<u16>,
     pub http_port: Option<u16>,
+    /// Opt-in staff JSON API port (always loopback, separate from host-token management). Omit to disable.
+    pub dashboard_port: Option<u16>,
     pub advertise: Option<String>,
     pub game_dir: Option<PathBuf>,
     pub data_dir: Option<PathBuf>,

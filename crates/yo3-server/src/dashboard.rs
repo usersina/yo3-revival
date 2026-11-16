@@ -1,5 +1,5 @@
 //! The staff-only JSON API. Routes and OpenAPI come from the same registration, without constructing server state.
-//! This first slice is mounted only on the existing loopback listener. No host token is an authority here.
+//! Mounted only on a dedicated, opt-in loopback listener. No host token is an authority here.
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -118,6 +118,7 @@ pub fn router(state: Dashboard) -> Router {
         .method_not_allowed_fallback(|| async { ApiError::new(ApiErrorCode::MethodNotAllowed, "This method is not allowed.") })
         .layer(DefaultBodyLimit::max(16 * 1024))
         .route_layer(middleware::from_fn_with_state(state.clone(), guard))
+        .fallback(|| async { not_found() })
         .with_state(state)
 }
 

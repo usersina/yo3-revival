@@ -2203,8 +2203,11 @@ management/assets HTTP stays loopback.
 The React dashboard has its own staff-session JSON routes at `/panel/api/v1/`, implemented in `dashboard.rs` with
 Axum and utoipa-axum. Rust exports `dashboard/api/openapi.json`; Orval generates the frontend fetch functions, hooks,
 types and Zod validators. It currently covers sign-in/out, session, account summaries and Give BP (a `user_id: u32`
-target, not a player name). The staff router never accepts host-token authority. It shares the existing loopback
-listener and panel sessions; it is not publicly reachable. These are our HTTP definitions, not stock-client shapes.
+target, not a player name). The staff router never accepts host-token authority. It runs only on its own opt-in
+loopback listener (`--dashboard-port`, disabled by default), sharing panel sessions and the sign-in throttle.
+The host-token API, old HTML panel and assets stay on the management listener; the staff API and schema are absent
+there. A real host token sent from loopback to the dashboard socket still cannot reach host operations, restore or
+backups. These are our HTTP definitions, not stock-client shapes.
 Evidence: `dashboard_contract.rs`, the Rust schema drift test and the real browser flow in
 `dashboard/e2e/connected.spec.ts`. See the [dashboard plan and contract](dashboard.md#api-and-dashboard).
 

@@ -311,7 +311,9 @@ python3 tools/monkey/duel-replay.py --server SERVER.log --duel 1         # repla
   or TypeScript DTOs. From `dashboard/`, `npm run api:generate` exports the pure Rust schema and runs pinned Orval;
   commit the spec and generated fetch/hooks/types/Zod together. Never hand-edit `dashboard/src/api/generated/`.
   Rust's `dashboard_contract` test checks schema drift without Node; `npm run api:check` checks the client without
-  writing. Keep host-token operations out of the staff router. [Guide](docs/dashboard.md).
+  writing. Mount the staff router only on its dedicated `--dashboard-port` (opt-in, loopback only until the public
+  access gate). Keep host-token operations and the legacy fallback on the local management socket; never merge
+  them into the staff listener, even for loopback callers. [Guide](docs/dashboard.md).
 - Build messages with `Message::reply(0x2398).with("field", Value::…).item(Message::record()…)`. Request and reply
   ids are hex literals.
 - Binary blobs are `Value::Bin`. Text (`Value::Text`) is read by the client up to the first NUL.

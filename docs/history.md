@@ -47,6 +47,14 @@ HTTP migration also preserved half-closed CLI requests (the existing discarded-r
 default) and EOF-delimited asset downloads, and password/recovery changes invalidate staff cookies. The other pages
 remain labelled samples; no public listener, MFA, nginx or Compose is claimed by this slice.
 
+2026-11-16, separate dashboard listener: the staff JSON API and schema moved off the management socket onto an
+opt-in `--dashboard-port`, disabled by default and bound only to loopback regardless of the game's `--bind`.
+The initial management-route regression failed before implementation. Real-socket contracts now prove that a
+valid host token, even with a staff cookie and loopback peer, cannot reach host commands, restore, backups, the old
+HTML panel or game assets on this listener. CLI discovery still selects the management port; bind conflicts fail
+before opening storage, and shutdown closes every listener. The disposable example and connected browser tests use
+the separate socket. Public binding, MFA, nginx and Compose remain pending.
+
 Platform scope: **64-bit Windows 10/11** and **Linux with Wine**. **Windows 7 support is out of scope for now**,
 for both Desktop and Scripts. Current compatibility and native Windows verification work targets Windows 10/11.
 

@@ -36,7 +36,9 @@ accounts. Ctrl+C stops the example and removes its temporary directory.
 
 The Vite development proxy targets `http://127.0.0.1:18080`. Set `YO3_DASHBOARD_API` before `npm run dev` to use a
 scratch server on another local port. Use a real staff game account on that server. Keep development ports private.
-The server's existing HTML panel remains at `/panel/` on its HTTP port.
+The example prints a separate, automatically assigned local management port. The server's existing HTML panel
+remains at `/panel/` on that port. A normal source server enables the JSON API with `--dashboard-port PORT` (or
+`dashboard_port` in its TOML file); it is disabled by default and always binds to loopback, independently of `--bind`.
 
 Give BP targets the stable numeric account ID. An unconfirmed request keeps its ID and payload in per-staff browser
 session storage, survives a reload, and can be resumed safely. A retry never creates another grant, mail or audit
@@ -102,10 +104,11 @@ locally on port 4173 for review. It is not a production web server.
 `src/data.ts` holds fixtures; `src/store.tsx` owns the in-memory preview. Reusable controls are in `src/components/`,
 and each area has a page under `src/pages/`. Routing uses normal URLs, including account detail links.
 
-The local HTTP service uses Axum. Existing HTML pages share their sign-in throttle and staff sessions with the new
-JSON routes; the host-token API remains separate. Rust enforces staff roles and CSRF regardless of which controls
+The HTTP services use Axum on separate sockets. Existing HTML pages share their sign-in throttle and staff sessions
+with the new JSON routes; the host-token API stays on the management socket and cannot be reached on the dashboard
+socket, even with a valid token. Rust enforces staff roles and CSRF regardless of which controls
 React displays. Password/recovery changes invalidate staff cookies. The public access gate still needs full session
-revocation/MFA recovery, a separate dashboard listener and the reviewed nginx configuration. See the
+revocation/MFA recovery, public-origin/proxy checks and the reviewed nginx configuration. See the
 [accepted plan](../docs/dashboard.md).
 
 The [launcher mark](../crates/yo3-desktop/assets/branding/README.md) and Barlow fonts are reused from the existing app.

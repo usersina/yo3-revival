@@ -76,6 +76,8 @@ pub struct Config {
     /// address each client reached, so one server answers on loopback, a LAN and a VPN at once.
     pub advertise: Option<String>,
     pub http_port: u16,
+    /// Opt-in staff JSON API on its own loopback listener. None: disabled. Public binding awaits the MFA/proxy gate.
+    pub dashboard_port: Option<u16>,
     pub game_dir: PathBuf,
     /// Protocol-test fixtures only: permit an empty world when no game installation is available.
     /// Normal hosting always requires game data; this is not exposed as a CLI option.
@@ -123,6 +125,7 @@ impl Config {
             bind: IpAddr::V4(Ipv4Addr::LOCALHOST),
             advertise: None,
             http_port: 0,
+            dashboard_port: None,
             game_dir: yo3_data::default_game_dir(),
             allow_missing_game_data: true,
             log_dir: log_dir.clone(),
@@ -199,6 +202,7 @@ async fn maintenance(world: Arc<World>, hub: Arc<Mutex<Hub>>, directory: Arc<Mut
 pub struct Running {
     pub auth: SocketAddr,
     pub http: SocketAddr,
+    pub dashboard: Option<SocketAddr>,
     tasks: Vec<JoinHandle<()>>,
     shutdown: tokio::sync::watch::Sender<bool>,
     hub: Arc<Mutex<Hub>>,
@@ -422,6 +426,14 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let tls = Arc::new(std::sync::RwLock::new(yo3_tunnel::acceptor(&cfg.tls.certificate, &cfg.tls.private_key)?));
     let authenticated = TcpListener::bind((cfg.bind, cfg.tls.port)).await?;
     let http = TcpListener::bind((Ipv4Addr::LOCALHOST, cfg.http_port)).await?;
+    // Bind all requested listeners before opening/migrating storage or starting background tasks. The game's bind
+    // address never changes either management listener; public dashboard access is not available before its gate.
+    let dashboard = match cfg.dashboard_port {
+        Some(port) => Some(TcpListener::bind((Ipv4Addr::LOCALHOST, port)).await
+            .map_err(|e| anyhow::anyhow!("Cannot bind dashboard API at 127.0.0.1:{port}: {e}"))?),
+        None => None,
+    };
+    let dashboard_addr = dashboard.as_ref().map(TcpListener::local_addr).transpose()?;
     let (auth_addr, http_addr) = (authenticated.local_addr()?, http.local_addr()?);
     // The launcher supplies its local duel port for each front connection's handoff. The game's data comes first: a
     // server that can't load it stops before it opens (or makes) the database.
@@ -565,10 +577,15 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     api.status = api::Status { engine_problem: world.engine_problem.clone(), listen: Some(auth_addr), diagnostic_id: cfg.diagnostic_id, started: Some(std::time::Instant::now()) };
     api.titles = Some(world.titles.clone());
     api.world = Some(world.clone());
-    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.clone(), admin_token, Arc::new(api), Arc::new(panel::Panel::new())));
+    let api = Arc::new(api);
+    let panel = Arc::new(panel::Panel::new());
+    let dashboard_task = dashboard.map(|listener| tokio::spawn(net::dashboard_loop(listener, dashboard::Dashboard { api: api.clone(), panel: panel.clone() })));
+    let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.clone(), admin_token, api, panel));
     tracing::info!("authenticated TLS {} local management/assets HTTP {}; packets -> {}", auth_addr, http_addr, packets.path().display());
+    if let Some(addr) = dashboard_addr { tracing::info!("staff dashboard API {addr} (loopback only; no host-token authority)"); }
     let mut tasks = vec![auth_task, http_task, clock_task, identity_task, maintenance_task];
+    tasks.extend(dashboard_task);
     tasks.extend(backup_task);
     tasks.extend(audit_task);
-    Ok(Running { auth: auth_addr, http: http_addr, tasks, shutdown, hub: running_hub, data_dir: cfg.data_dir.clone() })
+    Ok(Running { auth: auth_addr, http: http_addr, dashboard: dashboard_addr, tasks, shutdown, hub: running_hub, data_dir: cfg.data_dir.clone() })
 }
