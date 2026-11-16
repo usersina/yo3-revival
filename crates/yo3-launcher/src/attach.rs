@@ -106,10 +106,26 @@ pub async fn serve(request: Attachment, loaded: crate::Loaded, profile: &Path, p
         }
     };
     let sign_outs = proxy.sign_outs();
+    let mut session = session;
+    // Your own server can stop under a game that waits: the one reused here may have been counting down after the
+    // game before (its owner gone). Then it starts again, owned by this helper, with a new sign-in.
+    let mut watch = tokio::time::interval(Duration::from_secs(5));
+    watch.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let result = async {
         while owner.alive()? {
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_millis(250)) => {}
+                _ = watch.tick(), if start.is_some() && session.is_some() => {
+                    if endpoint.info().await.is_ok() { continue }
+                    let restarted = match direct::ensure_server(&endpoint, start.as_ref().unwrap(), direct::SERVER_START).await {
+                        Ok(started) => { if started.is_some() { server = started } direct::sign_in(&endpoint, &credential, &read).await.map_err(|f| f.reason) }
+                        Err(error) => Err(format!("{error:#}")),
+                    };
+                    match restarted {
+                        Ok(again) => { proxy.activate(again); session = Some(again); yo3_tunnel::diagnostics::event("Your server had stopped: started it again") }
+                        Err(reason) => yo3_tunnel::diagnostics::event(&format!("Your server had stopped and could not start again: {reason}")),
+                    }
+                }
                 _ = sign_outs.notified() => match direct::sign_out(&endpoint, vault.as_deref(), &SystemVault).await {
                     Ok(true) => yo3_tunnel::diagnostics::event("Delete Login Data: this device's saved sign-in is forgotten"),
                     Ok(false) => {}

@@ -198,8 +198,19 @@ impl Backend {
             if arg == "--diagnostic-parent" { given.next(); continue }
             args.push(arg.to_str().context("A server path is not valid Unicode")?.to_owned());
         }
-        let env = cmd.get_envs().filter_map(|(k, v)| Some((k.to_str()?.to_owned(), v?.to_str()?.to_owned()))).collect();
-        Ok(yo3_launcher::direct::ServerStart { program: windows_path(&self.runtime.server, settings)?, args, env })
+        let env: std::collections::BTreeMap<String, String> = cmd.get_envs().filter_map(|(k, v)| Some((k.to_str()?.to_owned(), v?.to_str()?.to_owned()))).collect();
+        #[cfg(windows)] { Ok(yo3_launcher::direct::ServerStart { program: windows_path(&self.runtime.server, settings)?, args, env, heartbeat: None }) }
+        // Wine starts a Linux program detached, with Wine's own environment and no standard input: `env` sets the
+        // environment, and the wrapper keeps the input open while the helper touches its heartbeat.
+        #[cfg(not(windows))] {
+            let server = self.runtime.server.to_str().context("The server's path is not valid Unicode")?.to_owned();
+            let heartbeat = self.root.join("profiles/server-owner");
+            let unix = heartbeat.to_str().context("The app data path is not valid Unicode")?.to_owned();
+            let args = ["-c".to_owned(), yo3_launcher::direct::WRAPPER.to_owned(), "sh".to_owned(), unix, "/usr/bin/env".to_owned()].into_iter()
+                .chain(env.iter().map(|(k, v)| format!("{k}={v}"))).chain([server]).chain(args).collect();
+            Ok(yo3_launcher::direct::ServerStart { program: windows_path(Path::new("/bin/sh"), settings)?, args, env: Default::default(),
+                heartbeat: Some(windows_path(&heartbeat, settings)?) })
+        }
     }
     /// Linux: the direct-start helper runs under Wine and reads Wine's own credential store, so the device token this
     /// launcher keeps for `server` (the Secret Service) is copied there, or removed there when there is none. Windows

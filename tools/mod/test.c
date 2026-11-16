@@ -40,6 +40,7 @@ int main(int argc, char **argv) {
         if (GetEnvironmentVariableA("YO3_TEST_LOGIN", hex, sizeof hex))
             for (char *h = hex; h[0] && h[1] && login_n < (int)sizeof login; h += 2) { unsigned v; sscanf(h, "%2x", &v); login[login_n++] = (unsigned char)v; }
         CHECK(opener_n > 8 && login_n > 8);
+        if (GetEnvironmentVariableA("YO3_TEST_IDLE_MS", hex, sizeof hex)) Sleep(strtoul(hex, NULL, 10)); /* the title screen */
         struct sockaddr_in address = {0}; address.sin_family = AF_INET; address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         for (int step = 0; step < 2; ++step) {
             if (step) { char text[16] = ""; GetEnvironmentVariableA("YO3_LOCAL_FRONT", text, sizeof text); port = strtoul(text, NULL, 10); }

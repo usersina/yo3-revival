@@ -109,10 +109,19 @@ OK_FRONT=('mod loaded' 'gate 0x21fe' 'front 0x219f' 'front 0x219a')
 REFUSED=('mod loaded' 'gate 0x21fe' 'front 0x219f' 'front 0x21a0')
 ini yo3-launcher.exe
 
-ROW='Singleplayer: the helper starts your server, which stops about 30 s after the game exits'
-profile "$(python3 -c 'import json,sys; print(json.dumps({"with_key":True,"start":{"program":sys.argv[1],"args":sys.argv[2:]}}))' \
-  "$(winepath -w "$SERVER" 2>/dev/null)" "${SERVER_ARGS[@]}")"
-play "${OK_FRONT[@]}"
+ROW='Singleplayer: the helper starts your server, which waits on the title screen and stops about 30 s after the game'
+# As the Linux launcher writes it (yo3-desktop direct.rs): Wine starts a Linux program detached, so a wrapper keeps the
+# server's input open while the helper touches its heartbeat.
+WRAPPER="$(sed -n 's/^pub const WRAPPER: &str = r#"\(.*\)"#;$/\1/p' "$ROOT/crates/yo3-launcher/src/direct.rs")"
+[[ -n "$WRAPPER" ]] || { echo 'FAIL: no wrapper in direct.rs' >&2; exit 1; }
+profile "$(python3 -c 'import json,sys; print(json.dumps({"with_key":True,"start":{"program":sys.argv[1],"heartbeat":sys.argv[2],
+  "args":["-c",sys.argv[3],"sh",sys.argv[4],"/usr/bin/env","NO_COLOR=1"]+sys.argv[5:]}}))' \
+  "$(winepath -w /bin/sh 2>/dev/null)" "$(winepath -w "$DIRECT_ROOT/server-owner" 2>/dev/null)" "$WRAPPER" "$DIRECT_ROOT/server-owner" \
+  "$SERVER" "${SERVER_ARGS[@]}")"
+YO3_TEST_IDLE_MS=40000 play "${OK_FRONT[@]}"
+ROW='Singleplayer: a game opened again while the last one'"'"'s server counts down starts it again'
+YO3_TEST_IDLE_MS=60000 play "${OK_FRONT[@]}"
+grep -rq 'Your server had stopped: started it again' "$GAME/diagnostics" || { echo "FAIL: $ROW: it was not restarted" >&2; exit 1; }
 ss -ltn | grep -q ":$PORT " || { echo "FAIL: $ROW: the server stopped with the game" >&2; exit 1; }
 for _ in {1..90}; do ss -ltn | grep -q ":$PORT " || break; sleep 1; done
 if ss -ltn | grep -q ":$PORT "; then echo "FAIL: $ROW: the server still runs 90 s after the game" >&2; exit 1; fi

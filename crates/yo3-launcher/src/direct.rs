@@ -64,7 +64,17 @@ pub struct ServerStart {
     pub program: String,
     #[serde(default)] pub args: Vec<String>,
     #[serde(default)] pub env: BTreeMap<String, String>,
+    /// A file this helper touches every few seconds while it lives, for a server that can't see its standard input:
+    /// Wine starts a Linux program detached, with none (the launcher wraps the server in a loop that watches it).
+    #[serde(default)] pub heartbeat: Option<String>,
 }
+
+/// How often the heartbeat is touched; the launcher's wrapper allows a few times this.
+pub const HEARTBEAT: Duration = Duration::from_secs(5);
+
+/// The Linux wrapper (`sh -c WRAPPER sh HEARTBEAT PROGRAM ARGS...`): the server's standard input stays open while the
+/// heartbeat file is younger than 12 s, so `--owned` stops it 30 s after the helper (the game) has gone.
+pub const WRAPPER: &str = r#"f=$1; shift; while [ -f "$f" ] && [ $(( $(date +%s) - $(stat -c %Y "$f") )) -lt 12 ]; do sleep 5; echo; done | exec "$@""#;
 
 /// How long your own server keeps running after the game exits (it stops once nobody plays for this long).
 pub const SERVER_IDLE: Duration = Duration::from_secs(30);
@@ -82,17 +92,27 @@ impl ServerStart {
     }
 }
 
-/// Your own server, started here: it lives while this is held (its standard input), and a little longer.
-pub struct Started(#[allow(dead_code, reason = "held for its standard input")] tokio::process::Child);
+/// Your own server, started here: it lives while this is held (its standard input, or the heartbeat), and a little longer.
+pub struct Started(#[allow(dead_code, reason = "held for its standard input")] tokio::process::Child, Option<tokio::task::JoinHandle<()>>);
+
+impl Drop for Started { fn drop(&mut self) { if let Some(beat) = &self.1 { beat.abort() } } }
 
 /// Starts the server when nothing answers at `endpoint` yet (a server the launcher started is reused; two starts of one
 /// data folder can't both run: the server holds its data lock), and waits until it answers.
 pub async fn ensure_server(endpoint: &Endpoint, start: &ServerStart, timeout: Duration) -> anyhow::Result<Option<Started>> {
     if endpoint.info().await.is_ok() { return Ok(None) }
+    let beat = match &start.heartbeat {
+        Some(file) => {
+            std::fs::write(file, b"")?;
+            let file = file.clone();
+            Some(tokio::spawn(async move { loop { tokio::time::sleep(HEARTBEAT).await; let _ = std::fs::write(&file, b""); } }))
+        }
+        None => None,
+    };
     let mut child = start.command().spawn().map_err(|e| anyhow::anyhow!("your server could not start ({e})"))?;
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        if endpoint.info().await.is_ok() { return Ok(Some(Started(child))) }
+        if endpoint.info().await.is_ok() { return Ok(Some(Started(child, beat))) }
         if let Some(status) = child.try_wait()? {
             // Another start may have won the data lock meanwhile; then that one answers.
             if endpoint.info().await.is_ok() { return Ok(None) }
