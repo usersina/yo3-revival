@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use serde_json::json;
 use yo3_proto::{Message, Value};
 use yo3_server::duel::CardCommand;
-use yo3_server::translate::{CardStats, Prompt, Translator};
+use yo3_server::translate::{CardStats, ENGINE_MESSAGES, Handling, Prompt, Translator};
 
 /// Rows 100.. (cid 4000 + row, ATK 10 × row, DEF 1000, level 4, attribute 2, race 12) for the client, 200.. for
 /// the CPU; the client goes first.
@@ -2743,4 +2743,43 @@ fn each_die_rolls_on_the_rolling_players_side() {
     let (mut t, _) = translator();
     let out = t.events(&[json!({ "type": 131, "player": 0, "results": [4] }), json!({ "type": 131, "player": 1, "results": [2, 6] })]);
     assert_eq!(tosses(&out), [(0x3D, [0, 0, 4, 0]), (0x3D, [1, 0, 2, 0]), (0x3D, [1, 0, 6, 0])]);
+}
+
+#[test]
+fn every_engine_message_type_is_accounted_for() {
+    // Coin tosses and dice rolls (130, 131) once fell through `events` with no command, no log line and no failing
+    // test: the duel stayed right, the player just saw nothing. Every type the engine decodes must be in
+    // ENGINE_MESSAGES as shown, asked, ignored with a reason, or undecided (warned about in the server's log).
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let decode = std::fs::read_to_string(root.join("yo3-engine/src/decode.rs")).unwrap();
+    let decoded: std::collections::BTreeSet<u64> = decode
+        .lines()
+        .filter_map(|l| l.trim_start().split_once(" =>").map(|(arms, _)| arms.to_owned()))
+        .filter(|arms| arms.split(" | ").all(|a| a.parse::<u64>().is_ok()))
+        .flat_map(|arms| arms.split(" | ").map(|a| a.parse::<u64>().unwrap()).collect::<Vec<_>>())
+        .collect();
+    assert!(decoded.contains(&130) && decoded.len() > 80, "decode.rs's message arms: {decoded:?}");
+    let listed: Vec<u64> = ENGINE_MESSAGES.iter().map(|(k, _, _)| *k).collect();
+    let set: std::collections::BTreeSet<u64> = listed.iter().copied().collect();
+    assert_eq!(set.len(), listed.len(), "a type listed twice");
+    let missing: Vec<_> = decoded.difference(&set).collect();
+    assert!(missing.is_empty(), "decoded but not in ENGINE_MESSAGES: {missing:?}");
+    let stale: Vec<_> = set.difference(&decoded).collect();
+    assert!(stale.is_empty(), "in ENGINE_MESSAGES but not decoded: {stale:?}");
+    // A type said to be shown or asked is one the translator names, with the same number.
+    let translate = std::fs::read_to_string(root.join("yo3-server/src/translate.rs")).unwrap();
+    for (kind, name, handling) in ENGINE_MESSAGES {
+        if matches!(handling, Handling::Shown | Handling::Asked) {
+            assert!(translate.contains(&format!("const {name}: u64 = {kind};")), "{name} ({kind}) is {handling:?} but translate.rs has no constant for it");
+        }
+    }
+}
+
+#[test]
+fn an_undecided_engine_message_is_noted_once_and_an_ignored_one_not_at_all() {
+    let (mut t, _) = translator();
+    let shuffle = json!({ "type": 32, "player": 0 });
+    assert_eq!(t.events(&[shuffle.clone(), shuffle]), [], "MSG_SHUFFLE_DECK has no command yet");
+    t.events(&[json!({ "type": 61 }), json!({ "type": 250 })]);
+    assert_eq!(t.unshown_messages(), [32, 250], "undecided and unknown types, not MSG_SUMMONED");
 }

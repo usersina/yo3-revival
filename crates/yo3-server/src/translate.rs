@@ -538,6 +538,119 @@ pub enum Prompt {
     Client(Vec<Message>),
 }
 
+/// What a duel does with each message the engine sends (every type `crates/yo3-engine/src/decode.rs` decodes; the
+/// coverage test fails on a type missing here). Coin tosses and dice rolls once fell through `events` silently: a type
+/// still `Undecided` warns in the server log the first time a duel drops it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Handling {
+    /// `events` turns it into duel commands (or keeps it for what follows).
+    Shown,
+    /// A prompt: `prompt` asks the client or answers it.
+    Asked,
+    /// Nothing to show, and why.
+    Ignored(&'static str),
+    /// Not yet decided whether the client should show something (each tracked in issue #52).
+    Undecided,
+}
+
+/// Every engine message type, by EDOPro's name (ocgapi_constants.h), and what a duel does with it.
+pub const ENGINE_MESSAGES: &[(u64, &str, Handling)] = &{
+    use Handling::*;
+    const SHOWN_AT_ING: Handling = Ignored("the summon was shown at its -ING message (60, 62, 64)");
+    const NOT_HERE: Handling = Ignored("tag duels, puzzles and EDOPro's own client only: never sent in these duels");
+    [
+        (1, "MSG_RETRY", Ignored("the engine refused an answer: the session answers again, the client sees nothing")),
+        (2, "MSG_HINT", Shown),
+        (5, "MSG_WIN", Shown),
+        (10, "MSG_SELECT_BATTLECMD", Asked),
+        (11, "MSG_SELECT_IDLECMD", Asked),
+        (12, "MSG_SELECT_EFFECTYN", Asked),
+        (13, "MSG_SELECT_YESNO", Asked),
+        (14, "MSG_SELECT_OPTION", Asked),
+        (15, "MSG_SELECT_CARD", Asked),
+        (16, "MSG_SELECT_CHAIN", Asked),
+        (18, "MSG_SELECT_PLACE", Asked),
+        (19, "MSG_SELECT_POSITION", Asked),
+        (20, "MSG_SELECT_TRIBUTE", Asked),
+        (21, "MSG_SORT_CHAIN", Asked),
+        (22, "MSG_SELECT_COUNTER", Asked),
+        (23, "MSG_SELECT_SUM", Asked),
+        (24, "MSG_SELECT_DISFIELD", Asked),
+        (25, "MSG_SORT_CARD", Asked),
+        (26, "MSG_SELECT_UNSELECT_CARD", Asked),
+        (30, "MSG_CONFIRM_DECKTOP", Shown),
+        (31, "MSG_CONFIRM_CARDS", Shown),
+        (32, "MSG_SHUFFLE_DECK", Undecided),
+        (33, "MSG_SHUFFLE_HAND", Shown),
+        (34, "MSG_REFRESH_DECK", Undecided),
+        (35, "MSG_SWAP_GRAVE_DECK", Shown),
+        (36, "MSG_SHUFFLE_SET_CARD", Shown),
+        (37, "MSG_REVERSE_DECK", Shown),
+        (38, "MSG_DECK_TOP", Shown),
+        (39, "MSG_SHUFFLE_EXTRA", Undecided),
+        (40, "MSG_NEW_TURN", Shown),
+        (41, "MSG_NEW_PHASE", Shown),
+        (42, "MSG_CONFIRM_EXTRATOP", Undecided),
+        (50, "MSG_MOVE", Shown),
+        (53, "MSG_POS_CHANGE", Shown),
+        (54, "MSG_SET", Undecided),
+        (55, "MSG_SWAP", Shown),
+        (56, "MSG_FIELD_DISABLED", Shown),
+        (60, "MSG_SUMMONING", Shown),
+        (61, "MSG_SUMMONED", SHOWN_AT_ING),
+        (62, "MSG_SPSUMMONING", Shown),
+        (63, "MSG_SPSUMMONED", SHOWN_AT_ING),
+        (64, "MSG_FLIPSUMMONING", Shown),
+        (65, "MSG_FLIPSUMMONED", SHOWN_AT_ING),
+        (70, "MSG_CHAINING", Shown),
+        (71, "MSG_CHAINED", Ignored("the activation was shown at MSG_CHAINING")),
+        (72, "MSG_CHAIN_SOLVING", Shown),
+        (73, "MSG_CHAIN_SOLVED", Ignored("each link's end: MSG_CHAIN_END closes the chain on the client")),
+        (74, "MSG_CHAIN_END", Shown),
+        (75, "MSG_CHAIN_NEGATED", Undecided),
+        (76, "MSG_CHAIN_DISABLED", Undecided),
+        (80, "MSG_CARD_SELECTED", Undecided),
+        (81, "MSG_RANDOM_SELECTED", Undecided),
+        (83, "MSG_BECOME_TARGET", Undecided),
+        (90, "MSG_DRAW", Shown),
+        (91, "MSG_DAMAGE", Shown),
+        (92, "MSG_RECOVER", Shown),
+        (93, "MSG_EQUIP", Shown),
+        (94, "MSG_LPUPDATE", Shown),
+        (96, "MSG_CARD_TARGET", Shown),
+        (97, "MSG_CANCEL_TARGET", Shown),
+        (100, "MSG_PAY_LPCOST", Shown),
+        (101, "MSG_ADD_COUNTER", Shown),
+        (102, "MSG_REMOVE_COUNTER", Shown),
+        (110, "MSG_ATTACK", Shown),
+        (111, "MSG_BATTLE", Shown),
+        (112, "MSG_ATTACK_DISABLED", Shown),
+        (113, "MSG_DAMAGE_STEP_START", Undecided),
+        (114, "MSG_DAMAGE_STEP_END", Shown),
+        (120, "MSG_MISSED_EFFECT", Undecided),
+        (121, "MSG_BE_CHAIN_TARGET", Undecided),
+        (122, "MSG_CREATE_RELATION", Undecided),
+        (123, "MSG_RELEASE_RELATION", Undecided),
+        (130, "MSG_TOSS_COIN", Shown),
+        (131, "MSG_TOSS_DICE", Shown),
+        (132, "MSG_ROCK_PAPER_SCISSORS", Asked),
+        (133, "MSG_HAND_RES", Undecided),
+        (140, "MSG_ANNOUNCE_RACE", Asked),
+        (141, "MSG_ANNOUNCE_ATTRIB", Asked),
+        (142, "MSG_ANNOUNCE_CARD", Asked),
+        (143, "MSG_ANNOUNCE_NUMBER", Asked),
+        (160, "MSG_CARD_HINT", Undecided),
+        (161, "MSG_TAG_SWAP", NOT_HERE),
+        (162, "MSG_RELOAD_FIELD", NOT_HERE),
+        (163, "MSG_AI_NAME", NOT_HERE),
+        (164, "MSG_SHOW_HINT", Undecided),
+        (165, "MSG_PLAYER_HINT", Undecided),
+        (170, "MSG_MATCH_KILL", NOT_HERE),
+        (180, "MSG_CUSTOM_MSG", NOT_HERE),
+        (190, "MSG_REMOVE_CARDS", NOT_HERE),
+    ]
+};
+
 #[derive(Clone)]
 pub struct Translator {
     /// The client's engine player of team 0.
@@ -551,6 +664,8 @@ pub struct Translator {
     pending: Option<Json>,
     /// The side the client called for the coin toss that follows (heads true); none: heads wins.
     coin_call: Option<bool>,
+    /// Engine messages this duel dropped that the table doesn't say are fine to drop: each warns once.
+    unshown: HashSet<u64>,
     chain_list: bool,
     /// The next chain chance is a phase's own window (HINT_EVENT): it may hold an optional trigger.
     phase_window: bool,
@@ -722,6 +837,7 @@ impl Translator {
             turns: 0,
             pending: None,
             coin_call: None,
+            unshown: HashSet::new(),
             chain_list: false,
             phase_window: false,
             chaining: None,
@@ -1030,13 +1146,31 @@ impl Translator {
                         out.push(command(RUN_DICE, [p, 0, face.as_u64().unwrap_or(1) as u32, 0]));
                     }
                 }
-                _ => {}
+                _ => self.unshown(m),
             }
         }
         out.extend(self.sync_relations());
         with_card_ids(&self.cards, &mut out);
         self.note_deck_tops(&out);
         out
+    }
+
+    /// An engine message `events` has no case for: fine when [`ENGINE_MESSAGES`] says so, else a warning, once a duel.
+    fn unshown(&mut self, m: &Json) {
+        let Some(kind) = m["type"].as_u64() else { return };
+        let entry = ENGINE_MESSAGES.iter().find(|(k, _, _)| *k == kind);
+        if matches!(entry, Some((_, _, Handling::Shown | Handling::Asked | Handling::Ignored(_)))) || !self.unshown.insert(kind) {
+            return;
+        }
+        let name = entry.map_or("not in ENGINE_MESSAGES", |(_, name, _)| name);
+        tracing::warn!("[duel] engine message {kind} ({name}) is not shown to the player");
+    }
+
+    /// The engine messages this duel dropped without a case for them (each warned once).
+    pub fn unshown_messages(&self) -> Vec<u64> {
+        let mut kinds: Vec<u64> = self.unshown.iter().copied().collect();
+        kinds.sort();
+        kinds
     }
 
     /// MSG_EQUIP {card, target} (an equip's new monster: its earlier link goes), MSG_CARD_TARGET {card, target} (a
