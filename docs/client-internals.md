@@ -195,6 +195,30 @@ The shared C fixture checks both fresh and saved login data, preservation of unr
 rejection. `tools/mod/test.sh` also runs it as 32-bit Windows code under Wine and independently checks changed
 login and starter hook sites. Live verification is recorded in [the history](history.md).
 
+### Direct start (#33)
+
+`yo3.exe` opened directly loads our `winmm.dll` from its folder (the game imports seven WINMM functions, which it
+forwards). Its import hooks wait for the game's first `[Yo3]` INI read, then start the helper named by the private
+configuration (`HKCU\Software\YO3 Revival\LoaderConfig`), load the connection DLL once the helper's ports are ready,
+and let the game go on; the helper signs in meanwhile (protocol, "Direct start's sign-in"). What the player sees when
+that fails is the game's own: the helper answers the front's login with one of LoginWindow's refusals.
+
+- **No helper** (missing files, a changed DLL, a helper that exits early). The loader keeps the game offline: it
+  redirects `0x46964B` itself (the same login skip as the DLL, `login.h`), answers `GateServerAddress` with 127.0.0.1,
+  refuses the game's connects and WinInet requests, and shows one line once. The stock client's patch check runs at
+  start, so ONLINE then shows "You will need an active Internet connection to play ONLINE." and the client closes
+  itself after OK (live, 2026-11-16). A DLL that loaded but failed its readiness check still stops the game: it has
+  already hooked the imports.
+- **Delete Login Data** (`signout.h`, the Yes branch's save call `0x4CA488`) asks the helper over the local HTTP
+  port to revoke the device's saved sign-in. The DLL's own Winsock imports carry no launch-cookie preface (only the
+  game's imports are hooked), which the local HTTP port expects.
+- **Wine** runs a Linux program started by a Windows one (the helper starting your own server) through a double fork:
+  its parent becomes the session's init, its standard input `/dev/null`, its environment Wine's own, not the one asked
+  for, and its exit code meaningless. The launcher therefore starts the Linux server as `/bin/sh -c WRAPPER` with
+  `/usr/bin/env` for the variables; the wrapper feeds the server's input while the helper touches a heartbeat file
+  (`yo3-launcher` `direct::WRAPPER`). A Windows program started under Wine reads Wine's own credential store, so the
+  Linux launcher copies a saved device token there (`yo3-launcher --vault-set`).
+
 ### Automatic local deck initialization
 
 `tools/mod/starter.h` also redirects the verified CALL at `0x4F44BD` to a wrapper around the original global

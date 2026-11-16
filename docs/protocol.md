@@ -77,15 +77,45 @@ to stdin only after that acknowledgement. EOF/failure kills the suspended child.
 mod interface, release and commit, while `bundle.json` inventories release hashes. Tests: launcher `components`,
 `desktop_control`, `tools/mod/test.sh`; this is our bootstrap protocol, not a game reply shape.
 
-Direct launch (set up by Desktop Play; Delete Login Data's Yes, `0x4CA486`, deletes its saved sign-in: `tools/mod/signout.h`) uses a game-local WINMM proxy (the seven imports in `tools/mod/loader.c`), leaving the executable
+Direct launch (set up by Desktop Play) uses a game-local WINMM proxy (the seven imports in `tools/mod/loader.c`), leaving the executable
 unchanged. Its IAT wrappers defer process/UI/network work until a relevant INI/WinInet/connect call, outside DllMain.
 The user's private registry-selected config pins the connection DLL hash and private profile path. A Windows helper
 attaches to the verified game PID/executable, prepares local proxies, then publishes a bounded readiness JSON with
 helper/game PID, ABI, ports and fresh cookie. The loader verifies it, loads the DLL, checks `Yo3ModReady`, and
-atomically acknowledges that cookie. Only then does the helper authenticate and publish `authenticated`; game exit
-revokes the session. Stale/mismatched acknowledgements and existing readiness files are refused. Managed injection
-skips the automatic bootstrap. Tests: launcher `attach`, desktop `direct_install`, `tools/mod/test-loader.sh` and
-the live fixture `tools/mod/test-direct.sh`. These fields belong to our private bootstrap, never stock login replies.
+atomically acknowledges that cookie; the game then goes on starting. Only then does the helper sign in (state
+`authenticated` or `refused`); game exit revokes the session. Stale/mismatched acknowledgements and existing readiness
+files are refused. Managed injection skips the automatic bootstrap. These fields belong to our private bootstrap,
+never stock login replies.
+
+**Direct start's sign-in** (#33). The private profile names what was last played from the launcher: a key and how to
+start your own server (`start`, Singleplayer), or a vault entry (`vault`, Multiplayer: the device token "Stay signed
+in" keeps in the system's credential vault, resumed with account operation `resume`). The helper starts your own server
+when nothing answers (`--owned --owned-idle 30`; on Linux a `sh` wrapper keeps its input open while the helper touches
+a heartbeat file, since Wine starts a Linux program detached), and starts it again if it stops while the game waits.
+When it can't sign in, the gate still redirects and the front is answered by the helper itself: the opener gets
+`0x219F` and the game's `0x1F47` one of the login refusals above, so LoginWindow shows its own error dialog and returns
+to the title screen:
+
+| Helper's outcome | Reply to `0x1F47` | The game shows |
+| --- | --- | --- |
+| Server unreachable, in maintenance or full; your server would not start; no saved sign-in, or a revoked one (until #34) | `0x21A0` | "Failed to connect to server." |
+| The server needs a newer launcher (`update_required`, or another protocol or DLL interface) | `0x21A0`, and the helper's line "Open YO3 Revival to update it" | "Failed to connect to server." |
+| `invalid_credentials` | `0x219B` | "Incorrect User ID or Password" |
+| `banned`, `restricted` | `0x219E` | "This User ID is currently restricted." |
+
+Without the helper (YO3 Revival moved or uninstalled, its setup changed) the loader leaves the game offline: its own
+login skip, a gate on loopback that refuses, WinInet refused, and one line, "Opening the game directly needs repair".
+The stock client checks its patch URL at start, so ONLINE then shows its own "You will need an active Internet
+connection to play ONLINE." and the game closes itself. **Status: confirmed live** (2026-11-16, headless client:
+Singleplayer started its server on demand and played an NPC duel; "Failed to connect to server." after Delete Login
+Data; the offline path). Tests: launcher `direct_start.rs`, `attach`, desktop `direct.rs`, `tools/mod/test-loader.sh`
+and `tools/mod/test-direct.sh` (each row, under Wine, with the real helper and loader).
+
+**Delete Login Data** (#33). Its Yes (`0x4CA486`, `tools/mod/signout.h`) first asks the helper over this launch's local
+HTTP port, `GET /session/<cookie>/revival/sign-out` (204), then saves as the game does (blanking its saved User ID). The
+helper sends account operation `sign_out` for the device token (best effort) and deletes it from the vault; the next
+direct start has no saved sign-in. Singleplayer has none to delete. **Status: confirmed live** (the server logged
+`sign_out: ok`, the token then got `signed_out`).
 
 Status 0 succeeds, 1 refuses. Handshakes time out after 10 seconds. Authentication bytes never enter the game packet
 logger. The asset role permits public patch/app/duel-log routes only; the admin API is inaccessible through TLS. Internal

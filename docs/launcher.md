@@ -212,24 +212,26 @@ are available for advanced setups.
 ## Open the game directly
 
 Press **Play** once and the game can afterwards be opened directly: `yo3.exe`, or its Start menu or desktop shortcut,
-connects to the server and account you last played on, without this window. There is nothing to switch on. Each
-Play keeps that saved server and account up to date. If you host on this computer, the server must be running
-(start it in Hosting, or press Play here): opening `yo3.exe` directly does not start it for you.
+plays what you last played here, without this window. There is nothing to switch on; each Play keeps it up to date.
+
+- **Singleplayer:** your own server starts with the game if it isn't running, and stops about 30 seconds after the
+  game closes. If it can't start, the game says "Failed to connect to server." and YO3 Revival's logs say why.
+- **Multiplayer:** with **Stay signed in**, the game goes straight to Select Player. Without it, or once that sign-in
+  has ended, the game says "Failed to connect to server." (its own login screen comes later, #34). A server that is
+  down or in maintenance gets the same message; a ban gets "This User ID is currently restricted."; a server that needs
+  a newer YO3 Revival adds one line saying to open it and update.
 
 The setup adds an owned `winmm.dll` loader and a small receipt beside `yo3.exe`; the game's own files are never
-changed, and your sign-in stays in the app's private storage. It never replaces another mod's `winmm.dll` (Game setup
-then shows **Mod conflict**, and Play here still works). In a protected game folder, Play never asks for permission:
-**Advanced → Game setup → Advanced game options** then offers **Set up with permission**. **Remove from game folder**
-there takes it out again.
+changed. Your sign-in stays in the system's credential store (on Linux, also in the game's Wine prefix), never a
+password. The connection helper is copied into the app's own data folder, so moving or updating YO3 Revival leaves
+direct start working; if that copy is gone, the game opens offline and one line says to open YO3 Revival once. It never
+replaces another mod's `winmm.dll` (Game setup then shows **Mod conflict**, and Play here still works). In a protected
+game folder, Play never asks for permission: **Advanced → Game setup → Advanced game options** then offers **Set up
+with permission**. **Remove from game folder** there takes it out again.
 
-**Delete Login Data** on the game's title screen also signs this PC out of direct start. Opening `yo3.exe` directly
-then only says to press Play once in YO3 Revival, which signs it in again. After an update or a
-changed Wine prefix, the next Play refreshes the setup the same way. Choosing another game folder takes it out of the old
-one first.
-
-The loader checks required components and server compatibility before login. A missing DLL gives its expected path
-and offers a matching-file picker, followed by restart. A game with no loader at all can only show the original
-generic connection failure: the remote server cannot inspect files on your PC. Use the Desktop app to set it up.
+**Delete Login Data** on the game's title screen ends this PC's saved sign-in for the server you last played on: the
+server forgets it too, and the game's saved User ID is cleared. Singleplayer has nothing to delete. After an update or
+a changed Wine prefix, the next Play refreshes the setup. Choosing another game folder takes it out of the old one first.
 
 ## Banlist
 
