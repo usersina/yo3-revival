@@ -1,19 +1,16 @@
 #ifndef YO3_SIGNOUT_H
 #define YO3_SIGNOUT_H
-/* Delete Login Data signs this PC out of direct start too (signout-logic.h): the Yes branch's save call (0x4CA488)
- * goes through signout_save, which first deletes the saved sign-in the direct-start loader uses (the `profile` of
- * the loader configuration that HKCU\Software\YO3 Revival\LoaderConfig names), then saves as the game would. The
- * loader then tells the player to press Play once in YO3 Revival (loader-start.h), which signs this PC in again. A
- * game started from the app is unaffected until then: it uses its own session. */
+/* Delete Login Data forgets this device's saved sign-in for the server (signout-logic.h, #33): the Yes branch's save call
+ * (0x4CA488) goes through signout_save, which first asks the helper, over this launch's local HTTP port, to revoke the
+ * device token on the server and delete it from the credential vault, then saves as the game would (which blanks the
+ * game's saved User ID). The next direct start then has no saved sign-in. Singleplayer has none: nothing changes. */
 #include "signout-logic.h"
 
 static void signout_direct_start(void) {
-    wchar_t ini[4096], profile[4096];
-    DWORD bytes = sizeof ini;
-    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\YO3 Revival", L"LoaderConfig", RRF_RT_REG_SZ, NULL, ini, &bytes) != ERROR_SUCCESS) return;
-    DWORD n = GetPrivateProfileStringW(L"revival", L"profile", L"", profile, sizeof profile / sizeof *profile, ini);
-    if (!n || n >= sizeof profile / sizeof *profile - 1) return;
-    if (DeleteFileW(profile)) starter_log("[YO3 MOD] Delete Login Data: direct start is signed out on this PC.\r\n");
+    char request[256], reply[64];
+    int length = yo3_signout_request(request, sizeof request, cookie_hex);
+    if (length && helper_request(request, length, reply, sizeof reply, 3000) > 12 && !memcmp(reply, "HTTP/1.1 204", 12))
+        starter_log("[YO3 MOD] Delete Login Data: the saved sign-in is forgotten.\r\n");
 }
 
 /* 0x51D1C0, UserSettings' save (thiscall, ECX the settings), after the sign-out. */

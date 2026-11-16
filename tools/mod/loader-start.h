@@ -1,6 +1,11 @@
 #ifndef YO3_LOADER_START_H
 #define YO3_LOADER_START_H
 #include "hooks.h"
+#include "game-image.h"
+/* Offline, the login skip never shows the game's form: it has no helper to sign in with. */
+static int login_decision __attribute__((used));
+static int __attribute__((used,noinline)) login_decide(void *window) { (void)window; return login_decision = 0; }
+#include "login.h"
 static DWORD (WINAPI *real_string)(LPCSTR,LPCSTR,LPCSTR,LPSTR,DWORD,LPCSTR);
 static UINT (WINAPI *real_int)(LPCSTR,LPCSTR,INT,LPCSTR);
 static HINTERNET (WINAPI *real_url)(HINTERNET,LPCSTR,LPCSTR,DWORD,DWORD,DWORD_PTR);
@@ -56,53 +61,51 @@ static int argument(wchar_t *command, size_t capacity, const wchar_t *arg) {
     }
     command[n++] = L'"'; command[n] = 0; return 1;
 }
-static void setup_error(const LoaderConfig *config, DWORD status) {
-    wchar_t message[LOADER_PATH + 700];
-    if (config->dll[0] && (status == ERROR_MOD_NOT_FOUND || status == ERROR_CRC)) {
-        swprintf(message, sizeof message / sizeof *message,
-            L"This server requires the matching Revival connection DLL.\n\nExpected path:\n%ls\n\nThe file is missing or differs from the installed release. Select the matching DLL now? You must restart the game afterwards.\n\nChoose No, then press Play once in YO3 Revival to repair the setup.", config->dll);
-        if (MessageBoxW(NULL, message, L"YO3 Revival — connection blocked", MB_YESNO | MB_ICONERROR) == IDYES) {
-            wchar_t selected[LOADER_PATH] = L""; OPENFILENAMEW pick = {0}; pick.lStructSize = sizeof pick;
-            pick.lpstrFilter = L"Connection DLL (*.dll)\0*.dll\0"; pick.lpstrFile = selected; pick.nMaxFile = LOADER_PATH;
-            pick.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-            if (GetOpenFileNameW(&pick)) {
-                int valid = mod_hash_matches(selected, config->sha256);
-                int copied = valid && (!lstrcmpiW(selected, config->dll) || CopyFileW(selected, config->dll, TRUE));
-                MessageBoxW(NULL, copied ? L"Matching DLL selected. Close and restart the game." :
-                    L"The selected DLL does not match, or the destination is protected/already exists. Repair the complete application bundle using the launcher, then enable direct start again.",
-                    L"YO3 Revival", MB_OK | (copied ? MB_ICONINFORMATION : MB_ICONERROR));
-            }
-        }
-    } else if (status == ERROR_NOT_AUTHENTICATED) {
-        MessageBoxW(NULL, L"This PC is signed out of direct start (Delete Login Data on the title screen).\n\nOpen YO3 Revival and press Play once to sign in again. After that, opening the game directly works again.",
-            L"YO3 Revival — signed out", MB_OK | MB_ICONINFORMATION);
-    } else {
-        swprintf(message, sizeof message / sizeof *message,
-            L"Revival setup is incomplete (error %lu). The game cannot connect.\n\nOpen YO3 Revival, choose the game folder and server/account, and press Play once: it sets up opening the game directly again. Then restart the game.\n\nThe original yo3.exe is unchanged.", status);
-        MessageBoxW(NULL, message, L"YO3 Revival — setup required", MB_OK | MB_ICONERROR);
+/* Direct start can't connect without the helper (#33): YO3 Revival moved, uninstalled or mid-update, its setup gone or
+ * changed. The game then runs as itself, and ONLINE ends in its own dialog: its patch check (InternetOpenUrlA) fails, so
+ * it says "You will need an active Internet connection to play ONLINE."; a gate connection (the mod's login skip,
+ * installed here too) is refused, "Failed to connect to server.". Either way it returns to the title screen, and this
+ * one line goes with it, once. */
+#define LOADER_NOTICE L"Opening the game directly needs repair: open YO3 Revival once, then start the game again."
+static volatile LONG notice_shown;
+static void offline_notice(void) {
+    if (InterlockedExchange(&notice_shown, 1)) return;
+    wchar_t file[LOADER_PATH];
+    DWORD n = GetEnvironmentVariableW(L"YO3_LOADER_NOTICE_FILE", file, LOADER_PATH); /* tests: the line, not a window */
+    if (n && n < LOADER_PATH) {
+        HANDLE f = CreateFileW(file, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (f != INVALID_HANDLE_VALUE) { DWORD written; WriteFile(f, LOADER_NOTICE, sizeof LOADER_NOTICE - sizeof(wchar_t), &written, NULL); CloseHandle(f); }
+        return;
     }
+    MessageBoxW(GetActiveWindow(), LOADER_NOTICE, L"YO3 Revival", MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND);
+}
+static void go_offline(void) {
+    yo3_game_image_base = (uintptr_t)GetModuleHandleW(NULL);
+    login_install(); /* another build keeps its own login form; its connection is refused all the same */
+    boot_state = 3;
 }
 static BOOL CALLBACK bootstrap(PINIT_ONCE once, PVOID parameter, PVOID *context) {
     (void)once; (void)parameter; (void)context;
     LoaderConfig config = {0}; DWORD status = validate_config(&config);
-    if (status || !hooks_ok) { setup_error(&config, status ? status : ERROR_PROC_NOT_FOUND); ExitProcess(31); }
+    if (!hooks_ok) { MessageBoxW(NULL, LOADER_NOTICE, L"YO3 Revival", MB_OK | MB_ICONERROR); ExitProcess(31); }
+    if (status) { go_offline(); return TRUE; }
     wchar_t exe[LOADER_PATH], directory[LOADER_PATH], ready[LOADER_PATH], ack[LOADER_PATH];
     DWORD length = GetModuleFileNameW(NULL, exe, LOADER_PATH);
-    if (!length || length >= LOADER_PATH) { setup_error(&config, ERROR_FILENAME_EXCED_RANGE); boot_state = -1; return TRUE; }
-    lstrcpyW(directory, exe); wchar_t *slash = wcsrchr(directory, L'\\'); if (!slash) { boot_state = -1; return TRUE; } *slash = 0;
+    if (!length || length >= LOADER_PATH) { go_offline(); return TRUE; }
+    lstrcpyW(directory, exe); wchar_t *slash = wcsrchr(directory, L'\\'); if (!slash) { go_offline(); return TRUE; } *slash = 0;
     HCRYPTPROV rng; BYTE random[8];
-    if (!CryptAcquireContextW(&rng, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) { boot_state = -1; return TRUE; }
+    if (!CryptAcquireContextW(&rng, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) { go_offline(); return TRUE; }
     int random_ok = CryptGenRandom(rng, sizeof random, random); CryptReleaseContext(rng, 0);
-    if (!random_ok) { boot_state = -1; return TRUE; }
+    if (!random_ok) { go_offline(); return TRUE; }
     wchar_t nonce[17]; for (unsigned i = 0; i < sizeof random; ++i) swprintf(nonce + i*2, 3, L"%02x", random[i]);
-    if (wcslen(config.state) + 100 >= LOADER_PATH) { setup_error(&config, ERROR_FILENAME_EXCED_RANGE); boot_state = -1; return TRUE; }
+    if (wcslen(config.state) + 100 >= LOADER_PATH) { go_offline(); return TRUE; }
     swprintf(ready, LOADER_PATH, L"%ls\\direct-%lu-%ls.json", config.state, GetCurrentProcessId(), nonce);
     swprintf(ack, LOADER_PATH, L"%ls.ack", ready);
     wchar_t command[32768] = L"", pid[16]; swprintf(pid, 16, L"%lu", GetCurrentProcessId());
     const wchar_t *args[] = {config.launcher, L"--proxy-only", L"--attach-game", pid, L"--game-dir", directory,
         L"--dll", config.dll, L"--injector", config.injector, L"--profile", config.profile, L"--ready-file", ready, L"--mod-ready-file", ack,
         L"--diagnostics-dir", config.logs[0] ? config.logs : config.state};
-    for (unsigned i = 0; i < sizeof args / sizeof *args; ++i) if (!argument(command, 32768, args[i])) { boot_state = -1; return TRUE; }
+    for (unsigned i = 0; i < sizeof args / sizeof *args; ++i) if (!argument(command, 32768, args[i])) { go_offline(); return TRUE; }
     SECURITY_ATTRIBUTES inherit = {sizeof inherit, NULL, TRUE};
     HANDLE output = CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     STARTUPINFOW startup = {0}; startup.cb = sizeof startup; startup.dwFlags = STARTF_USESHOWWINDOW; startup.wShowWindow = SW_HIDE;
@@ -110,82 +113,86 @@ static BOOL CALLBACK bootstrap(PINIT_ONCE once, PVOID parameter, PVOID *context)
     PROCESS_INFORMATION child = {0};
     int started = CreateProcessW(config.launcher, command, NULL, NULL, output != INVALID_HANDLE_VALUE, CREATE_NO_WINDOW, NULL, NULL, &startup, &child);
     if (output != INVALID_HANDLE_VALUE) CloseHandle(output);
-    if (!started) { setup_error(&config, GetLastError()); boot_state = -1; return TRUE; }
+    if (!started) { go_offline(); return TRUE; }
     CloseHandle(child.hThread);
-    DWORD start = GetTickCount(); int loaded = 0, success = 0, explained = 0; char cookie[65] = "";
-    while (GetTickCount() - start < 45000) {
+    /* The helper prepares the local ports, then this loads the DLL and acknowledges it. The sign-in happens after that,
+     * while the game starts: a refusal reaches the game's own login dialog (yo3-launcher direct.rs). */
+    DWORD start = GetTickCount(); int loaded = 0; char cookie[65] = "";
+    while (!loaded && GetTickCount() - start < 45000) {
         char json[8192], state[32];
         if (read_json(ready, json, sizeof json) && json_string(json, "state", state, sizeof state)) {
-            if (!strcmp(state, "error") && json_number(json, "helper_pid") == child.dwProcessId) {
-                char error[1400]; wchar_t message[2000];
-                if (!json_string(json, "error", error, sizeof error)) strcpy(error, "The connection check failed. Open the launcher Activity page for details.");
-                MultiByteToWideChar(CP_UTF8, 0, error, -1, message, 1700);
-                lstrcatW(message, L"\n\nConnection blocked before login. Repair setup in YO3 Revival, then restart the game.");
-                MessageBoxW(NULL, message, L"YO3 Revival — server check failed", MB_OK | MB_ICONERROR); explained = 1; break;
-            }
+            if (!strcmp(state, "error") && json_number(json, "helper_pid") == child.dwProcessId) break;
             if (json_number(json, "helper_pid") == child.dwProcessId && json_number(json, "game_pid") == GetCurrentProcessId()
-                && json_number(json, "abi") == YO3_MOD_ABI) {
-                if (!loaded && !strcmp(state, "prepared") && json_string(json, "cookie", cookie, sizeof cookie) && strlen(cookie) == 64) {
-                    int valid = 1; for (unsigned i = 0; i < 64; ++i) if (!((cookie[i] >= '0' && cookie[i] <= '9') || (cookie[i] >= 'a' && cookie[i] <= 'f'))) valid = 0;
-                    const char *names[] = {"gate", "front", "duel", "http"};
-                    const char *environment[] = {"YO3_LOCAL_GATE", "YO3_LOCAL_FRONT", "YO3_LOCAL_DUEL", "YO3_LOCAL_HTTP"};
-                    for (unsigned i = 0; i < 4; ++i) { unsigned long port = json_number(json, names[i]); char text[16];
-                        if (!port || port > 65535) valid = 0;
-                        snprintf(text, sizeof text, "%lu", port); SetEnvironmentVariableA(environment[i], text); }
-                    if (!valid) break;
-                    SetEnvironmentVariableA("YO3_LOCAL_COOKIE", cookie);
-                    /* The server's id names its game-data folder (netlog.h's neighbour, documents.h); 16 hex digits. */
-                    char server[24] = {0};
-                    if (json_string(json, "server", server, sizeof server) && strlen(server) == 16) SetEnvironmentVariableA("YO3_SERVER_ID", server);
-                    HMODULE mod = LoadLibraryW(config.dll);
-                    DWORD (WINAPI *mod_ready)(void *) = mod ? (void *)GetProcAddress(mod, "Yo3ModReady") : NULL;
-                    mod_api = mod ? (void *)GetProcAddress(mod, "Yo3ModApi") : NULL;
-                    if (!mod_ready || mod_ready(NULL) != YO3_MOD_ABI || !mod_api) break;
-                    wchar_t pending[LOADER_PATH]; swprintf(pending, LOADER_PATH, L"%ls.pending", ack);
-                    HANDLE f = CreateFileW(pending, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL); DWORD written = 0;
-                    if (f == INVALID_HANDLE_VALUE) break;
-                    int ok = WriteFile(f, cookie, 64, &written, NULL) && written == 64; CloseHandle(f);
-                    if (!ok || !MoveFileW(pending, ack)) { DeleteFileW(pending); break; }
-                    loaded = 1;
-                }
-                if (loaded && !strcmp(state, "authenticated")) { success = 1; break; }
+                && json_number(json, "abi") == YO3_MOD_ABI && !strcmp(state, "prepared")
+                && json_string(json, "cookie", cookie, sizeof cookie) && strlen(cookie) == 64) {
+                int valid = 1; for (unsigned i = 0; i < 64; ++i) if (!((cookie[i] >= '0' && cookie[i] <= '9') || (cookie[i] >= 'a' && cookie[i] <= 'f'))) valid = 0;
+                const char *names[] = {"gate", "front", "duel", "http"};
+                const char *environment[] = {"YO3_LOCAL_GATE", "YO3_LOCAL_FRONT", "YO3_LOCAL_DUEL", "YO3_LOCAL_HTTP"};
+                for (unsigned i = 0; i < 4; ++i) { unsigned long port = json_number(json, names[i]); char text[16];
+                    if (!port || port > 65535) valid = 0;
+                    snprintf(text, sizeof text, "%lu", port); SetEnvironmentVariableA(environment[i], text); }
+                if (!valid) break;
+                SetEnvironmentVariableA("YO3_LOCAL_COOKIE", cookie);
+                /* The server's id names its game-data folder (netlog.h's neighbour, documents.h); 16 hex digits. */
+                char server[24] = {0};
+                if (json_string(json, "server", server, sizeof server) && strlen(server) == 16) SetEnvironmentVariableA("YO3_SERVER_ID", server);
+                HMODULE mod = LoadLibraryW(config.dll);
+                DWORD (WINAPI *mod_ready)(void *) = mod ? (void *)GetProcAddress(mod, "Yo3ModReady") : NULL;
+                mod_api = mod ? (void *)GetProcAddress(mod, "Yo3ModApi") : NULL;
+                if (!mod) break; /* nothing of it ran: the game is still only ours */
+                /* A loaded DLL hooked the game's imports: never go on with a partly hooked game. */
+                if (!mod_ready || mod_ready(NULL) != YO3_MOD_ABI || !mod_api) { loaded = -1; break; }
+                wchar_t pending[LOADER_PATH]; swprintf(pending, LOADER_PATH, L"%ls.pending", ack);
+                HANDLE f = CreateFileW(pending, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL); DWORD written = 0;
+                if (f == INVALID_HANDLE_VALUE) { loaded = -1; break; }
+                int ok = WriteFile(f, cookie, 64, &written, NULL) && written == 64; CloseHandle(f);
+                if (!ok || !MoveFileW(pending, ack)) { DeleteFileW(pending); loaded = -1; break; }
+                loaded = 1;
             }
         }
-        if (WaitForSingleObject(child.hProcess, 0) != WAIT_TIMEOUT) break;
-        Sleep(25);
+        if (!loaded && WaitForSingleObject(child.hProcess, 0) != WAIT_TIMEOUT) break;
+        if (!loaded) Sleep(25);
     }
-    if (!success) {
-        if (!explained) MessageBoxW(NULL, L"The connection helper did not complete the DLL/server check. Open YO3 Revival → Activity for details, repair setup, then restart the game. Login was blocked.", L"YO3 Revival — connection blocked", MB_OK | MB_ICONERROR);
+    if (loaded != 1) {
         TerminateProcess(child.hProcess, 1);
         WaitForSingleObject(child.hProcess, 2000);
         char last[8192];
         if (read_json(ready, last, sizeof last) && json_number(last, "helper_pid") == child.dwProcessId) DeleteFileW(ready);
-        if (loaded) DeleteFileW(ack);
-        /* Never return to a partially hooked game after failure. A restart is mandatory. */
-        CloseHandle(child.hProcess); ExitProcess(31);
+        CloseHandle(child.hProcess);
+        if (loaded < 0) { DeleteFileW(ack); MessageBoxW(NULL, LOADER_NOTICE, L"YO3 Revival", MB_OK | MB_ICONERROR); ExitProcess(31); }
+        go_offline(); return TRUE;
     }
     CloseHandle(child.hProcess); boot_state = 2; return TRUE;
 }
 static int ensure_bootstrap(void) { InitOnceExecuteOnce(&bootstrap_once, bootstrap, NULL, NULL); return boot_state == 2; }
+/* Offline (boot_state 3): the game's own values, but its gate on loopback, where nothing of ours answers. */
+static int offline(void) { InitOnceExecuteOnce(&bootstrap_once, bootstrap, NULL, NULL); return boot_state == 3; }
 static int relevant(LPCSTR section, LPCSTR key) { return section && key && !_stricmp(section, "Yo3") &&
     (!_stricmp(key, "GateServerAddress") || !_stricmp(key, "GateServerPort") || !_stricmp(key, "PatchUpdateUrl") || !_stricmp(key, "PatchDataUrl") || !_stricmp(key, "InfoURL")); }
 static DWORD WINAPI boot_string(LPCSTR s, LPCSTR k, LPCSTR d, LPSTR out, DWORD n, LPCSTR f) {
     if (boot_state == 2 || !relevant(s, k)) return real_string(s, k, d, out, n, f);
+    if (offline()) {
+        if (_stricmp(k, "GateServerAddress") || !out || n < 10) return real_string(s, k, d, out, n, f);
+        lstrcpyA(out, "127.0.0.1"); return 9;
+    }
     if (!ensure_bootstrap()) { if (out && n) *out = 0; SetLastError(ERROR_ACCESS_DENIED); return 0; }
     DWORD (WINAPI *fn)(LPCSTR,LPCSTR,LPCSTR,LPSTR,DWORD,LPCSTR) = mod_api(YO3_API_STRING); return fn(s,k,d,out,n,f);
 }
 static UINT WINAPI boot_int(LPCSTR s, LPCSTR k, INT d, LPCSTR f) {
     if (boot_state == 2 || !relevant(s, k)) return real_int(s,k,d,f);
+    if (offline()) return real_int(s,k,d,f);
     if (!ensure_bootstrap()) return 0;
     UINT (WINAPI *fn)(LPCSTR,LPCSTR,INT,LPCSTR) = mod_api(YO3_API_INT); return fn(s,k,d,f);
 }
 static HINTERNET WINAPI boot_url(HINTERNET h,LPCSTR u,LPCSTR a,DWORD n,DWORD flags,DWORD_PTR c) {
     if (boot_state == 2) return real_url(h,u,a,n,flags,c);
+    if (offline()) { offline_notice(); SetLastError(ERROR_INTERNET_CANNOT_CONNECT); return NULL; }
     if (!ensure_bootstrap()) { SetLastError(ERROR_ACCESS_DENIED); return NULL; }
     HINTERNET (WINAPI *fn)(HINTERNET,LPCSTR,LPCSTR,DWORD,DWORD,DWORD_PTR) = mod_api(YO3_API_URL); return fn(h,u,a,n,flags,c);
 }
 static int WSAAPI boot_connect(SOCKET s,const struct sockaddr *a,int n) {
     if (boot_state == 2) return real_connect(s,a,n);
+    if (offline()) { offline_notice(); WSASetLastError(WSAECONNREFUSED); return SOCKET_ERROR; }
     if (!ensure_bootstrap()) { WSASetLastError(WSAEACCES); return SOCKET_ERROR; }
     struct sockaddr_in gate = {0};
     if (a && n >= (int)sizeof gate && a->sa_family == AF_INET) {

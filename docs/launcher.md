@@ -182,18 +182,32 @@ closed and applies at your server's next start.
 ## Open the game directly
 
 With **Open the game without the launcher** on (Setup's Ready step, or Settings → Game), PLAY sets things up so that
-`yo3.exe`, or its Start menu or desktop shortcut, signs you in to Singleplayer without this window. Each PLAY keeps it
-up to date. Settings → Game says whether it is set up, or that the next PLAY does it.
+`yo3.exe`, or its Start menu or desktop shortcut, plays what you last played here, without this window. Each PLAY,
+Singleplayer or Multiplayer, keeps it up to date. Settings → Game says whether it is set up, or that the next PLAY does
+it.
+
+- **Singleplayer:** your own server starts with the game if it isn't running, and stops about 30 seconds after the
+  game closes. If it can't start, the game says "Failed to connect to server." and YO3 Revival's logs say why.
+- **Multiplayer:** with **Stay signed in**, the game goes straight to Select Player. Without it, or once that sign-in
+  has ended, **ONLINE** shows the game's own login screen: type your User ID and password there. **Save Password**
+  keeps this PC signed in (the next start skips the screen); **Save User ID** fills in your User ID next time. The game
+  never stores the password itself. Its screen takes letters and digits only, up to 16 characters: with a longer
+  password, or spaces or symbols in it, sign in with YO3 Revival instead. A wrong password gets "Incorrect User ID or
+  Password", a ban "This User ID is currently restricted.", a server that is down or in maintenance "Failed to connect
+  to server."; a server that needs a newer YO3 Revival adds one line saying to open it and update.
 
 The setup adds an owned `winmm.dll` loader and a small receipt beside `yo3.exe`; the game's own files are never
-changed, and your sign-in stays in the app's private storage. It never replaces another mod's file of that name: the
-setting then says so, and PLAY here still works. In a protected game folder, PLAY never asks for permission by itself:
-its notice offers **Allow**, and Settings → Game offers **Fix permission**. Turning the setting off takes the loader out
-of the game folder again.
+changed. Your sign-in stays in the system's credential store (on Linux, also in the game's Wine prefix), never a
+password. The connection helper is copied into the app's own data folder, so moving or updating YO3 Revival leaves
+direct start working; if that copy is gone, the game opens offline and one line says to open YO3 Revival once. It never
+replaces another mod's file of that name: the setting then says so, and PLAY here still works. In a protected game
+folder, PLAY never asks for permission by itself: its notice offers **Allow**, and Settings → Game offers **Fix
+permission**. Turning the setting off takes the loader out of the game folder again.
 
-**Delete Login Data** on the game's title screen also signs this PC out of direct start. Opening `yo3.exe` directly
-then only says to press Play once in YO3 Revival, which signs it in again. After an update or a changed Wine prefix,
-the next PLAY refreshes the setup the same way. Choosing another game folder takes it out of the old one first.
+**Delete Login Data** on the game's title screen ends this PC's saved sign-in for the server you last played on: the
+server forgets it too, and the game's saved User ID is cleared. Singleplayer has nothing to delete. After an update or
+a changed Wine prefix, the next PLAY refreshes the setup the same way. Choosing another game folder takes it out of the
+old one first.
 
 ## Help and errors
 

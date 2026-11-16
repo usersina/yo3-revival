@@ -6,7 +6,6 @@
 #include <windows.h>
 #include <mmsystem.h>
 #include <wininet.h>
-#include <commdlg.h>
 #include <stdio.h>
 #include <wchar.h>
 #include "metadata.h"

@@ -6,7 +6,7 @@ use anyhow::ensure;
 #[cfg(windows)] use anyhow::Context;
 use subtle::ConstantTimeEq;
 use crate::{Ports, Proxy, hex};
-use yo3_tunnel::{Endpoint, Token};
+use yo3_tunnel::Token;
 
 fn create_private(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     let mut options = std::fs::OpenOptions::new(); options.create_new(true).write(true);
@@ -29,10 +29,13 @@ impl ReadyFiles {
         serde_json::json!({"state":state,"game_pid":game_pid,"helper_pid":std::process::id(),"abi":yo3_tunnel::MOD_ABI,
             "ports":ports,"cookie":cookie,"server":server}).to_string().into_bytes()
     }
-    pub fn authenticated(&self) -> anyhow::Result<()> {
+    pub fn authenticated(&self) -> anyhow::Result<()> { self.state("authenticated") }
+    /// The sign-in failed; the game's login shows why (direct::Refusal).
+    pub fn refused(&self) -> anyhow::Result<()> { self.state("refused") }
+    fn state(&self, state: &str) -> anyhow::Result<()> {
         let mut random = [0; 8]; getrandom::fill(&mut random)?;
         let temporary = self.ready.with_extension(format!("{}.next", hex(&random)));
-        create_private(&temporary, &Self::payload(self.game_pid, self.ports, &self.cookie, &self.server, "authenticated"))?;
+        create_private(&temporary, &Self::payload(self.game_pid, self.ports, &self.cookie, &self.server, state))?;
         let result = std::fs::rename(&temporary, &self.ready); if result.is_err() { let _ = std::fs::remove_file(&temporary); } result?; Ok(())
     }
 }
@@ -64,25 +67,96 @@ pub fn report_error(path: &Path, error: &str) {
 }
 
 pub struct Attachment { pub pid: u32, pub game: PathBuf, pub ready: PathBuf, pub ack: PathBuf }
+
+/// The game opened directly (#33): once the loader has the connection DLL ready, sign in for the mode last played (your
+/// own server started on demand for Singleplayer), and let the game's login show a refusal. Until the game exits,
+/// Delete Login Data's request forgets this device's sign-in.
 #[cfg(windows)]
-pub async fn serve(request: Attachment, endpoint: Endpoint, key: &crate::Credential, proxy: Proxy) -> anyhow::Result<()> {
+pub async fn serve(request: Attachment, loaded: crate::Loaded, profile: &Path, proxy: Proxy) -> anyhow::Result<()> {
+    use crate::direct::{self, Failure, Refusal};
+    use crate::vault::{SystemVault, Vault};
     let owner = GameProcess::open(request.pid, &request.game)?;
     let files = ReadyFiles::prepare(&request.ready, &request.ack, request.pid, proxy.ports, &proxy.cookie, &proxy.server_id)?;
     wait_for_ack(&request.ack, &proxy.cookie, Duration::from_secs(30), || owner.alive()).await?;
-    yo3_tunnel::diagnostics::event("Connection DLL acknowledged readiness; authenticating");
-    let session = key.sign_in(&endpoint).await.context("Authentication failed; game login remains blocked")?;
+    yo3_tunnel::diagnostics::event("Connection DLL acknowledged readiness; signing in");
+    let crate::Loaded { endpoint, credential, vault, start } = loaded;
+    // Held until this helper ends: your own server's standard input, so it stops 30 s after the game.
+    let mut server = None;
+    let mut outcome = Ok(());
+    if let Some(start) = &start {
+        match direct::ensure_server(&endpoint, start, direct::SERVER_START).await {
+            Ok(started) => { if started.is_some() { yo3_tunnel::diagnostics::event("Started your server for this game") } server = started }
+            Err(error) => outcome = Err(Failure::new(Refusal::FailedToConnect, format!("{error:#}"))),
+        }
+    }
+    let read = |account: &str| SystemVault.get(account).ok().flatten();
+    let session = match outcome {
+        Ok(()) => direct::sign_in(&endpoint, &credential, &read).await,
+        Err(failure) => Err(failure),
+    };
+    let session = match session {
+        Ok(session) => {
+            proxy.activate(session); files.authenticated()?; direct::record_problem(profile, None);
+            yo3_tunnel::diagnostics::event("Authenticated; direct-start game released");
+            Some(session)
+        }
+        Err(failure) => {
+            yo3_tunnel::diagnostics::event(&format!("Sign-in refused ({:?}): {}", failure.refusal, failure.reason));
+            proxy.refuse(failure.refusal); files.refused()?; direct::record_problem(profile, Some(&failure));
+            None
+        }
+    };
+    let sign_outs = proxy.sign_outs();
+    let mut typed = proxy.typed_logins().context("the login form's channel is gone")?;
+    let mut session = session;
+    // Your own server can stop under a game that waits: the one reused here may have been counting down after the
+    // game before (its owner gone). Then it starts again, owned by this helper, with a new sign-in.
+    let mut watch = tokio::time::interval(Duration::from_secs(5));
+    watch.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let result = async {
-        ensure!(owner.alive()?, "Game exited before authentication completed");
-        proxy.activate(session); files.authenticated()?;
-        yo3_tunnel::diagnostics::event("Authenticated; direct-start game released");
-        while owner.alive()? { tokio::time::sleep(Duration::from_millis(250)).await; }
+        while owner.alive()? {
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_millis(250)) => {}
+                _ = watch.tick(), if start.is_some() && session.is_some() => {
+                    if endpoint.info().await.is_ok() { continue }
+                    let restarted = match direct::ensure_server(&endpoint, start.as_ref().unwrap(), direct::SERVER_START).await {
+                        Ok(started) => { if started.is_some() { server = started } direct::sign_in(&endpoint, &credential, &read).await.map_err(|f| f.reason) }
+                        Err(error) => Err(format!("{error:#}")),
+                    };
+                    match restarted {
+                        Ok(again) => { proxy.activate(again); session = Some(again); yo3_tunnel::diagnostics::event("Your server had stopped: started it again") }
+                        Err(reason) => yo3_tunnel::diagnostics::event(&format!("Your server had stopped and could not start again: {reason}")),
+                    }
+                }
+                Some(login) = typed.recv() => {
+                    // The game's own login form (#34): its next login (0x1F47) waits for this.
+                    match direct::sign_in_typed(&endpoint, &login, vault.as_deref(), &SystemVault).await {
+                        Ok(signed) => {
+                            if let Some(old) = session.replace(signed) && credential.owns_session() { let _ = endpoint.logout(&old).await; }
+                            proxy.activate_typed(signed); direct::record_problem(profile, None);
+                            yo3_tunnel::diagnostics::event(&format!("Signed in from the game's login form{}", if login.stay { "; this device stays signed in" } else { "" }));
+                        }
+                        Err(failure) => {
+                            yo3_tunnel::diagnostics::event(&format!("The game's login form: refused ({:?}): {}", failure.refusal, failure.reason));
+                            proxy.refuse_typed(failure.refusal);
+                        }
+                    }
+                }
+                _ = sign_outs.notified() => match direct::sign_out(&endpoint, vault.as_deref(), &SystemVault).await {
+                    Ok(true) => yo3_tunnel::diagnostics::event("Delete Login Data: this device's saved sign-in is forgotten"),
+                    Ok(false) => {}
+                    Err(error) => yo3_tunnel::diagnostics::event(&format!("Delete Login Data failed: {error:#}")),
+                },
+            }
+        }
         Ok(())
     }.await;
-    if key.owns_session() { let _ = endpoint.logout(&session).await; }
+    if let Some(session) = session && credential.owns_session() { let _ = endpoint.logout(&session).await; }
+    drop(server);
     result
 }
 #[cfg(not(windows))]
-pub async fn serve(_: Attachment, _: Endpoint, _: &crate::Credential, _: Proxy) -> anyhow::Result<()> {
+pub async fn serve(_: Attachment, _: crate::Loaded, _: &Path, _: Proxy) -> anyhow::Result<()> {
     anyhow::bail!("Direct game attachment uses the Windows helper, including the supplied helper under Wine")
 }
 

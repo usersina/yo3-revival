@@ -14,9 +14,15 @@ static void __attribute__((used,noinline,force_align_arg_pointer)) login_begin(v
     yo3_login_connect(window,login_copy_string,login_connect_gate);
 }
 /* 0x46964B passes the LoginWindow in ESI and a discarded FxDelegate argument on the stack.
- * Match 0x4F02A0's ret 4; the C helper preserves the caller's callee-saved registers. */
+ * Match 0x4F02A0's ret 4; the C helper preserves the caller's callee-saved registers. The includer's login_decide
+ * (login-form.h; the loader's always says no) may instead send the call on to StartLogin itself, registers and stack
+ * as they were, so the game's own form shows (#34). */
+static void *login_start_original __attribute__((used));
 static void __attribute__((naked)) login_start(void) {
-    __asm__ volatile("pushl %esi; call _login_begin; addl $4,%esp; ret $4");
+    __asm__ volatile("pushal; pushl %esi; call _login_decide; addl $4,%esp; popal\n"
+        "cmpl $0,_login_decision; jne 1f\n"
+        "pushl %esi; call _login_begin; addl $4,%esp; ret $4\n"
+        "1: jmp *_login_start_original");
 }
 static int login_install(void) {
     BYTE *base=(BYTE *)GetModuleHandleA(NULL);
@@ -26,6 +32,7 @@ static int login_install(void) {
     BYTE *site=base+0x06964b;
     if(!yo3_login_call_ok(site,5)) return 0;
     DWORD previous; if(!VirtualProtect(site,5,PAGE_EXECUTE_READWRITE,&previous)) return 0;
+    login_start_original=(BYTE *)game_address(YO3_START_LOGIN);
     LONG offset=(BYTE *)login_start-(site+5); memcpy(site+1,&offset,4);
     FlushInstructionCache(GetCurrentProcess(),site,5);
     DWORD ignored; return VirtualProtect(site,5,previous,&ignored)!=0;

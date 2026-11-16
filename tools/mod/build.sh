@@ -25,7 +25,7 @@ PY
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-rental-return-test.exe rental-return-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-web-links-test.exe web-links-test.c
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-signout-test.exe signout-test.c
-"$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-test.exe test.c -lws2_32 -lwininet -lwinmm
+"$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-test.exe test.c -lws2_32 -lwininet -lwinmm -lshell32
 # Link synthetic sites so the PE headers and callback relocation are valid on native Windows too.
 python3 - <<'PY'
 from pathlib import Path
@@ -35,15 +35,15 @@ processorArchitecture="x86" publicKeyToken="1fc8b3b9a1e18e3b" /></dependentAssem
 Path('build/runtime-test.rc').write_text('1 24 "runtime-test.manifest"\n')
 PY
 "$CC" -O2 -Wall -Wextra -Werror -Wl,-T,fixture-hooks.ld -o build/yo3-auth-direct-test.exe \
-  test.c fixture-hooks.s -lws2_32 -lwininet -lwinmm
+  test.c fixture-hooks.s -lws2_32 -lwininet -lwinmm -lshell32
 "$CC" -O2 -Wall -Wextra -Werror -Wl,--image-base,0x600000,-T,fixture-hooks.ld \
-  -o build/yo3-auth-relocated-test.exe test.c fixture-hooks.s -lws2_32 -lwininet -lwinmm
+  -o build/yo3-auth-relocated-test.exe test.c fixture-hooks.s -lws2_32 -lwininet -lwinmm -lshell32
 i686-w64-mingw32-windres -I build build/runtime-test.rc -o build/runtime-test.o
-"$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-runtime-test.exe test.c build/runtime-test.o -lws2_32 -lwininet -lwinmm
-"$CC" -O2 -Wall -Wextra -Werror -DYO3_TEST_BAD_GAME_HOOK -o build/yo3-auth-guard-test.exe test.c -lws2_32 -lwininet -lwinmm
+"$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-runtime-test.exe test.c build/runtime-test.o -lws2_32 -lwininet -lwinmm -lshell32
+"$CC" -O2 -Wall -Wextra -Werror -DYO3_TEST_BAD_GAME_HOOK -o build/yo3-auth-guard-test.exe test.c -lws2_32 -lwininet -lwinmm -lshell32
 i686-w64-mingw32-dlltool -d wsock32-ordinals.def -l build/wsock32-ordinals.a
-"$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-ordinal-test.exe test.c build/wsock32-ordinals.a -lws2_32 -lwininet -lwinmm
+"$CC" -O2 -Wall -Wextra -Werror -o build/yo3-auth-ordinal-test.exe test.c build/wsock32-ordinals.a -lws2_32 -lwininet -lwinmm -lshell32
 "$CC" -O2 -Wall -Wextra -Werror -municode -o build/yo3-auth-launch.exe launch.c -lshell32
 i686-w64-mingw32-dlltool -d missing-import.def -l build/missing-import.a
 "$CC" -O2 -Wall -Wextra -Werror -o build/yo3-missing-import-test.exe missing-import.c build/missing-import.a
-"$CC" -O2 -Wall -Wextra -Werror -shared -Wl,--kill-at -o build/winmm.dll loader.c -ladvapi32 -lws2_32 -lwininet -lcomdlg32
+"$CC" -O2 -Wall -Wextra -Werror -shared -Wl,--kill-at -o build/winmm.dll loader.c -ladvapi32 -lws2_32 -lwininet

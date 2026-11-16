@@ -96,8 +96,9 @@ tools/mod/build.sh                               # 32-bit connection DLL, inject
 python3 tools/mod/test_fixture_layout.py           # larger MinGW code, contiguous PE sections, fixed hook RVAs and relocation
 tools/mod/test.sh                                # named/ordinal imports, local cookies and fail-closed injection (private :78)
 tools/mod/test-loader.sh                         # WINMM forwarding, Unicode config, missing/changed DLL and missing state
-# Live direct-start fixture: first build the Windows yo3-launcher; use a fresh private prefix without LoaderConfig.
-YO3_WINEPREFIX=/path/to/private/prefix tools/mod/test-direct.sh /path/to/private/scratch-server-profile.json
+# Direct start's rows (#33) under Wine: first build the Windows yo3-launcher and the Linux yo3-server; a fresh private
+# prefix without LoaderConfig; it runs its own scratch servers on YO3_TEST_PORT (default 17443, must be free). ~4 min
+YO3_WINEPREFIX=/path/to/private/prefix YO3_DISPLAY=:78 tools/mod/test-direct.sh
 python3 tools/client/test_vclient.py              # cold display startup, captured pipes and diagnostics (no X server/game needed)
 python3 tools/monkey/test_duel_report.py          # missing/duplicate/failed native snapshots and known coverage gaps
 python3 tools/monkey/test_duel_replay.py          # exact engine replay and incomplete/corrupt recording rejection
