@@ -5,6 +5,8 @@
 #   tools/monkey/protocol-monkey.sh fuzz --seed 1 --plans 2000 --par 8   plans one batch after another
 #   tools/monkey/protocol-monkey.sh duel --seed 1 --pairs 10             two clients, Auto Duel, random duel commands
 #   tools/monkey/protocol-monkey.sh soak --secs 300 --conns 24 --duel-pairs 3
+#   tools/monkey/protocol-monkey.sh soak --secs 300 --players 100 --conns 40 --duel-pairs 30 2>proxies.log
+#                                                                        one account and launcher proxy per player
 #   tools/monkey/protocol-monkey.sh accounts --seed 1 --requests 1500   account requests (TLS operation 6) from 127.2.x.y
 #   tools/monkey/protocol-monkey.sh repro FILE | minimize FILE           a saved failing plan
 #

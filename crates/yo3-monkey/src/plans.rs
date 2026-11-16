@@ -357,6 +357,11 @@ enum Source {
 
 /// Makes the plan of a seed. The target and the mix are chosen from the seed too.
 pub fn plan(seed: u64, c: &Corpus, only: Option<Target>) -> Plan {
+    plan_as(seed, c, only, None)
+}
+
+/// A plan from one simulated player's own session (`soak --players`): its logins use that player's ids, `own`.
+pub fn plan_as(seed: u64, c: &Corpus, only: Option<Target>, own: Option<[u32; 2]>) -> Plan {
     let mut rng = Rng::new(seed);
     rng.1 = rng.chance(0.04);
     let target = only.unwrap_or_else(|| match rng.below(20) {
@@ -380,7 +385,7 @@ pub fn plan(seed: u64, c: &Corpus, only: Option<Target>) -> Plan {
     let garbage_p = *rng.pick(&[0.0, 0.0, 0.0, 0.05, 0.3, 1.0]);
     let logged_in = target == Target::Front && rng.chance(0.75);
     // Another account's client now and then (its players' ids are in the corpus); mostly its own players.
-    let accounts = if c.accounts.is_empty() { vec![[1001, 1002]] } else { c.accounts.clone() };
+    let accounts = match own { Some(own) => vec![own], None if c.accounts.is_empty() => vec![[1001, 1002]], None => c.accounts.clone() };
     let from = if rng.chance(0.4) { 1 + rng.below(accounts.len()) as u8 } else { 1 };
     let mine = accounts[from as usize - 1];
     let pid = match rng.below(12) {

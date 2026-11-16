@@ -7,6 +7,7 @@
 //!   yo3-monkey minimize FILE                     cut a failing plan down to the steps that matter
 mod accounts;
 mod plans;
+mod players;
 mod run;
 mod wire;
 
@@ -84,6 +85,11 @@ enum Cmd {
         /// Kill -9 the server every this many seconds (0: never) to see what a crash leaves in the data dir.
         #[arg(long, default_value_t = 0)]
         kill_every: u64,
+        /// Simulated players, each its own password account, sign-in and launcher proxy, as each real player's
+        /// launcher: the fuzzing connections and the duel pairs are shared out among them (0: everything through the
+        /// one key account's proxy). Twice the closed beta's expected peak: --players 100 --duel-pairs 30 (#27).
+        #[arg(long, default_value_t = 0)]
+        players: usize,
     },
     Duel {
         #[arg(long, default_value_t = 1)]
@@ -223,7 +229,7 @@ async fn setup(a: &Args) -> anyhow::Result<Arc<Env>> {
     let mut ports = ports;
     let cwd = std::env::current_dir()?;
     let mut server_args = a.server_arg.clone();
-    if matches!(a.cmd, Cmd::Accounts { .. }) {
+    if matches!(a.cmd, Cmd::Accounts { .. }) || matches!(a.cmd, Cmd::Soak { players, .. } if players > 0) {
         // Anyone may sign up on the monkey's server: a live setting (#24), set in its data before it starts.
         let set = std::process::Command::new(&a.server_bin).args(["set", "registration", "open", "--data-dir"]).arg(scratch.join("data"))
             .stdout(std::process::Stdio::null()).status()?;
@@ -437,7 +443,20 @@ async fn main() -> anyhow::Result<()> {
             }
             finish(&env, base, &canary).await
         }
-        Cmd::Soak { seed, secs, conns, duel_pairs, stall_ms, kill_every } => soak(&env, base, canary.clone(), seed, secs, conns, duel_pairs, stall_ms, kill_every).await,
+        Cmd::Soak { seed, secs, conns, duel_pairs, stall_ms, kill_every, players } => {
+            // Each player's proxy holds the server's TLS port of this start, and a restart picks a new one.
+            anyhow::ensure!(players == 0 || kill_every == 0, "--players and --kill-every don't mix: a restart moves the server's port");
+            anyhow::ensure!(players == 0 || players >= 2, "--players needs at least two players, for the duels");
+            let players = if players == 0 { vec![] } else {
+                let (bin, data, auth) = { let sup = lock(&env.sup); (sup.bin().to_path_buf(), sup.data_dir(), sup.auth) };
+                let endpoint = yo3_tunnel::Endpoint::new(format!("127.0.0.1:{auth}"), "localhost".into(), &env.scratch.join("data/server.crt"))?;
+                let t = Instant::now();
+                let made = players::sign_up(&bin, &data, &endpoint, &env.ports.host, players).await?;
+                println!("{} players signed up and in, each with its own launcher proxy, in {:?}", made.len(), t.elapsed());
+                made
+            };
+            soak(&env, base, canary.clone(), seed, secs, conns, duel_pairs, stall_ms, kill_every, Arc::new(players)).await
+        }
         Cmd::Repro { file } => {
             let plan = plans::Plan::from_text(&std::fs::read_to_string(&file)?).ok_or_else(|| anyhow::anyhow!("not a plan file"))?;
             let plan = Arc::new(plan);
@@ -478,29 +497,41 @@ fn print_duel(s: &DuelStats) {
 }
 
 #[expect(clippy::too_many_arguments, reason = "The soak runner takes the independent load and failure-injection controls from the CLI.")]
-async fn soak(env: &Arc<Env>, base: Sample, canary: Arc<CanaryStats>, seed: u64, secs: u64, conns: usize, duel_pairs: usize, stall_ms: u64, kill_every: u64) -> usize {
+async fn soak(env: &Arc<Env>, base: Sample, canary: Arc<CanaryStats>, seed: u64, secs: u64, conns: usize, duel_pairs: usize, stall_ms: u64, kill_every: u64,
+    players: Arc<Vec<players::Player>>) -> usize {
     let stop = stop_flag();
     let recent = Arc::new(Recent::default());
     let duel_stats = Arc::new(DuelStats::default());
     let counter = Arc::new(std::sync::atomic::AtomicU64::new(seed));
     let mut tasks = vec![];
-    for _ in 0..conns {
-        let (env, stop, recent, counter) = (env.clone(), stop.clone(), recent.clone(), counter.clone());
+    // With --players, the duel pairs take the first players two by two and the fuzzing connections the rest (or all
+    // of them, round, when there are more connections than players left).
+    let dueling = (2 * duel_pairs).min(players.len());
+    for c in 0..conns {
+        let (env, stop, recent, counter, players) = (env.clone(), stop.clone(), recent.clone(), counter.clone(), players.clone());
+        let me = (!players.is_empty()).then(|| if dueling < players.len() { dueling + c % (players.len() - dueling) } else { c % players.len() });
         tasks.push(tokio::spawn(async move {
             while !stop.load(Ordering::Relaxed) {
                 let s = counter.fetch_add(1, Ordering::Relaxed);
-                let plan = Arc::new(plans::plan(s, &env.corpus, None));
+                let ports = me.map_or(&env.ports, |i| &players[i].ports);
+                let plan = Arc::new(plans::plan_as(s, &env.corpus, None, me.map(|_| ports.pids)));
                 recent.note(plan.clone());
-                let _ = run_plan(&env.ports, &plan).await;
+                let _ = run_plan(ports, &plan).await;
             }
         }));
     }
     for k in 0..duel_pairs {
-        let (env, stop, stats) = (env.clone(), stop.clone(), duel_stats.clone());
+        let (env, stop, stats, players) = (env.clone(), stop.clone(), duel_stats.clone(), players.clone());
         tasks.push(tokio::spawn(async move {
             let mut i = 0u64;
             while !stop.load(Ordering::Relaxed) {
-                duel_pair(&env.ports, &env.corpus, &stats, seed.wrapping_mul(1000) + k as u64 * 100_000 + i).await;
+                let seed = seed.wrapping_mul(1000) + k as u64 * 100_000 + i;
+                if players.is_empty() {
+                    duel_pair(&env.ports, &env.corpus, &stats, seed).await;
+                } else {
+                    let n = players.len();
+                    duel_between(&players[(2 * k) % n].ports, &players[(2 * k + 1) % n].ports, &env.corpus, &stats, seed).await;
+                }
                 i += 1;
             }
         }));
@@ -591,7 +622,8 @@ async fn soak(env: &Arc<Env>, base: Sample, canary: Arc<CanaryStats>, seed: u64,
     }
     let _ = std::fs::write(csv, rows);
     println!(
-        "soak: {secs} s, {conns} fuzzing connections, {duel_pairs} duel pairs: {} plans, {} messages",
+        "soak: {secs} s, {} players, {conns} fuzzing connections, {duel_pairs} duel pairs: {} plans, {} messages",
+        players.len(),
         recent.plans.load(Ordering::Relaxed),
         recent.messages.load(Ordering::Relaxed)
     );

@@ -163,11 +163,15 @@ So `max-duels` defaults to 30 (about 3 GB of engines at most) and `max-players` 
 covers the closed beta's expected peak (about 50 players, 15 duels) with room. Each NPC duel's bot can take a core
 while it thinks.
 
-The protocol monkey's soak passes at its standard load (24 flooding connections: canary median 231 ms, no stall) but not
-at 100 flooding connections, where the canary stalls for 2–9 s. All of those connections go through the monkey's single
-launcher proxy and send requests as fast as they can, which is not how players behave. The soak at twice the expected
-peak needs a monkey mode with one launcher per simulated player first. The monkey's `duel` mode also reaches no duel at the
-moment ("duel entry does not belong to the authenticated launcher session"), for the same reason.
+The soak at twice that peak passes: `tools/monkey/protocol-monkey.sh soak --secs 300 --players 100 --conns 40
+--duel-pairs 30 2>proxies.log` (2026-11-16, the same machine, the monkey on it too). `--players` gives each simulated
+player its own password account, sign-in and launcher proxy, as each real player's launcher has: 60 of them in 30 duel
+pairs (Auto Duels between two accounts, and NPC duels), 40 sending fuzzing plans from their own sessions. In 300 s:
+1,273 duels matched, 683 began and 518 ended with a result; no failure; the canary never stalled (median 310 ms, p99
+944 ms, worst 1.86 s against the 2 s limit); the server peaked at 317 MB and 639 file descriptors and restarted cleanly
+on the run's data. The in-process proxies report each dropped connection on stderr, hence `2>proxies.log`. The same
+soak through the one key account's proxy (no `--players`) stalls at 100 flooding connections: that proxy, not the
+server, is the bottleneck. #39 repeats the soak on the VPS.
 
 ## Which tool sees what
 

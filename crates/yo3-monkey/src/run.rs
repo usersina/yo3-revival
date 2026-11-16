@@ -37,6 +37,9 @@ impl Supervisor {
         Supervisor { bin, cwd, scratch, ports, extra, child: None, proxy: None, auth: 0, starts: 0 }
     }
 
+    pub fn bin(&self) -> &Path {
+        &self.bin
+    }
     pub fn log_path(&self) -> PathBuf {
         self.scratch.join("server.log")
     }
@@ -690,9 +693,28 @@ pub async fn duel_pair(ports: &Ports, corpus: &Arc<Corpus>, stats: &Arc<DuelStat
         return (a.unwrap_or(Stage::Login) as usize, 0);
     }
     let match_type = *rng.pick(&[1u32, 1, 1, 3, 6]);
-    let a = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), Seat { pid: ports.pids[0], seed: rng.next(), play_secs: secs, npc: false, match_type }));
+    seated_pair((ports, ports.pids[0]), (ports, ports.pids[1]), corpus, stats, &mut rng, secs, match_type).await
+}
+
+/// Two simulated players (`soak --players`), each through its own launcher proxy, in one Auto Duel or, one in three,
+/// each in a duel against the CPU.
+pub async fn duel_between(a: &Ports, b: &Ports, corpus: &Arc<Corpus>, stats: &Arc<DuelStats>, seed: u64) -> (usize, usize) {
+    stats.pairs.fetch_add(1, Ordering::Relaxed);
+    let mut rng = Rng::new(seed);
+    let secs = rng.range(4, 30) as f64;
+    if rng.chance(0.33) {
+        let npc = |p: &Ports, seed| duel_client(p.clone(), corpus.clone(), stats.clone(), Seat { pid: p.pids[0], seed, play_secs: secs, npc: true, match_type: 4 });
+        let (x, y) = tokio::join!(tokio::spawn(npc(a, rng.next())), tokio::spawn(npc(b, rng.next())));
+        return (x.unwrap_or(Stage::Login) as usize, y.unwrap_or(Stage::Login) as usize);
+    }
+    let match_type = *rng.pick(&[1u32, 1, 1, 3, 6]);
+    seated_pair((a, a.pids[0]), (b, b.pids[0]), corpus, stats, &mut rng, secs, match_type).await
+}
+
+async fn seated_pair(a: (&Ports, u32), b: (&Ports, u32), corpus: &Arc<Corpus>, stats: &Arc<DuelStats>, rng: &mut Rng, secs: f64, match_type: u32) -> (usize, usize) {
+    let a = tokio::spawn(duel_client(a.0.clone(), corpus.clone(), stats.clone(), Seat { pid: a.1, seed: rng.next(), play_secs: secs, npc: false, match_type }));
     tokio::time::sleep(Duration::from_millis(rng.range(0, 400) as u64)).await;
-    let b = tokio::spawn(duel_client(ports.clone(), corpus.clone(), stats.clone(), Seat { pid: ports.pids[1], seed: rng.next(), play_secs: secs, npc: false, match_type }));
+    let b = tokio::spawn(duel_client(b.0.clone(), corpus.clone(), stats.clone(), Seat { pid: b.1, seed: rng.next(), play_secs: secs, npc: false, match_type }));
     let (a, b) = (a.await.unwrap_or(Stage::Login), b.await.unwrap_or(Stage::Login));
     (a as usize, b as usize)
 }

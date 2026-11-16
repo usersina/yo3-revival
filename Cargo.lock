@@ -5646,6 +5646,7 @@ dependencies = [
  "clap",
  "serde_json",
  "tokio",
+ "yo3-launcher",
  "yo3-proto",
  "yo3-tunnel",
 ]

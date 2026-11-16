@@ -259,6 +259,8 @@ so never while a live server runs; exit status 1 on a failure):
 tools/monkey/protocol-monkey.sh fuzz --seed 1 --plans 2000 --par 8      # plans of recorded, mutated, random, garbage requests
 tools/monkey/protocol-monkey.sh duel --seed 1 --pairs 20                # Auto Duel pairs and NPC duels, random duel commands
 tools/monkey/protocol-monkey.sh soak --secs 300 --conns 24 --duel-pairs 4   # all at once + floods + canary + monitor
+tools/monkey/protocol-monkey.sh soak --secs 300 --players 100 --conns 40 --duel-pairs 30 2>proxies.log  # twice the beta's peak (#27): a
+#   password account, sign-in and launcher proxy per simulated player; duel pairs between two accounts
 tools/monkey/protocol-monkey.sh accounts --seed 1 --requests 1500 --par 16  # account requests from many 127.x addresses
 tools/monkey/protocol-monkey.sh repro FILE                              # a saved plan ($SCRATCH/failures/*/plan-*.txt)
 tools/monkey/protocol-monkey.sh minimize FILE [--sig TEXT]              # cut a failing plan down (FILE.min.txt)
