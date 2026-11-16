@@ -535,7 +535,8 @@ Next DLL candidates, after launcher usability:
       Fixed 2026-11-16 (the roadmap's item, moved here): the launcher's relay asks the server's discovery every 15 s
       while the game is connected and closes the game's connections after 3 unanswered in a row
       (`yo3_launcher::Liveness`); live with SIGSTOP in an NPC duel, the disconnect dialogs came between 60 and 90 s
-      later and the game reached the title.
+      later and the game reached the title. The same on the Windows 11 VM (Desktop, an NPC duel on a host server joined
+      with an invite link), and ONLINE reached the map again once the server was resumed.
 - [x] Local profile collisions for identically named players on different servers (2026-11-13). Local decks, `.y3p`
       and the starter marker live in `Documents/Yu-Gi-Oh! ONLINE 3/players/<name>/` (`tools/mod/starter.h`
       `starter_local_path`), and every server's players start as "Duelist". The client looks Documents up only with
