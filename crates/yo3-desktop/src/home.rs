@@ -187,6 +187,8 @@ pub struct State {
     pub multi: multi::State,
     /// The last Play couldn't set up direct start: the game folder needs permission once (Settings → Game).
     pub direct_permission: bool,
+    /// The Multiplayer server the last Play was for, so its Allow sets direct start up for it (None: Singleplayer).
+    allow_for: Option<yo3_desktop::multiplayer::Server>,
 }
 
 impl State {
@@ -201,7 +203,8 @@ impl State {
         let (Some(backend), Some((server, _))) = (ctx.backend.clone(), self.multi.session()) else { self.game.starting = None; return Task::none() };
         let settings = ctx.settings.clone();
         let played = self.multi.played(ctx).map(Message::Multi);
-        let start = job(move || { backend.play_signed_in(&settings, &server, &session)?; Ok(false) }, Message::Started);
+        self.allow_for = Some(server.clone());
+        let start = job(move || backend.play_signed_in(&settings, &server, &session), Message::Started);
         Task::batch([played, start])
     }
 
@@ -247,6 +250,7 @@ impl State {
                 self.cancelled = false;
                 self.game.starting = Some((Step::Server, Instant::now()));
                 self.notice = None;
+                self.allow_for = None;
                 // Your own server first (reused when it is still running from the last game).
                 return job(move || backend.start_server(&settings).map(|_| ()), Message::ServerStarted);
             }
@@ -293,8 +297,8 @@ impl State {
                         self.waiting_since = since;
                         self.direct_permission = needs_permission;
                         if needs_permission {
-                            self.notice = Some(Notice::problem("Opening the game without the launcher needs permission once, because the game folder is protected.",
-                                Some(("Allow", Message::AllowDirect))));
+                            self.notice = Some(Notice { everywhere: self.allow_for.is_some(), ..Notice::problem("Opening the game without the launcher needs permission once, because the game folder is protected.",
+                                Some(("Allow", Message::AllowDirect))) });
                         }
                     }
                     Err(error) => { self.fail(ctx, error); self.start_grace(); return Task::batch([self.check(ctx), self.grace_timer()]) }
@@ -315,7 +319,11 @@ impl State {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 let settings = ctx.settings.clone();
                 self.notice = None;
-                return job(move || backend.enable_direct(&settings, None), Message::DirectAllowed);
+                let server = self.allow_for.clone();
+                return job(move || match &server {
+                    Some(server) => backend.enable_direct_signed_in(&settings, server),
+                    None => backend.enable_direct(&settings, None),
+                }, Message::DirectAllowed);
             }
             Message::DirectAllowed(result) => match result { Ok(()) => self.permission_granted(), Err(error) => self.fail(ctx, error) },
             Message::CloseGame => {
@@ -649,6 +657,23 @@ mod tests {
         assert_eq!(notice.details.as_deref(), Some("refused"));
         let own = Notice::problem("Your singleplayer data couldn't be opened.", None);
         assert!(own.shown_on(Tab::Single) && !own.shown_on(Tab::Multi), "your own server's notices stay on its panel");
+    }
+
+    #[test]
+    fn multiplayers_play_asks_for_permission_on_its_own_tab_too() {
+        let mut ctx = crate::app::Ctx { root: std::env::temp_dir(), backend: None, store: None, settings: Default::default() };
+        let mut state = State { allow_for: Some(yo3_desktop::multiplayer::Server { name: "Friends".into(), address: "play.example.com".into(),
+            server_name: "Friends".into(), identities: vec![], official: false, description: String::new(), saved_user: None, last_used: 0 }),
+            ..State::default() };
+        let _ = state.update(Message::Started(Ok(true)), &mut ctx);
+        assert!(state.direct_permission);
+        let notice = state.notice.as_ref().expect("the Allow notice");
+        assert!(matches!(notice.action, Some((_, Message::AllowDirect))));
+        assert!(notice.shown_on(Tab::Multi), "a Multiplayer Play's notice shows where the player is");
+        // Singleplayer's stays on its own panel.
+        let mut state = State::default();
+        let _ = state.update(Message::Started(Ok(true)), &mut ctx);
+        assert!(!state.notice.as_ref().unwrap().shown_on(Tab::Multi));
     }
 
     #[test]

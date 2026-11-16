@@ -338,6 +338,13 @@ impl Backend {
         ensure!(!self.game_running(), "Close the game before changing direct-start setup");
         self.set_up_direct(settings, Self::saved_target(settings, remote)?, true)
     }
+    /// Multiplayer's Allow: direct start in a protected game folder for the server just played, with its saved sign-in.
+    pub fn enable_direct_signed_in(&self, settings: &Settings, server: &multiplayer::Server) -> anyhow::Result<()> {
+        ensure!(!self.game_running(), "Close the game before changing direct-start setup");
+        self.set_up_direct(settings, Target::SignedIn(server.clone()), true)?;
+        self.mirror_sign_in(settings, server);
+        Ok(())
+    }
 
     /// Play's automatic setup, just before it starts the game: sets up (or refreshes) opening `yo3.exe` directly with
     /// the connection just used, never asking for permission. A game folder that needs it, another mod's `winmm.dll`

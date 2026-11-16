@@ -602,7 +602,8 @@ impl Backend {
     }
     /// Plays on a Multiplayer server with a session the launcher signed in for (#30): the helper uses it for the game's
     /// connections, through the server's pinned identity. The private profile holds the session, never a password.
-    pub fn play_signed_in(&self, settings: &Settings, server: &multiplayer::Server, session: &yo3_tunnel::Token) -> anyhow::Result<()> {
+    /// Whether direct start needs permission once (a protected game folder), as Singleplayer's Play says.
+    pub fn play_signed_in(&self, settings: &Settings, server: &multiplayer::Server, session: &yo3_tunnel::Token) -> anyhow::Result<bool> {
         let game = self.game.lock().unwrap();
         self.check_game(settings)?;
         let file = self.root.join("profiles").join("multiplayer.json");
@@ -611,15 +612,17 @@ impl Backend {
         private_write(&file, serde_json::json!({ "server": server.address, "server_name": server.server_name, "identity": server.key(),
             "session": session, "vault": multiplayer::vault_account(server) }).to_string().as_bytes(), true)?;
         // Opening yo3.exe directly plays this server next, with the saved sign-in if the device keeps one (#33).
+        let mut needs_permission = false;
         if settings.direct_start {
             match self.auto_direct_target(settings, direct::Target::SignedIn(server.clone())) {
                 direct::AutoDirect::Ready => self.mirror_sign_in(settings, server),
-                direct::AutoDirect::NeedsPermission => self.diagnostics.line("Direct start not set up: the game folder needs permission once (Play in Singleplayer asks)"),
+                direct::AutoDirect::NeedsPermission => needs_permission = true,
                 direct::AutoDirect::Skipped(why) => self.diagnostics.line(&format!("Direct start not set up: {why}")),
             }
         }
         yo3_launcher::Profile::load(&file)?;
-        self.launch(settings, file, game)
+        self.launch(settings, file, game)?;
+        Ok(needs_permission)
     }
     /// Starts the game through the helper with the private profile `profile`.
     fn launch(&self, settings: &Settings, profile: PathBuf, mut game: std::sync::MutexGuard<'_, Option<Child>>) -> anyhow::Result<()> {
