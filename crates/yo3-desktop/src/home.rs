@@ -185,6 +185,12 @@ pub struct State {
 }
 
 impl State {
+    /// Direct start is set up in the protected game folder (the notice's Allow, or Settings' Fix permission): stop asking.
+    pub fn permission_granted(&mut self) {
+        self.direct_permission = false;
+        if self.notice.as_ref().is_some_and(|n| matches!(n.action, Some((_, Message::AllowDirect)))) { self.notice = None }
+    }
+
     /// Multiplayer's Play, once its sign-in is known to play: the game on the selected server.
     fn play_multiplayer(&mut self, ctx: &mut Ctx, session: yo3_tunnel::Token) -> Task<Message> {
         let (Some(backend), Some((server, _))) = (ctx.backend.clone(), self.multi.session()) else { self.game.starting = None; return Task::none() };
@@ -306,7 +312,7 @@ impl State {
                 self.notice = None;
                 return job(move || backend.enable_direct(&settings, None), Message::DirectAllowed);
             }
-            Message::DirectAllowed(result) => match result { Ok(()) => self.direct_permission = false, Err(error) => self.fail(ctx, error) },
+            Message::DirectAllowed(result) => match result { Ok(()) => self.permission_granted(), Err(error) => self.fail(ctx, error) },
             Message::CloseGame => {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 self.game.closing = Some(Instant::now());
@@ -620,6 +626,21 @@ mod tests {
         // An old timer does nothing (and without a backend nothing could be stopped anyway).
         let _ = state.update(Message::GraceOver(first), &mut ctx);
         assert_eq!(state.game, Game::default());
+    }
+
+    /// Settings' Fix permission (or the notice's Allow) sets direct start up: the main screen stops asking for permission.
+    #[test]
+    fn granting_permission_ends_the_permission_notice_and_row() {
+        let mut state = State { direct_permission: true, ..State::default() };
+        state.notice = Some(Notice::problem("needs permission", Some(("Allow", Message::AllowDirect))));
+        state.permission_granted();
+        assert!(!state.direct_permission);
+        assert!(state.notice.is_none(), "the Allow notice goes");
+        // Another notice (an error from something else) stays.
+        let mut state = State { direct_permission: true, ..State::default() };
+        state.notice = Some(Notice::problem("something else", None));
+        state.permission_granted();
+        assert!(state.notice.is_some());
     }
 
     #[test]
