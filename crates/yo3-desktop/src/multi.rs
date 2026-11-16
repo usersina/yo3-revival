@@ -336,13 +336,17 @@ impl State {
                 if let Some(server) = self.servers.iter().find(|s| s.key() == key).cloned() { return self.probe(&server) }
             }
             Message::Hosted(server) => {
+                // Checked again a few seconds on: a first check that met the server still starting would keep Windows'
+                // retry after a refused connection (about 2 s) as its ping.
+                let key = server.key().to_string();
+                let again = Task::perform(tokio::time::sleep(std::time::Duration::from_secs(4)), move |_| Message::Recheck(key.clone()));
                 if self.servers.iter().any(|s| s.key() == server.key()) {
                     // Known already (an earlier hosting, or its link): its address follows this hosting's port.
                     if let Some(known) = self.servers.iter_mut().find(|s| s.key() == server.key()) { known.address = server.address.clone(); known.server_name = server.server_name.clone() }
                     let saved = self.servers.iter().find(|s| s.key() == server.key()).cloned().unwrap_or(*server);
-                    return Task::batch([self.probe(&saved), self.save(ctx, saved)]);
+                    return Task::batch([self.probe(&saved), self.save(ctx, saved), again]);
                 }
-                return self.add(ctx, *server);
+                return Task::batch([self.add(ctx, *server), again]);
             }
             Message::AccountForm(key, form) => {
                 self.account = form.map(|f| (key, f));
