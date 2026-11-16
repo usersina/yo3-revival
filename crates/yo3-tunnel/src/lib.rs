@@ -291,9 +291,18 @@ async fn finish_response<T,W: AsyncWrite+Unpin>(value: T, stream: &mut W) -> any
     Ok(value)
 }
 
+/// The server answered and refused the login or session (as opposed to not answering): the launcher's Multiplayer
+/// tells "sign in again" from "can't reach the server" by it (`err.downcast_ref::<Refused>()`).
+#[derive(Debug)]
+pub struct Refused;
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("login or session refused") }
+}
+impl std::error::Error for Refused {}
+
 async fn token_response(tls: &mut Stream, stage: &mut &'static str) -> anyhow::Result<Token> {
     *stage = "read login/session acknowledgement";
-    if tls.read_u8().await.context("read login/session acknowledgement")? != 0 { bail!("login or session refused") }
+    if tls.read_u8().await.context("read login/session acknowledgement")? != 0 { return Err(Refused.into()) }
     let mut token = [0; TOKEN_LEN];
     *stage = "read complete login/session token";
     tls.read_exact(&mut token).await.context("read complete login/session token")?;

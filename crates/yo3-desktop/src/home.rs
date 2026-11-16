@@ -114,6 +114,8 @@ pub enum Message {
     Play,
     ServerStarted(Result<(), String>),
     Started(Result<bool, String>),
+    /// Multiplayer's Play: whether the sign-in's session still plays.
+    SessionChecked(Result<yo3_tunnel::Token, yo3_desktop::multiplayer::Problem>),
     Cancel,
     Cancelled(Result<(), String>),
     /// Set up direct start in a protected game folder (asks for permission once).
@@ -165,6 +167,15 @@ pub struct State {
 }
 
 impl State {
+    /// Multiplayer's Play, once its sign-in is known to play: the game on the selected server.
+    fn play_multiplayer(&mut self, ctx: &mut Ctx, session: yo3_tunnel::Token) -> Task<Message> {
+        let (Some(backend), Some((server, _))) = (ctx.backend.clone(), self.multi.session()) else { self.game.starting = None; return Task::none() };
+        let settings = ctx.settings.clone();
+        let played = self.multi.played(ctx).map(Message::Multi);
+        let start = job(move || { backend.play_signed_in(&settings, &server, &session)?; Ok(false) }, Message::Started);
+        Task::batch([played, start])
+    }
+
     pub fn update(&mut self, message: Message, ctx: &mut Ctx) -> Task<Message> {
         match message {
             Message::Tab(tab) => {
@@ -173,23 +184,27 @@ impl State {
             }
             Message::Multi(multi::Message::Play) => {
                 let busy = self.game.running || self.game.starting.is_some() || self.game.outside;
-                let (Some(backend), Some((server, signed)), false) = (ctx.backend.clone(), self.multi.session(), busy) else { return Task::none() };
-                let settings = ctx.settings.clone();
+                let (Some(_), Some((server, signed)), false) = (ctx.backend.clone(), self.multi.session(), busy) else { return Task::none() };
                 self.cancelled = false;
                 self.game.starting = Some((Step::Game, Instant::now()));
                 self.notice = None;
-                let played = self.multi.played(ctx).map(Message::Multi);
-                let start = job(move || {
-                    // A device that stays signed in gets a fresh session for each Play; otherwise the sign-in's own.
-                    let session = match &signed.device_token {
-                        Some(token) => tokio::runtime::Builder::new_current_thread().enable_all().build()?
-                            .block_on(yo3_desktop::multiplayer::resume(&server, token)).map_err(|p| anyhow::anyhow!(p.sentence()))?.session,
-                        None => signed.session,
-                    };
-                    backend.play_signed_in(&settings, &server, &session)?;
-                    Ok(false)
-                }, Message::Started);
-                return Task::batch([played, start]);
+                // The session to play on, known to play before the game starts: a device that stays signed in gets a
+                // fresh one; a plain sign-in's own is checked (a kick, a ban or a newer sign-in elsewhere ends it, and
+                // the game would only say it has no connection).
+                return Task::perform(async move {
+                    use yo3_desktop::multiplayer as mp;
+                    match &signed.device_token {
+                        Some(token) => mp::resume(&server, token).await.map(|resumed| resumed.session),
+                        None => mp::session_alive(&server, &signed.session).await.map(|()| signed.session),
+                    }
+                }, Message::SessionChecked);
+            }
+            Message::SessionChecked(result) => {
+                if self.cancelled { return self.clean_up(ctx) }
+                match result {
+                    Ok(session) => return self.play_multiplayer(ctx, session),
+                    Err(problem) => { self.game.starting = None; self.multi.play_refused(problem); }
+                }
             }
             Message::Multi(multi::Message::Remedy(yo3_desktop::multiplayer::Remedy::Update)) => return Task::done(Message::Releases),
             Message::Multi(multi::Message::CloseGame) => return self.update(Message::CloseGame, ctx),

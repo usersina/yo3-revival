@@ -256,6 +256,8 @@ pub enum Problem {
     Unreachable,
     /// A stay-signed-in that was revoked (a new password, Sign out everywhere, a ban) or expired.
     SignInAgain,
+    /// At Play, the sign-in's session had ended: a kick or a ban, or the account signed in elsewhere (#30).
+    SessionEnded,
     InviteNeeded,
     InviteInvalid,
     RegistrationClosed,
@@ -313,6 +315,7 @@ impl Problem {
             Problem::IdentityChanged => "This server's identity changed. It may not be the server you added: don't sign in.".into(),
             Problem::Unreachable => "We can't reach the server. Check your internet connection, or try again later.".into(),
             Problem::SignInAgain => "Please sign in again.".into(),
+            Problem::SessionEnded => "Your sign-in ended: a moderator ended it, or this account signed in somewhere else.".into(),
             Problem::InviteNeeded => "This server needs an invite code to make an account.".into(),
             Problem::InviteInvalid => "That invite code doesn't work: it may be used up or expired.".into(),
             Problem::RegistrationClosed => "This server isn't taking new accounts.".into(),
@@ -332,7 +335,7 @@ impl Problem {
         match self {
             Problem::Maintenance { .. } | Problem::Full | Problem::Unreachable => Some(Remedy::Retry),
             Problem::NeedsUpdate { .. } => Some(Remedy::Update),
-            Problem::SignInAgain => Some(Remedy::SignInAgain),
+            Problem::SignInAgain | Problem::SessionEnded => Some(Remedy::SignInAgain),
             Problem::IdentityChanged => Some(Remedy::RemoveServer),
             _ => None,
         }
@@ -390,6 +393,20 @@ pub async fn sign_in(server: &Server, user: &str, password: &str, stay: bool) ->
 pub async fn resume(server: &Server, device_token: &str) -> Result<SignedIn, Problem> {
     let reply = ask(server, json!({ "op": "resume", "device_token": device_token })).await?;
     Ok(SignedIn { user: reply["user"].as_str().unwrap_or_default().to_string(), session: session_of(&reply)?, device_token: Some(device_token.to_owned()) })
+}
+
+/// Whether a sign-in's session still plays: it ends when a moderator kicks or bans the account, or the account signs
+/// in elsewhere (the newest wins). Asks for a ticket, as the game's helper does: refused is `SignInAgain`, no answer
+/// `Unreachable`.
+pub async fn session_alive(server: &Server, session: &yo3_tunnel::Token) -> Result<(), Problem> {
+    for endpoint in server.endpoints().map_err(|_| Problem::Unreachable)? {
+        match endpoint.ticket(session, yo3_tunnel::Role::Http).await {
+            Ok(_) => return Ok(()),
+            Err(e) if e.downcast_ref::<yo3_tunnel::Refused>().is_some() => return Err(Problem::SignInAgain),
+            Err(_) => {}
+        }
+    }
+    Err(Problem::Unreachable)
 }
 
 pub async fn sign_out(server: &Server, device_token: &str, everywhere: bool) -> Result<(), Problem> {

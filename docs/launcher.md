@@ -89,7 +89,8 @@ keeps one from each of its last starts, newest first).
 - **Forgot password?**: your recovery code (or a reset code from the server's moderators, who check it's you first) and
   a new password. A recovery code is replaced by a new one, shown once.
 - **PLAY** starts the game signed in to the server; **Close game** works as in Singleplayer. **Sign out** forgets this
-  PC's sign-in. Signing in elsewhere ends this game's session: the newest sign-in wins.
+  PC's sign-in. Signing in elsewhere ends this game's session: the newest sign-in wins. PLAY checks your sign-in first: if it
+  ended (a moderator, or a sign-in on another PC), **Stay signed in** starts a new one, and otherwise you sign in again.
 
 Later starts are quick: YO3 Revival remembers a fingerprint of `yo3.exe` and runs the full check again only when the
 game changed. If the game folder disappears (moved, or a drive unplugged), the main screen says **We can't find your

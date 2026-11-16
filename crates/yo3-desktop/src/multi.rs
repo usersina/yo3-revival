@@ -294,6 +294,18 @@ impl State {
         Task::batch([self.save(ctx, server), self.select(key)])
     }
 
+    /// Play's session check said no. An ended session, or a revoked saved sign-in, is forgotten (sign in again); a
+    /// ban says so; anything else (no answer, maintenance, a full server) keeps the sign-in for Retry.
+    pub fn play_refused(&mut self, problem: Problem) {
+        let ended = matches!(problem, Problem::SignInAgain | Problem::Banned { .. } | Problem::Restricted { .. });
+        if ended && let Some(server) = self.selected().cloned() {
+            self.signed_in.remove(server.key());
+            if let Some(vault) = &self.vault { let _ = vault.delete(&mp::vault_account(&server)); }
+            self.form = Form::SignIn;
+        }
+        self.problem = Some(if problem == Problem::SignInAgain { Problem::SessionEnded } else { problem });
+    }
+
     /// A Play: the server it is on moves to the top of the list next time.
     pub fn played(&mut self, ctx: &Ctx) -> Task<Message> {
         let Some(server) = self.servers.iter_mut().find(|s| Some(s.key()) == self.selected.as_deref()) else { return Task::none() };
@@ -374,7 +386,7 @@ impl State {
         let mut out = column![].spacing(6);
         if let Some(problem) = &self.problem {
             let mut line = row![container(Space::new().width(9).height(9)).style(|_| dot(color::BAD)),
-                text(problem.sentence()).size(14).font(BODY_BOLD).color(color::INK)].spacing(8).align_y(Center);
+                text(problem.sentence()).size(14).font(BODY_BOLD).color(color::INK).width(Fill)].spacing(8).align_y(Center);
             if let Some(remedy) = problem.remedy() {
                 let label = match remedy { Remedy::Retry => "Retry", Remedy::Update => "Update", Remedy::SignInAgain => "Sign in", Remedy::RemoveServer => "Remove server" };
                 line = line.push(yo3_skin::link(label, Message::Remedy(remedy), false));
@@ -520,6 +532,31 @@ mod tests {
         assert_eq!(label(&state), ("PLAY", true, String::new()), "the form already says who is signed in");
         assert_eq!(state.play(true).0, "PLAYING");
         assert!(State::default().play(false).1.is_none(), "no server: nothing to press");
+    }
+
+    #[test]
+    fn a_play_whose_session_ended_asks_to_sign_in_again_and_one_that_cant_reach_the_server_keeps_it() {
+        // Play checks a plain sign-in's session first (mp::session_alive): a kick, a ban or a newer sign-in elsewhere
+        // ended it, and the game would only say "You will need an active Internet connection" (Windows 11 VM).
+        let ctx = ctx();
+        let mut state = tab(online(), None);
+        let key = state.servers[0].key().to_string();
+        let _ = state.update(Message::SignedIn(key.clone(), Ok(signed("Yugi", None))), &ctx);
+        state.play_refused(Problem::Unreachable);
+        assert!(state.signed_in.contains_key(&key), "no answer: still signed in, Retry");
+        assert_eq!(state.problem, Some(Problem::Unreachable));
+        state.play_refused(Problem::SignInAgain);
+        assert!(!state.signed_in.contains_key(&key));
+        assert_eq!(state.problem, Some(Problem::SessionEnded));
+        assert_eq!(Problem::SessionEnded.remedy(), Some(Remedy::SignInAgain));
+        assert_eq!(state.play(false).0, "LOG IN");
+        // A saved sign-in whose resume is refused at Play (a ban signs every device out) is forgotten too.
+        let vault = Arc::new(MemoryVault::default());
+        let mut state = tab(online(), Some(vault.clone()));
+        let account = mp::vault_account(&state.servers[0]);
+        let _ = state.update(Message::SignedIn(key, Ok(signed("Yugi", Some("device-token")))), &ctx);
+        state.play_refused(Problem::SignInAgain);
+        assert_eq!(vault.get(&account).unwrap(), None);
     }
 
     #[test]

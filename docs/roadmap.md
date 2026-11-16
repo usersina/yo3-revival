@@ -56,12 +56,6 @@ and Scripts.
 - [ ] The Discord recording's native game exit `0xc0000005` is a separate failure. A crash dump or faulting address from
       a failing machine is still needed; seven fresh native Windows 11 launches did not reproduce it.
 
-**Multiplayer sign-in**
-
-- [ ] A session that ended elsewhere (a kick, a ban, a newer sign-in) still shows "Signed in as …" in the launcher, and
-      PLAY then fails in the game ("You will need an active Internet connection to play ONLINE."). The launcher should
-      check the session before PLAY, resume with the saved sign-in when there is one, and otherwise ask to log in (#30).
-
 **Higher resolution**
 
 - [ ] A Japanese or Korean IME, a second monitor.
