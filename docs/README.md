@@ -21,7 +21,8 @@
 - [Roadmap](roadmap.md): what is open and next, and the table of guesses to revisit.
 - [Launcher style guide](launcher-style.md): the beta launcher's colours, fonts and components (the `yo3-skin` kit).
 - [History](history.md): dated records of releases, investigations and milestones M0 to M6.
-- [Authentication](authentication.md): account keys, TLS, the required connection DLL and session binding.
+- [Authentication](authentication.md): password and key accounts, how each way of playing signs in, TLS, the required
+  connection DLL and session binding.
 - [Protocol](protocol.md): wire format and request/reply shapes, with client evidence.
 - [Client internals](client-internals.md): executable addresses, native hooks, data formats and crash history.
 - [Research](research.md): the original feasibility study, retained as history.

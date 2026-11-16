@@ -66,9 +66,9 @@ Old transports are refused.
 
 `tests/metadata_contract.rs` verifies discovery without an account, compatibility independent of patch-release labels,
 wrong host names/keys, certificate renewal preserving the identity, expired certificates and bounded metadata.
-Normal account endpoints verify an invitation/user-approved SHA-256 hash of the certificate's SPKI, its lifetime and
-the TLS handshake signature. Address discovery proves possession of the observed key but is **untrusted** until the
-user approves it or compares it to the host's invitation. It can issue only the credential-free info operation and
+Normal account endpoints verify a pinned SHA-256 hash of the certificate's SPKI (from an invite link, or approved by
+the player), its lifetime and the TLS handshake signature. Address discovery proves possession of the observed key but
+is **untrusted** until the player approves it or compares it with the identity the host gave them. It can issue only the credential-free info operation and
 does not save trust. Certificate-only CLI profiles retain their existing CA/name verification behavior.
 
 The local injector's own startup protocol is `YO3_MOD_READY` (LF/CRLF accepted) on stdout after the required mod's
@@ -527,8 +527,7 @@ or got, less the ones given away) and moves both offers when both said yes, in t
 `data/accounts.json`: `cards` and
 `given` per player). A session refreshes its player's collection from there on each trunk request, so the partner's
 next shop visit shows it too. Live: Yugi's Tainted Wisdom for Kaiba's Windstorm of Etaqua.
-Saved collections are looked up by player id across every account, including `/join` and `add-account` accounts with
-a key and no stored address. This applies to trade execution, rental offer validation and every trunk refresh
+Saved collections are looked up by player id across every account, including `add-account` key accounts. This applies to trade execution, rental offer validation and every trunk refresh
 (`9000`, collection builder `0x4F6340`). Tests: `two_key_only_accounts_can_complete_a_trade`,
 `a_key_only_accounts_trunk_refreshes_its_saved_collection`, `a_key_only_lenders_offer_is_checked_against_their_saved_cards`.
 
@@ -2168,11 +2167,9 @@ login of an account ends its older session (#23).
 Select Player still chooses one of up to four account players (`0x1F4C`), and creates/deletes them (`0x1F4A`/`0x1F4B`,
 slot `pindex` 0–3). `CharMake.cpp` (`0x2CF5`/`0x2CF6`, the map's GoCharMake) remains the appearance editor. Account
 and player records keep their existing document schema and ids, stored in SQLite's `accounts` document.
-`profile EXISTING_PLAYER FILE --advertise HOST` exports
-a key account's private launcher profile. Accounts found only by an address are no longer loaded (#23).
-
-The old patch-URL/IP association and HTTP self-service join page have been retired. `/join` and INI downloads now
-return 404; fetching `yo3.idx` cannot select or create an account. The internal asset service serves the client's
+Key accounts (Singleplayer, the Scripts edition's profiles) and password accounts share that schema. No account is
+chosen by an address, and plain HTTP never makes or reveals one: fetching `yo3.idx` cannot select or create an
+account. The internal asset service serves the client's
 index, `/duellogs/NAME.dlog` and `/app/`; the launcher carries these requests over TLS. The DLL routes the client's
 WinINet calls to its local authenticated asset proxy, including duel-log URLs (`0x498700`). No account key is put
 into a remote URL. See [authentication.md](authentication.md) for setup and credential lifetimes.

@@ -1,59 +1,86 @@
 # Accounts, sign-in and the connection mod
 
-The revival launcher is the only supported login path. The server accepts game traffic over TLS on TCP 7443;
-there is no IP-based login or stock-client fallback. The original game executable and `yo3.ini` stay unchanged;
-the game still writes its normal player files.
+Every game connection goes through YO3 Revival's own TLS protocol on TCP 7443, in front of the game's. The server
+never picks an account by the address a client connects from, and there is no stock-client fallback. The original
+game executable and `yo3.ini` stay unchanged; the game still writes its normal player files.
 
 **Contents**
 
 - [Accounts, sign-in and the connection mod](#accounts-sign-in-and-the-connection-mod)
   - [Accounts](#accounts)
-  - [Setup](#setup)
+  - [How each way of playing signs in](#how-each-way-of-playing-signs-in)
+  - [Setting up a server](#setting-up-a-server)
   - [Making accounts, invites and recovery](#making-accounts-invites-and-recovery)
   - [Connections and credentials](#connections-and-credentials)
   - [Account requests](#account-requests)
   - [Passwords and throttling](#passwords-and-throttling)
+  - [The connection mod and the local proxy](#the-connection-mod-and-the-local-proxy)
   - [Client evidence](#client-evidence)
-  - [Existing accounts and rollout](#existing-accounts-and-rollout)
+  - [Retired: invitation files, handed-out keys and `/join`](#retired-invitation-files-handed-out-keys-and-join)
   - [Development checks](#development-checks)
 
 ## Accounts
 
-An account holds up to four players with their in-game names, cards, decks and BP. There are two kinds:
+An account holds up to four players with their in-game names, cards, decks and BP. There are two kinds.
 
-- **Password accounts** (the beta, #23). They have:
-  - a **User ID**: 3–16 letters or digits, unique ignoring case, never shown to other players;
-  - a **password**: 8–16 letters or digits, not one of a short list of common passwords and not the User ID. Both
-    follow what the game's own login form lets a player type ([client internals](client-internals.md#the-games-own-login-form-34-research-r1));
-  - a **role**: player, moderator or admin;
-  - a **standing**: active, restricted or banned, with a reason and an optional end ([moderation](guide.md#moderation-and-maintenance)).
-    Both refuse sign-in, by password, device or key. A ban also signs every device out and disconnects the game at
-    once; a restriction lets a game already signed in play on until it logs in again;
-  - a **mute**, with a reason and an optional end: the player's chat lines go nowhere;
-  - a one-time **recovery code**, shown once at sign-up;
-  - up to ten **signed-in devices** ("stay signed in").
-  A new password account has no players yet; the game's Select Player makes them.
-- **Key accounts**. A 20-character key signs in. The launcher's own Singleplayer account uses one, and so do the
-  Scripts edition's private profiles. The beta launcher's Multiplayer tab (#30) signs in to password accounts instead:
-  it asks the server for a session (operation 6) and hands the helper that session in its private profile, never the
-  password.
+**Password accounts** are how players sign in to a server: the Multiplayer tab, Host for friends, the game's own login
+form and the [admin panel](guide.md#the-admin-panel). They have:
 
-The address a client connects from never selects an account.
+- a **User ID**: 3–16 letters or digits, unique ignoring case, never shown to other players;
+- a **password**: 8–16 letters or digits, not one of a short list of common passwords and not the User ID. Both follow
+  what the game's own login form lets a player type ([client internals](client-internals.md#the-games-own-login-form-34-research-r1));
+- a **role**: player, moderator or admin;
+- a **standing**: active, restricted or banned, with a reason and an optional end ([moderation](guide.md#moderation-and-maintenance)).
+  Both refuse sign-in, by password, device or key. A ban also signs every device out and disconnects the game at once;
+  a restriction lets a game already signed in play on until it logs in again;
+- a **mute**, with a reason and an optional end: the player's chat lines go nowhere;
+- a one-time **recovery code**, shown once at sign-up;
+- up to ten **signed-in devices** ("Stay signed in").
 
-## Setup
+A new password account has no players yet; the game's Select Player makes them.
 
-The [graphical application](launcher.md) handles server startup, live account management and single-file private
-invitations. For complete platform-specific commands, server startup and firewall setup, follow the
-[command-line reference](guide.md). The commands below illustrate the credential flow from an extracted Linux bundle.
+**Key accounts** sign in with a random 20-character key and have no User ID or password. They are for a player's own
+server and for the terminal:
 
-The host initializes a certificate with the DNS names/IPs friends will connect to, once:
+- **Singleplayer** in the Desktop launcher: its local account on your own server. The launcher asks your server for
+  the key at each Play (admin API, loopback only) and writes it to a private profile for the game's helper. It never
+  leaves the PC.
+- **The Scripts edition**: `add-account` makes a key account and `profile` exports its private profile, which
+  `play.sh`/`play.cmd` reads. The terminal helper can't ask for a password, so a Scripts player on a friend's server
+  also gets a key profile from the host.
+
+Both kinds hold the same data and the same players; the admin commands find either by a player's name, and a
+password account by its User ID too.
+
+## How each way of playing signs in
+
+| Who | How | What is kept on the player's PC |
+| --- | --- | --- |
+| Desktop, **Multiplayer** | User ID and password on the Multiplayer tab (operation 6 `login`); the launcher hands the helper the session in a private profile | With **Stay signed in**, a device token in the system's credential store (Windows Credential Manager, the Secret Service on Linux). Never the password |
+| Desktop, **Host for friends** | Friends: as Multiplayer, with the invite link (address and identity) and an invite code the host sends. The host plays on it the same way | As Multiplayer |
+| Desktop, **Singleplayer** | Your local key account on your own server | The key, in the launcher's private profiles (`profiles/`, mode 0600 on Unix) |
+| **Direct start** (`yo3.exe` opened alone) | What was last played: Singleplayer's key, or Multiplayer's saved device token. With no saved sign-in, the game's own login form (User ID, password, Save Password) | `profiles/direct.json` holds the address, the identity and either the key (Singleplayer) or the credential store's entry name (Multiplayer), never a token or password |
+| **Scripts**, your own PC | A key profile from `add-account` and `profile` | `client.json` and `server.crt` |
+| **Scripts**, a friend's server | A key profile the host exports for you | `client.json` and `server.crt` |
+| The **admin panel** | A password account with the moderator or admin role, in the browser on the server's PC | A panel session cookie |
+
+## Setting up a server
+
+The Desktop launcher sets up Singleplayer and Host for friends by itself ([Desktop guide](launcher.md#host-friends)).
+For a server on its own, follow the [command-line reference](guide.md) or the [hosting guide](hosting.md); the steps
+below are the credential part.
+
+The host makes the server's TLS identity once, with the names and addresses players will dial:
 
 ```sh
 ./yo3-server init-auth localhost 127.0.0.1 play.example
 ```
 
-Then it chooses how accounts are made, with the `registration` [live setting](guide.md#live-settings) (`yo3-server
-set registration open`), which applies at once:
+Keep `data/server.key` on the host. Players' launchers pin the identity; `data/server.crt` is public. Profiles and
+private keys made by the tools are mode 0600 on Unix, and the credential directory 0700.
+
+Then the host chooses how password accounts are made, with the `registration` [live setting](guide.md#live-settings)
+(`yo3-server set registration open`), which applies at once:
 
 | Mode | Who makes an account |
 | --- | --- |
@@ -64,27 +91,23 @@ set registration open`), which applies at once:
 The `server-name` and `headline` settings show in the launcher's server list, and `min-launcher VERSION` refuses
 launchers older than that version, which are told to update.
 
-A key account still works as before: `add-account Alice` makes it and `profile Alice Alice.json --advertise
-play.example` exports its private profile. Send `Alice.json` privately to Alice with the public `data/server.crt`,
-saved next to the profile as `server.crt`. Keep `data/server.key` on the host. Profiles and server private keys
-created by the tools use mode 0600 on Unix; initialization makes the credential directory private (0700).
+Players find the server with an invite link (`yo3revival://server?address=HOST:PORT&identity=HEX&name=NAME`, which
+Host for friends makes) or by typing its address in Multiplayer → Other servers and comparing the identity the launcher
+shows with the one the host gave them.
 
-The player runs the launcher from the bundle:
+For a Scripts player, the host makes a key account and exports its profile:
 
 ```sh
-./yo3-launcher --profile Alice.json --game-dir "/path/to/Yu-Gi-Oh! ONLINE 3"
+./yo3-server add-account Alice
+./yo3-server profile Alice Alice.json --advertise play.example
 ```
 
-On Windows use `yo3-launcher.exe` and the Windows game-folder path. On Linux install Wine and use the Wine game
-folder; `--wine-prefix /path/to/prefix` selects a non-default prefix. The injector and DLL are read from the
-launcher's directory, or `--injector` and `--dll` can name the development builds.
+Send `Alice.json` privately to Alice with the public `data/server.crt`, saved beside the profile as `server.crt`.
+She runs:
 
-The required mod skips the original username/password form: **ONLINE** opens player selection. The normal
-connection and error handlers remain in use. Static preflight checks the x86 game/injector, DLL
-metadata/release/interface and bundled file hashes before account authentication. The injector creates the game
-suspended, loads the DLL and asks its exported readiness function to confirm all hooks initialized. Only then does
-the launcher authenticate, activate its private proxy and permit the game to resume. A failed mod, identity or
-account check leaves the game unresumed and terminates it.
+```sh
+./play.sh --profile "$PWD/Alice.json" --game-dir "/path/to/Yu-Gi-Oh! ONLINE 3"
+```
 
 ## Making accounts, invites and recovery
 
@@ -97,22 +120,25 @@ These admin commands work on a running server too, through its admin API ([guide
 | `add-user USER` | A password account made by the host. Prints its first password and recovery code to hand to the player, who changes the password in the launcher |
 | `reset-code USER` | For a player who lost both their password and recovery code, after the host or a moderator checked it is them (on Discord, for example). The code works once, for 24 hours, in the launcher's "Forgot password", and ends when the password changes |
 | `set-role USER ROLE` | player, moderator or admin |
+| `add-account NAME [--also B,C]` | A key account and its first players (Scripts) |
+| `profile PLAYER FILE --advertise HOST` | A key account's private profile for the Scripts helper. It never overwrites a file |
+| `key WHO [--advertise HOST]` | Prints a key account's key (or gives the account one) |
 
 Recovery works without email: the recovery code shown at sign-up sets a new password and is then replaced by a new
 one, shown once. A reset code does the same but leaves the player's recovery code as it was. Codes are typed in any
 case, with or without the dashes. Only their SHA-256 digests are kept, and their answers stay out of the server log.
 
 The other admin commands find an account by its User ID or one of its players' names (`give-bp`, `key`,
-`add-player`, `set-country`). Run `accounts` to list them with their User ID, role, country and players.
+`add-player`, `set-country`). `accounts` lists each with its User ID or "key", role, country and players.
 
 ## Connections and credentials
 
-The graphical application's address discovery is credential-free. Its first-use confirmation explicitly approves
-the observed identity; invitation import supplies the expected identity without another file-selection step.
-The approved SHA-256 SPKI identity, certificate validity and TLS handshake signature are verified on subsequent
-connections. Its address may change while retaining that identity. Certificate-only CLI profiles use the supplied
-trust anchor and hostname checks. A self-managed certificate is valid from a day before it is made (or renewed), so a
-client whose clock is behind the host's, such as a PC set to the wrong time zone, still accepts a server just set up.
+The server's identity is the SHA-256 of its certificate's public key (SPKI). The Desktop launcher pins it: an invite
+link carries it, and a server added by address shows it first for the player to approve. Each later connection checks
+the identity, the certificate's validity and the TLS handshake signature; the address may change while the identity
+stays. A Scripts profile carries the identity, or names the certificate beside it (`server.crt`) and is checked
+against it and its name. A self-managed certificate is valid from a day before it is made (or renewed), so a client
+whose clock is behind the host's, such as a PC set to the wrong time zone, still accepts a server just set up.
 
 Every connection starts with TLS, an 8-byte opener and one operation byte:
 
@@ -125,36 +151,29 @@ Every connection starts with TLS, an 8-byte opener and one operation byte:
 | 5 | Discovery | — | a length and JSON: build, protocol, readiness, and for the server list its name, players online, registration mode and minimum launcher |
 | 6 | Account request | a length (at most 4096) and a JSON object | a length and a JSON object ([Account requests](#account-requests)) |
 
-1. Rustls verifies the approved server identity (or the supplied certificate/name for certificate-only profiles).
-   TLS key-possession signatures are always verified. A credential-free compatibility check precedes a key login;
-   the server rejects unsupported protocol/DLL interfaces before reading a key. Credentials stay outside packet logs.
-2. A login (by key, password or device) returns a random 256-bit session, valid for 12 hours. **The newest login
-   wins:** an account's older session ends at once, which closes its game's connections (the game shows its own
+1. Rustls verifies the pinned identity (or the certificate and name of a certificate profile). TLS key-possession
+   signatures are always verified. A credential-free compatibility check comes before a key login; the server refuses
+   unsupported protocol and DLL interfaces before reading a key. Credentials stay out of packet logs.
+2. A login (by key, password or device token) returns a random 256-bit session, valid for 12 hours. **The newest
+   login wins:** an account's older session ends at once, which closes its game's connections (the game shows its own
    disconnect dialog). A crashed client never locks its owner out.
-3. Each front, duel or asset connection needs a fresh random 256-bit ticket. Tickets last 30 seconds, are scoped
-   to their connection role, and are consumed once. A wrong-role presentation burns the ticket too.
-4. The server chooses the front account from the authenticated identity. Each selected deck records that launcher
+3. Each front, duel or asset connection needs a fresh random 256-bit ticket. Tickets last 30 seconds, are scoped to
+   their connection role, and are consumed once. A wrong-role presentation burns the ticket too.
+4. The server chooses the front account from the authenticated session. Each selected deck records that launcher's
    identity; a duel connection must match it before claiming the stock client's `player_id`. An unrelated launcher
    cannot claim it.
-5. Logout invalidates the session, unspent tickets and active connections. The launcher logs out when the game exits.
-   Expiry also closes live connections. Restarting the server invalidates all sessions and tickets; devices stay
-   signed in.
+5. Logout ends the session, its unspent tickets and its connections. The helper logs out when the game exits if it
+   signed in itself (a key or a device token); a session the Desktop launcher handed over is the launcher's, ended by
+   its Sign out. Expiry also closes live connections. Restarting the server ends all sessions and tickets; devices
+   stay signed in.
 
-The session/ticket stores and simultaneous TLS connections have fixed caps (1024 sessions, 4096 tickets, 256
+The session and ticket stores and simultaneous TLS connections have fixed caps (1024 sessions, 4096 tickets, 256
 connections). TLS and credential handshakes have a 10-second deadline. Randomness comes from the operating system.
-The fixed Blowfish encryption is retained inside TLS for game compatibility; it is not a security boundary.
+The game's fixed Blowfish encryption is kept inside TLS for compatibility; it is not a security boundary.
 
 Every reply is a complete, bounded message. After a reply has been fully read and validated, failure to send the
 final TLS close alert does not invalidate it. The server sends its close alert and allows up to one second for the
 peer's close before dropping TCP. This avoids intermittent Windows socket resets during response cleanup.
-
-The launcher binds ephemeral loopback gate/front/duel/HTTP ports. The DLL only permits the game's socket connections
-to those local ports and prepends a per-launch random cookie. The local proxy requires that cookie, so another
-local process cannot use the proxy merely by finding its port. Local HTTP uses the cookie in a loopback-only path.
-Credentials remain in the launcher; the DLL receives only local ports and the cookie.
-
-The game process, launcher, credential files and operating-system account are trusted. This does not protect an
-account from malware running as the same OS user.
 
 ## Account requests
 
@@ -197,39 +216,74 @@ times and an expiry 90 days after the last use. An account keeps at most ten; th
   hashes run at once, so a flood of logins can't exhaust memory, and an unknown User ID is checked against a dummy
   hash so it takes as long as a wrong password.
 - **Per address:** a bucket of ten requests that refills one every three seconds.
-- **Per User ID:** after a failed password or recovery code, the next try waits 1 second, doubling with each
-  failure up to 15 minutes, and resets on success.
-- The three numbers are live settings: `address-burst`, `address-refill-seconds` and `backoff-max-seconds`. There is no hard lockout, which an attacker could use to lock
-  players out.
-- **Logs:** the server logs each request's op, address and result, never a password, token or code.
+- **Per User ID:** after a failed password or recovery code, the next try waits 1 second, doubling with each failure
+  up to 15 minutes, and resets on success.
+- The three numbers are live settings: `address-burst`, `address-refill-seconds` and `backoff-max-seconds`. There is
+  no hard lockout, which an attacker could use to lock players out.
+- **Logs:** the server logs each request's op, address and result, never a password, token, key or code.
+
+## The connection mod and the local proxy
+
+The game's helper (`yo3-launcher`, which `play.sh`/`play.cmd` and the Desktop launcher run) reads a private profile:
+the server's address, name and identity (or certificate), and one credential: a key, a session the Desktop launcher
+signed in for, or the name of a saved device sign-in in the credential store.
+
+Static preflight checks the x86 game and injector, the DLL's metadata, release and interface, and the bundled file
+hashes before any sign-in. The injector creates the game suspended, loads the DLL and asks its exported readiness
+function to confirm all hooks initialized. Only then does the helper sign in, activate its private proxy and let the
+game resume. A failed mod, identity or account check leaves the game unresumed and ends it. Direct start is the
+exception: the game is already running when the helper attaches, so a refusal is shown in the game's own login dialog.
+
+The required mod skips the original User ID/password form when the helper already has a sign-in: **ONLINE** opens
+player selection. With direct start and no saved sign-in, the form stays and what the player types goes to the helper
+as an operation 6 `login` (#34); the password is never written to the game's files.
+
+The helper binds ephemeral loopback gate, front, duel and HTTP ports. The DLL only lets the game's sockets connect to
+those local ports and prepends a per-launch random cookie. The local proxy requires that cookie, so another local
+process can't use the proxy by finding its port. Local HTTP uses the cookie in a loopback-only path. Credentials stay
+in the helper; the DLL receives only the local ports and the cookie.
+
+The game process, the helper, the profiles and the operating-system account are trusted. This does not protect an
+account from malware running as the same OS user.
+
+The server's internal HTTP service binds loopback only. The TLS asset role cannot reach the admin API
+(`/api/admin/v1/`), which also requires the private token in `data/admin.json`, even from the same machine. The Desktop
+launcher and the CLI use it to manage accounts, query readiness, change settings and stop the server. Only each
+operation's name is logged; every change has an audit row, without passwords or keys.
 
 ## Client evidence
 
+The client never sends a User ID or password to the server: its login credentials stay on the front connection
+object, and Delete Player's password prompt sends none either ([protocol](protocol.md#accounts)).
+So the TLS transport picks the account before the original login protocol runs.
+
 The client imports `GetPrivateProfileStringA` and `GetPrivateProfileIntA` for its configuration and
-`InternetOpenUrlA` for patch/assets. The DLL replaces only the executable's import-address-table slots. Winsock
-is imported by WSOCK32 ordinal: connect 4 at `0x7587D0`, send 19 at `0x7587F4`, closesocket 3 at `0x7587EC`.
-Both named and ordinal imports have a Wine test executable. Socket cookies preserve the original send counts,
-including partial/nonblocking sends. The DLL guards all required imports before the injector resumes the game.
+`InternetOpenUrlA` for patch/assets. The DLL replaces only the executable's import-address-table slots. Winsock is
+imported by WSOCK32 ordinal: connect 4 at `0x7587D0`, send 19 at `0x7587F4`, closesocket 3 at `0x7587EC`. Both named
+and ordinal imports have a Wine test executable. Socket cookies preserve the original send counts, including
+partial/nonblocking sends. The DLL guards all required imports before the injector resumes the game.
 
-The local gate uses the confirmed `0x21FE {host, port}` redirect. The server's `0x22C4` handoff is the existing
-shape (`0x50F690`), with this launcher's loopback duel endpoint. `0x200A {player_id}` is unchanged. The outer TLS
-protocol is ours and is documented separately from Konami's reply shapes in [protocol.md](protocol.md).
+The local gate uses the confirmed `0x21FE {host, port}` redirect. The server's `0x22C4` handoff is the existing shape
+(`0x50F690`), with the helper's loopback duel endpoint. `0x200A {player_id}` is unchanged. The outer TLS protocol is
+ours and is documented separately from Konami's reply shapes in [protocol.md](protocol.md).
 
-## Existing accounts and rollout
+## Retired: invitation files, handed-out keys and `/join`
 
-Account/player ids, collections, BP, decks and social data are kept in `server.db` (SQLite,
-[data and upgrades](launcher.md#your-data-and-upgrades)). Accounts found only by the address they connected from
-are no longer loaded (the server logs each one it skips): they had no way in since the TLS transport, and #23
-removed what was left of that login, with `move-account` and address arguments to the admin commands. Key accounts
-keep their key.
+Before the beta (v0.0.x), friends joined with what the host handed them: a Desktop invitation file (the address, the
+certificate and the friend's account key in one JSON file) or a key profile, saved in the launcher as a connection.
+Earlier still, a `/join` web page made accounts in a browser, and accounts could be found by the address they
+connected from. The beta removed all of that (#23):
 
-The internal HTTP service binds loopback only; the TLS asset role cannot reach the admin API (`/api/admin/v1/`),
-which also requires the private token even from the same machine. The desktop and the CLI use it to list and create
-accounts, add players, export keys, query readiness, change settings and stop the server. Only each operation's name
-is logged; every change has an audit row, without passwords or keys.
+- Friends on Desktop sign in with a password account; the host sends an invite link and an invite code instead of a
+  file with a key. The beta launcher neither imports invitation files nor reads a v0.0.x launcher's saved connections.
+- The server has no `/join` page and no INI download; accounts found only by an address are no longer loaded (the
+  server logs each one it skips), and `move-account` and the address arguments of the admin commands are gone.
+- Key accounts stay for Singleplayer and the Scripts edition, and keep their key. A v0.0.x key profile still plays with
+  the Scripts helper.
 
-Deploy the server, launcher and DLL together. Old clients are intentionally unsupported. A rollback restores the
-previous binary and backed-up data only when the host deliberately chooses it.
+Account and player ids, collections, BP, decks and social data are kept in `server.db` (SQLite,
+[data and upgrades](launcher.md#your-data-and-upgrades)). Deploy the server, launcher and DLL together: old clients
+are not supported. A rollback restores the previous binary and backed-up data only when the host chooses it.
 
 ## Development checks
 
@@ -243,8 +297,8 @@ YO3_INSTANCE=b tools/client/vclient.sh start --trace
 YO3_INSTANCE=b tools/client/vclient.sh login
 ```
 
-Tests cover every account request and its errors, invite uses, devices and sign-out, the backoff, the address
-bucket, the hash limit, the newest login winning, bans, the launcher version check, invalid keys and certificates,
-ticket replay/expiry/role scope, logout, cross-account and cross-launcher duel claims, local cookies, the main-screen
-flow and the duel handoff. The protocol monkey's `accounts` mode sends valid, mutated and garbage account requests
-from many loopback addresses, then checks the server still answers a game connection.
+Tests cover every account request and its errors, invite uses, devices and sign-out, the backoff, the address bucket,
+the hash limit, the newest login winning, bans, the launcher version check, invalid keys and certificates, ticket
+replay/expiry/role scope, logout, cross-account and cross-launcher duel claims, local cookies, the main-screen flow and
+the duel handoff. The protocol monkey's `accounts` mode sends valid, mutated and garbage account requests from many
+loopback addresses, then checks the server still answers a game connection.
