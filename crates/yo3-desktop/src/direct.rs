@@ -233,22 +233,24 @@ impl Backend {
     /// launcher keeps for `server` (the Secret Service) is copied there, or removed there when there is none. Windows
     /// has the one Credential Manager: nothing to do.
     pub fn mirror_sign_in(&self, settings: &Settings, server: &multiplayer::Server) {
-        #[cfg(windows)] { let _ = (settings, server); }
+        use multiplayer::Vault;
+        let account = multiplayer::vault_account(server);
+        let token = multiplayer::SystemVault.get(&account).ok().flatten();
+        if let Err(error) = self.mirror_entry(settings, &account, token.as_deref()) { self.diagnostics.line(&format!("Direct start could not keep the saved sign-in: {error:#}")); }
+    }
+    /// Copies a credential store entry (`None`: its removal) into the store direct start's helper reads: on Windows the
+    /// same one (nothing to do), under Wine the prefix's own, through the Windows helper's `--vault-set`.
+    pub fn mirror_entry(&self, settings: &Settings, account: &str, secret: Option<&str>) -> anyhow::Result<()> {
+        #[cfg(windows)] { let _ = (settings, account, secret); Ok(()) }
         #[cfg(not(windows))] {
-            use multiplayer::Vault;
-            let account = multiplayer::vault_account(server);
-            let token = multiplayer::SystemVault.get(&account).ok().flatten();
-            let result = (|| -> anyhow::Result<()> {
-                let mut cmd = wine_command(settings, "wine");
-                cmd.arg(self.root.join("direct/yo3-launcher.exe")).arg(if token.is_some() { "--vault-set" } else { "--vault-delete" }).arg(&account)
-                    .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
-                let mut child = cmd.spawn()?;
-                if let Some(token) = &token { use std::io::Write; child.stdin.take().context("no input")?.write_all(token.as_bytes())?; }
-                drop(child.stdin.take());
-                ensure!(child.wait()?.success(), "the Wine credential store refused it");
-                Ok(())
-            })();
-            if let Err(error) = result { self.diagnostics.line(&format!("Direct start could not keep the saved sign-in: {error:#}")); }
+            let mut cmd = wine_command(settings, "wine");
+            cmd.arg(self.root.join("direct/yo3-launcher.exe")).arg(if secret.is_some() { "--vault-set" } else { "--vault-delete" }).arg(account)
+                .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+            let mut child = cmd.spawn()?;
+            if let Some(secret) = secret { use std::io::Write; child.stdin.take().context("no input")?.write_all(secret.as_bytes())?; }
+            drop(child.stdin.take());
+            ensure!(child.wait()?.success(), "the Wine credential store refused it");
+            Ok(())
         }
     }
     /// The last direct start's problem (a server that would not start, a refused sign-in), for the launcher to show.
@@ -282,7 +284,7 @@ impl Backend {
             let saved: Stamp = serde_json::from_slice(&regular(&self.root.join("profiles/direct-setup.json"))?)?;
             ensure!(saved == self.direct_stamp(settings)?, "The game location or connection components changed.");
             ensure!(self.root.join("direct/yo3-launcher.exe").is_file(), "The direct-start copy of the connection helper is missing.");
-            yo3_launcher::Profile::load(&self.root.join("profiles/direct.json"))?; Ok(())
+            yo3_launcher::Profile::read_with(&self.root.join("profiles/direct.json"), self.vault())?; Ok(())
         })();
         match result { Ok(()) => State::Enabled, Err(error) => State::NeedsRepair(format!("{error:#}")) }
     }
@@ -311,8 +313,18 @@ impl Backend {
                 let server = self.local_connection(settings, &settings.local_account)?;
                 server.validate()?;
                 let identity = server.identity.clone().unwrap_or(yo3_tunnel::identity_from_pem(server.certificate.as_bytes())?);
-                serde_json::json!({"server":server.address,"server_name":server.server_name,"identity":identity,"key":server.key,
-                    "start":self.singleplayer_start(settings)?})
+                let mut body = serde_json::json!({"server":server.address,"server_name":server.server_name,"identity":identity,
+                    "start":self.singleplayer_start(settings)?});
+                // The key in the credential store (#23), copied to the one the helper reads (under Wine, the prefix's);
+                // the file keeps it only when neither can.
+                let mut fields = self.key_fields(&identity, &server.key);
+                if let Some(entry) = fields["key_vault"].as_str().map(str::to_owned)
+                    && let Err(error) = self.mirror_entry(settings, &entry, Some(&server.key)) {
+                    self.diagnostics.line(&format!("Direct start keeps the account key in its owner-only file: {error:#}"));
+                    fields = serde_json::json!({ "key": server.key });
+                }
+                if let (Some(body), serde_json::Value::Object(fields)) = (body.as_object_mut(), fields) { body.extend(fields) }
+                body
             }
         };
         private_write(&file, body.to_string().as_bytes(), true)?;
@@ -365,8 +377,9 @@ impl Backend {
         let helper = self.direct_helper()?;
         ensure!(helper.is_file(), "The Windows connection helper is missing. Extract the complete bundle.");
         self.check_game(settings)?;
-        self.direct_profile(settings, target)?;
         let [helper, dll, injector] = self.stable_components()?;
+        // After the helper's copy is in place: under Wine it copies Singleplayer's key into the prefix's store (#23).
+        self.direct_profile(settings, target)?;
         let state = self.root.join("profiles"); let file = state.join("loader.ini");
         let mut ini = String::from("[revival]\r\n");
         let profile = state.join("direct.json"); let logs = self.root.join("logs/sessions");

@@ -99,6 +99,8 @@ impl App {
             Ok(backend) => Some(backend),
             Err(error) => { problem.get_or_insert(format!("YO3 Revival needs repair: {error:#}")); None } // → Details
         };
+        // Singleplayer's key, left in a profile file by an older launcher, moves into the credential store (#23).
+        if let Some(backend) = &backend { let settings = settings.clone(); backend.migrate_keys(&|entry, key| backend.mirror_entry(&settings, entry, Some(key))); }
         let ctx = Ctx { root, backend, store, settings };
         let mut home = home::State::default();
         if let Some(problem) = problem { home.fail(&ctx, problem) }

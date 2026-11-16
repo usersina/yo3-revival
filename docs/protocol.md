@@ -87,8 +87,8 @@ atomically acknowledges that cookie; the game then goes on starting. Only then d
 files are refused. Managed injection skips the automatic bootstrap. These fields belong to our private bootstrap,
 never stock login replies.
 
-**Direct start's sign-in** (#33). The private profile names what was last played from the launcher: a key and how to
-start your own server (`start`, Singleplayer), or a vault entry (`vault`, Multiplayer: the device token "Stay signed
+**Direct start's sign-in** (#33). The private profile names what was last played from the launcher: the key's entry in the
+system's credential store (`key_vault`) and how to start your own server (`start`, Singleplayer), or a vault entry (`vault`, Multiplayer: the device token "Stay signed
 in" keeps in the system's credential vault, resumed with account operation `resume`). The helper starts your own server
 when nothing answers (`--owned --owned-idle 30`; on Linux a `sh` wrapper keeps its input open while the helper touches
 a heartbeat file, since Wine starts a Linux program detached), and starts it again if it stops while the game waits.

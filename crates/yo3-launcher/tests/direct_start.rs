@@ -229,3 +229,26 @@ async fn the_games_login_form_signs_in_with_what_the_player_typed() {
     assert_eq!(direct::sign_in_typed(&down, &plain, None, &other).await.unwrap_err().refusal, Refusal::FailedToConnect);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// Singleplayer's key lives in the system's credential store (#23): the profile names the entry (`key_vault`), and
+/// the helper reads the key from there. A profile still holding its key (no store on that PC) plays as before.
+#[test]
+fn a_singleplayer_profile_finds_its_key_in_the_credential_store() {
+    let dir = scratch("key-vault"); std::fs::create_dir_all(&dir).unwrap();
+    let cfg = yo3_server::Config::ephemeral(dir.clone());
+    let identity = yo3_tunnel::identity_from_pem(&std::fs::read(&cfg.tls.certificate).unwrap()).unwrap();
+    let entry = yo3_launcher::vault::key_account(&identity);
+    assert_eq!(entry, format!("key:{identity}"));
+    let file = dir.join("connection-0.json");
+    std::fs::write(&file, serde_json::json!({"server":"127.0.0.1:7443","server_name":"localhost","identity":identity,"key_vault":entry}).to_string()).unwrap();
+    let vault = MemoryVault::default();
+    let error = yo3_launcher::Profile::read_with(&file, &vault).err().expect("no key in the store");
+    assert!(format!("{error:#}").contains("credential store"), "{error:#}");
+    vault.set(&entry, "abcdEFGH2345ijkmNPQR").unwrap();
+    let loaded = yo3_launcher::Profile::read_with(&file, &vault).unwrap();
+    assert!(matches!(&loaded.credential, Credential::Key(k) if k == "abcdEFGH2345ijkmNPQR"));
+    assert_eq!(loaded.vault, None, "not a saved sign-in: Delete Login Data has nothing to forget");
+    std::fs::write(&file, serde_json::json!({"server":"127.0.0.1:7443","server_name":"localhost","identity":identity,"key":"k"}).to_string()).unwrap();
+    assert!(matches!(yo3_launcher::Profile::read_with(&file, &MemoryVault::default()).unwrap().credential, Credential::Key(k) if k == "k"));
+    let _ = std::fs::remove_dir_all(dir);
+}

@@ -5,6 +5,10 @@
 /// The vault's service name: the same as the launcher's.
 pub const SERVICE: &str = "yo3-revival.servers";
 
+/// The entry of an account key (Singleplayer's own server, #23), by the server's identity: beside the saved sign-ins
+/// (`server:<identity>`), in the same store.
+pub fn key_account(identity: &str) -> String { format!("key:{identity}") }
+
 pub trait Vault: Send + Sync {
     fn get(&self, account: &str) -> anyhow::Result<Option<String>>;
     fn set(&self, account: &str, secret: &str) -> anyhow::Result<()>;

@@ -132,6 +132,15 @@ profile '{"with_key":true,"start":{"program":"C:\\no\\such\\yo3-server.exe"}}'
 play "${REFUSED[@]}"
 
 start_server
+ROW='Singleplayer: the key in the Wine prefix'"'"'s credential store (key_vault), not in the profile'
+# As the Linux launcher sets it up (#23): the key copied into the prefix's store with --vault-set, the profile naming it.
+KEY="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["key"])' "$DIRECT_ROOT/key.json")"
+printf %s "$KEY" | wine "$HELPER" --vault-set key:direct-test 2>/dev/null
+profile '{"key_vault":"key:direct-test"}'
+if grep -q "$KEY" "$GAME/profile.json"; then echo "FAIL: $ROW: the key is in the profile" >&2; exit 1; fi
+play "${OK_FRONT[@]}"
+wine "$HELPER" --vault-delete key:direct-test </dev/null 2>/dev/null
+
 REGISTER="$(account '{"op":"register","user":"directuser","password":"LongPassphrase1","rules":true}')"
 [[ "$REGISTER" == *'"ok":true'* ]] || { echo "FAIL: register: $REGISTER" >&2; exit 1; }
 TOKEN="$(account '{"op":"login","user":"directuser","password":"LongPassphrase1","stay":true,"device":"test"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["device_token"])')"

@@ -86,7 +86,7 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::SetRole { user, role } => Op::SetRole { user: user.clone(), role: role.clone() },
         // The password is made and hashed here: only its hash goes to the server.
         Admin::AddUser { user } => Op::AddUser { user: user.clone(), hash: String::new() },
-        Admin::Settings => Op::Settings,
+        Admin::Settings | Admin::Share { .. } => Op::Settings,
         Admin::Set { name, value } => Op::Set { name: name.clone(), value: value.clone() },
         Admin::Reset { name } => Op::Reset { name: name.clone() },
         Admin::Audit { limit } => Op::Audit { limit: Some(*limit) },
@@ -135,15 +135,28 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         *hash = yo3_server::logins::hash_password_now(&password)?;
         handed = Some(format!("User ID: {user}\nPassword: {password} (they change it in the launcher)"));
     }
-    let result = match live::running(&a.data_dir) {
-        Some(server) => api::call_as(&server, &op, &a.by),
+    if let Admin::Share { .. } = &command {
+        // Before any request: what friends dial is the host's to say.
+        anyhow::ensure!(a.advertise.is_some(), "pass --advertise ADDRESS: the address friends reach this server at (an IP or a name in its certificate)");
+    }
+    let mut result = call(a, &op, &game_dir)?;
+    if let Admin::Share { invite: true } = &command {
+        result["invite"] = call(a, &Op::Invite { uses: Some(1), days: Some(7) }, &game_dir)?;
+    }
+    show(a, &command, &result, handed)
+}
+
+/// One admin operation, on the running server or on its stopped data folder.
+fn call(a: &Args, op: &Op, game_dir: &std::path::Path) -> anyhow::Result<Value> {
+    match live::running(&a.data_dir) {
+        Some(server) => api::call_as(&server, op, &a.by),
         None => {
             if matches!(op, Op::Shutdown | Op::Kick { .. }) { anyhow::bail!("no server is running on {}", a.data_dir.display()) }
             let _lock = if op.changes() { Some(yo3_server::store::lock(&a.data_dir)?) } else { None };
             yo3_server::store::initialize(&a.data_dir)?;
             let accounts = Directory::open(a.players.clone(), &a.data_dir.join("accounts.json"))?;
-            let settings = offline_settings(&a.data_dir, &game_dir, matches!(op, Op::Set { .. }))?;
-            let mut offline = api::Api::new(Arc::new(Mutex::new(accounts)), Arc::new(settings), Some(a.data_dir.clone()), game_dir.clone(), "offline");
+            let settings = offline_settings(&a.data_dir, game_dir, matches!(op, Op::Set { .. }))?;
+            let mut offline = api::Api::new(Arc::new(Mutex::new(accounts)), Arc::new(settings), Some(a.data_dir.clone()), game_dir.to_path_buf(), "offline");
             if matches!(op, Op::DeleteAccount { .. }) {
                 // What is kept for the account's players outside the accounts, as a server opens it.
                 let dir = &a.data_dir;
@@ -155,10 +168,9 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
                 hub.keep_rentals(&dir.join("rentals.json"));
                 offline.hub = Some(Arc::new(Mutex::new(hub)));
             }
-            offline.apply(&op, &a.by)
+            offline.apply(op, &a.by)
         }
-    }.map_err(anyhow::Error::msg)?;
-    show(a, &command, &result, handed)
+    }.map_err(anyhow::Error::msg)
 }
 
 /// Prints what an operation answered, as the host reads it.
@@ -175,6 +187,20 @@ fn show(a: &Args, command: &Admin, result: &Value, handed: Option<String>) -> an
             options.open(output)?.write_all(profile(a, &text(&result["key"])).as_bytes())?;
         }
         Admin::Key { .. } | Admin::AddAccount { .. } => print_key(a, &text(&result["key"])),
+        Admin::Share { .. } => {
+            let name = result["settings"].as_array().into_iter().flatten().find(|r| r["name"] == "server-name").map(|r| text(&r["value"])).unwrap_or_default();
+            let certificate = a.auth_cert.clone().unwrap_or_else(|| a.data_dir.join("server.crt"));
+            let pem = std::fs::read(&certificate).map_err(|e| anyhow::anyhow!("{}: {e} (run init-auth first)", certificate.display()))?;
+            let identity = yo3_tunnel::identity_from_pem(&pem)?;
+            let host = a.advertise.as_deref().unwrap_or_default();
+            let address = match host.parse::<IpAddr>() { Ok(IpAddr::V6(_)) => format!("[{host}]:{}", a.auth_port), _ => format!("{host}:{}", a.auth_port) };
+            let invite = yo3_tunnel::invite::Invite::new(&address, &identity, &name)?;
+            println!("Server: {}\nAddress: {}\nIdentity: {}\nInvite link: {}", invite.name, invite.address, invite.identity, invite.link());
+            if let Some(code) = result["invite"]["code"].as_str() { println!("Invite code: {code} (one sign-up, for a week)") }
+            println!("\nFriends paste the link under Multiplayer, Other servers (Desktop), or sign up with it in a terminal (Scripts):\n  \
+                play --register \"LINK\" USER --profile client.json");
+            if result["invite"].is_null() { println!("Each friend also needs an invite code if registration is invite (the default): add --invite, or run invite.") }
+        }
         Admin::Accounts => for account in result.as_array().into_iter().flatten() {
             let names: Vec<_> = account["players"].as_array().into_iter().flatten().map(|p| format!("{} (#{})", text(&p["name"]), p["player_id"])).collect();
             let country = Some(text(&account["country"])).filter(|c| !c.is_empty()).unwrap_or_else(|| "auto".into());

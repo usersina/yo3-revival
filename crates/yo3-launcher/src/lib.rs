@@ -15,6 +15,7 @@ pub mod runtime;
 pub mod resolution;
 pub mod direct;
 pub mod vault;
+pub mod signin;
 
 pub async fn authorize<R: AsyncRead + Unpin>(stream: &mut R, cookie: &Token) -> anyhow::Result<()> {
     let mut given = [0; 32];
@@ -31,6 +32,8 @@ pub struct Profile { pub server: String, pub server_name: String, #[serde(defaul
     /// The vault entry of this device's saved sign-in for the server ("Stay signed in"): direct start resumes it when
     /// there is neither a key nor a session, and Delete Login Data forgets it (#33).
     #[serde(default)] pub vault: Option<String>,
+    /// The credential store's entry that holds the account key (Singleplayer, #23), when the profile doesn't hold it.
+    #[serde(default)] pub key_vault: Option<String>,
     /// Singleplayer's direct start: how to start your own server when it isn't running (#33).
     #[serde(default)] pub start: Option<direct::ServerStart> }
 
@@ -61,8 +64,13 @@ impl Profile {
     pub fn load(path: &Path) -> anyhow::Result<(Endpoint, Credential)> {
         let loaded = Self::read(path)?; Ok((loaded.endpoint, loaded.credential))
     }
-    pub fn read(path: &Path) -> anyhow::Result<Loaded> {
-        let p: Self = serde_json::from_slice(&std::fs::read(path)?)?;
+    pub fn read(path: &Path) -> anyhow::Result<Loaded> { Self::read_with(path, &vault::SystemVault) }
+    /// Reads a profile whose key may be in `vault` (`key_vault`).
+    pub fn read_with(path: &Path, store: &dyn vault::Vault) -> anyhow::Result<Loaded> {
+        let mut p: Self = serde_json::from_slice(&std::fs::read(path)?)?;
+        if p.key.is_empty() && p.session.is_none() && let Some(entry) = &p.key_vault {
+            p.key = store.get(entry)?.ok_or_else(|| anyhow::anyhow!("your server's account key isn't in the system's credential store: open YO3 Revival and press Play once"))?;
+        }
         let certificate = path.parent().unwrap_or(Path::new(".")).join(p.certificate);
         let endpoint = match p.identity { Some(identity) => Endpoint::pinned(p.server, p.server_name, &identity)?,
             None => Endpoint::new(p.server, p.server_name, &certificate)? };

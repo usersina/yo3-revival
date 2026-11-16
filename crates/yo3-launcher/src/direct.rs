@@ -175,6 +175,20 @@ pub async fn sign_in_typed(endpoint: &Endpoint, typed: &Typed, vault_account: Op
     Ok(session)
 }
 
+/// A sign-in from the game's own login form (#34), as the helper's game loop gets it: the game's next login waits for
+/// this. Signed in, it replaces `session` (ending the old one when `owns` it); refused, the form shows again.
+pub async fn form_sign_in(endpoint: &Endpoint, proxy: &crate::Proxy, login: &Typed, vault_account: Option<&str>, vault: &dyn crate::vault::Vault,
+    session: &mut Option<Token>, owns: bool) -> Result<(), Failure> {
+    match sign_in_typed(endpoint, login, vault_account, vault).await {
+        Ok(signed) => {
+            if let Some(old) = session.replace(signed) && owns { let _ = endpoint.logout(&old).await; }
+            proxy.activate_typed(signed);
+            Ok(())
+        }
+        Err(failure) => { proxy.refuse_typed(failure.refusal); Err(failure) }
+    }
+}
+
 /// Delete Login Data (tools/mod/signout.h): ends the device's saved sign-in on the server (best effort) and forgets it
 /// here. Nothing to do for a key (Singleplayer, Scripts profiles).
 pub async fn sign_out(endpoint: &Endpoint, vault_account: Option<&str>, vault: &dyn crate::vault::Vault) -> anyhow::Result<bool> {
