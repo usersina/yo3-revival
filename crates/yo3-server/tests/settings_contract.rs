@@ -77,3 +77,43 @@ async fn a_wrong_value_is_refused_and_changes_nothing() {
     assert!(listed.contains("start-lp\t8000\t(default; applies at the next duel)"), "{listed}");
     assert!(listed.contains("registration\topen\t(set; applies at once)"), "{listed}");
 }
+
+fn row(at: &str, target: &str) -> yo3_server::store::AuditRow {
+    yo3_server::store::AuditRow { at: at.into(), actor: "host".into(), origin: "offline".into(), op: "kick".into(), target: target.into(),
+        before: None, after: None, detail: None }
+}
+
+fn targets(data: &std::path::Path) -> Vec<String> {
+    yo3_server::store::audit_rows(data, 100).unwrap().into_iter().map(|r| r.target).collect()
+}
+
+#[tokio::test]
+async fn the_audit_log_keeps_rows_for_audit_keep_days_pruned_at_start_and_when_set() {
+    // Security review (#39): the audit log names players and reasons; `audit-keep-days` (0: for ever) limits it.
+    yo3_server::logins::use_fast_hashing();
+    let dir = std::env::temp_dir().join(format!("yo3-settings-audit-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut cfg = Config::ephemeral(dir);
+    let data = cfg.data_dir.clone().unwrap();
+    yo3_server::store::initialize(&data).unwrap();
+    let day = |n: i64| (chrono::Utc::now() - chrono::Duration::days(n)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    for (age, target) in [(400, "ancient"), (40, "old"), (2, "recent")] { yo3_server::store::audit(&data, &row(&day(age), target)).unwrap() }
+    cfg.settings = vec![("audit-keep-days".into(), "365".into())];
+    let running = start(cfg).await.unwrap();
+    assert_eq!(targets(&data), ["recent", "old"], "pruned at start");
+    let live = admin::running(&data).unwrap();
+    let set = |value: &'static str| { let live = live.clone(); tokio::task::spawn_blocking(move || api::call(&live, &Op::Set { name: "audit-keep-days".into(), value: value.into() })) };
+    set("0").await.unwrap().unwrap();
+    assert!(targets(&data).contains(&"old".to_string()), "0 keeps everything");
+    set("30").await.unwrap().unwrap();
+    let left = targets(&data);
+    assert!(!left.contains(&"old".to_string()) && left.contains(&"recent".to_string()), "a new limit prunes at once: {left:?}");
+    assert_eq!(left[0], "audit-keep-days", "the change itself is kept");
+    drop(running);
+}
+
+#[test]
+fn audit_keep_days_defaults_to_a_year() {
+    let live = yo3_server::settings::Live::open(None, vec![]).unwrap();
+    assert_eq!(live.now().audit_keep_days, 365);
+}

@@ -108,6 +108,9 @@ while the server runs or stopped, and each applies at its own moment:
 | `max-duels` | 30 | At once | Duels running (an engine each, up to about 100 MB): beyond it an NPC duel or Create Duel is refused with "Duels are busy" in the player's chat, and Auto Duel waits until one ends |
 | `max-connections` | 2048 | At once | TLS connections at once; a player's game holds several |
 | `handshake-burst`, `handshakes-per-second` | 120, 10 | At once | New TLS connections one address may open; this PC's are not counted |
+| `request-burst`, `requests-per-second` | 200, 20 | At each new connection | Requests one game connection may make at once, then how fast more are answered. Past the burst requests wait; none is dropped. Real play peaks near 32 a second, briefly |
+| `outbox-max` | 4096 | At each new connection | Messages that may wait for a game that reads nothing; past it, or after a minute with no read, its connection ends |
+| `audit-keep-days` | 365 | At once | Days the audit log keeps a row; older rows are removed at start, daily and when this changes (0: for ever) |
 | `maintenance-at`, `maintenance-message` | (none) | At once | Set by `maintenance` ([moderation](#moderation-and-maintenance)) |
 
 A value that doesn't pass its check is refused and changes nothing. Desktop writes its Banlist choice as
@@ -127,6 +130,7 @@ log (default: host). They work on a running server; the ones that change an acco
 ./yo3-server --by Anna ban Yugi --reason "cheating" --days 7      # sign-in refused, devices signed out, game disconnected
 ./yo3-server --by Anna lift Yugi                                  # ends a ban or a restriction
 ./yo3-server --by Anna sign-out Yugi                              # every device signed out, the game disconnected
+./yo3-server delete-account Yugi --yes                           # an admin's: the account and its players, for good
 ./yo3-server maintenance --in 30 --message "Back at 10:00"        # the game counts down; --off calls it off
 ./yo3-server set news "Season 16 | The new banlist is live"        # pushed to everyone online
 ```
@@ -138,6 +142,14 @@ log (default: host). They work on a running server; the ones that change an acco
   and the launcher's server list says Maintenance. Run `maintenance --off` when it is over. `stop` after the countdown
   shuts the server down for an update.
 - **News**: the `news` setting; a change reaches the Information panel of everyone online at once.
+- **Deleting an account** (`delete-account`, an admin's; the panel's **Delete account** asks for the User ID typed
+  out): the account, its User ID, password, recovery code and devices, and its players with their cards, decks, BP,
+  items and titles go. So do their friends and ignore entries, friend, trade, rental and team invitations, rentals,
+  the D-Mail they sent and that waits for them, a team they lead (disbanded, its members told) or their place in one,
+  their duel records, user events they host, and their own duel logs. Their game is disconnected. The audit log
+  keeps one row, who deleted which User ID and when, and the earlier rows about the account go. What stays: other
+  players' records against them, the other player's copy of a duel log, and the backups until they are replaced
+  (the newest 24, hourly). Without `--yes` the command refuses.
 
 ## The admin panel
 
@@ -154,7 +166,7 @@ role is admin or moderator:
 | Page | What it shows and does | Moderator |
 | --- | --- | --- |
 | Dashboard | Players online, duels, rules engines, memory, uptime, version, last backup's age, whether saving works, recent warnings and errors | Sees it |
-| Accounts | Search by User ID or player name; an account's role, standing, mute, devices, BP, and each player's cards, decks, items and record; disconnect, mute, restrict, ban, lift, sign out everywhere, reset code, rename; give BP, set country, set role; give a player cards, another artwork or a deck recipe (as `give-cards` and `give-recipe` below) | Moderation and reset codes, on players only; not BP, country, roles or gifts |
+| Accounts | Search by User ID or player name; an account's role, standing, mute, devices, BP, and each player's cards, decks, items and record; disconnect, mute, restrict, ban, lift, sign out everywhere, reset code, rename; give BP, set country, set role; give a player cards, another artwork or a deck recipe (as `give-cards` and `give-recipe` below); delete the account (type its User ID) | Moderation and reset codes, on players only; not BP, country, roles, gifts or deleting |
 | Invites and codes | Invite codes (make, list) and BOOSTERPASS codes (add, remove, who claimed them) | Makes invites; doesn't add or remove codes |
 | News and maintenance | The game's Information list, planning or calling off maintenance | Sees it |
 | Settings | Every live setting with its value, when it applies and what it does | Sees it |

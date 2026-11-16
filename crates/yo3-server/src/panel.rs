@@ -339,6 +339,7 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
     let back = |page: &str| format!("{PREFIX}{page}");
     let (page, outcome): (String, Result<String, String>) = match at {
         "/account" => {
+            let mut return_to_list = false;
             let who = r.field("who").to_string();
             let reason = r.field("reason").to_string();
             let op = (|| Ok::<Op, String>(match r.field("action") {
@@ -357,6 +358,14 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
                     count: number(r.field("count"))? },
                 "give-recipe" => Op::GiveRecipe { player: r.field("player").into(), deck: r.field("deck").into(), cards: r.field("cards") == "on" },
                 "set-country" => Op::SetCountry { who: who.clone(), code: r.field("code").into() },
+                "delete-account" => {
+                    // The User ID typed out (a key account's number), so no slip of the mouse deletes an account (#39).
+                    let a = run(api, viewer, &Op::Account { who: who.clone() })?;
+                    let typed = r.field("confirm").trim().trim_start_matches('#');
+                    let matches = a["login"].as_str().map_or_else(|| a["user_id"].as_u64().is_some_and(|id| typed == id.to_string()), |user| typed.eq_ignore_ascii_case(user));
+                    if !matches { return Err("type the User ID (a key account's number) to confirm".into()) }
+                    Op::DeleteAccount { who: who.clone() }
+                }
                 other => return Err(format!("unknown action {other:?}")),
             }))();
             let outcome = op.and_then(|op| run(api, viewer, &op).map(|v| match &op {
@@ -365,7 +374,9 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
             }));
             // A renamed player's page is under its new name.
             let shown = if r.field("action") == "rename" && outcome.is_ok() && who.eq_ignore_ascii_case(r.field("old")) { r.field("new").to_string() } else { who.clone() };
-            (format!("{}?who={}", back("/account"), encode(&shown)), outcome)
+            // A deleted account has no page any more: back to the list.
+            if r.field("action") == "delete-account" && outcome.is_ok() { return_to_list = true }
+            if return_to_list { (back("/accounts"), outcome) } else { (format!("{}?who={}", back("/account"), encode(&shown)), outcome) }
         }
         "/invites" => {
             let outcome = match r.field("action") {
@@ -547,6 +558,10 @@ fn account(r: &Request, viewer: &Viewer, api: &Api) -> String {
         out += "<h2>Admin</h2><div class=\"actions\">";
         out += &form("give-bp", "Give BP", "<label>BP <input name=\"amount\" inputmode=\"numeric\" required></label>", None, false);
         out += &form("set-country", "Set country", "<label>Code <input name=\"code\" maxlength=\"4\" placeholder=\"auto\" required></label>", None, false);
+        // Delete account (#39): the User ID typed out (a key account's number), then the browser's confirm.
+        let id = if password { name.clone() } else { format!("#{}", text(&a["user_id"])) };
+        out += &form("delete-account", "Delete account", &format!("<label>Type {} to confirm <input name=\"confirm\" required autocomplete=\"off\" maxlength=\"40\"></label>", esc(&id)),
+            Some(&format!("Delete {name} for good? Its players, cards, decks, mail, friends, team and records go, and its game is disconnected. This can't be undone.")), true);
         // Cards no pack hands out, other artworks and deck recipes (#19): per player, so each form names one.
         if !players.is_empty() {
             let player = format!("<label>Player <select name=\"player\">{players}</select></label>");

@@ -187,11 +187,12 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
             };
             let Some(mut lease) = gate.sessions.locked().lease(identity) else { return };
             tracing::info!("[tls] {peer} user {} launcher {} {role:?}", identity.user_id, identity.session_id);
+            let pace = gate.settings.now().pace;
             let work = async move {
                 match role {
                     Role::Front => {
                         let Some(account) = accounts.locked().account_of(identity.user_id) else { return Ok(()) };
-                        Box::pin(net::secured(tls, "front", log, quiet, move |outbox| {
+                        Box::pin(net::secured(tls, "front", log, quiet, pace, move |outbox| {
                             let mut front = FrontSession::new(account, world, hub, outbox);
                             front.set_identity(identity);
                             front.set_tunnel_duel_port(port);
@@ -199,7 +200,7 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                             move |p: &yo3_proto::Packet| front.handle(p)
                         })).await
                     }
-                    Role::Duel => Box::pin(net::secured(tls, "duel", log, heartbeats, move |outbox| {
+                    Role::Duel => Box::pin(net::secured(tls, "duel", log, heartbeats, pace, move |outbox| {
                         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
                         let mut duel = crate::duel::DuelSession::new(world, hub, seed).with_outbox(outbox).with_identity(identity);
                         move |p: &yo3_proto::Packet| duel.handle(p)

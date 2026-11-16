@@ -615,6 +615,21 @@ impl Directory {
         })
     }
 
+    /// Deletes account `user_id` (`delete-account`): its entry with its key, its User ID, password, recovery code and
+    /// devices, and its players with their collections and decks. An invite it issued no longer names it. What it was
+    /// known by (its User ID, or "#ID" for a key account) and its players.
+    pub fn delete_account(&mut self, user_id: u32) -> Result<(String, Vec<(u32, String)>), String> {
+        self.atomic(|d| {
+            let at = d.accounts.iter().position(|e| e.account.user_id == user_id).ok_or_else(|| format!("no account {user_id}"))?;
+            let entry = d.accounts.remove(at);
+            let label = entry.login.as_ref().map_or_else(|| format!("#{user_id}"), |l| l.user.clone());
+            if let Some(login) = &entry.login {
+                for invite in d.invites.iter_mut().filter(|i| i.issued_by.eq_ignore_ascii_case(&login.user)) { invite.issued_by = "(a deleted account)".into() }
+            }
+            Ok((label, entry.account.players.iter().map(|p| (p.player_id, p.name.clone())).collect()))
+        })
+    }
+
     /// Renames a player (names are unique, ignoring case).
     pub fn rename(&mut self, old: &str, new: &str) -> Result<(), String> {
         if new.is_empty() || (self.taken(new) && !old.eq_ignore_ascii_case(new)) {

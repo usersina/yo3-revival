@@ -22,12 +22,17 @@ them. The player-facing summary of what is kept is the [rules and privacy page](
 | The launcher: local proxy and cookie, credential vault, updater, `yo3revival://` invite links, Report a problem | `yo3-launcher`, `yo3-desktop` (`updates`, `multiplayer.rs`, `reports.rs`, `bug_*`, `privileged.rs`) |
 | Secrets and personal data in logs | `log.rs`, `recent.rs`, `yo3-tunnel/src/diagnostics.rs`, `tracing` calls |
 
-This was a code review. Each fix has a test that failed before it. No live client or VM run was part of it.
+This was a code review. Each fix has a test that failed before it. The first review ran no live client or VM; the
+fixes of the patch check, the request pace and the outbox were checked on the private headless client (2026-11-16).
 
 ## Fixed
 
 | Severity | Finding | Fix | Test |
 | --- | --- | --- | --- |
+| High | A normal Play relayed the game's patch check (`yo3/yo3.idx`) and patch files (`ygoda/patch/…`) to the server. The stock patcher writes a patch archive's entries into the game folder under their own names and replaces `yo3.exe` ([client internals](client-internals.md#the-patcher)), so any server a player joined could run code on their PC. | The launcher answers the index with the game's own `yo3.idx` on every Play, and carries only `web/`, `duellogs/` and `app/` to the server. Live (2026-11-16, headless client): a normal Play reached the map with no HTTP request at the server. | `yo3-launcher` `proxy.rs` `the_patch_check_gets_the_games_own_index_and_no_server_reaches_the_patcher` |
+| Medium | A connection had no request rate: it could repeat requests that save (ignore, unfriend, team changes) under the hub lock as fast as it liked. A player who never read their socket grew their outbox with every push. | Each front and duel connection has a token bucket (`request-burst` 200, `requests-per-second` 20, live settings): past the burst requests wait, none is dropped; a 16 KiB frame costs one more. Real play peaks near 32 a second, briefly. Past `outbox-max` (4096) waiting messages, or a write stalled for 60 s, the connection ends. The game's gate is answered by the launcher itself, and the TLS handshake already has per-address limits. Checked: the protocol monkey's 120 s soak cut no connection (its 2 canary stalls happen with the limits out of reach too), and an Auto Duel between two headless clients played to its result. | `net.rs` `a_connection_past_its_burst_is_paced_not_cut`, `a_client_that_does_not_read_is_disconnected_when_its_outbox_fills`, `a_write_stalled_for_a_minute_ends_the_connection` |
+| Medium | No operation deleted an account: a player who asked to leave stayed in the database, with their User ID and audit rows. | `delete-account` (API, CLI with `--yes`, the panel's **Delete account** with the User ID typed out), an admin's alone: the account, its players and everything kept for them go, its sessions and devices end. The audit log keeps one row, who deleted which User ID and when ([rules and privacy](rules-privacy.md#deleting-your-account)). | `deletion_contract.rs`, `panel_contract.rs` `an_admin_deletes_an_account_only_by_typing_its_user_id` |
+| Low | The admin audit log, which names players and moderation reasons, was kept for ever. | The live setting `audit-keep-days` (default 365: a year of moderation history still shows a repeat offender; 0 keeps every row) prunes older rows at start, daily and when it changes. | `settings_contract.rs` `the_audit_log_keeps_rows_for_audit_keep_days_pruned_at_start_and_when_set` |
 | Medium | A 1 MiB chat line was copied to everyone in the room, and to the queue of every player who wasn't reading. Control characters reached other players' chat windows. | A chat line is cut to 200 bytes. Control characters become spaces. | `chat_contract.rs` `a_chat_line_is_cut_to_a_line_and_loses_control_characters` |
 | Medium | A password change or an account recovery signed out devices but left game sessions open for up to 12 hours. Someone who had taken the account stayed in. | Both end every session of the account. | `account_contract.rs` `a_new_password_ends_the_sessions…`, `a_recovered_account_ends_the_sessions…` |
 | Medium | Sign-up hashed the password (64 MiB argon2id) before checking the invite. Sign-ups without an invite could keep both hashing slots busy and slow everyone's sign-in. | The User ID and the invite are checked first. | `account_contract.rs` `a_sign_up_without_a_usable_invite_hashes_no_password` |
@@ -46,56 +51,41 @@ This was a code review. Each fix has a test that failed before it. No live clien
 
 Ordered by severity. Each needs a decision or a larger change than this review should make.
 
-1. **High (unconfirmed): a malicious server can answer the game's patch check.** On a normal Play the launcher's
-   proxy relays `yo3/yo3.idx` and the other `yo3/…` paths from the server (`yo3-launcher/src/lib.rs`, `relay_http`).
-   If the stock patcher downloads and writes the files that index names, any server a player joins could write into
-   the game folder. That includes DLLs, which would mean code execution. Direct start already answers the index from
-   the game's own `yo3.idx` (`Proxy::local_index`).
-   - Proposed: always answer `yo3/yo3.idx` from the local game folder, and refuse the other patch paths.
-   - First confirm the patcher's behaviour with a changed index on the private client. That needs a live run.
-2. **Medium: updates are verified only by a digest from the same GitHub response.** Anyone who can publish a release,
+1. **Medium: updates are verified only by a digest from the same GitHub response.** Anyone who can publish a release,
    such as a stolen maintainer token, can ship an update. Proposed: a detached ed25519 signature checked against a
    key built into the launcher, as the signed server list already does. This needs key handling decided.
-3. **Medium: no per-connection request rate, and outboxes are unbounded.** A client can repeat requests that save,
-   such as ignore, unfriend or team changes, while the hub lock is held. A player who never reads their socket grows
-   their outbox with every push. Proposed: a token bucket in `FrontSession::handle`, a bounded outbox that drops the
-   connection when full, and a write timeout.
-4. **Medium: no account deletion.** No admin operation deletes an account. A player can delete a player in the game,
-   but the account, its User ID and its audit rows stay. Proposed: a `delete-account` operation (API, CLI, panel)
-   that also removes friends, teams, mail and duel logs, with the backups ageing it out. See
-   [rules and privacy](rules-privacy.md#deleting-your-account).
-5. **Medium: the launch cookie appears in a browser command line.** The game's old website links open
+2. **Medium: the launch cookie appears in a browser command line.** The game's old website links open
    `http://127.0.0.1:PORT/session/<cookie>/web/…` (`tools/mod/web-links-logic.h`). Under Wine another local user
    can read it in `/proc`, and it lands in browser history. Proposed: serve `web/` on the proxy without the cookie
    (it is public), or use a one-time path.
-6. **Low–medium: invite links add a server without asking.** A pasted `yo3revival://server?…&name=Official…` link is
+3. **Low–medium: invite links add a server without asking.** A pasted `yo3revival://server?…&name=Official…` link is
    added and selected at once, with any name. Its identity is the attacker's own, so pinning raises no warning, and
    the next sign-in sends the password there. Proposed: the trust screen with address and fingerprint, names capped
    and cleaned, and unlisted servers marked "not verified".
-7. **Low–medium: BP can be farmed.** A loss pays 30 BP and a win 100, even for a duel left at once. Two players
+4. **Low–medium: BP can be farmed.** A loss pays 30 BP and a win 100, even for a duel left at once. Two players
    (one account is enough) can farm without limit. This needs a decision: a minimum number of turns, nothing for two
    players of one account, or a daily cap.
-8. **Low–medium: the per-User ID backoff lets anyone lock a player out.** One wrong password every 15 minutes keeps
+5. **Low–medium: the per-User ID backoff lets anyone lock a player out.** One wrong password every 15 minutes keeps
    a User ID waiting, and recovery uses the same backoff. Proposed: key it on User ID and network, with a higher
    ceiling across networks.
-9. **Low: open registration has no account cap.** With `registration = open`, accounts can be made without limit,
+6. **Low: open registration has no account cap.** With `registration = open`, accounts can be made without limit,
    and several directory lookups are linear. The beta runs invite-only, so this matters when registration opens
    (#24). Proposed: a `max-accounts` setting and a per-network daily sign-up limit.
-10. **Low: one account can hold many connections.** There is no per-user connection cap, and an authenticated front
+7. **Low: one account can hold many connections.** There is no per-user connection cap, and an authenticated front
     connection has no idle timeout after its first message.
-11. **Low: other protocol points.**
+8. **Low: other protocol points.**
     - BOOSTERPASS codes can be guessed without a throttle, so hosts should make long codes.
     - Avatar parts and titles a player sends are not checked against what they own.
     - The shop's rental takes the same card row more than once.
     - Invitations (trade, rental, team, friend) never expire, and ignore lists don't stop them.
     - A whisper keeps the `chat_type` the client sent, including the one NPC and moderator notes use.
     - The pack RNG is seeded from the clock at connection.
-12. **Low: launcher, local attacker.**
+9. **Low: launcher, local attacker.**
     - The elevated helper runs `yo3-revival` from the user-writable bundle folder.
     - The game session token stays in `profiles/multiplayer.json` (0600) after the game ends.
     - Windows loopback ports are bound without `SO_EXCLUSIVEADDRUSE`.
     - The signed server list has no expiry, and it is read whole before its size check.
-13. **Info: behind a reverse proxy every player looks like loopback.** Handshake limits are skipped for loopback and
+10. **Info: behind a reverse proxy every player looks like loopback.** Handshake limits are skipped for loopback and
     account requests share one bucket. The hosting guide's setup has no reverse proxy, so it is unaffected.
 
 ## Known and accepted

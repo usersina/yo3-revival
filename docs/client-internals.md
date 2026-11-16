@@ -15,6 +15,7 @@ export, see [AGENTS.md](https://github.com/usersina/yo3-revival/blob/main/AGENTS
     - [Automatic local deck initialization](#automatic-local-deck-initialization)
     - [Editor saves reach the server](#editor-saves-reach-the-server)
     - [Native duel observer](#native-duel-observer)
+    - [The patcher](#the-patcher)
   - [The field tracer](#the-field-tracer)
   - [The UI probe](#the-ui-probe)
   - [Rendering, the window and the mouse](#rendering-the-window-and-the-mouse)
@@ -399,6 +400,33 @@ The DLL writes `[YO3 CHECK]` records to stderr, already captured by the launcher
 diagnostic ZIP scopes. Busy state waits at most 15 seconds; failures and superseded checkpoints are explicit.
 The schema and comparison limits are in [the protocol](protocol.md#duel-connection). The reader fixture mutates
 visibility, LP, stats, counters, busy flags and invalid pointers, and asserts that its reads never change memory.
+
+### The patcher
+
+The stock client checks for updates at start (`PatchUpdateScene`, constructor `0x4B35E0`, `patch_main.swf`). It reads
+`PatchUpdateUrl` and `PatchDataUrl` from `yo3.ini`, which the connection DLL answers with `…/session/<cookie>/yo3/`
+and `…/ygoda/patch/` on the launch's local HTTP port (`tools/mod/auth.c`, `override`); every other WinINet URL is
+rewritten under the same prefix, and any URL holding `/yo3.idx` becomes `…/yo3/yo3.idx`. It fetches `yo3.idx` first
+(the first WinINet request), and the downloader `0x497090` writes whatever a URL answers to a stream. What the patch
+component (`patch::PatchComponent`) then does with a patch archive in `temp\` (`????????.ypt`, ZIP local headers
+`PK\3\4` or `0x4034F59`), from the code (security review, #39):
+
+- `0x4EA470` creates each entry under **its own name**, relative to the game folder (`CreateFileW(name, GENERIC_WRITE,
+  …, CREATE_ALWAYS)`), and writes its bytes. No check on the name was found: a name with `..\` or a DLL beside
+  `yo3.exe` would be written as given.
+- `0x4EAA50` takes the entry for `yo3.exe`, writes it to `yo3Temp.swap` and moves it over `yo3.exe` (`MoveFileW`, the
+  old one kept as `yo3Temp.back`, or `MoveFileExW` with replace).
+- `0x4EAE30` moves files under `package\` into place (`MoveFileW`) and writes `merge.log`.
+
+So whoever answers the index and the patch files can write into the game folder, including the executable and DLLs it
+loads: code execution on the player's PC. The launcher's proxy therefore answers `yo3/yo3.idx` from the game folder's
+own `yo3.idx` on every Play (normal and direct start, `Proxy::local_index_from`), so the game has nothing to update,
+and carries only `web/`, `duellogs/` and `app/` to the server; `ygoda/patch/…` and anything else get a local 404
+(`yo3-launcher` `relayed`; test `proxy.rs`
+`the_patch_check_gets_the_games_own_index_and_no_server_reaches_the_patcher`). Without the game's own index the check
+gets a 404 and ONLINE says it needs an Internet connection, as with no helper. A patched index was not tried on the
+private client: the code was enough to close the path. **Status: code (the write path), live (the local index reaching
+the map).**
 
 ## The field tracer
 

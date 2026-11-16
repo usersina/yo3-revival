@@ -203,6 +203,10 @@ pub enum Admin {
     Unmute { who: String },
     /// Sign WHO out of every device and disconnect their game.
     SignOut { who: String },
+    /// Delete WHO's account for good (an admin's): its players with their cards, decks, mail, friends, team, records and
+    /// duel logs, its User ID, password and devices; its game is disconnected. The audit log keeps only who deleted which
+    /// User ID and when. Backups still hold it until they are replaced. Needs --yes.
+    DeleteAccount { who: String, #[arg(long)] yes: bool },
     /// Plan maintenance in --in MINUTES (0: now): the game counts down with --message, then only admins and moderators
     /// stay, duels end and sign-ins wait; --off calls it off.
     Maintenance {

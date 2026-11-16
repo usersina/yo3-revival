@@ -98,6 +98,10 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::Mute { who, reason, minutes } => Op::Mute { who: who.clone(), reason: reason.clone(), minutes: *minutes },
         Admin::Unmute { who } => Op::Unmute { who: who.clone() },
         Admin::SignOut { who } => Op::SignOut { who: who.clone() },
+        Admin::DeleteAccount { who, yes } => {
+            anyhow::ensure!(*yes, "delete-account deletes {who:?} and everything kept for it for good: add --yes to go on");
+            Op::DeleteAccount { who: who.clone() }
+        }
         Admin::Maintenance { minutes, message, off } => Op::Maintenance { minutes: *minutes, message: message.clone(), off: *off },
     }))
 }
@@ -139,7 +143,18 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
             yo3_server::store::initialize(&a.data_dir)?;
             let accounts = Directory::open(a.players.clone(), &a.data_dir.join("accounts.json"))?;
             let settings = offline_settings(&a.data_dir, &game_dir, matches!(op, Op::Set { .. }))?;
-            let offline = api::Api::new(Arc::new(Mutex::new(accounts)), Arc::new(settings), Some(a.data_dir.clone()), game_dir.clone(), "offline");
+            let mut offline = api::Api::new(Arc::new(Mutex::new(accounts)), Arc::new(settings), Some(a.data_dir.clone()), game_dir.clone(), "offline");
+            if matches!(op, Op::DeleteAccount { .. }) {
+                // What is kept for the account's players outside the accounts, as a server opens it.
+                let dir = &a.data_dir;
+                let mut hub = yo3_server::front::Hub::with_records(&dir.join("records.json"));
+                hub.keep_social(&dir.join("friends.json"));
+                hub.keep_mail(&dir.join("mail.json"));
+                hub.keep_teams(&dir.join("teams.json"));
+                hub.keep_events(&dir.join("events.json"));
+                hub.keep_rentals(&dir.join("rentals.json"));
+                offline.hub = Some(Arc::new(Mutex::new(hub)));
+            }
             offline.apply(&op, &a.by)
         }
     }.map_err(anyhow::Error::msg)?;
