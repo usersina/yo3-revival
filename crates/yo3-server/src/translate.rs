@@ -37,6 +37,8 @@ const MSG_SELECT_DISFIELD: u64 = 24;
 const MSG_FIELD_DISABLED: u64 = 56;
 const MSG_SORT_CARD: u64 = 25;
 const MSG_SELECT_UNSELECT_CARD: u64 = 26;
+const MSG_TOSS_COIN: u64 = 130;
+const MSG_TOSS_DICE: u64 = 131;
 const MSG_ROCK_PAPER_SCISSORS: u64 = 132;
 const MSG_ANNOUNCE_RACE: u64 = 140;
 const MSG_ANNOUNCE_ATTRIB: u64 = 141;
@@ -265,6 +267,15 @@ const TUNING_RUN: u32 = 0x32;
 /// RunFusion {player, the summoned monster's uid, kind << 16 | the number of materials} (DuelScene 0x514290 by the
 /// kind: 0 or 1 the Fusion animation, 2 the Synchro's).
 const RUN_FUSION: u32 = 0x3A;
+/// DuelScene's RunCoin (0x51500E): DuelCoinToss (0x508050, duel_cointoss.swf) {player | coins << 6 | winning side <<
+/// 14, 0, one bit a coin (1 heads)}. The SWF shows one to three coins, each "head" or "tail", "ok" on the winning side.
+const RUN_COIN: u32 = 0x3C;
+const COINS_A_TOSS: usize = 3;
+/// DuelScene's RunDice (0x5150CD): DuelDiceRoll (0x507D10, duel_diceroll.swf) {player, 0, face}: one die.
+const RUN_DICE: u32 = 0x3D;
+/// EDOPro's SELECT_HEADS and SELECT_TAILS strings: a call's options (Time Wizard).
+const CALL_HEADS: u64 = 60;
+const CALL_TAILS: u64 = 61;
 /// The summon's materials for the Fusion and Synchro animations (the pump 0x522A50 into the engine state's list at
 /// +0x1330, which DuelSynchro 0x507940 walks from the Tuner count on to show the others): 1015 {count, uid, uid, uid}
 /// starts it, 1016 {uid, uid, uid, uid} adds more (Konami's logs: right before every RunFusion, the Tuner first).
@@ -500,6 +511,8 @@ pub struct Translator {
     /// The client's pending prompt (idle or battle command, card choice, question), and whether its chain chance shows
     /// the card list (after Yes).
     pending: Option<Json>,
+    /// The side the client called for the coin toss that follows (heads true); none: heads wins.
+    coin_call: Option<bool>,
     chain_list: bool,
     /// The chain's last link (MSG_CHAINING) until the chain ends, and each link's {player, zone} by its number - 1.
     chaining: Option<Json>,
@@ -668,6 +681,7 @@ impl Translator {
             turn_player: first,
             turns: 0,
             pending: None,
+            coin_call: None,
             chain_list: false,
             chaining: None,
             in_battle: false,
@@ -957,6 +971,21 @@ impl Translator {
                     out.push(command(SET_LP, [self.player(&m["player"]), m["lp"].as_u64().unwrap_or(0) as u32, 0, 0]));
                 }
                 Some(kind @ (MSG_EQUIP | MSG_CARD_TARGET | MSG_CANCEL_TARGET)) => self.link(m, kind),
+                Some(MSG_TOSS_COIN) => {
+                    let p = self.player(&m["player"]);
+                    let wins = self.coin_call.take().unwrap_or(true) as u32;
+                    let heads: Vec<bool> = m["results"].as_array().into_iter().flatten().map(|r| r.as_bool().unwrap_or(false)).collect();
+                    for coins in heads.chunks(COINS_A_TOSS) {
+                        let faces = coins.iter().enumerate().fold(0, |bits, (i, &h)| bits | (h as u32) << i);
+                        out.push(command(RUN_COIN, [p | (coins.len() as u32) << 6 | wins << 14, 0, faces, 0]));
+                    }
+                }
+                Some(MSG_TOSS_DICE) => {
+                    let p = self.player(&m["player"]);
+                    for face in m["results"].as_array().into_iter().flatten() {
+                        out.push(command(RUN_DICE, [p, 0, face.as_u64().unwrap_or(1) as u32, 0]));
+                    }
+                }
                 _ => {}
             }
         }
@@ -2465,7 +2494,15 @@ impl Translator {
     /// several cards, the card list. No pick cancels when the engine allows it; picks that don't fit the choice get
     /// the default.
     pub fn dialog_result(&mut self, count: u32) -> Option<Prompt> {
+        let asked = self.pending.clone();
         let prompt = self.dialog_result_for(count);
+        if let (Some(m), Some(Prompt::Answer(a))) = (&asked, &prompt)
+            && m["type"] == MSG_SELECT_OPTION
+            && a["type"] == RESP_OPTION
+        {
+            let called = a["index"].as_u64().and_then(|i| m["options"][i as usize].as_u64());
+            self.coin_call = match called { Some(CALL_HEADS) => Some(true), Some(CALL_TAILS) => Some(false), _ => self.coin_call };
+        }
         prompt.map(|p| self.with_ids(p))
     }
 

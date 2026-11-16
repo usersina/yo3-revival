@@ -2639,3 +2639,46 @@ fn with_auto_placing_off_the_player_picks_the_zone() {
     let one = json!({ "type": 18, "player": 0, "count": 1, "field_mask": !(1u32 << 3) });
     assert_eq!(t.prompt(&one), Prompt::Answer(json!({ "type": 10, "places": [{ "player": 0, "location": 4, "sequence": 3 }] })));
 }
+
+fn tosses(out: &[Message]) -> Vec<(u32, [u32; 4])> {
+    out.iter().map(cmd).filter(|(id, _)| matches!(id, 0x3C | 0x3D)).collect()
+}
+
+#[test]
+fn a_coin_toss_shows_its_coins_on_the_tossing_players_side() {
+    // DuelScene `0x3C` RunCoin (0x51500E) makes DuelCoinToss (0x508050, duel_cointoss.swf): param1 is the player (bit 0,
+    // the client's own side or the opponent's), the coins (bits 6-13) and the side that wins (bit 14); param3 holds
+    // one bit per coin, 1 heads. Each coin's coinState is (its face == the winning side) | face << 1, which the SWF
+    // plays as "tail", "tail_ok", "head" or "head_ok"; it has frames for one to three coins. Reported: a coin toss
+    // (Sasuke Samurai #4) showed nothing. EDOPro's MSG_TOSS_COIN (130) {player, results}: true is heads.
+    let (mut t, _) = translator();
+    let toss = |player: u32, results: &[bool]| json!({ "type": 130, "player": player, "results": results });
+    assert_eq!(tosses(&t.events(&[toss(0, &[true])])), [(0x3C, [1 << 6 | 1 << 14, 0, 1, 0])], "heads wins without a call");
+    assert_eq!(tosses(&t.events(&[toss(1, &[false, true])])), [(0x3C, [1 | 2 << 6 | 1 << 14, 0, 0b10, 0])], "the CPU's two coins");
+    let five = tosses(&t.events(&[toss(0, &[true, true, false, true, false])]));
+    assert_eq!(five, [(0x3C, [3 << 6 | 1 << 14, 0, 0b011, 0]), (0x3C, [2 << 6 | 1 << 14, 0, 0b01, 0])], "three coins at most a toss");
+}
+
+#[test]
+fn a_called_coin_toss_wins_on_the_called_side() {
+    // Time Wizard: the player calls before the toss ("Coin Toss Selection:", MSG_SELECT_OPTION with EDOPro's
+    // SELECT_HEADS/TAILS strings 60/61); the coin shows "ok" when it lands on the call.
+    let (mut t, _) = translator();
+    let call = json!({ "type": 14, "player": 0, "options": [60, 61] });
+    assert!(matches!(t.prompt(&call), Prompt::Client(_)));
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 4, "index": 1 }))), "Tails");
+    let out = t.events(&[json!({ "type": 130, "player": 0, "results": [true] })]);
+    assert_eq!(tosses(&out), [(0x3C, [1 << 6, 0, 1, 0])], "heads, which loses a call of tails");
+    let out = t.events(&[json!({ "type": 130, "player": 0, "results": [true] })]);
+    assert_eq!(tosses(&out), [(0x3C, [1 << 6 | 1 << 14, 0, 1, 0])], "a call counts for its own toss only");
+}
+
+#[test]
+fn each_die_rolls_on_the_rolling_players_side() {
+    // DuelScene `0x3D` RunDice (0x5150CD) makes DuelDiceRoll (0x507D10, duel_diceroll.swf): param1 the player, param3
+    // the face (diceResult, frames "dice1".."dice6"). One die a command. Reported: a dice roll (Graceful Dice) showed
+    // nothing. EDOPro's MSG_TOSS_DICE (131) {player, results}.
+    let (mut t, _) = translator();
+    let out = t.events(&[json!({ "type": 131, "player": 0, "results": [4] }), json!({ "type": 131, "player": 1, "results": [2, 6] })]);
+    assert_eq!(tosses(&out), [(0x3D, [0, 0, 4, 0]), (0x3D, [1, 0, 2, 0]), (0x3D, [1, 0, 6, 0])]);
+}
