@@ -290,12 +290,12 @@ impl Api {
         Ok(self.gifts.get_or_init(|| Arc::new(crate::gifts::Gifts::from_game(&data))).clone())
     }
 
-    /// Tells a player of a gift on a running server (`Hub::host_gift`): a D-Mail, and their new collection when the gift
-    /// holds cards.
-    fn tell_gift(&self, player: Option<crate::front::Player>, title: &str, body: String, cards: bool) {
+    /// Tells a player of a gift on a running server (`Hub::host_gift`): a D-Mail, their new collection when the gift holds
+    /// cards, and `present` for their PresentWindow.
+    fn tell_gift(&self, player: Option<crate::front::Player>, title: &str, body: String, cards: bool, present: Option<crate::shop::Present>) {
         let (Some(hub), Some(player)) = (&self.hub, player) else { return };
         let trunk = self.world.as_ref().filter(|_| cards).map(|w| crate::trade::trunk(w, &player));
-        hub.locked().host_gift((player.player_id, &player.name), title, body, trunk.as_ref());
+        hub.locked().host_gift((player.player_id, &player.name), title, body, trunk.as_ref(), present);
     }
 
     fn titles(&self) -> Result<Arc<crate::titles::TitleData>, String> {
@@ -487,9 +487,11 @@ impl Api {
                 drop(d);
                 let after = before + count;
                 let art = if gifts.cards.iter().filter(|c| c.cid == card.cid).count() > 1 { format!(" (artwork {})", card.art) } else { String::new() };
-                self.tell_gift(stored, "Cards received", format!("The host gave you {count} × {}{art}. They are in your cards now.", card.name), true);
+                // Shown as a present (at most five copies, a pack's worth), with the card's picture.
+                self.tell_gift(stored, "Cards received", format!("The host gave you {count} × {}{art}. They are in your cards now; you will \
+see them when you next come back to the map.", card.name), true, Some(crate::shop::Present::Gift { cards: vec![card.row; count.min(5) as usize] }));
                 Ok((json!({ "row": card.row, "count": after, "message": format!("gave {count} × {} (artwork {}, Konami id {}) to {player}: {after} beyond \
-their starting cards now (a running server mails them, and an online game has them at once)", card.name, card.art, card.cid) }),
+their starting cards now (a running server mails them, an online game has them at once and shows them at the next map visit)", card.name, card.art, card.cid) }),
                     Some(json!({ "card": card.name, "art": card.art, "count": before })), Some(json!({ "card": card.name, "art": card.art, "count": after }))))
             }
             Op::GiveRecipe { player, deck, cards } => {
@@ -505,12 +507,21 @@ their starting cards now (a running server mails them, and an online game has th
                 })?;
                 let stored = d.player(player_id).cloned();
                 drop(d);
-                let and = if *cards { format!(" and its {} cards", recipe.cards.len()) } else { String::new() };
-                self.tell_gift(stored, "Recipe received", format!("The host gave you the deck recipe {}{and}. It is on Load Deck's \
-Official tab from your next login, or after your next duel.", recipe.title), *cards);
+                // With its cards, as a structure deck arrives: a present of type 1, which shows the deck's cards and sets the
+                // recipe's item in the game itself (PresentWindow case 1). Not the recipe alone: that window shows every card
+                // of the deck as if given.
+                let body = if *cards {
+                    format!("The host gave you the deck recipe {} and its {} cards. You will see them when you next come back to the map; \
+the recipe is then on Load Deck's Official tab.", recipe.title, recipe.cards.len())
+                } else {
+                    format!("The host gave you the deck recipe {} (not its cards). It is on Load Deck's Official tab from your next login, \
+or after your next duel.", recipe.title)
+                };
+                self.tell_gift(stored, "Recipe received", body, *cards, cards.then(|| crate::shop::Present::Deck { id: recipe.id, cards: vec![] }));
                 let with = if *cards { format!(" and its {} cards", recipe.cards.len()) } else { String::new() };
-                plain(Ok(format!("gave the recipe {} (deck {}){with} to {player} (on Load Deck's Official tab at their next login or after their next duel)",
-                    recipe.title, recipe.id)))
+                let when = if *cards { "(on Load Deck's Official tab once an online game shows it, at the next map visit, or at their next login)" }
+                    else { "(on Load Deck's Official tab at their next login or after their next duel)" };
+                plain(Ok(format!("gave the recipe {} (deck {}){with} to {player} {when}", recipe.title, recipe.id)))
             }
             Op::Recipes => {
                 let gifts = self.gifts()?;

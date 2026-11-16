@@ -734,6 +734,9 @@ pub struct Hub {
     /// Card rentals: the scenes under way, the invitations waiting for an answer (the player invited -> the lender),
     /// and the rentals made.
     rental_sessions: Vec<crate::rental::Session>,
+    /// The host's gifts (#19) waiting to be shown in a player's PresentWindow, by player_id (kept until the server stops:
+    /// the gift itself is already the player's).
+    host_presents: HashMap<u32, VecDeque<crate::shop::Present>>,
     rental_invites: HashMap<u32, u32>,
     rentals: crate::rental::Rentals,
     /// User events, and the last event id handed out.
@@ -1780,13 +1783,27 @@ impl Hub {
     /// (`0x2BC9`): the global dispatcher copies a trunk into the game's own on any screen (`0x4F5216`). Not during a duel
     /// between players or a trade or rental scene, which hold their cards on screen; the next trunk request brings it
     /// then. True if the trunk was pushed.
-    pub fn host_gift(&mut self, player: (u32, &str), title: &str, body: String, trunk: Option<&Message>) -> bool {
+    pub fn host_gift(&mut self, player: (u32, &str), title: &str, body: String, trunk: Option<&Message>, present: Option<crate::shop::Present>) -> bool {
         self.mail_from_host(player, title, body);
+        if let Some(present) = present {
+            let waiting = self.host_presents.entry(player.0).or_default();
+            waiting.push_back(present);
+            let count = waiting.len() as u32;
+            self.push(player.0, &Message::reply(0x2774).with("present_count", Value::U32(count)));
+        }
         let busy = self.in_scene(player.0) || self.matches.values().any(|m| m.players.contains(&player.0));
         match trunk {
             Some(trunk) if !busy => self.push(player.0, trunk),
             _ => false,
         }
+    }
+
+    /// The next gift of the host's waiting for a player's PresentWindow.
+    pub fn next_host_present(&mut self, player_id: u32) -> Option<crate::shop::Present> {
+        let waiting = self.host_presents.get_mut(&player_id)?;
+        let next = waiting.pop_front();
+        if waiting.is_empty() { self.host_presents.remove(&player_id); }
+        next
     }
 
     /// Makes two players friends (as an accepted request does).
@@ -3390,7 +3407,11 @@ impl FrontSession {
             }
             // Next present: 0x2777 would carry one; 0x2778 = none, which closes PresentWindow
             // (0x4783C9) and lets the main screen unlock its facilities and menu (0x473B87).
-            0x2775 => match self.presents.pop_front() {
+            // The session's own presents (a purchase, an exchange) first, then the host's gifts (#19).
+            0x2775 => match self.presents.pop_front().or_else(|| {
+                let me = self.account.players.get(self.selected?)?.player_id;
+                self.hub().next_host_present(me)
+            }) {
                 Some(present) => {
                     self.last_present += 1;
                     present.message(self.last_present)

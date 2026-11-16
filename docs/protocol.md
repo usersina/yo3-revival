@@ -728,12 +728,24 @@ the player a D-Mail from "Host" ("Cards received", "Recipe received": subjects f
 bell's `0x2581`, as a BP gift does. A gift that holds cards also pushes the player's new trunk `9000`, as both players
 of a trade get one (`0x2BC9`): the global dispatcher copies a trunk into the game's own on any screen (`0x4F5216`), and
 the collection builder adds the rental records when it runs. Not during a duel between players or a trade or rental
-scene (`Hub::host_gift`); the next trunk request brings it then. A recipe's item reaches the game only in the player's
-next record (`0x2260` at login, `0x2CF3` after a duel): the dispatcher keeps an unasked `0x2CF3` in slot 16 for the
-screen that asked (`0x4F5FC2`) and applies nothing itself, so no push makes it show at once. Live (2026-11-16, a scratch
-server and the headless client on the map): both mails arrived with the bell's mail icon and read as sent, the trunk
-went out and the game kept running. Status: confirmed for the mail; the pushed trunk is the trade's (confirmed live
-there), not seen on a screen for a gift.
+scene (`Hub::host_gift`); the next trunk request brings it then. Live (2026-11-16, a scratch server and the headless
+client on the map): both mails arrived with the bell's mail icon and read as sent, the trunk went out and the game kept
+running. Status: confirmed for the mail; the pushed trunk is the trade's (confirmed live there).
+
+The gift is also a present, queued for the player (`Hub::host_presents`, in memory: a restart drops the showing, not
+the gift) and served by `0x2775` after the session's own presents. A `0x2774 {present_count}` push sets the player's
+present flag (`0x80` at `+0x154`), which PresentWindow's openers test: the main screen's startup step `0x473AE0` (each
+time the main screen is built: at login, where `0x2201` sets the flag too, and on coming back to the map), SelectNpcScene
+(`0x4BE210`), OfficialEventScene (`0x4B26D0`), TournamentScene (`0x4D2340`), and the shop after a purchase
+(`0x47C4A0`). Cards are a `type` 0 present with `pack_id` 0 (no pack: the window titles it "Card", text 68, with the
+card's name) and the card's row as `item`, once per copy up to five. A recipe given with its cards is a `type` 1 present
+like a structure deck: the window shows the deck's name, description and cards, and sets the recipe's item in the game
+(the Official tab lists it at once). A recipe alone is no present: that window would show its cards as given; it
+reaches the game in the player's next record (`0x2260` at login, `0x2CF3` after a duel; an unasked `0x2CF3` is only
+kept in slot 16 for the screen that asked, `0x4F5FC2`). Live (2026-11-16): two Blue-Eyes White Dragon of artwork 5,
+given on the map, showed with their pictures when the player came back to the map from Kaiba Corporation; a recipe
+present showed E-HERO EVOLUTION DECK's 40 cards (NEW! on the ones not owned) and the recipe was on the Official tab at
+once, and no deck was added to the Deck tab. Status: confirmed.
 
 Each pack file's card list is ascending runs: 44, 18, 9, 9 for an 80-card pack, the OCG split of Normal, Rare, Super
 and Ultra Rares. The server reads the runs as rarity tiers (**guess**) and puts four cards of the first tier and one of

@@ -137,6 +137,8 @@ pub enum Present {
     /// The card an exchange gave, with the booster pack it first came in (the window's title and line come from that
     /// pack's file: an exchange pool's own file has neither, and the window showed "Card" over "Attack").
     Card { pack: u32, card: u16 },
+    /// The host's gift of cards (#19): no pack (pack_id 0).
+    Gift { cards: Vec<u16> },
 }
 
 impl Present {
@@ -145,6 +147,7 @@ impl Present {
         match self {
             Present::Pack { cards, .. } | Present::Deck { cards, .. } => cards,
             Present::Card { card, .. } => std::slice::from_ref(card),
+            Present::Gift { cards } => cards,
             Present::Protector(_) | Present::AvatarItem(..) => &[],
         }
     }
@@ -168,6 +171,7 @@ impl Present {
             Present::Card { pack, card } => {
                 m.with("type", Value::U32(0)).with("item", Value::u16_be_array(&[*card])).with("pack_id", Value::U32(*pack))
             }
+            Present::Gift { cards } => m.with("type", Value::U32(0)).with("item", Value::u16_be_array(cards)).with("pack_id", Value::U32(0)),
             Present::Deck { id, .. } => {
                 m.with("type", Value::U32(1)).with("item", Value::u16_be_array(&[*id as u16])).with("desc", Value::text("-1"))
             }
