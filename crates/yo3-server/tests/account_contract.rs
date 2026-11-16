@@ -191,6 +191,52 @@ async fn a_new_password_signs_every_device_out() {
 }
 
 #[tokio::test]
+async fn a_new_password_ends_the_sessions_signed_in_with_the_old_one() {
+    // Security review (#39): someone who knew the old password keeps no game session after the owner changes it.
+    let s = server("change-session").await;
+    s.register("Yugi", PASSWORD).await;
+    let old = session(&s.login("Yugi", PASSWORD).await);
+    let changed = s.ask(json!({ "op": "change_password", "user": "Yugi", "password": PASSWORD, "new_password": "NewLongPass7" })).await;
+    assert_eq!(changed["ok"], true, "{changed}");
+    assert!(s.endpoint.ticket(&old, Role::Front).await.is_err(), "the old session gets no more tickets");
+}
+
+#[tokio::test]
+async fn a_recovered_account_ends_the_sessions_signed_in_before() {
+    // Security review (#39): recovering a taken account throws the taker out of the game too, not only off devices.
+    let s = server("recover-session").await;
+    let code = s.register("Yugi", PASSWORD).await["recovery_code"].as_str().unwrap().to_string();
+    let taker = session(&s.login("Yugi", PASSWORD).await);
+    let done = s.ask(json!({ "op": "recover", "user": "Yugi", "code": code, "new_password": "NewLongPass7" })).await;
+    assert_eq!(done["ok"], true, "{done}");
+    assert!(s.endpoint.ticket(&taker, Role::Front).await.is_err(), "the session from before the recovery ended");
+}
+
+#[tokio::test]
+async fn a_sign_up_without_a_usable_invite_hashes_no_password() {
+    // Security review (#39): an invite-only server checks the invite before the costly password hash, so sign-ups
+    // without one can't keep the two hashing slots busy.
+    let mut cfg = config("invite-first");
+    cfg.settings.push(("registration".into(), "invite".into()));
+    let s = serve(cfg).await;
+    let with = |password: &str, invite: Option<&str>| s.ask(json!({ "op": "register", "user": "Yugi", "password": password, "rules": true, "invite": invite }));
+    assert_eq!(with("NoInvite4Me", None).await["error"], "invite_required");
+    assert_eq!(with("BadInvite4Me", Some("AAAA-BBBB-CCCC-DDDD")).await["error"], "invite_invalid");
+    assert!(!logins::was_hashed("NoInvite4Me") && !logins::was_hashed("BadInvite4Me"), "refused before hashing");
+}
+
+#[tokio::test]
+async fn a_long_user_id_is_refused_before_the_throttle_keeps_it() {
+    // Security review (#39): the per-User ID backoff keeps only names a User ID can be, not kilobytes from anyone.
+    let s = server("long-user").await;
+    let long = "y".repeat(4000);
+    assert_eq!(s.ask(json!({ "op": "recover", "user": long, "code": "AAAA", "new_password": "NewLongPass7" })).await["error"], "invalid_recovery");
+    assert_eq!(s.login(&long, PASSWORD).await["error"], "invalid_credentials");
+    assert_eq!(s.ask(json!({ "op": "recover", "user": long, "code": "AAAA", "new_password": "NewLongPass7" })).await["error"], "invalid_recovery",
+        "no backoff kept for a name that can't be a User ID");
+}
+
+#[tokio::test]
 async fn a_recovery_code_works_once_and_a_new_one_replaces_it() {
     let s = server("recover").await;
     let code = s.register("Yugi", PASSWORD).await["recovery_code"].as_str().unwrap().to_string();

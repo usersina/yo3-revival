@@ -72,11 +72,21 @@ fn argon2() -> argon2::Argon2<'static> {
     argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params.expect("valid argon2 parameters"))
 }
 
+/// For tests (fast hashing only): the digests of the passwords hashed, so a test can tell a request hashed none.
+static HASHED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// For tests: whether `password` was hashed since the process started (only recorded with [`use_fast_hashing`]).
+#[doc(hidden)]
+pub fn was_hashed(password: &str) -> bool { HASHED.lock().unwrap_or_else(|e| e.into_inner()).contains(&digest(password)) }
+
 /// Hashes a password (off the async threads, at most [`HASHING_AT_ONCE`] at a time).
 pub async fn hash_password(password: String) -> anyhow::Result<String> {
     use argon2::PasswordHasher;
-    let _turn = HASHING.acquire().await?;
-    tokio::task::spawn_blocking(move || counted(|| argon2().hash_password(password.as_bytes()).map(|h| h.to_string()).map_err(|e| anyhow::anyhow!("{e}")))).await?
+    if FAST_HASHING.load(Ordering::Relaxed) { HASHED.lock().unwrap_or_else(|e| e.into_inner()).push(digest(&password)) }
+    let turn = HASHING.acquire().await?;
+    // The turn goes with the hash: a request that gives up waiting (the 10 s handshake deadline) can't free its slot
+    // while its hash still runs (#39).
+    tokio::task::spawn_blocking(move || { let _turn = turn; counted(|| argon2().hash_password(password.as_bytes()).map(|h| h.to_string()).map_err(|e| anyhow::anyhow!("{e}"))) }).await?
 }
 
 /// Hashes a password on this thread (the admin commands, outside the server's async threads).
@@ -92,8 +102,9 @@ pub fn new_password() -> String { normalize_code(&new_code()).to_lowercase() }
 /// User ID takes as long as a wrong password).
 pub async fn verify_password(password: String, hash: Option<String>) -> bool {
     use argon2::PasswordVerifier;
-    let Ok(_turn) = HASHING.acquire().await else { return false };
+    let Ok(turn) = HASHING.acquire().await else { return false };
     tokio::task::spawn_blocking(move || {
+        let _turn = turn;
         let (hash, real) = match hash { Some(h) => (h, true), None => (DUMMY.clone(), false) };
         counted(|| argon2().verify_password(password.as_bytes(), &*hash).is_ok()) && real
     }).await.unwrap_or(false)
@@ -259,7 +270,47 @@ impl Invite {
 /// Throttling in front of the account operations: a token bucket per address, and per User ID a backoff after failed
 /// passwords or codes (1 s, doubling to 15 minutes by default, reset by a success). No lockout: waiting always works.
 #[derive(Default)]
-pub struct Throttle { addresses: HashMap<IpAddr, (f64, Instant)>, users: HashMap<String, (u32, Instant)>, limits: Limits }
+pub struct Throttle { addresses: Buckets, users: HashMap<String, (u32, Instant)>, users_pruned: Option<Instant>, limits: Limits }
+
+/// The network an allowance belongs to: an IPv4 address, or an IPv6 address's /64. A home or a server gets a whole
+/// /64, so rotating addresses inside it is not a new allowance each time (security review, #39).
+pub fn network(addr: IpAddr) -> IpAddr {
+    match addr {
+        IpAddr::V4(_) => addr,
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => v4.into(),
+            None => { let s = v6.segments(); std::net::Ipv6Addr::new(s[0], s[1], s[2], s[3], 0, 0, 0, 0).into() }
+        },
+    }
+}
+
+/// Beyond this many networks the buckets that have filled up again are dropped (at most once a second).
+pub const BUCKETS_PRUNED_ABOVE: usize = 100_000;
+
+/// Token buckets per [`network`]: the account requests' throttle and the TLS listener's handshake allowance (#27).
+#[derive(Default)]
+pub struct Buckets { map: HashMap<IpAddr, (f64, Instant)>, pruned: Option<Instant> }
+
+impl Buckets {
+    /// Takes one from `addr`'s bucket (`burst` deep, `per_second` back each second); how long to wait if it is empty.
+    pub fn take(&mut self, addr: IpAddr, now: Instant, burst: f64, per_second: f64) -> Result<(), Duration> {
+        // A full bucket is the same as none: those go, but not on every request (a flood of new addresses would
+        // otherwise make each one scan the whole map).
+        if self.map.len() > BUCKETS_PRUNED_ABOVE && self.pruned.is_none_or(|t| now.duration_since(t) >= Duration::from_secs(1)) {
+            self.pruned = Some(now);
+            self.map.retain(|_, (tokens, at)| *tokens + now.saturating_duration_since(*at).as_secs_f64() * per_second < burst);
+        }
+        let (tokens, at) = self.map.entry(network(addr)).or_insert((burst, now));
+        *tokens = (*tokens + now.saturating_duration_since(*at).as_secs_f64() * per_second).min(burst);
+        *at = now;
+        if *tokens >= 1.0 { *tokens -= 1.0; Ok(()) } else { Err(Duration::from_secs_f64((1.0 - *tokens) / per_second)) }
+    }
+
+    /// How many networks have a bucket now.
+    pub fn len(&self) -> usize { self.map.len() }
+
+    pub fn is_empty(&self) -> bool { self.map.is_empty() }
+}
 
 /// The throttle's limits, live settings (#24): the burst an address may make, how many seconds bring back one request,
 /// and the longest backoff after failures.
@@ -276,13 +327,7 @@ impl Throttle {
 
     /// Takes one request from `addr`'s allowance; how long to wait if there is none left.
     pub fn address(&mut self, addr: IpAddr, now: Instant) -> Result<(), Duration> {
-        let bucket = f64::from(self.limits.burst.max(1));
-        let refill = 1.0 / f64::from(self.limits.refill_seconds.max(1));
-        if self.addresses.len() > 100_000 { self.addresses.retain(|_, (tokens, at)| *tokens < bucket && now.duration_since(*at) < Duration::from_secs(3600)) }
-        let (tokens, at) = self.addresses.entry(addr).or_insert((bucket, now));
-        *tokens = (*tokens + now.duration_since(*at).as_secs_f64() * refill).min(bucket);
-        *at = now;
-        if *tokens >= 1.0 { *tokens -= 1.0; Ok(()) } else { Err(Duration::from_secs_f64((1.0 - *tokens) / refill)) }
+        self.addresses.take(addr, now, f64::from(self.limits.burst.max(1)), 1.0 / f64::from(self.limits.refill_seconds.max(1)))
     }
 
     /// How long `user` must still wait after failures, if at all.
@@ -292,7 +337,12 @@ impl Throttle {
 
     /// A wrong password or code for `user`: the next try waits twice as long as the last (from 1 s, at most 15 min).
     pub fn failed(&mut self, user: &str, now: Instant) {
-        if self.users.len() > 100_000 { self.users.retain(|_, (_, until)| *until > now) }
+        // A name no account can have is not kept: no backoff protects it, and anyone could fill the map (#39).
+        if !valid_user_id(user) { return }
+        if self.users.len() > BUCKETS_PRUNED_ABOVE && self.users_pruned.is_none_or(|t| now.duration_since(t) >= Duration::from_secs(1)) {
+            self.users_pruned = Some(now);
+            self.users.retain(|_, (_, until)| *until > now);
+        }
         let (count, until) = self.users.entry(user.to_lowercase()).or_insert((0, now));
         *count = count.saturating_add(1);
         let wait = Duration::from_secs(1u64 << (*count - 1).min(20)).min(Duration::from_secs(self.limits.max_backoff_seconds.max(1).into()));
@@ -356,6 +406,40 @@ mod tests {
         assert!(verify_password("heart of the cards".into(), Some(hash.clone())).await);
         assert!(!verify_password("heart of the card".into(), Some(hash)).await);
         assert!(!verify_password("anything".into(), None).await, "an unknown User ID never matches");
+    }
+
+    #[test]
+    fn an_ipv6_network_shares_one_allowance() {
+        // Security review (#39): every address of one /64 draws on the same bucket; IPv4-mapped is the IPv4 address.
+        let (mut t, now) = (Throttle::default(), Instant::now());
+        let a: IpAddr = "2001:db8:1:2::1".parse().unwrap();
+        for i in 0..10u16 { assert!(t.address(format!("2001:db8:1:2::{:x}", i + 1).parse().unwrap(), now).is_ok()) }
+        assert!(t.address("2001:db8:1:2:ffff::9".parse().unwrap(), now).is_err(), "another address of the same /64 waits");
+        assert!(t.address("2001:db8:1:3::1".parse().unwrap(), now).is_ok(), "the next /64 has its own");
+        assert_eq!(network(a), "2001:db8:1:2::".parse::<IpAddr>().unwrap());
+        assert_eq!(network("::ffff:198.51.100.7".parse().unwrap()), "198.51.100.7".parse::<IpAddr>().unwrap());
+    }
+
+    #[test]
+    fn full_buckets_are_dropped_and_pruning_waits_a_second() {
+        let (mut b, now) = (Buckets::default(), Instant::now());
+        for i in 0..=BUCKETS_PRUNED_ABOVE as u32 { b.take(IpAddr::from(i.to_be_bytes()), now, 10.0, 1.0).unwrap() }
+        let later = now + Duration::from_secs(5);
+        b.take(IpAddr::from([255, 0, 0, 1]), later, 10.0, 1.0).unwrap();
+        assert!(b.len() < 10, "every refilled bucket went: {}", b.len());
+        for i in 0..=BUCKETS_PRUNED_ABOVE as u32 { b.take(IpAddr::from(i.to_be_bytes()), later, 10.0, 1.0).unwrap() }
+        let at = b.len();
+        b.take(IpAddr::from([255, 0, 0, 2]), later + Duration::from_secs(20), 10.0, 1.0).unwrap();
+        assert_eq!(b.len(), 1, "pruned again a second later: only the newest is left");
+        assert!(at > BUCKETS_PRUNED_ABOVE, "not pruned twice within the same second");
+    }
+
+    #[test]
+    fn a_name_that_is_no_user_id_keeps_no_backoff() {
+        let (mut t, now) = (Throttle::default(), Instant::now());
+        t.failed(&"y".repeat(4000), now);
+        t.failed("Yugi", now);
+        assert_eq!(t.users.len(), 1);
     }
 
     #[test]

@@ -137,17 +137,7 @@ impl Directory {
     /// Makes a password account with no players yet (they are made in the game's Select Player), under the server's
     /// registration mode: an invite code is used up when one is needed. Its user id.
     pub fn register(&mut self, login: crate::logins::Login, invite: Option<&str>, mode: crate::logins::Registration) -> Result<u32, String> {
-        use crate::logins::Registration;
-        if self.login_at(&login.user).is_some() { return Err("user_id_taken".into()) }
-        let now = crate::logins::now();
-        let invite_at = match mode {
-            Registration::Closed => return Err("registration_closed".into()),
-            Registration::Open => None,
-            Registration::Invite => {
-                let code = crate::logins::normalize_code(invite.ok_or("invite_required")?);
-                Some(self.invites.iter().position(|i| crate::logins::normalize_code(&i.code) == code && i.usable(now)).ok_or("invite_invalid")?)
-            }
-        };
+        let invite_at = self.admission(&login.user, invite, mode)?;
         self.atomic(|d| {
             let account = d.create_account(&[]);
             let user_id = account.user_id;
@@ -159,6 +149,27 @@ impl Directory {
             d.accounts.push(Entry { key: None, login: Some(login), account: Arc::new(account) });
             Ok(user_id)
         })
+    }
+
+    /// Whether `user` could sign up now with `invite` under `mode`, without using the invite: the account requests
+    /// ask before hashing the password (security review, #39), and [`Directory::register`] asks again.
+    pub fn can_register(&self, user: &str, invite: Option<&str>, mode: crate::logins::Registration) -> Result<(), String> {
+        self.admission(user, invite, mode).map(|_| ())
+    }
+
+    /// The invite a sign-up would use (its place), or why it can't sign up.
+    fn admission(&self, user: &str, invite: Option<&str>, mode: crate::logins::Registration) -> Result<Option<usize>, String> {
+        use crate::logins::Registration;
+        if self.login_at(user).is_some() { return Err("user_id_taken".into()) }
+        let now = crate::logins::now();
+        match mode {
+            Registration::Closed => Err("registration_closed".into()),
+            Registration::Open => Ok(None),
+            Registration::Invite => {
+                let code = crate::logins::normalize_code(invite.ok_or("invite_required")?);
+                Ok(Some(self.invites.iter().position(|i| crate::logins::normalize_code(&i.code) == code && i.usable(now)).ok_or("invite_invalid")?))
+            }
+        }
     }
 
     /// The account a device's sign-in belongs to (`digest` of its token), if it is still valid at `now`.
