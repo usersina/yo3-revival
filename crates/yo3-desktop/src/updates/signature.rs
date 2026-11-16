@@ -1,17 +1,19 @@
-//! SIGNING SEAM (#32): the release manifest's signature, checked before an update is downloaded.
+//! Signed updates (#32): the release manifest's Ed25519 signature, checked before an update is downloaded.
 //!
-//! **Off until the project's signing key exists.** `PUBLIC_KEY` is `None`, so `download::prepare` skips this check and
-//! an update is verified only against the SHA-256 GitHub reports (as before #32). To turn it on:
+//! The Release workflow writes `SHA256SUMS` (`sha256sum` lines: `<hex>  <file name>`) over the release's files, signs
+//! it with the project's private key (the repository secret `UPDATE_SIGNING_KEY`;
+//! `openssl pkeyutl -sign -rawin -inkey KEY -in SHA256SUMS -out SHA256SUMS.sig`: 64 raw bytes), checks the signature
+//! with the public key below and attaches both files to the release. `download::prepare` fetches both before the
+//! archive and refuses the update unless the signature is the project's and the manifest lists the same SHA-256 that
+//! GitHub reports for the download (which the download is then checked against).
 //!
-//! 1. The owner makes an Ed25519 key pair (`openssl genpkey -algorithm ed25519 -out release.key`), keeps the private
-//!    key as a CI secret, and puts the 32-byte public key here
-//!    (`openssl pkey -in release.key -pubout -outform DER | tail -c 32 | xxd -i`).
-//! 2. The Release workflow writes `SHA256SUMS` (`sha256sum` lines: `<hex>  <file name>`) for the release's files and
-//!    signs it (`openssl pkeyutl -sign -rawin -inkey release.key -in SHA256SUMS -out SHA256SUMS.sig`: 64 raw bytes),
-//!    and attaches both to the release.
-//! 3. `tools/test-packaged-update.sh` gets a signed manifest to check (the test key made in the test, never this one).
+//! **A release without `SHA256SUMS.sig` (or without `SHA256SUMS`) is refused.** The launcher is only ever offered a
+//! release newer than itself, and every release since this key was built in is signed by the workflow that made it, so
+//! an unsigned newer release is a broken or substituted one, never an old one. Releases before signing began (v0.0.21
+//! and older) are never offered to a launcher that checks signatures; they themselves don't check, so they still
+//! update to a signed release.
 //!
-//! The format is plain Ed25519 over the manifest's bytes, so `ring` (already a dependency) checks it.
+//! `tools/test-packaged-update.sh` checks a signed manifest end to end with a key it makes for the test, never this one.
 use anyhow::{Context, ensure};
 use super::Release;
 
@@ -22,11 +24,24 @@ pub const SIGNATURE: &str = "SHA256SUMS.sig";
 /// The largest manifest read.
 pub const MAX_MANIFEST: usize = 64 * 1024;
 
-/// The project's release-signing public key (raw Ed25519, 32 bytes). `None`: no key exists yet, nothing is checked.
-pub const PUBLIC_KEY: Option<[u8; 32]> = None;
+/// The project's release-signing public key (raw Ed25519, 32 bytes; `openssl pkey -pubout -outform DER | tail -c 32`).
+/// The private key is only the repository secret `UPDATE_SIGNING_KEY`. `None` would turn the check off.
+pub const PUBLIC_KEY: Option<[u8; 32]> = Some([
+    0xdb, 0xb2, 0x5e, 0xca, 0x8c, 0x2c, 0xef, 0xb9, 0x41, 0xad, 0xdd, 0x99, 0xe3, 0xa8, 0x51, 0xf7,
+    0x7f, 0xcc, 0x78, 0x0c, 0xa5, 0x06, 0x02, 0x60, 0xf3, 0x26, 0x40, 0xd1, 0x9e, 0x09, 0x98, 0x7c,
+]);
 
-/// Whether updates must carry a valid signature (only once `PUBLIC_KEY` is set).
+/// Whether updates must carry a valid signature (once `PUBLIC_KEY` is set).
 pub const fn required() -> bool { PUBLIC_KEY.is_some() }
+
+/// A raw Ed25519 public key from its 64 hex digits.
+pub fn parse_key(hex: &str) -> Option<[u8; 32]> {
+    let hex = hex.trim();
+    if hex.len() != 64 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) { return None }
+    let mut key = [0; 32];
+    for (i, byte) in key.iter_mut().enumerate() { *byte = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).ok()?; }
+    Some(key)
+}
 
 /// The manifest's signature is `public_key`'s.
 pub fn verify(manifest: &[u8], signature: &[u8], public_key: &[u8; 32]) -> anyhow::Result<()> {
@@ -57,6 +72,16 @@ pub fn check(release: &Release, manifest: &[u8], signature: &[u8], public_key: &
     Ok(())
 }
 
+/// The release's signature files as fetched: `None` when the release doesn't have that file (HTTP 404). A release
+/// without them is refused (see the module's notes).
+pub fn vouch(release: &Release, manifest: Option<&[u8]>, signature: Option<&[u8]>, public_key: &[u8; 32]) -> anyhow::Result<()> {
+    let (Some(manifest), Some(signature)) = (manifest, signature) else {
+        anyhow::bail!("Update {} isn't signed (its {} is missing), so it wasn't installed. You can keep playing; if you trust \
+            it, download it yourself from the releases page.", release.tag.trim_start_matches('v'), if manifest.is_none() { MANIFEST } else { SIGNATURE })
+    };
+    check(release, manifest, signature, public_key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,8 +101,24 @@ mod tests {
     }
 
     #[test]
-    fn the_seam_is_off_until_the_project_key_exists() {
-        assert!(PUBLIC_KEY.is_none() && !required(), "no real key may be committed by #32's visible part");
+    fn the_project_key_is_built_in_and_updates_must_be_signed() {
+        assert!(required());
+        assert_eq!(PUBLIC_KEY, parse_key("dbb25eca8c2cefb941addd99e3a851f77fcc780ca5060260f32640d19e09987c"));
+        assert!(ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, PUBLIC_KEY.unwrap()).verify(b"x", &[0; 64]).is_err());
+        assert!(parse_key("dbb2").is_none() && parse_key(&"zz".repeat(32)).is_none());
+    }
+
+    #[test]
+    fn a_release_without_its_signature_or_manifest_is_refused_with_a_plain_reason() {
+        let key = test_key();
+        let hash = "ab".repeat(32);
+        let manifest = format!("{hash}  yo3-revival-desktop-v0.2.1-linux-x86_64.tar.gz\n");
+        let signature = key.sign(manifest.as_bytes());
+        vouch(&release(&hash), Some(manifest.as_bytes()), Some(signature.as_ref()), &public(&key)).unwrap();
+        let error = vouch(&release(&hash), Some(manifest.as_bytes()), None, &public(&key)).unwrap_err().to_string();
+        assert!(error.starts_with("Update 0.2.1 isn't signed (its SHA256SUMS.sig is missing)"), "{error}");
+        let error = vouch(&release(&hash), None, None, &public(&key)).unwrap_err().to_string();
+        assert!(error.contains("its SHA256SUMS is missing"), "{error}");
     }
 
     #[test]

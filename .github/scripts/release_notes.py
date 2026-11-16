@@ -33,12 +33,13 @@ def sha256(path):
 
 
 SUMS = "SHA256SUMS"
+SIGNATURE = "SHA256SUMS.sig"
 ANTIVIRUS = "https://github.com/usersina/yo3-revival/blob/main/docs/antivirus.md"
 
 
 def archives(directory):
-    """The release's files in DIR, by name, without the checksum file itself."""
-    files = sorted((p for p in pathlib.Path(directory).iterdir() if p.is_file() and p.name != SUMS), key=lambda p: p.name)
+    """The release's files in DIR, by name, without the checksum file and its signature."""
+    files = sorted((p for p in pathlib.Path(directory).iterdir() if p.is_file() and p.name not in (SUMS, SIGNATURE)), key=lambda p: p.name)
     if not files:
         sys.exit(f"{directory}: no files to list")
     return files
@@ -85,7 +86,8 @@ def main():
     print(f"Get-FileHash .\\yo3-revival-desktop-{version}-windows-x86_64.zip")
     print("```\n")
     print(f"The Hash it prints must equal the archive's line here (capitals don't matter). On Linux, `sha256sum -c {SUMS}"
-          " --ignore-missing` in the download folder checks every archive you have. More:"
+          f" --ignore-missing` in the download folder checks every archive you have. `{SIGNATURE}` is the project's signature"
+          " over that list, which Desktop checks before it installs an update. More:"
           f" [antivirus warnings and checking a download]({ANTIVIRUS}).\n")
     print("```")
     for f in files:
