@@ -10,14 +10,16 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.0.25 (2026-11-16)
 
 A startup fix for Windows 10 version 1809 (LTSC 2019). Choose **Desktop** for the graphical app or **Scripts** for
 terminal commands. Both editions include the server, rules engine and required connection components. Original game
 files are not included. **Windows 7 is not supported.**
 
 Players on Windows should update; hosts need nothing new. Friends on v0.0.13 or later can still join. Before updating,
-close the game and stop hosting. Keep your server data and local game Documents.
+close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.25/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.25/docs/scripts.md).
 
 - **The game starts on Windows 10 version 1809 (LTSC 2019) again.** It closed at once with `0xc0000139`, or with
   "The procedure entry point waveInGetDevCapsW could not be located", when opened directly. On that Windows, its own
