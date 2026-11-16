@@ -37,6 +37,29 @@ int main(void) {
     }
     assert(!yo3_login_call_ok(call,sizeof call+1));
     attempt(0); attempt(1); attempt(0); /* a new native login window can retry after cancel/error */
-    puts("PASS: login connects once with fresh/saved data, preserving native state and guarding the call");
+    /* #34: the form's entries, read from MSVC strings and the password blanked before the game saves it. */
+    unsigned char s[28] = {0}; char out[64];
+    memcpy(s + 4, "Yugi", 5); uint32_t size = 4, reserved = 15; memcpy(s + 0x14, &size, 4); memcpy(s + 0x18, &reserved, 4);
+    assert(yo3_msvc_string(s, out, sizeof out) == 4 && !strcmp(out, "Yugi"));
+    char heap[40] = "a long passphrase!"; char *p = heap; size = 18; reserved = 31;
+    memcpy(s + 4, &p, sizeof p); memcpy(s + 0x14, &size, 4); memcpy(s + 0x18, &reserved, 4);
+    assert(yo3_msvc_string(s, out, sizeof out) == 18 && !strcmp(out, "a long passphrase!"));
+    assert(yo3_msvc_string(s, out, 10) == -1); /* never a cut password */
+    yo3_msvc_string_clear(s);
+    assert(yo3_msvc_string(s, out, sizeof out) == 0 && !memchr(heap, 'p', sizeof heap)); /* nothing of it left to save */
+    size = 40; memcpy(s + 0x14, &size, 4); assert(yo3_msvc_string(s, out, sizeof out) == -1); /* size past capacity */
+    char request[1024], cookie[] = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    int n = yo3_login_post(request, sizeof request, cookie, "Yu\\gi \"M\"", "pass word", 1);
+    assert(n > 0 && strstr(request, "POST /session/0123") && strstr(request, "/revival/login HTTP/1.1\r\n"));
+    assert(strstr(request, "\r\n\r\n{\"user\":\"Yu\\\\gi \\\"M\\\"\",\"password\":\"pass word\",\"stay\":true}"));
+    char length[32]; snprintf(length, sizeof length, "Content-Length: %d\r\n", (int)strlen(strstr(request, "\r\n\r\n") + 4));
+    assert(strstr(request, length));
+    assert(!yo3_login_post(request, sizeof request, cookie, "Yugi", "", 0)); /* an empty box: nothing to send */
+    assert(!yo3_login_post(request, sizeof request, cookie, "Yu\ngi", "x", 0)); /* control bytes refused */
+    assert(yo3_login_state_request(request, sizeof request, cookie) > 0 && strstr(request, "/revival/login-state HTTP/1.1"));
+    assert(yo3_login_wants_form("HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nform"));
+    assert(!yo3_login_wants_form("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nready"));
+    assert(!yo3_login_wants_form("") && !yo3_login_wants_form(NULL));
+    puts("PASS: login connects once with fresh/saved data, preserving native state and guarding the call; the form's entries go to the helper and the password is blanked");
     return 0;
 }

@@ -146,3 +146,56 @@ fn a_direct_profile_names_its_mode() {
     assert_eq!(loaded.start.unwrap().env["YO3_ENGINE"], "e");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+async fn http(proxy: &Proxy, request: String) -> String {
+    let mut s = TcpStream::connect(("127.0.0.1", proxy.ports.http)).await.unwrap();
+    s.write_all(request.as_bytes()).await.unwrap();
+    let mut reply = vec![]; let _ = s.read_to_end(&mut reply).await;
+    String::from_utf8(reply).unwrap()
+}
+
+/// #34: the game's own login form shows only when there is no saved sign-in, and what the player types there reaches
+/// the helper, which signs in with it (Save Password: the device keeps a token) or lets the form show the refusal.
+#[tokio::test]
+async fn the_games_login_form_signs_in_with_what_the_player_typed() {
+    yo3_server::logins::use_fast_hashing();
+    let dir = scratch("typed");
+    let cfg = yo3_server::Config::ephemeral(dir.clone());
+    let cert = cfg.tls.certificate.clone();
+    let server = yo3_server::start(cfg).await.unwrap();
+    let endpoint = Endpoint::new(server.auth.to_string(), "localhost".into(), &cert).unwrap();
+    let made = endpoint.account(&serde_json::json!({ "op": "register", "user": "former", "password": "a long passphrase", "rules": true })).await.unwrap();
+    assert_eq!(made["ok"], true, "{made}");
+    let proxy = Proxy::prepare(endpoint.clone(), Ports::default()).await.unwrap();
+    let cookie = yo3_launcher::hex(&proxy.cookie);
+    let state = format!("GET /session/{cookie}/{} HTTP/1.1\r\nHost: localhost\r\n\r\n", yo3_launcher::LOGIN_STATE_PATH);
+    proxy.refuse(Refusal::FailedToConnect);
+    assert!(http(&proxy, state.clone()).await.ends_with("\r\n\r\nready"), "a server that is down: no form, the game says it can't connect");
+    proxy.refuse(Refusal::SignedOut);
+    assert!(http(&proxy, state.clone()).await.ends_with("\r\n\r\nform"), "no saved sign-in: the game's own form");
+    // What the DLL posts when the game connects to the front after goLogin.
+    let mut typed = proxy.typed_logins().unwrap();
+    let body = serde_json::json!({ "user": "former", "password": "a long passphrase", "stay": true }).to_string();
+    let reply = http(&proxy, format!("POST /session/{cookie}/{} HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\n\r\n{body}",
+        yo3_launcher::LOGIN_PATH, body.len())).await;
+    assert!(reply.starts_with("HTTP/1.1 204"), "{reply}");
+    let login = tokio::time::timeout(Duration::from_secs(1), typed.recv()).await.unwrap().unwrap();
+    assert!(!format!("{login:?}").contains("passphrase"), "a password never reaches a log");
+    let wrong = http(&proxy, format!("POST /session/00/{} HTTP/1.1\r\nContent-Length: 2\r\n\r\n{{}}", yo3_launcher::LOGIN_PATH)).await;
+    assert!(wrong.is_empty(), "another process without the cookie is refused");
+    let vault = MemoryVault::default();
+    direct::sign_in_typed(&endpoint, &login, Some("server:typed"), &vault).await.unwrap();
+    let token = vault.get("server:typed").unwrap().expect("Save Password keeps a device token");
+    let read = |a: &str| vault.get(a).unwrap();
+    direct::sign_in(&endpoint, &Credential::Device("server:typed".into()), &read).await.unwrap();
+    assert_eq!(token.len(), 64);
+    let plain = direct::Typed { user: "former".into(), password: "a long passphrase".into(), stay: false };
+    let other = MemoryVault::default();
+    direct::sign_in_typed(&endpoint, &plain, Some("server:typed"), &other).await.unwrap();
+    assert_eq!(other.get("server:typed").unwrap(), None, "without Save Password nothing is kept");
+    let bad = direct::Typed { user: "former".into(), password: "not the passphrase".into(), stay: true };
+    assert_eq!(direct::sign_in_typed(&endpoint, &bad, Some("server:typed"), &other).await.unwrap_err().refusal, Refusal::WrongPassword);
+    let down = Endpoint::new("127.0.0.1:1".into(), "localhost".into(), &cert).unwrap();
+    assert_eq!(direct::sign_in_typed(&down, &plain, None, &other).await.unwrap_err().refusal, Refusal::FailedToConnect);
+    let _ = std::fs::remove_dir_all(dir);
+}

@@ -7,22 +7,10 @@
 #include "signout-logic.h"
 
 static void signout_direct_start(void) {
-    char cookie[80], port[16], request[256];
-    DWORD n = GetEnvironmentVariableA("YO3_LOCAL_COOKIE", cookie, sizeof cookie);
-    if (!n || n >= sizeof cookie || !GetEnvironmentVariableA("YO3_LOCAL_HTTP", port, sizeof port)) return;
-    int length = yo3_signout_request(request, sizeof request, cookie);
-    unsigned long number = strtoul(port, NULL, 10);
-    if (!length || !number || number > 65535) return;
-    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (s == INVALID_SOCKET) return;
-    DWORD wait = 3000; setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *)&wait, sizeof wait);
-    struct sockaddr_in helper = {0}; helper.sin_family = AF_INET; helper.sin_port = htons((u_short)number);
-    helper.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    char reply[64]; int got = 0;
-    if (connect(s, (struct sockaddr *)&helper, sizeof helper) == 0 && send(s, request, length, 0) == length)
-        got = recv(s, reply, sizeof reply - 1, 0);
-    closesocket(s);
-    if (got > 12 && !memcmp(reply, "HTTP/1.1 204", 12)) starter_log("[YO3 MOD] Delete Login Data: the saved sign-in is forgotten.\r\n");
+    char request[256], reply[64];
+    int length = yo3_signout_request(request, sizeof request, cookie_hex);
+    if (length && helper_request(request, length, reply, sizeof reply, 3000) > 12 && !memcmp(reply, "HTTP/1.1 204", 12))
+        starter_log("[YO3 MOD] Delete Login Data: the saved sign-in is forgotten.\r\n");
 }
 
 /* 0x51D1C0, UserSettings' save (thiscall, ECX the settings), after the sign-out. */

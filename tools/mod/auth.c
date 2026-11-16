@@ -92,6 +92,7 @@ static HINTERNET WINAPI hooked_url(HINTERNET internet, LPCSTR url, LPCSTR header
     return open_url(internet, replacement, headers, count, flags, context);
 }
 
+static void login_before_front(void);
 static int WSAAPI hooked_connect(SOCKET socket, const struct sockaddr *to, int size) {
     if (!to || size < (int)sizeof(struct sockaddr_in) || to->sa_family != AF_INET) {
         WSASetLastError(WSAEACCES); return SOCKET_ERROR;
@@ -108,6 +109,7 @@ static int WSAAPI hooked_connect(SOCKET socket, const struct sockaddr *to, int s
     if (i == 64) { LeaveCriticalSection(&guard); WSASetLastError(WSAENOBUFS); return SOCKET_ERROR; }
     if (connections[i].socket != socket) { connections[i].socket = socket; connections[i].sent = 0; }
     LeaveCriticalSection(&guard);
+    if (port == front_port) login_before_front();
     return socket_connect(socket, to, size);
 }
 
@@ -138,6 +140,7 @@ static int WSAAPI hooked_close(SOCKET socket) {
 
 #include "hooks.h"
 #include "starter.h"
+#include "login-form.h"
 #include "login.h"
 #include "duel-observer.h"
 #include "deck-upload.h"

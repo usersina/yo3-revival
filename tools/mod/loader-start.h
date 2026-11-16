@@ -2,6 +2,9 @@
 #define YO3_LOADER_START_H
 #include "hooks.h"
 #include "game-image.h"
+/* Offline, the login skip never shows the game's form: it has no helper to sign in with. */
+static int login_decision __attribute__((used));
+static int __attribute__((used,noinline)) login_decide(void *window) { (void)window; return login_decision = 0; }
 #include "login.h"
 static DWORD (WINAPI *real_string)(LPCSTR,LPCSTR,LPCSTR,LPSTR,DWORD,LPCSTR);
 static UINT (WINAPI *real_int)(LPCSTR,LPCSTR,INT,LPCSTR);

@@ -11,6 +11,20 @@
 #ifdef YO3_TEST_BAD_GAME_HOOK
 static volatile char mismatched_game[0x140000];
 #endif
+/* A request to the helper's HTTP port with Winsock itself, as the DLL's own imports do (no cookie preface). */
+static void helper_http(const char *request, char *reply, int capacity) {
+    char text[16] = ""; GetEnvironmentVariableA("YO3_LOCAL_HTTP", text, sizeof text);
+    HMODULE ws = GetModuleHandleA("ws2_32.dll");
+    int (WSAAPI *plain_connect)(SOCKET,const struct sockaddr *,int) = (void *)GetProcAddress(ws, "connect");
+    int (WSAAPI *plain_send)(SOCKET,const char *,int,int) = (void *)GetProcAddress(ws, "send");
+    struct sockaddr_in address = {0}; address.sin_family = AF_INET; address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    address.sin_port = htons((unsigned short)strtoul(text, NULL, 10));
+    SOCKET s = socket(AF_INET, SOCK_STREAM, 0); int got = 0; reply[0] = 0;
+    DWORD wait = 30000; setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *)&wait, sizeof wait);
+    if (!plain_connect(s, (struct sockaddr *)&address, sizeof address) && plain_send(s, request, (int)strlen(request), 0) > 0)
+        for (;;) { int n = recv(s, reply + got, capacity - 1 - got, 0); if (n <= 0) break; got += n; }
+    reply[got] = 0; closesocket(s);
+}
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
     BYTE *image=(BYTE *)GetModuleHandleA(NULL);
@@ -44,6 +58,17 @@ int main(int argc, char **argv) {
         struct sockaddr_in address = {0}; address.sin_family = AF_INET; address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         for (int step = 0; step < 2; ++step) {
             if (step) { char text[16] = ""; GetEnvironmentVariableA("YO3_LOCAL_FRONT", text, sizeof text); port = strtoul(text, NULL, 10); }
+            char typed[256];
+            if (step && GetEnvironmentVariableA("YO3_TEST_TYPED", typed, sizeof typed)) {
+                /* The game's own login form (#34), as tools/mod/login-form.h drives it: ask, then hand over the entries. */
+                char cookie[80] = "", request[1024], reply[512]; GetEnvironmentVariableA("YO3_LOCAL_COOKIE", cookie, sizeof cookie);
+                snprintf(request, sizeof request, "GET /session/%s/revival/login-state HTTP/1.1\r\nHost: localhost\r\n\r\n", cookie);
+                helper_http(request, reply, sizeof reply);
+                const char *body = strstr(reply, "\r\n\r\n"); fprintf(out, "state %s\n", body ? body + 4 : "none");
+                snprintf(request, sizeof request, "POST /session/%s/revival/login HTTP/1.1\r\nHost: localhost\r\nContent-Length: %d\r\n\r\n%s",
+                    cookie, (int)strlen(typed), typed);
+                helper_http(request, reply, sizeof reply); fprintf(out, "typed %.12s\n", reply);
+            }
             SOCKET s = socket(AF_INET, SOCK_STREAM, 0); address.sin_port = htons((unsigned short)port);
             DWORD wait = 70000; setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *)&wait, sizeof wait);
             if (connect(s, (struct sockaddr *)&address, sizeof address)) { fprintf(out, "%s refused %d\n", step ? "front" : "gate", WSAGetLastError()); break; }

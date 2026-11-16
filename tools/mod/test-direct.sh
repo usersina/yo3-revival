@@ -153,6 +153,20 @@ play "${REFUSED[@]}"
 printf %s "$TOKEN" | wine "$HELPER" --vault-set "$VAULT" 2>/dev/null
 play "${REFUSED[@]}"
 
+ROW='#34: no saved sign-in, the game'"'"'s own form: a wrong password, then a good one with Save Password'
+wine "$HELPER" --vault-delete "$VAULT" </dev/null 2>/dev/null
+FORM=('mod loaded' 'gate 0x21fe' 'state form' 'typed HTTP/1.1 204')
+YO3_TEST_TYPED='{"user":"directuser","password":"not the passphrase","stay":true}' play "${FORM[@]}" 'front 0x219f' 'front 0x219b'
+YO3_TEST_TYPED='{"user":"directuser","password":"a long passphrase","stay":true}' play "${FORM[@]}" 'front 0x219f' 'front 0x219a'
+play "${OK_FRONT[@]}"
+echo "PASS: $ROW (Save Password kept the device signed in: the next start skipped the form)"
+
+ROW='#34: a ban gets "This User ID is currently restricted."'
+"$SERVER" --data-dir "$DATA" ban directuser >/dev/null
+wine "$HELPER" --vault-delete "$VAULT" </dev/null 2>/dev/null
+YO3_TEST_TYPED='{"user":"directuser","password":"a long passphrase","stay":false}' play "${FORM[@]}" 'front 0x219f' 'front 0x219e'
+"$SERVER" --data-dir "$DATA" lift directuser >/dev/null
+
 ROW='Multiplayer: a server that needs a newer launcher (the game fails to connect; one line says to update)'
 TOKEN="$(account '{"op":"login","user":"directuser","password":"a long passphrase","stay":true,"device":"test"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["device_token"])')"
 printf %s "$TOKEN" | wine "$HELPER" --vault-set "$VAULT" 2>/dev/null

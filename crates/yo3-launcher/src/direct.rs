@@ -149,6 +149,32 @@ pub async fn sign_in(endpoint: &Endpoint, credential: &Credential, vault: ReadVa
     }
 }
 
+/// What the player typed in the game's own login form (#34): its User ID and Password boxes, and Save Password.
+#[derive(Deserialize, Serialize)]
+pub struct Typed { pub user: String, pub password: String, #[serde(default)] pub stay: bool }
+
+impl std::fmt::Debug for Typed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "Typed {{ user: {:?}, stay: {} }}", self.user, self.stay) }
+}
+
+/// Signs in with what was typed: a session, and with Save Password the device token kept under `vault_account` ("Stay
+/// signed in": the next direct start skips the form).
+pub async fn sign_in_typed(endpoint: &Endpoint, typed: &Typed, vault_account: Option<&str>, vault: &dyn crate::vault::Vault) -> Result<Token, Failure> {
+    let label = format!("{} PC (the game's login)", if cfg!(windows) { "Windows" } else { "Linux" });
+    let reply = endpoint.account(&serde_json::json!({ "op": "login", "user": typed.user, "password": typed.password,
+        "stay": typed.stay && vault_account.is_some(), "device": label, "launcher": yo3_tunnel::BUILD_VERSION.trim_start_matches('v') })).await
+        .map_err(|e| Failure::new(Refusal::FailedToConnect, format!("the server can't be reached: {e:#}")))?;
+    if reply["ok"] != true {
+        let code = reply["error"].as_str().unwrap_or("unknown");
+        return Err(Failure::new(Refusal::from_account_error(code), format!("the server refused the sign-in ({code})")))
+    }
+    let session = reply["session"].as_str().and_then(unhex).and_then(|b| b.try_into().ok())
+        .ok_or_else(|| Failure::new(Refusal::FailedToConnect, "the server's reply has no session"))?;
+    if let (Some(account), Some(token)) = (vault_account, reply["device_token"].as_str())
+        && let Err(error) = vault.set(account, token) { yo3_tunnel::diagnostics::event(&format!("Save Password: the credential store refused it ({error:#})")); }
+    Ok(session)
+}
+
 /// Delete Login Data (tools/mod/signout.h): ends the device's saved sign-in on the server (best effort) and forgets it
 /// here. Nothing to do for a key (Singleplayer, Scripts profiles).
 pub async fn sign_out(endpoint: &Endpoint, vault_account: Option<&str>, vault: &dyn crate::vault::Vault) -> anyhow::Result<bool> {

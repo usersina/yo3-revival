@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use std::io::{Read, Write};
 use anyhow::ensure;
+#[cfg(windows)] use anyhow::Context;
 use subtle::ConstantTimeEq;
 use crate::{Ports, Proxy, hex};
 use yo3_tunnel::Token;
@@ -106,6 +107,7 @@ pub async fn serve(request: Attachment, loaded: crate::Loaded, profile: &Path, p
         }
     };
     let sign_outs = proxy.sign_outs();
+    let mut typed = proxy.typed_logins().context("the login form's channel is gone")?;
     let mut session = session;
     // Your own server can stop under a game that waits: the one reused here may have been counting down after the
     // game before (its owner gone). Then it starts again, owned by this helper, with a new sign-in.
@@ -124,6 +126,20 @@ pub async fn serve(request: Attachment, loaded: crate::Loaded, profile: &Path, p
                     match restarted {
                         Ok(again) => { proxy.activate(again); session = Some(again); yo3_tunnel::diagnostics::event("Your server had stopped: started it again") }
                         Err(reason) => yo3_tunnel::diagnostics::event(&format!("Your server had stopped and could not start again: {reason}")),
+                    }
+                }
+                Some(login) = typed.recv() => {
+                    // The game's own login form (#34): its next login (0x1F47) waits for this.
+                    match direct::sign_in_typed(&endpoint, &login, vault.as_deref(), &SystemVault).await {
+                        Ok(signed) => {
+                            if let Some(old) = session.replace(signed) && credential.owns_session() { let _ = endpoint.logout(&old).await; }
+                            proxy.activate(signed); direct::record_problem(profile, None);
+                            yo3_tunnel::diagnostics::event(&format!("Signed in from the game's login form{}", if login.stay { "; Save Password keeps the device signed in" } else { "" }));
+                        }
+                        Err(failure) => {
+                            yo3_tunnel::diagnostics::event(&format!("The game's login form: refused ({:?}): {}", failure.refusal, failure.reason));
+                            proxy.refuse(failure.refusal);
+                        }
                     }
                 }
                 _ = sign_outs.notified() => match direct::sign_out(&endpoint, vault.as_deref(), &SystemVault).await {

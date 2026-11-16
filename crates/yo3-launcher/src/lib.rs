@@ -86,7 +86,8 @@ pub struct Ports { pub gate: u16, pub front: u16, pub duel: u16, pub http: u16 }
 pub enum Outcome { Session(Token), Refused(direct::Refusal) }
 
 pub struct Proxy { pub ports: Ports, pub cookie: Token, pub server_id: String, tasks: Vec<JoinHandle<()>>,
-    session: tokio::sync::watch::Sender<Option<Outcome>>, sign_outs: std::sync::Arc<tokio::sync::Notify> }
+    session: tokio::sync::watch::Sender<Option<Outcome>>, sign_outs: std::sync::Arc<tokio::sync::Notify>,
+    typed: std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<direct::Typed>>> }
 
 impl Drop for Proxy { fn drop(&mut self) { for task in &self.tasks { task.abort(); } } }
 
@@ -99,6 +100,9 @@ impl Proxy {
     pub fn refuse(&self, refusal: direct::Refusal) { self.session.send_replace(Some(Outcome::Refused(refusal))); }
     /// Signalled when the game's Delete Login Data asks to forget this device's sign-in (tools/mod/signout.h).
     pub fn sign_outs(&self) -> std::sync::Arc<tokio::sync::Notify> { self.sign_outs.clone() }
+    /// What the player typed in the game's own login form (#34), once: the DLL hands it over when the game connects to
+    /// the front. The outcome is cleared as it arrives, so the game's login waits for this sign-in.
+    pub fn typed_logins(&self) -> Option<tokio::sync::mpsc::UnboundedReceiver<direct::Typed>> { self.typed.lock().unwrap().take() }
     pub async fn prepare(endpoint: Endpoint, ports: Ports) -> anyhow::Result<Self> {
         let (active, _) = tokio::sync::watch::channel(None);
         let gate = TcpListener::bind((Ipv4Addr::LOCALHOST, ports.gate)).await?;
@@ -109,6 +113,7 @@ impl Proxy {
         let mut cookie = [0; 32]; getrandom::fill(&mut cookie)?;
         let server_id = endpoint.server_id();
         let sign_outs = std::sync::Arc::new(tokio::sync::Notify::new());
+        let (typed_tx, typed_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut tasks = vec![];
         tasks.push(tokio::spawn(async move {
             // Keep accepted gates owned by this task so dropping the proxy also closes idle redirects.
@@ -162,16 +167,16 @@ impl Proxy {
             }));
         }
         let http_active = active.clone();
-        let http_sign_outs = sign_outs.clone();
+        let control = Control { sign_outs: sign_outs.clone(), typed: typed_tx, outcome: active.clone() };
         tasks.push(tokio::spawn(async move {
             while let Ok((local, _)) = http.accept().await {
                 let endpoint = endpoint.clone();
                 let active = http_active.subscribe();
-                let sign_outs = http_sign_outs.clone();
-                tokio::spawn(async move { let _ = relay_http(local, &endpoint, active, &cookie, &sign_outs).await; });
+                let control = control.clone();
+                tokio::spawn(async move { let _ = relay_http(local, &endpoint, active, &cookie, &control).await; });
             }
         }));
-        Ok(Self { ports, cookie, server_id, tasks, session: active, sign_outs })
+        Ok(Self { ports, cookie, server_id, tasks, session: active, sign_outs, typed: std::sync::Mutex::new(Some(typed_rx)) })
     }
 
     pub fn environment(&self) -> Vec<(&'static str, String)> {
@@ -246,10 +251,20 @@ pub async fn wait_for_desktop_stop(mut input: impl std::io::BufRead + Send + 'st
 
 /// The path the connection DLL asks on Delete Login Data (tools/mod/signout.h), under the launch cookie.
 pub const SIGN_OUT_PATH: &str = "revival/sign-out";
+/// Whether the game shows its own login form (#34, tools/mod/login.h): "form" when there is no saved sign-in, else
+/// "ready". It waits for the helper's first outcome.
+pub const LOGIN_STATE_PATH: &str = "revival/login-state";
+/// What the player typed in that form: a POST with a JSON body {user, password, stay}.
+pub const LOGIN_PATH: &str = "revival/login";
+
+/// The HTTP port's own requests from the connection DLL.
+#[derive(Clone)]
+struct Control { sign_outs: std::sync::Arc<tokio::sync::Notify>, typed: tokio::sync::mpsc::UnboundedSender<direct::Typed>,
+    outcome: tokio::sync::watch::Sender<Option<Outcome>> }
 
 /// The browser/WinINet uses the launch cookie in a local path, never an account credential in a remote URL.
 async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, mut active: tokio::sync::watch::Receiver<Option<Outcome>>, cookie: &Token,
-    sign_outs: &tokio::sync::Notify) -> anyhow::Result<()> {
+    control: &Control) -> anyhow::Result<()> {
     let mut request = vec![];
     tokio::time::timeout(Duration::from_secs(5), async {
         while request.len() < 8192 && !request.ends_with(b"\r\n\r\n") {
@@ -260,9 +275,30 @@ async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, mut active: tokio
     let text = std::str::from_utf8(&request)?;
     let path = text.split_whitespace().nth(1).unwrap_or_default();
     let prefix = format!("/session/{}/", hex(cookie));
+    if let Some(path) = path.strip_prefix(&prefix).filter(|p| text.starts_with("POST ") && *p == LOGIN_PATH) {
+        let _ = path;
+        // The password travels only on this loopback socket, under the launch cookie, and is never logged.
+        let length: usize = text.lines().find_map(|l| l.split_once(':').filter(|(k, _)| k.eq_ignore_ascii_case("content-length")).map(|(_, v)| v.trim().to_owned()))
+            .and_then(|v| v.parse().ok()).filter(|n| *n > 0 && *n <= 4096).ok_or_else(|| anyhow::anyhow!("bad login request"))?;
+        let mut body = vec![0; length];
+        tokio::time::timeout(Duration::from_secs(5), local.read_exact(&mut body)).await??;
+        let typed: direct::Typed = serde_json::from_slice(&body)?;
+        anyhow::ensure!(!typed.user.is_empty() && !typed.password.is_empty(), "empty login");
+        control.outcome.send_replace(None);
+        control.typed.send(typed)?;
+        local.write_all(b"HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n").await?;
+        return Ok(local.shutdown().await?)
+    }
     let path = path.strip_prefix(&prefix).filter(|_| text.starts_with("GET ")).ok_or_else(|| anyhow::anyhow!("local HTTP refused"))?;
+    if path == LOGIN_STATE_PATH {
+        let form = tokio::time::timeout(Duration::from_secs(15), active.wait_for(|o| o.is_some())).await.ok().and_then(Result::ok)
+            .is_some_and(|o| matches!(*o, Some(Outcome::Refused(direct::Refusal::SignedOut))));
+        let body = if form { "form" } else { "ready" };
+        local.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await?;
+        return Ok(local.shutdown().await?)
+    }
     if path == SIGN_OUT_PATH {
-        sign_outs.notify_one();
+        control.sign_outs.notify_one();
         local.write_all(b"HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n").await?;
         return Ok(local.shutdown().await?)
     }
