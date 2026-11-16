@@ -29,6 +29,7 @@ This was a code review. Each fix has a test that failed before it. No live clien
 | Severity | Finding | Fix | Test |
 | --- | --- | --- | --- |
 | High | A normal Play relayed the game's patch check (`yo3/yo3.idx`) and patch files (`ygoda/patch/…`) to the server. The stock patcher writes a patch archive's entries into the game folder under their own names and replaces `yo3.exe` ([client internals](client-internals.md#the-patcher)), so any server a player joined could run code on their PC. | The launcher answers the index with the game's own `yo3.idx` on every Play, and carries only `web/`, `duellogs/` and `app/` to the server. | `yo3-launcher` `proxy.rs` `the_patch_check_gets_the_games_own_index_and_no_server_reaches_the_patcher` |
+| Medium | A connection had no request rate: it could repeat requests that save (ignore, unfriend, team changes) under the hub lock as fast as it liked. A player who never read their socket grew their outbox with every push. | Each front and duel connection has a token bucket (`request-burst` 200, `requests-per-second` 20, live settings): past the burst requests wait, none is dropped; a 16 KiB frame costs one more. Real play peaks near 32 a second, briefly. Past `outbox-max` (4096) waiting messages, or a write stalled for 60 s, the connection ends. The game's gate is answered by the launcher itself, and the TLS handshake already has per-address limits. | `net.rs` `a_connection_past_its_burst_is_paced_not_cut`, `a_client_that_does_not_read_is_disconnected_when_its_outbox_fills`, `a_write_stalled_for_a_minute_ends_the_connection` |
 | Medium | A 1 MiB chat line was copied to everyone in the room, and to the queue of every player who wasn't reading. Control characters reached other players' chat windows. | A chat line is cut to 200 bytes. Control characters become spaces. | `chat_contract.rs` `a_chat_line_is_cut_to_a_line_and_loses_control_characters` |
 | Medium | A password change or an account recovery signed out devices but left game sessions open for up to 12 hours. Someone who had taken the account stayed in. | Both end every session of the account. | `account_contract.rs` `a_new_password_ends_the_sessions…`, `a_recovered_account_ends_the_sessions…` |
 | Medium | Sign-up hashed the password (64 MiB argon2id) before checking the invite. Sign-ups without an invite could keep both hashing slots busy and slow everyone's sign-in. | The User ID and the invite are checked first. | `account_contract.rs` `a_sign_up_without_a_usable_invite_hashes_no_password` |
@@ -50,10 +51,6 @@ Ordered by severity. Each needs a decision or a larger change than this review s
 2. **Medium: updates are verified only by a digest from the same GitHub response.** Anyone who can publish a release,
    such as a stolen maintainer token, can ship an update. Proposed: a detached ed25519 signature checked against a
    key built into the launcher, as the signed server list already does. This needs key handling decided.
-3. **Medium: no per-connection request rate, and outboxes are unbounded.** A client can repeat requests that save,
-   such as ignore, unfriend or team changes, while the hub lock is held. A player who never reads their socket grows
-   their outbox with every push. Proposed: a token bucket in `FrontSession::handle`, a bounded outbox that drops the
-   connection when full, and a write timeout.
 4. **Medium: no account deletion.** No admin operation deletes an account. A player can delete a player in the game,
    but the account, its User ID and its audit rows stay. Proposed: a `delete-account` operation (API, CLI, panel)
    that also removes friends, teams, mail and duel logs, with the backups ageing it out. See

@@ -101,6 +101,13 @@ pub const REGISTRY: &[Setting] = &[
         (\"Duels are busy\") and Auto Duel waits", kind: Kind::Number { min: 1, max: 2000 }, applies: Applies::AtOnce, default: || json!(30) },
     Setting { name: "max-connections", help: "TLS connections at once (a player's game holds several)",
         kind: Kind::Number { min: 16, max: 100_000 }, applies: Applies::AtOnce, default: || json!(2048) },
+    // Real play peaks near 32 requests a second on the front and 6 on a duel connection (packet logs, #39).
+    Setting { name: "request-burst", help: "Requests one game connection may make at once before they are paced (a connection keeps \
+        the values it opened with)", kind: Kind::Number { min: 10, max: 100_000 }, applies: Applies::NextLogin, default: || json!(200) },
+    Setting { name: "requests-per-second", help: "How fast a game connection's requests are answered past its burst (they wait, never dropped)",
+        kind: Kind::Number { min: 1, max: 100_000 }, applies: Applies::NextLogin, default: || json!(20) },
+    Setting { name: "outbox-max", help: "Messages that may wait for a game that reads nothing before its connection ends",
+        kind: Kind::Number { min: 64, max: 1_000_000 }, applies: Applies::NextLogin, default: || json!(4096) },
     Setting { name: "handshake-burst", help: "TLS connections one address may open at once before it waits (this PC's are not counted)",
         kind: Kind::Number { min: 1, max: 10_000 }, applies: Applies::AtOnce, default: || json!(120) },
     Setting { name: "handshakes-per-second", help: "How fast an address gets its TLS connections back",
@@ -140,6 +147,8 @@ pub struct Settings {
     pub max_connections: usize,
     pub handshake_burst: u32,
     pub handshakes_per_second: u32,
+    /// Each game connection's request pace and outbox (#39).
+    pub pace: crate::net::Pace,
     /// Every setting's value by name, defaults included.
     values: Map<String, Json>,
 }
@@ -177,6 +186,7 @@ impl Settings {
             max_connections: number("max-connections") as usize,
             handshake_burst: number("handshake-burst"),
             handshakes_per_second: number("handshakes-per-second"),
+            pace: crate::net::Pace { burst: number("request-burst"), per_second: number("requests-per-second"), outbox_max: number("outbox-max") as usize },
             limits: Limits { burst: number("address-burst"), refill_seconds: number("address-refill-seconds"), max_backoff_seconds: number("backoff-max-seconds") },
             values,
         })
