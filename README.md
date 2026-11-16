@@ -47,7 +47,7 @@ Use **64-bit Windows 10/11**, or **Linux with Wine**. **Windows 7 is not support
   [server and account commands](docs/guide.md).
 
 Pre-alpha: **Report a problem** in the launcher's footer includes your logs. [Reporting guide](docs/launcher.md#logs-and-support) · [GitHub issues](https://github.com/usersina/yo3-revival/issues/new/choose) · [Discussions](https://github.com/usersina/yo3-revival/discussions).
-[MIT](LICENSE) · [Project, credits and support](docs/about.md). Unaffiliated with Konami.
+[MIT](LICENSE) · [Project, credits and support](docs/about.md) · [Code signing policy](docs/code-signing.md). Unaffiliated with Konami.
 
 ## For developers
 

@@ -445,6 +445,9 @@ This checks Linux package activation; native Windows verification remains separa
 
 ## Publish a release
 
+Windows releases are currently unsigned. The [Code signing policy](code-signing.md) proposes SignPath Foundation
+signing, subject to approval and CI integration; it does not mean existing downloads are signed.
+
 1. Update the current **Unreleased** changelog entry with player-visible behavior, then give it the next unused
    `## vX.Y.Z (YYYY-MM-DD)` heading. Never move or reuse a published tag. In
    [features](features.md), replace each "Unreleased" in the Since column with that version and date.
