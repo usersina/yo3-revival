@@ -194,9 +194,14 @@ fn show(a: &Args, command: &Admin, result: &Value, handed: Option<String>) -> an
             let identity = yo3_tunnel::identity_from_pem(&pem)?;
             let host = a.advertise.as_deref().unwrap_or_default();
             let address = match host.parse::<IpAddr>() { Ok(IpAddr::V6(_)) => format!("[{host}]:{}", a.auth_port), _ => format!("{host}:{}", a.auth_port) };
-            let invite = yo3_tunnel::invite::Invite::new(&address, &identity, &name)?;
+            let mut invite = yo3_tunnel::invite::Invite::new(&address, &identity, &name)?;
             println!("Server: {}\nAddress: {}\nIdentity: {}\nInvite link: {}", invite.name, invite.address, invite.identity, invite.link());
-            if let Some(code) = result["invite"]["code"].as_str() { println!("Invite code: {code} (one sign-up, for a week)") }
+            if let Some(code) = result["invite"]["code"].as_str() {
+                println!("Invite code: {code} (one sign-up, for a week)");
+                // The same link with the code in it: one friend's, which fills in their sign-up.
+                invite.code = Some(code.to_owned());
+                println!("Invite link for one friend: {}", invite.link());
+            }
             println!("\nFriends paste the link under Multiplayer, Other servers (Desktop), or sign up with it in a terminal (Scripts):\n  \
                 play --register \"LINK\" USER --profile client.json");
             if result["invite"].is_null() { println!("Each friend also needs an invite code if registration is invite (the default): add --invite, or run invite.") }

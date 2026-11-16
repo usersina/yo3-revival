@@ -1,5 +1,6 @@
-//! The invite link a host shares (`yo3revival://server?address=HOST:PORT&identity=HEX&name=NAME`): where the server is
-//! and the identity to pin, so no first-use question follows. The server prints it (`yo3-server share`), Desktop's Host
+//! The invite link a host shares (`yo3revival://server?address=HOST:PORT&identity=HEX&name=NAME[&code=CODE]`): where the
+//! server is and the identity to pin, so no first-use question follows, and optionally a single-use invite code for one
+//! friend's sign-up. The server prints it (`yo3-server share`), Desktop's Host
 //! for friends shows it, and Desktop's Other servers and the Scripts helper's `--sign-in` read it.
 use anyhow::{Context, ensure};
 
@@ -14,6 +15,8 @@ pub struct Invite {
     pub identity: String,
     /// The server's name, as the host set it.
     pub name: String,
+    /// An invite code for one friend's sign-up, when the link was made for one friend.
+    pub code: Option<String>,
 }
 
 /// The port when an address has none.
@@ -47,7 +50,7 @@ impl Invite {
         ensure!(valid_identity(&identity), "A server's identity is a SHA-256 in hex (64 characters).");
         let (address, server_name) = self::address(address)?;
         let name = if name.trim().is_empty() { server_name.clone() } else { name.trim().to_string() };
-        Ok(Self { address, server_name, identity, name })
+        Ok(Self { address, server_name, identity, name, code: None })
     }
 
     /// Reads an invite link.
@@ -57,12 +60,14 @@ impl Invite {
         let address = field("address").context("the invite link has no address")?;
         let identity = field("identity").context("the invite link has no identity")?;
         ensure!(valid_identity(identity.trim()), "the invite link's identity is malformed");
-        Self::new(&address, &identity, &field("name").unwrap_or_default())
+        let code = field("code").map(|c| c.trim().to_ascii_uppercase()).filter(|c| !c.is_empty() && c.len() <= 64 && c.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'));
+        Ok(Self { code, ..Self::new(&address, &identity, &field("name").unwrap_or_default())? })
     }
 
     /// The link.
     pub fn link(&self) -> String {
-        format!("yo3revival://server?address={}&identity={}&name={}", encode(&self.address), self.identity, encode(&self.name))
+        let code = self.code.as_deref().map(|c| format!("&code={}", encode(c))).unwrap_or_default();
+        format!("yo3revival://server?address={}&identity={}&name={}{code}", encode(&self.address), self.identity, encode(&self.name))
     }
 }
 
@@ -90,12 +95,22 @@ mod tests {
     fn a_link_carries_the_address_identity_and_name_both_ways() {
         let identity = "D".repeat(64);
         let invite = Invite::parse(&format!("yo3revival://server?address=play.example%3A7444&identity={identity}&name=Kaiba%20Land")).unwrap();
-        assert_eq!(invite, Invite { address: "play.example:7444".into(), server_name: "play.example".into(), identity: "d".repeat(64), name: "Kaiba Land".into() });
+        assert_eq!(invite, Invite { address: "play.example:7444".into(), server_name: "play.example".into(), identity: "d".repeat(64), name: "Kaiba Land".into(), code: None });
         assert_eq!(invite.link(), format!("yo3revival://server?address=play.example:7444&identity={}&name=Kaiba%20Land", "d".repeat(64)));
         assert_eq!(Invite::parse(&invite.link()).unwrap(), invite);
         let v6 = Invite::new("::1", &identity, "").unwrap();
         assert_eq!((v6.address.as_str(), v6.server_name.as_str(), v6.name.as_str()), ("[::1]:7443", "::1", "::1"));
         assert_eq!(Invite::parse(&v6.link()).unwrap(), v6);
+    }
+
+    /// A link made for one friend carries a single-use invite code, which fills in their sign-up.
+    #[test]
+    fn a_link_for_one_friend_carries_their_invite_code() {
+        let invite = Invite { code: Some("QUPM-Y9GG-BFAS-9WJ6".into()), ..Invite::new("play.example", &"a".repeat(64), "Friends").unwrap() };
+        assert!(invite.link().ends_with("&code=QUPM-Y9GG-BFAS-9WJ6"));
+        assert_eq!(Invite::parse(&invite.link()).unwrap(), invite);
+        let odd = Invite::parse(&format!("yo3revival://server?address=play.example&identity={}&code=%3Cscript%3E", "a".repeat(64))).unwrap();
+        assert_eq!(odd.code, None, "only a code's letters, digits and dashes");
     }
 
     #[test]

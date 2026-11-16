@@ -266,7 +266,9 @@ async fn sign_in(args: &Args) -> anyhow::Result<()> {
     info.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI)?;
     let mut input = Input::new();
     let password = if register {
-        let code = input.line("Invite code from the host (Enter if the server needs none): ")?;
+        // A link made for one friend carries their invite code.
+        let code = match &invite.code { Some(code) => { println!("Invite code {code}, from the link."); code.clone() }
+            None => input.line("Invite code from the host (Enter if the server needs none): ")? };
         let password = input.secret("Choose a password (8 to 16 letters or digits): ")?;
         anyhow::ensure!(input.secret("The password again: ")? == password, "The two passwords differ.");
         eprintln!("The rules are in docs/rules-privacy.md (in this folder), plus the host's own announcements.");
