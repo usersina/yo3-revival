@@ -77,7 +77,7 @@ release, and "—" a row that is not implemented or unsupported.
 | BP from duels (win 100, draw 50, loss 30), BOOSTERPASS codes, `give-bp` | Implemented | v0.0.2 (2026-11-09) | `bp_contract.rs`, `shop_contract.rs`; live; Windows VM (a mid-duel BP gift) | `give-bp`, `add-code`, `remove-code`, `codes` also work while the server runs. |
 | Structure decks SD001-SD005 | Implemented | v0.0.1 (2026-11-09) | `shop_contract.rs`; live | The starters 1-3 have no art and are not on sale. |
 | Protectors and avatar items for BP | Implemented | v0.0.1 (2026-11-09) | `shop_contract.rs`; live |  |
-| Trade Card (Blister's exchange pools) | Implemented | v0.0.13 (2026-11-14) | `shop_contract.rs`; live | #8, done 2026-11-14. |
+| Trade Card (Blister's exchange pools) | Implemented | v0.0.13 (2026-11-14) | `shop_contract.rs` (`the_exchange_cards_stay_off_the_pack_shelves`); live | #8, done 2026-11-14. Fixed in Unreleased (`beta` branch, #46): the exchange's cards also sat on Purchase Pack as 10 BP "packs" ("Pack 4") whose purchase failed with "An error occurred."; live 2026-11-16 (headless client): the shelves hold the 75 packs at 100 BP in both sort orders, Trade Card lists and exchanges. |
 | Shop rental (5 cards, 100 BP, 7 days) | Implemented | v0.0.13 (2026-11-14) | `shop_contract.rs`, `rental_contract.rs`; live | #8. Returned early with the Return button (see Social). |
 | Special Packs | Unsupported | — | Client search | Event prizes whose contents are not in the client. The list is kept empty on purpose (#8). |
 | Presents between players | Unsupported | — | Client search | No screen builds a send request. Cards move by trade and rental; the host gives BP. |

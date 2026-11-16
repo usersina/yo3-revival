@@ -26,6 +26,9 @@ const COMMONS: usize = 4;
 /// player's own cards (item_cost, "Cards Required:"; **guess**: the original costs are unknown).
 pub const EXCHANGE_POOLS: std::ops::RangeInclusive<u32> = 264..=268;
 pub const EXCHANGE_COST: u32 = 10;
+/// The exchange's item_type: Purchase Pack shelves 0 and 3 (packs), 1 and 4 (decks), 6 (protectors), 10 and 11, and
+/// leaves any other out (0x48E240). 2 is one it leaves out (**guess**: the original's value is unknown).
+const EXCHANGE_TYPE: u32 = 2;
 /// Shop rental: the client lists the cards of its pack file 10000 to pick from, and the server sets the offer, "You
 /// can borrow %d cards for %dBP for %d days." (**guess**: a pack's price, for a week).
 pub const RENTAL_POOL: u32 = 10000;
@@ -269,10 +272,11 @@ pub fn shelf_avatar_item(id: u16) -> Message {
 
 /// An exchange pool on Blister's Trade Card list (a 0x1C26 item, case 0x48AE5F's reply): the client expands item_id,
 /// its own pack file, into one card per row, each costing item_cost of the player's cards; item_trade 0 leaves the
-/// received card tradable, and the exchange names sale_id.
+/// received card tradable, and the exchange names sale_id. The case appends those cards to the list Purchase Pack
+/// shelves (0x48E240), so item_type is one it leaves out (EXCHANGE_TYPE); with 0 each card was a 10 BP "pack" (#46).
 pub fn exchange_item(pool: &ExchangePool) -> Message {
     Message::record()
-        .with("item_type", Value::U32(0))
+        .with("item_type", Value::U32(EXCHANGE_TYPE))
         .with("item_id", Value::U32(pool.id))
         .with("item_cost", Value::U32(EXCHANGE_COST))
         .with("item_trade", Value::U32(0))

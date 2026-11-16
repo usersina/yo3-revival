@@ -383,9 +383,25 @@ fn the_trade_card_list_carries_the_exchange_pools() {
     assert_eq!(r.request(), Some(0x1C26));
     assert_eq!(r.items.len(), 2);
     let int = |k| r.items[0].get(k).and_then(Value::as_u32);
-    assert_eq!(["item_id", "sale_id", "item_cost", "item_trade", "item_type"].map(int), [Some(264), Some(264), Some(shop::EXCHANGE_COST), Some(0), Some(0)]);
+    assert_eq!(["item_id", "sale_id", "item_cost", "item_trade"].map(int), [Some(264), Some(264), Some(shop::EXCHANGE_COST), Some(0)]);
+    assert!(int("item_type").is_some());
     for k in ["modified", "rel_time"] {
         assert!(r.items[0].get(k).and_then(Value::as_str).is_some(), "{k}");
+    }
+}
+
+#[test]
+fn the_exchange_cards_stay_off_the_pack_shelves() {
+    // The 0x1C26 case (0x48AEFE-0x48B391) appends one entry per card of each pool, with the item's item_type, to the
+    // same list as 0x1C22's goods (shopmain +0xD4). Purchase Pack then shelves that list by item_type (0x48E240): 0 and
+    // 3 AddPack, 1 and 4 AddStruct, 6 AddProtector, 10 and 11 0x48DB00, any other type is left out. With item_type 0
+    // every tradable card was a "pack" (its row read as a pack id: "Pack 4") at the exchange's cost, 10 BP, whose
+    // purchase named the pool's sale_id and was refused ("An error occurred.", issue #46).
+    let mut c = blister().join(1001, "Yugi");
+    let r = one(c.send(req(0x1B6F)));
+    for item in &r.items {
+        let kind = item.get("item_type").and_then(Value::as_u32).expect("item_type");
+        assert!(![0, 1, 3, 4, 6, 10, 11].contains(&kind), "item_type {kind} puts the pool's cards on a shelf");
     }
 }
 
