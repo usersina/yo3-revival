@@ -7,6 +7,10 @@
 //! the changed ones, in one transaction, on a connection kept open in WAL mode. One deck save rewrites one account's
 //! row, not every account's collection.
 //!
+//! An action that changes more than one domain saves them together ([`together`]: one transaction, the domains'
+//! saves as savepoints inside it), so a duel's BP and its record are kept both or neither. Every user of the folder's
+//! one connection holds it while it works ([`hold`]); the others wait for it.
+//!
 //! A save that fails marks the store unhealthy ([`healthy`]): new logins are refused until a save succeeds again, so
 //! memory and disk never silently drift apart while players keep playing. Backups: at start, every hour and at
 //! shutdown (`back_up`), restored offline with `yo3-server restore` ([`restore`]).
@@ -33,19 +37,114 @@ const SCHEMA_SQL: &str = "
 
 fn sql(e: rusqlite::Error) -> io::Error { io::Error::other(e.to_string()) }
 
-/// One open connection per data folder, in WAL mode: saves don't reopen the database, and backups read beside them.
-static CONNECTIONS: LazyLock<Mutex<HashMap<PathBuf, Arc<Mutex<Connection>>>>> = LazyLock::new(Default::default);
+/// A data folder's one open connection, in WAL mode: saves don't reopen the database, and backups read beside them.
+/// Whoever uses it takes it out ([`hold`]) and puts it back; the others wait for it.
+struct Slot { conn: Mutex<Option<Connection>>, back: std::sync::Condvar }
+static CONNECTIONS: LazyLock<Mutex<HashMap<PathBuf, Arc<Slot>>>> = LazyLock::new(Default::default);
 
-fn connection(dir: &Path) -> io::Result<Arc<Mutex<Connection>>> {
+fn connection(dir: &Path) -> io::Result<Arc<Slot>> {
     let mut all = CONNECTIONS.lock().unwrap();
-    if let Some(conn) = all.get(dir) { return Ok(conn.clone()) }
+    if let Some(slot) = all.get(dir) { return Ok(slot.clone()) }
     let conn = Connection::open_with_flags(dir.join("server.db"), rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE).map_err(sql)?;
     conn.busy_timeout(std::time::Duration::from_secs(5)).map_err(sql)?;
     conn.pragma_update(None, "journal_mode", "WAL").map_err(sql)?;
     conn.pragma_update(None, "synchronous", "NORMAL").map_err(sql)?;
-    let conn = Arc::new(Mutex::new(conn));
-    all.insert(dir.to_path_buf(), conn.clone());
-    Ok(conn)
+    let slot = Arc::new(Slot { conn: Mutex::new(Some(conn)), back: std::sync::Condvar::new() });
+    all.insert(dir.to_path_buf(), slot.clone());
+    Ok(slot)
+}
+
+/// Saves on this thread made inside [`together`]: its folder, the connection while no save holds it, and the caches'
+/// updates, made only once the transaction commits.
+struct Batch { dir: PathBuf, conn: Option<Connection>, after: Vec<Box<dyn FnOnce()>> }
+thread_local! { static BATCH: std::cell::RefCell<Option<Batch>> = const { std::cell::RefCell::new(None) }; }
+
+fn in_batch(dir: &Path) -> bool { BATCH.with(|b| b.borrow().as_ref().is_some_and(|b| b.dir == dir)) }
+
+/// `dir`'s connection, held until dropped: from this thread's [`together`] when it is in one for `dir`, else from the
+/// folder's slot (waiting while another thread holds it).
+struct Held { conn: Option<Connection>, home: Option<Arc<Slot>> }
+impl std::ops::Deref for Held { type Target = Connection; fn deref(&self) -> &Connection { self.conn.as_ref().unwrap() } }
+impl std::ops::DerefMut for Held { fn deref_mut(&mut self) -> &mut Connection { self.conn.as_mut().unwrap() } }
+impl Drop for Held {
+    fn drop(&mut self) {
+        let Some(conn) = self.conn.take() else { return };
+        match &self.home {
+            Some(slot) => { *slot.conn.lock().unwrap_or_else(|e| e.into_inner()) = Some(conn); slot.back.notify_one(); }
+            None => BATCH.with(|b| if let Some(b) = b.borrow_mut().as_mut() { b.conn = Some(conn) }),
+        }
+    }
+}
+
+fn hold(dir: &Path) -> io::Result<Held> {
+    if in_batch(dir) {
+        let conn = BATCH.with(|b| b.borrow_mut().as_mut().and_then(|b| b.conn.take()));
+        return conn.map(|conn| Held { conn: Some(conn), home: None }).ok_or_else(|| io::Error::other("the store's connection is already held on this thread"));
+    }
+    let slot = connection(dir)?;
+    let conn = {
+        let mut conn = slot.conn.lock().unwrap_or_else(|e| e.into_inner());
+        while conn.is_none() { conn = slot.back.wait(conn).unwrap_or_else(|e| e.into_inner()); }
+        conn.take()
+    };
+    Ok(Held { conn, home: Some(slot) })
+}
+
+/// Runs `f` so that what it saves to `dir` is saved together, in one transaction, or not at all (#22: a duel's BP and
+/// its record). Saves inside run as savepoints; another thread's saves to `dir` wait until it ends. Its result, or
+/// why nothing was saved: `f`'s error, or the commit's. Without a database (state kept in files), `f` alone.
+pub fn together<T>(dir: &Path, f: impl FnOnce() -> io::Result<T>) -> io::Result<T> {
+    if in_batch(dir) || !dir.join("server.db").is_file() { return f() }
+    let mut held = hold(dir)?;
+    held.execute_batch("BEGIN IMMEDIATE").map_err(sql)?;
+    BATCH.with(|b| *b.borrow_mut() = Some(Batch { dir: dir.to_path_buf(), conn: held.conn.take(), after: vec![] }));
+    let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    let batch = BATCH.with(|b| b.borrow_mut().take()).expect("together's batch");
+    held.conn = batch.conn;
+    let out = match out {
+        Err(panic) => { let _ = held.execute_batch("ROLLBACK"); drop(held); std::panic::resume_unwind(panic) }
+        Ok(out) => out,
+    };
+    let done = match out {
+        Ok(value) => held.execute_batch("COMMIT").map_err(sql).map(|()| value),
+        Err(e) => Err(e),
+    };
+    match done {
+        Ok(value) => { drop(held); batch.after.into_iter().for_each(|update| update()); Ok(value) }
+        Err(e) => {
+            if !held.is_autocommit() { let _ = held.execute_batch("ROLLBACK"); }
+            if !UNHEALTHY.swap(true, Ordering::Relaxed) {
+                tracing::error!("SAVE FAILED (together: {e}). New logins are refused until a save succeeds; players already in keep playing. Check the disk.");
+            }
+            Err(e)
+        }
+    }
+}
+
+/// Runs `update` (a cache of what was written) once what was just written is committed: now, or at the end of this
+/// thread's [`together`] (never, if it rolls back).
+fn after_commit(dir: &Path, update: impl FnOnce() + 'static) {
+    let update: Box<dyn FnOnce()> = Box::new(update);
+    let pending = BATCH.with(|b| match b.borrow_mut().as_mut() {
+        Some(batch) if batch.dir == dir => { batch.after.push(update); None }
+        _ => Some(update),
+    });
+    if let Some(update) = pending { update() }
+}
+
+/// Runs `f` as one write: its own immediate transaction, or a savepoint inside this thread's [`together`].
+fn write_in<R>(dir: &Path, conn: &mut Connection, f: impl FnOnce(&Connection) -> io::Result<R>) -> io::Result<R> {
+    if in_batch(dir) {
+        conn.execute_batch("SAVEPOINT store_write").map_err(sql)?;
+        return match f(conn) {
+            Ok(value) => conn.execute_batch("RELEASE store_write").map_err(sql).map(|()| value),
+            Err(e) => { let _ = conn.execute_batch("ROLLBACK TO store_write; RELEASE store_write"); Err(e) }
+        };
+    }
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sql)?;
+    let value = f(&tx)?;
+    tx.commit().map_err(sql)?;
+    Ok(value)
 }
 
 /// Closes this process's connection to `dir`'s database (before a restore replaces the file, and in tests).
@@ -101,8 +200,7 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
     match options.open(dir.join("server.db")) {
         Ok(_) => {}, Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}, Err(e) => return Err(e),
     }
-    let conn = connection(dir)?;
-    let mut conn = conn.lock().unwrap();
+    let mut conn = hold(dir)?;
     let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sql)?;
     let app: u32 = tx.pragma_query_value(None, "application_id", |r| r.get(0)).map_err(sql)?;
     let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0)).map_err(sql)?;
@@ -158,8 +256,7 @@ pub struct AuditRow {
 
 /// Adds `row` to `dir`'s audit log.
 pub fn audit(dir: &Path, row: &AuditRow) -> io::Result<()> {
-    let conn = connection(dir)?;
-    let conn = conn.lock().unwrap();
+    let conn = hold(dir)?;
     let text = |v: &Option<Json>| v.as_ref().map(Json::to_string);
     conn.execute("INSERT INTO audit (at, actor, origin, op, target, before, after, detail) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         rusqlite::params![row.at, row.actor, row.origin, row.op, row.target, text(&row.before), text(&row.after), text(&row.detail)]).map_err(sql)?;
@@ -168,8 +265,7 @@ pub fn audit(dir: &Path, row: &AuditRow) -> io::Result<()> {
 
 /// The newest `limit` rows of `dir`'s audit log, newest first.
 pub fn audit_rows(dir: &Path, limit: u32) -> io::Result<Vec<AuditRow>> {
-    let conn = connection(dir)?;
-    let conn = conn.lock().unwrap();
+    let conn = hold(dir)?;
     let mut query = conn.prepare("SELECT at, actor, origin, op, target, before, after, detail FROM audit ORDER BY id DESC LIMIT ?1").map_err(sql)?;
     let json = |s: Option<String>| s.and_then(|s| serde_json::from_str(&s).ok());
     query.query_map([limit], |r| Ok(AuditRow { at: r.get(0)?, actor: r.get(1)?, origin: r.get(2)?, op: r.get(3)?, target: r.get(4)?,
@@ -200,8 +296,7 @@ const DUEL_LOGS_KEPT: u32 = 1000;
 /// Keeps a duel log in server.db under `name`, dropping the oldest beyond [`DUEL_LOGS_KEPT`].
 pub fn put_duel_log(dir: &Path, name: &str, body: &[u8]) -> io::Result<()> {
     if !dir.join("server.db").is_file() { initialize(dir)?; }
-    let conn = connection(dir)?;
-    let mut conn = conn.lock().unwrap();
+    let mut conn = hold(dir)?;
     let tx = conn.transaction().map_err(sql)?;
     tx.execute("INSERT OR REPLACE INTO duel_logs(name, body, created) VALUES (?1, ?2, ?3)",
         (name, body, chrono::Utc::now().timestamp())).map_err(sql)?;
@@ -213,13 +308,12 @@ pub fn put_duel_log(dir: &Path, name: &str, body: &[u8]) -> io::Result<()> {
 /// A kept duel log, if there is one by that name.
 pub fn duel_log(dir: &Path, name: &str) -> io::Result<Option<Vec<u8>>> {
     if !dir.join("server.db").is_file() { return Ok(None) }
-    connection(dir)?.lock().unwrap().query_row("SELECT body FROM duel_logs WHERE name=?1", [name], |r| r.get(0)).optional().map_err(sql)
+    hold(dir)?.query_row("SELECT body FROM duel_logs WHERE name=?1", [name], |r| r.get(0)).optional().map_err(sql)
 }
 
 /// The kept duel logs' names, newest first.
 pub fn duel_log_names(dir: &Path) -> io::Result<Vec<String>> {
-    let conn = connection(dir)?;
-    let conn = conn.lock().unwrap();
+    let conn = hold(dir)?;
     let mut query = conn.prepare("SELECT name FROM duel_logs ORDER BY created DESC, rowid DESC").map_err(sql)?;
     query.query_map([], |r| r.get(0)).map_err(sql)?.collect::<Result<_, _>>().map_err(sql)
 }
@@ -286,7 +380,7 @@ type Remembered = HashMap<(PathBuf, String), (String, Written)>;
 static SAVED: LazyLock<Mutex<Remembered>> = LazyLock::new(Default::default);
 
 /// Writes `rows` for `domain`: the changed items, the removed ones, and the scalars, against `before` (all, if None).
-fn store_rows(tx: &rusqlite::Transaction, domain: &str, rows: &Rows, before: Option<&(String, Written)>) -> io::Result<()> {
+fn store_rows(tx: &Connection, domain: &str, rows: &Rows, before: Option<&(String, Written)>) -> io::Result<()> {
     let head = serde_json::json!([rows.scalars, rows.shape]).to_string();
     if before.is_none_or(|(h, _)| *h != head) {
         tx.execute("INSERT INTO domains(name, scalars, shape) VALUES (?1, ?2, ?3) ON CONFLICT(name) DO UPDATE SET scalars=excluded.scalars, shape=excluded.shape",
@@ -333,8 +427,7 @@ fn key_order(key: &str) -> Vec<(u8, u64, String)> {
 }
 
 fn read_domain(dir: &Path, domain: &str) -> io::Result<Option<Json>> {
-    let conn = connection(dir)?;
-    let conn = conn.lock().unwrap();
+    let conn = hold(dir)?;
     let head: Option<(String, String)> = conn.query_row("SELECT scalars, shape FROM domains WHERE name=?1", [domain], |r| Ok((r.get(0)?, r.get(1)?))).optional().map_err(sql)?;
     let Some((scalars, shape)) = head else { return Ok(None) };
     let mut scalars: serde_json::Map<String, Json> = serde_json::from_str(&scalars).map_err(io::Error::other)?;
@@ -364,15 +457,12 @@ fn read_domain(dir: &Path, domain: &str) -> io::Result<Option<Json>> {
 
 fn write_domain(dir: &Path, domain: &str, value: &Json) -> io::Result<()> {
     let rows = split(value);
-    let key = (dir.to_path_buf(), domain.to_owned());
-    let before = SAVED.lock().unwrap().get(&key).cloned();
-    let conn = connection(dir)?;
-    let mut conn = conn.lock().unwrap();
-    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sql)?;
-    store_rows(&tx, domain, &rows, before.as_ref())?;
-    tx.commit().map_err(sql)?;
+    let mut conn = hold(dir)?;
+    let before = SAVED.lock().unwrap().get(&(dir.to_path_buf(), domain.to_owned())).cloned();
+    write_in(dir, &mut conn, |tx| store_rows(tx, domain, &rows, before.as_ref()))?;
     drop(conn);
-    remember(dir, domain, &rows);
+    let (dir, domain) = (dir.to_path_buf(), domain.to_owned());
+    after_commit(&dir.clone(), move || remember(&dir, &domain, &rows));
     Ok(())
 }
 
@@ -440,7 +530,7 @@ pub fn back_up(dir: &Path) -> io::Result<()> {
         let backups = dir.join("backups");
         let to = backups.join(chrono::Local::now().format("%Y%m%d-%H%M%S%.9f").to_string());
         fs::create_dir_all(&to)?;
-        connection(dir)?.lock().unwrap().backup("main", to.join("server.db"), None::<fn(rusqlite::backup::Progress)>).map_err(sql)?;
+        hold(dir)?.backup("main", to.join("server.db"), None::<fn(rusqlite::backup::Progress)>).map_err(sql)?;
         rotate(&backups)?;
         return Ok(());
     }
@@ -498,43 +588,48 @@ pub fn write_changes(path: &Path, whole: &Json, field: &str, upsert: &[(String, 
         rows.shape.insert(field.to_owned(), "list".into());
         let head = serde_json::json!([rows.scalars, rows.shape]).to_string();
         let key = (dir.to_path_buf(), domain.to_owned());
-        let mut saved = SAVED.lock().unwrap();
-        let (old_head, written) = saved.entry(key).or_insert_with(|| (String::new(), Written::new()));
-        let conn = connection(dir)?;
-        let mut conn = conn.lock().unwrap();
-        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(sql)?;
-        if *old_head != head {
-            tx.execute("INSERT INTO domains(name, scalars, shape) VALUES (?1, ?2, ?3) ON CONFLICT(name) DO UPDATE SET scalars=excluded.scalars, shape=excluded.shape",
-                (domain, Json::Object(rows.scalars.clone()).to_string(), Json::Object(rows.shape.clone()).to_string())).map_err(sql)?;
-        }
-        let mut put = tx.prepare("INSERT INTO items(domain, field, key, body) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(domain, field, key) DO UPDATE SET body=excluded.body").map_err(sql)?;
-        let mut drop_item = tx.prepare("DELETE FROM items WHERE domain=?1 AND field=?2 AND key=?3").map_err(sql)?;
-        // The small lists, whole: write what differs from what was written, drop what went.
-        let small: std::collections::HashSet<&str> = rows.shape.keys().map(String::as_str).filter(|f| *f != field).collect();
-        let mut after = Written::new();
-        for (f, k, body) in &rows.items {
-            if written.get(&(f.clone(), k.clone())) != Some(body) { put.execute((domain, f, k, body)).map_err(sql)?; }
-            after.insert((f.clone(), k.clone()), body.clone());
-        }
-        for (f, k) in written.keys().filter(|(f, k)| small.contains(f.as_str()) && !after.contains_key(&(f.clone(), k.clone()))) {
-            drop_item.execute((domain, f, k)).map_err(sql)?;
-        }
-        // The big list: only what changed.
-        let mut bodies = Vec::with_capacity(upsert.len());
-        for (k, item) in upsert {
-            let body = item.to_string();
-            put.execute((domain, field, k, &body)).map_err(sql)?;
-            bodies.push((k.clone(), body));
-        }
-        for k in delete { drop_item.execute((domain, field, k)).map_err(sql)?; }
-        drop((put, drop_item));
-        tx.commit().map_err(sql)?;
+        let mut conn = hold(dir)?;
+        // What to write, against what was last written (the cache is updated once this commits).
+        let small: std::collections::HashSet<String> = rows.shape.keys().filter(|f| *f != field).cloned().collect();
+        let (head_changed, puts, gone) = {
+            let saved = SAVED.lock().unwrap();
+            let (old_head, written) = saved.get(&key).map_or((None, None), |(h, w)| (Some(h), Some(w)));
+            let puts: Vec<&(String, String, String)> = rows.items.iter()
+                .filter(|(f, k, body)| written.and_then(|w| w.get(&(f.clone(), k.clone()))) != Some(body)).collect();
+            let now: std::collections::HashSet<(&str, &str)> = rows.items.iter().map(|(f, k, _)| (f.as_str(), k.as_str())).collect();
+            let gone: Vec<(String, String)> = written.into_iter().flat_map(|w| w.keys())
+                .filter(|(f, k)| small.contains(f) && !now.contains(&(f.as_str(), k.as_str()))).cloned().collect();
+            (old_head != Some(&head), puts.into_iter().cloned().collect::<Vec<_>>(), gone)
+        };
+        let bodies: Vec<(String, String)> = upsert.iter().map(|(k, item)| (k.clone(), item.to_string())).collect();
+        write_in(dir, &mut conn, |tx| {
+            if head_changed {
+                tx.execute("INSERT INTO domains(name, scalars, shape) VALUES (?1, ?2, ?3) ON CONFLICT(name) DO UPDATE SET scalars=excluded.scalars, shape=excluded.shape",
+                    (domain, Json::Object(rows.scalars.clone()).to_string(), Json::Object(rows.shape.clone()).to_string())).map_err(sql)?;
+            }
+            let mut put = tx.prepare("INSERT INTO items(domain, field, key, body) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(domain, field, key) DO UPDATE SET body=excluded.body").map_err(sql)?;
+            let mut drop_item = tx.prepare("DELETE FROM items WHERE domain=?1 AND field=?2 AND key=?3").map_err(sql)?;
+            // The small lists, whole: what differs from what was written, and what went.
+            for (f, k, body) in &puts { put.execute((domain, f, k, body)).map_err(sql)?; }
+            for (f, k) in &gone { drop_item.execute((domain, f, k)).map_err(sql)?; }
+            // The big list: only what changed.
+            for (k, body) in &bodies { put.execute((domain, field, k, body)).map_err(sql)?; }
+            for k in delete { drop_item.execute((domain, field, k)).map_err(sql)?; }
+            Ok(())
+        })?;
+        drop(conn);
         // Remember it as written, in place: the big list's other items are untouched.
-        written.retain(|(f, _), _| !small.contains(f.as_str()));
-        written.extend(after);
-        for k in delete { written.remove(&(field.to_owned(), k.clone())); }
-        for (k, body) in bodies { written.insert((field.to_owned(), k), body); }
-        *old_head = head;
+        let after: Written = rows.items.into_iter().map(|(f, k, b)| ((f, k), b)).collect();
+        let (field, delete) = (field.to_owned(), delete.to_vec());
+        after_commit(dir, move || {
+            let mut saved = SAVED.lock().unwrap();
+            let (old_head, written) = saved.entry(key).or_insert_with(|| (String::new(), Written::new()));
+            written.retain(|(f, _), _| !small.contains(f));
+            written.extend(after);
+            for k in delete { written.remove(&(field.clone(), k)); }
+            for (k, body) in bodies { written.insert((field.clone(), k), body); }
+            *old_head = head;
+        });
         Ok(())
     })();
     match &result {
@@ -546,11 +641,26 @@ pub fn write_changes(path: &Path, whole: &Json, field: &str, upsert: &[(String, 
     result
 }
 
+/// For tests: makes saves of one `domain` (`records.json`) to `dir` fail, the others working, or work again.
+#[doc(hidden)]
+pub fn fail_domain(dir: &Path, domain: &str, fail: bool) -> io::Result<()> {
+    let conn = hold(dir)?;
+    let quoted = domain.replace('\'', "''");
+    for (table, event, row, column) in [("items", "INSERT", "NEW", "domain"), ("items", "UPDATE", "NEW", "domain"), ("items", "DELETE", "OLD", "domain"),
+        ("domains", "INSERT", "NEW", "name"), ("domains", "UPDATE", "NEW", "name")] {
+        let name = format!("test_fail_domain_{table}_{}", event.to_lowercase());
+        let statement = if fail {
+            format!("CREATE TRIGGER IF NOT EXISTS {name} BEFORE {event} ON {table} WHEN {row}.{column} = '{quoted}' BEGIN SELECT RAISE(FAIL, 'test: {quoted} refused'); END;")
+        } else { format!("DROP TRIGGER IF EXISTS {name};") };
+        conn.execute_batch(&statement).map_err(sql)?;
+    }
+    Ok(())
+}
+
 /// For tests: makes every save to `dir` fail (as a full disk would), or work again.
 #[doc(hidden)]
 pub fn fail_saves(dir: &Path, fail: bool) -> io::Result<()> {
-    let conn = connection(dir)?;
-    let conn = conn.lock().unwrap();
+    let conn = hold(dir)?;
     for (table, event) in [("items", "INSERT"), ("items", "UPDATE"), ("items", "DELETE"), ("domains", "INSERT"), ("domains", "UPDATE")] {
         let name = format!("test_fail_{table}_{}", event.to_lowercase());
         let statement = if fail { format!("CREATE TRIGGER IF NOT EXISTS {name} BEFORE {event} ON {table} BEGIN SELECT RAISE(FAIL, 'test: disk full'); END;") }
@@ -603,7 +713,38 @@ mod tests {
         let list: Vec<Json> = (0..n).map(|i| json!({ "user_id": 1001 + i, "dpoint": 500, "players": [{ "player_id": 2001 + i, "name": format!("P{i}") }] })).collect();
         json!({ "next_user": 1001 + n, "next_player": 2001 + n, "accounts": list, "bp_codes": [{ "code": "ABC", "bp": 10 }] })
     }
-    fn changes(d: &Path) -> u64 { connection(d).unwrap().lock().unwrap().total_changes() }
+    fn changes(d: &Path) -> u64 { hold(d).unwrap().total_changes() }
+
+    #[test]
+    fn saves_made_together_commit_together_and_leave_the_store_usable_whatever_happens() {
+        let d = dir("together");
+        initialize(&d).unwrap();
+        let (records, mail) = (d.join("records.json"), d.join("mail.json"));
+        let one = |n: u32| json!({ "records": [{ "player_id": 1, "opponent": 2, "win": n, "lose": 0, "draw": 0 }] });
+        together(&d, || { write(&records, &one(1))?; write(&mail, &json!({ "mail": [{ "id": 1 }] })) }).unwrap();
+        assert_eq!((read(&records).unwrap(), read(&mail).unwrap().is_some()), (Some(one(1)), true));
+        // An error inside: nothing it saved is kept, and the caches still match the disk (the same value is written).
+        let refused = together(&d, || { write(&records, &one(2))?; Err::<(), _>(io::Error::other("no")) });
+        assert!(refused.is_err());
+        assert_eq!(read(&records).unwrap(), Some(one(1)));
+        write(&records, &one(2)).unwrap();
+        assert_eq!(read(&records).unwrap(), Some(one(2)), "written again after the rollback");
+        // A panic inside: rolled back, and the connection is back for the next save (no wait forever).
+        let panicked = std::panic::catch_unwind(|| together(&d, || -> io::Result<()> { write(&records, &one(3)).unwrap(); panic!("inside together") }));
+        assert!(panicked.is_err());
+        assert_eq!(read(&records).unwrap(), Some(one(2)));
+        // Another thread's save waits for the transaction, then goes through.
+        std::thread::scope(|scope| {
+            together(&d, || {
+                let other = scope.spawn(|| write(&mail, &json!({ "mail": [] })));
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                assert!(!other.is_finished(), "waits while the transaction is open");
+                write(&records, &one(4))
+            }).unwrap();
+        });
+        assert_eq!((read(&records).unwrap(), read(&mail).unwrap()), (Some(one(4)), Some(json!({ "mail": [] }))));
+        close(&d);
+    }
 
     #[test]
     fn a_domain_comes_back_as_it_was_saved() {
@@ -655,8 +796,7 @@ mod tests {
         initialize(&d).unwrap();
         assert_eq!(read(&d.join("accounts.json")).unwrap(), Some(accounts(3)));
         assert_eq!(read(&d.join("mail.json")).unwrap().unwrap()["waiting"][0]["id"], 7);
-        let conn = connection(&d).unwrap();
-        let conn = conn.lock().unwrap();
+        let conn = hold(&d).unwrap();
         assert_eq!(conn.pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0)).unwrap(), SCHEMA);
         let old: u32 = conn.query_row("SELECT count(*) FROM sqlite_master WHERE name='state_documents'", [], |r| r.get(0)).unwrap();
         assert_eq!(old, 0);
@@ -669,11 +809,11 @@ mod tests {
         initialize(&d).unwrap();
         let file = d.join("records.json");
         write(&file, &json!({ "records": [] })).unwrap();
-        connection(&d).unwrap().lock().unwrap().execute_batch(
+        hold(&d).unwrap().execute_batch(
             "CREATE TRIGGER refuse BEFORE INSERT ON items BEGIN SELECT RAISE(FAIL, 'disk full'); END;").unwrap();
         assert!(write(&file, &json!({ "records": [{ "player_id": 1, "opponent": 2, "win": 1 }] })).is_err());
         assert!(!healthy());
-        connection(&d).unwrap().lock().unwrap().execute_batch("DROP TRIGGER refuse;").unwrap();
+        hold(&d).unwrap().execute_batch("DROP TRIGGER refuse;").unwrap();
         write(&file, &json!({ "records": [{ "player_id": 1, "opponent": 2, "win": 1 }] })).unwrap();
         assert!(healthy());
     }

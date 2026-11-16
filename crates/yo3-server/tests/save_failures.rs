@@ -123,3 +123,40 @@ fn the_boosterpass_window_says_no_when_the_code_cannot_be_saved() {
     assert_eq!(directory.lock().unwrap().dpoint(user), Some(START_BP));
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// The BP of `player`'s account on disk.
+fn bp_on_disk(dir: &Path, player: u32) -> u32 {
+    let d = Directory::open(vec![], &dir.join("accounts.json")).unwrap();
+    d.entries().find(|(_, _, a)| a.players.iter().any(|p| p.player_id == player)).unwrap().2.dpoint
+}
+
+/// `player`'s wins, losses and draws against `opponent` on disk.
+fn record_on_disk(dir: &Path, player: u32, opponent: u32) -> Option<[u64; 3]> {
+    let saved = yo3_server::store::read(&dir.join("records.json")).unwrap()?;
+    saved["records"].as_array()?.iter().find(|r| r["player_id"] == player && r["opponent"] == opponent)
+        .map(|r| [r["win"].as_u64().unwrap(), r["lose"].as_u64().unwrap(), r["draw"].as_u64().unwrap()])
+}
+
+#[test]
+fn a_duels_bp_and_record_are_saved_together_or_not_at_all() {
+    // #22: one transaction for a duel's end. When the record can't be saved (a failure on its rows only), the BP the
+    // duel paid is not kept either, on disk or in memory, and the record stays as it was.
+    let (d, dir, yugi, kaiba) = stored("duel-together");
+    let directory = std::sync::Arc::new(std::sync::Mutex::new(d));
+    let mut hub = yo3_server::front::Hub::with_records(&dir.join("records.json"));
+    hub.set_directory(directory.clone());
+    assert_eq!(hub.record_result(yugi, kaiba, 1), [1, 0, 0]);
+    let paid = START_BP + yo3_server::shop::duel_bp(1);
+    assert_eq!((bp_on_disk(&dir, yugi), record_on_disk(&dir, yugi, kaiba)), (paid, Some([1, 0, 0])), "a duel's end saved");
+    let memory = in_memory(&directory.lock().unwrap());
+    yo3_server::store::fail_domain(&dir, "records.json", true).unwrap();
+    assert_eq!(hub.record_result(yugi, kaiba, 1), [1, 0, 0], "the record as it stands");
+    yo3_server::store::fail_domain(&dir, "records.json", false).unwrap();
+    assert_eq!(in_memory(&directory.lock().unwrap()), memory, "the BP went back in memory");
+    assert_eq!((bp_on_disk(&dir, yugi), record_on_disk(&dir, yugi, kaiba)), (paid, Some([1, 0, 0])), "and on disk");
+    // Saving works again: the next duel's end saves both.
+    assert_eq!(hub.record_result(yugi, kaiba, 1), [2, 0, 0]);
+    assert_eq!((bp_on_disk(&dir, yugi), record_on_disk(&dir, yugi, kaiba)), (paid + yo3_server::shop::duel_bp(1), Some([2, 0, 0])));
+    yo3_server::store::close(&dir);
+    std::fs::remove_dir_all(dir).unwrap();
+}

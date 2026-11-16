@@ -1023,31 +1023,45 @@ impl Hub {
 
     /// Counts a duel's `result` (1 won, 2 lost, 3 draw), pays its BP into the player's account (`shop::duel_bp`), and
     /// returns the player's wins, losses and draws against this opponent.
+    /// The BP and the record are saved together, in one transaction (#22): when either can't be saved, neither is
+    /// kept, on disk or in memory.
     pub fn record_result(&mut self, player_id: u32, opponent: u32, result: u32) -> [u32; 3] {
-        if let Some(d) = &self.directory {
-            let mut d = d.locked();
-            if let Some(bp) = d.reward(player_id, crate::shop::duel_bp(result)) {
-                let players = d.account_players(player_id);
-                drop(d);
-                self.push_bp(&players, bp);
-            }
-        }
+        let bp = crate::shop::duel_bp(result);
+        let before = self.records.get(&(player_id, opponent)).copied();
         let record = self.records.entry((player_id, opponent)).or_default();
         if let Some(n) = record.get_mut(result.wrapping_sub(1) as usize) {
             *n += 1;
         }
         let record = *record;
-        if let Some(file) = &self.records_file {
+        let rows = self.records_file.as_ref().map(|_| {
             let mut all: Vec<_> = self.records.iter().collect();
             all.sort();
-            let rows: Vec<serde_json::Value> = all
-                .into_iter()
+            let rows: Vec<serde_json::Value> = all.into_iter()
                 .map(|((me, them), [w, l, d])| serde_json::json!({ "player_id": me, "opponent": them, "win": w, "lose": l, "draw": d }))
                 .collect();
-            if let Err(e) = crate::store::write(file, &serde_json::json!({ "records": rows })) {
-                tracing::warn!("records not saved to {}: {e}", file.display());
+            serde_json::json!({ "records": rows })
+        });
+        let mut paid = None;
+        let dir = self.records_file.as_deref().and_then(std::path::Path::parent).unwrap_or(std::path::Path::new(""));
+        // The accounts before the store's connection, as every accounts save takes them: the other order could deadlock.
+        let mut accounts = self.directory.as_ref().map(|d| d.locked());
+        let saved = crate::store::together(dir, || {
+            if let Some(d) = accounts.as_mut() {
+                paid = d.pay(player_id, bp).map_err(std::io::Error::other)?;
             }
+            if let (Some(file), Some(rows)) = (&self.records_file, &rows) { crate::store::write(file, rows)?; }
+            Ok(())
+        });
+        if let Err(e) = saved {
+            tracing::warn!("duel result of player {player_id} against {opponent} not saved (neither its BP nor its record): {e}");
+            if paid.is_some() && let Some(d) = accounts.as_mut() { d.unpay(player_id, bp); }
+            drop(accounts);
+            match before { Some(r) => { self.records.insert((player_id, opponent), r); } None => { self.records.remove(&(player_id, opponent)); } }
+            return before.unwrap_or_default();
         }
+        let players = accounts.as_ref().map(|d| d.account_players(player_id)).unwrap_or_default();
+        drop(accounts);
+        if let Some(bp) = paid { self.push_bp(&players, bp); }
         record
     }
 

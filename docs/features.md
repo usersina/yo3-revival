@@ -210,7 +210,7 @@ release, and "—" a row that is not implemented or unsupported.
 | --- | --- | --- | --- | --- |
 | Server, accounts, profiles, admin commands, `play.sh` and `play.cmd` | Implemented | v0.0.1 (2026-11-09) | `cli_options.rs`, `manager_contract.rs`; live; Windows VM (Scripts bundle) | See [guide](guide.md) and [scripts](scripts.md). |
 | Headless client and the monkeys | Implemented | v0.0.1 (2026-11-09) | `tools/client/test_vclient.py`; monkey runs | Developer tools (`vclient.sh`, `protocol-monkey.sh`, `ui-monkey.py`). |
-| Server storage: one row per thing, WAL, backups at start, hourly and at stop, `restore` | Implemented | Unreleased (`beta` branch) | `store.rs` tests (round trip, one row per change, schema 1 conversion, a failed save refusing logins, restore), `save_failures.rs`, `accounts.rs` `save_cost` (one purchase about 2 ms with 1,200 full collections); live on a scratch server | #22. The smaller domains still build their whole document per change; the address login goes with #23. |
+| Server storage: one row per thing, WAL, backups at start, hourly and at stop, `restore` | Implemented | Unreleased (`beta` branch) | `store.rs` tests (round trip, one row per change, schema 1 conversion, a failed save refusing logins, restore, saves made together committing together, through an error, a panic and another thread's save), `save_failures.rs` (a duel's BP and record kept both or neither), `accounts.rs` `save_cost` (one purchase about 2 ms with 1,200 full collections); live on a scratch server | #22. A duel's BP and record save in one transaction (`store::together`). The smaller domains still build their whole document per change; the address login goes with #23. |
 
 ## Connection DLL and direct start
 

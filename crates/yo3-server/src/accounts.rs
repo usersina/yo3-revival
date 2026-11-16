@@ -634,12 +634,25 @@ impl Directory {
 
     /// Pays `bp` into the account of a player; its new BP, if the player has an account and the payment was saved.
     pub fn reward(&mut self, player_id: u32, bp: u32) -> Option<u32> {
-        let paid = self.atomic(|d| {
+        self.pay(player_id, bp).inspect_err(|why| tracing::warn!("duel reward of {bp} BP to player {player_id} not paid: {why}")).ok().flatten()
+    }
+
+    /// Pays `bp` into the account of a player: its new BP, None when no account has the player, or why it wasn't saved.
+    pub fn pay(&mut self, player_id: u32, bp: u32) -> Result<Option<u32>, String> {
+        if !self.accounts.iter().any(|e| e.account.players.iter().any(|p| p.player_id == player_id)) { return Ok(None) }
+        self.atomic(|d| {
             let account = d.account_mut_where(|a| a.players.iter().any(|p| p.player_id == player_id)).ok_or("no such player")?;
             account.dpoint = account.dpoint.saturating_add(bp);
-            Ok(account.dpoint)
-        });
-        paid.inspect_err(|why| tracing::warn!("duel reward of {bp} BP to player {player_id} not paid: {why}")).ok()
+            Ok(Some(account.dpoint))
+        })
+    }
+
+    /// Takes back in memory a payment that was saved inside a `store::together` that then didn't commit: the disk never
+    /// had it. The next save writes the account as it is again.
+    pub fn unpay(&mut self, player_id: u32, bp: u32) {
+        if let Some(account) = self.account_mut_where(|a| a.players.iter().any(|p| p.player_id == player_id)) {
+            account.dpoint = account.dpoint.saturating_sub(bp);
+        }
     }
 
     /// Gives `bp` to the account at `who` (a User ID, or one of its players' names): who it went to, and the
