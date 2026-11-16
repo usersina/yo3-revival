@@ -11,6 +11,7 @@
 | Host a server on a VPS, or use the admin panel     | [Hosting guide](hosting.md) (beta)                                                                                                       |
 | Fix a setup problem or report a bug              | [Troubleshooting](launcher.md#troubleshooting)                                                                                           |
 | Update or back up an existing setup              | [Desktop updates](launcher.md#application-updates), [backups](launcher.md#your-data-and-upgrades), [Scripts updates](scripts.md#updates) |
+| Read the rules, or what a server keeps about you | [Rules and privacy](rules-privacy.md)                                                                                                    |
 | Understand the project, credits or license       | [About YO3 Revival](about.md)                                                                                                            |
 
 ## Build and contribute
@@ -22,6 +23,7 @@
 - [Launcher style guide](launcher-style.md): the beta launcher's colours, fonts and components (the `yo3-skin` kit).
 - [History](history.md): dated records of releases, investigations and milestones M0 to M6.
 - [Authentication](authentication.md): account keys, TLS, the required connection DLL and session binding.
+- [Security review](security.md): what was reviewed for the beta, what was fixed, and what is known and open.
 - [Protocol](protocol.md): wire format and request/reply shapes, with client evidence.
 - [Client internals](client-internals.md): executable addresses, native hooks, data formats and crash history.
 - [Research](research.md): the original feasibility study, retained as history.
