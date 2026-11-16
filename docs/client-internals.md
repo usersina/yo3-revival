@@ -229,6 +229,24 @@ Tests: `tools/mod/login-test.c` (native through `login_flow.rs`, and under Wine 
 the requests), launcher `direct_start.rs`, and `tools/mod/test-direct.sh`'s #34 rows (form, wrong password, Save
 Password, ban).
 
+### A Documents folder per server (#35, research R5)
+
+The client finds its folder in two places only, both `SHGetFolderPath(CSIDL_PERSONAL | CSIDL_FLAG_CREATE)` (`0x8005`)
+followed by `PathAppend` "Yu-Gi-Oh! ONLINE 3": the wide call at `0x52B93F` (in `0x52B8E0`, run once at startup from
+`0x40B800`; its result is cached behind `0x82D2C8` and becomes the file component's root) and the narrow one in
+`0x52BF40` (the duel-log paths, `%s\players\%s\duellogs\%s\%s` at `0x52BF40`'s caller). Everything else is built on
+those roots: `options.y3o` (read at startup, written on a login and at exit), `users\<md5>.y3u` (written on `0x219A`),
+and per player `players\<pname>\` with `<pname>.y3p`, `decks\*.y3d` (Edit Deck saves, our starter deck), `mail`,
+`avatars`, `regulations`, `duellogs\cache` and `duellogs\myduels` (after a duel). The executable imports no other
+folder lookup (no `SHGetSpecialFolderPath`, Known Folder or environment call; its registry reads are the OS version,
+CPU and keyboard layouts). Answering those two calls is therefore enough, and it touches no other path: `documents.h`
+does it per server (`YO3_SERVER_ID`, from the launcher, the Desktop's Play and direct start's ready file alike). The
+first server played on keeps the original folder (`revival-server.txt`); every other gets `Documents\YO3 Revival\
+servers\<id>\Yu-Gi-Oh! ONLINE 3`, starting with `options.y3o` copied. **D13: yes.** Live (2026-11-16, a fresh
+Documents, two scratch servers each with a player "Duelist"): server A claimed the original folder; with a second deck
+"Only On A" in it, A's Select Deck listed both decks and B's only its own Starter Deck, kept under
+`YO3 Revival/servers/35b82924973c0938/`; A's folder was unchanged.
+
 ### Direct start (#33)
 
 `yo3.exe` opened directly loads our `winmm.dll` from its folder (the game imports seven WINMM functions, which it
@@ -575,7 +593,8 @@ native Windows, an IME, more than one monitor.
 - The required mod skips the stock username/password form after **ONLINE**; the revival launcher authenticates
   first. The native connection/error/player-selection flow stays in use. Up to 4 players per account.
 - The client treats formatted server date/time strings as JST; duel-log epoch timestamps render in local time.
-- The client keeps its own data under `<My Documents>\Yu-Gi-Oh! ONLINE 3` (`SHGetFolderPath` `0x8005`, `0x52B8E0`):
+- The client keeps its own data under `<My Documents>\Yu-Gi-Oh! ONLINE 3` (`SHGetFolderPath` `0x8005`, `0x52B8E0`;
+  one folder per server with the connection DLL, see "A Documents folder per server"):
   `options.y3o`, `users\`, and per player `players\<pname>\` with `decks`, `mail`, `regulations`, `duellogs`,
   `local`, `avatars` and `<pname>.y3p`. Under Wine, My Documents is usually a link to the Linux `~/Documents`, and
   every prefix made by `vclient.sh prefix` shares it.
