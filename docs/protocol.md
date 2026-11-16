@@ -1876,6 +1876,19 @@ deck. Live (Time Wizard):
 "Coin Toss Selection:" listed Heads and Tails; Tails sent `DLGResult 1`, the coin came up heads, and Time Wizard was
 destroyed with 250 LP lost.
 
+Coin tosses and dice (**confirmed**, live 2026-11-16): MSG_TOSS_COIN (130) {player, results} becomes DuelScene's
+`0x3C` RunCoin {player | coins << 6 | winning side << 14, 0, one bit a coin (1 heads), 0} (`0x51500E`), at most three
+coins a command. It makes DuelCoinToss (`0x508050`, `duel_cointoss.swf`): each coin's `coinState` is (face == winning
+side) | face << 1, played as "tail", "tail_ok", "head" or "head_ok", on the tossing player's side (`opponent`). The
+winning side is the one the client called in the "Coin Toss Selection:" options just before (SELECT_HEADS/TAILS 60/61),
+else heads. MSG_TOSS_DICE (131) {player, results} becomes one `0x3D` RunDice {player, 0, face, 0} a die (`0x5150CD`):
+DuelDiceRoll (`0x507D10`, `duel_diceroll.swf`, `diceResult`, frames "dice1".."dice6"). Before, neither was sent and
+the player saw only the outcome. Live (`--duel-deck 610,1977,630`, then `610,1449,610`): Time Wizard called Tails
+(`0x3C 64, 0, 1`: a coin spun, heads, Time Wizard destroyed); Sasuke Samurai #4 against Blue-Eyes White Dragon called
+Heads (`0x3C 16448, 0, 1`, Blue-Eyes destroyed); Graceful Dice showed a die on the field, 5 (`0x3D 0, 0, 5`), and
+Giant Orc went from 2200 to 2700 ATK. The core draws both from its seeded xoshiro256** (`duel::get_next_integer`,
+uniform); 60 Graceful Dice rolls under random seeds landed on every face.
+
 Chains: the client's MSG_SELECT_CHAIN {spe_count, forced, hint_timing, selects} with cards to chain becomes the Effect
 dialog with those cards, at a level that lets the player's **Activation Message** duel option (`duelOption
 invoke_conf`, DUEL OPTIONS) decide whether it shows (`0x4C5560`; the mouse-button flags are the game object's `+0x770`
