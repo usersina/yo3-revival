@@ -7,12 +7,20 @@ use serde_json::json;
 use super::Api;
 use crate::{lock::Locked, logins::Role, mail::Mailbox, store::{self, AuditRow, Receipt}};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-pub struct GiveBpRequest { pub who: String, pub amount: u32 }
+pub struct GiveBpRequest { #[schema(min_length = 1)] pub who: String, #[schema(minimum = 1, maximum = 4294967295_u32)] pub amount: u32 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct GiveBpResult { pub user_id: u32, pub bp: u32, pub message: String, pub request_id: String }
+/// The dashboard always targets the stable account number, never a renameable player or login label.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GiveBpByIdRequest {
+    #[schema(maximum = 4294967295_u32)] pub user_id: u32,
+    #[schema(minimum = 1, maximum = 4294967295_u32)] pub amount: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct GiveBpResult { #[schema(maximum = 4294967295_u32)] pub user_id: u32, #[schema(maximum = 4294967295_u32)] pub bp: u32, pub message: String, pub request_id: String }
 
 /// Identity comes from the authenticated transport. A host's display name never selects its receipt scope.
 pub enum GrantActor<'a> { Host { by: &'a str }, Staff { user_id: u32 } }
@@ -41,6 +49,14 @@ pub fn valid_request_id(id: &str) -> bool {
 
 impl Api {
     pub fn give_bp(&self, request: &GiveBpRequest, request_id: &str, actor: GrantActor<'_>, origin: &str) -> Result<GiveBpResult, GrantError> {
+        self.grant_bp(request, None, request_id, actor, origin)
+    }
+
+    pub fn give_bp_to_account(&self, request: &GiveBpByIdRequest, request_id: &str, actor: GrantActor<'_>, origin: &str) -> Result<GiveBpResult, GrantError> {
+        self.grant_bp(&GiveBpRequest { who: format!("#{}", request.user_id), amount: request.amount }, Some(request.user_id), request_id, actor, origin)
+    }
+
+    fn grant_bp(&self, request: &GiveBpRequest, target: Option<u32>, request_id: &str, actor: GrantActor<'_>, origin: &str) -> Result<GiveBpResult, GrantError> {
         if !valid_request_id(request_id) {
             return Err(GrantError::new(GrantErrorCode::InvalidRequest, "A request ID needs 16–128 letters, digits, hyphens or underscores."))
         }
@@ -60,7 +76,10 @@ impl Api {
         let span = tracing::info_span!("give-bp", request_id, actor = %scope);
         let _entered = span.enter();
         // Retained receipts need the input's fingerprint, not a player's name (account deletion scrubs the audit).
-        let canonical = serde_json::to_string(request).map_err(GrantError::persistence)?;
+        let canonical = match target {
+            Some(user_id) => serde_json::to_string(&GiveBpByIdRequest { user_id, amount: request.amount }),
+            None => serde_json::to_string(request),
+        }.map_err(GrantError::persistence)?;
         let input = serde_json::to_string(&crate::logins::digest(&canonical)).map_err(GrantError::persistence)?;
         let previous = match &self.data_dir {
             Some(dir) => store::receipt(dir, &scope, request_id).map_err(GrantError::persistence)?,
@@ -72,14 +91,15 @@ impl Api {
             }
             return serde_json::from_value(receipt.result).map_err(GrantError::persistence)
         }
-        let user = accounts.user_of(&request.who).ok_or_else(|| GrantError::new(GrantErrorCode::NotFound,
+        let user = target.or_else(|| accounts.user_of(&request.who)).ok_or_else(|| GrantError::new(GrantErrorCode::NotFound,
             format!("no account with the User ID or a player named {:?}", request.who)))?;
         let before = accounts.dpoint(user).ok_or_else(|| GrantError::new(GrantErrorCode::NotFound, "The account is gone."))?;
         if before.checked_add(request.amount).is_none() {
             return Err(GrantError::new(GrantErrorCode::InvalidRequest, "This grant would exceed the BP balance limit."))
         }
-        let players = accounts.named_players_of(&request.who);
-        let (mut next, _, total) = accounts.prepare_bp(&request.who, request.amount)
+        let players = accounts.account_of(user).ok_or_else(|| GrantError::new(GrantErrorCode::NotFound, "The account is gone."))?
+            .players.into_iter().map(|p| (p.player_id, p.name)).collect::<Vec<_>>();
+        let (mut next, total) = accounts.prepare_bp(user, request.amount)
             .map_err(|e| GrantError::new(GrantErrorCode::InvalidRequest, e))?;
         let source = match hub.as_ref() {
             Some(h) => h.bp_mail(),

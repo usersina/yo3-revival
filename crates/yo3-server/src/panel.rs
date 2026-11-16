@@ -37,7 +37,7 @@ const CSS: &str = include_str!("panel/panel.css");
 const JS: &str = include_str!("panel/panel.js");
 
 /// A signed-in staff account.
-struct Session { user_id: u32, user: String, csrf: String, started: i64, last: i64, flash: Option<(bool, String)> }
+struct Session { user_id: u32, user: String, credential: String, csrf: String, started: i64, last: i64, flash: Option<(bool, String)> }
 
 /// The panel's state: its sessions and its sign-in throttle.
 #[derive(Default)]
@@ -134,7 +134,7 @@ fn text(v: &Value) -> String {
 }
 
 /// The headers every answer carries.
-fn security_headers() -> Vec<(&'static str, String)> {
+pub(crate) fn security_headers() -> Vec<(&'static str, String)> {
     vec![
         ("Content-Security-Policy", "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'".into()),
         ("X-Frame-Options", "DENY".into()),
@@ -176,7 +176,8 @@ const PAGES: &[(&str, &str)] = &[
 ];
 
 /// Who is looking at a page.
-struct Viewer { user: String, role: Role, csrf: String }
+#[derive(Clone)]
+pub(crate) struct Viewer { pub user_id: u32, pub user: String, pub role: Role, pub csrf: String, pub expires: i64 }
 
 impl Viewer {
     fn admin(&self) -> bool { self.role == Role::Admin }
@@ -188,14 +189,34 @@ impl Panel {
     pub fn new() -> Panel { Panel::default() }
 
     /// Signs `user_id` in: the new session's cookie value.
-    fn open(&self, user_id: u32, user: &str) -> String {
+    fn open(&self, user_id: u32, user: &str, credential: String) -> String {
         let token = crate::logins::new_token();
         let now = crate::logins::now();
         let mut sessions = self.sessions.locked();
         sessions.retain(|_, s| now - s.last < IDLE && now - s.started < LONGEST);
-        sessions.insert(crate::logins::digest(&token), Session { user_id, user: user.into(), csrf: crate::logins::new_token(), started: now, last: now, flash: None });
+        sessions.insert(crate::logins::digest(&token), Session { user_id, user: user.into(), credential, csrf: crate::logins::new_token(), started: now, last: now, flash: None });
         token
     }
+
+    fn view(&self, key: &str, api: &Api) -> Option<(Viewer, Option<(bool, String)>)> {
+        let now = crate::logins::now();
+        let mut sessions = self.sessions.locked();
+        let s = sessions.get_mut(key)?;
+        if now - s.last >= IDLE || now - s.started >= LONGEST { sessions.remove(key); return None }
+        let d = api.accounts.locked();
+        let login = d.login_by_id(s.user_id).filter(|l| l.staff() && l.refusal(now).is_none()
+            && l.user.eq_ignore_ascii_case(&s.user) && credential(l) == s.credential);
+        let Some(login) = login else { drop(d); sessions.remove(key); return None };
+        s.last = now;
+        Some((Viewer { user_id: s.user_id, user: login.user.clone(), role: login.role, csrf: s.csrf.clone(),
+            expires: (now + IDLE).min(s.started + LONGEST) }, s.flash.take()))
+    }
+
+    pub(crate) fn session(&self, cookie: &str, api: &Api) -> Option<Viewer> {
+        self.view(&crate::logins::digest(cookie), api).map(|(viewer, _)| viewer)
+    }
+
+    pub(crate) fn close(&self, cookie: &str) { self.sessions.locked().remove(&crate::logins::digest(cookie)); }
 
     fn flash(&self, key: &str, ok: bool, message: impl Into<String>) {
         if let Some(s) = self.sessions.locked().get_mut(key) { s.flash = Some((ok, message.into())) }
@@ -219,17 +240,7 @@ pub async fn handle(raw: &str, peer: IpAddr, panel: &Panel, api: &Api) -> Option
     }
     // Everything else needs a session of a staff account in good standing.
     let key = r.cookie().map(crate::logins::digest);
-    let now = crate::logins::now();
-    let viewer = key.as_ref().and_then(|key| {
-        let mut sessions = panel.sessions.locked();
-        let s = sessions.get_mut(key)?;
-        if now - s.last >= IDLE || now - s.started >= LONGEST { sessions.remove(key); return None }
-        let d = api.accounts.locked();
-        let login = d.login_by_id(s.user_id).filter(|l| l.staff() && l.refusal(now).is_none() && l.user.eq_ignore_ascii_case(&s.user));
-        let Some(login) = login else { drop(d); sessions.remove(key); return None };
-        s.last = now;
-        Some((Viewer { user: login.user.clone(), role: login.role, csrf: s.csrf.clone() }, s.flash.take()))
-    });
+    let viewer = key.as_ref().and_then(|key| panel.view(key, api));
     let Some((viewer, flash)) = viewer else {
         return Some(if r.method == "GET" { redirect(&format!("{PREFIX}/login"), vec![]) } else { refused("403 Forbidden", "Your session has ended: sign in again.") });
     };
@@ -291,30 +302,50 @@ async fn sign_in(r: &Request, peer: IpAddr, panel: &Panel, api: &Api) -> Respons
         tracing::warn!("[panel] a sign-in was refused: not from the panel's own page ({})", r.whence());
         return refused("403 Forbidden", "Sign in from the panel's own page.");
     }
-    let user = r.field("user").to_string();
-    let password = r.form.get("password").cloned().unwrap_or_default();
+    match authenticate(r.field("user"), r.form.get("password").cloned().unwrap_or_default(), peer, panel, api).await {
+        Ok((token, _)) => redirect(&format!("{PREFIX}/"), vec![("Set-Cookie", session_cookie(&token, false))]),
+        Err(SignInError::Throttled(wait)) => login_page(Some(&format!("Too many tries: wait {wait} seconds and try again.")), r.field("user")),
+        Err(SignInError::Wrong) => login_page(Some(WRONG), r.field("user")),
+    }
+}
+
+/// Password or recovery changes invalidate existing staff cookies as well as devices.
+fn credential(login: &crate::logins::Login) -> String { crate::logins::digest(&format!("{}:{}", login.password, login.recovery)) }
+
+pub(crate) enum SignInError { Wrong, Throttled(u64) }
+
+pub(crate) fn session_cookie(token: &str, clear: bool) -> String {
+    format!("{COOKIE}={token}; Path={PREFIX}; HttpOnly; Secure; SameSite=Strict; Max-Age={}", if clear { 0 } else { LONGEST })
+}
+
+/// Shared by the existing forms and the typed API. Never trust a role snapshot captured before password verification.
+pub(crate) async fn authenticate(user: &str, password: String, peer: IpAddr, panel: &Panel, api: &Api) -> Result<(String, Viewer), SignInError> {
     {
         let limits = api.settings.now().limits;
         let mut throttle = panel.throttle.locked();
         throttle.set_limits(limits);
         let at = Instant::now();
-        let wait = throttle.address(peer, at).err().or_else(|| throttle.user_wait(&user, at));
-        if let Some(wait) = wait { return login_page(Some(&format!("Too many tries: wait {} seconds and try again.", wait.as_secs().max(1))), &user) }
+        let wait = throttle.address(peer, at).err().or_else(|| throttle.user_wait(user, at));
+        if let Some(wait) = wait { return Err(SignInError::Throttled(wait.as_secs().max(1))) }
     }
-    let found = api.accounts.locked().login_of(&user);
+    let found = api.accounts.locked().login_of(user);
     let hash = found.as_ref().map(|(_, l)| l.password.clone()).filter(|h| !h.is_empty());
     let matched = crate::logins::verify_password(password, hash).await;
+    let current = api.accounts.locked().login_of(user);
     let now = crate::logins::now();
-    let Some((user_id, login)) = found.filter(|(_, l)| matched && l.staff() && l.refusal(now).is_none()) else {
-        panel.throttle.locked().failed(&user, Instant::now());
+    let valid = current.filter(|(_, l)| matched && l.staff() && l.refusal(now).is_none()
+        && found.as_ref().is_some_and(|(_, old)| credential(old) == credential(l)));
+    let Some((user_id, login)) = valid else {
+        panel.throttle.locked().failed(user, Instant::now());
         tracing::warn!("[panel] a sign-in was refused");
-        return login_page(Some(WRONG), &user);
+        return Err(SignInError::Wrong)
     };
-    panel.throttle.locked().succeeded(&user);
-    let token = panel.open(user_id, &login.user);
+    panel.throttle.locked().succeeded(user);
+    let token = panel.open(user_id, &login.user, credential(&login));
+    let viewer = panel.session(&token, api).ok_or(SignInError::Wrong)?;
     tracing::info!("[panel] {} signed in", login.user);
     api.note(&login.user, ORIGIN, "panel-sign-in", &login.user);
-    redirect(&format!("{PREFIX}/"), vec![("Set-Cookie", format!("{COOKIE}={token}; Path={PREFIX}; HttpOnly; Secure; SameSite=Strict; Max-Age={LONGEST}"))])
+    Ok((token, viewer))
 }
 
 /// Runs `op` as the viewer: its result, or why not.

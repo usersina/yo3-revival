@@ -58,7 +58,7 @@ async fn accounts_can_be_created_and_exported_while_the_tls_server_stays_online(
     assert!(get("/duellogs/missing.dlog").await.starts_with("HTTP/1.1 404"));
     // The game's links to Konami's old website, sent here by the connection DLL (tools/mod/web-links.h): a page each.
     let leaderboard = get("/web/v3/events/rank_info?country=GB").await;
-    assert!(leaderboard.starts_with("HTTP/1.1 200") && leaderboard.contains("Content-Type: text/html"), "{leaderboard}");
+    assert!(leaderboard.starts_with("HTTP/1.1 200") && leaderboard.to_ascii_lowercase().contains("content-type: text/html"), "{leaderboard}");
     assert!(leaderboard.contains("<title>Leaderboard</title>"));
     // The old routes are gone, and the API takes only POST with the token.
     for old in ["/admin?op=codes", "/manager"] { assert!(get(old).await.starts_with("HTTP/1.1 404"), "{old}") }

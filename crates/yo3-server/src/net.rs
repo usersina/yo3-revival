@@ -232,99 +232,89 @@ where
 ///
 /// This is an internal loopback asset/admin service. Account keys in old patch URLs are ignored; TLS identifies
 /// accounts before the game protocol runs. The authenticated asset tunnel whitelists routes before reaching here.
+/// Axum owns HTTP parsing; legacy game assets and host commands remain on this local listener only.
 pub async fn http_loop(
-    listener: TcpListener,
-    game_dir: PathBuf,
-    data_dir: Option<PathBuf>,
-    admin_token: Option<String>,
-    api: Arc<crate::api::Api>,
-    panel: Arc<crate::panel::Panel>,
+    listener: TcpListener, game_dir: PathBuf, data_dir: Option<PathBuf>, admin_token: Option<String>,
+    api: Arc<crate::api::Api>, panel: Arc<crate::panel::Panel>,
 ) {
+    let typed = crate::dashboard::router(crate::dashboard::Dashboard { api: api.clone(), panel: panel.clone() });
+    let router = axum::Router::new().merge(typed).fallback(move |axum::extract::ConnectInfo(peer): axum::extract::ConnectInfo<std::net::SocketAddr>, request: axum::extract::Request| {
+        let (game, data, token, api, panel) = (game_dir.clone(), data_dir.clone(), admin_token.clone(), api.clone(), panel.clone());
+        async move { legacy_http(request, peer.ip(), game, data, token, api, panel).await }
+    });
     let mut backoff = Duration::from_millis(50);
     loop {
-        let (mut stream, peer) = match listener.accept().await {
-            Ok(accepted) => {
-                backoff = Duration::from_millis(50);
-                accepted
-            }
+        let (stream, peer) = match listener.accept().await {
+            Ok(accepted) => { backoff = Duration::from_millis(50); accepted }
             Err(e) => {
                 tracing::warn!("[http] accept failed: {e}");
                 tokio::time::sleep(backoff).await;
                 backoff = (backoff * 2).min(Duration::from_secs(2));
-                continue;
+                continue
             }
         };
-        let (game_dir, data_dir, admin_token) = (game_dir.clone(), data_dir.clone(), admin_token.clone());
-        let (api, panel) = (api.clone(), panel.clone());
+        let service = router.clone().layer(axum::Extension(axum::extract::ConnectInfo(peer)));
         tokio::spawn(async move {
-            let mut buf = Vec::new();
-            let mut chunk = [0u8; 1024];
-            while !buf.windows(4).any(|w| w == b"\r\n\r\n") && buf.len() < 8192 {
-                // A client that never finishes its request line is let go after a while.
-                match tokio::time::timeout(Duration::from_secs(10), stream.read(&mut chunk)).await {
-                    Ok(Ok(n)) if n > 0 => buf.extend_from_slice(&chunk[..n]),
-                    _ => break,
-                }
+            // A CLI may finish sending and close its write half before reading (or lose the answer altogether).
+            // Finish a complete request in that case, preserving the operation/receipt contract.
+            // Existing asset/CLI readers use EOF to end an answer: keep one request per connection.
+            let mut connection = hyper::server::conn::http1::Builder::new();
+            connection.half_close(true).keep_alive(false).timer(hyper_util::rt::TokioTimer::new()).header_read_timeout(Duration::from_secs(10));
+            if let Err(e) = connection.serve_connection(hyper_util::rt::TokioIo::new(stream), hyper_util::service::TowerToHyperService::new(service)).await {
+                tracing::debug!("[http] connection ended: {e}");
             }
-            if buf.is_empty() { return } // A local liveness probe has no HTTP request to log.
-            let header_end = buf.windows(4).position(|w| w == b"\r\n\r\n").map(|n| n + 4).unwrap_or(buf.len());
-            let length = String::from_utf8_lossy(&buf[..header_end]).lines().find_map(|line| {
-                let (name, value) = line.split_once(':')?;
-                name.eq_ignore_ascii_case("content-length").then(|| value.trim().parse::<usize>().ok()).flatten()
-            }).unwrap_or(0);
-            // The admin panel's forms (news) can be larger than a game request; nothing public posts here (transport.rs).
-            if length <= 64 * 1024 {
-                while buf.len() < header_end.saturating_add(length) {
-                    match tokio::time::timeout(Duration::from_secs(10), stream.read(&mut chunk)).await {
-                        Ok(Ok(n)) if n > 0 => buf.extend_from_slice(&chunk[..n]), _ => break,
-                    }
-                }
-            }
-            let request = String::from_utf8_lossy(&buf);
-            let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
-            // The admin API (#25); the old /admin and /manager routes are gone.
-            let mut response = crate::api::handle(&request, peer.ip(), admin_token.as_deref(), &api);
-            // The monitor's health check (#37) and the admin panel (#36).
-            if response.is_none() && request.starts_with("GET /health ") && peer.ip().is_loopback() { response = Some(crate::api::health(&api)) }
-            if response.is_none() { response = crate::panel::handle(&request, peer.ip(), &panel, &api).await }
-            if let Some(response) = response {
-                let mut head = format!("HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n", response.status, response.content_type, response.body.len());
-                for (name, value) in &response.headers {
-                    head += &format!("{name}: {value}\r\n");
-                }
-                head += "\r\n";
-                let _ = stream.write_all(head.as_bytes()).await;
-                let _ = stream.write_all(&response.body).await;
-                let _ = stream.shutdown().await;
-                return;
-            }
-            let (status, body) = if path.trim_end_matches('/').ends_with("/yo3.idx") {
-                match tokio::fs::read(game_dir.join("yo3.idx")).await {
-                    Ok(b) => ("200 OK", b),
-                    Err(_) => ("404 Not Found", vec![]),
-                }
-            } else if let (Some(name), Some(dir)) = (path.strip_prefix("/duellogs/").filter(|n| crate::duellog::valid_name(n)), data_dir.clone()) {
-                let name = name.to_string();
-                match tokio::task::spawn_blocking(move || crate::store::duel_log(&dir, &name)).await {
-                    Ok(Ok(Some(b))) => ("200 OK", b),
-                    _ => ("404 Not Found", vec![]),
-                }
-            } else if path.starts_with("/app/") {
-                ("200 OK", vec![])
-            } else if let Some(old) = path.strip_prefix("/web") {
-                // The game's links to Konami's old website (crate::web).
-                ("200 OK", crate::web::page(old).into_bytes())
-            } else {
-                ("404 Not Found", vec![])
-            };
-            tracing::info!("[http] GET {} -> {status} ({} B)", if path.ends_with("/yo3.idx") { "/yo3/yo3.idx" } else { path.split('?').next().unwrap_or_default() }, body.len());
-            let kind = if path.starts_with("/web") { "Content-Type: text/html; charset=utf-8\r\n" } else { "" };
-            let head = format!("HTTP/1.1 {status}\r\n{kind}Content-Length: {}\r\nConnection: close\r\n\r\n", body.len());
-            let _ = stream.write_all(head.as_bytes()).await;
-            let _ = stream.write_all(&body).await;
-            let _ = stream.shutdown().await;
         });
     }
+}
+
+async fn legacy_http(
+    request: axum::extract::Request, peer: std::net::IpAddr, game_dir: PathBuf, data_dir: Option<PathBuf>,
+    admin_token: Option<String>, api: Arc<crate::api::Api>, panel: Arc<crate::panel::Panel>,
+) -> axum::response::Response {
+    use axum::{body::{Body, to_bytes}, http::{HeaderName, HeaderValue, StatusCode}, response::IntoResponse};
+    let (parts, body) = request.into_parts();
+    let path = parts.uri.path();
+    // Unknown staff paths never fall through to the host API or the HTML panel.
+    if path.starts_with("/panel/api/") { return crate::dashboard::not_found() }
+    let body = match tokio::time::timeout(Duration::from_secs(10), to_bytes(body, 64 * 1024)).await {
+        Ok(Ok(body)) => body,
+        Ok(Err(_)) => return StatusCode::PAYLOAD_TOO_LARGE.into_response(),
+        Err(_) => return StatusCode::REQUEST_TIMEOUT.into_response(),
+    };
+    let mut raw = format!("{} {} HTTP/1.1\r\n", parts.method, parts.uri);
+    for (name, value) in &parts.headers {
+        if name != "content-length" && name != "transfer-encoding" {
+            raw += &format!("{name}: {}\r\n", value.to_str().unwrap_or_default());
+        }
+    }
+    raw += &format!("Content-Length: {}\r\n\r\n{}", body.len(), String::from_utf8_lossy(&body));
+    let mut response = crate::api::handle(&raw, peer, admin_token.as_deref(), &api);
+    if response.is_none() && parts.method == "GET" && path == "/health" && peer.is_loopback() { response = Some(crate::api::health(&api)) }
+    if response.is_none() { response = crate::panel::handle(&raw, peer, &panel, &api).await }
+    if let Some(r) = response {
+        let code = r.status.split_whitespace().next().and_then(|s| s.parse::<u16>().ok()).unwrap_or(500);
+        let mut response = (StatusCode::from_u16(code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), r.body).into_response();
+        response.headers_mut().insert(axum::http::header::CONTENT_TYPE, HeaderValue::from_static(r.content_type));
+        for (name, value) in r.headers {
+            if let (Ok(name), Ok(value)) = (HeaderName::from_bytes(name.as_bytes()), HeaderValue::from_str(&value)) { response.headers_mut().insert(name, value); }
+        }
+        return response
+    }
+    let (status, body) = if path.trim_end_matches('/').ends_with("/yo3.idx") {
+        match tokio::fs::read(game_dir.join("yo3.idx")).await { Ok(b) => (StatusCode::OK, b), Err(_) => (StatusCode::NOT_FOUND, vec![]) }
+    } else if let (Some(name), Some(dir)) = (path.strip_prefix("/duellogs/").filter(|n| crate::duellog::valid_name(n)), data_dir) {
+        let name = name.to_string();
+        match tokio::task::spawn_blocking(move || crate::store::duel_log(&dir, &name)).await {
+            Ok(Ok(Some(b))) => (StatusCode::OK, b), _ => (StatusCode::NOT_FOUND, vec![]),
+        }
+    } else if path.starts_with("/app/") { (StatusCode::OK, vec![]) }
+    else if let Some(old) = path.strip_prefix("/web") { (StatusCode::OK, crate::web::page(old).into_bytes()) }
+    else { (StatusCode::NOT_FOUND, vec![]) };
+    tracing::info!("[http] GET {} -> {status} ({} B)", if path.ends_with("/yo3.idx") { "/yo3/yo3.idx" } else { path }, body.len());
+    let mut response = axum::response::Response::new(Body::from(body));
+    *response.status_mut() = status;
+    if path.starts_with("/web") { response.headers_mut().insert(axum::http::header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8")); }
+    response
 }
 
 #[cfg(test)]

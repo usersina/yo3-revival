@@ -149,7 +149,7 @@ pub fn digest(secret: &str) -> String {
 /// Seconds since the epoch.
 pub fn now() -> i64 { chrono::Utc::now().timestamp() }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Role { #[default] Player, Moderator, Admin }
 

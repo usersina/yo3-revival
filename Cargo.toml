@@ -14,6 +14,7 @@ toml = "0.8"
 # Shared versions and common features. Platform-specific features stay with the consuming crate.
 anyhow = "1.0.104"
 argon2 = "0.6.0"
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
 base64 = "0.22.1"
 blowfish = "0.10.0"
 chrono = "0.4.45"
@@ -23,6 +24,8 @@ flate2 = "1.1.11"
 getrandom = "0.4.3"
 iced = { version = "0.14.0", default-features = false }
 if-addrs = "0.15.0"
+hyper = { version = "1.12.0", default-features = false, features = ["server", "http1"] }
+hyper-util = { version = "0.1.21", default-features = false, features = ["tokio", "service"] }
 keyring = { version = "4.2.0", default-features = false, features = ["v1"] }
 png = "0.17.16"
 proptest = "1.12.0"
@@ -40,6 +43,9 @@ thiserror = "2.0.21"
 socket2 = { version = "0.6.5", features = ["all"] }
 tokio = { version = "1.54.1", features = ["full"] }
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
+tower = { version = "0.5.3", features = ["util"] }
+utoipa = { version = "6.0.0", features = ["chrono"] }
+utoipa-axum = "0.3.0"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 windows-sys = "0.61.2"

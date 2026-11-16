@@ -697,12 +697,13 @@ impl Directory {
     }
 
     /// A BP grant prepared on a copy. Nothing is written or published until its caller commits the whole operation.
-    pub(crate) fn prepare_bp(&self, who: &str, bp: u32) -> Result<(Self, String, u32), String> {
+    pub(crate) fn prepare_bp(&self, user_id: u32, bp: u32) -> Result<(Self, u32), String> {
         let mut next = self.clone();
-        let file = next.file.take();
-        let (label, total) = next.give_bp(who, bp)?;
-        next.file = file;
-        Ok((next, label, total))
+        let account = next.accounts.iter_mut().find(|e| e.account.user_id == user_id).ok_or("the account is gone")?;
+        let account = Arc::make_mut(&mut account.account);
+        let total = account.dpoint.checked_add(bp).ok_or("BP balance limit exceeded")?;
+        account.dpoint = total;
+        Ok((next, total))
     }
 
     /// The host's BOOSTERPASS codes.

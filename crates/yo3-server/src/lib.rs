@@ -10,6 +10,7 @@ pub mod auth;
 mod transport;
 pub mod admin;
 pub mod panel;
+pub mod dashboard;
 pub mod recent;
 pub mod store;
 pub(crate) mod lock;
