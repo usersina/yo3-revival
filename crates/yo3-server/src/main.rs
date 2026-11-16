@@ -209,7 +209,7 @@ async fn run(mut a: Args) -> anyhow::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .with_target(false)
         .with_ansi(false)
-        .with_writer(move || yo3_tunnel::diagnostics::ConsoleWriter::new(writer.clone()).colored(color))
+        .with_writer(move || yo3_server::recent::Tee::new(yo3_tunnel::diagnostics::ConsoleWriter::new(writer.clone()).colored(color)))
         .init();
     if let Some(command) = a.admin.take() {
         let game_dir = a.game_dir.clone().unwrap_or_else(yo3_data::default_game_dir);

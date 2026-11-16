@@ -2116,7 +2116,7 @@ with backups at start, hourly and at stop. References elsewhere in this catalog 
 etc. name the domains' original formats. This changes storage, not Konami request/reply fields; tests live in
 `store.rs` and `tests/accounts.rs`.
 
-The host's tools (the desktop, the CLI, later the admin panel) use our admin API (#25, `api.rs`): `POST
+The host's tools (the desktop, the CLI, the admin panel at `/panel/`, #36) use our admin API (#25, `api.rs`): `POST
 /api/admin/v1/<op>` with a private bearer token and a JSON `op` (`status`, `accounts`, `create-account`, `key`,
 `give-bp`, `set`, `audit`, `shutdown` and the rest; `yo3-server --help` lists the commands). It binds loopback and the
 TLS asset role denies access (it forwards only GETs of the game's files). Answers are `{"ok", "result" | "error"}`.
@@ -2124,7 +2124,9 @@ Account listings omit credentials; `key` is the explicit credential-bearing oper
 incorrect tokens are refused. Each change writes an audit row. Mutations persist once and restore memory if saving
 fails. **Status: implemented/tested**, evidence `tests/api_contract.rs`; these are our API definitions, not inferred
 game-client reply shapes. It replaced `/manager` and `/admin`.
-Status also reports the actual `listen` socket and `release`, so a reopened manager and local game use the active
+The panel runs the same operations in the server (`Api::apply_as`) as its signed-in staff account: a moderator runs only
+the looking, moderation, invite and reset-code operations, and none on a staff account. `account`, `backups`, `back-up` and
+`logs` were added for its pages. Status also reports the actual `listen` socket and `release`, so a reopened manager and local game use the active
 listener rather than guessing from saved settings. Only the authenticated game/discovery port is public; internal
 management/assets HTTP stays loopback.
 

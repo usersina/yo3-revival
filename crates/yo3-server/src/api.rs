@@ -80,6 +80,14 @@ pub enum Op {
     SignOut { who: String },
     /// Maintenance in `minutes` (the game's countdown until then) with `message`; `off` calls it off.
     Maintenance { #[serde(default)] minutes: Option<u32>, #[serde(default)] message: Option<String>, #[serde(default)] off: bool },
+    /// One account in full (#36): its User ID, role, standing, mute, devices, BP, and each player's collection and record.
+    Account { who: String },
+    /// The database backups, newest first, with their times and sizes.
+    Backups,
+    /// A backup now (besides the hourly ones).
+    BackUp,
+    /// The server's newest log lines (`problems`: only warnings and errors), newest first.
+    Logs { #[serde(default)] limit: Option<u32>, #[serde(default)] problems: bool },
 }
 
 impl Op {
@@ -90,7 +98,30 @@ impl Op {
 
     /// Whether it changes anything (and so writes an audit row).
     pub fn changes(&self) -> bool {
-        !matches!(self, Op::Status | Op::Accounts | Op::Countries | Op::Titles | Op::Codes | Op::Invites | Op::Settings | Op::Audit { .. })
+        !matches!(self, Op::Status | Op::Accounts | Op::Countries | Op::Titles | Op::Codes | Op::Invites | Op::Settings | Op::Audit { .. }
+            | Op::Account { .. } | Op::Backups | Op::Logs { .. })
+    }
+
+    /// Whether a moderator may run it (the admin panel, #36): looking, moderation, invites and reset codes. Settings,
+    /// maintenance, BP, codes, keys, roles, backups and stopping the server are an admin's.
+    pub fn for_moderators(&self) -> bool {
+        matches!(self, Op::Status | Op::Accounts | Op::Account { .. } | Op::Countries | Op::Titles | Op::Codes | Op::Invites
+            | Op::Settings | Op::Audit { .. } | Op::Logs { .. } | Op::Backups | Op::Invite { .. } | Op::ResetCode { .. }
+            | Op::Rename { .. } | Op::Kick { .. } | Op::Ban { .. } | Op::Restrict { .. } | Op::Lift { .. } | Op::Mute { .. }
+            | Op::Unmute { .. } | Op::SignOut { .. })
+    }
+
+    /// The account it acts on, if it acts on one (a User ID or a player's name).
+    fn account(&self) -> Option<&str> {
+        match self {
+            Op::ResetCode { user } | Op::SetRole { user, .. } => Some(user),
+            Op::Rename { old, .. } => Some(old),
+            Op::Kick { who } | Op::Ban { who, .. } | Op::Restrict { who, .. } | Op::Lift { who } | Op::Mute { who, .. }
+            | Op::Unmute { who } | Op::SignOut { who } | Op::GiveBp { who, .. } | Op::SetCountry { who, .. } | Op::Key { who }
+            | Op::AddPlayer { who, .. } => Some(who),
+            Op::GrantTitle { player, .. } => Some(player),
+            _ => None,
+        }
     }
 
     /// What it acts on, for the audit log.
@@ -105,6 +136,7 @@ impl Op {
             Op::Set { name, .. } | Op::Reset { name } => name.clone(),
             Op::CreateAccount { names } => names.join(", "),
             Op::AddCode { code, .. } | Op::RemoveCode { code } => code.clone(),
+            Op::Account { who } => who.clone(),
             _ => String::new(),
         }
     }
@@ -121,7 +153,27 @@ impl Op {
 
 /// What the status operation reports besides the players: set by a running server.
 #[derive(Clone, Debug, Default)]
-pub struct Status { pub engine_problem: Option<String>, pub listen: Option<SocketAddr>, pub diagnostic_id: Option<String> }
+pub struct Status {
+    pub engine_problem: Option<String>,
+    pub listen: Option<SocketAddr>,
+    pub diagnostic_id: Option<String>,
+    /// When the server started, for its uptime.
+    pub started: Option<std::time::Instant>,
+}
+
+/// The server process's resident memory in bytes, where the system says (Linux).
+pub fn memory_bytes() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let kb: u64 = status.lines().find_map(|l| l.strip_prefix("VmRSS:"))?.trim().trim_end_matches("kB").trim().parse().ok()?;
+    Some(kb * 1024)
+}
+
+/// The newest backup's folder name and its age in seconds.
+pub fn last_backup(dir: &std::path::Path) -> Option<(String, u64)> {
+    let newest = crate::store::backups(dir).into_iter().next()?;
+    let age = std::fs::metadata(newest.join("server.db")).and_then(|m| m.modified()).ok()?.elapsed().map_or(0, |d| d.as_secs());
+    Some((newest.file_name()?.to_string_lossy().into_owned(), age))
+}
 
 /// What the operations act on: a running server's state, or a stopped server's data folder.
 pub struct Api {
@@ -152,17 +204,44 @@ impl Api {
     }
 
     /// Runs `op` for `actor` and writes its audit row: its result, or why it was refused.
-    pub fn apply(&self, op: &Op, actor: &str) -> Result<Value, String> {
+    pub fn apply(&self, op: &Op, actor: &str) -> Result<Value, String> { self.apply_as(op, actor, self.origin, None) }
+
+    /// Runs `op` for a signed-in staff account of `role` (the admin panel, #36), audited from `origin`. A moderator
+    /// runs only [`Op::for_moderators`], and not on a staff account (no moderator resets an admin's password). With no
+    /// role, the host's token holder, everything.
+    pub fn apply_as(&self, op: &Op, actor: &str, origin: &str, role: Option<crate::logins::Role>) -> Result<Value, String> {
+        use crate::logins::Role;
+        match role {
+            None | Some(Role::Admin) => {}
+            Some(Role::Player) => return Err("only admins and moderators may do that".into()),
+            Some(Role::Moderator) => {
+                if !op.for_moderators() { return Err(format!("only an admin may do that ({})", op.name())) }
+                let d = self.accounts.locked();
+                let staff = op.account().and_then(|who| d.user_of(who)).and_then(|u| d.login_by_id(u)).is_some_and(|l| l.staff());
+                let own = op.account().is_some_and(|who| who.eq_ignore_ascii_case(actor));
+                if staff && !own && !matches!(op, Op::Account { .. }) { return Err("a moderator can't act on an admin's or another moderator's account".into()) }
+            }
+        }
         let (result, before, after) = self.run(op)?;
         if op.changes() {
             let row = AuditRow { at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true), actor: actor.into(),
-                origin: self.origin.into(), op: op.name(), target: op.target(), before, after, detail: op.detail() };
+                origin: origin.into(), op: op.name(), target: op.target(), before, after, detail: op.detail() };
             match &self.data_dir {
                 Some(dir) => if let Err(e) = crate::store::audit(dir, &row) { tracing::error!("audit row not written ({}): {e}", row.op) },
                 None => self.memory.locked().push(row),
             }
         }
         Ok(result)
+    }
+
+    /// Writes an audit row for something that isn't an operation (the panel's backup download).
+    pub fn note(&self, actor: &str, origin: &str, op: &str, target: &str) {
+        let row = AuditRow { at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true), actor: actor.into(),
+            origin: origin.into(), op: op.into(), target: target.into(), before: None, after: None, detail: None };
+        match &self.data_dir {
+            Some(dir) => if let Err(e) = crate::store::audit(dir, &row) { tracing::error!("audit row not written ({}): {e}", row.op) },
+            None => self.memory.locked().push(row),
+        }
     }
 
     /// The newest `limit` audit rows.
@@ -203,16 +282,60 @@ impl Api {
                     Some(hub) => { let hub = hub.locked(); (json!(hub.manager_players()), hub.online(), hub.tables.len()) }
                     None => (json!([]), 0, 0),
                 };
+                let backup = self.data_dir.as_deref().and_then(last_backup);
                 Ok((json!({ "running": self.hub.is_some(), "ready": self.status.engine_problem.is_none(), "engine_problem": self.status.engine_problem,
                     "listen": self.status.listen.map(|l| l.to_string()), "release": yo3_tunnel::BUILD_VERSION, "diagnostic_id": self.status.diagnostic_id,
-                    "players": players, "online": online, "duels": duels }), None, None))
+                    "players": players, "online": online, "duels": duels, "engines": crate::engine::running(),
+                    "uptime_seconds": self.status.started.map(|t| t.elapsed().as_secs()), "memory_bytes": memory_bytes(),
+                    "saving": crate::store::healthy(), "last_backup": backup.as_ref().map(|b| &b.0), "backup_age_seconds": backup.map(|b| b.1),
+                    "recent_problems": crate::recent::lines(10, true) }), None, None))
+            }
+            Op::Backups => {
+                let dir = self.data_dir.as_ref().ok_or("this server keeps no data folder")?;
+                let rows: Vec<Value> = crate::store::backups(dir).iter().map(|b| {
+                    let meta = std::fs::metadata(b.join("server.db")).ok();
+                    let at = meta.as_ref().and_then(|m| m.modified().ok()).map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
+                    json!({ "name": b.file_name().unwrap_or_default().to_string_lossy(), "at": at, "bytes": meta.map(|m| m.len()) })
+                }).collect();
+                Ok((json!({ "backups": rows }), None, None))
+            }
+            Op::BackUp => {
+                let dir = self.data_dir.as_ref().ok_or("this server keeps no data folder")?;
+                crate::store::back_up(dir).map_err(|e| format!("the backup failed: {e}"))?;
+                let name = last_backup(dir).map(|b| b.0).unwrap_or_default();
+                Ok((json!({ "name": name, "message": format!("backup {name} taken") }), None, Some(json!(name))))
+            }
+            Op::Logs { limit, problems } => {
+                Ok((json!({ "lines": crate::recent::lines(limit.unwrap_or(200).min(crate::recent::KEEP as u32) as usize, *problems) }), None, None))
+            }
+            Op::Account { who } => {
+                let d = self.accounts.locked();
+                let user_id = d.user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
+                let account = d.account_of(user_id).ok_or("the account is gone")?;
+                let login = d.login_by_id(user_id).cloned();
+                let has_key = d.entries().any(|(_, key, a)| a.user_id == user_id && key.is_some());
+                drop(d);
+                let hub = self.hub.as_ref().map(|h| h.locked());
+                let now = crate::logins::now();
+                let players: Vec<Value> = account.players.iter().map(|p| {
+                    let record = hub.as_ref().map(|h| h.record_totals(p.player_id));
+                    json!({ "player_id": p.player_id, "name": p.name, "slot": p.index, "level": p.level, "title": p.title,
+                        "cards": p.cards.values().sum::<u32>(), "kinds": p.cards.len(), "decks": p.decks.len(), "uploaded_decks": p.uploaded.len(),
+                        "items": p.items.len(), "record": record, "online": hub.as_ref().map(|h| h.is_online(p.player_id)) })
+                }).collect();
+                Ok((json!({ "user_id": user_id, "login": login.as_ref().map(|l| &l.user), "has_key": has_key, "bp": account.dpoint,
+                    "country": account.country, "role": login.as_ref().map(|l| l.role),
+                    "standing": login.as_ref().map(|l| if l.refusal(now).is_some() { json!(l.standing) } else { json!({ "kind": "active" }) }),
+                    "muted": login.as_ref().and_then(|l| l.mute(now)), "devices": login.as_ref().map(|l| l.devices.len()),
+                    "reset_pending": login.as_ref().and_then(|l| l.reset.as_ref()).is_some_and(|(_, until)| *until > now),
+                    "players": players }), None, None))
             }
             Op::Shutdown => {
                 let stop = self.shutdown.as_ref().ok_or("the server isn't running")?;
                 stop.send_replace(true);
                 Ok((json!({ "stopping": true, "message": "the server is stopping" }), None, None))
             }
-            Op::Settings => Ok((message(self.settings.list()), None, None)),
+            Op::Settings => Ok((json!({ "message": self.settings.list(), "settings": self.settings.rows() }), None, None)),
             Op::Set { name, value } => {
                 let before = crate::settings::find(name).map(|s| self.settings.now().value(s.name).clone());
                 let done = self.settings.set(name, value)?;
@@ -368,8 +491,12 @@ impl Api {
         match op {
             Op::Accounts => done(Value::Array(d.entries().map(|(login, key, account)| {
                 let role = login.and_then(|u| d.login_of(u)).map(|(_, l)| json!(l.role));
+                let held = login.and_then(|u| d.login_of(u)).map(|(_, l)| l);
+                let now = crate::logins::now();
+                let standing = held.as_ref().map(|l| match l.refusal(now) { Some(r) => r["error"].clone(), None => json!("active") });
+                let muted = held.as_ref().is_some_and(|l| l.mute(now).is_some());
                 json!({ "user_id": account.user_id, "login": login, "has_key": key.is_some(), "role": role, "bp": account.dpoint,
-                    "country": account.country,
+                    "country": account.country, "standing": standing, "muted": muted,
                     "players": account.players.iter().map(|p| json!({ "player_id": p.player_id, "name": p.name, "slot": p.index })).collect::<Vec<_>>() })
             }).collect())),
             Op::CreateAccount { names } => {

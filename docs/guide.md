@@ -134,6 +134,38 @@ log (default: host). They work on a running server; the ones that change an acco
   shuts the server down for an update.
 - **News**: the `news` setting; a change reaches the Information panel of everyone online at once.
 
+## The admin panel
+
+On the `beta` branch (#36). The server serves a web panel on its loopback HTTP port, at
+`http://localhost:8080/panel/` (`--http-port`). It answers this PC only: on a server you reach it through an SSH
+tunnel ([hosting guide](hosting.md#the-admin-panel-through-an-ssh-tunnel)). Sign in with a password account whose
+role is admin or moderator:
+
+```bash
+./yo3-server add-user Anna          # prints Anna's first password; or sign up in the launcher with an invite
+./yo3-server set-role Anna admin    # or moderator
+```
+
+| Page | What it shows and does | Moderator |
+| --- | --- | --- |
+| Dashboard | Players online, duels, rules engines, memory, uptime, version, last backup's age, whether saving works, recent warnings and errors | Sees it |
+| Accounts | Search by User ID or player name; an account's role, standing, mute, devices, BP, and each player's cards, decks, items and record; disconnect, mute, restrict, ban, lift, sign out everywhere, reset code, rename; give BP, set country, set role | Moderation and reset codes, on players only; not BP, country or roles |
+| Invites and codes | Invite codes (make, list) and BOOSTERPASS codes (add, remove, who claimed them) | Makes invites; doesn't add or remove codes |
+| News and maintenance | The game's Information list, planning or calling off maintenance | Sees it |
+| Settings | Every live setting with its value, when it applies and what it does | Sees it |
+| Moderation | Who is banned, restricted or muted now, and the latest moderation | Yes |
+| Audit log | The newest 200 changes, from the panel, the commands and the API | Yes |
+| Backups | The database backups; back up now; download one (the download is audited) | Sees the list |
+| Logs | The server's newest lines since it started (warnings and errors only, or all) | Yes |
+
+- Every change runs one admin API operation as the signed-in account: the audit log names it, from `panel`. A
+  moderator's refused change says why and changes nothing; a moderator can't act on an admin's or another moderator's
+  account.
+- Sign-in has the launcher's throttle: a wrong password makes the next try for that User ID wait 1 s, then 2, 4, …
+  up to `backoff-max-seconds`. A session ends after 30 idle minutes, 12 hours, **Sign out**, or at once when the
+  account loses its role or is banned.
+- The panel keeps no data of its own and needs no restart: a role change applies at the account's next page.
+
 ## Account commands
 
 On the `beta` branch every command works while the server runs (#25): it goes to the running server's admin API
