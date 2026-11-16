@@ -202,7 +202,7 @@ fn show(a: &Args, command: &Admin, result: &Value, handed: Option<String>) -> an
                 invite.code = Some(code.to_owned());
                 println!("Invite link for one friend: {}", invite.link());
             }
-            println!("\nFriends paste the link under Multiplayer, Other servers (Desktop), or sign up with it in a terminal (Scripts):\n  \
+            println!("\nFriends paste the link in Desktop (Multiplayer, ⋯, Add a server), or sign up with it in a terminal (Scripts):\n  \
                 play --register \"LINK\" USER --profile client.json");
             if result["invite"].is_null() { println!("Each friend also needs an invite code if registration is invite (the default): add --invite, or run invite.") }
         }

@@ -1,7 +1,7 @@
 //! The invite link a host shares (`yo3revival://server?address=HOST:PORT&identity=HEX&name=NAME[&code=CODE]`): where the
 //! server is and the identity to pin, so no first-use question follows, and optionally a single-use invite code for one
 //! friend's sign-up. The server prints it (`yo3-server share`), Desktop's Host
-//! for friends shows it, and Desktop's Other servers and the Scripts helper's `--sign-in` read it.
+//! for friends shows it, and Desktop's Add a server and the Scripts helper's `--sign-in` read it.
 use anyhow::{Context, ensure};
 
 /// A server an invite link names.

@@ -21,7 +21,7 @@ pub fn panel_path() -> String { format!("{}/login", yo3_server::panel::PREFIX) }
 pub struct Hosted {
     /// The server in friends' lists: the address to share and the identity.
     pub server: Server,
-    /// The invite link friends paste under Other servers.
+    /// The invite link friends paste under Multiplayer, ⋯, Add a server.
     pub link: String,
     /// Whether the address is this PC's network address (friends on the same network only), not one the host typed.
     pub local_network: bool,

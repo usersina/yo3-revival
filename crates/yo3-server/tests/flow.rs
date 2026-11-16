@@ -78,11 +78,16 @@ async fn client_reaches_the_main_screen() {
 
 #[tokio::test]
 async fn patch_index_is_served_over_http() {
-    let server = start(Config::ephemeral(std::env::temp_dir().join("yo3-http"))).await.unwrap();
+    // Its own folder: a fixed one picked up another checkout's newer server.db and failed to start.
+    let dir = std::env::temp_dir().join(format!("yo3-http-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let server = start(Config::ephemeral(dir.clone())).await.unwrap();
     let mut s = TcpStream::connect(server.http).await.unwrap();
     s.write_all(b"GET /yo3/yo3.idx HTTP/1.1\r\nHost: x\r\n\r\n").await.unwrap();
     let mut resp = String::new();
     s.read_to_string(&mut resp).await.unwrap();
     let game_has_idx = yo3_data::default_game_dir().join("yo3.idx").is_file();
     assert!(resp.starts_with(if game_has_idx { "HTTP/1.1 200" } else { "HTTP/1.1 404" }), "{resp}");
+    drop(server);
+    let _ = std::fs::remove_dir_all(dir);
 }

@@ -166,7 +166,7 @@ pub enum Admin {
     /// Make USER a player, moderator or admin. Works while the server runs.
     SetRole { user: String, role: String },
     /// Print what a friend needs to join: the address (`--advertise`, with `--auth-port`), the server's identity and the
-    /// invite link that carries both, for Desktop's Other servers or the Scripts helper's `--sign-in`. --invite also makes
+    /// invite link that carries both, for Desktop's Add a server or the Scripts helper's `--sign-in`. --invite also makes
     /// an invite code for one sign-up, working for a week. Works while the server runs.
     Share {
         #[arg(long)]

@@ -1,5 +1,5 @@
 //! `yo3-server share` (#23): what a terminal host hands a friend, the address, the identity and the invite link (with
-//! `--invite`, an invite code too), never an account key. The link is the one Desktop's Other servers and the Scripts
+//! `--invite`, an invite code too), never an account key. The link is the one Desktop's Add a server and the Scripts
 //! helper's `--sign-in` read.
 use std::process::Command;
 use yo3_tunnel::invite::Invite;
