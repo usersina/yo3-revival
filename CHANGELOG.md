@@ -10,6 +10,22 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## v0.0.22 (2026-11-16)
+
+A shop fix. Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the
+server, rules engine and required connection components. Original game files are not included.
+**Windows 7 is not supported.**
+
+Hosts should update: the fix is in the server, and players need nothing new. Friends on v0.0.13 or later can still
+join. Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.22/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.22/docs/scripts.md).
+
+- **Every pack in the shop can be bought again.** Cards from Blister's **Trade Card** list also showed on the
+  **Purchase Pack** shelves, as "packs" at 10 BP, and buying one always said "An error occurred." They are gone from
+  the shelves; the real packs, at 100 BP, were never affected, and Trade Card works as before
+  ([#46](https://github.com/usersina/yo3-revival/issues/46)).
+
 ## v0.0.21 (2026-11-15)
 
 Token fixes. Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the
