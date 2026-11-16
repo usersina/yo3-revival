@@ -73,6 +73,52 @@ class Editions(unittest.TestCase):
                     for name, content in archived_icons.items():
                         self.assertTrue(content == icons[name], f"{name} must match the launcher artwork")
 
+    def test_the_linux_server_bundle_has_the_server_engine_units_and_hosting_guide_only(self):
+        # #37: what a VPS runs, nothing a player runs; its README is the hosting guide with working offline links.
+        repo = Path(__file__).resolve().parent.parent
+        self.assertEqual(editions.editions("linux-x86_64"), ("desktop", "scripts", "server"))
+        self.assertEqual(editions.editions("windows-x86_64"), ("desktop", "scripts"))
+        with tempfile.TemporaryDirectory(prefix="yo3 server bundle ") as tmp:
+            root = Path(tmp)
+            source = root / "source"
+            source.mkdir()
+            for name in ("yo3-revival", "yo3-server", "yo3-launcher", "yo3-engine", "yo3-auth-launch.exe", "yo3-auth.dll",
+                         "yo3-bootstrap.dll", "yo3-launcher-windows.exe"):
+                (source / name).write_bytes(b"fixture")
+            (source / "engine").mkdir()
+            (source / "engine/fixture").write_bytes(b"shared engine")
+            for name in ("README.md", "LICENSE"):
+                shutil.copyfile(repo / name, source / name)
+            for name in ("docs", "screenshots"):
+                shutil.copytree(repo / name, source / name)
+            destination = root / "server" / "yo3-revival-server"
+            editions.prepare(source, destination, "server", False)
+            present = {p.relative_to(destination).as_posix() for p in destination.rglob("*") if p.is_file()}
+            for name in ("yo3-server", "yo3-engine", "engine/fixture", "server.toml.example", "README.md", "LICENSE", "docs/hosting.md",
+                         "systemd/yo3-server.service", "systemd/yo3-monitor.service", "systemd/yo3-monitor.timer", "systemd/yo3-monitor.sh",
+                         "systemd/alerts.env.example", "systemd/yo3-offsite-backup.service", "systemd/yo3-offsite-backup.timer",
+                         "systemd/yo3-offsite-backup.sh", "systemd/offsite.env.example"):
+                self.assertIn(name, present)
+            for name in editions.PLAYER_FILES:
+                self.assertNotIn(name, present, "a server bundle carries nothing a player runs")
+            for script in ("yo3-monitor.sh", "yo3-offsite-backup.sh"):
+                self.assertTrue((destination / "systemd" / script).stat().st_mode & 0o111, script)
+            readme = (destination / "README.md").read_text()
+            self.assertTrue(readme.startswith("# Hosting a server"))
+            self.assertIn("](docs/guide.md#the-admin-panel)", readme)
+            unit = (destination / "systemd/yo3-server.service").read_text()
+            for line in ("User=yo3", "StateDirectory=yo3", "ProtectSystem=strict", "Restart=on-failure",
+                         "ExecStart=/opt/yo3-revival/yo3-server --config /etc/yo3/server.toml"):
+                self.assertIn(line, unit)
+            self.assertIn("ExecStart=/opt/yo3-revival/systemd/yo3-monitor.sh", (destination / "systemd/yo3-monitor.service").read_text())
+            result = subprocess.run([sys.executable, repo / "tools/docs-check.py", "--root", destination], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            archive = editions.archive(destination, root, "v0.0.30", "linux-x86_64")
+            self.assertEqual(archive.name, "yo3-revival-server-v0.0.30-linux-x86_64.tar.gz")
+            with tarfile.open(archive) as t:
+                self.assertEqual({name.split('/')[0] for name in t.getnames()}, {"yo3-revival-server"})
+                self.assertTrue(t.getmember("yo3-revival-server/systemd/yo3-monitor.sh").mode & 0o111, "kept executable in the archive")
+
     def test_the_engine_files_carry_the_card_script_overrides(self):
         repo = Path(__file__).resolve().parent.parent
         with tempfile.TemporaryDirectory(prefix="yo3 engine files ") as tmp:

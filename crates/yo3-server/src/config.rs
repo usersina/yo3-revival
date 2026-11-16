@@ -13,6 +13,7 @@
 //! auth_cert = "data/server.crt"
 //! auth_key = "data/server.key"
 //! engine = "yo3-engine"
+//! packet_log = false        # no packet files or traces (a hosted server's privacy)
 //! ```
 //!
 //! A command-line flag wins over the file, and the file over the defaults.
@@ -38,6 +39,8 @@ pub struct FileConfig {
     pub auth_key: Option<PathBuf>,
     /// The rules engine's program (else `YO3_ENGINE`, or the one beside the server).
     pub engine: Option<PathBuf>,
+    /// `false`: no raw packet files and no packet traces in the session logs (`--no-packet-log --no-packet-trace`).
+    pub packet_log: Option<bool>,
 }
 
 impl FileConfig {
@@ -82,5 +85,15 @@ mod tests {
         assert!(FileConfig::read(&file).unwrap_err().to_string().contains("unknown field"));
         assert!(FileConfig::find(Some(&dir.join("missing.toml"))).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_server_bundles_example_file_is_read_with_packet_logs_off() {
+        // tools/host/server.toml.example, the hosting guide's /etc/yo3/server.toml (#37).
+        let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/host/server.toml.example");
+        let read = FileConfig::read(&example).unwrap();
+        assert_eq!((read.auth_port, read.http_port, read.packet_log), (Some(7443), Some(8080), Some(false)));
+        assert_eq!(read.data_dir, Some(PathBuf::from("/var/lib/yo3")));
+        assert_eq!(read.engine, Some(PathBuf::from("/opt/yo3-revival/yo3-engine")));
     }
 }

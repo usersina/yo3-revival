@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 out, target, edition = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
-roots = {"yo3-server", "yo3-launcher", "yo3-engine"}
+roots = {"yo3-server", "yo3-engine"} if edition == "server" else {"yo3-server", "yo3-launcher", "yo3-engine"}
 if edition == "desktop":
     roots.add("yo3-desktop")
 metadata = json.loads(subprocess.check_output([

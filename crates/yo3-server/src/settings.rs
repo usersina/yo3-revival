@@ -296,6 +296,19 @@ impl Live {
         Ok(format!("{} is now {shown} (applies {})", setting.name, setting.applies.describe()))
     }
 
+    /// Every setting as a row (the admin panel, #36): its name, value as typed, whether it was set, when it applies, what it
+    /// does, and its choices for a choice.
+    pub fn rows(&self) -> Vec<Json> {
+        let now = self.now();
+        let set = self.set.lock().unwrap_or_else(|e| e.into_inner());
+        REGISTRY.iter().map(|s| {
+            let value = match now.value(s.name) { Json::String(v) => v.clone(), other => other.to_string() };
+            let choices = match s.kind { Kind::Choice(c) => json!(c), _ => Json::Null };
+            json!({ "name": s.name, "value": value, "set": set.contains_key(s.name), "applies": s.applies.describe(), "help": s.help,
+                "choices": choices })
+        }).collect()
+    }
+
     /// Every setting with its value, whether it is the default, when it applies and what it does.
     pub fn list(&self) -> String {
         let now = self.now();

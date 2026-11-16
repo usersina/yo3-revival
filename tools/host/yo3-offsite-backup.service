@@ -1,0 +1,23 @@
+# The off-machine backup (#37): copies the newest database backup and the server's identity to storage elsewhere,
+# with restic or rclone. Run daily by yo3-offsite-backup.timer. The destination: /etc/yo3/offsite.env.
+[Unit]
+Description=YO3 Revival off-machine backup
+Documentation=https://github.com/usersina/yo3-revival/blob/main/docs/hosting.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=yo3
+Group=yo3
+EnvironmentFile=/etc/yo3/offsite.env
+ExecStart=/opt/yo3-revival/systemd/yo3-offsite-backup.sh
+StateDirectory=yo3-offsite
+StateDirectoryMode=0755
+CacheDirectory=yo3-offsite
+UMask=0077
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadOnlyPaths=/var/lib/yo3

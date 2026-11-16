@@ -43,6 +43,9 @@ pub struct Args {
     pub log_dir: PathBuf,
     /// Disable separate raw packet files; bounded session diagnostics still include decoded packet traces.
     #[arg(long)] pub no_packet_log: bool,
+    /// Keep decoded packet traces (players' chat lines and names) out of the session logs too; `packet_log = false` in
+    /// the server file sets both.
+    #[arg(long)] pub no_packet_trace: bool,
     /// Run as the launcher's own server (Singleplayer): the launcher holds standard input open, and once it closes
     /// (the launcher exited or crashed) the server stops after nobody has played for --owned-idle seconds.
     #[arg(long)] pub owned: bool,

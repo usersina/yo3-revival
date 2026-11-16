@@ -47,6 +47,7 @@ storage. Select the complete installation with `--game-dir` and retry; keep exis
 | `--auth-cert`, `--auth-key` | Explicit TLS certificate/key files                                                                   |
 | `--duel-check`              | Compare each player's modeled client state with the rules engine after each step                     |
 | `--no-packet-log`           | Disable separate raw packet files; decoded packet traces remain in bounded session diagnostics       |
+| `--no-packet-trace`         | Keep decoded packet traces out of the session diagnostics too (beta; `packet_log = false` sets both) |
 | `--config`                  | The [server file](#the-server-file) (beta); default `server.toml` in the current folder when it is there |
 | `--owned`                   | The launcher's own server (Singleplayer, on the `beta` branch): standard input stays open while the launcher lives; once it closes, the server stops after nobody has played for `--owned-idle` seconds (default 120)|
 
@@ -71,9 +72,13 @@ game_dir = "/games/Yu-Gi-Oh! ONLINE 3"
 data_dir = "data"
 log_dir = "logs"
 engine = "yo3-engine"
+packet_log = false
 ```
 
-`auth_cert` and `auth_key` name explicit TLS files. A key the server doesn't know, such as a live setting, is refused
+`packet_log = false` keeps players' packets out of every log: no raw packet files (`--no-packet-log`) and no packet
+traces in the session logs (`--no-packet-trace`), which otherwise carry chat lines and names. A hosted server should
+use it ([hosting](hosting.md#logs-and-privacy)); the server bundle's `server.toml.example` does. `auth_cert` and
+`auth_key` name explicit TLS files. A key the server doesn't know, such as a live setting, is refused
 at start with the list of keys it takes.
 
 ## Live settings
@@ -133,6 +138,38 @@ log (default: host). They work on a running server; the ones that change an acco
   and the launcher's server list says Maintenance. Run `maintenance --off` when it is over. `stop` after the countdown
   shuts the server down for an update.
 - **News**: the `news` setting; a change reaches the Information panel of everyone online at once.
+
+## The admin panel
+
+On the `beta` branch (#36). The server serves a web panel on its loopback HTTP port, at
+`http://localhost:8080/panel/` (`--http-port`). It answers this PC only: on a server you reach it through an SSH
+tunnel ([hosting guide](hosting.md#the-admin-panel-through-an-ssh-tunnel)). Sign in with a password account whose
+role is admin or moderator:
+
+```bash
+./yo3-server add-user Anna          # prints Anna's first password; or sign up in the launcher with an invite
+./yo3-server set-role Anna admin    # or moderator
+```
+
+| Page | What it shows and does | Moderator |
+| --- | --- | --- |
+| Dashboard | Players online, duels, rules engines, memory, uptime, version, last backup's age, whether saving works, recent warnings and errors | Sees it |
+| Accounts | Search by User ID or player name; an account's role, standing, mute, devices, BP, and each player's cards, decks, items and record; disconnect, mute, restrict, ban, lift, sign out everywhere, reset code, rename; give BP, set country, set role | Moderation and reset codes, on players only; not BP, country or roles |
+| Invites and codes | Invite codes (make, list) and BOOSTERPASS codes (add, remove, who claimed them) | Makes invites; doesn't add or remove codes |
+| News and maintenance | The game's Information list, planning or calling off maintenance | Sees it |
+| Settings | Every live setting with its value, when it applies and what it does | Sees it |
+| Moderation | Who is banned, restricted or muted now, and the latest moderation | Yes |
+| Audit log | The newest 200 changes, from the panel, the commands and the API | Yes |
+| Backups | The database backups; back up now; download one (the download is audited) | Sees the list |
+| Logs | The server's newest lines since it started (warnings and errors only, or all) | Yes |
+
+- Every change runs one admin API operation as the signed-in account: the audit log names it, from `panel`. A
+  moderator's refused change says why and changes nothing; a moderator can't act on an admin's or another moderator's
+  account.
+- Sign-in has the launcher's throttle: a wrong password makes the next try for that User ID wait 1 s, then 2, 4, …
+  up to `backoff-max-seconds`. A session ends after 30 idle minutes, 12 hours, **Sign out**, or at once when the
+  account loses its role or is banned.
+- The panel keeps no data of its own and needs no restart: a role change applies at the account's next page.
 
 ## Account commands
 

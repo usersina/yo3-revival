@@ -1,0 +1,14 @@
+# The server file for a hosted server (#24, #37): what only a restart changes. Copy it to /etc/yo3/server.toml and
+# put your address in `advertise`. Live settings (news, registration, banlist, caps...) are not here: change them in
+# the admin panel or with `yo3-server set`. docs/guide.md, "The server file", explains each key.
+bind = "0.0.0.0"
+auth_port = 7443
+# The admin panel and API: loopback only, reached through an SSH tunnel (docs/hosting.md). Never open it.
+http_port = 8080
+advertise = "<server-address>"
+game_dir = "/opt/yo3-game"
+data_dir = "/var/lib/yo3"
+log_dir = "/var/log/yo3"
+engine = "/opt/yo3-revival/yo3-engine"
+# No raw packet files and no packet traces in the session logs: they carry players' chat lines and names.
+packet_log = false

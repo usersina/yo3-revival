@@ -786,6 +786,12 @@ impl Hub {
         self.online.len()
     }
 
+    /// A player's wins, losses and draws against everyone (the admin panel's account page, #36).
+    pub fn record_totals(&self, player_id: u32) -> [u32; 3] {
+        self.records.iter().filter(|((me, _), _)| *me == player_id)
+            .fold([0; 3], |[w, l, d], (_, [a, b, c])| [w + a, l + b, d + c])
+    }
+
     /// Pushes `msg` to every player online (news and the maintenance countdown, #26).
     pub fn push_everyone(&self, msg: &Message) {
         for o in self.online.values() { let _ = o.outbox.send(msg.clone()); }
@@ -1777,7 +1783,7 @@ impl Hub {
         self.social.friends(player_id).into_iter().map(|id| (id, self.social.name(id))).collect()
     }
 
-    fn is_online(&self, player_id: u32) -> bool {
+    pub(crate) fn is_online(&self, player_id: u32) -> bool {
         self.online.values().any(|o| o.player_id == player_id)
     }
 

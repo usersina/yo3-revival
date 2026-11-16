@@ -161,6 +161,7 @@ pub async fn http_loop(
     data_dir: Option<PathBuf>,
     admin_token: Option<String>,
     api: Arc<crate::api::Api>,
+    panel: Arc<crate::panel::Panel>,
 ) {
     let mut backoff = Duration::from_millis(50);
     loop {
@@ -177,7 +178,7 @@ pub async fn http_loop(
             }
         };
         let (game_dir, data_dir, admin_token) = (game_dir.clone(), data_dir.clone(), admin_token.clone());
-        let api = api.clone();
+        let (api, panel) = (api.clone(), panel.clone());
         tokio::spawn(async move {
             let mut buf = Vec::new();
             let mut chunk = [0u8; 1024];
@@ -194,7 +195,8 @@ pub async fn http_loop(
                 let (name, value) = line.split_once(':')?;
                 name.eq_ignore_ascii_case("content-length").then(|| value.trim().parse::<usize>().ok()).flatten()
             }).unwrap_or(0);
-            if length <= 8192 {
+            // The admin panel's forms (news) can be larger than a game request; nothing public posts here (transport.rs).
+            if length <= 64 * 1024 {
                 while buf.len() < header_end.saturating_add(length) {
                     match tokio::time::timeout(Duration::from_secs(10), stream.read(&mut chunk)).await {
                         Ok(Ok(n)) if n > 0 => buf.extend_from_slice(&chunk[..n]), _ => break,
@@ -204,7 +206,10 @@ pub async fn http_loop(
             let request = String::from_utf8_lossy(&buf);
             let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
             // The admin API (#25); the old /admin and /manager routes are gone.
-            let response = crate::api::handle(&request, peer.ip(), admin_token.as_deref(), &api);
+            let mut response = crate::api::handle(&request, peer.ip(), admin_token.as_deref(), &api);
+            // The monitor's health check (#37) and the admin panel (#36).
+            if response.is_none() && request.starts_with("GET /health ") && peer.ip().is_loopback() { response = Some(crate::api::health(&api)) }
+            if response.is_none() { response = crate::panel::handle(&request, peer.ip(), &panel, &api).await }
             if let Some(response) = response {
                 let mut head = format!("HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n", response.status, response.content_type, response.body.len());
                 for (name, value) in &response.headers {

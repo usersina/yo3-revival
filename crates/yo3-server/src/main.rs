@@ -52,6 +52,11 @@ fn apply_file(a: &mut Args, matches: &clap::ArgMatches) -> anyhow::Result<Option
     if let Some(v) = file.log_dir && unset("log_dir") { a.log_dir = v }
     if let Some(v) = file.auth_cert && unset("auth_cert") { a.auth_cert = Some(v) }
     if let Some(v) = file.auth_key && unset("auth_key") { a.auth_key = Some(v) }
+    // A hosted server's privacy (#37): no raw packet files and no packet traces in the session log.
+    if file.packet_log == Some(false) {
+        if unset("no_packet_log") { a.no_packet_log = true }
+        if unset("no_packet_trace") { a.no_packet_trace = true }
+    }
     Ok(file.engine)
 }
 
@@ -209,7 +214,7 @@ async fn run(mut a: Args) -> anyhow::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .with_target(false)
         .with_ansi(false)
-        .with_writer(move || yo3_tunnel::diagnostics::ConsoleWriter::new(writer.clone()).colored(color))
+        .with_writer(move || yo3_server::recent::Tee::new(yo3_tunnel::diagnostics::ConsoleWriter::new(writer.clone()).colored(color)))
         .init();
     if let Some(command) = a.admin.take() {
         let game_dir = a.game_dir.clone().unwrap_or_else(yo3_data::default_game_dir);
@@ -230,7 +235,7 @@ async fn run(mut a: Args) -> anyhow::Result<()> {
         game_dir: a.game_dir.unwrap_or_else(yo3_data::default_game_dir),
         allow_missing_game_data: false,
         log_dir: a.log_dir,
-        packet_logging: !a.no_packet_log, diagnostic_id: log.as_ref().map(|l| l.id()),
+        packet_logging: !a.no_packet_log, packet_traces: !a.no_packet_trace, diagnostic_id: log.as_ref().map(|l| l.id()),
         players: a.players,
         duel_lp: a.duel_lp,
         duel_regulation: a.duel_regulation,
