@@ -10,8 +10,9 @@ use serde::{Deserialize, Serialize};
 use utoipa::{ToSchema, openapi::{security::{ApiKey, ApiKeyValue, SecurityScheme}, OpenApi}};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use crate::{api::{give_bp::GiveBpByIdRequest, Api, GiveBpResult, GrantActor, GrantError, GrantErrorCode}, lock::Locked,
+use crate::{api::{give_bp::GiveBpByIdRequest, Api, GiveBpResult, Actor, MutationError, MutationErrorCode}, lock::Locked,
     logins::Role, panel::{self, Panel, Viewer}};
+use crate::api::codes::{BpCodeList, CreateBpCodeRequest, CreateBpCodeResult, RemoveBpCodeRequest, RemoveBpCodeResult};
 
 #[derive(Clone)]
 pub struct Dashboard { pub api: Arc<Api>, pub panel: Arc<Panel> }
@@ -20,7 +21,7 @@ pub struct Dashboard { pub api: Arc<Api>, pub panel: Arc<Panel> }
 #[serde(rename_all = "snake_case")]
 pub enum ApiErrorCode {
     InvalidRequest, Unauthenticated, Forbidden, InvalidOrigin, CsrfInvalid, RateLimited, NotFound,
-    RequestConflict, PersistenceFailed, MethodNotAllowed, PayloadTooLarge, UnsupportedMediaType, InternalError,
+    AlreadyExists, RequestConflict, PersistenceFailed, MethodNotAllowed, PayloadTooLarge, UnsupportedMediaType, InternalError,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -34,7 +35,7 @@ impl ApiError {
             ApiErrorCode::Forbidden | ApiErrorCode::InvalidOrigin | ApiErrorCode::CsrfInvalid => StatusCode::FORBIDDEN,
             ApiErrorCode::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             ApiErrorCode::NotFound => StatusCode::NOT_FOUND,
-            ApiErrorCode::RequestConflict => StatusCode::CONFLICT,
+            ApiErrorCode::RequestConflict | ApiErrorCode::AlreadyExists => StatusCode::CONFLICT,
             ApiErrorCode::PersistenceFailed => StatusCode::SERVICE_UNAVAILABLE,
             ApiErrorCode::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
             ApiErrorCode::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
@@ -44,12 +45,13 @@ impl ApiError {
     }
 }
 impl IntoResponse for ApiError { fn into_response(self) -> Response { (self.status(), Json(self)).into_response() } }
-impl From<GrantError> for ApiError {
-    fn from(error: GrantError) -> Self {
+impl From<MutationError> for ApiError {
+    fn from(error: MutationError) -> Self {
         Self::new(match error.code {
-            GrantErrorCode::InvalidRequest => ApiErrorCode::InvalidRequest, GrantErrorCode::Forbidden => ApiErrorCode::Forbidden,
-            GrantErrorCode::NotFound => ApiErrorCode::NotFound, GrantErrorCode::RequestConflict => ApiErrorCode::RequestConflict,
-            GrantErrorCode::PersistenceFailed => ApiErrorCode::PersistenceFailed,
+            MutationErrorCode::InvalidRequest => ApiErrorCode::InvalidRequest, MutationErrorCode::Forbidden => ApiErrorCode::Forbidden,
+            MutationErrorCode::NotFound => ApiErrorCode::NotFound, MutationErrorCode::RequestConflict => ApiErrorCode::RequestConflict,
+            MutationErrorCode::AlreadyExists => ApiErrorCode::AlreadyExists,
+            MutationErrorCode::PersistenceFailed => ApiErrorCode::PersistenceFailed,
         }, error.message)
     }
 }
@@ -97,7 +99,8 @@ pub struct AccountList { pub accounts: Vec<AccountSummary> }
 /// Collect paths and their schemas before attaching state. Both the export binary and the real router call this.
 fn documented_routes() -> OpenApiRouter<Dashboard> {
     OpenApiRouter::new().routes(routes!(staff_session)).routes(routes!(sign_in)).routes(routes!(sign_out))
-        .routes(routes!(accounts)).routes(routes!(give_bp))
+        .routes(routes!(accounts)).routes(routes!(give_bp)).routes(routes!(list_bp_codes))
+        .routes(routes!(create_bp_code)).routes(routes!(remove_bp_code))
 }
 
 pub fn openapi() -> OpenApi {
@@ -156,7 +159,7 @@ async fn guard(State(state): State<Dashboard>, ConnectInfo(peer): ConnectInfo<So
         };
         if req.method() == axum::http::Method::POST {
             if !same_origin(req.headers()) { return Err(ApiError::new(ApiErrorCode::InvalidOrigin, "Use the dashboard's own page.")) }
-            if !one(req.headers(), "idempotency-key").is_some_and(crate::api::give_bp::valid_request_id) {
+            if !one(req.headers(), "idempotency-key").is_some_and(crate::api::mutation::valid_request_id) {
                 return Err(ApiError::new(ApiErrorCode::InvalidRequest, "Supply one valid Idempotency-Key header."))
             }
             if let Some(v) = &viewer && !one(req.headers(), "x-csrf-token").is_some_and(|t| crate::admin::same(t, &v.csrf)) {
@@ -246,7 +249,50 @@ async fn give_bp(State(state): State<Dashboard>, Extension(viewer): Extension<Vi
     body: Result<Json<GiveBpByIdRequest>, JsonRejection>) -> Result<Json<GiveBpResult>, ApiError> {
     let Json(request) = body?;
     let key = one(&headers, "idempotency-key").unwrap_or_default().to_string();
-    tokio::task::spawn_blocking(move || state.api.give_bp_to_account(&request, &key, GrantActor::Staff { user_id: viewer.user_id }, "dashboard"))
+    tokio::task::spawn_blocking(move || state.api.give_bp_to_account(&request, &key, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
+        .map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(get, path = "/panel/api/v1/bp-codes", operation_id = "listBpCodes", tag = "BOOSTERPASS",
+    security(("staffSession" = [])), responses((status = 200, description = "Success", body = BpCodeList),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn list_bp_codes(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>) -> Result<Json<BpCodeList>, ApiError> {
+    tokio::task::spawn_blocking(move || state.api.list_bp_codes(Actor::Staff { user_id: viewer.user_id }))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The code list could not be read."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/bp-codes", operation_id = "createBpCode", tag = "BOOSTERPASS",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = CreateBpCodeRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "One ID per change. Retain it on an uncertain outcome; retries return the original code.")),
+    responses((status = 200, description = "Committed code or original retry result", body = CreateBpCodeResult),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 409, description = "Request ID conflict or code already exists", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError),
+        (status = 503, description = "Commit could not be confirmed; retry the same request", body = ApiError), (status = 500, description = "Internal error; outcome may be unknown", body = ApiError)))]
+async fn create_bp_code(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, headers: HeaderMap,
+    body: Result<Json<CreateBpCodeRequest>, JsonRejection>) -> Result<Json<CreateBpCodeResult>, ApiError> {
+    let Json(request) = body?;
+    let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
+    tokio::task::spawn_blocking(move || state.api.create_bp_code(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
+        .map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/bp-codes/remove", operation_id = "removeBpCode", tag = "BOOSTERPASS",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = RemoveBpCodeRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "One ID per removal. Retain it on an uncertain outcome; do not generate a new one on retry.")),
+    responses((status = 200, description = "Committed removal or original retry result", body = RemoveBpCodeResult),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 409, description = "Request ID conflict", body = ApiError), (status = 404, description = "Code does not exist", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError),
+        (status = 503, description = "Commit could not be confirmed; retry the same request", body = ApiError), (status = 500, description = "Internal error; outcome may be unknown", body = ApiError)))]
+async fn remove_bp_code(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, headers: HeaderMap,
+    body: Result<Json<RemoveBpCodeRequest>, JsonRejection>) -> Result<Json<RemoveBpCodeResult>, ApiError> {
+    let Json(request) = body?;
+    let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
+    tokio::task::spawn_blocking(move || state.api.remove_bp_code(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
         .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
         .map(Json).map_err(Into::into)
 }

@@ -109,6 +109,389 @@
         ]
       }
     },
+    "/panel/api/v1/bp-codes": {
+      "get": {
+        "tags": [
+          "BOOSTERPASS"
+        ],
+        "operationId": "listBpCodes",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BpCodeList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "staffSession": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "BOOSTERPASS"
+        ],
+        "operationId": "createBpCode",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "One ID per change. Retain it on an uncertain outcome; retries return the original code.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBpCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Committed code or original retry result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateBpCodeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request ID conflict or code already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error; outcome may be unknown",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commit could not be confirmed; retry the same request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
+    "/panel/api/v1/bp-codes/remove": {
+      "post": {
+        "tags": [
+          "BOOSTERPASS"
+        ],
+        "operationId": "removeBpCode",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "One ID per removal. Retain it on an uncertain outcome; do not generate a new one on retry.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveBpCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Committed removal or original retry result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoveBpCodeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Code does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request ID conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error; outcome may be unknown",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commit could not be confirmed; retry the same request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
     "/panel/api/v1/give-bp": {
       "post": {
         "tags": [
@@ -669,6 +1052,7 @@
           "csrf_invalid",
           "rate_limited",
           "not_found",
+          "already_exists",
           "request_conflict",
           "persistence_failed",
           "method_not_allowed",
@@ -676,6 +1060,152 @@
           "unsupported_media_type",
           "internal_error"
         ]
+      },
+      "BpCodeClaim": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "players"
+        ],
+        "properties": {
+          "at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "players": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        }
+      },
+      "BpCodeList": {
+        "type": "object",
+        "required": [
+          "codes"
+        ],
+        "properties": {
+          "codes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BpCodeSummary"
+            }
+          }
+        }
+      },
+      "BpCodeSummary": {
+        "type": "object",
+        "required": [
+          "code",
+          "bp",
+          "claims"
+        ],
+        "properties": {
+          "bp": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "claims": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BpCodeClaim"
+            }
+          },
+          "code": {
+            "type": "string"
+          },
+          "uses": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        }
+      },
+      "CreateBpCodeRequest": {
+        "type": "object",
+        "required": [
+          "bp"
+        ],
+        "properties": {
+          "bp": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 1
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Omit for a generated code. Codes are case insensitive and stored in uppercase.",
+            "maxLength": 16,
+            "minLength": 16,
+            "pattern": "^[A-Za-z0-9]{16}$"
+          },
+          "uses": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of accounts that can claim it. Omit for unlimited; each account can claim it once.",
+            "maximum": 4294967295,
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateBpCodeResult": {
+        "type": "object",
+        "required": [
+          "code",
+          "bp",
+          "request_id",
+          "message"
+        ],
+        "properties": {
+          "bp": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "uses": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        }
       },
       "GiveBpByIdRequest": {
         "type": "object",
@@ -751,6 +1281,40 @@
             "format": "int32",
             "maximum": 4294967295,
             "minimum": 0
+          }
+        }
+      },
+      "RemoveBpCodeRequest": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 16,
+            "pattern": "^[A-Za-z0-9]{16}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RemoveBpCodeResult": {
+        "type": "object",
+        "required": [
+          "removed",
+          "request_id",
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
           }
         }
       },

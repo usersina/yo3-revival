@@ -6,7 +6,8 @@ The main pages are a **labelled design preview** with sample data. Changes live 
 **Reset preview**. The role selector is not authentication.
 
 The separate **[/connected](http://127.0.0.1:5173/connected)** page uses generated API hooks for real staff sign-in,
-accounts and Give BP. It never substitutes sample data for a failed connection. This is local development work;
+accounts, Give BP and BOOSTERPASS codes (list, create, remove and claims). It never substitutes sample data for a
+failed connection. This is local development work;
 public hosting, the remaining management pages, MFA and Compose are still pending.
 
 ## Run
@@ -40,9 +41,10 @@ The example prints a separate, automatically assigned local management port. The
 remains at `/panel/` on that port. A normal source server enables the JSON API with `--dashboard-port PORT` (or
 `dashboard_port` in its TOML file); it is disabled by default and always binds to loopback, independently of `--bind`.
 
-Give BP targets the stable numeric account ID. An unconfirmed request keeps its ID and payload in per-staff browser
-session storage, survives a reload, and can be resumed safely. A retry never creates another grant, mail or audit
-entry. Mutation hooks do not retry automatically. The session cookie is HttpOnly; CSRF tokens stay in memory and
+Give BP targets the stable numeric account ID. An unconfirmed grant or code change keeps its ID and payload in
+per-staff browser session storage, survives a reload, and can be resumed safely. A retry never creates another grant,
+mail, generated code or audit entry; a removal retry does not remove a replacement code. Mutation hooks do not retry
+automatically. The session cookie is HttpOnly; CSRF tokens stay in memory and
 passwords, cookies and tokens are not saved in the pending grant.
 
 ## Generate the API client
@@ -96,7 +98,7 @@ save, and ESLint applies its fixes on save. The folder recommends the Prettier a
 if your editor does not already have them. These settings do not change the Rust workspace’s formatter.
 
 Browser tests use Vite on port 5174 and a disposable Rust server on 18181. Both refuse busy ports. They check navigation, account changes, dialog focus,
-moderator controls, 320px/390px phone layouts, navigation scroll/focus, WCAG A/AA accessibility rules, real staff sign-in, Zod validation of actual responses, expired cookies and a lost grant response followed by reload/retry. `npm run preview` serves the production build
+moderator controls, 320px/390px phone layouts, navigation scroll/focus, WCAG A/AA accessibility rules, real staff sign-in, Zod validation of actual responses, expired cookies, failed refreshes, duplicate-code refusals and lost grant/code responses followed by reload/retry. `npm run preview` serves the production build
 locally on port 4173 for review. It is not a production web server.
 
 ## Boundaries

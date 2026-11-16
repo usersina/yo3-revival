@@ -209,6 +209,8 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
 ./yo3-server give-cards Alice "Blue-Eyes White Dragon" --art 2 --count 3
 ./yo3-server give-recipe Alice "E-HERO EVOLUTION DECK" --cards
 ./yo3-server add-code ABCD1234EFGH5678 2500
+./yo3-server add-code "" 500 --uses 10       # generate a code; keep the printed request ID
+./yo3-server remove-code ABCD1234EFGH5678
 ./yo3-server invite --uses 5 --days 7
 ./yo3-server --advertise 192.168.1.50 share --invite
 ./yo3-server add-user Alice
@@ -259,10 +261,12 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
   The D-Mail says which. Only an admin gives cards or recipes,
   and each gift is in the audit log.
 - `give-bp`, `add-code`, `remove-code` and `codes` manage points and redemption codes while hosting can continue.
-  Give BP prints a request ID before sending. After a timeout or lost answer, repeat the same target and amount with
-  `--request-id ID`: a committed grant returns its original result, with no second payment or letter. Changing `--by`
-  does not make it a new request. Successful receipts do not expire or follow audit pruning. The balance, D-Mail,
-  audit and receipt are saved together; if any cannot be saved, none is published.
+  `give-bp`, `add-code` and `remove-code` print a request ID before sending. After a timeout or lost answer, repeat
+  the same command and values with `--request-id ID`: the original result returns without a second payment, letter,
+  generated code or audit row. For `add-code`, an empty CODE (`""`) asks for a generated code. Changing `--by` does
+  not make it a new request. Successful receipts do not expire or follow audit pruning. The balance and D-Mail (for
+  Give BP), or the code change, commit with audit and receipt; a failed commit publishes nothing. A removal retry
+  does not delete a newly recreated code with the same name. Already claimed BP stays with players.
   Use them rather than editing `accounts.json`: after the first start of a current server, accounts live in
   `server.db`. The JSON files are old copies the server no longer reads; it warns while they exist, and they are safe
   to delete. A player who is online sees BP changes (gifts, duel rewards) on the game's next screen. `codes` lists

@@ -153,9 +153,11 @@ pub enum Admin {
         bp: u32,
         #[arg(long)]
         uses: Option<u32>,
+        /// Reuse after an uncertain response to retrieve the original code without creating another.
+        #[arg(long)] request_id: Option<String>,
     },
     /// Remove a BOOSTERPASS code. Works while the server runs.
-    RemoveCode { code: String },
+    RemoveCode { code: String, #[arg(long)] request_id: Option<String> },
     /// List the BOOSTERPASS codes and how often each was used. Works while the server runs.
     Codes,
     /// Make an invite code for the launcher's sign-up (the registration setting's invite mode): --uses N sign-ups (1 when

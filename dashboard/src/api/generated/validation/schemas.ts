@@ -52,7 +52,7 @@ export const AccountList = zod.object({
 export type AccountList = zod.input<typeof AccountList>;
 export type AccountListOutput = zod.output<typeof AccountList>;
 
-export const ApiErrorCode = zod.enum(['invalid_request', 'unauthenticated', 'forbidden', 'invalid_origin', 'csrf_invalid', 'rate_limited', 'not_found', 'request_conflict', 'persistence_failed', 'method_not_allowed', 'payload_too_large', 'unsupported_media_type', 'internal_error']);
+export const ApiErrorCode = zod.enum(['invalid_request', 'unauthenticated', 'forbidden', 'invalid_origin', 'csrf_invalid', 'rate_limited', 'not_found', 'already_exists', 'request_conflict', 'persistence_failed', 'method_not_allowed', 'payload_too_large', 'unsupported_media_type', 'internal_error']);
 
 export type ApiErrorCode = zod.input<typeof ApiErrorCode>;
 export type ApiErrorCodeOutput = zod.output<typeof ApiErrorCode>;
@@ -64,6 +64,84 @@ export const ApiError = zod.object({
 
 export type ApiError = zod.input<typeof ApiError>;
 export type ApiErrorOutput = zod.output<typeof ApiError>;
+
+export const bpCodeClaimUserIdMin = 0;
+export const bpCodeClaimUserIdMax = 4294967295;
+
+
+
+export const BpCodeClaim = zod.object({
+  "at": zod.iso.datetime({"offset":true}).nullish(),
+  "players": zod.array(zod.string()),
+  "user_id": zod.int().min(bpCodeClaimUserIdMin).max(bpCodeClaimUserIdMax)
+});
+
+export type BpCodeClaim = zod.input<typeof BpCodeClaim>;
+export type BpCodeClaimOutput = zod.output<typeof BpCodeClaim>;
+
+export const bpCodeSummaryBpMin = 0;
+export const bpCodeSummaryBpMax = 4294967295;
+
+export const bpCodeSummaryUsesMin = 0;
+export const bpCodeSummaryUsesMax = 4294967295;
+
+
+
+export const BpCodeSummary = zod.object({
+  "bp": zod.int().min(bpCodeSummaryBpMin).max(bpCodeSummaryBpMax),
+  "claims": zod.array(BpCodeClaim),
+  "code": zod.string(),
+  "uses": zod.int().min(bpCodeSummaryUsesMin).max(bpCodeSummaryUsesMax).nullish()
+});
+
+export type BpCodeSummary = zod.input<typeof BpCodeSummary>;
+export type BpCodeSummaryOutput = zod.output<typeof BpCodeSummary>;
+
+export const BpCodeList = zod.object({
+  "codes": zod.array(BpCodeSummary)
+});
+
+export type BpCodeList = zod.input<typeof BpCodeList>;
+export type BpCodeListOutput = zod.output<typeof BpCodeList>;
+
+export const createBpCodeRequestBpMax = 4294967295;
+
+export const createBpCodeRequestCodeMin = 16;
+export const createBpCodeRequestCodeMax = 16;
+
+
+export const createBpCodeRequestCodeRegExp = new RegExp('^[A-Za-z0-9]{16}$');
+export const createBpCodeRequestUsesMax = 4294967295;
+
+
+
+export const CreateBpCodeRequest = zod.object({
+  "bp": zod.int().min(1).max(createBpCodeRequestBpMax),
+  "code": zod.string().min(createBpCodeRequestCodeMin).max(createBpCodeRequestCodeMax).regex(createBpCodeRequestCodeRegExp).nullish().describe('Omit for a generated code. Codes are case insensitive and stored in uppercase.'),
+  "uses": zod.int().min(1).max(createBpCodeRequestUsesMax).nullish().describe('Number of accounts that can claim it. Omit for unlimited; each account can claim it once.')
+});
+
+export type CreateBpCodeRequest = zod.input<typeof CreateBpCodeRequest>;
+export type CreateBpCodeRequestOutput = zod.output<typeof CreateBpCodeRequest>;
+
+export const createBpCodeResultBpMin = 0;
+export const createBpCodeResultBpMax = 4294967295;
+
+export const createBpCodeResultUsesMin = 0;
+export const createBpCodeResultUsesMax = 4294967295;
+
+
+
+export const CreateBpCodeResult = zod.object({
+  "bp": zod.int().min(createBpCodeResultBpMin).max(createBpCodeResultBpMax),
+  "code": zod.string(),
+  "message": zod.string(),
+  "request_id": zod.string(),
+  "uses": zod.int().min(createBpCodeResultUsesMin).max(createBpCodeResultUsesMax).nullish()
+});
+
+export type CreateBpCodeResult = zod.input<typeof CreateBpCodeResult>;
+export type CreateBpCodeResultOutput = zod.output<typeof CreateBpCodeResult>;
 
 export const giveBpByIdRequestAmountMax = 4294967295;
 
@@ -97,6 +175,29 @@ export const GiveBpResult = zod.object({
 
 export type GiveBpResult = zod.input<typeof GiveBpResult>;
 export type GiveBpResultOutput = zod.output<typeof GiveBpResult>;
+
+export const removeBpCodeRequestCodeMin = 16;
+export const removeBpCodeRequestCodeMax = 16;
+
+
+export const removeBpCodeRequestCodeRegExp = new RegExp('^[A-Za-z0-9]{16}$');
+
+
+export const RemoveBpCodeRequest = zod.object({
+  "code": zod.string().min(removeBpCodeRequestCodeMin).max(removeBpCodeRequestCodeMax).regex(removeBpCodeRequestCodeRegExp)
+});
+
+export type RemoveBpCodeRequest = zod.input<typeof RemoveBpCodeRequest>;
+export type RemoveBpCodeRequestOutput = zod.output<typeof RemoveBpCodeRequest>;
+
+export const RemoveBpCodeResult = zod.object({
+  "message": zod.string(),
+  "removed": zod.string(),
+  "request_id": zod.string()
+});
+
+export type RemoveBpCodeResult = zod.input<typeof RemoveBpCodeResult>;
+export type RemoveBpCodeResultOutput = zod.output<typeof RemoveBpCodeResult>;
 
 export const signInRequestUserMax = 64;
 
@@ -147,6 +248,93 @@ export const ListAccounts413Response = ApiError
 export const ListAccounts415Response = ApiError
 
 export const ListAccounts500Response = ApiError
+
+
+export const ListBpCodes200Response = BpCodeList
+
+export const ListBpCodes400Response = ApiError
+
+export const ListBpCodes401Response = ApiError
+
+export const ListBpCodes403Response = ApiError
+
+export const ListBpCodes405Response = ApiError
+
+export const ListBpCodes413Response = ApiError
+
+export const ListBpCodes415Response = ApiError
+
+export const ListBpCodes500Response = ApiError
+
+
+export const createBpCodeHeaderIdempotencyKeyMin = 16;
+export const createBpCodeHeaderIdempotencyKeyMax = 128;
+
+
+export const createBpCodeHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const CreateBpCodeHeader = zod.object({
+  "Idempotency-Key": zod.string().min(createBpCodeHeaderIdempotencyKeyMin).max(createBpCodeHeaderIdempotencyKeyMax).regex(createBpCodeHeaderIdempotencyKeyRegExp).describe('One ID per change. Retain it on an uncertain outcome; retries return the original code.')
+})
+
+export const CreateBpCodeBody = CreateBpCodeRequest
+
+export const CreateBpCode200Response = CreateBpCodeResult
+
+export const CreateBpCode400Response = ApiError
+
+export const CreateBpCode401Response = ApiError
+
+export const CreateBpCode403Response = ApiError
+
+export const CreateBpCode405Response = ApiError
+
+export const CreateBpCode409Response = ApiError
+
+export const CreateBpCode413Response = ApiError
+
+export const CreateBpCode415Response = ApiError
+
+export const CreateBpCode500Response = ApiError
+
+export const CreateBpCode503Response = ApiError
+
+
+export const removeBpCodeHeaderIdempotencyKeyMin = 16;
+export const removeBpCodeHeaderIdempotencyKeyMax = 128;
+
+
+export const removeBpCodeHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const RemoveBpCodeHeader = zod.object({
+  "Idempotency-Key": zod.string().min(removeBpCodeHeaderIdempotencyKeyMin).max(removeBpCodeHeaderIdempotencyKeyMax).regex(removeBpCodeHeaderIdempotencyKeyRegExp).describe('One ID per removal. Retain it on an uncertain outcome; do not generate a new one on retry.')
+})
+
+export const RemoveBpCodeBody = RemoveBpCodeRequest
+
+export const RemoveBpCode200Response = RemoveBpCodeResult
+
+export const RemoveBpCode400Response = ApiError
+
+export const RemoveBpCode401Response = ApiError
+
+export const RemoveBpCode403Response = ApiError
+
+export const RemoveBpCode404Response = ApiError
+
+export const RemoveBpCode405Response = ApiError
+
+export const RemoveBpCode409Response = ApiError
+
+export const RemoveBpCode413Response = ApiError
+
+export const RemoveBpCode415Response = ApiError
+
+export const RemoveBpCode500Response = ApiError
+
+export const RemoveBpCode503Response = ApiError
 
 
 export const giveBpHeaderIdempotencyKeyMin = 16;

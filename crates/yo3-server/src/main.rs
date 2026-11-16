@@ -78,8 +78,8 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::GiveCards { player, card, art, count } => Op::GiveCards { player: player.clone(), card: card.clone(), art: *art, count: *count },
         Admin::GiveRecipe { player, deck, cards } => Op::GiveRecipe { player: player.clone(), deck: deck.clone(), cards: *cards },
         Admin::Recipes => Op::Recipes,
-        Admin::AddCode { code, bp, uses } => Op::AddCode { code: code.clone(), bp: *bp, uses: *uses },
-        Admin::RemoveCode { code } => Op::RemoveCode { code: code.clone() },
+        Admin::AddCode { code, bp, uses, .. } => Op::AddCode { code: code.clone(), bp: *bp, uses: *uses },
+        Admin::RemoveCode { code, .. } => Op::RemoveCode { code: code.clone() },
         Admin::Codes => Op::Codes,
         Admin::Invite { uses, days } => Op::Invite { uses: (*uses > 0).then_some(*uses), days: *days },
         Admin::Invites => Op::Invites,
@@ -140,9 +140,9 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         // Before any request: what friends dial is the host's to say.
         anyhow::ensure!(a.advertise.is_some(), "pass --advertise ADDRESS: the address friends reach this server at (an IP or a name in its certificate)");
     }
-    let mut result = if let Admin::GiveBp { request_id, .. } = &command {
+    let mut result = if let Admin::GiveBp { request_id, .. } | Admin::AddCode { request_id, .. } | Admin::RemoveCode { request_id, .. } = &command {
         let id = request_id.clone().unwrap_or_else(yo3_server::logins::new_token);
-        anyhow::ensure!(api::give_bp::valid_request_id(&id), "invalid request ID (16–128 letters, digits, hyphens or underscores)");
+        anyhow::ensure!(api::mutation::valid_request_id(&id), "invalid request ID (16–128 letters, digits, hyphens or underscores)");
         eprintln!("Request ID: {id} (reuse with --request-id if the answer is lost)");
         call_request(a, &op, &game_dir, &id)?
     } else { call(a, &op, &game_dir)? };

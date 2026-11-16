@@ -18,6 +18,7 @@ import type { GiveBpMutationVariables } from './api/generated/http/client'
 import type { AccountSummary, StaffSession } from './api/generated/http/models'
 import { GiveBpHeader, GiveBpByIdRequest } from './api/generated/validation/schemas'
 import { ApiHttpError, setCsrfToken } from './api/transport'
+import { ConnectedCodes } from './ConnectedCodes'
 
 const pendingSchema = z.object({ data: GiveBpByIdRequest, headers: GiveBpHeader })
 
@@ -123,11 +124,11 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
   const grant = useGiveBp({
     mutation: {
       onError: (error) => {
-        // These rejections happen before any grant. Unknown network/commit outcomes retain the exact intent.
-        if (
-          error instanceof ApiHttpError &&
-          [400, 403, 404, 409, 413, 415].includes(error.status)
-        ) {
+        // Auth/CSRF refusals precede receipt lookup: an earlier attempt may already have committed.
+        if (error instanceof ApiHttpError && [401, 403].includes(error.status)) {
+          void client.invalidateQueries({ queryKey: getGetStaffSessionQueryKey() })
+        }
+        if (error instanceof ApiHttpError && [400, 404, 409, 413, 415].includes(error.status)) {
           try {
             sessionStorage.removeItem(storageKey)
             setStored({ intent: null, error: null })
@@ -324,6 +325,7 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
           </div>
         )}
       </Panel>
+      <ConnectedCodes session={session} />
       <Modal
         open={open}
         onOpenChange={(value) => {
@@ -402,8 +404,8 @@ function Workspace() {
       </header>
       <main id="main" className="connected-main">
         <p className="inline-notice">
-          Local API preview · Real server data. Only accounts and Give BP are connected. Public
-          hosting remains disabled.
+          Local API preview · Real server data. Accounts, Give BP and BOOSTERPASS codes are
+          connected. Public hosting remains disabled.
         </p>
         {session.isPending ? (
           <p role="status" className="connected-state">

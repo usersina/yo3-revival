@@ -55,6 +55,15 @@ HTML panel or game assets on this listener. CLI discovery still selects the mana
 before opening storage, and shutdown closes every listener. The disposable example and connected browser tests use
 the separate socket. Public binding, MFA, nginx and Compose remain pending.
 
+2026-11-16, typed BOOSTERPASS code management: failing creation/removal audit regressions led to prepared copies and
+one code/audit/receipt transaction, shared by the CLI, old panel and generated staff API. Shared actor and retry
+helpers preserve Give BP's receipt format and prevent cross-operation ID reuse. Code tests cover write/COMMIT
+failures, subsequent saves, concurrency, permission changes, restart, pruning and CLI retries. Repeated HTML forms
+retain their hidden ID. The connected React page lists real codes and claims, permits admin-only creation/removal,
+keeps uncertain changes across reloads, and distinguishes definite refusals from unknown results. Browser checks
+discard committed creation/removal responses and retry safely, plus expired sessions and duplicate-code feedback.
+Pending BP and code requests also survive a rejected CSRF/session retry; its refusal does not undo an earlier commit.
+
 Platform scope: **64-bit Windows 10/11** and **Linux with Wine**. **Windows 7 support is out of scope for now**,
 for both Desktop and Scripts. Current compatibility and native Windows verification work targets Windows 10/11.
 

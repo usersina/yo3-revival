@@ -8,7 +8,7 @@
 //! Each operation is one function ([`Api::apply`]): it checks its values, applies the change to the running server's
 //! state (in memory and in the database together), then writes an audit row: who, from where, what, on what, the
 //! values before and after. Give BP commits the change, mail, audit and retry receipt together before publishing.
-//! Other operations are being adapted to that boundary. With no server running, the CLI runs on the data folder (it
+//! Code creation/removal also commit audit and receipt with their change. Other operations are being adapted. With no server running, the CLI runs on the data folder (it
 //! holds the folder's lock meanwhile), and those changes are audited too, from "offline".
 //!
 //! No player connection reaches these routes: the TLS HTTP role forwards only the game's files (`transport.rs`), and
@@ -29,7 +29,10 @@ use crate::lock::Locked;
 use crate::store::AuditRow;
 
 pub mod give_bp;
-pub use give_bp::{GiveBpRequest, GiveBpResult, GrantActor, GrantError, GrantErrorCode};
+pub mod mutation;
+pub mod codes;
+pub use give_bp::{GiveBpRequest, GiveBpResult};
+pub use mutation::{Actor, MutationError, MutationErrorCode};
 
 /// The path every operation is under.
 pub const PREFIX: &str = "/api/admin/v1/";
@@ -106,6 +109,8 @@ pub enum Op {
 }
 
 impl Op {
+    /// Operations migrated to a committed change/audit/receipt boundary.
+    fn receipted(&self) -> bool { matches!(self, Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. }) }
     /// Its name in the API's path and the audit log.
     pub fn name(&self) -> String {
         serde_json::to_value(self).ok().and_then(|v| v["op"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -213,14 +218,14 @@ pub struct Api {
     /// "server" for a running server's operations, "offline" for the CLI's on a stopped server's folder.
     pub origin: &'static str,
     memory: Mutex<Vec<AuditRow>>,
-    grant_receipts: Mutex<std::collections::HashMap<(String, String), crate::store::Receipt>>,
+    receipts: Mutex<std::collections::HashMap<(String, String), crate::store::Receipt>>,
 }
 
 type Done = Result<(Value, Option<Value>, Option<Value>), String>;
 
 impl Api {
     pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, data_dir: Option<PathBuf>, game_dir: PathBuf, origin: &'static str) -> Api {
-        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), origin, memory: Mutex::default(), grant_receipts: Mutex::default() }
+        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), origin, memory: Mutex::default(), receipts: Mutex::default() }
     }
 
     /// Runs `op` for `actor` and writes its audit row: its result, or why it was refused.
@@ -233,7 +238,7 @@ impl Api {
         self.apply_request(op, actor, origin, role, &crate::logins::new_token())
     }
 
-    /// The same operation with a caller's stable retry ID (currently Give BP).
+    /// The same operation with a caller's stable retry ID (Give BP and BOOSTERPASS code changes).
     pub fn apply_request(&self, op: &Op, actor: &str, origin: &str, role: Option<crate::logins::Role>, request_id: &str) -> Result<Value, String> {
         use crate::logins::Role;
         match role {
@@ -247,13 +252,12 @@ impl Api {
                 if staff && !own && !matches!(op, Op::Account { .. }) { return Err("a moderator can't act on an admin's or another moderator's account".into()) }
             }
         }
-        if let Op::GiveBp { who, amount } = op {
-            let caller = if role.is_none() { GrantActor::Host { by: actor } } else {
-                let id = self.accounts.locked().login_of(actor).map(|(id, _)| id).ok_or("only an admin may give BP")?;
-                GrantActor::Staff { user_id: id }
+        if op.receipted() {
+            let caller = if role.is_none() { Actor::Host { by: actor } } else {
+                let id = self.accounts.locked().login_of(actor).map(|(id, _)| id).ok_or("only an admin may do that")?;
+                Actor::Staff { user_id: id }
             };
-            return self.give_bp(&GiveBpRequest { who: who.clone(), amount: *amount }, request_id, caller, origin)
-                .map(|r| serde_json::to_value(r).expect("GiveBpResult serializes")).map_err(|e| e.to_string())
+            return self.typed_change(op, request_id, caller, origin).map_err(|e| e.to_string())
         }
         let (result, before, after) = self.run(op)?;
         if op.changes() {
@@ -277,6 +281,17 @@ impl Api {
             }
         }
         Ok(result)
+    }
+
+    fn typed_change(&self, op: &Op, id: &str, actor: Actor<'_>, origin: &str) -> Result<Value, MutationError> {
+        match op {
+            Op::GiveBp { who, amount } => self.give_bp(&GiveBpRequest { who: who.clone(), amount: *amount }, id, actor, origin).map(|r| json!(r)),
+            Op::AddCode { code, bp, uses } => self.create_bp_code(&codes::CreateBpCodeRequest {
+                code: (!code.trim().is_empty()).then(|| code.trim().to_string()), bp: *bp, uses: *uses,
+            }, id, actor, origin).map(|r| json!(r)),
+            Op::RemoveCode { code } => self.remove_bp_code(&codes::RemoveBpCodeRequest { code: code.trim().to_string() }, id, actor, origin).map(|r| json!(r)),
+            _ => Err(MutationError::new(MutationErrorCode::InvalidRequest, "This operation has not migrated to the typed mutation boundary.")),
+        }
     }
 
     /// Writes an audit row for something that isn't an operation (the panel's backup download).
@@ -639,17 +654,7 @@ or after your next duel.", recipe.title)
                 done(json!({ "created": name, "message": format!("{who}'s account has a player named {name}") }))
             }
             Op::Key { who } => done(json!({ "key": d.key_of(who)? })),
-            Op::Codes => done(Value::Array(d.codes().iter().map(|c| json!({
-                "code": c.code, "bp": c.bp, "uses": c.uses,
-                "claims": c.used_by.iter().zip(&c.claimed_at).map(|(&user, at)| json!({ "user_id": user, "players": d.player_names(user), "at": at })).collect::<Vec<_>>()
-            })).collect())),
-            Op::AddCode { code, bp, uses } => {
-                let code = if code.trim().is_empty() { d.new_code() } else { code.trim().to_string() };
-                d.add_code(&code, *bp, *uses)?;
-                let users = uses.map_or("any number of accounts".to_string(), |n| format!("{n} account(s)"));
-                done(json!({ "code": code, "message": format!("code {code}: {bp} BP, once per account, for {users}. Players enter it in Main Menu -> BOOSTERPASS.") }))
-            }
-            Op::RemoveCode { code } => { d.remove_code(code)?; done(json!({ "removed": code, "message": format!("code {code} removed") })) }
+            Op::Codes => done(json!(Self::bp_codes(&d).codes)),
             Op::Invite { uses, days } => {
                 let expires = days.map(|n| crate::logins::now() + i64::from(n) * 24 * 3600);
                 let code = d.add_invite(*uses, expires, "host")?;
@@ -714,21 +719,21 @@ pub fn handle(request: &str, peer: IpAddr, token: Option<&str>, api: &Api) -> Op
         let (key, value) = line.split_once(':')?;
         key.eq_ignore_ascii_case("x-yo3-actor").then(|| value.trim().chars().filter(|c| !c.is_control()).take(40).collect::<String>())
     }).filter(|a| !a.is_empty()).unwrap_or_else(|| "host".into());
-    if let Op::GiveBp { who, amount } = &op {
+    if op.receipted() {
         let ids: Vec<&str> = head.lines().filter_map(|line| {
             let (key, value) = line.split_once(':')?;
             key.eq_ignore_ascii_case("idempotency-key").then(|| value.trim())
         }).collect();
         if ids.len() != 1 {
-            return Some(reply("400 Bad Request", json!({ "ok": false, "code": "invalid_request", "error": "Give BP requires one Idempotency-Key header." })))
+            return Some(reply("400 Bad Request", json!({ "ok": false, "code": "invalid_request", "error": "This change requires one Idempotency-Key header." })))
         }
-        return Some(match api.give_bp(&GiveBpRequest { who: who.clone(), amount: *amount }, ids[0], GrantActor::Host { by: &actor }, api.origin) {
+        return Some(match api.typed_change(&op, ids[0], Actor::Host { by: &actor }, api.origin) {
             Ok(result) => reply("200 OK", json!({ "ok": true, "result": result })),
             Err(error) => {
                 let status = match error.code {
-                    GrantErrorCode::RequestConflict => "409 Conflict", GrantErrorCode::Forbidden => "403 Forbidden",
-                    GrantErrorCode::NotFound => "404 Not Found", GrantErrorCode::PersistenceFailed => "503 Service Unavailable",
-                    GrantErrorCode::InvalidRequest => "400 Bad Request",
+                    MutationErrorCode::RequestConflict | MutationErrorCode::AlreadyExists => "409 Conflict", MutationErrorCode::Forbidden => "403 Forbidden",
+                    MutationErrorCode::NotFound => "404 Not Found", MutationErrorCode::PersistenceFailed => "503 Service Unavailable",
+                    MutationErrorCode::InvalidRequest => "400 Bad Request",
                 };
                 reply(status, json!({ "ok": false, "code": error.code, "error": error.message }))
             }
@@ -770,9 +775,9 @@ pub fn call_as(live: &Live, op: &Op, actor: &str) -> Result<Value, String> {
     call_as_request(live, op, actor, &crate::logins::new_token())
 }
 
-/// Reuse `request_id` after an uncertain response: a committed Give BP returns its original result.
+/// Reuse `request_id` after an uncertain response: migrated mutations return their original committed result.
 pub fn call_as_request(live: &Live, op: &Op, actor: &str, request_id: &str) -> Result<Value, String> {
-    if !give_bp::valid_request_id(request_id) { return Err("invalid request ID (16–128 letters, digits, hyphens or underscores)".into()) }
+    if !mutation::valid_request_id(request_id) { return Err("invalid request ID (16–128 letters, digits, hyphens or underscores)".into()) }
     let actor: String = actor.chars().filter(|c| c.is_ascii_graphic() || *c == ' ').take(40).collect();
     let send = || -> anyhow::Result<Value> {
         let mut stream = TcpStream::connect_timeout(&SocketAddr::from(([127, 0, 0, 1], live.port)), Duration::from_secs(3))?;

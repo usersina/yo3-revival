@@ -2194,6 +2194,12 @@ account number. Receipts have no expiry and do not follow audit pruning. Other o
 domain save paths and are being adapted. **Status: implemented/tested**, evidence `tests/api_contract.rs` and
 `tests/grant_contract.rs`; these are our API definitions, not inferred
 game-client reply shapes. It replaced `/manager` and `/admin`.
+`add-code` and `remove-code` also require one `Idempotency-Key`, return `request_id` and stable error codes, and
+commit the code change, audit and receipt before publishing. Generated codes replay their original value; a removal
+retry never removes a later replacement. Input codes are canonical uppercase and 16 letters/digits. Duplicate codes
+give `already_exists`, missing codes `not_found`, reused IDs with different operations/inputs `request_conflict`.
+The CLI prints IDs and accepts `--request-id`; old panel forms retain hidden IDs. Evidence: `code_contract.rs` and
+`panel_contract.rs`. The game's redemption request/reply and credited balances are unchanged.
 The panel runs the same operations in the server (`Api::apply_as`) as its signed-in staff account: a moderator runs only
 the looking, moderation, invite and reset-code operations, and none on a staff account. `account`, `backups`, `back-up` and
 `logs` were added for its pages. Status also reports the actual `listen` socket and `release`, so a reopened manager and local game use the active
@@ -2202,8 +2208,9 @@ management/assets HTTP stays loopback.
 
 The React dashboard has its own staff-session JSON routes at `/panel/api/v1/`, implemented in `dashboard.rs` with
 Axum and utoipa-axum. Rust exports `dashboard/api/openapi.json`; Orval generates the frontend fetch functions, hooks,
-types and Zod validators. It currently covers sign-in/out, session, account summaries and Give BP (a `user_id: u32`
-target, not a player name). The staff router never accepts host-token authority. It runs only on its own opt-in
+types and Zod validators. It currently covers sign-in/out, session, account summaries, Give BP (a `user_id: u32`
+target, not a player name), and code listing/creation/removal, including claim summaries with RFC 3339 times where
+known. Moderators read codes, admins change them. The staff router never accepts host-token authority. It runs only on its own opt-in
 loopback listener (`--dashboard-port`, disabled by default), sharing panel sessions and the sign-in throttle.
 The host-token API, old HTML panel and assets stay on the management listener; the staff API and schema are absent
 there. A real host token sent from loopback to the dashboard socket still cannot reach host operations, restore or

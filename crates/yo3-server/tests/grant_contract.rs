@@ -3,7 +3,7 @@ mod common;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use yo3_server::{accounts::{Directory, START_BP}, api::{self, Api, Op, GiveBpRequest, GrantActor, GrantErrorCode}, settings, store};
+use yo3_server::{accounts::{Directory, START_BP}, api::{self, Api, Op, GiveBpRequest, Actor, MutationErrorCode}, settings, store};
 
 const ID: &str = "grant-000000000001";
 fn request(amount: u32) -> GiveBpRequest { GiveBpRequest { who: "Yugi".into(), amount } }
@@ -94,14 +94,14 @@ fn a_deferred_constraint_failure_at_commit_publishes_nothing_and_can_be_retried(
     f.sql("CREATE TABLE test_parent(id INTEGER PRIMARY KEY);
         CREATE TABLE test_child(parent INTEGER REFERENCES test_parent(id) DEFERRABLE INITIALLY DEFERRED);
         CREATE TRIGGER refuse_commit AFTER INSERT ON audit BEGIN INSERT INTO test_child VALUES (-1); END;");
-    let error = f.api.give_bp(&request(250), ID, GrantActor::Host { by: "host" }, "server").unwrap_err();
-    assert_eq!(error.code, GrantErrorCode::PersistenceFailed);
+    let error = f.api.give_bp(&request(250), ID, Actor::Host { by: "host" }, "server").unwrap_err();
+    assert_eq!(error.code, MutationErrorCode::PersistenceFailed);
     assert_eq!(f.balance(), (START_BP, START_BP));
     assert!(f.client.pushed().is_empty());
     assert_eq!((f.mail_count(), f.receipts()), (0, 0));
     assert!(f.api.audit(100).unwrap().is_empty());
     f.sql("DROP TRIGGER refuse_commit;");
-    let result = f.api.give_bp(&request(250), ID, GrantActor::Host { by: "host" }, "server").unwrap();
+    let result = f.api.give_bp(&request(250), ID, Actor::Host { by: "host" }, "server").unwrap();
     assert_eq!(result.bp, START_BP + 250);
     assert_eq!(f.balance(), (result.bp, result.bp));
     assert_eq!((f.mail_count(), f.receipts()), (1, 1));
@@ -111,7 +111,7 @@ fn a_deferred_constraint_failure_at_commit_publishes_nothing_and_can_be_retried(
 fn a_receipt_write_failure_rolls_back_the_entire_grant() {
     let mut f = Fixture::new("receipt-failure");
     f.sql("CREATE TRIGGER refuse_receipt BEFORE INSERT ON operation_receipts BEGIN SELECT RAISE(FAIL, 'receipt unavailable'); END;");
-    assert_eq!(f.api.give_bp(&request(25), ID, GrantActor::Host { by: "host" }, "server").unwrap_err().code, GrantErrorCode::PersistenceFailed);
+    assert_eq!(f.api.give_bp(&request(25), ID, Actor::Host { by: "host" }, "server").unwrap_err().code, MutationErrorCode::PersistenceFailed);
     assert_eq!(f.balance(), (START_BP, START_BP));
     assert_eq!((f.mail_count(), f.receipts()), (0, 0));
     assert!(f.api.audit(100).unwrap().is_empty());
@@ -121,7 +121,7 @@ fn a_receipt_write_failure_rolls_back_the_entire_grant() {
 #[test]
 fn retrying_a_lost_answer_does_not_repeat_mail_notifications_or_audit_even_after_pruning() {
     let mut f = Fixture::new("retry");
-    let first = f.api.give_bp(&request(250), ID, GrantActor::Host { by: "Anis" }, "server").unwrap();
+    let first = f.api.give_bp(&request(250), ID, Actor::Host { by: "Anis" }, "server").unwrap();
     assert_eq!(f.balance(), (first.bp, first.bp));
     assert_eq!((f.mail_count(), f.receipts()), (1, 1));
     let messages = f.client.pushed();
@@ -130,27 +130,27 @@ fn retrying_a_lost_answer_does_not_repeat_mail_notifications_or_audit_even_after
     assert_eq!(letters["waiting"].as_array().unwrap().len(), 1);
     assert_eq!(f.api.audit(100).unwrap().len(), 1);
     // --by changes only the audit label, never the fixed host receipt identity.
-    assert_eq!(f.api.give_bp(&request(250), ID, GrantActor::Host { by: "Another name" }, "offline").unwrap(), first);
+    assert_eq!(f.api.give_bp(&request(250), ID, Actor::Host { by: "Another name" }, "offline").unwrap(), first);
     assert!(f.client.pushed().is_empty());
     f.sql("UPDATE audit SET at='2000-01-01T00:00:00Z';");
     assert_eq!(store::prune_audit(&f.dir, 1).unwrap(), 1);
-    assert_eq!(f.api.give_bp(&request(250), ID, GrantActor::Host { by: "host" }, "server").unwrap(), first);
+    assert_eq!(f.api.give_bp(&request(250), ID, Actor::Host { by: "host" }, "server").unwrap(), first);
     assert_eq!(f.balance(), (first.bp, first.bp));
     assert_eq!((f.mail_count(), f.receipts()), (1, 1));
     assert!(f.api.audit(100).unwrap().is_empty());
     assert!(f.client.pushed().is_empty());
-    assert_eq!(f.api.give_bp(&request(251), ID, GrantActor::Host { by: "host" }, "server").unwrap_err().code, GrantErrorCode::RequestConflict);
+    assert_eq!(f.api.give_bp(&request(251), ID, Actor::Host { by: "host" }, "server").unwrap_err().code, MutationErrorCode::RequestConflict);
 }
 
 #[test]
 fn receipts_and_mail_survive_a_restart() {
     let f = Fixture::new("restart");
-    let first = f.api.give_bp(&request(100), ID, GrantActor::Host { by: "host" }, "server").unwrap();
+    let first = f.api.give_bp(&request(100), ID, Actor::Host { by: "host" }, "server").unwrap();
     store::close(&f.dir);
     store::initialize(&f.dir).unwrap();
     let accounts = Arc::new(Mutex::new(Directory::open(vec![], &f.dir.join("accounts.json")).unwrap()));
     let restarted = Api::new(accounts, Arc::new(settings::Live::open(None, vec![]).unwrap()), Some(f.dir.clone()), PathBuf::new(), "offline");
-    assert_eq!(restarted.give_bp(&request(100), ID, GrantActor::Host { by: "host" }, "offline").unwrap(), first);
+    assert_eq!(restarted.give_bp(&request(100), ID, Actor::Host { by: "host" }, "offline").unwrap(), first);
     assert_eq!(restarted.accounts.lock().unwrap().dpoint(f.user), Some(first.bp));
     assert_eq!(restarted.audit(100).unwrap().len(), 1);
     assert_eq!(store::read(&f.dir.join("mail.json")).unwrap().unwrap()["waiting"].as_array().unwrap().len(), 1);
@@ -165,7 +165,7 @@ fn concurrent_retries_and_duel_rewards_keep_the_same_lock_order() {
         let player = api.accounts.lock().unwrap().player_id_named("Yugi").unwrap();
         s.spawn(move || for _ in 0..20 { reward.lock().unwrap().record_result(player, 7, 1); });
         for _ in 0..8 {
-            s.spawn(move || api.give_bp(&request(100), ID, GrantActor::Host { by: "host" }, "server").unwrap());
+            s.spawn(move || api.give_bp(&request(100), ID, Actor::Host { by: "host" }, "server").unwrap());
         }
     });
     let expected = START_BP + 100 + 20 * yo3_server::shop::duel_bp(1);
@@ -181,12 +181,12 @@ fn staff_receipts_are_scoped_by_account_id_and_permissions_are_rechecked_before_
     let id = accounts.register(yo3_server::logins::Login::new("Pegasus", "test-hash".into(), "test-recovery".into()), None, yo3_server::logins::Registration::Open).unwrap();
     accounts.set_role("Pegasus", yo3_server::logins::Role::Admin).unwrap();
     drop(accounts);
-    f.api.give_bp(&request(10), ID, GrantActor::Host { by: "host" }, "server").unwrap();
-    let staff = f.api.give_bp(&request(10), ID, GrantActor::Staff { user_id: id }, "panel").unwrap();
+    f.api.give_bp(&request(10), ID, Actor::Host { by: "host" }, "server").unwrap();
+    let staff = f.api.give_bp(&request(10), ID, Actor::Staff { user_id: id }, "panel").unwrap();
     assert_eq!(staff.bp, START_BP + 20);
     assert_eq!(f.receipts(), 2);
     f.api.accounts.lock().unwrap().set_role("Pegasus", yo3_server::logins::Role::Moderator).unwrap();
-    assert_eq!(f.api.give_bp(&request(10), ID, GrantActor::Staff { user_id: id }, "panel").unwrap_err().code, GrantErrorCode::Forbidden);
+    assert_eq!(f.api.give_bp(&request(10), ID, Actor::Staff { user_id: id }, "panel").unwrap_err().code, MutationErrorCode::Forbidden);
     assert_eq!(f.balance(), (staff.bp, staff.bp));
 }
 
@@ -214,7 +214,7 @@ fn the_local_http_contract_requires_a_safe_key_and_returns_typed_conflicts() {
 #[test]
 fn schema_two_upgrades_without_losing_accounts_mail_or_audit() {
     let f = Fixture::new("migration");
-    f.api.give_bp(&request(10), ID, GrantActor::Host { by: "host" }, "server").unwrap();
+    f.api.give_bp(&request(10), ID, Actor::Host { by: "host" }, "server").unwrap();
     f.sql("DROP TABLE operation_receipts; PRAGMA user_version=2;");
     store::close(&f.dir);
     store::initialize(&f.dir).unwrap();
@@ -227,7 +227,7 @@ fn schema_two_upgrades_without_losing_accounts_mail_or_audit() {
 #[test]
 fn long_lived_receipts_do_not_retain_player_names() {
     let f = Fixture::new("receipt-privacy");
-    f.api.give_bp(&request(10), ID, GrantActor::Host { by: "host" }, "server").unwrap();
+    f.api.give_bp(&request(10), ID, Actor::Host { by: "host" }, "server").unwrap();
     let text: String = rusqlite::Connection::open(f.dir.join("server.db")).unwrap()
         .query_row("SELECT input || result FROM operation_receipts", [], |r| r.get(0)).unwrap();
     assert!(!text.contains("Yugi"), "receipts survive audit pruning and account deletion: {text}");
@@ -237,12 +237,12 @@ fn long_lived_receipts_do_not_retain_player_names() {
 fn invalid_grants_change_nothing() {
     let mut f = Fixture::new("invalid");
     for (input, key, code) in [
-        (request(0), ID, GrantErrorCode::InvalidRequest),
-        (request(u32::MAX), ID, GrantErrorCode::InvalidRequest),
-        (request(1), "bad\r\nkey", GrantErrorCode::InvalidRequest),
-        (GiveBpRequest { who: "Nobody".into(), amount: 1 }, ID, GrantErrorCode::NotFound),
+        (request(0), ID, MutationErrorCode::InvalidRequest),
+        (request(u32::MAX), ID, MutationErrorCode::InvalidRequest),
+        (request(1), "bad\r\nkey", MutationErrorCode::InvalidRequest),
+        (GiveBpRequest { who: "Nobody".into(), amount: 1 }, ID, MutationErrorCode::NotFound),
     ] {
-        assert_eq!(f.api.give_bp(&input, key, GrantActor::Host { by: "host" }, "server").unwrap_err().code, code);
+        assert_eq!(f.api.give_bp(&input, key, Actor::Host { by: "host" }, "server").unwrap_err().code, code);
     }
     assert_eq!(f.balance(), (START_BP, START_BP));
     assert_eq!((f.mail_count(), f.receipts()), (0, 0));

@@ -14,6 +14,7 @@ export const ApiErrorCode = {
   csrf_invalid: 'csrf_invalid',
   rate_limited: 'rate_limited',
   not_found: 'not_found',
+  already_exists: 'already_exists',
   request_conflict: 'request_conflict',
   persistence_failed: 'persistence_failed',
   method_not_allowed: 'method_not_allowed',

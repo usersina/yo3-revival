@@ -2128,8 +2128,12 @@
     gap: 16px;
   }
   .connected-sign-in input,
+  .connected-codes input,
   #connected-bp {
     width: 100%;
+  }
+  .connected-codes {
+    margin-top: 28px;
   }
   .connected-state {
     display: flex;

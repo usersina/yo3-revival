@@ -24,9 +24,16 @@ import type {
 import type {
   AccountList,
   ApiError,
+  BpCodeList,
+  CreateBpCodeHeaders,
+  CreateBpCodeRequest,
+  CreateBpCodeResult,
   GiveBpByIdRequest,
   GiveBpHeaders,
   GiveBpResult,
+  RemoveBpCodeHeaders,
+  RemoveBpCodeRequest,
+  RemoveBpCodeResult,
   SignInRequest,
   SignInStaffHeaders,
   SignOutStaffHeaders,
@@ -168,6 +175,238 @@ export function useListAccounts<TData = Awaited<ReturnType<typeof listAccounts>>
 
 
 
+
+export const getListBpCodesUrl = () => {
+
+
+
+
+  return `/panel/api/v1/bp-codes`
+}
+
+export const listBpCodes = async ( options?: Parameters<typeof apiFetch>[1]): Promise<BpCodeList> => {
+
+  return apiFetch<BpCodeList>(getListBpCodesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBpCodesQueryKey = () => {
+    return [
+    `/panel/api/v1/bp-codes`
+    ] as const;
+    }
+
+
+export const getListBpCodesQueryOptions = <TData = Awaited<ReturnType<typeof listBpCodes>>, TError = ErrorType<ApiError>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBpCodes>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBpCodesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBpCodes>>> = ({ signal }) => listBpCodes({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBpCodes>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListBpCodesQueryResult = NonNullable<Awaited<ReturnType<typeof listBpCodes>>>
+export type ListBpCodesQueryError = ErrorType<ApiError>
+
+
+export function useListBpCodes<TData = Awaited<ReturnType<typeof listBpCodes>>, TError = ErrorType<ApiError>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBpCodes>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listBpCodes>>,
+          TError,
+          Awaited<ReturnType<typeof listBpCodes>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListBpCodes<TData = Awaited<ReturnType<typeof listBpCodes>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBpCodes>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listBpCodes>>,
+          TError,
+          Awaited<ReturnType<typeof listBpCodes>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListBpCodes<TData = Awaited<ReturnType<typeof listBpCodes>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBpCodes>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListBpCodes<TData = Awaited<ReturnType<typeof listBpCodes>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBpCodes>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListBpCodesQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateBpCodeUrl = () => {
+
+
+
+
+  return `/panel/api/v1/bp-codes`
+}
+
+export const createBpCode = async (createBpCodeRequest: CreateBpCodeRequest,
+    headers: CreateBpCodeHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<CreateBpCodeResult> => {
+
+  return apiFetch<CreateBpCodeResult>(getCreateBpCodeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(createBpCodeRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateBpCodeMutationKey = () => ['createBpCode'] as const;
+
+export const getCreateBpCodeMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBpCode>>, TError,CreateBpCodeMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createBpCode>>, TError,CreateBpCodeMutationVariables, TContext> => {
+
+const mutationKey = getCreateBpCodeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBpCode>>, CreateBpCodeMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  createBpCode(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateBpCodeMutationResult = NonNullable<Awaited<ReturnType<typeof createBpCode>>>
+    export type CreateBpCodeMutationBody = CreateBpCodeRequest
+    export type CreateBpCodeMutationError = ErrorType<ApiError>
+    export type CreateBpCodeMutationVariables = {data: CreateBpCodeRequest;headers: CreateBpCodeHeaders}
+
+    export const useCreateBpCode = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBpCode>>, TError,CreateBpCodeMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createBpCode>>,
+        TError,
+        CreateBpCodeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateBpCodeMutationOptions(options), queryClient);
+    }
+
+export const getRemoveBpCodeUrl = () => {
+
+
+
+
+  return `/panel/api/v1/bp-codes/remove`
+}
+
+export const removeBpCode = async (removeBpCodeRequest: RemoveBpCodeRequest,
+    headers: RemoveBpCodeHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<RemoveBpCodeResult> => {
+
+  return apiFetch<RemoveBpCodeResult>(getRemoveBpCodeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(removeBpCodeRequest)
+  }
+);}
+
+
+
+
+
+export const getRemoveBpCodeMutationKey = () => ['removeBpCode'] as const;
+
+export const getRemoveBpCodeMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeBpCode>>, TError,RemoveBpCodeMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeBpCode>>, TError,RemoveBpCodeMutationVariables, TContext> => {
+
+const mutationKey = getRemoveBpCodeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeBpCode>>, RemoveBpCodeMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  removeBpCode(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveBpCodeMutationResult = NonNullable<Awaited<ReturnType<typeof removeBpCode>>>
+    export type RemoveBpCodeMutationBody = RemoveBpCodeRequest
+    export type RemoveBpCodeMutationError = ErrorType<ApiError>
+    export type RemoveBpCodeMutationVariables = {data: RemoveBpCodeRequest;headers: RemoveBpCodeHeaders}
+
+    export const useRemoveBpCode = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeBpCode>>, TError,RemoveBpCodeMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof removeBpCode>>,
+        TError,
+        RemoveBpCodeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRemoveBpCodeMutationOptions(options), queryClient);
+    }
 
 export const getGiveBpUrl = () => {
 

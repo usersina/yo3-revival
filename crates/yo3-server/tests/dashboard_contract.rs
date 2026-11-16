@@ -18,8 +18,11 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/sign-out", "post", "signOutStaff"),
         ("/panel/api/v1/accounts", "get", "listAccounts"),
         ("/panel/api/v1/give-bp", "post", "giveBp"),
+        ("/panel/api/v1/bp-codes", "get", "listBpCodes"),
+        ("/panel/api/v1/bp-codes", "post", "createBpCode"),
+        ("/panel/api/v1/bp-codes/remove", "post", "removeBpCode"),
     ];
-    assert_eq!(paths.len(), expected.len());
+    assert_eq!(paths.len(), 7);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -227,6 +230,49 @@ async fn moderator_permissions_and_demotion_are_checked_on_the_server() {
     let admin = b.admin.clone();
     tokio::task::spawn_blocking(move || api::call(&admin, &Op::SetRole { user: "Croquet".into(), role: "player".into() })).await.unwrap().unwrap();
     assert_eq!(b.call("GET", "/panel/api/v1/accounts", json!(null)).await.status, 401);
+}
+
+#[tokio::test]
+async fn staff_codes_use_typed_results_retry_conflicts_and_server_side_permissions() {
+    let mut b = Browser::new("codes").await;
+    let token = format!("Authorization: Bearer {}\r\n", b.admin.token);
+    assert_eq!(b.raw("GET", "/panel/api/v1/bp-codes", "", &token).await.status, 401);
+    b.sign_in("Pegasus").await;
+    let request = json!({ "bp": 300, "uses": 2 });
+    let first = b.call("POST", "/panel/api/v1/bp-codes", request.clone()).await;
+    assert_eq!(first.status, 200, "{}", first.body);
+    let result: yo3_server::api::codes::CreateBpCodeResult = serde_json::from_value(first.body.clone()).unwrap();
+    assert_eq!(result.code.len(), 16);
+    assert_eq!(result.request_id, KEY);
+    assert_eq!(b.call("POST", "/panel/api/v1/bp-codes", request).await.body, first.body);
+    let changed = b.call("POST", "/panel/api/v1/bp-codes", json!({ "bp": 301 })).await;
+    assert_eq!((changed.status, changed.body["code"].as_str()), (409, Some("request_conflict")));
+    let duplicate = b.raw("POST", "/panel/api/v1/bp-codes", &json!({ "code": result.code, "bp": 300 }).to_string(),
+        "Idempotency-Key: duplicate-code-000000001\r\n").await;
+    assert_eq!((duplicate.status, duplicate.body["code"].as_str()), (409, Some("already_exists")));
+    let malformed = b.raw("POST", "/panel/api/v1/bp-codes", &json!({ "bp": 300, "role": "admin" }).to_string(),
+        "Idempotency-Key: invalid-code-000000001\r\n").await;
+    assert_eq!(malformed.status, 400);
+    b.sign_in("Croquet").await;
+    let list = b.call("GET", "/panel/api/v1/bp-codes", json!(null)).await;
+    assert_eq!(list.status, 200);
+    let parsed: yo3_server::api::codes::BpCodeList = serde_json::from_value(list.body.clone()).unwrap();
+    assert_eq!(parsed.codes.len(), 1);
+    assert_eq!(parsed.codes[0].bp, 300);
+    assert!(!list.body.to_string().contains(&b.admin.token));
+    for (path, body) in [("/panel/api/v1/bp-codes", json!({ "code": result.code, "bp": 300 })),
+        ("/panel/api/v1/bp-codes/remove", json!({ "code": result.code }))] {
+        assert_eq!(b.call("POST", path, body).await.status, 403);
+    }
+    b.sign_in("Pegasus").await;
+    let body = json!({ "code": result.code.to_lowercase() }).to_string();
+    let headers = "Idempotency-Key: remove-code-000000001\r\n";
+    let removed = b.raw("POST", "/panel/api/v1/bp-codes/remove", &body, headers).await;
+    assert_eq!(removed.status, 200);
+    assert_eq!(removed.body["removed"], result.code);
+    assert_eq!(b.raw("POST", "/panel/api/v1/bp-codes/remove", &body, headers).await.body, removed.body);
+    assert_eq!(b.call("GET", "/panel/api/v1/bp-codes", json!(null)).await.body["codes"], json!([]));
+    assert_eq!(b.raw_on(b.live.http, "GET", "/panel/api/v1/bp-codes", "", &token).await.status, 404);
 }
 
 #[tokio::test]

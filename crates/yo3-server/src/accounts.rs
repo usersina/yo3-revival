@@ -714,6 +714,13 @@ impl Directory {
     /// Makes a BOOSTERPASS code worth `bp`, usable by `uses` accounts (any number when none), each once. It must fit the
     /// game's window ([`CODE_LEN`] letters and digits) and differ from the others, whatever the case.
     pub fn add_code(&mut self, code: &str, bp: u32, uses: Option<u32>) -> Result<(), String> {
+        let mut next = self.prepare_add_code(code, bp, uses)?;
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok(())
+    }
+
+    pub(crate) fn prepare_add_code(&self, code: &str, bp: u32, uses: Option<u32>) -> Result<Self, String> {
         if code.len() != CODE_LEN || !code.bytes().all(|b| b.is_ascii_alphanumeric()) {
             return Err(format!("a code is {CODE_LEN} letters and digits (the game's window has {CODE_LEN} boxes): {code:?}"));
         }
@@ -724,7 +731,9 @@ impl Directory {
             return Err(format!("the code {code} exists already"));
         }
         let code = BpCode { code: code.to_string(), bp, uses, used_by: vec![], claimed_at: vec![] };
-        self.atomic(|d| { d.codes.push(code); Ok(()) })
+        let mut next = self.clone();
+        next.codes.push(code);
+        Ok(next)
     }
 
     /// A new random BOOSTERPASS code that fits the game's window: capital letters and digits without look-alikes.
@@ -740,8 +749,17 @@ impl Directory {
 
     /// Removes a BOOSTERPASS code (any case).
     pub fn remove_code(&mut self, code: &str) -> Result<(), String> {
+        let mut next = self.prepare_remove_code(code)?;
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok(())
+    }
+
+    pub(crate) fn prepare_remove_code(&self, code: &str) -> Result<Self, String> {
         let at = self.code_at(code).ok_or_else(|| format!("no code {code}"))?;
-        self.atomic(|d| { d.codes.remove(at); Ok(()) })
+        let mut next = self.clone();
+        next.codes.remove(at);
+        Ok(next)
     }
 
     /// The game's BOOSTERPASS window: account `user_id` enters `code` (any case). The BP got and the account's BP now;

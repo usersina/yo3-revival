@@ -1,10 +1,8 @@
 //! Give BP: prepare copies, commit balance/mail/audit/receipt together, then publish under the original locks.
-use std::fmt;
-
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use super::Api;
+use super::{Api, Actor, MutationError, MutationErrorCode, mutation::{fingerprint, validate_id}};
 use crate::{lock::Locked, logins::Role, mail::Mailbox, store::{self, AuditRow, Receipt}};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
@@ -22,94 +20,51 @@ pub struct GiveBpByIdRequest {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct GiveBpResult { #[schema(maximum = 4294967295_u32)] pub user_id: u32, #[schema(maximum = 4294967295_u32)] pub bp: u32, pub message: String, pub request_id: String }
 
-/// Identity comes from the authenticated transport. A host's display name never selects its receipt scope.
-pub enum GrantActor<'a> { Host { by: &'a str }, Staff { user_id: u32 } }
-
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum GrantErrorCode { InvalidRequest, Forbidden, NotFound, RequestConflict, PersistenceFailed }
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GrantError { pub code: GrantErrorCode, pub message: String }
-
-impl GrantError {
-    fn new(code: GrantErrorCode, message: impl Into<String>) -> Self { Self { code, message: message.into() } }
-    fn persistence(error: impl fmt::Display) -> Self {
-        tracing::error!("BP grant storage failed: {error}");
-        Self::new(GrantErrorCode::PersistenceFailed, "The grant could not be confirmed. Retry with the same request ID.")
-    }
-}
-impl fmt::Display for GrantError { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.write_str(&self.message) } }
-impl std::error::Error for GrantError {}
-
-/// Safe both in a header and as a receipt key. Receipts have no expiry and IDs are never reused.
-pub fn valid_request_id(id: &str) -> bool {
-    (16..=128).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-}
-
 impl Api {
-    pub fn give_bp(&self, request: &GiveBpRequest, request_id: &str, actor: GrantActor<'_>, origin: &str) -> Result<GiveBpResult, GrantError> {
+    pub fn give_bp(&self, request: &GiveBpRequest, request_id: &str, actor: Actor<'_>, origin: &str) -> Result<GiveBpResult, MutationError> {
         self.grant_bp(request, None, request_id, actor, origin)
     }
 
-    pub fn give_bp_to_account(&self, request: &GiveBpByIdRequest, request_id: &str, actor: GrantActor<'_>, origin: &str) -> Result<GiveBpResult, GrantError> {
+    pub fn give_bp_to_account(&self, request: &GiveBpByIdRequest, request_id: &str, actor: Actor<'_>, origin: &str) -> Result<GiveBpResult, MutationError> {
         self.grant_bp(&GiveBpRequest { who: format!("#{}", request.user_id), amount: request.amount }, Some(request.user_id), request_id, actor, origin)
     }
 
-    fn grant_bp(&self, request: &GiveBpRequest, target: Option<u32>, request_id: &str, actor: GrantActor<'_>, origin: &str) -> Result<GiveBpResult, GrantError> {
-        if !valid_request_id(request_id) {
-            return Err(GrantError::new(GrantErrorCode::InvalidRequest, "A request ID needs 16–128 letters, digits, hyphens or underscores."))
-        }
-        if request.amount == 0 { return Err(GrantError::new(GrantErrorCode::InvalidRequest, "give at least 1 BP")) }
+    fn grant_bp(&self, request: &GiveBpRequest, target: Option<u32>, request_id: &str, actor: Actor<'_>, origin: &str) -> Result<GiveBpResult, MutationError> {
+        validate_id(request_id)?;
+        if request.amount == 0 { return Err(MutationError::new(MutationErrorCode::InvalidRequest, "give at least 1 BP")) }
         // Hub -> accounts -> store, as duel results and other live changes do. Keep these guards through publishing;
         // another request cannot see a prepared copy or race a receipt check with its balance change.
         let mut hub = self.hub.as_ref().map(|h| h.locked());
         let mut accounts = self.accounts.locked();
-        let (scope, by) = match actor {
-            GrantActor::Host { by } => ("host".into(), by.to_string()),
-            GrantActor::Staff { user_id } => {
-                let login = accounts.login_by_id(user_id).filter(|l| l.role == Role::Admin && l.refusal(crate::logins::now()).is_none())
-                    .ok_or_else(|| GrantError::new(GrantErrorCode::Forbidden, "only an admin may give BP"))?;
-                (format!("staff:{user_id}"), login.user.clone())
-            }
-        };
+        let identity = actor.resolve(&accounts, Role::Admin)?;
+        let (scope, by) = (identity.scope, identity.by);
         let span = tracing::info_span!("give-bp", request_id, actor = %scope);
         let _entered = span.enter();
         // Retained receipts need the input's fingerprint, not a player's name (account deletion scrubs the audit).
-        let canonical = match target {
-            Some(user_id) => serde_json::to_string(&GiveBpByIdRequest { user_id, amount: request.amount }),
-            None => serde_json::to_string(request),
-        }.map_err(GrantError::persistence)?;
-        let input = serde_json::to_string(&crate::logins::digest(&canonical)).map_err(GrantError::persistence)?;
-        let previous = match &self.data_dir {
-            Some(dir) => store::receipt(dir, &scope, request_id).map_err(GrantError::persistence)?,
-            None => self.grant_receipts.locked().get(&(scope.clone(), request_id.into())).cloned(),
-        };
-        if let Some(receipt) = previous {
-            if receipt.operation != "give-bp" || receipt.input != input {
-                return Err(GrantError::new(GrantErrorCode::RequestConflict, "This request ID was already used for a different change."))
-            }
-            return serde_json::from_value(receipt.result).map_err(GrantError::persistence)
-        }
-        let user = target.or_else(|| accounts.user_of(&request.who)).ok_or_else(|| GrantError::new(GrantErrorCode::NotFound,
+        let input = match target {
+            Some(user_id) => fingerprint(&GiveBpByIdRequest { user_id, amount: request.amount }),
+            None => fingerprint(request),
+        }?;
+        if let Some(result) = self.replay(&scope, request_id, "give-bp", &input)? { return Ok(result) }
+        let user = target.or_else(|| accounts.user_of(&request.who)).ok_or_else(|| MutationError::new(MutationErrorCode::NotFound,
             format!("no account with the User ID or a player named {:?}", request.who)))?;
-        let before = accounts.dpoint(user).ok_or_else(|| GrantError::new(GrantErrorCode::NotFound, "The account is gone."))?;
+        let before = accounts.dpoint(user).ok_or_else(|| MutationError::new(MutationErrorCode::NotFound, "The account is gone."))?;
         if before.checked_add(request.amount).is_none() {
-            return Err(GrantError::new(GrantErrorCode::InvalidRequest, "This grant would exceed the BP balance limit."))
+            return Err(MutationError::new(MutationErrorCode::InvalidRequest, "This grant would exceed the BP balance limit."))
         }
-        let players = accounts.account_of(user).ok_or_else(|| GrantError::new(GrantErrorCode::NotFound, "The account is gone."))?
+        let players = accounts.account_of(user).ok_or_else(|| MutationError::new(MutationErrorCode::NotFound, "The account is gone."))?
             .players.into_iter().map(|p| (p.player_id, p.name)).collect::<Vec<_>>();
         let (mut next, total) = accounts.prepare_bp(user, request.amount)
-            .map_err(|e| GrantError::new(GrantErrorCode::InvalidRequest, e))?;
+            .map_err(|e| MutationError::new(MutationErrorCode::InvalidRequest, e))?;
         let source = match hub.as_ref() {
             Some(h) => h.bp_mail(),
             None => match &self.data_dir {
-                Some(dir) => Mailbox::try_load(&dir.join("mail.json")).map_err(GrantError::persistence)?, None => Mailbox::default(),
+                Some(dir) => Mailbox::try_load(&dir.join("mail.json")).map_err(MutationError::persistence)?, None => Mailbox::default(),
             },
         };
         let mail = source.prepare_bp(&players, request.amount, total);
         let result = GiveBpResult { user_id: user, bp: total, message: format!("gave {} BP to account #{user}: {total} BP now", request.amount), request_id: request_id.into() };
-        let receipt = Receipt { operation: "give-bp".into(), input, result: serde_json::to_value(&result).map_err(GrantError::persistence)? };
+        let receipt = Receipt { operation: "give-bp".into(), input, result: serde_json::to_value(&result).map_err(MutationError::persistence)? };
         let row = AuditRow { at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true), actor: by, origin: origin.into(),
             op: "give-bp".into(), target: request.who.clone(), before: Some(json!(before)), after: Some(json!(total)),
             detail: Some(json!({ "who": request.who, "amount": request.amount, "request_id": request_id })) };
@@ -119,10 +74,10 @@ impl Api {
                 mail.persist()?;
                 store::audit(dir, &row)?;
                 store::put_receipt(dir, &scope, request_id, &receipt)
-            }).map_err(GrantError::persistence)?,
+            }).map_err(MutationError::persistence)?,
             None => {
                 self.memory.locked().push(row);
-                self.grant_receipts.locked().insert((scope, request_id.into()), receipt);
+                self.receipts.locked().insert((scope, request_id.into()), receipt);
             }
         }
         *accounts = next;

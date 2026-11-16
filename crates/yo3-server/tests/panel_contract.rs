@@ -260,6 +260,32 @@ async fn a_moderator_moderates_but_cant_change_settings_or_act_on_staff() {
 }
 
 #[tokio::test]
+async fn repeated_code_forms_use_their_hidden_receipt_id() {
+    let s = Live::staffed("code-retry").await;
+    let b = s.browser("Pegasus").await;
+    let page = b.get("/panel/invites").await;
+    let csrf = page.csrf();
+    let form_id = |page: &Answer, action: &str| {
+        let form = page.body.split("<form ").find(|p| p.split("</form>").next().unwrap().contains(&format!("name=\"action\" value=\"{action}\""))).unwrap();
+        form.split("name=\"request_id\" value=\"").nth(1).unwrap().split('"').next().unwrap().to_string()
+    };
+    let id = form_id(&page, "add-code");
+    let fields = [("csrf", csrf.as_str()), ("request_id", id.as_str()), ("action", "add-code"), ("bp", "300"), ("code", "")];
+    for _ in 0..2 { assert_eq!(b.post("/panel/invites", &fields).await.status, 303); }
+    let codes = s.host(Op::Codes).await;
+    assert_eq!(codes.as_array().unwrap().len(), 1, "repeating a generated-code form must not create another code");
+    let code = codes[0]["code"].as_str().unwrap();
+    let page = b.get("/panel/invites").await;
+    let id = form_id(&page, "remove-code");
+    let fields = [("csrf", csrf.as_str()), ("request_id", id.as_str()), ("action", "remove-code"), ("code", code)];
+    assert_eq!(b.post("/panel/invites", &fields).await.status, 303);
+    s.host(Op::AddCode { code: code.into(), bp: 300, uses: None }).await;
+    assert_eq!(b.post("/panel/invites", &fields).await.status, 303);
+    assert_eq!(s.host(Op::Codes).await.as_array().unwrap().len(), 1, "an old removal form must not delete a newly recreated code");
+    assert_eq!(s.audit().iter().filter(|r| r.op == "remove-code").count(), 1);
+}
+
+#[tokio::test]
 async fn an_admin_runs_every_pages_forms() {
     let s = Live::staffed("admin").await;
     let b = s.browser("Pegasus").await;
