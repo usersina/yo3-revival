@@ -87,7 +87,7 @@ pub enum Outcome { Session(Token), Refused(direct::Refusal) }
 
 pub struct Proxy { pub ports: Ports, pub cookie: Token, pub server_id: String, tasks: Vec<JoinHandle<()>>,
     session: tokio::sync::watch::Sender<Option<Outcome>>, sign_outs: std::sync::Arc<tokio::sync::Notify>,
-    typed: std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<direct::Typed>>> }
+    typed: std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<direct::Typed>>>, form_again: std::sync::Arc<std::sync::atomic::AtomicBool> }
 
 impl Drop for Proxy { fn drop(&mut self) { for task in &self.tasks { task.abort(); } } }
 
@@ -98,6 +98,14 @@ impl Proxy {
     pub fn activate(&self, session: Token) { self.session.send_replace(Some(Outcome::Session(session))); }
     /// The sign-in failed: the game's login gets `refusal` from the front (and the duel and HTTP ports nothing).
     pub fn refuse(&self, refusal: direct::Refusal) { self.session.send_replace(Some(Outcome::Refused(refusal))); }
+    /// A sign-in from the game's own form was refused: its next ONLINE shows the form again (#34).
+    pub fn refuse_typed(&self, refusal: direct::Refusal) {
+        self.form_again.store(true, std::sync::atomic::Ordering::SeqCst); self.refuse(refusal);
+    }
+    /// A sign-in from the form worked: until it ends, ONLINE goes straight on.
+    pub fn activate_typed(&self, session: Token) {
+        self.form_again.store(false, std::sync::atomic::Ordering::SeqCst); self.activate(session);
+    }
     /// Signalled when the game's Delete Login Data asks to forget this device's sign-in (tools/mod/signout.h).
     pub fn sign_outs(&self) -> std::sync::Arc<tokio::sync::Notify> { self.sign_outs.clone() }
     /// What the player typed in the game's own login form (#34), once: the DLL hands it over when the game connects to
@@ -167,7 +175,8 @@ impl Proxy {
             }));
         }
         let http_active = active.clone();
-        let control = Control { sign_outs: sign_outs.clone(), typed: typed_tx, outcome: active.clone() };
+        let form_again = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let control = Control { sign_outs: sign_outs.clone(), typed: typed_tx, outcome: active.clone(), form_again: form_again.clone() };
         tasks.push(tokio::spawn(async move {
             while let Ok((local, _)) = http.accept().await {
                 let endpoint = endpoint.clone();
@@ -176,7 +185,7 @@ impl Proxy {
                 tokio::spawn(async move { let _ = relay_http(local, &endpoint, active, &cookie, &control).await; });
             }
         }));
-        Ok(Self { ports, cookie, server_id, tasks, session: active, sign_outs, typed: std::sync::Mutex::new(Some(typed_rx)) })
+        Ok(Self { ports, cookie, server_id, tasks, session: active, sign_outs, typed: std::sync::Mutex::new(Some(typed_rx)), form_again })
     }
 
     pub fn environment(&self) -> Vec<(&'static str, String)> {
@@ -260,7 +269,7 @@ pub const LOGIN_PATH: &str = "revival/login";
 /// The HTTP port's own requests from the connection DLL.
 #[derive(Clone)]
 struct Control { sign_outs: std::sync::Arc<tokio::sync::Notify>, typed: tokio::sync::mpsc::UnboundedSender<direct::Typed>,
-    outcome: tokio::sync::watch::Sender<Option<Outcome>> }
+    outcome: tokio::sync::watch::Sender<Option<Outcome>>, form_again: std::sync::Arc<std::sync::atomic::AtomicBool> }
 
 /// The browser/WinINet uses the launch cookie in a local path, never an account credential in a remote URL.
 async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, mut active: tokio::sync::watch::Receiver<Option<Outcome>>, cookie: &Token,
@@ -292,7 +301,11 @@ async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, mut active: tokio
     let path = path.strip_prefix(&prefix).filter(|_| text.starts_with("GET ")).ok_or_else(|| anyhow::anyhow!("local HTTP refused"))?;
     if path == LOGIN_STATE_PATH {
         let form = tokio::time::timeout(Duration::from_secs(15), active.wait_for(|o| o.is_some())).await.ok().and_then(Result::ok)
-            .is_some_and(|o| matches!(*o, Some(Outcome::Refused(direct::Refusal::SignedOut))));
+            .is_some_and(|o| match *o {
+                Some(Outcome::Refused(direct::Refusal::SignedOut)) => true,
+                Some(Outcome::Refused(_)) => control.form_again.load(std::sync::atomic::Ordering::SeqCst),
+                _ => false,
+            });
         let body = if form { "form" } else { "ready" };
         local.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await?;
         return Ok(local.shutdown().await?)

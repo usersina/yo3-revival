@@ -173,6 +173,11 @@ async fn the_games_login_form_signs_in_with_what_the_player_typed() {
     assert!(http(&proxy, state.clone()).await.ends_with("\r\n\r\nready"), "a server that is down: no form, the game says it can't connect");
     proxy.refuse(Refusal::SignedOut);
     assert!(http(&proxy, state.clone()).await.ends_with("\r\n\r\nform"), "no saved sign-in: the game's own form");
+    proxy.refuse_typed(Refusal::WrongPassword);
+    assert!(http(&proxy, state.clone()).await.ends_with("\r\n\r\nform"), "after a wrong password the next ONLINE shows the form again");
+    proxy.activate_typed([3; 32]);
+    assert!(http(&proxy, state.clone()).await.ends_with("\r\n\r\nready"), "signed in: ONLINE goes straight on");
+    proxy.refuse(Refusal::SignedOut);
     // What the DLL posts when the game connects to the front after goLogin.
     let mut typed = proxy.typed_logins().unwrap();
     let body = serde_json::json!({ "user": "former", "password": "a long passphrase", "stay": true }).to_string();

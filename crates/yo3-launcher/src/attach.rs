@@ -133,12 +133,12 @@ pub async fn serve(request: Attachment, loaded: crate::Loaded, profile: &Path, p
                     match direct::sign_in_typed(&endpoint, &login, vault.as_deref(), &SystemVault).await {
                         Ok(signed) => {
                             if let Some(old) = session.replace(signed) && credential.owns_session() { let _ = endpoint.logout(&old).await; }
-                            proxy.activate(signed); direct::record_problem(profile, None);
-                            yo3_tunnel::diagnostics::event(&format!("Signed in from the game's login form{}", if login.stay { "; Save Password keeps the device signed in" } else { "" }));
+                            proxy.activate_typed(signed); direct::record_problem(profile, None);
+                            yo3_tunnel::diagnostics::event(&format!("Signed in from the game's login form{}", if login.stay { "; this device stays signed in" } else { "" }));
                         }
                         Err(failure) => {
                             yo3_tunnel::diagnostics::event(&format!("The game's login form: refused ({:?}): {}", failure.refusal, failure.reason));
-                            proxy.refuse(failure.refusal);
+                            proxy.refuse_typed(failure.refusal);
                         }
                     }
                 }
