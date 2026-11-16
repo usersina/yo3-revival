@@ -10,12 +10,21 @@ use yo3_launcher::runtime::windows_path;
 #[command(version = yo3_tunnel::BUILD_VERSION, about = "Authenticate, start private TLS proxies, and inject the revival connection mod into the game")]
 struct Args {
     #[arg(long, required_unless_present_any = ["vault_set", "vault_delete"])] profile: Option<PathBuf>,
+    /// Sign in to SERVER (its invite link, or its address with --identity) as USER, asking for the password, and keep
+    /// this PC signed in: the device token goes in the system's credential store and --profile becomes a profile
+    /// without a secret, which `play` uses. A host's `yo3-server share` prints the link.
+    #[arg(long, num_args = 2, value_names = ["SERVER", "USER"], conflicts_with_all = ["register", "vault_set", "vault_delete"])] sign_in: Option<Vec<String>>,
+    /// Make an account USER on SERVER (asking for the host's invite code, a password and the server's rules), then sign in
+    /// as --sign-in does.
+    #[arg(long, num_args = 2, value_names = ["SERVER", "USER"], conflicts_with_all = ["vault_set", "vault_delete"])] register: Option<Vec<String>>,
+    /// The server's identity (SHA-256 in hex) when --sign-in or --register names it by address.
+    #[arg(long, value_name = "HEX")] identity: Option<String>,
     /// Keep a device token (read from standard input) in this system's credential vault under NAME: the Linux launcher
     /// copies its saved sign-in into Wine's store for direct start (#33).
     #[arg(long, value_name = "NAME", conflicts_with = "vault_delete")] vault_set: Option<String>,
     /// Remove the device token kept under NAME.
     #[arg(long, value_name = "NAME")] vault_delete: Option<String>,
-    #[arg(long, required_unless_present_any = ["proxy_only", "vault_set", "vault_delete"])] game_dir: Option<PathBuf>,
+    #[arg(long, required_unless_present_any = ["proxy_only", "vault_set", "vault_delete", "sign_in", "register"])] game_dir: Option<PathBuf>,
     #[arg(long)] injector: Option<PathBuf>,
     #[arg(long)] dll: Option<PathBuf>,
     #[arg(long)] trace_dll: Option<PathBuf>,
@@ -55,6 +64,7 @@ fn windows_injector(injector: &std::path::Path, game: &std::path::Path, dll: &st
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     if args.vault_set.is_some() || args.vault_delete.is_some() { return vault(&args) }
+    if args.sign_in.is_some() || args.register.is_some() { return sign_in(&args).await }
     let profile = args.profile.clone().context("--profile is required")?;
     let report = args.attach_game.and(args.ready_file.clone());
     let directory = args.diagnostics_dir.clone().unwrap_or_else(|| profile.parent().unwrap_or(std::path::Path::new(".")).join("logs/sessions"));
@@ -169,16 +179,38 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         anyhow::bail!("{summary}\n{error:#}\n{}", if clean.trim().is_empty() { "The injector exited without a native diagnostic. Restore the matching application bundle, check security-software detection history and export logs for help." } else { clean.trim() });
     }
     log.line("Connection DLL loaded and interface ready; authenticating");
-    let session = initializing!(key.sign_in(&endpoint)).context("Authentication failed; game was not resumed. Check the profile and that the server is running, or export logs for help")?; log.secret(&hex(&session));
-    proxy.activate(session);
+    let mut session = match &key {
+        // A sign-in profile (--sign-in): without a saved sign-in, or with one the server refuses, the game still starts
+        // and its own login dialog says why; with none kept, its login form asks (#34).
+        yo3_launcher::Credential::Device(_) => {
+            let read = |account: &str| yo3_launcher::vault::Vault::get(&yo3_launcher::vault::SystemVault, account).ok().flatten();
+            match initializing!(async { Ok::<_, anyhow::Error>(yo3_launcher::direct::sign_in(&endpoint, &key, &read).await) })? {
+                Ok(session) => Some(session),
+                Err(failure) => {
+                    log.line(&format!("Sign-in refused ({:?}): {}", failure.refusal, failure.reason));
+                    eprintln!("{}", match failure.refusal {
+                        yo3_launcher::direct::Refusal::SignedOut => "No saved sign-in for this server: sign in with the game's own login form.".to_string(),
+                        _ => format!("The saved sign-in was refused: {}", failure.reason),
+                    });
+                    if let Some(notice) = failure.refusal.notice() { eprintln!("{notice}") }
+                    // The game's patch check is answered from its own index while there is no sign-in (Proxy::local_index).
+                    if let Some(bytes) = args.game_dir.as_ref().and_then(|dir| std::fs::read(dir.join("yo3.idx")).ok()).filter(|b| b.len() <= 1 << 20) { proxy.local_index(bytes) }
+                    proxy.refuse(failure.refusal);
+                    None
+                }
+            }
+        }
+        _ => Some(initializing!(key.sign_in(&endpoint)).context("Authentication failed; game was not resumed. Check the profile and that the server is running, or export logs for help")?),
+    };
+    if let Some(session) = session { log.secret(&hex(&session)); proxy.activate(session); }
     let game_log = log.clone();
     let output = tokio::spawn(async move { capture(stdout, game_log, true).await; });
     let result = async {
         child.stdin.as_mut().unwrap().write_all(b"resume\n").await?;
         child.stdin.take();
         write_ready(&args, &proxy)?;
-        eprintln!("Authenticated with mod interface {} ready. Local gate {}, front {}, duel {}, HTTP {}.", yo3_tunnel::MOD_ABI, proxy.ports.gate, proxy.ports.front, proxy.ports.duel, proxy.ports.http);
-        log.line("Authenticated; game resumed");
+        if session.is_some() { eprintln!("Authenticated with mod interface {} ready. Local gate {}, front {}, duel {}, HTTP {}.", yo3_tunnel::MOD_ABI, proxy.ports.gate, proxy.ports.front, proxy.ports.duel, proxy.ports.http); }
+        log.line(if session.is_some() { "Authenticated; game resumed" } else { "Game resumed without a sign-in: its own login dialog" });
         // Delete Login Data in the game forgets this device's saved sign-in for the server (#33).
         let sign_outs = proxy.sign_outs();
         let forget = || async {
@@ -188,12 +220,20 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
                 Err(error) => log.line(&format!("Delete Login Data failed: {error:#}")),
             }
         };
+        let mut typed = proxy.typed_logins().context("the login form's channel is gone")?;
         let mut launcher_gone = false;
         let status = loop {
             tokio::select! {
                 status = child.wait() => break Some(status?),
                 result = &mut interrupt => { result?; child.kill().await?; break None }
                 _ = sign_outs.notified() => forget().await,
+                Some(login) = typed.recv() => {
+                    // The game's own login form (#34): its next login waits for this.
+                    match yo3_launcher::direct::form_sign_in(&endpoint, &proxy, &login, vault.as_deref(), &yo3_launcher::vault::SystemVault, &mut session, key.owns_session()).await {
+                        Ok(()) => log.line(&format!("Signed in from the game's login form{}", if login.stay { "; this device stays signed in" } else { "" })),
+                        Err(failure) => log.line(&format!("The game's login form: refused ({:?}): {}", failure.refusal, failure.reason)),
+                    }
+                }
                 stop = &mut desktop_stop, if !launcher_gone => match stop {
                     yo3_launcher::DesktopStop::Asked => { child.kill().await?; break None }
                     // The launcher closed or crashed while the game runs: keep playing; the session ends with the game.
@@ -204,12 +244,90 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         if let Some(status) = status { ensure!(status.success(), "Game or injector exited with an error ({status})"); }
         Ok(())
     }.await;
-    if key.owns_session() { let _ = endpoint.logout(&session).await; }
+    if let Some(session) = session && key.owns_session() { let _ = endpoint.logout(&session).await; }
     if child.try_wait()?.is_none() { let _ = child.kill().await; }
     let _ = tokio::time::timeout(std::time::Duration::from_secs(1), output).await;
     let detail = tokio::time::timeout(std::time::Duration::from_secs(1), error_output).await.ok().and_then(Result::ok).unwrap_or_default();
     if detail.trim().is_empty() { result }
-    else { result.with_context(|| yo3_tunnel::diagnostics::redact(&detail, &[key.secret(), hex(&proxy.cookie), hex(&session)], None)) }
+    else { result.with_context(|| yo3_tunnel::diagnostics::redact(&detail, &[key.secret(), hex(&proxy.cookie), session.map(|s| hex(&s)).unwrap_or_default()], None)) }
+}
+
+/// `--sign-in` and `--register`: a password sign-in for the Scripts edition (#23), kept in the credential store.
+async fn sign_in(args: &Args) -> anyhow::Result<()> {
+    use yo3_launcher::signin::{self, Kept};
+    let (register, given) = match (&args.register, &args.sign_in) { (Some(given), _) => (true, given), (_, Some(given)) => (false, given), _ => unreachable!() };
+    let (server, user) = (given[0].as_str(), given[1].trim());
+    let profile = args.profile.as_deref().context("--profile names the file `play` will use")?;
+    let invite = signin::server(server, args.identity.as_deref())?;
+    let endpoint = signin::endpoint(&invite)?;
+    let info = endpoint.info().await.with_context(|| format!("{} can't be reached at {}", invite.name, invite.address))?;
+    info.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI)?;
+    let mut input = Input::new();
+    let password = if register {
+        let code = input.line("Invite code from the host (Enter if the server needs none): ")?;
+        let password = input.secret("Choose a password (8 to 16 letters or digits): ")?;
+        anyhow::ensure!(input.secret("The password again: ")? == password, "The two passwords differ.");
+        eprintln!("The server's rules are on its website page (in the game: the menu's links), or ask its host.");
+        let rules = input.line("Do you accept this server's rules? Type yes: ")?.eq_ignore_ascii_case("yes");
+        anyhow::ensure!(rules, "Accept the server's rules to make an account.");
+        let recovery = signin::register(&endpoint, user, &password, &code, rules).await?;
+        println!("Account {user} made on {}.\nRecovery code: {recovery}\nKeep it somewhere safe: it resets the password when you forget it.", invite.name);
+        password
+    } else {
+        input.secret(&format!("Password for {user} on {}: ", invite.name))?
+    };
+    let kept = signin::sign_in(&endpoint, &invite, user, &password, &yo3_launcher::vault::SystemVault).await?;
+    signin::write_profile(profile, &invite)?;
+    match kept {
+        Kept::Saved => println!("Signed in as {user}: this PC stays signed in to {} (in the system's credential store).", invite.name),
+        Kept::NotKept(why) => {
+            println!("Signed in as {user}, but this PC can't stay signed in.");
+            eprintln!("The system's credential store isn't available ({why}). The game's own login form will ask for your User ID and password at each start.");
+        }
+    }
+    println!("Play with: play --profile \"{}\" --game-dir GAME_FOLDER", std::path::absolute(profile).unwrap_or(profile.to_path_buf()).display());
+    Ok(())
+}
+
+/// What the player types: a terminal's lines, with the echo off for a password; a pipe's lines otherwise.
+struct Input { lines: std::io::Lines<std::io::StdinLock<'static>> }
+
+impl Input {
+    fn new() -> Self { use std::io::BufRead; Self { lines: std::io::stdin().lock().lines() } }
+    fn line(&mut self, prompt: &str) -> anyhow::Result<String> {
+        use std::io::Write;
+        eprint!("{prompt}"); std::io::stderr().flush()?;
+        Ok(self.lines.next().context("no answer on standard input")??.trim().to_string())
+    }
+    fn secret(&mut self, prompt: &str) -> anyhow::Result<String> {
+        use std::io::IsTerminal;
+        let echo = std::io::stdin().is_terminal().then(echo_off).flatten();
+        let read = self.line(prompt);
+        if let Some(restore) = echo { restore(); eprintln!(); }
+        let secret = read?;
+        anyhow::ensure!(!secret.is_empty(), "no password given");
+        Ok(secret)
+    }
+}
+
+/// Turns the terminal's echo off; the returned function turns it back on.
+#[cfg(unix)]
+fn echo_off() -> Option<Box<dyn FnOnce()>> {
+    let mut before: libc::termios = unsafe { std::mem::zeroed() };
+    if unsafe { libc::tcgetattr(libc::STDIN_FILENO, &mut before) } != 0 { return None }
+    let mut quiet = before; quiet.c_lflag &= !libc::ECHO; quiet.c_lflag |= libc::ECHONL;
+    if unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &quiet) } != 0 { return None }
+    Some(Box::new(move || unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &before); }))
+}
+#[cfg(windows)]
+fn echo_off() -> Option<Box<dyn FnOnce()>> {
+    use windows_sys::Win32::System::Console::{GetConsoleMode, GetStdHandle, SetConsoleMode, ENABLE_ECHO_INPUT, STD_INPUT_HANDLE};
+    let handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+    let mut before = 0;
+    if unsafe { GetConsoleMode(handle, &mut before) } == 0 { return None }
+    if unsafe { SetConsoleMode(handle, before & !ENABLE_ECHO_INPUT) } == 0 { return None }
+    let handle = handle as usize;
+    Some(Box::new(move || unsafe { SetConsoleMode(handle as _, before); }))
 }
 
 fn vault(args: &Args) -> anyhow::Result<()> {

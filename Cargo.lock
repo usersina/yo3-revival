@@ -5628,6 +5628,7 @@ dependencies = [
  "dunce",
  "getrandom 0.4.3",
  "keyring",
+ "libc",
  "ring",
  "serde",
  "serde_json",

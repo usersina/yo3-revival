@@ -69,38 +69,58 @@ prepares your first deck automatically. [Start your first duel](playing.md#your-
 
 ## Join a friend's server
 
-Most servers expect you to sign in with a User ID and password, which the [Desktop](launcher.md#join-another-server)
-launcher does (an invite link and an invite code from the host). The play script can't type a password: it signs in
-with a **key profile**. Ask the host for your private **`client.json` profile** (they make it with `add-account` and
-`profile`, below) and its matching public **`server.crt`**. Keep them together.
+Ask the host for the server's **invite link** (`yo3revival://server?…`, it carries the address and the server's
+identity) and an **invite code**. Make your account once, in the extracted folder, with the link in quotes:
 
 Windows, in Command Prompt:
 
 ```bat
-play.cmd --profile "C:\Games\YO3-profile\client.json" --game-dir "C:\Games\Yu-Gi-Oh! ONLINE 3"
+play.cmd --register "yo3revival://server?address=..." YourUserID --profile "%CD%\client.json"
 ```
 
 Linux:
 
 ```bash
-./play.sh --profile "/absolute/path/client.json" --game-dir "/absolute/path/Yu-Gi-Oh! ONLINE 3"
+./play.sh --register "yo3revival://server?address=..." YourUserID --profile "$PWD/client.json"
 ```
 
+It asks for the invite code, a password (8 to 16 letters or digits, twice; what you type isn't shown) and whether you
+accept the server's rules, then prints your **recovery code**: keep it, it resets a forgotten password. It also signs
+you in and writes `client.json`. That file holds no password or key: your sign-in stays in the system's credential
+store (Windows Credential Manager, the Secret Service on Linux). If you already have an account, sign in instead:
+
+```bash
+./play.sh --sign-in "yo3revival://server?address=..." YourUserID --profile "$PWD/client.json"
+```
+
+Then play with that profile, as often as you like:
+
+```bat
+play.cmd --profile "%CD%\client.json" --game-dir "C:\Games\Yu-Gi-Oh! ONLINE 3"
+```
+
+```bash
+./play.sh --profile "$PWD/client.json" --game-dir "/absolute/path/Yu-Gi-Oh! ONLINE 3"
+```
+
+Without a saved sign-in (no credential store on this PC, or you used **Delete Login Data** in the game), the game shows
+its own login form: type your User ID and password there, and tick **Save Password** to stay signed in. A host who
+gave you an address instead of a link also gives you the identity: `--sign-in ADDRESS USER --identity HEX`.
+
 Use absolute paths. Linux users can add `--wine-prefix "/absolute/path/private-prefix"`.
-Do not edit `yo3.ini` or the game executable; the connection DLL supplies the private endpoints.
+Do not edit `yo3.ini` or the game executable; the connection DLL supplies the private endpoints. A key profile from an
+older host (`client.json` with `server.crt`) still plays the same way.
 
 ## Host friends
 
 You need your own original game installation too, because the server reads its card/deck data.
 Choose an address your friends can reach, such as your LAN/VPN IP or public hostname. Replace **192.168.1.50** below
-with that address. Perform setup with the server stopped.
+with that address. Make the identity with the server stopped.
 
 Windows, in Command Prompt in the extracted folder:
 
 ```bat
 yo3-server.exe init-auth localhost 127.0.0.1 192.168.1.50
-yo3-server.exe add-account Friend
-yo3-server.exe profile Friend friend.json --advertise 192.168.1.50
 start-server.cmd --game-dir "C:\Program Files (x86)\Konami\Yu-Gi-Oh! ONLINE 3"
 ```
 
@@ -108,20 +128,22 @@ Linux:
 
 ```bash
 ./yo3-server init-auth localhost 127.0.0.1 192.168.1.50
-./yo3-server add-account Friend
-./yo3-server profile Friend friend.json --advertise 192.168.1.50
 ./start-server.sh --game-dir "$HOME/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3"
 ```
 
-Send **`friend.json`** and **`data/server.crt`** privately to that friend. They keep the files together, with the
-certificate named `server.crt`. Repeat account creation/profile export for each friend who plays with the scripts, and
-create your own account and localhost profile if you will also play. Names must be unique and **1–16 characters**;
-each account supports up to four players. Do not share `server.key` or reuse one account for different friends.
+Then, in another terminal (the server may keep running), print what to send each friend:
 
-Friends with the Desktop launcher sign in with a password account instead: give each one an invite code
-(`yo3-server invite`) and your address, and they make their account under Multiplayer → Other servers
-([accounts](authentication.md#setting-up-a-server)). Who can make an account is the `registration`
-[live setting](guide.md#live-settings).
+```bash
+./yo3-server --advertise 192.168.1.50 share --invite
+```
+
+It prints the server's address, its identity, the **invite link** and an **invite code** for one sign-up that works for
+a week (`yo3-server.exe` on Windows). Send the link and the code; each friend needs their own code (run it again, or
+`invite --uses N` for several). Friends with the Desktop launcher paste the link under Multiplayer → Other servers and
+create their account there; friends with Scripts use [`--register`](#join-a-friends-server). Nobody needs a file from
+you, and there is no account key to hand out. Who can make an account is the `registration`
+[live setting](guide.md#live-settings) ([accounts](authentication.md#setting-up-a-server)). To play on it yourself,
+make your own account the same way, with a link for this PC (`./yo3-server --advertise localhost share --invite`).
 
 The scripts listen on **all interfaces (`0.0.0.0`)** by default. Friends need access to **TCP 7443** through the host's
 firewall and any router/VPN. The scripts do not configure these. The internal HTTP/admin port stays on loopback;
@@ -165,13 +187,15 @@ explains the optional `--duel-check` flag and replay tools.
 - **Already initialized / profile already exists:** reuse the existing `data/` and profile. These setup commands
   deliberately refuse to overwrite them. Do not delete account data just to rerun initialization.
 - **Connection refused or timed out:** check the profile address/port and whether the host is running and reachable.
-- **TLS or account refused:** use the correct private profile and adjacent certificate for this host. Confirm
+- **Wrong User ID or password:** sign in again with `--sign-in`; a forgotten password takes the recovery code (Desktop's
+  "Forgot password") or a reset code from the host.
+- **TLS or account refused:** use the profile made for this host (and, for a key profile, its adjacent certificate). Confirm
   unexpected identity changes with the host; certificate checks cannot be bypassed. Check both PCs' clocks: a
   certificate is only accepted within its validity, and a new one starts just 5 minutes before it was made.
 - **Duels end immediately:** restore the complete `engine/` directory and the `yo3-engine` program beside
   `yo3-server`, and inspect the server's **DUELS WON'T WORK** message.
 - **Need help:** keep the exact terminal error, application version and relevant session logs. Review them before
-  sharing; do not send private profiles, account keys, databases or server keys.
+  sharing; do not send private profiles, account keys, passwords, databases or server keys.
 
 Windows scripts pause on errors so a double-clicked window stays readable, and preserve the program's error code.
 For more, see [general troubleshooting](launcher.md#troubleshooting).

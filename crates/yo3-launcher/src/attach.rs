@@ -133,16 +133,12 @@ pub async fn serve(request: Attachment, loaded: crate::Loaded, profile: &Path, p
                 }
                 Some(login) = typed.recv() => {
                     // The game's own login form (#34): its next login (0x1F47) waits for this.
-                    match direct::sign_in_typed(&endpoint, &login, vault.as_deref(), &SystemVault).await {
-                        Ok(signed) => {
-                            if let Some(old) = session.replace(signed) && credential.owns_session() { let _ = endpoint.logout(&old).await; }
-                            proxy.activate_typed(signed); direct::record_problem(profile, None);
+                    match direct::form_sign_in(&endpoint, &proxy, &login, vault.as_deref(), &SystemVault, &mut session, credential.owns_session()).await {
+                        Ok(()) => {
+                            direct::record_problem(profile, None);
                             yo3_tunnel::diagnostics::event(&format!("Signed in from the game's login form{}", if login.stay { "; this device stays signed in" } else { "" }));
                         }
-                        Err(failure) => {
-                            yo3_tunnel::diagnostics::event(&format!("The game's login form: refused ({:?}): {}", failure.refusal, failure.reason));
-                            proxy.refuse_typed(failure.refusal);
-                        }
+                        Err(failure) => yo3_tunnel::diagnostics::event(&format!("The game's login form: refused ({:?}): {}", failure.refusal, failure.reason)),
                     }
                 }
                 _ = sign_outs.notified() => match direct::sign_out(&endpoint, vault.as_deref(), &SystemVault).await {

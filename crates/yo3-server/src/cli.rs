@@ -165,6 +165,13 @@ pub enum Admin {
     ResetCode { user: String },
     /// Make USER a player, moderator or admin. Works while the server runs.
     SetRole { user: String, role: String },
+    /// Print what a friend needs to join: the address (`--advertise`, with `--auth-port`), the server's identity and the
+    /// invite link that carries both, for Desktop's Other servers or the Scripts helper's `--sign-in`. --invite also makes
+    /// an invite code for one sign-up, working for a week. Works while the server runs.
+    Share {
+        #[arg(long)]
+        invite: bool,
+    },
     /// Make a password account with User ID USER and print its first password and recovery code, to hand to that
     /// player (for a server whose registration setting is closed). Works while the server runs.
     AddUser { user: String },

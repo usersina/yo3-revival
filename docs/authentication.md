@@ -45,9 +45,9 @@ server and for the terminal:
 - **Singleplayer** in the Desktop launcher: its local account on your own server. The launcher asks your server for
   the key at each Play (admin API, loopback only) and writes it to a private profile for the game's helper. It never
   leaves the PC.
-- **The Scripts edition**: `add-account` makes a key account and `profile` exports its private profile, which
-  `play.sh`/`play.cmd` reads. The terminal helper can't ask for a password, so a Scripts player on a friend's server
-  also gets a key profile from the host.
+- **The Scripts edition on your own PC**: `add-account` makes a key account and `profile` exports its private
+  profile, which `play.sh`/`play.cmd` reads. On a friend's server a Scripts player signs in with a password account
+  instead (below); the key never leaves the host's PC.
 
 Both kinds hold the same data and the same players; the admin commands find either by a player's name, and a
 password account by its User ID too.
@@ -61,7 +61,7 @@ password account by its User ID too.
 | Desktop, **Singleplayer** | Your local key account on your own server | The key, in the launcher's private profiles (`profiles/`, mode 0600 on Unix) |
 | **Direct start** (`yo3.exe` opened alone) | What was last played: Singleplayer's key, or Multiplayer's saved device token. With no saved sign-in, the game's own login form (User ID, password, Save Password) | `profiles/direct.json` holds the address, the identity and either the key (Singleplayer) or the credential store's entry name (Multiplayer), never a token or password |
 | **Scripts**, your own PC | A key profile from `add-account` and `profile` | `client.json` and `server.crt` |
-| **Scripts**, a friend's server | A key profile the host exports for you | `client.json` and `server.crt` |
+| **Scripts**, a friend's server | User ID and password, once, with `play --sign-in LINK USER --profile client.json` (or `--register` with an invite code); later starts resume it. Without a saved sign-in, the game's own login form | The device token in the system's credential store (the entry Desktop uses for that server); `client.json` holds the address, the identity and that entry's name, never a key, token or password |
 | The **admin panel** | A password account with the moderator or admin role, in the browser on the server's PC | A panel session cookie |
 
 ## Setting up a server
@@ -92,22 +92,28 @@ The `server-name` and `headline` settings show in the launcher's server list, an
 launchers older than that version, which are told to update.
 
 Players find the server with an invite link (`yo3revival://server?address=HOST:PORT&identity=HEX&name=NAME`, which
-Host for friends makes) or by typing its address in Multiplayer → Other servers and comparing the identity the launcher
-shows with the one the host gave them.
+Host for friends and `yo3-server share` make) or by typing its address in Multiplayer → Other servers and comparing
+the identity the launcher shows with the one the host gave them.
 
-For a Scripts player, the host makes a key account and exports its profile:
-
-```sh
-./yo3-server add-account Alice
-./yo3-server profile Alice Alice.json --advertise play.example
-```
-
-Send `Alice.json` privately to Alice with the public `data/server.crt`, saved beside the profile as `server.crt`.
-She runs:
+A terminal host prints what to send, and an invite code for one sign-up that works for a week:
 
 ```sh
-./play.sh --profile "$PWD/Alice.json" --game-dir "/path/to/Yu-Gi-Oh! ONLINE 3"
+./yo3-server --advertise play.example share --invite
 ```
+
+A Scripts player makes the account and signs in from a terminal, with the link in quotes:
+
+```sh
+./play.sh --register "yo3revival://server?address=…" Alice --profile "$PWD/client.json"
+./play.sh --profile "$PWD/client.json" --game-dir "/path/to/Yu-Gi-Oh! ONLINE 3"
+```
+
+`--register` asks for the invite code, a password twice and the server's rules, prints the recovery code, then signs
+in as `--sign-in SERVER USER` does: it asks for the password without echoing it, keeps the device token in the
+system's credential store and writes `client.json`, which names the server, its identity and the store's entry. When
+the store isn't available (a Linux PC without a Secret Service), it says so and keeps nothing: the game's own login
+form asks at each start. **Delete Login Data** in the game signs this PC out. SERVER can also be an address with
+`--identity HEX`.
 
 ## Making accounts, invites and recovery
 
@@ -120,7 +126,8 @@ These admin commands work on a running server too, through its admin API ([guide
 | `add-user USER` | A password account made by the host. Prints its first password and recovery code to hand to the player, who changes the password in the launcher |
 | `reset-code USER` | For a player who lost both their password and recovery code, after the host or a moderator checked it is them (on Discord, for example). The code works once, for 24 hours, in the launcher's "Forgot password", and ends when the password changes |
 | `set-role USER ROLE` | player, moderator or admin |
-| `add-account NAME [--also B,C]` | A key account and its first players (Scripts) |
+| `share [--invite]` | What a friend needs: the address (`--advertise`, `--auth-port`), the identity and the invite link; with `--invite`, an invite code for one sign-up, for a week |
+| `add-account NAME [--also B,C]` | A key account and its first players (Scripts on your own PC) |
 | `profile PLAYER FILE --advertise HOST` | A key account's private profile for the Scripts helper. It never overwrites a file |
 | `key WHO [--advertise HOST]` | Prints a key account's key (or gives the account one) |
 
@@ -278,8 +285,9 @@ connected from. The beta removed all of that (#23):
   file with a key. The beta launcher neither imports invitation files nor reads a v0.0.x launcher's saved connections.
 - The server has no `/join` page and no INI download; accounts found only by an address are no longer loaded (the
   server logs each one it skips), and `move-account` and the address arguments of the admin commands are gone.
-- Key accounts stay for Singleplayer and the Scripts edition, and keep their key. A v0.0.x key profile still plays with
-  the Scripts helper.
+- Key accounts stay for Singleplayer, the Scripts edition on your own PC and the development tools (the headless
+  client and the monkeys), and keep their key. A v0.0.x key profile still plays with the Scripts helper; Scripts
+  friends sign in with a password account now (`--sign-in`), so a host has no key to hand out.
 
 Account and player ids, collections, BP, decks and social data are kept in `server.db` (SQLite,
 [data and upgrades](launcher.md#your-data-and-upgrades)). Deploy the server, launcher and DLL together: old clients

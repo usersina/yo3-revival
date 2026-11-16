@@ -15,6 +15,7 @@ pub mod runtime;
 pub mod resolution;
 pub mod direct;
 pub mod vault;
+pub mod signin;
 
 pub async fn authorize<R: AsyncRead + Unpin>(stream: &mut R, cookie: &Token) -> anyhow::Result<()> {
     let mut given = [0; 32];

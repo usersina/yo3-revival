@@ -179,8 +179,8 @@ works on the data folder itself, holding its lock (`server.lock`) meanwhile. Onl
 `backups` always work on the files. Every change is recorded in the audit log: `audit` lists the newest, with who,
 from where, what, on what, and the values before and after. Released versions still need the server stopped for all
 but the BP and code commands. Add `--data-dir PATH` to target a non-default setup. Players sign in with password
-accounts (`invite`, `add-user`); `add-account` and `profile` make key accounts for the Scripts edition's play script.
-Keep each key profile private ([accounts](authentication.md#accounts)).
+accounts (`invite`, `add-user`); `share` prints the invite link to send them. `add-account` and `profile` make key
+accounts for the Scripts edition on your own PC. Keep each key profile private ([accounts](authentication.md#accounts)).
 
 ```bash
 ./yo3-server init-auth localhost 127.0.0.1 192.168.1.50
@@ -196,6 +196,7 @@ Keep each key profile private ([accounts](authentication.md#accounts)).
 ./yo3-server give-recipe Alice "E-HERO EVOLUTION DECK" --cards
 ./yo3-server add-code ABCD1234EFGH5678 2500
 ./yo3-server invite --uses 5 --days 7
+./yo3-server --advertise 192.168.1.50 share --invite
 ./yo3-server add-user Alice
 ./yo3-server reset-code Alice
 ./yo3-server set-role Alice moderator
@@ -209,7 +210,11 @@ Keep each key profile private ([accounts](authentication.md#accounts)).
   checks while running (every six hours), and serves a certificate replaced on disk without a restart.
 - `stop` stops the running server gracefully, as SIGTERM and Ctrl+C do: no new logins, the duels between players end
   as draws, and a last backup. Every change is already saved as it happens.
-- `add-account NAME` creates a key account and its first player, for a Scripts player. Names are 1–16 characters and
+- `share` prints what a friend needs to join: the server's name, its address (`--advertise` and `--auth-port`), its
+  identity and the invite link carrying both. `--invite` adds an invite code for one sign-up, working for a week. A
+  Desktop friend pastes the link under Multiplayer → Other servers; a Scripts friend runs `play --register LINK USER
+  --profile client.json` ([Scripts](scripts.md#join-a-friends-server)).
+- `add-account NAME` creates a key account and its first player, for the Scripts edition on your own PC. Names are 1–16 characters and
   unique. `--also B,C` adds players to that account, up to four total.
 - `profile PLAYER FILE --advertise HOST` exports a key account's private profile for the play script. The profile
   references `server.crt`; copy the host's public certificate beside it. Existing profile files are not overwritten.
@@ -255,16 +260,16 @@ There is no stock-client/IP-auth fallback, browser `/join` setup or INI download
 
 - **Bind** chooses which local interfaces accept connections. `0.0.0.0` listens on all IPv4 interfaces;
   `127.0.0.1` permits only this PC.
-- **Advertise** is the reachable LAN/VPN/public address put into a key profile. It does not open a listener or change
+- **Advertise** is the reachable LAN/VPN/public address put into `share`'s invite link and a key profile. It does not open a listener or change
   firewall policy. Include the address in the identity's certificate names when creating it.
 - **External port mappings:** if the public port differs from the local listener, use the external address/port
   when exporting the profile. Keep `--auth-port` and advertised ports consistent with the intended mapping.
 - **Firewall/router/VPN:** manage these outside Revival. Check the address from a friend's PC; a successful host-local
   test does not prove remote reachability.
 
-The Desktop launcher's invite links (`yo3revival://server?address=…&identity=…`, from Host for friends) carry the
-address and the identity; players then sign in with a password account. A key profile and its adjacent public
-certificate pin the host's identity and expected name for the play script. Accounts sharing a router keep separate
+Invite links (`yo3revival://server?address=…&identity=…`, from Desktop's Host for friends or `yo3-server share`) carry
+the address and the identity; players then sign in with a password account, in Desktop or with the play script's
+`--sign-in`. Its profile, like a key profile and its adjacent public certificate, pins the host's identity. Accounts sharing a router keep separate
 identities.
 
 For an existing localhost-only identity, do not delete `data/` and rerun `init-auth`: that makes a new key, and every
