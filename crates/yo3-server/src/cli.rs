@@ -167,6 +167,8 @@ pub enum Admin {
         uses: u32,
         #[arg(long)]
         days: Option<u32>,
+        /// Reuse after a lost response to retrieve the original invite and expiry.
+        #[arg(long)] request_id: Option<String>,
     },
     /// List the invite codes: whether each still works, who issued it and how many accounts used it. Works while the
     /// server runs.
@@ -182,6 +184,8 @@ pub enum Admin {
     Share {
         #[arg(long)]
         invite: bool,
+        /// Reuse after a lost invite response; the shared invite keeps its original code and expiry.
+        #[arg(long, requires = "invite")] request_id: Option<String>,
     },
     /// Make a password account with User ID USER and print its first password and recovery code, to hand to that
     /// player (for a server whose registration setting is closed). Works while the server runs.

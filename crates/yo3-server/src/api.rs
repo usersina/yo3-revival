@@ -8,7 +8,8 @@
 //! Each operation is one function ([`Api::apply`]): it checks its values, applies the change to the running server's
 //! state (in memory and in the database together), then writes an audit row: who, from where, what, on what, the
 //! values before and after. Give BP commits the change, mail, audit and retry receipt together before publishing.
-//! Code creation/removal also commit audit and receipt with their change. Other operations are being adapted. With no server running, the CLI runs on the data folder (it
+//! Invite creation and BOOSTERPASS creation/removal also commit audit and receipt with their change. Other operations are
+//! being adapted. With no server running, the CLI runs on the data folder (it
 //! holds the folder's lock meanwhile), and those changes are audited too, from "offline".
 //!
 //! No player connection reaches these routes: the TLS HTTP role forwards only the game's files (`transport.rs`), and
@@ -31,6 +32,7 @@ use crate::store::AuditRow;
 pub mod give_bp;
 pub mod mutation;
 pub mod codes;
+pub mod invites;
 pub use give_bp::{GiveBpRequest, GiveBpResult};
 pub use mutation::{Actor, MutationError, MutationErrorCode};
 
@@ -110,7 +112,7 @@ pub enum Op {
 
 impl Op {
     /// Operations migrated to a committed change/audit/receipt boundary.
-    fn receipted(&self) -> bool { matches!(self, Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. }) }
+    fn receipted(&self) -> bool { matches!(self, Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. }) }
     /// Its name in the API's path and the audit log.
     pub fn name(&self) -> String {
         serde_json::to_value(self).ok().and_then(|v| v["op"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -238,7 +240,7 @@ impl Api {
         self.apply_request(op, actor, origin, role, &crate::logins::new_token())
     }
 
-    /// The same operation with a caller's stable retry ID (Give BP and BOOSTERPASS code changes).
+    /// The same operation with a caller's stable retry ID (Give BP, invites and BOOSTERPASS code changes).
     pub fn apply_request(&self, op: &Op, actor: &str, origin: &str, role: Option<crate::logins::Role>, request_id: &str) -> Result<Value, String> {
         use crate::logins::Role;
         match role {
@@ -290,6 +292,7 @@ impl Api {
                 code: (!code.trim().is_empty()).then(|| code.trim().to_string()), bp: *bp, uses: *uses,
             }, id, actor, origin).map(|r| json!(r)),
             Op::RemoveCode { code } => self.remove_bp_code(&codes::RemoveBpCodeRequest { code: code.trim().to_string() }, id, actor, origin).map(|r| json!(r)),
+            Op::Invite { uses, days } => self.create_invite(&invites::CreateInviteRequest { uses: *uses, days: *days }, id, actor, origin).map(|r| json!(r)),
             _ => Err(MutationError::new(MutationErrorCode::InvalidRequest, "This operation has not migrated to the typed mutation boundary.")),
         }
     }
@@ -655,13 +658,7 @@ or after your next duel.", recipe.title)
             }
             Op::Key { who } => done(json!({ "key": d.key_of(who)? })),
             Op::Codes => done(json!(Self::bp_codes(&d).codes)),
-            Op::Invite { uses, days } => {
-                let expires = days.map(|n| crate::logins::now() + i64::from(n) * 24 * 3600);
-                let code = d.add_invite(*uses, expires, "host")?;
-                let users = uses.map_or("any number of sign-ups".to_string(), |n| format!("{n} sign-up(s)"));
-                let until = days.map_or("with no end date".to_string(), |n| format!("for {n} day(s)"));
-                done(json!({ "code": code, "message": format!("invite code {code}: {users}, {until}. Players enter it when they make their account in the launcher.") }))
-            }
+            Op::Invite { .. } => Err("invite creation requires the typed mutation boundary".into()),
             Op::Invites => {
                 let now = crate::logins::now();
                 let text = if d.invites().is_empty() { "no invite codes (make one with invite)".to_string() } else {

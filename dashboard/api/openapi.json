@@ -642,6 +642,249 @@
         ]
       }
     },
+    "/panel/api/v1/invites": {
+      "get": {
+        "tags": [
+          "Invites"
+        ],
+        "operationId": "listInvites",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stored invite could not be read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "staffSession": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Invites"
+        ],
+        "operationId": "createInvite",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "One ID per change. Retain it on an uncertain outcome; retries return the original invite and expiry.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Committed invite or original retry result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateInviteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request ID conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error; outcome may be unknown",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commit could not be confirmed; retry the same request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
     "/panel/api/v1/session": {
       "get": {
         "tags": [
@@ -1207,6 +1450,67 @@
           }
         }
       },
+      "CreateInviteRequest": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Days from the first successful creation. Omit for no expiry; retries keep the original expiry.",
+            "maximum": 4294967295,
+            "minimum": 1
+          },
+          "uses": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of sign-ups. Omit for unlimited.",
+            "maximum": 4294967295,
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateInviteResult": {
+        "type": "object",
+        "required": [
+          "code",
+          "request_id",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "message": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "uses": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        }
+      },
       "GiveBpByIdRequest": {
         "type": "object",
         "description": "The dashboard always targets the stable account number, never a renameable player or login label.",
@@ -1254,6 +1558,97 @@
           "user_id": {
             "type": "integer",
             "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        }
+      },
+      "InviteClaim": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "players"
+        ],
+        "properties": {
+          "players": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        }
+      },
+      "InviteList": {
+        "type": "object",
+        "required": [
+          "invites",
+          "checked_at"
+        ],
+        "properties": {
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "invites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InviteSummary"
+            }
+          }
+        }
+      },
+      "InviteState": {
+        "type": "string",
+        "enum": [
+          "usable",
+          "exhausted",
+          "expired"
+        ]
+      },
+      "InviteSummary": {
+        "type": "object",
+        "required": [
+          "code",
+          "issued_by",
+          "claims",
+          "state"
+        ],
+        "properties": {
+          "claims": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InviteClaim"
+            }
+          },
+          "code": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "issued_by": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/InviteState"
+          },
+          "uses": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Remaining sign-ups, not the original limit. Null means unlimited.",
             "maximum": 4294967295,
             "minimum": 0
           }

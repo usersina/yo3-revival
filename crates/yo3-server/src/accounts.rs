@@ -272,9 +272,18 @@ impl Directory {
 
     /// Makes an invite code: for `uses` accounts (any number if `None`), until `expires`, recorded as `issued_by`'s.
     pub fn add_invite(&mut self, uses: Option<u32>, expires: Option<i64>, issued_by: &str) -> Result<String, String> {
-        let code = crate::logins::new_code();
-        let invite = crate::logins::Invite { code: code.clone(), uses, expires, issued_by: issued_by.into(), used_by: vec![] };
-        self.atomic(|d| { d.invites.push(invite); Ok(code) })
+        let (mut next, code) = self.prepare_invite(uses, expires, issued_by);
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok(code)
+    }
+
+    pub(crate) fn prepare_invite(&self, uses: Option<u32>, expires: Option<i64>, issued_by: &str) -> (Self, String) {
+        let mut code = crate::logins::new_code();
+        while self.invites.iter().any(|i| i.code == code) { code = crate::logins::new_code(); }
+        let mut next = self.clone();
+        next.invites.push(crate::logins::Invite { code: code.clone(), uses, expires, issued_by: issued_by.into(), used_by: vec![] });
+        (next, code)
     }
 
     /// The invite codes, oldest first.

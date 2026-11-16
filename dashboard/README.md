@@ -6,7 +6,8 @@ The main pages are a **labelled design preview** with sample data. Changes live 
 **Reset preview**. The role selector is not authentication.
 
 The separate **[/connected](http://127.0.0.1:5173/connected)** page uses generated API hooks for real staff sign-in,
-accounts, Give BP and BOOSTERPASS codes (list, create, remove and claims). It never substitutes sample data for a
+accounts, Give BP, registration invites (list/create, limits, expiry, issuer and claims) and BOOSTERPASS codes
+(list, create, remove and claims). It never substitutes sample data for a
 failed connection. This is local development work;
 public hosting, the remaining management pages, MFA and Compose are still pending.
 

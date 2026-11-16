@@ -41,5 +41,14 @@ fn share_prints_the_address_identity_and_invite_link_a_friend_needs() {
     assert_eq!(invites.len(), 1);
     assert_eq!((invites[0].code.as_str(), invites[0].uses), (code.as_str(), Some(1)), "one sign-up");
     assert!(invites[0].expires.is_some(), "for a week");
+    let args = ["--advertise", "192.0.2.7", "share", "--invite", "--request-id", "share-invite-retry-00001"];
+    let (ok, first, err) = server(&data, &args);
+    assert!(ok && err.contains("Request ID:"), "{first}\n{err}");
+    let first_code = line(&first, "Invite code:").to_string();
+    let (ok, retry, err) = server(&data, &args);
+    assert!(ok, "{retry}\n{err}");
+    assert_eq!(line(&retry, "Invite code:"), first_code);
+    let invites = yo3_server::accounts::Directory::open(vec![], &data.join("accounts.json")).unwrap().invites().to_vec();
+    assert_eq!(invites.len(), 2, "retrying share must not issue a third invite");
     let _ = std::fs::remove_dir_all(dir);
 }

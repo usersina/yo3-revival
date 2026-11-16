@@ -412,7 +412,7 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
         "/invites" => {
             let outcome = match r.field("action") {
                 "invite" => number(r.field("uses")).and_then(|uses| Ok((uses, number(r.field("days"))?)))
-                    .and_then(|(uses, days)| run(api, viewer, &Op::Invite { uses, days })).map(|v| said(&v)),
+                    .and_then(|(uses, days)| api.apply_request(&Op::Invite { uses, days }, &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id"))).map(|v| said(&v)),
                 "add-code" => number(r.field("bp")).and_then(|bp| Ok((bp.ok_or("how many BP?")?, number(r.field("uses"))?)))
                     .and_then(|(bp, uses)| api.apply_request(&Op::AddCode { code: r.field("code").into(), bp, uses },
                         &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id"))).map(|v| said(&v)),

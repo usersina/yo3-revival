@@ -6,7 +6,7 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 ## Current state
 
 - The approved React/Vite/SWC/Tailwind dashboard is in `dashboard/`. The main pages remain a labelled design preview.
-  `/connected` uses the real local API for staff sign-in/out, accounts, Give BP and BOOSTERPASS code management.
+  `/connected` uses the real local API for staff sign-in/out, accounts, Give BP, registration invites and BOOSTERPASS code management.
   It never falls back to fixtures.
 - Axum handles HTTP on separate sockets. Host-token operations, assets and the old HTML panel stay on `--http-port`.
   The staff JSON router has its own opt-in `--dashboard-port`, disabled by default and always bound to loopback.
@@ -17,6 +17,8 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
   The dashboard targets a numeric account ID and retains an uncertain request across reloads for safe retry.
 - Creating/removing BOOSTERPASS codes commits the code change, audit and receipt together. Moderators can inspect
   codes and claims; only admins can change them. The CLI and old HTML forms use the same typed operations.
+- Admins and moderators can list and create registration invites through the generated API. Creation commits the
+  invite, audit and receipt together; a retry preserves the original code, issuer, limits and expiry.
 - SQLite schema 3 adds `operation_receipts`. Schemas 1 and 2 upgrade transactionally. Other domains are not normalized.
 - Remaining work: the other dashboard operations, staff MFA, the public-access/proxy gate, nginx and Compose.
 
@@ -37,11 +39,15 @@ expire or follow `audit-keep-days`. They keep the input fingerprint and a minima
 login credentials. A generated reward code is retained so a retry can retrieve it. Clients retain an ID for retries
 and generate a new one only for a new intended change. IDs share a namespace across operations for each actor.
 
-Give BP and BOOSTERPASS creation/removal use this boundary. Shared identity, error and receipt helpers live in
+Give BP, invite creation and BOOSTERPASS creation/removal use this boundary. Shared identity, error and receipt helpers live in
 `api/mutation.rs`; domain validation, preparation and commit stay in their operation modules. A generated-code retry
 returns the original code. A removal retry returns its original result even if someone has since recreated that
 code; it never deletes the replacement. Codes use canonical uppercase input, exact 16-letter/digit validation and
 stable `already_exists`, `not_found` and `request_conflict` errors. These operations have no external effects to replay.
+Invite creation records the actual authenticated issuer. Null limits mean unlimited sign-ups/no expiry; zero is
+rejected. Listing distinguishes usable, exhausted and expired invites, includes remaining sign-ups and claims, and
+reports the time at which status was checked. Expiry must fit RFC 3339; invalid stored expiry is a read error, never
+an unlimited invite. Retrying a used-up or expired invite does not replenish or extend it.
 The browser retains pending IDs through session/permission/CSRF refusals too: those checks run before receipt lookup,
 so a refusal cannot prove an earlier attempt did not commit. Refresh the staff session and retry the same intent.
 
@@ -61,7 +67,7 @@ models, native-fetch functions, TanStack Query hooks and Zod validators. Explici
 when Rust functions are renamed. All declared error responses use `ApiError` with stable codes. Mutations require an
 `Idempotency-Key` argument; the shared mutator supplies the session's CSRF header and same-origin credentials. The
 HttpOnly session cookie never becomes frontend data. Sign-in/out require a request ID but do not create durable grant
-receipts. Give BP and code creation/removal currently have the atomic mutation boundary.
+receipts. Give BP, invite creation and code creation/removal currently have the atomic mutation boundary.
 
 The Rust drift test compares the collected document with the committed file under `cargo nextest`, without Node.
 `npm run api:check` independently runs Orval's non-writing outdated check. Both gates run before release publishing,
@@ -83,6 +89,8 @@ Connected routes in this slice:
 | GET | `/panel/api/v1/bp-codes` | Staff-visible codes, rewards, limits and claims, with RFC 3339 times where known |
 | POST | `/panel/api/v1/bp-codes` | Admin-only creation; omit `code` to generate one, `uses` for unlimited accounts |
 | POST | `/panel/api/v1/bp-codes/remove` | Admin-only removal by code; previously credited BP stays with players |
+| GET | `/panel/api/v1/invites` | Staff-visible invites, remaining uses, expiry, issuer, claims and checked status |
+| POST | `/panel/api/v1/invites` | Admin/moderator creation; omit `uses` for unlimited sign-ups, `days` for no expiry |
 
 Every route checks the loopback peer and local Host. Posts also require same-origin evidence, and authenticated posts
 require the CSRF header. Host-token, restore and credential-export operations are absent from the staff router. The

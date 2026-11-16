@@ -12,6 +12,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{api::{give_bp::GiveBpByIdRequest, Api, GiveBpResult, Actor, MutationError, MutationErrorCode}, lock::Locked,
     logins::Role, panel::{self, Panel, Viewer}};
+use crate::api::invites::{CreateInviteRequest, CreateInviteResult, InviteList};
 use crate::api::codes::{BpCodeList, CreateBpCodeRequest, CreateBpCodeResult, RemoveBpCodeRequest, RemoveBpCodeResult};
 
 #[derive(Clone)]
@@ -100,7 +101,7 @@ pub struct AccountList { pub accounts: Vec<AccountSummary> }
 fn documented_routes() -> OpenApiRouter<Dashboard> {
     OpenApiRouter::new().routes(routes!(staff_session)).routes(routes!(sign_in)).routes(routes!(sign_out))
         .routes(routes!(accounts)).routes(routes!(give_bp)).routes(routes!(list_bp_codes))
-        .routes(routes!(create_bp_code)).routes(routes!(remove_bp_code))
+        .routes(routes!(create_bp_code)).routes(routes!(remove_bp_code)).routes(routes!(list_invites)).routes(routes!(create_invite))
 }
 
 pub fn openapi() -> OpenApi {
@@ -293,6 +294,32 @@ async fn remove_bp_code(State(state): State<Dashboard>, Extension(viewer): Exten
     let Json(request) = body?;
     let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
     tokio::task::spawn_blocking(move || state.api.remove_bp_code(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
+        .map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(get, path = "/panel/api/v1/invites", operation_id = "listInvites", tag = "Invites",
+    security(("staffSession" = [])), responses((status = 200, description = "Success", body = InviteList),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 503, description = "Stored invite could not be read", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn list_invites(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>) -> Result<Json<InviteList>, ApiError> {
+    tokio::task::spawn_blocking(move || state.api.list_invites(Actor::Staff { user_id: viewer.user_id }))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The invite list could not be read."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/invites", operation_id = "createInvite", tag = "Invites",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = CreateInviteRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "One ID per change. Retain it on an uncertain outcome; retries return the original invite and expiry.")),
+    responses((status = 200, description = "Committed invite or original retry result", body = CreateInviteResult),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 409, description = "Request ID conflict", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError),
+        (status = 503, description = "Commit could not be confirmed; retry the same request", body = ApiError), (status = 500, description = "Internal error; outcome may be unknown", body = ApiError)))]
+async fn create_invite(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, headers: HeaderMap,
+    body: Result<Json<CreateInviteRequest>, JsonRejection>) -> Result<Json<CreateInviteResult>, ApiError> {
+    let Json(request) = body?;
+    let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
+    tokio::task::spawn_blocking(move || state.api.create_invite(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
         .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
         .map(Json).map_err(Into::into)
 }

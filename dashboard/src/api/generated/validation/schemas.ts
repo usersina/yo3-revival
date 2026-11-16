@@ -143,6 +143,36 @@ export const CreateBpCodeResult = zod.object({
 export type CreateBpCodeResult = zod.input<typeof CreateBpCodeResult>;
 export type CreateBpCodeResultOutput = zod.output<typeof CreateBpCodeResult>;
 
+export const createInviteRequestDaysMax = 4294967295;
+
+export const createInviteRequestUsesMax = 4294967295;
+
+
+
+export const CreateInviteRequest = zod.object({
+  "days": zod.int().min(1).max(createInviteRequestDaysMax).nullish().describe('Days from the first successful creation. Omit for no expiry; retries keep the original expiry.'),
+  "uses": zod.int().min(1).max(createInviteRequestUsesMax).nullish().describe('Number of sign-ups. Omit for unlimited.')
+});
+
+export type CreateInviteRequest = zod.input<typeof CreateInviteRequest>;
+export type CreateInviteRequestOutput = zod.output<typeof CreateInviteRequest>;
+
+export const createInviteResultUsesMin = 0;
+export const createInviteResultUsesMax = 4294967295;
+
+
+
+export const CreateInviteResult = zod.object({
+  "code": zod.string(),
+  "expires_at": zod.iso.datetime({"offset":true}).nullish(),
+  "message": zod.string(),
+  "request_id": zod.string(),
+  "uses": zod.int().min(createInviteResultUsesMin).max(createInviteResultUsesMax).nullish()
+});
+
+export type CreateInviteResult = zod.input<typeof CreateInviteResult>;
+export type CreateInviteResultOutput = zod.output<typeof CreateInviteResult>;
+
 export const giveBpByIdRequestAmountMax = 4294967295;
 
 export const giveBpByIdRequestUserIdMin = 0;
@@ -175,6 +205,49 @@ export const GiveBpResult = zod.object({
 
 export type GiveBpResult = zod.input<typeof GiveBpResult>;
 export type GiveBpResultOutput = zod.output<typeof GiveBpResult>;
+
+export const inviteClaimUserIdMin = 0;
+export const inviteClaimUserIdMax = 4294967295;
+
+
+
+export const InviteClaim = zod.object({
+  "players": zod.array(zod.string()),
+  "user_id": zod.int().min(inviteClaimUserIdMin).max(inviteClaimUserIdMax)
+});
+
+export type InviteClaim = zod.input<typeof InviteClaim>;
+export type InviteClaimOutput = zod.output<typeof InviteClaim>;
+
+export const InviteState = zod.enum(['usable', 'exhausted', 'expired']);
+
+export type InviteState = zod.input<typeof InviteState>;
+export type InviteStateOutput = zod.output<typeof InviteState>;
+
+export const inviteSummaryUsesMin = 0;
+export const inviteSummaryUsesMax = 4294967295;
+
+
+
+export const InviteSummary = zod.object({
+  "claims": zod.array(InviteClaim),
+  "code": zod.string(),
+  "expires_at": zod.iso.datetime({"offset":true}).nullish(),
+  "issued_by": zod.string(),
+  "state": InviteState,
+  "uses": zod.int().min(inviteSummaryUsesMin).max(inviteSummaryUsesMax).nullish().describe('Remaining sign-ups, not the original limit. Null means unlimited.')
+});
+
+export type InviteSummary = zod.input<typeof InviteSummary>;
+export type InviteSummaryOutput = zod.output<typeof InviteSummary>;
+
+export const InviteList = zod.object({
+  "checked_at": zod.iso.datetime({"offset":true}),
+  "invites": zod.array(InviteSummary)
+});
+
+export type InviteList = zod.input<typeof InviteList>;
+export type InviteListOutput = zod.output<typeof InviteList>;
 
 export const removeBpCodeRequestCodeMin = 16;
 export const removeBpCodeRequestCodeMax = 16;
@@ -371,6 +444,59 @@ export const GiveBp415Response = ApiError
 export const GiveBp500Response = ApiError
 
 export const GiveBp503Response = ApiError
+
+
+export const ListInvites200Response = InviteList
+
+export const ListInvites400Response = ApiError
+
+export const ListInvites401Response = ApiError
+
+export const ListInvites403Response = ApiError
+
+export const ListInvites405Response = ApiError
+
+export const ListInvites413Response = ApiError
+
+export const ListInvites415Response = ApiError
+
+export const ListInvites500Response = ApiError
+
+export const ListInvites503Response = ApiError
+
+
+export const createInviteHeaderIdempotencyKeyMin = 16;
+export const createInviteHeaderIdempotencyKeyMax = 128;
+
+
+export const createInviteHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const CreateInviteHeader = zod.object({
+  "Idempotency-Key": zod.string().min(createInviteHeaderIdempotencyKeyMin).max(createInviteHeaderIdempotencyKeyMax).regex(createInviteHeaderIdempotencyKeyRegExp).describe('One ID per change. Retain it on an uncertain outcome; retries return the original invite and expiry.')
+})
+
+export const CreateInviteBody = CreateInviteRequest
+
+export const CreateInvite200Response = CreateInviteResult
+
+export const CreateInvite400Response = ApiError
+
+export const CreateInvite401Response = ApiError
+
+export const CreateInvite403Response = ApiError
+
+export const CreateInvite405Response = ApiError
+
+export const CreateInvite409Response = ApiError
+
+export const CreateInvite413Response = ApiError
+
+export const CreateInvite415Response = ApiError
+
+export const CreateInvite500Response = ApiError
+
+export const CreateInvite503Response = ApiError
 
 
 export const GetStaffSession200Response = StaffSession

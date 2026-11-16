@@ -32,6 +32,16 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 
 ## Status
 
+2026-11-16, transactional registration invites: audit failure and same-ID retry tests first reproduced a falsely
+successful creation and a second generated code. Invite creation now commits the prepared invite, audit and receipt
+before publishing, for the CLI (including `share --invite`), old panel and generated staff API. Admins/moderators are
+recorded as the real issuer in the invite and audit, without retaining display names in permanent receipts.
+Save/receipt/COMMIT failures, concurrency, restart/pruning, consumed invites, role changes
+and subsequent saves are covered. The connected React section shows remaining uses, expiry, issuer and claims;
+browser checks cover lost responses, reload, a CSRF refusal and the same-ID retry, validation, failed refreshes and
+mobile accessibility. Expiry is checked against RFC 3339's four-digit range. Public access and the remaining screens
+are still pending.
+
 2026-11-16, standalone dashboard branch: Give BP now prepares copies and commits balance, D-Mail, audit and a
 separate retry receipt before publishing. The first audit/mail failure regressions failed on the original code;
 `grant_contract.rs` now covers all four write failures (including a deferred constraint that fails at COMMIT),

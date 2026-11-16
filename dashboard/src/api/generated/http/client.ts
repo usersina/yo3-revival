@@ -28,9 +28,13 @@ import type {
   CreateBpCodeHeaders,
   CreateBpCodeRequest,
   CreateBpCodeResult,
+  CreateInviteHeaders,
+  CreateInviteRequest,
+  CreateInviteResult,
   GiveBpByIdRequest,
   GiveBpHeaders,
   GiveBpResult,
+  InviteList,
   RemoveBpCodeHeaders,
   RemoveBpCodeRequest,
   RemoveBpCodeResult,
@@ -475,6 +479,169 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getGiveBpMutationOptions(options), queryClient);
+    }
+
+export const getListInvitesUrl = () => {
+
+
+
+
+  return `/panel/api/v1/invites`
+}
+
+export const listInvites = async ( options?: Parameters<typeof apiFetch>[1]): Promise<InviteList> => {
+
+  return apiFetch<InviteList>(getListInvitesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListInvitesQueryKey = () => {
+    return [
+    `/panel/api/v1/invites`
+    ] as const;
+    }
+
+
+export const getListInvitesQueryOptions = <TData = Awaited<ReturnType<typeof listInvites>>, TError = ErrorType<ApiError>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listInvites>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListInvitesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listInvites>>> = ({ signal }) => listInvites({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listInvites>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListInvitesQueryResult = NonNullable<Awaited<ReturnType<typeof listInvites>>>
+export type ListInvitesQueryError = ErrorType<ApiError>
+
+
+export function useListInvites<TData = Awaited<ReturnType<typeof listInvites>>, TError = ErrorType<ApiError>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listInvites>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listInvites>>,
+          TError,
+          Awaited<ReturnType<typeof listInvites>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListInvites<TData = Awaited<ReturnType<typeof listInvites>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listInvites>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listInvites>>,
+          TError,
+          Awaited<ReturnType<typeof listInvites>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListInvites<TData = Awaited<ReturnType<typeof listInvites>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listInvites>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListInvites<TData = Awaited<ReturnType<typeof listInvites>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listInvites>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListInvitesQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateInviteUrl = () => {
+
+
+
+
+  return `/panel/api/v1/invites`
+}
+
+export const createInvite = async (createInviteRequest: CreateInviteRequest,
+    headers: CreateInviteHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<CreateInviteResult> => {
+
+  return apiFetch<CreateInviteResult>(getCreateInviteUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(createInviteRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateInviteMutationKey = () => ['createInvite'] as const;
+
+export const getCreateInviteMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInvite>>, TError,CreateInviteMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createInvite>>, TError,CreateInviteMutationVariables, TContext> => {
+
+const mutationKey = getCreateInviteMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInvite>>, CreateInviteMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  createInvite(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateInviteMutationResult = NonNullable<Awaited<ReturnType<typeof createInvite>>>
+    export type CreateInviteMutationBody = CreateInviteRequest
+    export type CreateInviteMutationError = ErrorType<ApiError>
+    export type CreateInviteMutationVariables = {data: CreateInviteRequest;headers: CreateInviteHeaders}
+
+    export const useCreateInvite = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInvite>>, TError,CreateInviteMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createInvite>>,
+        TError,
+        CreateInviteMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateInviteMutationOptions(options), queryClient);
     }
 
 export const getGetStaffSessionUrl = () => {

@@ -21,8 +21,10 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/bp-codes", "get", "listBpCodes"),
         ("/panel/api/v1/bp-codes", "post", "createBpCode"),
         ("/panel/api/v1/bp-codes/remove", "post", "removeBpCode"),
+        ("/panel/api/v1/invites", "get", "listInvites"),
+        ("/panel/api/v1/invites", "post", "createInvite"),
     ];
-    assert_eq!(paths.len(), 7);
+    assert_eq!(paths.len(), 8);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -340,4 +342,44 @@ async fn password_changes_and_recovery_end_existing_html_and_json_staff_cookies(
     assert_eq!(recovered["ok"], true, "{recovered}");
     assert_eq!(b.call("GET", "/panel/api/v1/session", json!(null)).await.status, 401);
     assert_eq!(b.raw_on(b.live.http, "GET", "/panel/", "", "").await.status, 303);
+}
+
+#[tokio::test]
+async fn staff_invites_are_typed_receipted_and_usable_for_real_registration() {
+    use yo3_server::api::invites::{CreateInviteResult, InviteList, InviteState};
+    let mut b = Browser::new("invites").await;
+    let token = format!("Authorization: Bearer {}\r\n", b.admin.token);
+    assert_eq!(b.raw("GET", "/panel/api/v1/invites", "", &token).await.status, 401);
+    b.sign_in("Croquet").await;
+    let empty = b.call("GET", "/panel/api/v1/invites", json!(null)).await;
+    assert_eq!(empty.status, 200);
+    assert!(serde_json::from_value::<InviteList>(empty.body).unwrap().invites.is_empty());
+    let body = json!({ "uses": 1, "days": 7 });
+    let first = b.call("POST", "/panel/api/v1/invites", body.clone()).await;
+    assert_eq!(first.status, 200, "{}", first.body);
+    let result: CreateInviteResult = serde_json::from_value(first.body.clone()).unwrap();
+    assert_eq!(b.call("GET", "/panel/api/v1/invites", json!(null)).await.body["invites"][0]["issued_by"], "Croquet");
+    assert_eq!(result.request_id, KEY);
+    assert!(result.expires_at.is_some());
+    assert_eq!(b.call("POST", "/panel/api/v1/invites", body.clone()).await.body, first.body);
+    let conflict = b.call("POST", "/panel/api/v1/invites", json!({ "uses": 2, "days": 7 })).await;
+    assert_eq!((conflict.status, conflict.body["code"].as_str()), (409, Some("request_conflict")));
+    for invalid in [json!({ "uses": 0 }), json!({ "days": 0 }), json!({ "issued_by": "Pegasus" }), json!({ "days": 4294967295_u32 })] {
+        let refused = b.raw("POST", "/panel/api/v1/invites", &invalid.to_string(), "Idempotency-Key: invalid-invite-00000001\r\n").await;
+        assert_eq!(refused.status, 400);
+    }
+    let admin = b.admin.clone();
+    tokio::task::spawn_blocking(move || api::call(&admin, &Op::Set { name: "registration".into(), value: "invite".into() })).await.unwrap().unwrap();
+    let registered = b.endpoint.account(&json!({ "op": "register", "user": "Joey", "password": PASSWORD, "invite": result.code, "rules": true })).await.unwrap();
+    assert_eq!(registered["ok"], true, "{registered}");
+    let list: InviteList = serde_json::from_value(b.call("GET", "/panel/api/v1/invites", json!(null)).await.body).unwrap();
+    assert_eq!(list.invites[0].state, InviteState::Exhausted);
+    assert_eq!(list.invites[0].uses, Some(0));
+    assert_eq!(list.invites[0].claims.len(), 1);
+    assert_eq!(b.call("POST", "/panel/api/v1/invites", body).await.body, first.body, "retry must not replenish the invite");
+    let refused = b.endpoint.account(&json!({ "op": "register", "user": "Mai", "password": PASSWORD, "invite": result.code, "rules": true })).await.unwrap();
+    assert_eq!(refused["error"], "invite_invalid");
+    assert_eq!(b.raw_on(b.live.http, "GET", "/panel/api/v1/invites", "", &token).await.status, 404);
+    b.sign_in("Pegasus").await;
+    assert_eq!(b.call("POST", "/panel/api/v1/invites", json!({})).await.status, 200, "admin and moderator have separate receipt scopes");
 }

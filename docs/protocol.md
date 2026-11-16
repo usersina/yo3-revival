@@ -2200,6 +2200,10 @@ retry never removes a later replacement. Input codes are canonical uppercase and
 give `already_exists`, missing codes `not_found`, reused IDs with different operations/inputs `request_conflict`.
 The CLI prints IDs and accepts `--request-id`; old panel forms retain hidden IDs. Evidence: `code_contract.rs` and
 `panel_contract.rs`. The game's redemption request/reply and credited balances are unchanged.
+`invite` also requires one `Idempotency-Key` and atomically commits its generated code, audit and receipt. Retries
+keep the original code, issuer and expiry even after consumption, restart or audit pruning, without replenishing
+uses. The CLI's `invite` and `share --invite` accept `--request-id`; legacy forms reuse their hidden IDs. Both admins
+and moderators can create invites. Evidence: `invite_contract.rs`, `panel_contract.rs`, `dashboard_contract.rs`.
 The panel runs the same operations in the server (`Api::apply_as`) as its signed-in staff account: a moderator runs only
 the looking, moderation, invite and reset-code operations, and none on a staff account. `account`, `backups`, `back-up` and
 `logs` were added for its pages. Status also reports the actual `listen` socket and `release`, so a reopened manager and local game use the active
@@ -2210,7 +2214,8 @@ The React dashboard has its own staff-session JSON routes at `/panel/api/v1/`, i
 Axum and utoipa-axum. Rust exports `dashboard/api/openapi.json`; Orval generates the frontend fetch functions, hooks,
 types and Zod validators. It currently covers sign-in/out, session, account summaries, Give BP (a `user_id: u32`
 target, not a player name), and code listing/creation/removal, including claim summaries with RFC 3339 times where
-known. Moderators read codes, admins change them. The staff router never accepts host-token authority. It runs only on its own opt-in
+known. Registration invite listing/creation returns remaining uses, RFC 3339 expiry, the actual issuer, claims and
+a checked-at status; both admins and moderators can create them. Moderators read BP codes, admins change them. The staff router never accepts host-token authority. It runs only on its own opt-in
 loopback listener (`--dashboard-port`, disabled by default), sharing panel sessions and the sign-in throttle.
 The host-token API, old HTML panel and assets stay on the management listener; the staff API and schema are absent
 there. A real host token sent from loopback to the dashboard socket still cannot reach host operations, restore or

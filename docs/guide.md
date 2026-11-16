@@ -239,7 +239,10 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
 - `invite`, `invites`, `add-user`, `reset-code` and `set-role` manage password accounts (beta) and work while the
   server runs: invite codes for sign-up, an account the host makes with a first password, a one-day reset code for a
   player who lost their password and recovery code, and roles. [Accounts](authentication.md#making-accounts-invites-and-recovery)
-  explains each.
+  explains each. `invite` and `share --invite` print a request ID before creation and accept `--request-id ID`.
+  After a lost response, repeat the same command and limits with that ID to retrieve the original code and expiry.
+  A retry does not add sign-ups back or extend the expiry. `invite --uses 0` means unlimited sign-ups; omit `--days`
+  for no expiry. Positive limits must be at least 1, and expiry must fit the supported RFC 3339 date range.
 - Commands that name an account (`key`, `add-player`, `set-country`, `give-bp`) take its User ID or one of its
   players' names.
 - `add-player`, `rename` and `set-country` manage an account's players. `countries` lists accepted country codes;

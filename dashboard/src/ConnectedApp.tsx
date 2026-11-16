@@ -19,6 +19,7 @@ import type { AccountSummary, StaffSession } from './api/generated/http/models'
 import { GiveBpHeader, GiveBpByIdRequest } from './api/generated/validation/schemas'
 import { ApiHttpError, setCsrfToken } from './api/transport'
 import { ConnectedCodes } from './ConnectedCodes'
+import { ConnectedInvites } from './ConnectedInvites'
 
 const pendingSchema = z.object({ data: GiveBpByIdRequest, headers: GiveBpHeader })
 
@@ -325,6 +326,7 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
           </div>
         )}
       </Panel>
+      <ConnectedInvites session={session} />
       <ConnectedCodes session={session} />
       <Modal
         open={open}
@@ -404,7 +406,7 @@ function Workspace() {
       </header>
       <main id="main" className="connected-main">
         <p className="inline-notice">
-          Local API preview · Real server data. Accounts, Give BP and BOOSTERPASS codes are
+          Local API preview · Real server data. Accounts, Give BP, invites and BOOSTERPASS codes are
           connected. Public hosting remains disabled.
         </p>
         {session.isPending ? (

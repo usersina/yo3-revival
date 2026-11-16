@@ -269,6 +269,13 @@ async fn repeated_code_forms_use_their_hidden_receipt_id() {
         let form = page.body.split("<form ").find(|p| p.split("</form>").next().unwrap().contains(&format!("name=\"action\" value=\"{action}\""))).unwrap();
         form.split("name=\"request_id\" value=\"").nth(1).unwrap().split('"').next().unwrap().to_string()
     };
+    let invite_id = form_id(&page, "invite");
+    let fields = [("csrf", csrf.as_str()), ("request_id", invite_id.as_str()), ("action", "invite"), ("uses", "2"), ("days", "7")];
+    for _ in 0..2 { assert_eq!(b.post("/panel/invites", &fields).await.status, 303); }
+    let invites = s.host(Op::Invites).await;
+    assert_eq!(invites["invites"].as_array().unwrap().len(), 1, "repeating the invite form must return its original code");
+    assert_eq!(invites["invites"][0]["issued_by"], "Pegasus");
+    assert_eq!(s.audit().iter().filter(|r| r.op == "invite").count(), 1);
     let id = form_id(&page, "add-code");
     let fields = [("csrf", csrf.as_str()), ("request_id", id.as_str()), ("action", "add-code"), ("bp", "300"), ("code", "")];
     for _ in 0..2 { assert_eq!(b.post("/panel/invites", &fields).await.status, 303); }

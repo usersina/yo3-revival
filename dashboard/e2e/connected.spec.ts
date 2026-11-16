@@ -4,6 +4,8 @@ import AxeBuilder from '@axe-core/playwright'
 import {
   AccountList,
   BpCodeList,
+  InviteList,
+  CreateInviteResult,
   CreateBpCodeResult,
   RemoveBpCodeResult,
   ApiError,
@@ -245,4 +247,91 @@ test('a duplicate code gives an actionable refusal and leaves the form editable'
   await section.getByRole('button', { name: `Remove ${code}`, exact: true }).click()
   await page.getByRole('button', { name: 'Remove code', exact: true }).click()
   await expect(section.getByRole('status')).toContainText(`Code removed: ${code}`)
+})
+
+test('invite creation retains its ID and expiry after a lost response, reload and CSRF refusal', async ({
+  page,
+}) => {
+  await signIn(page, 'TestModerator')
+  const section = page.getByRole('region', { name: 'Registration invites', exact: true })
+  await section.getByRole('button', { name: 'Create invite', exact: true }).click()
+  await page.getByLabel('Sign-up limit', { exact: true }).fill('3')
+  await page.getByLabel('Expires after (days)', { exact: true }).fill('7')
+  const ids: string[] = []
+  let original: unknown
+  await page.route('**/panel/api/v1/invites', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue()
+    ids.push(route.request().headers()['idempotency-key'])
+    if (ids.length === 2) {
+      const response = await route.fetch({
+        headers: { ...route.request().headers(), 'x-csrf-token': 'stale' },
+      })
+      expect(response.status()).toBe(403)
+      return route.fulfill({ response })
+    }
+    const response = await route.fetch()
+    expect(response.status()).toBe(200)
+    const body = CreateInviteResult.parse(await response.json())
+    if (ids.length === 1) {
+      original = body
+      return route.abort('failed')
+    }
+    expect(body).toEqual(original)
+    return route.fulfill({ response })
+  })
+  await page.getByRole('dialog').getByRole('button', { name: 'Create invite', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('We could not confirm this invite')
+  expect(ids).toHaveLength(1)
+  await page.reload()
+  await expect(page.getByText('Unconfirmed invite')).toBeVisible()
+  await section.getByRole('button', { name: 'Resume invite' }).click()
+  await page.getByRole('button', { name: 'Retry same invite' }).click()
+  await expect(page.getByRole('alert')).toContainText('Reload the dashboard')
+  await expect(page.getByText('Unconfirmed invite')).toBeVisible()
+  await page.getByRole('button', { name: 'Retry same invite' }).click()
+  await expect(section.getByRole('status')).toContainText('Invite created')
+  expect(ids).toHaveLength(3)
+  expect(new Set(ids).size).toBe(1)
+})
+
+test('invite limits, empty state, failed refresh and mobile dialog are clear', async ({ page }) => {
+  await signIn(page)
+  const section = page.getByRole('region', { name: 'Registration invites', exact: true })
+  await page.route('**/panel/api/v1/invites', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue()
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ invites: [], checked_at: new Date().toISOString() }),
+    })
+  })
+  await section.getByRole('button', { name: 'Refresh invites' }).click()
+  await expect(section.getByText('No registration invites yet.')).toBeVisible()
+  await section.getByRole('button', { name: 'Create invite', exact: true }).click()
+  await page.getByLabel('Sign-up limit', { exact: true }).fill('0')
+  await expect(
+    page.getByRole('dialog').getByRole('button', { name: 'Create invite', exact: true }),
+  ).toBeDisabled()
+  await page.getByLabel('Sign-up limit', { exact: true }).fill('')
+  await page.getByLabel('Expires after (days)', { exact: true }).fill('')
+  await page.setViewportSize({ width: 320, height: 850 })
+  expect(
+    (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()).violations,
+  ).toEqual([])
+  await expect(
+    page.getByRole('dialog').getByRole('button', { name: 'Create invite', exact: true }),
+  ).toBeEnabled()
+  await page.getByLabel('Expires after (days)', { exact: true }).fill('4294967295')
+  await page.getByRole('dialog').getByRole('button', { name: 'Create invite', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('The invite was refused.')
+  await expect(page.getByLabel('Expires after (days)', { exact: true })).toBeEnabled()
+  await page.getByLabel('Expires after (days)', { exact: true }).fill('')
+  await page.getByRole('dialog').getByRole('button', { name: 'Create invite', exact: true }).click()
+  await expect(section.getByRole('status')).toContainText('Invite created')
+  InviteList.parse(await (await page.request.get('/panel/api/v1/invites')).json())
+  await page.keyboard.press('Escape')
+  await page.route('**/panel/api/v1/invites', (route) => route.abort('failed'))
+  await section.getByRole('button', { name: 'Refresh invites' }).click()
+  await expect(section.getByRole('alert')).toContainText('The invite list could not be refreshed')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
 })
