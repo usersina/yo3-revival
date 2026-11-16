@@ -73,6 +73,48 @@ fn a_live_process_with_the_wrong_acknowledgement_or_no_window_never_activates() 
         assert!(install::active(&root).unwrap().is_none()); std::fs::remove_dir_all(root).unwrap();
     }
 }
+/// A ready script: acknowledges its window as the update's version.
+#[cfg(unix)]
+const READY: &str = r##"#!/bin/sh
+while [ "$#" -gt 0 ]; do
+ case "$1" in --update-ready-file) ready="$2"; shift 2;; --update-nonce) nonce="$2"; shift 2;; *) shift;; esac
+done
+printf '{"nonce":"%s","version":"0.3.0","pid":%s}' "$nonce" "$$" > "$ready"
+exec sleep 30
+"##;
+#[test]
+#[cfg(unix)]
+fn a_downloaded_update_installs_at_the_next_start_but_never_while_the_game_runs() {
+    let (root,installed)=fixture(READY);
+    let original=Path::new("/original/yo3-revival"); let quick=std::time::Duration::from_secs(5);
+    assert_eq!(activation::install_pending(&root,"0.2.0",original,||false,quick),activation::Pending::Nothing,"nothing downloaded yet");
+    install::set_pending(&root,&installed).unwrap();
+    assert!(install::active(&root).unwrap().is_none(),"downloading never switches the running version");
+    assert_eq!(activation::install_pending(&root,"0.2.0",original,||true,quick),activation::Pending::Nothing,"the game is open: it waits");
+    assert_eq!(install::pending(&root).unwrap(),Some(installed.clone()));
+    assert_eq!(activation::install_pending(&root,"0.2.0",original,||false,quick),activation::Pending::Installed);
+    assert_eq!(install::active(&root).unwrap(),Some(installed.clone()),"promoted once its window was up");
+    assert!(install::pending(&root).unwrap().is_none() && install::failed_start(&root).unwrap().is_none());
+    let _ = std::process::Command::new("pkill").arg("-f").arg(installed.executable()).status();
+    install::set_pending(&root,&installed).unwrap();
+    assert_eq!(activation::install_pending(&root,"0.3.0",original,||false,quick),activation::Pending::Nothing,"already this version");
+    assert!(install::pending(&root).unwrap().is_none(),"and forgotten");
+    std::fs::remove_dir_all(root).unwrap();
+}
+#[test]
+#[cfg(unix)]
+fn an_update_that_fails_to_start_rolls_back_with_a_notice_and_isnt_retried() {
+    let (root,installed)=fixture("#!/bin/sh\nexit 7\n");
+    install::set_pending(&root,&installed).unwrap();
+    let result=activation::install_pending(&root,"0.2.0",Path::new("/original/yo3-revival"),||false,std::time::Duration::from_millis(500));
+    let activation::Pending::Failed{summary,details}=result else { panic!("{result:?}") };
+    assert_eq!(summary,"Update 0.3.0 didn't start, so YO3 Revival kept version 0.2.0.");
+    assert!(details.contains("exited before it was ready"),"{details}");
+    assert!(install::active(&root).unwrap().is_none(),"the current version stays active");
+    assert!(install::pending(&root).unwrap().is_none());
+    assert_eq!(install::failed_start(&root).unwrap().as_deref(),Some("v0.3.0"),"not downloaded again by itself");
+    std::fs::remove_dir_all(root).unwrap();
+}
 #[test]
 #[ignore = "requires a built release archive and an explicitly selected private Xvfb display"]
 fn packaged_update_opens_its_window_before_activation() {
@@ -82,7 +124,14 @@ fn packaged_update_opens_its_window_before_activation() {
     assert_eq!(std::env::var("DISPLAY").unwrap(),std::env::var("YO3_UPDATE_TEST_DISPLAY").expect("private display confirmation"));
     let bytes=std::fs::read(&archive).unwrap(); let name=archive.file_name().unwrap().to_str().unwrap().to_string();
     let release=Release{tag:tag.clone(),url:String::new(),notes:String::new(),asset:Asset{name:name.clone(),url:format!("https://github.com/usersina/yo3-revival/releases/download/{tag}/{name}"),bytes:bytes.len() as u64,sha256:yo3_launcher::components::hash(&bytes)}};
+    // As the window does (#32): staged in the background, then installed by the launcher's next start.
+    // The archive must be built from this branch or later: launcher.db is at schema 2 here, which releases before the
+    // beta refuse to open.
     let staged=install::stage_archive(&root,&release,&archive).unwrap();
-    let mut child=activation::launch(&root,&staged,false,std::time::Duration::from_secs(25)).unwrap();
-    assert_eq!(install::active(&root).unwrap(),Some(staged)); child.kill().unwrap(); child.wait().unwrap();
+    install::set_pending(&root,&staged).unwrap();
+    assert!(install::active(&root).unwrap().is_none(),"downloading never switches the running version");
+    let result=activation::install_pending(&root,"0.0.1",std::path::Path::new("/original/yo3-revival"),||false,std::time::Duration::from_secs(25));
+    assert_eq!(result,activation::Pending::Installed);
+    assert_eq!(install::active(&root).unwrap(),Some(staged.clone())); assert!(install::pending(&root).unwrap().is_none());
+    let _ = std::process::Command::new("pkill").arg("-f").arg(staged.executable()).status();
 }

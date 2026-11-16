@@ -78,3 +78,41 @@ pub fn launch(root: &Path, installed: &Installed, resume_hosting: bool, timeout:
         std::thread::sleep(Duration::from_millis(50));
     }
 }
+
+/// What the launcher's start did with a downloaded update (#32).
+#[derive(Debug, PartialEq, Eq)]
+pub enum Pending {
+    /// None waits (or it waits for the game to close).
+    Nothing,
+    /// The new version is running and ready: this one exits.
+    Installed,
+    /// It didn't start, so this version stays: a plain sentence for the player, and the reason.
+    Failed { summary: String, details: String },
+}
+
+/// The sentence shown when an update didn't start and the current version was kept.
+pub fn failed_summary(tag: &str, current: &str) -> String {
+    format!("Update {} didn't start, so YO3 Revival kept version {}.", tag.trim_start_matches('v'), current.trim_start_matches('v'))
+}
+
+/// Installs the update downloaded while the launcher was open, at its next start. Never while the game runs
+/// (`game_open`: it stays waiting). If the new version doesn't open its window in time, this version stays active,
+/// the update isn't tried again by itself, and the result says so for the player.
+pub fn install_pending(root: &Path, current: &str, executable: &Path, game_open: impl FnOnce() -> bool, timeout: Duration) -> Pending {
+    let installed = match install::pending(root) {
+        Ok(Some(installed)) => installed,
+        Ok(None) => return Pending::Nothing,
+        Err(error) => { let _ = install::clear_pending(root, None); return Pending::Failed { summary: "A downloaded update couldn't be read, so it wasn't installed.".into(), details: format!("{error:#}") } }
+    };
+    let newer = super::version(&installed.tag).ok().zip(super::version(current).ok())
+        .is_some_and(|(candidate, running)| running.pre.is_empty() && candidate.cmp_precedence(&running).is_gt());
+    if !newer || executable.canonicalize().ok() == installed.executable().canonicalize().ok() { let _ = install::clear_pending(root, None); return Pending::Nothing }
+    if game_open() { return Pending::Nothing }
+    match launch(root, &installed, false, timeout) {
+        Ok(_ready) => { let _ = install::clear_pending(root, None); Pending::Installed }
+        Err(error) => {
+            let _ = install::clear_pending(root, Some(&installed.tag));
+            Pending::Failed { summary: failed_summary(&installed.tag, current), details: format!("{error:#}") }
+        }
+    }
+}

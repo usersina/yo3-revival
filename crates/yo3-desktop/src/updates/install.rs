@@ -176,3 +176,38 @@ pub(crate) fn promote(root: &Path, installed: &Installed) -> anyhow::Result<()> 
     transaction.execute("INSERT INTO update_state VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET body=excluded.body", [serde_json::to_string(installed)?])?;
     transaction.commit()?; Ok(())
 }
+
+/// A downloaded, checked update waiting for the launcher's next start (#32), and the last version that failed to start.
+/// Kept apart from `update_state`, whose rows are the active version and the one before it.
+fn pending_db(root: &Path) -> anyhow::Result<crate::LauncherDb> {
+    let db = crate::LauncherDb::open(root)?;
+    db.conn.execute_batch("CREATE TABLE IF NOT EXISTS update_pending (id INTEGER PRIMARY KEY CHECK(id=1), installed TEXT, failed TEXT)")?;
+    Ok(db)
+}
+/// Installs `installed` at the next start (it is staged and validated already).
+pub fn set_pending(root: &Path, installed: &Installed) -> anyhow::Result<()> {
+    validate(root, installed)?;
+    pending_db(root)?.conn.execute("INSERT INTO update_pending(id,installed) VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET installed=excluded.installed",
+        [serde_json::to_string(installed)?])?;
+    Ok(())
+}
+/// The update waiting for the next start, if any.
+pub fn pending(root: &Path) -> anyhow::Result<Option<Installed>> {
+    use rusqlite::OptionalExtension;
+    let body: Option<Option<String>> = pending_db(root)?.conn.query_row("SELECT installed FROM update_pending WHERE id=1", [], |r| r.get(0)).optional()?;
+    body.flatten().map(|body| serde_json::from_str(&body).map_err(Into::into)).transpose()
+}
+/// Nothing waits any more (installed, or given up). With `failed`, that version didn't start: it isn't downloaded again.
+pub fn clear_pending(root: &Path, failed: Option<&str>) -> anyhow::Result<()> {
+    let db = pending_db(root)?;
+    match failed {
+        Some(tag) => db.conn.execute("INSERT INTO update_pending(id,installed,failed) VALUES(1,NULL,?1) ON CONFLICT(id) DO UPDATE SET installed=NULL, failed=excluded.failed", [tag])?,
+        None => db.conn.execute("UPDATE update_pending SET installed=NULL WHERE id=1", [])?,
+    };
+    Ok(())
+}
+/// The last version that was installed but didn't start.
+pub fn failed_start(root: &Path) -> anyhow::Result<Option<String>> {
+    use rusqlite::OptionalExtension;
+    Ok(pending_db(root)?.conn.query_row("SELECT failed FROM update_pending WHERE id=1", [], |r| r.get(0)).optional()?.flatten())
+}

@@ -23,8 +23,8 @@ fn allowed(url: &reqwest::Url) -> bool {
     url.scheme() == "https" && url.username().is_empty() && url.password().is_none() && url.port_or_known_default() == Some(443)
         && matches!(url.host_str(), Some("github.com" | "release-assets.githubusercontent.com" | "objects.githubusercontent.com"))
 }
-async fn response(client: &reqwest::Client, release: &Release, transfer: &Transfer) -> anyhow::Result<reqwest::Response> {
-    let mut url = reqwest::Url::parse(&release.asset.url)?;
+async fn response(client: &reqwest::Client, url: &str, transfer: &Transfer) -> anyhow::Result<reqwest::Response> {
+    let mut url = reqwest::Url::parse(url)?;
     for _ in 0..6 {
         ensure!(allowed(&url), "Update redirected outside GitHub's release service");
         let result = transfer.wait(client.get(url.clone()).send()).await??;
@@ -50,12 +50,36 @@ async fn save(mut response: reqwest::Response, path: &std::path::Path, release: 
     ensure!(received == release.asset.bytes && digest == release.asset.sha256, "Update download checksum or length does not match GitHub");
     Ok(())
 }
+/// A small release file (the manifest or its signature), bounded.
+async fn small(client: &reqwest::Client, url: &str, transfer: &Transfer) -> anyhow::Result<Vec<u8>> {
+    let mut reply = response(client, url, transfer).await?;
+    let mut body = Vec::new();
+    while let Some(chunk) = transfer.wait(reply.chunk()).await?? {
+        ensure!(body.len() + chunk.len() <= super::signature::MAX_MANIFEST, "The update's manifest is too large");
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
 pub async fn prepare(root: PathBuf, release: Release, transfer: Transfer) -> anyhow::Result<install::Installed> {
     install::platform(&release)?;
     ensure!(Some(install::platform(&release)?) == super::Platform::current().name(), "Update is for another platform");
+    // Development builds only: the fake release's archive from a local file (see `check`), staged as a download is.
+    #[cfg(debug_assertions)]
+    if let Some(archive) = std::env::var_os("YO3_UPDATE_FAKE_ARCHIVE") {
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        return tokio::task::spawn_blocking(move || install::stage_archive(&root, &release, std::path::Path::new(&archive))).await?
+    }
     let job = install::job_directory(&root)?; let archive = job.0.join("download");
     let client = super::client(Duration::from_secs(15 * 60))?;
-    let reply = response(&client, &release, &transfer).await?;
+    // SIGNING SEAM (#32): off until the project's key exists (`signature::PUBLIC_KEY`); then the signed manifest must
+    // vouch for this download before it is fetched.
+    if let Some(key) = super::signature::PUBLIC_KEY {
+        let base = format!("{}/releases/download/{}", super::REPOSITORY, release.tag);
+        let manifest = small(&client, &format!("{base}/{}", super::signature::MANIFEST), &transfer).await?;
+        let signature = small(&client, &format!("{base}/{}", super::signature::SIGNATURE), &transfer).await?;
+        super::signature::check(&release, &manifest, &signature, &key)?;
+    }
+    let reply = response(&client, &release.asset.url, &transfer).await?;
     save(reply, &archive, &release, &transfer).await?; transfer.0.phase.store(1, Ordering::Relaxed);
     tokio::task::spawn_blocking(move || { let _job = job; install::stage_with(&root, &release, &archive, &|| transfer.cancelled()) }).await?
 }
