@@ -10,6 +10,21 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## v0.0.23 (2026-11-16)
+
+A duel fix. Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the
+server, rules engine and required connection components. Original game files are not included.
+**Windows 7 is not supported.**
+
+Hosts should update: the fix is in the server, and players need nothing new. Friends on v0.0.13 or later can still
+join. Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.23/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.23/docs/scripts.md).
+
+- **Choosing a monster's position no longer freezes the duel.** When you Special Summoned a monster while your opponent
+  (an NPC, or another player) still had another copy of it hidden in their hand or Deck, the position window could
+  show no card on either button, with nothing to click. Reported with Doom Shaman; it now always shows the card.
+
 ## v0.0.22 (2026-11-16)
 
 A shop fix. Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the
