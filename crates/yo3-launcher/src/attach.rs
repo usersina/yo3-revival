@@ -76,6 +76,9 @@ pub async fn serve(request: Attachment, loaded: crate::Loaded, profile: &Path, p
     use crate::direct::{self, Failure, Refusal};
     use crate::vault::{SystemVault, Vault};
     let owner = GameProcess::open(request.pid, &request.game)?;
+    // The game's own patch index, for its startup check while the sign-in is refused (Proxy::local_index).
+    if let Some(index) = request.game.parent().map(|dir| dir.join("yo3.idx"))
+        && let Ok(bytes) = std::fs::read(&index) && bytes.len() <= 1 << 20 { proxy.local_index(bytes) }
     let files = ReadyFiles::prepare(&request.ready, &request.ack, request.pid, proxy.ports, &proxy.cookie, &proxy.server_id)?;
     wait_for_ack(&request.ack, &proxy.cookie, Duration::from_secs(30), || owner.alive()).await?;
     yo3_tunnel::diagnostics::event("Connection DLL acknowledged readiness; signing in");
