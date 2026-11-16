@@ -293,47 +293,10 @@ before moving data, restoring or downgrading.
 
 ## Windows SmartScreen and antivirus warnings
 
-These pre-alpha executables and the connection injector/DLL are unsigned. Windows or security software may block
-or quarantine them. No exclusion is needed unless your security software actually blocks a file.
-
-1. Check your antivirus's protection history for the exact detection and affected file. A missing file alone does
-   not establish that antivirus removed it.
-2. Confirm you downloaded the complete matching archive from the
-   [official releases](https://github.com/usersina/yo3-revival/releases/latest). Do not assume every detection is harmless;
-   report an uncertain detection before allowing it.
-3. For a verified false positive, allow or restore the affected file. If you choose a folder exclusion instead,
-   exclude only the extracted **`yo3-revival-desktop/`** or **`yo3-revival-scripts/`** folder, then re-extract any
-   quarantined files from the matching archive. After an in-app update, Desktop runs from
-   `%LOCALAPPDATA%\YO3 Revival\updates\installs\<version>-<platform>\` instead, a new folder for each version:
-   allow the file there, or exclude that version's folder. In Desktop, choose **Retry check**, then **Play** once the check passes.
-
-**Where are our DLLs?**
-
-| Location                            | Revival files                                                                                                    |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Extracted Desktop or Scripts folder | `yo3-auth.dll` (required connection mod), `yo3-auth-launch.exe` (required injector), and the Revival executables |
-| Same folder                         | `yo3-engine.exe` (the rules engine, run by the server) and `engine\` (its card scripts and database)              |
-| Extracted Desktop folder            | `yo3-bootstrap.dll`, the loader that Play puts beside `yo3.exe` so the game can be opened directly             |
-| After a Desktop in-app update       | the same Desktop files in `%LOCALAPPDATA%\YO3 Revival\updates\installs\<version>-<platform>\`, a new folder per version      |
-| Game folder, beside `yo3.exe`       | `winmm.dll`, put there by Desktop Play so [the game opens directly](launcher.md#open-the-game-directly)         |
-
-Desktop **Play** and Scripts **play** load `yo3-auth.dll` from the folder they run from (the extracted Revival folder,
-or Desktop's update folder after an in-app update); they do not copy it into the game folder. Excluding just
-`yo3-revival.exe` does not cover the injector or DLL. The whole game folder does not normally need an exclusion. If the optional direct-launch `winmm.dll` is flagged, allow that
-specific file after verifying it came from your Revival setup.
-
-Keep antivirus protection on. Prefer a file exception to a folder exclusion, which stops scanning everything
-inside that folder. Do not exclude all of Downloads, Games or Program Files. See
-[Microsoft's Windows Security guidance](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/virus-and-threat-protection-in-the-windows-security-app)
-for Defender's exclusion settings.
-
-`yo3-auth-launch.exe` and `yo3-auth.dll` are both required. Keep the complete matching bundle together; removing them
-or mixing releases prevents startup. The injector resumes the game only after required hooks initialize. Source
-builds are [documented here](development.md#build-from-source) for people who want to inspect/build the code.
-
-For a detection report, include the security product, exact detection name, affected filename, application version
-and file SHA-256 if available. Scripts use the same required injector/DLL as Desktop and can encounter the same
-detections. [Report a detection](https://github.com/usersina/yo3-revival/issues/new/choose).
+The executables, the injector and the connection DLL are unsigned for now, so Windows or security software may block
+or quarantine them. [Antivirus warnings](antivirus.md) is the player's page: which files and folders are ours, checking
+a download against the release's `SHA256SUMS`, restoring a quarantined file, allowing only files you checked, and
+reporting a false positive. Scripts use the same injector and DLL as Desktop.
 
 ## Original game runtimes
 

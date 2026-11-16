@@ -309,7 +309,7 @@ Help in the footer has these topics too; an error's **Help** opens its own.
 | PLAY says SET UP, REPAIR or RETRY | Click it: Setup opens at the game folder, Repair explains how to restore YO3 Revival's files, Retry checks again. Settings → Game → **Verify** checks everything in full. |
 | Unsupported game executable | Use the original **v1.153** installation. Replacing Revival's helpers can't fix a different game build. |
 | Missing DirectX or VC90 runtime | Setup's checklist names it. Follow [original game runtime repair](guide.md#original-game-runtimes), then **Retry**. |
-| YO3 Revival needs repair / antivirus removed a file | Extract the complete matching Desktop archive again. For a verified false positive, allow the affected file or exclude only the extracted Desktop folder. [Exact files and recovery steps](guide.md#windows-smartscreen-and-antivirus-warnings). |
+| YO3 Revival needs repair / antivirus removed a file | Extract the complete matching Desktop archive again. For a verified false positive, allow the affected file or exclude only the extracted Desktop folder. [Exact files and recovery steps](antivirus.md). |
 | The game doesn't start, or stops | Read the notice; **Details** has the technical text. Close any other copy of the game, then PLAY again. If it repeats, **Report** beside the error. |
 | Another program is using the port | Close the other server (a Scripts server, another YO3 Revival), or for hosting use **Change port**. |
 | Friends can't connect to your hosted server | Friends elsewhere need your public address as the address to share and your router forwarding the port to this PC (look for Port forwarding in its settings). When Windows asks whether `yo3-server.exe` may use the network, allow it; if you clicked Cancel once, allow it in Windows Defender Firewall (**Allow an app through firewall**), again after each update. Some providers share one public address between homes (CGNAT): forwarding can't work then; ask for a public address, or use a VPN you both join. |
@@ -326,7 +326,7 @@ On minimal Debian/Ubuntu X11 systems, install Desktop's runtime libraries with
 opening its window.
 
 These executables and the injector/DLL are unsigned for now ([#38](https://github.com/usersina/yo3-revival/issues/38)).
-[Windows warnings](guide.md#windows-smartscreen-and-antivirus-warnings) explains what to check. For terminal errors,
+[Antivirus warnings](antivirus.md) explains how to check a download against its published checksum. For terminal errors,
 see [Scripts troubleshooting](scripts.md#when-something-fails).
 
 ## Getting the original game

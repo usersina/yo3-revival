@@ -145,7 +145,7 @@ explains the optional `--duel-check` flag and replay tools.
 - **Missing helper or DLL:** restore the complete matching Scripts bundle, including `yo3-auth-launch.exe` and
   `yo3-auth.dll`. Check security software's protection history if a file disappeared; verify the official download
   before restoring it. For a verified false positive, allow the affected file or exclude only the extracted
-  `yo3-revival-scripts/` folder. [Antivirus help and DLL locations](guide.md#windows-smartscreen-and-antivirus-warnings).
+  `yo3-revival-scripts/` folder. [Antivirus help and DLL locations](antivirus.md).
   Do not delete helpers or combine files from different releases.
 - **Game folder rejected:** choose the complete installation with `yo3.exe`, `yo3.idx` and `package/`.
   The executable must have the supported **v1.153** hook layout. Revival is not the original game installer.
