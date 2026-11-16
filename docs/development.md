@@ -4,6 +4,9 @@ These commands run in a **source checkout**, not an extracted release. For playi
 [Desktop](launcher.md) or [Scripts](scripts.md). Contributors should first read the
 [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md).
 
+The [dashboard development guide](dashboard.md#local-development) covers the React preview, disposable server,
+Rust/OpenAPI/Orval generation and contract checks.
+
 - [Development guide](#development-guide)
   - [Build from source](#build-from-source)
   - [Checks](#checks)

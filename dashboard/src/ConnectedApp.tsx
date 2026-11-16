@@ -1,0 +1,440 @@
+import { useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
+import { Link } from 'react-router-dom'
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
+import { Coins, Layers, LoaderCircle, LogOut, RefreshCw } from 'lucide-react'
+import { z } from 'zod'
+import { Button, Field, Modal, PageHeading, Panel, SearchField } from './components/ui'
+import {
+  getGetStaffSessionQueryKey,
+  getListAccountsQueryKey,
+  useGetStaffSession,
+  useGiveBp,
+  useListAccounts,
+  useSignInStaff,
+  useSignOutStaff,
+} from './api/generated/http/client'
+import type { GiveBpMutationVariables } from './api/generated/http/client'
+import type { AccountSummary, StaffSession } from './api/generated/http/models'
+import { GiveBpHeader, GiveBpByIdRequest } from './api/generated/validation/schemas'
+import { ApiHttpError, setCsrfToken } from './api/transport'
+
+const pendingSchema = z.object({ data: GiveBpByIdRequest, headers: GiveBpHeader })
+
+function errorText(error: unknown) {
+  return error instanceof ApiHttpError
+    ? error.message
+    : 'Could not reach the server. Check that it is running, then try again.'
+}
+
+function SignIn() {
+  const client = useQueryClient()
+  const [user, setUser] = useState('')
+  const [password, setPassword] = useState('')
+  const signIn = useSignInStaff({
+    mutation: {
+      onSuccess: (session) => {
+        setPassword('')
+        setCsrfToken(session.csrf_token)
+        client.setQueryData(getGetStaffSessionQueryKey(), session)
+        void client.resetQueries({
+          predicate: (query) => query.queryKey[0] !== getGetStaffSessionQueryKey()[0],
+        })
+      },
+    },
+  })
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    if (signIn.isPending) return
+    signIn.mutate({
+      data: { user: user.trim(), password },
+      headers: { 'Idempotency-Key': crypto.randomUUID() },
+    })
+  }
+  return (
+    <>
+      <PageHeading title="Server management" description="Sign in to manage your local server." />
+      <Panel
+        title="Sign in to your local server"
+        description="Use an administrator or moderator game account."
+      >
+        <form onSubmit={submit} className="connected-sign-in">
+          <Field id="staff-user" label="User ID">
+            <input
+              id="staff-user"
+              value={user}
+              onChange={(e) => setUser(e.target.value)}
+              autoComplete="username"
+              required
+              maxLength={64}
+              disabled={signIn.isPending}
+            />
+          </Field>
+          <Field id="staff-password" label="Password">
+            <input
+              id="staff-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+              disabled={signIn.isPending}
+            />
+          </Field>
+          {signIn.error && (
+            <p role="alert" className="connected-error">
+              {errorText(signIn.error)}
+            </p>
+          )}
+          <Button variant="primary" type="submit" disabled={!user || !password || signIn.isPending}>
+            {signIn.isPending && <LoaderCircle size={16} className="animate-spin" />}
+            {signIn.isPending ? 'Signing in…' : 'Sign in'}
+          </Button>
+        </form>
+      </Panel>
+    </>
+  )
+}
+
+function AccountWorkspace({ session }: { session: StaffSession }) {
+  const client = useQueryClient()
+  const accounts = useListAccounts()
+  const [query, setQuery] = useState('')
+  const [selected, setSelected] = useState<AccountSummary | null>(null)
+  const [amount, setAmount] = useState('500')
+  const [notice, setNotice] = useState('')
+  const storageKey = `yo3:pending-grant:${session.user_id}`
+  const [stored, setStored] = useState<{
+    intent: GiveBpMutationVariables | null
+    error: string | null
+  }>(() => {
+    try {
+      const raw = sessionStorage.getItem(storageKey)
+      return { intent: raw ? pendingSchema.parse(JSON.parse(raw)) : null, error: null }
+    } catch {
+      return {
+        intent: null,
+        error:
+          'Could not restore a previous grant. Review the server audit log before starting another.',
+      }
+    }
+  })
+  const [open, setOpen] = useState(false)
+  const grant = useGiveBp({
+    mutation: {
+      onError: (error) => {
+        // These rejections happen before any grant. Unknown network/commit outcomes retain the exact intent.
+        if (
+          error instanceof ApiHttpError &&
+          [400, 403, 404, 409, 413, 415].includes(error.status)
+        ) {
+          try {
+            sessionStorage.removeItem(storageKey)
+            setStored({ intent: null, error: null })
+          } catch {
+            setStored((previous) => ({
+              ...previous,
+              error: 'Could not clear this refused request. Reload before starting another grant.',
+            }))
+          }
+        }
+      },
+      onSuccess: () => {
+        // Keep the receipt key until the server confirms the response, including after a reload.
+        try {
+          sessionStorage.removeItem(storageKey)
+          setStored({ intent: null, error: null })
+        } catch {
+          setStored((previous) => ({
+            ...previous,
+            error:
+              'BP added, but this browser could not clear the saved request. Reload to confirm it again safely.',
+          }))
+        }
+        setNotice('BP added. The balance, D-Mail and audit log were saved together.')
+        setOpen(false)
+        void client.invalidateQueries({ queryKey: getListAccountsQueryKey() })
+      },
+    },
+  })
+  const signOut = useSignOutStaff({
+    mutation: {
+      onSuccess: () => {
+        setCsrfToken(undefined)
+        void client.resetQueries()
+      },
+    },
+  })
+  const validAmount = GiveBpByIdRequest.safeParse({
+    user_id: selected?.user_id ?? 0,
+    amount: Number(amount),
+  }).success
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    if (grant.isPending || session.role !== 'admin' || stored.error) return
+    let intent = stored.intent
+    if (!intent) {
+      if (!selected || !validAmount) return
+      intent = {
+        data: { user_id: selected.user_id, amount: Number(amount) },
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
+      }
+      try {
+        sessionStorage.setItem(storageKey, JSON.stringify(intent))
+      } catch {
+        setStored({
+          intent: null,
+          error:
+            'This browser could not retain the request ID. Enable session storage before giving BP.',
+        })
+        return
+      }
+      setStored({ intent, error: null })
+    }
+    grant.mutate(intent)
+  }
+  if (accounts.error instanceof ApiHttpError && accounts.error.status === 401) return <SignIn />
+  const filtered = accounts.data?.accounts.filter((a) =>
+    `${a.login ?? ''} ${a.user_id} ${a.players.map((p) => p.name).join(' ')}`
+      .toLowerCase()
+      .includes(query.trim().toLowerCase()),
+  )
+  return (
+    <>
+      <PageHeading
+        title="Accounts"
+        description={`Signed in as ${session.user} · ${session.role}`}
+        action={
+          <Button
+            onClick={() => signOut.mutate({ headers: { 'Idempotency-Key': crypto.randomUUID() } })}
+            disabled={signOut.isPending || grant.isPending}
+          >
+            <LogOut size={16} />
+            {signOut.isPending ? 'Signing out…' : 'Sign out'}
+          </Button>
+        }
+      />
+      {signOut.error && (
+        <p className="connected-error" role="alert">
+          {errorText(signOut.error)}
+        </p>
+      )}
+      {notice && (
+        <p className="inline-notice" role="status">
+          {notice}
+        </p>
+      )}
+      {stored.error && (
+        <p className="connected-error" role="alert">
+          {stored.error}
+        </p>
+      )}
+      {stored.intent && (
+        <div className="inline-notice">
+          <div>
+            <strong>Unconfirmed grant</strong>
+            <p>
+              {stored.intent.data.amount.toLocaleString()} BP to account #
+              {stored.intent.data.user_id}. Confirm this request before creating another.
+            </p>
+          </div>
+          <Button onClick={() => setOpen(true)}>Resume grant</Button>
+        </div>
+      )}
+      <Panel>
+        <div className="table-toolbar">
+          <SearchField
+            label="Search accounts"
+            placeholder="User ID or player name…"
+            value={query}
+            onChange={setQuery}
+          />
+          <Button onClick={() => void accounts.refetch()} disabled={accounts.isFetching}>
+            <RefreshCw size={15} /> Refresh
+          </Button>
+        </div>
+        {accounts.isPending && (
+          <p className="connected-state" role="status">
+            <LoaderCircle size={17} className="animate-spin" /> Loading accounts…
+          </p>
+        )}
+        {accounts.error && (
+          <p role="alert" className="connected-error">
+            {errorText(accounts.error)} The list could not be refreshed.
+          </p>
+        )}
+        {filtered && (
+          <div className="table-scroll" role="region" aria-label="Accounts table" tabIndex={0}>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Account</th>
+                  <th scope="col">Players</th>
+                  <th scope="col">Role</th>
+                  <th scope="col" className="numeric">
+                    Balance
+                  </th>
+                  <th scope="col">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((account) => {
+                  const name = account.login ?? `#${account.user_id}`
+                  return (
+                    <tr key={account.user_id}>
+                      <td>
+                        <strong>{name}</strong>
+                        <small className="block muted">#{account.user_id}</small>
+                      </td>
+                      <td>{account.players.map((p) => p.name).join(', ') || 'No players yet'}</td>
+                      <td>{account.role}</td>
+                      <td className="numeric">{account.bp.toLocaleString()} BP</td>
+                      <td>
+                        <Button
+                          aria-label={`Give BP to ${name}`}
+                          disabled={
+                            session.role !== 'admin' ||
+                            Boolean(stored.intent) ||
+                            Boolean(stored.error)
+                          }
+                          title={session.role !== 'admin' ? 'Administrators only' : undefined}
+                          onClick={() => {
+                            setSelected(account)
+                            setAmount('500')
+                            setNotice('')
+                            grant.reset()
+                            setOpen(true)
+                          }}
+                        >
+                          <Coins size={15} /> Give BP
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+            {filtered.length === 0 && (
+              <p className="connected-state">
+                {query ? 'No accounts match your search.' : 'No accounts yet.'}
+              </p>
+            )}
+          </div>
+        )}
+      </Panel>
+      <Modal
+        open={open}
+        onOpenChange={(value) => {
+          if (!grant.isPending) setOpen(value)
+        }}
+        title="Give BP"
+        description={`Account #${stored.intent?.data.user_id ?? selected?.user_id ?? ''}. Saved with D-Mail and an audit entry.`}
+      >
+        <form id="connected-grant" onSubmit={submit} className="modal-body">
+          <Field id="connected-bp" label="BP amount">
+            <input
+              id="connected-bp"
+              type="number"
+              min={1}
+              max={4294967295}
+              step={1}
+              required
+              value={stored.intent?.data.amount ?? amount}
+              disabled={Boolean(stored.intent) || grant.isPending}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </Field>
+          {grant.error && (
+            <p className="connected-error" role="alert">
+              {stored.intent ? 'We could not confirm this grant.' : 'The grant was refused.'}{' '}
+              {errorText(grant.error)}
+              {stored.intent && ' Retry this same request to avoid adding BP twice.'}
+            </p>
+          )}
+          {stored.intent && (
+            <p className="field-hint">Request ID: {stored.intent.headers['Idempotency-Key']}</p>
+          )}
+        </form>
+        <div className="modal-actions">
+          <span className="muted">
+            {stored.intent ? 'Request saved for safe retry' : 'Administrators only'}
+          </span>
+          <div className="action-group">
+            <Button disabled={grant.isPending} onClick={() => setOpen(false)}>
+              Close
+            </Button>
+            <Button
+              variant="primary"
+              type="submit"
+              form="connected-grant"
+              disabled={
+                grant.isPending ||
+                Boolean(stored.error) ||
+                session.role !== 'admin' ||
+                (!stored.intent && !validAmount)
+              }
+            >
+              {grant.isPending && <LoaderCircle size={16} className="animate-spin" />}
+              {grant.isPending ? 'Saving…' : stored.intent ? 'Retry same grant' : 'Add BP'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </>
+  )
+}
+
+function Workspace() {
+  const session = useGetStaffSession()
+  useEffect(() => {
+    setCsrfToken(session.data?.csrf_token)
+  }, [session.data?.csrf_token])
+  const signedOut = session.error instanceof ApiHttpError && session.error.status === 401
+  return (
+    <div className="connected-shell">
+      <header className="connected-header">
+        <Link to="/" className="brand">
+          <Layers size={23} /> YO3 Revival
+        </Link>
+        <Link to="/">Design preview</Link>
+      </header>
+      <main id="main" className="connected-main">
+        <p className="inline-notice">
+          Local API preview · Real server data. Only accounts and Give BP are connected. Public
+          hosting remains disabled.
+        </p>
+        {session.isPending ? (
+          <p role="status" className="connected-state">
+            Connecting to your server…
+          </p>
+        ) : signedOut ? (
+          <SignIn />
+        ) : session.error ? (
+          <Panel title="Server unavailable" description={errorText(session.error)}>
+            <div className="connected-state">
+              <Button onClick={() => void session.refetch()}>Try again</Button>
+            </div>
+          </Panel>
+        ) : session.data ? (
+          <AccountWorkspace key={session.data.user_id} session={session.data} />
+        ) : null}
+      </main>
+    </div>
+  )
+}
+
+export default function ConnectedApp() {
+  const [client] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false, gcTime: 0 } },
+      }),
+  )
+  return (
+    <QueryClientProvider client={client}>
+      <Workspace />
+    </QueryClientProvider>
+  )
+}

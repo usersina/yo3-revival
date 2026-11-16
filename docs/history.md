@@ -37,7 +37,15 @@ separate retry receipt before publishing. The first audit/mail failure regressio
 `grant_contract.rs` now covers all four write failures (including a deferred constraint that fails at COMMIT),
 concurrency with duel rewards, restart, audit pruning, role rechecks, CLI `--by` changes and a real discarded HTTP
 answer followed by a server restart and retry. Schema 3 adds receipts, without player names, independently of the
-audit's retention. Public management and the React connection are still pending: [accepted plan](dashboard.md).
+audit's retention. Public management and the rest of the React connection remain pending: [accepted plan](dashboard.md).
+
+2026-11-16, generated dashboard API: Axum/utoipa-axum collect the real staff routes without server state; a pure
+export binary, Rust drift test, pinned Orval fetch/hooks/types/Zod and a separate non-writing client drift gate are
+in place. The `/connected` page signs staff in, lists real accounts and gives BP by stable account number. Browser
+checks deliberately discard a committed grant's response, reload the page and retry the same retained key. The
+HTTP migration also preserved half-closed CLI requests (the existing discarded-response regression caught Hyper's
+default) and EOF-delimited asset downloads, and password/recovery changes invalidate staff cookies. The other pages
+remain labelled samples; no public listener, MFA, nginx or Compose is claimed by this slice.
 
 Platform scope: **64-bit Windows 10/11** and **Linux with Wine**. **Windows 7 support is out of scope for now**,
 for both Desktop and Scripts. Current compatibility and native Windows verification work targets Windows 10/11.

@@ -6,3 +6,5 @@ playwright-report/
 public/
 package-lock.json
 *.tsbuildinfo
+src/api/generated/
+api/openapi.json

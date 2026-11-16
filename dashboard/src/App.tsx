@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { NavLink, Route, Routes, useLocation } from 'react-router-dom'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import {
   ArrowUpRight,
   ChevronRight,
@@ -38,6 +38,8 @@ const navigation: { label: string; path: string; icon: LucideIcon; group: string
   { label: 'Backups', path: '/backups', icon: DatabaseBackup, group: 'Manage' },
   { label: 'Settings', path: '/settings', icon: Settings2, group: 'Manage' },
 ]
+
+const ConnectedApp = lazy(() => import('./ConnectedApp'))
 
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
   return (
@@ -153,7 +155,8 @@ function Shell() {
           <div>
             <FlaskConical size={15} />
             <span>
-              <strong>Design preview.</strong> Sample data · not connected to a server.
+              <strong>Design preview.</strong> Sample data · not connected to a server.{' '}
+              <Link to="/connected">Connect to a local server</Link>
             </span>
           </div>
           <div className="preview-controls">
@@ -244,6 +247,13 @@ function Shell() {
 }
 
 export default function App() {
+  const { pathname } = useLocation()
+  if (pathname === '/connected')
+    return (
+      <Suspense fallback={<p role="status">Loading dashboard…</p>}>
+        <ConnectedApp />
+      </Suspense>
+    )
   return (
     <PreviewProvider>
       <Shell />

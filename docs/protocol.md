@@ -2180,7 +2180,7 @@ with backups at start, hourly and at stop. References elsewhere in this catalog 
 etc. name the domains' original formats. This changes storage, not Konami request/reply fields; tests live in
 `store.rs` and `tests/accounts.rs`.
 
-The host's tools (the desktop, the CLI, the admin panel at `/panel/`, #36) use our admin API (#25, `api.rs`): `POST
+The host's tools (the desktop and CLI) use our admin API (#25, `api.rs`): `POST
 /api/admin/v1/<op>` with a private bearer token and a JSON `op` (`status`, `accounts`, `create-account`, `key`,
 `give-bp`, `set`, `audit`, `shutdown` and the rest; `yo3-server --help` lists the commands). It binds loopback and the
 TLS asset role denies access (it forwards only GETs of the game's files). Answers are `{"ok", "result" | "error"}`.
@@ -2199,6 +2199,14 @@ the looking, moderation, invite and reset-code operations, and none on a staff a
 `logs` were added for its pages. Status also reports the actual `listen` socket and `release`, so a reopened manager and local game use the active
 listener rather than guessing from saved settings. Only the authenticated game/discovery port is public; internal
 management/assets HTTP stays loopback.
+
+The React dashboard has its own staff-session JSON routes at `/panel/api/v1/`, implemented in `dashboard.rs` with
+Axum and utoipa-axum. Rust exports `dashboard/api/openapi.json`; Orval generates the frontend fetch functions, hooks,
+types and Zod validators. It currently covers sign-in/out, session, account summaries and Give BP (a `user_id: u32`
+target, not a player name). The staff router never accepts host-token authority. It shares the existing loopback
+listener and panel sessions; it is not publicly reachable. These are our HTTP definitions, not stock-client shapes.
+Evidence: `dashboard_contract.rs`, the Rust schema drift test and the real browser flow in
+`dashboard/e2e/connected.spec.ts`. See the [dashboard plan and contract](dashboard.md#api-and-dashboard).
 
 ## Fields the client reads that we leave out
 

@@ -5,11 +5,16 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 
 ## Current state
 
-- The approved React/Vite/SWC/Tailwind dashboard is in `dashboard/`. It uses labelled sample data, not a server.
-- Give BP uses typed requests, results and error codes. Its account, D-Mail, audit and operation receipt commit
-  together, then its prepared state and notifications are published. Contract: `grant_contract.rs`.
-- SQLite schema 3 adds `operation_receipts`. Schemas 1 and 2 upgrade transactionally. No other domain is normalized.
-- Axum, OpenAPI, generated clients, public listeners, MFA, nginx and Compose remain to be implemented.
+- The approved React/Vite/SWC/Tailwind dashboard is in `dashboard/`. The main pages remain a labelled design preview.
+  `/connected` uses the real local API for staff sign-in/out, accounts and Give BP. It never falls back to fixtures.
+- Axum handles local HTTP. The staff JSON router is separate from host-token operations; both still use the existing
+  loopback listener. There is no public listener or network binding option in this slice.
+- Rust handlers and DTOs generate `dashboard/api/openapi.json` through utoipa-axum. Orval generates the committed
+  fetch functions, TanStack Query hooks and Zod validators in `dashboard/src/api/generated/`.
+- Give BP commits balance, D-Mail, audit and operation receipt together, then publishes state and notifications.
+  The dashboard targets a numeric account ID and retains an uncertain request across reloads for safe retry.
+- SQLite schema 3 adds `operation_receipts`. Schemas 1 and 2 upgrade transactionally. Other domains are not normalized.
+- Remaining work: the other dashboard operations, separate public/private listeners, staff MFA, nginx and Compose.
 
 ## Operation boundary
 
@@ -34,14 +39,69 @@ interrupted/outcome unknown, never as definitely failed, and never automatically
 
 ## API and dashboard
 
-Use Axum and utoipa route/schema generation. Replace operation results and errors with typed structs and stable
-codes incrementally. Commit generated OpenAPI and check regeneration in CI; validate actual success/error responses
-against it. Generate fetch functions and TanStack Query hooks with Orval, including cookie/CSRF handling and stable
-mutation request IDs. The game protocol is not an HTTP/OpenAPI API.
+Rust is the source of truth. `crates/yo3-server/src/dashboard.rs` registers annotated handlers with `OpenApiRouter`;
+its `split_for_parts()` collects the schema without server state, configuration, game files or a database. The
+`openapi` binary writes it to stdout, and the local server exposes the same document at `/panel/openapi.json`.
+
+From `dashboard/`, `npm run api:generate` exports Rust's document and runs pinned Orval. It generates request/result/error
+models, native-fetch functions, TanStack Query hooks and Zod validators. Explicit operation IDs keep hook names stable
+when Rust functions are renamed. All declared error responses use `ApiError` with stable codes. Mutations require an
+`Idempotency-Key` argument; the shared mutator supplies the session's CSRF header and same-origin credentials. The
+HttpOnly session cookie never becomes frontend data. Sign-in/out require a request ID but do not create durable grant
+receipts. Only Give BP currently has the atomic mutation boundary.
+
+The Rust drift test compares the collected document with the committed file under `cargo nextest`, without Node.
+`npm run api:check` independently runs Orval's non-writing outdated check. Both gates run before release publishing,
+with dashboard lint, typecheck, unit/browser tests and build. Generated files carry a do-not-edit header and are
+excluded from lint/formatting, but remain typechecked. Never edit generated output or handwritten copies of API DTOs.
+Use tagged serde enums for payload variants, `u32` (bounded in the schema) or string IDs, and RFC 3339 date-time strings.
+Zod validators check fixtures and actual browser-test responses; the mutator also validates error bodies, including
+unexpected proxy failures. The game protocol is not an HTTP/OpenAPI API.
+
+Connected routes in this slice:
+
+| Method | Path | Result |
+| --- | --- | --- |
+| GET | `/panel/api/v1/session` | Staff identity, CSRF token and RFC 3339 idle expiry |
+| POST | `/panel/api/v1/sign-in` | Staff session and HttpOnly cookie; shared sign-in throttle |
+| POST | `/panel/api/v1/sign-out` | End the current staff cookie |
+| GET | `/panel/api/v1/accounts` | Safe account/player summaries without credentials |
+| POST | `/panel/api/v1/give-bp` | Admin-only grant to `user_id`; exact result and receipt on retry |
+
+Every route checks the loopback peer and local Host. Posts also require same-origin evidence, and authenticated posts
+require the CSRF header. Host-token, restore and credential-export operations are absent from the staff router. The
+existing HTML panel remains available, sharing sessions and the sign-in throttle. Password/recovery changes invalidate
+its cookies as well as JSON API cookies. Full sign-out-everywhere/MFA revocation remains part of the public gate.
+
+For a disposable local server and the connected page, see [local development](#local-development).
 
 Connect the approved UI while access stays private. Replace production fixtures and simulated success with server
 responses. Cover loading, empty results, permissions, lost connections, expired sessions and uncertain mutation
 outcomes. Preserve the old panel's capabilities and security tests before removing it.
+
+## Local development
+
+In a source checkout, with Rust and Node.js 22.12 or newer:
+
+```sh
+# Terminal 1, repository root: disposable local data and accounts, no game files required.
+cargo run -p yo3-server --example dashboard_dev -- 18080
+# Terminal 2:
+cd dashboard
+npm ci
+npm run dev
+```
+
+Open `http://127.0.0.1:5173/connected`. Use `TestAdmin` or `TestModerator`, password `DashboardDemo123!`.
+These are example accounts in a fresh temporary directory; no existing data is opened. Ctrl+C stops the example and
+removes its directory. Vite's proxy targets loopback port 18080; set `YO3_DASHBOARD_API` before `npm run dev` for a
+scratch server on another local port. Keep both ports private.
+
+From `dashboard/`, `npm run api:generate` regenerates Rust's spec and the frontend. `npm run api:check` checks client
+drift without writing. From the root, `cargo nextest run -p yo3-server --test dashboard_contract` checks the schema
+and the actual API without Node. Frontend gates are `npm run format:check`, `npm run lint`, `npm run typecheck`,
+`npm test`, `npm run build` and `npm run test:e2e` (install Chromium once with
+`npx playwright install chromium --only-shell`). Browser tests use private ports 5174 and 18181 and disposable state.
 
 ## Separate authority and listeners
 

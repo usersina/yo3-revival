@@ -1,10 +1,13 @@
-# Dashboard UI preview
+# Dashboard development
 
 A standalone admin dashboard for YO3 Revival, built with React, TypeScript, Vite’s React SWC plugin, and Tailwind CSS.
 
-This first slice is for reviewing the interface. **It uses sample data and never connects to a game server.** Changes
-live in memory until you reload or choose **Reset preview**. The role selector previews administrator and moderator
-controls; it is not authentication.
+The main pages are a **labelled design preview** with sample data. Changes live in memory until reload or
+**Reset preview**. The role selector is not authentication.
+
+The separate **[/connected](http://127.0.0.1:5173/connected)** page uses generated API hooks for real staff sign-in,
+accounts and Give BP. It never substitutes sample data for a failed connection. This is local development work;
+public hosting, the remaining management pages, MFA and Compose are still pending.
 
 ## Run
 
@@ -18,7 +21,48 @@ npm run dev
 
 Open <http://127.0.0.1:5173>. The development server binds only to loopback and refuses to replace a busy port.
 
-## Try it
+## Connect to a disposable server
+
+From the repository root, run this in another terminal:
+
+```sh
+cargo run -p yo3-server --example dashboard_dev -- 18080
+```
+
+It creates fresh temporary data, identity and accounts, listens only on loopback, and needs no game files. It never
+opens the normal server's `data/`. Open **Connect to a local server** in the preview, or visit `/connected`. Sign in
+as `TestAdmin` or `TestModerator` with `DashboardDemo123!`. These are disposable example credentials, not production
+accounts. Ctrl+C stops the example and removes its temporary directory.
+
+The Vite development proxy targets `http://127.0.0.1:18080`. Set `YO3_DASHBOARD_API` before `npm run dev` to use a
+scratch server on another local port. Use a real staff game account on that server. Keep development ports private.
+The server's existing HTML panel remains at `/panel/` on its HTTP port.
+
+Give BP targets the stable numeric account ID. An unconfirmed request keeps its ID and payload in per-staff browser
+session storage, survives a reload, and can be resumed safely. A retry never creates another grant, mail or audit
+entry. Mutation hooks do not retry automatically. The session cookie is HttpOnly; CSRF tokens stay in memory and
+passwords, cookies and tokens are not saved in the pending grant.
+
+## Generate the API client
+
+Rust endpoint annotations and DTOs in [dashboard.rs](../crates/yo3-server/src/dashboard.rs) are the source of truth.
+From `dashboard/`:
+
+```sh
+npm run api:generate
+npm run api:check
+```
+
+The first command runs the pure Rust `openapi` binary, writes `api/openapi.json`, then runs pinned Orval to generate
+fetch functions, TanStack Query hooks, types and Zod validators. No running server, database or game is required.
+The server exposes that same document at `/panel/openapi.json`. Commit the spec and generated files together with
+the Rust change; never hand-edit `src/api/generated/`. The shared mutator is `src/api/transport.ts`.
+
+`cargo nextest run -p yo3-server --test dashboard_contract` checks Rust/schema drift without Node. `npm run api:check`
+uses Orval's non-writing outdated check. Both run before publishing a release, alongside dashboard checks.
+Operation IDs are explicit; declared errors have stable codes; each generated mutation requires its request ID.
+
+## Try the design preview
 
 - Browse the overview, search and filter accounts, and open account details.
 - Give an account BP, then find the change in the audit log.
@@ -49,8 +93,8 @@ Open `dashboard/` as the folder in VS Code or Cursor to use its checked-in edito
 save, and ESLint applies its fixes on save. The folder recommends the Prettier and ESLint extensions; install them
 if your editor does not already have them. These settings do not change the Rust workspace’s formatter.
 
-Browser tests use a separate loopback server on port 5174. They check navigation, account changes, dialog focus,
-moderator controls, 320px/390px phone layouts, navigation scroll/focus, and WCAG A/AA accessibility rules. `npm run preview` serves the production build
+Browser tests use Vite on port 5174 and a disposable Rust server on 18181. Both refuse busy ports. They check navigation, account changes, dialog focus,
+moderator controls, 320px/390px phone layouts, navigation scroll/focus, WCAG A/AA accessibility rules, real staff sign-in, Zod validation of actual responses, expired cookies and a lost grant response followed by reload/retry. `npm run preview` serves the production build
 locally on port 4173 for review. It is not a production web server.
 
 ## Boundaries
@@ -58,9 +102,11 @@ locally on port 4173 for review. It is not a production web server.
 `src/data.ts` holds fixtures; `src/store.tsx` owns the in-memory preview. Reusable controls are in `src/components/`,
 and each area has a page under `src/pages/`. Routing uses normal URLs, including account detail links.
 
-The Rust server and embedded panel are unchanged. Real sessions, permissions, API transport, the complete settings
-registry, card/recipe gifts, and Docker packaging follow after the UI is approved. Production permissions will be
-enforced by Rust, regardless of which controls the frontend shows.
+The local HTTP service uses Axum. Existing HTML pages share their sign-in throttle and staff sessions with the new
+JSON routes; the host-token API remains separate. Rust enforces staff roles and CSRF regardless of which controls
+React displays. Password/recovery changes invalidate staff cookies. The public access gate still needs full session
+revocation/MFA recovery, a separate dashboard listener and the reviewed nginx configuration. See the
+[accepted plan](../docs/dashboard.md).
 
 The [launcher mark](../crates/yo3-desktop/assets/branding/README.md) and Barlow fonts are reused from the existing app.
 The fonts’ license is included in [public/fonts/OFL.txt](public/fonts/OFL.txt). The minimatch override applies a

@@ -2093,3 +2093,74 @@
     scroll-behavior: auto !important;
   }
 }
+
+@layer components {
+  .connected-shell {
+    min-height: 100vh;
+    background: var(--color-canvas);
+  }
+  .connected-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--color-line);
+    background: white;
+  }
+  .connected-header .brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-weight: 700;
+    font-size: 19px;
+  }
+  .connected-main {
+    max-width: 1200px;
+    margin-inline: auto;
+    padding: 28px;
+  }
+  .connected-sign-in {
+    padding: 24px;
+    max-width: 440px;
+    display: grid;
+    gap: 16px;
+  }
+  .connected-sign-in input,
+  #connected-bp {
+    width: 100%;
+  }
+  .connected-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px;
+    color: var(--color-muted);
+  }
+  .connected-error {
+    border: 1px solid #efcbc8;
+    background: #fff3f1;
+    color: #96382f;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    overflow-wrap: anywhere;
+  }
+  .connected-main .modal-actions {
+    gap: 12px;
+  }
+  .connected-main .inline-notice {
+    flex-wrap: wrap;
+  }
+  @media (max-width: 600px) {
+    .connected-main {
+      padding: 16px;
+    }
+    .connected-header {
+      padding: 16px;
+      font-size: 13px;
+    }
+  }
+}

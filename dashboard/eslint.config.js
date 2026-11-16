@@ -7,7 +7,15 @@ import prettierRecommended from 'eslint-plugin-prettier/recommended'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'coverage/**', 'test-results/**', 'playwright-report/**'] },
+  {
+    ignores: [
+      'dist/**',
+      'coverage/**',
+      'test-results/**',
+      'playwright-report/**',
+      'src/api/generated/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -38,7 +46,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['*.{js,ts}', 'e2e/**/*.ts'],
+    files: ['*.{js,ts}', 'scripts/**/*.mjs', 'e2e/**/*.ts'],
     languageOptions: { globals: globals.node },
   },
   {

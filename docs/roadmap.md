@@ -26,7 +26,8 @@ and Scripts.
 **Standalone management dashboard**
 
 - [ ] Extend the typed, atomic Give BP operation to other admin operations, including proper save-failure handling.
-- [ ] Axum with separate host-token/local and staff-session/web routers; generated OpenAPI and dashboard client.
+- [ ] Extend the generated staff API beyond sign-in/out, accounts and Give BP; separate the private dashboard
+      listener from local host management before the public gate. The first generated client and offline drift checks are implemented.
 - [ ] Connect the approved React UI to real server data and preserve the existing panel's capabilities.
 - [ ] Public management gate: staff MFA and recovery (#43), session revocation, trusted nginx proxy, HTTPS renewal,
       route/header contract tests through nginx and a public-access security review. Do not expose the existing panel.
