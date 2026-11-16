@@ -169,35 +169,18 @@ fn host_of(address: &str) -> String {
     crate::server_address(address).map(|(_, name)| name).unwrap_or_else(|_| address.to_string())
 }
 
-/// A server an invite link names: `yo3revival://server?address=HOST:PORT&identity=HEX&name=NAME`. The link carries
-/// the identity, so no first-use question follows.
+/// A server an invite link names: `yo3revival://server?address=HOST:PORT&identity=HEX&name=NAME`
+/// (`yo3_tunnel::invite`). The link carries the identity, so no first-use question follows.
 pub fn invite_link(link: &str) -> anyhow::Result<Server> {
-    let rest = link.trim().strip_prefix("yo3revival://server?").context("an invite link starts with yo3revival://server?")?;
-    let field = |key: &str| rest.split('&').find_map(|p| p.split_once('=').filter(|(k, _)| *k == key).map(|(_, v)| decode(v)));
-    let address = field("address").context("the invite link has no address")?;
-    let identity = field("identity").context("the invite link has no identity")?.to_ascii_lowercase();
-    ensure!(identity.len() == 64 && unhex(&identity).is_some(), "the invite link's identity is malformed");
-    let (address, server_name) = crate::server_address(&address)?;
-    let name = field("name").filter(|n| !n.trim().is_empty()).unwrap_or_else(|| server_name.clone());
-    Ok(Server { name, address, server_name, identities: vec![identity], official: false, description: String::new(), saved_user: None, last_used: 0 })
+    let invite = yo3_tunnel::invite::Invite::parse(link)?;
+    Ok(Server { name: invite.name, address: invite.address, server_name: invite.server_name, identities: vec![invite.identity], official: false,
+        description: String::new(), saved_user: None, last_used: 0 })
 }
 
 /// The invite link for `server`.
 pub fn link_for(server: &Server) -> String {
-    let encode = |s: &str| s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~:".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect::<String>();
-    format!("yo3revival://server?address={}&identity={}&name={}", encode(&server.address), server.key(), encode(&server.name))
-}
-
-fn decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = vec![];
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' && let Some(v) = s.get(i + 1..i + 3).and_then(|h| u8::from_str_radix(h, 16).ok()) { out.push(v); i += 3; continue }
-        out.push(if b[i] == b'+' { b' ' } else { b[i] });
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
+    yo3_tunnel::invite::Invite { address: server.address.clone(), server_name: server.server_name.clone(), identity: server.key().to_string(),
+        name: server.name.clone() }.link()
 }
 
 /// What a server's row shows.

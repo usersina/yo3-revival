@@ -35,22 +35,7 @@ pub mod hosting;
 mod game_data_platform;
 mod process;
 
-pub fn server_address(input: &str) -> anyhow::Result<(String, String)> {
-    let input = input.trim();
-    let input = input.strip_prefix("yo3://").unwrap_or(input).trim_end_matches('/');
-    ensure!(!input.is_empty() && !input.contains(['/', '\\', '@']) && !input.chars().any(char::is_whitespace), "Enter a hostname or IP address, optionally followed by a port.");
-    if let Ok(ip) = input.parse::<std::net::IpAddr>() {
-        return Ok((match ip { std::net::IpAddr::V6(_) => format!("[{ip}]:7443"), _ => format!("{ip}:7443") }, ip.to_string()));
-    }
-    if let Ok(addr) = input.parse::<std::net::SocketAddr>() {
-        ensure!(addr.port() != 0, "Port must be between 1 and 65535.");
-        return Ok((addr.to_string(), addr.ip().to_string()));
-    }
-    let (host, port) = input.rsplit_once(':').unwrap_or((input, "7443"));
-    let port: u16 = port.parse().context("Port must be between 1 and 65535.")?;
-    ensure!(port > 0 && !host.is_empty() && host.bytes().all(|b| b.is_ascii_alphanumeric() || b".-".contains(&b)), "Enter a valid hostname and port.");
-    Ok((format!("{host}:{port}"), host.to_string()))
-}
+pub fn server_address(input: &str) -> anyhow::Result<(String, String)> { yo3_tunnel::invite::address(input) }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
