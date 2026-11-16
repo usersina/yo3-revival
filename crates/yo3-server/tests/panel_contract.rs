@@ -232,6 +232,8 @@ async fn a_moderator_moderates_but_cant_change_settings_or_act_on_staff() {
         ("/panel/backups", "/panel/backups", vec![]),
         ("/panel/account?who=Yugi", "/panel/account", vec![("who", "Yugi"), ("action", "give-bp"), ("amount", "100")]),
         ("/panel/account?who=Yugi", "/panel/account", vec![("who", "Yugi"), ("action", "set-role"), ("role", "admin")]),
+        ("/panel/account?who=Yugi", "/panel/account", vec![("who", "Yugi"), ("action", "give-cards"), ("player", "Yugi"), ("card", "4007")]),
+        ("/panel/account?who=Yugi", "/panel/account", vec![("who", "Yugi"), ("action", "give-recipe"), ("player", "Yugi"), ("deck", "7")]),
     ] {
         let after = m.act(page, to, &fields).await;
         assert!(after.body.contains("Not done: only an admin may do that"), "{fields:?}: {}", after.body);
@@ -355,4 +357,38 @@ async fn the_health_check_answers_on_loopback_without_a_token() {
     assert_eq!((&health["online"], &health["errors_recent"]), (&json!(0), &json!(0)));
     // The monitor's parsing: bare values, no spaces.
     assert!(a.body.contains("\"saving\":true") && a.body.contains("\"engine\":"), "{}", a.body);
+}
+
+#[tokio::test]
+async fn an_admin_gives_cards_and_recipes_from_a_players_page_and_a_moderator_sees_no_such_form() {
+    // #19: the forms are on the player's page, each with the CSRF token and a confirm prompt.
+    let s = Live::staffed("gifts").await;
+    let b = s.browser("Pegasus").await;
+    let account = "/panel/account?who=Yugi";
+    let page = b.get(account).await;
+    for action in ["give-cards", "give-recipe"] {
+        let at = page.body.find(&format!("name=\"action\" value=\"{action}\"")).unwrap_or_else(|| panic!("no {action} form: {}", page.body));
+        let form = &page.body[page.body[..at].rfind("<form").unwrap()..at];
+        assert!(form.contains("data-confirm=") && form.contains("name=\"csrf\""), "{action}: {form}");
+    }
+    let m = s.browser("Croquet").await;
+    let seen = m.get(account).await;
+    assert!(!seen.body.contains("give-cards") && !seen.body.contains("give-recipe"), "{}", seen.body);
+    // Without its token the form does nothing.
+    let forged = b.post("/panel/account", &[("who", "Yugi"), ("action", "give-cards"), ("player", "Yugi"), ("card", "4007")]).await;
+    assert_ne!(forged.status, 303);
+    if !yo3_data::default_game_dir().join("package/data002.ypk").is_file() {
+        eprintln!("game not installed; the gifts themselves are checked in api_contract.rs");
+        return;
+    }
+    let said = |a: &Answer, text: &str| assert!(a.body.contains(text), "{text}: {}", a.body);
+    said(&b.act(account, "/panel/account", &[("who", "Yugi"), ("action", "give-cards"), ("player", "Yugi"), ("card", "Blue-Eyes White Dragon"),
+        ("art", "2"), ("count", "3")]).await, "gave 3 × Blue-Eyes White Dragon (artwork 2, Konami id 4007) to Yugi");
+    said(&b.act(account, "/panel/account", &[("who", "Yugi"), ("action", "give-cards"), ("player", "Yugi"), ("card", "Dark Magician")]).await,
+        "Not done: 2 cards are named");
+    said(&b.act(account, "/panel/account", &[("who", "Yugi"), ("action", "give-recipe"), ("player", "Yugi"), ("deck", "E-HERO EVOLUTION DECK"),
+        ("cards", "on")]).await, "gave the recipe E-HERO EVOLUTION DECK");
+    let rows: Vec<_> = s.audit().into_iter().filter(|r| r.op.starts_with("give-") && r.origin == "panel").collect();
+    assert_eq!(rows.iter().map(|r| (r.op.as_str(), r.actor.as_str(), r.target.as_str())).collect::<Vec<_>>(),
+        [("give-recipe", "Pegasus", "Yugi"), ("give-cards", "Pegasus", "Yugi")]);
 }

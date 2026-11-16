@@ -352,6 +352,9 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
                 "rename" => Op::Rename { old: r.field("old").into(), new: r.field("new").into() },
                 "give-bp" => Op::GiveBp { who: who.clone(), amount: number(r.field("amount"))?.ok_or("give how many BP?")? },
                 "set-role" => Op::SetRole { user: who.clone(), role: r.field("role").into() },
+                "give-cards" => Op::GiveCards { player: r.field("player").into(), card: r.field("card").into(), art: number(r.field("art"))?,
+                    count: number(r.field("count"))? },
+                "give-recipe" => Op::GiveRecipe { player: r.field("player").into(), deck: r.field("deck").into(), cards: r.field("cards") == "on" },
                 "set-country" => Op::SetCountry { who: who.clone(), code: r.field("code").into() },
                 other => return Err(format!("unknown action {other:?}")),
             }))();
@@ -543,6 +546,18 @@ fn account(r: &Request, viewer: &Viewer, api: &Api) -> String {
         out += "<h2>Admin</h2><div class=\"actions\">";
         out += &form("give-bp", "Give BP", "<label>BP <input name=\"amount\" inputmode=\"numeric\" required></label>", None, false);
         out += &form("set-country", "Set country", "<label>Code <input name=\"code\" maxlength=\"4\" placeholder=\"auto\" required></label>", None, false);
+        // Cards no pack hands out, other artworks and deck recipes (#19): per player, so each form names one.
+        if !players.is_empty() {
+            let player = format!("<label>Player <select name=\"player\">{players}</select></label>");
+            out += &form("give-cards", "Give cards", &format!("{player}<label>Card <input name=\"card\" required maxlength=\"80\" placeholder=\"name or Konami id\"></label>\
+<label>Artwork <input name=\"art\" inputmode=\"numeric\" placeholder=\"1\"></label><label>Copies <input name=\"count\" inputmode=\"numeric\" placeholder=\"1\"></label>"),
+                Some("Give these cards to the player chosen? The panel can't take them back."), false);
+            let titles: String = run(api, viewer, &Op::Recipes).ok().and_then(|v| v["recipes"].as_array().cloned()).unwrap_or_default().iter()
+                .map(|r| format!("<option value=\"{}\">{}</option>", esc(&text(&r["title"])), esc(&text(&r["id"])))).collect();
+            out += &format!("<datalist id=\"recipes\">{titles}</datalist>");
+            out += &form("give-recipe", "Give deck recipe", &format!("{player}<label>Deck <input name=\"deck\" list=\"recipes\" required maxlength=\"80\" placeholder=\"title or preset id\"></label>\
+<label><input type=\"checkbox\" name=\"cards\"> with its cards</label>"), Some("Give this deck recipe to the player chosen? The panel can't take it back."), false);
+        }
         if password {
             out += &form("set-role", "Set role", "<label>Role <select name=\"role\"><option>player</option><option>moderator</option><option>admin</option></select></label>",
                 Some(&format!("Change {name}'s role?")), false);

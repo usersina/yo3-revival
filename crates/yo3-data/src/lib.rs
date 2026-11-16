@@ -123,6 +123,9 @@ pub struct Card {
     /// 8 Union, 9 Gemini, 10 Token, 13 Spell, 14 Trap, 15-16 Tuner, 17-19 Synchro (each kind's sample names checked
     /// against the rules engine's types).
     pub kind: u32,
+    /// Which artwork of the card this row is, bits 27-29 of the second word (0x537420; the image is
+    /// `data/card/<cid>_<art>.png`, 0x4FB090): each artwork is its own row with the same Konami id.
+    pub art: u32,
     pub name: String,
     /// The card's text (CARD_Desc_E.bin): what the client shows, the 2010–2012 wording.
     pub desc: String,
@@ -175,6 +178,7 @@ impl CardDb {
                 attribute: (b >> 8) & 0xF,
                 race: (b >> 19) & 0x1F,
                 kind: (b >> 3) & 0x1F,
+                art: (b >> 27) & 7,
                 name: text(0, names),
                 desc: text(4, descs),
             };

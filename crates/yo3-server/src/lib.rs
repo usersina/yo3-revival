@@ -36,6 +36,7 @@ mod log;
 mod net;
 mod web;
 pub mod titles;
+pub mod gifts;
 pub use net::IDLE_TIMEOUT;
 
 use crate::lock::Locked;
@@ -540,6 +541,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     api.shutdown = Some(shutdown.clone());
     api.status = api::Status { engine_problem: world.engine_problem.clone(), listen: Some(auth_addr), diagnostic_id: cfg.diagnostic_id, started: Some(std::time::Instant::now()) };
     api.titles = Some(world.titles.clone());
+    api.world = Some(world.clone());
     let http_task = tokio::spawn(net::http_loop(http, cfg.game_dir.clone(), cfg.data_dir.clone(), admin_token, Arc::new(api), Arc::new(panel::Panel::new())));
     tracing::info!("authenticated TLS {} local management/assets HTTP {}; packets -> {}", auth_addr, http_addr, packets.path().display());
     let mut tasks = vec![auth_task, http_task, clock_task, identity_task, maintenance_task];

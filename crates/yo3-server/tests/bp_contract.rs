@@ -274,3 +274,76 @@ fn a_host_gift_arrives_as_a_d_mail_with_the_bell_icon() {
     assert_eq!(item.get("from_name").and_then(Value::as_str).as_deref(), Some("Host"));
     assert!(item.get("body").and_then(Value::as_str).is_some_and(|b| b.contains("2000 BP") && b.contains(&(START_BP + 2000).to_string())));
 }
+
+/// The host's gift of cards or a deck recipe (#19) on a running server: a D-Mail from "Host" with the bell's icon; for
+/// cards the player's new trunk at once (as after a trade, 0x2BC9), so no screen waits for its next trunk request; and a
+/// present (0x2774 sets the flag the main screen's startup step 0x473AE0 tests, then PresentWindow asks 0x2775): the
+/// cards with their pictures, or a recipe with its cards as a structure deck (type 1, which sets the recipe's item in the
+/// game itself). Live: back on the map from Kaiba Corporation, the window showed both Blue-Eyes of artwork 5.
+#[test]
+fn a_host_gift_of_cards_or_a_recipe_is_mailed_and_the_cards_arrive_at_once() {
+    use yo3_server::gifts::{Card, Gifts, Recipe};
+    let mut world = yo3_server::front::World::new((1..=20).collect());
+    world.card_rows = 5000;
+    let server = Server::with_world(world);
+    let d = directory();
+    server.hub.lock().unwrap().set_directory(d.clone());
+    let mut c = client(&server, &d, ADDR);
+    c.pushed();
+    let settings = Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());
+    let gifts = Gifts {
+        cards: vec![Card { row: 816, cid: 4007, art: 1, name: "Blue-Eyes White Dragon".into() }, Card { row: 817, cid: 4007, art: 2, name: "Blue-Eyes White Dragon".into() }],
+        recipes: vec![Recipe { id: 7, title: "E-HERO EVOLUTION DECK".into(), item: 769, cards: vec![816] }],
+    };
+    let mut a = api::Api::new(d.clone(), settings, None, std::path::PathBuf::new(), "server").with_gifts(gifts);
+    a.hub = Some(server.hub.clone());
+    a.world = Some(server.world.clone());
+    a.apply(&Op::GiveCards { player: "Yugi".into(), card: "4007".into(), art: Some(2), count: Some(3) }, "host").unwrap();
+    let pushed = c.pushed();
+    assert!(pushed.iter().any(|m| m.request() == Some(0x2581)), "the bell's mail icon");
+    let trunk = pushed.iter().find(|m| m.request() == Some(9000)).expect("the new trunk");
+    let cards = trunk.items[0].get("cards").and_then(Value::as_bytes).unwrap();
+    assert_eq!((cards.len(), cards[817 - 1]), (5000, 3), "row 817 at index 816");
+    let mail = one(c.send(req_with(0x2582, &[("count", Value::U32(1))])));
+    let item = &mail.items[0];
+    assert_eq!(item.get("title").and_then(Value::as_str).as_deref(), Some("Cards received"));
+    assert!(item.get("body").and_then(Value::as_str).is_some_and(|b| b.contains("3 × Blue-Eyes White Dragon (artwork 2)")));
+    let waiting = pushed.iter().find(|m| m.request() == Some(0x2774)).expect("the present flag");
+    assert_eq!(waiting.get("present_count"), Some(&Value::U32(1)));
+    let present = one(c.send(req(0x2775)));
+    assert_eq!((present.request(), present.get("type"), present.get("pack_id")), (Some(0x2777), Some(&Value::U32(0)), Some(&Value::U32(0))));
+    assert_eq!(present.get("item").and_then(Value::as_bytes), Some(&[3, 49, 3, 49, 3, 49][..]), "row 817 three times");
+    assert_eq!(one(c.send(req(0x2775))).request(), Some(0x2778), "no more");
+    // A recipe alone: the mail, no trunk and no present (its window would show the deck's cards as given).
+    a.apply(&Op::GiveRecipe { player: "Yugi".into(), deck: "7".into(), cards: false }, "host").unwrap();
+    let pushed = c.pushed();
+    assert!(pushed.iter().any(|m| m.request() == Some(0x2581)), "{pushed:?}");
+    assert!(!pushed.iter().any(|m| m.request() == Some(9000) || m.request() == Some(0x2774)), "{pushed:?}");
+    // With its cards: the trunk, and the deck as a present of type 1, its id as item's first u16.
+    a.apply(&Op::GiveRecipe { player: "Yugi".into(), deck: "7".into(), cards: true }, "host").unwrap();
+    let pushed = c.pushed();
+    assert!(pushed.iter().any(|m| m.request() == Some(9000)) && pushed.iter().any(|m| m.request() == Some(0x2774)), "{pushed:?}");
+    let present = one(c.send(req(0x2775)));
+    assert_eq!((present.get("type"), present.get("item").and_then(Value::as_bytes)), (Some(&Value::U32(1)), Some(&[0, 7][..])));
+    let mail = one(c.send(req_with(0x2582, &[("count", Value::U32(3))])));
+    assert!(mail.items.iter().any(|m| m.get("title").and_then(Value::as_str).as_deref() == Some("Recipe received")), "{mail:?}");
+}
+
+#[test]
+fn a_gift_to_a_player_who_is_away_waits_for_the_present_window_at_their_login() {
+    // The login's 0x2201 sets the present flag (startup step 0x473AE0 opens PresentWindow), so it asks 0x2775 at once.
+    use yo3_server::gifts::{Card, Gifts};
+    let server = Server::new();
+    let d = directory();
+    server.hub.lock().unwrap().set_directory(d.clone());
+    let settings = Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());
+    let gifts = Gifts { cards: vec![Card { row: 816, cid: 4007, art: 1, name: "Blue-Eyes White Dragon".into() }], recipes: vec![] };
+    let mut a = api::Api::new(d.clone(), settings, None, std::path::PathBuf::new(), "server").with_gifts(gifts);
+    a.hub = Some(server.hub.clone());
+    drop(client(&server, &d, ADDR)); // the account's first visit makes its players
+    a.apply(&Op::GiveCards { player: "Yugi".into(), card: "4007".into(), art: None, count: Some(9) }, "host").unwrap();
+    let mut c = client(&server, &d, ADDR);
+    let present = one(c.send(req(0x2775)));
+    assert_eq!(present.get("item").and_then(Value::as_bytes).map(<[u8]>::len), Some(10), "five copies at most, a pack's worth");
+    assert_eq!(one(c.send(req(0x2775))).request(), Some(0x2778));
+}

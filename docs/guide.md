@@ -154,7 +154,7 @@ role is admin or moderator:
 | Page | What it shows and does | Moderator |
 | --- | --- | --- |
 | Dashboard | Players online, duels, rules engines, memory, uptime, version, last backup's age, whether saving works, recent warnings and errors | Sees it |
-| Accounts | Search by User ID or player name; an account's role, standing, mute, devices, BP, and each player's cards, decks, items and record; disconnect, mute, restrict, ban, lift, sign out everywhere, reset code, rename; give BP, set country, set role | Moderation and reset codes, on players only; not BP, country or roles |
+| Accounts | Search by User ID or player name; an account's role, standing, mute, devices, BP, and each player's cards, decks, items and record; disconnect, mute, restrict, ban, lift, sign out everywhere, reset code, rename; give BP, set country, set role; give a player cards, another artwork or a deck recipe (as `give-cards` and `give-recipe` below) | Moderation and reset codes, on players only; not BP, country, roles or gifts |
 | Invites and codes | Invite codes (make, list) and BOOSTERPASS codes (add, remove, who claimed them) | Makes invites; doesn't add or remove codes |
 | News and maintenance | The game's Information list, planning or calling off maintenance | Sees it |
 | Settings | Every live setting with its value, when it applies and what it does | Sees it |
@@ -190,6 +190,8 @@ but the BP and code commands. Add `--data-dir PATH` to target a non-default setu
 ./yo3-server set-country Alice TN
 ./yo3-server give-bp Alice 5000
 ./yo3-server grant-title Alice "GAME MASTER"
+./yo3-server give-cards Alice "Blue-Eyes White Dragon" --art 2 --count 3
+./yo3-server give-recipe Alice "E-HERO EVOLUTION DECK" --cards
 ./yo3-server add-code ABCD1234EFGH5678 2500
 ./yo3-server invite --uses 5 --days 7
 ./yo3-server add-user Alice
@@ -220,6 +222,19 @@ but the BP and code commands. Add `--data-dir PATH` to target a non-default setu
 - `grant-title PLAYER TITLE` gives a player a title by its name as the game shows it (`titles` lists them), such as
   GAME MASTER or JUMP FESTA, which no duel earns. The player wears it in Avatar Settings. A rename or title reaches
   a player who is online at their next login.
+- `give-cards PLAYER CARD` gives a player cards that no pack or deck hands out, or another artwork of a card (#19).
+  CARD is its English name or Konami id; a name two cards share (Dark Magician) needs the id. `--art N` picks the
+  artwork (the card's first when omitted; Blue-Eyes White Dragon has five) and `--count N` how many copies (1 when
+  omitted, at most 255). On a running server the player gets a D-Mail from "Host" saying what they got, and an
+  online player's game gets the new collection at once (during a duel between players, a trade or a rental, at the
+  next screen that asks for it). The game also shows the cards with their pictures, as when a pack is opened, the next
+  time the player comes back to the map (or at their next login).
+- `give-recipe PLAYER DECK` gives a player a deck recipe for Load Deck's Official tab (#19), by its title or preset
+  id; `recipes` lists them (two recipes share some titles: use the id). `--cards` gives the recipe's cards too, and
+  then the game shows the deck as a present the next time the player comes back to the map, as a bought structure deck,
+  and the recipe is on the tab from then on. A recipe alone shows at the player's next login or after their next duel.
+  The D-Mail says which. Only an admin gives cards or recipes,
+  and each gift is in the audit log.
 - `give-bp`, `add-code`, `remove-code` and `codes` manage points and redemption codes while hosting can continue.
   Use them rather than editing `accounts.json`: after the first start of a current server, accounts live in
   `server.db`. The JSON files are old copies the server no longer reads; it warns while they exist, and they are safe
