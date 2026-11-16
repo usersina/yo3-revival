@@ -34,10 +34,6 @@ and Scripts.
       sideways every time, so the trigger is unknown (details in [history](history.md#status)).
 - [ ] Not seen live: a Deck rental's three lists, a card's own string as a duel hint, a card's own Yes/No line.
 - [ ] Choosing a duel's opening track (`duel_id % 8`, `event_type` 5) is server-side and not built.
-- [ ] A frozen server process that keeps its TCP connections open leaves the duel waiting with no error (live,
-      `SIGSTOP`). TCP keepalive detects a lost network path, not a frozen process whose OS still answers probes;
-      an application-level timeout and recovery still need work. A closed connection already returns to the title
-      (details in [history](history.md#status)).
 
 **Titles**
 

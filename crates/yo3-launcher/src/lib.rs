@@ -89,6 +89,19 @@ impl Profile {
 #[derive(Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Ports { pub gate: u16, pub front: u16, pub duel: u16, pub http: u16 }
 
+/// How the launcher checks the server while the game is connected to it. A server process that hangs (stopped, or
+/// stuck on a lock) keeps its connections open and its machine answers TCP keepalive, so the game waited in its duel
+/// for good with no message. While the game has a front or duel connection, the launcher asks the server's discovery
+/// (the server list's request, which also takes the server's hub lock) every `every`; after `misses` in a row get no
+/// answer within `timeout`, it closes the game's connections, and the game shows its own "disconnected" dialogs and
+/// returns to the title. Old servers need no change.
+#[derive(Clone, Copy, Debug)]
+pub struct Liveness { pub every: Duration, pub timeout: Duration, pub misses: u32 }
+impl Default for Liveness {
+    /// At most about 75 s from the server's last answer to the game's disconnect.
+    fn default() -> Self { Self { every: Duration::from_secs(15), timeout: Duration::from_secs(10), misses: 3 } }
+}
+
 /// How the game's sign-in ended: a session for its connections, or a refusal its login dialog shows (#33).
 #[derive(Clone, Copy, Debug)]
 pub enum Outcome { Session(Token), Refused(direct::Refusal) }
@@ -134,6 +147,10 @@ impl Proxy {
     /// the front. The outcome is cleared as it arrives, so the game's login waits for this sign-in.
     pub fn typed_logins(&self) -> Option<tokio::sync::mpsc::UnboundedReceiver<direct::Typed>> { self.typed.lock().unwrap().take() }
     pub async fn prepare(endpoint: Endpoint, ports: Ports) -> anyhow::Result<Self> {
+        Self::prepare_watched(endpoint, ports, Liveness::default()).await
+    }
+    /// [`Self::prepare`], checking the server as `liveness` says.
+    pub async fn prepare_watched(endpoint: Endpoint, ports: Ports, liveness: Liveness) -> anyhow::Result<Self> {
         let (active, _) = tokio::sync::watch::channel(None);
         let gate = TcpListener::bind((Ipv4Addr::LOCALHOST, ports.gate)).await?;
         let front = TcpListener::bind((Ipv4Addr::LOCALHOST, ports.front)).await?;
@@ -171,13 +188,21 @@ impl Proxy {
                 }
             }
         }));
+        // The game's open front and duel connections, and which server loss they belong to: each loss moves it on and
+        // closes the connections made before it.
+        let relays = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (lost, _) = tokio::sync::watch::channel(0u64);
+        let lost = std::sync::Arc::new(lost);
+        tasks.push(tokio::spawn(watch_server(endpoint.clone(), liveness, relays.clone(), lost.clone())));
         for (listener, role) in [(front, Role::Front), (duel, Role::Duel)] {
             let endpoint = endpoint.clone();
             let active = active.clone();
+            let (relays, lost) = (relays.clone(), lost.clone());
             tasks.push(tokio::spawn(async move {
                 while let Ok((mut local, _)) = listener.accept().await {
                     let endpoint = endpoint.clone();
                     let mut active = active.subscribe();
+                    let (relays, mut lost) = (relays.clone(), lost.subscribe());
                     tokio::spawn(async move {
                         let result = async {
                             authorize(&mut local, &cookie).await?;
@@ -188,7 +213,12 @@ impl Proxy {
                             };
                             let ticket = endpoint.ticket(&session, role).await?;
                             let mut remote = endpoint.connect(&ticket, role, ports.duel).await?;
-                            tokio::io::copy_bidirectional(&mut local, &mut remote).await?;
+                            lost.mark_unchanged();
+                            let _open = Open::count(&relays);
+                            tokio::select! {
+                                relayed = tokio::io::copy_bidirectional(&mut local, &mut remote) => { relayed?; }
+                                _ = lost.changed() => anyhow::bail!("the server stopped answering; the game's connection is closed"),
+                            }
                             Ok::<_, anyhow::Error>(())
                         }.await;
                         if let Err(e) = result { let message = format!("{role:?} connection: {e}"); yo3_tunnel::diagnostics::event(&message); eprintln!("{message}"); }
@@ -220,6 +250,38 @@ impl Proxy {
 
 /// How long the game's connections wait for the sign-in: direct start may be starting your own server meanwhile.
 const SIGN_IN_WAIT: Duration = Duration::from_secs(60);
+
+/// One open relay of the game's, counted while it lives.
+struct Open(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+impl Open {
+    fn count(relays: &std::sync::Arc<std::sync::atomic::AtomicUsize>) -> Self {
+        relays.fetch_add(1, std::sync::atomic::Ordering::SeqCst); Self(relays.clone())
+    }
+}
+impl Drop for Open { fn drop(&mut self) { self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst); } }
+
+/// [`Liveness`]: while the game has a connection open, asks the server's discovery; `misses` unanswered in a row
+/// move `lost` on, which closes the game's connections.
+async fn watch_server(endpoint: Endpoint, liveness: Liveness, relays: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    lost: std::sync::Arc<tokio::sync::watch::Sender<u64>>) {
+    let mut missed = 0;
+    loop {
+        tokio::time::sleep(liveness.every).await;
+        if relays.load(std::sync::atomic::Ordering::SeqCst) == 0 { missed = 0; continue }
+        match tokio::time::timeout(liveness.timeout, endpoint.info()).await {
+            Ok(Ok(_)) => missed = 0,
+            _ => {
+                missed += 1;
+                if missed >= liveness.misses {
+                    missed = 0;
+                    let message = format!("the server did not answer {} checks in a row; closing the game's connections", liveness.misses);
+                    yo3_tunnel::diagnostics::event(&message); eprintln!("{message}");
+                    lost.send_modify(|n| *n += 1);
+                }
+            }
+        }
+    }
+}
 
 async fn wait_for_outcome(active: &mut tokio::sync::watch::Receiver<Option<Outcome>>) -> anyhow::Result<Outcome> {
     let outcome = *tokio::time::timeout(SIGN_IN_WAIT, active.wait_for(|outcome| outcome.is_some())).await??;

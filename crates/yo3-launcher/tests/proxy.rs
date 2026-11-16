@@ -131,3 +131,60 @@ async fn the_patch_check_gets_the_games_own_index_and_no_server_reaches_the_patc
     drop(p); drop(server);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// A TCP forwarder in front of the server that can freeze the way a stopped or hung server process does: its
+/// connections stay open and new ones are accepted, but no byte gets through either way.
+async fn freezer(to: std::net::SocketAddr) -> (String, std::sync::Arc<std::sync::atomic::AtomicBool>) {
+    use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+    async fn pump(mut from: tokio::net::tcp::OwnedReadHalf, mut to: tokio::net::tcp::OwnedWriteHalf, frozen: Arc<AtomicBool>) {
+        let mut buf = [0; 8192];
+        loop {
+            let n = match from.read(&mut buf).await { Ok(0) | Err(_) => { let _ = to.shutdown().await; return } Ok(n) => n };
+            while frozen.load(Ordering::SeqCst) { tokio::time::sleep(Duration::from_millis(10)).await }
+            if to.write_all(&buf[..n]).await.is_err() { return }
+        }
+    }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap().to_string();
+    let frozen = Arc::new(AtomicBool::new(false));
+    let shared = frozen.clone();
+    tokio::spawn(async move {
+        while let Ok((client, _)) = listener.accept().await {
+            let frozen = shared.clone();
+            tokio::spawn(async move {
+                let Ok(server) = TcpStream::connect(to).await else { return };
+                let ((cr, cw), (sr, sw)) = (client.into_split(), server.into_split());
+                tokio::join!(pump(cr, sw, frozen.clone()), pump(sr, cw, frozen));
+            });
+        }
+    });
+    (address, frozen)
+}
+
+#[tokio::test]
+async fn a_server_that_stops_answering_drops_the_games_connections() {
+    // A hung server process keeps its connections open, so the game waited in its duel for good with no message (live
+    // with SIGSTOP). The launcher checks the server while the game is connected; when it stops answering, the game's
+    // connections close and the game shows its own "disconnected" dialogs and returns to the title.
+    let dir = std::env::temp_dir().join(format!("yo3-proxy-frozen-{}", std::process::id()));
+    let cfg = yo3_server::Config::ephemeral(dir.clone());
+    let cert = cfg.tls.certificate.clone();
+    let key = std::fs::read_to_string(dir.join("test-auth/client.key")).unwrap();
+    let server = yo3_server::start(cfg).await.unwrap();
+    let (address, frozen) = freezer(server.auth).await;
+    let e = Endpoint::new(address, "localhost".into(), &cert).unwrap();
+    let session = e.login(&key).await.unwrap();
+    let watch = yo3_launcher::Liveness { every: Duration::from_millis(100), timeout: Duration::from_millis(300), misses: 3 };
+    let p = Proxy::prepare_watched(e, Ports::default(), watch).await.unwrap();
+    p.activate(session);
+    let mut front = local(&p, p.ports.front).await;
+    front.write_all(&frame(b"\x00\x122010.03.23 skelton")).await.unwrap();
+    assert_eq!(read(&mut front).await.request(), Some(0x219F));
+    assert!(tokio::time::timeout(Duration::from_millis(1200), front.read(&mut [0; 1])).await.is_err(),
+        "a server that answers keeps the game's connection, however quiet it is");
+    frozen.store(true, std::sync::atomic::Ordering::SeqCst);
+    let closed = tokio::time::timeout(Duration::from_secs(5), front.read(&mut [0; 1])).await
+        .expect("the game's connection must close once the server stops answering");
+    assert!(matches!(closed, Ok(0) | Err(_)), "{closed:?}");
+    std::fs::remove_dir_all(dir).ok();
+}
