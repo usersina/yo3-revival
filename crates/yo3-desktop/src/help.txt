@@ -83,7 +83,7 @@ Describe what happened, then drag the saved file into the form. Nothing is sent 
 Personal details are removed from the logs before they are saved.
 
 # community | Talk with other players
-Questions, finding opponents and the game's history: the Yu-Gi-Oh! Online resources Discord, an unofficial community of players of the original games, not run by YO3 Revival.
-> Join the Discord | https://discord.gg/NAm2T87n6q
-Bugs and ideas for YO3 Revival itself go through Report a problem, or the project's page.
+Questions, finding opponents, servers to join and ideas: YO3 Revival's discussions on GitHub.
+> The discussions | https://github.com/usersina/yo3-revival/discussions
+Bugs go through Report a problem, or the project's page.
 > The project's page | https://github.com/usersina/yo3-revival

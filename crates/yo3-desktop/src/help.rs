@@ -114,6 +114,6 @@ mod tests {
         }
         assert_eq!(State::at(Some("nonsense")).current, "start");
         let community = all.iter().find(|t| t.id == "community").expect("a topic for talking with other players");
-        assert!(community.blocks.contains(&Block::Link("Join the Discord".into(), "https://discord.gg/NAm2T87n6q".into())));
+        assert!(community.blocks.contains(&Block::Link("The discussions".into(), "https://github.com/usersina/yo3-revival/discussions".into())));
     }
 }
