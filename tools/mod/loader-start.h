@@ -59,9 +59,10 @@ static int argument(wchar_t *command, size_t capacity, const wchar_t *arg) {
     command[n++] = L'"'; command[n] = 0; return 1;
 }
 /* Direct start can't connect without the helper (#33): YO3 Revival moved, uninstalled or mid-update, its setup gone or
- * changed. The game then runs as itself: ONLINE goes to its gate connection (the mod's login skip, installed here too),
- * which is refused, so the game shows its own "Failed to connect to server." and returns to the title screen. This one
- * line goes with it, once. */
+ * changed. The game then runs as itself, and ONLINE ends in its own dialog: its patch check (InternetOpenUrlA) fails, so
+ * it says "You will need an active Internet connection to play ONLINE."; a gate connection (the mod's login skip,
+ * installed here too) is refused, "Failed to connect to server.". Either way it returns to the title screen, and this
+ * one line goes with it, once. */
 #define LOADER_NOTICE L"Opening the game directly needs repair: open YO3 Revival once, then start the game again."
 static volatile LONG notice_shown;
 static void offline_notice(void) {
@@ -182,7 +183,7 @@ static UINT WINAPI boot_int(LPCSTR s, LPCSTR k, INT d, LPCSTR f) {
 }
 static HINTERNET WINAPI boot_url(HINTERNET h,LPCSTR u,LPCSTR a,DWORD n,DWORD flags,DWORD_PTR c) {
     if (boot_state == 2) return real_url(h,u,a,n,flags,c);
-    if (offline()) { SetLastError(ERROR_INTERNET_CANNOT_CONNECT); return NULL; }
+    if (offline()) { offline_notice(); SetLastError(ERROR_INTERNET_CANNOT_CONNECT); return NULL; }
     if (!ensure_bootstrap()) { SetLastError(ERROR_ACCESS_DENIED); return NULL; }
     HINTERNET (WINAPI *fn)(HINTERNET,LPCSTR,LPCSTR,DWORD,DWORD,DWORD_PTR) = mod_api(YO3_API_URL); return fn(h,u,a,n,flags,c);
 }
