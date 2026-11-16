@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 use anyhow::{Context, ensure};
 use serde::{Deserialize, Serialize};
-use crate::{Backend, Settings, SavedServer, private_write};
+use crate::{Backend, Settings, private_write};
 use crate::multiplayer;
 use yo3_launcher::components::hash;
 const RECEIPT: &str = "yo3-revival-loader.json";
@@ -138,8 +138,6 @@ pub enum State { Disabled, Enabled, NeedsRepair(String), Conflict(String) }
 pub enum Target {
     /// Singleplayer: your own server, started by the helper when it isn't running.
     Local,
-    /// A server saved with an account key (Scripts-style invitations).
-    Saved(SavedServer),
     /// A Multiplayer server: the device's saved sign-in ("Stay signed in"), if it keeps one.
     SignedIn(multiplayer::Server),
 }
@@ -309,34 +307,28 @@ impl Backend {
                 ensure!(!server.key().is_empty(), "The server's identity is missing");
                 serde_json::json!({"server":server.address,"server_name":server.server_name,"identity":server.key(),"vault":multiplayer::vault_account(&server)})
             }
-            target => {
-                let local = matches!(target, Target::Local);
-                let server = match target { Target::Saved(s) => s, _ => self.local_connection(settings, &settings.local_account)? };
+            Target::Local => {
+                let server = self.local_connection(settings, &settings.local_account)?;
                 server.validate()?;
                 let identity = server.identity.clone().unwrap_or(yo3_tunnel::identity_from_pem(server.certificate.as_bytes())?);
-                let mut body = serde_json::json!({"server":server.address,"server_name":server.server_name,"identity":identity,"key":server.key});
-                if local { body["start"] = serde_json::to_value(self.singleplayer_start(settings)?)?; }
-                body
+                serde_json::json!({"server":server.address,"server_name":server.server_name,"identity":identity,"key":server.key,
+                    "start":self.singleplayer_start(settings)?})
             }
         };
         private_write(&file, body.to_string().as_bytes(), true)?;
         Ok(())
     }
-    /// The target of a server saved in settings: a selected remote server, or your own.
-    fn saved_target(settings: &Settings, remote: Option<SavedServer>) -> anyhow::Result<Target> {
-        ensure!(settings.selected_server.is_none() || remote.is_some(), "The saved connection is missing; select a server/account and enable direct start again");
-        Ok(remote.map_or(Target::Local, Target::Saved))
-    }
-    pub fn sync_direct(&self, settings: &Settings, remote: Option<SavedServer>) -> anyhow::Result<()> {
-        self.sync_direct_target(settings, Self::saved_target(settings, remote)?)
+    /// Points direct start at your own server (Singleplayer), when direct start is set up.
+    pub fn sync_direct(&self, settings: &Settings) -> anyhow::Result<()> {
+        self.sync_direct_target(settings, Target::Local)
     }
     pub fn sync_direct_target(&self, settings: &Settings, target: Target) -> anyhow::Result<()> {
         if self.root.join("profiles/loader.ini").is_file() { self.direct_profile(settings, target)?; }
         Ok(())
     }
-    pub fn enable_direct(&self, settings: &Settings, remote: Option<SavedServer>) -> anyhow::Result<()> {
+    pub fn enable_direct(&self, settings: &Settings) -> anyhow::Result<()> {
         ensure!(!self.game_running(), "Close the game before changing direct-start setup");
-        self.set_up_direct(settings, Self::saved_target(settings, remote)?, true)
+        self.set_up_direct(settings, Target::Local, true)
     }
     /// Multiplayer's Allow: direct start in a protected game folder for the server just played, with its saved sign-in.
     pub fn enable_direct_signed_in(&self, settings: &Settings, server: &multiplayer::Server) -> anyhow::Result<()> {
@@ -349,11 +341,8 @@ impl Backend {
     /// Play's automatic setup, just before it starts the game: sets up (or refreshes) opening `yo3.exe` directly with
     /// the connection just used, never asking for permission. A game folder that needs it, another mod's `winmm.dll`
     /// or any other problem leaves direct start as it was and says why.
-    pub fn auto_direct(&self, settings: &Settings, remote: Option<SavedServer>) -> AutoDirect {
-        match Self::saved_target(settings, remote) {
-            Ok(target) => self.auto_direct_target(settings, target),
-            Err(error) => AutoDirect::Skipped(format!("{error:#}")),
-        }
+    pub fn auto_direct(&self, settings: &Settings) -> AutoDirect {
+        self.auto_direct_target(settings, Target::Local)
     }
     pub fn auto_direct_target(&self, settings: &Settings, target: Target) -> AutoDirect {
         let result = match self.direct_state(settings) {

@@ -1,4 +1,4 @@
-use yo3_desktop::{Settings, LauncherDb, SavedServer, preferences::Section};
+use yo3_desktop::{Settings, LauncherDb, preferences::Section};
 fn root() -> std::path::PathBuf { std::env::temp_dir().join(format!("yo3-preferences-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos())) }
 #[test]
 fn saving_one_section_cannot_apply_unrelated_drafts_or_change_the_play_identity() {
@@ -8,19 +8,6 @@ fn saving_one_section_cannot_apply_unrelated_drafts_or_change_the_play_identity(
     assert_eq!(game.game_dir,"new game"); assert_eq!(game.host_address,saved.host_address); assert_eq!(game.listen_port,7443); assert_eq!(game.local_account,"MyPlayer");
     let host=Section::Hosting.merge(&saved,&draft); assert_eq!(host.host_address,draft.host_address); assert_eq!(host.game_dir,saved.game_dir); assert_eq!(host.local_account,saved.local_account);
 
-}
-#[test]
-fn editing_and_removing_a_connection_preserves_other_connections_and_preferences() {
-    let root=root(); let mut db=LauncherDb::open(&root).unwrap();
-    let mut a=SavedServer{id:0,label:"A".into(),address:"a:7443".into(),server_name:"a".into(),certificate:"certificate".into(),identity:None,key:"a".repeat(20)};
-    a.id=db.save_server(&a).unwrap(); let mut b=a.clone(); b.id=0; b.label="B".into(); b.id=db.save_server(&b).unwrap();
-    let settings=Settings{selected_server:Some(a.id),game_dir:"my game".into(),local_account:"MyPlayer".into(),..Default::default()}; db.save_settings(&settings).unwrap();
-    a.label="Renamed".into(); a.key="b".repeat(20); db.save_server(&a).unwrap();
-    assert_eq!(db.servers().unwrap().len(),2); assert_eq!(db.servers().unwrap()[0].label,"Renamed");
-    db.delete_server(b.id).unwrap(); assert_eq!(db.settings().unwrap(),settings);
-    db.delete_server(a.id).unwrap(); let after=db.settings().unwrap(); assert_eq!(after.selected_server,None); assert_eq!(after.game_dir,"my game"); assert_eq!(after.local_account,"MyPlayer");
-    assert!(db.save_server(&a).is_err(),"editing a removed connection must not pretend to succeed");
-    drop(db); std::fs::remove_dir_all(root).unwrap();
 }
 #[test]
 fn local_and_listening_addresses_are_never_offered_as_addresses_to_share() {

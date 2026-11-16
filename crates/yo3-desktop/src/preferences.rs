@@ -47,8 +47,7 @@ impl crate::Backend {
             }
         }
         db.save_settings(&next)?;
-        let remote = next.selected_server.and_then(|id| db.servers().ok()?.into_iter().find(|s| s.id == id));
-        if let Err(error) = self.sync_direct(&next, remote) { self.diagnostics.line(&format!("Direct-launch profile needs refresh: {error:#}")); }
+        if let Err(error) = self.sync_direct(&next) { self.diagnostics.line(&format!("Direct-launch profile needs refresh: {error:#}")); }
         Ok(next)
     }
 }

@@ -182,7 +182,7 @@ impl State {
                 let settings = ctx.settings.clone();
                 self.busy = Some("Checking your game and YO3 Revival's files…");
                 self.note = None;
-                return job(move || backend.verify_setup(&settings, None), Message::Verified);
+                return job(move || backend.verify_setup(&settings), Message::Verified);
             }
             Message::Verified(result) => self.result(ctx, result, "Your game and YO3 Revival's files are fine."),
             Message::DirectChecked(direct) => self.direct = direct,
@@ -209,7 +209,7 @@ impl State {
                 return job(move || {
                     let was_live = backend.live(&settings).is_some();
                     backend.start_server(&settings)?;
-                    let done = backend.enable_direct(&settings, None);
+                    let done = backend.enable_direct(&settings);
                     if !was_live { let _ = backend.stop_server(&settings); }
                     done
                 }, Message::PermissionFixed);
