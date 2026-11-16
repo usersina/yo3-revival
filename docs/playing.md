@@ -13,8 +13,8 @@ game with the same connection DLL and rules engine.
 
 ## Enter the game
 
-Press **Play** in Normal mode or on Advanced → Play. Once the game opens, choose **ONLINE** and select
-your player. The connection app already authenticated you; there is no original username/password form to fill in.
+Press **PLAY** in the launcher, on the Singleplayer or the Multiplayer tab. Once the game opens, choose **ONLINE** and
+select your player. The launcher already signed you in; there is no original username/password form to fill in.
 A new account's first player is in the first slot.
 
 ![Select your player](../screenshots/select-player.png)
@@ -111,7 +111,7 @@ Each account starts with **5000 BOOSTERPASS Points**. Packs cost 100 BP; duels e
 redeemed through **Main Menu → BOOSTERPASS**. Purchased cards stay on the server; a bought structure deck appears
 in Edit Deck's deck list.
 
-A bigger window: the game can be drawn larger and sharp, in its own 4:3 shape (Desktop: [Resolution](launcher.md#resolution);
+A bigger window: the game can be drawn larger and sharp, in its own 4:3 shape (Desktop: [Screen size](launcher.md#screen-size);
 Scripts: [`--resolution`](guide.md#higher-resolution)).
 
 Duels between players have clocks: 3 minutes a turn and 10 minutes a duel (or the host's choice in Create Duel), and

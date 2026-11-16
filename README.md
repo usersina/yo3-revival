@@ -25,15 +25,15 @@ Use **64-bit Windows 10/11**, or **Linux with Wine**. **Windows 7 is not support
 1. [Download the latest release](https://github.com/usersina/yo3-revival/releases/latest). Choose **Desktop** for
    your system and extract **the whole archive**.
 2. Open **`yo3-revival.exe`** on Windows or **`yo3-revival`** on Linux inside `yo3-revival-desktop/`.
-3. Stay in **Normal** mode. **Browse…** to your game folder—the one containing `yo3.exe`—and wait for the automatic check.
-4. Click **Play**. In the game, choose **ONLINE**, then select your player. Your starting deck is ready automatically.
+3. **Setup** finds your game folder (the one containing `yo3.exe`) and checks it. Click **Done**.
+4. Click **PLAY**. In the game, choose **ONLINE**, then select your player. Your starting deck is ready automatically.
 5. Visit **Kaiba Corporation** on the map for your first duel. [Playing guide](docs/playing.md).
 
 **Antivirus flags Revival?** For a verified false positive, allow the affected file or exclude only the extracted
 `yo3-revival-desktop/` folder (after an in-app update, the version's folder under
 `%LOCALAPPDATA%\YO3 Revival\updates\installs\`). [What to check and which files to allow](docs/guide.md#windows-smartscreen-and-antivirus-warnings).
 
-![Normal mode: game folder, automatic checks, Play and logs](screenshots/desktop.png)
+![The launcher: Singleplayer, Multiplayer, PLAY, Settings and Help](screenshots/desktop.png)
 
 [Join a friend](docs/launcher.md#join-another-server) ·
 [Troubleshooting](docs/launcher.md#troubleshooting) ·
@@ -41,12 +41,12 @@ Use **64-bit Windows 10/11**, or **Linux with Wine**. **Windows 7 is not support
 
 ## Host or manage a server
 
-- **Desktop:** Switch to **Advanced → Hosting** to start or stop your server, manage accounts and export private
-  invitations for friends. [Hosting guide](docs/launcher.md#host-friends).
+- **Desktop:** **Host for friends** on the Multiplayer tab runs a server on your PC and gives you an invite link and
+  invite codes to send. [Hosting guide](docs/launcher.md#host-friends).
 - **Scripts edition:** Follow the [terminal hosting setup](docs/scripts.md#host-friends) and
   [server and account commands](docs/guide.md).
 
-Pre-alpha: **Help & support → Report a problem…** includes diagnostics. [Reporting guide](docs/launcher.md#logs-and-support) · [GitHub issues](https://github.com/usersina/yo3-revival/issues/new/choose).
+Pre-alpha: **Report a problem** in the launcher's footer includes your logs. [Reporting guide](docs/launcher.md#logs-and-support) · [GitHub issues](https://github.com/usersina/yo3-revival/issues/new/choose).
 [MIT](LICENSE) · [Project, credits and support](docs/about.md). Unaffiliated with Konami.
 
 ## For developers

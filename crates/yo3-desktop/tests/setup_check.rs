@@ -92,7 +92,7 @@ fn the_installed_game_passes_when_present() {
 #[cfg(not(windows))]
 #[test]
 fn a_missing_wine_prefix_says_so() {
-    let line = yo3_desktop::setup_check::wine_line(Some(Path::new("/nonexistent/prefix")));
+    let line = yo3_desktop::setup_check::wine_line(Some(Path::new("/nonexistent/prefix")), "");
     assert_eq!((line.check, line.state), (Check::Wine, State::Fail));
     assert!(line.sentence.contains("prefix doesn't exist"), "{}", line.sentence);
 }

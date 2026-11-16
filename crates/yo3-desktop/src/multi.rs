@@ -29,6 +29,18 @@ pub enum Field { User, Password, Again, Invite, Code, Address }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tick { SaveUser, Stay, Rules }
 
+/// Settings → Accounts' forms, for one server.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccountForm { Everywhere, Password }
+
+/// Settings → Accounts' fields.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccountField { Password, New, Again }
+
+/// A sign-in Settings → Accounts lists.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Account { pub key: String, pub server: String, pub user: String, pub signed_in: bool, pub stays: bool }
+
 /// A server in the picker: its key and what the row shows.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Choice { pub key: String, pub label: String }
@@ -36,7 +48,8 @@ impl std::fmt::Display for Choice { fn fmt(&self, f: &mut std::fmt::Formatter<'_
 
 #[derive(Clone, Debug)]
 pub enum Message {
-    Loaded(Vec<Server>, Option<String>),
+    /// The servers, why the credential store is unavailable (if it is), and the servers this PC stays signed in to.
+    Loaded(Vec<Server>, Option<String>, Vec<String>),
     Probed(String, Status),
     Select(Choice),
     Edit(Field, String),
@@ -61,6 +74,18 @@ pub enum Message {
     /// Handled by the main screen: close the game Play started.
     CloseGame,
     Remedy(Remedy),
+    /// The trust form's identity, behind Details.
+    ShowIdentity,
+    /// Handled by the window: Host for friends (#37).
+    Host,
+    /// Your hosted server, added to your own list (#37).
+    Hosted(Box<Server>),
+    /// Settings → Accounts: open (or close) a form for a server.
+    AccountForm(String, Option<AccountForm>),
+    AccountEdit(AccountField, String),
+    AccountSignOut(String),
+    AccountSubmit,
+    AccountDone(String, AccountForm, Result<(), Problem>),
 }
 
 #[derive(Default)]
@@ -87,6 +112,16 @@ pub struct State {
     /// Why Stay signed in is off, when the system's credential store isn't available.
     vault_problem: Option<String>,
     loaded: bool,
+    /// The servers this PC stays signed in to (a token in the vault).
+    stays: std::collections::HashSet<String>,
+    show_identity: bool,
+    account: Option<(String, AccountForm)>,
+    account_password: String,
+    account_new: String,
+    account_again: String,
+    account_busy: bool,
+    /// Settings → Accounts' last result: whether it worked, and its sentence.
+    account_note: Option<(bool, String)>,
 }
 
 impl State {
@@ -98,9 +133,16 @@ impl State {
         Task::perform(async move {
             let saved = match store { Some(store) => store.run(|db| db.remote_servers()).await.unwrap_or_default(), None => vec![] };
             let official = mp::official_list(&root).await;
-            let vault = tokio::task::spawn_blocking(|| mp::vault_problem(&mp::SystemVault)).await.unwrap_or(Some("unavailable".into()));
-            (mp::arrange(&official, &saved), vault)
-        }, |(servers, vault)| Message::Loaded(servers, vault))
+            let servers = mp::arrange(&official, &saved);
+            let keys: Vec<Server> = servers.clone();
+            let (vault, stays) = tokio::task::spawn_blocking(move || {
+                let problem = mp::vault_problem(&mp::SystemVault);
+                let stays = if problem.is_none() { keys.iter().filter(|s| matches!(mp::SystemVault.get(&mp::vault_account(s)), Ok(Some(_))))
+                    .map(|s| s.key().to_string()).collect() } else { vec![] };
+                (problem, stays)
+            }).await.unwrap_or((Some("unavailable".into()), vec![]));
+            (servers, vault, stays)
+        }, |(servers, vault, stays)| Message::Loaded(servers, vault, stays))
     }
 
     fn selected(&self) -> Option<&Server> { self.selected.as_ref().and_then(|k| self.servers.iter().find(|s| s.key() == k)) }
@@ -144,8 +186,9 @@ impl State {
 
     pub fn update(&mut self, message: Message, ctx: &Ctx) -> Task<Message> {
         match message {
-            Message::Loaded(servers, vault_problem) => {
+            Message::Loaded(servers, vault_problem, stays) => {
                 self.servers = servers;
+                self.stays = stays.into_iter().collect();
                 self.vault_problem = vault_problem;
                 self.vault = self.vault_problem.is_none().then(|| Arc::new(mp::SystemVault) as Arc<dyn Vault>);
                 self.stay = self.vault.is_some();
@@ -177,8 +220,10 @@ impl State {
                     Ok(signed) => {
                         let Some(server) = self.servers.iter_mut().find(|s| s.key() == key) else { return Task::none() };
                         // The token goes to the system's vault, never to a file; Save User ID keeps only the name.
-                        if let (Some(token), Some(vault)) = (&signed.device_token, &self.vault) && vault.set(&mp::vault_account(server), token).is_err() {
-                            self.note = Some("You're signed in, but this PC couldn't keep the sign-in: you'll be asked again next time.".into());
+                        if let (Some(token), Some(vault)) = (&signed.device_token, &self.vault) {
+                            if vault.set(&mp::vault_account(server), token).is_err() {
+                                self.note = Some("You're signed in, but this PC couldn't keep the sign-in: you'll be asked again next time.".into());
+                            } else { self.stays.insert(key.clone()); }
                         }
                         server.saved_user = (self.save_user || signed.device_token.is_some()).then(|| signed.user.clone());
                         let saved = server.clone();
@@ -190,20 +235,13 @@ impl State {
                         // A revoked stay-signed-in: forget it, back to the form with "Please sign in again".
                         if problem == Problem::SignInAgain && let (Some(server), Some(vault)) = (self.servers.iter().find(|s| s.key() == key), &self.vault) {
                             let _ = vault.delete(&mp::vault_account(server));
+                            self.stays.remove(&key);
                         }
                         self.problem = Some(problem);
                     }
                 }
             }
-            Message::SignOut => {
-                let Some(server) = self.selected().cloned() else { return Task::none() };
-                let signed = self.signed_in.remove(server.key());
-                let token = self.vault.as_ref().and_then(|v| v.get(&mp::vault_account(&server)).ok().flatten());
-                if let Some(vault) = &self.vault { let _ = vault.delete(&mp::vault_account(&server)); }
-                let token = token.or_else(|| signed.and_then(|s| s.device_token));
-                let Some(token) = token else { return Task::none() };
-                return Task::perform(async move { mp::sign_out(&server, &token, false).await }, Message::SignedOut);
-            }
+            Message::SignOut => if let Some(key) = self.selected.clone() { return self.sign_out(&key) },
             Message::SignedOut(result) => if let Err(problem) = result && problem != Problem::Unreachable { self.problem = Some(problem) },
             Message::Register => {
                 let Some(server) = self.selected().cloned() else { return Task::none() };
@@ -246,7 +284,11 @@ impl State {
                     // An invite link carries the identity: no first-use question.
                     return match mp::invite_link(&input) {
                         Ok(server) => self.add(ctx, server),
-                        Err(error) => { self.note = Some(format!("{error:#}")); Task::none() }
+                        Err(error) => {
+                            if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("Invite link refused: {error:#}")) }
+                            self.note = Some("That invite link isn't complete. Ask the host to send it again.".into());
+                            Task::none()
+                        }
                     };
                 }
                 self.busy = true;
@@ -255,7 +297,7 @@ impl State {
             Message::Contacted(result) => {
                 self.busy = false;
                 match result {
-                    Ok(server) => self.form = Form::Trust(Box::new(server)),
+                    Ok(server) => { self.show_identity = false; self.form = Form::Trust(Box::new(server)) }
                     Err(_) => self.problem = Some(Problem::Unreachable),
                 }
             }
@@ -273,7 +315,10 @@ impl State {
                 let key = server.key().to_string();
                 return Task::batch([next, Task::perform(async move { store.run(move |db| db.delete_remote_server(&key)).await.map_err(|e| format!("{e:#}")) }, Message::Saved)]);
             }
-            Message::Saved(result) => if let Err(error) = result { self.note = Some(error) },
+            Message::Saved(result) => if let Err(error) = result {
+                if let Some(backend) = &ctx.backend { backend.diagnostics.line(&format!("Saving a server failed: {error}")) }
+                self.note = Some("YO3 Revival couldn't save this server's details on this PC.".into());
+            },
             Message::Retry => {
                 self.problem = None;
                 if let Some(server) = self.selected().cloned() { return self.probe(&server) }
@@ -282,8 +327,146 @@ impl State {
             Message::Remedy(Remedy::SignInAgain) => { self.problem = None; self.form = Form::SignIn }
             Message::Remedy(Remedy::RemoveServer) => return self.update(Message::Remove, ctx),
             Message::Remedy(Remedy::Update) | Message::Play | Message::CloseGame => {}
+            Message::ShowIdentity => self.show_identity = !self.show_identity,
+            Message::Host => {}
+            Message::Hosted(server) => {
+                if self.servers.iter().any(|s| s.key() == server.key()) {
+                    // Known already (an earlier hosting, or its link): its address follows this hosting's port.
+                    if let Some(known) = self.servers.iter_mut().find(|s| s.key() == server.key()) { known.address = server.address.clone(); known.server_name = server.server_name.clone() }
+                    let saved = self.servers.iter().find(|s| s.key() == server.key()).cloned().unwrap_or(*server);
+                    return Task::batch([self.probe(&saved), self.save(ctx, saved)]);
+                }
+                return self.add(ctx, *server);
+            }
+            Message::AccountForm(key, form) => {
+                self.account = form.map(|f| (key, f));
+                self.account_password.clear(); self.account_new.clear(); self.account_again.clear();
+                self.account_note = None;
+            }
+            Message::AccountEdit(field, value) => {
+                let value: String = value.chars().filter(|c| !c.is_control()).take(200).collect();
+                match field { AccountField::Password => self.account_password = value, AccountField::New => self.account_new = value, AccountField::Again => self.account_again = value }
+            }
+            Message::AccountSignOut(key) => {
+                self.account = None;
+                self.account_note = Some((true, "Signed out on this PC.".into()));
+                return self.sign_out(&key);
+            }
+            Message::AccountSubmit => {
+                let Some((key, form)) = self.account.clone() else { return Task::none() };
+                let Some(server) = self.servers.iter().find(|s| s.key() == key).cloned() else { return Task::none() };
+                let user = self.signed_in.get(&key).map(|s| s.user.clone()).or_else(|| server.saved_user.clone()).unwrap_or_default();
+                let token = self.signed_in.get(&key).and_then(|s| s.device_token.clone())
+                    .or_else(|| self.vault.as_ref().and_then(|v| v.get(&mp::vault_account(&server)).ok().flatten()));
+                let (password, new, again) = (std::mem::take(&mut self.account_password), std::mem::take(&mut self.account_new), std::mem::take(&mut self.account_again));
+                self.account_busy = true;
+                self.account_note = None;
+                return Task::perform(async move {
+                    match form {
+                        AccountForm::Everywhere => mp::sign_out_everywhere(&server, token.as_deref(), &user, &password).await,
+                        AccountForm::Password => mp::change_password(&server, &user, &password, &new, &again).await,
+                    }
+                }, move |result| Message::AccountDone(key.clone(), form, result));
+            }
+            Message::AccountDone(key, form, result) => {
+                self.account_busy = false;
+                match result {
+                    Ok(()) => {
+                        // Either way every device is signed out on the server: this PC forgets its sign-in too.
+                        self.forget(&key);
+                        self.account = None;
+                        self.account_note = Some((true, match form {
+                            AccountForm::Everywhere => "Signed out everywhere: every PC must sign in again.".into(),
+                            AccountForm::Password => "Your password is changed, and every PC is signed out. Sign in again with the new one.".into(),
+                        }));
+                    }
+                    Err(problem) => self.account_note = Some((false, problem.sentence())),
+                }
+            }
         }
         Task::none()
+    }
+
+    /// Forgets this PC's sign-in on server `key` (the session and a kept token).
+    fn forget(&mut self, key: &str) {
+        self.signed_in.remove(key);
+        self.stays.remove(key);
+        if let (Some(server), Some(vault)) = (self.servers.iter().find(|s| s.key() == key), &self.vault) { let _ = vault.delete(&mp::vault_account(server)); }
+        if self.selected.as_deref() == Some(key) { self.form = Form::SignIn }
+    }
+
+    /// Signs this PC out of server `key`: forgets it here, and revokes a kept token on the server.
+    fn sign_out(&mut self, key: &str) -> Task<Message> {
+        let Some(server) = self.servers.iter().find(|s| s.key() == key).cloned() else { return Task::none() };
+        let signed = self.signed_in.get(key).cloned();
+        let token = self.vault.as_ref().and_then(|v| v.get(&mp::vault_account(&server)).ok().flatten()).or_else(|| signed.and_then(|s| s.device_token));
+        self.forget(key);
+        let Some(token) = token else { return Task::none() };
+        Task::perform(async move { mp::sign_out(&server, &token, false).await }, Message::SignedOut)
+    }
+
+    /// The sign-ins on this PC, for Settings → Accounts.
+    pub fn accounts(&self) -> Vec<Account> {
+        self.servers.iter().filter(|s| self.signed_in.contains_key(s.key()) || self.stays.contains(s.key())).map(|s| Account {
+            key: s.key().to_string(), server: s.name.clone(),
+            user: self.signed_in.get(s.key()).map(|x| x.user.clone()).or_else(|| s.saved_user.clone()).unwrap_or_default(),
+            signed_in: self.signed_in.contains_key(s.key()), stays: self.stays.contains(s.key()),
+        }).collect()
+    }
+
+    /// Settings → Accounts: each sign-in on this PC with Sign out, Sign out everywhere and Change password.
+    pub fn accounts_view(&self) -> Element<'_, Message> {
+        let accounts = self.accounts();
+        let mut col = column![].spacing(12);
+        if !self.loaded {
+            col = col.push(text("Open the Multiplayer tab once to see your sign-ins here.").size(15).color(color::INK));
+        } else if accounts.is_empty() {
+            col = col.push(text("You aren't signed in to any server on this PC. Sign in on the Multiplayer tab.").size(15).color(color::INK));
+        }
+        let field = |placeholder: &'static str, value: &str, which: AccountField| text_input(placeholder, value)
+            .on_input(move |v| Message::AccountEdit(which, v)).on_submit(Message::AccountSubmit).secure(true).style(yo3_skin::field).padding(7).size(15);
+        for account in accounts {
+            let state = match (account.signed_in, account.stays) {
+                (_, true) => format!("Signed in as {}, and stays signed in on this PC.", account.user),
+                _ => format!("Signed in as {}.", account.user),
+            };
+            let mut row_col = column![
+                row![text(account.server.clone()).size(16).font(BODY_BOLD).color(color::NAVY), Space::new().width(Fill),
+                    yo3_skin::link("Sign out", Message::AccountSignOut(account.key.clone()), false),
+                    yo3_skin::link("Sign out everywhere", Message::AccountForm(account.key.clone(), Some(AccountForm::Everywhere)), false),
+                    yo3_skin::link("Change password", Message::AccountForm(account.key.clone(), Some(AccountForm::Password)), false)].spacing(14).align_y(Center),
+                text(state).size(14).color(color::INK_SOFT),
+            ].spacing(4);
+            if let Some((key, form)) = &self.account && *key == account.key {
+                let has_token = account.stays || self.signed_in.get(&account.key).is_some_and(|s| s.device_token.is_some());
+                let cancel = yo3_skin::link("Cancel", Message::AccountForm(account.key.clone(), None), false);
+                let busy = self.account_busy;
+                row_col = row_col.push(match form {
+                    AccountForm::Everywhere => {
+                        let mut f = column![text("Every PC signed in to this account is signed out, this one too.").size(14).color(color::INK)].spacing(8);
+                        if !has_token { f = f.push(row![text("Password").size(14).font(BODY_BOLD).color(color::INK).width(130), field("", &self.account_password, AccountField::Password)].align_y(Center)) }
+                        f.push(row![pill("Sign out everywhere", (!busy && (has_token || !self.account_password.is_empty())).then_some(Message::AccountSubmit), Kind::Primary, 200, 34),
+                            Space::new().width(Fill), cancel].align_y(Center))
+                    }
+                    AccountForm::Password => column![
+                        text("A new password signs out every PC, this one too.").size(14).color(color::INK),
+                        row![text("Current password").size(14).font(BODY_BOLD).color(color::INK).width(130), field("", &self.account_password, AccountField::Password)].align_y(Center),
+                        row![text("New password").size(14).font(BODY_BOLD).color(color::INK).width(130), field("8 characters or more", &self.account_new, AccountField::New)].align_y(Center),
+                        row![text("Again").size(14).font(BODY_BOLD).color(color::INK).width(130), field("", &self.account_again, AccountField::Again)].align_y(Center),
+                        row![pill("Change password", (!busy && !self.account_password.is_empty() && !self.account_new.is_empty()).then_some(Message::AccountSubmit), Kind::Primary, 180, 34),
+                            Space::new().width(Fill), cancel].align_y(Center),
+                    ].spacing(8),
+                });
+            }
+            col = col.push(container(row_col).padding([10, 12]).width(Fill).style(|_| container::Style { background: Some(color::ROW.into()),
+                border: iced::Border { color: color::CHROME_DARK, width: 1.0, radius: 3.0.into() }, ..container::Style::default() }));
+        }
+        if let Some((good, note)) = &self.account_note {
+            let shade = if *good { color::GOOD } else { color::BAD };
+            col = col.push(row![container(Space::new().width(9).height(9)).style(move |_| dot(shade)), text(note).size(14).font(BODY_BOLD).color(color::INK).width(Fill)]
+                .spacing(8).align_y(Center));
+        }
+        col.into()
     }
 
     fn add(&mut self, ctx: &Ctx, server: Server) -> Task<Message> {
@@ -457,14 +640,19 @@ impl State {
                 input("play.example.com or yo3revival://…", &self.address, Field::Address, false),
                 row![pill("Add", (!self.busy && !self.address.trim().is_empty()).then_some(Message::Add), Kind::Primary, 110, 34), Space::new().width(Fill), back()].align_y(Center),
             ].spacing(8).into(),
-            Form::Trust(server) => column![
-                text("First connection to this server").size(15).font(BODY_BOLD).color(color::INK),
-                text(format!("{} at {}", server.name, server.address)).size(14).color(color::INK),
-                text("Its identity, which YO3 Revival will check from now on:").size(13).color(color::INK_SOFT),
-                text(fingerprint(server.key())).size(13).font(BODY_BOLD).color(color::INK),
-                text("If the host gave you an identity, check it matches before adding the server.").size(13).color(color::INK_SOFT),
-                row![pill("Add server", Some(Message::Trust), Kind::Primary, 130, 34), Space::new().width(Fill), back()].align_y(Center),
-            ].spacing(8).into(),
+            Form::Trust(server) => {
+                let mut col = column![
+                    text("First connection to this server").size(15).font(BODY_BOLD).color(color::INK),
+                    text(format!("{} at {}", server.name, server.address)).size(14).color(color::INK),
+                    text("YO3 Revival remembers this server and checks it is the same one each time. If the host gave you an invite link, use it instead.")
+                        .size(13).color(color::INK_SOFT),
+                    yo3_skin::link(if self.show_identity { "Hide details" } else { "Details" }, Message::ShowIdentity, false),
+                ].spacing(8);
+                if self.show_identity {
+                    col = col.push(text(format!("Identity: {}", fingerprint(server.key()))).size(13).color(color::INK_SOFT));
+                }
+                col.push(row![pill("Add server", Some(Message::Trust), Kind::Primary, 130, 34), Space::new().width(Fill), back()].align_y(Center)).into()
+            }
             Form::Code(code) => column![
                 text("Save your recovery code").size(15).font(BODY_BOLD).color(color::INK),
                 text("It's the only way back in if you forget your password. It's shown once: write it down or keep it in a password manager.")
@@ -477,7 +665,7 @@ impl State {
     }
 
     fn other_servers(&self) -> Element<'_, Message> {
-        let mut links = row![yo3_skin::link("▸ Other servers", Message::Show(Form::Add), false)].spacing(14);
+        let mut links = row![yo3_skin::link("▸ Other servers", Message::Show(Form::Add), false), yo3_skin::link("Host for friends", Message::Host, false)].spacing(14);
         if self.selected().is_some_and(|s| !s.official) { links = links.push(yo3_skin::link("Remove this server", Message::Remove, false)) }
         links.into()
     }
@@ -502,7 +690,7 @@ mod tests {
         let mut state = State::default();
         let ctx = ctx();
         // Loaded as if the system's store were unavailable (tests never touch it), then given the test's vault.
-        let _ = state.update(Message::Loaded(vec![server("Beta")], Some("no store".to_string())), &ctx);
+        let _ = state.update(Message::Loaded(vec![server("Beta")], Some("no store".to_string()), vec![]), &ctx);
         if vault.is_some() { state.vault_problem = None }
         state.vault = vault.map(|v| v as Arc<dyn Vault>);
         state.stay = state.vault.is_some();

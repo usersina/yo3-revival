@@ -4,9 +4,14 @@
 mod app;
 mod error_presentation;
 mod external;
+mod help;
 mod home;
+mod host;
 mod multi;
+mod settings;
 mod setup;
+#[cfg(test)]
+mod ui_texts;
 
 use std::sync::Mutex;
 use yo3_desktop::{instance, updates};

@@ -121,7 +121,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     #[cfg(not(windows))]
     let mut cmd = {
         log.line("Preparing Wine paths");
-        let mut cmd = tokio::process::Command::new("wine");
+        let mut cmd = tokio::process::Command::new(yo3_launcher::runtime::wine_tool("wine"));
         cmd.arg(injector).arg("--control-stdin").arg(initializing!(windows_path(&game, args.wine_prefix.as_deref()))?).arg(initializing!(windows_path(&dll, args.wine_prefix.as_deref()))?);
         if let Some(prefix) = &args.wine_prefix { cmd.env("WINEPREFIX", prefix); }
         cmd

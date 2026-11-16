@@ -31,13 +31,9 @@ pub(super) fn present(message:&str,hint:Hint,prefixes:&[(String,&str)])->Present
         return Presentation {summary,diagnosis:Some(compact(&evidence,260))}
     }
     let summary=match hint {
-        Hint::Component=>"Required Revival files need repair.".into(),
+        Hint::Component=>"Some of YO3 Revival's files need repair.".into(),
         Hint::GameFolder=>"The game folder needs attention.".into(),
-        Hint::General if first.starts_with("Server discovery failed")=>"Couldn't reach this server.".into(),
-        Hint::General if first.starts_with("Connection check failed")=>"Couldn't verify this connection.".into(),
-        Hint::General if first.starts_with("The game could not start")=>"The game could not start.".into(),
-        Hint::General if first.starts_with("The game stopped unexpectedly")=>"The game stopped unexpectedly.".into(),
-        Hint::General=>compact(first,100),
+        Hint::General=>plain(first),
     };
     let cause=lines.iter().find(|line|line.contains("(os error ")).map(|line| {
         let at=line.rfind("(os error ").unwrap();let end=line[at..].find(')').map_or(line.len(),|n|at+n+1);
@@ -55,6 +51,37 @@ pub(super) fn present(message:&str,hint:Hint,prefixes:&[(String,&str)])->Present
     let title_has_cause=matches!(hint,Hint::General) && lines.len()==1 && summary==first;
     Presentation {diagnosis:(!title_has_cause && !diagnosis.is_empty() && diagnosis!=summary).then_some(diagnosis),summary}
 }
+/// The sentence for an error whose first line is `first` (paths already masked): kept when it is already one short plain
+/// sentence, else the sentence for what it is about, else a general one. The technical text stays in Details.
+pub(super) fn plain(first:&str)->String {
+    if first.chars().count()<=110 && yo3_desktop::words::technical(first).is_none() { return first.into() }
+    let lower=first.to_lowercase();
+    PLAIN.iter().find(|(needles,_)|needles.iter().any(|needle|lower.contains(needle))).map_or(GENERAL,|(_,sentence)|sentence).into()
+}
+/// What an error is about, by words of its first line, and its sentence.
+const PLAIN:&[(&[&str],&str)]=&[
+    (&["server discovery failed"],"Couldn't reach this server."),
+    (&["connection check failed"],"Couldn't verify this connection."),
+    (&["the game could not start"],"The game could not start."),
+    (&["the game stopped unexpectedly"],"The game stopped unexpectedly."),
+    (&["already used by another program","address already in use","os error 98","os error 10048"],"Another program is using your server's port."),
+    (&["rules engine"],"The rules engine couldn't start: YO3 Revival needs repair."),
+    (&["did not become ready","stopped during startup","server startup failed"],"Your server couldn't start."),
+    (&["release manifest","complete application bundle","complete matching bundle","connection files are missing","required connection file","required server file"],
+        "Some of YO3 Revival's files need repair."),
+    (&["launcher's settings","launcher database"],"YO3 Revival couldn't read its settings."),
+    (&["update readiness","installed update"],"The update couldn't finish. This version keeps running."),
+    (&["still stopping"],"Your server is still stopping. Try again in a few seconds."),
+    (&["wine"],"Wine couldn't run the game."),
+    (&["permission denied","access is denied","os error 13","os error 5)"],"YO3 Revival wasn't allowed to change a file."),
+    (&["no space left","os error 28","os error 112"],"The disk is full."),
+    (&["direct-start","direct start","direct-launch"],"Opening the game without the launcher couldn't be set up."),
+    (&["banlist"],"That banlist can't be used."),
+    (&["logs","zip"],"The logs couldn't be saved."),
+    (&["backup"],"The backup couldn't be used."),
+];
+/// For an error nothing more is known about.
+pub(super) const GENERAL:&str="Something went wrong.";
 fn compact(text:&str,limit:usize)->String {
     let text=text.split_whitespace().collect::<Vec<_>>().join(" ");
     if text.chars().count()<=limit{return text}
@@ -103,7 +130,7 @@ mod tests {
     fn component_evidence_keeps_the_filename_and_actual_missing_or_mismatch_reason() {
         let prefixes=vec![("/home/test/Revival".into(),"<app>")];
         let missing=present("Missing or invalid 32-bit injector: Required component not found: /home/test/Revival/yo3-auth-launch.exe. Repair the installation.",Hint::Component,&prefixes);
-        let evidence=missing.diagnosis.unwrap();assert!(missing.summary.contains("Required Revival files"));
+        let evidence=missing.diagnosis.unwrap();assert!(missing.summary.contains("files need repair"));
         assert!(evidence.contains("yo3-auth-launch.exe") && evidence.contains("not found"));assert!(!evidence.contains("/home/test"));
         let mismatch=present("Connection DLL validation failed: /home/test/Revival/yo3-auth.dll: Connection DLL release v0.0.5 does not match application v0.0.6. Repair with files from the same bundle.",Hint::Component,&prefixes);
         let evidence=mismatch.diagnosis.unwrap();assert!(evidence.contains("yo3-auth.dll") && evidence.contains("v0.0.5") && evidence.contains("does not match") && evidence.contains("v0.0.6"));
@@ -119,7 +146,7 @@ mod tests {
         assert!(game.contains(r"package\data002.ypk") && game.contains("could not be read") && game.contains("os error 2"),"archive cause was lost: {game}");
         assert!(game.chars().count()<=260);
         let permission=present("Could not save ZIP: Permission denied (os error 13)",Hint::General,&[]);
-        assert_eq!(permission.summary,"Could not save ZIP: Permission denied (os error 13)");assert!(permission.diagnosis.is_none());
+        assert_eq!(permission.summary,"YO3 Revival wasn't allowed to change a file.");assert!(permission.diagnosis.unwrap().contains("os error 13"));
     }
     #[test]
     fn native_game_exit_beats_the_outer_helper_status_and_survives_long_details() {
@@ -172,6 +199,6 @@ mod tests {
         assert_eq!(relative.summary,"The game could not start.");
         let evidence=relative.diagnosis.unwrap();assert!(evidence.contains("The game could not start") && evidence.contains("<game>/yo3.exe"));
         let substring=present("NotGame/yo3.exe is missing.",Hint::General,&[("Game".into(),"<game>")]);
-        assert_eq!(substring.summary,"NotGame/yo3.exe is missing.");
+        assert_eq!(substring.summary,GENERAL,"a path is never the sentence");assert!(substring.diagnosis.unwrap().contains("NotGame/yo3.exe"));
     }
 }

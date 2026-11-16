@@ -54,6 +54,30 @@ impl Backend {
         self.diagnostics.line(&format!("Restored the server database from the backup taken {}", backup.taken));
         Ok(())
     }
+
+    /// Settings → Singleplayer → Back up: a copy of the server's database now, beside the start-up ones. Works while
+    /// the server runs (SQLite's online backup).
+    pub fn back_up_now(&self, settings: &Settings) -> anyhow::Result<()> {
+        let data = self.data_dir(settings);
+        anyhow::ensure!(data.join("server.db").is_file(), "There is nothing to back up yet: play once first.");
+        yo3_server::store::back_up(&data).context("Could not back up the server's database")?;
+        self.diagnostics.line("Backed up the singleplayer database on request");
+        Ok(())
+    }
+
+    /// Settings → Singleplayer → Reset: your server starts again with new data. The old data folder is kept beside it,
+    /// renamed (its name returned). Your server must be stopped.
+    pub fn reset_singleplayer(&self, settings: &Settings) -> anyhow::Result<PathBuf> {
+        anyhow::ensure!(self.live(settings).is_none(), "Stop your server before resetting its data.");
+        anyhow::ensure!(!self.game_running(), "Close the game before resetting your singleplayer data.");
+        let data = self.data_dir(settings);
+        anyhow::ensure!(data.is_dir(), "There is no singleplayer data to reset.");
+        let kept = data.with_file_name(format!("{}-reset-{}", data.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            chrono::Local::now().format("%Y%m%d-%H%M%S")));
+        std::fs::rename(&data, &kept).context("Could not move the old singleplayer data aside")?;
+        self.diagnostics.line(&format!("Reset singleplayer data; the old data is in {}", kept.display()));
+        Ok(kept)
+    }
 }
 
 /// Whether a failed start of your server looks like a damaged database (offer a backup then).
@@ -136,6 +160,24 @@ mod tests {
         }
         let list = backups_in(&dir);
         assert_eq!(list.iter().map(|b| b.taken.as_str()).collect::<Vec<_>>(), ["2026-11-15 10:15:00", "2026-11-14 09:00:00"]);
+    }
+
+    #[test]
+    fn a_reset_keeps_the_old_data_beside_and_a_backup_needs_a_database() {
+        let root = std::env::temp_dir().join(format!("yo3-reset-{}-{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let backend = Backend::new(root.clone()).unwrap();
+        let settings = Settings::default();
+        assert!(backend.reset_singleplayer(&settings).is_err(), "nothing to reset yet");
+        assert!(backend.back_up_now(&settings).is_err(), "nothing to back up yet");
+        let data = backend.data_dir(&settings);
+        yo3_server::store::initialize(&data).unwrap();
+        backend.back_up_now(&settings).unwrap();
+        assert_eq!(backend.backups(&settings).len(), 1);
+        let kept = backend.reset_singleplayer(&settings).unwrap();
+        assert!(!data.exists() && kept.join("server.db").is_file() && kept.parent() == data.parent());
+        drop(backend);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

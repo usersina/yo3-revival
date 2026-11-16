@@ -29,6 +29,9 @@ pub mod setup_check;
 pub mod singleplayer;
 pub mod shortcut;
 pub mod multiplayer;
+pub mod options;
+pub mod words;
+pub mod hosting;
 mod game_data_platform;
 mod process;
 
@@ -75,13 +78,24 @@ pub struct Settings {
     pub game_fingerprint: String,
     /// Open the game without the launcher (direct start), chosen in setup.
     pub direct_start: bool,
+    /// Linux: the Wine program ("" for `wine` on the PATH), handed to the helper as `YO3_WINE`.
+    pub wine_binary: String,
+    /// Your servers' log level: "" or `options::DETAILED`.
+    pub log_level: String,
+    /// Host for friends (#37): the port friends connect to.
+    pub host_port: u16,
+    /// Host for friends: the address friends dial ("" for this PC's network address).
+    pub host_share: String,
+    /// Host for friends: the server's name in friends' lists ("" for the default).
+    pub host_name: String,
 }
 impl Default for Settings {
     fn default() -> Self {
         Self { advanced_mode: false, server_options: Default::default(), game_dir: yo3_data::default_game_dir().to_string_lossy().into(), wine_prefix: String::new(),
             host_address: "localhost".into(), data_dir: String::new(), bind_address: "0.0.0.0".into(), bind_interface: None, listen_port: 7443,
             player_name: "Duelist".into(), selected_server: None, local_account: String::new(), resolution: String::new(),
-            banlist: String::new(), setup_complete: false, game_fingerprint: String::new(), direct_start: true }
+            banlist: String::new(), setup_complete: false, game_fingerprint: String::new(), direct_start: true,
+            wine_binary: String::new(), log_level: String::new(), host_port: 7443, host_share: String::new(), host_name: String::new() }
     }
 }
 
@@ -205,19 +219,12 @@ impl LauncherDb {
     }
     /// The higher resolution for the next Play, stored in its normal form ("off", "auto" or "WIDTHxHEIGHT").
     pub fn save_resolution(&self, value: &str) -> anyhow::Result<String> {
-        let value = value.parse::<yo3_launcher::resolution::Resolution>().map_err(anyhow::Error::msg)?.to_string();
-        let mut saved = self.settings()?; saved.resolution = value.clone(); self.save_settings(&saved)?; Ok(value)
+        Ok(self.change(&options::Change::Resolution(value.into()))?.resolution)
     }
     /// The banlist for the next server start: "" for the server's default, else a regulation id (1-255) or a name
     /// (letters, digits, spaces and "/.-()"); the server checks it against the game's lists when it starts.
     pub fn save_banlist(&self, value: &str) -> anyhow::Result<String> {
-        let value = value.trim().to_string();
-        let id = value.parse::<u32>().ok();
-        ensure!(value.is_empty() || id.is_some_and(|id| (1..=255).contains(&id))
-            || (id.is_none() && value.len() <= 64 && value.starts_with(|c: char| c.is_ascii_alphanumeric())
-                && value.chars().all(|c| c.is_ascii_alphanumeric() || " /.-()".contains(c))),
-            "Choose one of the game's banlists.");
-        let mut saved = self.settings()?; saved.banlist = value.clone(); self.save_settings(&saved)?; Ok(value)
+        Ok(self.change(&options::Change::Banlist(value.into()))?.banlist)
     }
     /// The Multiplayer servers the player added or played on.
     pub fn remote_servers(&self) -> anyhow::Result<Vec<multiplayer::Server>> {
@@ -289,13 +296,15 @@ pub enum Readiness { Ready, GameProblem(String), ComponentProblem(String), Valid
 pub struct Backend { pub root: PathBuf, pub runtime: Runtime, pub diagnostics: yo3_tunnel::diagnostics::Session,
     server_session: Mutex<Option<String>>, game: Mutex<Option<Child>>, game_errors: Mutex<Option<process::Errors>>, game_ready: Mutex<Option<PathBuf>>, server: Mutex<Option<Child>>,
     /// The write end of the server's standard input: while this launcher lives it stays open (`--owned`).
-    server_owner: Mutex<Option<std::process::ChildStdin>> }
+    server_owner: Mutex<Option<std::process::ChildStdin>>,
+    /// Host for friends' server (#37) and the write end of its standard input (`--owned`), like your own server's.
+    hosted: Mutex<Option<Child>>, hosted_owner: Mutex<Option<std::process::ChildStdin>> }
 impl Backend {
     pub fn new(root: PathBuf) -> anyhow::Result<Arc<Self>> {
         yo3_tunnel::diagnostics::private_dir(&root.join("profiles"))?;
         std::fs::create_dir_all(root.join("logs"))?;
         let diagnostics = yo3_tunnel::diagnostics::Session::start(&root.join("logs/sessions"), "app", None)?;
-        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), game_errors: Mutex::new(None), game_ready: Mutex::new(None), server: Mutex::new(None), server_owner: Mutex::new(None) }))
+        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), game_errors: Mutex::new(None), game_ready: Mutex::new(None), server: Mutex::new(None), server_owner: Mutex::new(None), hosted: Mutex::new(None), hosted_owner: Mutex::new(None) }))
     }
     pub fn data_dir(&self, settings: &Settings) -> PathBuf {
         if settings.data_dir.trim().is_empty() { self.root.join("singleplayer") } else { PathBuf::from(&settings.data_dir) }
@@ -320,6 +329,7 @@ impl Backend {
         self.check_server_resources()?;
         if let Some(live) = self.live(settings) { return api::call(&live, &Op::Status).map_err(anyhow::Error::msg) }
         ensure!(owned.as_mut().is_none_or(|p| p.try_wait().ok().flatten().is_some()), "Server is still starting.");
+        ensure!(settings.host_port != settings.listen_port || self.hosting_live().is_none(), "Stop hosting to play Singleplayer: both use the same port.");
         // No live file for this data folder, yet something answers on the port: another server (a Scripts `run.cmd` or
         // another Revival with its own data) or another program. Starting would only fail to bind, with a vaguer error.
         ensure!(!local_port_answers(settings.listen_port), "TCP port {} is already used by another program, such as a \
@@ -372,7 +382,7 @@ impl Backend {
             }
         }
     }
-    fn server_command(&self, settings: &Settings, bind: std::net::IpAddr) -> anyhow::Result<Command> {
+    pub fn server_command(&self, settings: &Settings, bind: std::net::IpAddr) -> anyhow::Result<Command> {
         // The banlist is a live setting in the server's data (#24, `apply_banlist`), not a flag.
         let extra = server_options::arguments(settings)?;
         let port = settings.listen_port.to_string();
@@ -383,6 +393,8 @@ impl Backend {
             .env("YO3_ENGINE_DIR", &self.runtime.engine).env("YO3_ENGINE", &self.runtime.engine_program).env("NO_COLOR", "1").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         if !settings.server_options.contains_key("http-port") { cmd.args(["--http-port", "0"]); }
         if !settings.server_options.contains_key("no-packet-log") { cmd.arg("--no-packet-log"); }
+        // Settings → Advanced → Detailed logs: the server's own tracing filter, from its next start.
+        if options::detailed(settings) { cmd.env("RUST_LOG", "debug"); }
         cmd.args(extra);
         Ok(cmd)
     }
@@ -603,21 +615,27 @@ impl Backend {
     fn launch(&self, settings: &Settings, profile: PathBuf, mut game: std::sync::MutexGuard<'_, Option<Child>>) -> anyhow::Result<()> {
         ensure!(game.as_mut().is_none_or(|p| p.try_wait().ok().flatten().is_some()), "The game is already running.");
         ensure!(self.runtime.launcher.is_file() && self.runtime.dll.is_file() && self.runtime.injector.is_file(), "Connection files are missing. Extract the complete application bundle.");
-        let mut cmd = Command::new(&self.runtime.launcher);
-        cmd.arg("--control-stdin").arg("--profile").arg(profile).arg("--game-dir").arg(&settings.game_dir).arg("--injector").arg(&self.runtime.injector).arg("--dll").arg(&self.runtime.dll);
-        if !settings.wine_prefix.is_empty() { cmd.arg("--wine-prefix").arg(&settings.wine_prefix); }
-        let resolution = settings.resolution.parse::<yo3_launcher::resolution::Resolution>().map_err(anyhow::Error::msg)?;
-        if resolution != yo3_launcher::resolution::Resolution::Off { cmd.arg("--resolution").arg(resolution.to_string()); }
-        cmd.arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id());
-        cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
         let ready = self.root.join("profiles").join(format!("game-ready-{}-{}.json", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos()));
-        cmd.arg("--ready-file").arg(&ready);
-        hide_console(&mut cmd);
+        let mut cmd = self.launch_command(settings, &profile, &ready)?;
         let (child,errors)=process::spawn(&mut cmd,&self.diagnostics,"Game helper")?;
         *self.game_errors.lock().unwrap()=Some(errors);
         self.clear_game_ready(); *self.game_ready.lock().unwrap() = Some(ready);
         *game = Some(child);
         Ok(())
+    }
+    /// The helper's command for a Play: the settings it reads (screen size, Wine) are taken at each Play.
+    pub fn launch_command(&self, settings: &Settings, profile: &Path, ready: &Path) -> anyhow::Result<Command> {
+        let mut cmd = Command::new(&self.runtime.launcher);
+        cmd.arg("--control-stdin").arg("--profile").arg(profile).arg("--game-dir").arg(&settings.game_dir).arg("--injector").arg(&self.runtime.injector).arg("--dll").arg(&self.runtime.dll);
+        if !settings.wine_prefix.is_empty() { cmd.arg("--wine-prefix").arg(&settings.wine_prefix); }
+        if !settings.wine_binary.is_empty() { cmd.env(yo3_launcher::runtime::WINE_ENV, &settings.wine_binary); }
+        let resolution = settings.resolution.parse::<yo3_launcher::resolution::Resolution>().map_err(anyhow::Error::msg)?;
+        if resolution != yo3_launcher::resolution::Resolution::Off { cmd.arg("--resolution").arg(resolution.to_string()); }
+        cmd.arg("--diagnostics-dir").arg(self.root.join("logs/sessions")).arg("--diagnostic-parent").arg(self.diagnostics.id());
+        cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
+        cmd.arg("--ready-file").arg(ready);
+        hide_console(&mut cmd);
+        Ok(cmd)
     }
     pub fn write_profile(&self, server: &SavedServer) -> anyhow::Result<PathBuf> {
         let stem = format!("connection-{}", server.id);

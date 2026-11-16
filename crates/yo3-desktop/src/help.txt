@@ -1,0 +1,83 @@
+# start | Getting started
+YO3 Revival brings Yu-Gi-Oh! ONLINE 3 back. You need your own copy of the game, version 1.153.
+The first time, Setup finds your game and checks it. After that, press PLAY.
+- Singleplayer: your own server on this computer. Duel the NPCs, open packs and build decks.
+- Multiplayer: sign in to a server with a User ID and password, and play with others.
+In the game, choose ONLINE, then select your player.
+
+# game | Getting the game
+YO3 Revival doesn't download or share the game: you need a complete copy of Yu-Gi-Oh! ONLINE 3, version 1.153.
+Its folder holds the game's program and a folder named package. On Windows it is often under Program Files (x86), in Konami. On Linux it is inside your Wine prefix.
+Keep the game's folder apart from YO3 Revival's own folder. On Windows, a copy of the game in a folder your account can write to (for example on C: in Games) avoids permission questions.
+An archive of the game is listed on a game-preservation site; it isn't ours, and we can't vouch for it:
+> The MyAbandonware listing | https://www.myabandonware.com/game/yu-gi-oh-online-3-duel-accelerator-qy4
+
+# singleplayer | Singleplayer
+PLAY starts your own server, then the game. The line above the button says what is happening.
+Your server stops a short while after the game closes, so a quick relaunch is fast.
+Cards you earn in Singleplayer stay on this computer. Settings, Singleplayer has the banlist, backups and a reset.
+If your data can't be opened, the notice offers a backup from an earlier start.
+
+# multiplayer | Multiplayer and accounts
+Choose a server, then sign in with your User ID and password. Create account makes one; some servers need an invite code.
+Save your recovery code when you make an account: it is the only way back in if you forget your password.
+Stay signed in keeps a sign-in token in your system's password store, never your password.
+Other servers adds a server by its address, or by an invite link a host sent you.
+Settings, Accounts signs you out, signs you out everywhere, or changes your password.
+
+# host | Host for friends
+Host for friends, on the Multiplayer tab, runs a server on this computer that your friends can join.
+- It has its own data, apart from Singleplayer.
+- Copy the invite link and send it to your friends. They paste it under Other servers.
+- Make an invite code for each friend: they need one to create an account.
+- Your server is added to your own list too, so you play on it like everyone else.
+Friends outside your home network need your public address and a forwarded port. See: Friends can't reach your server.
+The server runs while YO3 Revival is open. Stop hosting ends it.
+
+# reach | Friends can't reach your server
+Friends on the same network use the address YO3 Revival shows. Friends elsewhere need more:
+- Your router must forward the port (7443 unless you changed it) to this computer. Look for Port forwarding in your router's settings page.
+- Use your public address as the address to share. A search for "what is my IP" shows it.
+- When Windows asks whether YO3 Revival's server may use the network, allow it for private networks.
+- Some internet providers share one public address between many homes (it is called CGNAT). Forwarding can't work then; ask your provider for a public address, or use a virtual network such as a VPN both of you join.
+Check reachability tests the port from this computer's side.
+
+# settings | Settings
+The gear at the top right opens Settings. Every change applies at the next PLAY, without restarting YO3 Revival.
+- Game: the game folder, Verify and repair, the screen size, opening the game without the launcher, and a desktop shortcut.
+- Accounts: your sign-ins on each server.
+- Singleplayer: the banlist, backups and a reset.
+- Advanced: Wine on Linux, detailed logs, exporting logs, and resetting the game's local data.
+- About: the version, updates, licences and links.
+
+# game-start | The game doesn't start
+- Wait: the first start can take half a minute, more under Wine.
+- Settings, Game, Verify and repair checks the game and YO3 Revival's own files.
+- Close any other copy of the game, then press PLAY again.
+- On Windows, install the DirectX End-User Runtimes (June 2010) and the Visual C++ 2008 runtime if Setup names them.
+If it keeps failing, use Report a problem: your logs are attached for you.
+
+# repair | YO3 Revival needs repair
+Some of YO3 Revival's own files are missing or changed, often after an antivirus scan.
+Download the latest release again and replace YO3 Revival's folder with it. Your settings and Singleplayer data are kept.
+If your antivirus removed a file, restore it from the antivirus's quarantine and allow it.
+
+# port | Another program is using the port
+Your server needs a network port, and another program already has it: often another server, or a second YO3 Revival.
+Close the other program and try again. For Host for friends, Change port picks another one; tell your friends the new invite link.
+
+# wine | Wine on Linux
+YO3 Revival runs the game with Wine. Install Wine from your distribution's packages.
+Settings, Advanced chooses the Wine prefix the game is installed in, and another Wine program if you use one.
+If the game doesn't start, try Verify and repair, then Report a problem.
+
+# signin | Sign-in problems
+- The User ID or password is wrong: both look the same on purpose. After a few wrong tries, wait a little.
+- Forgot password: use your recovery code, or ask the server's moderators for a reset code.
+- Your sign-in ended: someone signed in with your account elsewhere, or a moderator ended it. Sign in again; change your password if it wasn't you.
+- This server's identity changed: don't sign in. Ask the host whether they moved the server.
+
+# report | Reporting a problem
+Report a problem saves your recent logs in a file and opens the project's report form in your browser.
+Describe what happened, then drag the saved file into the form. Nothing is sent until you submit the form yourself.
+Personal details are removed from the logs before they are saved.

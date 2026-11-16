@@ -173,3 +173,41 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 }
+
+/// Report a problem (#31): the session's logs saved for the player, and the report form's link to open.
+pub struct Prepared { pub zip: PathBuf, pub url: String }
+
+impl crate::Backend {
+    /// Saves this session's logs (personal details removed) in `<app data>/reports/` and returns the report form's link,
+    /// filled in with `what` and the error. Nothing is uploaded: the player attaches the file to the form.
+    pub fn report_problem(&self, what: &str, error: &str) -> anyhow::Result<Prepared> {
+        use crate::bug_report::{Context, Draft};
+        let dir = self.root.join("reports");
+        std::fs::create_dir_all(&dir)?;
+        let name = format!("yo3-revival-report-{}.zip", chrono::Local::now().format("%Y%m%d-%H%M%S"));
+        let zip = dir.join(&name);
+        let context = Context { error: error.to_owned(), ..Context::default() };
+        let draft = Draft { description: what.trim().to_owned(), steps: String::new() };
+        let system = crate::system_info::SystemInfo::collect();
+        let markdown = draft.markdown(&context, &system, Some(&name));
+        self.report(false)?.export_bug(&zip, true, &serde_json::to_value(&context)?, &markdown, &system)?;
+        self.diagnostics.line("Saved a problem report's logs");
+        Ok(Prepared { url: draft.url(&context, &system, Some(&name))?, zip })
+    }
+}
+
+#[cfg(test)]
+mod report_problem_tests {
+    #[test]
+    fn a_report_saves_the_logs_and_fills_in_the_form() {
+        let root = std::env::temp_dir().join(format!("yo3-report-{}-{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let backend = crate::Backend::new(root.clone()).unwrap();
+        backend.diagnostics.line("something to report");
+        let prepared = backend.report_problem("The game froze in a duel", "The game stopped unexpectedly (exit status: 1).").unwrap();
+        assert!(prepared.zip.is_file() && prepared.zip.starts_with(root.join("reports")));
+        assert!(prepared.url.starts_with("https://github.com/usersina/yo3-revival/issues/new?") && prepared.url.contains("The+game+froze"), "{}", prepared.url);
+        drop(backend);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}

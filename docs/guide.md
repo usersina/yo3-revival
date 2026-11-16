@@ -244,13 +244,12 @@ There is no stock-client/IP-auth fallback, browser `/join` setup or INI download
 - **Firewall/router/VPN:** manage these outside Revival. Check the address from a friend's PC; a successful host-local
   test does not prove remote reachability.
 
-A CLI profile and its adjacent public certificate pin the host's identity and expected name. A Desktop invitation
-bundles those details with the account key. They are different formats; Desktop can import either, while the play
-script takes a CLI profile. Accounts sharing a router keep separate identities.
+A CLI profile and its adjacent public certificate pin the host's identity and expected name. The Desktop launcher's
+invite links (`yo3revival://server?address=…&identity=…`, from Host for friends) carry the address and the identity for
+password accounts; the play script takes a CLI profile. Accounts sharing a router keep separate identities.
 
-For an existing localhost-only identity, do not delete `data/` and rerun `init-auth`. Desktop can keep the same
-identity while updating its self-managed certificate: stop the server, select that data folder, save a reachable
-sharing address under **Advanced → Hosting → Advanced**, then start hosting. Re-export profiles/invitations as needed.
+For an existing localhost-only identity, do not delete `data/` and rerun `init-auth`: that makes a new key, and every
+player would have to trust the server again.
 [Authentication](authentication.md) explains trust, certificate handling and session lifetimes.
 
 ## Existing data and backups

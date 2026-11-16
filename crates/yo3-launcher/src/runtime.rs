@@ -3,6 +3,22 @@ use std::path::Path;
 use std::process::Stdio;
 use anyhow::Context;
 
+/// The Wine program to use instead of `wine` on the PATH (the launcher's Settings → Advanced): its folder's
+/// `winepath` and the rest come with it.
+pub const WINE_ENV: &str = "YO3_WINE";
+
+/// The Wine tool `name` ("wine", "winepath"…): beside the chosen Wine program `wine`, else on the PATH.
+pub fn wine_tool_of(wine: Option<&std::ffi::OsStr>, name: &str) -> std::ffi::OsString {
+    let Some(wine) = wine.filter(|w| !w.is_empty()) else { return name.into() };
+    let wine = Path::new(wine);
+    if name == "wine" { return wine.as_os_str().to_owned() }
+    let beside = wine.with_file_name(format!("{name}{}", wine.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default()));
+    if beside.is_file() { beside.into_os_string() } else { name.into() }
+}
+
+/// [`wine_tool_of`] for the Wine program this process was given in [`WINE_ENV`].
+pub fn wine_tool(name: &str) -> std::ffi::OsString { wine_tool_of(std::env::var_os(WINE_ENV).as_deref(), name) }
+
 /// Absolute paths passed to the original game's Win32 image loader.
 pub fn native_path(path: &Path) -> std::io::Result<std::path::PathBuf> {
     // The native image loader rejects ordinary files when passed std's Windows verbatim prefix.
@@ -13,7 +29,7 @@ pub fn native_path(path: &Path) -> std::io::Result<std::path::PathBuf> {
 
 #[cfg(not(windows))]
 pub async fn windows_path(path: &Path, prefix: Option<&Path>) -> anyhow::Result<String> {
-    let mut cmd = tokio::process::Command::new("winepath");
+    let mut cmd = tokio::process::Command::new(wine_tool("winepath"));
     cmd.arg("-w").arg(path).stderr(Stdio::null()).kill_on_drop(true);
     if let Some(prefix) = prefix { cmd.env("WINEPREFIX", prefix); }
     let out = tokio::time::timeout(std::time::Duration::from_secs(30), cmd.output()).await
@@ -29,7 +45,7 @@ pub async fn check(game: &Path, injector: &Path, prefix: Option<&Path>) -> anyho
     let mut cmd = { let _ = prefix; let mut cmd = tokio::process::Command::new(injector); cmd.arg("--check-runtime").arg(game); cmd };
     #[cfg(not(windows))]
     let mut cmd = {
-        let mut cmd = tokio::process::Command::new("wine");
+        let mut cmd = tokio::process::Command::new(wine_tool("wine"));
         cmd.arg(injector).arg("--check-runtime").arg(windows_path(&game, prefix).await?);
         if let Some(prefix) = prefix { cmd.env("WINEPREFIX", prefix); }
         cmd
@@ -54,4 +70,21 @@ pub async fn check(game: &Path, injector: &Path, prefix: Option<&Path>) -> anyho
         } else { detail.trim() });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn a_chosen_wine_brings_its_own_tools() {
+        let dir = std::env::temp_dir().join(format!("yo3-wine-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let wine = dir.join("wine");
+        assert_eq!(wine_tool_of(None, "winepath"), "winepath");
+        assert_eq!(wine_tool_of(Some(wine.as_os_str()), "wine"), wine.as_os_str());
+        assert_eq!(wine_tool_of(Some(wine.as_os_str()), "winepath"), "winepath", "none beside it: the PATH's");
+        std::fs::write(dir.join("winepath"), b"").unwrap();
+        assert_eq!(wine_tool_of(Some(wine.as_os_str()), "winepath"), dir.join("winepath").as_os_str());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

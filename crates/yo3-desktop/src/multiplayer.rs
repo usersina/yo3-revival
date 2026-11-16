@@ -315,7 +315,7 @@ impl Problem {
             Problem::IdentityChanged => "This server's identity changed. It may not be the server you added: don't sign in.".into(),
             Problem::Unreachable => "We can't reach the server. Check your internet connection, or try again later.".into(),
             Problem::SignInAgain => "Please sign in again.".into(),
-            Problem::SessionEnded => "Your sign-in ended: a moderator ended it, or this account signed in somewhere else.".into(),
+            Problem::SessionEnded => "Your sign-in ended: the server restarted, a moderator ended it, or this account signed in somewhere else.".into(),
             Problem::InviteNeeded => "This server needs an invite code to make an account.".into(),
             Problem::InviteInvalid => "That invite code doesn't work: it may be used up or expired.".into(),
             Problem::RegistrationClosed => "This server isn't taking new accounts.".into(),
@@ -411,6 +411,22 @@ pub async fn session_alive(server: &Server, session: &yo3_tunnel::Token) -> Resu
 
 pub async fn sign_out(server: &Server, device_token: &str, everywhere: bool) -> Result<(), Problem> {
     ask(server, json!({ "op": "sign_out", "device_token": device_token, "everywhere": everywhere })).await.map(|_| ())
+}
+
+/// Settings → Accounts' Sign out everywhere: every device token of the account is revoked and its game sessions end.
+/// A sign-in that didn't stay has no device token to ask with, so the password signs in once more for one.
+pub async fn sign_out_everywhere(server: &Server, device_token: Option<&str>, user: &str, password: &str) -> Result<(), Problem> {
+    let token = match device_token {
+        Some(token) => token.to_owned(),
+        None => sign_in(server, user, password, true).await?.device_token.ok_or_else(|| Problem::Other("no device token".into()))?,
+    };
+    sign_out(server, &token, true).await
+}
+
+/// Settings → Accounts' Change password: every device is signed out by the server, this one too.
+pub async fn change_password(server: &Server, user: &str, password: &str, new: &str, again: &str) -> Result<(), Problem> {
+    if new != again { return Err(Problem::PasswordsDiffer) }
+    ask(server, json!({ "op": "change_password", "user": user, "password": password, "new_password": new })).await.map(|_| ())
 }
 
 /// A new account: its one-time recovery code.
