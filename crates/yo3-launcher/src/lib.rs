@@ -282,6 +282,27 @@ pub const LOGIN_PATH: &str = "revival/login";
 struct Control { sign_outs: std::sync::Arc<tokio::sync::Notify>, typed: tokio::sync::mpsc::UnboundedSender<direct::Typed>,
     outcome: tokio::sync::watch::Sender<Option<Outcome>>, form_again: std::sync::Arc<std::sync::atomic::AtomicBool>, index: LocalIndex }
 
+/// The most of a server's web page the proxy hands the browser.
+const WEB_PAGE_MAX: u64 = 1 << 20;
+
+/// A server's page behind the game's old website links (`web/`, opened in the player's browser on this loopback
+/// origin), from the server's whole answer: its status and body as HTML in a sandbox, so no script, form or plugin of
+/// a hostile server runs here, next to the launch cookie in the address (security review, #39).
+fn web_page(answer: &[u8]) -> Vec<u8> {
+    let (head, body) = match answer.windows(4).position(|w| w == b"\r\n\r\n") {
+        Some(at) => (&answer[..at], &answer[at + 4..]),
+        None => (answer, &[][..]),
+    };
+    let status = std::str::from_utf8(head).ok().and_then(|h| h.lines().next()).and_then(|l| l.split_whitespace().nth(1))
+        .and_then(|c| c.parse::<u16>().ok()).filter(|c| (200..600).contains(c)).unwrap_or(502);
+    let mut page = format!("HTTP/1.1 {status} {}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\n\
+        Content-Security-Policy: sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:\r\n\
+        X-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        if status < 300 { "OK" } else { "Error" }, body.len()).into_bytes();
+    page.extend_from_slice(body);
+    page
+}
+
 /// The browser/WinINet uses the launch cookie in a local path, never an account credential in a remote URL.
 async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, mut active: tokio::sync::watch::Receiver<Option<Outcome>>, cookie: &Token,
     control: &Control) -> anyhow::Result<()> {
@@ -341,7 +362,14 @@ async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, mut active: tokio
     let ticket = endpoint.ticket(&session, Role::Http).await?;
     let mut remote = endpoint.connect(&ticket, Role::Http, 0).await?;
     remote.write_all(format!("GET /{path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").as_bytes()).await?;
-    tokio::io::copy(&mut remote, &mut local).await?;
+    if path.starts_with("web/") {
+        // A page for the player's browser: whatever the server sent, it is shown sandboxed (#39).
+        let mut answer = vec![];
+        (&mut remote).take(WEB_PAGE_MAX).read_to_end(&mut answer).await?;
+        local.write_all(&web_page(&answer)).await?;
+    } else {
+        tokio::io::copy(&mut remote, &mut local).await?;
+    }
     local.shutdown().await?;
     Ok(())
 }
@@ -365,6 +393,20 @@ mod tests {
         // need an active Internet connection", Windows 11 VM, 2026-11-16). Sign out in the launcher ends that one.
         assert!(Credential::Key("k".into()).owns_session());
         assert!(!Credential::Session([7; 32]).owns_session());
+    }
+
+    #[test]
+    fn a_servers_web_page_reaches_the_browser_sandboxed_with_its_headers_dropped() {
+        // Security review (#39): a hostile server's page can't run script or set cookies on the proxy's origin.
+        let answer = b"HTTP/1.1 200 OK\r\nContent-Type: text/javascript\r\nSet-Cookie: a=b\r\nContent-Length: 30\r\n\r\n<script>alert(1)</script><p>x</p>";
+        let page = String::from_utf8(web_page(answer)).unwrap();
+        let (head, body) = page.split_once("\r\n\r\n").unwrap();
+        assert!(head.starts_with("HTTP/1.1 200 OK\r\n"), "{head}");
+        assert!(head.contains("Content-Type: text/html; charset=utf-8") && !head.contains("javascript") && !head.contains("Set-Cookie"), "{head}");
+        assert!(head.contains("Content-Security-Policy: sandbox; default-src 'none'"), "{head}");
+        assert!(head.contains(&format!("Content-Length: {}", body.len())), "{head}");
+        assert_eq!(body, "<script>alert(1)</script><p>x</p>");
+        assert!(String::from_utf8(web_page(b"garbage")).unwrap().starts_with("HTTP/1.1 502 Error"), "no status line: a bad gateway");
     }
 
     #[tokio::test]
