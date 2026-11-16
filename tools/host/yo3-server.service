@@ -1,0 +1,51 @@
+# The YO3 Revival server as a systemd service (#37). Install: docs/hosting.md, "Set up a fresh server".
+# Paths: the bundle in /opt/yo3-revival, the server file /etc/yo3/server.toml, data /var/lib/yo3, logs /var/log/yo3.
+[Unit]
+Description=YO3 Revival game server
+Documentation=https://github.com/usersina/yo3-revival/blob/main/docs/hosting.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=yo3
+Group=yo3
+WorkingDirectory=/var/lib/yo3
+ExecStart=/opt/yo3-revival/yo3-server --config /etc/yo3/server.toml
+# SIGTERM is a graceful stop: no new logins, duels between players end as draws, a last backup.
+KillSignal=SIGTERM
+TimeoutStopSec=90
+Restart=on-failure
+RestartSec=5
+# Its data and logs, owned by yo3 and private to it.
+StateDirectory=yo3
+StateDirectoryMode=0700
+LogsDirectory=yo3
+LogsDirectoryMode=0700
+UMask=0077
+LimitNOFILE=65536
+# Everything else is read-only or hidden: the server writes only its data and log folders.
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

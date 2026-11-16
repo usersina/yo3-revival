@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Split prebuilt platform files into Desktop and Scripts releases with stable archive roots."""
+"""Split prebuilt platform files into Desktop, Scripts and (Linux) Server releases with stable archive roots."""
 from pathlib import Path
 import os
 import re
@@ -9,12 +9,44 @@ import sys
 import tarfile
 
 REPO = Path(__file__).resolve().parent.parent
+# What only the players' editions carry: the launchers, the connection DLL and its loader, the play scripts.
+PLAYER_FILES = ("yo3-revival", "yo3-revival.exe", "yo3-launcher", "yo3-launcher.exe", "yo3-launcher-windows.exe", "yo3-auth.dll",
+                "yo3-auth-launch.exe", "yo3-bootstrap.dll", "yo3-revival.ico", "yo3-revival.png")
+
+
+def editions(platform):
+    """The editions of a platform: the server bundle is for a Linux server (#37)."""
+    return ("desktop", "scripts", "server") if platform.startswith("linux") else ("desktop", "scripts")
+
+
+def relocated(guide):
+    """A guide from docs/ as an edition's entry README: sibling-document links point into docs/, anchors and URLs stay."""
+    return re.sub(r"\]\((?![a-z]+:|#)([^)]+)\)", r"](docs/\1)", (REPO / "docs" / guide).read_text())
+
+
+def prepare_server(destination):
+    """The server bundle: the server, the rules engine, the systemd units, the monitor and off-machine backup scripts,
+    an example server file and the hosting guide as its README. Nothing a player runs."""
+    for name in PLAYER_FILES:
+        (destination / name).unlink(missing_ok=True)
+    (destination / "README.md").write_text(relocated("hosting.md"))
+    host = REPO / "tools/host"
+    shutil.copyfile(host / "server.toml.example", destination / "server.toml.example")
+    units = destination / "systemd"
+    units.mkdir()
+    for source in sorted(host.iterdir()):
+        if source.name == "server.toml.example":
+            continue
+        shutil.copyfile(source, units / source.name)
+        (units / source.name).chmod(0o755 if source.suffix == ".sh" else 0o644)
 
 
 def prepare(source, destination, edition, windows):
     shutil.copytree(source, destination)
     for name in ("run.sh", "run.cmd"):
         (destination / name).unlink(missing_ok=True)
+    if edition == "server":
+        return prepare_server(destination)
     if edition == "desktop":
         branding = REPO / "crates/yo3-desktop/assets/branding"
         for source_name, bundle_name in (("launcher.ico", "yo3-revival.ico"), ("launcher-window.png", "yo3-revival.png")):
@@ -24,9 +56,7 @@ def prepare(source, destination, edition, windows):
         (destination / name).unlink(missing_ok=True)
     # The Scripts guide lives in docs/ in source, but is also this edition's entry README.
     # Preserve its local anchors and URLs while relocating sibling-document links.
-    readme = (REPO / "docs/scripts.md").read_text()
-    readme = re.sub(r"\]\((?![a-z]+:|#)([^)]+)\)", r"](docs/\1)", readme)
-    (destination / "README.md").write_text(readme)
+    (destination / "README.md").write_text(relocated("scripts.md"))
     if windows:
         scripts = {
             "start-server.cmd": '@echo off\ncd /d "%~dp0"\n"%~dp0yo3-server.exe" --bind 0.0.0.0 --data-dir data --log-dir logs %*\n',
@@ -63,7 +93,7 @@ def main():
     dist = Path(dist).resolve()
     windows = platform.startswith("windows")
     target = "x86_64-pc-windows-gnu" if windows else "x86_64-unknown-linux-gnu"
-    for edition in ("desktop", "scripts"):
+    for edition in editions(platform):
         directory = dist / ".editions" / platform / edition / f"yo3-revival-{edition}"
         if directory.exists():
             shutil.rmtree(directory)

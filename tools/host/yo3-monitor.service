@@ -1,0 +1,17 @@
+# The monitor (#37): checks the server's health, its disk and its backups, and alerts when a problem starts or ends.
+# Run every minute by yo3-monitor.timer. Where alerts go: /etc/yo3/alerts.env (docs/hosting.md, "Monitoring and alerts").
+[Unit]
+Description=YO3 Revival monitor
+Documentation=https://github.com/usersina/yo3-revival/blob/main/docs/hosting.md
+After=yo3-server.service
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+StateDirectory=yo3-monitor
+EnvironmentFile=-/etc/yo3/alerts.env
+ExecStart=/opt/yo3-revival/systemd/yo3-monitor.sh
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true

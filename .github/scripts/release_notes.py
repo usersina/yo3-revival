@@ -51,7 +51,11 @@ def main():
     for edition in ("desktop", "scripts"):
         base = f"https://github.com/usersina/yo3-revival/releases/download/{version}/yo3-revival-{edition}-{version}"
         print(f"| {edition.title()} | [Download ZIP]({base}-windows-x86_64.zip) | [Download tar.gz]({base}-linux-x86_64.tar.gz) |")
-    print("\nThe folders inside are always `yo3-revival-desktop/` and `yo3-revival-scripts/`, without a version number.")
+    server = f"https://github.com/usersina/yo3-revival/releases/download/{version}/yo3-revival-server-{version}-linux-x86_64.tar.gz"
+    if any(f.name.startswith("yo3-revival-server-") for f in files):
+        print(f"| Server (a Linux server or VPS; no game client) | | [Download tar.gz]({server}) |")
+    print("\nThe folders inside are always `yo3-revival-desktop/`, `yo3-revival-scripts/` and `yo3-revival-server/`, without a"
+          " version number. The Server edition's README is the hosting guide.")
     print("\n## Checksums (SHA-256)\n")
     print("Windows may warn about these unsigned applications and the connection DLL; compare the archive's checksum, or build from source.\n")
     print("```")

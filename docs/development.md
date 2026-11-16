@@ -63,6 +63,7 @@ python3 tools/client/test_vclient.py
 python3 tools/monkey/test_duel_report.py
 python3 tools/monkey/test_duel_replay.py
 python3 tools/test_package_editions.py
+python3 tools/test_host_scripts.py
 python3 tools/test_docs_check.py
 tools/docs-check.py
 ```
@@ -379,19 +380,24 @@ included. Game files, account profiles and server keys are not. Desktop 0.0.9 an
 sidecar's files before installing an update, so each bundle keeps a short note at those paths (`engine/duelcore.ts`,
 `engine/package.json`, `engine/node_modules/ocgcore-wasm/package.json`, `engine/node/node[.exe]`); nothing reads them.
 
-Four archives are produced under `dist/`:
+Five archives are produced under `dist/`:
 
 | Edition | Linux                                             | Windows                                          | Stable inner folder    |
 | ------- | ------------------------------------------------- | ------------------------------------------------ | ---------------------- |
 | Desktop | `yo3-revival-desktop-VERSION-linux-x86_64.tar.gz` | `yo3-revival-desktop-VERSION-windows-x86_64.zip` | `yo3-revival-desktop/` |
 | Scripts | `yo3-revival-scripts-VERSION-linux-x86_64.tar.gz` | `yo3-revival-scripts-VERSION-windows-x86_64.zip` | `yo3-revival-scripts/` |
+| Server  | `yo3-revival-server-VERSION-linux-x86_64.tar.gz`  | (none)                                           | `yo3-revival-server/`  |
 
-Both contain the shared `docs/` and root `screenshots/` tree. Desktop opens with the short project README; Scripts
-opens with its terminal guide. Packaging validates copied links and anchors before making each archive:
+All contain the shared `docs/` and root `screenshots/` tree. Desktop opens with the short project README; Scripts
+opens with its terminal guide; Server, for a Linux server or VPS (#37), opens with the [hosting guide](hosting.md) and
+has only the server and the rules engine, plus `server.toml.example` and `systemd/` (the unit, the monitor and the
+off-machine backup, from `tools/host/`; `tools/test_host_scripts.py` fires each alert against a fake webhook).
+Packaging validates copied links and anchors before making each archive:
 
 ```bash
 tools/docs-check.py --root /absolute/path/to/extracted/yo3-revival-desktop
 tools/docs-check.py --root /absolute/path/to/extracted/yo3-revival-scripts
+tools/docs-check.py --root /absolute/path/to/extracted/yo3-revival-server
 ```
 
 Check the real app and scripts from extracted archives, including paths with spaces and non-default ports/data
