@@ -48,6 +48,14 @@ pub enum Op {
     Titles,
     GrantTitle { player: String, title: String },
     GiveBp { who: String, amount: u32 },
+    /// `count` copies (1 when none) of one artwork of a card (#19), by its English name or Konami id; `art` its first
+    /// when none. The player's trunk has them at its next request (Edit Deck, the shop).
+    GiveCards { player: String, card: String, #[serde(default)] art: Option<u32>, #[serde(default)] count: Option<u32> },
+    /// A deck recipe for Load Deck's Official tab (#19), by its title or preset id; `cards` gives the recipe's cards too.
+    /// The game shows it at the player's next login or after their next duel.
+    GiveRecipe { player: String, deck: String, #[serde(default)] cards: bool },
+    /// The deck recipes the host can give: preset id, title and how many cards.
+    Recipes,
     Codes,
     /// A BOOSTERPASS code; a random one when `code` is empty.
     AddCode { #[serde(default)] code: String, bp: u32, #[serde(default)] uses: Option<u32> },
@@ -98,7 +106,7 @@ impl Op {
 
     /// Whether it changes anything (and so writes an audit row).
     pub fn changes(&self) -> bool {
-        !matches!(self, Op::Status | Op::Accounts | Op::Countries | Op::Titles | Op::Codes | Op::Invites | Op::Settings | Op::Audit { .. }
+        !matches!(self, Op::Status | Op::Accounts | Op::Countries | Op::Titles | Op::Recipes | Op::Codes | Op::Invites | Op::Settings | Op::Audit { .. }
             | Op::Account { .. } | Op::Backups | Op::Logs { .. })
     }
 
@@ -119,7 +127,7 @@ impl Op {
             Op::Kick { who } | Op::Ban { who, .. } | Op::Restrict { who, .. } | Op::Lift { who } | Op::Mute { who, .. }
             | Op::Unmute { who } | Op::SignOut { who } | Op::GiveBp { who, .. } | Op::SetCountry { who, .. } | Op::Key { who }
             | Op::AddPlayer { who, .. } => Some(who),
-            Op::GrantTitle { player, .. } => Some(player),
+            Op::GrantTitle { player, .. } | Op::GiveCards { player, .. } | Op::GiveRecipe { player, .. } => Some(player),
             _ => None,
         }
     }
@@ -129,7 +137,7 @@ impl Op {
         match self {
             Op::AddPlayer { who, .. } | Op::Key { who } | Op::SetCountry { who, .. } | Op::GiveBp { who, .. } => who.clone(),
             Op::Rename { old, .. } => old.clone(),
-            Op::GrantTitle { player, .. } => player.clone(),
+            Op::GrantTitle { player, .. } | Op::GiveCards { player, .. } | Op::GiveRecipe { player, .. } => player.clone(),
             Op::AddUser { user, .. } | Op::ResetCode { user } | Op::SetRole { user, .. } => user.clone(),
             Op::Kick { who } | Op::Ban { who, .. } | Op::Restrict { who, .. } | Op::Lift { who } | Op::Mute { who, .. }
             | Op::Unmute { who } | Op::SignOut { who } => who.clone(),
@@ -191,6 +199,8 @@ pub struct Api {
     /// The game, for the country and title tables.
     pub game_dir: PathBuf,
     pub titles: Option<Arc<crate::titles::TitleData>>,
+    /// The cards and recipes the host can give, read from the game at the first gift.
+    gifts: std::sync::OnceLock<Arc<crate::gifts::Gifts>>,
     /// "server" for a running server's operations, "offline" for the CLI's on a stopped server's folder.
     pub origin: &'static str,
     memory: Mutex<Vec<AuditRow>>,
@@ -200,7 +210,7 @@ type Done = Result<(Value, Option<Value>, Option<Value>), String>;
 
 impl Api {
     pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, data_dir: Option<PathBuf>, game_dir: PathBuf, origin: &'static str) -> Api {
-        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, origin, memory: Mutex::default() }
+        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, gifts: Default::default(), origin, memory: Mutex::default() }
     }
 
     /// Runs `op` for `actor` and writes its audit row: its result, or why it was refused.
@@ -264,6 +274,18 @@ impl Api {
         let (Some(hub), true) = (&self.hub, pushed.iter().any(|n| n.eq_ignore_ascii_case(name.trim()))) else { return };
         let info = crate::front::information(&self.settings.now(), self.status.engine_problem.is_some(), crate::logins::now());
         hub.locked().push_everyone(&info);
+    }
+
+    /// Uses `gifts` instead of the game's cards and recipes (tests).
+    pub fn with_gifts(self, gifts: crate::gifts::Gifts) -> Api {
+        let _ = self.gifts.set(Arc::new(gifts));
+        self
+    }
+
+    fn gifts(&self) -> Result<Arc<crate::gifts::Gifts>, String> {
+        if let Some(g) = self.gifts.get() { return Ok(g.clone()) }
+        let data = yo3_data::GameData::load(&self.game_dir).map_err(|e| format!("the game's cards: {e}"))?;
+        Ok(self.gifts.get_or_init(|| Arc::new(crate::gifts::Gifts::from_game(&data))).clone())
     }
 
     fn titles(&self) -> Result<Arc<crate::titles::TitleData>, String> {
@@ -441,6 +463,41 @@ impl Api {
                 let player_id = d.player_id_named(player).ok_or_else(|| format!("no player named {player:?}"))?;
                 d.update_player(player_id, |p| { p.items.insert(id); })?;
                 plain(Ok(format!("{player} has the title {} (they wear it in Avatar Settings)", titles.name(id).unwrap_or(title))))
+            }
+            Op::GiveCards { player, card, art, count } => {
+                let count = count.unwrap_or(1);
+                if !(1..=255).contains(&count) { return Err("give 1 to 255 copies (the trunk counts at most 255 of a card)".into()) }
+                let gifts = self.gifts()?;
+                let card = gifts.card(card, *art)?;
+                let mut d = self.accounts.locked();
+                let player_id = d.player_id_named(player).ok_or_else(|| format!("no player named {player:?}"))?;
+                let before = d.player(player_id).and_then(|p| p.cards.get(&card.row).copied()).unwrap_or(0);
+                d.update_player(player_id, |p| { *p.cards.entry(card.row).or_default() += count; })?;
+                let after = before + count;
+                Ok((json!({ "row": card.row, "count": after, "message": format!("gave {count} × {} (artwork {}, Konami id {}) to {player}: {after} beyond \
+their starting cards now (in their trunk at its next request: Edit Deck, the shop)", card.name, card.art, card.cid) }),
+                    Some(json!({ "card": card.name, "art": card.art, "count": before })), Some(json!({ "card": card.name, "art": card.art, "count": after }))))
+            }
+            Op::GiveRecipe { player, deck, cards } => {
+                let gifts = self.gifts()?;
+                let recipe = gifts.recipe(deck)?;
+                let mut d = self.accounts.locked();
+                let player_id = d.player_id_named(player).ok_or_else(|| format!("no player named {player:?}"))?;
+                let had = d.player(player_id).is_some_and(|p| p.items.contains(&recipe.item));
+                if had && !cards { return Err(format!("{player} already has the recipe {}", recipe.title)) }
+                d.update_player(player_id, |p| {
+                    p.items.insert(recipe.item);
+                    if *cards { for &row in &recipe.cards { *p.cards.entry(row).or_default() += 1; } }
+                })?;
+                let with = if *cards { format!(" and its {} cards", recipe.cards.len()) } else { String::new() };
+                plain(Ok(format!("gave the recipe {} (deck {}){with} to {player} (on Load Deck's Official tab at their next login or after their next duel)",
+                    recipe.title, recipe.id)))
+            }
+            Op::Recipes => {
+                let gifts = self.gifts()?;
+                let rows: Vec<Value> = gifts.recipes.iter().map(|r| json!({ "id": r.id, "title": r.title, "item": r.item, "cards": r.cards.len() })).collect();
+                let lines: Vec<String> = gifts.recipes.iter().map(|r| format!("{}\t{}\t{} cards", r.id, r.title, r.cards.len())).collect();
+                Ok((json!({ "recipes": rows, "message": lines.join("\n") }), None, None))
             }
             Op::GiveBp { who, amount } => {
                 let mut d = self.accounts.locked();

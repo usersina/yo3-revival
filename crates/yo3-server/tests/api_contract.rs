@@ -1,6 +1,6 @@
 //! The admin API (#25): the desktop's and the CLI's operations change the running server itself, never a second copy
 //! of its database; each change is audited; and no player connection reaches it.
-use yo3_server::{Config, start, admin, api::{self, Op}};
+use yo3_server::{Config, start, admin, logins, api::{self, Op}};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn accounts_can_be_created_and_exported_while_the_tls_server_stays_online() {
@@ -76,4 +76,55 @@ async fn accounts_can_be_created_and_exported_while_the_tls_server_stays_online(
     }
     tokio::task::spawn_blocking(move || api::call(&live, &Op::Shutdown)).await.unwrap().unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(3), server.wait()).await.unwrap();
+}
+
+/// Giving cards, an alternate artwork or a deck recipe (#19): stored in the player (CARD_Prop rows in its collection, the
+/// recipe's item among its items), audited with the count before and after, an admin's only.
+#[test]
+fn an_admin_gives_cards_artworks_and_recipes_and_a_moderator_cannot() {
+    use yo3_server::gifts::{Card, Gifts, Recipe};
+    let settings = std::sync::Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());
+    let mut d = yo3_server::accounts::Directory::new(vec![]);
+    d.add_account(&["Yugi".into()]).unwrap();
+    let accounts = std::sync::Arc::new(std::sync::Mutex::new(d));
+    let card = |row, cid, art, name: &str| Card { row, cid, art, name: name.into() };
+    let gifts = Gifts {
+        cards: vec![card(816, 4007, 1, "Blue-Eyes White Dragon"), card(817, 4007, 2, "Blue-Eyes White Dragon")],
+        recipes: vec![Recipe { id: 7, title: "E-HERO EVOLUTION DECK".into(), item: 769, cards: vec![816, 816, 816] }],
+    };
+    let a = api::Api::new(accounts.clone(), settings, None, std::path::PathBuf::new(), "server").with_gifts(gifts);
+    let player = |f: &dyn Fn(&yo3_server::front::Player)| {
+        let d = accounts.lock().unwrap();
+        f(d.player(d.player_id_named("Yugi").unwrap()).unwrap())
+    };
+    let give = |card: &str, art, count| Op::GiveCards { player: "Yugi".into(), card: card.into(), art, count };
+    let admin = Some(logins::Role::Admin);
+    assert_eq!(a.apply_as(&give("blue-eyes white dragon", Some(2), Some(3)), "Pegasus", "panel", admin).unwrap()["count"], 3);
+    assert_eq!(a.apply(&give("4007", Some(2), None), "host").unwrap()["count"], 4, "by Konami id, one copy");
+    player(&|p| assert_eq!(p.cards.get(&817), Some(&4), "art 2's row"));
+    for wrong in [give("Blue-Eyes White Dragon", Some(5), None), give("Nobody", None, None), give("4007", None, Some(0)), give("4007", None, Some(256)),
+        Op::GiveCards { player: "Nobody".into(), card: "4007".into(), art: None, count: None }] {
+        assert!(a.apply(&wrong, "host").is_err(), "{wrong:?}");
+    }
+    let recipe = |cards| Op::GiveRecipe { player: "Yugi".into(), deck: "e-hero evolution deck".into(), cards };
+    a.apply(&recipe(false), "host").unwrap();
+    player(&|p| assert!(p.items.contains(&769) && !p.cards.contains_key(&816), "the recipe alone"));
+    assert!(a.apply(&recipe(false), "host").unwrap_err().contains("already has"));
+    a.apply(&recipe(true), "host").unwrap();
+    player(&|p| assert_eq!(p.cards.get(&816), Some(&3), "with its cards"));
+    assert!(a.apply(&Op::Recipes, "host").unwrap()["message"].as_str().unwrap().contains("E-HERO EVOLUTION DECK"));
+    // A moderator can't give anything, not even to their own players.
+    let moderator = Some(logins::Role::Moderator);
+    for op in [give("4007", None, None), recipe(true)] {
+        assert!(!op.for_moderators());
+        assert!(a.apply_as(&op, "Yugi", "panel", moderator).unwrap_err().starts_with("only an admin"), "{op:?}");
+    }
+    // Audited: who, what, and the count before and after.
+    let rows = a.audit(10).unwrap();
+    let ops: Vec<&str> = rows.iter().map(|r| r.op.as_str()).collect();
+    assert_eq!(ops, ["give-recipe", "give-recipe", "give-cards", "give-cards"], "refusals and reads write no row");
+    assert_eq!((rows[3].actor.as_str(), rows[3].target.as_str(), rows[3].before.clone(), rows[3].after.clone()),
+        ("Pegasus", "Yugi", Some(serde_json::json!({ "card": "Blue-Eyes White Dragon", "art": 2, "count": 0 })),
+            Some(serde_json::json!({ "card": "Blue-Eyes White Dragon", "art": 2, "count": 3 }))));
+    assert_eq!(rows[3].detail.as_ref().unwrap()["card"], "blue-eyes white dragon");
 }

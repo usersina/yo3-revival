@@ -36,6 +36,7 @@ mod log;
 mod net;
 mod web;
 pub mod titles;
+pub mod gifts;
 pub use net::IDLE_TIMEOUT;
 
 use crate::lock::Locked;

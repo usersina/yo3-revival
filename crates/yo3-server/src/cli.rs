@@ -116,6 +116,27 @@ pub enum Admin {
     /// Give BOOSTERPASS Points to the account WHO (a User ID or one of its players' names). Works while the server
     /// runs (on the server's PC).
     GiveBp { who: String, amount: u32 },
+    /// Give PLAYER copies of a card no pack hands out, or another artwork of one (#19): CARD is its English name or Konami
+    /// id, --art N which artwork (its first when omitted), --count N how many (1 when omitted, at most 255). Their trunk
+    /// has them at its next request (Edit Deck, the shop). Works while the server runs.
+    GiveCards {
+        player: String,
+        card: String,
+        #[arg(long)]
+        art: Option<u32>,
+        #[arg(long)]
+        count: Option<u32>,
+    },
+    /// Give PLAYER a deck recipe for Load Deck's Official tab (#19): DECK is its title or preset id (`recipes` lists them);
+    /// --cards gives the recipe's cards too. The game shows it at their next login or after their next duel.
+    GiveRecipe {
+        player: String,
+        deck: String,
+        #[arg(long)]
+        cards: bool,
+    },
+    /// List the deck recipes in the client: preset id, title and how many cards.
+    Recipes,
     /// Make a BOOSTERPASS code: CODE (16 letters and digits, the game's window) gives BP to each account that enters it
     /// in Main Menu -> BOOSTERPASS, once; --uses N stops it after N accounts. Works while the server runs.
     AddCode {
