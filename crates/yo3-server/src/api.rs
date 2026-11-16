@@ -287,6 +287,13 @@ impl Api {
     /// What a changed setting does at once on a running server: the news and the maintenance countdown are pushed to
     /// everyone online (the game takes 0x21FC whenever it arrives: R3, #26).
     fn after_setting(&self, name: &str) {
+        if name.trim().eq_ignore_ascii_case("audit-keep-days") && let Some(dir) = &self.data_dir {
+            match crate::store::prune_audit(dir, self.settings.now().audit_keep_days) {
+                Ok(n) if n > 0 => tracing::info!("audit log: {n} row(s) older than audit-keep-days removed"),
+                Ok(_) => {}
+                Err(e) => tracing::error!("audit log not pruned: {e}"),
+            }
+        }
         let pushed = ["news", "maintenance-at", "maintenance-message"];
         let (Some(hub), true) = (&self.hub, pushed.iter().any(|n| n.eq_ignore_ascii_case(name.trim()))) else { return };
         let info = crate::front::information(&self.settings.now(), self.status.engine_problem.is_some(), crate::logins::now());

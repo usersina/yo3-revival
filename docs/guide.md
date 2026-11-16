@@ -110,6 +110,7 @@ while the server runs or stopped, and each applies at its own moment:
 | `handshake-burst`, `handshakes-per-second` | 120, 10 | At once | New TLS connections one address may open; this PC's are not counted |
 | `request-burst`, `requests-per-second` | 200, 20 | At each new connection | Requests one game connection may make at once, then how fast more are answered. Past the burst requests wait; none is dropped. Real play peaks near 32 a second, briefly |
 | `outbox-max` | 4096 | At each new connection | Messages that may wait for a game that reads nothing; past it, or after a minute with no read, its connection ends |
+| `audit-keep-days` | 365 | At once | Days the audit log keeps a row; older rows are removed at start, daily and when this changes (0: for ever) |
 | `maintenance-at`, `maintenance-message` | (none) | At once | Set by `maintenance` ([moderation](#moderation-and-maintenance)) |
 
 A value that doesn't pass its check is refused and changes nothing. Desktop writes its Banlist choice as

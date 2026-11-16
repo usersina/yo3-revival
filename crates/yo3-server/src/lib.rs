@@ -435,6 +435,28 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         settings.set(name, value).map_err(anyhow::Error::msg)?;
     }
     world.settings = Arc::new(settings);
+    // The audit log keeps `audit-keep-days` (#39): pruned now and then daily.
+    let audit_task = cfg.data_dir.clone().map(|dir| {
+        let settings = world.settings.clone();
+        tokio::spawn(async move {
+            let day = std::time::Duration::from_secs(24 * 3600);
+            let mut every = tokio::time::interval_at(tokio::time::Instant::now() + day, day);
+            loop {
+                every.tick().await;
+                let (dir, days) = (dir.clone(), settings.now().audit_keep_days);
+                match tokio::task::spawn_blocking(move || store::prune_audit(&dir, days)).await {
+                    Ok(Ok(n)) if n > 0 => tracing::info!("audit log: {n} row(s) older than {days} days removed (audit-keep-days)"),
+                    Ok(Ok(_)) => {}
+                    Ok(Err(e)) => tracing::error!("audit log not pruned: {e}"),
+                    Err(e) => tracing::error!("audit log not pruned: {e}"),
+                }
+            }
+        })
+    });
+    if let Some(dir) = &cfg.data_dir {
+        let n = store::prune_audit(dir, world.settings.now().audit_keep_days)?;
+        if n > 0 { tracing::info!("audit log: {n} row(s) older than audit-keep-days removed") }
+    }
     tracing::info!("players log in with regulation {}", world.settings.now().login_regulation);
     world.engine_problem = cfg.engine_problem.clone().or_else(|| engine::problem(world.engine_dir.as_deref(), &engine::program(world.engine_dir.as_deref().unwrap_or(std::path::Path::new("engine")))));
     if cfg.duel_check {
@@ -546,5 +568,6 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     tracing::info!("authenticated TLS {} local management/assets HTTP {}; packets -> {}", auth_addr, http_addr, packets.path().display());
     let mut tasks = vec![auth_task, http_task, clock_task, identity_task, maintenance_task];
     tasks.extend(backup_task);
+    tasks.extend(audit_task);
     Ok(Running { auth: auth_addr, http: http_addr, tasks, shutdown, hub: running_hub, data_dir: cfg.data_dir.clone() })
 }

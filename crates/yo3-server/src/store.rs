@@ -273,6 +273,14 @@ pub fn audit_rows(dir: &Path, limit: u32) -> io::Result<Vec<AuditRow>> {
         .map_err(sql)?.collect::<Result<_, _>>().map_err(sql)
 }
 
+/// Drops `dir`'s audit rows older than `days` days (`audit-keep-days`; 0 keeps them all). How many went.
+pub fn prune_audit(dir: &Path, days: u32) -> io::Result<usize> {
+    if days == 0 || !dir.join("server.db").is_file() { return Ok(0) }
+    let cutoff = (chrono::Utc::now() - chrono::Duration::days(i64::from(days))).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    // Rows are written as RFC 3339 UTC to the second ("…Z"), so they sort as text.
+    hold(dir)?.execute("DELETE FROM audit WHERE at < ?1", [cutoff]).map_err(sql)
+}
+
 /// Takes out of `dir`'s audit log every row about one of `names` (a deleted account's User ID and players, compared
 /// ignoring case): its target, a name in a list target, or a new name in its details. How many went.
 pub fn forget_in_audit(dir: &Path, names: &[String]) -> io::Result<usize> {

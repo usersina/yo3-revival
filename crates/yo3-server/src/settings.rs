@@ -108,6 +108,10 @@ pub const REGISTRY: &[Setting] = &[
         kind: Kind::Number { min: 1, max: 100_000 }, applies: Applies::NextLogin, default: || json!(20) },
     Setting { name: "outbox-max", help: "Messages that may wait for a game that reads nothing before its connection ends",
         kind: Kind::Number { min: 64, max: 1_000_000 }, applies: Applies::NextLogin, default: || json!(4096) },
+    // A year: the log names players and moderation reasons, so it isn't kept for ever by default (#39), and a year of
+    // moderation history still shows a repeat offender. 0 keeps every row.
+    Setting { name: "audit-keep-days", help: "Days the admin audit log keeps a row, pruned at start, daily and when this changes (0: for ever)",
+        kind: Kind::Number { min: 0, max: 36_500 }, applies: Applies::AtOnce, default: || json!(365) },
     Setting { name: "handshake-burst", help: "TLS connections one address may open at once before it waits (this PC's are not counted)",
         kind: Kind::Number { min: 1, max: 10_000 }, applies: Applies::AtOnce, default: || json!(120) },
     Setting { name: "handshakes-per-second", help: "How fast an address gets its TLS connections back",
@@ -149,6 +153,8 @@ pub struct Settings {
     pub handshakes_per_second: u32,
     /// Each game connection's request pace and outbox (#39).
     pub pace: crate::net::Pace,
+    /// Days the audit log keeps a row (0: for ever).
+    pub audit_keep_days: u32,
     /// Every setting's value by name, defaults included.
     values: Map<String, Json>,
 }
@@ -186,6 +192,7 @@ impl Settings {
             max_connections: number("max-connections") as usize,
             handshake_burst: number("handshake-burst"),
             handshakes_per_second: number("handshakes-per-second"),
+            audit_keep_days: number("audit-keep-days"),
             pace: crate::net::Pace { burst: number("request-burst"), per_second: number("requests-per-second"), outbox_max: number("outbox-max") as usize },
             limits: Limits { burst: number("address-burst"), refill_seconds: number("address-refill-seconds"), max_backoff_seconds: number("backoff-max-seconds") },
             values,
