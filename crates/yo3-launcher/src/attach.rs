@@ -78,7 +78,7 @@ pub async fn serve(request: Attachment, endpoint: Endpoint, key: &crate::Credent
         while owner.alive()? { tokio::time::sleep(Duration::from_millis(250)).await; }
         Ok(())
     }.await;
-    let _ = endpoint.logout(&session).await;
+    if key.owns_session() { let _ = endpoint.logout(&session).await; }
     result
 }
 #[cfg(not(windows))]

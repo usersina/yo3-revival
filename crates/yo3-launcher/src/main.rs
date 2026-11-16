@@ -112,7 +112,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     if args.proxy_only {
         let session = key.sign_in(&endpoint).await?; proxy.activate(session);
         let result = async { write_ready(&args, &proxy)?; (&mut interrupt).await?; Ok(()) }.await;
-        let _ = endpoint.logout(&session).await; return result;
+        if key.owns_session() { let _ = endpoint.logout(&session).await; } return result;
     }
     let game = yo3_launcher::runtime::native_path(&game.unwrap())?;
     let injector = yo3_launcher::runtime::native_path(&injector)?; let dll = yo3_launcher::runtime::native_path(&dll)?;
@@ -184,7 +184,7 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
         if let Some(status) = status { ensure!(status.success(), "Game or injector exited with an error ({status})"); }
         Ok(())
     }.await;
-    let _ = endpoint.logout(&session).await;
+    if key.owns_session() { let _ = endpoint.logout(&session).await; }
     if child.try_wait()?.is_none() { let _ = child.kill().await; }
     let _ = tokio::time::timeout(std::time::Duration::from_secs(1), output).await;
     let detail = tokio::time::timeout(std::time::Duration::from_secs(1), error_output).await.ok().and_then(Result::ok).unwrap_or_default();

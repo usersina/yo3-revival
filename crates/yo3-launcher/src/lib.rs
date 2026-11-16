@@ -37,6 +37,9 @@ impl Credential {
     pub async fn sign_in(&self, endpoint: &Endpoint) -> anyhow::Result<yo3_tunnel::Token> {
         match self { Credential::Key(key) => endpoint.login(key).await, Credential::Session(session) => Ok(*session) }
     }
+    /// Whether the helper ends the session when the game exits: only one it signed in itself (a key). A session the
+    /// launcher handed over is the launcher's own sign-in, reused by its next Play; its Sign out ends it.
+    pub fn owns_session(&self) -> bool { matches!(self, Credential::Key(_)) }
     /// The secret, for redacting logs.
     pub fn secret(&self) -> String {
         match self { Credential::Key(key) => key.clone(), Credential::Session(session) => hex(session) }
@@ -217,6 +220,15 @@ mod tests {
         assert_eq!(tokio::time::timeout(Duration::from_secs(1), task).await.unwrap().unwrap(), DesktopStop::Asked);
     }
     use tokio::io::AsyncWriteExt;
+
+    #[test]
+    fn the_helper_signs_out_only_a_session_it_signed_in_itself() {
+        // A key profile signs in for this game alone; a password account's session is the launcher's sign-in, which
+        // its next Play reuses (the second Play after closing the game found it signed out: the game said "You will
+        // need an active Internet connection", Windows 11 VM, 2026-11-16). Sign out in the launcher ends that one.
+        assert!(Credential::Key("k".into()).owns_session());
+        assert!(!Credential::Session([7; 32]).owns_session());
+    }
 
     #[tokio::test]
     async fn a_local_socket_without_this_launchs_cookie_is_refused() {
