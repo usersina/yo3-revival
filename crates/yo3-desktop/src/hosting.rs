@@ -12,8 +12,9 @@ use crate::{Backend, Settings, multiplayer::{self, Server}};
 
 /// The hosted server's name when the host gave none.
 pub const DEFAULT_NAME: &str = "Friends' server";
-/// Where the admin panel (#36) is served on the server's loopback port.
-pub const PANEL_PATH: &str = "/admin/";
+/// Where the admin panel (#36) is served on the server's loopback port: its sign-in page, which answers before any
+/// sign-in (the panel's other pages redirect there).
+pub fn panel_path() -> String { format!("{}/login", yo3_server::panel::PREFIX) }
 
 /// A hosted server, as friends and the host see it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -162,11 +163,12 @@ impl Backend {
         let live = self.hosting_live()?;
         let mut stream = std::net::TcpStream::connect_timeout(&([127, 0, 0, 1], live.port).into(), std::time::Duration::from_secs(1)).ok()?;
         stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).ok()?;
-        write!(stream, "GET {PANEL_PATH} HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n").ok()?;
+        let path = panel_path();
+        write!(stream, "GET {path} HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n").ok()?;
         let mut head = [0u8; 64];
         let n = stream.read(&mut head).ok()?;
         String::from_utf8_lossy(&head[..n]).split_whitespace().nth(1).filter(|code| *code == "200")
-            .map(|_| format!("http://127.0.0.1:{}{PANEL_PATH}", live.port))
+            .map(|_| format!("http://127.0.0.1:{}{path}", live.port))
     }
 }
 
