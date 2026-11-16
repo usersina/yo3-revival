@@ -129,11 +129,11 @@ fn write_access(dir: &Path) -> Line {
 
 /// Wine itself and the prefix (Linux only).
 #[cfg(not(windows))]
-pub fn wine_line(prefix: Option<&Path>) -> Line {
+pub fn wine_line(prefix: Option<&Path>, wine: &str) -> Line {
     if let Some(prefix) = prefix && !prefix.join("drive_c").is_dir() {
         return Line::new(Check::Wine, State::Fail, "This Wine prefix doesn't exist. Choose the prefix the game is installed in under More options.", Some(prefix.display().to_string()));
     }
-    let mut cmd = std::process::Command::new("wine");
+    let mut cmd = std::process::Command::new(yo3_launcher::runtime::wine_tool_of(Some(wine.as_ref()), "wine"));
     cmd.arg("--version").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
     match run_bounded(&mut cmd, Duration::from_secs(15)) {
         Ok(version) => Line { details: Some(version.trim().to_owned()), ..Line::pass(Check::Wine) },
@@ -176,7 +176,7 @@ impl Backend {
         let game_ok = lines.iter().all(|l| l.state != State::Fail);
         #[cfg(not(windows))]
         let wine_ok = {
-            let line = wine_line((!settings.wine_prefix.is_empty()).then(|| Path::new(&settings.wine_prefix)));
+            let line = wine_line((!settings.wine_prefix.is_empty()).then(|| Path::new(&settings.wine_prefix)), &settings.wine_binary);
             let ok = line.state == State::Pass;
             lines.insert(lines.len().min(2), line);
             ok

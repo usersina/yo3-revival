@@ -413,6 +413,22 @@ pub async fn sign_out(server: &Server, device_token: &str, everywhere: bool) -> 
     ask(server, json!({ "op": "sign_out", "device_token": device_token, "everywhere": everywhere })).await.map(|_| ())
 }
 
+/// Settings → Accounts' Sign out everywhere: every device token of the account is revoked and its game sessions end.
+/// A sign-in that didn't stay has no device token to ask with, so the password signs in once more for one.
+pub async fn sign_out_everywhere(server: &Server, device_token: Option<&str>, user: &str, password: &str) -> Result<(), Problem> {
+    let token = match device_token {
+        Some(token) => token.to_owned(),
+        None => sign_in(server, user, password, true).await?.device_token.ok_or_else(|| Problem::Other("no device token".into()))?,
+    };
+    sign_out(server, &token, true).await
+}
+
+/// Settings → Accounts' Change password: every device is signed out by the server, this one too.
+pub async fn change_password(server: &Server, user: &str, password: &str, new: &str, again: &str) -> Result<(), Problem> {
+    if new != again { return Err(Problem::PasswordsDiffer) }
+    ask(server, json!({ "op": "change_password", "user": user, "password": password, "new_password": new })).await.map(|_| ())
+}
+
 /// A new account: its one-time recovery code.
 pub async fn register(server: &Server, user: &str, password: &str, again: &str, invite: &str, rules: bool) -> Result<String, Problem> {
     if password != again { return Err(Problem::PasswordsDiffer) }

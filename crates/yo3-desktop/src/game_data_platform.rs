@@ -28,7 +28,7 @@ fn read_path(bytes: &[u8]) -> anyhow::Result<String> {
 
 #[cfg(not(windows))]
 fn wine_command(settings: &Settings, name: &str) -> tokio::process::Command {
-    let mut command=tokio::process::Command::new(name);
+    let mut command=tokio::process::Command::new(yo3_launcher::runtime::wine_tool_of(Some(settings.wine_binary.as_ref()),name));
     if !settings.wine_prefix.is_empty() {command.env("WINEPREFIX",&settings.wine_prefix);}
     command.env("WINEDEBUG","-all");command
 }

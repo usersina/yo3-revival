@@ -35,6 +35,7 @@ pub enum Message {
     Open(&'static str),
     /// Handled by the window: explain the repair.
     Repair,
+    ErrorDetails,
 }
 
 pub struct State {
@@ -51,6 +52,8 @@ pub struct State {
     picking: bool,
     saving: bool,
     error: Option<String>,
+    error_details: Option<String>,
+    error_open: bool,
     /// Opened from the main screen, so Cancel goes back to it.
     cancellable: bool,
 }
@@ -63,7 +66,7 @@ impl State {
         Self { step, candidates: Vec::new(), path: ctx.settings.game_dir.clone(), prefix: ctx.settings.wine_prefix.clone(),
             more_options: !ctx.settings.wine_prefix.is_empty(), revision: 0, lines: None, details: None,
             direct: ctx.settings.direct_start || !ctx.settings.setup_complete, shortcut: !ctx.settings.setup_complete,
-            picking: false, saving: false, error: None, cancellable }
+            picking: false, saving: false, error: None, error_details: None, error_open: false, cancellable }
     }
 
     /// The first tasks: find installed copies, and check the folder when the wizard opens at the Game step.
@@ -119,7 +122,15 @@ impl State {
             Message::Direct(on) => self.direct = on,
             Message::Shortcut(on) => self.shortcut = on,
             Message::Done => return self.finish(ctx),
-            Message::Saved(Err(error)) => { self.saving = false; self.error = Some(error) }
+            Message::Saved(Err(error)) => {
+                self.saving = false;
+                if let Some(backend) = &ctx.backend { backend.diagnostics.line(&error) }
+                let shown = crate::error_presentation::present(&error, crate::error_presentation::Hint::General, &crate::app::masks(ctx));
+                self.error = Some(shown.summary);
+                self.error_details = shown.diagnosis;
+                self.error_open = false;
+            }
+            Message::ErrorDetails => self.error_open = !self.error_open,
             Message::Saved(Ok(_)) | Message::Cancel | Message::Open(_) | Message::Repair => {}
         }
         Task::none()
@@ -183,7 +194,7 @@ impl State {
                 // A shortcut that couldn't be made doesn't undo setup; the main screen says so.
                 let note = if shortcut {
                     std::env::current_exe().map_err(anyhow::Error::from).and_then(|exe| yo3_desktop::shortcut::create(&exe)).err()
-                        .map(|e| format!("The desktop shortcut couldn't be made: {e:#}"))
+                        .map(|e| format!("The desktop shortcut couldn't be made: {e:#}")) // → Details
                 } else { None };
                 Ok((Box::new(settings), note))
             }).await.map_err(|e| format!("{e:#}"))
@@ -255,7 +266,7 @@ impl State {
             if self.more_options {
                 column = column.push(row![
                     text("Wine prefix").size(14).font(BODY_BOLD).color(color::INK).width(90),
-                    text_input("Default (~/.wine)", &self.prefix).on_input(Message::Prefix).style(yo3_skin::field).padding(7).size(14),
+                    text_input("Wine's default prefix", &self.prefix).on_input(Message::Prefix).style(yo3_skin::field).padding(7).size(14),
                     pill("Browse…", (!self.picking).then_some(Message::Browse { prefix: true }), Kind::Primary, 110, 34),
                 ].spacing(10).align_y(Center));
             }
@@ -303,7 +314,13 @@ impl State {
             text(explain).size(13).color(color::INK_SOFT),
             checkbox(self.shortcut).label("Put a YO3 Revival shortcut on the desktop").on_toggle(Message::Shortcut).style(yo3_skin::tick).size(16).text_size(15),
         ].spacing(10).padding([10, 0]);
-        if let Some(error) = &self.error { list = list.push(text(error).size(14).font(BODY_BOLD).color(color::BAD)) }
+        if let Some(error) = &self.error {
+            list = list.push(text(error).size(14).font(BODY_BOLD).color(color::BAD));
+            if let Some(details) = &self.error_details {
+                list = list.push(yo3_skin::link(if self.error_open { "Hide details" } else { "Details" }, Message::ErrorDetails, false));
+                if self.error_open { list = list.push(text(details).size(13).color(color::INK_SOFT)) }
+            }
+        }
         list.into()
     }
 }
@@ -319,7 +336,7 @@ mod tests {
 
     fn state() -> State {
         State { step: Step::Game, candidates: vec![], path: "/games/yo3".into(), prefix: String::new(), more_options: false, revision: 3,
-            lines: None, details: None, direct: true, shortcut: true, picking: false, saving: false, error: None, cancellable: false }
+            lines: None, details: None, direct: true, shortcut: true, picking: false, saving: false, error: None, error_details: None, error_open: false, cancellable: false }
     }
     fn line(check: Check, state: Outcome) -> Line { Line { check, state, sentence: String::new(), details: None } }
 

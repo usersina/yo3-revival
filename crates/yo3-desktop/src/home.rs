@@ -2,7 +2,7 @@
 //! always says what happens next (#29). Your own server starts with Play and stops a grace period after the game
 //! exits; a game opened without the launcher counts as playing.
 use std::time::{Duration, Instant};
-use iced::widget::{Space, column, container, pick_list, row, text};
+use iced::widget::{Space, column, container, row, text};
 use iced::{Alignment::Center, Element, Length::Fill, Subscription, Task};
 use yo3_desktop::Readiness;
 use yo3_desktop::singleplayer::{self, Backup};
@@ -96,9 +96,16 @@ impl Play {
     pub fn cancellable(self) -> bool { matches!(self, Play::StartingServer | Play::StartingGame | Play::Waiting) }
 }
 
-/// One plain sentence, with the technical text behind Details and at most one action.
+/// One plain sentence, with the technical text behind Details and one action: its own (Retry, Fix…) or Report.
 #[derive(Clone, Debug)]
-pub struct Notice { pub summary: String, pub details: Option<String>, pub open: bool, pub action: Option<(&'static str, Message)> }
+pub struct Notice { pub summary: String, pub details: Option<String>, pub open: bool, pub action: Option<(&'static str, Message)>,
+    /// Not a problem (a backup put back): no Report, no Help.
+    pub good: bool }
+
+impl Notice {
+    pub fn good(summary: impl Into<String>) -> Self { Self { summary: summary.into(), details: None, open: false, action: None, good: true } }
+    pub fn problem(summary: impl Into<String>, action: Option<(&'static str, Message)>) -> Self { Self { summary: summary.into(), details: None, open: false, action, good: false } }
+}
 
 /// A banlist choice: the value saved for the server, the name shown.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -126,8 +133,6 @@ pub enum Message {
     /// The grace period after the game exited is over (its generation).
     GraceOver(u64),
     ServerStopped(Result<(), String>),
-    Banlist(Banlist),
-    BanlistSaved(Result<String, String>),
     Banlists(Vec<(u32, String)>),
     Tick,
     Polled(Result<Live, String>),
@@ -147,6 +152,14 @@ pub enum Message {
     Multi(multi::Message),
     /// Handled by the window: the releases page, for a server that needs a newer launcher.
     Releases,
+    /// Handled by the window: Settings at a section.
+    Settings(crate::settings::Section),
+    /// Handled by the window: Report a problem with this error's text.
+    Report(String),
+    /// Handled by the window: Help at a topic.
+    Help(&'static str),
+    /// Handled by the window.
+    Copy(String),
 }
 
 #[derive(Default)]
@@ -164,6 +177,8 @@ pub struct State {
     waiting_since: Option<Instant>,
     /// The Multiplayer tab (#30).
     pub multi: multi::State,
+    /// The last Play couldn't set up direct start: the game folder needs permission once (Settings → Game).
+    pub direct_permission: bool,
 }
 
 impl State {
@@ -262,9 +277,10 @@ impl State {
                         self.game.ready = false;
                         // Waiting for the window keeps the Play's start time, for Cancel.
                         self.waiting_since = since;
+                        self.direct_permission = needs_permission;
                         if needs_permission {
-                            self.notice = Some(Notice { summary: "Opening the game without the launcher needs permission once, because the game folder is protected.".into(),
-                                details: None, open: false, action: Some(("Allow", Message::AllowDirect)) });
+                            self.notice = Some(Notice::problem("Opening the game without the launcher needs permission once, because the game folder is protected.",
+                                Some(("Allow", Message::AllowDirect))));
                         }
                     }
                     Err(error) => { self.fail(ctx, error); self.start_grace(); return Task::batch([self.check(ctx), self.grace_timer()]) }
@@ -287,7 +303,7 @@ impl State {
                 self.notice = None;
                 return job(move || backend.enable_direct(&settings, None), Message::DirectAllowed);
             }
-            Message::DirectAllowed(result) => if let Err(error) = result { self.fail(ctx, error) },
+            Message::DirectAllowed(result) => match result { Ok(()) => self.direct_permission = false, Err(error) => self.fail(ctx, error) },
             Message::CloseGame => {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 self.game.closing = Some(Instant::now());
@@ -301,13 +317,6 @@ impl State {
                 return job(move || { if backend.live(&settings).is_some() { backend.stop_server(&settings)?; } Ok(()) }, Message::ServerStopped);
             }
             Message::ServerStopped(result) => if let Err(error) = result { self.fail(ctx, error) },
-            Message::Banlist(choice) => {
-                let Some(store) = ctx.store.clone() else { return Task::none() };
-                let value = choice.value;
-                return Task::perform(async move { store.run(move |db| db.save_banlist(&value)).await.map_err(|e| format!("{e:#}")) }, Message::BanlistSaved);
-            }
-            Message::BanlistSaved(Ok(value)) => ctx.settings.banlist = value,
-            Message::BanlistSaved(Err(error)) => self.fail(ctx, error),
             Message::Banlists(list) => self.banlists = list,
             Message::Tick => {
                 // Close game that the game ignored: force it.
@@ -360,12 +369,12 @@ impl State {
                 return job(move || backend.restore_backup(&settings, &backup), Message::Restored);
             }
             Message::Restored(result) => match result {
-                Ok(()) => self.notice = Some(Notice { summary: "The backup is back in place. Press PLAY.".into(), details: None, open: false, action: None }),
+                Ok(()) => self.notice = Some(Notice::good("The backup is back in place. Press PLAY.")),
                 Err(error) => self.fail(ctx, error),
             },
             Message::ToggleDetails => if let Some(notice) = &mut self.notice { notice.open = !notice.open },
             Message::Dismiss => self.notice = None,
-            Message::SetUp | Message::Repair | Message::Restore => {}
+            Message::SetUp | Message::Repair | Message::Restore | Message::Settings(_) | Message::Report(_) | Message::Help(_) | Message::Copy(_) => {}
         }
         Task::none()
     }
@@ -422,8 +431,15 @@ impl State {
             _ => Hint::General,
         };
         let shown = error_presentation::present(&error, hint, &crate::app::masks(ctx));
-        self.notice = Some(Notice { summary: shown.summary, details: shown.diagnosis, open: false, action: None });
+        let action = match hint { Hint::Component => Some(("Repair", Message::Repair)), Hint::GameFolder => Some(("Fix", Message::SetUp)), Hint::General => None };
+        self.notice = Some(Notice { summary: shown.summary, details: shown.diagnosis, open: false, action, good: false });
     }
+
+    /// Play started a game, or a game opened without the launcher is up.
+    pub fn playing(&self) -> bool { self.game.running || self.game.starting.is_some() || self.game.outside }
+
+    /// The banlists to choose from (the server's default first).
+    pub fn banlists(&self) -> Vec<Banlist> { banlist_choices(&self.banlists) }
 
     /// Since when Play has been starting or waiting for the game's window, for Cancel.
     pub fn launching_since(&self) -> Option<Instant> { self.game.launching().or(self.waiting_since) }
@@ -468,17 +484,12 @@ impl State {
         }
         let choices = banlist_choices(&self.banlists);
         let selected = choices.iter().find(|c| c.value == ctx.settings.banlist).cloned();
-        // The banlist is read when your server starts: it can change only while nothing is starting or playing.
-        let editable = !self.game.running && self.game.starting.is_none() && !self.game.outside;
-        let banlist: Element<'_, Message> = if editable {
-            pick_list(choices, selected, Message::Banlist).style(yo3_skin::choice).menu_style(yo3_skin::choice_menu)
-                .width(Fill).padding([7, 10]).placeholder("Season 16").into()
-        } else {
-            text(selected.map_or_else(|| "Season 16 (default)".to_owned(), |b| b.name)).size(15).color(color::INK).into()
-        };
+        // The banlist is chosen in Settings → Singleplayer; it is read when your server starts.
+        let banlist = text(selected.map_or_else(|| "Season 16 (default)".to_owned(), |b| b.name)).size(15).color(color::INK).width(Fill);
         yo3_skin::panel(Some("Your own server"), column![
             text("Duel the NPCs, open packs and build decks. Cards you earn here stay on this PC.").size(15).color(color::INK),
-            row![text("Banlist").font(BODY_BOLD).size(15).color(color::INK).width(74), banlist].align_y(Center),
+            row![text("Banlist").font(BODY_BOLD).size(15).color(color::INK).width(74), banlist,
+                yo3_skin::link("Change", Message::Settings(crate::settings::Section::Singleplayer), false)].align_y(Center),
             self.notice(),
             Space::new().height(Fill),
             status,
@@ -489,16 +500,24 @@ impl State {
     fn notice(&self) -> Element<'_, Message> {
         let Some(notice) = &self.notice else { return Space::new().into() };
         let mut links = row![].spacing(14);
-        if let Some((label, action)) = &notice.action { links = links.push(yo3_skin::link(*label, action.clone(), false)) }
-        links = links.push(yo3_skin::link("Dismiss", Message::Dismiss, false));
+        match &notice.action {
+            Some((label, action)) => links = links.push(yo3_skin::link(*label, action.clone(), false)),
+            None if !notice.good => links = links.push(yo3_skin::link("Report", Message::Report(notice.details.clone().unwrap_or_else(|| notice.summary.clone())), false)),
+            None => {}
+        }
+        if !notice.good { links = links.push(yo3_skin::link("Help", Message::Help(crate::help::topic_for(&notice.summary)), false)) }
         if notice.details.is_some() {
             links = links.push(yo3_skin::link(if notice.open { "Hide details" } else { "Details" }, Message::ToggleDetails, false));
         }
+        links = links.push(yo3_skin::link("Dismiss", Message::Dismiss, false));
+        let shade = if notice.good { color::GOOD } else { color::BAD };
         let mut body = column![
-            row![container(Space::new().width(9).height(9)).style(|_| dot(color::BAD)), text(&notice.summary).size(14).font(BODY_BOLD).color(color::INK)]
+            row![container(Space::new().width(9).height(9)).style(move |_| dot(shade)), text(&notice.summary).size(14).font(BODY_BOLD).color(color::INK)]
                 .spacing(8).align_y(Center),
         ].spacing(6);
-        if notice.open && let Some(details) = &notice.details { body = body.push(text(details).size(13).color(color::INK_SOFT)) }
+        if notice.open && let Some(details) = &notice.details {
+            body = body.push(text(details).size(13).color(color::INK_SOFT)).push(yo3_skin::link("Copy", Message::Copy(details.clone()), false));
+        }
         body.push(links).into()
     }
 }

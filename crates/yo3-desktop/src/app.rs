@@ -2,11 +2,11 @@
 //! Each screen keeps its own state and messages; this module routes between them and owns what they share.
 use std::path::PathBuf;
 use std::sync::Arc;
-use iced::widget::{Space, column, container, mouse_area, operation, row, stack, text};
+use iced::widget::{Space, column, container, mouse_area, operation, row, stack, text, text_input};
 use iced::{Alignment::Center, Color, Element, Length::Fill, Subscription, Task, keyboard, window};
 use yo3_desktop::{Backend, Settings, instance, store::Store, updates};
 use yo3_skin::{Glyph, Kind, color, pill};
-use crate::{external, home, setup};
+use crate::{external, help, home, settings, setup};
 
 /// What the window shares with every screen.
 pub struct Ctx {
@@ -20,15 +20,27 @@ pub struct Ctx {
 pub enum Claim { Now(instance::Owner), AfterUpdate }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Dialog { Help, Settings, Repair, ConfirmClose, Backups }
+pub enum Dialog { Help, Report, Repair, ConfirmClose, Backups }
+
+/// Report a problem: what the player says happened, the error it is about, and how far it got.
+#[derive(Clone, Debug, Default)]
+pub struct Report { pub what: String, pub error: String, pub busy: bool, pub result: Option<Result<(), String>> }
+
+#[derive(Clone, Debug)]
+pub enum ReportMessage { Edit(String), Send, Sent(Result<(), String>) }
 
 #[derive(Clone, Debug)]
 pub enum Message {
     Home(home::Message),
     Setup(setup::Message),
-    Open(Dialog),
+    Settings(settings::Message),
+    OpenSettings(settings::Section),
+    Help(help::Message),
+    OpenHelp(Option<&'static str>),
+    OpenReport(String),
+    Report(ReportMessage),
+    Copy(String),
     CloseDialog,
-    ChangeGame,
     Show,
     Drag,
     Minimize,
@@ -46,6 +58,9 @@ pub struct App {
     ctx: Ctx,
     home: home::State,
     setup: Option<setup::State>,
+    settings: Option<settings::State>,
+    help: help::State,
+    report: Report,
     dialog: Option<Dialog>,
     update: Option<updates::Decision>,
     startup: updates::activation::Startup,
@@ -65,11 +80,11 @@ impl App {
         let mut problem = routing_error;
         let (store, settings) = match Store::open(&root) {
             Ok((store, settings)) => (Some(store), settings),
-            Err(error) => { problem = Some(format!("Could not open the launcher's settings: {error:#}")); (None, Settings::default()) }
+            Err(error) => { problem = Some(format!("Could not open the launcher's settings: {error:#}")); (None, Settings::default()) } // → Details
         };
         let backend = match Backend::new(root.clone()) {
             Ok(backend) => Some(backend),
-            Err(error) => { problem.get_or_insert(format!("YO3 Revival needs repair: {error:#}")); None }
+            Err(error) => { problem.get_or_insert(format!("YO3 Revival needs repair: {error:#}")); None } // → Details
         };
         let ctx = Ctx { root, backend, store, settings };
         let mut home = home::State::default();
@@ -83,7 +98,8 @@ impl App {
             listen_for_second_starts(&ctx.root, claim),
         ];
         if let Some(setup) = &mut setup { tasks.push(setup.start(&ctx).map(Message::Setup)) }
-        (Self { ctx, home, setup, dialog: None, update: None, startup, quitting: false }, Task::batch(tasks))
+        (Self { ctx, home, setup, settings: None, help: help::State::at(None), report: Report::default(), dialog: None, update: None, startup, quitting: false },
+            Task::batch(tasks))
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -92,6 +108,10 @@ impl App {
             Message::Home(home::Message::Repair) => self.dialog = Some(Dialog::Repair),
             Message::Home(home::Message::Releases) => return self.update(Message::OpenLink(RELEASES.into())),
             Message::Home(home::Message::Restore) => self.dialog = Some(Dialog::Backups),
+            Message::Home(home::Message::Settings(section)) => return self.update(Message::OpenSettings(section)),
+            Message::Home(home::Message::Report(error)) => return self.update(Message::OpenReport(error)),
+            Message::Home(home::Message::Help(topic)) => return self.update(Message::OpenHelp(Some(topic))),
+            Message::Home(home::Message::Copy(text)) => return self.update(Message::Copy(text)),
             Message::Home(home::Message::RestoreBackup(backup)) => {
                 self.dialog = None;
                 return self.home.update(home::Message::RestoreBackup(backup), &mut self.ctx).map(Message::Home);
@@ -103,13 +123,47 @@ impl App {
                 if let Some(note) = note { self.home.fail(&self.ctx, note) }
                 return Task::batch([self.home.check(&self.ctx).map(Message::Home), self.home.load_banlists(&self.ctx).map(Message::Home)]);
             }
+            Message::Setup(setup::Message::Open(setup::GETTING_THE_GAME)) => return self.update(Message::OpenHelp(Some("game"))),
             Message::Setup(setup::Message::Open(url)) => return self.update(Message::OpenLink(url.into())),
             Message::Setup(setup::Message::Repair) => self.dialog = Some(Dialog::Repair),
             Message::Setup(setup::Message::Cancel) => self.setup = None,
             Message::Setup(message) => if let Some(setup) = &mut self.setup { return setup.update(message, &self.ctx).map(Message::Setup) },
-            Message::Open(dialog) => self.dialog = Some(dialog),
+            Message::Settings(message) => return self.settings_update(message),
+            Message::OpenSettings(section) => {
+                if self.setup.is_some() { return Task::none() }
+                let state = settings::State::new(&self.ctx, section);
+                let start = state.start(&self.ctx).map(Message::Settings);
+                // Accounts lists the Multiplayer tab's sign-ins: load its servers if it hasn't yet.
+                let load = self.home.multi.load(&self.ctx).map(|m| Message::Home(home::Message::Multi(m)));
+                self.settings = Some(state);
+                return Task::batch([start, load]);
+            }
+            Message::Help(help::Message::Topic(id)) => self.help.update(&help::Message::Topic(id)),
+            Message::Help(help::Message::Report) => return self.update(Message::OpenReport(String::new())),
+            Message::Help(help::Message::Close) => self.dialog = None,
+            Message::Help(help::Message::Open(url)) => return self.update(Message::OpenLink(url)),
+            Message::OpenHelp(topic) => { self.help = help::State::at(topic); self.dialog = Some(Dialog::Help) }
+            Message::OpenReport(error) => { self.report = Report { error, ..Report::default() }; self.dialog = Some(Dialog::Report) }
+            Message::Report(ReportMessage::Edit(what)) => self.report.what = what.chars().filter(|c| *c == '\n' || !c.is_control()).take(2000).collect(),
+            Message::Report(ReportMessage::Send) => {
+                let Some(backend) = self.ctx.backend.clone() else { return Task::none() };
+                let (what, error) = (self.report.what.clone(), self.report.error.clone());
+                self.report.busy = true;
+                self.report.result = None;
+                return job(move || {
+                    let prepared = backend.report_problem(&what, &error)?;
+                    // The saved logs' folder, so the player can drag the file into the form; then the form.
+                    if let Some(dir) = prepared.zip.parent() { let _ = external::open(&dir.to_string_lossy()); }
+                    external::open(&prepared.url)
+                }, |result| Message::Report(ReportMessage::Sent(result)));
+            }
+            Message::Report(ReportMessage::Sent(result)) => {
+                self.report.busy = false;
+                if let Err(error) = &result && let Some(backend) = &self.ctx.backend { backend.diagnostics.line(error) }
+                self.report.result = Some(result);
+            }
+            Message::Copy(text) => return iced::clipboard::write(text),
             Message::CloseDialog => self.dialog = None,
-            Message::ChangeGame => { self.dialog = None; return self.open_setup(setup::Step::Welcome) }
             Message::Show => return window::latest().and_then(|id| Task::batch([window::minimize(id, false), window::gain_focus(id)])),
             Message::Drag => return window::latest().and_then(window::drag),
             Message::Minimize => return window::latest().and_then(|id| window::minimize(id, true)),
@@ -133,13 +187,13 @@ impl App {
             Message::WindowOpened => {
                 // The updater waits for this before it switches versions.
                 if let Some(readiness) = self.startup.readiness.take() && let Err(error) = readiness.write(yo3_tunnel::BUILD_VERSION) {
-                    self.home.fail(&self.ctx, format!("Update readiness failed: {error:#}"));
+                    self.home.fail(&self.ctx, format!("Update readiness failed: {error:#}")); // → Details
                 }
             }
             Message::Key(keyboard::Event::KeyPressed { key: keyboard::Key::Named(named), modifiers, .. }) => match named {
                 keyboard::key::Named::Tab if modifiers.shift() => return operation::focus_previous(),
                 keyboard::key::Named::Tab => return operation::focus_next(),
-                keyboard::key::Named::Escape => self.dialog = None,
+                keyboard::key::Named::Escape => if self.dialog.is_some() { self.dialog = None } else { self.settings = None },
                 _ => {}
             },
             Message::Key(_) => {}
@@ -148,6 +202,28 @@ impl App {
             Message::LinkOpened(result) => if let Err(error) = result { self.home.fail(&self.ctx, error) },
         }
         Task::none()
+    }
+
+    fn settings_update(&mut self, message: settings::Message) -> Task<Message> {
+        match message {
+            settings::Message::Close => { self.settings = None; Task::none() }
+            settings::Message::ChangeGame => { self.settings = None; self.open_setup(setup::Step::Game) }
+            settings::Message::Account(message) => self.home.update(home::Message::Multi(message), &mut self.ctx).map(Message::Home),
+            settings::Message::Restore => { self.dialog = Some(Dialog::Backups); Task::none() }
+            settings::Message::Open(url) => self.update(Message::OpenLink(url)),
+            settings::Message::Copy(text) => self.update(Message::Copy(text)),
+            settings::Message::Report(error) => self.update(Message::OpenReport(error)),
+            message => {
+                let Some(state) = &mut self.settings else { return Task::none() };
+                let playing = self.home.playing();
+                let task = state.update(message.clone(), &mut self.ctx, playing).map(Message::Settings);
+                // A change of what the main screen checks (the game folder, Wine) is checked again there.
+                if matches!(message, settings::Message::Changed(yo3_desktop::options::Change::WinePrefix(_) | yo3_desktop::options::Change::WineBinary(_), Ok(_))) {
+                    return Task::batch([task, self.home.check(&self.ctx).map(Message::Home)]);
+                }
+                task
+            }
+        }
     }
 
     fn open_setup(&mut self, step: setup::Step) -> Task<Message> {
@@ -168,9 +244,10 @@ impl App {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let body: Element<'_, Message> = match &self.setup {
-            Some(setup) => setup.view().map(Message::Setup),
-            None => self.home.view(&self.ctx).map(Message::Home),
+        let body: Element<'_, Message> = match (&self.setup, &self.settings) {
+            (Some(setup), _) => setup.view().map(Message::Setup),
+            (None, Some(settings)) => settings.view(&self.ctx, &self.home).map(Message::Settings),
+            (None, None) => self.home.view(&self.ctx).map(Message::Home),
         };
         let page = column![self.title_bar(), container(body).height(Fill), self.footer()];
         let screen = stack![yo3_skin::backdrop(), page];
@@ -181,14 +258,17 @@ impl App {
     }
 
     fn title_bar(&self) -> Element<'_, Message> {
-        let tabs: Element<'_, Message> = if self.setup.is_none() {
+        let tabs: Element<'_, Message> = if self.settings.is_some() {
+            text("SETTINGS").font(yo3_skin::DISPLAY_ITALIC).size(22).color(color::ON_DARK).into()
+        } else if self.setup.is_none() {
             let tab = |label, which| pill(label, Some(Message::Home(home::Message::Tab(which))), Kind::Tab { active: self.home.tab == which }, 176, 34);
             row![tab("SINGLEPLAYER", home::Tab::Single), tab("MULTIPLAYER", home::Tab::Multi)].spacing(4).into()
         } else {
             Space::new().into()
         };
         let controls = row![
-            pill("", (self.setup.is_none()).then_some(Message::Open(Dialog::Settings)), Kind::Window(Glyph::Settings), 34, 28),
+            pill("", (self.setup.is_none()).then_some(if self.settings.is_some() { Message::Settings(settings::Message::Close) } else { Message::OpenSettings(settings::Section::Game) }),
+                Kind::Window(Glyph::Settings), 34, 28),
             pill("", Some(Message::Minimize), Kind::Window(Glyph::Minimize), 34, 28),
             pill("", Some(Message::CloseRequested), Kind::Window(Glyph::Close), 34, 28),
         ].spacing(3);
@@ -203,7 +283,8 @@ impl App {
             line = line.push(container(Space::new().width(9).height(9)).style(|_| dot(color::WARN)))
                 .push(yo3_skin::link(update_line(&release.tag), Message::OpenLink(release.url.clone()), true));
         }
-        let footer = line.push(Space::new().width(Fill)).push(yo3_skin::link("Help", Message::Open(Dialog::Help), true))
+        let footer = line.push(Space::new().width(Fill)).push(yo3_skin::link("Report a problem", Message::OpenReport(String::new()), true))
+            .push(Space::new().width(18)).push(yo3_skin::link("Help", Message::OpenHelp(None), true))
             .padding([0, 16]).height(Fill);
         container(yo3_skin::footer_strip(footer)).height(34).into()
     }
@@ -211,11 +292,8 @@ impl App {
     fn dialog(&self, which: Dialog) -> Element<'_, Message> {
         let ok = || pill("OK", Some(Message::CloseDialog), Kind::Primary, 120, 38);
         let (title, body, buttons, height): (&str, String, Element<'_, Message>, f32) = match which {
-            Dialog::Help => ("Help", "The full guide, troubleshooting and Report a problem come to this window in a later \
-                beta version. Until then, the Desktop guide and the project's issue tracker on GitHub have the answers.".into(),
-                row![pill("Guide", Some(Message::OpenLink(GUIDE.into())), Kind::Primary, 120, 38), ok()].spacing(10).into(), 250.0),
-            Dialog::Settings => ("Settings", format!("Game folder:\n{}\n\nMore settings come in a later beta version.", self.ctx.settings.game_dir),
-                row![pill("Run setup again", Some(Message::ChangeGame), Kind::Primary, 170, 38), ok()].spacing(10).into(), 270.0),
+            Dialog::Help => return self.help.view().map(Message::Help),
+            Dialog::Report => return self.report_dialog(),
             Dialog::Repair => ("YO3 Revival needs repair", "Some of YO3 Revival's own files are missing or changed, often after an \
                 antivirus scan. Download the latest release again and replace this folder with it; your settings are kept.".into(),
                 row![pill("Releases", Some(Message::OpenLink(RELEASES.into())), Kind::Primary, 120, 38), ok()].spacing(10).into(), 260.0),
@@ -243,12 +321,33 @@ impl App {
     }
 }
 
+impl App {
+    fn report_dialog(&self) -> Element<'_, Message> {
+        let report = &self.report;
+        let mut col = column![
+            text("Tell us what happened. YO3 Revival saves your recent logs in a file (personal details removed) and opens the project's \
+                report form in your browser: drag the file into it. Nothing is sent until you submit the form yourself.").size(15).color(color::INK),
+            text_input("What were you doing, and what went wrong?", &report.what).on_input(|v| Message::Report(ReportMessage::Edit(v)))
+                .on_submit(Message::Report(ReportMessage::Send)).style(yo3_skin::field).padding(8).size(15),
+        ].spacing(12);
+        if !report.error.is_empty() { col = col.push(text("The error you saw is included.").size(14).color(color::INK_SOFT)) }
+        match &report.result {
+            Some(Ok(())) => col = col.push(text("Done: the form is open in your browser, and the logs' folder beside it.").size(14).font(yo3_skin::BODY_BOLD).color(color::GOOD)),
+            Some(Err(_)) => col = col.push(text("The report couldn't be prepared. Settings, Advanced, Export logs saves the logs on their own.").size(14).font(yo3_skin::BODY_BOLD).color(color::BAD)),
+            None if report.busy => col = col.push(text("Saving the logs…").size(14).color(color::INK_SOFT)),
+            None => {}
+        }
+        let buttons = row![Space::new().width(Fill), pill("Open the report form", (!report.busy).then_some(Message::Report(ReportMessage::Send)), Kind::Primary, 210, 38),
+            pill("Close", Some(Message::CloseDialog), Kind::Primary, 120, 38)].spacing(10);
+        container(yo3_skin::panel(Some("Report a problem"), column![col, Space::new().height(Fill), buttons])).width(560).height(340).into()
+    }
+}
+
 /// The app's mark (the Duel Disk with the Monster Reborn badge, without its background), decoded at build time.
 static APP_ICON: std::sync::LazyLock<iced::widget::image::Handle> = std::sync::LazyLock::new(|| {
     iced::widget::image::Handle::from_rgba(128, 128, include_bytes!(concat!(env!("OUT_DIR"), "/launcher-mark.rgba")).to_vec())
 });
 
-const GUIDE: &str = "https://github.com/usersina/yo3-revival/blob/main/docs/launcher.md";
 const RELEASES: &str = "https://github.com/usersina/yo3-revival/releases/latest";
 
 fn update_line(tag: &str) -> String { format!("Update {} is available: see what's new", tag.trim_start_matches('v')) }

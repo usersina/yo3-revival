@@ -74,7 +74,7 @@ pub fn remove_files(game: &Path) -> anyhow::Result<()> {
 }
 #[cfg(not(windows))]
 fn wine_command(settings: &Settings, program: &str) -> std::process::Command {
-    let mut cmd = std::process::Command::new(program);
+    let mut cmd = std::process::Command::new(yo3_launcher::runtime::wine_tool_of(Some(settings.wine_binary.as_ref()), program));
     if !settings.wine_prefix.is_empty() { cmd.env("WINEPREFIX", &settings.wine_prefix); }
     cmd.env("WINEDEBUG", "-all"); cmd
 }
