@@ -87,6 +87,14 @@ fn a_team_name_is_taken_once() {
 }
 
 #[test]
+fn a_team_name_is_a_name_not_a_page() {
+    // Security review (#39): the name goes in every team info, invitation, mail and search entry, so it is kept short.
+    let server = Server::new();
+    let r = send(&mut server.join(1001, "Yugi"), 0x2AF9, &[("team_name", Value::text(&"M".repeat(100_000)))]);
+    assert_eq!((r.request(), int(&r, "error_code")), (Some(0x2B10), Some(808)));
+}
+
+#[test]
 fn an_invited_player_joins_the_team() {
     // 0x2AFE {to_id} -> 0x2B19 ("Inviting %s…"); the invitee gets 0x2AFF {from_id, from_name, team_id, team_name} on the
     // bell (mode 7). 0x2B00 {to_id: the inviter, team_id, answer 2} -> 0x2B1D; the inviter gets 0x2B01 {answer} ("has
