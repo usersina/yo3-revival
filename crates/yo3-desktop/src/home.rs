@@ -101,11 +101,16 @@ impl Play {
 #[derive(Clone, Debug)]
 pub struct Notice { pub summary: String, pub details: Option<String>, pub open: bool, pub action: Option<(&'static str, Message)>,
     /// Not a problem (a backup put back): no Report, no Help.
-    pub good: bool }
+    pub good: bool,
+    /// Shown on both tabs, not only your own server's panel: a game opened directly may have played either.
+    pub everywhere: bool }
 
 impl Notice {
-    pub fn good(summary: impl Into<String>) -> Self { Self { summary: summary.into(), details: None, open: false, action: None, good: true } }
-    pub fn problem(summary: impl Into<String>, action: Option<(&'static str, Message)>) -> Self { Self { summary: summary.into(), details: None, open: false, action, good: false } }
+    pub fn good(summary: impl Into<String>) -> Self { Self { summary: summary.into(), details: None, open: false, action: None, good: true, everywhere: false } }
+    pub fn problem(summary: impl Into<String>, action: Option<(&'static str, Message)>) -> Self { Self { summary: summary.into(), details: None, open: false, action, good: false, everywhere: false } }
+    /// A game opened directly couldn't play (#33): said once, on whichever tab is open.
+    pub fn direct(problem: &DirectProblem) -> Self { Self { details: Some(problem.reason.clone()), everywhere: true, ..Self::problem(problem.summary(), None) } }
+    pub fn shown_on(&self, tab: Tab) -> bool { tab == Tab::Single || self.everywhere }
 }
 
 /// A banlist choice: the value saved for the server, the name shown.
@@ -185,6 +190,12 @@ pub struct State {
 }
 
 impl State {
+    /// Direct start is set up in the protected game folder (the notice's Allow, or Settings' Fix permission): stop asking.
+    pub fn permission_granted(&mut self) {
+        self.direct_permission = false;
+        if self.notice.as_ref().is_some_and(|n| matches!(n.action, Some((_, Message::AllowDirect)))) { self.notice = None }
+    }
+
     /// Multiplayer's Play, once its sign-in is known to play: the game on the selected server.
     fn play_multiplayer(&mut self, ctx: &mut Ctx, session: yo3_tunnel::Token) -> Task<Message> {
         let (Some(backend), Some((server, _))) = (ctx.backend.clone(), self.multi.session()) else { self.game.starting = None; return Task::none() };
@@ -306,7 +317,7 @@ impl State {
                 self.notice = None;
                 return job(move || backend.enable_direct(&settings, None), Message::DirectAllowed);
             }
-            Message::DirectAllowed(result) => match result { Ok(()) => self.direct_permission = false, Err(error) => self.fail(ctx, error) },
+            Message::DirectAllowed(result) => match result { Ok(()) => self.permission_granted(), Err(error) => self.fail(ctx, error) },
             Message::CloseGame => {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 self.game.closing = Some(Instant::now());
@@ -346,7 +357,7 @@ impl State {
                 if live.ready { self.waiting_since = None }
                 // A game opened directly that couldn't play (#33): said once, after it closed.
                 if let Some(problem) = live.direct && !live.outside && !live.running && self.notice.is_none() && let Some(backend) = ctx.backend.clone() {
-                    self.notice = Some(Notice { summary: problem.summary().into(), details: Some(problem.reason.clone()), open: false, action: None, good: false });
+                    self.notice = Some(Notice::direct(&problem));
                     return job(move || { backend.clear_direct_problem(&problem); Ok(()) }, |_: Result<(), String>| Message::DirectShown);
                 }
                 if ended {
@@ -441,7 +452,7 @@ impl State {
         };
         let shown = error_presentation::present(&error, hint, &crate::app::masks(ctx));
         let action = match hint { Hint::Component => Some(("Repair", Message::Repair)), Hint::GameFolder => Some(("Fix", Message::SetUp)), Hint::General => None };
-        self.notice = Some(Notice { summary: shown.summary, details: shown.diagnosis, open: false, action, good: false });
+        self.notice = Some(Notice { details: shown.diagnosis, ..Notice::problem(shown.summary, action) });
     }
 
     /// Play started a game, or a game opened without the launcher is up.
@@ -478,6 +489,11 @@ impl State {
                 Space::new().width(Fill),
                 pill("Fix", Some(Message::SetUp), Kind::Primary, 90, 32),
             ].spacing(10).align_y(Center)).padding([6, 12]).style(|_| container::Style {
+                background: Some(color::PANEL_TOP.into()), border: iced::Border { color: color::BAD, width: 1.5, radius: 4.0.into() }, ..container::Style::default() }));
+        }
+        // Your own server's panel holds its notices; on Multiplayer, one about a game opened directly shows above.
+        if self.tab == Tab::Multi && self.notice.as_ref().is_some_and(|n| n.shown_on(Tab::Multi)) {
+            page = page.push(container(self.notice()).padding([8, 12]).width(Fill).style(|_| container::Style {
                 background: Some(color::PANEL_TOP.into()), border: iced::Border { color: color::BAD, width: 1.5, radius: 4.0.into() }, ..container::Style::default() }));
         }
         page.push(panels).into()
@@ -620,6 +636,33 @@ mod tests {
         // An old timer does nothing (and without a backend nothing could be stopped anyway).
         let _ = state.update(Message::GraceOver(first), &mut ctx);
         assert_eq!(state.game, Game::default());
+    }
+
+    /// Settings' Fix permission (or the notice's Allow) sets direct start up: the main screen stops asking for permission.
+    /// On Windows 11 a Multiplayer server's refused direct start was said only on the Singleplayer panel, while the player
+    /// looked at Multiplayer: shown once there, unseen, and gone. A direct start's problem shows on either tab.
+    #[test]
+    fn a_direct_starts_problem_shows_on_either_tab() {
+        let problem = DirectProblem { refusal: "FailedToConnect".into(), reason: "refused".into(), at: "now".into() };
+        let notice = Notice::direct(&problem);
+        assert!(notice.shown_on(Tab::Single) && notice.shown_on(Tab::Multi), "the game opened directly may have played either");
+        assert_eq!(notice.details.as_deref(), Some("refused"));
+        let own = Notice::problem("Your singleplayer data couldn't be opened.", None);
+        assert!(own.shown_on(Tab::Single) && !own.shown_on(Tab::Multi), "your own server's notices stay on its panel");
+    }
+
+    #[test]
+    fn granting_permission_ends_the_permission_notice_and_row() {
+        let mut state = State { direct_permission: true, ..State::default() };
+        state.notice = Some(Notice::problem("needs permission", Some(("Allow", Message::AllowDirect))));
+        state.permission_granted();
+        assert!(!state.direct_permission);
+        assert!(state.notice.is_none(), "the Allow notice goes");
+        // Another notice (an error from something else) stays.
+        let mut state = State { direct_permission: true, ..State::default() };
+        state.notice = Some(Notice::problem("something else", None));
+        state.permission_granted();
+        assert!(state.notice.is_some());
     }
 
     #[test]

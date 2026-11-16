@@ -111,7 +111,8 @@ The graphical application's address discovery is credential-free. Its first-use 
 the observed identity; invitation import supplies the expected identity without another file-selection step.
 The approved SHA-256 SPKI identity, certificate validity and TLS handshake signature are verified on subsequent
 connections. Its address may change while retaining that identity. Certificate-only CLI profiles use the supplied
-trust anchor and hostname checks.
+trust anchor and hostname checks. A self-managed certificate is valid from a day before it is made (or renewed), so a
+client whose clock is behind the host's, such as a PC set to the wrong time zone, still accepts a server just set up.
 
 Every connection starts with TLS, an 8-byte opener and one operation byte:
 

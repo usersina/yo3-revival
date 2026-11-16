@@ -182,7 +182,8 @@ closed and applies at your server's next start.
 ## Open the game directly
 
 With **Open the game without the launcher** on (Setup's Ready step, or Settings → Game), PLAY sets things up so that
-`yo3.exe`, or its Start menu or desktop shortcut, plays what you last played here, without this window. Each PLAY,
+`yo3.exe`, or its Start menu or desktop shortcut, plays what you last played here, without this window. On Windows,
+the original game asks for administrator rights each time it is opened this way (PLAY here doesn't); answer Yes. Each PLAY,
 Singleplayer or Multiplayer, keeps it up to date. Settings → Game says whether it is set up, or that the next PLAY does
 it.
 

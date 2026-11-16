@@ -87,7 +87,13 @@ pub enum Outcome { Session(Token), Refused(direct::Refusal) }
 
 pub struct Proxy { pub ports: Ports, pub cookie: Token, pub server_id: String, tasks: Vec<JoinHandle<()>>,
     session: tokio::sync::watch::Sender<Option<Outcome>>, sign_outs: std::sync::Arc<tokio::sync::Notify>,
-    typed: std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<direct::Typed>>>, form_again: std::sync::Arc<std::sync::atomic::AtomicBool> }
+    typed: std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<direct::Typed>>>, form_again: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    index: LocalIndex }
+
+/// The game's own patch index (`yo3.idx` beside `yo3.exe`), answered while there is no sign-in to fetch the server's.
+type LocalIndex = std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>>;
+/// The patch index's path under the launch cookie (the connection DLL maps the game's request to it, tools/mod/auth.c).
+const INDEX_PATH: &str = "yo3/yo3.idx";
 
 impl Drop for Proxy { fn drop(&mut self) { for task in &self.tasks { task.abort(); } } }
 
@@ -106,6 +112,10 @@ impl Proxy {
     pub fn activate_typed(&self, session: Token) {
         self.form_again.store(false, std::sync::atomic::Ordering::SeqCst); self.activate(session);
     }
+    /// The game's own patch index: while the sign-in is refused (no saved sign-in, a wrong password, a server that is
+    /// down), the game's startup patch check gets it (nothing to update) and goes on to its title and login, where the
+    /// form or the refusal shows. Without it the game says it needs an Internet connection and closes.
+    pub fn local_index(&self, bytes: Vec<u8>) { *self.index.lock().unwrap() = Some(bytes); }
     /// Signalled when the game's Delete Login Data asks to forget this device's sign-in (tools/mod/signout.h).
     pub fn sign_outs(&self) -> std::sync::Arc<tokio::sync::Notify> { self.sign_outs.clone() }
     /// What the player typed in the game's own login form (#34), once: the DLL hands it over when the game connects to
@@ -176,7 +186,8 @@ impl Proxy {
         }
         let http_active = active.clone();
         let form_again = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let control = Control { sign_outs: sign_outs.clone(), typed: typed_tx, outcome: active.clone(), form_again: form_again.clone() };
+        let index = LocalIndex::default();
+        let control = Control { sign_outs: sign_outs.clone(), typed: typed_tx, outcome: active.clone(), form_again: form_again.clone(), index: index.clone() };
         tasks.push(tokio::spawn(async move {
             while let Ok((local, _)) = http.accept().await {
                 let endpoint = endpoint.clone();
@@ -185,7 +196,7 @@ impl Proxy {
                 tokio::spawn(async move { let _ = relay_http(local, &endpoint, active, &cookie, &control).await; });
             }
         }));
-        Ok(Self { ports, cookie, server_id, tasks, session: active, sign_outs, typed: std::sync::Mutex::new(Some(typed_rx)), form_again })
+        Ok(Self { ports, cookie, server_id, tasks, session: active, sign_outs, typed: std::sync::Mutex::new(Some(typed_rx)), form_again, index })
     }
 
     pub fn environment(&self) -> Vec<(&'static str, String)> {
@@ -269,7 +280,7 @@ pub const LOGIN_PATH: &str = "revival/login";
 /// The HTTP port's own requests from the connection DLL.
 #[derive(Clone)]
 struct Control { sign_outs: std::sync::Arc<tokio::sync::Notify>, typed: tokio::sync::mpsc::UnboundedSender<direct::Typed>,
-    outcome: tokio::sync::watch::Sender<Option<Outcome>>, form_again: std::sync::Arc<std::sync::atomic::AtomicBool> }
+    outcome: tokio::sync::watch::Sender<Option<Outcome>>, form_again: std::sync::Arc<std::sync::atomic::AtomicBool>, index: LocalIndex }
 
 /// The browser/WinINet uses the launch cookie in a local path, never an account credential in a remote URL.
 async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, mut active: tokio::sync::watch::Receiver<Option<Outcome>>, cookie: &Token,
@@ -316,7 +327,17 @@ async fn relay_http(mut local: TcpStream, endpoint: &Endpoint, mut active: tokio
         return Ok(local.shutdown().await?)
     }
     anyhow::ensure!(!path.starts_with("admin") && !path.starts_with("join"), "private HTTP route refused");
-    let Outcome::Session(session) = wait_for_outcome(&mut active).await? else { anyhow::bail!("the sign-in was refused") };
+    let outcome = wait_for_outcome(&mut active).await?;
+    let index = if path == INDEX_PATH { control.index.lock().unwrap().clone() } else { None };
+    let session = match outcome {
+        Outcome::Session(session) => session,
+        Outcome::Refused(_) if let Some(index) = index => {
+            local.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", index.len()).as_bytes()).await?;
+            local.write_all(&index).await?;
+            return Ok(local.shutdown().await?)
+        }
+        Outcome::Refused(_) => anyhow::bail!("the sign-in was refused"),
+    };
     let ticket = endpoint.ticket(&session, Role::Http).await?;
     let mut remote = endpoint.connect(&ticket, Role::Http, 0).await?;
     remote.write_all(format!("GET /{path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").as_bytes()).await?;

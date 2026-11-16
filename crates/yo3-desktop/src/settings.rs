@@ -56,6 +56,8 @@ pub enum Message {
     Direct(bool),
     DirectDone(bool, Result<(), String>),
     FixPermission,
+    /// Fix permission's result (the window also tells the main screen).
+    PermissionFixed(Result<(), String>),
     Shortcut,
     ShortcutDone(Result<(), String>),
     /// Handled by the window: Settings → Accounts' messages go to the Multiplayer tab.
@@ -208,8 +210,9 @@ impl State {
                     let done = backend.enable_direct(&settings, None);
                     if !was_live { let _ = backend.stop_server(&settings); }
                     done
-                }, |result| Message::DirectDone(true, result));
+                }, Message::PermissionFixed);
             }
+            Message::PermissionFixed(result) => return self.update(Message::DirectDone(true, result), ctx, playing),
             Message::Shortcut => {
                 self.busy = Some("Adding the shortcut…");
                 return job(|| yo3_desktop::shortcut::create(&std::env::current_exe()?).map(|_| ()), Message::ShortcutDone);

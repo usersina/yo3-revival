@@ -116,7 +116,10 @@ and `tools/mod/test-direct.sh` (each row, under Wine, with the real helper and l
 HTTP port, under the launch cookie: `GET …/revival/login-state` answers `form` when there is no saved sign-in (or the
 form's last sign-in was refused), else `ready`; `POST …/revival/login` with `{user, password, stay}` (the boxes and Save
 Password) clears the outcome, and the front's answer to the next `0x1F47` waits for the sign-in made with it. The
-password never reaches a log or the game's files. **Status: confirmed live** (2026-11-16: the form, "Incorrect User ID or
+password never reaches a log or the game's files. While the sign-in is refused, the game's startup patch check
+(`…/yo3/yo3.idx`, the first WinINet request) gets the game's own `yo3.idx` from the helper, so nothing is updated and
+the game reaches its title; with no answer the real game said "You will need an active Internet connection to play
+ONLINE." and closed before the form (found on Windows 11, 2026-11-16; launcher `direct_start.rs`). **Status: confirmed live** (2026-11-16: the form, "Incorrect User ID or
 Password", Select Player, "This User ID is currently restricted.", and "Failed to connect to server." with the server
 down).
 

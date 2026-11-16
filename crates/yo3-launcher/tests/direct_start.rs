@@ -154,6 +154,31 @@ async fn http(proxy: &Proxy, request: String) -> String {
     String::from_utf8(reply).unwrap()
 }
 
+/// The real game asks for its patch index (yo3.idx, through WinINet) as it starts, before its title screen. Without a
+/// sign-in there is no session to fetch it with: found on Windows 11, the game then said "You will need an active
+/// Internet connection to play ONLINE." and closed, so the login form (#34) or the refusal never showed. A refused
+/// start answers with the game's own index (nothing to update); a signed-in one still asks the server.
+#[tokio::test]
+async fn a_refused_start_answers_the_patch_check_with_the_games_own_index() {
+    let dir = scratch("index");
+    let cfg = yo3_server::Config::ephemeral(dir.clone());
+    let cert = cfg.tls.certificate.clone();
+    let server = yo3_server::start(cfg).await.unwrap();
+    let endpoint = Endpoint::new(server.auth.to_string(), "localhost".into(), &cert).unwrap();
+    let proxy = Proxy::prepare(endpoint, Ports::default()).await.unwrap();
+    let cookie = yo3_launcher::hex(&proxy.cookie);
+    let index = format!("GET /session/{cookie}/yo3/yo3.idx HTTP/1.1\r\nHost: localhost\r\n\r\n");
+    let other = format!("GET /session/{cookie}/web/news HTTP/1.1\r\nHost: localhost\r\n\r\n");
+    proxy.local_index(b"the game's own index".to_vec());
+    for refusal in [Refusal::SignedOut, Refusal::FailedToConnect] {
+        proxy.refuse(refusal);
+        let reply = http(&proxy, index.clone()).await;
+        assert!(reply.starts_with("HTTP/1.1 200") && reply.ends_with("\r\n\r\nthe game's own index"), "{refusal:?}: {reply}");
+        assert!(http(&proxy, other.clone()).await.is_empty(), "{refusal:?}: nothing else is answered without a sign-in");
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// #34: the game's own login form shows only when there is no saved sign-in, and what the player types there reaches
 /// the helper, which signs in with it (Save Password: the device keeps a token) or lets the form show the refusal.
 #[tokio::test]
