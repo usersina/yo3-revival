@@ -434,6 +434,18 @@ pub fn link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_press: M, 
     }).into()
 }
 
+static HEART: LazyLock<svg::Handle> = LazyLock::new(|| svg::Handle::from_memory(
+    b"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='#e0454a' d='M12 21.3l-1.4-1.3C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.6 11.5L12 21.3z'/></svg>".as_slice()));
+
+/// A link on the dark bars led by a small red heart (the footer's Support).
+pub fn heart_link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_press: M) -> Element<'a, M> {
+    button(iced::widget::row![svg(HEART.clone()).width(14).height(14), text(label).size(14).font(BODY_BOLD)].spacing(6).align_y(iced::Alignment::Center))
+        .padding(0).on_press(on_press).style(|_, status| {
+            let hover = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button::Style { background: None, text_color: if hover { Color::WHITE } else { ON_DARK_SOFT }, ..button::Style::default() }
+        }).into()
+}
+
 /// A text field on a panel: white well, dark text, a blue ring when focused.
 pub fn field(_theme: &Theme, status: text_input::Status) -> text_input::Style {
     let focused = matches!(status, text_input::Status::Focused { .. });

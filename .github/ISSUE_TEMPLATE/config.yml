@@ -6,3 +6,6 @@ contact_links:
   - name: 🛠️ Troubleshooting
     url: https://github.com/usersina/yo3-revival/blob/main/docs/launcher.md#troubleshooting
     about: Answers to the most common problems.
+  - name: 💬 Questions, ideas and servers to join
+    url: https://github.com/usersina/yo3-revival/discussions
+    about: Ask other players and the developer, share a server or an idea.

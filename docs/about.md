@@ -31,7 +31,9 @@ only starts it as a separate program.
 ## Help and support
 
 Read [troubleshooting](launcher.md#troubleshooting), then [open an issue](https://github.com/usersina/yo3-revival/issues/new/choose)
-with the steps and a diagnostic report if needed. [Contributors start here](development.md).
+with the steps and a diagnostic report if needed. Questions, ideas and servers to join go in the
+[discussions](https://github.com/usersina/yo3-revival/discussions). [Contributors start here](development.md).
 
-To support the work: [Buy me a coffee](https://buymeacoffee.com/usersina), or BTC
-`bc1qawq699ewyq0vgyux6nmyyx29r4vhj573l77elj`.
+YO3 Revival is free, and nothing in the game is for sale. To support the work (the time it takes and the server):
+[donatr.ee](https://donatr.ee/usersina/), or BTC `bc1qawq699ewyq0vgyux6nmyyx29r4vhj573l77elj`. The launcher's footer
+has the same under **Support**.

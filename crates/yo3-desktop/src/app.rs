@@ -20,7 +20,7 @@ pub struct Ctx {
 pub enum Claim { Now(instance::Owner), AfterUpdate }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Dialog { Help, Report, Repair, ConfirmClose, Backups, Host }
+pub enum Dialog { Help, Report, Repair, ConfirmClose, Backups, Host, Support }
 
 /// Report a problem: what the player says happened, the error it is about, and how far it got.
 #[derive(Clone, Debug, Default)]
@@ -38,6 +38,8 @@ pub enum Message {
     Help(help::Message),
     OpenHelp(Option<&'static str>),
     OpenReport(String),
+    /// The footer's heart: how to support the project.
+    OpenSupport,
     Report(ReportMessage),
     Copy(String),
     Host(host::Message),
@@ -145,6 +147,7 @@ impl App {
             Message::Help(help::Message::Report) => return self.update(Message::OpenReport(String::new())),
             Message::Help(help::Message::Close) => self.dialog = None,
             Message::Help(help::Message::Open(url)) => return self.update(Message::OpenLink(url)),
+            Message::OpenSupport => self.dialog = Some(Dialog::Support),
             Message::OpenHelp(topic) => { self.help = help::State::at(topic); self.dialog = Some(Dialog::Help) }
             Message::OpenReport(error) => { self.report = Report { error, ..Report::default() }; self.dialog = Some(Dialog::Report) }
             Message::Report(ReportMessage::Edit(what)) => self.report.what = what.chars().filter(|c| *c == '\n' || !c.is_control()).take(2000).collect(),
@@ -310,7 +313,8 @@ impl App {
             line = line.push(container(Space::new().width(9).height(9)).style(|_| dot(color::GOOD)))
                 .push(yo3_skin::link(format!("Hosting for friends · {online} online"), Message::Home(home::Message::Multi(crate::multi::Message::Host)), true));
         }
-        let footer = line.push(Space::new().width(Fill)).push(yo3_skin::link("Report a problem", Message::OpenReport(String::new()), true))
+        let footer = line.push(Space::new().width(Fill)).push(yo3_skin::heart_link("Support", Message::OpenSupport))
+            .push(Space::new().width(18)).push(yo3_skin::link("Report a problem", Message::OpenReport(String::new()), true))
             .push(Space::new().width(18)).push(yo3_skin::link("Help", Message::OpenHelp(None), true))
             .padding([0, 16]).height(Fill);
         container(yo3_skin::footer_strip(footer)).height(34).into()
@@ -322,6 +326,12 @@ impl App {
             Dialog::Help => return self.help.view().map(Message::Help),
             Dialog::Report => return self.report_dialog(),
             Dialog::Host => return self.host.view().map(Message::Host),
+            Dialog::Support => ("Support YO3 Revival", "YO3 Revival is free, and stays free: nothing in the game is for sale, and \
+                giving changes nothing in it. If you enjoy it, a donation helps pay for the time it takes and for the server. Questions, \
+                ideas and servers to join are in the project's discussions.".into(),
+                row![pill("Discussions", Some(Message::OpenLink(DISCUSSIONS.into())), Kind::Primary, 140, 38),
+                    pill("Donate", Some(Message::OpenLink(DONATE.into())), Kind::Primary, 120, 38),
+                    pill("Close", Some(Message::CloseDialog), Kind::Primary, 120, 38)].spacing(10).into(), 225.0),
             Dialog::Repair => ("YO3 Revival needs repair", "Some of YO3 Revival's own files are missing or changed, often after an \
                 antivirus scan. Download the latest release again and replace this folder with it; your settings are kept.".into(),
                 row![pill("Releases", Some(Message::OpenLink(RELEASES.into())), Kind::Primary, 120, 38), ok()].spacing(10).into(), 260.0),
@@ -379,6 +389,10 @@ static APP_ICON: std::sync::LazyLock<iced::widget::image::Handle> = std::sync::L
 });
 
 const RELEASES: &str = "https://github.com/usersina/yo3-revival/releases/latest";
+/// The project's discussions on GitHub: questions, ideas, servers to join.
+pub const DISCUSSIONS: &str = "https://github.com/usersina/yo3-revival/discussions";
+/// Where a donation goes (the footer's Support).
+pub const DONATE: &str = "https://donatr.ee/usersina/";
 
 fn update_line(tag: &str) -> String { format!("Update {} is available: see what's new", tag.trim_start_matches('v')) }
 

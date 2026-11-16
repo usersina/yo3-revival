@@ -214,8 +214,11 @@ old one first.
 ## Help and errors
 
 **Help** in the footer opens the guide inside the launcher, a topic at a time: getting started, Singleplayer,
-Multiplayer, hosting, settings, the common problems and where to talk with other players (the unofficial
-Yu-Gi-Oh! Online resources [Discord](https://discord.gg/NAm2T87n6q)). Its **Report a problem** starts a report.
+Multiplayer, hosting, settings, the common problems and where to talk with other players (the project's
+[discussions](https://github.com/usersina/yo3-revival/discussions)). Its **Report a problem** starts a report.
+
+**Support**, the heart in the footer, says how to help the project: its discussions, and a donation link. YO3 Revival
+is free, and giving changes nothing in the game.
 
 Every error is one plain sentence with one action: its own (**Retry**, **Fix**, **Repair**, **Allow**, **Restore a
 backup**) or **Report**. **Help** opens the topic for that error. **Details** shows the technical text, with your
