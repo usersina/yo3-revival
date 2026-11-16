@@ -217,9 +217,12 @@ plays what you last played here, without this window. There is nothing to switch
 - **Singleplayer:** your own server starts with the game if it isn't running, and stops about 30 seconds after the
   game closes. If it can't start, the game says "Failed to connect to server." and YO3 Revival's logs say why.
 - **Multiplayer:** with **Stay signed in**, the game goes straight to Select Player. Without it, or once that sign-in
-  has ended, the game says "Failed to connect to server." (its own login screen comes later, #34). A server that is
-  down or in maintenance gets the same message; a ban gets "This User ID is currently restricted."; a server that needs
-  a newer YO3 Revival adds one line saying to open it and update.
+  has ended, **ONLINE** shows the game's own login screen: type your User ID and password there. **Save Password**
+  keeps this PC signed in (the next start skips the screen); **Save User ID** fills in your User ID next time. The game
+  never stores the password itself. Its screen takes letters and digits only, up to 16 characters: with a longer
+  password, or spaces or symbols in it, sign in with YO3 Revival instead. A wrong password gets "Incorrect User ID or
+  Password", a ban "This User ID is currently restricted.", a server that is down or in maintenance "Failed to connect
+  to server."; a server that needs a newer YO3 Revival adds one line saying to open it and update.
 
 The setup adds an owned `winmm.dll` loader and a small receipt beside `yo3.exe`; the game's own files are never
 changed. Your sign-in stays in the system's credential store (on Linux, also in the game's Wine prefix), never a

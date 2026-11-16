@@ -195,6 +195,40 @@ The shared C fixture checks both fresh and saved login data, preservation of unr
 rejection. `tools/mod/test.sh` also runs it as 32-bit Windows code under Wine and independently checks changed
 login and starter hook sites. Live verification is recorded in [the history](history.md).
 
+### The game's own login form (#34, research R1)
+
+The required mod skips the form at ONLINE (above), except when the helper has no saved sign-in for the server: then
+`login.h` sends the one call at `0x46964B` on to `StartLogin` (`0x4F02A0`) itself, registers and stack as they were, and
+`login.swf` shows "Welcome to the world of Yu-Gi-Oh! ONLINE!" with User ID, Password, Save User ID and Save Password
+(texts 10300–10305). It asks the helper first (`login-form.h`, `GET …/revival/login-state`: "form" or "ready").
+
+- **goLogin** (`0x46B550`, the form's OK) stores the User ID and Password boxes in the LoginWindow's std::strings at
+  `+0x4C` and `+0x68` and copies them to UserData `+0x338`/`+0x354`, starts the gate connection (`+0xB0`, slot
+  `+0x38`), then reads the checkboxes `login_win.isbtn.Checkd` and `login_win.psbtn.Checkd` into `+0x88` and `+0x8C`
+  (1 = ticked). The strings are MSVC 2008 `std::string`s: text inline at `+4` while the capacity (`+0x18`) is under 16,
+  else a pointer there; size at `+0x14`.
+- **The hand-over.** When the game then connects to the front, the DLL posts the User ID, the password and Save Password
+  to the helper on the local HTTP port and blanks `+0x68`. The helper signs in (account operation `login`, `stay` with
+  Save Password, the device token into the credential vault) and the front answers the game's `0x1F47` with the result
+  or a refusal (protocol, "Direct start's sign-in"). After a refusal the game returns to the title screen; its next
+  ONLINE shows the form again.
+- **What the game saves.** On `0x219A` the handler `0x469C00` writes options.y3o's `lastLogin` (the User ID with Save
+  User ID, else empty) and a `users\<md5>.y3u` record with `isSavePassword`, `uname` and `password`, the last from the
+  window's `+0x68` **whatever Save Password says** (`0x46A2C7…0x46A33A`). With `+0x68` blanked first, the record holds an
+  empty password; Save User ID keeps working as the game's own. Live (2026-11-16): after a login with both boxes ticked,
+  `{"isSavePassword": 1, "password": "", "uname": "formtester"}` and `lastLogin` "formtester"; the password appears in no
+  file of the game folder, Documents or the Wine prefix. UserData `+0x354` keeps it in memory, as the stock client did.
+- **The form's limits** (`login.swf` sprite 67): `uid.restrict` and `pwd.restrict` are `"A-Z a-z 0-9"`, and the boxes
+  take 16 characters (live: 16 asterisks for 17 typed). A password with spaces or symbols, or longer than 16, cannot be
+  typed there; such an account signs in with the launcher instead.
+- **Delete Player's prompt** (R4, #23) compares locally in Flash: `login.swf` frame 60 checks
+  `_root.passWord == _root.delpassword` and sends only `goDelete(player)`. `passWord` is the form's password, so with the
+  form it is the real one; when the form was skipped it is empty.
+
+Tests: `tools/mod/login-test.c` (native through `login_flow.rs`, and under Wine in `test.sh`: the strings, the blanking,
+the requests), launcher `direct_start.rs`, and `tools/mod/test-direct.sh`'s #34 rows (form, wrong password, Save
+Password, ban).
+
 ### Direct start (#33)
 
 `yo3.exe` opened directly loads our `winmm.dll` from its folder (the game imports seven WINMM functions, which it

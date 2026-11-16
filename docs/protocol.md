@@ -98,7 +98,8 @@ to the title screen:
 
 | Helper's outcome | Reply to `0x1F47` | The game shows |
 | --- | --- | --- |
-| Server unreachable, in maintenance or full; your server would not start; no saved sign-in, or a revoked one (until #34) | `0x21A0` | "Failed to connect to server." |
+| Server unreachable, in maintenance or full; your server would not start | `0x21A0` | "Failed to connect to server." |
+| No saved sign-in, or a revoked one | — | the game's own login form (#34), then one of these for what was typed |
 | The server needs a newer launcher (`update_required`, or another protocol or DLL interface) | `0x21A0`, and the helper's line "Open YO3 Revival to update it" | "Failed to connect to server." |
 | `invalid_credentials` | `0x219B` | "Incorrect User ID or Password" |
 | `banned`, `restricted` | `0x219E` | "This User ID is currently restricted." |
@@ -110,6 +111,14 @@ connection to play ONLINE." and the game closes itself. **Status: confirmed live
 Singleplayer started its server on demand and played an NPC duel; "Failed to connect to server." after Delete Login
 Data; the offline path). Tests: launcher `direct_start.rs`, `attach`, desktop `direct.rs`, `tools/mod/test-loader.sh`
 and `tools/mod/test-direct.sh` (each row, under Wine, with the real helper and loader).
+
+**The game's own login form** (#34; client internals, "The game's own login form"). Our private requests on the local
+HTTP port, under the launch cookie: `GET …/revival/login-state` answers `form` when there is no saved sign-in (or the
+form's last sign-in was refused), else `ready`; `POST …/revival/login` with `{user, password, stay}` (the boxes and Save
+Password) clears the outcome, and the front's answer to the next `0x1F47` waits for the sign-in made with it. The
+password never reaches a log or the game's files. **Status: confirmed live** (2026-11-16: the form, "Incorrect User ID or
+Password", Select Player, "This User ID is currently restricted.", and "Failed to connect to server." with the server
+down).
 
 **Delete Login Data** (#33). Its Yes (`0x4CA486`, `tools/mod/signout.h`) first asks the helper over this launch's local
 HTTP port, `GET /session/<cookie>/revival/sign-out` (204), then saves as the game does (blanking its saved User ID). The
