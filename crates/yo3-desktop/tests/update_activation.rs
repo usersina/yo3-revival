@@ -115,23 +115,86 @@ fn an_update_that_fails_to_start_rolls_back_with_a_notice_and_isnt_retried() {
     assert_eq!(install::failed_start(&root).unwrap().as_deref(),Some("v0.3.0"),"not downloaded again by itself");
     std::fs::remove_dir_all(root).unwrap();
 }
-#[test]
-#[ignore = "requires a built release archive and an explicitly selected private Xvfb display"]
-fn packaged_update_opens_its_window_before_activation() {
+/// The release under test, as `tools/test-packaged-update.sh` hands it over.
+fn packaged_release() -> (PathBuf, PathBuf, Release) {
     let archive=PathBuf::from(std::env::var_os("YO3_UPDATE_TEST_ARCHIVE").expect("release archive"));
     let tag=std::env::var("YO3_UPDATE_TEST_TAG").expect("release tag");
     let root=PathBuf::from(std::env::var_os("YO3_UPDATE_TEST_ROOT").expect("scratch application data"));
     assert_eq!(std::env::var("DISPLAY").unwrap(),std::env::var("YO3_UPDATE_TEST_DISPLAY").expect("private display confirmation"));
     let bytes=std::fs::read(&archive).unwrap(); let name=archive.file_name().unwrap().to_str().unwrap().to_string();
     let release=Release{tag:tag.clone(),url:String::new(),notes:String::new(),asset:Asset{name:name.clone(),url:format!("https://github.com/usersina/yo3-revival/releases/download/{tag}/{name}"),bytes:bytes.len() as u64,sha256:yo3_launcher::components::hash(&bytes)}};
+    (archive,root,release)
+}
+#[cfg(unix)]
+fn stop(executable: &Path) { let _ = std::process::Command::new("pkill").arg("-f").arg(executable).status(); std::thread::sleep(std::time::Duration::from_millis(500)); }
+#[test]
+#[ignore = "requires a built release archive and an explicitly selected private Xvfb display"]
+fn packaged_update_is_signed_and_opens_its_window_before_activation() {
+    let (archive,root,release)=packaged_release();
+    // The release's SHA256SUMS, signed by the Release workflow's own script with a key made for this test only.
+    use yo3_desktop::updates::signature;
+    let key=signature::parse_key(&std::env::var("YO3_UPDATE_TEST_PUBLIC_KEY").expect("the test's public key")).expect("a raw Ed25519 key in hex");
+    let signed=PathBuf::from(std::env::var_os("YO3_UPDATE_TEST_SIGNED").expect("the signed release folder"));
+    let manifest=std::fs::read(signed.join(signature::MANIFEST)).unwrap(); let sig=std::fs::read(signed.join(signature::SIGNATURE)).unwrap();
+    signature::vouch(&release,Some(&manifest),Some(&sig),&key).expect("the workflow's signature vouches for the archive");
+    let mut flipped=sig.clone(); flipped[10]^=1;
+    assert!(signature::vouch(&release,Some(&manifest),Some(&flipped),&key).unwrap_err().to_string().contains("signature does not match"),"a bad signature");
+    assert!(signature::vouch(&release,Some(&manifest),Some(&sig),&signature::PUBLIC_KEY.unwrap()).is_err(),"another key (the project's)");
+    let error=signature::vouch(&release,Some(&manifest),None,&key).unwrap_err().to_string();
+    assert!(error.contains("isn't signed"),"a release without SHA256SUMS.sig: {error}");
+    let mut other=release.clone(); other.asset.sha256="00".repeat(32);
+    assert!(signature::vouch(&other,Some(&manifest),Some(&sig),&key).is_err(),"a download the manifest doesn't list");
     // As the window does (#32): staged in the background, then installed by the launcher's next start.
-    // The archive must be built from this branch or later: launcher.db is at schema 2 here, which releases before the
-    // beta refuse to open.
     let staged=install::stage_archive(&root,&release,&archive).unwrap();
     install::set_pending(&root,&staged).unwrap();
     assert!(install::active(&root).unwrap().is_none(),"downloading never switches the running version");
     let result=activation::install_pending(&root,"0.0.1",std::path::Path::new("/original/yo3-revival"),||false,std::time::Duration::from_secs(25));
     assert_eq!(result,activation::Pending::Installed);
     assert_eq!(install::active(&root).unwrap(),Some(staged.clone())); assert!(install::pending(&root).unwrap().is_none());
-    let _ = std::process::Command::new("pkill").arg("-f").arg(staged.executable()).status();
+    stop(&staged.executable());
+}
+/// A released launcher (`YO3_UPDATE_TEST_FROM`, its Desktop archive, e.g. v0.0.21) meets the release under test: its
+/// launcher.db is opened by the new version, and its original shortcut still opens the installed update (it launches
+/// and promotes it with its own code, which opens launcher.db and checks the new bundle by its rules).
+#[test]
+#[cfg(unix)]
+#[ignore = "requires a built release archive, a released one and an explicitly selected private Xvfb display"]
+fn a_released_launcher_updates_to_this_release_and_its_shortcut_reaches_it() {
+    let (archive,root,release)=packaged_release();
+    let root=root.with_file_name("app-released"); // apart from the other packaged test's data
+    let from=PathBuf::from(std::env::var_os("YO3_UPDATE_TEST_FROM").expect("the released archive"));
+    let old_dir=root.parent().unwrap().join("released");
+    std::fs::create_dir_all(&old_dir).unwrap();
+    tar::Archive::new(flate2::read::GzDecoder::new(std::fs::File::open(&from).unwrap())).unpack(&old_dir).unwrap();
+    let old=old_dir.join("yo3-revival-desktop/yo3-revival");
+    let run_old=|| std::process::Command::new(&old).env("YO3_DESKTOP_DATA",&root).env_remove("YO3_BUNDLE_DIR").env_remove("YO3_DESKTOP_BIN")
+        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().unwrap();
+    // The player used the released version: its launcher.db and settings exist.
+    let mut first=run_old();
+    let deadline=std::time::Instant::now()+std::time::Duration::from_secs(20);
+    while !root.join("launcher.db").exists() && std::time::Instant::now()<deadline { std::thread::sleep(std::time::Duration::from_millis(200)); }
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    assert!(first.try_wait().unwrap().is_none(),"the released launcher opened");
+    first.kill().unwrap(); first.wait().unwrap();
+    assert!(root.join("launcher.db").exists(),"the released launcher made its database");
+    // Its updater installed this release (the new version opened its window and was promoted).
+    let staged=install::stage_archive(&root,&release,&archive).unwrap();
+    let mut opened=activation::launch(&root,&staged,false,std::time::Duration::from_secs(25)).expect("the new version opens on the released launcher's data");
+    assert_eq!(install::active(&root).unwrap(),Some(staged.clone()));
+    opened.kill().unwrap(); opened.wait().unwrap();
+    // The original shortcut: the released binary must hand over to the installed update (and exit), not open itself
+    // with "Launcher database is newer than this application".
+    let mut shortcut=run_old();
+    let deadline=std::time::Instant::now()+std::time::Duration::from_secs(40);
+    let status=loop {
+        if let Some(status)=shortcut.try_wait().unwrap() { break Some(status) }
+        if std::time::Instant::now()>deadline { break None }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    };
+    let Some(status)=status else { let _=shortcut.kill(); stop(&staged.executable()); panic!("the released launcher opened itself instead of the installed update") };
+    assert!(status.success(),"the released launcher's hand-over failed: {status}");
+    let running=std::process::Command::new("pgrep").arg("-f").arg(staged.executable()).output().unwrap();
+    assert!(running.status.success(),"the installed update is running");
+    assert_eq!(install::active(&root).unwrap(),Some(staged.clone()),"still the active version");
+    stop(&staged.executable());
 }
