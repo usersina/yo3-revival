@@ -290,6 +290,14 @@ sends that entry while a maintenance is planned (`front::information`) and pushe
 starts. **Status: confirmed**, `moderation_contract.rs`, live: the wrench, the "Maintenance / Back at 10:00" notice and
 text 11311 in the ticker.
 
+The wrench can't be taken down. InfoIcon shows it with the Flash call `enableIcon(1)` (icon 1, `0x783888`); given no
+countdown entry it only zeroes `+0x48`, so the per-frame update (`0x44F350`, which rewrites the time only while `+0x48`
+> 0) leaves the wrench up with its last time. `disableIcon` is called only for icons 2 to 5, from other replies. A
+maintenance called off (`maintenance --off`) therefore pushes the list without the entry and a chat note,
+`front::MAINTENANCE_CANCELLED`, "Maintenance is cancelled: the wrench clears when you next log in." **Status:
+confirmed**, `moderation_contract.rs`, live on native Windows 11: the wrench stayed at 00:29 beside the note, and the
+next login had no wrench.
+
 **Player search** (`0x2CF0`, built by InfoWindow `0x45F390`):
 
 - Request: `search_flag`, `search_type`, `base_point`, `front_num`, `back_num`, plus the criteria the flags name.

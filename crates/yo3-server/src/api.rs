@@ -232,6 +232,10 @@ impl Api {
                 if *off {
                     self.settings.reset("maintenance-at")?;
                     self.after_setting("maintenance-at");
+                    // A countdown the game was showing: its wrench stays up (R3), so say why.
+                    if let (Some(hub), Some(at)) = (&self.hub, before) && at > crate::logins::now() {
+                        hub.locked().push_everyone(&crate::front::chat_note("Moderator", crate::front::MAINTENANCE_CANCELLED));
+                    }
                     return Ok((message("maintenance is off".into()), before.map(|t| json!(t)), None));
                 }
                 let minutes = minutes.ok_or("maintenance needs --in MINUTES (0: now), or --off")?;

@@ -85,6 +85,29 @@ fn the_information_list_carries_the_countdown_before_maintenance() {
     assert!(started.items.iter().all(|e| e.get("lefttime").is_none()), "no countdown once it started");
 }
 
+#[test]
+fn calling_maintenance_off_tells_the_players_the_wrench_stays_until_their_next_login() {
+    // InfoIcon 0x44E130 shows the wrench with enableIcon(1) and, given no countdown entry, only zeroes its countdown
+    // (+0x48): nothing in the client calls disableIcon(1), so the wrench stays, frozen, until the next login. The
+    // information list goes out without the entry, and a chat note says why the wrench is still there.
+    let server = Server::new();
+    let mut c = server.join(1001, "Yugi");
+    let settings = Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());
+    let mut api = api::Api::new(directory().0, settings, None, std::path::PathBuf::new(), "server");
+    api.hub = Some(server.hub.clone());
+    let notes = |c: &mut common::Client| c.pushed().into_iter().filter(|m| m.request() == Some(0x2455)).count();
+    api.apply(&Op::Maintenance { minutes: None, message: None, off: true }, "Anna").unwrap();
+    assert_eq!(notes(&mut c), 0, "nothing was planned: nothing to explain");
+    api.apply(&Op::Maintenance { minutes: Some(30), message: None, off: false }, "Anna").unwrap();
+    assert!(c.pushed().iter().any(|m| m.request() == Some(0x21FC)), "the countdown");
+    api.apply(&Op::Maintenance { minutes: None, message: None, off: true }, "Anna").unwrap();
+    let pushed = c.pushed();
+    let info = pushed.iter().find(|m| m.request() == Some(0x21FC)).expect("the list again");
+    assert!(info.items[0].items.iter().all(|e| e.get("lefttime").is_none()), "no countdown entry");
+    let note = pushed.iter().find(|m| m.request() == Some(0x2455)).expect("a chat line");
+    assert_eq!(note.items[0].get("chat_str"), Some(&Value::text(yo3_server::front::MAINTENANCE_CANCELLED)));
+}
+
 struct Live { endpoint: Endpoint, admin: yo3_server::admin::Live, data: std::path::PathBuf, _running: Running }
 
 async fn server(test: &str) -> Live {

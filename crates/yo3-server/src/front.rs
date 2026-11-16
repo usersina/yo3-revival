@@ -620,6 +620,10 @@ pub fn information(settings: &crate::settings::Settings, engine_problem: bool, n
 }
 
 /// A line from the server in one player's chat window (a 0x2455 push from no one, as title awards are announced).
+/// Said to everyone online when a planned maintenance is called off: the game has no way to take its wrench down
+/// (InfoIcon 0x44E130 shows it with enableIcon(1); nothing calls disableIcon(1)), so it stays until the next login.
+pub const MAINTENANCE_CANCELLED: &str = "Maintenance is cancelled: the wrench clears when you next log in.";
+
 pub fn chat_note(from: &str, text: &str) -> Message {
     let line = Message::record().with("from_id", Value::U32(0)).with("pname", Value::text(from))
         .with("chat_type", Value::U32(crate::banter::NPC_CHAT)).with("chat_str", Value::text(text));
