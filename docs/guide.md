@@ -223,8 +223,9 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
 - `stop` stops the running server gracefully, as SIGTERM and Ctrl+C do: no new logins, the duels between players end
   as draws, and a last backup. Every change is already saved as it happens.
 - `share` prints what a friend needs to join: the server's name, its address (`--advertise` and `--auth-port`), its
-  identity and the invite link carrying both. `--invite` adds an invite code for one sign-up, working for a week. A
-  Desktop friend pastes the link under Multiplayer → Other servers; a Scripts friend runs `play --register LINK USER
+  identity and the invite link carrying both. `--invite` adds an invite code for one sign-up, working for a week, and
+  the link for one friend that carries it. A Desktop friend pastes the link under Multiplayer → **⋯** → Add a server;
+  a Scripts friend runs `play --register LINK USER
   --profile client.json` ([Scripts](scripts.md#join-a-friends-server)).
 - `add-account NAME` creates a key account and its first player, for the Scripts edition on your own PC. Names are 1–16 characters and
   unique. `--also B,C` adds players to that account, up to four total.

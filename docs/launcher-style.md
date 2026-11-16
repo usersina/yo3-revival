@@ -31,6 +31,17 @@ tabs, typing with Tab and Enter, sign-in errors, dialogs, dragging, minimising a
   screen capture is shipped. The colours below were measured from the game's Select Player screen, so they match it
   without copying anything from it.
 - **One big action per screen.** PLAY or LOG IN is the bright blue button; everything else is navy, a link or a tab.
+  While the game runs the big button becomes what you can do then: **CLOSE GAME**, or **CANCEL** for a start that hangs.
+- **Each button's role shows** ([#50](https://github.com/usersina/yo3-revival/issues/50)): navy for a form's or a
+  dialog's main action, light silver for a way back or out (Back, Cancel), red for one that ends or removes something
+  (Stop hosting, Sign out, a reset). A button that can't be pressed yet is flat and faded, never like a live one.
+- **Dialogs** carry the help **?** and the **×** in their title strip; the footer holds only the actions, the main one
+  rightmost and a quiet one left of it.
+- **One message per state.** What the server's row, the big button or a field already says isn't repeated in another
+  line. Notices about both tabs go behind the title bar's bell, not in a banner over the page.
+- **Forms check as you type.** Each rule is a line that turns green when met and red when broken; the form's button
+  works once all are met. An address is looked up before Add.
+- **Short words.** A dialog says what it does in a sentence or two.
 - **Dark outside, light inside.** Bars, tabs and the backdrop are dark with light text; panels are light with dark
   text, as in the game.
 
@@ -73,17 +84,24 @@ Sizes: 15 px body, 14 px captions and footer, 19 px frame titles, about half the
 
 | Component | Function | States |
 | --- | --- | --- |
-| Navy button | `pill(label, message, Kind::Primary, width, height)` | normal, hover (lighter, cyan glow), pressed (darker, label down 1 px), disabled (steel, grey label) |
-| Big action | `pill(.., Kind::Play, ..)`, about 70 px high | as above, with a soft glow at rest |
+| Navy button | `pill(label, message, Kind::Primary, width, height)`: a form's or dialog's main action | normal, hover (lighter, cyan glow), pressed (darker, label down 1 px), disabled (flat, navy faded into the panel) |
+| Quiet button | `pill(.., Kind::Secondary, ..)`: Back, Cancel, tools in Settings | light silver face, navy label; same states |
+| Red button | `pill(.., Kind::Danger, ..)`: Stop hosting, Sign out, a reset | red face, white label; same states |
+| Big action | `pill(.., Kind::Play, ..)`, about 70 px high; any kind 50 px or higher uses the display font | as above, with a soft glow at rest; disabled is steel, its label saying what is happening |
 | Tab | `pill(.., Kind::Tab { active }, ..)`, a parallelogram | active (silver rim, navy, cyan underline), inactive (dark), hover (lighter, white label) |
-| Window control | `pill("", .., Kind::Window(Glyph::..), 34, 28)` | settings, minimise, close (red under the pointer); the symbol is drawn, not a font glyph |
+| Window control | `pill("", .., Kind::Window(Glyph::..), 34, 28)` | bell, settings, minimise, close (red under the pointer), help; the symbol is drawn, not a font glyph |
+| Count | `badge(n)` on a control's corner | red with a white number, 9+ above nine |
 | Frame | `panel(Some(title), content)` | silver rim with four bolts, navy title strip with stripes, light-grey body |
 | Title bar, footer | `title_strip(content)`, `footer_strip(content)` | dark bars with a silver line toward the content |
 | Text field | `text_input(..).style(field)` | white well, blue ring when focused; `.secure(true)` for passwords |
 | Checkbox | `checkbox(..).style(tick)` | navy when ticked |
 | Drop-down | `pick_list(..).style(choice).menu_style(choice_menu)` | white well; the open list highlights in navy |
-| Link | `link(label, message, on_dark)` | blue on panels, pale on bars; brighter on hover |
-| Dialog | `modal(screen, dialog, on_blur)` | darkens the screen; a click outside or Escape closes it |
+| Link | `link(label, message, on_dark)`; `danger_link` in red; `icon_link(icon, ..)` led by an icon (the footer's three) | blue on panels, pale on bars; brighter on hover |
+| Icon | `icon(Icon::.., size, colour)`: line icons on a 24 px grid, tinted | copy, save, help, flag, heart, more, check, cross, pending, plus, trash, server, user, open, bell, link, refresh |
+| Icon button | `icon_button(icon, message, tip, on_dark)` | 30 px square, a tip under the pointer, a soft face on hover; faded when disabled |
+| Menu | `menu(items, width)` of `Item { icon, label, on_press, danger }` | a light card with a shadow; rows highlight on hover; red for a removal |
+| Checklist line | `rule(Rule::.., words)` | grey ring (not typed yet), green tick (met), red cross (broken) |
+| Dialog | `dialog(title, help, close, width, height, content)` inside `modal(screen, dialog, on_blur)` | a frame with **?** and **×** in its strip; the modal darkens the screen; a click outside or Escape closes it |
 | Backdrop | `backdrop()` | the circuit board, cropped to fill; always the bottom layer |
 | Logo | `logo(height)` | the diamond mark and YO3 REVIVAL |
 

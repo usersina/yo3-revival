@@ -41,8 +41,8 @@ Use **64-bit Windows 10/11**, or **Linux with Wine**. **Windows 7 is not support
 
 ## Host or manage a server
 
-- **Desktop:** **Host for friends** on the Multiplayer tab runs a server on your PC and gives you an invite link and
-  invite codes to send. [Hosting guide](docs/launcher.md#host-friends).
+- **Desktop:** **Host for friends** on the Multiplayer tab runs a server on your PC and gives you an invite link for
+  each friend to send. [Hosting guide](docs/launcher.md#host-friends).
 - **Scripts edition:** Follow the [terminal hosting setup](docs/scripts.md#host-friends) and
   [server and account commands](docs/guide.md).
 

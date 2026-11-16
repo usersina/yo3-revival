@@ -92,8 +92,10 @@ The `server-name` and `headline` settings show in the launcher's server list, an
 launchers older than that version, which are told to update.
 
 Players find the server with an invite link (`yo3revival://server?address=HOST:PORT&identity=HEX&name=NAME`, which
-Host for friends and `yo3-server share` make) or by typing its address in Multiplayer → Other servers and comparing
-the identity the launcher shows with the one the host gave them.
+Host for friends and `yo3-server share` make) or by typing its address in Multiplayer → **⋯** → Add a server and
+comparing the identity the launcher shows with the one the host gave them. A link made for one friend also carries their
+single-use invite code (`&code=ABCD-EFGH-JKLM-NPQR`): Host for friends makes one per friend, and `share --invite` prints
+one; the launcher fills the code into the sign-up, and Scripts' `--register` uses it without asking.
 
 A terminal host prints what to send, and an invite code for one sign-up that works for a week:
 
@@ -108,7 +110,7 @@ A Scripts player makes the account and signs in from a terminal, with the link i
 ./play.sh --profile "$PWD/client.json" --game-dir "/path/to/Yu-Gi-Oh! ONLINE 3"
 ```
 
-`--register` asks for the invite code, a password twice and the server's rules, prints the recovery code, then signs
+`--register` asks for the invite code (unless the link carries one), a password twice and the server's rules, prints the recovery code, then signs
 in as `--sign-in SERVER USER` does: it asks for the password without echoing it, keeps the device token in the
 system's credential store and writes `client.json`, which names the server, its identity and the store's entry. When
 the store isn't available (a Linux PC without a Secret Service), it says so and keeps nothing: the game's own login

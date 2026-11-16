@@ -68,8 +68,8 @@ game** with **Fix**, which reopens Setup at the Game step. Settings → Game →
 ![The main screen: Singleplayer, with the Information panel and PLAY](../screenshots/desktop.png)
 
 **PLAY** starts your own server, then the game, and the line above the button names each step; after 30 seconds
-without the game, **Cancel** stops what it started. While you play, **Close game** asks the game to stop and forces it
-after 10 seconds. Your server stops 30 seconds after the game exits, so a quick relaunch reuses it. If YO3 Revival
+without the game, the big button becomes **CANCEL**, which stops what it started. While you play it is **CLOSE GAME**,
+which asks the game to stop and forces it after 10 seconds. Your server stops 30 seconds after the game exits, so a quick relaunch reuses it. If YO3 Revival
 crashes, the game keeps playing and your server stops by itself once nobody has played for two minutes. A game opened
 without the launcher shows as **PLAYING**, so a second copy can't be started.
 
@@ -84,26 +84,33 @@ starts, newest first); Settings → Singleplayer has the backups, a reset and th
 
 The **Multiplayer** tab signs in to servers with a User ID and password ([accounts](authentication.md#accounts)):
 
-![The Multiplayer tab, signed in to a friend's server, with the game running](../screenshots/multiplayer.png)
+![The Multiplayer tab, signed in to a server, with the server tools beside the list](../screenshots/multiplayer.png)
 
 - **The server list**: the official servers (from a list signed by the project, once it publishes one) and the ones you
-  added under **Other servers**, the last one you played on first. Each shows whether it is online, with how many
-  players and its ping, or Maintenance, Offline, Needs a newer launcher, or Identity changed. The Information panel shows
-  the chosen server's news.
-- **Other servers**: paste an invite link a host sent you (`yo3revival://server?…`), or type an address (`host` or
-  `host:port`). An invite link carries the server's identity, so it is added at once. An address shows the server's
-  name first; **Details** shows its identity, to compare with one the host gave you. YO3 Revival checks the identity on
-  every connection after that. If it ever changes, the server's row says so and nothing connects: remove the server and
-  add it again only if the host confirms the change.
-- **Create account**: a User ID (3 to 16 letters or digits), a password of 8 to 16 letters or digits, typed twice,
-  and the server's invite code when it asks for one. You then see a **recovery code** once: save it.
+  added, the last one you played on first. Each shows whether it is online (the dot: green, amber or red), with how
+  many players and its ping, or Maintenance, Offline, Needs a newer launcher, or Identity changed. The Information panel
+  shows the chosen server's news.
+- **Server tools** (the **⋯** beside the list): **Add a server**, **Host for friends**, and **Remove this server** for one
+  you added.
+- **Add a server**: paste an invite link a host sent you (`yo3revival://server?…`), or type an address (`host` or
+  `host:port`). The line under the box says what it found as you type: the link's server, or the name of the server
+  that answers at that address; **Add** works once something is found. An invite link carries the server's identity,
+  so it is added at once, and a link made for you carries your invite code too: making your account opens with it
+  filled in. An address shows the server's name first; **Details** shows its identity, to compare with one the host
+  gave you. YO3 Revival checks the identity on every connection after that. If it ever changes, the server's row says
+  so and nothing connects: remove the server and add it again only if the host confirms the change.
+- **Create account** (under the sign-in, **New here?**): a User ID (3 to 16 letters or digits), a password of 8 to 16
+  letters or digits that isn't the User ID, typed twice, and the server's invite code when it asks for one. A list
+  under the form ticks each rule green as you type; **Create account** works once all are met and the rules are
+  accepted. You then see a **recovery code** once: **Copy** it or **Save** it as a text file, then **I saved it** signs
+  you in.
 - **LOG IN**: **Save User ID** keeps only the name. **Stay signed in** keeps a sign-in token in your system's credential
   store (Windows Credential Manager, or the Secret Service on Linux), never the password; without such a store it is
   off and says why. Wrong User ID or password get the same message, and repeated tries wait longer each time.
 - **Forgot password?**: your recovery code (or a reset code from the server's moderators, who check it's you first) and
   a new password. A recovery code is replaced by a new one, shown once.
-- **PLAY** starts the game signed in to the server; **Close game** works as in Singleplayer. **Sign out** forgets this
-  PC's sign-in. Signing in elsewhere ends this game's session: the newest sign-in wins. PLAY checks your sign-in first:
+- **PLAY** starts the game signed in to the server; **CLOSE GAME** and **CANCEL** work as in Singleplayer. Signed in,
+  the panel shows your User ID with a red **Sign out**, which forgets this PC's sign-in. Signing in elsewhere ends this game's session: the newest sign-in wins. PLAY checks your sign-in first:
   if it ended (the server restarted, a moderator, or a sign-in on another PC), **Stay signed in** starts a new one, and
   otherwise you sign in again.
 
@@ -115,24 +122,27 @@ Settings → Accounts lists every server you're signed in to on this PC, with Si
 LAN". It is the same server as Singleplayer's, with its own data (its own accounts, cards and decks), and it runs while
 YO3 Revival is open.
 
-![Host for friends: the address, the invite link, an invite code and a friend online](../screenshots/host-friends.png)
+![Host for friends: an invite link for a friend, the address and a friend online](../screenshots/host-friends.png)
 
-1. On the Multiplayer tab, click **Host for friends**.
+1. On the Multiplayer tab, open the server tools (**⋯**) and click **Host for friends**.
 2. Give your server a name. Keep port **7443** unless something else uses it. Leave **Address to share** empty for
    this PC's network address (friends on your home network reach it), or type your public address or a name such as
    `play.example.com` for friends elsewhere (see [Friends can't connect](#troubleshooting)).
-3. Click **Start hosting**. The dialog shows the **Address** and the **Invite link**, each with **Copy**, and an invite
-   code. Send each friend the link and their own code: **New code** makes another. A code works once, for a week.
-4. Your friend pastes the link under Multiplayer → **Other servers**, clicks **Create account** and uses the code.
-5. Your server is in your own Multiplayer list too, as **(yours)**: make your own account there with a code, and play
-   on it like everyone else.
+3. Click **Start hosting**. Then, for each friend, click **Copy an invite link** and send them what it copied. Each
+   friend gets their own link: it carries a single-use invite code that works for a week. The dialog lists the links
+   made this time, with a copy button each, and the **Address** with its own.
+4. Your friend pastes the link under Multiplayer → **⋯** → **Add a server**: making their account opens with the code
+   filled in.
+5. Your server is in your own Multiplayer list too, as **(yours)**: make your own account there with an invite link of
+   your own, and play on it like everyone else.
 
 The footer says **Hosting for friends** with how many players are online; click it to open the dialog again.
 **Check reachability** asks your server at the address you share. From this PC that also needs your router to loop the
 connection back, so a failure there means "maybe", not "no". **Admin panel** opens your server's
 admin panel in your browser (accounts, moderation, news, settings, gifts). It signs in with an admin account: create
-your account on your server from Multiplayer, then type its User ID beside **Admin** and click **Make admin**. **Stop hosting** ends the server; friends' duels end as
-draws. Closing YO3 Revival stops it too, and asks first while friends are online.
+your account on your server from Multiplayer, then type its User ID in the box under it and click **Make admin**.
+The red **Stop hosting** ends the server; friends' duels end as draws. The dialog's **?** opens this topic in Help, and
+**×** closes the dialog while your server keeps running. Closing YO3 Revival stops it too, and asks first while friends are online.
 
 Only the TLS port needs to be reachable. If another program has it, the dialog says so in one line with **Change
 port**. Singleplayer and hosting can't share a port at the same time: with the defaults, your Singleplayer server gives
@@ -223,7 +233,9 @@ Multiplayer, hosting, settings, the common problems and where to talk with other
 is free, and giving changes nothing in the game.
 
 Every error is one plain sentence with one action: its own (**Retry**, **Fix**, **Repair**, **Allow**, **Restore a
-backup**) or **Report**. **Help** opens the topic for that error. **Details** shows the technical text, with your
+backup**) or **Report**. Your own server's notices show on its panel. Those about both tabs (a game opened without the
+launcher that couldn't play, an update that didn't install, a permission to give) go to the **bell** in the title
+bar, which counts the new ones; click it to see them. **Help** opens the topic for that error. **Details** shows the technical text, with your
 folders written as names such as `<game>` or `<app data>`, and **Copy** puts it on the clipboard.
 
 ![Help: the guide inside the launcher, at Host for friends](../screenshots/help.png)
@@ -233,7 +245,7 @@ folders written as names such as `<game>` or `<app data>`, and **Copy** puts it 
 **Report a problem** (in the footer, in Help, or beside an error):
 
 1. Say what you were doing and what went wrong.
-2. Click **Open the report form**. YO3 Revival saves this session's logs in a ZIP, with personal details removed, opens
+2. Click **Continue on GitHub**. YO3 Revival saves this session's logs in a ZIP, with personal details removed, opens
    the folder that holds it, and opens the project's report form in your browser, filled in with your words, the
    version and the error.
 3. Drag the ZIP into the form and submit it. Nothing is sent until you submit the form yourself.

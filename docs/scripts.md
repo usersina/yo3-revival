@@ -137,9 +137,11 @@ Then, in another terminal (the server may keep running), print what to send each
 ./yo3-server --advertise 192.168.1.50 share --invite
 ```
 
-It prints the server's address, its identity, the **invite link** and an **invite code** for one sign-up that works for
-a week (`yo3-server.exe` on Windows). Send the link and the code; each friend needs their own code (run it again, or
-`invite --uses N` for several). Friends with the Desktop launcher paste the link under Multiplayer → Other servers and
+It prints the server's address, its identity, the **invite link**, an **invite code** for one sign-up that works for
+a week, and the **invite link for one friend** that carries that code (`yo3-server.exe` on Windows). Send a friend the
+link for one friend: it is all they need. Each friend needs their own (run it again, or `invite --uses N` for a code
+several can use, sent beside the plain link). Friends with the Desktop launcher paste the link under Multiplayer →
+**⋯** → Add a server and
 create their account there; friends with Scripts use [`--register`](#join-a-friends-server). Nobody needs a file from
 you, and there is no account key to hand out. Who can make an account is the `registration`
 [live setting](guide.md#live-settings) ([accounts](authentication.md#setting-up-a-server)). To play on it yourself,
