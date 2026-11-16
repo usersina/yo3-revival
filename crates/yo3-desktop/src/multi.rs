@@ -80,6 +80,8 @@ pub enum Message {
     Host,
     /// Your hosted server, added to your own list (#37).
     Hosted(Box<Server>),
+    /// Check this server's status again now (your hosted server, just stopped).
+    Recheck(String),
     /// Settings → Accounts: open (or close) a form for a server.
     AccountForm(String, Option<AccountForm>),
     AccountEdit(AccountField, String),
@@ -329,6 +331,10 @@ impl State {
             Message::Remedy(Remedy::Update) | Message::Play | Message::CloseGame => {}
             Message::ShowIdentity => self.show_identity = !self.show_identity,
             Message::Host => {}
+            Message::Recheck(key) => {
+                self.status.remove(&key);
+                if let Some(server) = self.servers.iter().find(|s| s.key() == key).cloned() { return self.probe(&server) }
+            }
             Message::Hosted(server) => {
                 if self.servers.iter().any(|s| s.key() == server.key()) {
                     // Known already (an earlier hosting, or its link): its address follows this hosting's port.
@@ -700,6 +706,15 @@ mod tests {
     }
     fn online() -> Status { Status::Online { online: Some(3), max: None, registration: "invite".into(), news: vec![], ping: std::time::Duration::from_millis(40) } }
     fn signed(user: &str, token: Option<&str>) -> SignedIn { SignedIn { user: user.into(), session: [7; 32], device_token: token.map(str::to_owned) } }
+
+    #[test]
+    fn a_stopped_hosted_server_is_checked_again_at_once() {
+        let mut state = tab(online(), None);
+        let key = state.servers[0].key().to_string();
+        let _ = state.update(Message::Recheck(key.clone()), &ctx());
+        assert!(!state.status.contains_key(&key), "no last check left showing while the new one runs");
+        assert_eq!(State::row_status(state.status.get(&key)).1, State::row_status(None).1);
+    }
 
     #[test]
     fn the_button_says_what_the_server_allows() {

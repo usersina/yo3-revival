@@ -174,13 +174,23 @@ impl App {
             Message::Host(host::Message::Help(topic)) => return self.update(Message::OpenHelp(Some(topic))),
             Message::Host(host::Message::Close) => self.dialog = None,
             Message::Host(message) => {
-                // Your hosted server goes in your own Multiplayer list, at this PC's own address.
+                // Your hosted server goes in your own Multiplayer list, at this PC's own address: 127.0.0.1, not localhost,
+                // which Windows tries as ::1 first, where the server isn't listening (a refused connection there takes
+                // Windows about 2 s, so every check of the row did).
                 let own = match &message {
-                    host::Message::Started(Ok(started)) => yo3_desktop::hosting::hosted_server(&format!("{} (yours)", started.1.server.name), "localhost",
+                    host::Message::Started(Ok(started)) => yo3_desktop::hosting::hosted_server(&format!("{} (yours)", started.1.server.name), "127.0.0.1",
                         started.0.host_port, started.1.server.key()).ok(),
                     _ => None,
                 };
+                // Stopped: its row is checked again at once, rather than showing the last check until the next.
+                let stopped = match &message {
+                    host::Message::Stopped(Ok(())) => self.host.hosted.as_ref().map(|h| h.server.key().to_string()),
+                    _ => None,
+                };
                 let task = self.host.update(message, &mut self.ctx).map(Message::Host);
+                if let Some(key) = stopped {
+                    return Task::batch([task, self.home.update(home::Message::Multi(crate::multi::Message::Recheck(key)), &mut self.ctx).map(Message::Home)]);
+                }
                 let Some(own) = own else { return task };
                 return Task::batch([task, self.home.update(home::Message::Multi(crate::multi::Message::Hosted(Box::new(own))), &mut self.ctx).map(Message::Home)]);
             }
