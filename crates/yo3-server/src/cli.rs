@@ -103,13 +103,13 @@ pub enum Admin {
     /// a key if needed; existing player data stays in place).
     Key { who: String },
     /// Give an account (its User ID or one of its PLAYER names) a player named NAME.
-    AddPlayer { who: String, name: String },
+    AddPlayer { who: String, name: String, #[arg(long)] request_id: Option<String> },
     /// Rename a player.
-    Rename { old: String, new: String },
+    Rename { old: String, new: String, #[arg(long)] request_id: Option<String> },
     /// Set the country flag the account WHO (a User ID or a player's name) shows to others (a code from the
     /// client's table, such as FR or JP: `countries` lists them); "auto" goes back to the one the client's language
     /// implies.
-    SetCountry { who: String, code: String },
+    SetCountry { who: String, code: String, #[arg(long)] request_id: Option<String> },
     /// List the country codes the client has flags for.
     Countries,
     /// Give a player a title by its name, as the game shows it (the staff and promotion ones, GAME MASTER or JUMP

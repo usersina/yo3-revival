@@ -3,7 +3,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::{Json, Router, body::Body, extract::{ConnectInfo, DefaultBodyLimit, State, rejection::JsonRejection},
+use axum::{Json, Router, body::Body, extract::{ConnectInfo, DefaultBodyLimit, State, Path, rejection::{JsonRejection, PathRejection}},
     http::{HeaderMap, HeaderValue, StatusCode, header}, middleware::{self, Next}, response::{IntoResponse, Response},
     routing::get, Extension};
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{api::{give_bp::GiveBpByIdRequest, Api, GiveBpResult, Actor, MutationError, MutationErrorCode}, lock::Locked,
     logins::Role, panel::{self, Panel, Viewer}};
+use crate::api::profiles::{AccountDetail, AccountEditRequest, AccountEditResult, CountryList};
 use crate::api::invites::{CreateInviteRequest, CreateInviteResult, InviteList};
 use crate::api::codes::{BpCodeList, CreateBpCodeRequest, CreateBpCodeResult, RemoveBpCodeRequest, RemoveBpCodeResult};
 
@@ -102,6 +103,7 @@ fn documented_routes() -> OpenApiRouter<Dashboard> {
     OpenApiRouter::new().routes(routes!(staff_session)).routes(routes!(sign_in)).routes(routes!(sign_out))
         .routes(routes!(accounts)).routes(routes!(give_bp)).routes(routes!(list_bp_codes))
         .routes(routes!(create_bp_code)).routes(routes!(remove_bp_code)).routes(routes!(list_invites)).routes(routes!(create_invite))
+        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices))
 }
 
 pub fn openapi() -> OpenApi {
@@ -320,6 +322,43 @@ async fn create_invite(State(state): State<Dashboard>, Extension(viewer): Extens
     let Json(request) = body?;
     let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
     tokio::task::spawn_blocking(move || state.api.create_invite(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
+        .map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(get, path = "/panel/api/v1/accounts/{user_id}", operation_id = "getAccount", tag = "Accounts",
+    params(("user_id" = u32, Path, maximum = 4294967295_u32, description = "Stable account number")),
+    security(("staffSession" = [])), responses((status = 200, description = "Success", body = AccountDetail),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 404, description = "Account not found", body = ApiError), (status = 503, description = "Stored account could not be read", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn get_account(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, path: Result<Path<u32>, PathRejection>) -> Result<Json<AccountDetail>, ApiError> {
+    let Path(user_id) = path.map_err(|_| ApiError::new(ApiErrorCode::InvalidRequest, "Choose a valid account number."))?;
+    tokio::task::spawn_blocking(move || state.api.account_detail(user_id, Actor::Staff { user_id: viewer.user_id }))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "Account details could not be read."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(get, path = "/panel/api/v1/countries", operation_id = "listCountries", tag = "Accounts",
+    security(("staffSession" = [])), responses((status = 200, description = "Success", body = CountryList),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 503, description = "Country choices unavailable", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn country_choices(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>) -> Result<Json<CountryList>, ApiError> {
+    tokio::task::spawn_blocking(move || state.api.account_countries(Actor::Staff { user_id: viewer.user_id }))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "Country choices could not be read."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/accounts/edit", operation_id = "editAccount", tag = "Accounts",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = AccountEditRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "One ID per change. Retain it on an uncertain outcome; retries never reapply a committed edit.")),
+    responses((status = 200, description = "Committed edit or original retry result", body = AccountEditResult),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Account or player not found", body = ApiError), (status = 409, description = "Request ID conflict, duplicate name or full account", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError),
+        (status = 503, description = "Commit could not be confirmed; retry the same request", body = ApiError), (status = 500, description = "Internal error; outcome may be unknown", body = ApiError)))]
+async fn edit_account(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, headers: HeaderMap,
+    body: Result<Json<AccountEditRequest>, JsonRejection>) -> Result<Json<AccountEditResult>, ApiError> {
+    let Json(request) = body?;
+    let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
+    tokio::task::spawn_blocking(move || state.api.edit_account(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
         .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
         .map(Json).map_err(Into::into)
 }

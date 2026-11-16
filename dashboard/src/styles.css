@@ -2137,6 +2137,35 @@
   .connected-invites {
     margin-top: 28px;
   }
+  .profile-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+    gap: 16px;
+    margin: 0;
+  }
+  .profile-facts dt {
+    color: var(--color-muted);
+    font-size: 12px;
+  }
+  .profile-facts dd {
+    margin: 4px 0 0;
+    overflow-wrap: anywhere;
+  }
+  .connected-profile {
+    display: grid;
+    gap: 20px;
+  }
+  .connected-profile input,
+  .connected-profile select {
+    width: 100%;
+  }
+  .connected-profile .table-toolbar {
+    padding-inline: 0;
+  }
+  .connected-profile form {
+    display: grid;
+    gap: 16px;
+  }
   .connected-state {
     display: flex;
     align-items: center;

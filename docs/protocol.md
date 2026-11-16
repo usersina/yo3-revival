@@ -2204,6 +2204,15 @@ The CLI prints IDs and accepts `--request-id`; old panel forms retain hidden IDs
 keep the original code, issuer and expiry even after consumption, restart or audit pruning, without replenishing
 uses. The CLI's `invite` and `share --invite` accept `--request-id`; legacy forms reuse their hidden IDs. Both admins
 and moderators can create invites. Evidence: `invite_contract.rs`, `panel_contract.rs`, `dashboard_contract.rs`.
+Player creation, renaming and country edits also commit their change, audit and receipt together. The staff API's
+`POST /panel/api/v1/accounts/edit` takes a tagged `kind` (`add_player`, `rename_player`, `set_country`) and numeric
+account/player IDs. Name-based CLI/panel retries find the original receipt before resolving an old name. Successful
+receipts contain IDs and a generic result, not player names. Moderators retain their existing rename rule (own or
+non-staff accounts); creation/country are admin-only. `GET /panel/api/v1/accounts/{user_id}` returns a safe projection
+with RFC 3339 times and nullable live state, never keys/passwords/device/reset tokens. Country choices are read from
+the game archive through `GET /panel/api/v1/countries`, without a fabricated fallback list. Existing game reply shapes
+are unchanged; edits appear at the next sign-in. Evidence: `account_admin_contract.rs`, `dashboard_contract.rs` and
+connected browser tests.
 The panel runs the same operations in the server (`Api::apply_as`) as its signed-in staff account: a moderator runs only
 the looking, moderation, invite and reset-code operations, and none on a staff account. `account`, `backups`, `back-up` and
 `logs` were added for its pages. Status also reports the actual `listen` socket and `release`, so a reopened manager and local game use the active
@@ -2212,7 +2221,7 @@ management/assets HTTP stays loopback.
 
 The React dashboard has its own staff-session JSON routes at `/panel/api/v1/`, implemented in `dashboard.rs` with
 Axum and utoipa-axum. Rust exports `dashboard/api/openapi.json`; Orval generates the frontend fetch functions, hooks,
-types and Zod validators. It currently covers sign-in/out, session, account summaries, Give BP (a `user_id: u32`
+types and Zod validators. It currently covers sign-in/out, session, account summaries/details and player edits, Give BP (a `user_id: u32`
 target, not a player name), and code listing/creation/removal, including claim summaries with RFC 3339 times where
 known. Registration invite listing/creation returns remaining uses, RFC 3339 expiry, the actual issuer, claims and
 a checked-at status; both admins and moderators can create them. Moderators read BP codes, admins change them. The staff router never accepts host-token authority. It runs only on its own opt-in

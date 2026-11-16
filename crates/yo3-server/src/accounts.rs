@@ -505,22 +505,26 @@ impl Directory {
 
     /// Gives account `user_id` a player named `name`.
     pub fn add_player_to(&mut self, user_id: u32, name: &str) -> Result<(), String> {
-        if name.is_empty() || self.taken(name) {
-            return Err(format!("the name {name:?} is taken or empty"));
-        }
-        self.atomic(|d| {
-            let id = d.next_player;
-            let Some(a) = d.account_mut_where(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
-            if a.players.len() >= MAX_PLAYERS {
-                return Err(format!("account {user_id} already has {MAX_PLAYERS} players"));
-            }
-            let mut p = Player::new(id, name);
-            p.index = free_slot(&a.players).unwrap_or_default();
-            p.country.clone_from(&a.country);
-            a.players.push(p);
-            d.next_player += 1;
-            Ok(())
-        })
+        let (mut next, _) = self.prepare_add_player(user_id, name)?;
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok(())
+    }
+
+    pub(crate) fn prepare_add_player(&self, user_id: u32, name: &str) -> Result<(Self, u32), String> {
+        let name = checked_name(name)?;
+        if self.taken(&name) { return Err("That player name is already taken.".into()) }
+        let id = self.next_player;
+        let following = id.checked_add(1).ok_or("The player number limit has been reached.")?;
+        let mut next = self.clone();
+        let a = next.account_mut_where(|a| a.user_id == user_id).ok_or("No such account.")?;
+        let slot = free_slot(&a.players).filter(|_| a.players.len() < MAX_PLAYERS).ok_or("This account already has four players.")?;
+        let mut player = Player::new(id, &name);
+        player.index = slot;
+        player.country.clone_from(&a.country);
+        a.players.push(player);
+        next.next_player = following;
+        Ok((next, id))
     }
 
     /// Sets the country of account `user_id` (see `set_country`).
@@ -568,19 +572,23 @@ impl Directory {
     }
 
     fn set_country_at(&mut self, at: Option<usize>, code: &str) -> Result<(), String> {
+        let user = at.map(|i| self.accounts[i].account.user_id).ok_or("no such account")?;
+        let mut next = self.prepare_country(user, code)?;
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok(())
+    }
+
+    pub(crate) fn prepare_country(&self, user_id: u32, code: &str) -> Result<Self, String> {
         let code = code.trim().to_ascii_uppercase();
         if !code.is_empty() && !(code.len() == 2 && code.bytes().all(|b| b.is_ascii_uppercase())) {
-            return Err(format!("{code:?} is not a two-letter country code"));
+            return Err("Use a two-letter country code, or automatic.".into())
         }
-        let Some(at) = at else { return Err("no such account".into()) };
-        self.atomic(|d| {
-            let account = Arc::make_mut(&mut d.accounts[at].account);
-            account.country = code;
-            for p in &mut account.players {
-                p.country.clone_from(&account.country);
-            }
-            Ok(())
-        })
+        let mut next = self.clone();
+        let account = next.account_mut_where(|a| a.user_id == user_id).ok_or("No such account.")?;
+        account.country = code;
+        for p in &mut account.players { p.country.clone_from(&account.country); }
+        Ok(next)
     }
 
     /// The account `user_id`, as kept now.
@@ -641,15 +649,19 @@ impl Directory {
 
     /// Renames a player (names are unique, ignoring case).
     pub fn rename(&mut self, old: &str, new: &str) -> Result<(), String> {
-        if new.is_empty() || (self.taken(new) && !old.eq_ignore_ascii_case(new)) {
-            return Err(format!("the name {new:?} is taken or empty"));
-        }
-        self.atomic(|d| {
-            let player = d.account_mut_where(|a| a.players.iter().any(|p| p.name.eq_ignore_ascii_case(old))).and_then(|a| a.players.iter_mut().find(|p| p.name.eq_ignore_ascii_case(old)));
-            let Some(player) = player else { return Err(format!("no player named {old:?}")) };
-            player.name = new.to_string();
-            Ok(())
-        })
+        let id = self.player_id_named(old).ok_or_else(|| format!("no player named {old:?}"))?;
+        let mut next = self.prepare_rename(id, new)?;
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok(())
+    }
+
+    pub(crate) fn prepare_rename(&self, player_id: u32, new: &str) -> Result<Self, String> {
+        let new = checked_name(new)?;
+        if self.player_id_named(&new).is_some_and(|id| id != player_id) { return Err("That player name is already taken.".into()) }
+        let mut next = self.clone();
+        next.player_mut(player_id).ok_or("No such player.")?.name = new;
+        Ok(next)
     }
 
     /// A player by id.
@@ -923,6 +935,14 @@ impl Directory {
 }
 
 /// The first slot of the Select Player screen no player has.
+fn checked_name(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() || name.chars().count() > MAX_NAME || name.chars().any(char::is_control) {
+        return Err(format!("Use 1 to {MAX_NAME} printable characters for a player name."))
+    }
+    Ok(name.into())
+}
+
 fn free_slot(players: &[Player]) -> Option<u32> {
     (0..MAX_PLAYERS as u32).find(|i| players.iter().all(|p| p.index != *i))
 }

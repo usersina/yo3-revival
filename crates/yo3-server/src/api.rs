@@ -33,6 +33,7 @@ pub mod give_bp;
 pub mod mutation;
 pub mod codes;
 pub mod invites;
+pub mod profiles;
 pub use give_bp::{GiveBpRequest, GiveBpResult};
 pub use mutation::{Actor, MutationError, MutationErrorCode};
 
@@ -112,7 +113,7 @@ pub enum Op {
 
 impl Op {
     /// Operations migrated to a committed change/audit/receipt boundary.
-    fn receipted(&self) -> bool { matches!(self, Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. }) }
+    fn receipted(&self) -> bool { matches!(self, Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. }) }
     /// Its name in the API's path and the audit log.
     pub fn name(&self) -> String {
         serde_json::to_value(self).ok().and_then(|v| v["op"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -293,6 +294,7 @@ impl Api {
             }, id, actor, origin).map(|r| json!(r)),
             Op::RemoveCode { code } => self.remove_bp_code(&codes::RemoveBpCodeRequest { code: code.trim().to_string() }, id, actor, origin).map(|r| json!(r)),
             Op::Invite { uses, days } => self.create_invite(&invites::CreateInviteRequest { uses: *uses, days: *days }, id, actor, origin).map(|r| json!(r)),
+            Op::AddPlayer { .. } | Op::Rename { .. } | Op::SetCountry { .. } => self.edit_named_account(op, id, actor, origin),
             _ => Err(MutationError::new(MutationErrorCode::InvalidRequest, "This operation has not migrated to the typed mutation boundary.")),
         }
     }
@@ -610,23 +612,7 @@ or after your next duel.", recipe.title)
                 d.set_role(user, parsed)?;
                 Ok((message(format!("{user} is now {}", role.to_ascii_lowercase())), before, Some(json!(parsed))))
             }
-            Op::Rename { old, new } => {
-                self.accounts.locked().rename(old, new)?;
-                Ok((message(format!("{old} is now {new} (online, at the player's next login)")), Some(json!(old)), Some(json!(new))))
-            }
-            Op::SetCountry { who, code } => {
-                let code = if code.eq_ignore_ascii_case("auto") { String::new() } else { code.to_ascii_uppercase() };
-                if !code.is_empty() {
-                    let known = yo3_data::countries(&self.game_dir).map_err(|e| e.to_string())?;
-                    if !known.contains(&code) { return Err(format!("{code} is not in the client's country table; `countries` lists them")) }
-                }
-                let mut d = self.accounts.locked();
-                let user = d.user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
-                let before = d.account_of(user).map(|a| json!(a.country));
-                d.set_country_of(user, &code)?;
-                let shown = if code.is_empty() { "auto (the game's language)".to_string() } else { code.clone() };
-                Ok((message(format!("{who}'s country is now {shown}")), before, Some(json!(code))))
-            }
+            Op::Rename { .. } | Op::SetCountry { .. } => Err("profile edits require the typed mutation boundary".into()),
             _ => self.accounts_op(op),
         }
     }
@@ -651,11 +637,7 @@ or after your next duel.", recipe.title)
                 let made = d.entries().find(|(_, k, _)| *k == Some(key.as_str())).map(|(_, _, a)| a.players.iter().map(|p| p.name.clone()).collect::<Vec<_>>()).unwrap_or_default();
                 done(json!({ "created": made.first(), "players": made, "key": key }))
             }
-            Op::AddPlayer { who, name } => {
-                let user = d.user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
-                d.add_player_to(user, name)?;
-                done(json!({ "created": name, "message": format!("{who}'s account has a player named {name}") }))
-            }
+            Op::AddPlayer { .. } => Err("player creation requires the typed mutation boundary".into()),
             Op::Key { who } => done(json!({ "key": d.key_of(who)? })),
             Op::Codes => done(json!(Self::bp_codes(&d).codes)),
             Op::Invite { .. } => Err("invite creation requires the typed mutation boundary".into()),

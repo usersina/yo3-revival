@@ -3,6 +3,8 @@ import type { Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {
   AccountList,
+  AccountDetail,
+  AccountEditResult,
   BpCodeList,
   InviteList,
   CreateInviteResult,
@@ -334,4 +336,131 @@ test('invite limits, empty state, failed refresh and mobile dialog are clear', a
   await section.getByRole('button', { name: 'Refresh invites' }).click()
   await expect(section.getByRole('alert')).toContainText('The invite list could not be refreshed')
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+})
+
+test('account profiles: add and rename keep stable IDs through lost responses and reloads', async ({
+  page,
+}) => {
+  await signIn(page)
+  const detailResponse = page.waitForResponse((r) =>
+    /\/panel\/api\/v1\/accounts\/\d+$/.test(r.url()),
+  )
+  await page.getByRole('button', { name: 'View account TestPlayer', exact: true }).click()
+  const detail = AccountDetail.parse(await (await detailResponse).json())
+  expect(detail.login).toBe('TestPlayer')
+  let dialog = page.getByRole('dialog', { name: 'TestPlayer', exact: true })
+  await expect(dialog.getByText('Additional cards', { exact: true })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Add player', exact: true }).click()
+  await dialog.getByLabel('Player name', { exact: true }).fill('ProfileJoey')
+  const ids: string[] = []
+  let original: unknown
+  await page.route('**/panel/api/v1/accounts/edit', async (route) => {
+    const request = route.request().postDataJSON()
+    if (request.kind !== 'add_player') return route.continue()
+    ids.push(route.request().headers()['idempotency-key'])
+    if (ids.length === 2) {
+      const refused = await route.fetch({
+        headers: { ...route.request().headers(), 'x-csrf-token': 'stale' },
+      })
+      expect(refused.status()).toBe(403)
+      return route.fulfill({ response: refused })
+    }
+    const response = await route.fetch()
+    expect(response.status()).toBe(200)
+    const body = AccountEditResult.parse(await response.json())
+    if (ids.length === 1) {
+      original = body
+      return route.abort('failed')
+    }
+    expect(body).toEqual(original)
+    return route.fulfill({ response })
+  })
+  await dialog.getByRole('button', { name: 'Add player', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('We could not confirm this profile change')
+  await page.reload()
+  await expect(page.getByText('Unconfirmed profile change')).toBeVisible()
+  await page.getByRole('button', { name: 'Resume profile change' }).click()
+  dialog = page.getByRole('dialog', { name: 'TestPlayer', exact: true })
+  await dialog.getByRole('button', { name: 'Retry same change', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Reload the dashboard')
+  await dialog.getByRole('button', { name: 'Retry same change', exact: true }).click()
+  await expect(dialog.getByRole('status')).toContainText('Profile saved')
+  expect(ids).toHaveLength(3)
+  expect(ids[2]).toBe(ids[0])
+  expect(ids[0]).toBe(ids[1])
+  await expect(dialog.getByText('ProfileJoey', { exact: true })).toHaveCount(1)
+  await dialog.getByRole('button', { name: 'Rename ProfileJoey', exact: true }).click()
+  await dialog.getByLabel('Player name', { exact: true }).fill('ProfileAtem')
+  await dialog.getByRole('button', { name: 'Save name', exact: true }).click()
+  await expect(dialog.getByText('ProfileAtem', { exact: true })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Change country', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Country choices are unavailable')
+  await dialog.getByLabel('Country', { exact: true }).selectOption('')
+  await dialog.getByRole('button', { name: 'Save country', exact: true }).click()
+  await expect(dialog.getByRole('status')).toContainText('Profile saved')
+})
+
+test('account profiles: moderators see explicit permissions and mobile details handle failures', async ({
+  page,
+}) => {
+  await signIn(page, 'TestModerator')
+  await page.getByRole('button', { name: 'View account TestAdmin', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'TestAdmin', exact: true })
+  await expect(dialog.getByRole('button', { name: 'Add player', exact: true })).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: 'Change country', exact: true })).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: 'Rename TestAdmin', exact: true })).toBeDisabled()
+  await page.setViewportSize({ width: 320, height: 850 })
+  expect(
+    (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()).violations,
+  ).toEqual([])
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+  await page.route('**/panel/api/v1/accounts/*', (route) => route.abort('failed'))
+  await dialog.getByRole('button', { name: 'Refresh account', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Account details could not be refreshed')
+  await page.keyboard.press('Escape')
+  await page.unroute('**/panel/api/v1/accounts/*')
+  await page.route('**/panel/api/v1/accounts/*', (route) =>
+    route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'not_found', message: 'The account no longer exists.' }),
+    }),
+  )
+  await page.getByRole('button', { name: 'View account TestPlayer', exact: true }).click()
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText(
+    'The account no longer exists',
+  )
+})
+
+test('account profiles: a saved country edit stays explicit when country choices are unavailable', async ({
+  page,
+}) => {
+  await signIn(page)
+  const session = StaffSession.parse(await (await page.request.get('/panel/api/v1/session')).json())
+  const account = AccountList.parse(
+    await (await page.request.get('/panel/api/v1/accounts')).json(),
+  ).accounts.find((a) => a.login === 'TestPlayer')!
+  await page.evaluate(
+    ({ staff, user }) =>
+      sessionStorage.setItem(
+        `yo3:pending-profile:${staff}`,
+        JSON.stringify({
+          data: { kind: 'set_country', user_id: user, country: 'JP' },
+          headers: { 'Idempotency-Key': 'saved-country-browser-00001' },
+        }),
+      ),
+    { staff: session.user_id, user: account.user_id },
+  )
+  await page.reload()
+  await page.getByRole('button', { name: 'Resume profile change' }).click()
+  const dialog = page.getByRole('dialog', { name: 'TestPlayer', exact: true })
+  await expect(dialog.getByLabel('Country', { exact: true })).toHaveValue('JP')
+  await expect(dialog.getByLabel('Country', { exact: true })).toBeDisabled()
+  await page.setViewportSize({ width: 320, height: 850 })
+  expect(
+    (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()).violations,
+  ).toEqual([])
+  await dialog.getByRole('button', { name: 'Retry same change', exact: true }).click()
+  await expect(dialog.getByText('We could not confirm this profile change.')).toBeVisible()
+  await expect(dialog.getByLabel('Country', { exact: true })).toHaveValue('JP')
 })

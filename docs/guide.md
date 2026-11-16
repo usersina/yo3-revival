@@ -247,6 +247,10 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
   players' names.
 - `add-player`, `rename` and `set-country` manage an account's players. `countries` lists accepted country codes;
   `auto` clears an override.
+  `add-player`, `rename` and `set-country` print a request ID and accept `--request-id ID`. After an uncertain
+  response, repeat the same arguments and ID; a rename retry still works when the old name is gone. Names are
+  1–16 printable characters; accounts hold up to four players. Saved profile changes appear in game after the next
+  sign-in. Country codes still come from the client's table; `auto` clears the override without needing that table.
 - `grant-title PLAYER TITLE` gives a player a title by its name as the game shows it (`titles` lists them), such as
   GAME MASTER or JUMP FESTA, which no duel earns. The player wears it in Avatar Settings. A rename or title reaches
   a player who is online at their next login.

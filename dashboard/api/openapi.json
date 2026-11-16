@@ -109,6 +109,285 @@
         ]
       }
     },
+    "/panel/api/v1/accounts/edit": {
+      "post": {
+        "tags": [
+          "Accounts"
+        ],
+        "operationId": "editAccount",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "One ID per change. Retain it on an uncertain outcome; retries never reapply a committed edit.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountEditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Committed edit or original retry result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountEditResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Account or player not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request ID conflict, duplicate name or full account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error; outcome may be unknown",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commit could not be confirmed; retry the same request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
+    "/panel/api/v1/accounts/{user_id}": {
+      "get": {
+        "tags": [
+          "Accounts"
+        ],
+        "operationId": "getAccount",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "description": "Stable account number",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 4294967295,
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Account not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stored account could not be read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "staffSession": []
+          }
+        ]
+      }
+    },
     "/panel/api/v1/bp-codes": {
       "get": {
         "tags": [
@@ -487,6 +766,111 @@
         "security": [
           {
             "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
+    "/panel/api/v1/countries": {
+      "get": {
+        "tags": [
+          "Accounts"
+        ],
+        "operationId": "listCountries",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountryList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Country choices unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
             "staffSession": []
           }
         ]
@@ -1217,6 +1601,217 @@
   },
   "components": {
     "schemas": {
+      "AccountDetail": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "has_key",
+          "role",
+          "bp",
+          "device_count",
+          "reset_pending",
+          "players",
+          "checked_at"
+        ],
+        "properties": {
+          "bp": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device_count": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "has_key": {
+            "type": "boolean"
+          },
+          "login": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "muted": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountMute"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "players": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlayerDetail"
+            }
+          },
+          "reset_pending": {
+            "type": "boolean"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "standing": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountStanding"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        }
+      },
+      "AccountEditRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "user_id",
+              "name",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "add_player"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 16,
+                "minLength": 1
+              },
+              "user_id": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "user_id",
+              "player_id",
+              "name",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "rename_player"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 16,
+                "minLength": 1
+              },
+              "player_id": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 0
+              },
+              "user_id": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "user_id",
+              "kind"
+            ],
+            "properties": {
+              "country": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Null or omitted: derive from the game's language. Other codes must occur in the client's table.",
+                "maxLength": 2,
+                "minLength": 2,
+                "pattern": "^[A-Za-z]{2}$"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_country"
+                ]
+              },
+              "user_id": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      },
+      "AccountEditResult": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "request_id",
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "player_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        }
+      },
       "AccountList": {
         "type": "object",
         "required": [
@@ -1230,6 +1825,92 @@
             }
           }
         }
+      },
+      "AccountMute": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "AccountStanding": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "active"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "reason",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "restricted"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "until": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "reason",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "banned"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "until": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          }
+        ]
       },
       "AccountSummary": {
         "type": "object",
@@ -1380,6 +2061,20 @@
           }
         }
       },
+      "CountryList": {
+        "type": "object",
+        "required": [
+          "codes"
+        ],
+        "properties": {
+          "codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "CreateBpCodeRequest": {
         "type": "object",
         "required": [
@@ -1505,6 +2200,34 @@
               "integer",
               "null"
             ],
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        }
+      },
+      "DuelRecord": {
+        "type": "object",
+        "required": [
+          "wins",
+          "losses",
+          "draws"
+        ],
+        "properties": {
+          "draws": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "losses": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "wins": {
+            "type": "integer",
             "format": "int32",
             "maximum": 4294967295,
             "minimum": 0
@@ -1649,6 +2372,98 @@
             ],
             "format": "int32",
             "description": "Remaining sign-ups, not the original limit. Null means unlimited.",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        }
+      },
+      "PlayerDetail": {
+        "type": "object",
+        "required": [
+          "player_id",
+          "name",
+          "slot",
+          "level",
+          "title_id",
+          "additional_cards",
+          "card_kinds",
+          "purchased_decks",
+          "uploaded_decks",
+          "owned_items"
+        ],
+        "properties": {
+          "additional_cards": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Additional card copies, excluding the starter deck. u16 card rows * u32 counts fit below 2^48, exactly in JS.",
+            "maximum": 9007199254740991,
+            "minimum": 0
+          },
+          "card_kinds": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "level": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "online": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Live presence is unknown without a running hub. Never infer it from saved accounts."
+          },
+          "owned_items": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "player_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "purchased_decks": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "record": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DuelRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "slot": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "title_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "uploaded_decks": {
+            "type": "integer",
+            "format": "int32",
             "maximum": 4294967295,
             "minimum": 0
           }

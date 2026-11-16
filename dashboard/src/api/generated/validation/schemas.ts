@@ -4,6 +4,189 @@
  */
 import * as zod from 'zod';
 
+export const AccountMute = zod.object({
+  "reason": zod.string(),
+  "until": zod.iso.datetime({"offset":true}).nullish()
+});
+
+export type AccountMute = zod.input<typeof AccountMute>;
+export type AccountMuteOutput = zod.output<typeof AccountMute>;
+
+export const duelRecordDrawsMin = 0;
+export const duelRecordDrawsMax = 4294967295;
+
+export const duelRecordLossesMin = 0;
+export const duelRecordLossesMax = 4294967295;
+
+export const duelRecordWinsMin = 0;
+export const duelRecordWinsMax = 4294967295;
+
+
+
+export const DuelRecord = zod.object({
+  "draws": zod.int().min(duelRecordDrawsMin).max(duelRecordDrawsMax),
+  "losses": zod.int().min(duelRecordLossesMin).max(duelRecordLossesMax),
+  "wins": zod.int().min(duelRecordWinsMin).max(duelRecordWinsMax)
+});
+
+export type DuelRecord = zod.input<typeof DuelRecord>;
+export type DuelRecordOutput = zod.output<typeof DuelRecord>;
+
+export const playerDetailAdditionalCardsMin = 0;
+export const playerDetailAdditionalCardsMax = 9007199254740991;
+
+export const playerDetailCardKindsMin = 0;
+export const playerDetailCardKindsMax = 4294967295;
+
+export const playerDetailLevelMin = 0;
+export const playerDetailLevelMax = 4294967295;
+
+export const playerDetailOwnedItemsMin = 0;
+export const playerDetailOwnedItemsMax = 4294967295;
+
+export const playerDetailPlayerIdMin = 0;
+export const playerDetailPlayerIdMax = 4294967295;
+
+export const playerDetailPurchasedDecksMin = 0;
+export const playerDetailPurchasedDecksMax = 4294967295;
+
+export const playerDetailSlotMin = 0;
+export const playerDetailSlotMax = 4294967295;
+
+export const playerDetailTitleIdMin = 0;
+export const playerDetailTitleIdMax = 4294967295;
+
+export const playerDetailUploadedDecksMin = 0;
+export const playerDetailUploadedDecksMax = 4294967295;
+
+
+
+export const PlayerDetail = zod.object({
+  "additional_cards": zod.int().min(playerDetailAdditionalCardsMin).max(playerDetailAdditionalCardsMax).describe('Additional card copies, excluding the starter deck. u16 card rows * u32 counts fit below 2^48, exactly in JS.'),
+  "card_kinds": zod.int().min(playerDetailCardKindsMin).max(playerDetailCardKindsMax),
+  "level": zod.int().min(playerDetailLevelMin).max(playerDetailLevelMax),
+  "name": zod.string(),
+  "online": zod.boolean().nullish().describe('Live presence is unknown without a running hub. Never infer it from saved accounts.'),
+  "owned_items": zod.int().min(playerDetailOwnedItemsMin).max(playerDetailOwnedItemsMax),
+  "player_id": zod.int().min(playerDetailPlayerIdMin).max(playerDetailPlayerIdMax),
+  "purchased_decks": zod.int().min(playerDetailPurchasedDecksMin).max(playerDetailPurchasedDecksMax),
+  "record": zod.union([DuelRecord,zod.null()]).optional(),
+  "slot": zod.int().min(playerDetailSlotMin).max(playerDetailSlotMax),
+  "title_id": zod.int().min(playerDetailTitleIdMin).max(playerDetailTitleIdMax),
+  "uploaded_decks": zod.int().min(playerDetailUploadedDecksMin).max(playerDetailUploadedDecksMax)
+});
+
+export type PlayerDetail = zod.input<typeof PlayerDetail>;
+export type PlayerDetailOutput = zod.output<typeof PlayerDetail>;
+
+export const Role = zod.enum(['player', 'moderator', 'admin']);
+
+export type Role = zod.input<typeof Role>;
+export type RoleOutput = zod.output<typeof Role>;
+
+export const AccountStanding = zod.union([zod.object({
+  "kind": zod.enum(['active'])
+}),zod.object({
+  "kind": zod.enum(['restricted']),
+  "reason": zod.string(),
+  "until": zod.iso.datetime({"offset":true}).nullish()
+}),zod.object({
+  "kind": zod.enum(['banned']),
+  "reason": zod.string(),
+  "until": zod.iso.datetime({"offset":true}).nullish()
+})]);
+
+export type AccountStanding = zod.input<typeof AccountStanding>;
+export type AccountStandingOutput = zod.output<typeof AccountStanding>;
+
+export const accountDetailBpMin = 0;
+export const accountDetailBpMax = 4294967295;
+
+export const accountDetailDeviceCountMin = 0;
+export const accountDetailDeviceCountMax = 4294967295;
+
+export const accountDetailUserIdMin = 0;
+export const accountDetailUserIdMax = 4294967295;
+
+
+
+export const AccountDetail = zod.object({
+  "bp": zod.int().min(accountDetailBpMin).max(accountDetailBpMax),
+  "checked_at": zod.iso.datetime({"offset":true}),
+  "country": zod.string().nullish(),
+  "device_count": zod.int().min(accountDetailDeviceCountMin).max(accountDetailDeviceCountMax),
+  "has_key": zod.boolean(),
+  "login": zod.string().nullish(),
+  "muted": zod.union([AccountMute,zod.null()]).optional(),
+  "players": zod.array(PlayerDetail),
+  "reset_pending": zod.boolean(),
+  "role": Role,
+  "standing": zod.union([AccountStanding,zod.null()]).optional(),
+  "user_id": zod.int().min(accountDetailUserIdMin).max(accountDetailUserIdMax)
+});
+
+export type AccountDetail = zod.input<typeof AccountDetail>;
+export type AccountDetailOutput = zod.output<typeof AccountDetail>;
+
+export const accountEditRequestOneNameMax = 16;
+
+export const accountEditRequestOneUserIdMin = 0;
+export const accountEditRequestOneUserIdMax = 4294967295;
+
+export const accountEditRequestTwoNameMax = 16;
+
+export const accountEditRequestTwoPlayerIdMin = 0;
+export const accountEditRequestTwoPlayerIdMax = 4294967295;
+
+export const accountEditRequestTwoUserIdMin = 0;
+export const accountEditRequestTwoUserIdMax = 4294967295;
+
+export const accountEditRequestThreeCountryMin = 2;
+export const accountEditRequestThreeCountryMax = 2;
+
+
+export const accountEditRequestThreeCountryRegExp = new RegExp('^[A-Za-z]{2}$');
+export const accountEditRequestThreeUserIdMin = 0;
+export const accountEditRequestThreeUserIdMax = 4294967295;
+
+
+
+export const AccountEditRequest = zod.union([zod.object({
+  "kind": zod.enum(['add_player']),
+  "name": zod.string().min(1).max(accountEditRequestOneNameMax),
+  "user_id": zod.int().min(accountEditRequestOneUserIdMin).max(accountEditRequestOneUserIdMax)
+}),zod.object({
+  "kind": zod.enum(['rename_player']),
+  "name": zod.string().min(1).max(accountEditRequestTwoNameMax),
+  "player_id": zod.int().min(accountEditRequestTwoPlayerIdMin).max(accountEditRequestTwoPlayerIdMax),
+  "user_id": zod.int().min(accountEditRequestTwoUserIdMin).max(accountEditRequestTwoUserIdMax)
+}),zod.object({
+  "country": zod.string().min(accountEditRequestThreeCountryMin).max(accountEditRequestThreeCountryMax).regex(accountEditRequestThreeCountryRegExp).nullish().describe('Null or omitted: derive from the game\'s language. Other codes must occur in the client\'s table.'),
+  "kind": zod.enum(['set_country']),
+  "user_id": zod.int().min(accountEditRequestThreeUserIdMin).max(accountEditRequestThreeUserIdMax)
+})]);
+
+export type AccountEditRequest = zod.input<typeof AccountEditRequest>;
+export type AccountEditRequestOutput = zod.output<typeof AccountEditRequest>;
+
+export const accountEditResultPlayerIdMin = 0;
+export const accountEditResultPlayerIdMax = 4294967295;
+
+export const accountEditResultUserIdMin = 0;
+export const accountEditResultUserIdMax = 4294967295;
+
+
+
+export const AccountEditResult = zod.object({
+  "message": zod.string(),
+  "player_id": zod.int().min(accountEditResultPlayerIdMin).max(accountEditResultPlayerIdMax).nullish(),
+  "request_id": zod.string(),
+  "user_id": zod.int().min(accountEditResultUserIdMin).max(accountEditResultUserIdMax)
+});
+
+export type AccountEditResult = zod.input<typeof AccountEditResult>;
+export type AccountEditResultOutput = zod.output<typeof AccountEditResult>;
+
 export const playerSummaryPlayerIdMin = 0;
 export const playerSummaryPlayerIdMax = 4294967295;
 
@@ -20,11 +203,6 @@ export const PlayerSummary = zod.object({
 
 export type PlayerSummary = zod.input<typeof PlayerSummary>;
 export type PlayerSummaryOutput = zod.output<typeof PlayerSummary>;
-
-export const Role = zod.enum(['player', 'moderator', 'admin']);
-
-export type Role = zod.input<typeof Role>;
-export type RoleOutput = zod.output<typeof Role>;
 
 export const accountSummaryBpMin = 0;
 export const accountSummaryBpMax = 4294967295;
@@ -103,6 +281,13 @@ export const BpCodeList = zod.object({
 
 export type BpCodeList = zod.input<typeof BpCodeList>;
 export type BpCodeListOutput = zod.output<typeof BpCodeList>;
+
+export const CountryList = zod.object({
+  "codes": zod.array(zod.string())
+});
+
+export type CountryList = zod.input<typeof CountryList>;
+export type CountryListOutput = zod.output<typeof CountryList>;
 
 export const createBpCodeRequestBpMax = 4294967295;
 
@@ -323,6 +508,72 @@ export const ListAccounts415Response = ApiError
 export const ListAccounts500Response = ApiError
 
 
+export const editAccountHeaderIdempotencyKeyMin = 16;
+export const editAccountHeaderIdempotencyKeyMax = 128;
+
+
+export const editAccountHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const EditAccountHeader = zod.object({
+  "Idempotency-Key": zod.string().min(editAccountHeaderIdempotencyKeyMin).max(editAccountHeaderIdempotencyKeyMax).regex(editAccountHeaderIdempotencyKeyRegExp).describe('One ID per change. Retain it on an uncertain outcome; retries never reapply a committed edit.')
+})
+
+export const EditAccountBody = AccountEditRequest
+
+export const EditAccount200Response = AccountEditResult
+
+export const EditAccount400Response = ApiError
+
+export const EditAccount401Response = ApiError
+
+export const EditAccount403Response = ApiError
+
+export const EditAccount404Response = ApiError
+
+export const EditAccount405Response = ApiError
+
+export const EditAccount409Response = ApiError
+
+export const EditAccount413Response = ApiError
+
+export const EditAccount415Response = ApiError
+
+export const EditAccount500Response = ApiError
+
+export const EditAccount503Response = ApiError
+
+
+export const getAccountPathUserIdMin = 0;
+export const getAccountPathUserIdMax = 4294967295;
+
+
+
+export const GetAccountParams = zod.object({
+  "user_id": zod.int().min(getAccountPathUserIdMin).max(getAccountPathUserIdMax).describe('Stable account number')
+})
+
+export const GetAccount200Response = AccountDetail
+
+export const GetAccount400Response = ApiError
+
+export const GetAccount401Response = ApiError
+
+export const GetAccount403Response = ApiError
+
+export const GetAccount404Response = ApiError
+
+export const GetAccount405Response = ApiError
+
+export const GetAccount413Response = ApiError
+
+export const GetAccount415Response = ApiError
+
+export const GetAccount500Response = ApiError
+
+export const GetAccount503Response = ApiError
+
+
 export const ListBpCodes200Response = BpCodeList
 
 export const ListBpCodes400Response = ApiError
@@ -408,6 +659,25 @@ export const RemoveBpCode415Response = ApiError
 export const RemoveBpCode500Response = ApiError
 
 export const RemoveBpCode503Response = ApiError
+
+
+export const ListCountries200Response = CountryList
+
+export const ListCountries400Response = ApiError
+
+export const ListCountries401Response = ApiError
+
+export const ListCountries403Response = ApiError
+
+export const ListCountries405Response = ApiError
+
+export const ListCountries413Response = ApiError
+
+export const ListCountries415Response = ApiError
+
+export const ListCountries500Response = ApiError
+
+export const ListCountries503Response = ApiError
 
 
 export const giveBpHeaderIdempotencyKeyMin = 16;

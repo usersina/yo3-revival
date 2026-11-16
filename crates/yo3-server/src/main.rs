@@ -68,9 +68,9 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::Profile { who, .. } | Admin::Key { who } => Op::Key { who: who.clone() },
         Admin::Accounts => Op::Accounts,
         Admin::AddAccount { name, also } => Op::CreateAccount { names: name.iter().cloned().chain(also.iter().cloned()).collect() },
-        Admin::AddPlayer { who, name } => Op::AddPlayer { who: who.clone(), name: name.clone() },
-        Admin::Rename { old, new } => Op::Rename { old: old.clone(), new: new.clone() },
-        Admin::SetCountry { who, code } => Op::SetCountry { who: who.clone(), code: code.clone() },
+        Admin::AddPlayer { who, name, .. } => Op::AddPlayer { who: who.clone(), name: name.clone() },
+        Admin::Rename { old, new, .. } => Op::Rename { old: old.clone(), new: new.clone() },
+        Admin::SetCountry { who, code, .. } => Op::SetCountry { who: who.clone(), code: code.clone() },
         Admin::Countries => Op::Countries,
         Admin::GrantTitle { player, title } => Op::GrantTitle { player: player.clone(), title: title.clone() },
         Admin::Titles => Op::Titles,
@@ -140,7 +140,8 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         // Before any request: what friends dial is the host's to say.
         anyhow::ensure!(a.advertise.is_some(), "pass --advertise ADDRESS: the address friends reach this server at (an IP or a name in its certificate)");
     }
-    let mut result = if let Admin::GiveBp { request_id, .. } | Admin::AddCode { request_id, .. } | Admin::RemoveCode { request_id, .. } | Admin::Invite { request_id, .. } = &command {
+    let mut result = if let Admin::GiveBp { request_id, .. } | Admin::AddCode { request_id, .. } | Admin::RemoveCode { request_id, .. } | Admin::Invite { request_id, .. }
+        | Admin::AddPlayer { request_id, .. } | Admin::Rename { request_id, .. } | Admin::SetCountry { request_id, .. } = &command {
         let id = request_id.clone().unwrap_or_else(yo3_server::logins::new_token);
         anyhow::ensure!(api::mutation::valid_request_id(&id), "invalid request ID (16–128 letters, digits, hyphens or underscores)");
         eprintln!("Request ID: {id} (reuse with --request-id if the answer is lost)");

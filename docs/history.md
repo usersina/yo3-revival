@@ -32,6 +32,16 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 
 ## Status
 
+2026-11-16, connected account profiles: audit-failure and old-name retry tests first failed on the original operations.
+Add player, rename and country edits now prepare copies and commit profile, audit and receipt before publishing.
+Dashboard edits use numeric IDs; the CLI and old panel share them. Detail DTOs exclude authentication material and
+separate saved statistics from checked live presence/records. Countries come from the archive (a synthetic archive
+covers the contract without game files); automatic works when choices are unavailable. Regression checks cover save,
+audit, receipt and COMMIT failures, later saves/ID allocation, concurrency, slots/names, role/target rechecks, restart,
+pruning, minimal receipts and account-deletion audit cleanup. Browser checks cover lost responses, reload/CSRF/safe
+retry, actual rename/country changes, permissions, missing/deleted data and narrow-screen accessibility. Public access,
+account creation/roles/password operations and the remaining management pages are still pending.
+
 2026-11-16, transactional registration invites: audit failure and same-ID retry tests first reproduced a falsely
 successful creation and a second generated code. Invite creation now commits the prepared invite, audit and receipt
 before publishing, for the CLI (including `share --invite`), old panel and generated staff API. Admins/moderators are

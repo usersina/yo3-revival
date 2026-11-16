@@ -22,15 +22,20 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AccountDetail,
+  AccountEditRequest,
+  AccountEditResult,
   AccountList,
   ApiError,
   BpCodeList,
+  CountryList,
   CreateBpCodeHeaders,
   CreateBpCodeRequest,
   CreateBpCodeResult,
   CreateInviteHeaders,
   CreateInviteRequest,
   CreateInviteResult,
+  EditAccountHeaders,
   GiveBpByIdRequest,
   GiveBpHeaders,
   GiveBpResult,
@@ -168,6 +173,169 @@ export function useListAccounts<TData = Awaited<ReturnType<typeof listAccounts>>
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListAccountsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getEditAccountUrl = () => {
+
+
+
+
+  return `/panel/api/v1/accounts/edit`
+}
+
+export const editAccount = async (accountEditRequest: AccountEditRequest,
+    headers: EditAccountHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<AccountEditResult> => {
+
+  return apiFetch<AccountEditResult>(getEditAccountUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(accountEditRequest)
+  }
+);}
+
+
+
+
+
+export const getEditAccountMutationKey = () => ['editAccount'] as const;
+
+export const getEditAccountMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editAccount>>, TError,EditAccountMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof editAccount>>, TError,EditAccountMutationVariables, TContext> => {
+
+const mutationKey = getEditAccountMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof editAccount>>, EditAccountMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  editAccount(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EditAccountMutationResult = NonNullable<Awaited<ReturnType<typeof editAccount>>>
+    export type EditAccountMutationBody = AccountEditRequest
+    export type EditAccountMutationError = ErrorType<ApiError>
+    export type EditAccountMutationVariables = {data: AccountEditRequest;headers: EditAccountHeaders}
+
+    export const useEditAccount = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editAccount>>, TError,EditAccountMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof editAccount>>,
+        TError,
+        EditAccountMutationVariables,
+        TContext
+      > => {
+      return useMutation(getEditAccountMutationOptions(options), queryClient);
+    }
+
+export const getGetAccountUrl = (userId: number,) => {
+
+
+
+
+  return `/panel/api/v1/accounts/${userId}`
+}
+
+export const getAccount = async (userId: number, options?: Parameters<typeof apiFetch>[1]): Promise<AccountDetail> => {
+
+  return apiFetch<AccountDetail>(getGetAccountUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAccountQueryKey = (userId: number,) => {
+    return [
+    `/panel/api/v1/accounts/${userId}`
+    ] as const;
+    }
+
+
+export const getGetAccountQueryOptions = <TData = Awaited<ReturnType<typeof getAccount>>, TError = ErrorType<ApiError>>(userId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAccount>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAccountQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAccount>>> = ({ signal }) => getAccount(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: userId !== null && userId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAccount>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetAccountQueryResult = NonNullable<Awaited<ReturnType<typeof getAccount>>>
+export type GetAccountQueryError = ErrorType<ApiError>
+
+
+export function useGetAccount<TData = Awaited<ReturnType<typeof getAccount>>, TError = ErrorType<ApiError>>(
+ userId: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAccount>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAccount>>,
+          TError,
+          Awaited<ReturnType<typeof getAccount>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetAccount<TData = Awaited<ReturnType<typeof getAccount>>, TError = ErrorType<ApiError>>(
+ userId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAccount>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAccount>>,
+          TError,
+          Awaited<ReturnType<typeof getAccount>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetAccount<TData = Awaited<ReturnType<typeof getAccount>>, TError = ErrorType<ApiError>>(
+ userId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAccount>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetAccount<TData = Awaited<ReturnType<typeof getAccount>>, TError = ErrorType<ApiError>>(
+ userId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAccount>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetAccountQueryOptions(userId,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -411,6 +579,100 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getRemoveBpCodeMutationOptions(options), queryClient);
     }
+
+export const getListCountriesUrl = () => {
+
+
+
+
+  return `/panel/api/v1/countries`
+}
+
+export const listCountries = async ( options?: Parameters<typeof apiFetch>[1]): Promise<CountryList> => {
+
+  return apiFetch<CountryList>(getListCountriesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCountriesQueryKey = () => {
+    return [
+    `/panel/api/v1/countries`
+    ] as const;
+    }
+
+
+export const getListCountriesQueryOptions = <TData = Awaited<ReturnType<typeof listCountries>>, TError = ErrorType<ApiError>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCountries>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCountriesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCountries>>> = ({ signal }) => listCountries({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCountries>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListCountriesQueryResult = NonNullable<Awaited<ReturnType<typeof listCountries>>>
+export type ListCountriesQueryError = ErrorType<ApiError>
+
+
+export function useListCountries<TData = Awaited<ReturnType<typeof listCountries>>, TError = ErrorType<ApiError>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCountries>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listCountries>>,
+          TError,
+          Awaited<ReturnType<typeof listCountries>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListCountries<TData = Awaited<ReturnType<typeof listCountries>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCountries>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listCountries>>,
+          TError,
+          Awaited<ReturnType<typeof listCountries>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListCountries<TData = Awaited<ReturnType<typeof listCountries>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCountries>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListCountries<TData = Awaited<ReturnType<typeof listCountries>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCountries>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListCountriesQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGiveBpUrl = () => {
 

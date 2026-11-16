@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
-import { Coins, Layers, LoaderCircle, LogOut, RefreshCw } from 'lucide-react'
+import { Coins, Eye, Layers, LoaderCircle, LogOut, RefreshCw } from 'lucide-react'
 import { z } from 'zod'
 import { Button, Field, Modal, PageHeading, Panel, SearchField } from './components/ui'
 import {
@@ -18,6 +18,7 @@ import type { GiveBpMutationVariables } from './api/generated/http/client'
 import type { AccountSummary, StaffSession } from './api/generated/http/models'
 import { GiveBpHeader, GiveBpByIdRequest } from './api/generated/validation/schemas'
 import { ApiHttpError, setCsrfToken } from './api/transport'
+import { ConnectedAccountDialog } from './ConnectedAccountDialog'
 import { ConnectedCodes } from './ConnectedCodes'
 import { ConnectedInvites } from './ConnectedInvites'
 
@@ -102,6 +103,7 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
   const client = useQueryClient()
   const accounts = useListAccounts()
   const [query, setQuery] = useState('')
+  const [detailId, setDetailId] = useState<number | null>(null)
   const [selected, setSelected] = useState<AccountSummary | null>(null)
   const [amount, setAmount] = useState('500')
   const [notice, setNotice] = useState('')
@@ -294,24 +296,33 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
                       <td>{account.role}</td>
                       <td className="numeric">{account.bp.toLocaleString()} BP</td>
                       <td>
-                        <Button
-                          aria-label={`Give BP to ${name}`}
-                          disabled={
-                            session.role !== 'admin' ||
-                            Boolean(stored.intent) ||
-                            Boolean(stored.error)
-                          }
-                          title={session.role !== 'admin' ? 'Administrators only' : undefined}
-                          onClick={() => {
-                            setSelected(account)
-                            setAmount('500')
-                            setNotice('')
-                            grant.reset()
-                            setOpen(true)
-                          }}
-                        >
-                          <Coins size={15} /> Give BP
-                        </Button>
+                        <div className="action-group">
+                          <Button
+                            aria-label={`View account ${name}`}
+                            onClick={() => setDetailId(account.user_id)}
+                          >
+                            <Eye size={15} />
+                            View
+                          </Button>
+                          <Button
+                            aria-label={`Give BP to ${name}`}
+                            disabled={
+                              session.role !== 'admin' ||
+                              Boolean(stored.intent) ||
+                              Boolean(stored.error)
+                            }
+                            title={session.role !== 'admin' ? 'Administrators only' : undefined}
+                            onClick={() => {
+                              setSelected(account)
+                              setAmount('500')
+                              setNotice('')
+                              grant.reset()
+                              setOpen(true)
+                            }}
+                          >
+                            <Coins size={15} /> Give BP
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -326,6 +337,7 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
           </div>
         )}
       </Panel>
+      <ConnectedAccountDialog session={session} userId={detailId} onChange={setDetailId} />
       <ConnectedInvites session={session} />
       <ConnectedCodes session={session} />
       <Modal
@@ -406,8 +418,8 @@ function Workspace() {
       </header>
       <main id="main" className="connected-main">
         <p className="inline-notice">
-          Local API preview · Real server data. Accounts, Give BP, invites and BOOSTERPASS codes are
-          connected. Public hosting remains disabled.
+          Local API preview · Real server data. Accounts and player profiles, Give BP, invites and
+          BOOSTERPASS codes are connected. Public hosting remains disabled.
         </p>
         {session.isPending ? (
           <p role="status" className="connected-state">

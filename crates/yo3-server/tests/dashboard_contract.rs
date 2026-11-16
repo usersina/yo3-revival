@@ -23,8 +23,11 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/bp-codes/remove", "post", "removeBpCode"),
         ("/panel/api/v1/invites", "get", "listInvites"),
         ("/panel/api/v1/invites", "post", "createInvite"),
+        ("/panel/api/v1/accounts/{user_id}", "get", "getAccount"),
+        ("/panel/api/v1/accounts/edit", "post", "editAccount"),
+        ("/panel/api/v1/countries", "get", "listCountries"),
     ];
-    assert_eq!(paths.len(), 8);
+    assert_eq!(paths.len(), 11);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -51,6 +54,7 @@ impl Browser {
         let mut cfg = Config::ephemeral(dir);
         cfg.dashboard_port = enabled.then_some(0);
         let data = cfg.data_dir.clone().unwrap();
+        cfg.game_dir = data.join("no-game-files-needed");
         let cert = cfg.tls.certificate.clone();
         let live = yo3_server::start(cfg).await.unwrap();
         let endpoint = yo3_tunnel::Endpoint::new(live.auth.to_string(), "localhost".into(), &cert).unwrap();
@@ -382,4 +386,44 @@ async fn staff_invites_are_typed_receipted_and_usable_for_real_registration() {
     assert_eq!(b.raw_on(b.live.http, "GET", "/panel/api/v1/invites", "", &token).await.status, 404);
     b.sign_in("Pegasus").await;
     assert_eq!(b.call("POST", "/panel/api/v1/invites", json!({})).await.status, 200, "admin and moderator have separate receipt scopes");
+}
+
+#[tokio::test]
+async fn staff_account_detail_and_edits_use_stable_ids_without_credentials() {
+    let mut b = Browser::new("profiles").await;
+    b.sign_in("Pegasus").await;
+    let list = b.call("GET", "/panel/api/v1/accounts", json!(null)).await;
+    let user = list.body["accounts"].as_array().unwrap().iter().find(|a| a["login"] == "Yugi").unwrap()["user_id"].as_u64().unwrap();
+    let path = format!("/panel/api/v1/accounts/{user}");
+    let detail = b.call("GET", &path, json!(null)).await;
+    assert_eq!(detail.status, 200);
+    assert_eq!(detail.body["user_id"], user);
+    assert_eq!(detail.body["players"], json!([]));
+    for forbidden in ["password", "key", "recovery", "devices", "token"] { assert!(detail.body.get(forbidden).is_none()); }
+    let edit = "/panel/api/v1/accounts/edit";
+    let first = b.call("POST", edit, json!({ "kind": "add_player", "user_id": user, "name": "Yugi" })).await;
+    assert_eq!(first.status, 200, "{}", first.body);
+    assert_eq!(b.call("POST", edit, json!({ "kind": "add_player", "user_id": user, "name": "Yugi" })).await.body, first.body);
+    let player = first.body["player_id"].as_u64().unwrap();
+    b.sign_in("Croquet").await;
+    let rename = json!({ "kind": "rename_player", "user_id": user, "player_id": player, "name": "Atem" });
+    let renamed = b.call("POST", edit, rename.clone()).await;
+    assert_eq!(renamed.status, 200, "{}", renamed.body);
+    assert_eq!(b.call("POST", edit, rename).await.body, renamed.body);
+    assert_eq!(b.call("GET", &path, json!(null)).await.body["players"][0]["name"], "Atem");
+    for kind in [json!({ "kind": "add_player", "user_id": user, "name": "Joey" }), json!({ "kind": "set_country", "user_id": user, "country": null })] {
+        assert_eq!(b.raw("POST", edit, &kind.to_string(), "Idempotency-Key: mod-admin-edit-000001\r\n").await.status, 403);
+    }
+    assert_eq!(b.call("GET", "/panel/api/v1/accounts/not-an-id", json!(null)).await.status, 400);
+    assert_eq!(b.call("GET", "/panel/api/v1/accounts/4294967295", json!(null)).await.status, 404);
+    let countries = b.call("GET", "/panel/api/v1/countries", json!(null)).await;
+    assert_eq!(countries.status, 503, "no game assets means explicit failure, never invented choices");
+    b.sign_in("Pegasus").await;
+    let malformed = json!({ "kind": "rename_player", "user_id": user, "player_id": player, "name": "Joey", "role": "admin" });
+    assert_eq!(b.raw("POST", edit, &malformed.to_string(), "Idempotency-Key: malformed-edit-000001\r\n").await.status, 400);
+    let reset = b.raw("POST", edit, &json!({ "kind": "set_country", "user_id": user }).to_string(), "Idempotency-Key: country-edit-00000001\r\n").await;
+    assert_eq!(reset.status, 200);
+    assert_eq!(b.call("GET", &path, json!(null)).await.body["country"], json!(null));
+    let token = format!("Authorization: Bearer {}\r\n", b.admin.token);
+    assert_eq!(b.raw_on(b.live.http, "GET", &path, "", &token).await.status, 404);
 }
