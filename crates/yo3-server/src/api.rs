@@ -199,6 +199,8 @@ pub struct Api {
     /// The game, for the country and title tables.
     pub game_dir: PathBuf,
     pub titles: Option<Arc<crate::titles::TitleData>>,
+    /// The running server's world, for the collection a gift of cards pushes (none: no push).
+    pub world: Option<Arc<crate::front::World>>,
     /// The cards and recipes the host can give, read from the game at the first gift.
     gifts: std::sync::OnceLock<Arc<crate::gifts::Gifts>>,
     /// "server" for a running server's operations, "offline" for the CLI's on a stopped server's folder.
@@ -210,7 +212,7 @@ type Done = Result<(Value, Option<Value>, Option<Value>), String>;
 
 impl Api {
     pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, data_dir: Option<PathBuf>, game_dir: PathBuf, origin: &'static str) -> Api {
-        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, gifts: Default::default(), origin, memory: Mutex::default() }
+        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), origin, memory: Mutex::default() }
     }
 
     /// Runs `op` for `actor` and writes its audit row: its result, or why it was refused.
@@ -286,6 +288,14 @@ impl Api {
         if let Some(g) = self.gifts.get() { return Ok(g.clone()) }
         let data = yo3_data::GameData::load(&self.game_dir).map_err(|e| format!("the game's cards: {e}"))?;
         Ok(self.gifts.get_or_init(|| Arc::new(crate::gifts::Gifts::from_game(&data))).clone())
+    }
+
+    /// Tells a player of a gift on a running server (`Hub::host_gift`): a D-Mail, and their new collection when the gift
+    /// holds cards.
+    fn tell_gift(&self, player: Option<crate::front::Player>, title: &str, body: String, cards: bool) {
+        let (Some(hub), Some(player)) = (&self.hub, player) else { return };
+        let trunk = self.world.as_ref().filter(|_| cards).map(|w| crate::trade::trunk(w, &player));
+        hub.locked().host_gift((player.player_id, &player.name), title, body, trunk.as_ref());
     }
 
     fn titles(&self) -> Result<Arc<crate::titles::TitleData>, String> {
@@ -473,9 +483,13 @@ impl Api {
                 let player_id = d.player_id_named(player).ok_or_else(|| format!("no player named {player:?}"))?;
                 let before = d.player(player_id).and_then(|p| p.cards.get(&card.row).copied()).unwrap_or(0);
                 d.update_player(player_id, |p| { *p.cards.entry(card.row).or_default() += count; })?;
+                let stored = d.player(player_id).cloned();
+                drop(d);
                 let after = before + count;
+                let art = if gifts.cards.iter().filter(|c| c.cid == card.cid).count() > 1 { format!(" (artwork {})", card.art) } else { String::new() };
+                self.tell_gift(stored, "Cards received", format!("The host gave you {count} × {}{art}. They are in your cards now.", card.name), true);
                 Ok((json!({ "row": card.row, "count": after, "message": format!("gave {count} × {} (artwork {}, Konami id {}) to {player}: {after} beyond \
-their starting cards now (in their trunk at its next request: Edit Deck, the shop)", card.name, card.art, card.cid) }),
+their starting cards now (a running server mails them, and an online game has them at once)", card.name, card.art, card.cid) }),
                     Some(json!({ "card": card.name, "art": card.art, "count": before })), Some(json!({ "card": card.name, "art": card.art, "count": after }))))
             }
             Op::GiveRecipe { player, deck, cards } => {
@@ -489,6 +503,11 @@ their starting cards now (in their trunk at its next request: Edit Deck, the sho
                     p.items.insert(recipe.item);
                     if *cards { for &row in &recipe.cards { *p.cards.entry(row).or_default() += 1; } }
                 })?;
+                let stored = d.player(player_id).cloned();
+                drop(d);
+                let and = if *cards { format!(" and its {} cards", recipe.cards.len()) } else { String::new() };
+                self.tell_gift(stored, "Recipe received", format!("The host gave you the deck recipe {}{and}. It is on Load Deck's \
+Official tab from your next login, or after your next duel.", recipe.title), *cards);
                 let with = if *cards { format!(" and its {} cards", recipe.cards.len()) } else { String::new() };
                 plain(Ok(format!("gave the recipe {} (deck {}){with} to {player} (on Load Deck's Official tab at their next login or after their next duel)",
                     recipe.title, recipe.id)))

@@ -160,8 +160,9 @@ the tunnel with Ctrl+C when you are done. On Windows the same `ssh` command work
 
 [The admin panel](guide.md#the-admin-panel) lists its pages and what a moderator may do. An admin gives a player cards
 no pack hands out, another artwork of a card or a deck recipe from the player's account page (**Give cards**, **Give
-deck recipe**): pick the player, then the card by its name or Konami id, or the deck by its title. The game shows the
-cards at the player's next visit to Edit Deck or the shop, and a recipe at their next login or after their next duel.
+deck recipe**): pick the player, then the card by its name or Konami id, or the deck by its title. The player gets a D-Mail
+from "Host" saying what they got. An online player has the cards at once; a recipe shows at their next login or after
+their next duel.
 
 ## Admin commands on the server
 

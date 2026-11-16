@@ -1762,12 +1762,30 @@ impl Hub {
     /// but `0x2581` lights the bell's mail icon from the global dispatcher (`0x4F5565`: only the connection's flag
     /// `0x1000`, no fields, no window), so it is safe on any screen, a duel included.
     pub fn mail_bp_gift(&mut self, players: &[(u32, String)], amount: u32, total: u32) {
-        let sent = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
         for (id, name) in players {
-            let body = format!("The host gave your account {amount} BP. You have {total} BP now.");
-            let mail = Mail { kind: MAIL_TO_PLAYER, from: (0, "Host".into()), to: (*id, name.clone()), title: "BP received".into(), body, sent: sent.clone(), ..Mail::default() };
-            self.mail.post(mail);
-            self.push(*id, &Message::reply(0x2581));
+            self.mail_from_host((*id, name), "BP received", format!("The host gave your account {amount} BP. You have {total} BP now."));
+        }
+    }
+
+    /// A D-Mail from "Host" to a player, with the bell's mail icon if they are online (`mail_bp_gift`).
+    fn mail_from_host(&mut self, (id, name): (u32, &str), title: &str, body: String) {
+        let sent = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let mail = Mail { kind: MAIL_TO_PLAYER, from: (0, "Host".into()), to: (id, name.into()), title: title.into(), body, sent, ..Mail::default() };
+        self.mail.post(mail);
+        self.push(id, &Message::reply(0x2581));
+    }
+
+    /// The host's gift of cards or a deck recipe (#19), told to the player by D-Mail from "Host". With `trunk` (the
+    /// player's new collection, `trade::trunk`) an online player gets it at once, as both players of a trade do
+    /// (`0x2BC9`): the global dispatcher copies a trunk into the game's own on any screen (`0x4F5216`). Not during a duel
+    /// between players or a trade or rental scene, which hold their cards on screen; the next trunk request brings it
+    /// then. True if the trunk was pushed.
+    pub fn host_gift(&mut self, player: (u32, &str), title: &str, body: String, trunk: Option<&Message>) -> bool {
+        self.mail_from_host(player, title, body);
+        let busy = self.in_scene(player.0) || self.matches.values().any(|m| m.players.contains(&player.0));
+        match trunk {
+            Some(trunk) if !busy => self.push(player.0, trunk),
+            _ => false,
         }
     }
 
