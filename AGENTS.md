@@ -94,6 +94,7 @@ engine/fetch.sh                                   # the rules engine's sources a
 cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop -p yo3-engine
 tools/mod/build.sh                               # 32-bit connection DLL, injector and native/Wine contract harnesses
 python3 tools/mod/test_fixture_layout.py           # larger MinGW code, contiguous PE sections, fixed hook RVAs and relocation
+python3 tools/mod/test_winmm_exports.py            # the game-folder winmm.dll exports all of WINMM (#41)
 tools/mod/test.sh                                # named/ordinal imports, local cookies and fail-closed injection (private :78)
 tools/mod/test-loader.sh                         # WINMM forwarding, Unicode config, missing/changed DLL and missing state
 # Direct start's rows (#33) under Wine: first build the Windows yo3-launcher and the Linux yo3-server; a fresh private
