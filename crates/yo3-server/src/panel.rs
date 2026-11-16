@@ -277,8 +277,9 @@ fn login_page(error: Option<&str>, user: &str) -> Response {
     let body = format!("<main class=\"narrow\"><h1>YO3 Revival admin</h1>{error}<form method=\"post\" action=\"{PREFIX}/login\" class=\"stack\">\
 <label>User ID <input name=\"user\" autocomplete=\"username\" required value=\"{}\" autofocus></label>\
 <label>Password <input name=\"password\" type=\"password\" autocomplete=\"current-password\" required></label>\
-<button>Sign in</button></form><p class=\"muted\">An admin or moderator account. The host makes one with <code>add-user</code> and \
-<code>set-role USER admin</code>.</p></main>", esc(user));
+<button>Sign in</button></form><p class=\"muted\">An admin or moderator account. Hosting from YO3 Revival: create your \
+account on your server from Multiplayer, then type its User ID under Host for friends, <b>Make admin</b>. A server run on its own: \
+<code>yo3-server set-role USER admin</code>.</p></main>", esc(user));
     answer(if error.is_empty() { "200 OK" } else { "401 Unauthorized" }, "text/html; charset=utf-8", page_shell("Sign in", &body).into_bytes(), vec![])
 }
 

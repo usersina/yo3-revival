@@ -10,7 +10,7 @@ use crate::app::{Ctx, dot, job};
 use crate::error_presentation;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Field { Name, Port, Share }
+pub enum Field { Name, Port, Share, Admin }
 
 #[derive(Clone, Debug)]
 pub enum Message {
@@ -21,6 +21,9 @@ pub enum Message {
     Stopped(Result<(), String>),
     Invite,
     Invited(Result<String, String>),
+    /// Make the typed User ID an admin of your server, for its admin panel.
+    MakeAdmin,
+    MadeAdmin(Result<(), String>),
     Reach,
     Reached(bool),
     Tick,
@@ -53,6 +56,8 @@ pub struct State {
     codes: Vec<String>,
     panel: Option<String>,
     polling: bool,
+    /// The User ID to make an admin (yours, on your server).
+    admin: String,
 }
 
 impl State {
@@ -78,7 +83,7 @@ impl State {
         match message {
             Message::Edit(field, value) => {
                 let value: String = value.chars().filter(|c| !c.is_control()).take(64).collect();
-                match field { Field::Name => self.name = value, Field::Port => self.port = value.chars().filter(char::is_ascii_digit).take(5).collect(), Field::Share => self.share = value }
+                match field { Field::Name => self.name = value, Field::Port => self.port = value.chars().filter(char::is_ascii_digit).take(5).collect(), Field::Share => self.share = value, Field::Admin => self.admin = value }
             }
             Message::Start => {
                 let (Some(store), Some(backend)) = (ctx.store.clone(), ctx.backend.clone()) else { return Task::none() };
@@ -123,6 +128,20 @@ impl State {
             Message::Invite => {
                 let Some(backend) = ctx.backend.clone() else { return Task::none() };
                 return job(move || backend.hosting_invite(), Message::Invited);
+            }
+            Message::MakeAdmin => {
+                let Some(backend) = ctx.backend.clone() else { return Task::none() };
+                let user = self.admin.trim().to_owned();
+                if user.is_empty() { return Task::none() }
+                self.busy = Some("Making the account an admin…");
+                return job(move || backend.hosting_make_admin(&user), Message::MadeAdmin);
+            }
+            Message::MadeAdmin(result) => {
+                self.busy = None;
+                match result {
+                    Ok(()) => { let line = format!("{} is an admin of your server: sign in to the admin panel with it.", self.admin.trim()); self.good(&line) }
+                    Err(error) => self.fail(ctx, &error),
+                }
             }
             Message::Invited(Ok(code)) => { self.codes.insert(0, code); self.codes.truncate(3) }
             Message::Invited(Err(error)) => self.fail(ctx, &error),
@@ -180,7 +199,7 @@ impl State {
             None => row![yo3_skin::link("Help", Message::Help("host"), false), Space::new().width(Fill),
                 pill("Start hosting", self.busy.is_none().then_some(Message::Start), Kind::Play, 190, 42), close],
         }.spacing(10).align_y(Center);
-        container(yo3_skin::panel(Some("Host for friends"), column![col, Space::new().height(Fill), buttons])).width(640).height(500).into()
+        container(yo3_skin::panel(Some("Host for friends"), column![col, Space::new().height(Fill), buttons])).width(640).height(540).into()
     }
 
     fn form(&self) -> Element<'_, Message> {
@@ -225,7 +244,16 @@ impl State {
             Your server is in your own list too, so you create your account the same way.").size(13).color(color::INK_SOFT));
         let mut links = row![yo3_skin::link("Check reachability", Message::Reach, false)].spacing(18);
         if let Some(panel) = &self.panel { links = links.push(yo3_skin::link("Admin panel", Message::Open(panel.clone()), false)) }
-        col.push(links).into()
+        col = col.push(links);
+        if self.panel.is_some() {
+            // The panel signs in with an admin account: the host's own, made here (it has no terminal on the server).
+            col = col.push(row![text("Admin").size(14).font(BODY_BOLD).color(color::INK).width(110),
+                text_input("Your User ID on this server", &self.admin).on_input(|v| Message::Edit(Field::Admin, v))
+                    .on_submit(Message::MakeAdmin).style(yo3_skin::field).padding(6).size(14).width(Fill),
+                pill("Make admin", (self.busy.is_none() && !self.admin.trim().is_empty()).then_some(Message::MakeAdmin), Kind::Primary, 130, 30)]
+                .spacing(10).align_y(Center));
+        }
+        col.into()
     }
 
     fn note<'a>(&'a self, note: &'a Note) -> Element<'a, Message> {

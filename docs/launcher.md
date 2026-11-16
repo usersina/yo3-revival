@@ -129,8 +129,9 @@ YO3 Revival is open.
 
 The footer says **Hosting for friends** with how many players are online; click it to open the dialog again.
 **Check reachability** asks your server at the address you share. From this PC that also needs your router to loop the
-connection back, so a failure there means "maybe", not "no". **Admin panel** appears when your server serves one
-([#36](https://github.com/usersina/yo3-revival/issues/36)). **Stop hosting** ends the server; friends' duels end as
+connection back, so a failure there means "maybe", not "no". **Admin panel** opens your server's
+admin panel in your browser (accounts, moderation, news, settings, gifts). It signs in with an admin account: create
+your account on your server from Multiplayer, then type its User ID beside **Admin** and click **Make admin**. **Stop hosting** ends the server; friends' duels end as
 draws. Closing YO3 Revival stops it too, and asks first while friends are online.
 
 Only the TLS port needs to be reachable. If another program has it, the dialog says so in one line with **Change

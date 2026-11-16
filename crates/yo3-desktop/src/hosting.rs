@@ -157,6 +157,14 @@ impl Backend {
         reply["code"].as_str().map(str::to_owned).context("The server made no invite code")
     }
 
+    /// Makes `user` (a User ID on the hosted server) an admin, so it signs in to the admin panel (#36). A host using the
+    /// launcher has no terminal open on the server's data, so this is the launcher's way to the panel's first account.
+    pub fn hosting_make_admin(&self, user: &str) -> anyhow::Result<()> {
+        let live = self.hosting_live().context("Start hosting first.")?;
+        api::call(&live, &Op::SetRole { user: user.trim().into(), role: "admin".into() }).map_err(anyhow::Error::msg)?;
+        Ok(())
+    }
+
     /// The admin panel's address on this PC (#36), when the hosted server serves one.
     pub fn hosting_panel(&self) -> Option<String> {
         use std::io::{Read, Write};
