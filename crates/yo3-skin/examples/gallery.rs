@@ -42,6 +42,10 @@ impl Gallery {
         let buttons = yo3_skin::panel(Some("Buttons"), column![
             label("Navy button: enabled, disabled"),
             row![pill("Enabled", Some(Msg::Click), Kind::Primary, 130, 38), pill("Disabled", None, Kind::Primary, 130, 38)].spacing(10),
+            row![pill("Back", Some(Msg::Click), Kind::Secondary, 130, 38), pill("Stop hosting", Some(Msg::Click), Kind::Danger, 150, 38)].spacing(10),
+            row![yo3_skin::rule(yo3_skin::Rule::Pending, "Not typed yet"), yo3_skin::rule(yo3_skin::Rule::Met, "Met"), yo3_skin::rule(yo3_skin::Rule::Broken, "Broken")].spacing(16),
+            row![yo3_skin::icon_button(yo3_skin::Icon::Copy, Some(Msg::Click), "Copy", false), yo3_skin::icon_button(yo3_skin::Icon::Save, Some(Msg::Click), "Save", false),
+                yo3_skin::icon_button(yo3_skin::Icon::More, Some(Msg::Click), "More", false), yo3_skin::badge(3)].spacing(6).align_y(iced::Alignment::Center),
             label("Big action: enabled, disabled"),
             pill("PLAY", Some(Msg::Click), Kind::Play, Fill, 64),
             pill("PLAYING", None, Kind::Play, Fill, 64),

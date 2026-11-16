@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::sync::LazyLock;
 use iced::font::{Style as FontStyle, Weight};
 use iced::widget::canvas::{self, Fill, Frame, Geometry, Path, Stroke, gradient::Linear};
-use iced::widget::{button, center, checkbox, container, image, mouse_area, opaque, pick_list, stack, svg, text, text_input};
+use iced::widget::{button, center, checkbox, container, image, mouse_area, opaque, pick_list, stack, svg, text, text_input, tooltip};
 use iced::{Background, Border, Color, ContentFit, Element, Font, Length::Fill as Grow, Padding, Pixels, Point, Rectangle,
     Renderer, Size, Theme, mouse};
 
@@ -77,6 +77,11 @@ pub mod color {
     pub const LINK: Color = hex(0x1f4fb4);
     pub const LINK_HOVER: Color = hex(0x3a78f0);
     pub const CLOSE: Color = hex(0xc4383a);
+    /// A destructive button's face (Stop hosting, Sign out), from the top of the bevel to the bottom.
+    pub const DANGER_TOP: Color = hex(0xe0675c);
+    pub const DANGER: Color = hex(0xb4342a);
+    pub const DANGER_LOW: Color = hex(0x8f2219);
+    pub const DANGER_BASE: Color = hex(0xa83228);
 }
 use color::*;
 
@@ -135,8 +140,12 @@ impl Memo {
 /// What a [`pill`] looks like.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
-    /// The game's navy button with a silver rim.
+    /// The game's navy button with a silver rim: a form's or a dialog's main action.
     Primary,
+    /// A way back or out (Back, Cancel, Close): a light silver face with navy text, quieter than the main action.
+    Secondary,
+    /// An action that ends or removes something (Stop hosting, Sign out): a red face.
+    Danger,
     /// The one big action of a screen: PLAY, LOG IN.
     Play,
     /// A tab in the title bar.
@@ -146,7 +155,7 @@ pub enum Kind {
 }
 /// The symbol on a window control, drawn as lines so no font needs the character.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Glyph { Settings, Minimize, Close }
+pub enum Glyph { Settings, Minimize, Close, Bell, Help }
 
 struct Pill<M> { label: String, on_press: Option<M>, kind: Kind }
 /// Whether the left button went down on this pill and is still held.
@@ -185,28 +194,40 @@ impl<M: Clone> canvas::Program<M> for Pill<M> {
         let whole = Rectangle::new(Point::ORIGIN, bounds.size());
         let shift = if pressed { 1.0 } else { 0.0 };
         match self.kind {
-            Kind::Primary | Kind::Play => {
+            Kind::Primary | Kind::Secondary | Kind::Danger | Kind::Play => {
                 let play = self.kind == Kind::Play;
+                let big = play || whole.height >= 50.0;
                 let outer = inset(whole, if play { 4.0 } else { 2.0 });
                 let cut = outer.height * 0.32;
                 if enabled && (hovered || play) {
                     frame.stroke(&chamfer(outer, cut), Stroke::default().with_color(alpha(GLOW, if hovered { 0.55 } else { 0.22 })).with_width(if play { 6.0 } else { 3.0 }));
                 }
-                frame.fill(&chamfer(outer, cut), vertical(outer, &[(0.0, CHROME_LIGHT), (0.45, CHROME), (0.55, CHROME_DARK), (1.0, CHROME_LIGHT)]));
-                let rim = if play { 3.0 } else { 2.0 };
+                // A disabled small button is flat and grey on the panel, so it never reads as a live one; the big action keeps
+                // its steel face, since its label says what is happening (STARTING…).
+                let flat = !enabled && !play;
+                if flat {
+                    frame.fill(&chamfer(outer, cut), alpha(CHROME_DARK, 0.45));
+                } else {
+                    frame.fill(&chamfer(outer, cut), vertical(outer, &[(0.0, CHROME_LIGHT), (0.45, CHROME), (0.55, CHROME_DARK), (1.0, CHROME_LIGHT)]));
+                }
+                let rim = if play { 3.0 } else if flat { 1.0 } else { 2.0 };
                 let face = inset(outer, rim);
-                let (top, mid, low, base) = match (enabled, play) {
-                    (false, _) => (STEEL_TOP, STEEL, STEEL, STEEL_TOP),
-                    (true, true) => (PLAY_TOP, PLAY, PLAY_LOW, PLAY_BASE),
-                    (true, false) => (NAVY_TOP, NAVY, NAVY_LOW, NAVY_BASE),
+                let (top, mid, low, base) = match (enabled, self.kind) {
+                    (false, Kind::Play) => (STEEL_TOP, STEEL, STEEL, STEEL_TOP),
+                    // A main action not ready yet: navy faded into the panel, flat, so it differs from the light way back.
+                    (false, _) => { let faded = mix(NAVY_TOP, PANEL, 0.62); (faded, faded, faded, faded) }
+                    (true, Kind::Play) => (PLAY_TOP, PLAY, PLAY_LOW, PLAY_BASE),
+                    (true, Kind::Secondary) => (Color::WHITE, PANEL_TOP, ROW_ALT, PANEL_TOP),
+                    (true, Kind::Danger) => (DANGER_TOP, DANGER, DANGER_LOW, DANGER_BASE),
+                    (true, _) => (NAVY_TOP, NAVY, NAVY_LOW, NAVY_BASE),
                 };
                 let tint = |c: Color| if pressed { mix(c, Color::BLACK, 0.22) } else if hovered { mix(c, Color::WHITE, 0.14) } else { c };
                 frame.fill(&chamfer(face, cut * face.height / outer.height),
                     vertical(face, &[(0.0, tint(top)), (0.49, tint(mid)), (0.51, tint(low)), (1.0, tint(base))]));
                 frame.stroke(&chamfer(face, cut * face.height / outer.height), Stroke::default().with_color(alpha(CHROME_EDGE, 0.8)).with_width(1.0));
-                let ink = if enabled { Color::WHITE } else { STEEL_TEXT };
-                let (size, font) = if play { (outer.height * 0.52, DISPLAY_ITALIC) } else { (outer.height * 0.5, BODY_BOLD) };
-                label(frame, &self.label, Point::new(whole.center_x(), whole.center_y() + shift), size, font, ink, enabled);
+                let ink = match (enabled, self.kind) { (false, Kind::Play) => STEEL_TEXT, (false, _) => alpha(Color::WHITE, 0.85), (true, Kind::Secondary) => NAVY, _ => Color::WHITE };
+                let (size, font) = if big { (outer.height * 0.52, DISPLAY_ITALIC) } else { (outer.height * 0.46, BODY_BOLD) };
+                label(frame, &self.label, Point::new(whole.center_x(), whole.center_y() + shift), size, font, ink, enabled && self.kind != Kind::Secondary);
             }
             Kind::Tab { active } => {
                 let shape = inset(whole, 1.0);
@@ -254,6 +275,20 @@ impl<M: Clone> canvas::Program<M> for Pill<M> {
                         frame.stroke(&Path::line(Point::new(c.x - s, c.y - s), Point::new(c.x + s, c.y + s)), pen);
                         frame.stroke(&Path::line(Point::new(c.x + s, c.y - s), Point::new(c.x - s, c.y + s)), pen);
                     }
+                    Glyph::Bell => {
+                        // A bell: a rounded body flaring to its rim, a clapper under it and a nub on top.
+                        let (top, rim) = (c.y - s * 1.25, c.y + s * 0.8);
+                        let body = Path::new(|b| {
+                            b.move_to(Point::new(c.x - s * 1.35, rim));
+                            b.bezier_curve_to(Point::new(c.x - s * 0.8, rim - s * 0.35), Point::new(c.x - s * 1.05, top), Point::new(c.x, top));
+                            b.bezier_curve_to(Point::new(c.x + s * 1.05, top), Point::new(c.x + s * 0.8, rim - s * 0.35), Point::new(c.x + s * 1.35, rim));
+                            b.close();
+                        });
+                        frame.stroke(&body, pen);
+                        frame.stroke(&Path::line(Point::new(c.x, top), Point::new(c.x, top - s * 0.3)), pen);
+                        frame.fill(&Path::circle(Point::new(c.x, rim + s * 0.42), s * 0.28), if enabled { ON_DARK } else { alpha(ON_DARK_SOFT, 0.35) });
+                    }
+                    Glyph::Help => label(frame, "?", c, whole.height * 0.6, BODY_BOLD, if enabled { ON_DARK } else { ON_DARK_SOFT }, false),
                     Glyph::Settings => {
                         frame.stroke(&Path::circle(c, s * 0.75), pen);
                         for i in 0..8u8 {
@@ -434,16 +469,127 @@ pub fn link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_press: M, 
     }).into()
 }
 
-static HEART: LazyLock<svg::Handle> = LazyLock::new(|| svg::Handle::from_memory(
-    b"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='#e0454a' d='M12 21.3l-1.4-1.3C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.6 11.5L12 21.3z'/></svg>".as_slice()));
+/// A link on the dark bars led by a heart, like the footer's other links (the footer's Support).
+pub fn heart_link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_press: M) -> Element<'a, M> { icon_link(Icon::Heart, label, on_press, true) }
 
-/// A link on the dark bars led by a small red heart (the footer's Support).
-pub fn heart_link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_press: M) -> Element<'a, M> {
-    button(iced::widget::row![svg(HEART.clone()).width(14).height(14), text(label).size(14).font(BODY_BOLD)].spacing(6).align_y(iced::Alignment::Center))
-        .padding(0).on_press(on_press).style(|_, status| {
-            let hover = matches!(status, button::Status::Hovered | button::Status::Pressed);
-            button::Style { background: None, text_color: if hover { Color::WHITE } else { ON_DARK_SOFT }, ..button::Style::default() }
-        }).into()
+/// A text link in red on a panel, for an action that ends something (Sign out).
+pub fn danger_link<'a, M: Clone + 'a>(label: impl text::IntoFragment<'a>, on_press: M) -> Element<'a, M> {
+    button(text(label).size(14).font(BODY_BOLD)).padding(0).on_press(on_press).style(|_, status| {
+        let hover = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style { background: None, text_color: if hover { DANGER_TOP } else { DANGER }, ..button::Style::default() }
+    }).into()
+}
+
+/// The kit's line icons (24 px grid), drawn in one colour: the widget tints them.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Icon { Copy, Save, Help, Flag, Heart, More, Check, Cross, Pending, Plus, Trash, Server, User, Open, Bell, Link, Refresh }
+
+static ICONS: LazyLock<Vec<svg::Handle>> = LazyLock::new(|| {
+    const LINE: &str = "fill='none' stroke='#000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'";
+    let shapes: [String; 17] = [
+        format!("<g {LINE}><rect x='9' y='9' width='12' height='12' rx='2'/><path d='M5 15V5a2 2 0 0 1 2-2h10'/></g>"),
+        format!("<g {LINE}><path d='M12 3v12M7 10l5 5 5-5M4 20h16'/></g>"),
+        format!("<g {LINE}><circle cx='12' cy='12' r='9'/><path d='M9.4 9.3a2.7 2.7 0 1 1 3.8 2.5c-.7.3-1.2 1-1.2 1.8v.4'/></g><circle cx='12' cy='17.3' r='1.2'/>"),
+        format!("<g {LINE}><path d='M5 21V4M5 4h12l-2.5 4.5L17 13H5'/></g>"),
+        "<path d='M12 21.3l-1.4-1.3C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.6 11.5L12 21.3z'/>".into(),
+        "<circle cx='5' cy='12' r='2'/><circle cx='12' cy='12' r='2'/><circle cx='19' cy='12' r='2'/>".into(),
+        "<g fill='none' stroke='#000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12.5l4.5 4.5L19 7'/></g>".into(),
+        "<g fill='none' stroke='#000' stroke-width='3' stroke-linecap='round'><path d='M7 7l10 10M17 7L7 17'/></g>".into(),
+        format!("<g {LINE}><circle cx='12' cy='12' r='5'/></g>"),
+        format!("<g {LINE}><path d='M12 5v14M5 12h14'/></g>"),
+        format!("<g {LINE}><path d='M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13'/></g>"),
+        format!("<g {LINE}><rect x='4' y='4' width='16' height='7' rx='1.5'/><rect x='4' y='13' width='16' height='7' rx='1.5'/><path d='M8 7.5h.01M8 16.5h.01'/></g>"),
+        format!("<g {LINE}><circle cx='12' cy='8' r='4'/><path d='M4 21a8 8 0 0 1 16 0'/></g>"),
+        format!("<g {LINE}><path d='M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5'/></g>"),
+        format!("<g {LINE}><path d='M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z'/><path d='M10 21h4'/></g>"),
+        format!("<g {LINE}><path d='M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1'/></g>"),
+        format!("<g {LINE}><path d='M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6'/></g>"),
+    ];
+    shapes.iter().map(|shape| svg::Handle::from_memory(format!("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>{shape}</svg>").into_bytes())).collect()
+});
+
+/// `which` at `size` px, in `tint`.
+pub fn icon<'a, M: 'a>(which: Icon, size: f32, tint: Color) -> Element<'a, M> {
+    svg(ICONS[which as usize].clone()).width(size).height(size).style(move |_, _| svg::Style { color: Some(tint) }).into()
+}
+
+/// A small square button holding an icon, with `tip` shown under the pointer. On a panel unless `on_dark`.
+pub fn icon_button<'a, M: Clone + 'a>(which: Icon, on_press: Option<M>, tip: &'a str, on_dark: bool) -> Element<'a, M> {
+    let enabled = on_press.is_some();
+    let ink = match (on_dark, enabled) { (_, false) => alpha(INK_SOFT, 0.5), (true, true) => ON_DARK_SOFT, (false, true) => LINK };
+    let mut b = button(center(icon(which, 17.0, ink))).width(30).height(30).padding(0).style(move |_, status| {
+        let hover = enabled && matches!(status, button::Status::Hovered | button::Status::Pressed);
+        let face = match (on_dark, hover) { (_, false) => None, (true, true) => Some(alpha(BAR_TOP, 0.9)), (false, true) => Some(alpha(LINK_HOVER, 0.14)) };
+        button::Style { background: face.map(Background::Color), border: Border { radius: 4.0.into(), ..Border::default() }, ..button::Style::default() }
+    });
+    if let Some(m) = on_press { b = b.on_press(m) }
+    tooltip(b, container(text(tip).size(13).color(ON_DARK)).padding([3, 8]).style(|_| container::Style {
+        background: Some(alpha(BAR_LOW, 0.95).into()), border: Border { radius: 3.0.into(), ..Border::default() }, ..container::Style::default() }),
+        tooltip::Position::Bottom).gap(4).into()
+}
+
+/// A text link led by an icon in the same colour: on a panel, or on the dark bars (the footer's links).
+pub fn icon_link<'a, M: Clone + 'a>(which: Icon, label: impl text::IntoFragment<'a>, on_press: M, on_dark: bool) -> Element<'a, M> {
+    button(iced::widget::row![
+        iced::widget::svg(ICONS[which as usize].clone()).width(15).height(15).style(move |_, status| {
+            let hover = matches!(status, svg::Status::Hovered);
+            svg::Style { color: Some(match (on_dark, hover) { (true, false) => ON_DARK_SOFT, (true, true) => Color::WHITE, (false, false) => LINK, (false, true) => LINK_HOVER }) }
+        }),
+        text(label).size(14).font(BODY_BOLD),
+    ].spacing(6).align_y(iced::Alignment::Center)).padding(0).on_press(on_press).style(move |_, status| {
+        let hover = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        let ink = match (on_dark, hover) { (true, false) => ON_DARK_SOFT, (true, true) => Color::WHITE, (false, false) => LINK, (false, true) => LINK_HOVER };
+        button::Style { background: None, text_color: ink, ..button::Style::default() }
+    }).into()
+}
+
+/// One entry of a [`menu`]: its icon, its words, what it sends, and whether it ends or removes something (red).
+pub struct Item<M> { pub icon: Icon, pub label: String, pub on_press: M, pub danger: bool }
+
+/// A drop-down card of actions, for a popover beside the control that opened it.
+pub fn menu<'a, M: Clone + 'a>(items: Vec<Item<M>>, width: f32) -> Element<'a, M> {
+    let mut col = iced::widget::column![].spacing(2);
+    for item in items {
+        let ink = if item.danger { DANGER } else { INK };
+        col = col.push(button(iced::widget::row![icon(item.icon, 16.0, if item.danger { DANGER } else { NAVY }), text(item.label).size(14).font(BODY_BOLD).color(ink)]
+            .spacing(10).align_y(iced::Alignment::Center)).width(Grow).padding([7, 10]).on_press(item.on_press).style(|_, status| {
+                let hover = matches!(status, button::Status::Hovered | button::Status::Pressed);
+                button::Style { background: hover.then_some(Background::Color(ROW_ALT)), border: Border { radius: 3.0.into(), ..Border::default() }, ..button::Style::default() }
+            }));
+    }
+    container(col).padding(4).width(width).style(|_| container::Style {
+        background: Some(PANEL_TOP.into()), border: Border { color: CHROME_EDGE, width: 1.0, radius: 4.0.into() },
+        shadow: iced::Shadow { color: alpha(Color::BLACK, 0.45), offset: iced::Vector::new(0.0, 4.0), blur_radius: 12.0 }, ..container::Style::default() }).into()
+}
+
+/// A dialog: a chrome frame `width`×`height` titled `title`, with the help **?** (when given) and the **×** in its title
+/// strip. Its content ends with the actions, the main one rightmost.
+pub fn dialog<'a, M: Clone + 'a>(title: &str, help: Option<M>, close: M, width: f32, height: f32, content: impl Into<Element<'a, M>>) -> Element<'a, M> {
+    let mut controls = iced::widget::row![].spacing(3);
+    if let Some(help) = help { controls = controls.push(pill("", Some(help), Kind::Window(Glyph::Help), 26, 22)) }
+    controls = controls.push(pill("", Some(close), Kind::Window(Glyph::Close), 26, 22));
+    container(stack![
+        panel(Some(title), content),
+        container(iced::widget::row![iced::widget::Space::new().width(Grow), controls]).padding(Padding { top: RIM + 4.0, right: RIM + 6.0, bottom: 0.0, left: 0.0 }),
+    ]).width(width).height(height).into()
+}
+
+/// Where a form's rule stands: not typed yet, met, or broken.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Rule { Pending, Met, Broken }
+
+/// One line of a form's checklist: its mark and its words, green once met, red when broken.
+pub fn rule<'a, M: 'a>(state: Rule, words: impl text::IntoFragment<'a>) -> Element<'a, M> {
+    let (mark, tint) = match state { Rule::Pending => (Icon::Pending, INK_SOFT), Rule::Met => (Icon::Check, GOOD), Rule::Broken => (Icon::Cross, BAD) };
+    iced::widget::row![icon(mark, 13.0, tint), text(words).size(13).color(if state == Rule::Pending { INK_SOFT } else { tint })]
+        .spacing(7).align_y(iced::Alignment::Center).into()
+}
+
+/// A small count on a corner of a control (unread notices).
+pub fn badge<'a, M: 'a>(count: usize) -> Element<'a, M> {
+    container(text(if count > 9 { "9+".to_string() } else { count.to_string() }).size(11).font(BODY_BOLD).color(Color::WHITE))
+        .padding([0, 4]).height(15).center_y(15).style(|_| container::Style { background: Some(CLOSE.into()),
+            border: Border { color: alpha(Color::BLACK, 0.4), width: 1.0, radius: 8.0.into() }, ..container::Style::default() }).into()
 }
 
 /// A text field on a panel: white well, dark text, a blue ring when focused.
