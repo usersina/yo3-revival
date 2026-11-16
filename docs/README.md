@@ -10,6 +10,7 @@
 | Find a server command or change network settings | [Command-line reference](guide.md)                                                                                                       |
 | Host a server on a VPS, or use the admin panel     | [Hosting guide](hosting.md) (beta)                                                                                                       |
 | Fix a setup problem or report a bug              | [Troubleshooting](launcher.md#troubleshooting)                                                                                           |
+| Deal with an antivirus warning or check a download | [Antivirus warnings](antivirus.md)                                                                                                     |
 | Update or back up an existing setup              | [Desktop updates](launcher.md#application-updates), [backups](launcher.md#your-data-and-upgrades), [Scripts updates](scripts.md#updates) |
 | Understand the project, credits or license       | [About YO3 Revival](about.md)                                                                                                            |
 

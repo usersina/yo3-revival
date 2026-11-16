@@ -131,6 +131,27 @@ mod tests {
     }
 
     #[test]
+    fn the_antivirus_page_is_linked_wherever_our_files_need_repair() {
+        use crate::app::ANTIVIRUS;
+        use crate::help::{Block, topic_for, topics};
+        let page = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs").join(ANTIVIRUS.rsplit('/').next().unwrap());
+        assert!(ANTIVIRUS.starts_with("https://github.com/usersina/yo3-revival/blob/main/docs/") && page.is_file(), "{ANTIVIRUS}");
+        let links = |id: &str| topics().into_iter().find(|t| t.id == id).is_some_and(|t| t.blocks.iter().any(|b| matches!(b, Block::Link(_, url) if url == ANTIVIRUS)));
+        // A missing or changed file of ours: the notice's Help opens a topic that links the page (its Repair, the dialog below).
+        for message in ["Missing or invalid 32-bit injector: Required component not found: C:\\Revival\\yo3-auth-launch.exe. Repair the installation.",
+            "Connection DLL validation failed: /home/test/Revival/yo3-auth.dll: Connection DLL release v0.0.5 does not match application v0.0.6."] {
+            let shown = present(message, Hint::Component, &[]);
+            assert!(links(topic_for(&shown.summary)), "{:?} -> {}", shown.summary, topic_for(&shown.summary));
+        }
+        assert!(links("repair") && links("antivirus"));
+        assert_eq!(topic_for("Your antivirus removed a file."), "antivirus");
+        // The Repair dialog (Play's REPAIR, Setup's row, the notice's Repair) has a button for it.
+        let app = include_str!("app.rs");
+        let repair = &app[app.find("Dialog::Repair => (").expect("the Repair dialog")..];
+        assert!(repair[..repair.find("Dialog::Backups").unwrap()].contains("OpenLink(ANTIVIRUS.into())"));
+    }
+
+    #[test]
     fn the_literal_reader_finds_texts_and_their_lines() {
         let found = literals("let a = \"one\";\n// \"not this\"\nlet b = 'x'; let c = \"two \\\n    lines\";\n#[cfg(test)]\n\"tests\"");
         assert_eq!(found, [(1, "one".to_string()), (3, "two lines".to_string())]);

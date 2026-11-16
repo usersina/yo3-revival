@@ -345,8 +345,10 @@ impl App {
                     pill("Donate", Some(Message::OpenLink(DONATE.into())), Kind::Primary, 120, 38),
                     pill("Close", Some(Message::CloseDialog), Kind::Primary, 120, 38)].spacing(10).into(), 225.0),
             Dialog::Repair => ("YO3 Revival needs repair", "Some of YO3 Revival's own files are missing or changed, often after an \
-                antivirus scan. Download the latest release again and replace this folder with it; your settings are kept.".into(),
-                row![pill("Releases", Some(Message::OpenLink(RELEASES.into())), Kind::Primary, 120, 38), ok()].spacing(10).into(), 260.0),
+                antivirus scan. Download the latest release again, check it, and replace this folder with it; your settings are kept. \
+                Antivirus help says how to check the download and get a removed file back.".into(),
+                row![pill("Antivirus help", Some(Message::OpenLink(ANTIVIRUS.into())), Kind::Primary, 160, 38),
+                    pill("Releases", Some(Message::OpenLink(RELEASES.into())), Kind::Primary, 120, 38), ok()].spacing(10).into(), 280.0),
             Dialog::Backups => {
                 // Newest first; the damaged database is kept beside the restored one, renamed.
                 let backups = self.ctx.backend.as_ref().map(|b| b.backups(&self.ctx.settings)).unwrap_or_default();
@@ -401,6 +403,8 @@ static APP_ICON: std::sync::LazyLock<iced::widget::image::Handle> = std::sync::L
 });
 
 const RELEASES: &str = "https://github.com/usersina/yo3-revival/releases/latest";
+/// The antivirus help page (#38): why our files get flagged, checking a download, restoring a quarantined file.
+pub const ANTIVIRUS: &str = "https://github.com/usersina/yo3-revival/blob/main/docs/antivirus.md";
 /// The project's discussions on GitHub: questions, ideas, servers to join.
 pub const DISCUSSIONS: &str = "https://github.com/usersina/yo3-revival/discussions";
 /// Where a donation goes (the footer's Support).

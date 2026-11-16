@@ -114,6 +114,7 @@ target/release/yo3-revival                        # graphical launcher/server ma
 tools/docs-check.py                               # every relative link and anchor in root Markdown files and docs/**/*.md
 python3 tools/test_docs_check.py                   # repository/extracted-bundle roots, screenshots and anchors
 python3 tools/test_package_editions.py             # editions, archives, literal arguments and offline docs links
+python3 tools/test_release_notes.py                # the release notes and SHA256SUMS (every archive, sha256sum's format)
 tools/docs-check.py --root /path/to/bundle         # the same checks against an extracted release
 tools/release.sh                                  # bundles in dist/ (Linux .tar.gz, Windows .zip), with docs/ and screenshots/
 tools/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-linux-x86_64.tar.gz

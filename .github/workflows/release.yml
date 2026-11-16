@@ -75,6 +75,7 @@ jobs:
           python3 tools/monkey/test_duel_report.py
           python3 tools/monkey/test_duel_replay.py
           python3 tools/test_package_editions.py
+          python3 tools/test_release_notes.py
           python3 tools/test_host_scripts.py
           python3 tools/test_docs_check.py
       - name: Documentation links and images
@@ -95,7 +96,7 @@ jobs:
         if: needs.prepare.outputs.release == 'true'
         timeout-minutes: 5
         run: tools/test-packaged-update.sh "$VERSION" "dist/yo3-revival-desktop-$VERSION-linux-x86_64.tar.gz"
-      - name: Notes
+      - name: Notes and SHA256SUMS
         if: needs.prepare.outputs.release == 'true'
         run: |
           mkdir assets
@@ -104,6 +105,8 @@ jobs:
             cp "dist/yo3-revival-$edition-$VERSION-windows-x86_64.zip" assets/
           done
           cp "dist/yo3-revival-server-$VERSION-linux-x86_64.tar.gz" assets/
+          python3 .github/scripts/release_notes.py sums assets
+          (cd assets && sha256sum -c SHA256SUMS)
           ls -l assets
           python3 .github/scripts/release_notes.py notes CHANGELOG.md assets > notes.md
           cat notes.md

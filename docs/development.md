@@ -63,6 +63,7 @@ python3 tools/client/test_vclient.py
 python3 tools/monkey/test_duel_report.py
 python3 tools/monkey/test_duel_replay.py
 python3 tools/test_package_editions.py
+python3 tools/test_release_notes.py
 python3 tools/test_host_scripts.py
 python3 tools/test_docs_check.py
 tools/docs-check.py
@@ -441,7 +442,8 @@ This checks Linux package activation; native Windows verification remains separa
 2. Keep documentation/screenshots current, run required checks and live-test the extracted bundles.
 3. Commit in logical slices on a feature branch. Follow the working guide's local merge policy and ask before pushing.
 4. A push to `main` with an untagged top changelog version runs the release workflow: tests/lints, four bundles,
-   the mandatory packaged-updater check, checksums, release notes and a GitHub release. An already published top
+   the mandatory packaged-updater check, a `SHA256SUMS` file and the same checksums in the release notes (with how
+   to check them; players read [antivirus warnings](antivirus.md)), and a GitHub release. An already published top
    version skips verification, bundling and publishing after the changelog check.
 
 Desktop checks select only the matching Desktop archive; Scripts updates stay manual. Maintainer architecture and
