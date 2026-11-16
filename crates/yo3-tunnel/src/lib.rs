@@ -142,7 +142,7 @@ impl Endpoint {
             Ok(reply)
         }).await.with_context(|| format!("raw request timed out during {stage}"))?
     }
-    /// A user/invitation-approved identity authenticates the public key independently of its changing address.
+    /// An approved identity (the player's, or an invite link's) authenticates the public key whatever its address.
     pub fn pinned(address: String, name: String, identity: &str) -> anyhow::Result<Self> {
         Ok(Self { address, name: ServerName::try_from(name)?, connector: identity::connector(Some(identity))?.0,
             identity: Some(identity.to_ascii_lowercase()), local: None })

@@ -69,8 +69,10 @@ prepares your first deck automatically. [Start your first duel](playing.md#your-
 
 ## Join a friend's server
 
-Ask the host for your private **`client.json` profile** and its matching public **`server.crt`**. Keep them together.
-A Desktop invitation is a different format: import that in Desktop, or ask the host for a CLI profile using `profile`.
+Most servers expect you to sign in with a User ID and password, which the [Desktop](launcher.md#join-another-server)
+launcher does (an invite link and an invite code from the host). The play script can't type a password: it signs in
+with a **key profile**. Ask the host for your private **`client.json` profile** (they make it with `add-account` and
+`profile`, below) and its matching public **`server.crt`**. Keep them together.
 
 Windows, in Command Prompt:
 
@@ -112,9 +114,14 @@ Linux:
 ```
 
 Send **`friend.json`** and **`data/server.crt`** privately to that friend. They keep the files together, with the
-certificate named `server.crt`. Repeat account creation/profile export for each friend, and create your own account
-and localhost profile if you will also play. Names must be unique and **1–16 characters**; each account supports up
-to four players. Do not share `server.key` or reuse one account for different friends.
+certificate named `server.crt`. Repeat account creation/profile export for each friend who plays with the scripts, and
+create your own account and localhost profile if you will also play. Names must be unique and **1–16 characters**;
+each account supports up to four players. Do not share `server.key` or reuse one account for different friends.
+
+Friends with the Desktop launcher sign in with a password account instead: give each one an invite code
+(`yo3-server invite`) and your address, and they make their account under Multiplayer → Other servers
+([accounts](authentication.md#setting-up-a-server)). Who can make an account is the `registration`
+[live setting](guide.md#live-settings).
 
 The scripts listen on **all interfaces (`0.0.0.0`)** by default. Friends need access to **TCP 7443** through the host's
 firewall and any router/VPN. The scripts do not configure these. The internal HTTP/admin port stays on loopback;

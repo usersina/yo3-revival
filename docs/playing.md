@@ -49,7 +49,8 @@ and Play to watch it again (both players' cards are shown).
 
 ## Play with a friend
 
-First [join the same server](launcher.md#join-another-server). Each friend needs a separate account from the host.
+First [join the same server](launcher.md#join-another-server). Each friend makes their own account there, with an invite
+code from the host.
 
 - **Auto Duel:** both open the duel menu, choose **Auto Duel → Confirm**, then confirm their decks. Wait to be matched.
 - **Pick a specific opponent:** one player uses **Create Duel**. The other opens that player's **Player Information**

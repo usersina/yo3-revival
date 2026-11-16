@@ -270,12 +270,12 @@ impl State {
                         self.game.starting = Some((Step::Game, since));
                         return job(move || {
                             // Opening yo3.exe without the launcher keeps working with your own server, when setup chose it.
-                            let needs_permission = settings.direct_start && match backend.auto_direct(&settings, None) {
+                            let needs_permission = settings.direct_start && match backend.auto_direct(&settings) {
                                 yo3_desktop::direct::AutoDirect::Ready => false,
                                 yo3_desktop::direct::AutoDirect::NeedsPermission => true,
                                 yo3_desktop::direct::AutoDirect::Skipped(why) => { backend.diagnostics.line(&format!("Direct start not set up: {why}")); false }
                             };
-                            backend.play(&settings, None, &settings.local_account)?;
+                            backend.play(&settings, &settings.local_account)?;
                             Ok(needs_permission)
                         }, Message::Started);
                     }
@@ -328,7 +328,7 @@ impl State {
                 let server = self.allow_for.clone();
                 return job(move || match &server {
                     Some(server) => backend.enable_direct_signed_in(&settings, server),
-                    None => backend.enable_direct(&settings, None),
+                    None => backend.enable_direct(&settings),
                 }, Message::DirectAllowed);
             }
             Message::DirectAllowed(result) => match result { Ok(()) => self.permission_granted(), Err(error) => self.fail(ctx, error) },
@@ -442,7 +442,7 @@ impl State {
         Task::perform(async move {
             tokio::task::spawn_blocking(move || {
                 if let Some(quick) = backend.quick_readiness(&settings) { return (quick, None) }
-                match backend.verify_setup(&settings, None) {
+                match backend.verify_setup(&settings) {
                     Ok(()) => (Readiness::Ready, yo3_desktop::setup_check::fingerprint(std::path::Path::new(&settings.game_dir)).ok()),
                     Err(error) => (match backend.readiness(&settings) { Readiness::Ready => Readiness::ValidationProblem(format!("{error:#}")), problem => problem }, None),
                 }

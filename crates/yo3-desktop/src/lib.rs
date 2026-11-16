@@ -65,7 +65,6 @@ pub struct Settings {
     pub bind_interface: Option<String>,
     pub listen_port: u16,
     pub player_name: String,
-    pub selected_server: Option<i64>,
     pub local_account: String,
     /// The connection DLL's higher resolution ("" or "off", "auto", "WIDTHxHEIGHT"); see yo3_launcher::resolution.
     pub resolution: String,
@@ -93,40 +92,23 @@ impl Default for Settings {
     fn default() -> Self {
         Self { advanced_mode: false, server_options: Default::default(), game_dir: yo3_data::default_game_dir().to_string_lossy().into(), wine_prefix: String::new(),
             host_address: "localhost".into(), data_dir: String::new(), bind_address: "0.0.0.0".into(), bind_interface: None, listen_port: 7443,
-            player_name: "Duelist".into(), selected_server: None, local_account: String::new(), resolution: String::new(),
+            player_name: "Duelist".into(), local_account: String::new(), resolution: String::new(),
             banlist: String::new(), setup_complete: false, game_fingerprint: String::new(), direct_start: true,
             wine_binary: String::new(), log_level: String::new(), host_port: 7443, host_share: String::new(), host_name: String::new() }
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct SavedServer {
-    #[serde(default)] pub id: i64,
-    #[serde(default)] pub label: String,
+/// How the game's helper signs in to your own server (Singleplayer): the account key of your local account, and the
+/// server's identity. Written to a private profile for each Play; never handed to anyone.
+#[derive(Clone)]
+pub struct KeyConnection {
     pub address: String,
     pub server_name: String,
     pub certificate: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")] pub identity: Option<String>,
+    pub identity: Option<String>,
     pub key: String,
 }
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ServerChoice { Local, Saved { id: i64, title: String } }
-impl ServerChoice {
-    pub fn saved(server: &SavedServer) -> Self { Self::Saved { id: server.id, title: format!("{} · {}", server.label, server.address) } }
-    pub fn remote(&self, servers: &[SavedServer]) -> anyhow::Result<Option<SavedServer>> {
-        match self {
-            Self::Local => Ok(None),
-            Self::Saved { id, .. } => servers.iter().find(|s| s.id == *id).cloned().map(Some).context("This saved connection no longer exists."),
-        }
-    }
-}
-impl std::fmt::Display for ServerChoice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self { Self::Local => f.write_str("This computer"), Self::Saved { title, .. } => f.write_str(title) }
-    }
-}
-impl SavedServer {
+impl KeyConnection {
     pub fn endpoint(&self) -> anyhow::Result<yo3_tunnel::Endpoint> {
         let identity = self.identity.clone().map(Ok).unwrap_or_else(|| yo3_tunnel::identity_from_pem(self.certificate.as_bytes()))?;
         yo3_tunnel::Endpoint::pinned(self.address.clone(), self.server_name.clone(), &identity)
@@ -134,33 +116,10 @@ impl SavedServer {
     pub fn validate(&self) -> anyhow::Result<()> {
         server_address(&self.address)?;
         ensure!(self.key.is_ascii() && self.key.len() == 20, "An account access key has 20 characters.");
-        ensure!(self.certificate.contains("-----BEGIN CERTIFICATE-----"), "Select the host's public certificate (.crt), or import their invitation.");
+        ensure!(self.certificate.contains("-----BEGIN CERTIFICATE-----"), "Your server's certificate is missing.");
         ensure!(!self.server_name.is_empty(), "The certificate name is missing.");
         self.endpoint()?;
         Ok(())
-    }
-    pub fn import(path: &Path) -> anyhow::Result<Self> {
-        ensure!(std::fs::metadata(path)?.len() <= 65536, "Invitation file is too large.");
-        let v: Value = serde_json::from_slice(&std::fs::read(path)?)?;
-        // Accept both a desktop invitation and the existing launcher profile + adjacent certificate.
-        let certificate = v["certificate"].as_str().context("Invitation is missing the host certificate.")?;
-        let certificate = if certificate.contains("-----BEGIN CERTIFICATE-----") { certificate.to_string() }
-            else {
-                let file = path.parent().unwrap_or(Path::new(".")).join(certificate);
-                ensure!(std::fs::metadata(&file)?.len() <= 65536, "Certificate file is too large.");
-                std::fs::read_to_string(file)?
-            };
-        let s = Self { id: 0, label: v["label"].as_str().unwrap_or_else(|| path.file_stem().and_then(|p| p.to_str()).unwrap_or("Server")).into(),
-            address: v["address"].as_str().or_else(|| v["server"].as_str()).context("Invitation is missing the address.")?.into(),
-            server_name: v["server_name"].as_str().context("Invitation is missing the certificate name.")?.into(),
-            key: v["key"].as_str().context("Invitation is missing the account key.")?.into(),
-            identity: v["identity"].as_str().map(str::to_string).or_else(|| yo3_tunnel::identity_from_pem(certificate.as_bytes()).ok()), certificate };
-        s.validate()?;
-        Ok(s)
-    }
-    pub fn export(&self, path: &Path) -> anyhow::Result<()> {
-        self.validate()?;
-        private_write(path, &serde_json::to_vec_pretty(self)?, false)
     }
 }
 
@@ -240,26 +199,6 @@ impl LauncherDb {
     pub fn delete_remote_server(&self, key: &str) -> anyhow::Result<()> {
         self.conn.execute("DELETE FROM remote_servers WHERE key=?1", [key])?;
         Ok(())
-    }
-    pub fn servers(&self) -> anyhow::Result<Vec<SavedServer>> {
-        let mut stmt = self.conn.prepare("SELECT id,body FROM servers ORDER BY id")?;
-        let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
-        rows.map(|row| { let (id, body) = row?; let mut server: SavedServer = serde_json::from_str(&body)?; server.id = id; Ok(server) }).collect()
-    }
-    pub fn save_server(&self, server: &SavedServer) -> anyhow::Result<i64> {
-        let body = serde_json::to_string(server)?;
-        if server.id == 0 { self.conn.execute("INSERT INTO servers(body) VALUES(?1)", [body])?; }
-        else { ensure!(self.conn.execute("UPDATE servers SET body=?1 WHERE id=?2", (body, server.id))? == 1, "This connection no longer exists."); }
-        Ok(if server.id == 0 { self.conn.last_insert_rowid() } else { server.id })
-    }
-    pub fn delete_server(&mut self, id: i64) -> anyhow::Result<()> {
-        let mut settings = self.settings()?; let transaction = self.conn.transaction()?;
-        ensure!(transaction.execute("DELETE FROM servers WHERE id=?1", [id])? == 1, "This connection no longer exists.");
-        if settings.selected_server == Some(id) {
-            settings.selected_server = None;
-            transaction.execute("INSERT INTO settings VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET body=excluded.body", [serde_json::to_string(&settings)?])?;
-        }
-        transaction.commit()?; Ok(())
     }
 }
 
@@ -429,14 +368,10 @@ impl Backend {
         else { yo3_server::auth::initialize(&data, names)?; }
         Ok(())
     }
-    pub fn invitation(&self, settings: &Settings, who: &str) -> anyhow::Result<SavedServer> {
-        ensure!(network::share_address(settings)?.is_some(), "Save a reachable sharing address under Advanced → Hosting → Advanced before making invitations.");
-        self.account_connection(settings, who)
-    }
-    fn account_connection(&self, settings: &Settings, who: &str) -> anyhow::Result<SavedServer> {
+    fn account_connection(&self, settings: &Settings, who: &str) -> anyhow::Result<KeyConnection> {
         let key = self.manage(settings, Op::Key { who: who.into() })?["key"].as_str().context("Missing account key")?.to_string();
         let (address, server_name) = network::advertised(settings)?;
-        Ok(SavedServer { id: 0, label: format!("{}'s server", who), address, server_name,
+        Ok(KeyConnection { address, server_name,
             certificate: std::fs::read_to_string(settings.server_options.get("auth-cert").map(PathBuf::from)
                 .unwrap_or_else(|| self.data_dir(settings).join("server.crt")))?, identity: None, key })
     }
@@ -452,7 +387,7 @@ impl Backend {
         let detail=self.game_errors.lock().unwrap().take().map(|e|e.finish()).unwrap_or_default();
         (!status.success()).then(|| format!("{} ({status}).\n{detail}\nTry Play again; it rechecks the required files. If it still fails, export logs for help.",if ready{"The game stopped unexpectedly"}else{"The game could not start"}))
     }
-    pub fn local_connection(&self, settings: &Settings, who: &str) -> anyhow::Result<SavedServer> {
+    pub fn local_connection(&self, settings: &Settings, who: &str) -> anyhow::Result<KeyConnection> {
         let account = if who.is_empty() { self.accounts(settings)?[0]["players"][0]["name"].as_str().unwrap_or("Duelist").to_string() } else { who.to_string() };
         let mut server = self.account_connection(settings, &account)?;
         let status = self.status(settings)?;
@@ -469,10 +404,8 @@ impl Backend {
         if packaged {paths.push(manifest);}
         let game=(!settings.game_dir.trim().is_empty()).then(||Path::new(&settings.game_dir));
         if let Some(game)=game {paths.extend(["yo3.exe","yo3.idx","package/data002.ypk"].map(|name|game.join(name)));}
-        if settings.selected_server.is_none() {
-            paths.push(self.runtime.server.clone());
-            paths.extend(yo3_server::engine::missing_files(&self.runtime.engine,&self.runtime.engine_program));
-        }
+        paths.push(self.runtime.server.clone());
+        paths.extend(yo3_server::engine::missing_files(&self.runtime.engine,&self.runtime.engine_program));
         if let Some(diagnostic)=diagnostic {
             let bounded=diagnostic.chars().take(16*1024).collect::<String>();
             for line in bounded.lines() {
@@ -489,7 +422,7 @@ impl Backend {
     }
     pub fn readiness(&self, settings: &Settings) -> Readiness {
         if let Err(error) = validate_game(Path::new(&settings.game_dir)) { return Readiness::GameProblem(format!("{error:#}")) }
-        let components=self.check_components(settings).and_then(|()| if settings.selected_server.is_none() { self.check_server_resources() } else { Ok(()) });
+        let components=self.check_components(settings).and_then(|()| self.check_server_resources());
         match components { Ok(()) => Readiness::Ready, Err(error) => Readiness::ComponentProblem(format!("{error:#}")) }
     }
     pub fn check_game(&self, settings: &Settings) -> anyhow::Result<()> {
@@ -554,21 +487,17 @@ impl Backend {
             Err(error)=>anyhow::bail!("{error:#}. Engine: {}\n{cause}\n{detail}\nRestore the complete matching bundle or export logs if this repeats.",program.display()),
         }
     }
-    pub fn validate_setup(&self, draft: &Settings, remote: Option<&SavedServer>) -> anyhow::Result<Settings> {
+    pub fn validate_setup(&self, draft: &Settings) -> anyhow::Result<Settings> {
         let saved=LauncherDb::open(&self.root)?.settings()?;
         let next=preferences::Section::Game.merge(&saved,draft);
-        self.verify_setup(&next,remote)?;
+        self.verify_setup(&next)?;
         self.save_preferences(preferences::Section::Game,&next)
     }
     /// Checks a captured setup without saving preferences, refreshing direct launch, or starting play/hosting.
-    pub fn verify_setup(&self, settings: &Settings, remote: Option<&SavedServer>) -> anyhow::Result<()> {
+    pub fn verify_setup(&self, settings: &Settings) -> anyhow::Result<()> {
         self.diagnostics.line("Validating original game files and required connection components");
         self.check_game(settings)?;
-        if let Some(remote)=remote {
-            let info=self.check_connection(remote)?;
-            ensure!(info.ready,"{} Ask the host to repair the server, then choose Retry check.",info.problem.as_deref().unwrap_or("The host's rules engine is unavailable."));
-        }
-        else { self.check_server_resources()?; server_options::arguments(settings)?; }
+        self.check_server_resources()?; server_options::arguments(settings)?;
         Ok(())
     }
     fn check_components(&self, settings: &Settings) -> anyhow::Result<()> {
@@ -582,21 +511,15 @@ impl Backend {
         }
         Ok(())
     }
-    pub fn play(&self, settings: &Settings, remote: Option<SavedServer>, who: &str) -> anyhow::Result<()> {
+    /// Singleplayer's Play: starts your own server if it isn't running and plays on it with your local account's key.
+    pub fn play(&self, settings: &Settings, who: &str) -> anyhow::Result<()> {
         let mut game = self.game.lock().unwrap();
         ensure!(game.as_mut().is_none_or(|p| p.try_wait().ok().flatten().is_some()), "The game is already running.");
         self.check_game(settings)?;
-        let local = remote.is_none();
-        let mut server = match remote {
-            Some(s) => s,
-            None => {
-                self.start_server(settings)?;
-                self.local_connection(settings, who)?
-            }
-        };
-        server.id = server.id.max(0);
+        self.start_server(settings)?;
+        let server = self.local_connection(settings, who)?;
         server.validate()?;
-        self.sync_direct_target(settings, if local { direct::Target::Local } else { direct::Target::Saved(server.clone()) })?;
+        self.sync_direct_target(settings, direct::Target::Local)?;
         let profile = self.write_profile(&server)?;
         self.launch(settings, profile, game)
     }
@@ -650,25 +573,14 @@ impl Backend {
         hide_console(&mut cmd);
         Ok(cmd)
     }
-    pub fn write_profile(&self, server: &SavedServer) -> anyhow::Result<PathBuf> {
-        let stem = format!("connection-{}", server.id);
+    pub fn write_profile(&self, server: &KeyConnection) -> anyhow::Result<PathBuf> {
+        let stem = "connection-0";
         private_write(&self.root.join("profiles").join(format!("{stem}.crt")), server.certificate.as_bytes(), true)?;
         let file = self.root.join("profiles").join(format!("{stem}.json"));
         private_write(&file, serde_json::json!({"server":server.address,"server_name":server.server_name,"key":server.key,"certificate":format!("{stem}.crt"), "identity":server.identity.clone().or_else(|| yo3_tunnel::identity_from_pem(server.certificate.as_bytes()).ok())}).to_string().as_bytes(), true)?;
         // Parse through the existing TLS implementation before starting any game process.
         yo3_launcher::Profile::load(&file)?;
         Ok(file)
-    }
-    pub fn check_connection(&self, server: &SavedServer) -> anyhow::Result<yo3_tunnel::ServerInfo> {
-        server.validate()?;
-        let endpoint = server.endpoint()?;
-        tokio::runtime::Builder::new_current_thread().enable_all().build()?.block_on(async {
-            let info = endpoint.info().await?;
-            info.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI)?;
-            let session = endpoint.login(&server.key).await?;
-            endpoint.logout(&session).await?;
-            Ok::<_, anyhow::Error>(info)
-        }).context("Connection check failed; verify the address and the host's invitation")
     }
     pub fn discover(input: &str) -> anyhow::Result<yo3_tunnel::ObservedServer> {
         let (address, name) = server_address(input)?;
@@ -1002,7 +914,7 @@ mod tests {
     }
     #[test]
     #[cfg(unix)]
-    fn missing_required_files_collects_every_absent_path_for_the_selected_mode() {
+    fn missing_required_files_collects_every_absent_path() {
         let backend=server_resource_fixture("missing-files");let root=backend.root.clone();let game=root.join("game");
         std::fs::create_dir_all(game.join("package")).unwrap();std::fs::write(game.join("yo3.exe"),b"").unwrap();std::fs::create_dir(game.join("yo3.idx")).unwrap();
         std::fs::write(&backend.runtime.launcher,b"").unwrap();std::fs::create_dir(&backend.runtime.dll).unwrap();
@@ -1012,13 +924,12 @@ mod tests {
         let mut expected=vec![backend.runtime.injector.clone(),backend.runtime.server.clone(),game.join("package/data002.ypk"),
             backend.runtime.engine_program.clone(),backend.runtime.engine.join("vendor/BabelCDB/cards.cdb"),backend.runtime.engine.join("vendor/CardScripts/utility.lua")];expected.sort();
         assert_eq!(backend.missing_required_files(&settings,None),expected,"report all ordinary Play requirements even when game preflight fails first; configured optional direct-start files and existing invalid files are separate errors");
-        settings.selected_server=Some(7);std::fs::remove_file(root.join("profiles/loader.ini")).unwrap();
-        let mut expected=vec![backend.runtime.injector.clone(),game.join("package/data002.ypk")];expected.sort();
-        assert_eq!(backend.missing_required_files(&settings,None),expected,"joining does not need local hosting or disabled direct-start components");
-        settings.game_dir.clear();assert_eq!(backend.missing_required_files(&settings,None),vec![backend.runtime.injector.clone()],"an unchosen game folder is not a list of missing relative files");
+        let server=[backend.runtime.server.clone(),backend.runtime.engine_program.clone(),backend.runtime.engine.join("vendor/BabelCDB/cards.cdb"),backend.runtime.engine.join("vendor/CardScripts/utility.lua")];
+        settings.game_dir.clear();let mut expected=vec![backend.runtime.injector.clone()];expected.extend(server.clone());expected.sort();
+        assert_eq!(backend.missing_required_files(&settings,None),expected,"an unchosen game folder is not a list of missing relative files");
         let opened=root.join("engine/vendor/missing.cdb");let imported=root.join("engine/vendor/missing.json");
         let diagnostic=format!("yo3-engine: open '{}': No such file or directory (os error 2)\nError: ENOENT: no such file or directory, open '{}'\nCannot find module '{}'\nCannot find module 'relative.mjs'\nOther error: open '{}'",opened.display(),imported.display(),backend.runtime.launcher.display(),root.join("unrelated.bin").display());
-        let mut expected=vec![backend.runtime.injector.clone(),imported,opened];expected.sort();
+        let mut expected=vec![backend.runtime.injector.clone(),imported,opened];expected.extend(server);expected.sort();
         assert_eq!(backend.missing_required_files(&settings,Some(&diagnostic)),expected,"only actual absolute missing-file paths supplement the finite inventory; existing files and unrelated text stay excluded");
         drop(backend);std::fs::remove_dir_all(root).unwrap();
     }
@@ -1082,7 +993,7 @@ mod tests {
         std::fs::write(root.join("profiles/loader.ini"),b"existing direct-start setup").unwrap();
         std::fs::write(root.join("profiles/direct.json"),b"existing private connection").unwrap();
         let draft=Settings{game_dir:root.join("unfinished game").to_string_lossy().into(),..saved.clone()};
-        let error=backend.verify_setup(&draft,None).unwrap_err();
+        let error=backend.verify_setup(&draft).unwrap_err();
         assert!(error.to_string().contains("Choose the installed game folder containing yo3.exe"),"preserve the actionable game error: {error:#}");
         assert_eq!(LauncherDb::open(&root).unwrap().settings().unwrap(),saved,"an automatic check must never save an unfinished draft");
         assert_eq!(std::fs::read(root.join("profiles/loader.ini")).unwrap(),b"existing direct-start setup");
@@ -1096,7 +1007,7 @@ mod tests {
         let root=std::env::temp_dir().join(format!("yo3-setup-without-db-{}",std::process::id())); let _=std::fs::remove_dir_all(&root);
         let backend=Backend::new(root.clone()).unwrap();
         let settings=Settings{game_dir:root.join("missing installation").to_string_lossy().into(),..Settings::default()};
-        let error=backend.verify_setup(&settings,None).unwrap_err();
+        let error=backend.verify_setup(&settings).unwrap_err();
         assert!(error.to_string().contains("Choose the installed game folder containing yo3.exe"));
         assert!(!root.join("launcher.db").exists(),"verification belongs to the captured settings, without creating or consulting preference storage");
         drop(backend); std::fs::remove_dir_all(root).unwrap();
@@ -1114,15 +1025,6 @@ mod tests {
         let settings=Settings{game_dir:root.to_string_lossy().into(),..Settings::default()};
         backend.check_components(&settings).unwrap(); std::fs::write(binary,b"changed helper").unwrap();
         assert!(backend.check_components(&settings).is_err()); drop(backend); std::fs::remove_dir_all(root).unwrap();
-    }
-    #[test]
-    fn equal_connection_labels_still_select_the_right_account() {
-        let a = SavedServer { id: 1, label: "Friends".into(), address: "host:7443".into(), server_name: "host".into(), certificate: String::new(), identity: None, key: "a".repeat(20) };
-        let b = SavedServer { id: 2, key: "b".repeat(20), ..a.clone() };
-        let choice = ServerChoice::saved(&b);
-        assert_ne!(ServerChoice::saved(&a), choice);
-        assert_eq!(choice.remote(&[a, b]).unwrap().unwrap().key, "b".repeat(20));
-        assert!(choice.remote(&[]).is_err(), "a missing saved server must never start a local server instead");
     }
     #[test]
     fn addresses_are_explicit_and_do_not_accept_urls_or_missing_hosts() {
@@ -1152,22 +1054,14 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_remembers_settings_and_connections_without_crossing_accounts() {
+    fn sqlite_remembers_settings() {
         let root = std::env::temp_dir().join(format!("yo3-desktop-db-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let db = LauncherDb::open(&root).unwrap();
-        let settings = Settings { game_dir: "a game with spaces".into(), selected_server: Some(2), local_account: "Duelist".into(), ..Settings::default() };
-        db.save_settings(&settings).unwrap();
-        let a = SavedServer { id: 0, label: "Alice".into(), address: "alice.example:7443".into(), server_name: "alice.example".into(), certificate: "certificate-a".into(), identity: None, key: "a".repeat(20) };
-        let mut b = a.clone(); b.label = "Bob".into(); b.address = "bob.example:7443".into(); b.key = "b".repeat(20);
-        db.save_server(&a).unwrap(); db.save_server(&b).unwrap(); drop(db);
+        let settings = Settings { game_dir: "a game with spaces".into(), local_account: "Duelist".into(), ..Settings::default() };
+        db.save_settings(&settings).unwrap(); drop(db);
         let db = LauncherDb::open(&root).unwrap();
-        assert_eq!(db.settings().unwrap().game_dir, settings.game_dir);
-        assert_eq!(db.settings().unwrap().selected_server, Some(2));
-        assert_eq!(db.settings().unwrap().local_account, "Duelist");
-        let servers = db.servers().unwrap();
-        assert_eq!(servers.len(), 2);
-        assert_ne!(servers[0].key, servers[1].key);
+        assert_eq!(db.settings().unwrap(), settings);
         drop(db);
         std::fs::remove_dir_all(root).unwrap();
     }
