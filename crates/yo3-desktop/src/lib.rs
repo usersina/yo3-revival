@@ -224,13 +224,58 @@ pub struct Backend { pub root: PathBuf, pub runtime: Runtime, pub diagnostics: y
     /// The write end of the server's standard input: while this launcher lives it stays open (`--owned`).
     server_owner: Mutex<Option<std::process::ChildStdin>>,
     /// Host for friends' server (#37) and the write end of its standard input (`--owned`), like your own server's.
-    hosted: Mutex<Option<Child>>, hosted_owner: Mutex<Option<std::process::ChildStdin>> }
+    hosted: Mutex<Option<Child>>, hosted_owner: Mutex<Option<std::process::ChildStdin>>,
+    /// Where Singleplayer's account key is kept (#23): the system's credential store.
+    vault: Arc<dyn multiplayer::Vault> }
 impl Backend {
-    pub fn new(root: PathBuf) -> anyhow::Result<Arc<Self>> {
+    pub fn new(root: PathBuf) -> anyhow::Result<Arc<Self>> { Self::with_vault(root, Arc::new(multiplayer::SystemVault)) }
+    /// A backend keeping Singleplayer's key in `vault` (tests use one in memory).
+    pub fn with_vault(root: PathBuf, vault: Arc<dyn multiplayer::Vault>) -> anyhow::Result<Arc<Self>> {
         yo3_tunnel::diagnostics::private_dir(&root.join("profiles"))?;
         std::fs::create_dir_all(root.join("logs"))?;
         let diagnostics = yo3_tunnel::diagnostics::Session::start(&root.join("logs/sessions"), "app", None)?;
-        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), game_errors: Mutex::new(None), game_ready: Mutex::new(None), server: Mutex::new(None), server_owner: Mutex::new(None), hosted: Mutex::new(None), hosted_owner: Mutex::new(None) }))
+        Ok(Arc::new(Self { root, runtime: Runtime::discover()?, diagnostics, server_session: Mutex::new(None), game: Mutex::new(None), game_errors: Mutex::new(None), game_ready: Mutex::new(None), server: Mutex::new(None), server_owner: Mutex::new(None), hosted: Mutex::new(None), hosted_owner: Mutex::new(None), vault }))
+    }
+    /// The store Singleplayer's key is kept in.
+    pub fn vault(&self) -> &dyn multiplayer::Vault { self.vault.as_ref() }
+    /// Keeps your own server's account key in the credential store, under the server's identity: the profile fields
+    /// that find it (`key_vault`). With no store, the owner-only profile holds the key itself, and the log says so.
+    pub(crate) fn key_fields(&self, identity: &str, key: &str) -> Value {
+        let entry = yo3_launcher::vault::key_account(identity);
+        match self.vault.set(&entry, key).and_then(|()| self.vault.get(&entry)) {
+            Ok(Some(kept)) if kept == key => serde_json::json!({ "key_vault": entry }),
+            Ok(_) => { self.no_store("it didn't keep the key"); serde_json::json!({ "key": key }) }
+            Err(error) => { self.no_store(&format!("{error:#}")); serde_json::json!({ "key": key }) }
+        }
+    }
+    fn no_store(&self, why: &str) {
+        self.diagnostics.line(&format!("No credential store for Singleplayer's account key ({why}): it stays in the launcher's owner-only file"));
+    }
+    /// The first start after an update: a key an older launcher left in `profiles/connection-0.json` or
+    /// `profiles/direct.json` moves into the credential store, and out of the file. Direct start's helper reads the
+    /// store of the game's own system (under Wine, the prefix's): `mirror` copies the key there first, and direct.json
+    /// keeps its copy when that fails.
+    pub fn migrate_keys(&self, mirror: &dyn Fn(&str, &str) -> anyhow::Result<()>) {
+        for (name, direct) in [("connection-0.json", false), ("direct.json", true)] {
+            let file = self.root.join("profiles").join(name);
+            let Ok(bytes) = std::fs::read(&file) else { continue };
+            let Ok(mut profile) = serde_json::from_slice::<Value>(&bytes) else { continue };
+            let (Some(key), Some(identity)) = (profile["key"].as_str().filter(|k| !k.is_empty()).map(str::to_owned), profile["identity"].as_str().map(str::to_owned)) else { continue };
+            let fields = self.key_fields(&identity, &key);
+            let Some(entry) = fields["key_vault"].as_str() else { return };
+            if direct && let Err(error) = mirror(entry, &key) {
+                self.diagnostics.line(&format!("Direct start's copy of the account key stays in its file: {error:#}"));
+                continue
+            }
+            profile.as_object_mut().map(|o| { o.remove("key"); o.insert("key_vault".into(), entry.into()) });
+            // A new owner-only file in place of the old one, which may not be (an older launcher's).
+            let next = file.with_extension("json.next");
+            let _ = std::fs::remove_file(&next);
+            match private_write(&next, profile.to_string().as_bytes(), false).and_then(|()| Ok(std::fs::rename(&next, &file)?)) {
+                Ok(()) => self.diagnostics.line(&format!("Moved Singleplayer's account key from {name} into the credential store")),
+                Err(error) => self.diagnostics.line(&format!("Could not rewrite {name} without its key: {error:#}")),
+            }
+        }
     }
     pub fn data_dir(&self, settings: &Settings) -> PathBuf {
         if settings.data_dir.trim().is_empty() { self.root.join("singleplayer") } else { PathBuf::from(&settings.data_dir) }
@@ -564,9 +609,13 @@ impl Backend {
         let stem = "connection-0";
         private_write(&self.root.join("profiles").join(format!("{stem}.crt")), server.certificate.as_bytes(), true)?;
         let file = self.root.join("profiles").join(format!("{stem}.json"));
-        private_write(&file, serde_json::json!({"server":server.address,"server_name":server.server_name,"key":server.key,"certificate":format!("{stem}.crt"), "identity":server.identity.clone().or_else(|| yo3_tunnel::identity_from_pem(server.certificate.as_bytes()).ok())}).to_string().as_bytes(), true)?;
+        let identity = server.identity.clone().map(Ok).unwrap_or_else(|| yo3_tunnel::identity_from_pem(server.certificate.as_bytes()))?;
+        let mut body = serde_json::json!({"server":server.address,"server_name":server.server_name,"certificate":format!("{stem}.crt"), "identity":identity});
+        // The key goes in the credential store; the profile names its entry (#23).
+        if let (Some(body), Value::Object(fields)) = (body.as_object_mut(), self.key_fields(&identity, &server.key)) { body.extend(fields) }
+        private_write(&file, body.to_string().as_bytes(), true)?;
         // Parse through the existing TLS implementation before starting any game process.
-        yo3_launcher::Profile::load(&file)?;
+        yo3_launcher::Profile::read_with(&file, self.vault())?;
         Ok(file)
     }
     pub fn discover(input: &str) -> anyhow::Result<yo3_tunnel::ObservedServer> {

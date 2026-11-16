@@ -289,7 +289,7 @@ Settings → Singleplayer → **Open data folder** and Settings → Advanced →
 | `launcher.db` | Settings and your Multiplayer servers (never a password) |
 | `singleplayer/` | Your own server: `server.db` (accounts, cards, decks, BP, mail, duel logs), `server.crt` and `server.key` (its identity), `backups/` |
 | `hosting/` | Host for friends' server, the same files as `singleplayer/` |
-| `logs/`, `profiles/` | Diagnostics, and the private files the game's helper reads |
+| `logs/`, `profiles/` | Diagnostics, and the private files the game's helper reads (no keys or passwords: those are in the system's credential store) |
 | `reports/` | ZIPs saved by Report a problem |
 
 Each server start makes a consistent database backup under its folder's `backups/`. These backups exclude the identity

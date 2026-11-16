@@ -431,11 +431,8 @@ pub async fn recover(server: &Server, user: &str, code: &str, password: &str, ag
 }
 
 /// Where a stay-signed-in's device token is kept: the system's credential vault, by server and User ID.
-pub trait Vault: Send + Sync {
-    fn get(&self, account: &str) -> anyhow::Result<Option<String>>;
-    fn set(&self, account: &str, secret: &str) -> anyhow::Result<()>;
-    fn delete(&self, account: &str) -> anyhow::Result<()>;
-}
+/// (The helper's trait: the game's helper reads the same entries, `yo3_launcher::vault`.)
+pub use yo3_launcher::vault::Vault;
 
 const VAULT_SERVICE: &str = "yo3-revival.servers";
 
