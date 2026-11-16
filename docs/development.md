@@ -85,8 +85,9 @@ cargo run --release -p yo3-skin --example gallery       # every component and st
 cargo run --release -p yo3-skin --example main_screen   # the #21 look spike
 ```
 
-The launcher itself has no hosting settings yet, so a live check beside a real setup starts from a scratch app-data
-folder whose settings already name free ports and a private Wine prefix. Run it on a private display only:
+The launcher has no setting for its servers' ports, so a live check beside a real setup starts from a scratch app-data
+folder whose settings already name free ports (Singleplayer's `listen_port`, Host for friends' `host_port`) and a
+private Wine prefix. Run it on a private display only:
 
 ```bash
 YO3_INSTANCE=d tools/client/vclient.sh prefix          # .wine-d: a private prefix, not shared with a running client
@@ -96,7 +97,7 @@ import json, os, sqlite3, sys
 db = sqlite3.connect(os.path.join(sys.argv[1], "launcher.db"))
 db.executescript("CREATE TABLE settings (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);"
                  "CREATE TABLE servers (id INTEGER PRIMARY KEY, body TEXT NOT NULL); PRAGMA user_version=1;")
-db.execute("INSERT INTO settings VALUES (1, ?)", (json.dumps({"wine_prefix": sys.argv[2], "listen_port": 17443,
+db.execute("INSERT INTO settings VALUES (1, ?)", (json.dumps({"wine_prefix": sys.argv[2], "listen_port": 17443, "host_port": 17543,
            "bind_address": "127.0.0.1", "host_address": "localhost", "game_dir": ""}),))
 db.commit()
 PY
@@ -117,7 +118,13 @@ Two more things keep a live check private:
   copy, and point the launcher's game folder at the copy's own game.
 
 On Xvfb there is no window manager: give the launcher keyboard focus (`xdotool windowfocus`) before typing, and raise it
-(`xdotool windowraise`) before clicking it while the game is open.
+(`xdotool windowraise`) before clicking it while the game is open. Copy in the launcher reaches that display's
+clipboard (`DISPLAY=:88 xsel -o -b` reads it).
+
+Host for friends listens on every interface of the PC on its port: use a free scratch port. A friend's check is a
+second launcher with its own scratch data, prefix and display (`:89`), pasting the host's invite link under Other
+servers. Avoid clicking what opens the browser or a folder (Report a problem, Open logs folder) on a private display:
+the system's opener may reach your own desktop.
 
 ### The official server list
 
@@ -200,9 +207,9 @@ Game output, native mod diagnostics, decoded packet traces and engine stderr are
 logs. The viewer hides verbose payloads until searched; exports include them by default. Privacy filtering at export
 omits payload traces and player activity and masks common personal paths/addresses without changing local evidence.
 
-For state validation and exact engine replay, enable **Advanced → Hosting → Advanced → All server flags → --duel-check**,
-save and restart the managed server between games. For Scripts, pass `--duel-check` to the server; each player's
-play command already captures client output. This extra engine work is optional and separate from automatic logging.
+For state validation and exact engine replay, run the server with `--duel-check` (the Desktop launcher has no server
+flags on the `beta` branch: use a server from the command line or the Scripts edition). Each player's play command
+already captures client output. This extra engine work is optional and separate from automatic logging.
 
 The server compares its model of both clients with the rules engine after each step. The required DLL independently
 reports native slots, card visibility, hands/piles, LP, stats, counters, turns and phases. Exact engine inputs, shuffled
