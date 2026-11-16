@@ -159,13 +159,13 @@ impl LauncherDb {
     /// `user_version` 2 for the additive `remote_servers` table; such a database is accepted and set back to 1.
     fn migrate(conn: &Connection) -> anyhow::Result<()> {
         let version: u32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
-        ensure!(version <= 3, "Launcher database is newer than this application.");
+        ensure!(version <= 2, "Launcher database is newer than this application.");
         // Dropping `servers` (step 3) overwrites the old keys' bytes instead of leaving them in free pages.
         conn.execute_batch("PRAGMA secure_delete=ON;")?;
         conn.execute_batch("BEGIN IMMEDIATE; CREATE TABLE IF NOT EXISTS launcher_schema (id INTEGER PRIMARY KEY CHECK(id=1), version INTEGER NOT NULL);")?;
         let result = (|| -> anyhow::Result<()> {
             let saved: Option<u32> = conn.query_row("SELECT version FROM launcher_schema WHERE id=1", [], |r| r.get(0)).optional()?;
-            // Without the table: a new database (0), a released launcher's (1) or a beta development build's (2 or 3).
+            // Without the table: a new database (0), a released launcher's (1) or a beta development build's (2).
             let schema = saved.unwrap_or(version);
             for (step, sql) in MIGRATIONS.iter().enumerate().skip(schema as usize) { conn.execute_batch(sql).with_context(|| format!("Launcher database step {}", step + 1))?; }
             // Never lower it: a newer launcher that kept the database compatible may have moved it further.

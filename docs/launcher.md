@@ -255,7 +255,7 @@ YO3 Revival checks for a new release when it starts and every 6 hours while it i
 updates** asks at once). When one is out:
 
 - **A dot on the version** in the footer. Click the version for **What's new**: that version's section of the
-  [changelog](../CHANGELOG.md), where its download is, and a link to the release page.
+  [changelog](https://github.com/usersina/yo3-revival/blob/main/CHANGELOG.md), where its download is, and a link to the release page.
 - **It downloads in the background, only if the project signed it.** Each release carries `SHA256SUMS` and the
   project's signature over it, `SHA256SUMS.sig`. Before downloading, YO3 Revival checks that signature with the
   project's key, which is built into the launcher, and checks that the signed list has the same SHA-256 that GitHub reports

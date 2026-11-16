@@ -490,7 +490,7 @@ opens the database on every start, to hand its original shortcut over to the ins
 an update it launched. So `user_version` is a compatibility marker that stays `COMPATIBLE` (1). The schema revision
 lives in the `launcher_schema` table, and its steps are `MIGRATIONS` in `crates/yo3-desktop/src/lib.rs`, append only.
 A step may drop or reshape the beta's own tables. Released launchers recreate the tables they use (`settings`,
-`servers`, `update_state`) when missing, so dropping the unused `servers` table is fine. A database at user_version 2 or 3
+`servers`, `update_state`) when missing, so dropping the unused `servers` table is fine. A database at user_version 2
 (beta development builds before this) is accepted and set back to 1. Raising `user_version` locks out every older
 launcher and its shortcut. The test
 `released_launchers_still_open_the_database_so_their_shortcuts_reach_the_update` replays v0.0.21's statements.
