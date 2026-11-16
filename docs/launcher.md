@@ -211,7 +211,8 @@ old one first.
 ## Help and errors
 
 **Help** in the footer opens the guide inside the launcher, a topic at a time: getting started, Singleplayer,
-Multiplayer, hosting, settings and the common problems. Its **Report a problem** starts a report.
+Multiplayer, hosting, settings, the common problems and where to talk with other players (the unofficial
+Yu-Gi-Oh! Online resources [Discord](https://discord.gg/NAm2T87n6q)). Its **Report a problem** starts a report.
 
 Every error is one plain sentence with one action: its own (**Retry**, **Fix**, **Repair**, **Allow**, **Restore a
 backup**) or **Report**. **Help** opens the topic for that error. **Details** shows the technical text, with your
