@@ -4,13 +4,12 @@ use super::*;
 impl Translator {
     /// The engine response for a phase button (0 DP .. 5 EP), if the pending prompt allows that phase.
     pub fn phase(&mut self, button: u32) -> Option<Json> {
-        let m = self.pending.as_ref()?;
-        let battle = m["type"].as_u64() == Some(msg::SELECT_BATTLECMD);
-        let (kind, action) = match (battle, button as u8) {
-            (false, flag::BUTTON_BP) if m["to_bp"] == true => (resp::IDLECMD, idle::TO_BP),
-            (false, flag::BUTTON_EP) if m["to_ep"] == true => (resp::IDLECMD, idle::TO_EP),
-            (true, flag::BUTTON_M2) if m["to_m2"] == true => (resp::BATTLECMD, battle::TO_M2),
-            (true, flag::BUTTON_EP) if m["to_ep"] == true => (resp::BATTLECMD, battle::TO_EP),
+        let ask = Ask::lenient(self.pending.as_ref()?).ok()??;
+        let (kind, action) = match (&ask, button as u8) {
+            (Ask::IdleCmd(p), flag::BUTTON_BP) if p.to_bp => (resp::IDLECMD, idle::TO_BP),
+            (Ask::IdleCmd(p), flag::BUTTON_EP) if p.to_ep => (resp::IDLECMD, idle::TO_EP),
+            (Ask::BattleCmd(p), flag::BUTTON_M2) if p.to_m2 => (resp::BATTLECMD, battle::TO_M2),
+            (Ask::BattleCmd(p), flag::BUTTON_EP) if p.to_ep => (resp::BATTLECMD, battle::TO_EP),
             _ => return None,
         };
         self.pending = None;
@@ -55,10 +54,11 @@ impl Translator {
 
     pub(super) fn command_for(&mut self, cmd: CardCommand) -> Option<Prompt> {
         let m = self.pending.clone()?;
+        let ask = Ask::lenient(&m).ok().flatten();
         if self.asking == Asking::FieldTarget {
             return self.target_click(&m, cmd);
         }
-        if (m["type"] == msg::SELECT_DISFIELD || m["type"] == msg::SELECT_PLACE) && matches!(self.asking, Asking::Zones(_)) {
+        if matches!(ask, Some(Ask::Disfield(_) | Ask::Place(_))) && matches!(self.asking, Asking::Zones(_)) {
             return Some(self.zone_click(&m, cmd));
         }
         if cmd.command == menu::CONFIRM
@@ -73,7 +73,8 @@ impl Translator {
         // A card that offers this command more than once (two effects it can activate now): the card list asks which,
         // the card once per effect in the engine's order.
         if let Some((list, kind, action, indices)) = self.listed(&cmd).filter(|l| l.3.len() > 1) {
-            let selects: Vec<Loc> = indices.iter().map(|&i| loc_of(&m[list][i])).collect();
+            let cards = ask.as_ref().map_or(vec![], |a| command_list(a, list));
+            let selects: Vec<Loc> = indices.iter().filter_map(|&i| cards.get(i)).map(|(loc, _)| (*loc).clone()).collect();
             let out = self.card_list(&CardList { selects, min: 0, max: 1, cancelable: false }, Some(text::SELECT_EFFECT));
             self.asking = Asking::Choice { kind, action, candidates: indices };
             self.picks.clear();
@@ -81,10 +82,11 @@ impl Translator {
         }
         let response = self.answer(cmd)?;
         self.chose(&m, &response);
-        let attack = &m["attacks"][response["index"].as_u64().unwrap_or(u64::MAX) as usize];
-        let opponent = 1 - self.player(&attack["controller"]) as usize;
+        let index = response["index"].as_u64().unwrap_or(u64::MAX) as usize;
+        let attack = match &ask { Some(Ask::BattleCmd(p)) => p.attacks.get(index), _ => None };
+        let opponent = 1 - attack.map_or(self.side(0), |a| self.side(a.loc.controller)) as usize;
         let no_target = (0..5).all(|zone| self.sides[opponent].zones.get(&zone).is_none_or(Vec::is_empty));
-        if response["type"] != resp::BATTLECMD || response["action"] != battle::ATTACK || attack["can_direct"] != true || !no_target {
+        if response["type"] != resp::BATTLECMD || response["action"] != battle::ATTACK || !attack.is_some_and(|a| a.can_direct) || !no_target {
             return Some(Prompt::Answer(response));
         }
         self.pending = Some(m);
@@ -97,15 +99,20 @@ impl Translator {
     /// The client's answer to a prompt, as the engine gets it: an attack names the attacker its target is aimed from.
     /// The duel check calls it with the self-played answers, which reach the engine without a card command.
     pub fn answered(&mut self, prompt: &Json, response: &Json) {
-        if self.player(&prompt["player"]) == CLIENT {
+        if let Ok(Some(ask)) = Ask::lenient(prompt)
+            && self.side(ask.player()) == CLIENT
+        {
             self.chose(prompt, response);
         }
     }
 
     pub(super) fn chose(&mut self, m: &Json, response: &Json) {
-        if m["type"] == msg::SELECT_BATTLECMD && response["type"] == resp::BATTLECMD && response["action"] == battle::ATTACK {
-            let attack = &m["attacks"][response["index"].as_u64().unwrap_or(u64::MAX) as usize];
-            self.attacker = self.engine_place(&loc_of(attack)).filter(|p| p.zone < 5).map(|p| (p.player, p.zone));
+        if let Ok(Some(Ask::BattleCmd(p))) = Ask::lenient(m)
+            && response["type"] == resp::BATTLECMD
+            && response["action"] == battle::ATTACK
+        {
+            let attack = p.attacks.get(response["index"].as_u64().unwrap_or(u64::MAX) as usize);
+            self.attacker = attack.and_then(|a| self.engine_place(&a.loc)).filter(|p| p.zone < 5).map(|p| (p.player, p.zone));
         }
     }
 
@@ -116,8 +123,9 @@ impl Translator {
     pub(super) fn target_on_field(&mut self, m: &Json) -> Option<Vec<Message>> {
         let (player, zone) = self.attacker?;
         let mut map = vec![];
-        for card in m["selects"].as_array()? {
-            let place = self.place(&loc_of(card)).filter(|p| p >> 8 & 0xFF == 0)?;
+        let choice: SelectCard = typed(m);
+        for card in &choice.selects {
+            let place = self.place(card).filter(|p| p >> 8 & 0xFF == 0)?;
             map.push((place, 1 << menu::CONFIRM));
         }
         self.asking = Asking::FieldTarget;
@@ -136,7 +144,8 @@ impl Translator {
         // A field card comes from its own slot, index 0 (see `listed`); targets are keyed at (zone 0, index slot).
         let slot = if cmd.index == 0 && cmd.zone < 5 { cmd.zone as usize } else { return None };
         let place = table_place(cmd.player, 0, slot);
-        let index = m["selects"].as_array()?.iter().position(|c| self.place(&loc_of(c)) == Some(place)).filter(|_| cmd.command == menu::CONFIRM)?;
+        let choice: SelectCard = typed(m);
+        let index = choice.selects.iter().position(|c| self.place(c) == Some(place)).filter(|_| cmd.command == menu::CONFIRM)?;
         self.asking = Asking::Prompt;
         self.pending = None;
         Some(Prompt::Answer(Response::Card(Some(vec![index])).json()))
@@ -146,7 +155,7 @@ impl Translator {
     /// back when the engine allows it.
     pub fn finish(&mut self) -> Option<Prompt> {
         let m = self.pending.as_ref().filter(|_| self.asking == Asking::FieldTarget)?;
-        if m["can_cancel"] != true {
+        if !typed::<SelectCard>(m).can_cancel {
             return None;
         }
         self.asking = Asking::Prompt;
@@ -159,17 +168,15 @@ impl Translator {
     /// several, the card list asks which (the original's "Select the monster(s) to Special Summon from your Extra
     /// Deck.", 26).
     pub(super) fn pile_command(&mut self, m: &Json, cmd: CardCommand) -> Option<Prompt> {
-        let (lists, kind): (Lists, u64) = match m["type"].as_u64() {
-            Some(msg::SELECT_BATTLECMD) => (&BATTLE_LISTS, resp::BATTLECMD),
-            _ => (&IDLE_LISTS, resp::IDLECMD),
-        };
+        let ask = Ask::lenient(m).ok()??;
+        let (lists, kind) = command_lists(&ask);
         let &(list, _, action) = lists.iter().find(|(_, bit, _)| *bit == cmd.command)?;
         let pile = table_place(cmd.player, cmd.zone, 0);
-        let candidates: Vec<(usize, &Json)> = m[list]
-            .as_array()?
-            .iter()
+        let candidates: Vec<(usize, &Loc)> = command_list(&ask, list)
+            .into_iter()
+            .map(|(loc, _)| loc)
             .enumerate()
-            .filter(|(_, loc)| self.place(&loc_of(loc)).is_some_and(|p| p & 0xFFFF == pile))
+            .filter(|(_, loc)| self.place(loc).is_some_and(|p| p & 0xFFFF == pile))
             .collect();
         match candidates[..] {
             [] => None,
@@ -183,7 +190,7 @@ impl Translator {
                     (2, _) => text::SPSUMMON,
                     _ => text::SELECT_EFFECT,
                 };
-                let selects: Vec<Loc> = candidates.iter().map(|(_, loc)| loc_of(loc)).collect();
+                let selects: Vec<Loc> = candidates.iter().map(|(_, loc)| (*loc).clone()).collect();
                 let out = self.card_list(&CardList { selects, min: 0, max: 1, cancelable: false }, Some(text));
                 self.asking = Asking::Choice { kind, action, candidates: candidates.iter().map(|(i, _)| *i).collect() };
                 self.picks.clear();
@@ -241,11 +248,8 @@ impl Translator {
     /// The pending prompt's entries the client's card command names: the list, the response's type and action, and
     /// the entries' indices in the list (several when the card offers the command more than once).
     pub(super) fn listed(&self, cmd: &CardCommand) -> Option<(&'static str, u64, u64, Vec<usize>)> {
-        let m = self.pending.as_ref()?;
-        let (lists, kind): (Lists, u64) = match m["type"].as_u64() {
-            Some(msg::SELECT_BATTLECMD) => (&BATTLE_LISTS, resp::BATTLECMD),
-            _ => (&IDLE_LISTS, resp::IDLECMD),
-        };
+        let ask = Ask::lenient(self.pending.as_ref()?).ok()??;
+        let (lists, kind) = command_lists(&ask);
         // The client looks a card's commands up at (zone 0, index slot) for monsters and (zone 5, index slot) for
         // Spells/Traps (0x50A690), but sends the one picked with the card's own place, (zone slot, index 0) (live: an
         // attack from the second monster slot came as zone 1, index 0).
@@ -260,7 +264,7 @@ impl Translator {
             if bit != cmd.command {
                 continue;
             }
-            let at: Vec<usize> = m[list].as_array()?.iter().enumerate().filter(|(_, loc)| self.place(&loc_of(loc)) == Some(place)).map(|(i, _)| i).collect();
+            let at: Vec<usize> = command_list(&ask, list).iter().enumerate().filter(|(_, (loc, _))| self.place(loc) == Some(place)).map(|(i, _)| i).collect();
             if !at.is_empty() {
                 return Some((list, kind, action, at));
             }

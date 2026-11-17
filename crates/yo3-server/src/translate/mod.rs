@@ -13,7 +13,7 @@ use yo3_proto::{Message, Value};
 
 use crate::card_options::CARD_OPTION_LABELS;
 use crate::duel::{CLIENT, CPU, CardCommand, ClientRequest, TEXT_IDS, TEXT_SLOTS, command, command_data, text_message};
-use crate::ocg::message::{Ask, Loc, SelectChain, SelectOption, SelectPlace, SelectPosition, SelectSum};
+use crate::ocg::message::{AnnounceCard, Ask, Loc, SelectCard, SelectChain, SelectOption, SelectPlace, SelectPosition, SelectSum};
 use crate::ocg::{Response, battle, hint, hintmsg, idle, loc, msg, pos, reason, resp};
 use crate::wire::{Cmd, OPEN, Place, Target, cmd, dialog, entry, flag, list, menu, mode, move_place, result, table_place, text, zone};
 
@@ -44,6 +44,32 @@ fn typed<T: serde::de::DeserializeOwned + serde::Serialize + Default>(m: &Json) 
         tracing::warn!("engine message doesn't fit its struct: {e} in {m}");
         T::default()
     })
+}
+
+/// A command prompt's menu lists and its response type: the battle's, else the idle one's.
+fn command_lists(ask: &Ask) -> (Lists, u64) {
+    match ask {
+        Ask::BattleCmd(_) => (&BATTLE_LISTS, resp::BATTLECMD),
+        _ => (&IDLE_LISTS, resp::IDLECMD),
+    }
+}
+
+/// The cards of a command prompt's list, by the name `IDLE_LISTS` and `BATTLE_LISTS` give it, in the engine's order,
+/// each with its effect's description (0 for a summon, Set or attack).
+fn command_list<'a>(ask: &'a Ask, list: &str) -> Vec<(&'a Loc, u64)> {
+    let plain = |cards: &'a [Loc]| cards.iter().map(|l| (l, 0)).collect();
+    let effects = |cards: &'a [crate::ocg::message::Effect]| cards.iter().map(|e| (&e.loc, e.description)).collect();
+    match (ask, list) {
+        (Ask::IdleCmd(p), "summons") => plain(&p.summons),
+        (Ask::IdleCmd(p), "special_summons") => plain(&p.special_summons),
+        (Ask::IdleCmd(p), "pos_changes") => plain(&p.pos_changes),
+        (Ask::IdleCmd(p), "monster_sets") => plain(&p.monster_sets),
+        (Ask::IdleCmd(p), "spell_sets") => plain(&p.spell_sets),
+        (Ask::IdleCmd(p), "activates") => effects(&p.activates),
+        (Ask::BattleCmd(p), "attacks") => p.attacks.iter().map(|a| (&a.loc, 0)).collect(),
+        (Ask::BattleCmd(p), "chains") => effects(&p.chains),
+        _ => vec![],
+    }
 }
 
 /// A card list's cards, in the engine's order, and how many picks it takes: `min` to `max`, none when the player may

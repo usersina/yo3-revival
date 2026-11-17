@@ -9,12 +9,13 @@ impl Translator {
     /// option is reachable (or nothing such is pending).
     pub fn unreachable_answers(&self) -> Vec<String> {
         let Some(m) = self.pending.as_ref() else { return vec![] };
-        let (lists, kind, phases): (Lists, u64, &[(&str, u64)]) = match m["type"].as_u64() {
-            Some(msg::SELECT_IDLECMD) => (&IDLE_LISTS, resp::IDLECMD, &[("to_bp", idle::TO_BP), ("to_ep", idle::TO_EP)]),
-            Some(msg::SELECT_BATTLECMD) => (&BATTLE_LISTS, resp::BATTLECMD, &[("to_m2", battle::TO_M2), ("to_ep", battle::TO_EP)]),
-            Some(msg::SELECT_DISFIELD) if self.player(&m["player"]) == CLIENT => return self.unreachable_zones(m),
-            Some(msg::SELECT_CARD) if self.asking == Asking::FieldTarget => return self.unreachable_targets(m),
-            _ => return self.unreachable_choices(m),
+        let Ok(Some(ask)) = Ask::lenient(m) else { return vec![] };
+        let (lists, kind, phases): (Lists, u64, Vec<(bool, &str, u64)>) = match &ask {
+            Ask::IdleCmd(p) => (&IDLE_LISTS, resp::IDLECMD, vec![(p.to_bp, "to_bp", idle::TO_BP), (p.to_ep, "to_ep", idle::TO_EP)]),
+            Ask::BattleCmd(p) => (&BATTLE_LISTS, resp::BATTLECMD, vec![(p.to_m2, "to_m2", battle::TO_M2), (p.to_ep, "to_ep", battle::TO_EP)]),
+            Ask::Disfield(p) if self.side(p.player) == CLIENT => return self.unreachable_zones(p),
+            Ask::Card(c) if self.asking == Asking::FieldTarget => return self.unreachable_targets(c),
+            _ => return self.unreachable_choices(&ask),
         };
         let mut reachable: Vec<Json> = vec![];
         let mut reach = |p: Option<Prompt>, t: &Translator| match p {
@@ -36,7 +37,7 @@ impl Translator {
             }
             _ => {}
         };
-        for (place, bits) in self.command_map(m, lists) {
+        for (place, bits) in self.command_map(&ask) {
             let (player, zone, index) = (place & 0xFF, place >> 8 & 0xFF, place >> 16 & 0xFF);
             // As the client sends it: a field card from its own slot, index 0 (see `answer`).
             let (zone, index) = match (zone, index) {
@@ -63,13 +64,13 @@ impl Translator {
                 continue;
             }
             seen_lists.push(list);
-            for (i, loc) in m[list].as_array().into_iter().flatten().enumerate() {
-                let what = format!("{list}[{i}] (card {} at location {} sequence {}, effect {})", loc["cid"], loc["location"], loc["sequence"], loc["description"]);
+            for (i, (loc, description)) in command_list(&ask, list).into_iter().enumerate() {
+                let what = format!("{list}[{i}] (card {:?} at location {} sequence {}, effect {description})", loc.cid, loc.location, loc.sequence);
                 offered.push((Response::command(kind, action, Some(i)).json(), what));
             }
         }
-        for &(flag, action) in phases {
-            if m[flag] == true {
+        for (on, flag, action) in phases {
+            if on {
                 offered.push((Response::command(kind, action, None).json(), flag.to_string()));
             }
         }
@@ -77,16 +78,16 @@ impl Translator {
     }
 
     /// [`unreachable_answers`] for an attack target picked on the field: each target's Confirm, and the right-click.
-    pub(super) fn unreachable_targets(&self, m: &Json) -> Vec<String> {
+    pub(super) fn unreachable_targets(&self, choice: &SelectCard) -> Vec<String> {
         let mut missing = vec![];
-        for (i, card) in m["selects"].as_array().into_iter().flatten().enumerate() {
-            let Some(place) = self.place(&loc_of(card)) else { continue };
+        for (i, card) in choice.selects.iter().enumerate() {
+            let Some(place) = self.place(card) else { continue };
             let click = CardCommand { command: menu::CONFIRM, player: place & 0xFF, zone: place >> 16 & 0xFF, index: 0 };
             if self.clone().command(click) != Some(Prompt::Answer(Response::Card(Some(vec![i])).json())) {
                 missing.push(format!("selects[{i}] (attack target on the field)"));
             }
         }
-        if m["can_cancel"] == true && self.clone().finish().is_none() {
+        if choice.can_cancel && self.clone().finish().is_none() {
             missing.push("taking the attack back (right-click)".into());
         }
         missing
@@ -94,12 +95,12 @@ impl Translator {
 
     /// [`unreachable_answers`] for a zone choice: each free zone through the OK dialog and its click (and, for several,
     /// the first ones in order).
-    pub(super) fn unreachable_zones(&self, m: &Json) -> Vec<String> {
-        let zones = free_zones(&typed::<SelectPlace>(m));
-        let count = (m["count"].as_u64().unwrap_or(1) as usize).max(1);
+    pub(super) fn unreachable_zones(&self, p: &SelectPlace) -> Vec<String> {
+        let zones = free_zones(p);
+        let count = (p.count as usize).max(1);
         let click = |t: &mut Translator, (player, location, sequence): (u64, u64, u64)| {
             let zone = if location == loc::MZONE { sequence as u32 } else { 5 + sequence as u32 };
-            t.command(CardCommand { command: ZONE_PICK_MONSTER, player: t.player(&json!(player)), zone, index: 0 })
+            t.command(CardCommand { command: ZONE_PICK_MONSTER, player: t.side(player), zone, index: 0 })
         };
         let place = |(p, l, s): (u64, u64, u64)| json!({ "player": p, "location": l, "sequence": s });
         let mut missing = vec![];
@@ -121,18 +122,16 @@ impl Translator {
 
     /// [`unreachable_answers`] for the other windows: each card of a card choice (one pick, when one may be picked),
     /// a chain chance's Yes for each card and its No, a question's Yes and No, and each option.
-    pub(super) fn unreachable_choices(&self, m: &Json) -> Vec<String> {
-        let kind = m["type"].as_u64().unwrap_or(0);
-        let len = |k: &str| m[k].as_array().map_or(0, Vec::len);
+    pub(super) fn unreachable_choices(&self, ask: &Ask) -> Vec<String> {
         // What, the clicks (each: the picks, then the dialog's result), the answer expected.
         type Case = (String, Vec<(Vec<u32>, u32)>, Json);
         let mut cases: Vec<Case> = vec![];
-        match kind {
-            msg::SELECT_CARD | msg::SELECT_TRIBUTE => {
-                let response = if kind == msg::SELECT_TRIBUTE { resp::TRIBUTE } else { resp::CARD };
-                let (min, max) = (m["min"].as_u64().unwrap_or(1), m["max"].as_u64().unwrap_or(1));
+        match ask {
+            Ask::Card(c) | Ask::Tribute(c) => {
+                let response = if matches!(ask, Ask::Tribute(_)) { resp::TRIBUTE } else { resp::CARD };
+                let (min, max) = (c.min, c.max);
                 if min <= 1 && max >= 1 {
-                    for i in 0..len("selects") as u32 {
+                    for i in 0..c.selects.len() as u32 {
                         cases.push((format!("selects[{i}]"), vec![(vec![i], 1)], Response::cards(response, Some(vec![i as usize])).json()));
                     }
                 } else {
@@ -140,83 +139,79 @@ impl Translator {
                     cases.push((format!("the first {min} of selects"), vec![(picks.clone(), min as u32)], Response::cards(response, Some(picks.iter().map(|&p| p as usize).collect())).json()));
                 }
                 // Backing out (a right-click with nothing picked) when the engine allows it.
-                if m["can_cancel"] == true {
+                if c.can_cancel {
                     cases.push(("cancelling".into(), vec![(vec![], 0)], Response::cards(response, None).json()));
                 }
             }
-            msg::SELECT_UNSELECT_CARD => {
-                for i in 0..len("select_cards") as u32 {
+            Ask::UnselectCard(u) => {
+                for i in 0..u.select_cards.len() as u32 {
                     cases.push((format!("select_cards[{i}]"), vec![(vec![i], 1)], Response::UnselectCard(Some(i as usize)).json()));
                 }
-                if m["can_cancel"] == true || m["can_finish"] == true {
-                    let what = if m["can_cancel"] == true { "cancelling" } else { "finishing" };
+                if u.can_cancel || u.can_finish {
+                    let what = if u.can_cancel { "cancelling" } else { "finishing" };
                     cases.push((what.into(), vec![(vec![], 0)], Response::UnselectCard(None).json()));
                 }
             }
-            msg::SELECT_CHAIN => {
-                let n = len("selects") as u32;
+            Ask::Chain(c) => {
+                let n = c.selects.len() as u32;
                 for i in 0..n {
                     // Yes, then the card list when there are several (or a forced chain's list right away).
-                    let clicks = match (m["forced"] == true, n) {
+                    let clicks = match (c.forced, n) {
                         (true, _) => vec![(vec![i], 1)],
                         (false, 1) => vec![(vec![], 1)],
                         (false, _) => vec![(vec![], 1), (vec![i], 1)],
                     };
                     cases.push((format!("selects[{i}] (chain)"), clicks, Response::Chain(Some(i as usize)).json()));
                 }
-                if m["forced"] != true {
+                if !c.forced {
                     cases.push(("passing the chain".into(), vec![(vec![], 0)], Response::Chain(None).json()));
                 }
             }
-            msg::SELECT_SUM => {
-                let picks: Vec<u32> = sum_choice(&typed::<SelectSum>(m)).into_iter().map(|i| i as u32).collect();
+            Ask::Sum(sum) => {
+                let picks: Vec<u32> = sum_choice(sum).into_iter().map(|i| i as u32).collect();
                 let n = picks.len() as u32;
                 cases.push((format!("the sum {picks:?}"), vec![(picks.clone(), n)], Response::Sum(picks.iter().map(|&p| p as usize).collect()).json()));
             }
-            msg::SELECT_EFFECTYN | msg::SELECT_YESNO => {
-                let response = if kind == msg::SELECT_EFFECTYN { resp::EFFECTYN } else { resp::YESNO };
+            Ask::EffectYn(_) | Ask::YesNo(_) => {
+                let response = if matches!(ask, Ask::EffectYn(_)) { resp::EFFECTYN } else { resp::YESNO };
                 cases.push(("yes".into(), vec![(vec![], 1)], Response::yes(response, true).json()));
                 cases.push(("no".into(), vec![(vec![], 0)], Response::yes(response, false).json()));
             }
-            msg::SELECT_OPTION => {
-                for i in 0..len("options") as u32 {
+            Ask::Option(o) => {
+                for i in 0..o.options.len() as u32 {
                     let clicks = if self.option_cards { vec![(vec![i], 1)] } else { vec![(vec![], i)] };
                     cases.push((format!("options[{i}]"), clicks, Response::Option(i as usize).json()));
                 }
             }
             // Each allowed position: the dialog's button 0 (attack) or 1 (defense).
-            msg::SELECT_POSITION => {
-                let allowed = m["positions"].as_u64().unwrap_or(0);
+            Ask::Position(p) => {
                 for (bit, button) in [(pos::FACEUP_ATTACK, 0), (pos::FACEDOWN_ATTACK, 0), (pos::FACEUP_DEFENSE, 1), (pos::FACEDOWN_DEFENSE, 1)] {
-                    if allowed & bit != 0 {
+                    if p.positions & bit != 0 {
                         cases.push((format!("position {bit}"), vec![(vec![], button)], Response::Position(bit).json()));
                     }
                 }
             }
             // Each allowed Type and Attribute, one declared (the client's number, or its bit for an attribute).
-            msg::ANNOUNCE_RACE if m["count"].as_u64() == Some(1) => {
-                let allowed = m["available"].as_u64().unwrap_or(0);
-                for (i, &race) in TYPES.iter().enumerate().filter(|(_, r)| allowed & **r != 0) {
+            Ask::Race(a) if a.count == 1 => {
+                for (i, &race) in TYPES.iter().enumerate().filter(|(_, r)| a.available & **r != 0) {
                     cases.push((format!("type {race:#x}"), vec![(vec![], i as u32 + 1)], Response::Race(vec![race]).json()));
                 }
             }
-            msg::ANNOUNCE_ATTRIB if m["count"].as_u64() == Some(1) => {
-                let allowed = m["available"].as_u64().unwrap_or(0);
-                for (i, &attribute) in ATTRIBUTES.iter().enumerate().filter(|(_, a)| allowed & **a != 0) {
+            Ask::Attrib(a) if a.count == 1 => {
+                for (i, &attribute) in ATTRIBUTES.iter().enumerate().filter(|(_, b)| a.available & **b != 0) {
                     cases.push((format!("attribute {attribute:#x}"), vec![(vec![], 1 << (i + 1))], Response::Attrib(vec![attribute]).json()));
                 }
             }
             // Each number offered, as the dialog sends it (in its unit).
-            msg::ANNOUNCE_NUMBER => {
-                let options: Vec<u64> = m["options"].as_array().into_iter().flatten().filter_map(Json::as_u64).collect();
-                let unit = number_unit(&options).map_or(1, |(unit, _)| unit);
-                for (i, &o) in options.iter().enumerate() {
+            Ask::Number(n) => {
+                let unit = number_unit(&n.options).map_or(1, |(unit, _)| unit);
+                for (i, &o) in n.options.iter().enumerate() {
                     cases.push((format!("number {o}"), vec![(vec![], (o / unit) as u32)], Response::Number(i as u64).json()));
                 }
             }
             // An order: the cards clicked last to first.
-            msg::SORT_CHAIN | msg::SORT_CARD if len("cards") >= 2 => {
-                let n = len("cards") as u32;
+            Ask::SortChain(sort) | Ask::SortCard(sort) if sort.cards.len() >= 2 => {
+                let n = sort.cards.len() as u32;
                 let picks: Vec<u32> = (0..n).rev().collect();
                 let order: Vec<u32> = (0..n).rev().collect();
                 cases.push(("the reverse order".into(), vec![(picks, n)], Response::Sort(Some(json!(order))).json()));
@@ -238,7 +233,7 @@ impl Translator {
                 }
                 last != Some(Prompt::Answer(expected.clone()))
             })
-            .map(|(what, _, _)| format!("{what} of a {} prompt (card {})", kind, m["cid"]))
+            .map(|(what, _, _)| format!("{what} of a {ask:?} prompt"))
             .collect()
     }
 
