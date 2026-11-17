@@ -89,6 +89,9 @@ fn changing_the_game_folder_takes_direct_start_out_of_the_old_one() {
     // new one. Needs a real game for the new folder's check.
     let real = yo3_data::default_game_dir();
     if !real.join("yo3.exe").is_file() { eprintln!("skipped: no game at {}", real.display()); return }
+    // The real game folder may already hold a receipt from the player's own Play: the change must leave it as it was.
+    let receipt = |dir: &std::path::Path| std::fs::read(dir.join("yo3-revival-loader.json")).ok();
+    let before = receipt(&real);
     let p = scratch(); let old = p.join("old game"); std::fs::create_dir(&old).unwrap(); std::fs::write(old.join("yo3.exe"), b"game").unwrap();
     let root = p.join("app"); let backend = set_up(&root, &old);
     let db = yo3_desktop::LauncherDb::open(&root).unwrap();
@@ -100,6 +103,6 @@ fn changing_the_game_folder_takes_direct_start_out_of_the_old_one() {
     assert_eq!(saved.expect("the folder change goes through").game_dir, draft.game_dir);
     assert!(!old.join("winmm.dll").exists() && !old.join("yo3-revival-loader.json").exists(), "the old folder is left clean");
     assert!(!root.join("profiles/loader.ini").exists());
-    assert!(!real.join("yo3-revival-loader.json").exists(), "nothing put in the new folder until Play");
+    assert_eq!(receipt(&real), before, "nothing put in the new folder until Play");
     std::fs::remove_dir_all(p).unwrap();
 }
