@@ -86,8 +86,8 @@ The **Multiplayer** tab signs in to servers with a User ID and password ([accoun
 
 ![The Multiplayer tab, signed in to a server, with the server tools beside the list](../screenshots/multiplayer.png)
 
-- **The server list**: the official servers (from a list signed by the project, once it publishes one) and the ones you
-  added, the last one you played on first. Each shows whether it is online (the dot: green, amber or red), with how
+- **The server list**: the official servers (the project's YO3 Revival server, from a list the project signs) and the ones
+  you added, the last one you played on first. Each shows whether it is online (the dot: green, amber or red), with how
   many players and its ping, or Maintenance, Offline, Needs a newer launcher, or Identity changed. The Information panel
   shows the chosen server's news.
 - **Server tools** (the **⋯** beside the list): **Add a server**, **Host for friends**, and **Remove this server** for one

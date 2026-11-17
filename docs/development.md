@@ -150,7 +150,10 @@ the system's opener may reach your own desktop.
 ### The official server list
 
 The Multiplayer tab reads a server list signed with an ed25519 key whose public half is built into the launcher
-(`multiplayer::OFFICIAL_LIST_KEYS`, empty until the project publishes a list). `yo3-server-list` makes the key, signs a
+(`multiplayer::OFFICIAL_LIST_KEYS`). The project's list is `deploy/official-servers.json` (today: YO3 Revival,
+`ygo-3-revival.work.gd:7443`). Each release signs it with the `SERVER_LIST_KEY` secret (the private key, PKCS#8 in
+base64; the owner also keeps it in their password manager) and attaches it as `servers.json`, which launchers fetch from
+the latest release and cache. A release fails rather than publish without it. `yo3-server-list` makes the key, signs a
 list and checks a signed file:
 
 ```bash
@@ -162,7 +165,7 @@ target/debug/yo3-server-list verify servers.json PUBLIC_KEY_HEX
 
 The list is `{"version": N, "servers": [{"name", "address", "identities": [...], "region", "description",
 "invite_only"}]}`: each server's identities are the SHA-256 of its public key (the one `yo3-server` shows), two while it
-rotates its key. A higher `version` replaces the cached list. To rotate the list's own key, ship a launcher that knows
+rotates its key. A higher `version` replaces the cached list: raise it with every change to the list. To rotate the list's own key, ship a launcher that knows
 both public keys before signing with the new one.
 
 ## Storage cost

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "servers": [
+    {
+      "name": "YO3 Revival",
+      "address": "ygo-3-revival.work.gd:7443",
+      "identities": ["680dd5d64b0813a806fcd3c6900ef8bcdf5e140bbf755d5bc9470e88f5bc1d23"],
+      "description": "The project's beta server",
+      "invite_only": true
+    }
+  ]
+}

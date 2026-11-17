@@ -42,7 +42,8 @@ data folder, with the server stopped, before updating. On Desktop, click the ver
   screen opens straight away from then on. **Singleplayer** is one PLAY: your own server starts with the game and
   stops after it. Settings, Help, **Report a problem** and plain error messages, with the technical details behind
   **Details**.
-- **Multiplayer with a User ID and password.** Add a server by address or with an invite link from its host, create
+- **Multiplayer with a User ID and password.** The project's **YO3 Revival** server is listed already. Add another
+  server by address or with an invite link from its host, create
   an account with an invite code, sign in, and stay signed in if you like. Save the recovery code you get at sign-up:
   **Forgot password** uses it, or a reset code from the server's moderators.
 - **Opening `yo3.exe` on its own still signs you in,** to whichever you last played. After **Delete Login Data**, the

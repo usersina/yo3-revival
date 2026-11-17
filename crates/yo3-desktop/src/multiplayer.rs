@@ -17,9 +17,10 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-/// The ed25519 public keys (hex) the official server list may be signed with. Empty until the project publishes a
-/// list (where it is hosted is D14): then the launcher shows only the servers the player added.
-pub const OFFICIAL_LIST_KEYS: &[&str] = &[];
+/// The ed25519 public keys (hex) the official server list may be signed with: the project's list key (2026-11-17).
+/// Each release signs `deploy/official-servers.json` with it (the SERVER_LIST_KEY secret) as `servers.json`. A new key
+/// goes in beside the old one for a release before the old one is dropped.
+pub const OFFICIAL_LIST_KEYS: &[&str] = &["1af91e527f07e27c20d384a5bcb47a429bb0bafb5b2f2173fdb9766bacf1c81b"];
 /// Where the official list is fetched from (the release assets).
 pub const OFFICIAL_LIST_URL: &str = "https://github.com/usersina/yo3-revival/releases/latest/download/servers.json";
 /// The largest list the launcher reads.
@@ -540,6 +541,22 @@ mod tests {
             Listed { identities: vec!["xyz".into()], ..listed("Beta", 'a') }, Listed { address: "".into(), ..listed("Beta", 'a') }] {
             assert!(sign_list(&ServerList { version: 1, servers: vec![bad] }, &key).is_err());
         }
+    }
+
+    #[test]
+    fn the_published_official_list_is_valid_and_its_key_is_built_in() {
+        // deploy/official-servers.json is what each release signs as servers.json: a bad edit must fail here, not
+        // leave every launcher's list empty after the release.
+        let list: ServerList = serde_json::from_str(include_str!("../../../deploy/official-servers.json")).unwrap();
+        assert!(list.version >= 1 && !list.servers.is_empty());
+        for server in &list.servers { check_listed(server).unwrap() }
+        assert!(list.servers.iter().any(|s| s.address == "ygo-3-revival.work.gd:7443"));
+        assert!(!OFFICIAL_LIST_KEYS.is_empty() && OFFICIAL_LIST_KEYS.iter().all(|k| unhex(k).is_some_and(|b| b.len() == 32)));
+        // A list signed with a key of the same kind verifies only against the key that signed it.
+        let (key, public) = new_list_key().unwrap();
+        let signed = sign_list(&list, &key).unwrap();
+        assert_eq!(verify_list(signed.as_bytes(), &[&public]).unwrap(), list);
+        assert!(verify_list(signed.as_bytes(), OFFICIAL_LIST_KEYS).is_err(), "a test key is not the project's");
     }
 
     #[test]
