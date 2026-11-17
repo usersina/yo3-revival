@@ -8,7 +8,7 @@ use std::time::Instant;
 use serde_json::Value as Json;
 use yo3_proto::Message;
 
-use crate::duel::{CLIENT, CPU, CardCommand, FIRST, SECOND, command, piles, setup, shuffle};
+use crate::duel::{CLIENT, CPU, ClientRequest, FIRST, SECOND, command, piles, setup, shuffle};
 use crate::clock::Clocks;
 use crate::engine::{Answer, Engine};
 use crate::front::{DuelEntry, Ended, Hub, MATCH_MODE, Outbox, SINGLE_MODE, World};
@@ -633,30 +633,9 @@ impl Table {
         }
     }
 
-    pub fn card_command(&mut self, seat: usize, cmd: CardCommand) -> Out {
-        let prompt = self.translators.get_mut(seat).and_then(|t| t.command(cmd));
-        self.prompted(seat, prompt)
-    }
-
-    pub fn phase(&mut self, seat: usize, button: u32) -> Out {
-        let response = self.translators.get_mut(seat).and_then(|t| t.phase(button));
-        self.respond(response)
-    }
-
-    pub fn pick(&mut self, seat: usize, index: u32) {
-        if let Some(t) = self.translators.get_mut(seat) {
-            t.pick(index);
-        }
-    }
-
-    /// The field's right-click: see [`Translator::finish`].
-    pub fn finish(&mut self, seat: usize) -> Out {
-        let prompt = self.translators.get_mut(seat).and_then(|t| t.finish());
-        self.prompted(seat, prompt)
-    }
-
-    pub fn dialog_result(&mut self, seat: usize, n: u32) -> Out {
-        let prompt = self.translators.get_mut(seat).and_then(|t| t.dialog_result(n));
+    /// A client's answer to its prompt (see [`Translator::request`]): the engine onwards, or more for that client.
+    pub fn request(&mut self, seat: usize, request: ClientRequest) -> Out {
+        let prompt = self.translators.get_mut(seat).and_then(|t| t.request(request));
         self.prompted(seat, prompt)
     }
 

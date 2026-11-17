@@ -141,6 +141,55 @@ impl CardCommand {
     }
 }
 
+/// A client message on the duel connection (request 0x200C), by its duelRequestName ([`request`]). Read here once;
+/// NPC duels (`Duel`) and duels between players (`Table`) act on it, and [`Translator::request`] answers the ones
+/// that are answers to the engine's prompts.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ClientRequest {
+    /// A card menu entry (2).
+    Command(CardCommand),
+    /// A phase button {phase} (3): 0 DP .. 5 EP.
+    Phase(u32),
+    /// A closing dialog's result {DLGResult} (4): its button, or a card list's number of picks.
+    DialogResult(u32),
+    /// The field's right-click (5), while the command map's other flag 6 is set.
+    RightClick,
+    /// A card list's pick {index: its list position} (7); the first pick's own message (6) is not read.
+    Pick(u32),
+    /// The janken hand {selectHand} (0xC): 0 rock, 1 scissors, 2 paper.
+    Hand(u32),
+    /// First or second {choice} (0xD): [`FIRST`] or [`SECOND`].
+    Order(u32),
+    /// Card Swap is done (0xE).
+    Swapped,
+    /// The duel options {autoSet} (0xF): auto card placing.
+    Options { auto_place: bool },
+    /// The connection DLL's settle answer {seq} (`clock::SETTLED`).
+    Settled(u32),
+}
+
+impl ClientRequest {
+    pub fn of(m: &Message) -> Option<ClientRequest> {
+        let int = |k| m.get(k).and_then(Value::as_u32);
+        if m.request() != Some(CLIENT_DUEL) {
+            return None;
+        }
+        Some(match int("duelRequestName")? {
+            request::CARD_COMMAND => ClientRequest::Command(CardCommand::from_message(m)?),
+            request::PHASE_BUTTON => ClientRequest::Phase(int("phase")?),
+            request::DIALOG_RESULT => ClientRequest::DialogResult(int("DLGResult")?),
+            request::RIGHT_CLICK => ClientRequest::RightClick,
+            request::PICK => ClientRequest::Pick(int("index")?),
+            request::SELECT_HAND => ClientRequest::Hand(int("selectHand").unwrap_or(0) % 3),
+            request::SELECT_FIRST => ClientRequest::Order(if int("choice") == Some(SECOND) { SECOND } else { FIRST }),
+            request::SWAPPED => ClientRequest::Swapped,
+            request::DUEL_OPTIONS => ClientRequest::Options { auto_place: int("autoSet") != Some(0) },
+            crate::clock::SETTLED => ClientRequest::Settled(int("seq").unwrap_or(0)),
+            _ => return None,
+        })
+    }
+}
+
 /// The setup message: who goes first, and both decks' sizes.
 /// The translator of an NPC duel: `decks` are the player's and the NPC's main decks (CARD_Prop rows), and the NPC's
 /// hidden cards (deck, hand, extra deck, face-down) reach the client without their rows, as a player opponent's do.
@@ -344,28 +393,17 @@ impl DuelSession {
     fn at_table(&mut self, msg: &Message) -> Vec<Message> {
         let Some((table, seat)) = self.table.clone() else { return vec![] };
         let mut t = table.locked();
-        let int = |k| msg.get(k).and_then(Value::as_u32);
-        let out = match (msg.request(), int("duelRequestName")) {
-            (Some(CLIENT_DUEL), Some(request::SELECT_HAND)) => t.hand(seat, int("selectHand").unwrap_or(0) % 3),
-            (Some(CLIENT_DUEL), Some(request::SELECT_FIRST)) => t.choose(seat, if int("choice") == Some(SECOND) { SECOND } else { FIRST }),
-            (Some(CLIENT_DUEL), Some(request::CARD_COMMAND)) => match CardCommand::from_message(msg) {
-                Some(cmd) => t.card_command(seat, cmd),
-                None => Default::default(),
-            },
-            (Some(CLIENT_DUEL), Some(request::PHASE_BUTTON)) => t.phase(seat, int("phase").unwrap_or(u32::MAX)),
-            (Some(CLIENT_DUEL), Some(request::RIGHT_CLICK)) => t.finish(seat),
-            (Some(CLIENT_DUEL), Some(request::PICK)) => {
-                t.pick(seat, int("index").unwrap_or(u32::MAX));
+        let out = match ClientRequest::of(msg) {
+            Some(ClientRequest::Hand(hand)) => t.hand(seat, hand),
+            Some(ClientRequest::Order(order)) => t.choose(seat, order),
+            Some(ClientRequest::Swapped) => t.swapped(seat),
+            Some(ClientRequest::Options { auto_place }) => {
+                t.auto_place(seat, auto_place);
                 Default::default()
             }
-            (Some(CLIENT_DUEL), Some(request::DIALOG_RESULT)) => t.dialog_result(seat, int("DLGResult").unwrap_or(0)),
-            (Some(CLIENT_DUEL), Some(request::SWAPPED)) => t.swapped(seat),
-            (Some(CLIENT_DUEL), Some(request::DUEL_OPTIONS)) => {
-                t.auto_place(seat, int("autoSet") != Some(0));
-                Default::default()
-            }
-            (Some(CLIENT_DUEL), Some(crate::clock::SETTLED)) => t.settled(seat, int("seq").unwrap_or(0), Instant::now()),
-            _ => Default::default(),
+            Some(ClientRequest::Settled(seq)) => t.settled(seat, seq, Instant::now()),
+            Some(answer) => t.request(seat, answer),
+            None => Default::default(),
         };
         t.deliver(seat, out)
     }
@@ -447,48 +485,24 @@ impl DuelSession {
                 vec![command(cmd::JANKEN_BEGIN, [0; 4])]
             }
             _ if self.table.is_some() => self.at_table(msg),
-            (Some(CLIENT_DUEL), Some(request::DUEL_OPTIONS)) => {
-                let on = int("autoSet") != Some(0);
-                if let Some(entry) = self.entry.as_mut() {
-                    entry.manual_place = !on;
+            (Some(CLIENT_DUEL), _) => match ClientRequest::of(msg) {
+                Some(ClientRequest::Options { auto_place }) => {
+                    if let Some(entry) = self.entry.as_mut() {
+                        entry.manual_place = !auto_place;
+                    }
+                    if let Some((_, t)) = self.engine.as_mut() {
+                        t.auto_place(auto_place);
+                    }
+                    vec![]
                 }
-                if let Some((_, t)) = self.engine.as_mut() {
-                    t.auto_place(on);
+                Some(ClientRequest::Hand(hand)) if !self.ordered => self.janken(hand),
+                Some(ClientRequest::Order(order)) if !self.ordered => self.turn_order(order),
+                Some(answer) => {
+                    let prompt = self.engine.as_mut().and_then(|(_, t)| t.request(answer));
+                    self.prompted(prompt)
                 }
-                vec![]
-            }
-            (Some(CLIENT_DUEL), Some(request::SELECT_HAND)) if !self.ordered => self.janken(int("selectHand").unwrap_or(0) % 3),
-            (Some(CLIENT_DUEL), Some(request::CARD_COMMAND)) => {
-                let prompt = CardCommand::from_message(msg).and_then(|cmd| self.engine.as_mut().and_then(|(_, t)| t.command(cmd)));
-                self.prompted(prompt)
-            }
-            (Some(CLIENT_DUEL), Some(request::RIGHT_CLICK)) => {
-                let prompt = self.engine.as_mut().and_then(|(_, t)| t.finish());
-                self.prompted(prompt)
-            }
-            (Some(CLIENT_DUEL), Some(request::PHASE_BUTTON)) => {
-                let answer = int("phase")
-                    .and_then(|phase| self.engine.as_mut().and_then(|(_, t)| t.phase(phase)))
-                    .and_then(|r| self.engine.as_mut().map(|(e, _)| e.respond(r)));
-                match answer {
-                    Some(answer) => self.advance(answer),
-                    None => vec![],
-                }
-            }
-            (Some(CLIENT_DUEL), Some(request::PICK)) => {
-                if let (Some((_, t)), Some(index)) = (self.engine.as_mut(), int("index")) {
-                    t.pick(index);
-                }
-                vec![]
-            }
-            (Some(CLIENT_DUEL), Some(request::DIALOG_RESULT)) => {
-                let prompt = int("DLGResult").and_then(|n| self.engine.as_mut().and_then(|(_, t)| t.dialog_result(n)));
-                self.prompted(prompt)
-            }
-            (Some(CLIENT_DUEL), Some(request::SELECT_FIRST)) if !self.ordered => {
-                let order = if int("choice") == Some(SECOND) { SECOND } else { FIRST };
-                self.turn_order(order)
-            }
+                None => vec![],
+            },
             _ => vec![],
         }
     }

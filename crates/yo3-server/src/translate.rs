@@ -12,7 +12,7 @@ use serde_json::{Value as Json, json};
 use yo3_proto::{Message, Value};
 
 use crate::card_options::CARD_OPTION_LABELS;
-use crate::duel::{CLIENT, CPU, CardCommand, TEXT_IDS, TEXT_SLOTS, command, command_data, text_message};
+use crate::duel::{CLIENT, CPU, CardCommand, ClientRequest, TEXT_IDS, TEXT_SLOTS, command, command_data, text_message};
 use crate::ocg::{battle, hint, hintmsg, idle, loc, msg, pos, reason, resp};
 use crate::wire::{Cmd, OPEN, Place, Target, cmd, dialog, entry, flag, list, menu, mode, move_place, result, table_place, text, zone};
 
@@ -2667,6 +2667,23 @@ impl Translator {
     pub fn command(&mut self, cmd: CardCommand) -> Option<Prompt> {
         let prompt = self.command_for(cmd);
         prompt.map(|p| self.with_ids(p))
+    }
+
+    /// A client request that answers the pending prompt (a card command, a phase button, a dialog's result, a list's
+    /// pick, the field's right-click): what follows, for the engine or the client. The duel's own requests (janken,
+    /// options, Card Swap, the settle answer) are no prompt's.
+    pub fn request(&mut self, request: ClientRequest) -> Option<Prompt> {
+        match request {
+            ClientRequest::Command(cmd) => self.command(cmd),
+            ClientRequest::Phase(button) => self.phase(button).map(Prompt::Answer),
+            ClientRequest::DialogResult(count) => self.dialog_result(count),
+            ClientRequest::Pick(index) => {
+                self.pick(index);
+                None
+            }
+            ClientRequest::RightClick => self.finish(),
+            ClientRequest::Hand(_) | ClientRequest::Order(_) | ClientRequest::Swapped | ClientRequest::Options { .. } | ClientRequest::Settled(_) => None,
+        }
     }
 
     /// A client prompt's card table entries with their Konami ids (see [`with_card_ids`]).
