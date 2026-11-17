@@ -10,6 +10,25 @@ gather under "Unreleased" first.
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## v0.0.26 (2026-11-17)
+
+A duel fix: effects you can use during a phase are asked about again. Choose **Desktop** for the graphical app or
+**Scripts** for terminal commands. Both editions include the server, rules engine and required connection components.
+Original game files are not included. **Windows 7 is not supported.**
+
+Players and hosts should update: the fix is in the server, so it reaches your duels once whoever runs the server you
+play on (your own for Singleplayer, the host's for friends) has updated. Friends on v0.0.13 or later can still join.
+Before updating, close the game and stop hosting. Keep your server data and local game Documents; see the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.0.26/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.0.26/docs/scripts.md).
+
+- **Effects you can use during a phase are asked about again** (#53). When Stardust Dragon negated an effect in your
+  opponent's turn, its "Special Summon this card during the End Phase" never asked you, and it stayed in the Graveyard.
+  When such an effect came up together with another card you could activate, the game's default **Activation
+  Message** setting (Semi Auto Cancel) answered No for you. Questions in the Draw, Standby, Battle and End Phases now
+  always show on the default setting. You may see the question a little more often, for example when a Set Spell or
+  Trap could be activated at the End Phase.
+
 ## v0.0.25 (2026-11-16)
 
 A startup fix for Windows 10 version 1809 (LTSC 2019). Choose **Desktop** for the graphical app or **Scripts** for
