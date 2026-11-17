@@ -13,7 +13,7 @@ use yo3_proto::{Message, Value};
 
 use crate::card_options::CARD_OPTION_LABELS;
 use crate::duel::{CLIENT, CPU, CardCommand, ClientRequest, TEXT_IDS, TEXT_SLOTS, command, command_data, text_message};
-use crate::ocg::message::{AnnounceCard, Ask, Loc, SelectCard, SelectChain, SelectOption, SelectPlace, SelectPosition, SelectSum};
+use crate::ocg::message::{AnnounceCard, Ask, Attack, Battle, Chaining, Coded, Confirm, Counter, DeckTop, Event, Field, FieldDisabled, Link, Loc, Move, Shuffle, ShuffleSet, Swap, SwapGraveDeck, SelectCard, SelectChain, SelectOption, SelectPlace, SelectPosition, SelectSum};
 use crate::ocg::{Response, battle, hint, hintmsg, idle, loc, msg, pos, reason, resp};
 use crate::wire::{Cmd, OPEN, Place, Target, cmd, dialog, entry, flag, list, menu, mode, move_place, result, table_place, text, zone};
 
@@ -28,14 +28,8 @@ mod texts;
 use cpu::*;
 use moves::*;
 use texts::*;
-pub use cpu::{Repeats, bot_answer};
+pub use cpu::{Repeats, bot_answer, bot_response};
 pub use moves::settle_positions;
-
-/// The place in an engine message's field, as the place helpers read it; an unreadable one is no place (a default
-/// location 0, which no helper maps). Callers whose message is typed pass its `Loc` instead.
-fn loc_of(v: &Json) -> Loc {
-    Loc::of(v).unwrap_or_default()
-}
 
 /// An engine message as the struct the server reads it as (`yo3_ocg::message`). The duel check fails a duel whose
 /// messages don't fit; here one that doesn't is warned about and read as empty.
@@ -428,7 +422,7 @@ pub struct Translator {
     /// The next chain chance is a phase's own window (HINT_EVENT): it may hold an optional trigger.
     phase_window: bool,
     /// The chain's last link (MSG_CHAINING) until the chain ends, and each link's {player, zone} by its number - 1.
-    chaining: Option<Json>,
+    chaining: Option<Chaining>,
     chain: Vec<(u32, u32)>,
     /// A battle shown on the client and not ended yet, and whether the duel is in a Battle Phase.
     in_battle: bool,
@@ -693,7 +687,7 @@ impl Translator {
 
     /// Whether an engine prompt asks this client (not the other side).
     pub fn prompted(&self, m: &Json) -> bool {
-        self.player(&m["player"]) == CLIENT
+        matches!(Ask::lenient(m), Ok(Some(ask)) if self.side(ask.player()) == CLIENT)
     }
 
     /// The row the client gets for a card at a place: none for the opponent's hidden cards when hiding.

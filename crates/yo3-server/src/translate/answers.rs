@@ -80,17 +80,19 @@ impl Translator {
             self.picks.clear();
             return Some(Prompt::Client(out));
         }
-        let response = self.answer(cmd)?;
+        let response = self.answer_response(cmd)?;
         self.chose(&m, &response);
-        let index = response["index"].as_u64().unwrap_or(u64::MAX) as usize;
-        let attack = match &ask { Some(Ask::BattleCmd(p)) => p.attacks.get(index), _ => None };
-        let opponent = 1 - attack.map_or(self.side(0), |a| self.side(a.loc.controller)) as usize;
-        let no_target = (0..5).all(|zone| self.sides[opponent].zones.get(&zone).is_none_or(Vec::is_empty));
-        if response["type"] != resp::BATTLECMD || response["action"] != battle::ATTACK || !attack.is_some_and(|a| a.can_direct) || !no_target {
-            return Some(Prompt::Answer(response));
+        let attack = match (&ask, &response) {
+            (Some(Ask::BattleCmd(p)), Response::BattleCmd { action: battle::ATTACK, index: Some(i) }) => p.attacks.get(*i),
+            _ => None,
+        };
+        let Some(attack) = attack.filter(|a| a.can_direct) else { return Some(Prompt::Answer(response.json())) };
+        let opponent = 1 - self.side(attack.loc.controller) as usize;
+        if !(0..5).all(|zone| self.sides[opponent].zones.get(&zone).is_none_or(Vec::is_empty)) {
+            return Some(Prompt::Answer(response.json()));
         }
         self.pending = Some(m);
-        self.asking = Asking::DirectAttack(response);
+        self.asking = Asking::DirectAttack(response.json());
         let mut out = message(&[entry::TEXT | text::DIRECT]);
         out.push(Cmd::Dialog { kind: dialog::YES_NO, message: dialog::FROM_ENTRIES, param: 0 }.message());
         Some(Prompt::Client(out))
@@ -98,7 +100,7 @@ impl Translator {
 
     /// The client's answer to a prompt, as the engine gets it: an attack names the attacker its target is aimed from.
     /// The duel check calls it with the self-played answers, which reach the engine without a card command.
-    pub fn answered(&mut self, prompt: &Json, response: &Json) {
+    pub fn answered(&mut self, prompt: &Json, response: &Response) {
         if let Ok(Some(ask)) = Ask::lenient(prompt)
             && self.side(ask.player()) == CLIENT
         {
@@ -106,12 +108,11 @@ impl Translator {
         }
     }
 
-    pub(super) fn chose(&mut self, m: &Json, response: &Json) {
+    pub(super) fn chose(&mut self, m: &Json, response: &Response) {
         if let Ok(Some(Ask::BattleCmd(p))) = Ask::lenient(m)
-            && response["type"] == resp::BATTLECMD
-            && response["action"] == battle::ATTACK
+            && let Response::BattleCmd { action: battle::ATTACK, index: Some(i) } = response
         {
-            let attack = p.attacks.get(response["index"].as_u64().unwrap_or(u64::MAX) as usize);
+            let attack = p.attacks.get(*i);
             self.attacker = attack.and_then(|a| self.engine_place(&a.loc)).filter(|p| p.zone < 5).map(|p| (p.player, p.zone));
         }
     }
@@ -240,9 +241,13 @@ impl Translator {
     /// The engine response for the client's card command, if it names a listed card (its first entry: `command`
     /// asks which when there are several).
     pub fn answer(&mut self, cmd: CardCommand) -> Option<Json> {
+        self.answer_response(cmd).map(|r| r.json())
+    }
+
+    pub(super) fn answer_response(&mut self, cmd: CardCommand) -> Option<Response> {
         let (_, kind, action, indices) = self.listed(&cmd)?;
         self.pending = None;
-        Some(Response::command(kind, action, Some(indices[0])).json())
+        Some(Response::command(kind, action, Some(indices[0])))
     }
 
     /// The pending prompt's entries the client's card command names: the list, the response's type and action, and

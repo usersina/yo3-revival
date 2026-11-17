@@ -622,7 +622,7 @@ pub mod selfplay {
     use crate::wire::{cmd, dialog, zone};
     use crate::engine::Engine;
     use crate::front::Deck;
-    use crate::translate::{CardStats, ChainWindow, Prompt, Translator, bot_answer, chain_window, settle_positions};
+    use crate::translate::{CardStats, ChainWindow, Prompt, Translator, bot_response, chain_window, settle_positions};
 
     const SHOWN_BY_DEFAULT: u32 = 2;
     /// The Sheep Tokens' rows in the harness's card data (the client's token cards are 3900-3999; any rows do here).
@@ -1024,7 +1024,7 @@ pub mod selfplay {
                 if retries > 4 {
                     return Err(fail(vec![format!("the core keeps refusing answers to {}", prompt.as_ref().map(short).unwrap_or_default())]));
                 }
-                bot_answer(prompt.as_ref().unwrap_or(&last))
+                bot_response(prompt.as_ref().unwrap_or(&last))
             } else {
                 retries = 0;
                 // The translator's windows for the client (its prompts), then the random player's answer for whoever is
@@ -1079,7 +1079,7 @@ pub mod selfplay {
                 random_answer(&last, &mut rng, actions > ACTIONS_PER_TURN)
             };
             t.answered(&last, &response);
-            answer = engine.respond(response);
+            answer = engine.respond(response.json());
         }
         Ok(played)
     }
@@ -1096,7 +1096,7 @@ pub mod selfplay {
 
     /// A random legal answer: any summon, Set, activation, attack or position change offered (moving on once `tired`),
     /// random picks within the bounds asked, random yes/no and options. Prompts it doesn't know get the placeholder AI's.
-    pub fn random_answer(m: &Json, rng: &mut u64, tired: bool) -> Json {
+    pub fn random_answer(m: &Json, rng: &mut u64, tired: bool) -> Response {
         let len = |k: &str| m[k].as_array().map_or(0, Vec::len);
         let mut pick = |n: usize| (next(rng) as usize) % n.max(1);
         match m["type"].as_u64().unwrap_or(0) {
@@ -1112,13 +1112,13 @@ pub mod selfplay {
                 // Leaving is one option among the others (always, once tired).
                 if !leave.is_empty() && (options.is_empty() || pick(options.len() + 2) < 2) {
                     let (action, index) = leave[pick(leave.len())];
-                    return Response::IdleCmd { action, index }.json();
+                    return Response::IdleCmd { action, index };
                 }
                 if options.is_empty() {
-                    return bot_answer(m);
+                    return bot_response(m);
                 }
                 let (action, index) = options[pick(options.len())];
-                Response::IdleCmd { action, index }.json()
+                Response::IdleCmd { action, index }
             }
             msg::SELECT_BATTLECMD => {
                 let mut options: Vec<(u64, Option<usize>)> = vec![];
@@ -1128,18 +1128,18 @@ pub mod selfplay {
                 }
                 if options.is_empty() || pick(options.len() + 1) == 0 {
                     let action = if m["to_m2"] == true && pick(2) == 0 { battle::TO_M2 } else { battle::TO_EP };
-                    return Response::BattleCmd { action, index: None }.json();
+                    return Response::BattleCmd { action, index: None };
                 }
                 let (action, index) = options[pick(options.len())];
-                Response::BattleCmd { action, index }.json()
+                Response::BattleCmd { action, index }
             }
             msg::SELECT_CHAIN => {
                 let n = len("selects");
-                Response::Chain((n > 0 && (m["forced"] == true || pick(2) == 0)).then(|| pick(n))).json()
+                Response::Chain((n > 0 && (m["forced"] == true || pick(2) == 0)).then(|| pick(n)))
             }
-            msg::SELECT_EFFECTYN => Response::EffectYn(pick(2) == 0).json(),
-            msg::SELECT_YESNO => Response::YesNo(pick(2) == 0).json(),
-            msg::SELECT_OPTION => Response::Option(pick(len("options"))).json(),
+            msg::SELECT_EFFECTYN => Response::EffectYn(pick(2) == 0),
+            msg::SELECT_YESNO => Response::YesNo(pick(2) == 0),
+            msg::SELECT_OPTION => Response::Option(pick(len("options"))),
             kind @ (msg::SELECT_CARD | msg::SELECT_TRIBUTE) => {
                 let n = len("selects");
                 let min = (m["min"].as_u64().unwrap_or(1) as usize).min(n);
@@ -1151,11 +1151,11 @@ pub mod selfplay {
                 }
                 all.truncate(count);
                 all.sort_unstable();
-                if kind == msg::SELECT_CARD { Response::Card(Some(all)).json() } else { Response::Tribute(Some(all)).json() }
+                if kind == msg::SELECT_CARD { Response::Card(Some(all)) } else { Response::Tribute(Some(all)) }
             }
             msg::SELECT_UNSELECT_CARD => {
                 let n = len("select_cards");
-                Response::UnselectCard((n != 0 && !(m["can_finish"] == true && pick(2) == 0)).then(|| pick(n))).json()
+                Response::UnselectCard((n != 0 && !(m["can_finish"] == true && pick(2) == 0)).then(|| pick(n)))
             }
             kind @ (msg::SELECT_PLACE | msg::SELECT_DISFIELD) => {
                 // Random free zones, `count` of them (field_mask bits set = unavailable): the player's monster zones
@@ -1170,7 +1170,7 @@ pub mod selfplay {
                     .collect();
                 let count = (m["count"].as_u64().unwrap_or(1) as usize).max(1);
                 if free.len() < count {
-                    return bot_answer(m);
+                    return bot_response(m);
                 }
                 let mut free = free;
                 let places: Vec<Json> = (0..count)
@@ -1179,26 +1179,26 @@ pub mod selfplay {
                         json!({ "player": player, "location": location, "sequence": sequence })
                     })
                     .collect();
-                if kind == msg::SELECT_PLACE { Response::Place(places).json() } else { Response::Disfield(places).json() }
+                if kind == msg::SELECT_PLACE { Response::Place(places) } else { Response::Disfield(places) }
             }
             msg::SELECT_POSITION => {
                 let allowed = m["positions"].as_u64().unwrap_or(1);
                 let bits: Vec<u64> = [pos::FACEUP_ATTACK, pos::FACEDOWN_ATTACK, pos::FACEUP_DEFENSE, pos::FACEDOWN_DEFENSE].into_iter().filter(|b| allowed & b != 0).collect();
-                Response::Position(if bits.is_empty() { pos::FACEUP_ATTACK } else { bits[pick(bits.len())] }).json()
+                Response::Position(if bits.is_empty() { pos::FACEUP_ATTACK } else { bits[pick(bits.len())] })
             }
             // An order (chain links, cards): half the time a random rank per card, else the engine's own.
             msg::SORT_CHAIN | msg::SORT_CARD => {
                 let n = len("cards");
                 if n < 2 || pick(2) == 0 {
-                    return bot_answer(m);
+                    return bot_response(m);
                 }
                 let mut order: Vec<usize> = (0..n).collect();
                 for i in (1..n).rev() {
                     order.swap(i, pick(i + 1));
                 }
-                Response::Sort(Some(json!(order))).json()
+                Response::Sort(Some(json!(order)))
             }
-            _ => bot_answer(m),
+            _ => bot_response(m),
         }
     }
 }

@@ -1,9 +1,24 @@
 //! The placeholder AI's answers, the sums it picks, free zones and the repeat guard.
 use super::*;
 
-/// The placeholder AI's answer to any prompt (see [`cpu_answer`]).
+/// The placeholder AI's answer to any prompt (see [`cpu_response`]).
 pub fn bot_answer(m: &Json) -> Json {
-    cpu_answer(m)
+    bot_response(m).json()
+}
+
+/// [`bot_answer`], typed.
+pub fn bot_response(m: &Json) -> Response {
+    match Ask::lenient(m) {
+        Ok(Some(ask)) => cpu_response(&ask),
+        Ok(None) => {
+            tracing::warn!("rules engine: no answer for prompt {}", m["type"]);
+            Response::Chain(None)
+        }
+        Err(e) => {
+            tracing::warn!("rules engine: a prompt that doesn't fit its struct: {e}");
+            Response::Chain(None)
+        }
+    }
 }
 
 /// MSG_SELECT_SUM {amount: the target, selects_must: cards that count without being picked, select_max: 0 exactly the
@@ -116,17 +131,7 @@ pub(super) fn free_zones(p: &SelectPlace) -> Vec<(u64, u64, u64)> {
 
 /// The CPU's answer, and the default for the client's prompts that have no window yet (see [`cpu_response`]).
 pub(super) fn cpu_answer(m: &Json) -> Json {
-    match Ask::lenient(m) {
-        Ok(Some(ask)) => cpu_response(&ask).json(),
-        Ok(None) => {
-            tracing::warn!("rules engine: no answer for prompt {}", m["type"]);
-            Response::Chain(None).json()
-        }
-        Err(e) => {
-            tracing::warn!("rules engine: a prompt that doesn't fit its struct: {e}");
-            Response::Chain(None).json()
-        }
-    }
+    bot_answer(m)
 }
 
 fn cpu_response(ask: &Ask) -> Response {

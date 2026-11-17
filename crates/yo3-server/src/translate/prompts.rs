@@ -145,7 +145,7 @@ impl Translator {
                 // card once per option in the engine's order, rather than the first option for the player.
                 None if o.options.len() > 1 => {
                     let card = |i: usize| o.option_cids.get(i).copied().filter(|&c| c != 0)
-                        .or_else(|| self.chaining.as_ref().and_then(|c| c["cid"].as_u64()))
+                        .or_else(|| self.chaining.as_ref().and_then(|c| c.loc.cid))
                         .unwrap_or(0);
                     let selects: Vec<Loc> = (0..o.options.len()).map(|i| Loc { controller: o.player, cid: Some(card(i)), ..Loc::default() }).collect();
                     let out = self.card_list(&CardList { selects, min: 1, max: 1, cancelable: false }, Some(text::SELECT_EFFECT));
@@ -350,9 +350,9 @@ impl Translator {
         out.extend(fours(cmd::LIST_ROWS, &rows));
         let entries = match &self.chaining {
             Some(link) => {
-                let spell_trap = link["location"].as_u64() == Some(loc::SZONE);
+                let spell_trap = link.loc.location == loc::SZONE;
                 let text = if spell_trap { text::CHAIN_CARD } else { text::CHAIN_EFFECT };
-                vec![entry::TEXT | text, entry::CARD_NAME | link["cid"].as_u64().unwrap_or(0) as u32]
+                vec![entry::TEXT | text, entry::CARD_NAME | link.loc.cid.unwrap_or(0) as u32]
             }
             None => vec![entry::TEXT | text::ACTIVATE_CARD],
         };
@@ -490,16 +490,14 @@ impl Translator {
     /// several cards, the card list. No pick cancels when the engine allows it; picks that don't fit the choice get
     /// the default.
     pub fn dialog_result(&mut self, count: u32) -> Option<Prompt> {
-        let asked = self.pending.clone();
         let prompt = self.dialog_result_for(count);
-        if let (Some(m), Some(Prompt::Answer(a))) = (&asked, &prompt)
-            && let Ok(Some(Ask::Option(o))) = Ask::lenient(m)
-            && a["type"] == resp::OPTION
-        {
-            let called = a["index"].as_u64().and_then(|i| o.options.get(i as usize).copied());
-            self.coin_call = match called { Some(CALL_HEADS) => Some(true), Some(CALL_TAILS) => Some(false), _ => self.coin_call };
-        }
         prompt.map(|p| self.with_ids(p))
+    }
+
+    /// An option answered: a call of heads or tails is kept for the coin toss that follows (Time Wizard).
+    pub(super) fn chosen_option(&mut self, o: &SelectOption, index: usize) -> Json {
+        self.coin_call = match o.options.get(index) { Some(&CALL_HEADS) => Some(true), Some(&CALL_TAILS) => Some(false), _ => self.coin_call };
+        Response::Option(index).json()
     }
 
     pub(super) fn dialog_result_for(&mut self, count: u32) -> Option<Prompt> {
@@ -556,10 +554,11 @@ impl Translator {
                 }
             }
             Ask::Option(o) if std::mem::take(&mut self.option_cards) => match std::mem::take(&mut self.picks)[..] {
-                [index] if index < o.options.len() => Response::Option(index).json(),
-                _ => cpu_answer(&m),
+                [index] if index < o.options.len() => self.chosen_option(o, index),
+                _ => self.chosen_option(o, 0),
             },
-            Ask::Option(o) if (count as usize) < o.options.len() => Response::Option(count as usize).json(),
+            Ask::Option(o) if (count as usize) < o.options.len() => self.chosen_option(o, count as usize),
+            Ask::Option(o) => self.chosen_option(o, 0),
             Ask::Chain(c) if !self.chain_list && count == 1 && c.selects.len() > 1 => {
                 self.chain_list = true;
                 self.picks.clear();

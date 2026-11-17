@@ -349,7 +349,375 @@ impl Ask {
     }
 }
 
+/// A drawn card (MSG_DRAW's `drawn`), or one card of a list given by code.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Coded {
+    #[serde(default)]
+    pub code: u64,
+    #[serde(default)]
+    pub cid: Option<u64>,
+    #[serde(default)]
+    pub position: Option<u64>,
+}
+
+/// MSG_DRAW.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Draw {
+    pub player: u64,
+    pub drawn: Vec<Coded>,
+}
+
+/// A message about one player: MSG_NEW_TURN, MSG_SHUFFLE_DECK, MSG_ROCK_PAPER_SCISSORS.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct OfPlayer {
+    pub player: u64,
+}
+
+/// MSG_NEW_PHASE.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct NewPhase {
+    pub phase: u64,
+}
+
+/// MSG_MOVE: card `card` from one place to another, with the session's `reason` (read back from the card's new place)
+/// and the card's Konami id (or, without one, its name).
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Move {
+    pub card: u64,
+    #[serde(default)]
+    pub cid: Option<u64>,
+    #[serde(default)]
+    pub name: Option<String>,
+    pub from: Loc,
+    pub to: Loc,
+    #[serde(default)]
+    pub reason: u64,
+}
+
+/// MSG_FIELD_DISABLED.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct FieldDisabled {
+    pub field_mask: u64,
+}
+
+/// MSG_HINT: a hint of `hint_type` for `player`, with the card string's text where it names one.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Hint {
+    pub hint_type: u64,
+    pub player: u64,
+    pub hint: u64,
+    #[serde(default)]
+    pub hint_text: Option<String>,
+}
+
+/// MSG_POS_CHANGE: a card's position, before and after.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct PosChange {
+    #[serde(flatten)]
+    pub loc: Loc,
+    pub prev_position: u64,
+}
+
+/// A card at its place: MSG_SUMMONING, MSG_SPSUMMONING, MSG_FLIPSUMMONING, MSG_SET (code, place, Konami id).
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct AtPlace {
+    #[serde(flatten)]
+    pub loc: Loc,
+}
+
+/// MSG_CHAINING: a chain link's card at its place, its description and the chain's size.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Chaining {
+    #[serde(flatten)]
+    pub loc: Loc,
+    #[serde(default)]
+    pub description: u64,
+    pub chain_size: u64,
+}
+
+/// A chain message with only its size: MSG_CHAIN_SOLVING and the others of its family.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct ChainSize {
+    pub chain_size: u64,
+}
+
+/// MSG_ATTACK: the attacker and its target (none for a direct attack).
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Attack {
+    pub card: Loc,
+    #[serde(default)]
+    pub target: Option<Loc>,
+}
+
+/// One side of MSG_BATTLE: the card at its place and its figures.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Battler {
+    #[serde(flatten)]
+    pub loc: Loc,
+    pub attack: u64,
+    pub defense: u64,
+    pub destroyed: bool,
+}
+
+/// MSG_BATTLE.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Battle {
+    pub card: Battler,
+    pub target: Battler,
+}
+
+/// Cards a player is shown: MSG_CONFIRM_CARDS, MSG_CONFIRM_DECKTOP, MSG_CONFIRM_EXTRATOP.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Confirm {
+    pub player: u64,
+    pub cards: Vec<Loc>,
+}
+
+/// MSG_DECK_TOP: the deck's top card turned (`count` from the top).
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct DeckTop {
+    pub player: u64,
+    pub count: u64,
+    pub code: u64,
+    #[serde(default)]
+    pub cid: Option<u64>,
+    pub position: u64,
+}
+
+/// MSG_SHUFFLE_HAND and MSG_SHUFFLE_EXTRA: the cards by code, and their Konami ids.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Shuffle {
+    pub player: u64,
+    pub cards: Vec<u64>,
+    #[serde(default)]
+    pub cids: Vec<u64>,
+}
+
+/// MSG_SWAP: two cards trade places.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Swap {
+    pub card1: Loc,
+    pub card2: Loc,
+}
+
+/// One pair of MSG_SHUFFLE_SET_CARD's `cards`.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct FromTo {
+    pub from: Loc,
+    pub to: Loc,
+}
+
+/// MSG_SHUFFLE_SET_CARD, with the session's `places`: each shuffled zone and the card in it now.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct ShuffleSet {
+    pub location: u64,
+    pub cards: Vec<FromTo>,
+    #[serde(default)]
+    pub places: Vec<Loc>,
+}
+
+/// MSG_SWAP_GRAVE_DECK, with the session's `grave` and `extra` after the swap, in sequence order.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct SwapGraveDeck {
+    pub player: u64,
+    #[serde(default)]
+    pub grave: Vec<Coded>,
+    #[serde(default)]
+    pub extra: Vec<Coded>,
+}
+
+/// MSG_WIN: the winning team (2 a draw) and the reason.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Win {
+    pub player: u64,
+    pub reason: u64,
+}
+
+/// MSG_DAMAGE, MSG_RECOVER and MSG_PAY_LPCOST.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct LpChange {
+    pub player: u64,
+    pub amount: u64,
+}
+
+/// MSG_LPUPDATE.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct LpUpdate {
+    pub player: u64,
+    pub lp: u64,
+}
+
+/// MSG_ADD_COUNTER and MSG_REMOVE_COUNTER: `count` counters of `counter_type` on the card at a place.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Counter {
+    pub counter_type: u64,
+    pub controller: u64,
+    pub location: u64,
+    pub sequence: u64,
+    pub count: u64,
+}
+
+/// MSG_EQUIP, MSG_CARD_TARGET and MSG_CANCEL_TARGET: a card and the card it is linked to.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Link {
+    pub card: Loc,
+    pub target: Loc,
+}
+
+/// MSG_TOSS_COIN: heads (true) or tails per coin.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct TossCoin {
+    pub player: u64,
+    pub results: Vec<bool>,
+}
+
+/// MSG_TOSS_DICE: each die's face.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct TossDice {
+    pub player: u64,
+    pub results: Vec<u64>,
+}
+
+/// A monster's stats in the session's field report (`{type: "field", monsters}`): what effects changed without a
+/// message of their own.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Monster {
+    pub controller: u64,
+    pub sequence: u64,
+    #[serde(default)]
+    pub position: Option<u64>,
+    #[serde(default)]
+    pub level: Option<u64>,
+    #[serde(default)]
+    pub attack: Option<i64>,
+    #[serde(default)]
+    pub defense: Option<i64>,
+    #[serde(default)]
+    pub base_attack: Option<i64>,
+    #[serde(default)]
+    pub base_defense: Option<i64>,
+    #[serde(default)]
+    pub attribute: Option<u64>,
+    #[serde(default)]
+    pub race: Option<u64>,
+}
+
+/// The session's field report.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct Field {
+    pub monsters: Vec<Monster>,
+}
+
+/// An event: an engine message the server shows (or keeps track of), not a prompt.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Event {
+    Draw(Draw),
+    NewTurn(OfPlayer),
+    NewPhase(NewPhase),
+    Move(Move),
+    FieldDisabled(FieldDisabled),
+    Hint(Hint),
+    PosChange(PosChange),
+    Summoning(AtPlace),
+    SpSummoning(AtPlace),
+    FlipSummoning(AtPlace),
+    Set(AtPlace),
+    Chaining(Chaining),
+    ChainSolving(ChainSize),
+    ChainEnd,
+    Attack(Attack),
+    Battle(Battle),
+    AttackDisabled,
+    DamageStepEnd,
+    ConfirmCards(Confirm),
+    ConfirmDecktop(Confirm),
+    ReverseDeck,
+    DeckTop(DeckTop),
+    ShuffleHand(Shuffle),
+    Swap(Swap),
+    ShuffleSetCard(ShuffleSet),
+    SwapGraveDeck(SwapGraveDeck),
+    Win(Win),
+    Damage(LpChange),
+    Recover(LpChange),
+    PayLpCost(LpChange),
+    AddCounter(Counter),
+    RemoveCounter(Counter),
+    LpUpdate(LpUpdate),
+    Equip(Link),
+    CardTarget(Link),
+    CancelTarget(Link),
+    TossCoin(TossCoin),
+    TossDice(TossDice),
+    /// The session's field report.
+    Field(Field),
+}
+
+impl Event {
+    /// The event in an engine message, every field present (see [`strict`]); `Ok(None)` for a prompt or a type the
+    /// server doesn't read.
+    pub fn parse(m: &Json) -> Result<Option<Event>, String> {
+        Event::read(m, true)
+    }
+
+    /// The event in an engine message as the server reads it (see [`lenient`]).
+    pub fn lenient(m: &Json) -> Result<Option<Event>, String> {
+        Event::read(m, false)
+    }
+
+    fn read(m: &Json, strictly: bool) -> Result<Option<Event>, String> {
+        fn get<T: DeserializeOwned + Serialize + Default>(m: &Json, strictly: bool) -> Result<T, String> {
+            if strictly { strict(m) } else { lenient(m) }
+        }
+        if m["type"] == "field" {
+            return Ok(Some(Event::Field(get(m, strictly)?)));
+        }
+        Ok(Some(match m["type"].as_u64().unwrap_or(u64::MAX) {
+            msg::DRAW => Event::Draw(get(m, strictly)?),
+            msg::NEW_TURN => Event::NewTurn(get(m, strictly)?),
+            msg::NEW_PHASE => Event::NewPhase(get(m, strictly)?),
+            msg::MOVE => Event::Move(get(m, strictly)?),
+            msg::FIELD_DISABLED => Event::FieldDisabled(get(m, strictly)?),
+            msg::HINT => Event::Hint(get(m, strictly)?),
+            msg::POS_CHANGE => Event::PosChange(get(m, strictly)?),
+            msg::SUMMONING => Event::Summoning(get(m, strictly)?),
+            msg::SPSUMMONING => Event::SpSummoning(get(m, strictly)?),
+            msg::FLIPSUMMONING => Event::FlipSummoning(get(m, strictly)?),
+            msg::SET => Event::Set(get(m, strictly)?),
+            msg::CHAINING => Event::Chaining(get(m, strictly)?),
+            msg::CHAIN_SOLVING => Event::ChainSolving(get(m, strictly)?),
+            msg::CHAIN_END => Event::ChainEnd,
+            msg::ATTACK => Event::Attack(get(m, strictly)?),
+            msg::BATTLE => Event::Battle(get(m, strictly)?),
+            msg::ATTACK_DISABLED => Event::AttackDisabled,
+            msg::DAMAGE_STEP_END => Event::DamageStepEnd,
+            msg::CONFIRM_CARDS => Event::ConfirmCards(get(m, strictly)?),
+            msg::CONFIRM_DECKTOP => Event::ConfirmDecktop(get(m, strictly)?),
+            msg::REVERSE_DECK => Event::ReverseDeck,
+            msg::DECK_TOP => Event::DeckTop(get(m, strictly)?),
+            msg::SHUFFLE_HAND => Event::ShuffleHand(get(m, strictly)?),
+            msg::SWAP => Event::Swap(get(m, strictly)?),
+            msg::SHUFFLE_SET_CARD => Event::ShuffleSetCard(get(m, strictly)?),
+            msg::SWAP_GRAVE_DECK => Event::SwapGraveDeck(get(m, strictly)?),
+            msg::WIN => Event::Win(get(m, strictly)?),
+            msg::DAMAGE => Event::Damage(get(m, strictly)?),
+            msg::RECOVER => Event::Recover(get(m, strictly)?),
+            msg::PAY_LPCOST => Event::PayLpCost(get(m, strictly)?),
+            msg::ADD_COUNTER => Event::AddCounter(get(m, strictly)?),
+            msg::REMOVE_COUNTER => Event::RemoveCounter(get(m, strictly)?),
+            msg::LPUPDATE => Event::LpUpdate(get(m, strictly)?),
+            msg::EQUIP => Event::Equip(get(m, strictly)?),
+            msg::CARD_TARGET => Event::CardTarget(get(m, strictly)?),
+            msg::CANCEL_TARGET => Event::CancelTarget(get(m, strictly)?),
+            msg::TOSS_COIN => Event::TossCoin(get(m, strictly)?),
+            msg::TOSS_DICE => Event::TossDice(get(m, strictly)?),
+            _ => return Ok(None),
+        }))
+    }
+}
+
 /// Whether an engine message fits the struct the server reads it as: an error naming the field and the message if not.
 pub fn parse(m: &Json) -> Result<(), String> {
-    Ask::parse(m).map(|_| ())
+    Ask::parse(m)?;
+    Event::parse(m).map(|_| ())
 }
