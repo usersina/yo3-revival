@@ -2020,7 +2020,8 @@ input state, per the option's help texts):
 Unshown, the dialog answers `DLGResult 0` (No) by itself (constructor `0x4C5120`). The server sends level 3 when
 something happened (EDOPro's `hint_timing` of either player has a timing other than a phase or step, or a chain is in
 progress) and in a phase's own window (MSG_HINT `HINT_EVENT` 20, 21, 25, 26 or 28 just before: the core counts that
-phase's optional triggers in `spe_count` there without saying which cards they are, #53), 1 at another phase or step, and 0 when no card fits the timing (`spe_count` 0, which EDOPro's own client skips)
+phase's optional triggers in `spe_count` there without saying which cards they are, #53; every window is classified in
+`CHAIN_WINDOWS`), 1 at another phase or step, and 0 when no card fits the timing (`spe_count` 0, which EDOPro's own client skips)
 (client behaviour confirmed: only three bands are observable, below 2 (0 and 1 act the same), 2–3 (the same), 4 and up; which windows the original judged "low priority" is Konami-server-only; `spe_count` is not a client field). The question names the chain's last link (MSG_CHAINING, until CHAIN_END): 'The effect of "%s" is activated. Chain another card or effect?' (7), '"%s"
 is activated. ...' (8) for a card in the Spell/Trap zone (**guess**: no client code chooses between 7, 8 and 269, they are the dialog body's text), else "Activate the effect of a card?" (269). No
 answers no chain; Yes chains the only card, or opens the card list (one pick) with "Select effect to activate." (276),

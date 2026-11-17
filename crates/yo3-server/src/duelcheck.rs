@@ -662,7 +662,7 @@ pub mod selfplay {
     use crate::duel::{CLIENT, CPU, DUEL_START, SET_LP, command, next, piles, setup, shuffle};
     use crate::engine::Engine;
     use crate::front::Deck;
-    use crate::translate::{CardStats, Prompt, Translator, bot_answer, settle_positions};
+    use crate::translate::{CardStats, ChainWindow, HINT_EVENT, Prompt, Translator, bot_answer, chain_window, settle_positions};
 
     /// ocgcore message types the harness looks at.
     const MSG_RETRY: u64 = 1;
@@ -683,6 +683,11 @@ pub mod selfplay {
     const MSG_SPSUMMONING: u64 = 62;
     const MSG_FLIPSUMMONING: u64 = 64;
     const MSG_CHAINING: u64 = 70;
+    const MSG_HINT: u64 = 2;
+    /// The Effect dialog's kind and the lowest level the default Activation Message (Semi Auto Cancel) shows; below it the
+    /// client answers No for the player at once (0x4C5560, docs/protocol.md "Chains").
+    const EFFECT_DIALOG: u32 = 3;
+    const SHOWN_BY_DEFAULT: u32 = 2;
     /// The Sheep Tokens' rows in the harness's card data (the client's token cards are 3900-3999; any rows do here).
     const SHEEP_ROWS: [u16; 4] = [60001, 60002, 60003, 60004];
     /// When a self-played duel stops: engine steps, turns.
@@ -871,6 +876,12 @@ pub mod selfplay {
         pub hand_materials: u32,
         /// The position dialogs the client was shown for a token about to appear.
         pub token_positions: u32,
+        /// Chain chances the engine marked as mattering (spe_count above 0) that the default Activation Message answers
+        /// No to by itself, by window (its HINT_EVENT value, 0 for none): the player never sees them unless they chose
+        /// Manual. Only windows whose question holds no optional trigger may be here.
+        pub hidden_by_default: BTreeMap<u64, u32>,
+        /// A phase's own windows with something to activate that the player saw on the default option (#53).
+        pub phase_windows: u32,
     }
 
     /// How many answers an engine prompt has, roughly, for the prompts the translator may answer itself: options,
@@ -878,6 +889,7 @@ pub mod selfplay {
     pub fn choices(m: &Json) -> Option<usize> {
         let len = |k: &str| m[k].as_array().map_or(0, Vec::len);
         Some(match m["type"].as_u64()? {
+            12 | 13 => 2,
             14 => len("options"),
             15 | 16 | 20 | 23 => len("selects"),
             26 => len("select_cards"),
@@ -1023,6 +1035,16 @@ pub mod selfplay {
                     }
                 }
             }
+            // Every window the core marks must be one the translator knows how to treat (CHAIN_WINDOWS).
+            let windows: Vec<u64> = a.messages.iter().filter(|m| m["type"].as_u64() == Some(MSG_HINT) && m["hint_type"].as_u64() == Some(HINT_EVENT))
+                .filter_map(|m| m["hint"].as_u64()).collect();
+            if let Some(h) = windows.iter().find(|&&h| chain_window(h).is_none()) {
+                return Err(format!("seed {seed}, step {}: the core's window {h} (MSG_HINT HINT_EVENT) isn't in CHAIN_WINDOWS", played.steps));
+            }
+            // The client's window for the prompt this step ends with: the last one the core marked for its player.
+            let window = a.messages.iter().rev()
+                .find(|m| m["type"].as_u64() == Some(MSG_HINT) && m["hint_type"].as_u64() == Some(HINT_EVENT) && m["player"].as_u64() == Some(client_team as u64))
+                .and_then(|m| m["hint"].as_u64());
             let mut out = t.events(&a.messages);
             settle_positions(&mut out);
             model.apply_all(&out);
@@ -1075,6 +1097,23 @@ pub mod selfplay {
                         settle_positions(&mut msgs);
                         model.apply_all(&msgs);
                         let mut problems = model.check(&state);
+                        // A chance that matters, on the default Activation Message: shown, or answered No by the client
+                        // itself, which only a window without optional triggers may be (#53: Stardust Dragon's return).
+                        if last["type"].as_u64() == Some(MSG_SELECT_CHAIN) && last["spe_count"].as_u64().unwrap_or(0) > 0 {
+                            let level = msgs.iter().find(|m| int(m, "id") == super::DIALOG && int(m, "param1") == EFFECT_DIALOG).map(|m| int(m, "param3"));
+                            let phase = window.and_then(chain_window) == Some(ChainWindow::Phase);
+                            match level {
+                                Some(level) if level < SHOWN_BY_DEFAULT && phase => problems.push(format!(
+                                    "the default Activation Message answers No for the player in the {} window ({}), where optional triggers come: {}",
+                                    window.map_or("?", |h| crate::translate::CHAIN_WINDOWS.iter().find(|w| w.0 == h).map_or("?", |w| w.1)),
+                                    window.unwrap_or(0),
+                                    short(&last)
+                                )),
+                                Some(level) if level < SHOWN_BY_DEFAULT => *played.hidden_by_default.entry(window.unwrap_or(0)).or_default() += 1,
+                                _ if phase => played.phase_windows += 1,
+                                _ => {}
+                            }
+                        }
                         // Every answer the engine offers must be one the client's windows can give.
                         problems.extend(t.unreachable_answers().into_iter().map(|what| format!("the client can't answer {what}")));
                         if !problems.is_empty() {
@@ -1084,7 +1123,7 @@ pub mod selfplay {
                     Prompt::Answer(_) if last["player"].as_u64() == Some(client_team as u64) && choices(&last).is_some_and(|n| n > 1) => {
                         let kind = last["type"].as_u64().unwrap_or(0);
                         // The options of an effect always reach the player (a card list when the client has no labels).
-                        if kind == MSG_SELECT_OPTION || kind == MSG_SELECT_SUM {
+                        if kind == MSG_SELECT_OPTION || kind == MSG_SELECT_SUM || kind == MSG_SELECT_EFFECTYN {
                             return Err(fail(vec![format!("the server chose for the player: {}", short(&last))]));
                         }
                         *played.decided.entry(kind).or_default() += 1;
