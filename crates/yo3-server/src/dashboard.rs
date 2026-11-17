@@ -12,6 +12,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{api::{give_bp::GiveBpByIdRequest, Api, GiveBpResult, Actor, MutationError, MutationErrorCode}, lock::Locked,
     logins::Role, panel::{self, Panel, Viewer}};
+use crate::api::keys::{KeyAccountRequest, KeyAccountResult};
 use crate::api::credentials::{IssueAccountCodeRequest, AccountCodeResponse};
 use crate::api::profiles::{AccountDetail, AccountEditRequest, AccountEditResult, CountryList};
 use crate::api::invites::{CreateInviteRequest, CreateInviteResult, InviteList};
@@ -104,7 +105,7 @@ fn documented_routes() -> OpenApiRouter<Dashboard> {
     OpenApiRouter::new().routes(routes!(staff_session)).routes(routes!(sign_in)).routes(routes!(sign_out))
         .routes(routes!(accounts)).routes(routes!(give_bp)).routes(routes!(list_bp_codes))
         .routes(routes!(create_bp_code)).routes(routes!(remove_bp_code)).routes(routes!(list_invites)).routes(routes!(create_invite))
-        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code))
+        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account))
 }
 
 pub fn openapi() -> OpenApi {
@@ -378,6 +379,23 @@ async fn issue_account_code(State(state): State<Dashboard>, Extension(viewer): E
     let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
     tokio::task::spawn_blocking(move || state.api.issue_account_code(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
         .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID and code."))?
+        .map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/accounts/keys", operation_id = "manageAccountKey", tag = "Accounts",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = KeyAccountRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "Retain this ID and input on retry. A key is returned only after its audit is committed; never stored in a receipt.")),
+    responses((status = 200, description = "Committed key account creation or explicit key disclosure. Handle as a private credential.", body = KeyAccountResult),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Account not found", body = ApiError), (status = 409, description = "Player name taken or retry input conflict", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError),
+        (status = 503, description = "Commit could not be confirmed; retry the same request", body = ApiError), (status = 500, description = "Internal error; outcome may be unknown", body = ApiError)))]
+async fn key_account(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, headers: HeaderMap,
+    body: Result<Json<KeyAccountRequest>, JsonRejection>) -> Result<Json<KeyAccountResult>, ApiError> {
+    let Json(request) = body?;
+    let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
+    tokio::task::spawn_blocking(move || state.api.key_account(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
         .map(Json).map_err(Into::into)
 }
 

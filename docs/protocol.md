@@ -2168,7 +2168,7 @@ Select Player still chooses one of up to four account players (`0x1F4C`), and cr
 slot `pindex` 0–3). `CharMake.cpp` (`0x2CF5`/`0x2CF6`, the map's GoCharMake) remains the appearance editor. Account
 and player records keep their existing document schema and ids, stored in SQLite's `accounts` document.
 Key accounts (Singleplayer, the Scripts edition's profiles) and password accounts share that schema. No account is
-chosen by an address, and plain HTTP never makes or reveals one: fetching `yo3.idx` cannot select or create an
+chosen by an address, and public asset requests never make or reveal one: fetching `yo3.idx` cannot select or create an
 account. The internal asset service serves `/duellogs/NAME.dlog`, `/app/` and `/web/`; the launcher carries these
 requests over TLS. The patch index is the game's own, answered by the launcher, and patch files are never fetched
 (#39, [client internals](client-internals.md#the-patcher)); the server's own `yo3.idx` route stays for older launchers. The DLL routes the client's
@@ -2213,6 +2213,13 @@ with RFC 3339 times and nullable live state, never keys/passwords/device/reset t
 the game archive through `GET /panel/api/v1/countries`, without a fabricated fallback list. Existing game reply shapes
 are unchanged; edits appear at the next sign-in. Evidence: `account_admin_contract.rs`, `dashboard_contract.rs` and
 connected browser tests.
+Key-account creation/disclosure uses `POST /panel/api/v1/accounts/keys` (`kind: create` with names, or `reveal`
+with `user_id`), never a GET or an account-list field. It requires an admin staff session, CSRF and a request ID.
+Account, audit and receipt commit together before disclosure; responses are `no-store`. Receipts contain only IDs
+and a key digest, not the key or player names. A matching retry rechecks admin authority and key identity; a deleted
+account is not recreated. CLI `add-account`, `key` and `profile` use the same operations with `--request-id`.
+Evidence: `key_account_contract.rs`, `dashboard_contract.rs`, connected browser tests. These are our management API
+contracts; no game-client reply shapes change.
 Role changes are admin-only and target password accounts. They use the same transaction and durable retry receipt;
 an old retry cannot restore an earlier role. The persisted staff-session revision changes only when the role changes,
 invalidating old cookies on both management interfaces even through an unobserved demotion/promotion round trip.

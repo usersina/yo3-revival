@@ -32,6 +32,13 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 
 ## Status
 
+2026-11-17, key accounts: a failing audit regression reproduced false success before the fix. Creation and explicit
+key disclosure now commit account, audit and durable retry receipt together, then return the credential. Receipts
+hold a key digest and account ID rather than credentials or player names; replay cannot recreate deleted accounts.
+CLI `add-account`, `key` and `profile` retain retry IDs. The generated staff API and React dialog require admin
+permission and confirm passwordless access. The tab retains only uncertain input/ID, clears revealed keys on close,
+and supports safe recovery after a lost answer/reload. Failure, concurrency, restart, CLI, HTTP and browser tests cover it.
+
 2026-11-17, password-account setup/reset: an audit-failure regression first reproduced false success. Creation
 and reset issuance now commit the account, audit and receipt together. Caller-generated one-time codes stay out
 of durable receipts and logs, and retries return the original confirmation plus live availability. The connected

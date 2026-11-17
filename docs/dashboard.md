@@ -6,7 +6,7 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 ## Current state
 
 - The approved React/Vite/SWC/Tailwind dashboard is in `dashboard/`. The main pages remain a labelled design preview.
-  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles and password-account setup/reset codes, Give BP, registration invites and BOOSTERPASS code management.
+  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, Give BP, registration invites and BOOSTERPASS code management.
   It never falls back to fixtures.
 - Axum handles HTTP on separate sockets. Host-token operations, assets and the old HTML panel stay on `--http-port`.
   The staff JSON router has its own opt-in `--dashboard-port`, disabled by default and always bound to loopback.
@@ -26,6 +26,9 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
   invalidates old cookies on both interfaces, even if an account is demoted and promoted again without making a request. Pending setup/reset codes are invalidated too.
   Setting the same role again does not invalidate a fresh session; a retry never reapplies an older role. The React
   form requires confirmation and warns before changing your own role.
+- Key-account creation and key disclosure are admin-only transactions: account, audit and receipt commit before
+  any credential is returned. Account lists/details never expose keys. The React dialog confirms passwordless access;
+  only its pending input/ID is retained across reloads, never the revealed key. Closing clears the credential.
 - SQLite schema 3 adds `operation_receipts`. Schemas 1 and 2 upgrade transactionally. Other domains are not normalized.
 - Remaining work: the other dashboard operations, staff MFA, the public-access/proxy gate, nginx and Compose.
 
@@ -46,7 +49,8 @@ expire or follow `audit-keep-days`. They keep the input fingerprint and a minima
 login credentials. A generated reward code is retained so a retry can retrieve it. Clients retain an ID for retries
 and generate a new one only for a new intended change. IDs share a namespace across operations for each actor.
 
-Give BP, invite creation, player profile/role edits and BOOSTERPASS creation/removal use this boundary. Shared identity, error and receipt helpers live in
+Give BP, invite creation, player profile/role edits, password setup/reset codes, key-account creation/disclosure and
+BOOSTERPASS creation/removal use this boundary. Shared identity, error and receipt helpers live in
 `api/mutation.rs`; domain validation, preparation and commit stay in their operation modules. A generated-code retry
 returns the original code. A removal retry returns its original result even if someone has since recreated that
 code; it never deletes the replacement. Codes use canonical uppercase input, exact 16-letter/digit validation and
@@ -73,8 +77,7 @@ this tab until Done, confirmed expiry or tab closure, and checks with the server
 Unconfirmed requests retain their original ID/code for retry. The CLI accepts the original code through
 `--code-stdin`; old HTML forms retain a hidden code. Initial setup uses the existing recovery operation to atomically
 set the owner’s password and private recovery code. Staff promotion waits until setup is complete. Password
-recovery rechecks code/revision after hashing; sign-out everywhere invalidates staff cookies. Key-account creation
-and other unmigrated admin operations remain separate work.
+recovery rechecks code/revision after hashing; sign-out everywhere invalidates staff cookies. Other unmigrated admin operations remain separate work.
 
 The browser retains pending IDs through session/permission/CSRF refusals too: those checks run before receipt lookup,
 so a refusal cannot prove an earlier attempt did not commit. Refresh the staff session and retry the same intent.
@@ -83,6 +86,13 @@ Extend this boundary one operation at a time, fixing save failures without waiti
 For irreversible effects, persist intent first and outcome afterwards. Mixed operations
 commit their stored changes with intent, then perform the effect. After a restart, show unfinished effects as
 interrupted/outcome unknown, never as definitely failed, and never automatically repeat them.
+
+Key operations use `POST /panel/api/v1/accounts/keys` with a tagged `create` (player names) or `reveal`
+(numeric account ID) request. They are explicit mutations even when a key already exists, so a disclosure is audited.
+Receipts hold only the account ID, request ID and key digest. A retry resolves the same account’s current players
+and verifies its key against that digest before disclosure; deletion cannot recreate the account, and a changed key
+requires a new request. Roles are checked again before a replay. Keys already persist in the private account database;
+this does not add a second plaintext credential store. Friends should still join with password accounts and invites.
 
 ## API and dashboard
 

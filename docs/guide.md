@@ -236,7 +236,10 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
   unique. `--also B,C` adds players to that account, up to four total.
 - `profile PLAYER FILE --advertise HOST` exports a key account's private profile for the play script. The profile
   references `server.crt`; copy the host's public certificate beside it. Existing profile files are not overwritten.
-  `key WHO` prints the key itself.
+  `key WHO` prints a private profile too. All three commands commit account changes, audit and retry receipt before
+  revealing a key and accept `--request-id ID`. After a lost answer, repeat the same input and ID: no duplicate
+  account or key is created. Existing keys are reused; retries cannot recreate a deleted account. Profile files and
+  keys grant game access without a password: share privately. Friends should use password accounts and invites.
 - `add-user USER` prepares a one-time setup code instead of a password. The owner chooses a password through
   Desktop’s **Forgot password** or Scripts `--recover`, and saves their private recovery code. Finish setup before
   promoting the account. `reset-code USER` replaces a lost setup/reset code after you verify the owner’s identity.

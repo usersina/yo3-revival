@@ -3,6 +3,7 @@ import type { Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {
   AccountList,
+  KeyAccountResult,
   AccountCodeResponse,
   AccountDetail,
   AccountEditResult,
@@ -711,4 +712,70 @@ test('account setup errors keep the form useful and expired confirmations discar
     )
     .toBe(false)
   await expect(page.getByLabel('One-time code', { exact: true })).toHaveCount(0)
+})
+
+test('key accounts survive a lost response and reload; keys are explicit and never retained in browser storage', async ({
+  page,
+}) => {
+  await signIn(page)
+  const ids: string[] = []
+  let secret = ''
+  await page.route('**/panel/api/v1/accounts/keys', async (route) => {
+    ids.push(route.request().headers()['idempotency-key'])
+    const response = await route.fetch()
+    expect(response.status()).toBe(200)
+    const data = KeyAccountResult.parse(await response.json())
+    secret = data.key
+    if (ids.length === 1) await route.abort('failed')
+    else await route.fulfill({ response })
+  })
+  await page.getByRole('button', { name: 'Create key account', exact: true }).click()
+  await page.getByLabel('Player names').fill('BrowserKey')
+  await page.getByLabel('I understand this key allows passwordless game access').check()
+  await page.getByRole('button', { name: 'Create and reveal key' }).click()
+  await expect(page.getByRole('alert')).toContainText('Could not reach')
+  await page.reload()
+  await page.getByRole('button', { name: 'Resume key request' }).click()
+  await page.getByRole('button', { name: 'Retry same request' }).click()
+  await expect(page.getByLabel('Account key', { exact: true })).toHaveValue(secret)
+  expect(ids[0]).toBe(ids[1])
+  const storage = await page.evaluate(() => JSON.stringify({ ...sessionStorage, ...localStorage }))
+  expect(storage).not.toContain(secret)
+  await expect(page.getByRole('dialog')).toContainText('BrowserKey')
+  await page.getByRole('button', { name: 'Done', exact: true }).click()
+  await page
+    .getByRole('row')
+    .filter({ hasText: 'BrowserKey' })
+    .getByRole('button', { name: /View account/ })
+    .click()
+  await page.getByRole('button', { name: 'Reveal key', exact: true }).click()
+  await page.getByLabel('I understand this key allows passwordless game access').check()
+  await page.getByRole('button', { name: 'Reveal account key' }).click()
+  await expect(page.getByLabel('Account key', { exact: true })).toHaveValue(secret)
+  await page.getByRole('button', { name: 'Done', exact: true }).click()
+  await expect(page.getByLabel('Account key', { exact: true })).toHaveCount(0)
+})
+
+test('key controls respect moderator permissions and the creation form fits narrow screens', async ({
+  page,
+}) => {
+  await signIn(page, 'TestModerator')
+  await expect(page.getByRole('button', { name: 'Create key account', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'View account TestPlayer' }).click()
+  await expect(page.getByRole('button', { name: 'Reveal key', exact: true })).toBeDisabled()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  await signIn(page)
+  await page.setViewportSize({ width: 390, height: 850 })
+  await page.getByRole('button', { name: 'Create key account', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Create and reveal key' })).toBeDisabled()
+  await page.getByLabel('Player names').fill('One, Two, Three, Four, Five')
+  await page.getByLabel('I understand this key allows passwordless game access').check()
+  await page.getByRole('button', { name: 'Create and reveal key' }).click()
+  await expect(page.getByRole('alert')).toContainText('at most four')
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
+  const dialog = await page.getByRole('dialog').boundingBox()
+  expect(dialog!.x).toBeGreaterThanOrEqual(0)
+  expect(dialog!.x + dialog!.width).toBeLessThanOrEqual(390)
+  await page.screenshot({ path: '/tmp/yo3-key-account-mobile.png', animations: 'disabled' })
 })

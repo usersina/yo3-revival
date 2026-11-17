@@ -88,7 +88,7 @@ pub enum Admin {
     /// Generate the host's TLS identity once. NAME is the DNS name or IP friends connect to; repeat for aliases.
     InitAuth { #[arg(required = true)] names: Vec<String> },
     /// Export an existing account's private launcher profile. Send it and the public server.crt to that friend.
-    Profile { who: String, output: PathBuf },
+    Profile { who: String, output: PathBuf, #[arg(long)] request_id: Option<String> },
     /// List every account: its User ID (or that it has a key), role, country and players.
     Accounts,
     /// Make an account found by a secret key, not an address: NAME is its first player (the starting players when
@@ -98,10 +98,11 @@ pub enum Admin {
         name: Option<String>,
         #[arg(long, value_delimiter = ',')]
         also: Vec<String>,
+        #[arg(long)] request_id: Option<String>,
     },
     /// Print a private launcher profile for an existing account, by its User ID or one of its PLAYER names (assigning
     /// a key if needed; existing player data stays in place).
-    Key { who: String },
+    Key { who: String, #[arg(long)] request_id: Option<String> },
     /// Give an account (its User ID or one of its PLAYER names) a player named NAME.
     AddPlayer { who: String, name: String, #[arg(long)] request_id: Option<String> },
     /// Rename a player.

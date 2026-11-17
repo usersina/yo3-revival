@@ -35,6 +35,7 @@ pub mod codes;
 pub mod invites;
 pub mod profiles;
 pub mod credentials;
+pub mod keys;
 pub use give_bp::{GiveBpRequest, GiveBpResult};
 pub use mutation::{Actor, MutationError, MutationErrorCode};
 
@@ -114,7 +115,7 @@ pub enum Op {
 
 impl Op {
     /// Operations migrated to a committed change/audit/receipt boundary.
-    fn receipted(&self) -> bool { matches!(self, Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
+    fn receipted(&self) -> bool { matches!(self, Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
     /// Its name in the API's path and the audit log.
     pub fn name(&self) -> String {
         serde_json::to_value(self).ok().and_then(|v| v["op"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -298,6 +299,7 @@ impl Api {
             Op::Invite { uses, days } => self.create_invite(&invites::CreateInviteRequest { uses: *uses, days: *days }, id, actor, origin).map(|r| json!(r)),
             Op::AddPlayer { .. } | Op::Rename { .. } | Op::SetCountry { .. } | Op::SetRole { .. } => self.edit_named_account(op, id, actor, origin),
             Op::AddUser { .. } | Op::ResetCode { .. } => self.issue_named_code(op, id, actor, origin),
+            Op::CreateAccount { .. } | Op::Key { .. } => self.named_key_account(op, id, actor, origin),
             _ => Err(MutationError::new(MutationErrorCode::InvalidRequest, "This operation has not migrated to the typed mutation boundary.")),
         }
     }
@@ -615,7 +617,7 @@ or after your next duel.", recipe.title)
 
     /// The operations on the accounts alone.
     fn accounts_op(&self, op: &Op) -> Done {
-        let mut d = self.accounts.locked();
+        let d = self.accounts.locked();
         let done = |v: Value| Ok((v, None, None));
         match op {
             Op::Accounts => done(Value::Array(d.entries().map(|(login, key, account)| {
@@ -628,13 +630,8 @@ or after your next duel.", recipe.title)
                     "country": account.country, "standing": standing, "muted": muted,
                     "players": account.players.iter().map(|p| json!({ "player_id": p.player_id, "name": p.name, "slot": p.index })).collect::<Vec<_>>() })
             }).collect())),
-            Op::CreateAccount { names } => {
-                let key = d.add_account(names)?;
-                let made = d.entries().find(|(_, k, _)| *k == Some(key.as_str())).map(|(_, _, a)| a.players.iter().map(|p| p.name.clone()).collect::<Vec<_>>()).unwrap_or_default();
-                done(json!({ "created": made.first(), "players": made, "key": key }))
-            }
+            Op::CreateAccount { .. } | Op::Key { .. } => Err("key operations require the typed mutation boundary".into()),
             Op::AddPlayer { .. } => Err("player creation requires the typed mutation boundary".into()),
-            Op::Key { who } => done(json!({ "key": d.key_of(who)? })),
             Op::Codes => done(json!(Self::bp_codes(&d).codes)),
             Op::Invite { .. } => Err("invite creation requires the typed mutation boundary".into()),
             Op::Invites => {

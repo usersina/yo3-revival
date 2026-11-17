@@ -65,9 +65,9 @@ fn apply_file(a: &mut Args, matches: &clap::ArgMatches) -> anyhow::Result<Option
 fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
     Ok(Some(match command {
         Admin::InitAuth { .. } | Admin::Restore { .. } | Admin::Backups => return Ok(None),
-        Admin::Profile { who, .. } | Admin::Key { who } => Op::Key { who: who.clone() },
+        Admin::Profile { who, .. } | Admin::Key { who, .. } => Op::Key { who: who.clone() },
         Admin::Accounts => Op::Accounts,
-        Admin::AddAccount { name, also } => Op::CreateAccount { names: name.iter().cloned().chain(also.iter().cloned()).collect() },
+        Admin::AddAccount { name, also, .. } => Op::CreateAccount { names: name.iter().cloned().chain(also.iter().cloned()).collect() },
         Admin::AddPlayer { who, name, .. } => Op::AddPlayer { who: who.clone(), name: name.clone() },
         Admin::Rename { old, new, .. } => Op::Rename { old: old.clone(), new: new.clone() },
         Admin::SetCountry { who, code, .. } => Op::SetCountry { who: who.clone(), code: code.clone() },
@@ -150,6 +150,7 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         anyhow::ensure!(a.advertise.is_some(), "pass --advertise ADDRESS: the address friends reach this server at (an IP or a name in its certificate)");
     }
     let mut result = if let Admin::GiveBp { request_id, .. } | Admin::AddCode { request_id, .. } | Admin::RemoveCode { request_id, .. } | Admin::Invite { request_id, .. }
+        | Admin::AddAccount { request_id, .. } | Admin::Key { request_id, .. } | Admin::Profile { request_id, .. }
         | Admin::AddPlayer { request_id, .. } | Admin::Rename { request_id, .. } | Admin::SetCountry { request_id, .. } | Admin::SetRole { request_id, .. } = &command {
         let id = request_id.clone().unwrap_or_else(yo3_server::logins::new_token);
         anyhow::ensure!(api::mutation::valid_request_id(&id), "invalid request ID (16–128 letters, digits, hyphens or underscores)");

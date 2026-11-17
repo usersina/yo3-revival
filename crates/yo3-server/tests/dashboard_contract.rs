@@ -27,8 +27,9 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/accounts/edit", "post", "editAccount"),
         ("/panel/api/v1/countries", "get", "listCountries"),
         ("/panel/api/v1/accounts/credentials", "post", "issueAccountCode"),
+        ("/panel/api/v1/accounts/keys", "post", "manageAccountKey"),
     ];
-    assert_eq!(paths.len(), 12);
+    assert_eq!(paths.len(), 13);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -488,4 +489,29 @@ async fn signing_out_everywhere_revokes_both_management_cookies() {
     let admin = b.admin.clone(); tokio::task::spawn_blocking(move || api::call(&admin, &Op::SignOut { who: "Croquet".into() })).await.unwrap().unwrap();
     assert_eq!(b.call("GET", "/panel/api/v1/session", json!(null)).await.status, 401);
     assert_eq!(b.raw_on(b.live.http, "GET", "/panel/", "", "").await.status, 303);
+}
+
+#[tokio::test]
+async fn key_disclosure_is_explicit_admin_only_audited_and_absent_from_account_projections() {
+    let mut b = Browser::new("keys").await;
+    b.sign_in("Pegasus").await;
+    let request = json!({ "kind": "create", "names": ["KeyTester"] });
+    let first = b.call("POST", "/panel/api/v1/accounts/keys", request.clone()).await;
+    assert_eq!(first.status, 200, "{}", first.body);
+    let key: yo3_server::api::keys::KeyAccountResult = serde_json::from_value(first.body.clone()).unwrap();
+    assert_eq!(key.key.expose().len(), yo3_server::accounts::KEY_LEN);
+    assert!(first.headers.to_ascii_lowercase().contains("cache-control: no-store"));
+    assert_eq!(b.call("POST", "/panel/api/v1/accounts/keys", request).await.body, first.body);
+    for path in ["/panel/api/v1/accounts".into(), format!("/panel/api/v1/accounts/{}", key.user_id)] {
+        let response = b.call("GET", &path, json!(null)).await;
+        assert_eq!(response.status, 200); assert!(!response.body.to_string().contains(key.key.expose()));
+    }
+    let reveal = json!({ "kind": "reveal", "user_id": key.user_id });
+    let shown = b.raw("POST", "/panel/api/v1/accounts/keys", &reveal.to_string(), "Idempotency-Key: separate-key-reveal-001\r\n").await;
+    assert_eq!(shown.body["key"], first.body["key"]);
+    let get = b.call("GET", "/panel/api/v1/accounts/keys", json!(null)).await;
+    assert_ne!(get.status, 200);
+    b.sign_in("Croquet").await;
+    let denied = b.call("POST", "/panel/api/v1/accounts/keys", reveal).await;
+    assert_eq!((denied.status, denied.body["code"].as_str()), (403, Some("forbidden")));
 }

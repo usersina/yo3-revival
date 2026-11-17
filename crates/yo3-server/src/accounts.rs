@@ -485,23 +485,38 @@ impl Directory {
     /// Makes an account found by key only, with players named `names` (at most four, made unique; the starting
     /// players when empty); its key.
     pub fn add_account(&mut self, names: &[String]) -> Result<String, String> {
-        let names: Vec<String> = if names.is_empty() {
-            self.player_names.iter().take(MAX_PLAYERS).map(|n| self.free_name(n)).collect()
-        } else {
-            names.to_vec()
-        };
-        if names.len() > MAX_PLAYERS || names.iter().any(|n| n.trim().is_empty() || n.chars().count() > MAX_NAME || n.chars().any(char::is_control)) {
-            return Err(format!("an account takes one to {MAX_PLAYERS} players with names of 1 to {MAX_NAME} characters"));
-        }
+        let (mut next, user) = self.prepare_key_account(names)?;
+        let key = next.key_for_user(user).expect("prepared key").to_owned();
+        next.persist().map_err(|e| format!("could not save accounts: {e}"))?;
+        *self = next;
+        Ok(key)
+    }
+
+    pub(crate) fn prepare_key_account(&self, names: &[String]) -> Result<(Self, u32), String> {
+        let names = if names.is_empty() { self.player_names.iter().take(MAX_PLAYERS).map(|n| self.free_name(n)).collect::<Vec<_>>() }
+            else { names.to_vec() };
+        let names = names.iter().map(|n| checked_name(n)).collect::<Result<Vec<_>, _>>()?;
+        if names.len() > MAX_PLAYERS { return Err("An account can have at most four players.".into()) }
         if let Some(n) = names.iter().enumerate().find_map(|(i, n)| (self.taken(n) || names[..i].iter().any(|m| m.eq_ignore_ascii_case(n))).then_some(n)) {
-            return Err(format!("the name {n:?} is taken"));
+            return Err(format!("The player name {n:?} is taken."))
         }
-        self.atomic(|d| {
-            let account = d.create_account(&names);
-            let key = new_key();
-            d.accounts.push(Entry { key: Some(key.clone()), login: None, account: Arc::new(account) });
-            Ok(key)
-        })
+        self.next_user.checked_add(1).ok_or("The account number limit has been reached.")?;
+        self.next_player.checked_add(names.len() as u32).ok_or("The player number limit has been reached.")?;
+        let mut next = self.clone();
+        let account = next.create_account(&names);
+        let user = account.user_id;
+        next.accounts.push(Entry { key: Some(new_key()), login: None, account: Arc::new(account) });
+        Ok((next, user))
+    }
+
+    pub(crate) fn key_for_user(&self, user: u32) -> Option<&str> {
+        self.accounts.iter().find(|e| e.account.user_id == user).and_then(|e| e.key.as_deref())
+    }
+    pub(crate) fn prepare_key(&self, user: u32) -> Result<Self, String> {
+        let mut next = self.clone();
+        let entry = next.accounts.iter_mut().find(|e| e.account.user_id == user).ok_or("No such account.")?;
+        if entry.key.is_none() { entry.key = Some(new_key()); }
+        Ok(next)
     }
 
     /// Whether `key` is an account's.
@@ -519,12 +534,13 @@ impl Directory {
 
     /// The key of the account at `who` (a User ID, or a player's name), made if the account has none.
     pub fn key_of(&mut self, who: &str) -> Result<String, String> {
-        let at = self.find(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
-        if let Some(key) = &self.accounts[at].key {
-            return Ok(key.clone());
-        }
-        let key = new_key();
-        self.atomic(|d| { d.accounts[at].key = Some(key.clone()); Ok(key) })
+        let user = self.user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
+        if let Some(key) = self.key_for_user(user) { return Ok(key.into()) }
+        let mut next = self.prepare_key(user)?;
+        let key = next.key_for_user(user).expect("prepared key").to_owned();
+        next.persist().map_err(|e| format!("could not save accounts: {e}"))?;
+        *self = next;
+        Ok(key)
     }
 
     /// The account an admin argument names: a User ID, or a player's name (ignoring case).

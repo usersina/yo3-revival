@@ -37,10 +37,12 @@ export function ConnectedAccountDialog({
   userId,
   onChange,
   onResetPassword,
+  onRevealKey,
 }: {
   session: StaffSession
   userId: number | null
   onChange: (id: number | null) => void
+  onRevealKey: (account: AccountDetail) => void
   onResetPassword: (account: AccountDetail) => void
 }) {
   const client = useQueryClient()
@@ -371,6 +373,19 @@ export function ConnectedAccountDialog({
                   <dd>{data.device_count}</dd>
                 </div>
                 <div>
+                  <dt>Game key</dt>
+                  <dd>
+                    {data.has_key ? 'Key assigned' : 'No key assigned'}{' '}
+                    <Button
+                      disabled={!admin || !canStart}
+                      onClick={() => onRevealKey(data)}
+                      title={!admin ? 'Administrators only' : undefined}
+                    >
+                      Reveal key
+                    </Button>
+                  </dd>
+                </div>
+                <div>
                   <dt>Password reset</dt>
                   <dd>
                     {data.reset_pending ? 'Code pending' : 'No pending code'}
@@ -627,7 +642,7 @@ export function ConnectedAccountDialog({
               ? 'Request saved for safe retry'
               : mode
                 ? 'Saved changes are audited'
-                : 'Credentials are never shown'}
+                : 'Credentials stay hidden until explicitly requested'}
           </span>
           <div className="action-group">
             {mode && !pending && (

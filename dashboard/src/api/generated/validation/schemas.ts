@@ -240,6 +240,16 @@ export const AccountEditResult = zod.object({
 export type AccountEditResult = zod.input<typeof AccountEditResult>;
 export type AccountEditResultOutput = zod.output<typeof AccountEditResult>;
 
+export const AccountKeyMin = 20;
+export const AccountKeyMax = 20;
+
+
+
+export const AccountKey = zod.string().min(AccountKeyMin).max(AccountKeyMax);
+
+export type AccountKey = zod.input<typeof AccountKey>;
+export type AccountKeyOutput = zod.output<typeof AccountKey>;
+
 export const playerSummaryPlayerIdMin = 0;
 export const playerSummaryPlayerIdMax = 4294967295;
 
@@ -520,6 +530,52 @@ export const IssueAccountCodeRequest = zod.union([zod.object({
 export type IssueAccountCodeRequest = zod.input<typeof IssueAccountCodeRequest>;
 export type IssueAccountCodeRequestOutput = zod.output<typeof IssueAccountCodeRequest>;
 
+export const keyAccountRequestOneNamesMax = 4;
+
+export const keyAccountRequestTwoUserIdMin = 0;
+export const keyAccountRequestTwoUserIdMax = 4294967295;
+
+
+
+export const KeyAccountRequest = zod.union([zod.object({
+  "kind": zod.enum(['create']),
+  "names": zod.array(zod.string()).max(keyAccountRequestOneNamesMax)
+}).describe('No names: use the host\'s starting players, made unique. Explicit names must be available.'),zod.object({
+  "kind": zod.enum(['reveal']),
+  "user_id": zod.int().min(keyAccountRequestTwoUserIdMin).max(keyAccountRequestTwoUserIdMax)
+}).describe('Reveal the existing key, or assign one. The key allows passwordless game access.')]);
+
+export type KeyAccountRequest = zod.input<typeof KeyAccountRequest>;
+export type KeyAccountRequestOutput = zod.output<typeof KeyAccountRequest>;
+
+export const keyPlayerPlayerIdMin = 0;
+export const keyPlayerPlayerIdMax = 4294967295;
+
+
+
+export const KeyPlayer = zod.object({
+  "name": zod.string(),
+  "player_id": zod.int().min(keyPlayerPlayerIdMin).max(keyPlayerPlayerIdMax)
+});
+
+export type KeyPlayer = zod.input<typeof KeyPlayer>;
+export type KeyPlayerOutput = zod.output<typeof KeyPlayer>;
+
+export const keyAccountResultUserIdMin = 0;
+export const keyAccountResultUserIdMax = 4294967295;
+
+
+
+export const KeyAccountResult = zod.object({
+  "key": AccountKey,
+  "players": zod.array(KeyPlayer),
+  "request_id": zod.string(),
+  "user_id": zod.int().min(keyAccountResultUserIdMin).max(keyAccountResultUserIdMax)
+});
+
+export type KeyAccountResult = zod.input<typeof KeyAccountResult>;
+export type KeyAccountResultOutput = zod.output<typeof KeyAccountResult>;
+
 export const removeBpCodeRequestCodeMin = 16;
 export const removeBpCodeRequestCodeMax = 16;
 
@@ -664,6 +720,42 @@ export const EditAccount415Response = ApiError
 export const EditAccount500Response = ApiError
 
 export const EditAccount503Response = ApiError
+
+
+export const manageAccountKeyHeaderIdempotencyKeyMin = 16;
+export const manageAccountKeyHeaderIdempotencyKeyMax = 128;
+
+
+export const manageAccountKeyHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const ManageAccountKeyHeader = zod.object({
+  "Idempotency-Key": zod.string().min(manageAccountKeyHeaderIdempotencyKeyMin).max(manageAccountKeyHeaderIdempotencyKeyMax).regex(manageAccountKeyHeaderIdempotencyKeyRegExp).describe('Retain this ID and input on retry. A key is returned only after its audit is committed; never stored in a receipt.')
+})
+
+export const ManageAccountKeyBody = KeyAccountRequest
+
+export const ManageAccountKey200Response = KeyAccountResult
+
+export const ManageAccountKey400Response = ApiError
+
+export const ManageAccountKey401Response = ApiError
+
+export const ManageAccountKey403Response = ApiError
+
+export const ManageAccountKey404Response = ApiError
+
+export const ManageAccountKey405Response = ApiError
+
+export const ManageAccountKey409Response = ApiError
+
+export const ManageAccountKey413Response = ApiError
+
+export const ManageAccountKey415Response = ApiError
+
+export const ManageAccountKey500Response = ApiError
+
+export const ManageAccountKey503Response = ApiError
 
 
 export const getAccountPathUserIdMin = 0;

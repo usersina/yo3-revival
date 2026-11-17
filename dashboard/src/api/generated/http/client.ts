@@ -43,6 +43,9 @@ import type {
   InviteList,
   IssueAccountCodeHeaders,
   IssueAccountCodeRequest,
+  KeyAccountRequest,
+  KeyAccountResult,
+  ManageAccountKeyHeaders,
   RemoveBpCodeHeaders,
   RemoveBpCodeRequest,
   RemoveBpCodeResult,
@@ -324,6 +327,75 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getEditAccountMutationOptions(options), queryClient);
+    }
+
+export const getManageAccountKeyUrl = () => {
+
+
+
+
+  return `/panel/api/v1/accounts/keys`
+}
+
+export const manageAccountKey = async (keyAccountRequest: KeyAccountRequest,
+    headers: ManageAccountKeyHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<KeyAccountResult> => {
+
+  return apiFetch<KeyAccountResult>(getManageAccountKeyUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(keyAccountRequest)
+  }
+);}
+
+
+
+
+
+export const getManageAccountKeyMutationKey = () => ['manageAccountKey'] as const;
+
+export const getManageAccountKeyMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof manageAccountKey>>, TError,ManageAccountKeyMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof manageAccountKey>>, TError,ManageAccountKeyMutationVariables, TContext> => {
+
+const mutationKey = getManageAccountKeyMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof manageAccountKey>>, ManageAccountKeyMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  manageAccountKey(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ManageAccountKeyMutationResult = NonNullable<Awaited<ReturnType<typeof manageAccountKey>>>
+    export type ManageAccountKeyMutationBody = KeyAccountRequest
+    export type ManageAccountKeyMutationError = ErrorType<ApiError>
+    export type ManageAccountKeyMutationVariables = {data: KeyAccountRequest;headers: ManageAccountKeyHeaders}
+
+    export const useManageAccountKey = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof manageAccountKey>>, TError,ManageAccountKeyMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof manageAccountKey>>,
+        TError,
+        ManageAccountKeyMutationVariables,
+        TContext
+      > => {
+      return useMutation(getManageAccountKeyMutationOptions(options), queryClient);
     }
 
 export const getGetAccountUrl = (userId: number,) => {
