@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-17 — Automatic release deployment and launcher version floor](#2026-11-17--automatic-release-deployment-and-launcher-version-floor)
   - [2026-11-17 — Public VPS deployment and recovery](#2026-11-17--public-vps-deployment-and-recovery)
   - [2026-11-17 — First VPS checks and portable image exports](#2026-11-17--first-vps-checks-and-portable-image-exports)
   - [2026-11-17 — Compose hosting and local VPS setup](#2026-11-17--compose-hosting-and-local-vps-setup)
@@ -38,6 +39,62 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-17 — Automatic release deployment and launcher version floor
+
+The v0.1.0 PR now makes matching Cargo/changelog versions on main run the existing release checks, publish both
+GHCR images and automatically deploy their exact digests through a pinned, restricted SSH key. The one-time
+Ansible access setup creates a deploy-only account, without a shell, forwarding or general sudo. Repository
+secrets hold the address, key and verified SSH host key; no runner agent is installed on the VPS.
+
+Release retention keeps the newest two published stable versions and their complete GHCR image manifest trees,
+then removes older releases/downloads and package versions only after healthy deployment. Git tags remain. Image
+builds verify that the latest published tag resolves to their source commit. The packaged-updater gate now selects
+the latest published archive rather than depending permanently on v0.0.21. Fixture tests cover numeric ordering,
+annotated tags, retained platform/provenance manifests, orphan cleanup, missing metadata, pagination and retry;
+the selector and tag guard also passed read-only checks against the actual v0.0.26 release. No live releases or
+packages were deleted during development; first live cleanup remains part of the next release pipeline.
+
+The server image is now a scratch filesystem assembled from the compiler image's exact runtime libraries/loader,
+with certificates, NSS/UTC data and the shell/cat/id/curl tools needed by existing host scripts. Package identity and
+copyright metadata remain for scanners and attribution. It runs as UID/GID 10001, with root-owned executables,
+private data/socket directories, a 077 startup umask and hardened temporary mounts. The local uncompressed image
+decreased from 155,539,228 to 84,869,046 bytes (about 45%). The dashboard remains about 64 MB on nginx Alpine.
+Pinned cargo-chef caches compiled dependencies in a normal exported layer; an isolated source/version edit reused
+that layer, and a separate override-only edit reused the native compilation layer. Card overrides are packaged after compilation. Dockerfiles run no Rust tests, and duplicate frontend
+API drift checking moved to release CI.
+
+Five image checks cover runtime ownership, setuid/setgid absence, privileges, temporary mounts, resolution,
+certificates, real engine cards and duel startup. The exact built images passed an isolated Compose rehearsal:
+HTTPS, real account/staff sign-in, nginx spoofing/route checks, CSRF, grants and retry receipts, saved state,
+backup/offline restore, identity preservation, ACME and CLI. An outbound curl request also verified real DNS and CA
+trust. Release CI runs the image checks against exact registry digests before emitting deployment references.
+The existing VPS was not changed by this local image rehearsal.
+
+The updater validates both images before shutdown, snapshots the stopped data volume, checks the actual running
+release and HTTPS, and restores previous images/data on failure. Receipts make duplicate releases a health check;
+older releases and reused versions are refused. The production host keeps its domain, assets, data and identity.
+
+Versioned servers require launchers at least as new as their own release. Discovery advertises the floor;
+password/device requests reject missing, invalid and old versions, and protocol 3 adds a bounded release to key
+admission. Hosts can raise the floor but cannot lower it. Desktop/Scripts/direct-start preflight explains updates
+before opening the game. The original game version remains 1.153. Cargo was still 0.0.21 in the release PR; it
+is now 0.1.0, and a release guard prevents future Cargo/changelog mismatches.
+
+TDD regressions first reproduced the admission bypass and missing release guard. All 1,248 Rust tests passed
+(five skipped), Clippy was clean, and generated-client drift, frontend format/lint/typecheck, deployment and
+provisioning checks, certificate tests, workflow syntax and documentation links passed. The browser suite
+passed 52 cases and exposed a stale lowercase expectation after the PR's User ID case-preservation fix; the
+corrected remaining case passed on its own.
+
+On an isolated VPS Compose project, the release Docker build was pushed/pulled through a private local registry.
+The actual updater passed upgrade, identical-release retry without restart, old/current client admission, HTTPS
+staff sign-in, and automatic rollback of an image whose advertised version disagreed with its running binary.
+Accounts and game identity survived both paths. Private fixtures were removed and public container IDs stayed
+unchanged. Restricted SSH refused arbitrary commands; the final Ansible rerun made no changes.
+
+The first actual GitHub release-to-GHCR-to-VPS run remains a publication-time check; the PR is not merged by
+these tests. Signing and a year of ongoing hosting still need funding; the coupon VPS is for testing.
 
 ## 2026-11-17 — Public VPS deployment and recovery
 

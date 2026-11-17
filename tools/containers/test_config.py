@@ -22,6 +22,8 @@ class DeploymentConfig(unittest.TestCase):
         self.assertNotIn('network_mode',server);self.assertNotIn('network_mode',dashboard)
         for service in [server,dashboard]:
             self.assertTrue(service['read_only']);self.assertEqual(service['cap_drop'],['ALL'])
+            self.assertIn('no-new-privileges:true',service['security_opt'])
+            self.assertEqual(set(service['tmpfs'][0].split(',')[1:]),{'noexec','nosuid','nodev'})
         game=next(v for v in server['volumes'] if v['target']=='/game')
         self.assertTrue(game['read_only']);self.assertFalse(game['bind']['create_host_path'])
         self.assertFalse(any(v['target'] in ['/var/lib/yo3','/game','/var/run/docker.sock'] for v in dashboard['volumes']))
@@ -34,4 +36,5 @@ class DeploymentConfig(unittest.TestCase):
     def test_host_scripts_parse(self):
         for name in ['server-entrypoint.sh','nginx/entrypoint.sh','install-certificate.sh','check-https.sh']:
             subprocess.run(['sh','-n',str(ROOT/'deploy'/name)],check=True)
+        subprocess.run(['sh','-n',str(ROOT/'tools/containers/server-rootfs.sh')],check=True)
 if __name__=='__main__':unittest.main()

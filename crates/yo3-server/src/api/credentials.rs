@@ -77,7 +77,8 @@ fn response(d: &Directory, confirmation: AccountCodeConfirmation, code: &AccessC
 impl Api {
     pub fn issue_account_code(&self, request: &IssueAccountCodeRequest, id: &str, actor: Actor<'_>, origin: &str) -> Result<AccountCodeResponse, MutationError> {
         let input = match request {
-            IssueAccountCodeRequest::CreateAccount { user, code } => Input::Create { user: user.trim().to_ascii_lowercase(), code: code.canonical()? },
+            // The User ID is kept as typed, like sign-up's: lookups ignore case (`Directory::login_at`).
+            IssueAccountCodeRequest::CreateAccount { user, code } => Input::Create { user: user.trim().to_owned(), code: code.canonical()? },
             IssueAccountCodeRequest::ResetPassword { user_id, code } => Input::Reset { user_id: *user_id, code: code.canonical()? },
         };
         self.issue_code(input, id, actor, origin)
@@ -88,7 +89,7 @@ impl Api {
             _ => return Err(MutationError::new(MutationErrorCode::InvalidRequest, "Unsupported credential operation.")),
         };
         let display_user = user.trim();
-        let user = user.trim().to_ascii_lowercase();
+        let user = display_user.to_owned();
         let input = if create { Input::Create { user: user.clone(), code: code.canonical()? } } else { Input::NamedReset { user: user.clone(), code: code.canonical()? } };
         let result = self.issue_code(input, id, actor, origin)?;
         let mut value = json!(result);

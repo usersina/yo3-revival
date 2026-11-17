@@ -27,7 +27,7 @@ async fn response_peer(replies: Vec<(u8,Vec<u8>,Close)>) -> (Endpoint,tokio::tas
             let mut tls=acceptor.accept(tcp).await.unwrap();
             let mut magic=[0;8];tls.read_exact(&mut magic).await.unwrap();assert_eq!(&magic,MAGIC);
             assert_eq!(tls.read_u8().await.unwrap(),operation);
-            let bytes=match operation {1=>24,2=>33,4=>32,5=>0,_=>panic!("unsupported test operation")};
+            let bytes=match operation {1=>25+yo3_tunnel::BUILD_VERSION.len(),2=>33,4=>32,5=>0,_=>panic!("unsupported test operation")};
             let mut request=vec![0;bytes];tls.read_exact(&mut request).await.unwrap();
             tls.write_all(&reply).await.unwrap();tls.flush().await.unwrap();
             match close {
@@ -90,4 +90,20 @@ async fn incompatible_discovery_still_prevents_login() {
     let (endpoint,peer)=response_peer(vec![(5,info_reply(&info),Close::Graceful)]).await;
     let error=endpoint.login("abcdefghijklmnopqrst").await.unwrap_err().to_string();
     assert!(error.contains("connection DLL interface"));peer.await.unwrap();
+}
+
+#[tokio::test]
+async fn a_required_update_is_reported_before_sending_a_key() {
+    let mut info=ServerInfo::current(true);info.min_launcher=Some("9999.0.0".into());
+    let (endpoint,peer)=response_peer(vec![(5,info_reply(&info),Close::Graceful)]).await;
+    let error=endpoint.login("abcdefghijklmnopqrst").await.unwrap_err().to_string();
+    assert!(error.contains("Update required") && error.contains("9999.0.0"),"{error}");
+    peer.await.unwrap();
+}
+
+#[test]
+fn discovery_requires_the_bundled_release_by_default() {
+    let info=ServerInfo::current(true);
+    let release=yo3_tunnel::BUILD_VERSION.trim_start_matches('v').split('-').next().unwrap();
+    assert_eq!(info.min_launcher.as_deref(),Some(release));
 }

@@ -31,7 +31,7 @@ and Scripts.
       timing, and the DNS-based HTTPS monitor after resolver caches expire. Choose off-machine backup storage and
       alert destinations. Completed provisioning, recovery and protocol checks: [VPS record](history.md#2026-11-17--public-vps-deployment-and-recovery).
 - [ ] Verify GHCR publishing on the first release using the container workflow. [Local Ansible setup](deployment.md)
-      is checked on the VPS; automatic VPS updates remain deferred.
+      is checked on the VPS; release-triggered SSH deployment and two-release/image retention are implemented; their first published-release run remains to be verified.
 - [ ] Normalize SQLite domains incrementally after deployment validation; keep the generated API unchanged.
 
 **Duels**

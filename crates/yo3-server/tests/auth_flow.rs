@@ -78,6 +78,19 @@ async fn secure_mode_does_not_accept_a_raw_front_connection() {
 }
 
 #[tokio::test]
+async fn key_admission_checks_the_release_even_without_launcher_preflight() {
+    let (_,e,keys,_)=setup("key-version").await;
+    for (version,accepted) in [("0.0.0",false),(yo3_tunnel::BUILD_VERSION,true)] {
+        let mut wire=yo3_tunnel::PROTOCOL_VERSION.to_be_bytes().to_vec();
+        wire.extend(yo3_tunnel::MOD_ABI.to_be_bytes());wire.push(version.len() as u8);
+        wire.extend(version.as_bytes());wire.extend(keys[0].as_bytes());
+        let reply=e.raw(1,&wire).await.unwrap();
+        assert_eq!(reply.first(),Some(if accepted {&0} else {&1}),"{version}: {reply:?}");
+        assert_eq!(reply.len(),if accepted {33} else {1});
+    }
+}
+
+#[tokio::test]
 async fn untrusted_certificates_and_wrong_server_names_are_refused() {
     let (server, e, keys, own) = setup("cert-a").await;
     let (_, _, _, other) = setup("cert-b").await;

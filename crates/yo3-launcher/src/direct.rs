@@ -130,7 +130,7 @@ pub type ReadVault<'a> = &'a (dyn Fn(&str) -> Option<String> + Sync);
 /// device token gives a session.
 pub async fn sign_in(endpoint: &Endpoint, credential: &Credential, vault: ReadVault<'_>) -> Result<Token, Failure> {
     let info = endpoint.info().await.map_err(|e| Failure::new(Refusal::FailedToConnect, format!("the server can't be reached: {e:#}")))?;
-    info.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI).map_err(|e| Failure::new(Refusal::NeedsUpdate, format!("{e:#}")))?;
+    info.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI).and_then(|()|info.ensure_launcher(yo3_tunnel::BUILD_VERSION)).map_err(|e| Failure::new(Refusal::NeedsUpdate, format!("{e:#}")))?;
     match credential {
         Credential::Key(key) => endpoint.login(key).await.map_err(|e| Failure::new(Refusal::FailedToConnect, format!("sign-in failed: {e:#}"))),
         Credential::Session(session) => Ok(*session),

@@ -72,6 +72,7 @@ python3 tools/monkey/test_duel_report.py
 python3 tools/monkey/test_duel_replay.py
 python3 tools/test_package_editions.py
 python3 tools/test_release_notes.py
+python3 tools/test_release_lifecycle.py
 python3 tools/test_host_scripts.py
 python3 tools/test_docs_check.py
 tools/docs-check.py
@@ -149,7 +150,10 @@ the system's opener may reach your own desktop.
 ### The official server list
 
 The Multiplayer tab reads a server list signed with an ed25519 key whose public half is built into the launcher
-(`multiplayer::OFFICIAL_LIST_KEYS`, empty until the project publishes a list). `yo3-server-list` makes the key, signs a
+(`multiplayer::OFFICIAL_LIST_KEYS`). The project's list is `deploy/official-servers.json` (today: YO3 Revival,
+`ygo-3-revival.work.gd:7443`). Each release signs it with the `SERVER_LIST_KEY` secret (the private key, PKCS#8 in
+base64; the owner also keeps it in their password manager) and attaches it as `servers.json`, which launchers fetch from
+the latest release and cache. A release fails rather than publish without it. `yo3-server-list` makes the key, signs a
 list and checks a signed file:
 
 ```bash
@@ -161,7 +165,7 @@ target/debug/yo3-server-list verify servers.json PUBLIC_KEY_HEX
 
 The list is `{"version": N, "servers": [{"name", "address", "identities": [...], "region", "description",
 "invite_only"}]}`: each server's identities are the SHA-256 of its public key (the one `yo3-server` shows), two while it
-rotates its key. A higher `version` replaces the cached list. To rotate the list's own key, ship a launcher that knows
+rotates its key. A higher `version` replaces the cached list: raise it with every change to the list. To rotate the list's own key, ship a launcher that knows
 both public keys before signing with the new one.
 
 ## Storage cost
@@ -508,13 +512,14 @@ This checks Linux package activation; native Windows verification remains separa
   check (`signature::vouch`) then accepts the signed manifest and refuses a changed signature, the project's key, a
   missing `SHA256SUMS.sig` and a download the manifest doesn't list.
 - **Activation:** the archive is staged, marked pending and installed at the next start once its window is up.
-- **From a released version**, with `--from` and that release's Linux Desktop archive. The release gate runs it from
-  v0.0.21, the last release before the beta:
+- **From a released version**, with `--from` and that release's Linux Desktop archive. The release gate selects the
+  newest published stable release dynamically, so cleanup of older downloads cannot break the next release:
 
   ```bash
-  gh release download v0.0.21 --dir /tmp/released -p 'yo3-revival-desktop-v0.0.21-linux-x86_64.tar.gz'
+  previous=$(GITHUB_REPOSITORY=usersina/yo3-revival python3 .github/scripts/release_lifecycle.py previous v0.1.0)
+  gh release download "$previous" --dir /tmp/released -p "yo3-revival-desktop-$previous-linux-x86_64.tar.gz"
   tools/test-packaged-update.sh v0.1.0 dist/yo3-revival-desktop-v0.1.0-linux-x86_64.tar.gz \
-    --from /tmp/released/yo3-revival-desktop-v0.0.21-linux-x86_64.tar.gz
+    --from "/tmp/released/yo3-revival-desktop-$previous-linux-x86_64.tar.gz"
   ```
 
   First the released launcher opens and makes its `launcher.db`. Then this release opens on that data and is
@@ -556,19 +561,29 @@ launcher and its shortcut. The test
 
 ## Publish a release
 
-Windows releases are currently unsigned. The [Code signing policy](code-signing.md) proposes SignPath Foundation
-signing, subject to approval and CI integration; it does not mean existing downloads are signed.
+Windows releases remain unsigned with Authenticode. SignPath Foundation declined the application; certificate
+purchase/signing is deferred until funded (#48). The [code-signing policy](code-signing.md) is still a proposal.
+The separate Ed25519 update signatures remain required.
 
 1. Update the current **Unreleased** changelog entry with player-visible behavior, then give it the next unused
-   `## vX.Y.Z (YYYY-MM-DD)` heading. Never move or reuse a published tag. In
+   `## vX.Y.Z (YYYY-MM-DD)` heading and set that same version in the workspace `Cargo.toml` (without the leading v).
+   Update `Cargo.lock` too. Never move or reuse a published tag. In
    [features](features.md), replace each "Unreleased" in the Since column with that version and date.
 2. Keep documentation/screenshots current, run required checks and live-test the extracted bundles.
 3. Commit in logical slices on a feature branch. Follow the working guide's local merge policy and ask before pushing.
-4. A push to `main` with an untagged top changelog version runs the release workflow: tests/lints, four bundles,
-   the mandatory packaged-updater check (also from v0.0.21), a `SHA256SUMS` file signed as `SHA256SUMS.sig` with the
+4. A push to `main` with an untagged top changelog version runs the release workflow: tests/lints, the Desktop/Scripts/Server bundles,
+   the mandatory packaged-updater check (also from the latest published Desktop version), a `SHA256SUMS` file signed as `SHA256SUMS.sig` with the
    `UPDATE_SIGNING_KEY` secret ([signing releases](#signing-releases)), the same checksums in the release notes (with how
    to check them; players read [antivirus warnings](antivirus.md)), and a GitHub release. An already published top
-   version skips verification, bundling and publishing after the changelog check.
+   version skips verification, bundling and publishing after the changelog/Cargo version check.
+5. Successful publication builds/pushes both GHCR images, then deploys their exact digests to the configured VPS.
+   There is no approval button. Configure the restricted key/secrets once using the
+   [deployment guide](deployment.md#enable-automatic-updates-once); startup failure restores previous images/data.
+6. After healthy deployment, keep only the newest two stable releases, their downloads and their server/dashboard
+   image versions (including referenced platform/provenance manifests). Preserve Git tags, changelog history and every
+   release before v0.1.0 (the alpha).
+   Failed release/deployment jobs skip cleanup. Image publication first verifies the latest published tag's exact
+   commit; neither ordinary pushes nor historical tags build published images.
 
 Desktop checks select only the matching Desktop archive; Scripts updates stay manual. Maintainer architecture and
 protocol evidence live in [authentication](authentication.md), [protocol](protocol.md), [client internals](client-internals.md)

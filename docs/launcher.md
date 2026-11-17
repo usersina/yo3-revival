@@ -84,10 +84,10 @@ starts, newest first); Settings → Singleplayer has the backups, a reset and th
 
 The **Multiplayer** tab signs in to servers with a User ID and password ([accounts](authentication.md#accounts)):
 
-![The Multiplayer tab, signed in to a server, with the server tools beside the list](../screenshots/multiplayer.png)
+![The Multiplayer tab with the YO3 Revival server listed and online, the sign-in form and the server tools](../screenshots/multiplayer.png)
 
-- **The server list**: the official servers (from a list signed by the project, once it publishes one) and the ones you
-  added, the last one you played on first. Each shows whether it is online (the dot: green, amber or red), with how
+- **The server list**: the official servers (the project's YO3 Revival server, from a list the project signs) and the ones
+  you added, the last one you played on first. Each shows whether it is online (the dot: green, amber or red), with how
   many players and its ping, or Maintenance, Offline, Needs a newer launcher, or Identity changed. The Information panel
   shows the chosen server's news.
 - **Server tools** (the **⋯** beside the list): **Add a server**, **Host for friends**, and **Remove this server** for one
@@ -286,7 +286,9 @@ updates** asks at once). When one is out:
   version Y" with the reason behind **Details**, and doesn't download that version again by itself (the release page
   still has it).
 - **A server that needs a newer YO3 Revival** shows **UPDATE** on its Play button in Multiplayer, which opens What's
-  new (or the release page before the update is known). Singleplayer and other servers keep working.
+  new (or the release page before the update is known). A v0.1.1 server requires at least a v0.1.1 launcher. Let the
+  signed update finish, then restart to install it. Your original game files do not need replacing. Singleplayer
+  runs your own bundled server; other servers have their own version requirement.
 
 You can still update by hand: download the new Desktop archive and extract it in place of the old folder, with
 YO3 Revival closed. Your settings and data are kept in the app's storage.

@@ -5,7 +5,7 @@ Play on your own computer or join a friend's server. There is no project-operate
 
 The server is written in Rust and reverse-engineered from the original client. Duels use EDOPro's core, built
 into the `yo3-engine` program. The [playing guide](playing.md#features-and-limitations) describes what works;
-the [roadmap](roadmap.md) records the remaining work. This is a pre-alpha project, so expect bugs.
+the [roadmap](roadmap.md) records the remaining work. This is a beta, so expect bugs.
 
 ## Game ownership and credits
 

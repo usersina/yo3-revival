@@ -118,7 +118,10 @@ target/release/yo3-revival                        # graphical launcher/server ma
 tools/docs-check.py                               # every relative link and anchor in root Markdown files and docs/**/*.md
 python3 tools/test_docs_check.py                   # repository/extracted-bundle roots, screenshots and anchors
 python3 tools/test_package_editions.py             # editions, archives, literal arguments and offline docs links
-python3 tools/test_release_notes.py                # the release notes and SHA256SUMS (every archive, sha256sum's format)
+python3 tools/test_release_notes.py                # matching Cargo/changelog versions, release notes and SHA256SUMS
+python3 tools/test_release_lifecycle.py            # published-tag gate and two-release/image retention, alpha releases kept (fixtures only)
+python3 tools/containers/test_deployment.py          # image validation, pre-upgrade snapshots, rollback and SSH transport
+python3 tools/containers/test_images.py              # built local images: runtime user, minimal rootfs, native engine/cards
 tools/docs-check.py --root /path/to/bundle         # the same checks against an extracted release
 tools/release.sh                                  # bundles in dist/ (Linux .tar.gz, Windows .zip), with docs/ and screenshots/
 tools/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-linux-x86_64.tar.gz
@@ -133,8 +136,10 @@ tools/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-linux-x86_6
 #   database from engine/vendor/ in engine/): hosts install nothing. Small notes stand at the old Node sidecar's paths
 #   (engine/duelcore.ts, engine/node/node...) because Desktop 0.0.9 and older check them before installing an update
 #   releasing: add a section at the top of CHANGELOG.md (`## v0.0.2 (date)`, players' words, what changed for them)
-#   and push to main (ask first, rule 5). The Release workflow lints, tests, builds both bundles and publishes the
-#   version as a GitHub release (title "vX.Y.Z (pre-alpha)", not ticked pre-release so /releases/latest finds it).
+#   and set the same workspace Cargo.toml version, then push to main (ask first, rule 5). Release CI checks/builds the
+#   bundles, publishes both GHCR images and automatically deploys their digests using the restricted VPS SSH key.
+#   The Release workflow publishes the
+#   version as a GitHub release (title "vX.Y.Z (beta)", not ticked pre-release so /releases/latest finds it).
 #   Never move or reuse a released tag: fix forward with the next version.
 #   once: rustup target add x86_64-pc-windows-gnu (mingw-w64 links it). A Windows build under Wine needs its own prefix
 #   (WINEPREFIX=.wine-c): vclient.sh stop kills every process of the default prefix

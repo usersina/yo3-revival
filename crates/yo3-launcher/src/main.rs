@@ -123,7 +123,9 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
     // Direct start checks the server after the game is released: a refusal is the game's own login dialog (#33).
     if args.attach_game.is_none() {
         log.line("Checking server identity and compatibility");
-        initializing!(endpoint.info())?.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI)?;
+        let info=initializing!(endpoint.info())?;
+        info.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI)?;
+        info.ensure_launcher(yo3_tunnel::BUILD_VERSION)?;
     }
     let proxy = initializing!(Proxy::prepare(endpoint.clone(), Ports { gate: args.gate_port, front: args.front_port, duel: args.duel_port, http: args.http_port }))?;
     log.secret(&hex(&proxy.cookie));
@@ -267,6 +269,7 @@ async fn sign_in(args: &Args) -> anyhow::Result<()> {
     let endpoint = signin::endpoint(&invite)?;
     let info = endpoint.info().await.with_context(|| format!("{} can't be reached at {}", invite.name, invite.address))?;
     info.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI)?;
+    info.ensure_launcher(yo3_tunnel::BUILD_VERSION)?;
     let mut input = Input::new();
     let password = if args.recover.is_some() {
         let code = input.secret("Setup, recovery or reset code: ")?;

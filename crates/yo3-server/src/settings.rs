@@ -77,7 +77,7 @@ pub const REGISTRY: &[Setting] = &[
         applies: Applies::AtOnce, default: || json!("") },
     Setting { name: "registration", help: "How accounts are made: invite (with an invite code), open (anyone) or closed (only the host's add-user)",
         kind: Kind::Choice(&["invite", "open", "closed"]), applies: Applies::AtOnce, default: || json!("invite") },
-    Setting { name: "min-launcher", help: "Refuse sign-ins from launchers older than this version (empty: any)", kind: Kind::Version,
+    Setting { name: "min-launcher", help: "Require at least this launcher version (empty: the server's release; cannot lower that floor)", kind: Kind::Version,
         applies: Applies::AtOnce, default: || json!("") },
     Setting { name: "login-regulation", help: "The banlist players log in with, for Auto Duel and NPC duels: an id or a name (empty: Season 16)",
         kind: Kind::Regulation, applies: Applies::NextLogin, default: || json!("") },

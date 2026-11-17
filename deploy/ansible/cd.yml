@@ -1,0 +1,9 @@
+---
+# One-time access setup for the existing Compose host; no build, restart or database changes.
+- name: Enable automatic release deployments on an existing YO3 VPS
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Install restricted release deployment access
+      ansible.builtin.import_tasks: deploy-access.yml

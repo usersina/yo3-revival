@@ -24,7 +24,7 @@ services:
         bind:
           create_host_path: false
     read_only: true
-    tmpfs: [/tmp:mode=1777]
+    tmpfs: ["/tmp:mode=1777,noexec,nosuid,nodev"]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     stop_grace_period: 60s
@@ -60,7 +60,7 @@ services:
         bind:
           create_host_path: false
     read_only: true
-    tmpfs: [/tmp:mode=1777]
+    tmpfs: ["/tmp:mode=1777,noexec,nosuid,nodev"]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     stop_grace_period: 30s

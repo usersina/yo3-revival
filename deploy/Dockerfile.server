@@ -1,30 +1,50 @@
 # syntax=docker/dockerfile:1.7
-FROM rust:1.98.1-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e AS build
+FROM rust:1.98.1-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e AS toolchain
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git g++ pkg-config && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/usr/local/cargo/git \
+    cargo install --locked --version 0.1.78 cargo-chef
 WORKDIR /src
-COPY engine engine
+ENV CARGO_BUILD_JOBS=2
+
+FROM toolchain AS planner
+COPY Cargo.toml Cargo.lock ./
+COPY crates crates
+# Also mask the inherited workspace version: a release bump must not invalidate third-party dependencies.
+RUN sed -i '/^\[workspace.package\]/,/^\[/s/^version = "[^"]*"/version = "0.0.1"/' Cargo.toml && cargo chef prepare --recipe-path recipe.json
+
+FROM toolchain AS dependencies
+COPY --from=planner /src/recipe.json recipe.json
+# Keep target/ in an ordinary layer: cache mounts alone are not exported by GitHub's cache backend.
+RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/usr/local/cargo/git \
+    cargo chef cook --locked --release --recipe-path recipe.json -p yo3-server -p yo3-engine --bin yo3-server --bin yo3-engine
+
+FROM dependencies AS build
+COPY engine/fetch.sh engine/card-ids.json engine/
 RUN engine/fetch.sh
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
-COPY tools/engine-files.sh tools/engine-files.sh
 ARG YO3_BUILD_VERSION=dev
 ARG YO3_BUILD_COMMIT=unknown
-ENV YO3_BUILD_VERSION=$YO3_BUILD_VERSION YO3_BUILD_COMMIT=$YO3_BUILD_COMMIT CARGO_BUILD_JOBS=2
-RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/usr/local/cargo/git --mount=type=cache,target=/src/target \
-    cargo build --locked --release -p yo3-server -p yo3-engine && \
-    mkdir -p /out && cp target/release/yo3-server target/release/yo3-engine /out/ && tools/engine-files.sh /out
+ENV YO3_BUILD_VERSION=$YO3_BUILD_VERSION YO3_BUILD_COMMIT=$YO3_BUILD_COMMIT
+RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/usr/local/cargo/git \
+    cargo build --locked --release -p yo3-server -p yo3-engine --bin yo3-server --bin yo3-engine && \
+    mkdir -p /out && cp target/release/yo3-server target/release/yo3-engine /out/ && \
+    strip --strip-unneeded /out/yo3-server /out/yo3-engine
+# A card override change only repackages data; it never recompiles the native programs.
+COPY engine/overrides engine/overrides
+COPY tools/engine-files.sh tools/engine-files.sh
+RUN tools/engine-files.sh /out
 COPY LICENSE /out/LICENSE
+COPY tools/containers/server-rootfs.sh /tmp/server-rootfs.sh
+RUN sh /tmp/server-rootfs.sh /out /rootfs
 
-FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS runtime
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl libstdc++6 && rm -rf /var/lib/apt/lists/* && \
-    groupadd --gid 10001 yo3 && useradd --uid 10001 --gid 10001 --no-create-home yo3 && \
-    install -d -o yo3 -g yo3 -m 0700 /var/lib/yo3 && install -d -o yo3 -g yo3 -m 0750 /run/yo3-dashboard
+FROM scratch AS runtime
+COPY --from=build /rootfs/ /
 WORKDIR /opt/yo3
-COPY --from=build /out/ ./
 COPY deploy/server.toml /etc/yo3/server.toml
 COPY --chmod=755 deploy/server-entrypoint.sh /usr/local/bin/yo3-entrypoint
 USER 10001:10001
-ENV YO3_ENGINE=/opt/yo3/yo3-engine
+ENV YO3_ENGINE=/opt/yo3/yo3-engine PATH=/usr/local/bin:/usr/bin:/bin
 EXPOSE 7443
 STOPSIGNAL SIGTERM
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD ["curl", "--fail", "--silent", "http://127.0.0.1:8080/health"]

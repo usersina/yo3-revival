@@ -1,0 +1,49 @@
+---
+- name: Check the dedicated deployment public key
+  ansible.builtin.set_fact:
+    yo3_deploy_public_key: "{{ lookup('ansible.builtin.file', yo3_deploy_public_key_file) | trim }}"
+- name: Require an Ed25519 public key and an existing deployment
+  ansible.builtin.assert:
+    that:
+      - yo3_deploy_public_key is match('^ssh-ed25519 [A-Za-z0-9+/=]+( .*)?$')
+- name: Read the installed stack's settings
+  ansible.builtin.slurp:
+    src: /srv/yo3/first-provisioned.json
+  register: installed_stack
+- name: Install the root-owned release updater
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../deploy-release.py"
+    dest: /usr/local/sbin/yo3-deploy-release
+    owner: root
+    group: root
+    mode: '0700'
+- name: Create an account with no password and no Docker group
+  ansible.builtin.user:
+    name: yo3-deploy
+    home: /var/lib/yo3-deploy
+    create_home: false
+    password_lock: true
+    shell: /bin/sh
+- name: Keep the deployment SSH configuration root-owned
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop: [/var/lib/yo3-deploy, /var/lib/yo3-deploy/.ssh]
+- name: Permit only the fixed no-argument updater through sudo
+  ansible.builtin.copy:
+    content: "yo3-deploy ALL=(root) NOPASSWD: /usr/local/sbin/yo3-deploy-release \"\"\n"
+    dest: /etc/sudoers.d/yo3-release-deployment
+    owner: root
+    group: root
+    mode: '0440'
+    validate: /usr/sbin/visudo -cf %s
+- name: Install the key with a forced command and no shell or forwarding
+  ansible.builtin.copy:
+    content: "restrict,command=\"sudo -n /usr/local/sbin/yo3-deploy-release\" {{ yo3_deploy_public_key }}\n"
+    dest: /var/lib/yo3-deploy/.ssh/authorized_keys
+    owner: root
+    group: root
+    mode: '0644'

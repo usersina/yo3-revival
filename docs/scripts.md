@@ -228,3 +228,7 @@ before restoring an older setup.
 The archive filename includes the version; the inner directory is always `yo3-revival-scripts/`. This stable name
 does not make it safe to overwrite a running server. [Desktop](launcher.md#application-updates) can download and
 install a complete verified update after confirmation. Both editions share the same authenticated protocol and data format.
+
+If a multiplayer server requires a newer release, replace the complete Scripts bundle with that release before
+joining again. The original game files stay in place; keep your private data and profiles. Servers require launchers
+at least as new as their own release.

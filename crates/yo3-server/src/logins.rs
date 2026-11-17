@@ -357,10 +357,7 @@ impl Throttle {
 
 /// Whether launcher version `have` is at least `need` (dotted numbers, a leading "v" and any "-suffix" ignored).
 pub fn version_at_least(have: &str, need: &str) -> bool {
-    let parse = |v: &str| -> Vec<u64> { v.trim_start_matches('v').split('-').next().unwrap_or("").split('.').map(|n| n.parse().unwrap_or(0)).collect() };
-    let (have, need) = (parse(have), parse(need));
-    (0..have.len().max(need.len())).map(|i| (have.get(i).copied().unwrap_or(0), need.get(i).copied().unwrap_or(0)))
-        .find(|(h, n)| h != n).is_none_or(|(h, n)| h > n)
+    yo3_tunnel::version_at_least(have,need)
 }
 
 #[cfg(test)]

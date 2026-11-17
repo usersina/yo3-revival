@@ -22,6 +22,19 @@ ARCHIVES = ("yo3-revival-desktop-v9.9.9-linux-x86_64.tar.gz", "yo3-revival-deskt
 
 
 class ReleaseNotes(unittest.TestCase):
+    def test_release_requires_cargo_and_changelog_versions_to_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            self.release(root)
+            manifest=root / "Cargo.toml"
+            manifest.write_text('[workspace.package]\nversion = "9.9.8"\n')
+            mismatch=subprocess.run([sys.executable,SCRIPT,"check",root / "CHANGELOG.md",manifest],capture_output=True,text=True)
+            self.assertNotEqual(mismatch.returncode,0)
+            self.assertIn("9.9.9",mismatch.stderr)
+            manifest.write_text('[workspace.package]\nversion = "9.9.9"\n')
+            match=subprocess.run([sys.executable,SCRIPT,"check",root / "CHANGELOG.md",manifest],capture_output=True,text=True)
+            self.assertEqual(match.returncode,0,match.stderr)
+
     def release(self, root):
         assets = root / "assets"
         assets.mkdir()

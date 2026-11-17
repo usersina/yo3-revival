@@ -18,6 +18,7 @@ permissions:
 jobs:
   prepare:
     name: Changelog
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.changelog.outputs.version }}
@@ -29,7 +30,7 @@ jobs:
       - name: The newest version in CHANGELOG.md, and whether it is released
         id: changelog
         run: |
-          version=$(python3 .github/scripts/release_notes.py version CHANGELOG.md)
+          version=$(python3 .github/scripts/release_notes.py check CHANGELOG.md Cargo.toml)
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
             echo "::notice::$version is already released: add a new version at the top of CHANGELOG.md to release."
@@ -77,8 +78,10 @@ jobs:
           python3 tools/monkey/test_duel_replay.py
           python3 tools/test_package_editions.py
           python3 tools/test_release_notes.py
+          python3 tools/test_release_lifecycle.py
           python3 tools/test_host_scripts.py
           python3 tools/containers/test_config.py
+          python3 tools/containers/test_deployment.py
           python3 tools/test_docs_check.py
       - name: Documentation links and images
         run: tools/docs-check.py
@@ -124,16 +127,32 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Also from v0.0.21, the last release before the beta: its launcher must still open launcher.db and hand
-          # its original shortcut over to this version.
+          # Test from the currently published release, which survives the two-release retention policy.
+          previous=$(python3 .github/scripts/release_lifecycle.py previous "$VERSION")
           mkdir -p dist/released
-          gh release download v0.0.21 --dir dist/released --clobber -p 'yo3-revival-desktop-v0.0.21-linux-x86_64.tar.gz'
+          gh release download "$previous" --dir dist/released --clobber -p "yo3-revival-desktop-$previous-linux-x86_64.tar.gz"
           tools/test-packaged-update.sh "$VERSION" "dist/yo3-revival-desktop-$VERSION-linux-x86_64.tar.gz" \
-            --from dist/released/yo3-revival-desktop-v0.0.21-linux-x86_64.tar.gz
+            --from "dist/released/yo3-revival-desktop-$previous-linux-x86_64.tar.gz"
+      - name: Official server list
+        if: needs.prepare.outputs.release == 'true'
+        env:
+          SERVER_LIST_KEY: ${{ secrets.SERVER_LIST_KEY }}
+        run: |
+          # Launchers fetch releases/latest/download/servers.json and trust only multiplayer::OFFICIAL_LIST_KEYS. The
+          # private key (PKCS#8, base64 in the secret) only ever sits in a private temporary file; it is never echoed.
+          [ -n "$SERVER_LIST_KEY" ] || { echo "The SERVER_LIST_KEY secret is missing" >&2; exit 1; }
+          cargo build --release -p yo3-desktop --bin yo3-server-list
+          key="$(umask 077 && mktemp)"
+          trap 'rm -f "$key"' EXIT
+          printf '%s' "$SERVER_LIST_KEY" | base64 -d > "$key"
+          mkdir -p assets
+          target/release/yo3-server-list sign deploy/official-servers.json "$key" assets/servers.json
+          public=$(sed -n 's/^pub const OFFICIAL_LIST_KEYS: &\[&str\] = &\["\([0-9a-f]\{64\}\)".*/\1/p' crates/yo3-desktop/src/multiplayer.rs)
+          target/release/yo3-server-list verify assets/servers.json "$public"
       - name: SHA256SUMS
         if: needs.prepare.outputs.release == 'true'
         run: |
-          mkdir assets
+          mkdir -p assets
           for edition in desktop scripts; do
             cp "dist/yo3-revival-$edition-$VERSION-linux-x86_64.tar.gz" assets/
             cp "dist/yo3-revival-$edition-$VERSION-windows-x86_64.zip" assets/
@@ -166,7 +185,7 @@ jobs:
         run: |
           gh release create "$VERSION" assets/* \
             --target "$GITHUB_SHA" \
-            --title "$VERSION (pre-alpha)" \
+            --title "$VERSION (beta)" \
             --notes-file notes.md \
             --latest
 
@@ -181,3 +200,51 @@ jobs:
     with:
       version: ${{ needs.prepare.outputs.version }}
       source-ref: ${{ github.sha }}
+
+  deploy:
+    name: Update the hosted server
+    needs: [prepare, release, containers]
+    if: github.ref == 'refs/heads/main' && needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Deploy the successful release's exact images
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_REF: ${{ github.sha }}
+          SERVER_IMAGE: ${{ needs.containers.outputs.server-image }}
+          DASHBOARD_IMAGE: ${{ needs.containers.outputs.dashboard-image }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/deploy_vps.py
+
+  cleanup:
+    name: Retain the newest two releases and images
+    needs: [prepare, release, containers, deploy]
+    if: github.ref == 'refs/heads/main' && needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/login-action@v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Remove old downloads and image versions after healthy deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_REF: ${{ github.sha }}
+        run: python3 .github/scripts/release_lifecycle.py prune "$VERSION" "$SOURCE_REF"

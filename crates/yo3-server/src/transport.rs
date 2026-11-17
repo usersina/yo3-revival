@@ -35,7 +35,7 @@ impl Gate {
         info.headline = settings.headline.clone();
         info.online = online;
         info.registration = settings.registration.as_str().into();
-        info.min_launcher = settings.min_launcher.clone();
+        info.min_launcher = yo3_tunnel::minimum_launcher(&info.release,settings.min_launcher.as_deref()).map(str::to_owned);
         info.maintenance = settings.in_maintenance(crate::logins::now());
         info.max_online = u32::try_from(settings.max_players).ok();
         // The news, each body shortened, and as many entries as fit in discovery's answer.
@@ -59,6 +59,12 @@ async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &yo3_tunnel
                 let protocol = tls.read_u16().await?;
                 let abi = tls.read_u16().await?;
                 if info.ensure_compatible(protocol, abi).is_err() { tls.write_u8(1).await?; tls.shutdown().await?; return Ok(None) }
+                let length=tls.read_u8().await? as usize;
+                anyhow::ensure!((1..=64).contains(&length),"invalid launcher version length");
+                let mut version=vec![0;length];tls.read_exact(&mut version).await?;
+                if std::str::from_utf8(&version).ok().is_none_or(|v|info.ensure_launcher(v).is_err()) {
+                    tls.write_u8(1).await?;tls.shutdown().await?;return Ok(None)
+                }
                 let mut key = [0; KEY_LEN]; tls.read_exact(&mut key).await?;
                 // While saves fail, nobody new comes in: their progress could not be kept (store::healthy).
                 if !crate::store::healthy() { tracing::warn!("login refused: the server can't save right now"); tls.write_u8(1).await?; tls.shutdown().await?; return Ok(None) }

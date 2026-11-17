@@ -2,6 +2,7 @@
 """The release's version and notes, from CHANGELOG.md's newest section (`## vX.Y.Z (date)`).
 
     release_notes.py version CHANGELOG.md        prints the newest version, e.g. v0.0.1
+    release_notes.py check CHANGELOG.md Cargo.toml checks the workspace version and prints the release version
     release_notes.py notes CHANGELOG.md DIR      prints its notes: the section, then each file of DIR's SHA-256
     release_notes.py sums DIR                    writes DIR/SHA256SUMS: each other file's SHA-256, as sha256sum prints it
 """
@@ -9,6 +10,7 @@ import hashlib
 import pathlib
 import re
 import sys
+import tomllib
 
 HEADING = re.compile(r"^## (v\d+\.\d+\.\d+)\b")
 
@@ -53,12 +55,18 @@ def sums(directory):
 
 
 def main():
-    if len(sys.argv) < 3 or sys.argv[1] not in ("version", "notes", "sums"):
+    if len(sys.argv) < 3 or sys.argv[1] not in ("version", "notes", "sums", "check"):
         sys.exit(__doc__)
     if sys.argv[1] == "sums":
         sums(sys.argv[2])
         return
     version, body = newest(sys.argv[2])
+    if sys.argv[1] == "check":
+        package=tomllib.loads(pathlib.Path(sys.argv[3]).read_text())["workspace"]["package"]["version"]
+        if version != "v"+package:
+            sys.exit(f"Release version mismatch: CHANGELOG.md says {version}, Cargo.toml says {package}. Update both together.")
+        print(version)
+        return
     if sys.argv[1] == "version":
         print(version)
         return

@@ -7,7 +7,7 @@
 #    (.github/scripts/sign_release.sh) with a key made here for this run only; the launcher's check accepts it and
 #    refuses a changed signature, another key, a missing SHA256SUMS.sig and a download the manifest doesn't list.
 # 2. The archive's launcher, staged and installed at the next start, opens its window before it becomes active.
-# 3. With --from (a released Desktop archive, e.g. `gh release download v0.0.21 -p '*desktop*linux*'`): that release's
+# 3. With --from (the latest Desktop archive, e.g. `gh release download -p '*desktop*linux*'`): that release's
 #    launcher makes its data, this release opens on it and is promoted, then the released binary (the player's original
 #    shortcut) must hand over to the installed update.
 set -euo pipefail

@@ -29,6 +29,7 @@ def port():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--game-dir', required=True, type=Path)
+    parser.add_argument('--image-tag', default='local', help='Existing local image tag to rehearse (never rebuilds or retags)')
     parser.add_argument('--keep', action='store_true', help='Keep only this disposable project for inspection')
     a = parser.parse_args()
     for f in ['package/data002.ypk', 'yo3.idx']:
@@ -43,7 +44,7 @@ def main():
     env = os.environ | {'YO3_DOMAIN':'localhost', 'YO3_GAME_DIR':str(a.game_dir.resolve()),
         'YO3_TLS_DIR':str(scratch/'tls'), 'YO3_ACME_DIR':str(scratch/'acme'),
         'YO3_GAME_BIND':'127.0.0.1', 'YO3_WEB_BIND':'127.0.0.1', 'YO3_GAME_PORT':str(game_port),
-        'YO3_HTTP_PORT':str(http_port), 'YO3_HTTPS_PORT':str(https_port), 'YO3_IMAGE_TAG':'local'}
+        'YO3_HTTP_PORT':str(http_port), 'YO3_HTTPS_PORT':str(https_port), 'YO3_IMAGE_TAG':a.image_tag}
     compose = ['docker','compose','--env-file','/dev/null','--project-name',project,'-f',str(ROOT/'compose.yaml')]
     def run(args, *, check=True, input=None):
         return subprocess.run(compose+args, cwd=ROOT, env=env, check=check, input=input, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=240)
@@ -71,7 +72,8 @@ def main():
         cli('set','registration','open')
         # The real authenticated account protocol: exact magic/op/BE length from yo3-tunnel::Endpoint::account.
         ctx = ssl.create_default_context(cadata=game_cert)
-        payload = json.dumps({'op':'register','user':'GamePlayer','password':PASSWORD,'rules':True}).encode()
+        launcher=cli('--version').stdout.strip().split()[-1]
+        payload = json.dumps({'op':'register','user':'GamePlayer','password':PASSWORD,'rules':True,'launcher':launcher}).encode()
         with ctx.wrap_socket(socket.create_connection(('127.0.0.1',game_port),timeout=20),server_hostname='localhost') as s:
             s.sendall(b'YO3TLS02'+b'\x06'+struct.pack('>H',len(payload))+payload)
             def read(n):
