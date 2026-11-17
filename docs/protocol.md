@@ -1951,7 +1951,7 @@ attack dealt 1200.
 
 **Attack targets are a dialog, as in the original.** The client has no way to pick a target on the field: DuelBattle
 (`0x4F8A90`) handles command 4 only in battle mode 3, to highlight the client's own attackers (bit 0), and `0xA`–`0xE`
-are the battle's animations; DuelFieldManager's command 4 (`0x50A690`) highlights cards of either side that have
+are the battle's animations (but see `0xB` below); DuelFieldManager's command 4 (`0x50A690`) highlights cards of either side that have
 command bits, and a click runs the hovered card's menu entry (`0x50B700` → `0x4F9510`), with no target step; modes 4
 and 5 are "Checking the Field. Right-click to finish." (UI text `0x2214`; the right click, with other-flag 6, sends
 `duelRequestName 5`). The dialog text table (`DLG_Text_E.bin`, the duel prompts) holds the original server's battle
@@ -1963,6 +1963,14 @@ against Jinzo #7): Kaiba's attack asked "Attack your opponent directly?"; No ope
 with Yugi's Jinzo, and the two destroyed each other. With no monster to attack EDOPro asks nothing, so the server
 asks 225 itself before the attack of a card that `can_direct` on an empty field: Yes answers the engine, No sends the
 battle commands again (**guess**: the original asked before every direct attack).
+
+`0xB` BattleSelect (no parameters, `0x4F8B95`) puts DuelBattle in state 2. In that state its frame (`0x4F8CD9`) draws
+effect `0xCB` from the attacker (`+0x2C` player, `+0x30` zone, set by `0xC {attacker, -1}`) to the field card under
+the pointer (the field manager's `+0x1E3` hover, `+0x1EC` slot), when a flag of the scene's `+0x98` object (`+0x44`
+bit `0x800`, not yet traced) is set; states 2 and 3 also mark the attacker and target (effect `0x39`). Konami's 718
+uses are all `0xC {attacker, -1}`, `0xB`, then `0xC {attacker, target}`: an aiming line while the player chose. **Open**
+(#51): whether a click on the aimed monster answers (a command map giving the opponent's monsters bit 0 would send
+`duelRequestName 2 {CommandID 0, player, position}`), and what sets the flag.
 
 The client's MSG_SELECT_EFFECTYN opens the Yes/No dialog with 'Activate the effect of "%s"?' (250) and the card's
 name, MSG_SELECT_YESNO with 'Use the effect of "%s"?' (226) naming the card whose script string the question is (the
