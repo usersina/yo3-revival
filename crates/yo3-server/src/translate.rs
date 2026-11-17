@@ -500,7 +500,7 @@ impl Translator {
                 uid += 1;
                 sides[p].zone(zone::DECK).push(Card { uid, row });
                 let shown = if hidden[p] { 0 } else { row as u32 };
-                out.push(Cmd::Card { uid: uid, open: false, row: shown, place: table_place(p as u32, zone::DECK, i) }.message());
+                out.push(Cmd::Card { uid, open: false, row: shown, place: table_place(p as u32, zone::DECK, i) }.message());
             }
         }
         let t = Translator {
@@ -1186,7 +1186,7 @@ impl Translator {
             .enumerate()
             .map(|(i, c)| {
                 let row = self.shown_row(&Place { player: p, zone: zone::HAND, index: i, face_up: false, defense: false }, c.row);
-                Cmd::Card { uid: c.uid, open: false, row: row, place: table_place(p, zone::HAND, i) }.message()
+                Cmd::Card { uid: c.uid, open: false, row, place: table_place(p, zone::HAND, i) }.message()
             })
             .collect();
         out.push(command(cmd::HAND_SHUFFLE, [p, 0, 0, 0]));
@@ -1338,7 +1338,7 @@ impl Translator {
                 Some(c) => {
                     self.positions.insert((place.player, place.zone), (place.face_up, place.defense));
                     let row = self.shown_row(&place, c.row);
-                    out.push(Cmd::Card { uid: c.uid, open: open(place.zone), row: row, place: table_place(place.player, place.zone, 0) }.message());
+                    out.push(Cmd::Card { uid: c.uid, open: open(place.zone), row, place: table_place(place.player, place.zone, 0) }.message());
                     if place.zone < 5 && row != 0 && place.face_up {
                         out.extend(match record {
                             Some(values) => self.record(place.player, place.zone, c.row, values),
@@ -1497,7 +1497,7 @@ impl Translator {
             return vec![];
         }
         let shown = self.shown_row(&Place { player: p, zone: zone::DECK, index: 0, face_up: false, defense: false }, row as u16);
-        vec![Cmd::Card { uid: uid, open: false, row: shown, place: place }.message(), command(cmd::DECK_RESET, [p, zone::DECK, 0, 0])]
+        vec![Cmd::Card { uid, open: false, row: shown, place }.message(), command(cmd::DECK_RESET, [p, zone::DECK, 0, 0])]
     }
 
     /// A hand card shows its face: its table entry with the row (the opponent's hand has none), then HandShow.
@@ -1531,9 +1531,9 @@ impl Translator {
         zone.clear();
         zone.push(Card { uid, row });
         self.positions.insert((to.player, to.zone), (to.face_up, to.defense));
-        let mut out = vec![Cmd::Card { uid: uid, open: false, row: row as u32, place: table_place(to.player, to.zone, 0) }.message()];
+        let mut out = vec![Cmd::Card { uid, open: false, row: row as u32, place: table_place(to.player, to.zone, 0) }.message()];
         out.extend(self.monster_record(to.player, to.zone, row));
-        out.push(Cmd::Move { uid: uid, kind: MOVE_SPECIAL_SUMMON, from: to, to: to }.message());
+        out.push(Cmd::Move { uid, kind: MOVE_SPECIAL_SUMMON, from: to, to }.message());
         out
     }
 
@@ -1669,7 +1669,7 @@ impl Translator {
         }
         let row = self.shown_row(&to, card.row);
         let mut out = self.panel_stats(card, from, to, row);
-        out.push(Cmd::Card { uid: card.uid, open: open(to.zone), row: row, place: table_place(to.player, to.zone, index) }.message());
+        out.push(Cmd::Card { uid: card.uid, open: open(to.zone), row, place: table_place(to.player, to.zone, index) }.message());
         if to.zone < 5 && row != 0 {
             out.extend(match record {
                 Some(values) => self.record(to.player, to.zone, card.row, values),
@@ -1686,11 +1686,11 @@ impl Translator {
             let shifted: Vec<(usize, Card)> = self.sides[p as usize].zone(zone).iter().copied().enumerate().skip(start).collect();
             for (i, c) in shifted {
                 let row = self.shown_row(&Place { player: p, zone, index: i, face_up: true, defense: false }, c.row);
-                let entry = Cmd::Card { uid: c.uid, open: open(zone), row: row, place: table_place(p, zone, i) }.message();
+                let entry = Cmd::Card { uid: c.uid, open: open(zone), row, place: table_place(p, zone, i) }.message();
                 if zone == zone::HAND { hand.push(entry) } else { out.push(entry) }
             }
         }
-        out.push(Cmd::Move { uid: card.uid, kind: kind, from: from, to: to }.message());
+        out.push(Cmd::Move { uid: card.uid, kind, from, to }.message());
         out.extend(hand);
         out
     }
@@ -1785,7 +1785,7 @@ impl Translator {
         if let (Some(before), Some(card)) = (before, card) {
             let (face_up, defense) = before.unwrap_or((!place.face_up, !place.defense));
             let from = Place { face_up, defense, ..place };
-            out.push(Cmd::Move { uid: card.uid, kind: 0, from: from, to: place }.message());
+            out.push(Cmd::Move { uid: card.uid, kind: 0, from, to: place }.message());
         }
         out.push(command(cmd::FLIP_TURN, [place.packed(), 0, 0, 0]));
         out
@@ -2215,7 +2215,7 @@ impl Translator {
         let held = match seen.or(copies.first()) {
             Some(&(uid, row, ref place)) => {
                 if self.shown_row(place, row) == 0 {
-                    out.push(Cmd::Card { uid: uid, open: false, row: row as u32, place: table_place(place.player, place.zone, place.index) }.message());
+                    out.push(Cmd::Card { uid, open: false, row: row as u32, place: table_place(place.player, place.zone, place.index) }.message());
                 }
                 Some(uid)
             }
@@ -2233,7 +2233,7 @@ impl Translator {
                 let player = self.player(&m["player"]);
                 let side = &self.sides[player as usize];
                 let zone = (0..5).find(|z| side.zones.get(z).is_none_or(Vec::is_empty)).unwrap_or(0);
-                out.push(Cmd::Card { uid: uid, open: false, row: row as u32, place: table_place(player, zone, 0) }.message());
+                out.push(Cmd::Card { uid, open: false, row: row as u32, place: table_place(player, zone, 0) }.message());
                 // A token without a Konami id is named by its client card's.
                 (uid, self.cards.get(&row).map_or(cid, |s| s.cid))
             }
@@ -2323,7 +2323,7 @@ impl Translator {
         if mixed {
             for (i, &row) in rows.iter().enumerate() {
                 let flag = if row != 0 { OPEN } else { 0 };
-                out.push(Cmd::Card { uid: (STAGED_UID + i as u32) | flag, open: false, row: row, place: table_place(CPU, zone::REMOVED, i) }.message());
+                out.push(Cmd::Card { uid: (STAGED_UID + i as u32) | flag, open: false, row, place: table_place(CPU, zone::REMOVED, i) }.message());
             }
             self.staged = Some(rows.len());
         }
@@ -2356,7 +2356,7 @@ impl Translator {
             .take(n)
             .map(|(i, c)| {
                 let row = self.shown_row(&Place { player: CPU, zone: zone::REMOVED, index: i, face_up: true, defense: false }, c.row);
-                Cmd::Card { uid: c.uid, open: true, row: row, place: table_place(CPU, zone::REMOVED, i) }.message()
+                Cmd::Card { uid: c.uid, open: true, row, place: table_place(CPU, zone::REMOVED, i) }.message()
             })
             .collect()
     }
