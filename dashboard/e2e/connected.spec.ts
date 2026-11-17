@@ -601,7 +601,7 @@ test('account setup: lost response and reload retain the same code and request I
     ),
   ).toBe(false)
   await expect(
-    page.getByRole('button', { name: 'View account newowner', exact: true }),
+    page.getByRole('button', { name: 'View account NewOwner', exact: true }),
   ).toBeVisible()
 })
 
