@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Render production templates and validate Compose without touching any VPS/system packages."""
 import json
+import http.server
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
 import tarfile
+import ssl
+import threading
 import uuid
 import yaml
 import unittest
@@ -92,6 +95,42 @@ class Provisioning(unittest.TestCase):
             subprocess.run(['ansible-playbook','-i','localhost,','-c','local',str(playbook),'-e',
                 json.dumps({'password_path':str(password)})],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
             self.assertEqual(password.stat().st_mode & 0o777,0o600)
+    def test_bootstrap_https_ignores_dns_cache_but_checks_certificate_and_host(self):
+        tasks=yaml.safe_load((ROOT/'deploy/ansible/site.yml').read_text())[0]['tasks']
+        task=next(t for t in tasks if t['name']=='Verify real HTTPS with certificate validation')
+        self.assertIn('ansible.builtin.command',task,'Probe local nginx without relying on a stale recursive DNS cache')
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def handle(self):
+                try: super().handle()
+                except (ConnectionError,ssl.SSLError): pass # Expected when curl refuses the certificate.
+            def do_GET(self):
+                self.send_response(200);self.send_header('Content-Length','5');self.end_headers();self.wfile.write(b'ready')
+            def log_message(self,*args): pass
+        with tempfile.TemporaryDirectory(prefix='yo3-https-probe-') as tmp:
+            path=Path(tmp);cert=path/'certificate.pem';key=path/'key.pem'
+            subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1',
+                '-subj','/CN=probe.invalid','-addext','subjectAltName=DNS:probe.invalid',
+                '-keyout',str(key),'-out',str(cert)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            with http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler) as server:
+                context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);context.load_cert_chain(cert,key)
+                server.socket=context.wrap_socket(server.socket,server_side=True)
+                thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+                try:
+                    def probe(domain,trust):
+                        env=os.environ.copy()
+                        if trust: env['CURL_CA_BUNDLE']=str(cert)
+                        else: env.pop('CURL_CA_BUNDLE',None);env.pop('SSL_CERT_FILE',None)
+                        # Keep the playbook's actual command/security options; substitute this fixture's free port.
+                        argv=[Environment(undefined=StrictUndefined).from_string(a).render(yo3_domain=domain)
+                            .replace(':443:',f':{server.server_port}:').replace(f'https://{domain}/',f'https://{domain}:{server.server_port}/')
+                            for a in task['ansible.builtin.command']['argv']]
+                        return subprocess.run(argv,env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=20)
+                    valid=probe('probe.invalid',True)
+                    self.assertEqual(valid.returncode,0,valid.stderr)
+                    self.assertNotEqual(probe('other.invalid',True).returncode,0,'The requested hostname must match the certificate')
+                    self.assertNotEqual(probe('probe.invalid',False).returncode,0,'Untrusted certificates must be refused')
+                finally:
+                    server.shutdown();thread.join()
     def test_site_parses_with_the_pinned_collection(self):
         subprocess.run(['ansible-playbook','-i',str(ROOT/'deploy/ansible/inventory.example.ini'),str(ROOT/'deploy/ansible/site.yml'),'--syntax-check'],check=True,cwd=ROOT)
 if __name__=='__main__':unittest.main()

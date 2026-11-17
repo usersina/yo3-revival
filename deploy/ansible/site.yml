@@ -258,11 +258,15 @@
         wait_timeout: 180
         remove_volumes: false
     - name: Verify real HTTPS with certificate validation
-      ansible.builtin.uri: {url: "https://{{ yo3_domain }}/", status_code: 200, validate_certs: true}
+      # ACME has verified public DNS. A recently changed record may still be cached by the VPS resolver.
+      # Reach our nginx directly while retaining the real hostname/SNI and normal CA validation.
+      ansible.builtin.command:
+        argv: [curl, --fail, --silent, --show-error, --max-time, '15', --noproxy, '*', --resolve, "{{ yo3_domain }}:443:127.0.0.1", --output, /dev/null, "https://{{ yo3_domain }}/"]
+      changed_when: false
       register: web_health
       retries: 6
       delay: 5
-      until: web_health.status == 200
+      until: web_health.rc == 0
     - name: Record successful setup without secrets
       ansible.builtin.copy:
         content: "{{ yo3_setup | to_nice_json }}\n"

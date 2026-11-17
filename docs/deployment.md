@@ -67,6 +67,10 @@ to be chosen; first provisioning does not configure them.
 
 - **Certificate issuance fails:** check DNS/AAAA and provider firewall rules, then retry. No plain HTTP password
   screen is exposed while the certificate is missing.
+- **DNS was just changed:** save/apply the record in the DNS provider's panel, then check its authoritative
+  nameservers. Recursive resolvers may retain the previous address until its old TTL expires. Once ACME succeeds,
+  setup checks local nginx with the domain's hostname and normal CA validation, so a stale VPS resolver cannot block
+  completion. Browsers and the hourly HTTPS monitor still use DNS and may need that cache to expire.
 - **A health check fails:** inspect Compose logs before retrying. The playbook does not delete data to repair it.
 - **Renewal/expiry check fails:** inspect `journalctl -u certbot.service` and
   `journalctl -u yo3-https@play.example.com.service`. Renewal runs independently of GitHub Actions.
@@ -87,8 +91,10 @@ GitHub before expecting anonymous pulls.
 A later CD workflow can use GitHub Secrets for the VPS address, SSH key and verified host key. It is deliberately
 not part of first setup yet. Local builds and the Compose rehearsal work before any images are published.
 
-Local and isolated Ubuntu VPS container rehearsals have passed, including off-machine restoration of a test snapshot.
-A full public bootstrap with correct DNS, completed rerun, reboot and real CA renewal are still required. Then run the game/load soak and implement MFA. See the
+An Ubuntu 24.04 VPS rehearsal passed public bootstrap, a zero-change rerun, reboot with preserved state, real CA
+issuance, staging renewal with nginx reload, isolated off-machine restore and a 100-player protocol soak. This does
+not yet establish native-engine duel capacity. MFA, an off-machine backup destination and the first actual GitHub
+image publication remain; DNS-based monitoring may report the previous address during propagation. See the
 [Ansible Compose module](https://docs.ansible.com/projects/ansible/latest/collections/community/docker/docker_compose_v2_module.html)
 and [GitHub container publishing documentation](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images)
 for the underlying tools.
