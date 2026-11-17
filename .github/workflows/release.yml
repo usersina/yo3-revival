@@ -18,6 +18,7 @@ permissions:
 jobs:
   prepare:
     name: Changelog
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.changelog.outputs.version }}
@@ -77,6 +78,7 @@ jobs:
           python3 tools/monkey/test_duel_replay.py
           python3 tools/test_package_editions.py
           python3 tools/test_release_notes.py
+          python3 tools/test_release_lifecycle.py
           python3 tools/test_host_scripts.py
           python3 tools/containers/test_config.py
           python3 tools/containers/test_deployment.py
@@ -125,12 +127,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Also from v0.0.21, the last release before the beta: its launcher must still open launcher.db and hand
-          # its original shortcut over to this version.
+          # Test from the currently published release, which survives the two-release retention policy.
+          previous=$(python3 .github/scripts/release_lifecycle.py previous "$VERSION")
           mkdir -p dist/released
-          gh release download v0.0.21 --dir dist/released --clobber -p 'yo3-revival-desktop-v0.0.21-linux-x86_64.tar.gz'
+          gh release download "$previous" --dir dist/released --clobber -p "yo3-revival-desktop-$previous-linux-x86_64.tar.gz"
           tools/test-packaged-update.sh "$VERSION" "dist/yo3-revival-desktop-$VERSION-linux-x86_64.tar.gz" \
-            --from dist/released/yo3-revival-desktop-v0.0.21-linux-x86_64.tar.gz
+            --from "dist/released/yo3-revival-desktop-$previous-linux-x86_64.tar.gz"
       - name: SHA256SUMS
         if: needs.prepare.outputs.release == 'true'
         run: |
@@ -206,3 +208,27 @@ jobs:
           DASHBOARD_IMAGE: ${{ needs.containers.outputs.dashboard-image }}
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 .github/scripts/deploy_vps.py
+
+  cleanup:
+    name: Retain the newest two releases and images
+    needs: [prepare, release, containers, deploy]
+    if: github.ref == 'refs/heads/main' && needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/login-action@v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Remove old downloads and image versions after healthy deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_REF: ${{ github.sha }}
+        run: python3 .github/scripts/release_lifecycle.py prune "$VERSION" "$SOURCE_REF"

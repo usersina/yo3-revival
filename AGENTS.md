@@ -119,6 +119,7 @@ tools/docs-check.py                               # every relative link and anch
 python3 tools/test_docs_check.py                   # repository/extracted-bundle roots, screenshots and anchors
 python3 tools/test_package_editions.py             # editions, archives, literal arguments and offline docs links
 python3 tools/test_release_notes.py                # matching Cargo/changelog versions, release notes and SHA256SUMS
+python3 tools/test_release_lifecycle.py            # published-tag gate and two-release/image retention (fixtures only)
 python3 tools/containers/test_deployment.py          # image validation, pre-upgrade snapshots, rollback and SSH transport
 tools/docs-check.py --root /path/to/bundle         # the same checks against an extracted release
 tools/release.sh                                  # bundles in dist/ (Linux .tar.gz, Windows .zip), with docs/ and screenshots/

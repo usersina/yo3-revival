@@ -47,6 +47,14 @@ GHCR images and automatically deploy their exact digests through a pinned, restr
 Ansible access setup creates a deploy-only account, without a shell, forwarding or general sudo. Repository
 secrets hold the address, key and verified SSH host key; no runner agent is installed on the VPS.
 
+Release retention keeps the newest two published stable versions and their complete GHCR image manifest trees,
+then removes older releases/downloads and package versions only after healthy deployment. Git tags remain. Image
+builds verify that the latest published tag resolves to their source commit. The packaged-updater gate now selects
+the latest published archive rather than depending permanently on v0.0.21. Fixture tests cover numeric ordering,
+annotated tags, retained platform/provenance manifests, orphan cleanup, missing metadata, pagination and retry;
+the selector and tag guard also passed read-only checks against the actual v0.0.26 release. No live releases or
+packages were deleted during development; first live cleanup remains part of the next release pipeline.
+
 The updater validates both images before shutdown, snapshots the stopped data volume, checks the actual running
 release and HTTPS, and restores previous images/data on failure. Receipts make duplicate releases a health check;
 older releases and reused versions are refused. The production host keeps its domain, assets, data and identity.

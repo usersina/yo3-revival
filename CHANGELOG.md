@@ -5,8 +5,9 @@ at v0.1.0; v0.0.1 to v0.0.26 were the alpha (published as "pre-alpha").
 
 Each section is a release. To release, rename the "Unreleased" section at the top to the next version
 (`## vX.Y.Z (date)`), set the same workspace version in `Cargo.toml`, and push to `main`: the release workflow builds
-the bundles, publishes the version and container images, then updates the configured VPS automatically. A push whose newest version is already released publishes nothing, so changes can
-gather under "Unreleased" first.
+the bundles, publishes the version and container images, then updates the configured VPS automatically. After a healthy
+deployment, only the newest two releases and their images remain on GitHub; Git tags and this history stay. A push
+whose newest version is already released publishes nothing, so changes can gather under "Unreleased" first.
 
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
@@ -15,7 +16,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 Hosts: releases now update the configured VPS automatically after all builds pass, with a pre-upgrade backup and
 rollback if startup fails. Multiplayer servers require launchers at least as new as their own release; older players
-are told to update before playing.
+are told to update before playing. Container builds require the latest published release tag at the exact source
+commit. After successful deployment, GitHub keeps that release and the previous version, removing older downloads
+and container versions. The updater check always starts from the latest published Desktop bundle.
 
 The first beta: a new launcher, accounts with a User ID and password, and a server that can be hosted for real.
 Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the server, rules

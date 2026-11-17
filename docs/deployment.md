@@ -82,11 +82,28 @@ The existing Release workflow calls [Release containers](https://github.com/user
 job succeeds**. This explicit dependency also works for releases created using `GITHUB_TOKEN`; those do not trigger
 another workflow through the `release` event.
 
+Before either image builds, CI verifies that this is the newest published stable `vX.Y.Z` release and that its Git
+tag resolves to the exact source commit. Ordinary pushes, older tags, draft releases and failed release jobs do not
+build published images. Local Ansible provisioning can still build the checkout without publishing anything.
+
 CI checks runtime configuration and Ansible syntax/templates, builds the server/engine and dashboard/nginx images,
 and pushes Linux x86_64 images to GHCR with release and commit tags. The dashboard build checks generated-client
 drift. The release receives `container-images.json` containing the exact image digests. The image-publication job uses the automatic
 GitHub token with package permission. A separate dependent deployment job uses the restricted SSH key described below. Check package visibility in
 GitHub before expecting anonymous pulls.
+
+After deployment passes its health checks, cleanup keeps the **newest two published stable releases** and their
+server/dashboard images. For example, v0.1.1 keeps v0.1.0; v0.1.2 removes v0.1.0 and keeps v0.1.1. Older release
+objects and their downloads are deleted, together with unused versions of these two GHCR packages. The retained
+images' platform and provenance manifests stay even when GitHub calls them untagged. Drafts and tags outside the
+stable release naming scheme are left alone. Git tags and the changelog remain as source history.
+
+Cleanup validates both retained images and their metadata before any deletion. A failed build or deployment skips
+cleanup. A cleanup API failure fails that job without stopping the healthy server; **Re-run failed jobs** retries
+it. The workflow's GitHub token needs package admin access, granted to repositories that publish their packages;
+no additional token is needed. GitHub may refuse deletion of a public package version with over 5,000 downloads:
+see [package deletion permissions and limits](https://docs.github.com/en/rest/packages/packages#delete-package-version-for-a-user).
+The packaged-updater gate downloads the latest existing release, so it never depends on a pruned archive.
 
 ## Enable automatic updates once
 
@@ -116,7 +133,7 @@ key without displaying it. Obtain `VPS_KNOWN_HOSTS` from your verified SSH known
 `ssh-keyscan` result without checking its fingerprint. No runner agent is installed on the VPS.
 
 The automatic path is **main version bump → checks and bundles → published GitHub release → both GHCR images →
-SSH deployment**. There is no approval button. A failed build or image publication never runs deployment.
+SSH deployment → retain two releases**. There is no approval button. A failed build or image publication never runs deployment.
 `Cargo.toml` and the newest changelog version must agree; an already-released version publishes/deploys nothing.
 The deployment uses the successful build's image digests and verifies their release/commit labels. An ephemeral
 GitHub token can pull private GHCR packages; it is not retained on the VPS.

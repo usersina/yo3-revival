@@ -33,6 +33,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.source-ref }}
+      - name: Require the newest published release tag at this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          SOURCE_REF: ${{ inputs.source-ref }}
+        run: python3 .github/scripts/release_lifecycle.py verify "$VERSION" "$SOURCE_REF"
       - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.14'
