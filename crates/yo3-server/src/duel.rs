@@ -35,6 +35,9 @@ const COMMAND_DATA: u32 = 0x12;
 /// Client duelRequestName of a card command (0x520FD0) and of a phase button {phase} (0x521180).
 const CARD_COMMAND: u32 = 2;
 const PHASE_BUTTON: u32 = 3;
+/// Client duelRequestName (bare) of the field's right-click while the command map's other flag 6 is set (0x5212B0, from
+/// DuelFieldManager 0x50B700): taking back an attack whose target is picked on the field.
+const RIGHT_CLICK: u32 = 5;
 /// Client duelRequestNames of a closing dialog: its result {DLGResult, debug} (0x521A70), and for the card list
 /// (0x4C74F0) first the first pick {SetIndex} (0x521BC0) and each pick {index, data: its order} (0x521CC0).
 const DIALOG_RESULT: u32 = 4;
@@ -419,6 +422,7 @@ impl DuelSession {
                 None => Default::default(),
             },
             (Some(CLIENT_DUEL), Some(PHASE_BUTTON)) => t.phase(seat, int("phase").unwrap_or(u32::MAX)),
+            (Some(CLIENT_DUEL), Some(RIGHT_CLICK)) => t.finish(seat),
             (Some(CLIENT_DUEL), Some(PICK)) => {
                 t.pick(seat, int("index").unwrap_or(u32::MAX));
                 Default::default()
@@ -525,6 +529,10 @@ impl DuelSession {
             (Some(CLIENT_DUEL), Some(SELECT_HAND)) if !self.ordered => self.janken(int("selectHand").unwrap_or(0) % 3),
             (Some(CLIENT_DUEL), Some(CARD_COMMAND)) => {
                 let prompt = CardCommand::from_message(msg).and_then(|cmd| self.engine.as_mut().and_then(|(_, t)| t.command(cmd)));
+                self.prompted(prompt)
+            }
+            (Some(CLIENT_DUEL), Some(RIGHT_CLICK)) => {
+                let prompt = self.engine.as_mut().and_then(|(_, t)| t.finish());
                 self.prompted(prompt)
             }
             (Some(CLIENT_DUEL), Some(PHASE_BUTTON)) => {

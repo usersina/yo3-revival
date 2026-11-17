@@ -786,12 +786,59 @@ fn materials_are_picked_one_at_a_time_in_the_card_list() {
 fn an_attack_target_is_a_card_choice_with_its_message() {
     // ocgcore asks for an attack target as MSG_SELECT_CARD after hint 549 (HINTMSG_ATTACKTARGET): "Select an attack
     // target @3monster@0." (222), cancelable, so with OK (kind 1): OK with no pick takes the attack back. Live:
-    // Goblin Elite's attack listed the CPU's monster; picking it dealt 1200.
+    // Goblin Elite's attack listed the CPU's monster; picking it dealt 1200. Since #51 only a target prompt with no
+    // attack of the client's before it gets the list (see `a_client_attacks_target_is_picked_on_the_field`).
     let mut t = with_cards();
     t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 549 })]);
     let select = json!({ "type": 15, "player": 0, "can_cancel": true, "min": 1, "max": 1, "selects": [card_at(1, 4, 1, 4200)] });
     let out = client_commands(t.prompt(&select));
     assert_eq!(out[3..], [(0x3EC, [1, 0, 0, 0]), (0x3ED, [1 << 28 | 222, 0, 0, 0]), (0x37, [0, 1, 1, 0])]);
+}
+
+#[test]
+fn a_client_attacks_target_is_picked_on_the_field() {
+    // #51. Konami's server sent 0xC {attacker, -1}, 0xB BattleSelect, then 0xC with the target (all 718 uses in its
+    // logs). 0xB puts DuelBattle in its aiming state (0x4F8B95): while a field card whose menu has bit 11 (Confirm) is
+    // hovered, it draws the aiming arc 0xCB to it from the attacker (0x4F8CD9: DuelCardCommand +0x44 & 0x800). So the
+    // target of the client's own attack is the battle's start, the attack with no target, 0xB, Confirm on each target
+    // and the battle input wait; a click on a target answers, and the field's right-click (other-flag 6, duelRequestName
+    // 5, 0x50B700) takes the attack back. Live: hovering Giant Germ drew the arc from Chiron the Mage, the click
+    // attacked it.
+    let mut t = with_cards();
+    t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 2, 1) })]);
+    t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4201 }] })]);
+    t.events(&[json!({ "type": 50, "cid": 4201, "from": loc(1, 2, 0, 10), "to": loc(1, 4, 3, 1) })]);
+    let attacker = json!({ "controller": 0, "location": 4, "sequence": 2, "can_direct": false });
+    let battle = json!({ "type": 10, "player": 0, "attacks": [attacker], "chains": [], "to_m2": true, "to_ep": true });
+    t.prompt(&battle);
+    let attack = CardCommand { command: 0, player: 0, zone: 2, index: 0 };
+    assert_eq!(t.command(attack), Some(Prompt::Answer(json!({ "type": 0, "action": 1, "index": 0 }))));
+    let select = json!({ "type": 15, "player": 0, "can_cancel": true, "min": 1, "max": 1,
+        "selects": [card_at(1, 4, 1, 4200), card_at(1, 4, 3, 4201)] });
+    let target_prompt = |t: &mut Translator| {
+        t.events(&[json!({ "type": 2, "hint_type": 3, "player": 0, "hint": 549 })]);
+        let Prompt::Client(out) = t.prompt(&select) else { panic!("the client picks") };
+        out
+    };
+    let out = target_prompt(&mut t);
+    assert_eq!(cmds(&out[..3]), [(0xA, [0; 4]), (0xC, [2 << 8, 1, u32::MAX, 0]), (0xB, [0; 4])]);
+    assert_eq!(command_bits(&out[3..]), [(1 | 1 << 16, 1 << 11), (1 | 3 << 16, 1 << 11)]);
+    let data = out[3].get("COMIDDATA").and_then(Value::as_bytes).unwrap();
+    assert_eq!((out[3].get("otherFlagSize"), &data[data.len() - 2..]), (Some(&Value::U32(1)), &[6, 1][..]));
+    assert_eq!(cmd(&out[4]), (4, [3, 0, 0, 0]));
+    // A click on anything else waits on; a target answers with its place in the engine's list.
+    assert_eq!(t.command(CardCommand { command: 11, player: 0, zone: 2, index: 0 }), None);
+    let click = CardCommand { command: 11, player: 1, zone: 3, index: 0 };
+    assert_eq!(t.command(click), Some(Prompt::Answer(json!({ "type": 5, "indicies": [1] }))));
+    // Asked again (a replay), the attacker is the same; the right-click takes the attack back.
+    let out = target_prompt(&mut t);
+    assert_eq!(cmds(&out[1..2]), [(0xC, [2 << 8, 1, u32::MAX, 0])]);
+    assert_eq!(t.finish(), Some(Prompt::Answer(json!({ "type": 5, "indicies": null }))));
+    // An attack target prompt with no attack of the client's before it (an effect's): the card list.
+    let mut t = with_cards();
+    let out = client_commands(Prompt::Client(target_prompt(&mut t)));
+    assert_eq!(out.last(), Some(&(0x37, [0, 1, 1, 0])));
+    assert_eq!(t.finish(), None);
 }
 
 #[test]

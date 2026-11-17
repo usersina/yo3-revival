@@ -75,10 +75,7 @@ pub const CLIENT_COMMANDS: &[ClientCommand] = &[
     // changes the music by itself (DuelCockpit 0x5040F0).
     c(9, "BgmUpdate", &[], 4400, NoHandler),
     c(0xA, "BattleInit", &[BATTLE], 2514, Sent(State)),
-    c(0xB, "BattleSelect", &[BATTLE], 718, Undecided("battle state 2 (0x4F8B95): while a field card whose menu has \
-         bit 11 (Confirm) is hovered, DuelBattle (0x4F8CD9) draws the aiming arc 0xCB to it from the attacker an 0xC \
-         {attacker, -1} named; Konami sent 0xC {attacker, -1}, 0xB, 0xC {attacker, target}. Live, targets with bit 11 \
-         drew the arc and a click answered (#51); not sent until #51 lands")),
+    c(0xB, "BattleSelect", &[BATTLE], 718, Sent(Interaction)),
     c(0xC, "BattleAttack", &[BATTLE], 3162, Sent(State)),
     c(0xD, "BattleRun", &[BATTLE], 1419, Sent(State)),
     c(0xE, "BattleEnd", &[BATTLE], 959, Sent(State)),

@@ -146,6 +146,7 @@ pub fn chain_window(hint: u64) -> Option<ChainWindow> {
     CHAIN_WINDOWS.iter().find(|(h, _, _)| *h == hint).map(|&(_, _, w)| w)
 }
 const HINTMSG_RELEASE: u64 = 500;
+const HINTMSG_ATTACKTARGET: u64 = 549;
 /// ocgcore positions.
 const POS_FACEUP_ATTACK: u64 = 1;
 const POS_FACEDOWN_ATTACK: u64 = 2;
@@ -259,6 +260,14 @@ const VIEW_BATTLE_INIT: u32 = 0xA;
 const VIEW_BATTLE_ATTACK: u32 = 0xC;
 const VIEW_BATTLE_RUN: u32 = 0xD;
 const VIEW_BATTLE_END: u32 = 0xE;
+/// BattleSelect (no parameters, 0x4F8B95): DuelBattle's aiming state. While a field card whose menu has Confirm is
+/// hovered, it draws the aiming arc (effect 0xCB) to it from the attacker a BattleAttack with no target named
+/// (0x4F8CD9, DuelCardCommand +0x44 & 0x800): how the original asked for an attack target (#51).
+const VIEW_BATTLE_SELECT: u32 = 0xB;
+/// BattleAttack's target zone for "none yet" (Konami's 0xC {attacker, 0, -1} before every 0xB).
+const NO_TARGET: u32 = u32::MAX;
+/// The command map's other flag that lets the field's right-click send duelRequestName 5 (0x50B700 → 0x501C00).
+const RIGHT_CLICK: u8 = 6;
 /// A direct attack's target zone: any zone from 5 plays as one (the direct cut-in and strike, 0x4F8430 state 3);
 /// 0xFFFFFFFF plays nothing. 16 is the field's centre, as ChainSet's.
 const DIRECT_TARGET: u32 = 16;
@@ -710,6 +719,10 @@ pub struct Translator {
     deck_tops: [Option<[u32; 4]>; 2],
     /// A MSG_SELECT_DISFIELD's zones clicked so far, once its OK dialog closed (None while it is open).
     zone_picks: Option<Vec<Json>>,
+    /// The client's attacker (player, zone) from its last attack command, until the battle or the next command
+    /// prompt; with it, an attack target is picked on the field (`field_target`, see [`VIEW_BATTLE_SELECT`]).
+    attacker: Option<(u32, u32)>,
+    field_target: bool,
     /// Lines for the player's chat window, for what a duel window can't say (`take_notes`).
     notes: Vec<String>,
     /// The next slot of the server's own dialog texts (`text`).
@@ -869,6 +882,8 @@ impl Translator {
             kinds: HashMap::new(),
             deck_tops: [None; 2],
             zone_picks: None,
+            attacker: None,
+            field_target: false,
             notes: vec![],
             decks_reversed: false,
             positions: HashMap::new(),
@@ -2068,6 +2083,7 @@ impl Translator {
 
     /// The end of the battle shown on the client, if one is.
     fn end_battle(&mut self) -> Vec<Message> {
+        self.attacker = None;
         if std::mem::take(&mut self.in_battle) { vec![command(VIEW_BATTLE_END, [0; 4])] } else { vec![] }
     }
 
@@ -2269,6 +2285,7 @@ impl Translator {
     pub fn prompt(&mut self, m: &Json) -> Prompt {
         let staged = self.staged.take();
         self.list_order.clear();
+        self.field_target = false;
         let prompt = self.prompt_for(m);
         // A window's hint is for the prompt right after it, whichever it was.
         self.phase_window = false;
@@ -2301,6 +2318,7 @@ impl Translator {
                 } else {
                     (&BATTLE_LISTS, [("to_m2", BUTTON_M2), ("to_ep", BUTTON_EP)], MODE_BATTLE)
                 };
+                self.attacker = None;
                 let mut map = self.command_map(m, lists);
                 self.add_pile_views(&mut map);
                 let flags: Vec<(u8, u8)> = buttons.into_iter().filter(|(k, _)| m[*k] == true).map(|(_, b)| (b, 1)).collect();
@@ -2329,6 +2347,11 @@ impl Translator {
             }
             MSG_SELECT_CARD | MSG_SELECT_TRIBUTE => {
                 let hint = if kind == MSG_SELECT_TRIBUTE { HINTMSG_RELEASE } else { std::mem::take(&mut self.hint) };
+                if hint == HINTMSG_ATTACKTARGET
+                    && let Some(out) = self.target_on_field(m)
+                {
+                    return Prompt::Client(out);
+                }
                 let mut out = vec![];
                 let text = self.hint_message(&mut out, hint);
                 out.extend(self.card_list(m, text));
@@ -3009,6 +3032,9 @@ impl Translator {
 
     fn command_for(&mut self, cmd: CardCommand) -> Option<Prompt> {
         let m = self.pending.clone()?;
+        if self.field_target {
+            return self.target_click(&m, cmd);
+        }
         if (m["type"] == MSG_SELECT_DISFIELD || m["type"] == MSG_SELECT_PLACE) && self.zone_picks.is_some() {
             return Some(self.zone_click(&m, cmd));
         }
@@ -3031,6 +3057,7 @@ impl Translator {
             return Some(Prompt::Client(out));
         }
         let response = self.answer(cmd)?;
+        self.chose(&m, &response);
         let attack = &m["attacks"][response["index"].as_u64().unwrap_or(u64::MAX) as usize];
         let opponent = 1 - self.player(&attack["controller"]) as usize;
         let no_target = (0..5).all(|zone| self.sides[opponent].zones.get(&zone).is_none_or(Vec::is_empty));
@@ -3042,6 +3069,66 @@ impl Translator {
         let mut out = message(&[TEXT | DIRECT_TEXT]);
         out.push(command(DIALOG, [YES_NO, FROM_ENTRIES, 0, 0]));
         Some(Prompt::Client(out))
+    }
+
+    /// The client's answer to a prompt, as the engine gets it: an attack names the attacker its target is aimed from.
+    /// The duel check calls it with the self-played answers, which reach the engine without a card command.
+    pub fn answered(&mut self, prompt: &Json, response: &Json) {
+        if self.player(&prompt["player"]) == CLIENT {
+            self.chose(prompt, response);
+        }
+    }
+
+    fn chose(&mut self, m: &Json, response: &Json) {
+        if m["type"] == MSG_SELECT_BATTLECMD && response["type"] == RESP_BATTLECMD && response["action"] == BATTLE_ATTACK {
+            let attack = &m["attacks"][response["index"].as_u64().unwrap_or(u64::MAX) as usize];
+            self.attacker = self.engine_place(attack).filter(|p| p.zone < 5).map(|p| (p.player, p.zone));
+        }
+    }
+
+    /// The target of the client's own attack, picked on the field as the original did (#51): the battle's start, the
+    /// attack with no target yet, BattleSelect's aiming state, Confirm on each target and the battle input wait, with
+    /// the field's right-click for taking the attack back. None (the card list instead) without an attacker or with a
+    /// target that is not a monster on the field.
+    fn target_on_field(&mut self, m: &Json) -> Option<Vec<Message>> {
+        let (player, zone) = self.attacker?;
+        let mut map = vec![];
+        for card in m["selects"].as_array()? {
+            let place = self.place(card).filter(|p| p >> 8 & 0xFF == 0)?;
+            map.push((place, 1 << CONFIRM));
+        }
+        self.field_target = true;
+        self.pending = Some(m.clone());
+        Some(vec![
+            command(VIEW_BATTLE_INIT, [0; 4]),
+            command(VIEW_BATTLE_ATTACK, [player | zone << 8, 1 - player, NO_TARGET, 0]),
+            command(VIEW_BATTLE_SELECT, [0; 4]),
+            command_data(&map, &[(RIGHT_CLICK, 1)]),
+            command(INPUT, [MODE_BATTLE, CLIENT, 0, 0]),
+        ])
+    }
+
+    /// A click while an attack target is picked on the field: Confirm on a target answers, anything else waits on.
+    fn target_click(&mut self, m: &Json, cmd: CardCommand) -> Option<Prompt> {
+        // A field card comes from its own slot, index 0 (see `listed`); targets are keyed at (zone 0, index slot).
+        let slot = if cmd.index == 0 && cmd.zone < 5 { cmd.zone as usize } else { return None };
+        let place = table_place(cmd.player, 0, slot);
+        let index = m["selects"].as_array()?.iter().position(|c| self.place(c) == Some(place)).filter(|_| cmd.command == CONFIRM)?;
+        self.field_target = false;
+        self.pending = None;
+        Some(Prompt::Answer(json!({ "type": RESP_CARD, "indicies": [index] })))
+    }
+
+    /// The field's right-click (duelRequestName 5): while an attack target is picked on the field, the attack taken
+    /// back when the engine allows it.
+    pub fn finish(&mut self) -> Option<Prompt> {
+        let m = self.pending.as_ref().filter(|_| self.field_target)?;
+        if m["can_cancel"] != true {
+            return None;
+        }
+        self.field_target = false;
+        self.pending = None;
+        Some(Prompt::Answer(json!({ "type": RESP_CARD, "indicies": null })))
     }
 
     /// A command on a pile (sent at index 0, where the client found it): the one card of the pile it fits, or with
@@ -3130,6 +3217,7 @@ impl Translator {
             Some(MSG_SELECT_IDLECMD) => (&IDLE_LISTS, RESP_IDLECMD, &[("to_bp", IDLE_TO_BP), ("to_ep", IDLE_TO_EP)]),
             Some(MSG_SELECT_BATTLECMD) => (&BATTLE_LISTS, RESP_BATTLECMD, &[("to_m2", BATTLE_TO_M2), ("to_ep", BATTLE_TO_EP)]),
             Some(MSG_SELECT_DISFIELD) if self.player(&m["player"]) == CLIENT => return self.unreachable_zones(m),
+            Some(MSG_SELECT_CARD) if self.field_target => return self.unreachable_targets(m),
             _ => return self.unreachable_choices(m),
         };
         let mut reachable: Vec<Json> = vec![];
@@ -3189,6 +3277,22 @@ impl Translator {
             }
         }
         offered.into_iter().filter(|(answer, _)| !reachable.contains(answer)).map(|(_, what)| what).collect()
+    }
+
+    /// [`unreachable_answers`] for an attack target picked on the field: each target's Confirm, and the right-click.
+    fn unreachable_targets(&self, m: &Json) -> Vec<String> {
+        let mut missing = vec![];
+        for (i, card) in m["selects"].as_array().into_iter().flatten().enumerate() {
+            let Some(place) = self.place(card) else { continue };
+            let click = CardCommand { command: CONFIRM, player: place & 0xFF, zone: place >> 16 & 0xFF, index: 0 };
+            if self.clone().command(click) != Some(Prompt::Answer(json!({ "type": RESP_CARD, "indicies": [i] }))) {
+                missing.push(format!("selects[{i}] (attack target on the field)"));
+            }
+        }
+        if m["can_cancel"] == true && self.clone().finish().is_none() {
+            missing.push("taking the attack back (right-click)".into());
+        }
+        missing
     }
 
     /// [`unreachable_answers`] for a zone choice: each free zone through the OK dialog and its click (and, for several,

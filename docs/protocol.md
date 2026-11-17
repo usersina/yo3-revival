@@ -1949,15 +1949,15 @@ list with Search and Revert. Live: Giant Orc's attack opened the list with "Sele
 the CPU's monster marked as the opponent's; picking it sent `6`, `7 {index 0, data 1}`, `4 {DLGResult 1}` and the
 attack dealt 1200.
 
-**Attack targets are a dialog today.** We once read the client as having no way to pick a target on the field (but see `0xB` below, checked live): DuelBattle
+**Attack targets: the field for the client's own attacks, else the card list.** We once read the client as having no way to pick a target on the field (`0xB` below shows it has): DuelBattle
 (`0x4F8A90`) handles command 4 only in battle mode 3, to highlight the client's own attackers (bit 0), and `0xA`–`0xE`
 are the battle's animations (but see `0xB` below); DuelFieldManager's command 4 (`0x50A690`) highlights cards of either side that have
 command bits, and a click runs the hovered card's menu entry (`0x50B700` → `0x4F9510`), with no target step; modes 4
 and 5 are "Checking the Field. Right-click to finish." (UI text `0x2214`; the right click, with other-flag 6, sends
 `duelRequestName 5`). The dialog text table (`DLG_Text_E.bin`, the duel prompts) holds the original server's battle
 dialogs instead: 222 "Select an attack target monster.", 225 "Attack your opponent directly?", 223 "Replay happens.
-Continue to attack?", 265 "Switch the attack target to another monster?", 154 "An attack target was selected.". So the
-server keeps the card list for targets, and words EDOPro's battle questions (processor.cpp: `SelectYesNo` 31 when the
+Continue to attack?", 265 "Switch the attack target to another monster?", 154 "An attack target was selected.". The
+card list stays for a target prompt that follows no attack of the client's (an effect's), and the server words EDOPro's battle questions (processor.cpp: `SelectYesNo` 31 when the
 attacker could attack directly or a monster, 30 at a replay) with 225 and 223. Live (`--duel-deck 429`, Jinzo #7
 against Jinzo #7): Kaiba's attack asked "Attack your opponent directly?"; No opened "Select an attack target monster."
 with Yugi's Jinzo, and the two destroyed each other. With no monster to attack EDOPro asks nothing, so the server
@@ -1978,6 +1978,18 @@ DuelCardCommand (built at `0x4F8E70`), whose `+0x44` holds the hovered card's me
 11, Confirm. With bit 11 instead, hovering Giant Germ drew the green aiming arc from the attacker to it with no menu,
 and the click sent `{CommandID 11, player 1, position 0}`, the attack on Germ (**confirmed**, live). So the original's
 targets were the monsters' Confirm entry, and #51's field targeting needs only commands the client already has.
+
+So the server does it (#51, `translate.rs` `target_on_field`, contract test
+`a_client_attacks_target_is_picked_on_the_field`): after the client's attack command (or, in the duel check, its
+self-played attack) the attacker is kept until the battle ends or the next command prompt, and an attack target prompt
+(hint 549) whose targets are all monsters on the field becomes `0xA`, `0xC {attacker, 1 − player, −1}`, `0xB`, the
+command map with Confirm on each target and other-flag 6, and command 4 mode 3. Confirm on a target answers with its
+index; any other click waits on. Other-flag 6 lets the field's right-click send `duelRequestName 5` (`0x50B700` →
+`0x5212B0`), which takes the attack back when the engine allows it (`can_cancel`), as OK with no pick did in the list
+(live with `--duel-check`, against Yami Bakura: the arc aimed at his face-down Defense monster, which stayed face
+down; the right-click sent `duelRequestName 5` and the battle commands came back; attacking again and clicking it
+destroyed it; no ERROR). A replay's second target prompt aims from the same attacker. The duel check
+asks every target's click and the right-click to reach their answers.
 
 The client's MSG_SELECT_EFFECTYN opens the Yes/No dialog with 'Activate the effect of "%s"?' (250) and the card's
 name, MSG_SELECT_YESNO with 'Use the effect of "%s"?' (226) naming the card whose script string the question is (the

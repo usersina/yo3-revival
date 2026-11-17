@@ -31,6 +31,8 @@ Your first starting deck is prepared and selected automatically. You can duel wi
 
 In a duel, left-click a hand card for its default action; right-click it for the available actions.
 Use the phase buttons to enter the Battle Phase, Main Phase 2 or End Phase.
+To attack a monster, click your attacker, then click the monster to attack: an arc aims at the monster under the pointer.
+Right-click instead to take the attack back.
 
 **Main Menu → DUEL OPTIONS** sets how duels behave for you. With **Auto Card Placing** OFF you choose the zone for each
 monster, Spell and Trap you put on the field (a prompt, then a click on a free zone); ON, the game picks for you.

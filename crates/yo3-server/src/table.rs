@@ -657,6 +657,12 @@ impl Table {
         }
     }
 
+    /// The field's right-click: see [`Translator::finish`].
+    pub fn finish(&mut self, seat: usize) -> Out {
+        let prompt = self.translators.get_mut(seat).and_then(|t| t.finish());
+        self.prompted(seat, prompt)
+    }
+
     pub fn dialog_result(&mut self, seat: usize, n: u32) -> Out {
         let prompt = self.translators.get_mut(seat).and_then(|t| t.dialog_result(n));
         self.prompted(seat, prompt)

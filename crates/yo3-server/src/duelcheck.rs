@@ -63,6 +63,7 @@ const CARD_SWAP: u32 = 0x1B;
 const FLIP_TURN: u32 = 0x1C;
 const CARD_VANISH: u32 = 0x1F;
 const BATTLE_INIT: u32 = 0xA;
+const BATTLE_SELECT: u32 = 0xB;
 const BATTLE_ATTACK: u32 = 0xC;
 const BATTLE_RUN: u32 = 0xD;
 const BATTLE_END: u32 = 0xE;
@@ -882,6 +883,8 @@ pub mod selfplay {
         pub hidden_by_default: BTreeMap<u64, u32>,
         /// A phase's own windows with something to activate that the player saw on the default option (#53).
         pub phase_windows: u32,
+        /// Attack targets the client picked on the field (BattleSelect, #51).
+        pub field_targets: u32,
     }
 
     /// How many answers an engine prompt has, roughly, for the prompts the translator may answer itself: options,
@@ -1094,6 +1097,9 @@ pub mod selfplay {
                         if msgs.iter().any(|m| int(m, "id") == 0x36 && int(m, "param1") == 8 && int(m, "param3") & 0xFFFF >= super::FIRST_TOKEN) {
                             played.token_positions += 1;
                         }
+                        if msgs.iter().any(|m| int(m, "id") == super::BATTLE_SELECT) {
+                            played.field_targets += 1;
+                        }
                         settle_positions(&mut msgs);
                         model.apply_all(&msgs);
                         let mut problems = model.check(&state);
@@ -1134,6 +1140,7 @@ pub mod selfplay {
                 actions += 1;
                 random_answer(&last, &mut rng, actions > ACTIONS_PER_TURN)
             };
+            t.answered(&last, &response);
             answer = engine.respond(response);
         }
         Ok(played)
