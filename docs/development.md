@@ -227,6 +227,16 @@ message type the rules engine sends, as shown, asked (a prompt), ignored with a 
 can't catch these: a message that shows something without changing the cards (a coin toss, a die) leaves both views
 equal. When a feature handles a new type, change its entry from `Undecided` to `Shown`.
 
+**Commands the client understands.** `CLIENT_COMMANDS` in `crates/yo3-server/src/client_commands.rs` lists every duel
+command the client's components handle or Konami's server sent: its handlers, how often Konami sent it in the 228
+duel logs, and whether we send it, don't (with the evidence), it has no handler, or it is undecided. The card info
+panel's level and stats (1018-1020) went unsent because nothing put "Konami sent it 1,322 times" next to "we never
+do". `tests/client_commands.rs` decodes the dispatch tables from `yo3.exe` and fails when a handler differs from the
+table, and recounts Konami's logs and fails when a count or an id differs (each skipped without the game or the logs).
+The duel check takes its known commands from the table (`duelcheck::coverage::native`): sending a command the table
+doesn't mark sent fails the duel. To send one, mark it `Sent` with its coverage; to settle an undecided one, read its
+handler and Konami's uses, then mark it.
+
 **Questions the client answers by itself.** Below level 2, the client's Effect dialog answers No on its own under the
 default Activation Message (Semi Auto Cancel), so the player never sees that chance. `CHAIN_WINDOWS` in `translate.rs`
 classifies every window the core marks with `MSG_HINT` `HINT_EVENT`. A **Phase** window (Draw, Standby, Battle start

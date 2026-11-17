@@ -1757,7 +1757,7 @@ and each LP change `0x10`, plays `DUEL_ADVANTAGE` (BGM 28) at a lead of 3000 or 
 3000 or more behind, and otherwise the duel's own track (`+0x8B0` of `0x46D820`, played at setup `0x5159E2`; NPC
 duels `DUEL_CPU1`–`CPU3`, 30–32), nothing while either LP is 0. Live (2026-11-14, NPC duel against Kaiba, traced
 `0x50414E`/`0x5041A7`): at 5000, 3400 and 2000 against his 8000 the Disadvantage track went to the sound component
-each time; the opening was track 30. `0x45`, `0x49`–`0x4B` and `0x4E` have no handler either; 1013–1016, 1021, 1022 (the client's own
+each time; the opening was track 30. `0x45`, `0x49`–`0x4B` and `0x4E` have no handler either (every command, its handlers and Konami's count: `CLIENT_COMMANDS`, `crates/yo3-server/src/client_commands.rs`); 1013–1016, 1021, 1022 (the client's own
 acknowledgement request), 1024 and 1025 are bookkeeping; 1018–1020 feed the card info panel (below). CardCheat
 `0x1D` is sent with the reveals below. Konami's opening also differs (1013 for every
 place, 1006, pile counts 1023 with only the top card in the table); ours, a table entry for every card, works.

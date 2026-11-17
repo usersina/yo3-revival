@@ -15,6 +15,7 @@ pub mod store;
 pub(crate) mod lock;
 pub mod duel;
 pub mod duelcheck;
+pub mod client_commands;
 mod duellog;
 pub mod table;
 pub mod engine;

@@ -2,17 +2,15 @@
 //! the native dispatchers documented in docs/protocol.md. Interaction coverage is not a claim to prove legal menus.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Coverage { State, Interaction, Presentation, Unsupported, Unknown }
+/// What the client model makes of a command the server sent: the table's ([`crate::client_commands`]) for one it marks
+/// sent, Unknown for any other (the duel check fails on it). The server's own markers aren't client commands: the
+/// native checkpoint and the clocks' settle marker (#11), both answered by the connection DLL.
 pub fn native(id: u32) -> Coverage {
-    match id {
-        5 | 6 | 0xA | 0xC..=0x10 | 0x12 | 0x16 | 0x1A..=0x1C | 0x1F | 0x27 | 1000..=1003 | 1017 => Coverage::State,
-        4 | 0x36 | 0x37 | 0x4C | 1004 | 1005 | 1007 | 1008 | 1010 | 1011 => Coverage::Interaction,
-        // 7, 0x1E, 0x22: the field's background, the Set and activation effects; 0x43-0x4D: the avatars' speech.
-        // 1006: the usable zones (a disabled zone's mark); 0x17, 0x19, 0x1D: a revealed card's flip, popup and face.
-        // 0x2A-0x32, 0x3A, 1015, 1016: DuelSummon's tribute, material and tuning effects, RunFusion and its material list.
-        // SETTLE (0x5F1): a batch's end for the clocks (#11), answered by the connection DLL; no card moves.
-        // 1018-1020: the card info panel's level in the hand and stats in the Graveyard.
-        1018..=1020 | 1 | 2 | 7 | 0x17 | 0x19 | 0x1D | 0x13 | 0x1E | 0x22 | 0x26 | 1006 | 0x2A..=0x32 | 0x33 | 0x34 | 0x38 | 0x39 | 0x3A | 1015 | 1016 | 0x43 | 0x44 | 0x46 | 0x47 | 0x48 | 0x4D | 1500..=1505
-            | super::native::CHECKPOINT | crate::clock::SETTLE => Coverage::Presentation,
+    if id == super::native::CHECKPOINT || id == crate::clock::SETTLE {
+        return Coverage::Presentation;
+    }
+    match crate::client_commands::command(id).map(|c| c.usage) {
+        Some(crate::client_commands::Use::Sent(coverage)) => coverage,
         _ => Coverage::Unknown,
     }
 }
