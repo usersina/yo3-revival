@@ -427,3 +427,25 @@ async fn staff_account_detail_and_edits_use_stable_ids_without_credentials() {
     let token = format!("Authorization: Bearer {}\r\n", b.admin.token);
     assert_eq!(b.raw_on(b.live.http, "GET", &path, "", &token).await.status, 404);
 }
+
+#[tokio::test]
+async fn role_edits_are_admin_only_and_revoke_staff_cookies_on_both_listeners() {
+    let mut b = Browser::new("role-edits").await;
+    b.sign_in("Pegasus").await;
+    let list = b.call("GET", "/panel/api/v1/accounts", json!(null)).await;
+    let user = list.body["accounts"].as_array().unwrap().iter().find(|a| a["login"] == "Yugi").unwrap()["user_id"].clone();
+    let req = json!({ "kind": "set_role", "user_id": user, "role": "moderator" });
+    let response = b.call("POST", "/panel/api/v1/accounts/edit", req.clone()).await;
+    assert_eq!(response.status, 200, "{}", response.body);
+    assert_eq!(b.call("POST", "/panel/api/v1/accounts/edit", req).await.body, response.body);
+    assert_eq!(b.call("POST", "/panel/api/v1/accounts/edit", json!({ "kind": "set_role", "user_id": user, "role": "admin" })).await.status, 409);
+    assert_eq!(b.call("POST", "/panel/api/v1/accounts/edit", json!({ "kind": "set_role", "user_id": user, "role": "superuser" })).await.status, 400);
+    b.sign_in("Yugi").await;
+    assert_eq!(b.call("POST", "/panel/api/v1/accounts/edit", json!({ "kind": "set_role", "user_id": user, "role": "admin" })).await.status, 403);
+    for role in ["player", "moderator"] {
+        let admin = b.admin.clone();
+        tokio::task::spawn_blocking(move || api::call(&admin, &Op::SetRole { user: "Yugi".into(), role: role.into() })).await.unwrap().unwrap();
+    }
+    assert_eq!(b.call("GET", "/panel/api/v1/session", json!(null)).await.status, 401);
+    assert_eq!(b.raw_on(b.live.http, "GET", "/panel/", "", "").await.status, 303, "legacy panel rejects the same stale staff cookie");
+}

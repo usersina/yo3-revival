@@ -177,7 +177,7 @@ pub enum Admin {
     /// for 24 hours, in the launcher's "Forgot password". Works while the server runs.
     ResetCode { user: String },
     /// Make USER a player, moderator or admin. Works while the server runs.
-    SetRole { user: String, role: String },
+    SetRole { user: String, role: String, #[arg(long)] request_id: Option<String> },
     /// Print what a friend needs to join: the address (`--advertise`, with `--auth-port`), the server's identity and the
     /// invite link that carries both, for Desktop's Other servers or the Scripts helper's `--sign-in`. --invite also makes
     /// an invite code for one sign-up, working for a week. Works while the server runs.

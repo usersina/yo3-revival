@@ -1691,6 +1691,31 @@
             "type": "object",
             "required": [
               "user_id",
+              "role",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_role"
+                ]
+              },
+              "role": {
+                "$ref": "#/components/schemas/Role"
+              },
+              "user_id": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "user_id",
               "name",
               "kind"
             ],

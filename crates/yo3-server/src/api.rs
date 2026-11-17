@@ -113,7 +113,7 @@ pub enum Op {
 
 impl Op {
     /// Operations migrated to a committed change/audit/receipt boundary.
-    fn receipted(&self) -> bool { matches!(self, Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. }) }
+    fn receipted(&self) -> bool { matches!(self, Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. }) }
     /// Its name in the API's path and the audit log.
     pub fn name(&self) -> String {
         serde_json::to_value(self).ok().and_then(|v| v["op"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -294,7 +294,7 @@ impl Api {
             }, id, actor, origin).map(|r| json!(r)),
             Op::RemoveCode { code } => self.remove_bp_code(&codes::RemoveBpCodeRequest { code: code.trim().to_string() }, id, actor, origin).map(|r| json!(r)),
             Op::Invite { uses, days } => self.create_invite(&invites::CreateInviteRequest { uses: *uses, days: *days }, id, actor, origin).map(|r| json!(r)),
-            Op::AddPlayer { .. } | Op::Rename { .. } | Op::SetCountry { .. } => self.edit_named_account(op, id, actor, origin),
+            Op::AddPlayer { .. } | Op::Rename { .. } | Op::SetCountry { .. } | Op::SetRole { .. } => self.edit_named_account(op, id, actor, origin),
             _ => Err(MutationError::new(MutationErrorCode::InvalidRequest, "This operation has not migrated to the typed mutation boundary.")),
         }
     }
@@ -605,14 +605,7 @@ or after your next duel.", recipe.title)
                 let lines: Vec<String> = gifts.recipes.iter().map(|r| format!("{}\t{}\t{} cards", r.id, r.title, r.cards.len())).collect();
                 Ok((json!({ "recipes": rows, "message": lines.join("\n") }), None, None))
             }
-            Op::SetRole { user, role } => {
-                let parsed: crate::logins::Role = role.parse()?;
-                let mut d = self.accounts.locked();
-                let before = d.login_of(user).map(|(_, l)| json!(l.role));
-                d.set_role(user, parsed)?;
-                Ok((message(format!("{user} is now {}", role.to_ascii_lowercase())), before, Some(json!(parsed))))
-            }
-            Op::Rename { .. } | Op::SetCountry { .. } => Err("profile edits require the typed mutation boundary".into()),
+            Op::Rename { .. } | Op::SetCountry { .. } | Op::SetRole { .. } => Err("profile edits require the typed mutation boundary".into()),
             _ => self.accounts_op(op),
         }
     }

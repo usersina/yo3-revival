@@ -183,6 +183,9 @@ pub struct Login {
     pub password: String,
     #[serde(default)]
     pub role: Role,
+    /// Permanently revokes staff cookies when a role changes, even across a later promotion back.
+    #[serde(default)]
+    pub staff_epoch: u64,
     #[serde(default)]
     pub standing: Standing,
     /// The one-time recovery code's digest (a new one is made each time it is used).
@@ -204,7 +207,7 @@ pub struct Mute { pub reason: String, pub until: Option<i64> }
 impl Login {
     /// A new password account: User ID `user`, its password's PHC hash and its recovery code's digest.
     pub fn new(user: &str, password: String, recovery: String) -> Login {
-        Login { user: user.into(), password, role: Role::default(), standing: Standing::default(), recovery, reset: None, devices: vec![], muted: None }
+        Login { user: user.into(), password, role: Role::default(), staff_epoch: 0, standing: Standing::default(), recovery, reset: None, devices: vec![], muted: None }
     }
 
     /// Why a sign-in is refused, if it is (#26): a ban or a restriction still running at `now`. A ban also ended the

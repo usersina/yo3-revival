@@ -6,7 +6,7 @@ The main pages are a **labelled design preview** with sample data. Changes live 
 **Reset preview**. The role selector is not authentication.
 
 The separate **[/connected](http://127.0.0.1:5173/connected)** page uses generated API hooks for real staff sign-in,
-account details and player creation/rename/country edits, Give BP, registration invites (list/create, limits, expiry, issuer and claims) and BOOSTERPASS codes
+account details and player creation/rename/country edits, confirmed staff role changes, Give BP, registration invites (list/create, limits, expiry, issuer and claims) and BOOSTERPASS codes
 (list, create, remove and claims). It never substitutes sample data for a
 failed connection. This is local development work;
 public hosting, the remaining management pages, MFA and Compose are still pending.
@@ -110,7 +110,8 @@ and each area has a page under `src/pages/`. Routing uses normal URLs, including
 The HTTP services use Axum on separate sockets. Existing HTML pages share their sign-in throttle and staff sessions
 with the new JSON routes; the host-token API stays on the management socket and cannot be reached on the dashboard
 socket, even with a valid token. Rust enforces staff roles and CSRF regardless of which controls
-React displays. Password/recovery changes invalidate staff cookies. The public access gate still needs full session
+React displays. Password/recovery and actual role changes invalidate staff cookies. Role changes permanently
+invalidate old cookies even if the role is later restored; the form warns before self-demotion. The public access gate still needs full session
 revocation/MFA recovery, public-origin/proxy checks and the reviewed nginx configuration. See the
 [accepted plan](../docs/dashboard.md).
 

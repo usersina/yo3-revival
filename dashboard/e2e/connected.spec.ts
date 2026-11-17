@@ -464,3 +464,77 @@ test('account profiles: a saved country edit stays explicit when country choices
   await expect(dialog.getByText('We could not confirm this profile change.')).toBeVisible()
   await expect(dialog.getByLabel('Country', { exact: true })).toHaveValue('JP')
 })
+
+test('role changes require confirmation and retain their ID after a lost response and reload', async ({
+  page,
+}) => {
+  await signIn(page)
+  const ids: string[] = []
+  await page.route('**/panel/api/v1/accounts/edit', async (route) => {
+    const data = route.request().postDataJSON() as { kind: string }
+    if (data.kind !== 'set_role') return route.continue()
+    ids.push(route.request().headers()['idempotency-key'])
+    if (ids.length === 1) {
+      const response = await route.fetch()
+      expect(AccountEditResult.safeParse(await response.json()).success).toBe(true)
+      return route.abort('failed')
+    }
+    return route.continue()
+  })
+  await page.getByRole('button', { name: 'View account TestRoleTarget', exact: true }).click()
+  let dialog = page.getByRole('dialog', { name: 'TestRoleTarget', exact: true })
+  await dialog.getByRole('button', { name: 'Change role', exact: true }).click()
+  await dialog.getByLabel('New role', { exact: true }).selectOption('moderator')
+  await expect(dialog.getByRole('button', { name: 'Save role', exact: true })).toBeDisabled()
+  await dialog.getByRole('checkbox', { name: /I confirm this role change/ }).check()
+  await dialog.getByRole('button', { name: 'Save role', exact: true }).click()
+  await expect(dialog.getByText('We could not confirm this profile change.')).toBeVisible()
+  await page.reload()
+  await page.getByRole('button', { name: 'Resume profile change', exact: true }).click()
+  dialog = page.getByRole('dialog', { name: 'TestRoleTarget', exact: true })
+  await expect(dialog.getByLabel('New role', { exact: true })).toHaveValue('moderator')
+  await expect(dialog.getByLabel('New role', { exact: true })).toBeDisabled()
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = page.waitForResponse((r) => r.url().endsWith('/panel/api/v1/accounts/edit'))
+    await dialog.getByRole('button', { name: 'Retry same change', exact: true }).click()
+    const status = (await response).status()
+    if (status === 200) break
+    expect(status).toBe(403)
+    await page.waitForResponse((r) => r.url().endsWith('/panel/api/v1/session'))
+  }
+  await expect(dialog.getByText('Role saved. Changed accounts must sign in again.')).toBeVisible()
+  expect(ids.length).toBeGreaterThanOrEqual(2)
+  expect(new Set(ids).size).toBe(1)
+  await page.setViewportSize({ width: 320, height: 850 })
+  expect(
+    (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()).violations,
+  ).toEqual([])
+})
+
+test('moderators cannot change roles and changing your own role signs you out', async ({
+  page,
+}) => {
+  await signIn(page, 'TestModerator')
+  await page.getByRole('button', { name: 'View account TestPlayer', exact: true }).click()
+  await expect(
+    page.getByRole('dialog').getByRole('button', { name: 'Change role', exact: true }),
+  ).toBeDisabled()
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  await signIn(page, 'TestRoleAdmin')
+  await page.getByRole('button', { name: 'View account TestRoleAdmin', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'TestRoleAdmin', exact: true })
+  await dialog.getByRole('button', { name: 'Change role', exact: true }).click()
+  await dialog.getByLabel('New role', { exact: true }).selectOption('moderator')
+  await expect(
+    dialog.getByText('Changing your own role signs you out. You will lose administrator access.'),
+  ).toBeVisible()
+  await dialog.getByRole('checkbox', { name: /I confirm this role change/ }).check()
+  await dialog.getByRole('button', { name: 'Save role', exact: true }).click()
+  await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
+  await signIn(page, 'TestRoleAdmin')
+  await page.getByRole('button', { name: 'View account TestRoleAdmin', exact: true }).click()
+  await expect(
+    page.getByRole('dialog').getByRole('button', { name: 'Change role', exact: true }),
+  ).toBeDisabled()
+})

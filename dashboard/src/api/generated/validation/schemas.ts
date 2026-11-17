@@ -128,42 +128,49 @@ export const AccountDetail = zod.object({
 export type AccountDetail = zod.input<typeof AccountDetail>;
 export type AccountDetailOutput = zod.output<typeof AccountDetail>;
 
-export const accountEditRequestOneNameMax = 16;
-
 export const accountEditRequestOneUserIdMin = 0;
 export const accountEditRequestOneUserIdMax = 4294967295;
 
 export const accountEditRequestTwoNameMax = 16;
 
-export const accountEditRequestTwoPlayerIdMin = 0;
-export const accountEditRequestTwoPlayerIdMax = 4294967295;
-
 export const accountEditRequestTwoUserIdMin = 0;
 export const accountEditRequestTwoUserIdMax = 4294967295;
 
-export const accountEditRequestThreeCountryMin = 2;
-export const accountEditRequestThreeCountryMax = 2;
+export const accountEditRequestThreeNameMax = 16;
 
+export const accountEditRequestThreePlayerIdMin = 0;
+export const accountEditRequestThreePlayerIdMax = 4294967295;
 
-export const accountEditRequestThreeCountryRegExp = new RegExp('^[A-Za-z]{2}$');
 export const accountEditRequestThreeUserIdMin = 0;
 export const accountEditRequestThreeUserIdMax = 4294967295;
+
+export const accountEditRequestFourCountryMin = 2;
+export const accountEditRequestFourCountryMax = 2;
+
+
+export const accountEditRequestFourCountryRegExp = new RegExp('^[A-Za-z]{2}$');
+export const accountEditRequestFourUserIdMin = 0;
+export const accountEditRequestFourUserIdMax = 4294967295;
 
 
 
 export const AccountEditRequest = zod.union([zod.object({
-  "kind": zod.enum(['add_player']),
-  "name": zod.string().min(1).max(accountEditRequestOneNameMax),
+  "kind": zod.enum(['set_role']),
+  "role": Role,
   "user_id": zod.int().min(accountEditRequestOneUserIdMin).max(accountEditRequestOneUserIdMax)
 }),zod.object({
-  "kind": zod.enum(['rename_player']),
+  "kind": zod.enum(['add_player']),
   "name": zod.string().min(1).max(accountEditRequestTwoNameMax),
-  "player_id": zod.int().min(accountEditRequestTwoPlayerIdMin).max(accountEditRequestTwoPlayerIdMax),
   "user_id": zod.int().min(accountEditRequestTwoUserIdMin).max(accountEditRequestTwoUserIdMax)
 }),zod.object({
-  "country": zod.string().min(accountEditRequestThreeCountryMin).max(accountEditRequestThreeCountryMax).regex(accountEditRequestThreeCountryRegExp).nullish().describe('Null or omitted: derive from the game\'s language. Other codes must occur in the client\'s table.'),
-  "kind": zod.enum(['set_country']),
+  "kind": zod.enum(['rename_player']),
+  "name": zod.string().min(1).max(accountEditRequestThreeNameMax),
+  "player_id": zod.int().min(accountEditRequestThreePlayerIdMin).max(accountEditRequestThreePlayerIdMax),
   "user_id": zod.int().min(accountEditRequestThreeUserIdMin).max(accountEditRequestThreeUserIdMax)
+}),zod.object({
+  "country": zod.string().min(accountEditRequestFourCountryMin).max(accountEditRequestFourCountryMax).regex(accountEditRequestFourCountryRegExp).nullish().describe('Null or omitted: derive from the game\'s language. Other codes must occur in the client\'s table.'),
+  "kind": zod.enum(['set_country']),
+  "user_id": zod.int().min(accountEditRequestFourUserIdMin).max(accountEditRequestFourUserIdMax)
 })]);
 
 export type AccountEditRequest = zod.input<typeof AccountEditRequest>;

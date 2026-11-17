@@ -16,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
     yo3_server::store::initialize(&dir)?;
     let mut accounts = Directory::open(vec![], &dir.join("accounts.json"))?;
     let password = logins::hash_password("DashboardDemo123!".into()).await?;
-    for (user, role) in [("TestAdmin", Role::Admin), ("TestModerator", Role::Moderator), ("TestPlayer", Role::Player)] {
+    for (user, role) in [("TestAdmin", Role::Admin), ("TestModerator", Role::Moderator), ("TestPlayer", Role::Player), ("TestRoleTarget", Role::Player), ("TestRoleAdmin", Role::Admin)] {
         let login = Login::new(user, password.clone(), logins::digest(&logins::new_code()));
         let id = accounts.register(login, None, Registration::Open).map_err(anyhow::Error::msg)?;
         accounts.set_role(user, role).map_err(anyhow::Error::msg)?;

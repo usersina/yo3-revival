@@ -9,6 +9,7 @@ use super::{Api, Actor, Op, MutationError, MutationErrorCode, mutation::{fingerp
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AccountEditRequest {
+    SetRole { #[schema(maximum = 4294967295_u32)] user_id: u32, role: Role },
     AddPlayer { #[schema(maximum = 4294967295_u32)] user_id: u32, #[schema(min_length = 1, max_length = 16)] name: String },
     RenamePlayer { #[schema(maximum = 4294967295_u32)] user_id: u32, #[schema(maximum = 4294967295_u32)] player_id: u32,
         #[schema(min_length = 1, max_length = 16)] name: String },
@@ -17,12 +18,13 @@ pub enum AccountEditRequest {
         #[schema(min_length = 2, max_length = 2, pattern = "^[A-Za-z]{2}$")] country: Option<String> },
 }
 impl AccountEditRequest {
-    fn user(&self) -> u32 { match self { Self::AddPlayer { user_id, .. } | Self::RenamePlayer { user_id, .. } | Self::SetCountry { user_id, .. } => *user_id } }
-    fn operation(&self) -> &'static str { match self { Self::AddPlayer { .. } => "add-player", Self::RenamePlayer { .. } => "rename", Self::SetCountry { .. } => "set-country" } }
+    fn user(&self) -> u32 { match self { Self::AddPlayer { user_id, .. } | Self::RenamePlayer { user_id, .. } | Self::SetCountry { user_id, .. } | Self::SetRole { user_id, .. } => *user_id } }
+    fn operation(&self) -> &'static str { match self { Self::AddPlayer { .. } => "add-player", Self::RenamePlayer { .. } => "rename", Self::SetCountry { .. } => "set-country", Self::SetRole { .. } => "set-role" } }
     fn normalize(&mut self) {
         match self {
             Self::AddPlayer { name, .. } | Self::RenamePlayer { name, .. } => *name = name.trim().into(),
             Self::SetCountry { country, .. } => *country = country.as_ref().map(|c| c.to_ascii_uppercase()),
+            Self::SetRole { .. } => {}
         }
     }
 }
@@ -93,6 +95,8 @@ impl Input {
                 AccountEditRequest::RenamePlayer { user_id, player_id, name: new.clone() }
             }
             Self::Named(Op::SetCountry { who, code }) => AccountEditRequest::SetCountry { user_id: d.user_of(who).ok_or_else(missing)?, country: (!code.is_empty()).then(|| code.clone()) },
+            Self::Named(Op::SetRole { user, role }) => AccountEditRequest::SetRole { user_id: d.login_of(user).map(|(id, _)| id).ok_or_else(missing)?,
+                role: role.parse().map_err(|e| MutationError::new(MutationErrorCode::InvalidRequest, e))? },
             _ => return Err(MutationError::new(MutationErrorCode::InvalidRequest, "Unsupported profile edit.")),
         })
     }
@@ -142,6 +146,7 @@ impl Api {
             Op::AddPlayer { name, .. } => *name = name.trim().into(),
             Op::Rename { new, .. } => *new = new.trim().into(),
             Op::SetCountry { code, .. } => *code = if code.eq_ignore_ascii_case("auto") { String::new() } else { code.to_ascii_uppercase() },
+            Op::SetRole { role, .. } => *role = role.to_ascii_lowercase(),
             _ => {}
         }
         let result = self.edit_profile(Input::Named(op.clone()), id, actor, origin)?;
@@ -151,6 +156,7 @@ impl Api {
             Op::Rename { old, new } => format!("{old} is now {new} (online, at the player's next login)"),
             Op::AddPlayer { who, name } => { value["created"] = json!(name); format!("{who}'s account has a player named {name}") },
             Op::SetCountry { who, code } => format!("{who}'s country is now {}", if code.is_empty() { "auto (the game's language)" } else { code }),
+            Op::SetRole { user, role } => format!("{user} is now {role}"),
             _ => unreachable!(),
         });
         Ok(value)
@@ -172,6 +178,10 @@ impl Api {
         let account = d.account_of(user).ok_or_else(missing)?;
         let target = match &input { Input::Named(op) => op.target(), Input::Numeric(_) => format!("#{user}") };
         let (mut next, player_id, before, after) = match request {
+            AccountEditRequest::SetRole { role, .. } => {
+                let login = d.login_by_id(user).ok_or_else(|| MutationError::new(MutationErrorCode::InvalidRequest, "Only password accounts can have a staff role."))?;
+                (d.prepare_role(user, role).map_err(|e| MutationError::new(MutationErrorCode::InvalidRequest, e))?, None, Some(json!(login.role)), Some(json!(role)))
+            }
             AccountEditRequest::AddPlayer { name, .. } => {
                 if d.player_id_named(&name).is_some() { return Err(MutationError::new(MutationErrorCode::AlreadyExists, "That player name is already taken.")) }
                 if account.players.len() >= crate::accounts::MAX_PLAYERS { return Err(MutationError::new(MutationErrorCode::RequestConflict, "This account already has four players.")) }
@@ -192,7 +202,9 @@ impl Api {
                 (d.prepare_country(user, country.as_deref().unwrap_or_default()).map_err(|e| MutationError::new(MutationErrorCode::InvalidRequest, e))?, None, Some(json!(account.country)), Some(json!(country.unwrap_or_default())))
             }
         };
-        let result = AccountEditResult { user_id: user, player_id, request_id: id.into(), message: format!("Saved {operation} for account #{user}. In-game changes appear after the next sign-in.") };
+        let message = if operation == "set-role" { format!("Saved role for account #{user}. If it changed, its staff sessions must sign in again.") }
+            else { format!("Saved {operation} for account #{user}. In-game changes appear after the next sign-in.") };
+        let result = AccountEditResult { user_id: user, player_id, request_id: id.into(), message };
         // Keep the account's stable login label in prunable audit metadata, so deletion also removes old aliases.
         let label = d.login_by_id(user).map_or_else(|| format!("#{user}"), |l| l.user.clone());
         let row = AuditRow { at: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true), actor: identity.by, origin: origin.into(),

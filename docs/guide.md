@@ -181,8 +181,9 @@ role is admin or moderator:
   account.
 - Sign-in has the launcher's throttle: a wrong password makes the next try for that User ID wait 1 s, then 2, 4, …
   up to `backoff-max-seconds`. A session ends after 30 idle minutes, 12 hours, **Sign out**, or at once when the
-  account loses its role or is banned.
-- The panel keeps no data of its own and needs no restart: a role change applies at the account's next page.
+  account changes role or is banned.
+- The panel keeps no data of its own and needs no restart: a changed role ends existing staff sessions at their next
+  request, even if the account is promoted back. Setting the same role again leaves current sessions valid.
 
 ## Account commands
 
@@ -236,6 +237,9 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
 - `profile PLAYER FILE --advertise HOST` exports a key account's private profile for the play script. The profile
   references `server.crt`; copy the host's public certificate beside it. Existing profile files are not overwritten.
   `key WHO` prints the key itself.
+- `set-role USER ROLE` is admin-only and commits the role, audit and retry receipt together. It accepts
+  `--request-id ID`; repeat the same command with that ID after a lost response. A retry never reapplies an older role.
+  Changing your own role can remove management access; another admin or the host must restore it with `set-role`.
 - `invite`, `invites`, `add-user`, `reset-code` and `set-role` manage password accounts (beta) and work while the
   server runs: invite codes for sign-up, an account the host makes with a first password, a one-day reset code for a
   player who lost their password and recovery code, and roles. [Accounts](authentication.md#making-accounts-invites-and-recovery)

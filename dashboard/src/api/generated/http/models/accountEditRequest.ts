@@ -2,8 +2,17 @@
  * Generated from Rust endpoints by Orval. DO NOT EDIT.
  * Regenerate: npm run api:generate
  */
+import type { Role } from './role';
 
 export type AccountEditRequest = {
+  kind: 'set_role';
+  role: Role;
+  /**
+     * @minimum 0
+     * @maximum 4294967295
+     */
+  user_id: number;
+} | {
   kind: 'add_player';
   /**
      * @minLength 1

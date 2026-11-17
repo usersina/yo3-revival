@@ -84,7 +84,7 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::Invite { uses, days, .. } => Op::Invite { uses: (*uses > 0).then_some(*uses), days: *days },
         Admin::Invites => Op::Invites,
         Admin::ResetCode { user } => Op::ResetCode { user: user.clone() },
-        Admin::SetRole { user, role } => Op::SetRole { user: user.clone(), role: role.clone() },
+        Admin::SetRole { user, role, .. } => Op::SetRole { user: user.clone(), role: role.clone() },
         // The password is made and hashed here: only its hash goes to the server.
         Admin::AddUser { user } => Op::AddUser { user: user.clone(), hash: String::new() },
         Admin::Settings | Admin::Share { .. } => Op::Settings,
@@ -141,7 +141,7 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         anyhow::ensure!(a.advertise.is_some(), "pass --advertise ADDRESS: the address friends reach this server at (an IP or a name in its certificate)");
     }
     let mut result = if let Admin::GiveBp { request_id, .. } | Admin::AddCode { request_id, .. } | Admin::RemoveCode { request_id, .. } | Admin::Invite { request_id, .. }
-        | Admin::AddPlayer { request_id, .. } | Admin::Rename { request_id, .. } | Admin::SetCountry { request_id, .. } = &command {
+        | Admin::AddPlayer { request_id, .. } | Admin::Rename { request_id, .. } | Admin::SetCountry { request_id, .. } | Admin::SetRole { request_id, .. } = &command {
         let id = request_id.clone().unwrap_or_else(yo3_server::logins::new_token);
         anyhow::ensure!(api::mutation::valid_request_id(&id), "invalid request ID (16–128 letters, digits, hyphens or underscores)");
         eprintln!("Request ID: {id} (reuse with --request-id if the answer is lost)");

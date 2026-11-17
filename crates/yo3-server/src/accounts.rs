@@ -237,7 +237,20 @@ impl Directory {
     pub fn set_role(&mut self, user: &str, role: crate::logins::Role) -> Result<(), String> {
         let at = self.login_at(user).ok_or("no such User ID")?;
         let user_id = self.accounts[at].account.user_id;
-        self.atomic(|d| { d.login_mut(user_id).ok_or("no such account")?.role = role; Ok(()) })
+        let mut next = self.prepare_role(user_id, role)?;
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok(())
+    }
+
+    pub(crate) fn prepare_role(&self, user_id: u32, role: crate::logins::Role) -> Result<Self, String> {
+        let mut next = self.clone();
+        let login = next.login_mut(user_id).ok_or("Only password accounts can have a staff role.")?;
+        if login.role != role {
+            login.staff_epoch = login.staff_epoch.checked_add(1).ok_or("The staff session revision limit has been reached.")?;
+            login.role = role;
+        }
+        Ok(next)
     }
 
     /// Sets the standing of User ID `user` (active, restricted or banned; #26 makes the moderation around it).

@@ -32,6 +32,13 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 
 ## Status
 
+2026-11-17, staff role administration: the original audit-failure and unobserved demotion/promotion cookie tests both
+failed first. Role changes now prepare a copy and commit account, audit and durable receipt together, including
+a persisted session revision that changes only with the role. Both management interfaces reject old cookies even
+after the role is restored. The generated profile-edit API and React account dialog share the operation with the
+CLI and old panel. Confirmation, self-demotion warnings, lost response/reload/retry and moderator refusal were
+checked in the browser. Credential provisioning remains a separate slice.
+
 2026-11-16, connected account profiles: audit-failure and old-name retry tests first failed on the original operations.
 Add player, rename and country edits now prepare copies and commit profile, audit and receipt before publishing.
 Dashboard edits use numeric IDs; the CLI and old panel share them. Detail DTOs exclude authentication material and

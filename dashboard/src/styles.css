@@ -2155,7 +2155,7 @@
     display: grid;
     gap: 20px;
   }
-  .connected-profile input,
+  .connected-profile input:not([type='checkbox']),
   .connected-profile select {
     width: 100%;
   }
@@ -2165,6 +2165,18 @@
   .connected-profile form {
     display: grid;
     gap: 16px;
+  }
+  .profile-facts dd > button {
+    margin-left: 8px;
+  }
+  .profile-role-confirm {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .profile-role-confirm input {
+    flex: 0 0 auto;
+    margin-top: 4px;
   }
   .connected-state {
     display: flex;

@@ -13,7 +13,7 @@ import {
   useListCountries,
 } from './api/generated/http/client'
 import type { EditAccountMutationVariables } from './api/generated/http/client'
-import type { AccountEditRequest, StaffSession } from './api/generated/http/models'
+import type { AccountEditRequest, Role, StaffSession } from './api/generated/http/models'
 import {
   AccountEditRequest as EditRequestSchema,
   EditAccountHeader,
@@ -61,12 +61,14 @@ export function ConnectedAccountDialog({
   const [player, setPlayer] = useState(0)
   const [name, setName] = useState('')
   const [country, setCountry] = useState('')
+  const [role, setRole] = useState<Role>('player')
+  const [confirmedRole, setConfirmedRole] = useState(false)
   const [notice, setNotice] = useState('')
   const [failure, setFailure] = useState('')
   const [uncertain, setUncertain] = useState(false)
   const edit = useEditAccount({
     mutation: {
-      onSuccess: (result) => {
+      onSuccess: (result, variables) => {
         try {
           sessionStorage.removeItem(storageKey)
           setStored({ intent: null, error: null })
@@ -77,11 +79,19 @@ export function ConnectedAccountDialog({
               'Saved, but this browser could not clear the request. Reload to confirm the same change safely.',
           }))
         }
-        setNotice('Profile saved. In-game changes appear after the next sign-in.')
+        const roleEdit = variables.data.kind === 'set_role'
+        setNotice(
+          roleEdit
+            ? 'Role saved. Changed accounts must sign in again.'
+            : 'Profile saved. In-game changes appear after the next sign-in.',
+        )
         setFailure('')
         setMode(null)
         void client.invalidateQueries({ queryKey: getGetAccountQueryKey(result.user_id) })
         void client.invalidateQueries({ queryKey: getListAccountsQueryKey() })
+        if (roleEdit && result.user_id === session.user_id) {
+          void client.invalidateQueries({ queryKey: getGetStaffSessionQueryKey() })
+        }
       },
       onError: (error) => {
         const refused =
@@ -118,12 +128,15 @@ export function ConnectedAccountDialog({
   const pending = stored.intent?.data.user_id === userId ? stored.intent : null
   const displayedCountry =
     pending?.data.kind === 'set_country' ? (pending.data.country ?? '') : country
+  const displayedRole = pending?.data.kind === 'set_role' ? pending.data.role : role
   const draft = EditRequestSchema.safeParse(
-    mode === 'set_country'
-      ? { kind: mode, user_id: userId, country: country || null }
-      : mode === 'add_player'
-        ? { kind: mode, user_id: userId, name: name.trim() }
-        : { kind: mode, user_id: userId, player_id: player, name: name.trim() },
+    mode === 'set_role'
+      ? { kind: mode, user_id: userId, role }
+      : mode === 'set_country'
+        ? { kind: mode, user_id: userId, country: country || null }
+        : mode === 'add_player'
+          ? { kind: mode, user_id: userId, name: name.trim() }
+          : { kind: mode, user_id: userId, player_id: player, name: name.trim() },
   )
   const allowed = mode === 'rename_player' ? (pending ? admin || moderator : canRename) : admin
   const availableCountry =
@@ -133,6 +146,8 @@ export function ConnectedAccountDialog({
     setPlayer(playerId)
     setName(currentName)
     setCountry(data?.country ?? '')
+    setRole(data?.role ?? 'player')
+    setConfirmedRole(false)
     setFailure('')
     setNotice('')
     setMode(next)
@@ -155,7 +170,13 @@ export function ConnectedAccountDialog({
     if (edit.isPending || stored.error || !allowed) return
     let intent = pending
     if (!intent) {
-      if (!canStart || !draft.success || !availableCountry) return
+      if (
+        !canStart ||
+        !draft.success ||
+        !availableCountry ||
+        (mode === 'set_role' && !confirmedRole)
+      )
+        return
       intent = { data: draft.data, headers: { 'Idempotency-Key': crypto.randomUUID() } }
       try {
         sessionStorage.setItem(storageKey, JSON.stringify(intent))
@@ -200,7 +221,7 @@ export function ConnectedAccountDialog({
           if (!value) close()
         }}
         title={data?.login ?? `Account #${userId ?? ''}`}
-        description="Account details from the server. Presence and duel records are checked live; stored profile edits appear in game after signing in again."
+        description="Account details from the server. Role changes apply immediately; in-game profile edits appear after signing in again."
         wide
       >
         <div className="modal-body connected-profile">
@@ -265,7 +286,22 @@ export function ConnectedAccountDialog({
               <dl className="profile-facts">
                 <div>
                   <dt>Role</dt>
-                  <dd>{data.role}</dd>
+                  <dd>
+                    {data.role}
+                    <Button
+                      onClick={() => start('set_role')}
+                      disabled={!admin || !data.login || !canStart}
+                      title={
+                        !admin
+                          ? 'Administrators only'
+                          : !data.login
+                            ? 'Only password accounts can have staff roles'
+                            : undefined
+                      }
+                    >
+                      Change role
+                    </Button>
+                  </dd>
                 </div>
                 <div>
                   <dt>Balance</dt>
@@ -432,9 +468,57 @@ export function ConnectedAccountDialog({
                   ? 'Add player'
                   : mode === 'rename_player'
                     ? 'Rename player'
-                    : 'Change country'}
+                    : mode === 'set_role'
+                      ? 'Change role'
+                      : 'Change country'}
               </h3>
-              {mode === 'set_country' ? (
+              {mode === 'set_role' ? (
+                <>
+                  <Field
+                    id="profile-role"
+                    label="New role"
+                    hint="Players cannot use management. Moderators can help players. Administrators have full management access."
+                  >
+                    <select
+                      id="profile-role"
+                      value={displayedRole}
+                      onChange={(event) => {
+                        setRole(event.target.value as Role)
+                        setConfirmedRole(false)
+                      }}
+                      disabled={edit.isPending || Boolean(pending)}
+                    >
+                      <option value="player">Player</option>
+                      <option value="moderator">Moderator</option>
+                      <option value="admin">Administrator</option>
+                    </select>
+                  </Field>
+                  <p className="field-hint">
+                    A changed role signs this account out of both management interfaces. It does not
+                    disconnect its game.
+                  </p>
+                  {userId === session.user_id && displayedRole !== 'admin' && (
+                    <p role="alert" className="connected-error">
+                      Changing your own role signs you out. You will lose administrator access.
+                    </p>
+                  )}
+                  {pending && !admin && (
+                    <p role="alert" className="connected-error">
+                      Only an administrator can confirm this request. Ask the host to check the
+                      account's current role before making another change.
+                    </p>
+                  )}
+                  <label className="profile-role-confirm">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(pending) || confirmedRole}
+                      onChange={(event) => setConfirmedRole(event.target.checked)}
+                      disabled={edit.isPending || Boolean(pending)}
+                    />
+                    I confirm this role change for account #{userId}.
+                  </label>
+                </>
+              ) : mode === 'set_country' ? (
                 <>
                   <Field
                     id="profile-country"
@@ -482,7 +566,10 @@ export function ConnectedAccountDialog({
                   <input
                     id="profile-name"
                     value={
-                      pending && pending.data.kind !== 'set_country' ? pending.data.name : name
+                      pending &&
+                      (pending.data.kind === 'add_player' || pending.data.kind === 'rename_player')
+                        ? pending.data.name
+                        : name
                     }
                     maxLength={16}
                     required
@@ -542,7 +629,11 @@ export function ConnectedAccountDialog({
                   edit.isPending ||
                   !allowed ||
                   Boolean(stored.error) ||
-                  (!pending && (!canStart || !draft.success || !availableCountry))
+                  (!pending &&
+                    (!canStart ||
+                      !draft.success ||
+                      !availableCountry ||
+                      (mode === 'set_role' && !confirmedRole)))
                 }
               >
                 {edit.isPending && <LoaderCircle size={16} className="animate-spin" />}
@@ -554,7 +645,9 @@ export function ConnectedAccountDialog({
                       ? 'Add player'
                       : mode === 'rename_player'
                         ? 'Save name'
-                        : 'Save country'}
+                        : mode === 'set_role'
+                          ? 'Save role'
+                          : 'Save country'}
               </Button>
             )}
           </div>

@@ -2205,7 +2205,7 @@ keep the original code, issuer and expiry even after consumption, restart or aud
 uses. The CLI's `invite` and `share --invite` accept `--request-id`; legacy forms reuse their hidden IDs. Both admins
 and moderators can create invites. Evidence: `invite_contract.rs`, `panel_contract.rs`, `dashboard_contract.rs`.
 Player creation, renaming and country edits also commit their change, audit and receipt together. The staff API's
-`POST /panel/api/v1/accounts/edit` takes a tagged `kind` (`add_player`, `rename_player`, `set_country`) and numeric
+`POST /panel/api/v1/accounts/edit` takes a tagged `kind` (`add_player`, `rename_player`, `set_country`, `set_role`) and numeric
 account/player IDs. Name-based CLI/panel retries find the original receipt before resolving an old name. Successful
 receipts contain IDs and a generic result, not player names. Moderators retain their existing rename rule (own or
 non-staff accounts); creation/country are admin-only. `GET /panel/api/v1/accounts/{user_id}` returns a safe projection
@@ -2213,6 +2213,12 @@ with RFC 3339 times and nullable live state, never keys/passwords/device/reset t
 the game archive through `GET /panel/api/v1/countries`, without a fabricated fallback list. Existing game reply shapes
 are unchanged; edits appear at the next sign-in. Evidence: `account_admin_contract.rs`, `dashboard_contract.rs` and
 connected browser tests.
+Role changes are admin-only and target password accounts. They use the same transaction and durable retry receipt;
+an old retry cannot restore an earlier role. The persisted staff-session revision changes only when the role changes,
+invalidating old cookies on both management interfaces even through an unobserved demotion/promotion round trip.
+`set-role` accepts `--request-id`; the React form requires confirmation and warns before self-demotion. This changes
+management authority, not game reply shapes, and does not disconnect an active game. Evidence: `role_contract.rs`,
+`panel_contract.rs`, `dashboard_contract.rs` and connected browser tests.
 The panel runs the same operations in the server (`Api::apply_as`) as its signed-in staff account: a moderator runs only
 the looking, moderation, invite and reset-code operations, and none on a staff account. `account`, `backups`, `back-up` and
 `logs` were added for its pages. Status also reports the actual `listen` socket and `release`, so a reopened manager and local game use the active

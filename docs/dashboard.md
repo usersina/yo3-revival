@@ -6,7 +6,7 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 ## Current state
 
 - The approved React/Vite/SWC/Tailwind dashboard is in `dashboard/`. The main pages remain a labelled design preview.
-  `/connected` uses the real local API for staff sign-in/out, account summaries/details and player edits, Give BP, registration invites and BOOSTERPASS code management.
+  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits and staff roles, Give BP, registration invites and BOOSTERPASS code management.
   It never falls back to fixtures.
 - Axum handles HTTP on separate sockets. Host-token operations, assets and the old HTML panel stay on `--http-port`.
   The staff JSON router has its own opt-in `--dashboard-port`, disabled by default and always bound to loopback.
@@ -22,6 +22,10 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 - Account details project standing, mute, device/reset counts, saved player statistics and checked live presence/records,
   without credentials. Player creation, renaming and country changes commit profile/audit/receipt together. Moderators
   can rename their own or non-staff players; adding players and changing country remain admin-only.
+- Role changes are admin-only and use the same profile/audit/receipt transaction. A stored staff-session revision
+  invalidates old cookies on both interfaces, even if an account is demoted and promoted again without making a request.
+  Setting the same role again does not invalidate a fresh session; a retry never reapplies an older role. The React
+  form requires confirmation and warns before changing your own role.
 - SQLite schema 3 adds `operation_receipts`. Schemas 1 and 2 upgrade transactionally. Other domains are not normalized.
 - Remaining work: the other dashboard operations, staff MFA, the public-access/proxy gate, nginx and Compose.
 
@@ -42,7 +46,7 @@ expire or follow `audit-keep-days`. They keep the input fingerprint and a minima
 login credentials. A generated reward code is retained so a retry can retrieve it. Clients retain an ID for retries
 and generate a new one only for a new intended change. IDs share a namespace across operations for each actor.
 
-Give BP, invite creation, player profile edits and BOOSTERPASS creation/removal use this boundary. Shared identity, error and receipt helpers live in
+Give BP, invite creation, player profile/role edits and BOOSTERPASS creation/removal use this boundary. Shared identity, error and receipt helpers live in
 `api/mutation.rs`; domain validation, preparation and commit stay in their operation modules. A generated-code retry
 returns the original code. A removal retry returns its original result even if someone has since recreated that
 code; it never deletes the replacement. Codes use canonical uppercase input, exact 16-letter/digit validation and
@@ -58,6 +62,11 @@ wire push is invented. The maximum is four players and names are 1–16 printabl
 player-creation checks. Country flags are read from `package/data002.ypk`; no built-in allowlist substitutes for missing
 assets. Automatic remains available without that file. Unknown presence/records are null when no hub is running;
 collection counts explicitly exclude the starter deck. Deleted/unauthorized account details are hidden on refresh.
+Role edits use `kind: set_role` and a typed player/moderator/admin value on the same endpoint. Only password accounts
+can have a staff role. CLI `set-role USER ROLE --request-id ID` and the old HTML form share this transaction.
+A self-demotion removes management permissions; another admin or the host must restore them. A lost response
+must not be treated as a failed change: inspect the current role before issuing a new request. Account creation
+and reset-code delivery still need a safe retry design that keeps credentials out of permanent receipts.
 
 The browser retains pending IDs through session/permission/CSRF refusals too: those checks run before receipt lookup,
 so a refusal cannot prove an earlier attempt did not commit. Refresh the staff session and retry the same intent.

@@ -449,3 +449,12 @@ async fn an_admin_deletes_an_account_only_by_typing_its_user_id() {
     let refused = m.act("/panel/account?who=Yugi", "/panel/account", &[("who", "Yugi"), ("action", "delete-account"), ("confirm", "Yugi")]).await;
     assert!(refused.body.contains("only an admin may do that"), "{}", refused.body);
 }
+
+#[tokio::test]
+async fn an_unobserved_role_round_trip_cannot_restore_an_old_staff_cookie() {
+    let s = Live::staffed("role-round-trip").await;
+    let b = s.browser("Croquet").await;
+    s.host(Op::SetRole { user: "Croquet".into(), role: "player".into() }).await;
+    s.host(Op::SetRole { user: "Croquet".into(), role: "moderator".into() }).await;
+    assert_eq!(b.get("/panel/").await.location(), "/panel/login", "role changes must permanently revoke the old cookie, even if it was never used while demoted");
+}

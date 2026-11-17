@@ -310,7 +310,7 @@ async fn sign_in(r: &Request, peer: IpAddr, panel: &Panel, api: &Api) -> Respons
 }
 
 /// Password or recovery changes invalidate existing staff cookies as well as devices.
-fn credential(login: &crate::logins::Login) -> String { crate::logins::digest(&format!("{}:{}", login.password, login.recovery)) }
+fn credential(login: &crate::logins::Login) -> String { crate::logins::digest(&format!("{}:{}:{}", login.password, login.recovery, login.staff_epoch)) }
 
 pub(crate) enum SignInError { Wrong, Throttled(u64) }
 
