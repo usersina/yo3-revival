@@ -124,6 +124,31 @@ class ReleaseLifecycle(unittest.TestCase):
         # REST release deletion removes its downloads, never its Git ref/tag.
         self.assertFalse(any("/git/" in path for path in api.deleted))
 
+    def test_alpha_releases_before_v0_1_0_are_never_deleted(self):
+        # The owner keeps v0.0.1–v0.0.26 (the alpha) for good; only beta releases past the newest two go.
+        api = Fixture()
+        alpha = [dict(release(200 + n), tag_name=f"v0.0.{n}") for n in [1, 21, 26]]
+        for item in alpha:
+            api.data[f"/repos/{REPO}/releases/{item['id']}/assets"] = []
+        api.data[f"/repos/{REPO}/releases"] += alpha
+        lifecycle.prune(api, "v0.1.10", COMMIT, api.inspect)
+        for item in alpha:
+            self.assertNotIn(f"/repos/{REPO}/releases/{item['id']}", api.deleted, item["tag_name"])
+        self.assertIn(f"/repos/{REPO}/releases/1", api.deleted, "an older beta release still goes")
+
+    def test_the_first_beta_release_keeps_every_alpha_release(self):
+        # v0.1.0's own cleanup: the newest two are v0.1.0 and v0.0.26, and nothing older is deleted either.
+        api = Fixture()
+        api.data[f"/repos/{REPO}/releases"] = [release(10)] + [dict(release(200 + n), tag_name=f"v0.0.{n}") for n in [1, 25, 26]]
+        api.data[f"/repos/{REPO}/releases/10"] = release(10)
+        for n in [1, 25, 26]:
+            api.data[f"/repos/{REPO}/releases/{200 + n}/assets"] = []
+        for role in ["server", "dashboard"]:
+            path = api.package(role) + "/versions"
+            api.data[path] = [v for v in api.data[path] if v["id"] in [10, 1010, 2010]]
+        lifecycle.prune(api, "v0.1.10", COMMIT, api.inspect)
+        self.assertFalse(any("/releases/" in path for path in api.deleted), api.deleted)
+
     def test_drafts_and_non_pipeline_tags_are_not_deleted(self):
         api = Fixture()
         draft = release(20)

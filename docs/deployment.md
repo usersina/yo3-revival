@@ -93,8 +93,8 @@ GitHub token with package permission. A separate dependent deployment job uses t
 GitHub before expecting anonymous pulls.
 
 After deployment passes its health checks, cleanup keeps the **newest two published stable releases** and their
-server/dashboard images. For example, v0.1.1 keeps v0.1.0; v0.1.2 removes v0.1.0 and keeps v0.1.1. Older release
-objects and their downloads are deleted, together with unused versions of these two GHCR packages. The retained
+server/dashboard images. For example, v0.1.1 keeps v0.1.0; v0.1.2 removes v0.1.0 and keeps v0.1.1. Releases before v0.1.0 (the alpha) are never deleted. Older
+beta release objects and their downloads are deleted, together with unused versions of these two GHCR packages. The retained
 images' platform and provenance manifests stay even when GitHub calls them untagged. Drafts and tags outside the
 stable release naming scheme are left alone. Git tags and the changelog remain as source history.
 

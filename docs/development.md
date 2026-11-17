@@ -577,7 +577,8 @@ The separate Ed25519 update signatures remain required.
    There is no approval button. Configure the restricted key/secrets once using the
    [deployment guide](deployment.md#enable-automatic-updates-once); startup failure restores previous images/data.
 6. After healthy deployment, keep only the newest two stable releases, their downloads and their server/dashboard
-   image versions (including referenced platform/provenance manifests). Preserve Git tags and changelog history.
+   image versions (including referenced platform/provenance manifests). Preserve Git tags, changelog history and every
+   release before v0.1.0 (the alpha).
    Failed release/deployment jobs skip cleanup. Image publication first verifies the latest published tag's exact
    commit; neither ordinary pushes nor historical tags build published images.
 

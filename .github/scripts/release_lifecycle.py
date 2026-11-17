@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Gate image builds on a published tag; retain the newest two stable releases after deployment.
+Releases before v0.1.0 (the alpha) are never deleted.
 
 Commands: previous VERSION | verify VERSION COMMIT | prune VERSION COMMIT.
 Uses the job's GH_TOKEN and Docker login. Git refs/tags are never deleted.
@@ -14,6 +15,7 @@ VERSION = re.compile(r"v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)")
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 COMMIT = re.compile(r"[0-9a-f]{40}")
 INDEX_TYPES = {"application/vnd.oci.image.index.v1+json", "application/vnd.docker.distribution.manifest.list.v2+json"}
+FIRST_BETA = (0, 1, 0)
 IMAGE_TYPES = {"application/vnd.oci.image.manifest.v1+json", "application/vnd.docker.distribution.manifest.v2+json"}
 
 
@@ -163,7 +165,8 @@ def retention_plan(api, version, commit, inspect):
                 raise ValueError("Invalid container package version")
             if item["name"] not in retained:
                 deletes.append(f"{path}/versions/{item['id']}")
-    deletes.extend(f"/repos/{api.repo}/releases/{r['id']}" for r in releases[2:])
+    # The alpha (v0.0.x, before the first beta v0.1.0) is kept for good: only beta releases past the newest two go.
+    deletes.extend(f"/repos/{api.repo}/releases/{r['id']}" for r in releases[2:] if version_key(r["tag_name"]) >= FIRST_BETA)
     return [r["tag_name"] for r in keep], deletes
 
 
