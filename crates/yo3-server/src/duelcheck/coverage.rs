@@ -10,7 +10,8 @@ pub fn native(id: u32) -> Coverage {
         // 1006: the usable zones (a disabled zone's mark); 0x17, 0x19, 0x1D: a revealed card's flip, popup and face.
         // 0x2A-0x32, 0x3A, 1015, 1016: DuelSummon's tribute, material and tuning effects, RunFusion and its material list.
         // SETTLE (0x5F1): a batch's end for the clocks (#11), answered by the connection DLL; no card moves.
-        1 | 2 | 7 | 0x17 | 0x19 | 0x1D | 0x13 | 0x1E | 0x22 | 0x26 | 1006 | 0x2A..=0x32 | 0x33 | 0x34 | 0x38 | 0x39 | 0x3A | 1015 | 1016 | 0x43 | 0x44 | 0x46 | 0x47 | 0x48 | 0x4D | 1500..=1505
+        // 1018-1020: the card info panel's level in the hand and stats in the Graveyard.
+        1018..=1020 | 1 | 2 | 7 | 0x17 | 0x19 | 0x1D | 0x13 | 0x1E | 0x22 | 0x26 | 1006 | 0x2A..=0x32 | 0x33 | 0x34 | 0x38 | 0x39 | 0x3A | 1015 | 1016 | 0x43 | 0x44 | 0x46 | 0x47 | 0x48 | 0x4D | 1500..=1505
             | super::native::CHECKPOINT | crate::clock::SETTLE => Coverage::Presentation,
         _ => Coverage::Unknown,
     }

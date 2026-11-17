@@ -1328,7 +1328,8 @@ list at `+0xB8`/`+0xCC`) and draws them while the pointer is on a face-up field 
 marker on the related slot. Commands: 1017 (`0x3F9`) {param1 the source place `player | zone << 8` (client-relative,
 zone below `0xB`), param2 the target place (same form), param3 the marker type 1–8, param4 1 add (`0x5224E0`) / 0
 remove the entry matching all three (`0x522530`)}. (1018, `0x3FA`, is another table, a map at `+0xD8`: {param1 →
-param2} set (`0x5226B0`), or param1's entry deleted when param2 is `0xFFFF` (`0x522750`); what reads it is **open**.)
+param2} set (`0x5226B0`), or param1's entry deleted when param2 is `0xFFFF` (`0x522750`): a hand monster's level by uid,
+which the card info panel reads, see "The card info panel" below.)
 Type n draws field effect `0x33 + n`, except 6 →
 `0x35` and 7 → `0x37` (bit `0x100` of the type adds the type-8 marker); the effects use `cicon/duel_eff_cicon_01`–`08`.
 **Confirmed** live (a probe build sent eight relations from the client's monster): type 1 a cyan orb, 2 and 6 a yellow
@@ -1747,8 +1748,8 @@ and each LP change `0x10`, plays `DUEL_ADVANTAGE` (BGM 28) at a lead of 3000 or 
 3000 or more behind, and otherwise the duel's own track (`+0x8B0` of `0x46D820`, played at setup `0x5159E2`; NPC
 duels `DUEL_CPU1`–`CPU3`, 30–32), nothing while either LP is 0. Live (2026-11-14, NPC duel against Kaiba, traced
 `0x50414E`/`0x5041A7`): at 5000, 3400 and 2000 against his 8000 the Disadvantage track went to the sound component
-each time; the opening was track 30. `0x45`, `0x49`–`0x4B` and `0x4E` have no handler either; 1013–1016, 1018, 1021, 1022 (the client's own
-acknowledgement request), 1024 and 1025 are bookkeeping, and 1019/1020 a shown-data override for a few cards. CardCheat
+each time; the opening was track 30. `0x45`, `0x49`–`0x4B` and `0x4E` have no handler either; 1013–1016, 1021, 1022 (the client's own
+acknowledgement request), 1024 and 1025 are bookkeeping; 1018–1020 feed the card info panel (below). CardCheat
 `0x1D` is sent with the reveals below. Konami's opening also differs (1013 for every
 place, 1006, pile counts 1023 with only the top card in the table); ours, a table entry for every card, works.
 
@@ -1777,6 +1778,17 @@ reversed Deck's top is public whatever the position): the top card's entry at in
 byte) and its row, then DeckReset, as a Graveyard shows its top card; turned back, the flag goes. Live (2026-11-13):
 Ancient Telescope turned two of Yami Bakura's cards over on his pile in turn; Convulsion of Nature showed both Decks'
 tops. Extra Deck reveals (CONFIRM_EXTRATOP 42) are not sent: no card of the client's makes them.
+
+**The card info panel** (`0x453740`) reads a field monster from its record (above), but a monster in a hand or a
+Graveyard from two maps the server fills. In the hand (case `0xB`) its level is the uid's entry in the `+0xD8` map
+(`0x5227E0`), which 1018 `{uid, level}` sets and `{uid, 0xFFFF}` clears; Konami's logs send it right before a monster's
+move into a hand and clear it right before it leaves. In a Graveyard (case `0xE`) its attribute, Type and level are the
+Konami id's entry in the `+0x188` map (`0x5241D0`, `0x524170`, `0x524230`): 1019 `{id, id, attribute, Type}` stages it
+and 1020 `{id, level}` stores it (`0x522850`; a 1019 of zeros deletes, `0x522910`), sent right before the card's table
+entry there. A missing entry reads -1: no stars in the hand; in the Graveyard no icons or stars and, as its Type, the
+duel prompt text before the Types ("Send ... from your Deck."). The server sends both from CARD_Prop, the hand's for the
+client's own cards only. **Confirmed** live (2026-11-17): Giant Orc showed "x4" in the hand and "[Fiend/Effect]" with
+its icons and level in the Graveyard.
 
 **Changed Types and Attributes.** The monster info panel reads race and attribute from the place's record (`0x453740`
 → `0x523F00`: `0x3E9`'s values 2 and 3), not from CARD_Prop. The engine's field report after each step carries both

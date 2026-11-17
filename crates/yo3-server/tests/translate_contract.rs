@@ -22,6 +22,12 @@ fn cmd(m: &Message) -> (u32, [u32; 4]) {
     (int("id"), [int("param1"), int("param2"), int("param3"), int("param4")])
 }
 
+/// [`cmd`] for every command but the card info panel's hand levels and Graveyard stats (1018-1020), which
+/// `the_info_panel_has_a_monsters_level_in_the_hand_and_its_stats_in_the_graveyard` covers.
+fn cmds(out: &[Message]) -> Vec<(u32, [u32; 4])> {
+    out.iter().map(cmd).filter(|(id, _)| !(1018..=1020).contains(id)).collect()
+}
+
 #[test]
 fn both_decks_go_into_the_card_table() {
     let (_, table) = translator();
@@ -37,8 +43,7 @@ fn both_decks_go_into_the_card_table() {
 fn a_draw_moves_the_card_with_that_id_to_the_hand() {
     // MSG_DRAW (90) {player: team, drawn: [{code, cid}]}: team 0 is the first player (here the client).
     let (mut t, _) = translator();
-    let out = t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "code": 1, "cid": 4103 }] })]);
-    let out: Vec<_> = out.iter().map(cmd).collect();
+    let out = cmds(&t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "code": 1, "cid": 4103 }] })]));
     // uid 4 holds row 103; it goes to hand index 0.
     // The move's param1 is the uid with the move's kind in the high half: 0, a plain move (a draw).
     assert_eq!(out, [(1000, [4, 103, 4103, 0xB << 8]), (0x1A, [4, 0xD << 1, 0xB << 1, 0])]);
@@ -236,6 +241,35 @@ fn the_graveyards_top_card_shows_on_its_pile() {
 }
 
 #[test]
+fn the_info_panel_has_a_monsters_level_in_the_hand_and_its_stats_in_the_graveyard() {
+    // The card info panel (0x453740) reads a hand monster's level from a uid map that 1018 {uid, level} fills, and a
+    // Graveyard monster's attribute, Type and level from a Konami id map that 1019 {id, id, attribute, Type} and 1020
+    // {id, level} fill; a missing entry is -1: no stars in the hand, and in the Graveyard no icons or stars and the
+    // prompt text before the Types ("Send ... from your Deck.") as its Type (live; Stardust Dragon, Fortress Warrior).
+    // Konami's logs send them right before the card's move, and clear the hand's (0xFFFF) right before it leaves.
+    let (mut t, _) = translator();
+    let draw: Vec<_> = t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }] })]).iter().map(cmd).collect();
+    let moved = draw.iter().position(|(id, _)| *id == 0x1A).expect("the draw's move");
+    let uid = draw[moved].1[0] & 0xFFFF;
+    assert!(draw[..moved].contains(&(1018, [uid, 4, 0, 0])), "the hand level before the move: {draw:?}");
+    // The CPU's hand gets none: against a player its cards are hidden.
+    let theirs: Vec<_> = t.events(&[json!({ "type": 90, "player": 1, "drawn": [{ "cid": 4200 }] })]).iter().map(cmd).collect();
+    assert!(!theirs.iter().any(|(id, _)| *id == 1018), "{theirs:?}");
+    // Summoned: the hand's entry goes before the move.
+    let summon: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 0, 10), "to": loc(0, 4, 0, 1) })])
+        .iter().map(cmd).collect();
+    let moved = summon.iter().position(|(id, _)| *id == 0x1A).expect("the summon's move");
+    assert!(summon[..moved].contains(&(1018, [uid, 0xFFFF, 0, 0])), "the hand level cleared: {summon:?}");
+    // Destroyed: its stats for the Graveyard, keyed by Konami id, before its table entry there.
+    let grave: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 4, 0, 1), "to": loc(0, 16, 0, 1) })])
+        .iter().map(cmd).collect();
+    let entry = grave.iter().position(|(id, p)| *id == 1000 && p[3] == 0xE << 8).expect("the Graveyard's table entry");
+    let staged = grave.iter().position(|c| *c == (1019, [4100, 4100, 2, 12])).expect("1019 {id, id, attribute, Type}");
+    assert_eq!(grave.get(staged + 1), Some(&(1020, [4100, 4, 0, 0])), "1020 {{id, level}} right after: {grave:?}");
+    assert!(staged < entry, "{grave:?}");
+}
+
+#[test]
 fn tokens_show_as_the_clients_own_token_cards() {
     // EDOPro's tokens have passcodes with no Konami id; the sidecar names them (cards.cdb), and the client has its own
     // token cards (CARD_Prop ids 3900-3999, e.g. four "Sheep Token"). A token comes from nowhere (MSG_MOVE from
@@ -321,7 +355,7 @@ fn a_summon_moves_the_card_from_the_hand_to_its_zone() {
     let out = t.events(&[json!({ "type": 50, "cid": 4100, "reason": 0x10,
         "from": { "controller": 0, "location": 2, "sequence": 0, "position": 10 },
         "to": { "controller": 0, "location": 4, "sequence": 2, "position": 1 } })]);
-    let out: Vec<_> = out.iter().map(cmd).collect();
+    let out = cmds(&out);
     // The monster's record (shown id, race, attribute, level, ATK/DEF, base ATK/DEF) comes before the move.
     // Before it, the card leaving the hand for the field (0x48 {player, id, face up, to a Spell/Trap zone}).
     assert_eq!(
@@ -342,7 +376,7 @@ fn a_summon_moves_the_card_from_the_hand_to_its_zone() {
         "from": { "controller": 0, "location": 2, "sequence": 0, "position": 10 },
         "to": { "controller": 0, "location": 8, "sequence": 1, "position": 8 } })]);
     // A Set: announced (its own card: with its id), move kind 5, then the Set effect (0x1E {player, zone, monster}).
-    let out: Vec<_> = out.iter().map(cmd).collect();
+    let out = cmds(&out);
     assert_eq!(out[0], (0x48, [0, 4101, 0, 1]));
     assert_eq!(out[2], (0x1A, [2 | 5 << 16, 0xB << 1, 6 << 1, 0]));
     assert_eq!(out.last(), Some(&(0x1E, [0, 6, 0, 0])));
@@ -1865,7 +1899,7 @@ fn a_card_leaving_a_list_zone_is_taken_by_its_id_when_the_mirror_is_out_of_step(
     let (mut t, _) = translator();
     t.events(&[json!({ "type": 90, "player": 0, "drawn": [{ "cid": 4100 }, { "cid": 4101 }, { "cid": 4102 }] })]);
     // The engine says the Spell (4100) leaves hand sequence 1 (the mirror holds 4101 there, 4100 at 0).
-    let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 1, 10), "to": loc(0, 8, 1, 1) })]).iter().map(cmd).collect();
+    let out = cmds(&t.events(&[json!({ "type": 50, "cid": 4100, "from": loc(0, 2, 1, 10), "to": loc(0, 8, 1, 1) })]));
     // uid 1 holds row 100; its table entry and its move, from hand index 0.
     // A Spell from the hand face-up to a Spell/Trap zone: activated, move kind 4.
     assert_eq!(out[0], (0x48, [0, 4100, 1, 1]));
@@ -1887,7 +1921,7 @@ fn a_hand_shuffle_reorders_the_hand_on_the_client_too() {
     let hand = |i: u32| 0xB << 8 | i << 16;
     assert_eq!(out, [(1000, [3, 102, 4102, hand(0)]), (1000, [1, 100, 4100, hand(1)]), (1000, [2, 101, 4101, hand(2)]), (0x12, [0, 0, 0, 0])]);
     // The engine's sequences now match: 4102 leaves from index 0, and the others move up.
-    let out: Vec<_> = t.events(&[json!({ "type": 50, "cid": 4102, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 1, 1) })]).iter().map(cmd).collect();
+    let out = cmds(&t.events(&[json!({ "type": 50, "cid": 4102, "from": loc(0, 2, 0, 10), "to": loc(0, 8, 1, 1) })]));
     assert_eq!(out[2], (0x1A, [3 | 4 << 16, 0xB << 1, 0x400C, 0]));
     assert_eq!(out[3..], [(1000, [1, 100, 4100, hand(0)]), (1000, [2, 101, 4101, hand(1)])]);
     // A shuffle that leaves the order as it is sends nothing; one that doesn't match the hand (a count or an id the

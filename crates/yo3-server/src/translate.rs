@@ -325,6 +325,19 @@ const CHAIN_SET: u32 = 0x33;
 const CHAIN_RUN: u32 = 0x34;
 /// ChainSet's zone for a card with no place on the client's field: the centre (place table 0x81AE38).
 const FIELD_CENTRE: u32 = 16;
+/// The card info panel's level for a monster in the hand (0x453740, hand case): a map uid -> level at the engine state
+/// +0x90 +0xD8 (0x5227E0), which 1018 {uid, level} sets (0x5226B0) and {uid, 0xFFFF} clears (0x522750). Without an
+/// entry the panel gets -1 and draws no stars. Konami's logs: right before a monster's move into a hand, cleared right
+/// before it leaves.
+const HAND_LEVEL: u32 = 1018;
+const NO_LEVEL: u32 = 0xFFFF;
+/// The card info panel's attribute, Type and level for a monster in a Graveyard (0x453740, case 0xE: 0x5241D0,
+/// 0x524170, 0x524230): a map Konami id -> {attribute, Type, level} at +0x90 +0xF8. 1019 {id, id, attribute, Type}
+/// stages it and 1020 {id, level} stores it (0x522850; with a 1019 of zeros it deletes, 0x522910). Without an entry
+/// all three are -1: no icons or stars, and Type -1 names the duel prompt text before the Types ("Send ... from your
+/// Deck."). Konami's logs: both right before a monster's table entry in a Graveyard.
+const PILE_STATS: u32 = 1019;
+const PILE_STATS_COMMIT: u32 = 1020;
 /// Data commands that build a field card's record (pop 0x522A50).
 const RECORD_BEGIN: u32 = 0x3E9;
 const RECORD_MORE: u32 = 0x3EA;
@@ -1931,6 +1944,25 @@ impl Translator {
         out
     }
 
+    /// What the card info panel reads for a monster moving into or out of the client's hand, or into a Graveyard, which
+    /// field records don't cover ([`HAND_LEVEL`], [`PILE_STATS`]). The opponent's hand isn't given levels: its cards
+    /// are hidden against a player.
+    fn panel_stats(&self, card: Card, from: Place, to: Place, row: u32) -> Vec<Message> {
+        let Some(s) = self.cards.get(&card.row).filter(|s| s.level > 0) else { return vec![] };
+        let mut out = vec![];
+        if from.zone == HAND && to.zone != HAND && from.player == CLIENT {
+            out.push(command(HAND_LEVEL, [card.uid, NO_LEVEL, 0, 0]));
+        }
+        if to.zone == HAND && from.zone != HAND && to.player == CLIENT && row != 0 {
+            out.push(command(HAND_LEVEL, [card.uid, s.level, 0, 0]));
+        }
+        if to.zone == GRAVE && from.zone != GRAVE {
+            let id = s.cid as u32;
+            out.extend([command(PILE_STATS, [id, id, s.attribute, s.race]), command(PILE_STATS_COMMIT, [id, s.level, 0, 0])]);
+        }
+        out
+    }
+
     /// [`relocate`] with the move's kind (`move_kind`), which the client's move takes in `param1`'s high half.
     fn relocate_as(&mut self, cid: u16, from: Place, to: Place, kind: u32) -> Vec<Message> {
         let record = (from.zone <= FIELD_SPELL).then(|| self.records.get(&(from.player, from.zone)).copied()).flatten();
@@ -1971,7 +2003,8 @@ impl Translator {
             self.positions.insert((to.player, to.zone), (to.face_up, to.defense));
         }
         let row = self.shown_row(&to, card.row);
-        let mut out = vec![command(CARD, [card.uid | open(to.zone), row, 0, table_place(to.player, to.zone, index)])];
+        let mut out = self.panel_stats(card, from, to, row);
+        out.push(command(CARD, [card.uid | open(to.zone), row, 0, table_place(to.player, to.zone, index)]));
         if to.zone < 5 && row != 0 {
             out.extend(match record {
                 Some(values) => self.record(to.player, to.zone, card.row, values),
