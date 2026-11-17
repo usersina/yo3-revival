@@ -131,7 +131,7 @@ log (default: host). They work on a running server; the ones that change an acco
 ./yo3-server --by Anna ban Yugi --reason "cheating" --days 7      # sign-in refused, devices signed out, game disconnected
 ./yo3-server --by Anna lift Yugi                                  # ends a ban or a restriction
 ./yo3-server --by Anna sign-out Yugi                              # every device signed out, the game disconnected
-./yo3-server delete-account Yugi --yes                           # an admin's: the account and its players, for good
+./yo3-server delete-account Yugi --yes --request-id delete-yugi-0001                           # an admin's: the account and its players, for good
 ./yo3-server maintenance --in 30 --message "Back at 10:00"        # the game counts down; --off calls it off
 ./yo3-server set news "Season 16 | The new banlist is live"        # pushed to everyone online
 ```
@@ -148,9 +148,15 @@ log (default: host). They work on a running server; the ones that change an acco
   items and titles go. So do their friends and ignore entries, friend, trade, rental and team invitations, rentals,
   the D-Mail they sent and that waits for them, a team they lead (disbanded, its members told) or their place in one,
   their duel records, user events they host, and their own duel logs. Their game is disconnected. The audit log
-  keeps one row, who deleted which User ID and when, and the earlier rows about the account go. What stays: other
-  players' records against them, the other player's copy of a duel log, and the backups until they are replaced
-  (the newest 24, hourly). Without `--yes` the command refuses.
+  keeps one row naming the User ID, actor and time, with non-secret request/disconnect metadata; earlier rows about
+  the account go. What stays: other players' records against them, the other player's copy of a duel log, and the
+  backups until they are replaced (the newest 24, hourly). Without `--yes` the command refuses.
+
+  Cleanup of every saved domain, duel logs and old audit rows commits with the deletion audit and retry receipt
+  before live changes or disconnects. Failures leave the account intact. Retain the printed request ID and retry with
+  `--request-id` after a lost response; this never deletes a replacement account with the same name. The last admin
+  cannot be deleted until another admin exists. In the React preview, type the numeric account number instead of
+  the User ID. An unknown disconnect outcome is reported separately from the committed deletion.
 
 ## The admin panel
 
@@ -321,6 +327,7 @@ duration or omit it until lifted. The React dialog offers the same actions from 
 Friends reach one **TLS listener**, normally TCP **7443**. The internal HTTP/admin listener remains on loopback;
 never forward it. A launcher supplies the game's gate/front/duel/HTTP ports locally through the required DLL.
 There is no stock-client/IP-auth fallback, browser `/join` setup or INI download.
+
 
 - **Bind** chooses which local interfaces accept connections. `0.0.0.0` listens on all IPv4 interfaces;
   `127.0.0.1` permits only this PC.

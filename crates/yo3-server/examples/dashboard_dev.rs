@@ -11,7 +11,7 @@ async fn main() -> anyhow::Result<()> {
     yo3_server::store::initialize(&dir)?;
     let mut accounts = Directory::open(vec![], &dir.join("accounts.json"))?;
     let password = logins::hash_password("DashboardDemo123!".into()).await?;
-    for (user, role) in [("TestAdmin", Role::Admin), ("TestModerator", Role::Moderator), ("TestPlayer", Role::Player), ("TestRoleTarget", Role::Player), ("TestRoleAdmin", Role::Admin), ("TestResetTarget", Role::Player), ("TestModTarget", Role::Player), ("TestModAdmin", Role::Admin)] {
+    for (user, role) in [("TestAdmin", Role::Admin), ("TestModerator", Role::Moderator), ("TestPlayer", Role::Player), ("TestRoleTarget", Role::Player), ("TestRoleAdmin", Role::Admin), ("TestResetTarget", Role::Player), ("TestModTarget", Role::Player), ("TestModAdmin", Role::Admin), ("TestDeleteTarget", Role::Player), ("TestDeleteAdmin", Role::Admin)] {
         let login = Login::new(user, password.clone(), logins::digest(&logins::new_code()));
         let id = accounts.register(login, None, Registration::Open).map_err(anyhow::Error::msg)?;
         accounts.set_role(user, role).map_err(anyhow::Error::msg)?;
@@ -20,6 +20,8 @@ async fn main() -> anyhow::Result<()> {
     let accounts = Arc::new(Mutex::new(accounts));
     let mut hub = Hub::with_records(&dir.join("records.json"));
     hub.set_directory(accounts.clone()); hub.keep_mail(&dir.join("mail.json"));
+    hub.keep_social(&dir.join("friends.json"));hub.keep_teams(&dir.join("teams.json"));
+    hub.keep_events(&dir.join("events.json"));hub.keep_rentals(&dir.join("rentals.json"));
     let mut world = World::new(vec![]); world.card_rows = 1000;
     let mut api = Api::new(accounts, Arc::new(yo3_server::settings::Live::open(Some(&dir.join("settings.json")), vec![])?), Some(dir.clone()),
         scratch.join("no-game-files-needed"), "dashboard-dev").with_gifts(Gifts {

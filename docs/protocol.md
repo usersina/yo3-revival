@@ -2334,3 +2334,16 @@ a trade or rental ready or cancel hangs nothing visible.
 - `DuelServerConnection` is mapped under "Duel connection"; remaining command meanings are labelled open there.
 - Official duel logs were served over HTTP (`http://download.yugioh-online.net/duellogs/last/`), alongside team and
   Online 2 downloads under `download.yugioh-online.net`.
+
+
+### Transactional administrative account deletion (Unreleased)
+
+Confirmed by our API implementation and contracts; this is our management protocol, not a guessed client field.
+`POST /panel/api/v1/accounts/delete` requires an admin session, CSRF, `Idempotency-Key`, numeric `user_id` and a
+matching `confirm_user_id`. The CLI and old panel use the same transaction. Accounts, social data, mail, teams,
+rentals, records, events, duel-log cleanup, audit cleanup/new row, receipt and disconnect intent commit before live
+publication. Existing team departure/disband and event notifications retain their shapes; no new game fields.
+Receipts contain numeric IDs/counts, not names or credentials. Replays recheck current admin authority and return
+the old result/current disconnect outcome; they never delete a replacement name or disconnect a newer session.
+Evidence: `deletion_admin_contract.rs`, `deletion_contract.rs`, `dashboard_contract.rs`, `panel_contract.rs` and
+`dashboard/e2e/deletion.spec.ts`. Backups/exported logs remain outside this deletion.

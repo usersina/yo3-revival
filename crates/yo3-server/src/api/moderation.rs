@@ -84,7 +84,7 @@ impl Api {
         let suffix=match response.disconnect { Some(EffectState::Pending|EffectState::Interrupted)=>"; disconnect outcome unknown: inspect current sessions before requesting another disconnect", _=>"" };
         value["message"]=json!(format!("{message}{suffix}")); Ok(value)
     }
-    fn disconnect_state(&self,scope:&str,id:&str)->Result<Option<EffectState>,MutationError> {
+    pub(super) fn disconnect_state(&self,scope:&str,id:&str)->Result<Option<EffectState>,MutationError> {
         match &self.data_dir {
             Some(dir)=>store::effect(dir,scope,id).map_err(MutationError::persistence),
             None=>Ok(self.effects.locked().get(&(scope.into(),id.into())).copied()),

@@ -20,6 +20,7 @@ import { GiveBpHeader, GiveBpByIdRequest } from './api/generated/validation/sche
 import { ApiHttpError, setCsrfToken } from './api/transport'
 import { ConnectedAccountDialog } from './ConnectedAccountDialog'
 import { ConnectedModeration } from './ConnectedModeration'
+import { ConnectedDeletion } from './ConnectedDeletion'
 import { ConnectedSettings } from './ConnectedSettings'
 import { ConnectedCodes } from './ConnectedCodes'
 import { ConnectedInvites } from './ConnectedInvites'
@@ -111,6 +112,7 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
   const client = useQueryClient()
   const accounts = useListAccounts()
   const [query, setQuery] = useState('')
+  const [deletionId, setDeletionId] = useState<number | null>(null)
   const [moderationId, setModerationId] = useState<number | null>(null)
   const [detailId, setDetailId] = useState<number | null>(null)
   const [giftTarget, setGiftTarget] = useState<GiftTarget | null>(null)
@@ -266,6 +268,7 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
             onChange={setQuery}
           />
           <div className="action-group">
+            <ConnectedDeletion session={session} userId={deletionId} onChange={setDeletionId} />
             <ConnectedModeration
               session={session}
               userId={moderationId}
@@ -368,6 +371,10 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
         session={session}
         userId={detailId}
         onChange={setDetailId}
+        onDelete={(account) => {
+          setDetailId(null)
+          setDeletionId(account.user_id)
+        }}
         onModerate={(account) => {
           setDetailId(null)
           setModerationId(account.user_id)

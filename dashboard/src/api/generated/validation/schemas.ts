@@ -440,10 +440,52 @@ export const CreateInviteResult = zod.object({
 export type CreateInviteResult = zod.input<typeof CreateInviteResult>;
 export type CreateInviteResultOutput = zod.output<typeof CreateInviteResult>;
 
+export const deleteAccountRequestConfirmUserIdMin = 0;
+export const deleteAccountRequestConfirmUserIdMax = 4294967295;
+
+export const deleteAccountRequestUserIdMin = 0;
+export const deleteAccountRequestUserIdMax = 4294967295;
+
+
+
+export const DeleteAccountRequest = zod.object({
+  "confirm_user_id": zod.int().min(deleteAccountRequestConfirmUserIdMin).max(deleteAccountRequestConfirmUserIdMax).describe('Must match user_id. The dashboard asks the administrator to type this account number.'),
+  "user_id": zod.int().min(deleteAccountRequestUserIdMin).max(deleteAccountRequestUserIdMax)
+});
+
+export type DeleteAccountRequest = zod.input<typeof DeleteAccountRequest>;
+export type DeleteAccountRequestOutput = zod.output<typeof DeleteAccountRequest>;
+
 export const EffectState = zod.enum(['pending', 'completed', 'interrupted']);
 
 export type EffectState = zod.input<typeof EffectState>;
 export type EffectStateOutput = zod.output<typeof EffectState>;
+
+export const deleteAccountResultPlayersMin = 0;
+export const deleteAccountResultPlayersMax = 4294967295;
+
+export const deleteAccountResultUserIdMin = 0;
+export const deleteAccountResultUserIdMax = 4294967295;
+
+
+
+export const DeleteAccountResult = zod.object({
+  "message": zod.string(),
+  "players": zod.int().min(deleteAccountResultPlayersMin).max(deleteAccountResultPlayersMax),
+  "request_id": zod.string(),
+  "user_id": zod.int().min(deleteAccountResultUserIdMin).max(deleteAccountResultUserIdMax)
+});
+
+export type DeleteAccountResult = zod.input<typeof DeleteAccountResult>;
+export type DeleteAccountResultOutput = zod.output<typeof DeleteAccountResult>;
+
+export const DeleteAccountResponse = zod.object({
+  "disconnect": zod.union([EffectState,zod.null()]).optional(),
+  "result": DeleteAccountResult
+});
+
+export type DeleteAccountResponse = zod.input<typeof DeleteAccountResponse>;
+export type DeleteAccountResponseOutput = zod.output<typeof DeleteAccountResponse>;
 
 export const recipeChoiceCardCountMin = 0;
 export const recipeChoiceCardCountMax = 4294967295;
@@ -1028,6 +1070,42 @@ export const IssueAccountCode415Response = ApiError
 export const IssueAccountCode500Response = ApiError
 
 export const IssueAccountCode503Response = ApiError
+
+
+export const deleteAccountHeaderIdempotencyKeyMin = 16;
+export const deleteAccountHeaderIdempotencyKeyMax = 128;
+
+
+export const deleteAccountHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const DeleteAccountHeader = zod.object({
+  "Idempotency-Key": zod.string().min(deleteAccountHeaderIdempotencyKeyMin).max(deleteAccountHeaderIdempotencyKeyMax).regex(deleteAccountHeaderIdempotencyKeyRegExp).describe('Retain this ID and input on retry. Retries observe the saved outcome, never repeat a disconnect.')
+})
+
+export const DeleteAccountBody = DeleteAccountRequest
+
+export const DeleteAccount200Response = DeleteAccountResponse
+
+export const DeleteAccount400Response = ApiError
+
+export const DeleteAccount401Response = ApiError
+
+export const DeleteAccount403Response = ApiError
+
+export const DeleteAccount404Response = ApiError
+
+export const DeleteAccount405Response = ApiError
+
+export const DeleteAccount409Response = ApiError
+
+export const DeleteAccount413Response = ApiError
+
+export const DeleteAccount415Response = ApiError
+
+export const DeleteAccount500Response = ApiError
+
+export const DeleteAccount503Response = ApiError
 
 
 export const editAccountHeaderIdempotencyKeyMin = 16;

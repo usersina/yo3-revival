@@ -95,14 +95,14 @@ impl Mailbox {
         }
     }
 
-    /// A deleted account's mail goes from the mailboxes it was sent to, too.
-    pub fn forget_from(&mut self, player_id: u32) {
-        let before: usize = self.waiting.values().map(Vec::len).sum();
-        self.waiting.values_mut().for_each(|m| m.retain(|mail| mail.from.0 != player_id));
-        self.waiting.retain(|_, m| !m.is_empty());
-        if self.waiting.values().map(Vec::len).sum::<usize>() != before {
-            self.save();
-        }
+    pub(crate) fn prepare_forget(&self, players: &[u32]) -> Self {
+        let mut next = self.clone();
+        next.waiting.retain(|to, mail| {
+            if players.contains(to) { return false }
+            mail.retain(|m| !players.contains(&m.from.0));
+            !mail.is_empty()
+        });
+        next
     }
 
     fn save(&self) {

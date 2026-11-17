@@ -40,10 +40,12 @@ export function ConnectedAccountDialog({
   onRevealKey,
   onGift,
   onModerate,
+  onDelete,
 }: {
   session: StaffSession
   userId: number | null
   onChange: (id: number | null) => void
+  onDelete: (account: AccountDetail) => void
   onModerate: (account: AccountDetail) => void
   onGift: (player: { player_id: number; name: string }) => void
   onRevealKey: (account: AccountDetail) => void
@@ -660,6 +662,11 @@ export function ConnectedAccountDialog({
           )}
         </div>
         <div className="modal-actions">
+          {data && !mode && admin && (
+            <Button variant="danger" disabled={!canStart} onClick={() => onDelete(data)}>
+              Delete account…
+            </Button>
+          )}
           <span className="muted">
             {pending
               ? 'Request saved for safe retry'

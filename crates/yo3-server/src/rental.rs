@@ -114,7 +114,7 @@ impl Rental {
 }
 
 /// Every rental, kept in a file next to the accounts.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Rentals {
     last_id: u32,
     all: Vec<Rental>,
@@ -132,11 +132,19 @@ impl Rentals {
     }
 
     fn save(&self) {
-        let Some(file) = &self.file else { return };
+        if let Err(e) = self.persist() { tracing::warn!("rentals not saved: {e}") }
+    }
+
+    pub(crate) fn persist(&self) -> std::io::Result<()> {
+        let Some(file) = &self.file else { return Ok(()) };
         let all: Vec<Json> = self.all.iter().map(Rental::to_json).collect();
-        if let Err(e) = crate::store::write(file, &json!({ "last_id": self.last_id, "rentals": all })) {
-            tracing::warn!("rentals not saved to {}: {e}", file.display());
-        }
+        crate::store::write(file, &json!({ "last_id": self.last_id, "rentals": all }))
+    }
+
+    pub(crate) fn prepare_forget(&self, players: &[u32]) -> Self {
+        let mut next = self.clone();
+        next.all.retain(|r| !players.contains(&r.lender.0) && !players.contains(&r.borrower.0));
+        next
     }
 
     /// Starts a rental of a session's cards at `now` (unix seconds); its id.

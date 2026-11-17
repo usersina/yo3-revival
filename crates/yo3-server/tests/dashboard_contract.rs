@@ -32,9 +32,10 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/settings", "get", "listSettings"),
         ("/panel/api/v1/settings", "post", "changeSettings"),
         ("/panel/api/v1/moderation", "post", "moderateAccount"),
+        ("/panel/api/v1/accounts/delete", "post", "deleteAccount"),
         ("/panel/api/v1/gifts/choices", "get", "listGiftChoices"),
     ];
-    assert_eq!(paths.len(), 17);
+    assert_eq!(paths.len(), 18);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -611,4 +612,23 @@ async fn restricting_then_lifting_staff_without_a_request_in_between_cannot_rest
         api::call(&live,&Op::Lift{who:"Pegasus".into()}).unwrap();
     }).await.unwrap();
     assert_eq!(b.call("GET","/panel/api/v1/session",json!(null)).await.status,401);
+}
+
+#[tokio::test]
+async fn account_deletion_is_admin_only_confirmed_idempotent_and_removes_current_sessions() {
+    let mut b=Browser::new("deletion-api").await;b.sign_in("Croquet").await;
+    let accounts=b.call("GET","/panel/api/v1/accounts",json!(null)).await.body;
+    let id=|name:&str|accounts["accounts"].as_array().unwrap().iter().find(|a|a["login"]==name).unwrap()["user_id"].as_u64().unwrap();
+    let yugi=id("Yugi");let pegasus=id("Pegasus");let path="/panel/api/v1/accounts/delete";
+    let request=json!({"user_id":yugi,"confirm_user_id":yugi});
+    assert_eq!(b.call("POST",path,request.clone()).await.status,403);
+    b.sign_in("Pegasus").await;
+    assert_eq!(b.call("POST",path,json!({"user_id":yugi,"confirm_user_id":pegasus})).await.status,400);
+    assert_eq!(b.call("POST",path,json!({"user_id":pegasus,"confirm_user_id":pegasus})).await.status,400,"last administrator");
+    let first=b.call("POST",path,request.clone()).await;
+    assert_eq!(first.status,200,"{}",first.body);assert_eq!(first.body["disconnect"],"completed");
+    assert_eq!(b.call("GET",&format!("/panel/api/v1/accounts/{yugi}"),json!(null)).await.status,404);
+    assert_eq!(b.call("POST",path,request).await.body,first.body,"retry resolves even after account is gone");
+    assert_eq!(b.call("POST",path,json!({"user_id":pegasus,"confirm_user_id":pegasus})).await.status,409);
+    let text=first.body.to_string();for secret in ["Yugi","password","recovery","device_token"] {assert!(!text.contains(secret),"{text}");}
 }

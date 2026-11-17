@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value as Json, json};
 use yo3_proto::{Message, Value};
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Social {
     friends: BTreeMap<u32, BTreeSet<u32>>,
     ignored: BTreeMap<u32, BTreeSet<u32>>,
@@ -41,20 +41,30 @@ impl Social {
     }
 
     fn save(&self) {
-        let Some(file) = &self.file else { return };
+        if let Err(e) = self.persist() { tracing::warn!("friends not saved: {e}") }
+    }
+
+    pub(crate) fn persist(&self) -> std::io::Result<()> {
+        let Some(file) = &self.file else { return Ok(()) };
         let pairs = |lists: &BTreeMap<u32, BTreeSet<u32>>, both_ways: bool| -> Vec<[u32; 2]> {
             let all = lists.iter().flat_map(|(&a, bs)| bs.iter().map(move |&b| [a, b]));
             all.filter(|[a, b]| !both_ways || a < b).collect()
         };
         let names: BTreeMap<String, &String> = self.names.iter().map(|(id, n)| (id.to_string(), n)).collect();
         let saved = json!({ "friends": pairs(&self.friends, true), "ignored": pairs(&self.ignored, false), "names": names });
-        if let Err(e) = crate::store::write(file, &saved) {
-            tracing::warn!("friends not saved to {}: {e}", file.display());
-        }
+        crate::store::write(file, &saved)
+    }
+
+    pub(crate) fn prepare_forget(&self, players: &[u32]) -> Self {
+        let mut next = self.clone();
+        for player_id in players { next.forget_inner(*player_id); }
+        next
     }
 
     /// A deleted player leaves every list: friends of theirs, who ignores them, what they ignore, requests.
-    pub fn forget(&mut self, player_id: u32) {
+    pub fn forget(&mut self, player_id: u32) { self.forget_inner(player_id); self.save(); }
+
+    fn forget_inner(&mut self, player_id: u32) {
         self.friends.remove(&player_id);
         self.friends.values_mut().for_each(|s| {
             s.remove(&player_id);
@@ -65,7 +75,6 @@ impl Social {
         });
         self.requests.retain(|from, to| *from != player_id && *to != player_id);
         self.names.remove(&player_id);
-        self.save();
     }
 
     /// A player is online under this name: their friends list them by it.

@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-17 — Transactional account deletion in the connected dashboard](#2026-11-17--transactional-account-deletion-in-the-connected-dashboard)
   - [Status](#status)
   - [▶ Overnight plan (2026-11-07): everything left, end to end](#-overnight-plan-2026-11-07-everything-left-end-to-end)
   - [▶ Windows VM test (2026-11-08): what a real Windows client turned up](#-windows-vm-test-2026-11-08-what-a-real-windows-client-turned-up)
@@ -29,6 +30,14 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-17 — Transactional account deletion in the connected dashboard
+
+Reproduced deletion reporting success after a refused audit write. Account/domain cleanup, duel-log and audit
+removal now commit with the deletion audit, receipt and disconnect intent. Live state and notifications wait for
+commit. Added failure/commit/later-save tests, concurrent/restart/name-reuse retries, last-admin and permission
+checks, plus generated API/client and a typed-number confirmation dialog that resumes uncertain requests.
+The old HTML panel and CLI share the boundary; CLI deletion supports `--request-id`. Graceful stop remains next.
 
 ## Status
 

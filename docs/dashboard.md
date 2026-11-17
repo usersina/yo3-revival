@@ -6,7 +6,7 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 ## Current state
 
 - The approved React/Vite/SWC/Tailwind dashboard is in `dashboard/`. The main pages remain a labelled design preview.
-  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, card/recipe/title gifts, Give BP, registration invites, BOOSTERPASS code management, live settings, news, maintenance and moderation.
+  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, card/recipe/title gifts, Give BP, registration invites, BOOSTERPASS code management, live settings, news, maintenance, moderation and account deletion.
   It never falls back to fixtures.
 - Axum handles HTTP on separate sockets. Host-token operations, assets and the old HTML panel stay on `--http-port`.
   The staff JSON router has its own opt-in `--dashboard-port`, disabled by default and always bound to loopback.
@@ -146,7 +146,21 @@ Ban/sign-out clear devices and revoke staff cookies; restriction also revokes ol
 restore a previous cookie. A password verified before moderation must recheck standing and session revision before
 session issuance; key admission holds the same account -> session lock order. A remembered device is not saved if
 moderation/recovery invalidated its password snapshot. The CLI's seven moderation commands accept `--request-id`;
-old HTML forms reuse their hidden ID. Account deletion, stop and backup operations are still separate work.
+old HTML forms reuse their hidden ID. Stop and backup operations are still separate work.
+
+Account deletion is admin-only at `POST /panel/api/v1/accounts/delete`. The numeric account ID must match
+`confirm_user_id`; the React dialog asks the admin to type it. The last administrator cannot be deleted.
+Under Hub -> accounts -> database locks, the server prepares copies of accounts, friends, mail, teams, rentals,
+records and events. All those domains, duel-log removal, removal of the account's earlier audit rows, the deletion
+audit, receipt and any disconnect intent commit together. Only then are the copies installed, surviving team/event
+members notified and sessions ended. Every persistence error propagates; no cleanup is a warning-only success.
+The deletion audit keeps the User ID plus non-secret request/outcome metadata, without old account values. Receipts
+keep only numeric IDs/counts, the input fingerprint and a generic confirmation. Backups and exported logs may still
+contain older data. Retrying after a lost response or restart returns the old result even if the account is gone;
+a new account using its old name is never deleted or disconnected by that retry. The CLI's `delete-account --yes`
+accepts `--request-id`, and the old HTML panel reuses its hidden form ID. Uncertain disconnects use the same durable
+outcome rules as moderation. The React dialog retains the request across reloads and can resume it without loading
+the deleted account. Storage failure blocks the destructive request instead of risking an untracked retry.
 
 ## API and dashboard
 
@@ -179,6 +193,7 @@ Connected routes in this slice:
 | GET | `/panel/api/v1/accounts` | Safe account/player summaries without credentials |
 | GET | `/panel/api/v1/accounts/{user_id}` | Staff-visible profile details and checked live state; credentials excluded |
 | GET | `/panel/api/v1/countries` | Country codes from the game archive, or an explicit unavailable error |
+| POST | `/panel/api/v1/accounts/delete` | Admin-only confirmed deletion; atomic cleanup and a persistent receipt, with current disconnect outcome |
 | POST | `/panel/api/v1/accounts/edit` | Tagged `add_player`, `rename_player`, `set_country`; stable IDs and retained retry key |
 | POST | `/panel/api/v1/give-bp` | Admin-only grant to `user_id`; exact result and receipt on retry |
 | GET | `/panel/api/v1/bp-codes` | Staff-visible codes, rewards, limits and claims, with RFC 3339 times where known |

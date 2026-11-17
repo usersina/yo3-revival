@@ -39,6 +39,7 @@ pub mod keys;
 pub mod gifts;
 pub mod settings;
 pub mod moderation;
+pub mod deletion;
 pub use give_bp::{GiveBpRequest, GiveBpResult};
 pub use mutation::{Actor, MutationError, MutationErrorCode};
 
@@ -118,7 +119,7 @@ pub enum Op {
 
 impl Op {
     /// Operations migrated to a committed change/audit/receipt boundary.
-    fn receipted(&self) -> bool { matches!(self, Self::Kick { .. } | Self::Ban { .. } | Self::Restrict { .. } | Self::Lift { .. } | Self::Mute { .. } | Self::Unmute { .. } | Self::SignOut { .. } | Self::Set { .. } | Self::Reset { .. } | Self::Maintenance { .. } | Self::GiveCards { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
+    fn receipted(&self) -> bool { matches!(self, Self::DeleteAccount { .. } | Self::Kick { .. } | Self::Ban { .. } | Self::Restrict { .. } | Self::Lift { .. } | Self::Mute { .. } | Self::Unmute { .. } | Self::SignOut { .. } | Self::Set { .. } | Self::Reset { .. } | Self::Maintenance { .. } | Self::GiveCards { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
     /// Its name in the API's path and the audit log.
     pub fn name(&self) -> String {
         serde_json::to_value(self).ok().and_then(|v| v["op"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -271,18 +272,7 @@ impl Api {
         }
         let (result, before, after) = self.run(op)?;
         if op.changes() {
-            let (target, detail) = match op {
-                // A deleted account: the rows about it go, and this one names only its User ID (#39).
-                Op::DeleteAccount { .. } => {
-                    let names: Vec<String> = result["names"].as_array().into_iter().flatten().filter_map(|n| n.as_str().map(str::to_owned)).collect();
-                    match &self.data_dir {
-                        Some(dir) => if let Err(e) = crate::store::forget_in_audit(dir, &names) { tracing::error!("audit rows of a deleted account not removed: {e}") },
-                        None => self.memory.locked().retain(|r| !crate::store::mentions(&names, &r.target, r.detail.as_ref())),
-                    }
-                    (result["deleted"].as_str().unwrap_or_default().to_string(), None)
-                }
-                _ => (op.target(), op.detail()),
-            };
+            let (target, detail) = (op.target(), op.detail());
             let row = AuditRow { at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true), actor: actor.into(),
                 origin: origin.into(), op: op.name(), target, before, after, detail };
             match &self.data_dir {
@@ -295,6 +285,7 @@ impl Api {
 
     fn typed_change(&self, op: &Op, id: &str, actor: Actor<'_>, origin: &str) -> Result<Value, MutationError> {
         match op {
+            Op::DeleteAccount { .. } => self.named_deletion(op, id, actor, origin),
             Op::Kick { .. } | Op::Ban { .. } | Op::Restrict { .. } | Op::Lift { .. } | Op::Mute { .. } | Op::Unmute { .. } | Op::SignOut { .. } => self.named_moderation(op, id, actor, origin),
             Op::Set { .. } | Op::Reset { .. } | Op::Maintenance { .. } => self.named_setting(op, id, actor, origin),
             Op::GiveBp { who, amount } => self.give_bp(&GiveBpRequest { who: who.clone(), amount: *amount }, id, actor, origin).map(|r| json!(r)),
@@ -327,11 +318,6 @@ impl Api {
             Some(dir) => crate::store::audit_rows(dir, limit).map_err(|e| e.to_string()),
             None => Ok(self.memory.locked().iter().rev().take(limit as usize).cloned().collect()),
         }
-    }
-
-    /// Ends the sessions of `user_id`: their game shows its own disconnect dialog.
-    fn end_sessions(&self, user_id: u32) {
-        if let Some(sessions) = &self.sessions { sessions.locked().logout_user(user_id) }
     }
 
     /// Uses `gifts` instead of the game's cards and recipes (tests).
@@ -408,22 +394,7 @@ impl Api {
                     "reset_pending": login.as_ref().and_then(|l| l.reset.as_ref()).is_some_and(|(_, until)| *until > now),
                     "players": players }), None, None))
             }
-            Op::DeleteAccount { who } => {
-                // Hub first, then accounts, as everywhere (duel results pay BP).
-                let mut hub = self.hub.as_ref().map(|h| h.locked());
-                let user_id = self.accounts.locked().user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
-                let (label, players) = self.accounts.locked().delete_account(user_id)?;
-                let ids: Vec<u32> = players.iter().map(|(id, _)| *id).collect();
-                if let Some(hub) = hub.as_mut() { hub.forget_account(&ids) }
-                drop(hub);
-                self.end_sessions(user_id);
-                if let Some(dir) = &self.data_dir && let Err(e) = crate::store::delete_duel_logs_of(dir, &ids) {
-                    tracing::error!("duel logs of a deleted account not removed: {e}");
-                }
-                let names: Vec<String> = std::iter::once(label.clone()).chain(players.iter().map(|(_, n)| n.clone())).collect();
-                Ok((json!({ "deleted": label, "names": names, "players": players.len(),
-                    "message": format!("{label} is deleted with {} player(s); its game was disconnected", players.len()) }), None, None))
-            }
+            Op::DeleteAccount { .. } => Err("deletion requires the typed mutation boundary".into()),
             Op::Shutdown => {
                 let stop = self.shutdown.as_ref().ok_or("the server isn't running")?;
                 stop.send_replace(true);

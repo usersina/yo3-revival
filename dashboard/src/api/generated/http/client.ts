@@ -37,6 +37,9 @@ import type {
   CreateInviteHeaders,
   CreateInviteRequest,
   CreateInviteResult,
+  DeleteAccountHeaders,
+  DeleteAccountRequest,
+  DeleteAccountResponse,
   EditAccountHeaders,
   GiftChoices,
   GiftRequest,
@@ -270,6 +273,75 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getIssueAccountCodeMutationOptions(options), queryClient);
+    }
+
+export const getDeleteAccountUrl = () => {
+
+
+
+
+  return `/panel/api/v1/accounts/delete`
+}
+
+export const deleteAccount = async (deleteAccountRequest: DeleteAccountRequest,
+    headers: DeleteAccountHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<DeleteAccountResponse> => {
+
+  return apiFetch<DeleteAccountResponse>(getDeleteAccountUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(deleteAccountRequest)
+  }
+);}
+
+
+
+
+
+export const getDeleteAccountMutationKey = () => ['deleteAccount'] as const;
+
+export const getDeleteAccountMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAccount>>, TError,DeleteAccountMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAccount>>, TError,DeleteAccountMutationVariables, TContext> => {
+
+const mutationKey = getDeleteAccountMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAccount>>, DeleteAccountMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  deleteAccount(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAccountMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAccount>>>
+    export type DeleteAccountMutationBody = DeleteAccountRequest
+    export type DeleteAccountMutationError = ErrorType<ApiError>
+    export type DeleteAccountMutationVariables = {data: DeleteAccountRequest;headers: DeleteAccountHeaders}
+
+    export const useDeleteAccount = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAccount>>, TError,DeleteAccountMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAccount>>,
+        TError,
+        DeleteAccountMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteAccountMutationOptions(options), queryClient);
     }
 
 export const getEditAccountUrl = () => {

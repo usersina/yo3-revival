@@ -103,6 +103,10 @@ impl Saved {
     fn same(&self, e: &Entry) -> bool { Arc::ptr_eq(&self.account, &e.account) && self.key == e.key && self.login == e.login }
 }
 
+pub(crate) struct AccountDeletion {
+    pub next: Directory, pub label: String, pub players: Vec<(u32, String)>,
+}
+
 impl Directory {
     /// The account `pred` picks, to change: only that account is copied (copy-on-write), the others stay shared.
     fn account_mut_where(&mut self, pred: impl Fn(&Account) -> bool) -> Option<&mut Account> {
@@ -719,15 +723,21 @@ impl Directory {
     /// devices, and its players with their collections and decks. An invite it issued no longer names it. What it was
     /// known by (its User ID, or "#ID" for a key account) and its players.
     pub fn delete_account(&mut self, user_id: u32) -> Result<(String, Vec<(u32, String)>), String> {
-        self.atomic(|d| {
-            let at = d.accounts.iter().position(|e| e.account.user_id == user_id).ok_or_else(|| format!("no account {user_id}"))?;
-            let entry = d.accounts.remove(at);
-            let label = entry.login.as_ref().map_or_else(|| format!("#{user_id}"), |l| l.user.clone());
-            if let Some(login) = &entry.login {
-                for invite in d.invites.iter_mut().filter(|i| i.issued_by.eq_ignore_ascii_case(&login.user)) { invite.issued_by = "(a deleted account)".into() }
-            }
-            Ok((label, entry.account.players.iter().map(|p| (p.player_id, p.name.clone())).collect()))
-        })
+        let AccountDeletion { mut next, label, players } = self.prepare_delete_account(user_id)?;
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok((label, players))
+    }
+
+    pub(crate) fn prepare_delete_account(&self, user_id: u32) -> Result<AccountDeletion, String> {
+        let mut next = self.clone();
+        let at = next.accounts.iter().position(|e| e.account.user_id == user_id).ok_or_else(|| format!("no account {user_id}"))?;
+        let entry = next.accounts.remove(at);
+        let label = entry.login.as_ref().map_or_else(|| format!("#{user_id}"), |l| l.user.clone());
+        if let Some(login) = &entry.login {
+            for invite in next.invites.iter_mut().filter(|i| i.issued_by.eq_ignore_ascii_case(&login.user)) { invite.issued_by = "(a deleted account)".into() }
+        }
+        Ok(AccountDeletion { next, label, players: entry.account.players.iter().map(|p| (p.player_id, p.name.clone())).collect() })
     }
 
     /// Renames a player (names are unique, ignoring case).
