@@ -34,10 +34,12 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/moderation", "post", "moderateAccount"),
         ("/panel/api/v1/accounts/delete", "post", "deleteAccount"),
         ("/panel/api/v1/server", "get", "getServerStatus"),
+        ("/panel/api/v1/audit", "get", "getAuditHistory"),
+        ("/panel/api/v1/logs", "get", "getServerLogs"),
         ("/panel/api/v1/server/stop", "post", "stopServer"),
         ("/panel/api/v1/gifts/choices", "get", "listGiftChoices"),
     ];
-    assert_eq!(paths.len(), 20);
+    assert_eq!(paths.len(), 22);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -650,4 +652,27 @@ async fn staff_server_status_is_live_and_stop_requires_admin_and_the_current_run
     assert_eq!(stopped.body["stop"],"completed");assert_eq!(stopped.body["result"]["run_id"],run_id);
     let addr=b.live.dashboard.unwrap();tokio::time::timeout(std::time::Duration::from_secs(5),b.live.wait()).await.unwrap();
     assert!(tokio::net::TcpStream::connect(addr).await.is_err());
+}
+
+#[tokio::test]
+async fn audit_and_logs_are_typed_bounded_staff_reads_with_real_data_and_secret_redaction() {
+    let mut b=Browser::new("observability").await;b.sign_in("Croquet").await;
+    let first=b.call("GET","/panel/api/v1/audit?limit=2",json!(null)).await;
+    assert_eq!(first.status,200,"the audit page is not connected: {}",first.body);
+    assert_eq!(first.body["entries"].as_array().unwrap().len(),2);
+    let cursor=first.body["next_before"].as_str().unwrap();
+    let next=b.call("GET",&format!("/panel/api/v1/audit?limit=2&before={cursor}"),json!(null)).await;
+    assert_eq!(next.status,200);assert!(next.body["entries"].as_array().unwrap().iter().all(|entry|entry["id"]!=first.body["entries"][0]["id"]));
+    assert_eq!(b.call("GET","/panel/api/v1/audit?limit=0",json!(null)).await.status,400);
+    assert_eq!(b.call("GET","/panel/api/v1/audit?before=9223372036854775808",json!(null)).await.status,400);
+    assert_eq!(b.call("GET","/panel/api/v1/audit?q=never-a-real-actor",json!(null)).await.body["entries"],json!([]));
+    yo3_server::recent::push("2026-11-17T10:00:00Z INFO observable normal line");
+    yo3_server::recent::push("2026-11-17T10:00:01Z ERROR observable problem");
+    yo3_server::recent::push("2026-11-17T10:00:02Z WARN password=NEVER-EXPOSE-THIS");
+    let logs=b.call("GET","/panel/api/v1/logs?problems=true&limit=50",json!(null)).await;
+    assert_eq!(logs.status,200,"{}",logs.body);let text=logs.body.to_string();assert!(!text.contains("NEVER-EXPOSE-THIS"),"{text}");
+    assert!(logs.body["lines"].as_array().unwrap().iter().all(|entry|entry["level"]=="error" || entry["level"]=="warn"));
+    assert_eq!(logs.body["retention_lines"],2000);
+    assert_eq!(b.call("GET","/panel/api/v1/logs?limit=501",json!(null)).await.status,400);
+    b.cookie.clear();assert_eq!(b.call("GET","/panel/api/v1/audit",json!(null)).await.status,401);
 }

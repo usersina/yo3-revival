@@ -28,6 +28,7 @@ import type {
   AccountEditResult,
   AccountList,
   ApiError,
+  AuditPage,
   BpCodeList,
   ChangeSettingsHeaders,
   CountryList,
@@ -41,6 +42,8 @@ import type {
   DeleteAccountRequest,
   DeleteAccountResponse,
   EditAccountHeaders,
+  GetAuditHistoryParams,
+  GetServerLogsParams,
   GiftChoices,
   GiftRequest,
   GiftResult,
@@ -54,6 +57,7 @@ import type {
   KeyAccountRequest,
   KeyAccountResult,
   ListGiftChoicesParams,
+  LogPage,
   ManageAccountKeyHeaders,
   ModerateAccountHeaders,
   ModerationRequest,
@@ -568,6 +572,107 @@ export function useGetAccount<TData = Awaited<ReturnType<typeof getAccount>>, TE
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetAccountQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAuditHistoryUrl = (params?: GetAuditHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/panel/api/v1/audit?${stringifiedParams}` : `/panel/api/v1/audit`
+}
+
+export const getAuditHistory = async (params?: GetAuditHistoryParams, options?: Parameters<typeof apiFetch>[1]): Promise<AuditPage> => {
+
+  return apiFetch<AuditPage>(getGetAuditHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAuditHistoryQueryKey = (params?: GetAuditHistoryParams,) => {
+    return [
+    `/panel/api/v1/audit`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAuditHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getAuditHistory>>, TError = ErrorType<ApiError>>(params?: GetAuditHistoryParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAuditHistory>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAuditHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAuditHistory>>> = ({ signal }) => getAuditHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAuditHistory>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetAuditHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getAuditHistory>>>
+export type GetAuditHistoryQueryError = ErrorType<ApiError>
+
+
+export function useGetAuditHistory<TData = Awaited<ReturnType<typeof getAuditHistory>>, TError = ErrorType<ApiError>>(
+ params: undefined |  GetAuditHistoryParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAuditHistory>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAuditHistory>>,
+          TError,
+          Awaited<ReturnType<typeof getAuditHistory>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetAuditHistory<TData = Awaited<ReturnType<typeof getAuditHistory>>, TError = ErrorType<ApiError>>(
+ params?: GetAuditHistoryParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAuditHistory>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAuditHistory>>,
+          TError,
+          Awaited<ReturnType<typeof getAuditHistory>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetAuditHistory<TData = Awaited<ReturnType<typeof getAuditHistory>>, TError = ErrorType<ApiError>>(
+ params?: GetAuditHistoryParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAuditHistory>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetAuditHistory<TData = Awaited<ReturnType<typeof getAuditHistory>>, TError = ErrorType<ApiError>>(
+ params?: GetAuditHistoryParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAuditHistory>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetAuditHistoryQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -1307,6 +1412,107 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getCreateInviteMutationOptions(options), queryClient);
     }
+
+export const getGetServerLogsUrl = (params?: GetServerLogsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/panel/api/v1/logs?${stringifiedParams}` : `/panel/api/v1/logs`
+}
+
+export const getServerLogs = async (params?: GetServerLogsParams, options?: Parameters<typeof apiFetch>[1]): Promise<LogPage> => {
+
+  return apiFetch<LogPage>(getGetServerLogsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetServerLogsQueryKey = (params?: GetServerLogsParams,) => {
+    return [
+    `/panel/api/v1/logs`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetServerLogsQueryOptions = <TData = Awaited<ReturnType<typeof getServerLogs>>, TError = ErrorType<ApiError>>(params?: GetServerLogsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getServerLogs>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetServerLogsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getServerLogs>>> = ({ signal }) => getServerLogs(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getServerLogs>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetServerLogsQueryResult = NonNullable<Awaited<ReturnType<typeof getServerLogs>>>
+export type GetServerLogsQueryError = ErrorType<ApiError>
+
+
+export function useGetServerLogs<TData = Awaited<ReturnType<typeof getServerLogs>>, TError = ErrorType<ApiError>>(
+ params: undefined |  GetServerLogsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getServerLogs>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getServerLogs>>,
+          TError,
+          Awaited<ReturnType<typeof getServerLogs>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetServerLogs<TData = Awaited<ReturnType<typeof getServerLogs>>, TError = ErrorType<ApiError>>(
+ params?: GetServerLogsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getServerLogs>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getServerLogs>>,
+          TError,
+          Awaited<ReturnType<typeof getServerLogs>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetServerLogs<TData = Awaited<ReturnType<typeof getServerLogs>>, TError = ErrorType<ApiError>>(
+ params?: GetServerLogsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getServerLogs>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetServerLogs<TData = Awaited<ReturnType<typeof getServerLogs>>, TError = ErrorType<ApiError>>(
+ params?: GetServerLogsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getServerLogs>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetServerLogsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getModerateAccountUrl = () => {
 

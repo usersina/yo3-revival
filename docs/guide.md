@@ -329,6 +329,11 @@ Stop intent is saved before signalling; an uncertain outcome means inspect the p
 A confirmed signal still allows final saves and the shutdown backup to finish. Desktop uses the same run-bound
 operation. The connected React preview shows live checked status and requires confirmation before stopping.
 
+The connected dashboard's **Audit log** reads saved administrative history with search and older/newer pages. IDs
+are text so large values remain exact. **Server logs** shows up to 500 of the 2,000 most recent captured lines,
+newest first, with warnings/errors filtering, optional refresh and Copy visible logs. This view clears on restart;
+full diagnostics remain in the server's log folder. Fetch failures are shown explicitly and do not become empty results.
+
 ## Network settings
 
 Friends reach one **TLS listener**, normally TCP **7443**. The internal HTTP/admin listener remains on loopback;

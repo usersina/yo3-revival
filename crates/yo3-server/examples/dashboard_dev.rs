@@ -4,6 +4,7 @@ use yo3_server::{accounts::Directory, logins::{self, Login, Registration, Role},
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt().with_ansi(false).with_writer(||yo3_server::recent::Tee::new(std::io::stdout())).try_init().map_err(|e|anyhow::anyhow!("{e}"))?;
     let port = std::env::args().nth(1).unwrap_or_else(|| "18080".into()).parse()?;
     let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
     let scratch = std::env::temp_dir().join(format!("yo3-dashboard-dev-{}-{stamp}", std::process::id()));
@@ -34,6 +35,7 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
     println!("Disposable dashboard API: http://{} (TestAdmin / DashboardDemo123!)", listener.local_addr()?);
     println!("Sample gift catalogue; real router, operations and SQLite. No game listeners.");
+    tracing::info!("Disposable dashboard API is ready; game listeners are disabled");
     let router = yo3_server::dashboard::router(yo3_server::dashboard::Dashboard { api: Arc::new(api), panel: Arc::new(yo3_server::panel::Panel::new()) });
     axum::serve(listener, router.into_make_service_with_connect_info::<std::net::SocketAddr>())
         .with_graceful_shutdown(async { let _ = tokio::signal::ctrl_c().await; }).await?;

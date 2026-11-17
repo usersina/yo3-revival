@@ -41,6 +41,7 @@ pub mod settings;
 pub mod moderation;
 pub mod deletion;
 pub mod server;
+pub mod observability;
 pub use give_bp::{GiveBpRequest, GiveBpResult};
 pub use mutation::{Actor, MutationError, MutationErrorCode};
 

@@ -2358,3 +2358,13 @@ only reads its saved outcome. A different current run cannot be stopped by eithe
 that never committed. Schema 5 preserves disconnect effects while adding nullable-user stop effects; startup marks
 both kinds interrupted without replay. No game wire fields change. Evidence: `stop_admin_contract.rs`,
 `shutdown_contract.rs`, `dashboard_contract.rs`, `dashboard/e2e/server.spec.ts`.
+
+
+### Staff audit history and captured server logs (Unreleased)
+
+Our confirmed management protocol, not a client wire change: `GET /panel/api/v1/audit` returns bounded pages with
+string IDs/cursors and formatted JSON text; `GET /panel/api/v1/logs` returns bounded, secret-filtered log entries,
+levels and RFC 3339 capture times. Both require current staff authority. Audit supports a literal server-side search
+and strict positive decimal cursor; errors are explicit, not empty success. Captured logs are volatile, newest first,
+with optional problems-only filtering. Evidence: `observability_contract.rs`, `dashboard_contract.rs`,
+`recent.rs` tests and `dashboard/e2e/observability.spec.ts`.

@@ -23,6 +23,8 @@ import { ConnectedModeration } from './ConnectedModeration'
 import { ConnectedDeletion } from './ConnectedDeletion'
 import { ConnectedSettings } from './ConnectedSettings'
 import { ConnectedServer } from './ConnectedServer'
+import { ConnectedAudit } from './ConnectedAudit'
+import { ConnectedLogs } from './ConnectedLogs'
 import { ConnectedCodes } from './ConnectedCodes'
 import { ConnectedInvites } from './ConnectedInvites'
 import { ConnectedGifts } from './ConnectedGifts'
@@ -369,6 +371,8 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
           </div>
         )}
       </Panel>
+      <ConnectedAudit />
+      <ConnectedLogs />
       <ConnectedAccountDialog
         session={session}
         userId={detailId}

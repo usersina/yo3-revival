@@ -15,6 +15,7 @@ use crate::{api::{give_bp::GiveBpByIdRequest, Api, GiveBpResult, Actor, Mutation
 use crate::api::moderation::{ModerationRequest,ModerationResponse};
 use crate::api::deletion::{DeleteAccountRequest,DeleteAccountResponse};
 use crate::api::server::{StopRequest,StopResponse,ServerOverview};
+use crate::api::observability::{AuditQuery,AuditPage,LogsQuery,LogPage};
 use crate::api::settings::{SettingsRequest, SettingsResult, SettingsList};
 use crate::api::gifts::{GiftRequest, GiftResult, GiftChoices};
 use crate::api::keys::{KeyAccountRequest, KeyAccountResult};
@@ -110,7 +111,7 @@ fn documented_routes() -> OpenApiRouter<Dashboard> {
     OpenApiRouter::new().routes(routes!(staff_session)).routes(routes!(sign_in)).routes(routes!(sign_out))
         .routes(routes!(accounts)).routes(routes!(give_bp)).routes(routes!(list_bp_codes))
         .routes(routes!(create_bp_code)).routes(routes!(remove_bp_code)).routes(routes!(list_invites)).routes(routes!(create_invite))
-        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices)).routes(routes!(moderate)).routes(routes!(delete_account)).routes(routes!(server_status)).routes(routes!(stop_server)).routes(routes!(live_settings)).routes(routes!(change_settings).layer(DefaultBodyLimit::max(256 * 1024)))
+        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices)).routes(routes!(moderate)).routes(routes!(delete_account)).routes(routes!(server_status)).routes(routes!(audit_history)).routes(routes!(server_logs)).routes(routes!(stop_server)).routes(routes!(live_settings)).routes(routes!(change_settings).layer(DefaultBodyLimit::max(256 * 1024)))
 }
 
 pub fn openapi() -> OpenApi {
@@ -523,4 +524,26 @@ async fn stop_server(State(state): State<Dashboard>, Extension(viewer): Extensio
     tokio::task::spawn_blocking(move || state.api.request_stop(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
         .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
         .map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(get, path = "/panel/api/v1/audit", operation_id = "getAuditHistory", tag = "Audit",
+    params(("limit" = Option<u32>, Query, minimum=1, maximum=200), ("before" = Option<String>, Query, min_length=1, max_length=19, pattern="^[1-9][0-9]*$", description="Decimal ID returned by next_before; never a JS number"), ("q" = Option<String>, Query, max_length=80)),
+    security(("staffSession" = [])), responses((status = 200, description = "Success", body = AuditPage),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 404, description = "No persistent history", body = ApiError), (status = 503, description = "History unavailable", body = ApiError), (status = 500, description = "Internal error; mutation outcome may be unknown", body = ApiError)))]
+async fn audit_history(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, query:Result<Query<AuditQuery>,QueryRejection>) -> Result<Json<AuditPage>,ApiError> {
+    let Query(query)=query.map_err(|_|ApiError::new(ApiErrorCode::InvalidRequest,"Invalid history query parameters."))?;
+    tokio::task::spawn_blocking(move||state.api.read_audit(&query,Actor::Staff{user_id:viewer.user_id})).await
+        .map_err(|_|ApiError::new(ApiErrorCode::InternalError,"The history could not be read."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(get, path = "/panel/api/v1/logs", operation_id = "getServerLogs", tag = "Logs",
+    params(("limit" = Option<u32>, Query, minimum=1, maximum=500), ("problems" = Option<bool>, Query, description="Only warnings and errors")),
+    security(("staffSession" = [])), responses((status = 200, description = "Success", body = LogPage),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 404, description = "No persistent history", body = ApiError), (status = 503, description = "History unavailable", body = ApiError), (status = 500, description = "Internal error; mutation outcome may be unknown", body = ApiError)))]
+async fn server_logs(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, query:Result<Query<LogsQuery>,QueryRejection>) -> Result<Json<LogPage>,ApiError> {
+    let Query(query)=query.map_err(|_|ApiError::new(ApiErrorCode::InvalidRequest,"Invalid history query parameters."))?;
+    tokio::task::spawn_blocking(move||state.api.read_logs(&query,Actor::Staff{user_id:viewer.user_id})).await
+        .map_err(|_|ApiError::new(ApiErrorCode::InternalError,"The history could not be read."))?.map(Json).map_err(Into::into)
 }

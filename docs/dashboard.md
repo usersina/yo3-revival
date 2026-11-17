@@ -6,7 +6,7 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 ## Current state
 
 - The approved React/Vite/SWC/Tailwind dashboard is in `dashboard/`. The main pages remain a labelled design preview.
-  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, card/recipe/title gifts, Give BP, registration invites, BOOSTERPASS code management, live settings, news, maintenance, moderation, account deletion and live server status/stop.
+  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, card/recipe/title gifts, Give BP, registration invites, BOOSTERPASS code management, live settings, news, maintenance, moderation, account deletion, live server status/stop, audit history and captured server logs.
   It never falls back to fixtures.
 - Axum handles HTTP on separate sockets. Host-token operations, assets and the old HTML panel stay on `--http-port`.
   The staff JSON router has its own opt-in `--dashboard-port`, disabled by default and always bound to loopback.
@@ -175,6 +175,19 @@ uncertain input/IDs across reloads, requires disconnect confirmation and blocks 
 prints a retry command with both IDs: `stop --request-id ID --run-id RUN`. Desktop's host client captures the run
 identity before asking it to stop, rather than signalling whatever process might replace its endpoint.
 
+`GET /panel/api/v1/audit` reads the stored audit log for current staff. It accepts `limit` (1–200), an opaque decimal
+`before` cursor and a search of up to 80 characters (actor, source, action, target or request metadata). IDs stay
+strings, including above JavaScript's integer precision limit. Server-side keyset pagination avoids downloading the
+whole history. Before/after/detail are JSON formatted as text for inspection; invalid stored metadata or a failed
+query returns an error, never a fabricated empty history. The UI distinguishes empty search, loading and stale
+results after failed refresh, and supports older/newer/newest navigation. Audit retention/deletion still applies.
+
+`GET /panel/api/v1/logs` reads at most 500 captured lines from this process, optionally warnings/errors only.
+It reports the checked time and 2,000-line retention. Restarting clears these volatile logs; verbose traces stay in
+diagnostic files. Existing credential filtering runs before capture. The UI supports manual/optional five-second
+refresh, line limits and copying visible lines; raw text is escaped and keyboard-scrollable. Moderators can inspect
+both histories as in the old panel. Neither view invents sample rows when the API or database fails.
+
 ## API and dashboard
 
 Rust is the source of truth. `crates/yo3-server/src/dashboard.rs` registers annotated handlers with `OpenApiRouter`;
@@ -203,6 +216,8 @@ Connected routes in this slice:
 | GET | `/panel/api/v1/session` | Staff identity, CSRF token and RFC 3339 idle expiry |
 | POST | `/panel/api/v1/sign-in` | Staff session and HttpOnly cookie; shared sign-in throttle |
 | POST | `/panel/api/v1/sign-out` | End the current staff cookie |
+| GET | `/panel/api/v1/audit` | Staff history, bounded keyset pagination, string IDs and server-side search |
+| GET | `/panel/api/v1/logs` | Staff captured logs, bounded count, problem filter and checked time |
 | GET | `/panel/api/v1/server` | Live checked version, run identity, counts and health |
 | POST | `/panel/api/v1/server/stop` | Admin-only, explicitly confirmed, run-bound graceful stop |
 | GET | `/panel/api/v1/accounts` | Safe account/player summaries without credentials |

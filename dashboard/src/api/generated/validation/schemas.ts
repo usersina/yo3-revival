@@ -306,6 +306,30 @@ export const ApiError = zod.object({
 export type ApiError = zod.input<typeof ApiError>;
 export type ApiErrorOutput = zod.output<typeof ApiError>;
 
+export const AuditEntry = zod.object({
+  "actor": zod.string(),
+  "after": zod.string().nullish(),
+  "at": zod.iso.datetime({"offset":true}),
+  "before": zod.string().nullish().describe('Pretty-printed JSON for display as text, not executable HTML or a business-operation response.'),
+  "detail": zod.string().nullish(),
+  "id": zod.string().describe('Decimal SQLite row ID. Never convert this to a JavaScript number.'),
+  "operation": zod.string(),
+  "origin": zod.string(),
+  "target": zod.string()
+});
+
+export type AuditEntry = zod.input<typeof AuditEntry>;
+export type AuditEntryOutput = zod.output<typeof AuditEntry>;
+
+export const AuditPage = zod.object({
+  "checked_at": zod.iso.datetime({"offset":true}),
+  "entries": zod.array(AuditEntry),
+  "next_before": zod.string().nullish()
+});
+
+export type AuditPage = zod.input<typeof AuditPage>;
+export type AuditPageOutput = zod.output<typeof AuditPage>;
+
 export const bpCodeClaimUserIdMin = 0;
 export const bpCodeClaimUserIdMax = 4294967295;
 
@@ -773,6 +797,34 @@ export const KeyAccountResult = zod.object({
 
 export type KeyAccountResult = zod.input<typeof KeyAccountResult>;
 export type KeyAccountResultOutput = zod.output<typeof KeyAccountResult>;
+
+export const LogLevel = zod.enum(['error', 'warn', 'info', 'debug']);
+
+export type LogLevel = zod.input<typeof LogLevel>;
+export type LogLevelOutput = zod.output<typeof LogLevel>;
+
+export const LogEntry = zod.object({
+  "at": zod.iso.datetime({"offset":true}),
+  "level": LogLevel,
+  "text": zod.string()
+});
+
+export type LogEntry = zod.input<typeof LogEntry>;
+export type LogEntryOutput = zod.output<typeof LogEntry>;
+
+export const logPageRetentionLinesMin = 0;
+export const logPageRetentionLinesMax = 4294967295;
+
+
+
+export const LogPage = zod.object({
+  "checked_at": zod.iso.datetime({"offset":true}),
+  "lines": zod.array(LogEntry),
+  "retention_lines": zod.int().min(logPageRetentionLinesMin).max(logPageRetentionLinesMax)
+});
+
+export type LogPage = zod.input<typeof LogPage>;
+export type LogPageOutput = zod.output<typeof LogPage>;
 
 export const moderationRequestOneUserIdMin = 0;
 export const moderationRequestOneUserIdMax = 4294967295;
@@ -1274,6 +1326,43 @@ export const GetAccount500Response = ApiError
 export const GetAccount503Response = ApiError
 
 
+export const getAuditHistoryQueryLimitMax = 200;
+
+export const getAuditHistoryQueryBeforeMax = 19;
+
+
+export const getAuditHistoryQueryBeforeRegExp = new RegExp('^[1-9][0-9]*$');
+export const getAuditHistoryQueryQMax = 80;
+
+
+
+export const GetAuditHistoryQueryParams = zod.object({
+  "limit": zod.int().min(1).max(getAuditHistoryQueryLimitMax).optional(),
+  "before": zod.string().min(1).max(getAuditHistoryQueryBeforeMax).regex(getAuditHistoryQueryBeforeRegExp).optional().describe('Decimal ID returned by next_before; never a JS number'),
+  "q": zod.string().max(getAuditHistoryQueryQMax).optional()
+})
+
+export const GetAuditHistory200Response = AuditPage
+
+export const GetAuditHistory400Response = ApiError
+
+export const GetAuditHistory401Response = ApiError
+
+export const GetAuditHistory403Response = ApiError
+
+export const GetAuditHistory404Response = ApiError
+
+export const GetAuditHistory405Response = ApiError
+
+export const GetAuditHistory413Response = ApiError
+
+export const GetAuditHistory415Response = ApiError
+
+export const GetAuditHistory500Response = ApiError
+
+export const GetAuditHistory503Response = ApiError
+
+
 export const ListBpCodes200Response = BpCodeList
 
 export const ListBpCodes400Response = ApiError
@@ -1530,6 +1619,36 @@ export const CreateInvite415Response = ApiError
 export const CreateInvite500Response = ApiError
 
 export const CreateInvite503Response = ApiError
+
+
+export const getServerLogsQueryLimitMax = 500;
+
+
+
+export const GetServerLogsQueryParams = zod.object({
+  "limit": zod.int().min(1).max(getServerLogsQueryLimitMax).optional(),
+  "problems": zod.boolean().optional().describe('Only warnings and errors')
+})
+
+export const GetServerLogs200Response = LogPage
+
+export const GetServerLogs400Response = ApiError
+
+export const GetServerLogs401Response = ApiError
+
+export const GetServerLogs403Response = ApiError
+
+export const GetServerLogs404Response = ApiError
+
+export const GetServerLogs405Response = ApiError
+
+export const GetServerLogs413Response = ApiError
+
+export const GetServerLogs415Response = ApiError
+
+export const GetServerLogs500Response = ApiError
+
+export const GetServerLogs503Response = ApiError
 
 
 export const moderateAccountHeaderIdempotencyKeyMin = 16;

@@ -11,6 +11,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 - [History](#history)
   - [2026-11-17 — Transactional account deletion in the connected dashboard](#2026-11-17--transactional-account-deletion-in-the-connected-dashboard)
   - [2026-11-17 — Durable graceful stop and checked live status](#2026-11-17--durable-graceful-stop-and-checked-live-status)
+  - [2026-11-17 — Connected audit and server logs](#2026-11-17--connected-audit-and-server-logs)
   - [Status](#status)
   - [▶ Overnight plan (2026-11-07): everything left, end to end](#-overnight-plan-2026-11-07-everything-left-end-to-end)
   - [▶ Windows VM test (2026-11-08): what a real Windows client turned up](#-windows-vm-test-2026-11-08-what-a-real-windows-client-turned-up)
@@ -31,6 +32,13 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-17 — Connected audit and server logs
+
+Added real staff-only audit/log routes after reproducing the missing API path. Audit pages use string IDs and keyset
+pagination/search; log reads reuse the existing secret-filtered process capture. Added generated clients/validators,
+keyboard-accessible inspection, clear stale/error/empty states and mobile browser checks. Regression tests cover
+IDs above JavaScript's safe integer limit, new inserts while paging and malformed/database failures.
 
 ## 2026-11-17 — Durable graceful stop and checked live status
 

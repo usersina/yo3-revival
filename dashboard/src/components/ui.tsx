@@ -165,10 +165,12 @@ export function SearchField({
   onChange,
   label,
   placeholder,
+  maxLength,
 }: {
   value: string
   onChange: (value: string) => void
   label: string
+  maxLength?: number
   placeholder: string
 }) {
   return (
@@ -176,6 +178,7 @@ export function SearchField({
       <Search size={17} />
       <input
         type="search"
+        maxLength={maxLength}
         aria-label={label}
         placeholder={placeholder}
         value={value}

@@ -369,6 +369,19 @@ pub fn audit_rows(dir: &Path, limit: u32) -> io::Result<Vec<AuditRow>> {
         .map_err(sql)?.collect::<Result<_, _>>().map_err(sql)
 }
 
+/// Audit projections retain SQLite IDs as i64 internally; the HTTP contract sends them as decimal strings.
+pub(crate) struct AuditRecord {
+    pub id:i64,pub at:String,pub actor:String,pub origin:String,pub op:String,pub target:String,
+    pub before:Option<String>,pub after:Option<String>,pub detail:Option<String>,
+}
+pub(crate) fn audit_page(dir:&Path,limit:u32,before:Option<i64>,search:&str)->io::Result<Vec<AuditRecord>> {
+    let conn=hold(dir)?;
+    let mut query=conn.prepare("SELECT id,at,actor,origin,op,target,before,after,detail FROM audit WHERE (?1 IS NULL OR id < ?1)
+        AND instr(lower(actor || ' ' || origin || ' ' || op || ' ' || target || ' ' || COALESCE(detail,'')),lower(?3))>0 ORDER BY id DESC LIMIT ?2").map_err(sql)?;
+    query.query_map(rusqlite::params![before,limit,search],|r|Ok(AuditRecord{id:r.get(0)?,at:r.get(1)?,actor:r.get(2)?,origin:r.get(3)?,op:r.get(4)?,target:r.get(5)?,before:r.get(6)?,after:r.get(7)?,detail:r.get(8)?}))
+        .map_err(sql)?.collect::<Result<_,_>>().map_err(sql)
+}
+
 /// Drops `dir`'s audit rows older than `days` days (`audit-keep-days`; 0 keeps them all). How many went.
 pub fn prune_audit(dir: &Path, days: u32) -> io::Result<usize> {
     if days == 0 || !dir.join("server.db").is_file() { return Ok(0) }
