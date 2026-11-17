@@ -121,6 +121,10 @@ python3 tools/test_package_editions.py             # editions, archives, literal
 python3 tools/test_release_notes.py                # matching Cargo/changelog versions, release notes and SHA256SUMS
 python3 tools/test_release_lifecycle.py            # published-tag gate and two-release/image retention, alpha releases kept (fixtures only)
 python3 tools/containers/test_deployment.py          # image validation, pre-upgrade snapshots, rollback and SSH transport
+python3 tools/containers/test_dashboard_delivery.py  # cumulative UI inputs, deployed baselines and exact API/client gate (#62)
+python3 tools/containers/test_dashboard_browser.py --server RELEASED_SERVER_IMAGE --dashboard CANDIDATE_IMAGE
+#   Existing images, disposable localhost HTTPS/SQLite, production pages, BP retry, roles and expired cookies;
+#   no Rust compilation or game files required (synthetic fixture). Optional --game-dir checks real game data too.
 python3 tools/containers/test_images.py              # built local images: runtime user, minimal rootfs, native engine/cards
 tools/docs-check.py --root /path/to/bundle         # the same checks against an extracted release
 tools/release.sh                                  # bundles in dist/ (Linux .tar.gz, Windows .zip), with docs/ and screenshots/

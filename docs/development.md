@@ -62,6 +62,11 @@ cover server setup beside an existing live session.
 
 ## Checks
 
+For independent dashboard delivery (#62), see the [compatibility gate](deployment.md#independent-dashboard-updates-62).
+`python3 tools/containers/test_dashboard_delivery.py` checks cumulative eligibility using real Git histories.
+`tools/containers/test_dashboard_browser.py` runs production browser checks against existing images, without
+compiling Rust or using production data. Automatic dashboard deployment is still pending.
+
 ```bash
 cargo nextest run --workspace
 cargo clippy --workspace --all-targets -- -D warnings

@@ -82,6 +82,7 @@ jobs:
           python3 tools/test_host_scripts.py
           python3 tools/containers/test_config.py
           python3 tools/containers/test_deployment.py
+          python3 tools/containers/test_dashboard_delivery.py
           python3 tools/test_docs_check.py
       - name: Documentation links and images
         run: tools/docs-check.py

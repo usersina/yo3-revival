@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-17 — Dashboard delivery compatibility gate (#62)](#2026-11-17--dashboard-delivery-compatibility-gate-62)
   - [2026-11-17 — Automatic release deployment and launcher version floor](#2026-11-17--automatic-release-deployment-and-launcher-version-floor)
   - [2026-11-17 — Public VPS deployment and recovery](#2026-11-17--public-vps-deployment-and-recovery)
   - [2026-11-17 — First VPS checks and portable image exports](#2026-11-17--first-vps-checks-and-portable-image-exports)
@@ -39,6 +40,24 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-17 — Dashboard delivery compatibility gate (#62)
+
+The first slice of #62 checks accumulated frontend inputs against the deployed dashboard commit, with an explicit
+allowlist and exact spec/generated-client comparison against the deployed server tag. Unknown inputs defer;
+unrelated Rust/docs do not block. Real Git-history tests cover skipped runs, stale candidates, renamed/deleted
+files, symlinks, dependency changes and mismatched release state. A fixed read-only state request through the
+existing forced command exposes no credentials or arbitrary filesystem access.
+
+A separate browser gate starts existing images in a disposable Compose project, without compiling Rust. Its
+synthetic archive contains invented records only, not Konami data. Test accounts are created through the normal
+bootstrap, authenticated registration and host CLI. Three browser checks passed against the fixed local optimized
+images, with both synthetic and real game data: all production pages through real nginx/HTTPS with the actual
+schema, a committed BP grant retried after a lost response, and moderator/session restrictions. The project's
+containers and volumes were removed afterwards. Release CI runs the eligibility regression tests.
+This is local fixed-image evidence, not a published v0.1.0-image or production-deployment check. The VPS and release
+deployment path were not changed. Asset replacement, independent deployment/rollback, workflow reconciliation and retention
+remain for the following slices.
 
 ## 2026-11-17 — Automatic release deployment and launcher version floor
 

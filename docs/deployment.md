@@ -5,6 +5,49 @@ HTTPS, the server and dashboard. After the one-time deployment-key setup below, 
 pushed or merged to `main` runs checks, publishes the release and its images, then updates this VPS automatically. This arrived in v0.1.0. Public password sign-in is enabled for
 VPS testing; MFA and recovery are still pending.
 
+## Independent dashboard updates (#62)
+
+In progress: the hosted dashboard still updates through full releases. The first slice provides compatibility
+checks; it does not enable independent deployments or change the running VPS.
+
+The eligibility tool compares the candidate with the dashboard commit recorded in the VPS's `current-release.json`.
+It allows changes to `dashboard/src/`, `dashboard/public/`, `index.html`, `vite.config.ts`, `package.json` and the
+lockfile. Other dashboard inputs or deployment/runtime changes wait for a release; unrelated Rust and documentation
+changes do not block an eligible UI update. The committed OpenAPI specification and generated client must match
+the recorded server release tag exactly. Missing state, mismatched release tags and non-ancestor revisions fail
+closed. An ineligible change produces a JSON explanation without deploying anything.
+
+The updater now supports the fixed read-only JSON request `{"kind":"state"}` through its existing forced SSH
+command. It returns only deployed versions, commits and image references, under the release lock. It accepts no
+filename, shell command or forwarding. This query needs the updated updater installed on the VPS; no dashboard
+mutation mode is available yet.
+
+With the pinned SSH settings from CI in the environment, after installing that updater:
+
+```sh
+python3 .github/scripts/deploy_vps.py state > /tmp/yo3-deployed.json
+python3 .github/scripts/dashboard_delivery.py --state /tmp/yo3-deployed.json --candidate "$(git rev-parse HEAD)"
+```
+
+Fetch the deployed release tag and dashboard commit first. The tool deliberately uses that state rather than the
+previous push or GitHub's newest release, which may not have reached the VPS yet.
+
+The browser gate accepts existing server and candidate dashboard images. CI will supply digest-pinned images
+from the plan. It never compiles Rust from `main` or connects to production:
+
+```sh
+python3 tools/containers/test_dashboard_delivery.py
+python3 tools/containers/test_dashboard_browser.py --server RELEASED_SERVER_IMAGE --dashboard CANDIDATE_IMAGE
+```
+
+Install the dashboard's npm dependencies and Playwright Chromium first. Docker Compose, Python 3 and OpenSSL
+(including its legacy Blowfish provider for the synthetic fixture) are required. The gate creates its own project,
+volumes, test identities and unused loopback ports, and removes them afterwards. It checks production pages and
+lazy assets, the actual API schema, a BP mutation with a lost response/retry, moderator restrictions, expired
+sessions and private-route refusal through nginx. Synthetic invented card/deck records let the unchanged server
+start without copying game assets into GitHub. This checks management behavior, not gameplay; use `--game-dir`
+with your own game installation for an additional local run.
+
 ## Before running
 
 - A fresh **x86_64 Ubuntu/Debian VPS**, reachable over SSH as root or a user with sudo. Verify its SSH host key on

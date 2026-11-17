@@ -62,6 +62,25 @@ class Deployer:
 
     def command(self,*args):return run(self.compose+list(args),cwd=self.repo)
 
+    def execute(self,request):
+        if not isinstance(request,dict):raise ValueError('Expected a deployment request')
+        kind=request.get('kind','release')
+        if kind=='release':return self.deploy(request)
+        if kind!='state' or set(request)!={'kind'}:raise ValueError('Unknown deployment request')
+        # A fixed read-only query through the same forced command, never an arbitrary filename or shell.
+        if not (self.state/'current-release.json').is_file():
+            raise ValueError('Complete a full release deployment before querying dashboard state')
+        with (self.state/'.release-deployment.lock').open('w') as lock:
+            fcntl.flock(lock,fcntl.LOCK_EX)
+            current=json.loads((self.state/'current-release.json').read_text())
+            result=validate(current)
+            result['dashboard_commit']=current.get('dashboard_commit',result['commit'])
+            if not re.fullmatch(r'[0-9a-f]{40}',str(result['dashboard_commit'])):
+                raise ValueError('Invalid deployed dashboard commit')
+            result['released_dashboard']=current.get('released_dashboard',result['dashboard'])
+            validate(result|{'dashboard':result['released_dashboard']})
+            return result
+
     def health(self,expected=None):
         health=json.loads(self.command('exec','-T','server','curl','--fail','--silent','--show-error',
                                       'http://127.0.0.1:8080/health'))
@@ -160,7 +179,8 @@ def main():
     signal.signal(signal.SIGHUP,signal.SIG_IGN)
     body=sys.stdin.buffer.read(32769)
     if len(body)>32768:raise ValueError('Release manifest too large')
-    Deployer().deploy(json.loads(body))
+    result=Deployer().execute(json.loads(body))
+    if result is not None:report(json.dumps(result))
 
 if __name__=='__main__':
     try:main()

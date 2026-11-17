@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -101,6 +102,25 @@ class Deployment(unittest.TestCase):
         self.worker.deploy(request())
         self.assertFalse(any('stop' in args or 'up' in args for args in self.calls))
 
+    def test_state_query_exposes_only_deployed_revisions_without_docker_commands(self):
+        self.worker.deploy(request())
+        current=self.state/'current-release.json'
+        current.write_text(json.dumps(json.loads(current.read_text())|{'registry_token':'never-export-this'}))
+        self.calls.clear()
+        snapshot=self.worker.execute({'kind':'state'})
+        self.assertEqual(snapshot['server'],request()['server'])
+        self.assertEqual(snapshot['dashboard_commit'],request()['commit'])
+        self.assertEqual(snapshot['released_dashboard'],request()['dashboard'])
+        self.assertNotIn('registry_token',snapshot)
+        self.assertEqual(self.calls,[])
+
+    def test_state_query_requires_a_completed_release_and_unknown_modes_do_nothing(self):
+        with self.assertRaisesRegex(ValueError,'release'):
+            self.worker.execute({'kind':'state'})
+        for body in [{'kind':'shell','command':'id'},{'kind':'state','path':'/etc/shadow'},[]]:
+            with self.assertRaises(ValueError):self.worker.execute(body)
+        self.assertEqual(self.calls,[])
+
     def test_a_stale_release_or_reused_version_cannot_replace_a_newer_deployment(self):
         self.worker.deploy(request());self.calls.clear()
         for other in [request('v0.1.0'),request()|{'commit':'b'*40}]:
@@ -120,6 +140,18 @@ class Deployment(unittest.TestCase):
         self.assertEqual((self.repo/'compose.production.yaml').read_text(),'old-images')
 
 class Transport(unittest.TestCase):
+    def test_state_query_uses_the_same_pinned_ssh_without_release_or_registry_credentials(self):
+        env={'VPS_HOST':'192.0.2.1','VPS_SSH_KEY':'test-key','VPS_KNOWN_HOSTS':'test-host-key'}
+        def ssh(args,**kwargs):
+            self.assertEqual(args[-1],'yo3-deploy@192.0.2.1')
+            self.assertIn('StrictHostKeyChecking=yes',args)
+            self.assertEqual(json.loads(kwargs['input']),{'kind':'state'})
+            return SimpleNamespace(stdout=json.dumps(request('v0.1.0')))
+        with patch.dict(os.environ,env,clear=True),patch.object(transport.subprocess,'run',side_effect=ssh),\
+                patch('builtins.print') as output:
+            transport.main(['state'])
+        self.assertEqual(json.loads(output.call_args.args[0]),request('v0.1.0'))
+
     def test_secrets_use_private_temporary_files_and_payload_stdin_not_shell_arguments(self):
         release=request()
         env={'VPS_HOST':'192.0.2.1','VPS_SSH_KEY':'private-test-key','VPS_KNOWN_HOSTS':'trusted-test-host-key',

@@ -51,6 +51,13 @@ Implementation plan agreed on 2026-11-16. For deployment and HTTPS, see [Docker 
   implemented; staff MFA/recovery and the real VPS deployment/soak remain. The old private HTML panel remains
   available during the security transition.
 
+## Independent UI delivery
+
+Full releases still update both services. Issue [#62](https://github.com/usersina/yo3-revival/issues/62) adds a
+separate path for compatible frontend changes. The cumulative input/contract checks and production browser gate
+are implemented; automatic dashboard replacement is not enabled yet. The gate runs an existing server image,
+never unreleased Rust from `main`. See [deployment checks](deployment.md#independent-dashboard-updates-62).
+
 ## Database backups
 
 Admins create snapshots through `POST /panel/api/v1/backups`; moderators can only list them. The CLI's
