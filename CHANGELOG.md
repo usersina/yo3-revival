@@ -1,6 +1,7 @@
 # Changelog
 
-Pre-alpha: expect bugs, and please [report them](https://github.com/usersina/yo3-revival/issues/new/choose).
+Beta: expect bugs, and please [report them](https://github.com/usersina/yo3-revival/issues/new/choose). The beta starts
+at v0.1.0; v0.0.1 to v0.0.26 were the alpha (published as "pre-alpha").
 
 Each section is a release. To release, rename the "Unreleased" section at the top to the next version
 (`## vX.Y.Z (date)`) and push to `main`: the release workflow builds the bundles and publishes the version under that
@@ -9,6 +10,42 @@ gather under "Unreleased" first.
 
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
+
+## v0.1.0 (2026-11-17)
+
+The first beta: a new launcher, accounts with a User ID and password, and a server that can be hosted for real.
+Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the server, rules
+engine and required connection components. Original game files are not included. **Windows 7 is not supported.**
+
+**The beta starts fresh.** Everyone who plays on the same server updates together: a v0.0.x launcher can't join a beta
+server, and the beta doesn't read v0.0.x invitation files or saved connections. Your v0.0.x Singleplayer collection is
+left untouched in the app's `server` folder, but the beta's Singleplayer starts a new one. Hosts: back up your whole
+data folder, with the server stopped, before updating. On Desktop, click the version, then **Review & install…** and
+**Download & restart**, as before; from v0.1.0 on, updates download by themselves. See the
+[Desktop update guide](https://github.com/usersina/yo3-revival/blob/v0.1.0/docs/launcher.md#application-updates) or
+[Scripts guide](https://github.com/usersina/yo3-revival/blob/v0.1.0/docs/scripts.md).
+
+- **A new launcher that looks like the game's era.** A first-run setup finds and checks your game, then the main
+  screen opens straight away from then on. **Singleplayer** is one PLAY: your own server starts with the game and
+  stops after it. Settings, Help, **Report a problem** and plain error messages, with the technical details behind
+  **Details**.
+- **Multiplayer with a User ID and password.** Add a server by address or with an invite link from its host, create
+  an account with an invite code, sign in, and stay signed in if you like. Save the recovery code you get at sign-up:
+  **Forgot password** uses it, or a reset code from the server's moderators.
+- **Opening `yo3.exe` on its own still signs you in,** to whichever you last played. After **Delete Login Data**, the
+  game asks for your User ID and password itself, as the original did.
+- **Each server keeps its own local game data**, so deck saves from one server don't mix with another's.
+- **Updates you can see:** a dot on the version and What's new, downloaded in the background only when the release
+  carries the project's signature, and installed when you choose to restart.
+- **Host for friends** from the launcher, or on a Linux server with the Server bundle. Hosts get an admin panel, live
+  settings without a restart (banlist, life points, clocks, news, registration), moderation (kick, restrict, ban,
+  mute, the game's own maintenance countdown), backups with restore, and an audit log of every change. A separate web
+  dashboard and a Docker setup with HTTPS are included for servers on a VPS ([deployment guide](https://github.com/usersina/yo3-revival/blob/v0.1.0/docs/deployment.md)).
+- **Attacks are aimed on the field.** Hover a monster to aim the arc at it, click to attack, right-click to take the
+  attack back, as the original did. Before, a list of targets opened.
+- **The card info panel** now shows a hand monster's level, and a Graveyard monster's attribute, Type and level.
+- **Fixed:** a duel ended as a loss for the player who was waiting for their opponent's move, when their game had
+  gone quiet for three minutes; that player's game also stayed stuck on the field.
 
 ## v0.0.26 (2026-11-17)
 

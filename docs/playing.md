@@ -186,7 +186,7 @@ row first. This works for shop rentals too. Editor saves live locally in
 `Documents\Yu-Gi-Oh! ONLINE 3`; saving a deck or selecting it for a duel also sends it to the server. A deck that used a borrowed
 card is no longer valid once the rental ends.
 
-Limitations: this is pre-alpha. Computer opponents think through their turn and yours, but only plan around the
+Limitations: this is a beta. Computer opponents think through their turn and yours, but only plan around the
 cards you show (and the heroes, Yugi, Jaden and Yusei, always draw the card they need).
 A deck you change on one computer doesn't replace a deck of the same name another computer already has. The client has
 its original card pool and UI. Some reply fields remain inferred rather than confirmed against Konami's server; [the roadmap](roadmap.md) lists those choices

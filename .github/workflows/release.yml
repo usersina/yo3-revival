@@ -166,7 +166,7 @@ jobs:
         run: |
           gh release create "$VERSION" assets/* \
             --target "$GITHUB_SHA" \
-            --title "$VERSION (pre-alpha)" \
+            --title "$VERSION (beta)" \
             --notes-file notes.md \
             --latest
 

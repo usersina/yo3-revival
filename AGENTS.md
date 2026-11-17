@@ -134,7 +134,7 @@ tools/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-linux-x86_6
 #   (engine/duelcore.ts, engine/node/node...) because Desktop 0.0.9 and older check them before installing an update
 #   releasing: add a section at the top of CHANGELOG.md (`## v0.0.2 (date)`, players' words, what changed for them)
 #   and push to main (ask first, rule 5). The Release workflow lints, tests, builds both bundles and publishes the
-#   version as a GitHub release (title "vX.Y.Z (pre-alpha)", not ticked pre-release so /releases/latest finds it).
+#   version as a GitHub release (title "vX.Y.Z (beta)", not ticked pre-release so /releases/latest finds it).
 #   Never move or reuse a released tag: fix forward with the next version.
 #   once: rustup target add x86_64-pc-windows-gnu (mingw-w64 links it). A Windows build under Wine needs its own prefix
 #   (WINEPREFIX=.wine-c): vclient.sh stop kills every process of the default prefix
