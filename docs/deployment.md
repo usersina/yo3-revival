@@ -48,7 +48,7 @@ file **`deploy/ansible/.bootstrap-password-play.example.com`**. Keep it in your 
 initial password instead, supply `YO3_BOOTSTRAP_PASSWORD` through your shell's secret environment: 8–16 letters/digits,
 uncommon. It is passed through stdin, hidden from Ansible output, and never set in the runtime containers.
 
-Optional settings are listed in [options.example.yml](../deploy/ansible/options.example.yml): ACME contact email,
+Optional settings are listed in [options.example.yml](https://github.com/usersina/yo3-revival/blob/main/deploy/ansible/options.example.yml): ACME contact email,
 game path and admin User ID. Pass overrides with `-e`, or copy that file to ignored `deploy/ansible/config.yml` and
 add `-e @deploy/ansible/config.yml`. Email is optional; renewal runs through the host's Certbot timer either way.
 
@@ -78,7 +78,7 @@ to be chosen; first provisioning does not configure them.
 
 ## Images after a GitHub release
 
-The existing Release workflow calls [Release containers](../.github/workflows/containers.yml) **after the release
+The existing Release workflow calls [Release containers](https://github.com/usersina/yo3-revival/blob/main/.github/workflows/containers.yml) **after the release
 job succeeds**. This explicit dependency also works for releases created using `GITHUB_TOKEN`; those do not trigger
 another workflow through the `release` event.
 
