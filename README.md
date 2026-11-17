@@ -1,63 +1,57 @@
 # YO3 Revival
 
-A private server and launcher for the retired **Yu-Gi-Oh! ONLINE 3 (Duel Accelerator)**. Play again against the
-computer or with friends, using the original game client on your own server.
-
-## In the game
-
-Duel against Kaiba or challenge friends. Build and edit decks, open booster packs, trade cards and chat in the
-original game world.
+A private server and launcher for the retired **Yu-Gi-Oh! ONLINE 3 (Duel Accelerator)**. Duel the computer on your
+own PC, or play with others on our server or a friend's, using the original game client.
 
 ![Stardust Dragon on the field in the original game client, running on Revival](screenshots/duel.png)
+
+## Start playing
+
+You need the original game **v1.153**, installed separately: Revival does not include it
+([where to get it](docs/launcher.md#getting-the-original-game)). It runs on **64-bit Windows 10/11** or **Linux with
+Wine**. Windows 7 is not supported.
+
+1. [Download the latest release](https://github.com/usersina/yo3-revival/releases/latest): **Desktop** for your
+   system. Extract the whole archive and open **`yo3-revival`** (`.exe` on Windows) in `yo3-revival-desktop/`.
+2. **Setup** finds your game folder and checks it. Click **Done**.
+3. Click **PLAY**, choose **ONLINE** in the game, then your player. Your starting deck is ready.
+
+| Singleplayer: your own server, one click                          | Multiplayer: our server is listed already                         |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------- |
+| ![Singleplayer with the PLAY button](screenshots/desktop.png)     | ![Multiplayer with the YO3 Revival server listed and online](screenshots/multiplayer.png) |
+
+**Singleplayer** needs no account: visit **Kaiba Corporation** on the map for your first duel
+([playing guide](docs/playing.md)). For **Multiplayer**, pick our server or add a friend's with their invite link,
+then create an account with an invite code and sign in ([joining a server](docs/launcher.md#join-another-server)).
 
 | Duel against Kaiba                                             | Build your deck                                                                            |
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | ![Meet Seto Kaiba at Kaiba Corporation](screenshots/kaiba.png) | ![Elemental Hero Shining Flare Wingman selected in the deck editor](screenshots/decks.png) |
 
-[Features and limitations](docs/playing.md#features-and-limitations) · [Feature status](docs/features.md) · [Development roadmap](docs/roadmap.md)
+Antivirus warning? [Check the download and what to allow](docs/antivirus.md). Something else wrong?
+[Troubleshooting](docs/launcher.md#troubleshooting).
 
-## Start playing
+## Host a server
 
-You need the original game **v1.153**, installed separately. Revival does not include it.
-Use **64-bit Windows 10/11**, or **Linux with Wine**. **Windows 7 is not supported.**
-[Game installation help](docs/launcher.md#getting-the-original-game).
+- **For friends, from the launcher:** **Host for friends** on the Multiplayer tab gives you an invite link per friend
+  ([hosting guide](docs/launcher.md#host-friends)).
+- **On a Linux VPS:** [one-time setup](docs/deployment.md), or [Docker Compose with HTTPS](docs/docker.md).
+- **From a terminal:** the Scripts edition ([terminal setup](docs/scripts.md#host-friends),
+  [commands](docs/guide.md)).
 
-1. [Download the latest release](https://github.com/usersina/yo3-revival/releases/latest). Choose **Desktop** for
-   your system and extract **the whole archive**.
-2. Open **`yo3-revival.exe`** on Windows or **`yo3-revival`** on Linux inside `yo3-revival-desktop/`.
-3. **Setup** finds your game folder (the one containing `yo3.exe`) and checks it. Click **Done**.
-4. Click **PLAY**. In the game, choose **ONLINE**, then select your player. Your starting deck is ready automatically.
-5. Visit **Kaiba Corporation** on the map for your first duel. [Playing guide](docs/playing.md).
+## Help and more
 
-**Antivirus flags Revival?** For a verified false positive, allow the affected file or exclude only the extracted
-`yo3-revival-desktop/` folder (after an in-app update, the version's folder under
-`%LOCALAPPDATA%\YO3 Revival\updates\installs\`). [Check the download, restore the file and which files to allow](docs/antivirus.md).
+This is a beta: **Report a problem** in the launcher's footer includes your logs
+([reporting guide](docs/launcher.md#logs-and-support)) · [Issues](https://github.com/usersina/yo3-revival/issues/new/choose)
+· [Discussions](https://github.com/usersina/yo3-revival/discussions) · [Features](docs/playing.md#features-and-limitations)
+and [their status](docs/features.md) · [All documentation](docs/README.md)
 
-![The launcher: Singleplayer, Multiplayer, PLAY, Settings and Help](screenshots/desktop.png)
+**Developers:** the server is written in Rust, reverse-engineered from the game client, and runs duels on
+[EDOPro](https://github.com/edo9300/edopro)'s rules engine. Start with [docs/](docs/README.md) and
+[AGENTS.md](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md).
 
-[Join a friend](docs/launcher.md#join-another-server) ·
-[Troubleshooting](docs/launcher.md#troubleshooting) ·
-[All documentation](docs/README.md)
-
-## Host or manage a server
-
-- **Desktop:** **Host for friends** on the Multiplayer tab runs a server on your PC and gives you an invite link for
-  each friend to send. [Hosting guide](docs/launcher.md#host-friends).
-- **Linux VPS:** [One-time setup](docs/deployment.md) or [Docker Compose and HTTPS setup](docs/docker.md).
-- **Scripts edition:** Follow the [terminal hosting setup](docs/scripts.md#host-friends) and
-  [server and account commands](docs/guide.md).
-
-Beta: **Report a problem** in the launcher's footer includes your logs. [Reporting guide](docs/launcher.md#logs-and-support) · [GitHub issues](https://github.com/usersina/yo3-revival/issues/new/choose) · [Discussions](https://github.com/usersina/yo3-revival/discussions).
-[MIT](LICENSE) · [Project, credits and support](docs/about.md) · [Code signing policy](docs/code-signing.md). Unaffiliated with Konami.
-
-## For developers
-
-The server is written in Rust, reverse-engineered from the game client, and runs duels on
-[EDOPro](https://github.com/edo9300/edopro)'s rules engine. Everything technical (building from source, the protocol,
-the client's internals, the roadmap) is in [docs/](docs/README.md). To contribute, read
-[AGENTS.md](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md) first.
-
----
+[MIT](LICENSE) · [Project, credits and support](docs/about.md) · [Code signing policy](docs/code-signing.md) ·
+Unaffiliated with Konami.
 
 <sub>If you'd like to support the work: [donatr.ee](https://donatr.ee/usersina/) · BTC
 `bc1qawq699ewyq0vgyux6nmyyx29r4vhj573l77elj`</sub>

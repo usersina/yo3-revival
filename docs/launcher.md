@@ -84,7 +84,7 @@ starts, newest first); Settings → Singleplayer has the backups, a reset and th
 
 The **Multiplayer** tab signs in to servers with a User ID and password ([accounts](authentication.md#accounts)):
 
-![The Multiplayer tab, signed in to a server, with the server tools beside the list](../screenshots/multiplayer.png)
+![The Multiplayer tab with the YO3 Revival server listed and online, the sign-in form and the server tools](../screenshots/multiplayer.png)
 
 - **The server list**: the official servers (the project's YO3 Revival server, from a list the project signs) and the ones
   you added, the last one you played on first. Each shows whether it is online (the dot: green, amber or red), with how
