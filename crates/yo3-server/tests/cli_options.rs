@@ -40,3 +40,10 @@ fn dashboard_listener_is_opt_in_and_has_no_public_bind_option() {
         assert!(cli::validate_server_args(args).is_err());
     }
 }
+
+#[test]
+fn dashboard_socket_configuration_can_be_split_between_file_and_flags() {
+    assert!(cli::validate_server_args(["--dashboard-origin","https://staff.example"]).is_ok());
+    assert!(cli::validate_server_args(["--dashboard-socket","/run/yo3/staff.sock"]).is_ok());
+    assert!(cli::validate_server_args(["--dashboard-socket","/run/yo3/staff.sock","--dashboard-port","18081"]).is_err());
+}

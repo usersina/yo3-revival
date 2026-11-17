@@ -198,7 +198,7 @@ function Workspace() {
       <main id="main" className="connected-main">
         {integration && (
           <p className="inline-notice">
-            Local integration view · Real server data. Public hosting remains disabled.
+            Local integration view · Real server data. Use the production build for hosting.
           </p>
         )}
         {session.isPending ? (

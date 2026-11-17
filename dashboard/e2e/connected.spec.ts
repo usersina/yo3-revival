@@ -26,7 +26,10 @@ async function signIn(page: Page, user = 'TestAdmin') {
   const response = page.waitForResponse((r) => r.url().endsWith('/panel/api/v1/sign-in'))
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   expect(StaffSession.safeParse(await (await response).json()).success).toBe(true)
-  await expect(page.getByRole('heading', { name: 'Accounts', exact: true })).toBeVisible()
+  // The dev-only integration view loads every lazy panel; allow cold Vite compilation before testing actions.
+  await expect(page.getByRole('heading', { name: 'Accounts', exact: true })).toBeVisible({
+    timeout: 15000,
+  })
 }
 
 test('real sign-in and account responses follow the generated contract; moderator cannot grant', async ({

@@ -170,7 +170,7 @@ export function ConnectedShell({
           <footer className="page-footer">
             <span>YO3 Revival · Made for one more duel.</span>
             <span>
-              {status.data ? `Version ${status.data.version}` : 'Version unavailable'} · Private
+              {status.data ? `Version ${status.data.version}` : 'Version unavailable'} · Staff
               management
             </span>
           </footer>

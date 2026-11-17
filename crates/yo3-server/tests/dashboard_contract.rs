@@ -683,7 +683,7 @@ async fn audit_and_logs_are_typed_bounded_staff_reads_with_real_data_and_secret_
 #[tokio::test]
 async fn backups_use_typed_intents_and_stream_only_after_an_admin_access_audit(){
     let mut b=Browser::new("backups").await;b.sign_in("Croquet").await;
-    assert_eq!(b.call("GET","/panel/api/v1/backups",json!(null)).await.status,200);
+    assert_eq!(b.call("GET","/panel/api/v1/backups",json!(null)).await.body["downloads_allowed"],true);
     assert_eq!(b.call("POST","/panel/api/v1/backups",json!({})).await.status,403);
     b.sign_in("Pegasus").await;
     let created=b.call("POST","/panel/api/v1/backups",json!({})).await;assert_eq!(created.status,200,"{}",created.body);assert_eq!(created.body["backup"],"completed");

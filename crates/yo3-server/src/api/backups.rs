@@ -16,7 +16,7 @@ pub struct CreateBackupResponse {pub result:CreateBackupResult,pub backup:Effect
 #[derive(Debug,Serialize,Deserialize,ToSchema)]
 pub struct BackupEntry {pub name:String,pub at:Option<DateTime<Utc>>,pub bytes:String}
 #[derive(Debug,Serialize,Deserialize,ToSchema)]
-pub struct BackupList {pub backups:Vec<BackupEntry>,pub checked_at:DateTime<Utc>}
+pub struct BackupList {pub downloads_allowed:bool,pub backups:Vec<BackupEntry>,pub checked_at:DateTime<Utc>}
 #[derive(Clone,Debug,Serialize,Deserialize,ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DownloadBackupRequest {#[schema(min_length=1,max_length=96,pattern="^[A-Za-z0-9][A-Za-z0-9._-]*$")]pub name:String}
@@ -97,11 +97,11 @@ pub(super) fn health(dir:Option<&Path>)->BackupHealth {
 fn list_snapshots(dir:&Path)->Result<BackupList,MutationError> {
         let root=dir.join("backups");let mut rows=vec![];
         if fs::symlink_metadata(&root).is_ok_and(|m|m.file_type().is_symlink()){return Err(io_error("the backup folder cannot be a symbolic link"))}
-        let entries=match fs::read_dir(root){Ok(e)=>e,Err(e)if e.kind()==std::io::ErrorKind::NotFound=>return Ok(BackupList{backups:rows,checked_at:Utc::now()}),Err(e)=>return Err(io_error(e))};
+        let entries=match fs::read_dir(root){Ok(e)=>e,Err(e)if e.kind()==std::io::ErrorKind::NotFound=>return Ok(BackupList{downloads_allowed:true,backups:rows,checked_at:Utc::now()}),Err(e)=>return Err(io_error(e))};
         for entry in entries {let entry=entry.map_err(io_error)?;let Some(name)=entry.file_name().to_str().map(str::to_string)else{continue};
             if !store::valid_backup_name(&name){continue}
             let Some(path)=snapshot(dir,&name)? else{continue};let metadata=fs::metadata(path).map_err(io_error)?;
             rows.push(BackupEntry{name,at:metadata.modified().ok().map(DateTime::<Utc>::from),bytes:metadata.len().to_string()});
         }
-        rows.sort_by(|a,b|b.name.cmp(&a.name));Ok(BackupList{backups:rows,checked_at:Utc::now()})
+        rows.sort_by(|a,b|b.name.cmp(&a.name));Ok(BackupList{downloads_allowed:true,backups:rows,checked_at:Utc::now()})
 }

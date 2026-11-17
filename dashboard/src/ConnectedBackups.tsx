@@ -162,6 +162,11 @@ export function ConnectedBackups({ session }: { session: StaffSession }) {
             {list.data && 'Showing the last successfully loaded list.'}
           </p>
         )}
+        {list.data && !list.data.downloads_allowed && (
+          <p className="connected-state">
+            Download copies through SSH. Public backup downloads are disabled.
+          </p>
+        )}
         {storageError && (
           <p role="alert" className="connected-error">
             {storageError}
@@ -244,7 +249,7 @@ export function ConnectedBackups({ session }: { session: StaffSession }) {
                       <th>Snapshot</th>
                       <th>Created</th>
                       <th>Size</th>
-                      {session.role === 'admin' && <th>Download</th>}
+                      {session.role === 'admin' && list.data.downloads_allowed && <th>Download</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -255,7 +260,7 @@ export function ConnectedBackups({ session }: { session: StaffSession }) {
                         </td>
                         <td>{row.at ? new Date(row.at).toLocaleString() : 'Unknown'}</td>
                         <td>{row.bytes} bytes</td>
-                        {session.role === 'admin' && (
+                        {session.role === 'admin' && list.data.downloads_allowed && (
                           <td>
                             <Button
                               aria-label={`Download ${row.name}`}

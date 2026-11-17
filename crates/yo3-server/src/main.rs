@@ -47,6 +47,8 @@ fn apply_file(a: &mut Args, matches: &clap::ArgMatches) -> anyhow::Result<Option
     if let Some(v) = file.auth_port && unset("auth_port") { a.auth_port = v }
     if let Some(v) = file.http_port && unset("http_port") { a.http_port = v }
     if let Some(v) = file.dashboard_port && unset("dashboard_port") { a.dashboard_port = Some(v) }
+    if let Some(v) = file.dashboard_socket && unset("dashboard_socket") { a.dashboard_socket = Some(v) }
+    if let Some(v) = file.dashboard_origin && unset("dashboard_origin") { a.dashboard_origin = Some(v) }
     if let Some(v) = file.advertise && unset("advertise") { a.advertise = Some(v) }
     if let Some(v) = file.game_dir && unset("game_dir") { a.game_dir = Some(v) }
     if let Some(v) = file.data_dir && unset("data_dir") { a.data_dir = v }
@@ -64,7 +66,7 @@ fn apply_file(a: &mut Args, matches: &clap::ArgMatches) -> anyhow::Result<Option
 /// The API operation a subcommand is (None for the ones that work on the files themselves).
 fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
     Ok(Some(match command {
-        Admin::InitAuth { .. } | Admin::Restore { .. } | Admin::Backups => return Ok(None),
+        Admin::InitAuth { .. } | Admin::Restore { .. } | Admin::Backups | Admin::BootstrapAdmin { .. } => return Ok(None),
         Admin::Profile { who, .. } | Admin::Key { who, .. } => Op::Key { who: who.clone() },
         Admin::Accounts => Op::Accounts,
         Admin::AddAccount { name, also, .. } => Op::CreateAccount { names: name.iter().cloned().chain(also.iter().cloned()).collect() },
@@ -295,6 +297,12 @@ async fn run(mut a: Args) -> anyhow::Result<()> {
         .init();
     if let Some(command) = a.admin.take() {
         let game_dir = a.game_dir.clone().unwrap_or_else(yo3_data::default_game_dir);
+        if let Admin::BootstrapAdmin { user } = command {
+            let mut password=String::new();std::io::stdin().take(128).read_to_string(&mut password)?;
+            let created=yo3_server::bootstrap::admin(&a.data_dir,&user,password.trim_end_matches(['\r','\n']).into()).await?;
+            println!("Initial administrator: {}",if created {"created"} else {"already provisioned; unchanged"});
+            return Ok(())
+        }
         return admin(&a, command, game_dir);
     }
     // Held until the server ends: a second server on this folder is refused before it renews or reads anything.
@@ -309,7 +317,7 @@ async fn run(mut a: Args) -> anyhow::Result<()> {
         bind: a.bind,
         advertise: a.advertise,
         http_port: a.http_port,
-        dashboard_port: a.dashboard_port,
+        dashboard_port: a.dashboard_port, dashboard_socket: a.dashboard_socket, dashboard_origin: a.dashboard_origin,
         game_dir: a.game_dir.unwrap_or_else(yo3_data::default_game_dir),
         allow_missing_game_data: false,
         log_dir: a.log_dir,

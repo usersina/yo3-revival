@@ -1,5 +1,5 @@
 //! The staff-only JSON API. Routes and OpenAPI come from the same registration, without constructing server state.
-//! Mounted only on a dedicated, opt-in loopback listener. No host token is an authority here.
+//! Mounted on opt-in loopback TCP or an origin-checked Unix proxy socket. No host token is an authority here.
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -119,7 +119,7 @@ fn documented_routes() -> OpenApiRouter<Dashboard> {
 pub fn openapi() -> OpenApi {
     let (_, mut spec) = documented_routes().split_for_parts();
     spec.info.title = "YO3 Revival staff API".into();
-    spec.info.description = Some("Private dashboard API. Host-token operations and offline restore are not routes on this router.".into());
+    spec.info.description = Some("Staff dashboard API. Host-token operations and offline restore are not routes on this router.".into());
     let components = spec.components.get_or_insert_default();
     components.add_security_scheme("staffSession", SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::new(panel::COOKIE))));
     components.add_security_scheme("csrfToken", SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("X-CSRF-Token"))));
@@ -128,7 +128,31 @@ pub fn openapi() -> OpenApi {
 
 pub fn openapi_json() -> String { format!("{}\n", serde_json::to_string_pretty(&openapi()).expect("serialize OpenAPI")) }
 
-pub fn router(state: Dashboard) -> Router {
+/// The socket is a filesystem capability held only by nginx. Forwarded identity is accepted on that transport
+/// alone; the TCP router never trusts it. No proxy request gains local management authority.
+#[derive(Clone)]
+pub struct ProxyOrigin { origin: String, authority: String, scheme: String }
+impl ProxyOrigin {
+    pub fn parse(value: &str) -> anyhow::Result<Self> {
+        let uri: axum::http::Uri = value.parse()?;
+        let authority = uri.authority().ok_or_else(|| anyhow::anyhow!("dashboard-origin needs a host"))?;
+        let scheme = uri.scheme_str().unwrap_or_default();
+        anyhow::ensure!(!authority.as_str().contains('@') && uri.path_and_query().is_none_or(|p|p.as_str()=="/")
+            && !value.ends_with('/') && (scheme=="https" || scheme=="http" && matches!(authority.host(),"localhost"|"127.0.0.1"|"[::1]")),
+            "dashboard-origin must be an exact HTTPS origin without a path (HTTP localhost is allowed for local checks)");
+        Ok(Self { origin:value.into(), authority:authority.as_str().into(), scheme:scheme.into() })
+    }
+    fn peer(&self, headers:&HeaderMap) -> Result<std::net::IpAddr,ApiError> {
+        if one(headers,"host")!=Some(self.authority.as_str()) || one(headers,"x-forwarded-proto")!=Some(self.scheme.as_str())
+            || headers.contains_key("forwarded") {
+            return Err(ApiError::new(ApiErrorCode::Forbidden,"Use the configured dashboard address through nginx."))
+        }
+        one(headers,"x-forwarded-for").and_then(|p|p.parse().ok()).ok_or_else(||ApiError::new(ApiErrorCode::Forbidden,"One proxy client address is required."))
+    }
+}
+pub fn proxy_router(state:Dashboard, origin:ProxyOrigin)->Router { build_router(state).layer(Extension(origin)) }
+pub fn router(state: Dashboard) -> Router { build_router(state) }
+fn build_router(state: Dashboard) -> Router {
     let (router, _) = documented_routes().split_for_parts();
     router.route("/panel/openapi.json", get(|| async { Json(openapi()) }))
         .method_not_allowed_fallback(|| async { ApiError::new(ApiErrorCode::MethodNotAllowed, "This method is not allowed.") })
@@ -161,17 +185,29 @@ fn same_origin(headers: &HeaderMap) -> bool {
 }
 async fn guard(State(state): State<Dashboard>, ConnectInfo(peer): ConnectInfo<SocketAddr>, mut req: axum::http::Request<Body>, next: Next) -> Response {
     let refusal = (|| -> Result<(), ApiError> {
-        if !peer.ip().is_loopback() || !local_host(req.headers()) {
+        let proxy = req.extensions().get::<ProxyOrigin>().cloned();
+        if let Some(origin) = &proxy {
+            let client=origin.peer(req.headers())?;
+            req.extensions_mut().insert(ConnectInfo(SocketAddr::new(client,0)));
+        } else if !peer.ip().is_loopback() || !local_host(req.headers()) {
             return Err(ApiError::new(ApiErrorCode::Forbidden, "The dashboard API answers localhost only."))
         }
         let path = req.uri().path();
+        if proxy.is_some() && path=="/panel/api/v1/backups/download" {
+            return Err(ApiError::new(ApiErrorCode::Forbidden,"Backup downloads are disabled on the proxy. Copy a backup through SSH, or use the private dashboard port."))
+        }
         let signing_in = path == "/panel/api/v1/sign-in";
         let viewer = if signing_in || path == "/panel/openapi.json" { None } else {
             Some(state.panel.session(cookie(req.headers()), &state.api).ok_or_else(||
                 ApiError::new(ApiErrorCode::Unauthenticated, "Your session has ended. Sign in again."))?)
         };
         if req.method() == axum::http::Method::POST {
-            if !same_origin(req.headers()) { return Err(ApiError::new(ApiErrorCode::InvalidOrigin, "Use the dashboard's own page.")) }
+            let origin_ok = if let Some(origin)=&proxy {
+                one(req.headers(),"origin")==Some(origin.origin.as_str())
+                    && one(req.headers(),"sec-fetch-site").is_none_or(|s|s=="same-origin"||s=="none")
+                    && req.headers().get_all("sec-fetch-site").iter().count()<=1
+            } else { same_origin(req.headers()) };
+            if !origin_ok { return Err(ApiError::new(ApiErrorCode::InvalidOrigin, "Use the dashboard's own page.")) }
             if !one(req.headers(), "idempotency-key").is_some_and(crate::api::mutation::valid_request_id) {
                 return Err(ApiError::new(ApiErrorCode::InvalidRequest, "Supply one valid Idempotency-Key header."))
             }
@@ -561,8 +597,9 @@ struct BackupFile(String);
     security(("staffSession" = [])), responses((status = 200, description = "Success", body = BackupList),
         (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
         (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 404, description = "No backups", body = ApiError), (status = 503, description = "Backup storage unavailable", body = ApiError), (status = 500, description = "Internal error; mutation outcome may be unknown", body = ApiError)))]
-async fn backups(State(state):State<Dashboard>,Extension(viewer):Extension<Viewer>)->Result<Json<BackupList>,ApiError>{
-    tokio::task::spawn_blocking(move||state.api.read_backups(Actor::Staff{user_id:viewer.user_id})).await.map_err(|_|ApiError::new(ApiErrorCode::InternalError,"The backup list could not be read."))?.map(Json).map_err(Into::into)
+async fn backups(State(state):State<Dashboard>,Extension(viewer):Extension<Viewer>,proxy:Option<Extension<ProxyOrigin>>)->Result<Json<BackupList>,ApiError>{
+    let mut list=tokio::task::spawn_blocking(move||state.api.read_backups(Actor::Staff{user_id:viewer.user_id})).await.map_err(|_|ApiError::new(ApiErrorCode::InternalError,"The backup list could not be read."))??;
+    list.downloads_allowed=proxy.is_none();Ok(Json(list))
 }
 
 #[utoipa::path(post, path = "/panel/api/v1/backups", operation_id = "createBackup", tag = "Backups",

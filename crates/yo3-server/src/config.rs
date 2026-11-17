@@ -33,6 +33,10 @@ pub struct FileConfig {
     pub http_port: Option<u16>,
     /// Opt-in staff JSON API port (always loopback, separate from host-token management). Omit to disable.
     pub dashboard_port: Option<u16>,
+    /// Staff API socket shared with nginx (Unix only); never mounts host-token routes.
+    pub dashboard_socket: Option<PathBuf>,
+    /// Exact browser origin for the socket proxy (HTTPS, or HTTP localhost for local checks).
+    pub dashboard_origin: Option<String>,
     pub advertise: Option<String>,
     pub game_dir: Option<PathBuf>,
     pub data_dir: Option<PathBuf>,
@@ -51,7 +55,7 @@ impl FileConfig {
         let text = std::fs::read_to_string(path).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
         let mut file: FileConfig = toml::from_str(&text).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
         let base = path.parent().unwrap_or(Path::new("."));
-        for p in [&mut file.game_dir, &mut file.data_dir, &mut file.log_dir, &mut file.auth_cert, &mut file.auth_key, &mut file.engine].into_iter().flatten() {
+        for p in [&mut file.game_dir, &mut file.data_dir, &mut file.log_dir, &mut file.auth_cert, &mut file.auth_key, &mut file.engine, &mut file.dashboard_socket].into_iter().flatten() {
             if p.is_relative() { *p = base.join(&*p) }
         }
         Ok(file)

@@ -362,7 +362,8 @@ export type BackupHealthOutput = zod.output<typeof BackupHealth>;
 
 export const BackupList = zod.object({
   "backups": zod.array(BackupEntry),
-  "checked_at": zod.iso.datetime({"offset":true})
+  "checked_at": zod.iso.datetime({"offset":true}),
+  "downloads_allowed": zod.boolean()
 });
 
 export type BackupList = zod.input<typeof BackupList>;

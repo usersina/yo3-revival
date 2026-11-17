@@ -98,3 +98,24 @@ test('an uncertain download keeps its ID across reload and shows reauthenticatio
   expect(ids).toHaveLength(2)
   expect(ids[0]).toBe(ids[1])
 })
+
+test('a proxy-disabled download is explained without offering a broken download button', async ({
+  page,
+}) => {
+  await page.route('**/panel/api/v1/backups', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue()
+    const response = await route.fetch()
+    const data: unknown = await response.json()
+    await route.fulfill({
+      response,
+      json: { ...(data as Record<string, unknown>), downloads_allowed: false },
+    })
+  })
+  await signIn(page, 'TestAdmin')
+  const section = page.getByRole('region', { name: 'Database backups', exact: true })
+  await expect(
+    section.getByText('Download copies through SSH. Public backup downloads are disabled.'),
+  ).toBeVisible()
+  await expect(section.getByRole('button', { name: /^Download / })).toHaveCount(0)
+  await expect(section.getByRole('columnheader', { name: 'Download', exact: true })).toHaveCount(0)
+})

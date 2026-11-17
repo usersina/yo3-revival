@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "YO3 Revival staff API",
-    "description": "Private dashboard API. Host-token operations and offline restore are not routes on this router.",
+    "description": "Staff dashboard API. Host-token operations and offline restore are not routes on this router.",
     "contact": {
       "name": "Juha Kukkonen",
       "email": "juha7kukkonen@gmail.com"
@@ -4346,6 +4346,7 @@
       "BackupList": {
         "type": "object",
         "required": [
+          "downloads_allowed",
           "backups",
           "checked_at"
         ],
@@ -4359,6 +4360,9 @@
           "checked_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "downloads_allowed": {
+            "type": "boolean"
           }
         }
       },

@@ -7,4 +7,5 @@ import type { BackupEntry } from './backupEntry';
 export interface BackupList {
   backups: BackupEntry[];
   checked_at: string;
+  downloads_allowed: boolean;
 }

@@ -37,9 +37,15 @@ pub struct Args {
     #[arg(long, default_value_t = 8080, global = true)]
     pub http_port: u16,
     /// Enable the staff dashboard JSON API on a separate loopback-only port (off by default; 0 assigns a free port).
-    /// This does not expose the API to a network; public access awaits the MFA and proxy gate.
+    /// TCP stays loopback-only. Hosted HTTPS uses the separate Unix socket/nginx transport.
     #[arg(long, global = true)]
     pub dashboard_port: Option<u16>,
+    /// Staff API socket shared with nginx (Unix only); never mounts host-token routes.
+    #[arg(long, global = true, conflicts_with = "dashboard_port")]
+    pub dashboard_socket: Option<PathBuf>,
+    /// Exact browser origin for the socket proxy (HTTPS, or HTTP localhost for local checks).
+    #[arg(long, global = true)]
+    pub dashboard_origin: Option<String>,
     /// Game install (for the patch index and the client's own data files).
     #[arg(long)]
     pub game_dir: Option<PathBuf>,
@@ -85,6 +91,9 @@ pub struct Args {
 
 #[derive(Subcommand)]
 pub enum Admin {
+    /// Offline first deployment only: read the initial admin password from stdin; atomically create an admin in an
+    /// empty account directory. Reruns preserve the password; never resets, re-promotes or replaces an account.
+    BootstrapAdmin { user:String },
     /// Generate the host's TLS identity once. NAME is the DNS name or IP friends connect to; repeat for aliases.
     InitAuth { #[arg(required = true)] names: Vec<String> },
     /// Export an existing account's private launcher profile. Send it and the public server.crt to that friend.
