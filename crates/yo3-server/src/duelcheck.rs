@@ -46,7 +46,7 @@ use serde_json::Value as Json;
 use yo3_proto::{Message, Value};
 
 use crate::translate::CardStats;
-use crate::wire::{cmd, dialog, request, zone};
+use crate::wire::{Cmd, Place, Target, cmd, dialog, request, table_place, zone};
 pub mod native;
 pub mod coverage;
 pub mod summon;
@@ -59,35 +59,9 @@ const FIRST_TOKEN: u32 = 0x4000;
 /// How many applied commands a problem report shows.
 const RECENT: usize = 12;
 
-/// A move place: player | zone << 1 | index << 6 | face up << 14 | defense << 15.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Place {
-    player: usize,
-    zone: u32,
-    index: usize,
-    face_up: bool,
-    defense: bool,
-}
-
-impl Place {
-    fn of_move(word: u32) -> Place {
-        Place {
-            player: (word & 1) as usize,
-            zone: word >> 1 & 0x1F,
-            index: (word >> 6 & 0xFF) as usize,
-            face_up: word >> 14 & 1 == 1,
-            defense: word >> 15 & 1 == 1,
-        }
-    }
-
-    fn pile(self) -> Option<usize> {
-        (zone::EXTRA..=zone::REMOVED).contains(&self.zone).then(|| (self.zone - zone::EXTRA) as usize)
-    }
-}
-
-/// A card table place: player | zone << 8 | index << 16.
-fn table_place(player: usize, zone: u32, index: usize) -> u32 {
-    player as u32 | zone << 8 | (index as u32) << 16
+/// A pile's index (0 extra, 1 Graveyard, 2 banished, 3 deck... as `piles` keeps them) for a list zone.
+fn pile(place: Place) -> Option<usize> {
+    (zone::EXTRA..=zone::REMOVED).contains(&place.zone).then(|| (place.zone - zone::EXTRA) as usize)
 }
 
 /// What a client holds of the duel, as its card manager would after the same commands.
@@ -234,13 +208,46 @@ impl ClientModel {
         self.problems.push(format!("{what} (after: {})", recent.join("; ")));
     }
 
+    /// The commands [`Cmd`] packs, as the client reads them.
+    fn typed(&mut self, c: Cmd) {
+        match c {
+            Cmd::BattleInit | Cmd::BattleEnd => self.battle = [None; 2],
+            Cmd::BattleSelect | Cmd::Dialog { .. } => {}
+            Cmd::BattleAttack { player, zone, target } => {
+                self.battle = [None; 2];
+                if zone < 5 { self.battle[player as usize] = Some((player as usize, zone as usize)); }
+                if let Target::Monster { player, zone } = target { self.battle[player as usize] = Some((player as usize, zone as usize)); }
+            }
+            Cmd::BattleRun { flags, .. } => {
+                self.note(format!("BattleRun flags {flags:#x}"));
+                for player in 0..2 {
+                    if flags & (2 << (player * 8)) != 0
+                        && let Some((side, zone)) = self.battle[player]
+                        && let Some(uid) = self.slots[side][zone]
+                    { self.off_field.insert(uid); }
+                }
+            }
+            Cmd::Card { uid, row, place, .. } => {
+                if row != 0 && uid < STAGED {
+                    self.rows.insert(uid, row as u16);
+                }
+                self.table.insert(uid, place);
+                self.note(format!("1000 {{uid {uid}, row {row}, place {place:#x}}}"));
+            }
+            Cmd::Move { uid, from, to, .. } => {
+                self.note(format!("0x1A {{uid {uid}, {:#x} -> {:#x}}}", from.packed(), to.packed()));
+                self.card_move(uid, from, to);
+            }
+        }
+    }
+
     fn command(&mut self, id: u32, [p1, p2, p3, p4]: [u32; 4]) {
         if let Some(problem) = self.summon.command(id, [p1, p2, p3, p4]) {
             self.problem(problem);
         }
         // A summon's Set or Run names a card at its place: in the hand (11) or a field zone. DuelSummon finds the card
         // object by uid (0x500470) and plays the effect at the place.
-        if matches!(id, 0x2A | 0x2C | 0x2D | 0x2F | 0x30 | 0x32) {
+        if matches!(id, cmd::TRIBUTE_SET | cmd::TRIBUTE_RUN | cmd::MATERIAL_SET | cmd::MATERIAL_RUN | cmd::TUNING_SET | cmd::TUNING_RUN) {
             let (player, zone, uid) = ((p1 & 1) as usize, p2, p3 & 0xFFFF);
             let there = match zone {
                 zone::HAND => self.hands[player].contains(&uid),
@@ -252,63 +259,39 @@ impl ClientModel {
                 self.problem(format!("summon command {id:#x} names {} at player {player} zone {zone}, where the client doesn't hold it", self.describe(uid)));
             }
         }
-        if id == cmd::DIALOG && p1 == dialog::POSITION {
-            let uid = p3 & 0xFFFF;
+        if let Some(Cmd::Dialog { kind: dialog::POSITION, param, .. }) = Cmd::decode(id, [p1, p2, p3, p4]) {
+            let uid = param & 0xFFFF;
             self.note(format!("0x36 position {{uid {uid}}}"));
             if self.rows.get(&uid).is_none_or(|&row| row == 0) {
                 self.problem(format!("the position dialog names {}, which has no card in the client's card table: its buttons show no card to click", self.describe(uid)));
             }
         }
+        if let Some(typed) = Cmd::decode(id, [p1, p2, p3, p4]) {
+            self.typed(typed);
+            return;
+        }
         match id {
-            5 => self.phase = Some(((p1 & 1) as usize, p2)),
-            6 => self.turn = ((p1 & 1) as usize, self.turn.1 + 1),
-            0xF => self.lp[(p1 & 1) as usize] = Some(p2 as i64),
+            cmd::PHASE => self.phase = Some(((p1 & 1) as usize, p2)),
+            cmd::TURN => self.turn = ((p1 & 1) as usize, self.turn.1 + 1),
+            cmd::SET_LP => self.lp[(p1 & 1) as usize] = Some(p2 as i64),
             // A change applies with param3's low byte 0; 1 only shows it (DuelCockpit 0x502EB0).
-            0x10 if p3 & 0xFF == 0 => {
+            cmd::CHANGE_LP if p3 & 0xFF == 0 => {
                 if let Some(lp) = &mut self.lp[(p1 & 1) as usize] { *lp = (*lp + p2 as i32 as i64).clamp(0, 99999); }
             },
-            0x10 => {},
-            0x3E9 => { self.record[0] = p2; self.record[2] = p3; self.record[3] = p4; },
-            0x3EA => { self.record[4] = p2; self.record[5] = p3; self.record[6] = p4; },
-            0x3EB => {
+            cmd::CHANGE_LP => {},
+            cmd::RECORD_BEGIN => { self.record[0] = p2; self.record[2] = p3; self.record[3] = p4; },
+            cmd::RECORD_MORE => { self.record[4] = p2; self.record[5] = p3; self.record[6] = p4; },
+            cmd::RECORD_COMMIT => {
                 self.record[7] = p2; self.record[8] = p3; self.record[1] = p4;
                 self.records.insert(((p1 & 1) as usize, p1 >> 8 & 0xFF), self.record);
             },
-            0x27 => {
+            cmd::COUNTER => {
                 let (p, z) = ((p1 & 1) as usize, (p1 >> 8 & 0xFF) as usize);
                 if let Some(uid) = self.slots[p].get(z).copied().flatten() {
                     let count = self.counters.entry((uid, p3)).or_default();
                     *count = (*count + p2 as i32 as i64).max(0);
                 } else { self.problem(format!("counter change at empty player {p} zone {z}")); }
             },
-            cmd::BATTLE_INIT | cmd::BATTLE_END => self.battle = [None; 2],
-            cmd::BATTLE_ATTACK => {
-                self.battle = [None; 2];
-                let (attacker, zone, target) = ((p1 & 1) as usize, (p1 >> 8 & 0xFF) as usize, (p2 & 1) as usize);
-                if zone < 5 { self.battle[attacker] = Some((attacker, zone)); }
-                if p3 < 5 { self.battle[target] = Some((target, p3 as usize)); }
-            },
-            cmd::BATTLE_RUN => {
-                self.note(format!("BattleRun flags {p3:#x}"));
-                for player in 0..2 {
-                    if p3 & (2 << (player * 8)) != 0
-                        && let Some((side, zone)) = self.battle[player]
-                        && let Some(uid) = self.slots[side][zone]
-                    { self.off_field.insert(uid); }
-                }
-            },
-            cmd::CARD => {
-                let uid = p1 & 0xFF_FFFF;
-                if p2 != 0 && uid < STAGED {
-                    self.rows.insert(uid, p2 as u16);
-                }
-                self.table.insert(uid, p4);
-                self.note(format!("1000 {{uid {uid}, row {p2}, place {p4:#x}}}"));
-            }
-            cmd::MOVE => {
-                self.note(format!("0x1A {{uid {}, {:#x} -> {:#x}}}", p1 & 0xFFFF, p2, p3));
-                self.card_move(p1 & 0xFFFF, Place::of_move(p2), Place::of_move(p3));
-            }
             cmd::HAND_SHUFFLE => {
                 self.note(format!("0x12 {{{p1}}}"));
                 self.hand_shuffle((p1 & 1) as usize);
@@ -327,9 +310,9 @@ impl ClientModel {
                     self.problem(format!("CardSwap of {p2:#x} and {p3:#x}: the client swaps only field places"));
                     return;
                 }
-                let (in_a, in_b) = (self.slots[a.player][a.zone as usize], self.slots[b.player][b.zone as usize]);
-                self.slots[a.player][a.zone as usize] = in_b;
-                self.slots[b.player][b.zone as usize] = in_a;
+                let (in_a, in_b) = (self.slots[a.side()][a.zone as usize], self.slots[b.side()][b.zone as usize]);
+                self.slots[a.side()][a.zone as usize] = in_b;
+                self.slots[b.side()][b.zone as usize] = in_a;
                 for (uid, place) in [(in_b, a), (in_a, b)] {
                     if let Some(uid) = uid {
                         if self.places.get(&uid).is_some_and(|old| old.face_up != place.face_up) {
@@ -342,7 +325,7 @@ impl ClientModel {
             cmd::FLIP_TURN => {
                 let place = Place::of_move(p1);
                 if place.zone <= zone::FIELD_SPELL
-                    && let Some(uid) = self.slots[place.player][place.zone as usize]
+                    && let Some(uid) = self.slots[place.side()][place.zone as usize]
                 {
                     if self.places.get(&uid).is_some_and(|old| old.face_up != place.face_up) {
                         self.counters.retain(|(card, _), _| *card != uid);
@@ -384,13 +367,13 @@ impl ClientModel {
             self.counters.retain(|(card, _), _| *card != uid);
         }
         if from.zone <= zone::FIELD_SPELL {
-            self.slots[from.player][from.zone as usize] = None;
+            self.slots[from.side()][from.zone as usize] = None;
         }
         if to.zone <= zone::FIELD_SPELL {
-            self.slots[to.player][to.zone as usize] = Some(uid);
+            self.slots[to.side()][to.zone as usize] = Some(uid);
         }
         if from.zone == zone::HAND {
-            let hand = &mut self.hands[from.player];
+            let hand = &mut self.hands[from.side()];
             match hand.get(from.index).copied() {
                 None => {
                     let n = hand.len();
@@ -412,15 +395,15 @@ impl ClientModel {
             if self.hands.iter().any(|h| h.contains(&uid)) {
                 self.problem(format!("uid {uid} reaches hand {} while a hand list still holds it", to.player));
             }
-            self.hands[to.player].push(uid);
+            self.hands[to.side()].push(uid);
         }
-        if let Some(pile) = from.pile() {
-            self.counts[from.player][pile] -= 1;
-            self.piles[from.player][pile] -= 1;
+        if let Some(pile) = pile(from) {
+            self.counts[from.side()][pile] -= 1;
+            self.piles[from.side()][pile] -= 1;
         }
-        if let Some(pile) = to.pile() {
-            self.counts[to.player][pile] += 1;
-            self.piles[to.player][pile] += 1;
+        if let Some(pile) = pile(to) {
+            self.counts[to.side()][pile] += 1;
+            self.piles[to.side()][pile] += 1;
         }
         self.places.insert(uid, to);
         self.off_field.remove(&uid);
@@ -436,7 +419,7 @@ impl ClientModel {
     fn hand_shuffle(&mut self, player: usize) {
         let mut rebuilt = vec![];
         for i in 0..self.hands[player].len() {
-            match self.at_table(table_place(player, zone::HAND, i))[..] {
+            match self.at_table(table_place(player as u32, zone::HAND, i))[..] {
                 [uid] => rebuilt.push(uid),
                 [] => {
                     self.problem(format!("HandShuffle {player}: no table entry at hand index {i} (the client's error 0x1200)"));
@@ -527,7 +510,7 @@ impl ClientModel {
             }
         }
         for (i, &uid) in mine.iter().enumerate() {
-            let entries = self.at_table(table_place(p, zone::HAND, i));
+            let entries = self.at_table(table_place(p as u32, zone::HAND, i));
             if entries != [uid] {
                 out.push(format!("player {p}'s hand index {i}: the client holds {}, its table has {entries:?} there", self.describe(uid)));
             }
@@ -611,7 +594,7 @@ impl ClientModel {
             out.push(format!("player {p}'s deck: the engine has {deck} cards, the client counts {}", self.piles[p][(zone::DECK - zone::EXTRA) as usize]));
         }
         for (i, engine) in list("grave").iter().enumerate() {
-            match self.at_table(table_place(p, zone::GRAVE, i))[..] {
+            match self.at_table(table_place(p as u32, zone::GRAVE, i))[..] {
                 [uid] if self.cid(uid).is_none_or(|c| c == cid_of(engine)) => {}
                 ref entries => out.push(format!(
                     "player {p}'s Graveyard index {i}: the engine has card {}, the table has {:?}",

@@ -16,7 +16,7 @@ use crate::engine::{Answer, Engine};
 use crate::front::{Deck, DuelEntry, Ended, Hub, Outbox, SINGLE_MODE, World};
 use crate::table::Table;
 use crate::translate::{Prompt, Repeats, Translator};
-use crate::wire::{cmd, request, result, zone};
+use crate::wire::{Cmd, Place, cmd, request, result, table_place, zone};
 
 /// Request id of the server's duel messages. A guess: the pump (0x5233A0) reads only
 /// duelRequestName, and treats a negative id as a lost connection.
@@ -38,17 +38,6 @@ const OPENING_HAND: usize = 5;
 /// Engine players: the client is player 0 (setup PlayerNum), the CPU player 1.
 pub(crate) const CLIENT: u32 = 0;
 pub(crate) const CPU: u32 = 1;
-
-/// A place as the card table keys it (0x523DF0).
-pub(crate) fn table_place(player: u32, zone: u32, index: usize) -> u32 {
-    player | zone << 8 | (index as u32) << 16
-}
-
-/// A place as card moves give it (0x522A50 counts by bit 0 and bits 1-5). The index bits are a guess
-/// (Online 2's packing).
-pub(crate) fn move_place(player: u32, zone: u32, index: usize) -> u32 {
-    player | zone << 1 | (index as u32) << 6
-}
 
 /// The server's clock check for every duel between players (once a second, and in tests at any `now`). A table that
 /// is busy (its lock is held, say by an engine call) is skipped until the next second; one that panicked, under its
@@ -799,7 +788,7 @@ impl DuelSession {
             for (i, &row) in deck.iter().enumerate() {
                 let uid = uids[0].len() as u32 + uids[1].len() as u32 + 1;
                 uids[player].push(uid);
-                out.push(command(cmd::CARD, [uid, row as u32, 0, table_place(player as u32, zone::DECK, i)]));
+                out.push(Cmd::Card { uid, open: false, row: row as u32, place: table_place(player as u32, zone::DECK, i) }.message());
             }
         }
         out.extend([
@@ -812,8 +801,8 @@ impl DuelSession {
             let p = player as usize;
             for i in 0..OPENING_HAND.min(decks[p].len()) {
                 let (uid, row) = (uids[p][i], decks[p][i] as u32);
-                out.push(command(cmd::CARD, [uid, row, 0, table_place(player, zone::HAND, i)]));
-                out.push(command(cmd::MOVE, [uid | row << 16, move_place(player, zone::DECK, 0), move_place(player, zone::HAND, i), 0]));
+                out.push(Cmd::Card { uid, open: false, row, place: table_place(player, zone::HAND, i) }.message());
+                out.push(Cmd::Move { uid, kind: row, from: Place { player, zone: zone::DECK, ..Place::default() }, to: Place { player, zone: zone::HAND, index: i, ..Place::default() } }.message());
             }
         }
         out.push(command(cmd::PHASE, [first, DRAW_PHASE, 0, 0]));

@@ -394,3 +394,140 @@ pub mod result {
         DRAW = 3,
     }
 }
+
+/// A place as the card table keys it (0x523DF0): player | zone << 8 | index << 16.
+pub fn table_place(player: u32, zone: u32, index: usize) -> u32 {
+    player | zone << 8 | (index as u32) << 16
+}
+
+/// A place as card moves give it (0x522A50 counts by bit 0 and bits 1-5). The index bits are a guess (Online 2's
+/// packing).
+pub fn move_place(player: u32, zone: u32, index: usize) -> u32 {
+    player | zone << 1 | (index as u32) << 6
+}
+
+/// A place with its card's face and position, as card moves give it: [`move_place`], face up bit 14, defense bit 15
+/// (0x5000E0).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Place {
+    pub player: u32,
+    pub zone: u32,
+    pub index: usize,
+    pub face_up: bool,
+    pub defense: bool,
+}
+
+impl Place {
+    pub fn packed(&self) -> u32 {
+        move_place(self.player, self.zone, self.index) | (self.face_up as u32) << 14 | (self.defense as u32) << 15
+    }
+
+    pub fn of_move(word: u32) -> Place {
+        Place {
+            player: word & 1,
+            zone: word >> 1 & 0x1F,
+            index: (word >> 6 & 0xFF) as usize,
+            face_up: word >> 14 & 1 == 1,
+            defense: word >> 15 & 1 == 1,
+        }
+    }
+
+    /// The player as an index into per-player arrays.
+    pub fn side(&self) -> usize {
+        self.player as usize
+    }
+}
+
+/// A card table entry's flag (command 1000's uid top byte, kept as `!= 0` by 0x521DF0): a pile whose count changes
+/// draws its top card's face when its entry has it, else a back (0x4FE4D0 → 0x523DA0), and the pointer over the pile
+/// previews that card (0x50B9C0). Set for the open piles: the Graveyard and the banished cards.
+pub const OPEN: u32 = 1 << 24;
+/// BattleAttack's target zone for "none yet" (Konami's 0xC {attacker, 0, -1} before every 0xB).
+pub const NO_TARGET: u32 = u32::MAX;
+/// A direct attack's target zone: any zone from 5 plays as one (the direct cut-in and strike, 0x4F8430 state 3);
+/// 0xFFFFFFFF plays nothing. 16 is the field's centre, as ChainSet's.
+pub const DIRECT_TARGET: u32 = 16;
+
+/// What a BattleAttack aims at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Target {
+    /// A monster in that player's zone (0-4).
+    Monster { player: u32, zone: u32 },
+    /// That player, directly.
+    Direct { player: u32 },
+    /// Nothing yet: the attacker is marked while the player aims (with BattleSelect, #51).
+    NotYet { player: u32 },
+}
+
+/// The commands both the server and the duel check's client model read and write, each packed and unpacked here only
+/// (`Cmd::params`, `Cmd::decode`): the battle's, a card's move, a card table entry and a dialog.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cmd {
+    /// A battle's start, BattleSelect's aiming state and the battle's end (no parameters).
+    BattleInit,
+    BattleSelect,
+    BattleEnd,
+    /// The attack {attacker's player | zone << 8, target's player, target's zone (or [`DIRECT_TARGET`], [`NO_TARGET`])}.
+    BattleAttack { player: u32, zone: u32, target: Target },
+    /// Damage figures per player, and flags (bit 1 << (8 × player): that player's battler destroyed, which hides it).
+    BattleRun { damage: [u32; 2], flags: u32 },
+    /// A card's move on screen {uid | kind << 16, from, to} (DuelCardManager 0x4FF6A2): kind as `translate.rs`'s
+    /// MOVE_* (the opening draw sends the card's row there).
+    Move { uid: u32, kind: u32, from: Place, to: Place },
+    /// A card table entry {uid, with [`OPEN`] for an open pile, row, 0, table place} (0x521DF0).
+    Card { uid: u32, open: bool, row: u32, place: u32 },
+    /// A dialog {kind, message, parameter} (DuelScene 0x514C0C; kinds in [`dialog`]).
+    Dialog { kind: u32, message: u32, param: u32 },
+}
+
+impl Cmd {
+    /// The command's id and parameters.
+    pub fn params(&self) -> (u32, [u32; 4]) {
+        match *self {
+            Cmd::BattleInit => (cmd::BATTLE_INIT, [0; 4]),
+            Cmd::BattleSelect => (cmd::BATTLE_SELECT, [0; 4]),
+            Cmd::BattleEnd => (cmd::BATTLE_END, [0; 4]),
+            Cmd::BattleAttack { player, zone, target } => {
+                let (to, at) = match target {
+                    Target::Monster { player, zone } => (player, zone),
+                    Target::Direct { player } => (player, DIRECT_TARGET),
+                    Target::NotYet { player } => (player, NO_TARGET),
+                };
+                (cmd::BATTLE_ATTACK, [player | zone << 8, to, at, 0])
+            }
+            Cmd::BattleRun { damage, flags } => (cmd::BATTLE_RUN, [damage[0], damage[1], flags, 0]),
+            Cmd::Move { uid, kind, from, to } => (cmd::MOVE, [uid | kind << 16, from.packed(), to.packed(), 0]),
+            Cmd::Card { uid, open, row, place } => (cmd::CARD, [uid | if open { OPEN } else { 0 }, row, 0, place]),
+            Cmd::Dialog { kind, message, param } => (cmd::DIALOG, [kind, message, param, 0]),
+        }
+    }
+
+    /// The command for an id and its parameters, if it is one of these.
+    pub fn decode(id: u32, p: [u32; 4]) -> Option<Cmd> {
+        Some(match id {
+            cmd::BATTLE_INIT => Cmd::BattleInit,
+            cmd::BATTLE_SELECT => Cmd::BattleSelect,
+            cmd::BATTLE_END => Cmd::BattleEnd,
+            cmd::BATTLE_ATTACK => {
+                let to = p[1] & 1;
+                let target = match p[2] {
+                    NO_TARGET => Target::NotYet { player: to },
+                    zone @ 0..5 => Target::Monster { player: to, zone },
+                    _ => Target::Direct { player: to },
+                };
+                Cmd::BattleAttack { player: p[0] & 1, zone: p[0] >> 8 & 0xFF, target }
+            }
+            cmd::BATTLE_RUN => Cmd::BattleRun { damage: [p[0], p[1]], flags: p[2] },
+            cmd::MOVE => Cmd::Move { uid: p[0] & 0xFFFF, kind: p[0] >> 16, from: Place::of_move(p[1]), to: Place::of_move(p[2]) },
+            cmd::CARD => Cmd::Card { uid: p[0] & 0xFF_FFFF, open: p[0] & OPEN != 0, row: p[1], place: p[3] },
+            cmd::DIALOG => Cmd::Dialog { kind: p[0], message: p[1], param: p[2] },
+            _ => return None,
+        })
+    }
+
+    /// The engine command message (duelRequestName 0x11).
+    pub fn message(&self) -> yo3_proto::Message {
+        let (id, params) = self.params();
+        crate::duel::command(id, params)
+    }
+}

@@ -12,9 +12,9 @@ use serde_json::{Value as Json, json};
 use yo3_proto::{Message, Value};
 
 use crate::card_options::CARD_OPTION_LABELS;
-use crate::duel::{CLIENT, CPU, CardCommand, TEXT_IDS, TEXT_SLOTS, command, command_data, move_place, table_place, text_message};
+use crate::duel::{CLIENT, CPU, CardCommand, TEXT_IDS, TEXT_SLOTS, command, command_data, text_message};
 use crate::ocg::{battle, hint, hintmsg, idle, loc, msg, pos, reason, resp};
-use crate::wire::{cmd, dialog, entry, flag, list, menu, mode, result, text, zone};
+use crate::wire::{Cmd, OPEN, Place, Target, cmd, dialog, entry, flag, list, menu, mode, move_place, result, table_place, text, zone};
 
 
 /// What a window's chain question may hold, which decides whether the default Activation Message may answer it.
@@ -58,10 +58,6 @@ const ALL_ZONES_USABLE: u32 = 0x3FF_03FF;
 /// the client names none of its eight markers.
 const MARK_EQUIP: u32 = 2;
 const MARK_TARGET: u32 = 8;
-/// A card table entry's flag (command 1000's uid top byte, kept as `!= 0` by 0x521DF0): a pile whose count changes
-/// draws its top card's face when its entry has it, else a back (0x4FE4D0 → 0x523DA0), and the pointer over the pile
-/// previews that card (0x50B9C0). Set for the open piles: the Graveyard and the banished cards.
-const OPEN: u32 = 1 << 24;
 /// EDOPro's counter ids (strings.conf, less COUNTER_NEED_ENABLE) by the client's counter kinds of the same name:
 /// Spell, Wedge, Bushido, Psychic, Shine, Crystal, Morph, Venom, Genex, A-, Worm, Black Feather, Hyper-Venom,
 /// Spellstone ("Magical Stone", **guess**), Flower, Fog, Clock, D, Junk, Gate, Plant, Guard, Dragonic, Ocean,
@@ -102,11 +98,6 @@ pub(crate) const COUNTER_KINDS: [(u64, u32); 32] = [
     (0x1097, 22),
 ];
 const ANY_COUNTER: u32 = 38;
-/// BattleAttack's target zone for "none yet" (Konami's 0xC {attacker, 0, -1} before every 0xB).
-const NO_TARGET: u32 = u32::MAX;
-/// A direct attack's target zone: any zone from 5 plays as one (the direct cut-in and strike, 0x4F8430 state 3);
-/// 0xFFFFFFFF plays nothing. 16 is the field's centre, as ChainSet's.
-const DIRECT_TARGET: u32 = 16;
 /// LifeDamage `0x10`'s kinds (`param3 >> 8`), as in Konami's logs: 0 effect damage, 1 battle damage (after BattleRun),
 /// 2 a cost, 4 a gain. DuelCockpit (`0x502EB0`) plays the recover sound for 4, the payment sound for 2, else damage's.
 const DAMAGE_EFFECT: u32 = 0;
@@ -457,7 +448,7 @@ impl Translator {
                 let zone = self.sides[p].zone(zone::EXTRA);
                 zone.push(Card { uid, row });
                 let shown = if self.hidden[p] { 0 } else { row as u32 };
-                out.push(command(cmd::CARD, [uid, shown, 0, table_place(p as u32, zone::EXTRA, zone.len() - 1)]));
+                out.push(Cmd::Card { uid, open: false, row: shown, place: table_place(p as u32, zone::EXTRA, zone.len() - 1) }.message());
             }
         }
         with_card_ids(&self.cards, &mut out);
@@ -509,7 +500,7 @@ impl Translator {
                 uid += 1;
                 sides[p].zone(zone::DECK).push(Card { uid, row });
                 let shown = if hidden[p] { 0 } else { row as u32 };
-                out.push(command(cmd::CARD, [uid, shown, 0, table_place(p as u32, zone::DECK, i)]));
+                out.push(Cmd::Card { uid: uid, open: false, row: shown, place: table_place(p as u32, zone::DECK, i) }.message());
             }
         }
         let t = Translator {
@@ -663,7 +654,7 @@ impl Translator {
                     let battle = (0x08..=0x80).contains(&m["phase"].as_u64().unwrap_or(0));
                     let ended = self.end_battle();
                     if ended.is_empty() && self.battle_phase && !battle {
-                        out.push(command(cmd::BATTLE_END, [0; 4]));
+                        out.push(Cmd::BattleEnd.message());
                     }
                     out.extend(ended);
                     self.battle_phase = battle;
@@ -1195,7 +1186,7 @@ impl Translator {
             .enumerate()
             .map(|(i, c)| {
                 let row = self.shown_row(&Place { player: p, zone: zone::HAND, index: i, face_up: false, defense: false }, c.row);
-                command(cmd::CARD, [c.uid, row, 0, table_place(p, zone::HAND, i)])
+                Cmd::Card { uid: c.uid, open: false, row: row, place: table_place(p, zone::HAND, i) }.message()
             })
             .collect();
         out.push(command(cmd::HAND_SHUFFLE, [p, 0, 0, 0]));
@@ -1335,8 +1326,8 @@ impl Translator {
         let (record_a, record_b) = (self.records.get(&(a.player, a.zone)).copied(), self.records.get(&(b.player, b.zone)).copied());
         let mut out = match (card_a, card_b) {
             (Some(_), Some(_)) => vec![command(cmd::CARD_SWAP, [0, a.packed(), b.packed(), 0])],
-            (Some(c), None) => vec![command(cmd::MOVE, [c.uid, Place { face_up: false, defense: false, ..a }.packed(), b.packed(), 0])],
-            (None, Some(c)) => vec![command(cmd::MOVE, [c.uid, Place { face_up: false, defense: false, ..b }.packed(), a.packed(), 0])],
+            (Some(c), None) => vec![Cmd::Move { uid: c.uid, kind: 0, from: Place { face_up: false, defense: false, ..a }, to: b }.message()],
+            (None, Some(c)) => vec![Cmd::Move { uid: c.uid, kind: 0, from: Place { face_up: false, defense: false, ..b }, to: a }.message()],
             (None, None) => return vec![],
         };
         for (place, card, record) in [(a, card_b, record_b), (b, card_a, record_a)] {
@@ -1347,7 +1338,7 @@ impl Translator {
                 Some(c) => {
                     self.positions.insert((place.player, place.zone), (place.face_up, place.defense));
                     let row = self.shown_row(&place, c.row);
-                    out.push(command(cmd::CARD, [c.uid | open(place.zone), row, 0, table_place(place.player, place.zone, 0)]));
+                    out.push(Cmd::Card { uid: c.uid, open: open(place.zone), row: row, place: table_place(place.player, place.zone, 0) }.message());
                     if place.zone < 5 && row != 0 && place.face_up {
                         out.extend(match record {
                             Some(values) => self.record(place.player, place.zone, c.row, values),
@@ -1417,11 +1408,11 @@ impl Translator {
         let up = Place { face_up: true, ..down };
         let key = table_place(place.player, place.zone, 0);
         vec![
-            command(cmd::CARD, [card.uid, card.row as u32, 0, key]),
+            Cmd::Card { uid: card.uid, open: false, row: card.row as u32, place: key }.message(),
             command(cmd::CARD_CHEAT, [up.packed(), cid, card.uid, 0]),
             command(cmd::FLIP_TURN, [up.packed(), 0, 0, 0]),
             command(cmd::CARD_LOCKON, [place.player, place.zone, POPUP, 0]),
-            command(cmd::CARD, [card.uid, 0, 0, key]),
+            Cmd::Card { uid: card.uid, open: false, row: 0, place: key }.message(),
             command(cmd::CARD_CHEAT, [down.packed(), 0, card.uid, 0]),
             command(cmd::FLIP_TURN, [down.packed(), 0, 0, 0]),
         ]
@@ -1462,7 +1453,7 @@ impl Translator {
             // its table entry off its new place, so the revealed card stays there instead, hidden.
             let in_deck = |uid: u32| deck.iter().any(|d| d.uid == uid & !OPEN);
             let back = self.deck_tops[p as usize].filter(|e| in_deck(e[0]) && e[0] & OPEN == 0).unwrap_or([card.uid, hidden, 0, key]);
-            out.push(command(cmd::CARD, [card.uid, card.row as u32, 0, key]));
+            out.push(Cmd::Card { uid: card.uid, open: false, row: card.row as u32, place: key }.message());
             if used.len() == 1 {
                 out.push(command(cmd::DECK_RESET, [p, zone::DECK, 0, 0]));
             }
@@ -1494,7 +1485,7 @@ impl Translator {
         let Some(card) = deck.and_then(|d| d.iter().find(|c| self.cards.get(&c.row).map(|s| s.cid) == Some(cid))).copied() else {
             return vec![];
         };
-        vec![command(cmd::CARD, [card.uid | OPEN, card.row as u32, 0, table_place(p, zone::DECK, 0)]), command(cmd::DECK_RESET, [p, zone::DECK, 0, 0])]
+        vec![Cmd::Card { uid: card.uid, open: true, row: card.row as u32, place: table_place(p, zone::DECK, 0) }.message(), command(cmd::DECK_RESET, [p, zone::DECK, 0, 0])]
     }
 
     /// The Decks turned back: the card last shown on top of player `p`'s Deck loses its face (and, hidden, its row).
@@ -1506,14 +1497,14 @@ impl Translator {
             return vec![];
         }
         let shown = self.shown_row(&Place { player: p, zone: zone::DECK, index: 0, face_up: false, defense: false }, row as u16);
-        vec![command(cmd::CARD, [uid, shown, 0, place]), command(cmd::DECK_RESET, [p, zone::DECK, 0, 0])]
+        vec![Cmd::Card { uid: uid, open: false, row: shown, place: place }.message(), command(cmd::DECK_RESET, [p, zone::DECK, 0, 0])]
     }
 
     /// A hand card shows its face: its table entry with the row (the opponent's hand has none), then HandShow.
     fn show_hand(&self, player: u32, index: usize) -> Vec<Message> {
         let Some(card) = self.sides[player as usize].zones.get(&zone::HAND).and_then(|z| z.get(index)).copied() else { return vec![] };
         vec![
-            command(cmd::CARD, [card.uid, card.row as u32, 0, table_place(player, zone::HAND, index)]),
+            Cmd::Card { uid: card.uid, open: false, row: card.row as u32, place: table_place(player, zone::HAND, index) }.message(),
             command(cmd::HAND_SHOW, [player, index as u32, 0, 0]),
         ]
     }
@@ -1540,9 +1531,9 @@ impl Translator {
         zone.clear();
         zone.push(Card { uid, row });
         self.positions.insert((to.player, to.zone), (to.face_up, to.defense));
-        let mut out = vec![command(cmd::CARD, [uid, row as u32, 0, table_place(to.player, to.zone, 0)])];
+        let mut out = vec![Cmd::Card { uid: uid, open: false, row: row as u32, place: table_place(to.player, to.zone, 0) }.message()];
         out.extend(self.monster_record(to.player, to.zone, row));
-        out.push(command(cmd::MOVE, [uid | MOVE_SPECIAL_SUMMON << 16, to.packed(), to.packed(), 0]));
+        out.push(Cmd::Move { uid: uid, kind: MOVE_SPECIAL_SUMMON, from: to, to: to }.message());
         out
     }
 
@@ -1678,7 +1669,7 @@ impl Translator {
         }
         let row = self.shown_row(&to, card.row);
         let mut out = self.panel_stats(card, from, to, row);
-        out.push(command(cmd::CARD, [card.uid | open(to.zone), row, 0, table_place(to.player, to.zone, index)]));
+        out.push(Cmd::Card { uid: card.uid, open: open(to.zone), row: row, place: table_place(to.player, to.zone, index) }.message());
         if to.zone < 5 && row != 0 {
             out.extend(match record {
                 Some(values) => self.record(to.player, to.zone, card.row, values),
@@ -1695,11 +1686,11 @@ impl Translator {
             let shifted: Vec<(usize, Card)> = self.sides[p as usize].zone(zone).iter().copied().enumerate().skip(start).collect();
             for (i, c) in shifted {
                 let row = self.shown_row(&Place { player: p, zone, index: i, face_up: true, defense: false }, c.row);
-                let entry = command(cmd::CARD, [c.uid | open(zone), row, 0, table_place(p, zone, i)]);
+                let entry = Cmd::Card { uid: c.uid, open: open(zone), row: row, place: table_place(p, zone, i) }.message();
                 if zone == zone::HAND { hand.push(entry) } else { out.push(entry) }
             }
         }
-        out.push(command(cmd::MOVE, [card.uid | kind << 16, from.packed(), to.packed(), 0]));
+        out.push(Cmd::Move { uid: card.uid, kind: kind, from: from, to: to }.message());
         out.extend(hand);
         out
     }
@@ -1707,9 +1698,9 @@ impl Translator {
     /// MSG_ATTACK {card, target}: the battle's start and the attack, at the target or directly.
     fn attack(&mut self, m: &Json) -> Vec<Message> {
         let Some(attacker) = self.engine_place(&m["card"]) else { return vec![] };
-        let (player, zone) = self.engine_place(&m["target"]).map_or((1 - attacker.player, DIRECT_TARGET), |t| (t.player, t.zone));
+        let target = self.engine_place(&m["target"]).map_or(Target::Direct { player: 1 - attacker.player }, |t| Target::Monster { player: t.player, zone: t.zone });
         self.in_battle = true;
-        vec![command(cmd::BATTLE_INIT, [0; 4]), command(cmd::BATTLE_ATTACK, [attacker.player | attacker.zone << 8, player, zone, 0])]
+        vec![Cmd::BattleInit.message(), Cmd::BattleAttack { player: attacker.player, zone: attacker.zone, target }.message()]
     }
 
     /// MSG_BATTLE {card, target: {attack, defense, position, destroyed}}: per player, the battle damage they take, by
@@ -1721,7 +1712,7 @@ impl Translator {
     fn battle(&self, m: &Json) -> Vec<Message> {
         let (card, target) = (&m["card"], &m["target"]);
         if target["location"].as_u64().unwrap_or(0) == 0 {
-            return vec![command(cmd::BATTLE_RUN, [0; 4])];
+            return vec![Cmd::BattleRun { damage: [0; 2], flags: 0 }.message()];
         }
         let n = |c: &Json, k: &str| c[k].as_i64().unwrap_or(0);
         let (to_attacker, to_target) = if target["position"].as_u64().unwrap_or(0) & (pos::FACEUP_ATTACK | pos::FACEDOWN_ATTACK) != 0 {
@@ -1734,13 +1725,13 @@ impl Translator {
         let attacker = self.player(&card["controller"]) as usize;
         damage[attacker] = to_attacker as u32;
         damage[1 - attacker] = to_target as u32;
-        vec![command(cmd::BATTLE_RUN, [damage[0], damage[1], 0, 0])]
+        vec![Cmd::BattleRun { damage, flags: 0 }.message()]
     }
 
     /// The end of the battle shown on the client, if one is.
     fn end_battle(&mut self) -> Vec<Message> {
         self.attacker = None;
-        if std::mem::take(&mut self.in_battle) { vec![command(cmd::BATTLE_END, [0; 4])] } else { vec![] }
+        if std::mem::take(&mut self.in_battle) { vec![Cmd::BattleEnd.message()] } else { vec![] }
     }
 
     /// A field card turns in place to `position`: 0x1C with its new face and position, after its table entry and record
@@ -1777,14 +1768,14 @@ impl Translator {
             && self.hidden[place.player as usize]
             && place.face_up
         {
-            out.push(command(cmd::CARD, [card.uid, card.row as u32, 0, table_place(place.player, place.zone, 0)]));
+            out.push(Cmd::Card { uid: card.uid, open: false, row: card.row as u32, place: table_place(place.player, place.zone, 0) }.message());
             if place.zone < 5 {
                 out.extend(self.monster_record(place.player, place.zone, card.row));
             } else {
                 // The field card takes its face from a move (a flip only turns it over), and a Spell/Trap has no
                 // record to carry its id: it moves onto its own slot with its row, face up.
                 let down = Place { face_up: false, ..place };
-                out.push(command(cmd::MOVE, [card.uid, down.packed(), place.packed(), 0]));
+                out.push(Cmd::Move { uid: card.uid, kind: 0, from: down, to: place }.message());
                 return out;
             }
         }
@@ -1794,7 +1785,7 @@ impl Translator {
         if let (Some(before), Some(card)) = (before, card) {
             let (face_up, defense) = before.unwrap_or((!place.face_up, !place.defense));
             let from = Place { face_up, defense, ..place };
-            out.push(command(cmd::MOVE, [card.uid, from.packed(), place.packed(), 0]));
+            out.push(Cmd::Move { uid: card.uid, kind: 0, from: from, to: place }.message());
         }
         out.push(command(cmd::FLIP_TURN, [place.packed(), 0, 0, 0]));
         out
@@ -1949,7 +1940,7 @@ impl Translator {
             Prompt::Client(out) => {
                 let mut all = self.unstage_n(staged);
                 if std::mem::take(&mut self.taken_back) {
-                    all.insert(0, command(cmd::BATTLE_END, [0; 4]));
+                    all.insert(0, Cmd::BattleEnd.message());
                 }
                 all.extend(out);
                 with_card_ids(&self.cards, &mut all);
@@ -2000,7 +1991,7 @@ impl Translator {
                     entries.extend([entry::LINE_BREAK, entry::TEXT | id]);
                 }
                 out.extend(message(&entries));
-                out.push(command(cmd::DIALOG, [dialog::YES_NO, dialog::FROM_ENTRIES, 0, 0]));
+                out.push(Cmd::Dialog { kind: dialog::YES_NO, message: dialog::FROM_ENTRIES, param: 0 }.message());
                 self.pending = Some(m.clone());
                 Prompt::Client(out)
             }
@@ -2139,7 +2130,7 @@ impl Translator {
             text::MONSTER_ZONE
         };
         out.extend(message(&[entry::TEXT | text]));
-        out.push(command(cmd::DIALOG, [dialog::OK, dialog::FROM_ENTRIES, 0, 0]));
+        out.push(Cmd::Dialog { kind: dialog::OK, message: dialog::FROM_ENTRIES, param: 0 }.message());
         self.pending = Some(m.clone());
         self.zone_picks = None;
         Prompt::Client(out)
@@ -2172,7 +2163,7 @@ impl Translator {
         out.push(command(cmd::LIST_BEGIN, [labels.len() as u32, 0, 0, 0]));
         out.extend(fours(cmd::LIST_VALUES, &labels));
         out.extend(message(&[entry::TEXT | title]));
-        out.push(command(cmd::DIALOG, [dialog::SELECT, dialog::FROM_ENTRIES, 0, 0]));
+        out.push(Cmd::Dialog { kind: dialog::SELECT, message: dialog::FROM_ENTRIES, param: 0 }.message());
         Some(out)
     }
 
@@ -2224,7 +2215,7 @@ impl Translator {
         let held = match seen.or(copies.first()) {
             Some(&(uid, row, ref place)) => {
                 if self.shown_row(place, row) == 0 {
-                    out.push(command(cmd::CARD, [uid, row as u32, 0, table_place(place.player, place.zone, place.index)]));
+                    out.push(Cmd::Card { uid: uid, open: false, row: row as u32, place: table_place(place.player, place.zone, place.index) }.message());
                 }
                 Some(uid)
             }
@@ -2242,7 +2233,7 @@ impl Translator {
                 let player = self.player(&m["player"]);
                 let side = &self.sides[player as usize];
                 let zone = (0..5).find(|z| side.zones.get(z).is_none_or(Vec::is_empty)).unwrap_or(0);
-                out.push(command(cmd::CARD, [uid, row as u32, 0, table_place(player, zone, 0)]));
+                out.push(Cmd::Card { uid: uid, open: false, row: row as u32, place: table_place(player, zone, 0) }.message());
                 // A token without a Konami id is named by its client card's.
                 (uid, self.cards.get(&row).map_or(cid, |s| s.cid))
             }
@@ -2250,7 +2241,7 @@ impl Translator {
         };
         let face_up = if allowed & pos::FACEUP_DEFENSE != 0 { dialog::FACE_UP_DEFENSE } else { 0 };
         out.extend(message(&[entry::TEXT | text::POSITION, entry::CARD_NAME | name as u32]));
-        out.push(command(cmd::DIALOG, [dialog::POSITION, dialog::FROM_ENTRIES, uid | face_up, 0]));
+        out.push(Cmd::Dialog { kind: dialog::POSITION, message: dialog::FROM_ENTRIES, param: uid | face_up }.message());
         Some(out)
     }
 
@@ -2296,7 +2287,7 @@ impl Translator {
         } else {
             dialog::LEVEL_PHASE
         };
-        out.push(command(cmd::DIALOG, [dialog::EFFECT, dialog::FROM_ENTRIES, level, 0]));
+        out.push(Cmd::Dialog { kind: dialog::EFFECT, message: dialog::FROM_ENTRIES, param: level }.message());
         Prompt::Client(out)
     }
 
@@ -2332,7 +2323,7 @@ impl Translator {
         if mixed {
             for (i, &row) in rows.iter().enumerate() {
                 let flag = if row != 0 { OPEN } else { 0 };
-                out.push(command(cmd::CARD, [(STAGED_UID + i as u32) | flag, row, 0, table_place(CPU, zone::REMOVED, i)]));
+                out.push(Cmd::Card { uid: (STAGED_UID + i as u32) | flag, open: false, row: row, place: table_place(CPU, zone::REMOVED, i) }.message());
             }
             self.staged = Some(rows.len());
         }
@@ -2365,7 +2356,7 @@ impl Translator {
             .take(n)
             .map(|(i, c)| {
                 let row = self.shown_row(&Place { player: CPU, zone: zone::REMOVED, index: i, face_up: true, defense: false }, c.row);
-                command(cmd::CARD, [c.uid | OPEN, row, 0, table_place(CPU, zone::REMOVED, i)])
+                Cmd::Card { uid: c.uid, open: true, row: row, place: table_place(CPU, zone::REMOVED, i) }.message()
             })
             .collect()
     }
@@ -2726,7 +2717,7 @@ impl Translator {
         self.pending = Some(m);
         self.direct = Some(response);
         let mut out = message(&[entry::TEXT | text::DIRECT]);
-        out.push(command(cmd::DIALOG, [dialog::YES_NO, dialog::FROM_ENTRIES, 0, 0]));
+        out.push(Cmd::Dialog { kind: dialog::YES_NO, message: dialog::FROM_ENTRIES, param: 0 }.message());
         Some(Prompt::Client(out))
     }
 
@@ -2759,9 +2750,9 @@ impl Translator {
         self.field_target = true;
         self.pending = Some(m.clone());
         Some(vec![
-            command(cmd::BATTLE_INIT, [0; 4]),
-            command(cmd::BATTLE_ATTACK, [player | zone << 8, 1 - player, NO_TARGET, 0]),
-            command(cmd::BATTLE_SELECT, [0; 4]),
+            Cmd::BattleInit.message(),
+            Cmd::BattleAttack { player, zone, target: Target::NotYet { player: 1 - player } }.message(),
+            Cmd::BattleSelect.message(),
             command_data(&map, &[(flag::RIGHT_CLICK, 1)]),
             command(cmd::INPUT, [mode::BATTLE, CLIENT, 0, 0]),
         ])
@@ -3262,8 +3253,8 @@ fn is_material(loc: &Json) -> bool {
 const FIRST_TOKEN_UID: u32 = 0x4000;
 
 /// The table entry flag of a card in this zone: open in the Graveyard and among the banished cards.
-fn open(zone: u32) -> u32 {
-    if zone == zone::GRAVE || zone == zone::REMOVED { OPEN } else { 0 }
+fn open(zone: u32) -> bool {
+    zone == zone::GRAVE || zone == zone::REMOVED
 }
 
 /// A monster turned right after its summon lands in its new position: within one batch to the client, a summon move
@@ -3326,7 +3317,7 @@ fn option_list(m: &Json) -> Option<Vec<Message>> {
     let mut out = vec![command(cmd::LIST_BEGIN, [labels.len() as u32, 0, 0, 0])];
     out.extend(fours(cmd::LIST_VALUES, &labels));
     out.extend(message(&[entry::TEXT | found[0].1]));
-    out.push(command(cmd::DIALOG, [dialog::SELECT, dialog::FROM_ENTRIES, 0, 0]));
+    out.push(Cmd::Dialog { kind: dialog::SELECT, message: dialog::FROM_ENTRIES, param: 0 }.message());
     Some(out)
 }
 
@@ -3360,16 +3351,16 @@ fn declaration(m: &Json, level: bool) -> Option<Vec<Message>> {
             // A Level gets "Declare monster level."; other numbers no message.
             if level {
                 let mut out = message(&[entry::TEXT | text::LEVEL]);
-                out.push(command(cmd::DIALOG, [dialog::NUMBER, dialog::FROM_ENTRIES, param3, 0]));
+                out.push(Cmd::Dialog { kind: dialog::NUMBER, message: dialog::FROM_ENTRIES, param: param3 }.message());
                 return Some(out);
             }
-            return Some(vec![command(cmd::DIALOG, [dialog::NUMBER, 0, param3, 0])]);
+            return Some(vec![Cmd::Dialog { kind: dialog::NUMBER, message: 0, param: param3 }.message()]);
         }
         msg::ANNOUNCE_CARD => return Some(vec![command(cmd::LIST_BEGIN, [0, 1, 0, 0]), command(cmd::CARD_LIST, [CLIENT, list::SEARCH, 0, 0])]),
         _ => return None,
     };
     let mut out = message(&[entry::TEXT | text]);
-    out.push(command(cmd::DIALOG, [dialog, dialog::FROM_ENTRIES, param3, 0]));
+    out.push(Cmd::Dialog { kind: dialog, message: dialog::FROM_ENTRIES, param: param3 }.message());
     Some(out)
 }
 
@@ -3491,22 +3482,6 @@ fn end_reason(reason: u64) -> u32 {
     }
 }
 
-/// A place on the client's board.
-#[derive(Clone, Copy, Debug)]
-struct Place {
-    player: u32,
-    zone: u32,
-    index: usize,
-    face_up: bool,
-    defense: bool,
-}
-
-impl Place {
-    /// As card moves give it: player | zone << 1 | index << 6, face up bit 14, defense bit 15 (0x5000E0).
-    fn packed(&self) -> u32 {
-        move_place(self.player, self.zone, self.index) | (self.face_up as u32) << 14 | (self.defense as u32) << 15
-    }
-}
 
 /// The panel's phase (command 5) for an ocgcore phase: 0 Draw, 1 Standby, 2 Main 1, 3 Battle (all its steps),
 /// 4 Main 2, 5 End.
