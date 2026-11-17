@@ -27,9 +27,11 @@ and Scripts.
 
 - [ ] Staff MFA and recovery (#43), recent MFA for sensitive actions and a final public-access security review.
       Public HTTPS/password sign-in is approved for testing; the existing HTML panel remains private.
-- [ ] Deploy the Compose stack on the actual VPS, rehearse off-machine recovery there and run load/soak checks (#47).
-      Images, nginx, certificate workflow and local deployment rehearsal: [Docker guide](docker.md).
-      [Local Ansible setup](deployment.md) is prepared; verify first provisioning, an unchanged second run, reboot and renewal. Release CI publishes images; automatic VPS updates are deferred.
+- [ ] Finish hosted-server validation (#47): real Windows clients and native-engine duel load, isolated password-hash
+      timing, and the DNS-based HTTPS monitor after resolver caches expire. Choose off-machine backup storage and
+      alert destinations. Completed provisioning, recovery and protocol checks: [VPS record](history.md#2026-11-17--public-vps-deployment-and-recovery).
+- [ ] Verify GHCR publishing on the first release using the container workflow. [Local Ansible setup](deployment.md)
+      is checked on the VPS; automatic VPS updates remain deferred.
 - [ ] Normalize SQLite domains incrementally after deployment validation; keep the generated API unchanged.
 
 **Duels**

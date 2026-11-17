@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-17 — Public VPS deployment and recovery](#2026-11-17--public-vps-deployment-and-recovery)
   - [2026-11-17 — First VPS checks and portable image exports](#2026-11-17--first-vps-checks-and-portable-image-exports)
   - [2026-11-17 — Compose hosting and local VPS setup](#2026-11-17--compose-hosting-and-local-vps-setup)
   - [2026-11-17 — Transactional account deletion in the connected dashboard](#2026-11-17--transactional-account-deletion-in-the-connected-dashboard)
@@ -37,6 +38,36 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-17 — Public VPS deployment and recovery
+
+Deployed the separate Compose services on an Ubuntu 24.04 VPS with two vCPUs, 4 GB RAM and 60 GB storage.
+The domain's A record was corrected and explicitly saved; all four authoritative nameservers returned the VPS.
+Let's Encrypt issued a real certificate, and Certbot's staging renewal with deploy hooks passed, including nginx
+configuration validation and reload. The provider's recursive DNS cache still held the previous address. Setup now
+probes local nginx using the real domain/SNI and normal CA validation; its regression accepts the trusted fixture
+and refuses both a wrong hostname and an untrusted certificate. The DNS-based hourly monitor still reports this
+temporary propagation problem rather than hiding it.
+
+Public browser sign-in, Overview, Accounts and the disabled-public-download Backups view passed. Public probes
+refused the local host API, restore, raw backups and unexpected Host headers; nginx sanitized forged forwarding
+headers. An ordinary Ansible rerun finished with zero changes, preserving the containers and original credentials.
+After a VPS reboot both containers became healthy automatically; container/image identities, database row counts,
+the bootstrap receipt and both game identity files matched the pre-reboot record. HTTPS and game-port TLS checks
+passed before and after reboot.
+
+The release-build protocol soak used 100 password accounts, 40 fuzzing connections and 30 duel pairs for 300 seconds:
+9,255 plans, 382,651 messages, 211 canary rounds, zero failures and zero stalls. Canary p99 was 1,572 ms, maximum
+2,441 ms against a 4,000 ms threshold; server peak RSS was 157 MB with 618 file descriptors. The test controller had
+a 65,536 descriptor limit while the server kept the container's 1,024 soft limit. It ran without an artificial CPU
+quota. This corpus-free run began no actual duels, so it does not establish native-engine duel capacity. Earlier
+debug-generator timeouts and an incomplete streamed SSH run are not counted as passes; the successful report was
+recorded directly on the VPS.
+
+The isolated Compose/off-machine restore rehearsal is recorded below. Workspace tests passed (1,223, five skips),
+Clippy was clean, all six provisioning tests passed, and docs links were checked. Staff MFA, actual gameplay/engine
+load, isolated hash timing, off-machine backup scheduling and the first GitHub container publication remain open.
+No changes were pushed.
 
 ## 2026-11-17 — First VPS checks and portable image exports
 
