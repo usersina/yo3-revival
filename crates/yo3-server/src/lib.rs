@@ -105,7 +105,7 @@ pub struct Config {
     /// Where accounts and duel records are kept (none: in memory only).
     pub data_dir: Option<PathBuf>,
     /// The banlist players log in with (Auto Duel and NPC duels), as a regulation id or name ("unlimited"); none:
-    /// How long a connection may stay silent before it is closed (the client heartbeats every 30 s).
+    /// How long a connection may stay silent before its first message, or inside a frame, before it is closed.
     pub idle_timeout: std::time::Duration,
     /// Testing aid: pretend the rules engine can't run, with this reason (none: check for real at start).
     pub engine_problem: Option<String>,
@@ -475,8 +475,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
         (None, None) => {}
     }
 
-    let quiet = net::Idle { limit: cfg.idle_timeout, heartbeats: false };
-    let heartbeats = net::Idle { limit: cfg.idle_timeout, heartbeats: true };
+    let idle = net::Idle { limit: cfg.idle_timeout };
     // A backup every hour while running (and one at each start and stop).
     let backup_task = cfg.data_dir.clone().map(|dir| tokio::spawn(async move {
         let mut every = tokio::time::interval_at(tokio::time::Instant::now() + store::BACKUP_EVERY, store::BACKUP_EVERY);
@@ -531,7 +530,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     // The signed-in sessions: the TLS gate makes them, the admin API ends them (a kick, a ban, maintenance).
     let sessions = Arc::new(Mutex::new(auth::Sessions::default()));
     let auth_task = tokio::spawn(transport::accept_loop(authenticated, tls, world.clone(), hub.clone(), directory.clone(),
-        packets.clone(), quiet, heartbeats, http_addr, sessions.clone()));
+        packets.clone(), idle, http_addr, sessions.clone()));
     let maintenance_task = tokio::spawn(maintenance(world.clone(), hub.clone(), directory.clone(), sessions.clone()));
     // Duel clocks between players run out on the server's side: checked once a second.
     let clock_task = {

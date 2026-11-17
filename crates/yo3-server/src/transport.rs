@@ -144,7 +144,7 @@ async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &yo3_tunnel
 
 #[expect(clippy::too_many_arguments, reason = "Each authenticated stream shares the server state, framing limits and HTTP endpoint.")]
 pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::RwLock<TlsAcceptor>>, world: Arc<World>, hub: Arc<Mutex<Hub>>,
-    accounts: Arc<Mutex<Directory>>, log: Arc<PacketLog>, quiet: net::Idle, heartbeats: net::Idle, http: SocketAddr,
+    accounts: Arc<Mutex<Directory>>, log: Arc<PacketLog>, idle: net::Idle, http: SocketAddr,
     sessions: Arc<Mutex<Sessions>>)
 {
     let gate = Arc::new(Gate::new(accounts.clone(), world.settings.clone(), sessions));
@@ -156,6 +156,10 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
             Ok(pair) => pair,
             Err(e) => { tracing::warn!("TLS accept: {e}"); tokio::time::sleep(std::time::Duration::from_millis(100)).await; continue }
         };
+        // A connected client may stay silent for good (`net::IDLE_TIMEOUT`), so a machine that went away without
+        // closing (asleep, its network gone) is found by keepalive, as the launcher finds a host that is gone: the
+        // connection drops within about a minute and a half, and a duel it was in ends (`Table::leave`).
+        if let Err(e) = yo3_tunnel::keep_alive(&tcp) { tracing::debug!("[tls] {peer} keepalive: {e}"); }
         let settings = gate.settings.now();
         if open.load(std::sync::atomic::Ordering::Relaxed) >= settings.max_connections {
             tracing::warn!("[tls] {peer} refused: {} connections open (max-connections)", settings.max_connections);
@@ -192,7 +196,7 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                 match role {
                     Role::Front => {
                         let Some(account) = accounts.locked().account_of(identity.user_id) else { return Ok(()) };
-                        Box::pin(net::secured(tls, "front", log, quiet, pace, move |outbox| {
+                        Box::pin(net::secured(tls, "front", log, idle, pace, move |outbox| {
                             let mut front = FrontSession::new(account, world, hub, outbox);
                             front.set_identity(identity);
                             front.set_tunnel_duel_port(port);
@@ -200,7 +204,7 @@ pub(crate) async fn accept_loop(listener: TcpListener, acceptor: Arc<std::sync::
                             move |p: &yo3_proto::Packet| front.handle(p)
                         })).await
                     }
-                    Role::Duel => Box::pin(net::secured(tls, "duel", log, heartbeats, pace, move |outbox| {
+                    Role::Duel => Box::pin(net::secured(tls, "duel", log, idle, pace, move |outbox| {
                         let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
                         let mut duel = crate::duel::DuelSession::new(world, hub, seed).with_outbox(outbox).with_identity(identity);
                         move |p: &yo3_proto::Packet| duel.handle(p)

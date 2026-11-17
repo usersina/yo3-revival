@@ -294,6 +294,26 @@ mod wire {
         client.write_all(&frame(&Message::reply(0x1F47).encode())).await.unwrap();
         assert_eq!(recv(&mut client).await.unwrap().request(), Some(0x219A), "still open after three idle limits");
     }
+
+    #[tokio::test]
+    async fn a_duel_client_that_has_spoken_may_stay_quiet() {
+        // The duel connection heartbeats every 30 s, but not always: on the Windows 11 VM (2026-11-17) the defender's
+        // client sent its last 0x2724 a second after a battle and nothing more while it waited for the opponent's next
+        // move. A 180 s idle limit closed its connection and the waiting player lost the duel. Inactivity is the turn
+        // clock's to judge; a machine that is gone is TCP keepalive's.
+        let server = running(Duration::from_millis(400)).await;
+        let dir = std::env::temp_dir().join(format!("yo3-robust-{}", std::process::id()));
+        let info: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.join("endpoint.json")).unwrap()).unwrap();
+        let certificate = std::path::PathBuf::from(info["certificate"].as_str().unwrap());
+        let e = yo3_tunnel::Endpoint::new(server.auth.to_string(), "localhost".into(), &certificate).unwrap();
+        let session = e.login(info["key"].as_str().unwrap()).await.unwrap();
+        let ticket = e.ticket(&session, yo3_tunnel::Role::Duel).await.unwrap();
+        let mut duel = e.connect(&ticket, yo3_tunnel::Role::Duel, 43210).await.unwrap();
+        duel.write_all(&frame(&Message::reply(0x2724).encode())).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        let read = tokio::time::timeout(Duration::from_millis(300), recv(&mut duel)).await;
+        assert!(read.is_err(), "still open after three idle limits (a closed connection reads at once: {read:?})");
+    }
 }
 
 /// An engine directory whose program answers every call with the same prompt (a MSG_SELECT_SUM no card can satisfy),

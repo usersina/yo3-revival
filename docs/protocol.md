@@ -182,10 +182,14 @@ Immediate EOF races the native receive thread during automatic login and reaches
 `0x535210` (`0x82D214` is null). The native redirect handler sets its disconnect-suppression flag only at
 `0x469AF7`. Status: **confirmed live**; `tests/proxy.rs` protects the socket lifetime and cleanup.
 
-Game framing has a 180 s idle limit before the first decoded message, while waiting for bytes inside a frame,
-and between duel messages (`net::Idle`). Once it has spoken, the front connection may remain quiet: real-client
-logs include map-idle gaps of 650 s and 3000 s. Duel connections heartbeat `0x2724` every 30 s. These are server
-limits, separate from TLS handshake deadlines and launcher-session expiry. Messages nest at most 16 levels deep
+Game framing has a 180 s idle limit before the first decoded message and while waiting for bytes inside a frame
+(`net::Idle`). Once it has spoken, a connection may remain quiet: real-client logs include map-idle gaps of 650 s
+and 3000 s on the front connection. Duel connections heartbeat `0x2724` every 30 s, but not always: on the Windows
+11 VM (2026-11-17) the defender's client sent its last one a second after a battle and nothing more while it waited
+for the opponent, so the old 180 s limit between duel messages lost a waiting player the duel (not reproduced under
+Wine). The server sets TCP keepalive on every accepted connection (45 s, then every 10 s, 4 probes), so a machine
+that is gone drops within about a minute and a half and its duel ends; a player who doesn't act is the turn clock's.
+These are server limits, separate from TLS handshake deadlines and launcher-session expiry. Messages nest at most 16 levels deep
 (the client's own go about 3); a deeper one is an undecodable packet (`Error::TooDeep`).
 
 ## Front (TCP 1213)

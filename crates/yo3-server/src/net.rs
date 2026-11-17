@@ -11,18 +11,18 @@ use yo3_proto::{MAX_FRAME, Message, Packet, decrypt, frame, frame_len};
 use crate::front::Outbox;
 use crate::log::PacketLog;
 
-/// How long a connection may stay silent before it is closed: before its first message on every port (a socket that
-/// never speaks), inside a frame, and between messages on the duel connection, where the real client heartbeats every
-/// 30 s (`0x2724`). On the gate and front connections a client that has spoken may stay quiet: it sends nothing while
-/// it idles on the map (gaps of 650 s and 3000 s in the Windows VM test's packet logs).
+/// How long a connection may stay silent before it is closed: before its first message (a socket that never speaks)
+/// and inside a frame. A client that has spoken may stay quiet: on the front connection it sends nothing while it
+/// idles on the map (gaps of 650 s and 3000 s in the Windows VM test's packet logs), and on the duel connection its
+/// 30 s heartbeat (`0x2724`) can stop while it waits for the opponent (the Windows 11 VM, 2026-11-17: closing it after
+/// 180 s lost the waiting player the duel). A machine that is gone is TCP keepalive's to find (`transport.rs`), a
+/// player who doesn't act the turn clock's.
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(180);
 
-/// How long a connection may stay silent: `limit` until its first message and inside a frame, and between messages
-/// only when `heartbeats` (the duel connection).
+/// How long a connection may stay silent until its first message and inside a frame ([`IDLE_TIMEOUT`]).
 #[derive(Clone, Copy, Debug)]
 pub struct Idle {
     pub limit: Duration,
-    pub heartbeats: bool,
 }
 
 /// A connection's request pace and outbox size (live settings `request-burst`, `requests-per-second` and `outbox-max`,
@@ -126,7 +126,7 @@ where
     let mut spoken = false;
     let mut allowance = Bucket::new(pace);
     loop {
-        let read = if spoken && !idle.heartbeats {
+        let read = if spoken {
             Ok(stream.read_exact(&mut head).await)
         } else {
             tokio::time::timeout(idle.limit, stream.read_exact(&mut head)).await
@@ -341,7 +341,7 @@ mod tests {
         let (mut client, server) = tokio::io::duplex(1 << 20);
         let log = Arc::new(PacketLog::disabled().unwrap());
         let pace = Pace { burst: 5, per_second: 10, outbox_max: 1000 };
-        let idle = Idle { limit: IDLE_TIMEOUT, heartbeats: false };
+        let idle = Idle { limit: IDLE_TIMEOUT };
         let handled = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let count = handled.clone();
         let start = tokio::time::Instant::now();
@@ -363,7 +363,7 @@ mod tests {
         let (client, server) = tokio::io::duplex(64);
         let log = Arc::new(PacketLog::disabled().unwrap());
         let pace = Pace { burst: 200, per_second: 20, outbox_max: 100 };
-        let idle = Idle { limit: IDLE_TIMEOUT, heartbeats: false };
+        let idle = Idle { limit: IDLE_TIMEOUT };
         let (mut read_half, mut write_half) = tokio::io::split(client);
         let session = tokio::spawn(secured(server, "front", log, idle, pace, move |outbox: Outbox| move |_: &Packet| {
             for _ in 0..500 { let _ = outbox.send(Message::reply(0x21FC).with("news", yo3_proto::Value::text(&"x".repeat(100)))); }
@@ -381,7 +381,7 @@ mod tests {
         let (client, server) = tokio::io::duplex(64);
         let log = Arc::new(PacketLog::disabled().unwrap());
         let pace = Pace { burst: 200, per_second: 20, outbox_max: 1000 };
-        let idle = Idle { limit: IDLE_TIMEOUT, heartbeats: false };
+        let idle = Idle { limit: IDLE_TIMEOUT };
         let (_read_half, mut write_half) = tokio::io::split(client);
         let start = tokio::time::Instant::now();
         let session = tokio::spawn(secured(server, "front", log, idle, pace, move |outbox: Outbox| move |_: &Packet| {
