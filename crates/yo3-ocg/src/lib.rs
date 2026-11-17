@@ -1,7 +1,18 @@
-//! The rules engine's vocabulary (ocgcore and EDOPro's card scripts), each id defined once and named as the engine
-//! names it: message types, response types and actions, hints, positions, locations and reasons. `translate.rs` turns
-//! these into the client's ([`crate::wire`]); the duel check reads them too.
+//! The rules engine's vocabulary (ocgcore and EDOPro's card scripts) and the answers the duel server gives it, defined
+//! once for both programs: the server (`yo3-server`, which reads the engine's messages and writes its answers) and the
+//! engine program (`yo3-engine`, which turns answers into the core's bytes and runs the NPCs' bot). Ids are named as
+//! the engine names them: message types, response types and actions, hints, positions, locations and reasons.
 
+/// Named ids, each with its doc comment, and `ALL` (name, value) for the tests that check a module against its table:
+/// `named! { u64; NAME = value, ... }`.
+#[macro_export]
+macro_rules! named {
+    ($t:ty; $($(#[$m:meta])* $name:ident = $value:expr,)*) => {
+        $($(#[$m])* pub const $name: $t = $value;)*
+        /// Every id of this module, with its name.
+        pub const ALL: &[(&str, $t)] = &[$((stringify!($name), $name),)*];
+    };
+}
 /// ocgcore message types (OcgMessageType), without their `MSG_` prefix.
 pub mod msg {
     named! { u64;
@@ -68,6 +79,36 @@ pub mod msg {
         REMOVE_COUNTER = 102,
         /// ocgcore message types the harness looks at.
         RETRY = 1,
+        // The other types the engine sends (ENGINE_MESSAGES says what the server does with each).
+        SHUFFLE_DECK = 32,
+        REFRESH_DECK = 34,
+        SHUFFLE_EXTRA = 39,
+        CONFIRM_EXTRATOP = 42,
+        SUMMONED = 61,
+        SPSUMMONED = 63,
+        FLIPSUMMONED = 65,
+        CHAINED = 71,
+        CHAIN_SOLVED = 73,
+        CHAIN_NEGATED = 75,
+        CHAIN_DISABLED = 76,
+        CARD_SELECTED = 80,
+        RANDOM_SELECTED = 81,
+        BECOME_TARGET = 83,
+        DAMAGE_STEP_START = 113,
+        MISSED_EFFECT = 120,
+        BE_CHAIN_TARGET = 121,
+        CREATE_RELATION = 122,
+        RELEASE_RELATION = 123,
+        HAND_RES = 133,
+        CARD_HINT = 160,
+        TAG_SWAP = 161,
+        RELOAD_FIELD = 162,
+        AI_NAME = 163,
+        SHOW_HINT = 164,
+        PLAYER_HINT = 165,
+        MATCH_KILL = 170,
+        CUSTOM_MSG = 180,
+        REMOVE_CARDS = 190,
     }
 }
 
@@ -80,6 +121,8 @@ pub mod resp {
         YESNO = 3,
         OPTION = 4,
         CARD = 5,
+        /// SELECT_CARD_CODES: cards by code (not used by these duels' prompts).
+        CARD_CODES = 6,
         UNSELECT_CARD = 7,
         CHAIN = 8,
         DISFIELD = 9,
@@ -104,6 +147,10 @@ pub mod idle {
         MONSTER_SET = 3,
         TO_BP = 6,
         TO_EP = 7,
+        SPSUMMON = 1,
+        REPOS = 2,
+        SPELL_SET = 4,
+        ACTIVATE = 5,
     }
 }
 
@@ -136,6 +183,14 @@ pub mod hintmsg {
         TOZONE = 571,
         /// HINTMSG_LVRANK: the hint before a Level is declared (Reasoning).
         LVRANK = 567,
+        DISCARD = 501,
+        DESTROY = 502,
+        REMOVE = 503,
+        TOGRAVE = 504,
+        RTOHAND = 505,
+        TODECK = 507,
+        SET = 510,
+        XMATERIAL = 532,
     }
 }
 
@@ -146,6 +201,9 @@ pub mod pos {
         FACEDOWN_ATTACK = 2,
         FACEUP_DEFENSE = 4,
         FACEDOWN_DEFENSE = 8,
+        /// Any face-up position, and any attack position (masks).
+        FACEUP = 0x5,
+        ATTACK = 0x3,
     }
 }
 

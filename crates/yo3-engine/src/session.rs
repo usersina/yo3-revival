@@ -11,6 +11,7 @@ use crate::bot::{Pool, Setup, Style, Thinker};
 use crate::cards::{Cards, Declarable, Library, Prints, is_card_script};
 use crate::core::{Card, Duel, Host, Status};
 use crate::decode::{self, Queried, Reader};
+use yo3_ocg::{hint, msg};
 
 const MODE_MR2: u64 = 0xD0600;
 const LOCATION_DECK: u32 = 0x01;
@@ -22,13 +23,6 @@ const LOCATION_REMOVED: u32 = 0x20;
 const LOCATION_EXTRA: u32 = 0x40;
 const POSITION_FACEDOWN_DEFENSE: u32 = 0x8;
 
-const MSG_HINT: u64 = 2;
-const HINT_SELECTMSG: u64 = 3;
-const MSG_WIN: u64 = 5;
-const MSG_SWAP_GRAVE_DECK: u64 = 35;
-const MSG_SHUFFLE_SET_CARD: u64 = 36;
-const MSG_MOVE: u64 = 50;
-const MSG_ANNOUNCE_CARD: u64 = 142;
 
 const MONSTER_STATS: u32 = decode::QUERY_POSITION | decode::QUERY_LEVEL | decode::QUERY_ATTACK | decode::QUERY_DEFENSE
     | decode::QUERY_BASE_ATTACK | decode::QUERY_BASE_DEFENSE | decode::QUERY_ATTRIBUTE | decode::QUERY_RACE;
@@ -227,7 +221,7 @@ impl Session {
     fn run(&mut self) -> Result<(Vec<Json>, &'static str), String> {
         let (messages, status) = self.run_steps()?;
         for m in &messages {
-            if m["type"] == MSG_HINT && m["hint_type"] == HINT_SELECTMSG {
+            if m["type"] == msg::HINT && m["hint_type"] == hint::SELECTMSG {
                 self.hints[m["player"].as_u64().unwrap_or(0) as usize & 1] = m["hint"].as_u64();
             }
         }
@@ -253,7 +247,7 @@ impl Session {
                 let at = if waiting { batch.len() - 1 } else { batch.len() };
                 batch.insert(at, field);
             }
-            if let Some(win) = batch.iter().position(|m| m["type"] == MSG_WIN) {
+            if let Some(win) = batch.iter().position(|m| m["type"] == msg::WIN) {
                 batch.truncate(win + 1);
                 messages.extend(batch);
                 return Ok((messages, "end"));
@@ -270,7 +264,7 @@ impl Session {
     /// MSG_MOVE's `reason`, which the wrapper's parse drops: read back from the card at its new place, as the place
     /// reads (an Xyz material's is its Xyz Monster's: see decode::place); 0 when there is none to ask.
     fn add_reasons(&mut self, batch: &mut [Json]) -> Result<(), String> {
-        for m in batch.iter_mut().filter(|m| m["type"] == MSG_MOVE) {
+        for m in batch.iter_mut().filter(|m| m["type"] == msg::MOVE) {
             let to = &m["to"];
             let location = to["location"].as_u64().unwrap_or(0) as u32;
             let reason = if location != 0 && location & decode::LOCATION_OVERLAY == 0 {
@@ -287,7 +281,7 @@ impl Session {
     /// MSG_SHUFFLE_SET_CARD gets `places`: each shuffled zone and the card it holds now (the core's lists give only the
     /// old places; the wrapper's parse pairs them up as {from, to}).
     fn fix_shuffles(&mut self, batch: &mut [Json]) -> Result<(), String> {
-        for m in batch.iter_mut().filter(|m| m["type"] == MSG_SHUFFLE_SET_CARD) {
+        for m in batch.iter_mut().filter(|m| m["type"] == msg::SHUFFLE_SET_CARD) {
             let Some(cards) = m["cards"].as_array() else { continue };
             let zones: Vec<Json> = cards.iter().flat_map(|c| [c["from"].clone(), c["to"].clone()]).take(cards.len())
                 .filter(|l| l["location"].as_u64().unwrap_or(0) != 0).collect();
@@ -305,7 +299,7 @@ impl Session {
 
     /// MSG_SWAP_GRAVE_DECK gets the player's `grave` and `extra` as they are after the step, in sequence order.
     fn fix_grave_swaps(&mut self, batch: &mut [Json]) -> Result<(), String> {
-        for m in batch.iter_mut().filter(|m| m["type"] == MSG_SWAP_GRAVE_DECK) {
+        for m in batch.iter_mut().filter(|m| m["type"] == msg::SWAP_GRAVE_DECK) {
             let player = m["player"].as_u64().unwrap_or(0) as u8;
             for (key, location) in [("grave", LOCATION_GRAVE), ("extra", LOCATION_EXTRA)] {
                 let codes: Vec<Json> = self.query_location(decode::QUERY_CODE, player, location)?.into_iter().flatten()
@@ -318,7 +312,7 @@ impl Session {
 
     /// ANNOUNCE_CARD gets `fits`: Konami ids of cards its filter allows, this duel's cards first, at most 30.
     fn add_fits(&mut self, batch: &mut [Json]) {
-        for m in batch.iter_mut().filter(|m| m["type"] == MSG_ANNOUNCE_CARD) {
+        for m in batch.iter_mut().filter(|m| m["type"] == msg::ANNOUNCE_CARD) {
             let Some(opcodes) = m["opcodes"].as_array() else { continue };
             let opcodes: Vec<u64> = opcodes.iter().map(|o| o.as_u64().unwrap_or(0)).collect();
             let own = self.prints.own();
@@ -374,7 +368,7 @@ impl Session {
             let (response, declared) = thinker.think(duel, &prompt, self.hints[me], self.attacker);
             // Copies for the next decision, built while the duel goes on.
             self.pool.refill(&library, &self.setup, &self.history);
-            self.attacker = declared.or(self.attacker.filter(|_| prompt["type"] != crate::bot::policy::MSG_SELECT_BATTLECMD));
+            self.attacker = declared.or(self.attacker.filter(|_| prompt["type"] != msg::SELECT_BATTLECMD));
             // The same prompt straight back after the same answer (an attack cancelled, an activation that came to
             // nothing): move on instead of trying it forever.
             let response = match &self.thought {

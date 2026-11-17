@@ -28,15 +28,10 @@ pub mod board;
 pub mod policy;
 
 use board::{Board, Hidden};
-use policy::*;
+use yo3_ocg::{Response, battle, hint, hintmsg, idle, msg};
 
 const MODE_MR2: u64 = 0xD0600;
 const POSITION_FACEDOWN_DEFENSE: u32 = 0x8;
-const MSG_HINT: u64 = 2;
-const MSG_WIN: u64 = 5;
-const MSG_NEW_TURN: u64 = 40;
-const MSG_NEW_PHASE: u64 = 41;
-const HINT_SELECTMSG: u64 = 3;
 
 /// An action only beats doing nothing by at least this much (in LP), so the bot doesn't spend cards for nothing.
 const MARGIN: f64 = 30.0;
@@ -247,43 +242,43 @@ fn options(m: &Json, board: &Board, hint: Option<u64>) -> Option<Vec<Json>> {
     let kind = m["type"].as_u64().unwrap_or(0);
     let sees = board.style.sees;
     let mut out = match kind {
-        MSG_SELECT_IDLECMD => {
+        msg::SELECT_IDLECMD => {
             let mut out = vec![];
-            for (key, action) in [("summons", IDLE_SUMMON), ("special_summons", IDLE_SPSUMMON), ("activates", IDLE_ACTIVATE),
-                ("monster_sets", IDLE_MONSTER_SET), ("spell_sets", IDLE_SPELL_SET), ("pos_changes", IDLE_REPOS)]
+            for (key, action) in [("summons", idle::SUMMON), ("special_summons", idle::SPSUMMON), ("activates", idle::ACTIVATE),
+                ("monster_sets", idle::MONSTER_SET), ("spell_sets", idle::SPELL_SET), ("pos_changes", idle::REPOS)]
             {
-                out.extend((0..len(key)).map(|i| json!({ "type": RESP_IDLECMD, "action": action, "index": i })));
+                out.extend((0..len(key)).map(|i| Response::IdleCmd { action, index: Some(i) }.json()));
             }
             out
         }
         // Attacks are tried only by a bot that sees: a copy would show a face-down monster's DEF.
-        MSG_SELECT_BATTLECMD if sees => {
-            let end = if m["to_m2"] == true { BATTLE_TO_M2 } else { BATTLE_TO_EP };
-            (0..len("attacks")).map(|i| json!({ "type": RESP_BATTLECMD, "action": BATTLE_ATTACK, "index": i }))
-                .chain([json!({ "type": RESP_BATTLECMD, "action": end, "index": null })])
+        msg::SELECT_BATTLECMD if sees => {
+            let end = if m["to_m2"] == true { battle::TO_M2 } else { battle::TO_EP };
+            (0..len("attacks")).map(|i| Response::BattleCmd { action: battle::ATTACK, index: Some(i) }.json())
+                .chain([Response::BattleCmd { action: end, index: None }.json()])
                 .collect()
         }
-        MSG_SELECT_CHAIN if len("selects") > 0 && m["forced"] != true => {
-            std::iter::once(json!({ "type": RESP_CHAIN, "index": null }))
-                .chain((0..len("selects")).map(|i| json!({ "type": RESP_CHAIN, "index": i })))
+        msg::SELECT_CHAIN if len("selects") > 0 && m["forced"] != true => {
+            std::iter::once(Response::Chain(None).json())
+                .chain((0..len("selects")).map(|i| Response::Chain(Some(i)).json()))
                 .collect()
         }
-        MSG_SELECT_EFFECTYN => vec![json!({ "type": RESP_EFFECTYN, "yes": true }), json!({ "type": RESP_EFFECTYN, "yes": false })],
-        MSG_SELECT_YESNO => vec![json!({ "type": RESP_YESNO, "yes": true }), json!({ "type": RESP_YESNO, "yes": false })],
-        MSG_SELECT_OPTION if len("options") > 1 => (0..len("options")).map(|i| json!({ "type": RESP_OPTION, "index": i })).collect(),
+        msg::SELECT_EFFECTYN => vec![Response::EffectYn(true).json(), Response::EffectYn(false).json()],
+        msg::SELECT_YESNO => vec![Response::YesNo(true).json(), Response::YesNo(false).json()],
+        msg::SELECT_OPTION if len("options") > 1 => (0..len("options")).map(|i| Response::Option(i).json()).collect(),
         // One card, unless it is an attack target and the bot doesn't see: of many (the Heart of the Cards' Deck), the
         // rules' favourites; the rules' favourite first, so it wins a tie.
-        MSG_SELECT_CARD if m["max"] == 1 && m["min"] == 1 && len("selects") >= 2 && (sees || hint != Some(HINTMSG_ATTACKTARGET)) => {
-            policy::ranked(m, board.me, board, hint).into_iter().map(|i| json!({ "type": RESP_CARD, "indicies": [i] })).collect()
+        msg::SELECT_CARD if m["max"] == 1 && m["min"] == 1 && len("selects") >= 2 && (sees || hint != Some(hintmsg::ATTACKTARGET)) => {
+            policy::ranked(m, board.me, board, hint).into_iter().map(|i| Response::Card(Some(vec![i])).json()).collect()
         }
         _ => return None,
     };
     out.truncate(MAX_OPTIONS);
-    if kind == MSG_SELECT_IDLECMD {
+    if kind == msg::SELECT_IDLECMD {
         if out.is_empty() {
             return None;
         }
-        out.push(policy::answer(&json!({ "type": MSG_SELECT_IDLECMD, "to_bp": m["to_bp"] }), board.me, board, hint));
+        out.push(policy::answer(&json!({ "type": msg::SELECT_IDLECMD, "to_bp": m["to_bp"] }), board.me, board, hint));
     }
     (out.len() > 1).then_some(out)
 }
@@ -328,18 +323,18 @@ impl Thinker<'_> {
         let kind = p["type"].as_u64().unwrap_or(0);
         match kind {
             // Its public cards only: battle with the monsters it shows, nothing from the hand.
-            MSG_SELECT_IDLECMD => {
-                let action = if p["to_bp"] == true { IDLE_TO_BP } else { IDLE_TO_EP };
-                json!({ "type": RESP_IDLECMD, "action": action, "index": null })
+            msg::SELECT_IDLECMD => {
+                let action = if p["to_bp"] == true { idle::TO_BP } else { idle::TO_EP };
+                Response::IdleCmd { action, index: None }.json()
             }
-            MSG_SELECT_BATTLECMD => {
+            msg::SELECT_BATTLECMD => {
                 let mine_hidden: Hidden = Board::hidden_monsters(duel, them);
                 let board = Board::observe(duel, them, self.library, &mine_hidden, Style::default());
-                let public = json!({ "type": MSG_SELECT_BATTLECMD, "to_m2": p["to_m2"], "to_ep": p["to_ep"],
+                let public = json!({ "type": msg::SELECT_BATTLECMD, "to_m2": p["to_m2"], "to_ep": p["to_ep"],
                     "attacks": p["attacks"].as_array().map(|a| a.iter().filter(|a| board.sides[them as usize].monster(a["sequence"].as_u64().unwrap_or(9) as u8).is_some_and(|m| m.faceup)).cloned().collect::<Vec<_>>()) });
                 let mut answer = policy::answer(&public, them, &board, None);
                 // Back to the real list's index.
-                if answer["action"] == BATTLE_ATTACK
+                if answer["action"] == battle::ATTACK
                     && let Some(chosen) = public["attacks"].get(answer["index"].as_u64().unwrap_or(0) as usize)
                 {
                     answer["index"] = json!(p["attacks"].as_array().and_then(|a| a.iter().position(|x| x == chosen)).unwrap_or(0));
@@ -364,23 +359,23 @@ impl Thinker<'_> {
             }
             let (status, messages) = settle(&mut duel, true);
             for m in &messages {
-                if m["type"] == MSG_HINT && m["hint_type"] == HINT_SELECTMSG && m["player"] == me {
+                if m["type"] == msg::HINT && m["hint_type"] == hint::SELECTMSG && m["player"] == me {
                     hint = m["hint"].as_u64();
                 }
             }
             let kind_of = |m: &Json| m["type"].as_u64().unwrap_or(0);
             let ended = messages.iter().any(|m| match self.style.reach {
-                Reach::Action => [MSG_WIN, MSG_NEW_TURN, MSG_NEW_PHASE].contains(&kind_of(m)),
-                Reach::Turn => kind_of(m) == MSG_WIN || kind_of(m) == MSG_NEW_TURN && m["player"] == me,
+                Reach::Action => [msg::WIN, msg::NEW_TURN, msg::NEW_PHASE].contains(&kind_of(m)),
+                Reach::Turn => kind_of(m) == msg::WIN || kind_of(m) == msg::NEW_TURN && m["player"] == me,
             });
             let Some(prompt) = messages.last().filter(|_| status == Status::Awaiting && !ended) else { break };
             let kind = kind_of(prompt);
-            if kind == MSG_ANNOUNCE_CARD
-                || self.style.reach == Reach::Action && [MSG_SELECT_IDLECMD, MSG_SELECT_BATTLECMD].contains(&kind)
+            if kind == msg::ANNOUNCE_CARD
+                || self.style.reach == Reach::Action && [msg::SELECT_IDLECMD, msg::SELECT_BATTLECMD].contains(&kind)
             {
                 break;
             }
-            let answer = if kind == MSG_SELECT_IDLECMD && prompt["player"] == me && next < line.len() {
+            let answer = if kind == msg::SELECT_IDLECMD && prompt["player"] == me && next < line.len() {
                 next += 1;
                 line[next - 1].clone()
             } else {
@@ -400,19 +395,19 @@ impl Thinker<'_> {
         for _ in 0..MAX_STEPS {
             let (status, messages) = settle(&mut duel, true);
             for m in &messages {
-                if m["type"] == MSG_HINT && m["hint_type"] == HINT_SELECTMSG && m["player"] == me {
+                if m["type"] == msg::HINT && m["hint_type"] == hint::SELECTMSG && m["player"] == me {
                     hint = m["hint"].as_u64();
                 }
             }
-            if messages.iter().any(|m| [MSG_WIN, MSG_NEW_TURN, MSG_NEW_PHASE].contains(&m["type"].as_u64().unwrap_or(0))) {
+            if messages.iter().any(|m| [msg::WIN, msg::NEW_TURN, msg::NEW_PHASE].contains(&m["type"].as_u64().unwrap_or(0))) {
                 return None;
             }
             let prompt = messages.last().filter(|_| status == Status::Awaiting)?;
-            if prompt["player"] == me && prompt["type"] == MSG_SELECT_IDLECMD {
+            if prompt["player"] == me && prompt["type"] == msg::SELECT_IDLECMD {
                 let board = self.observe(&mut duel, me, hidden);
                 return Some((prompt.clone(), board));
             }
-            if [MSG_SELECT_BATTLECMD, MSG_ANNOUNCE_CARD].contains(&prompt["type"].as_u64().unwrap_or(0)) {
+            if [msg::SELECT_BATTLECMD, msg::ANNOUNCE_CARD].contains(&prompt["type"].as_u64().unwrap_or(0)) {
                 return None;
             }
             let answer = self.copy_answer(&mut duel, prompt, me, hidden, hint);
@@ -463,7 +458,7 @@ impl Thinker<'_> {
     /// each follow-up action, and count as their best line.
     fn best(&self, options: &[Json], m: &Json, me: u8, hidden: &Hidden, board: &Board) -> Json {
         let started = std::time::Instant::now();
-        let idle = m["type"] == MSG_SELECT_IDLECMD;
+        let idle = m["type"] == msg::SELECT_IDLECMD;
         let deep = idle && self.style.reach == Reach::Turn;
         let tried = if idle && !deep { &options[..options.len() - 1] } else { options };
         let mut lines: Vec<Vec<Json>> = tried.iter().map(|o| vec![o.clone()]).collect();

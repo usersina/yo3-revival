@@ -13,19 +13,11 @@ pub mod panel;
 pub mod recent;
 pub mod store;
 pub(crate) mod lock;
-/// Named ids, each with its doc comment, and `ALL` (name, value) for the tests that check a module against its table
-/// (`ocg`, `wire`): `named! { u32; NAME = value, ... }`.
-#[macro_export]
-macro_rules! named {
-    ($t:ty; $($(#[$m:meta])* $name:ident = $value:expr,)*) => {
-        $($(#[$m])* pub const $name: $t = $value;)*
-        /// Every id of this module, with its name.
-        pub const ALL: &[(&str, $t)] = &[$((stringify!($name), $name),)*];
-    };
-}
+/// The engine's vocabulary, shared with the engine program (`yo3-ocg`); its `named!` makes `wire`'s ids too.
+#[macro_use]
+pub extern crate yo3_ocg as ocg;
 
 pub mod duel;
-pub mod ocg;
 pub mod wire;
 pub mod duelcheck;
 pub mod client_commands;

@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 
 use super::*;
+use yo3_ocg::{msg};
 
 const GIANT_ORC: u32 = 73698349; // a Level 4 DARK Warrior, 2200 ATK, no effect: every Deck's filler
 const CHOSEN_BY_THE_WORLD_CHALICE: u32 = 22916281; // a Level 3 Psychic Normal Monster
@@ -18,11 +19,6 @@ const SET: u32 = 0xA; // POS_FACEDOWN, for a Set Spell or Trap
 /// A location for `Play::new` only: the Field Zone (the Spell & Trap Zone's sixth).
 const FIELD_ZONE: u32 = 0x100;
 
-const MSG_RETRY: u64 = 1;
-const MSG_DAMAGE: u64 = 91;
-const MSG_RECOVER: u64 = 92;
-const MSG_LPUPDATE: u64 = 94;
-const MSG_PAY_LPCOST: u64 = 100;
 
 /// A duel a test plays through: the prompt it waits at (team 0's or team 1's idle or battle prompt; the others get
 /// `default_answer`) and every message so far.
@@ -78,7 +74,7 @@ impl Play {
     fn run_on(&mut self) {
         loop {
             let (messages, status) = self.session.run().unwrap();
-            assert!(messages.iter().all(|m| m["type"] != MSG_RETRY), "the core refused the answer to {}", self.prompt);
+            assert!(messages.iter().all(|m| m["type"] != msg::RETRY), "the core refused the answer to {}", self.prompt);
             let log = std::mem::take(&mut self.session.log.borrow_mut().lines);
             assert_eq!(log, Vec::<String>::new(), "the core's log at {}", self.prompt);
             self.seen.extend(messages.iter().cloned());
@@ -214,9 +210,9 @@ impl Play {
         self.seen.iter().filter(|m| m["player"] == team).fold(8000, |lp, m| {
             let amount = m["amount"].as_i64().unwrap_or(0);
             match m["type"].as_u64() {
-                Some(MSG_DAMAGE | MSG_PAY_LPCOST) => lp - amount,
-                Some(MSG_RECOVER) => lp + amount,
-                Some(MSG_LPUPDATE) => m["lp"].as_i64().unwrap(),
+                Some(msg::DAMAGE | msg::PAY_LPCOST) => lp - amount,
+                Some(msg::RECOVER) => lp + amount,
+                Some(msg::LPUPDATE) => m["lp"].as_i64().unwrap(),
                 _ => lp,
             }
         })

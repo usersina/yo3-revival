@@ -12,6 +12,7 @@ description = "The rules engine: EDOPro's core, built natively, behind the duel 
 workspace = true
 
 [dependencies]
+yo3-ocg = { path = "../yo3-ocg" }
 ring.workspace = true
 rusqlite.workspace = true
 serde_json.workspace = true

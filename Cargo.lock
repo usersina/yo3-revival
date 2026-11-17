@@ -5617,6 +5617,7 @@ dependencies = [
  "ring",
  "rusqlite",
  "serde_json",
+ "yo3-ocg",
 ]
 
 [[package]]
@@ -5654,6 +5655,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "yo3-ocg"
+version = "0.0.21"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "yo3-proto"
 version = "0.0.21"
 dependencies = [
@@ -5683,6 +5692,7 @@ dependencies = [
  "tracing-subscriber",
  "x509-parser",
  "yo3-data",
+ "yo3-ocg",
  "yo3-proto",
  "yo3-tunnel",
 ]
