@@ -440,6 +440,11 @@ export const CreateInviteResult = zod.object({
 export type CreateInviteResult = zod.input<typeof CreateInviteResult>;
 export type CreateInviteResultOutput = zod.output<typeof CreateInviteResult>;
 
+export const EffectState = zod.enum(['pending', 'completed', 'interrupted']);
+
+export type EffectState = zod.input<typeof EffectState>;
+export type EffectStateOutput = zod.output<typeof EffectState>;
+
 export const recipeChoiceCardCountMin = 0;
 export const recipeChoiceCardCountMax = 4294967295;
 
@@ -726,6 +731,97 @@ export const KeyAccountResult = zod.object({
 
 export type KeyAccountResult = zod.input<typeof KeyAccountResult>;
 export type KeyAccountResultOutput = zod.output<typeof KeyAccountResult>;
+
+export const moderationRequestOneUserIdMin = 0;
+export const moderationRequestOneUserIdMax = 4294967295;
+
+export const moderationRequestTwoDaysMax = 4294967295;
+
+export const moderationRequestTwoReasonMax = 200;
+
+export const moderationRequestTwoUserIdMin = 0;
+export const moderationRequestTwoUserIdMax = 4294967295;
+
+export const moderationRequestThreeDaysMax = 4294967295;
+
+export const moderationRequestThreeReasonMax = 200;
+
+export const moderationRequestThreeUserIdMin = 0;
+export const moderationRequestThreeUserIdMax = 4294967295;
+
+export const moderationRequestFourUserIdMin = 0;
+export const moderationRequestFourUserIdMax = 4294967295;
+
+export const moderationRequestFiveMinutesMax = 4294967295;
+
+export const moderationRequestFiveReasonMax = 200;
+
+export const moderationRequestFiveUserIdMin = 0;
+export const moderationRequestFiveUserIdMax = 4294967295;
+
+export const moderationRequestSixUserIdMin = 0;
+export const moderationRequestSixUserIdMax = 4294967295;
+
+export const moderationRequestSevenUserIdMin = 0;
+export const moderationRequestSevenUserIdMax = 4294967295;
+
+
+
+export const ModerationRequest = zod.union([zod.object({
+  "kind": zod.enum(['kick']),
+  "user_id": zod.int().min(moderationRequestOneUserIdMin).max(moderationRequestOneUserIdMax)
+}),zod.object({
+  "days": zod.int().min(1).max(moderationRequestTwoDaysMax).nullish(),
+  "kind": zod.enum(['ban']),
+  "reason": zod.string().max(moderationRequestTwoReasonMax),
+  "user_id": zod.int().min(moderationRequestTwoUserIdMin).max(moderationRequestTwoUserIdMax)
+}),zod.object({
+  "days": zod.int().min(1).max(moderationRequestThreeDaysMax).nullish(),
+  "kind": zod.enum(['restrict']),
+  "reason": zod.string().max(moderationRequestThreeReasonMax),
+  "user_id": zod.int().min(moderationRequestThreeUserIdMin).max(moderationRequestThreeUserIdMax)
+}),zod.object({
+  "kind": zod.enum(['lift']),
+  "user_id": zod.int().min(moderationRequestFourUserIdMin).max(moderationRequestFourUserIdMax)
+}),zod.object({
+  "kind": zod.enum(['mute']),
+  "minutes": zod.int().min(1).max(moderationRequestFiveMinutesMax).nullish(),
+  "reason": zod.string().max(moderationRequestFiveReasonMax),
+  "user_id": zod.int().min(moderationRequestFiveUserIdMin).max(moderationRequestFiveUserIdMax)
+}),zod.object({
+  "kind": zod.enum(['unmute']),
+  "user_id": zod.int().min(moderationRequestSixUserIdMin).max(moderationRequestSixUserIdMax)
+}),zod.object({
+  "kind": zod.enum(['sign_out']),
+  "user_id": zod.int().min(moderationRequestSevenUserIdMin).max(moderationRequestSevenUserIdMax)
+})]);
+
+export type ModerationRequest = zod.input<typeof ModerationRequest>;
+export type ModerationRequestOutput = zod.output<typeof ModerationRequest>;
+
+export const moderationResultUserIdMin = 0;
+export const moderationResultUserIdMax = 4294967295;
+
+
+
+export const ModerationResult = zod.object({
+  "message": zod.string(),
+  "operation": zod.string(),
+  "request_id": zod.string(),
+  "until": zod.iso.datetime({"offset":true}).nullish(),
+  "user_id": zod.int().min(moderationResultUserIdMin).max(moderationResultUserIdMax)
+});
+
+export type ModerationResult = zod.input<typeof ModerationResult>;
+export type ModerationResultOutput = zod.output<typeof ModerationResult>;
+
+export const ModerationResponse = zod.object({
+  "disconnect": zod.union([EffectState.describe('Null: no live disconnect was needed. Pending/interrupted is an uncertain outcome, never an instruction to repeat it.'),zod.null()]).optional(),
+  "result": ModerationResult
+});
+
+export type ModerationResponse = zod.input<typeof ModerationResponse>;
+export type ModerationResponseOutput = zod.output<typeof ModerationResponse>;
 
 export const regulationChoiceIdMin = 0;
 
@@ -1292,6 +1388,42 @@ export const CreateInvite415Response = ApiError
 export const CreateInvite500Response = ApiError
 
 export const CreateInvite503Response = ApiError
+
+
+export const moderateAccountHeaderIdempotencyKeyMin = 16;
+export const moderateAccountHeaderIdempotencyKeyMax = 128;
+
+
+export const moderateAccountHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const ModerateAccountHeader = zod.object({
+  "Idempotency-Key": zod.string().min(moderateAccountHeaderIdempotencyKeyMin).max(moderateAccountHeaderIdempotencyKeyMax).regex(moderateAccountHeaderIdempotencyKeyRegExp).describe('Retain this ID and input on retry. Retries observe the saved outcome, never repeat a disconnect.')
+})
+
+export const ModerateAccountBody = ModerationRequest
+
+export const ModerateAccount200Response = ModerationResponse
+
+export const ModerateAccount400Response = ApiError
+
+export const ModerateAccount401Response = ApiError
+
+export const ModerateAccount403Response = ApiError
+
+export const ModerateAccount404Response = ApiError
+
+export const ModerateAccount405Response = ApiError
+
+export const ModerateAccount409Response = ApiError
+
+export const ModerateAccount413Response = ApiError
+
+export const ModerateAccount415Response = ApiError
+
+export const ModerateAccount500Response = ApiError
+
+export const ModerateAccount503Response = ApiError
 
 
 export const GetStaffSession200Response = StaffSession

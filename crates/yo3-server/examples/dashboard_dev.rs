@@ -11,7 +11,7 @@ async fn main() -> anyhow::Result<()> {
     yo3_server::store::initialize(&dir)?;
     let mut accounts = Directory::open(vec![], &dir.join("accounts.json"))?;
     let password = logins::hash_password("DashboardDemo123!".into()).await?;
-    for (user, role) in [("TestAdmin", Role::Admin), ("TestModerator", Role::Moderator), ("TestPlayer", Role::Player), ("TestRoleTarget", Role::Player), ("TestRoleAdmin", Role::Admin), ("TestResetTarget", Role::Player)] {
+    for (user, role) in [("TestAdmin", Role::Admin), ("TestModerator", Role::Moderator), ("TestPlayer", Role::Player), ("TestRoleTarget", Role::Player), ("TestRoleAdmin", Role::Admin), ("TestResetTarget", Role::Player), ("TestModTarget", Role::Player), ("TestModAdmin", Role::Admin)] {
         let login = Login::new(user, password.clone(), logins::digest(&logins::new_code()));
         let id = accounts.register(login, None, Registration::Open).map_err(anyhow::Error::msg)?;
         accounts.set_role(user, role).map_err(anyhow::Error::msg)?;
@@ -26,6 +26,7 @@ async fn main() -> anyhow::Result<()> {
             cards: vec![Card { row: 816, cid: 4007, art: 1, name: "Blue-Eyes White Dragon".into() }, Card { row: 817, cid: 4007, art: 2, name: "Blue-Eyes White Dragon".into() }],
             recipes: vec![Recipe { id: 7, title: "Example deck recipe".into(), item: 769, cards: vec![816,816,817] }],
         });
+    api.sessions = Some(Arc::new(Mutex::new(yo3_server::auth::Sessions::default())));
     api.hub = Some(Arc::new(Mutex::new(hub))); api.world = Some(Arc::new(world));
     api.titles = Some(Arc::new(yo3_server::titles::TitleData { by_name: [("GAME MASTER".into(), 300)].into(), ..Default::default() }));
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;

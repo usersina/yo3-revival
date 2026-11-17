@@ -1,4 +1,4 @@
-//! The server's state in SQLite (`server.db`, schema 3), one row per thing (#22), with durable operation receipts.
+//! The server's state in SQLite (`server.db`, schema 4), one row per thing (#22), with durable operation receipts.
 //!
 //! Each domain (accounts, records, friends, mail, teams, events, rentals) still hands the store its whole state as one
 //! JSON value, through `write(dir/NAME.json, value)`, and gets it back from `read`. The store splits that value into
@@ -28,7 +28,7 @@ use rusqlite::{Connection, OptionalExtension};
 const DOMAINS: &[&str] = &["accounts.json", "records.json", "friends.json", "mail.json", "teams.json", "events.json", "rentals.json", "settings.json"];
 const APPLICATION_ID: u32 = 0x594f3301;
 /// Schema 1 kept each domain as one JSON document (`state_documents`); schema 2 keeps one row per item.
-const SCHEMA: u32 = 3;
+const SCHEMA: u32 = 4;
 const SCHEMA_SQL: &str = "
     CREATE TABLE IF NOT EXISTS domains (name TEXT PRIMARY KEY, scalars TEXT NOT NULL CHECK(json_valid(scalars)),
         shape TEXT NOT NULL CHECK(json_valid(shape)));
@@ -225,7 +225,7 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
             tx.execute_batch("DROP TABLE state_documents;").map_err(sql)?;
             tx.pragma_update(None, "user_version", SCHEMA).map_err(sql)?;
         }
-        (APPLICATION_ID, 2) => { tx.pragma_update(None, "user_version", SCHEMA).map_err(sql)?; }
+        (APPLICATION_ID, 2 | 3) => { tx.pragma_update(None, "user_version", SCHEMA).map_err(sql)?; }
         (0, 0) if tables == 0 => {
             tx.execute_batch(SCHEMA_SQL).map_err(sql)?;
             tx.pragma_update(None, "application_id", APPLICATION_ID).map_err(sql)?;
@@ -236,6 +236,7 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
     tx.execute_batch(DUEL_LOGS_TABLE).map_err(sql)?;
     tx.execute_batch(AUDIT_TABLE).map_err(sql)?;
     tx.execute_batch(RECEIPTS_TABLE).map_err(sql)?;
+    tx.execute_batch(EFFECTS_TABLE).map_err(sql)?;
     tx.commit().map_err(sql)
 }
 
@@ -265,6 +266,53 @@ pub(crate) fn put_receipt(dir: &Path, actor: &str, request_id: &str, receipt: &R
 }
 
 /// Every administrative change (#25, `api.rs`): who made it, from where, what and on what, the values before and after.
+// Effects are separate from prunable audit rows. A receipt retry observes the outcome; it never executes it again.
+const EFFECTS_TABLE: &str = "CREATE TABLE IF NOT EXISTS operation_effects (
+    actor TEXT NOT NULL, request_id TEXT NOT NULL, user_id INTEGER NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('pending','completed','interrupted')),
+    created INTEGER NOT NULL, updated INTEGER NOT NULL,
+    PRIMARY KEY(actor, request_id), FOREIGN KEY(actor, request_id) REFERENCES operation_receipts(actor, request_id)
+) WITHOUT ROWID;";
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectState { Pending, Completed, Interrupted }
+impl EffectState {
+    fn text(self) -> &'static str { match self { Self::Pending => "pending", Self::Completed => "completed", Self::Interrupted => "interrupted" } }
+}
+pub(crate) fn put_effect(dir: &Path, actor: &str, id: &str, user: u32) -> io::Result<()> {
+    if !in_batch(dir) { return Err(io::Error::other("an effect intent needs its operation's transaction")) }
+    let now = crate::logins::now();
+    hold(dir)?.execute("INSERT INTO operation_effects(actor,request_id,user_id,state,created,updated) VALUES (?1,?2,?3,'pending',?4,?4)",
+        rusqlite::params![actor,id,user,now]).map_err(sql)?; Ok(())
+}
+pub(crate) fn effect(dir: &Path, actor: &str, id: &str) -> io::Result<Option<EffectState>> {
+    let state: Option<String> = hold(dir)?.query_row("SELECT state FROM operation_effects WHERE actor=?1 AND request_id=?2",(actor,id),|r|r.get(0)).optional().map_err(sql)?;
+    state.map(|s| match s.as_str() { "pending" => Ok(EffectState::Pending), "completed" => Ok(EffectState::Completed), "interrupted" => Ok(EffectState::Interrupted), _ => Err(io::Error::other("unknown effect state")) }).transpose()
+}
+fn record_effect_state(dir: &Path, actor: &str, id: &str, state: EffectState) -> io::Result<()> {
+    let conn = hold(dir)?;
+    conn.execute("UPDATE operation_effects SET state=?3, updated=?4 WHERE actor=?1 AND request_id=?2 AND state='pending'",
+        rusqlite::params![actor,id,state.text(),crate::logins::now()]).map_err(sql)?;
+    conn.execute("UPDATE audit SET detail=json_set(detail,'$.disconnect',?3) WHERE json_extract(detail,'$.receipt_actor')=?1 AND json_extract(detail,'$.request_id')=?2",
+        rusqlite::params![actor,id,state.text()]).map_err(sql)?;
+    Ok(())
+}
+pub(crate) fn complete_effect(dir: &Path, actor: &str, id: &str) -> io::Result<()> {
+    together(dir,|| record_effect_state(dir,actor,id,EffectState::Completed))
+}
+/// Only at process startup under the exclusive data-folder lock. Never replay a possibly executed disconnect.
+pub fn interrupt_effects(dir: &Path) -> io::Result<usize> {
+    together(dir,|| {
+        let pending: Vec<(String,String)> = {
+            let conn = hold(dir)?;
+            let mut q = conn.prepare("SELECT actor,request_id FROM operation_effects WHERE state='pending'").map_err(sql)?;
+            q.query_map([],|r|Ok((r.get(0)?,r.get(1)?))).map_err(sql)?.collect::<Result<_,_>>().map_err(sql)?
+        };
+        for (actor,id) in &pending { record_effect_state(dir,actor,id,EffectState::Interrupted)?; }
+        Ok(pending.len())
+    })
+}
+
 const AUDIT_TABLE: &str = "CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, at TEXT NOT NULL, actor TEXT NOT NULL,
     origin TEXT NOT NULL, op TEXT NOT NULL, target TEXT NOT NULL, before TEXT, after TEXT, detail TEXT);";
 

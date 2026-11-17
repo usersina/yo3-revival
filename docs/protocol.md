@@ -2261,6 +2261,17 @@ Staff read; only admins change. Existing `front::information` (`0x21FC`, R3) and
 Evidence: `settings_admin_contract.rs`, `settings_contract.rs`, `moderation_contract.rs`, `panel_contract.rs`,
 `dashboard_contract.rs`, `dashboard/e2e/settings.spec.ts`.
 
+Moderation (`kick`, `ban`, `restrict`, `lift`, `mute`, `unmute`, `sign-out`) also requires a stable request ID.
+The typed staff endpoint `POST /panel/api/v1/moderation` uses tagged requests and numeric account IDs. Standing/mute/
+device changes, audit, receipt and any live disconnect intent commit together before publication. Schema 4 stores
+effect outcomes separately from prunable audit rows. After ending server sessions/tickets, the effect/audit outcome
+commits separately. A failed outcome write stays pending; startup marks unfinished effects interrupted, never repeats
+them. A receipt returns the original result plus current outcome, and cannot disconnect a new session or reinstate
+an older ban/mute. Moderators cannot act on another staff account, including on replay. Password/key admission cannot
+race a completed moderation action using an older account snapshot. No new game reply fields or wire pushes.
+Evidence: `moderation_admin_contract.rs`, `moderation_contract.rs`, `account_ops.rs` tests, `dashboard_contract.rs`,
+`panel_contract.rs`, `dashboard/e2e/moderation.spec.ts`.
+
 The React dashboard has its own staff-session JSON routes at `/panel/api/v1/`, implemented in `dashboard.rs` with
 Axum and utoipa-axum. Rust exports `dashboard/api/openapi.json`; Orval generates the frontend fetch functions, hooks,
 types and Zod validators. It currently covers sign-in/out, session, account summaries/details and player edits, Give BP (a `user_id: u32`

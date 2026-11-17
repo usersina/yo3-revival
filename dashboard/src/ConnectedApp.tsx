@@ -19,6 +19,7 @@ import type { AccountSummary, StaffSession } from './api/generated/http/models'
 import { GiveBpHeader, GiveBpByIdRequest } from './api/generated/validation/schemas'
 import { ApiHttpError, setCsrfToken } from './api/transport'
 import { ConnectedAccountDialog } from './ConnectedAccountDialog'
+import { ConnectedModeration } from './ConnectedModeration'
 import { ConnectedSettings } from './ConnectedSettings'
 import { ConnectedCodes } from './ConnectedCodes'
 import { ConnectedInvites } from './ConnectedInvites'
@@ -110,6 +111,7 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
   const client = useQueryClient()
   const accounts = useListAccounts()
   const [query, setQuery] = useState('')
+  const [moderationId, setModerationId] = useState<number | null>(null)
   const [detailId, setDetailId] = useState<number | null>(null)
   const [giftTarget, setGiftTarget] = useState<GiftTarget | null>(null)
   const [keyAction, setKeyAction] = useState<KeyAction | null>(null)
@@ -264,6 +266,11 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
             onChange={setQuery}
           />
           <div className="action-group">
+            <ConnectedModeration
+              session={session}
+              userId={moderationId}
+              onChange={setModerationId}
+            />
             <ConnectedGifts session={session} target={giftTarget} onChange={setGiftTarget} />
             <ConnectedKeys session={session} action={keyAction} onChange={setKeyAction} />
             <ConnectedCredentials
@@ -361,6 +368,10 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
         session={session}
         userId={detailId}
         onChange={setDetailId}
+        onModerate={(account) => {
+          setDetailId(null)
+          setModerationId(account.user_id)
+        }}
         onGift={(player) => {
           setDetailId(null)
           setGiftTarget(player)
@@ -459,8 +470,7 @@ function Workspace() {
       </header>
       <main id="main" className="connected-main">
         <p className="inline-notice">
-          Local API preview · Real server data. Accounts and player profiles, Give BP, invites and
-          BOOSTERPASS codes are connected. Public hosting remains disabled.
+          Local API preview · Real server data. Public hosting remains disabled.
         </p>
         {session.isPending ? (
           <p role="status" className="connected-state">

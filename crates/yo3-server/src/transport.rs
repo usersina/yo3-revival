@@ -68,16 +68,17 @@ async fn handshake(mut tls: TlsStream<TcpStream>, gate: &Gate, info: &yo3_tunnel
                 let now = crate::logins::now();
                 let maintenance = gate.settings.now().in_maintenance(now);
                 let max_players = gate.settings.now().max_players;
-                let user = {
+                let token = {
                     let d = accounts.locked();
-                    d.authenticate(&key).map(|a| a.user_id).filter(|&u| {
+                    let user = d.authenticate(&key).map(|a| a.user_id).filter(|&u| {
                         let staff = d.login_by_id(u).is_some_and(|l| l.staff());
                         let full = { let s = sessions.locked(); !s.signed_in(u) && s.users() >= max_players };
                         let allowed = match d.login_by_id(u) { Some(login) => login.refusal(now).is_none(), None => true };
                         allowed && (!maintenance || staff) && (!full || staff)
-                    })
+                    });
+                    // Match moderation: account -> sessions. A ban cannot finish between admission and issuance.
+                    user.and_then(|u| sessions.locked().login(u, Instant::now()))
                 };
-                let token = user.and_then(|u| sessions.locked().login(u, Instant::now()));
                 tls.write_u8(if token.is_some() { 0 } else { 1 }).await?;
                 if let Some(token) = token { tls.write_all(&token).await?; }
             }

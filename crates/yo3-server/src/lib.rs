@@ -440,6 +440,7 @@ pub async fn start(cfg: Config) -> anyhow::Result<Running> {
     let mut world = world(&cfg, 0, http_addr.port())?;
     if let Some(dir) = &cfg.data_dir {
         store::initialize(dir)?;
+        store::interrupt_effects(dir)?;
         store::back_up(dir)?;
     }
     // The live settings (#24), saved in the database, read with the game's banlist names.

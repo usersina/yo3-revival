@@ -308,6 +308,14 @@ or moving the countdown. Use `settings` to inspect the current values. `maintena
 without `--in` or `--message`. The React development dashboard exposes the same controls; see the
 [dashboard guide](dashboard.md#local-development).
 
+Moderation commands (`kick`, `ban`, `restrict`, `lift`, `mute`, `unmute`, `sign-out`) print and accept
+`--request-id ID`. After an uncertain answer, repeat the same arguments and ID. A receipt cannot repeat a disconnect,
+reinstate an older ban/mute or extend its expiry. Ban/sign-out save device revocation first; live disconnect intent
+saves in the same transaction. If its outcome cannot be recorded, the account change stays saved and the response
+warns that the disconnect is unknown. Startup labels it interrupted, without repeating it. Inspect the current
+account/session before requesting a new disconnect. Reasons are single-line, at most 200 characters. Use a positive
+duration or omit it until lifted. The React dialog offers the same actions from View account → Moderate account.
+
 ## Network settings
 
 Friends reach one **TLS listener**, normally TCP **7443**. The internal HTTP/admin listener remains on loopback;
@@ -335,8 +343,9 @@ player would have to trust the server again.
 ## Existing data and backups
 
 `server.db` is SQLite in WAL mode, with one row per account (and its players), record, friendship, mail, team, event,
-rental and BP code; a save writes only the rows that changed. On the `beta` branch it is schema 2: a server from `main`
-(schema 1) can't open it, and a schema 1 database is converted once, in place. JSON files from versions before
+rental and BP code; a save writes only the rows that changed. This dashboard branch uses schema 4 (row-based state, retry receipts and disconnect outcomes). Schemas 1–3
+upgrade transactionally in place; older server binaries cannot open the upgraded database. Keep a pre-upgrade backup
+if you need to return to an older binary. JSON files from versions before
 `server.db` are not read (the beta starts fresh). A path change selects a different server's data; it does not move it.
 The running server holds its data directory: a second server on the same folder is refused, whatever its ports. A
 `server.lock` left after a crash holds nothing.

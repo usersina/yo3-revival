@@ -39,10 +39,12 @@ export function ConnectedAccountDialog({
   onResetPassword,
   onRevealKey,
   onGift,
+  onModerate,
 }: {
   session: StaffSession
   userId: number | null
   onChange: (id: number | null) => void
+  onModerate: (account: AccountDetail) => void
   onGift: (player: { player_id: number; name: string }) => void
   onRevealKey: (account: AccountDetail) => void
   onResetPassword: (account: AccountDetail) => void
@@ -294,6 +296,17 @@ export function ConnectedAccountDialog({
           )}
           {data && !mode && (
             <>
+              <Button
+                onClick={() => onModerate(data)}
+                disabled={
+                  !canStart ||
+                  (session.role !== 'admin' &&
+                    data.role !== 'player' &&
+                    data.user_id !== session.user_id)
+                }
+              >
+                Moderate account
+              </Button>
               <dl className="profile-facts">
                 <div>
                   <dt>Role</dt>

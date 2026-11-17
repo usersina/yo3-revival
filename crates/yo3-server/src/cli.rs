@@ -217,20 +217,20 @@ pub enum Admin {
     /// Stop the running server gracefully: logins close, duels end, everything is saved and backed up.
     Stop,
     /// Disconnect WHO's game (a User ID or one of its players' names); it shows its own disconnect dialog.
-    Kick { who: String },
+    Kick { who: String, #[arg(long)] request_id: Option<String> },
     /// Ban WHO: sign-in refused (for --days, or until `lift`), every device signed out, the game disconnected. The
     /// launcher shows the reason and the end.
-    Ban { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] days: Option<u32> },
+    Ban { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] days: Option<u32>, #[arg(long)] request_id: Option<String> },
     /// Restrict WHO: sign-in refused (for --days, or until `lift`); a game already signed in plays on until it logs in
     /// again, when the game says "This User ID is currently restricted."
-    Restrict { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] days: Option<u32> },
+    Restrict { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] days: Option<u32>, #[arg(long)] request_id: Option<String> },
     /// Lift WHO's ban or restriction.
-    Lift { who: String },
+    Lift { who: String, #[arg(long)] request_id: Option<String> },
     /// Mute WHO: their chat lines go nowhere (for --minutes, or until `unmute`), and they are told why.
-    Mute { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] minutes: Option<u32> },
-    Unmute { who: String },
+    Mute { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] minutes: Option<u32>, #[arg(long)] request_id: Option<String> },
+    Unmute { who: String, #[arg(long)] request_id: Option<String> },
     /// Sign WHO out of every device and disconnect their game.
-    SignOut { who: String },
+    SignOut { who: String, #[arg(long)] request_id: Option<String> },
     /// Delete WHO's account for good (an admin's): its players with their cards, decks, mail, friends, team, records and
     /// duel logs, its User ID, password and devices; its game is disconnected. The audit log keeps only who deleted which
     /// User ID and when. Backups still hold it until they are replaced. Needs --yes.

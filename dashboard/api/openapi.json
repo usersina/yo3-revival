@@ -1836,6 +1836,156 @@
         ]
       }
     },
+    "/panel/api/v1/moderation": {
+      "post": {
+        "tags": [
+          "Moderation"
+        ],
+        "operationId": "moderateAccount",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Retain this ID and input on retry. Retries observe the saved outcome, never repeat a disconnect.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModerationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Committed moderation plus current disconnect outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModerationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Account not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Recipe already owned or retry input conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error; outcome may be unknown",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commit could not be confirmed; retry the same request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
     "/panel/api/v1/session": {
       "get": {
         "tags": [
@@ -3185,6 +3335,14 @@
           }
         }
       },
+      "EffectState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "completed",
+          "interrupted"
+        ]
+      },
       "GiftChoices": {
         "type": "object",
         "required": [
@@ -3730,6 +3888,254 @@
             "type": "string"
           },
           "player_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        }
+      },
+      "ModerationRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "user_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "kick"
+                ]
+              },
+              "user_id": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "user_id",
+              "reason",
+              "kind"
+            ],
+            "properties": {
+              "days": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 1
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ban"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "user_id": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "user_id",
+              "reason",
+              "kind"
+            ],
+            "properties": {
+              "days": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 1
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "restrict"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "user_id": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "user_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "lift"
+                ]
+              },
+              "user_id": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "user_id",
+              "reason",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "mute"
+                ]
+              },
+              "minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 1
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "user_id": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "user_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "unmute"
+                ]
+              },
+              "user_id": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "user_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "sign_out"
+                ]
+              },
+              "user_id": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      },
+      "ModerationResponse": {
+        "type": "object",
+        "required": [
+          "result"
+        ],
+        "properties": {
+          "disconnect": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EffectState",
+                "description": "Null: no live disconnect was needed. Pending/interrupted is an uncertain outcome, never an instruction to repeat it."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "$ref": "#/components/schemas/ModerationResult"
+          }
+        }
+      },
+      "ModerationResult": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "request_id",
+          "operation",
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "user_id": {
             "type": "integer",
             "format": "int32",
             "maximum": 4294967295,

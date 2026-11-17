@@ -38,6 +38,7 @@ pub mod credentials;
 pub mod keys;
 pub mod gifts;
 pub mod settings;
+pub mod moderation;
 pub use give_bp::{GiveBpRequest, GiveBpResult};
 pub use mutation::{Actor, MutationError, MutationErrorCode};
 
@@ -117,7 +118,7 @@ pub enum Op {
 
 impl Op {
     /// Operations migrated to a committed change/audit/receipt boundary.
-    fn receipted(&self) -> bool { matches!(self, Self::Set { .. } | Self::Reset { .. } | Self::Maintenance { .. } | Self::GiveCards { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
+    fn receipted(&self) -> bool { matches!(self, Self::Kick { .. } | Self::Ban { .. } | Self::Restrict { .. } | Self::Lift { .. } | Self::Mute { .. } | Self::Unmute { .. } | Self::SignOut { .. } | Self::Set { .. } | Self::Reset { .. } | Self::Maintenance { .. } | Self::GiveCards { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
     /// Its name in the API's path and the audit log.
     pub fn name(&self) -> String {
         serde_json::to_value(self).ok().and_then(|v| v["op"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -226,6 +227,7 @@ pub struct Api {
     /// "server" for a running server's operations, "offline" for the CLI's on a stopped server's folder.
     pub origin: &'static str,
     memory: Mutex<Vec<AuditRow>>,
+    effects: Mutex<std::collections::HashMap<(String,String), crate::store::EffectState>>,
     receipts: Mutex<std::collections::HashMap<(String, String), crate::store::Receipt>>,
 }
 
@@ -233,7 +235,7 @@ type Done = Result<(Value, Option<Value>, Option<Value>), String>;
 
 impl Api {
     pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, data_dir: Option<PathBuf>, game_dir: PathBuf, origin: &'static str) -> Api {
-        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), origin, memory: Mutex::default(), receipts: Mutex::default() }
+        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), origin, memory: Mutex::default(), effects: Mutex::default(), receipts: Mutex::default() }
     }
 
     /// Runs `op` for `actor` and writes its audit row: its result, or why it was refused.
@@ -293,6 +295,7 @@ impl Api {
 
     fn typed_change(&self, op: &Op, id: &str, actor: Actor<'_>, origin: &str) -> Result<Value, MutationError> {
         match op {
+            Op::Kick { .. } | Op::Ban { .. } | Op::Restrict { .. } | Op::Lift { .. } | Op::Mute { .. } | Op::Unmute { .. } | Op::SignOut { .. } => self.named_moderation(op, id, actor, origin),
             Op::Set { .. } | Op::Reset { .. } | Op::Maintenance { .. } => self.named_setting(op, id, actor, origin),
             Op::GiveBp { who, amount } => self.give_bp(&GiveBpRequest { who: who.clone(), amount: *amount }, id, actor, origin).map(|r| json!(r)),
             Op::AddCode { code, bp, uses } => self.create_bp_code(&codes::CreateBpCodeRequest {
@@ -351,7 +354,6 @@ impl Api {
 
     /// The operation itself: its result, and the values before and after the change.
     fn run(&self, op: &Op) -> Done {
-        let message = |text: String| json!({ "message": text });
         match op {
             Op::Status => {
                 let (players, online, duels) = match &self.hub {
@@ -429,56 +431,7 @@ impl Api {
             }
             Op::Settings => Ok((json!({ "message": self.settings.list(), "settings": self.settings.rows() }), None, None)),
             Op::Set { .. } | Op::Reset { .. } | Op::Maintenance { .. } => Err("settings edits require the typed mutation boundary".into()),
-            Op::Kick { who } => {
-                let user_id = self.accounts.locked().user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
-                self.end_sessions(user_id);
-                Ok((message(format!("{who} was disconnected")), None, None))
-            }
-            Op::Ban { who, reason, days } | Op::Restrict { who, reason, days } => {
-                let ban = matches!(op, Op::Ban { .. });
-                let until = days.map(|d| crate::logins::now() + i64::from(d) * 86_400);
-                let standing = if ban { crate::logins::Standing::Banned { reason: reason.clone(), until } }
-                    else { crate::logins::Standing::Restricted { reason: reason.clone(), until } };
-                let mut d = self.accounts.locked();
-                let (user_id, login) = d.login_named(who)?;
-                d.set_standing_of(user_id, standing.clone())?;
-                if ban { d.revoke_devices(user_id)?; }
-                drop(d);
-                // A ban takes effect at once; a restriction at the account's next sign-in.
-                if ban { self.end_sessions(user_id) }
-                let until = until.and_then(|t| chrono::DateTime::from_timestamp(t, 0)).map_or("until lifted".to_string(), |t| format!("until {}", t.format("%Y-%m-%d %H:%M UTC")));
-                let what = if ban { "banned (devices signed out, game disconnected)" } else { "restricted (refused at the next sign-in)" };
-                Ok((message(format!("{} is {what} {until}", login.user)), Some(json!(login.standing)), Some(json!(standing))))
-            }
-            Op::Lift { who } => {
-                let mut d = self.accounts.locked();
-                let (user_id, login) = d.login_named(who)?;
-                d.set_standing_of(user_id, crate::logins::Standing::Active)?;
-                Ok((message(format!("{} may sign in again", login.user)), Some(json!(login.standing)), Some(json!(crate::logins::Standing::Active))))
-            }
-            Op::Mute { who, reason, minutes } => {
-                let until = minutes.map(|m| crate::logins::now() + i64::from(m) * 60);
-                let mut d = self.accounts.locked();
-                let (user_id, login) = d.login_named(who)?;
-                let mute = crate::logins::Mute { reason: reason.clone(), until };
-                d.set_mute(user_id, Some(mute.clone()))?;
-                let until = until.and_then(|t| chrono::DateTime::from_timestamp(t, 0)).map_or("until unmuted".to_string(), |t| format!("until {}", t.format("%Y-%m-%d %H:%M UTC")));
-                Ok((message(format!("{} is muted {until}", login.user)), login.muted.map(|m| json!(m)), Some(json!(mute))))
-            }
-            Op::Unmute { who } => {
-                let mut d = self.accounts.locked();
-                let (user_id, login) = d.login_named(who)?;
-                d.set_mute(user_id, None)?;
-                Ok((message(format!("{} may chat again", login.user)), login.muted.map(|m| json!(m)), None))
-            }
-            Op::SignOut { who } => {
-                let mut d = self.accounts.locked();
-                let (user_id, login) = d.login_named(who)?;
-                d.revoke_devices(user_id)?;
-                drop(d);
-                self.end_sessions(user_id);
-                Ok((message(format!("{} is signed out everywhere", login.user)), Some(json!(login.devices.len())), Some(json!(0))))
-            }
+            Op::Kick { .. } | Op::Ban { .. } | Op::Restrict { .. } | Op::Lift { .. } | Op::Mute { .. } | Op::Unmute { .. } | Op::SignOut { .. } => Err("moderation requires the typed mutation boundary".into()),
             Op::Audit { limit } => {
                 let rows = self.audit(limit.unwrap_or(50).min(10_000))?;
                 Ok((json!({ "rows": rows }), None, None))

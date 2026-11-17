@@ -300,6 +300,13 @@ impl Directory {
         Ok(next)
     }
 
+    /// Stage a moderation change without publishing or saving it ahead of its audit and retry receipt.
+    pub(crate) fn prepare_login(&self, user: u32, change: impl FnOnce(&mut crate::logins::Login) -> Result<(),String>) -> Result<Self,String> {
+        let mut next = self.clone();
+        change(next.login_mut(user).ok_or("This is a key account: only password accounts have a standing, mute or device sign-out." )?)?;
+        Ok(next)
+    }
+
     /// Sets the standing of User ID `user` (active, restricted or banned; #26 makes the moderation around it).
     pub fn set_standing(&mut self, user: &str, standing: crate::logins::Standing) -> Result<u32, String> {
         let at = self.login_at(user).ok_or("no such User ID")?;

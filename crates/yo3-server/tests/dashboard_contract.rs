@@ -31,9 +31,10 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/gifts", "post", "givePlayerGift"),
         ("/panel/api/v1/settings", "get", "listSettings"),
         ("/panel/api/v1/settings", "post", "changeSettings"),
+        ("/panel/api/v1/moderation", "post", "moderateAccount"),
         ("/panel/api/v1/gifts/choices", "get", "listGiftChoices"),
     ];
-    assert_eq!(paths.len(), 16);
+    assert_eq!(paths.len(), 17);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -579,4 +580,35 @@ async fn settings_accept_all_ten_valid_unicode_announcements_with_a_bounded_payl
     assert_eq!(result.status,200,"{}",result.body);
     let huge=json!({"kind":"set","name":"news","value":"x".repeat(257*1024)});
     assert_eq!(b.raw("POST","/panel/api/v1/settings",&huge.to_string(),"Idempotency-Key: oversized-news-request\r\n").await.status,413);
+}
+
+#[tokio::test]
+async fn moderation_uses_stable_ids_role_rules_and_observable_disconnect_outcomes() {
+    let mut b=Browser::new("moderation-api").await;b.sign_in("Croquet").await;
+    let accounts=b.call("GET","/panel/api/v1/accounts",json!(null)).await.body;
+    let id=|name:&str|accounts["accounts"].as_array().unwrap().iter().find(|a|a["login"]==name).unwrap()["user_id"].as_u64().unwrap();
+    let yugi=id("Yugi");let pegasus=id("Pegasus");let path="/panel/api/v1/moderation";
+    assert_eq!(b.call("POST",path,json!({"kind":"kick","user_id":pegasus})).await.status,403);
+    let request=json!({"kind":"ban","user_id":yugi,"reason":"Spam","days":1});
+    let first=b.call("POST",path,request.clone()).await;
+    assert_eq!(first.status,200,"{}",first.body);assert_eq!(first.body["disconnect"],"completed");
+    assert!(chrono::DateTime::parse_from_rfc3339(first.body["result"]["until"].as_str().unwrap()).is_ok());
+    assert_eq!(b.call("POST",path,request).await.body,first.body);
+    assert_eq!(b.call("POST",path,json!({"kind":"kick","user_id":yugi})).await.status,409);
+    let lifted=b.raw("POST",path,&json!({"kind":"lift","user_id":yugi}).to_string(),"Idempotency-Key: dashboard-lift-00001\r\n").await;
+    assert_eq!(lifted.status,200);assert_eq!(lifted.body["disconnect"],Value::Null);
+    assert_eq!(b.call("GET",&format!("/panel/api/v1/accounts/{yugi}"),json!(null)).await.body["standing"]["kind"],"active");
+    let old=b.call("POST",path,json!({"kind":"ban","user_id":yugi,"reason":"Spam","days":1})).await;
+    assert_eq!(old.body,first.body,"replay confirms the old operation; it cannot ban Yugi again");
+    assert_eq!(b.call("GET",&format!("/panel/api/v1/accounts/{yugi}"),json!(null)).await.body["standing"]["kind"],"active");
+}
+
+#[tokio::test]
+async fn restricting_then_lifting_staff_without_a_request_in_between_cannot_restore_old_cookies() {
+    let mut b=Browser::new("restriction-epoch").await;b.sign_in("Pegasus").await;
+    let live=b.admin.clone();tokio::task::spawn_blocking(move|| {
+        api::call(&live,&Op::Restrict{who:"Pegasus".into(),reason:"Review".into(),days:None}).unwrap();
+        api::call(&live,&Op::Lift{who:"Pegasus".into()}).unwrap();
+    }).await.unwrap();
+    assert_eq!(b.call("GET","/panel/api/v1/session",json!(null)).await.status,401);
 }

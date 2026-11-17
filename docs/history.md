@@ -32,6 +32,15 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 
 ## Status
 
+2026-11-17, transactional moderation and recorded disconnect outcomes: failure tests reproduced a ban reporting
+success after audit failure and a verified password snapshot bypassing later moderation. Moderation now commits
+account changes, audit, receipt and disconnect intent before publication; only then are live sessions ended and
+the outcome recorded. Outcome-recording failures leave a visible pending state; real server startup marks unfinished
+effects interrupted. Retries never repeat a disconnect or reapply older standing/mute values after reconnect, lift,
+restart or audit pruning. Schema 3 migration preserves accounts/audit/receipts. Staff restrictions revoke cookie
+revisions, and both key/password admission preserve account -> session order. The React form uses generated hooks,
+explicit effects/confirmation, role checks and retained request IDs; CLI and old panel share the operations.
+
 2026-11-17, transactional settings and maintenance: failing tests reproduced false success after an audit failure
 and a maintenance message saved before an invalid deadline. Settings now prepare one snapshot and commit it with
 audit and receipt before publication. Concurrent changes preserve each other; retries survive restart/pruning,

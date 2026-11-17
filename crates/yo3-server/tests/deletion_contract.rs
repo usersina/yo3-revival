@@ -54,6 +54,8 @@ fn deleting_an_account_removes_its_players_and_everything_kept_for_them() {
     let settings = Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());
     let mut api = api::Api::new(d.clone(), settings, None, std::path::PathBuf::new(), "server");
     api.hub = Some(s.hub.clone());
+    // A running server supplies its session manager even if this fixture has no authenticated sockets.
+    api.sessions = Some(Arc::new(Mutex::new(yo3_server::auth::Sessions::default())));
     api.apply(&Op::GiveBp { who: "Yugi".into(), amount: 10 }, "host").unwrap();
     api.apply(&Op::Kick { who: "kaiba".into() }, "host").unwrap();
     // Only an admin deletes: a moderator is refused.

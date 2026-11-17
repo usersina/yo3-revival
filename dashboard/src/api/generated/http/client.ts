@@ -52,6 +52,9 @@ import type {
   KeyAccountResult,
   ListGiftChoicesParams,
   ManageAccountKeyHeaders,
+  ModerateAccountHeaders,
+  ModerationRequest,
+  ModerationResponse,
   RemoveBpCodeHeaders,
   RemoveBpCodeRequest,
   RemoveBpCodeResult,
@@ -1227,6 +1230,75 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getCreateInviteMutationOptions(options), queryClient);
+    }
+
+export const getModerateAccountUrl = () => {
+
+
+
+
+  return `/panel/api/v1/moderation`
+}
+
+export const moderateAccount = async (moderationRequest: ModerationRequest,
+    headers: ModerateAccountHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<ModerationResponse> => {
+
+  return apiFetch<ModerationResponse>(getModerateAccountUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(moderationRequest)
+  }
+);}
+
+
+
+
+
+export const getModerateAccountMutationKey = () => ['moderateAccount'] as const;
+
+export const getModerateAccountMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderateAccount>>, TError,ModerateAccountMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moderateAccount>>, TError,ModerateAccountMutationVariables, TContext> => {
+
+const mutationKey = getModerateAccountMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moderateAccount>>, ModerateAccountMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  moderateAccount(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ModerateAccountMutationResult = NonNullable<Awaited<ReturnType<typeof moderateAccount>>>
+    export type ModerateAccountMutationBody = ModerationRequest
+    export type ModerateAccountMutationError = ErrorType<ApiError>
+    export type ModerateAccountMutationVariables = {data: ModerationRequest;headers: ModerateAccountHeaders}
+
+    export const useModerateAccount = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderateAccount>>, TError,ModerateAccountMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof moderateAccount>>,
+        TError,
+        ModerateAccountMutationVariables,
+        TContext
+      > => {
+      return useMutation(getModerateAccountMutationOptions(options), queryClient);
     }
 
 export const getGetStaffSessionUrl = () => {

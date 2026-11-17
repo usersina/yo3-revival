@@ -6,7 +6,7 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 ## Current state
 
 - The approved React/Vite/SWC/Tailwind dashboard is in `dashboard/`. The main pages remain a labelled design preview.
-  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, card/recipe/title gifts, Give BP, registration invites, BOOSTERPASS code management, live settings, news and maintenance.
+  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, card/recipe/title gifts, Give BP, registration invites, BOOSTERPASS code management, live settings, news, maintenance and moderation.
   It never falls back to fixtures.
 - Axum handles HTTP on separate sockets. Host-token operations, assets and the old HTML panel stay on `--http-port`.
   The staff JSON router has its own opt-in `--dashboard-port`, disabled by default and always bound to loopback.
@@ -37,7 +37,11 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
   commit together before any bell, collection or present notification; titles keep their existing no-mail behavior.
   The admin-only form searches real game metadata, identifies artworks explicitly, confirms the recipient and retains
   an uncertain request across reloads. It shows catalogue failures rather than substituting sample cards.
-- SQLite schema 3 adds `operation_receipts`. Schemas 1 and 2 upgrade transactionally. Other domains are not normalized.
+- Moderation saves standing/mute/device changes with audit and receipt. Live disconnects have a durable intent
+  before execution and an outcome afterwards. Retries never repeat them. The confirmation explains each action,
+  warns before acting on your own account, enforces staff permissions and retains uncertain requests across reloads.
+- SQLite schema 4 adds `operation_effects` beside schema 3's receipts. Schemas 1–3 upgrade transactionally.
+  Other domains are not normalized.
 - Remaining work: the other dashboard operations, staff MFA, the public-access/proxy gate, nginx and Compose.
 
 ## Operation boundary
@@ -121,6 +125,28 @@ Receipts retain the original confirmation (which can contain the setting value) 
 post-commit best-effort effect: failure is logged, does not undo the setting and does not repeat on receipt replay.
 The existing one-second maintenance worker still handles sign-outs at the committed deadline. No client wire shape
 changes. The game’s cancelled-maintenance icon still clears at the next login; cancellation chat explains that.
+
+`POST /panel/api/v1/moderation` accepts tagged `kick`, `ban`, `restrict`, `lift`, `mute`, `unmute` and `sign_out`
+requests with numeric account IDs. Current admins/moderators can act; moderators cannot act on another staff account,
+including on receipt replay. Only disconnect supports key-only accounts. Reasons are optional, single-line and at
+most 200 characters. Durations are positive days/minutes or null (until lifted), and must fit a date before year 10000.
+The immutable result holds only account ID, operation, original expiry, request ID and a generic confirmation.
+The response's `disconnect` field is separate: null when no live effect was needed, otherwise `pending`, `completed`
+or `interrupted`. Completed means server sessions/tickets were ended, not that a remote window has closed.
+
+The account change, initial audit row, receipt and pending effect commit together. Account state is published, then
+the server ends live sessions while holding the account lock, then updates effect and audit outcome together.
+Failure before that first commit changes nothing. Failure recording the outcome leaves the committed account change
+and a pending/unknown disconnect. Startup under the data lock marks pending effects interrupted and updates their
+surviving audit rows; it never executes them. Effects survive audit pruning. Even a receipt replay after a new sign-in
+only reports the stored result/current outcome. A fresh disconnect requires a new, explicitly confirmed action.
+The React dialog retains a known uncertain effect until Done and offers Check outcome using the original ID.
+
+Ban/sign-out clear devices and revoke staff cookies; restriction also revokes old staff cookies so lifting it cannot
+restore a previous cookie. A password verified before moderation must recheck standing and session revision before
+session issuance; key admission holds the same account -> session lock order. A remembered device is not saved if
+moderation/recovery invalidated its password snapshot. The CLI's seven moderation commands accept `--request-id`;
+old HTML forms reuse their hidden ID. Account deletion, stop and backup operations are still separate work.
 
 ## API and dashboard
 
