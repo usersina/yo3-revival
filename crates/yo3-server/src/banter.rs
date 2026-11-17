@@ -17,6 +17,7 @@ use yo3_proto::{Message, Value};
 
 use crate::engine::Engine;
 use crate::front::World;
+use crate::ocg::message::{Event, Loc};
 use crate::ocg::msg;
 
 const LINES: &str = include_str!("npc_lines.txt");
@@ -194,19 +195,18 @@ impl Banter {
         let mut out = vec![];
         for m in messages {
             let Some(kind) = m["type"].as_u64() else { continue };
-            self.clock += pace(kind, m);
+            let event = Event::lenient(m).ok().flatten();
+            self.clock += pace(kind, event.as_ref());
             if self.over {
                 continue;
             }
-            let player = m["player"].as_u64();
-            let controller = m["controller"].as_u64();
-            let said = match kind {
-                msg::NEW_TURN => {
+            let said = match &event {
+                Some(Event::NewTurn(t)) => {
                     self.turns += 1;
-                    self.turn_player = player;
+                    self.turn_player = Some(t.player);
                     self.said_this_turn = 0;
                     self.kinds_this_turn.clear();
-                    if player != Some(self.npc) {
+                    if t.player != self.npc {
                         None
                     } else if self.blind {
                         self.chance("blind", 0.35).then(|| self.line("blind", None)).flatten()
@@ -221,32 +221,32 @@ impl Banter {
                     }
                 }
                 // A draw in the NPC's own turn (not the opening hand): the hero's Heart of the Cards.
-                msg::DRAW if player == Some(self.npc) && self.turn_player == Some(self.npc) && self.has("heart") => {
+                Some(Event::Draw(d)) if d.player == self.npc && self.turn_player == Some(self.npc) && self.has("heart") => {
                     self.chance("heart", 0.35).then(|| self.line("heart", None)).flatten()
                 }
-                msg::SET if controller == Some(1 - self.npc) && self.has("eye_set") && !self.blind => {
-                    let card = cid(m).and_then(|c| duel.card_name(c)).map(str::to_string);
+                Some(Event::Set(a)) if a.loc.controller == 1 - self.npc && self.has("eye_set") && !self.blind => {
+                    let card = cid(&a.loc).and_then(|c| duel.card_name(c)).map(str::to_string);
                     card.filter(|_| self.chance("eye_set", 0.5)).and_then(|card| self.line("eye_set", Some(&card)))
                 }
-                msg::SUMMONING | msg::SPSUMMONING | msg::FLIPSUMMONING if controller == Some(self.npc) => {
-                    let ace = cid(m).filter(|&c| duel.card_atk(c) >= ACE_ATK && !self.aces.contains(&c));
+                Some(Event::Summoning(a) | Event::SpSummoning(a) | Event::FlipSummoning(a)) if a.loc.controller == self.npc => {
+                    let ace = cid(&a.loc).filter(|&c| duel.card_atk(c) >= ACE_ATK && !self.aces.contains(&c));
                     let card = ace.and_then(|c| duel.card_name(c).map(|n| (c, n.to_string())));
                     card.and_then(|(c, card)| {
                         self.aces.insert(c);
                         self.line("ace", Some(&card))
                     })
                 }
-                msg::ATTACK if m["card"]["controller"].as_u64() == Some(self.npc) && m["target"].is_null() => {
+                Some(Event::Attack(a)) if a.card.controller == self.npc && a.target.is_none() => {
                     self.chance("direct", 0.3).then(|| self.line("direct", None)).flatten()
                 }
-                msg::DAMAGE if player == Some(self.npc) && m["amount"].as_u64().unwrap_or(0) >= HURT => {
+                Some(Event::Damage(d)) if d.player == self.npc && d.amount >= HURT => {
                     self.chance("hurt", 0.6).then(|| self.line("hurt", None)).flatten()
                 }
-                msg::WIN => {
+                Some(Event::Win(w)) => {
                     self.over = true;
-                    match player {
-                        Some(p) if p == self.npc => self.say("win", None),
-                        Some(p) if p == 1 - self.npc => self.say(if self.blind { "blind_lose" } else { "lose" }, None),
+                    match w.player {
+                        p if p == self.npc => self.say("win", None),
+                        p if p == 1 - self.npc => self.say(if self.blind { "blind_lose" } else { "lose" }, None),
                         _ => None,
                     }
                 }
@@ -308,16 +308,16 @@ impl Banter {
     }
 }
 
-fn cid(m: &Json) -> Option<u16> {
-    m["cid"].as_u64().filter(|&c| c != 0).map(|c| c as u16)
+fn cid(loc: &Loc) -> Option<u16> {
+    loc.cid.filter(|&c| c != 0).map(|c| c as u16)
 }
 
 /// About how long the client takes to show an engine message, in seconds (its animations; a rough pace).
-fn pace(kind: u64, m: &Json) -> f64 {
+fn pace(kind: u64, event: Option<&Event>) -> f64 {
     match kind {
         msg::NEW_TURN => 1.5,
         msg::NEW_PHASE => 0.5,
-        msg::DRAW => 0.5 * m["drawn"].as_array().map_or(1, Vec::len) as f64,
+        msg::DRAW => 0.5 * match event { Some(Event::Draw(d)) => d.drawn.len(), _ => 1 } as f64,
         msg::MOVE | msg::POS_CHANGE => 0.5,
         msg::SET => 0.8,
         msg::SUMMONING | msg::SPSUMMONING | msg::FLIPSUMMONING => 1.5,

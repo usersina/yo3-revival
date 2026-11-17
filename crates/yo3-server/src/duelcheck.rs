@@ -46,6 +46,7 @@ use serde_json::Value as Json;
 use yo3_proto::{Message, Value};
 
 use crate::translate::CardStats;
+use crate::ocg::message::Event;
 use crate::wire::{Cmd, Place, Target, cmd, dialog, request, table_place, zone};
 pub mod native;
 pub mod coverage;
@@ -152,14 +153,19 @@ impl ClientModel {
             } else if coverage::engine(kind) == coverage::Coverage::Unsupported && self.coverage_gaps.insert(kind) {
                 tracing::warn!("[YO3 GAP] engine event {kind}: known unsupported presentation/interaction; state agreement does not validate it");
             }
-            let player = if m["player"] == 0 { self.first } else { 1 - self.first };
-            if kind == 40 { self.engine_turn = (player, self.engine_turn.1 + 1); }
-            if kind == 41 {
-                let phase = match m["phase"].as_u64() {
-                    Some(1) => Some(0), Some(2) => Some(1), Some(4) => Some(2),
-                    Some(8 | 16 | 32 | 64 | 128) => Some(3), Some(256) => Some(4), Some(512) => Some(5), _ => None,
-                };
-                if let Some(phase) = phase { self.engine_phase = Some((self.engine_turn.0, phase)); }
+            match Event::lenient(m) {
+                Ok(Some(Event::NewTurn(t))) => {
+                    let player = if t.player == 0 { self.first } else { 1 - self.first };
+                    self.engine_turn = (player, self.engine_turn.1 + 1);
+                }
+                Ok(Some(Event::NewPhase(n))) => {
+                    let phase = match n.phase {
+                        1 => Some(0), 2 => Some(1), 4 => Some(2),
+                        8 | 16 | 32 | 64 | 128 => Some(3), 256 => Some(4), 512 => Some(5), _ => None,
+                    };
+                    if let Some(phase) = phase { self.engine_phase = Some((self.engine_turn.0, phase)); }
+                }
+                _ => {}
             }
         }
     }
@@ -618,6 +624,7 @@ pub mod selfplay {
 
     use super::ClientModel;
     use crate::duel::{CLIENT, CPU, command, next, piles, setup, shuffle};
+    use crate::ocg::message::{Ask, Event};
     use crate::ocg::{Response, battle, hint, idle, loc, msg, pos};
     use crate::wire::{cmd, dialog, zone};
     use crate::engine::Engine;
@@ -826,15 +833,17 @@ pub mod selfplay {
     /// How many answers an engine prompt has, roughly, for the prompts the translator may answer itself: options,
     /// positions, free zones, cards to pick or sort. None for the others.
     pub fn choices(m: &Json) -> Option<usize> {
-        let len = |k: &str| m[k].as_array().map_or(0, Vec::len);
-        Some(match m["type"].as_u64()? {
-            12 | 13 => 2,
-            14 => len("options"),
-            15 | 16 | 20 | 23 => len("selects"),
-            26 => len("select_cards"),
-            18 | 24 => (!m["field_mask"].as_u64().unwrap_or(0) as u32 & 0x1F1F_1F1F).count_ones() as usize,
-            19 => (m["positions"].as_u64().unwrap_or(0) as u32 & 0xF).count_ones() as usize,
-            22 | 21 | 25 => len("cards"),
+        Some(match Ask::lenient(m).ok()?? {
+            Ask::EffectYn(_) | Ask::YesNo(_) => 2,
+            Ask::Option(o) => o.options.len(),
+            Ask::Card(c) | Ask::Tribute(c) => c.selects.len(),
+            Ask::Chain(c) => c.selects.len(),
+            Ask::Sum(s) => s.selects.len(),
+            Ask::UnselectCard(u) => u.select_cards.len(),
+            Ask::Place(p) | Ask::Disfield(p) => (!p.field_mask as u32 & 0x1F1F_1F1F).count_ones() as usize,
+            Ask::Position(p) => (p.positions as u32 & 0xF).count_ones() as usize,
+            Ask::Counter(c) => c.cards.len(),
+            Ask::SortChain(s) | Ask::SortCard(s) => s.cards.len(),
             _ => return None,
         })
     }
@@ -956,34 +965,31 @@ pub mod selfplay {
                 return Err(format!("seed {seed}, step {}: the engine reported {:?}", played.steps, a.errors));
             }
             model.observe_engine(&a.messages);
+            let events: Vec<Event> = a.messages.iter().filter_map(|m| Event::lenient(m).ok().flatten()).collect();
             for m in &a.messages {
-                let card = m["cid"].as_u64().unwrap_or(0) as u16;
-                match m["type"].as_u64() {
-                    Some(msg::CHAINING) => *played.activated.entry(card).or_default() += 1,
-                    Some(msg::SUMMONING | msg::SPSUMMONING | msg::FLIPSUMMONING) => *played.summoned.entry(card).or_default() += 1,
-                    _ => {}
-                }
                 if let Some(kind) = m["type"].as_u64() {
                     *played.kinds.entry(kind).or_default() += 1;
-                    if kind == 50 && (m["to"]["overlay_sequence"].is_u64() || m["from"]["overlay_sequence"].is_u64()) {
-                        played.materials += 1;
-                    }
-                    if kind == msg::NEW_TURN {
+                }
+            }
+            for e in &events {
+                match e {
+                    Event::Chaining(c) => *played.activated.entry(c.loc.cid.unwrap_or(0) as u16).or_default() += 1,
+                    Event::Summoning(s) | Event::SpSummoning(s) | Event::FlipSummoning(s) => *played.summoned.entry(s.loc.cid.unwrap_or(0) as u16).or_default() += 1,
+                    Event::Move(mv) if mv.to.overlay_sequence.is_some() || mv.from.overlay_sequence.is_some() => played.materials += 1,
+                    Event::NewTurn(_) => {
                         played.turns += 1;
                         actions = 0;
                     }
+                    _ => {}
                 }
             }
             // Every window the core marks must be one the translator knows how to treat (CHAIN_WINDOWS).
-            let windows: Vec<u64> = a.messages.iter().filter(|m| m["type"].as_u64() == Some(msg::HINT) && m["hint_type"].as_u64() == Some(hint::EVENT))
-                .filter_map(|m| m["hint"].as_u64()).collect();
-            if let Some(h) = windows.iter().find(|&&h| chain_window(h).is_none()) {
-                return Err(format!("seed {seed}, step {}: the core's window {h} (MSG_HINT HINT_EVENT) isn't in CHAIN_WINDOWS", played.steps));
+            let windows = || events.iter().filter_map(|e| match e { Event::Hint(h) if h.hint_type == hint::EVENT => Some(h), _ => None });
+            if let Some(h) = windows().find(|h| chain_window(h.hint).is_none()) {
+                return Err(format!("seed {seed}, step {}: the core's window {} (MSG_HINT HINT_EVENT) isn't in CHAIN_WINDOWS", played.steps, h.hint));
             }
             // The client's window for the prompt this step ends with: the last one the core marked for its player.
-            let window = a.messages.iter().rev()
-                .find(|m| m["type"].as_u64() == Some(msg::HINT) && m["hint_type"].as_u64() == Some(hint::EVENT) && m["player"].as_u64() == Some(client_team as u64))
-                .and_then(|m| m["hint"].as_u64());
+            let window = windows().rev().find(|h| h.player == client_team as u64).map(|h| h.hint);
             let mut out = t.events(&a.messages);
             settle_positions(&mut out);
             model.apply_all(&out);
@@ -1043,7 +1049,9 @@ pub mod selfplay {
                         let mut problems = model.check(&state);
                         // A chance that matters, on the default Activation Message: shown, or answered No by the client
                         // itself, which only a window without optional triggers may be (#53: Stardust Dragon's return).
-                        if last["type"].as_u64() == Some(msg::SELECT_CHAIN) && last["spe_count"].as_u64().unwrap_or(0) > 0 {
+                        if let Ok(Some(Ask::Chain(c))) = Ask::lenient(&last)
+                            && c.spe_count > 0
+                        {
                             let level = msgs.iter().find(|m| int(m, "id") == cmd::DIALOG && int(m, "param1") == dialog::EFFECT).map(|m| int(m, "param3"));
                             let phase = window.and_then(chain_window) == Some(ChainWindow::Phase);
                             match level {
@@ -1064,7 +1072,7 @@ pub mod selfplay {
                             return Err(fail(problems));
                         }
                     }
-                    Prompt::Answer(_) if last["player"].as_u64() == Some(client_team as u64) && choices(&last).is_some_and(|n| n > 1) => {
+                    Prompt::Answer(_) if Ask::lenient(&last).ok().flatten().is_some_and(|a| a.player() == client_team as u64) && choices(&last).is_some_and(|n| n > 1) => {
                         let kind = last["type"].as_u64().unwrap_or(0);
                         // The options of an effect always reach the player (a card list when the client has no labels).
                         if kind == msg::SELECT_OPTION || kind == msg::SELECT_SUM || kind == msg::SELECT_EFFECTYN {
@@ -1097,18 +1105,20 @@ pub mod selfplay {
     /// A random legal answer: any summon, Set, activation, attack or position change offered (moving on once `tired`),
     /// random picks within the bounds asked, random yes/no and options. Prompts it doesn't know get the placeholder AI's.
     pub fn random_answer(m: &Json, rng: &mut u64, tired: bool) -> Response {
-        let len = |k: &str| m[k].as_array().map_or(0, Vec::len);
         let mut pick = |n: usize| (next(rng) as usize) % n.max(1);
-        match m["type"].as_u64().unwrap_or(0) {
-            msg::SELECT_IDLECMD => {
+        let Ok(Some(ask)) = Ask::lenient(m) else { return bot_response(m) };
+        match &ask {
+            Ask::IdleCmd(p) => {
                 let mut options: Vec<(u64, Option<usize>)> = vec![];
                 if !tired {
-                    for (list, action) in [("summons", 0), ("special_summons", 1), ("pos_changes", 2), ("monster_sets", 3), ("spell_sets", 4), ("activates", 5)] {
-                        options.extend((0..len(list)).map(|i| (action, Some(i))));
+                    let lists = [(p.summons.len(), idle::SUMMON), (p.special_summons.len(), idle::SPSUMMON), (p.pos_changes.len(), idle::REPOS),
+                        (p.monster_sets.len(), idle::MONSTER_SET), (p.spell_sets.len(), idle::SPELL_SET), (p.activates.len(), idle::ACTIVATE)];
+                    for (len, action) in lists {
+                        options.extend((0..len).map(|i| (action, Some(i))));
                     }
                 }
                 let leave: Vec<(u64, Option<usize>)> =
-                    [(m["to_bp"] == true, idle::TO_BP), (m["to_ep"] == true, idle::TO_EP)].into_iter().filter(|(ok, _)| *ok).map(|(_, a)| (a, None)).collect();
+                    [(p.to_bp, idle::TO_BP), (p.to_ep, idle::TO_EP)].into_iter().filter(|(ok, _)| *ok).map(|(_, a)| (a, None)).collect();
                 // Leaving is one option among the others (always, once tired).
                 if !leave.is_empty() && (options.is_empty() || pick(options.len() + 2) < 2) {
                     let (action, index) = leave[pick(leave.len())];
@@ -1120,30 +1130,30 @@ pub mod selfplay {
                 let (action, index) = options[pick(options.len())];
                 Response::IdleCmd { action, index }
             }
-            msg::SELECT_BATTLECMD => {
+            Ask::BattleCmd(p) => {
                 let mut options: Vec<(u64, Option<usize>)> = vec![];
                 if !tired {
-                    options.extend((0..len("attacks")).map(|i| (battle::ATTACK, Some(i))));
-                    options.extend((0..len("chains")).map(|i| (battle::CHAIN, Some(i))));
+                    options.extend((0..p.attacks.len()).map(|i| (battle::ATTACK, Some(i))));
+                    options.extend((0..p.chains.len()).map(|i| (battle::CHAIN, Some(i))));
                 }
                 if options.is_empty() || pick(options.len() + 1) == 0 {
-                    let action = if m["to_m2"] == true && pick(2) == 0 { battle::TO_M2 } else { battle::TO_EP };
+                    let action = if p.to_m2 && pick(2) == 0 { battle::TO_M2 } else { battle::TO_EP };
                     return Response::BattleCmd { action, index: None };
                 }
                 let (action, index) = options[pick(options.len())];
                 Response::BattleCmd { action, index }
             }
-            msg::SELECT_CHAIN => {
-                let n = len("selects");
-                Response::Chain((n > 0 && (m["forced"] == true || pick(2) == 0)).then(|| pick(n)))
+            Ask::Chain(c) => {
+                let n = c.selects.len();
+                Response::Chain((n > 0 && (c.forced || pick(2) == 0)).then(|| pick(n)))
             }
-            msg::SELECT_EFFECTYN => Response::EffectYn(pick(2) == 0),
-            msg::SELECT_YESNO => Response::YesNo(pick(2) == 0),
-            msg::SELECT_OPTION => Response::Option(pick(len("options"))),
-            kind @ (msg::SELECT_CARD | msg::SELECT_TRIBUTE) => {
-                let n = len("selects");
-                let min = (m["min"].as_u64().unwrap_or(1) as usize).min(n);
-                let max = (m["max"].as_u64().unwrap_or(1) as usize).clamp(min, n.max(min));
+            Ask::EffectYn(_) => Response::EffectYn(pick(2) == 0),
+            Ask::YesNo(_) => Response::YesNo(pick(2) == 0),
+            Ask::Option(o) => Response::Option(pick(o.options.len())),
+            Ask::Card(c) | Ask::Tribute(c) => {
+                let n = c.selects.len();
+                let min = (c.min as usize).min(n);
+                let max = (c.max as usize).clamp(min, n.max(min));
                 let count = min + pick(max - min + 1);
                 let mut all: Vec<usize> = (0..n).collect();
                 for i in (1..all.len()).rev() {
@@ -1151,24 +1161,23 @@ pub mod selfplay {
                 }
                 all.truncate(count);
                 all.sort_unstable();
-                if kind == msg::SELECT_CARD { Response::Card(Some(all)) } else { Response::Tribute(Some(all)) }
+                if matches!(ask, Ask::Card(_)) { Response::Card(Some(all)) } else { Response::Tribute(Some(all)) }
             }
-            msg::SELECT_UNSELECT_CARD => {
-                let n = len("select_cards");
-                Response::UnselectCard((n != 0 && !(m["can_finish"] == true && pick(2) == 0)).then(|| pick(n)))
+            Ask::UnselectCard(u) => {
+                let n = u.select_cards.len();
+                Response::UnselectCard((n != 0 && !(u.can_finish && pick(2) == 0)).then(|| pick(n)))
             }
-            kind @ (msg::SELECT_PLACE | msg::SELECT_DISFIELD) => {
+            Ask::Place(p) | Ask::Disfield(p) => {
                 // Random free zones, `count` of them (field_mask bits set = unavailable): the player's monster zones
                 // 0-4, Spell/Trap 8-13, then the opponent's 16-20 and 24-29.
-                let mask = m["field_mask"].as_u64().unwrap_or(0);
-                let me = m["player"].as_u64().unwrap_or(0);
+                let (mask, me) = (p.field_mask, p.player);
                 let free: Vec<(u64, u64, u64)> = [(me, loc::MZONE, 0..5, 0), (me, loc::SZONE, 0..6, 8), (1 - me, loc::MZONE, 0..5, 16), (1 - me, loc::SZONE, 0..6, 24)]
                     .into_iter()
                     .flat_map(|(p, l, seqs, base)| seqs.map(move |s| (p, l, s, base + s)))
                     .filter(|&(_, _, _, b)| mask & 1 << b == 0)
                     .map(|(p, l, s, _)| (p, l, s))
                     .collect();
-                let count = (m["count"].as_u64().unwrap_or(1) as usize).max(1);
+                let count = (p.count as usize).max(1);
                 if free.len() < count {
                     return bot_response(m);
                 }
@@ -1179,16 +1188,16 @@ pub mod selfplay {
                         json!({ "player": player, "location": location, "sequence": sequence })
                     })
                     .collect();
-                if kind == msg::SELECT_PLACE { Response::Place(places) } else { Response::Disfield(places) }
+                if matches!(ask, Ask::Place(_)) { Response::Place(places) } else { Response::Disfield(places) }
             }
-            msg::SELECT_POSITION => {
-                let allowed = m["positions"].as_u64().unwrap_or(1);
+            Ask::Position(p) => {
+                let allowed = if p.positions == 0 { pos::FACEUP_ATTACK } else { p.positions };
                 let bits: Vec<u64> = [pos::FACEUP_ATTACK, pos::FACEDOWN_ATTACK, pos::FACEUP_DEFENSE, pos::FACEDOWN_DEFENSE].into_iter().filter(|b| allowed & b != 0).collect();
                 Response::Position(if bits.is_empty() { pos::FACEUP_ATTACK } else { bits[pick(bits.len())] })
             }
             // An order (chain links, cards): half the time a random rank per card, else the engine's own.
-            msg::SORT_CHAIN | msg::SORT_CARD => {
-                let n = len("cards");
+            Ask::SortChain(sort) | Ask::SortCard(sort) => {
+                let n = sort.cards.len();
                 if n < 2 || pick(2) == 0 {
                     return bot_response(m);
                 }
