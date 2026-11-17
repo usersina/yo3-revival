@@ -316,6 +316,26 @@ pub const ENGINE_MESSAGES: &[(u64, &str, Handling)] = &{
     ]
 };
 
+/// What the client is answering besides the engine's prompt itself (`Translator::pending`): one thing at a time, so a
+/// state can't outlive the window it belongs to.
+#[derive(Clone, Debug, Default, PartialEq)]
+enum Asking {
+    /// The prompt's own window (a command map, a dialog, a card list), or nothing.
+    #[default]
+    Prompt,
+    /// Which card of a pile, or which of a card's effects, a command is for, in the card list: the response's type and
+    /// action, and the candidates' indices in the prompt's list.
+    Choice { kind: u64, action: u64, candidates: Vec<usize> },
+    /// A direct attack waiting for the client's Yes: its engine response.
+    DirectAttack(Json),
+    /// A pile's view: closing it sends the prompt again.
+    PileView,
+    /// A zone choice's clicks once its OK dialog closed: the zones picked so far.
+    Zones(Vec<Json>),
+    /// An attack's target, picked on the field (#51, see `target_on_field`).
+    FieldTarget,
+}
+
 #[derive(Clone)]
 pub struct Translator {
     /// The client's engine player of team 0.
@@ -360,12 +380,11 @@ pub struct Translator {
     /// The last table entry sent for each player's Deck index 0, which the deck pile shows (0x4FE4D0): a revealed top
     /// card takes that place for a moment and the entry goes back.
     deck_tops: [Option<[u32; 4]>; 2],
-    /// A MSG_SELECT_DISFIELD's zones clicked so far, once its OK dialog closed (None while it is open).
-    zone_picks: Option<Vec<Json>>,
     /// The client's attacker (player, zone) from its last attack command, until the battle or the next command
-    /// prompt; with it, an attack target is picked on the field (`field_target`, see [`VIEW_BATTLE_SELECT`]).
+    /// prompt; with it, an attack target is picked on the field (`Asking::FieldTarget`, see `wire::cmd::BATTLE_SELECT`).
     attacker: Option<(u32, u32)>,
-    field_target: bool,
+    /// What the client is answering besides the prompt's own window.
+    asking: Asking,
     /// An attack taken back on the field: the client still marks its attacker (DuelBattle's state 3, effect 0x39)
     /// until a BattleEnd, which the next prompt starts with (the battle commands then draw the swords again).
     taken_back: bool,
@@ -377,13 +396,6 @@ pub struct Translator {
     decks_reversed: bool,
     /// Each monster zone's position as last shown (face up, defense), by player and zone.
     positions: HashMap<(u32, u32), (bool, bool)>,
-    /// A direct attack waiting for the client's Yes: its engine response.
-    direct: Option<Json>,
-    /// A pile's view is open: closing it sends the pending prompt again.
-    viewing: bool,
-    /// Which card of a pile a command is for, asked in the card list: the response's type and action, and the
-    /// candidates' indices in the prompt's list.
-    choosing: Option<(u64, u64, Vec<usize>)>,
     /// The counts the client holds on each card, by uid and counter kind.
     counters: HashMap<(u32, u32), u32>,
     /// The client's token cards (CARD_Prop rows) by name, the tokens on the field (uids), and the next token's uid.
@@ -527,16 +539,12 @@ impl Translator {
             records: HashMap::new(),
             kinds: HashMap::new(),
             deck_tops: [None; 2],
-            zone_picks: None,
             attacker: None,
-            field_target: false,
+            asking: Asking::Prompt,
             taken_back: false,
             notes: vec![],
             decks_reversed: false,
             positions: HashMap::new(),
-            direct: None,
-            viewing: false,
-            choosing: None,
             token_rows: HashMap::new(),
             tokens: vec![],
             next_token: FIRST_TOKEN_UID,
@@ -910,7 +918,7 @@ impl Translator {
     /// would be (an empty zone's click sends the entry's command with the zone, 0x50B510 → 0x4F9510), then the input
     /// wait.
     fn zone_map(&self, m: &Json) -> Vec<Message> {
-        let picked = self.zone_picks.clone().unwrap_or_default();
+        let picked = match &self.asking { Asking::Zones(picks) => picks.clone(), _ => vec![] };
         let mut map = vec![];
         for (player, location, sequence) in free_zones(m) {
             if picked.contains(&json!({ "player": player, "location": location, "sequence": sequence })) {
@@ -935,18 +943,17 @@ impl Translator {
             _ => (0, 0),
         };
         let place = json!({ "player": player, "location": location, "sequence": sequence });
-        let picks = self.zone_picks.get_or_insert_with(Vec::new);
+        let mut picks = match std::mem::take(&mut self.asking) { Asking::Zones(picks) => picks, _ => vec![] };
         if cmd.index == 0 && free_zones(m).contains(&(player, location, sequence)) && !picks.contains(&place) {
             picks.push(place);
         }
         let count = (m["count"].as_u64().unwrap_or(1) as usize).max(1);
         if picks.len() >= count {
-            let places = std::mem::take(picks);
-            self.zone_picks = None;
             self.pending = None;
             let kind = if m["type"] == msg::SELECT_PLACE { resp::PLACE } else { resp::DISFIELD };
-            return Prompt::Answer(json!({ "type": kind, "places": places }));
+            return Prompt::Answer(json!({ "type": kind, "places": picks }));
         }
+        self.asking = Asking::Zones(picks);
         Prompt::Client(self.zone_map(m))
     }
 
@@ -1932,7 +1939,7 @@ impl Translator {
     pub fn prompt(&mut self, m: &Json) -> Prompt {
         let staged = self.staged.take();
         self.list_order.clear();
-        self.field_target = false;
+        self.asking = Asking::Prompt;
         let prompt = self.prompt_for(m);
         // A window's hint is for the prompt right after it, whichever it was.
         self.phase_window = false;
@@ -2132,7 +2139,7 @@ impl Translator {
         out.extend(message(&[entry::TEXT | text]));
         out.push(Cmd::Dialog { kind: dialog::OK, message: dialog::FROM_ENTRIES, param: 0 }.message());
         self.pending = Some(m.clone());
-        self.zone_picks = None;
+        self.asking = Asking::Prompt;
         Prompt::Client(out)
     }
 
@@ -2423,31 +2430,34 @@ impl Translator {
     }
 
     fn dialog_result_for(&mut self, count: u32) -> Option<Prompt> {
-        if let Some((kind, action, candidates)) = self.choosing.take() {
-            // Which card of the pile: the pick answers the engine; none goes back to the prompt.
-            let pick = (count == 1).then(|| self.picks.first().and_then(|&i| candidates.get(i).copied())).flatten();
-            self.picks.clear();
-            if let Some(index) = pick {
-                self.pending = None;
-                return Some(Prompt::Answer(json!({ "type": kind, "action": action, "index": index })));
+        match std::mem::take(&mut self.asking) {
+            Asking::Choice { kind, action, candidates } => {
+                // Which card of the pile: the pick answers the engine; none goes back to the prompt.
+                let pick = (count == 1).then(|| self.picks.first().and_then(|&i| candidates.get(i).copied())).flatten();
+                self.picks.clear();
+                if let Some(index) = pick {
+                    self.pending = None;
+                    return Some(Prompt::Answer(json!({ "type": kind, "action": action, "index": index })));
+                }
+                let m = self.pending.clone()?;
+                return Some(self.prompt(&m));
             }
-            let m = self.pending.clone()?;
-            return Some(self.prompt(&m));
-        }
-        if std::mem::take(&mut self.viewing) {
-            // A pile's view closed: the prompt it was opened from, again.
-            self.picks.clear();
-            let m = self.pending.clone()?;
-            return Some(self.prompt(&m));
-        }
-        if let Some(response) = self.direct.take() {
-            // Yes attacks; No goes back to the battle commands.
-            let m = self.pending.take()?;
-            return Some(if count == 1 { Prompt::Answer(response) } else { self.prompt(&m) });
+            Asking::PileView => {
+                // A pile's view closed: the prompt it was opened from, again.
+                self.picks.clear();
+                let m = self.pending.clone()?;
+                return Some(self.prompt(&m));
+            }
+            Asking::DirectAttack(response) => {
+                // Yes attacks; No goes back to the battle commands.
+                let m = self.pending.take()?;
+                return Some(if count == 1 { Prompt::Answer(response) } else { self.prompt(&m) });
+            }
+            other => self.asking = other,
         }
         let kind = self.pending.as_ref()?["type"].as_u64()?;
-        if matches!(kind, msg::SELECT_DISFIELD | msg::SELECT_PLACE) && self.zone_picks.is_none() {
-            self.zone_picks = Some(vec![]);
+        if matches!(kind, msg::SELECT_DISFIELD | msg::SELECT_PLACE) && !matches!(self.asking, Asking::Zones(_)) {
+            self.asking = Asking::Zones(vec![]);
             let m = self.pending.clone()?;
             return Some(Prompt::Client(self.zone_map(&m)));
         }
@@ -2699,16 +2709,16 @@ impl Translator {
 
     fn command_for(&mut self, cmd: CardCommand) -> Option<Prompt> {
         let m = self.pending.clone()?;
-        if self.field_target {
+        if self.asking == Asking::FieldTarget {
             return self.target_click(&m, cmd);
         }
-        if (m["type"] == msg::SELECT_DISFIELD || m["type"] == msg::SELECT_PLACE) && self.zone_picks.is_some() {
+        if (m["type"] == msg::SELECT_DISFIELD || m["type"] == msg::SELECT_PLACE) && matches!(self.asking, Asking::Zones(_)) {
             return Some(self.zone_click(&m, cmd));
         }
         if cmd.command == menu::CONFIRM
             && let Some(out) = self.pile_view(cmd.player, cmd.zone)
         {
-            self.viewing = true;
+            self.asking = Asking::PileView;
             return Some(Prompt::Client(out));
         }
         if cmd.zone >= zone::EXTRA && cmd.zone != zone::DECK {
@@ -2719,7 +2729,7 @@ impl Translator {
         if let Some((list, kind, action, indices)) = self.listed(&cmd).filter(|l| l.3.len() > 1) {
             let selects: Vec<Json> = indices.iter().map(|&i| m[list][i].clone()).collect();
             let out = self.card_list(&json!({ "selects": selects, "min": 0, "max": 1 }), Some(text::SELECT_EFFECT));
-            self.choosing = Some((kind, action, indices));
+            self.asking = Asking::Choice { kind, action, candidates: indices };
             self.picks.clear();
             return Some(Prompt::Client(out));
         }
@@ -2732,7 +2742,7 @@ impl Translator {
             return Some(Prompt::Answer(response));
         }
         self.pending = Some(m);
-        self.direct = Some(response);
+        self.asking = Asking::DirectAttack(response);
         let mut out = message(&[entry::TEXT | text::DIRECT]);
         out.push(Cmd::Dialog { kind: dialog::YES_NO, message: dialog::FROM_ENTRIES, param: 0 }.message());
         Some(Prompt::Client(out))
@@ -2764,7 +2774,7 @@ impl Translator {
             let place = self.place(card).filter(|p| p >> 8 & 0xFF == 0)?;
             map.push((place, 1 << menu::CONFIRM));
         }
-        self.field_target = true;
+        self.asking = Asking::FieldTarget;
         self.pending = Some(m.clone());
         Some(vec![
             Cmd::BattleInit.message(),
@@ -2781,7 +2791,7 @@ impl Translator {
         let slot = if cmd.index == 0 && cmd.zone < 5 { cmd.zone as usize } else { return None };
         let place = table_place(cmd.player, 0, slot);
         let index = m["selects"].as_array()?.iter().position(|c| self.place(c) == Some(place)).filter(|_| cmd.command == menu::CONFIRM)?;
-        self.field_target = false;
+        self.asking = Asking::Prompt;
         self.pending = None;
         Some(Prompt::Answer(json!({ "type": resp::CARD, "indicies": [index] })))
     }
@@ -2789,11 +2799,11 @@ impl Translator {
     /// The field's right-click (duelRequestName 5): while an attack target is picked on the field, the attack taken
     /// back when the engine allows it.
     pub fn finish(&mut self) -> Option<Prompt> {
-        let m = self.pending.as_ref().filter(|_| self.field_target)?;
+        let m = self.pending.as_ref().filter(|_| self.asking == Asking::FieldTarget)?;
         if m["can_cancel"] != true {
             return None;
         }
-        self.field_target = false;
+        self.asking = Asking::Prompt;
         self.taken_back = true;
         self.pending = None;
         Some(Prompt::Answer(json!({ "type": resp::CARD, "indicies": null })))
@@ -2829,7 +2839,7 @@ impl Translator {
                 };
                 let selects: Vec<Json> = candidates.iter().map(|(_, loc)| (*loc).clone()).collect();
                 let out = self.card_list(&json!({ "selects": selects, "min": 0, "max": 1 }), Some(text));
-                self.choosing = Some((kind, action, candidates.iter().map(|(i, _)| *i).collect()));
+                self.asking = Asking::Choice { kind, action, candidates: candidates.iter().map(|(i, _)| *i).collect() };
                 self.picks.clear();
                 Some(Prompt::Client(out))
             }
@@ -2885,14 +2895,15 @@ impl Translator {
             Some(msg::SELECT_IDLECMD) => (&IDLE_LISTS, resp::IDLECMD, &[("to_bp", idle::TO_BP), ("to_ep", idle::TO_EP)]),
             Some(msg::SELECT_BATTLECMD) => (&BATTLE_LISTS, resp::BATTLECMD, &[("to_m2", battle::TO_M2), ("to_ep", battle::TO_EP)]),
             Some(msg::SELECT_DISFIELD) if self.player(&m["player"]) == CLIENT => return self.unreachable_zones(m),
-            Some(msg::SELECT_CARD) if self.field_target => return self.unreachable_targets(m),
+            Some(msg::SELECT_CARD) if self.asking == Asking::FieldTarget => return self.unreachable_targets(m),
             _ => return self.unreachable_choices(m),
         };
         let mut reachable: Vec<Json> = vec![];
         let mut reach = |p: Option<Prompt>, t: &Translator| match p {
             Some(Prompt::Answer(r)) => reachable.push(r),
-            Some(Prompt::Client(_)) if t.choosing.is_some() => {
-                for i in 0..t.choosing.as_ref().map_or(0, |c| c.2.len()) {
+            Some(Prompt::Client(_)) if matches!(t.asking, Asking::Choice { .. }) => {
+                let n = if let Asking::Choice { candidates, .. } = &t.asking { candidates.len() } else { 0 };
+                for i in 0..n {
                     let mut pick = t.clone();
                     pick.pick(i as u32);
                     if let Some(Prompt::Answer(r)) = pick.dialog_result(1) {
@@ -2900,7 +2911,7 @@ impl Translator {
                     }
                 }
             }
-            Some(Prompt::Client(_)) if t.direct.is_some() => {
+            Some(Prompt::Client(_)) if matches!(t.asking, Asking::DirectAttack(_)) => {
                 if let Some(Prompt::Answer(r)) = t.clone().dialog_result(1) {
                     reachable.push(r);
                 }
