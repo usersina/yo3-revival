@@ -190,3 +190,20 @@ fn a_password_change_cannot_commit_after_its_old_password_or_authority_was_repla
     assert!(f.api.accounts.lock().unwrap().change_password_if_current(f.user, &before, stolen).is_err());
     assert_eq!(f.api.accounts.lock().unwrap().login_by_id(f.user).unwrap().password, newer);
 }
+#[test]
+fn a_new_user_id_keeps_the_case_it_was_typed_in() {
+    // add-user and the dashboard stored "StaffAdmin" as "staffadmin" (Windows VM round, 2026-11-17), so the launcher,
+    // the dashboard and the audit log showed it in lowercase while sign-up and older accounts kept their capitals.
+    // Lookups ignore case, so only what is shown changed: a second "staffADMIN" is still taken, and sign-in matches.
+    let f = Fixture::new("case");
+    f.api.apply(&Op::AddUser { user: " StaffAdmin ".into(), code: logins::new_code().into() }, "host").unwrap();
+    f.api.issue_account_code(&Request::CreateAccount { user: "KaibaCorp".into(), code: CODE.to_string().into() }, ID, Actor::Host { by: "host" }, "server").unwrap();
+    let d = f.api.accounts.lock().unwrap();
+    assert_eq!(d.login_of("staffadmin").unwrap().1.user, "StaffAdmin", "the CLI's add-user");
+    assert_eq!(d.login_of("KAIBACORP").unwrap().1.user, "KaibaCorp", "the dashboard's Create account");
+    drop(d);
+    let again = f.api.issue_account_code(&Request::CreateAccount { user: "staffADMIN".into(), code: OTHER.to_string().into() }, "credential-test-00002", Actor::Host { by: "host" }, "server");
+    assert_eq!(again.unwrap_err().code, MutationErrorCode::AlreadyExists, "a User ID differing only in case is taken");
+    let targets: Vec<String> = f.api.audit(10).unwrap().iter().map(|r| r.target.clone()).collect();
+    assert!(targets.contains(&"StaffAdmin".to_string()) && targets.contains(&"KaibaCorp".to_string()), "{targets:?}");
+}
