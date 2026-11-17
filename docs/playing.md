@@ -34,7 +34,8 @@ Use the phase buttons to enter the Battle Phase, Main Phase 2 or End Phase.
 
 **Main Menu → DUEL OPTIONS** sets how duels behave for you. With **Auto Card Placing** OFF you choose the zone for each
 monster, Spell and Trap you put on the field (a prompt, then a click on a free zone); ON, the game picks for you.
-**Activation Message** decides how often the game asks whether to activate a card.
+**Activation Message** decides how often the game asks whether to activate a card. On the default (Semi Auto Cancel), it
+always asks for effects used during a phase, such as Stardust Dragon returning in the End Phase.
 
 Each NPC plays in character and talks in the chat window below the field, with its name in red. Yami Yugi, Yugi,
 Jaden and Yusei draw the card they need, and Maximillion Pegasus can see your hand and your Set cards, unless you wear

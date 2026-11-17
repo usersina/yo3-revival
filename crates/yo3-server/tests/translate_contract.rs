@@ -1125,6 +1125,30 @@ fn a_chain_chance_says_how_much_it_matters() {
     assert_eq!(chain_level(&mut t, at(1, 0, 0)), 3, "a chain in progress");
 }
 
+#[test]
+fn a_phase_window_that_may_hold_an_optional_trigger_shows_by_default() {
+    // #53: Stardust Dragon negated in the opponent's turn may come back "during the End Phase" (an optional trigger in
+    // the Graveyard). With a Set card that could also be activated, the core asks with MSG_SELECT_CHAIN after MSG_HINT
+    // HINT_EVENT 26 (its PhaseEvent window), counting the trigger in spe_count. At level 1 the default Semi Auto Cancel
+    // answered No for the player, and Stardust stayed in the Graveyard (the reporter's packets: Effect dialog level 1,
+    // DLGResult 0 a second later). A phase's own window now shows; other quiet windows keep level 1.
+    let mut t = with_cards();
+    let cards = json!([card_at(0, 16, 0, 4101), card_at(0, 8, 0, 4102)]);
+    let end_phase = json!({ "type": 16, "player": 0, "spe_count": 1, "forced": false, "hint_timing": 0, "hint_timing_other": 0x20,
+        "selects": cards });
+    let window = |hint: u32, player: u32| json!({ "type": 2, "hint_type": 1, "player": player, "hint": hint });
+    t.events(&[window(26, 0)]);
+    assert_eq!(chain_level(&mut t, end_phase.clone()), 3, "the End Phase's own window shows");
+    t.dialog_result(0);
+    assert_eq!(chain_level(&mut t, end_phase.clone()), 1, "the hint is for one chance only");
+    t.dialog_result(0);
+    t.events(&[window(23, 0)]);
+    assert_eq!(chain_level(&mut t, end_phase.clone()), 1, "Main Phase end (23) has no phase triggers");
+    t.dialog_result(0);
+    t.events(&[window(26, 1)]);
+    assert_eq!(chain_level(&mut t, end_phase), 1, "the opponent's window says nothing about the player's chance");
+}
+
 /// The cards' place words of the 0x1C commands among `out`.
 fn flips(out: &[Message]) -> Vec<u32> {
     out.iter().map(cmd).filter(|(id, _)| *id == 0x1C).map(|(_, p)| p[0]).collect()

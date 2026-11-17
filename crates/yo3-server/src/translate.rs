@@ -107,6 +107,11 @@ const BATTLE_TO_M2: u64 = 2;
 const BATTLE_TO_EP: u64 = 3;
 /// MSG_HINT's hint_type for "what the next selection is for" (HINTMSG_* in the card scripts' constant.lua).
 const HINT_SELECTMSG: u64 = 3;
+/// MSG_HINT's hint_type for the window a chance comes in, and its values for a phase's own window (the core's
+/// PhaseEvent: Draw 20, Standby 21, Battle Phase end 25, End 26, Battle start 28), the only chain chances that offer
+/// the phase's optional triggers ("During the End Phase: you can...") among other cards. #53
+const HINT_EVENT: u64 = 1;
+const PHASE_EVENT_HINTS: [u64; 5] = [20, 21, 25, 26, 28];
 const HINTMSG_RELEASE: u64 = 500;
 /// ocgcore positions.
 const POS_FACEUP_ATTACK: u64 = 1;
@@ -629,6 +634,8 @@ pub struct Translator {
     /// Engine messages this duel dropped that the table doesn't say are fine to drop: each warns once.
     unshown: HashSet<u64>,
     chain_list: bool,
+    /// The next chain chance is a phase's own window (HINT_EVENT): it may hold an optional trigger.
+    phase_window: bool,
     /// The chain's last link (MSG_CHAINING) until the chain ends, and each link's {player, zone} by its number - 1.
     chaining: Option<Json>,
     chain: Vec<(u32, u32)>,
@@ -799,6 +806,7 @@ impl Translator {
             coin_call: None,
             unshown: HashSet::new(),
             chain_list: false,
+            phase_window: false,
             chaining: None,
             in_battle: false,
             battle_phase: false,
@@ -952,6 +960,9 @@ impl Translator {
                     out.extend(self.move_card(m));
                 }
                 Some(MSG_FIELD_DISABLED) => out.extend(self.disabled_zones(m)),
+                Some(MSG_HINT) if m["hint_type"].as_u64() == Some(HINT_EVENT) && self.player(&m["player"]) == CLIENT => {
+                    self.phase_window = m["hint"].as_u64().is_some_and(|h| PHASE_EVENT_HINTS.contains(&h));
+                }
                 Some(MSG_HINT) if m["hint_type"].as_u64() == Some(HINT_SELECTMSG) && self.player(&m["player"]) == CLIENT => {
                     self.hint = m["hint"].as_u64().unwrap_or(0);
                     self.hint_note = m["hint_text"].as_str().filter(|t| !t.is_empty()).map(|t| (self.hint, t.to_owned()));
@@ -2189,6 +2200,8 @@ impl Translator {
     pub fn prompt(&mut self, m: &Json) -> Prompt {
         let staged = self.staged.take();
         let prompt = self.prompt_for(m);
+        // A window's hint is for the prompt right after it, whichever it was.
+        self.phase_window = false;
         match prompt {
             Prompt::Client(out) => {
                 let mut all = self.unstage_n(staged);
@@ -2495,6 +2508,7 @@ impl Translator {
     fn chain_chance(&mut self, m: &Json) -> Prompt {
         let selects = m["selects"].as_array().map_or(&[][..], Vec::as_slice);
         let forced = m["forced"] == true;
+        let phase_window = self.phase_window;
         if selects.is_empty() {
             return Prompt::Answer(json!({ "type": RESP_CHAIN, "index": null }));
         }
@@ -2522,7 +2536,10 @@ impl Translator {
         let timing = m["hint_timing"].as_u64().unwrap_or(0) | m["hint_timing_other"].as_u64().unwrap_or(0);
         let level = if m["spe_count"].as_u64().unwrap_or(0) == 0 {
             LEVEL_UNFIT
-        } else if self.chaining.is_some() || timing & !QUIET_TIMINGS != 0 {
+        } else if self.chaining.is_some() || timing & !QUIET_TIMINGS != 0 || phase_window {
+            // A phase's own window counts its optional triggers in spe_count (Stardust Dragon's return in the End
+            // Phase): at the phase level the default Activation Message answered No for the player, and the chance
+            // was gone (#53). The core doesn't say which cards are triggers, so the whole window shows.
             LEVEL_EVENT
         } else {
             LEVEL_PHASE
