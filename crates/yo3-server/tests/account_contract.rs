@@ -299,6 +299,22 @@ async fn an_older_launcher_is_told_to_update() {
 }
 
 #[tokio::test]
+async fn omitting_or_forging_the_launcher_version_cannot_bypass_the_update_gate() {
+    let s=server("version-required").await;
+    for version in [None,Some("0.0.0"),Some("not-a-version")] {
+        let mut request=json!({"op":"login","user":"Yugi","password":PASSWORD});
+        if let Some(version)=version { request["launcher"]=json!(version); }
+        let body=serde_json::to_vec(&request).unwrap();
+        let mut wire=(body.len() as u16).to_be_bytes().to_vec();wire.extend(body);
+        let reply=s.endpoint.raw(6,&wire).await.unwrap();
+        let reply:Json=serde_json::from_slice(&reply[2..]).unwrap();
+        assert_eq!(reply["error"],"update_required","{request}: {reply}");
+    }
+    let current=s.login("Yugi",PASSWORD).await;
+    assert_eq!(current["error"],"invalid_credentials","the current launcher passes the version gate");
+}
+
+#[tokio::test]
 async fn a_request_that_is_not_an_object_is_refused() {
     let s = server("bad").await;
     assert_eq!(s.ask(json!(["login"])).await["error"], "bad_request");

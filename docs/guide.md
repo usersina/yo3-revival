@@ -101,7 +101,7 @@ while the server runs or stopped, and each applies at its own moment:
 | `server-name` | Yu-Gi-Oh! ONLINE 3 server | At once | The name in the launcher's server list |
 | `headline` | (none) | At once | A line of news under the name in the server list |
 | `registration` | `invite` | At once | How accounts are made: `invite`, `open` or `closed` ([accounts](authentication.md#accounts)) |
-| `min-launcher` | (none) | At once | Refuse sign-ins from older launchers; they are told to update |
+| `min-launcher` | Server release | At once | Raise the minimum launcher version; it cannot be lower than the server release. Older launchers are told to update |
 | `login-regulation` | Season 16 | At each player's next login | The banlist for Auto Duel and NPC duels, by id or name. Players already online keep theirs |
 | `start-lp` | 8000 | At the next duel | LP at the start of an Auto Duel or NPC duel; a hosted duel has its own |
 | `turn-seconds`, `total-seconds` | 180, 600 | At the next duel | The clocks of duels between players that set none (0: off) |

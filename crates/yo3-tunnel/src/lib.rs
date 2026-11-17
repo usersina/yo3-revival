@@ -11,13 +11,15 @@ use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, pem::PemObjec
 mod identity;
 pub mod invite;
 pub mod diagnostics;
+mod version;
+pub use version::{minimum_launcher, version_at_least};
 pub use identity::{ObservedServer, discover, identity_from_pem};
 
 pub type Stream = tokio_rustls::client::TlsStream<TcpStream>;
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub const MAGIC: &[u8; 8] = b"YO3TLS02";
-pub const PROTOCOL_VERSION: u16 = 2;
+pub const PROTOCOL_VERSION: u16 = 3;
 pub const MOD_ABI: u16 = 3;
 pub const BUILD_VERSION: &str = env!("YO3_VERSION");
 pub const BUILD_COMMIT: &str = env!("YO3_COMMIT");
@@ -65,12 +67,20 @@ impl ServerInfo {
         Self { release: BUILD_VERSION.into(), commit: BUILD_COMMIT.into(), protocol: PROTOCOL_VERSION,
             mod_abi: MOD_ABI, game_version: "1.153".into(), ready,
             problem: (!ready).then(|| "The host's rules engine is unavailable.".into()),
-            name: String::new(), headline: String::new(), online: None, max_online: None, registration: String::new(), min_launcher: None, maintenance: false, news: vec![] }
+            name: String::new(), headline: String::new(), online: None, max_online: None, registration: String::new(), min_launcher: minimum_launcher(BUILD_VERSION,None).map(str::to_owned), maintenance: false, news: vec![] }
     }
     pub fn ensure_compatible(&self, protocol: u16, mod_abi: u16) -> anyhow::Result<()> {
         if self.protocol != protocol { bail!("Server {} requires protocol {}; this application uses {}. Install a compatible release.", self.release, self.protocol, protocol) }
         if self.mod_abi != mod_abi { bail!("Server {} requires connection DLL interface {}; installed components use {}. Repair or update the application.", self.release, self.mod_abi, mod_abi) }
         if self.game_version != "1.153" { bail!("Server requires unsupported game version {}.", self.game_version) }
+        Ok(())
+    }
+    /// Check before opening the game or sending credentials. The server independently checks admission.
+    pub fn ensure_launcher(&self, version: &str) -> anyhow::Result<()> {
+        if let Some(need)=minimum_launcher(&self.release,self.min_launcher.as_deref())
+            && !version_at_least(version,need) {
+            bail!("Update required: this server needs YO3 Revival {need} or newer. You have {version}. Update the application before playing.")
+        }
         Ok(())
     }
 }
@@ -198,12 +208,16 @@ impl Endpoint {
 
     pub async fn login(&self, key: &str) -> anyhow::Result<Token> {
         if key.len() != KEY_LEN { bail!("account key must have {KEY_LEN} characters") }
-        self.info().await?.ensure_compatible(PROTOCOL_VERSION, MOD_ABI)?;
+        let info=self.info().await?;
+        info.ensure_compatible(PROTOCOL_VERSION, MOD_ABI)?;
+        info.ensure_launcher(BUILD_VERSION)?;
         let mut stage = "TCP connect";
         let (token,mut tls)=tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
             let mut tls = self.open(1,&mut stage).await?;
             tls.write_u16(PROTOCOL_VERSION).await?;
             tls.write_u16(MOD_ABI).await?;
+            tls.write_u8(BUILD_VERSION.len() as u8).await?;
+            tls.write_all(BUILD_VERSION.as_bytes()).await?;
             tls.write_all(key.as_bytes()).await?;
             let token = token_response(&mut tls,&mut stage).await?;
             Ok::<_,anyhow::Error>((token,tls))
@@ -230,7 +244,9 @@ impl Endpoint {
     /// An account operation (#23): `request` is a JSON object with an "op" (register, login, resume, sign_out,
     /// change_password, recover); the reply is a JSON object with "ok", and "error" when it isn't.
     pub async fn account(&self, request: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
-        let body = serde_json::to_vec(request)?;
+        let mut request=request.clone();
+        if let Some(fields)=request.as_object_mut() { fields.entry("launcher").or_insert_with(||serde_json::json!(BUILD_VERSION)); }
+        let body = serde_json::to_vec(&request)?;
         if body.len() > MAX_ACCOUNT_REQUEST { bail!("account request too large") }
         let mut stage = "TCP connect";
         let (reply, mut tls) = tokio::time::timeout(HANDSHAKE_TIMEOUT, async {

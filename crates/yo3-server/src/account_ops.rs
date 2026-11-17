@@ -10,7 +10,7 @@
 //! | change_password | user, password, new_password | — (every device is signed out) |
 //! | recover | user, code (the recovery code or a moderator's reset code), new_password | recovery_code (a new one) |
 //!
-//! Every request may carry "launcher" (its version): an older one than the server's `min-launcher` setting gets
+//! Every request must carry "launcher" (its version): an older one than the server release or `min-launcher` gets
 //! `update_required`. The game's own connections still use the session through tickets (operations 2 and 3).
 use std::net::IpAddr;
 use std::sync::Mutex;
@@ -46,8 +46,8 @@ pub async fn handle(request: &Json, ctx: &Context<'_>) -> Json {
         tracing::warn!("[account] {} {op}: throttled", ctx.peer);
         return waiting(wait);
     }
-    if let (Some(need), Some(have)) = (&ctx.settings.min_launcher, request["launcher"].as_str())
-        && !logins::version_at_least(have, need) { return json!({ "ok": false, "error": "update_required", "min_launcher": need }) }
+    if let Some(need)=yo3_tunnel::minimum_launcher(yo3_tunnel::BUILD_VERSION,ctx.settings.min_launcher.as_deref())
+        && !logins::version_at_least(text(request,"launcher"), need) { return json!({ "ok": false, "error": "update_required", "min_launcher": need }) }
     let reply = match op {
         "register" => register(request, ctx).await,
         "login" => login(request, ctx).await,

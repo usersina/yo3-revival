@@ -286,7 +286,9 @@ updates** asks at once). When one is out:
   version Y" with the reason behind **Details**, and doesn't download that version again by itself (the release page
   still has it).
 - **A server that needs a newer YO3 Revival** shows **UPDATE** on its Play button in Multiplayer, which opens What's
-  new (or the release page before the update is known). Singleplayer and other servers keep working.
+  new (or the release page before the update is known). A v0.1.1 server requires at least a v0.1.1 launcher. Let the
+  signed update finish, then restart to install it. Your original game files do not need replacing. Singleplayer
+  runs your own bundled server; other servers have their own version requirement.
 
 You can still update by hand: download the new Desktop archive and extract it in place of the old folder, with
 YO3 Revival closed. Your settings and data are kept in the app's storage.

@@ -71,7 +71,8 @@ def main():
         cli('set','registration','open')
         # The real authenticated account protocol: exact magic/op/BE length from yo3-tunnel::Endpoint::account.
         ctx = ssl.create_default_context(cadata=game_cert)
-        payload = json.dumps({'op':'register','user':'GamePlayer','password':PASSWORD,'rules':True}).encode()
+        launcher=cli('--version').stdout.strip().split()[-1]
+        payload = json.dumps({'op':'register','user':'GamePlayer','password':PASSWORD,'rules':True,'launcher':launcher}).encode()
         with ctx.wrap_socket(socket.create_connection(('127.0.0.1',game_port),timeout=20),server_hostname='localhost') as s:
             s.sendall(b'YO3TLS02'+b'\x06'+struct.pack('>H',len(payload))+payload)
             def read(n):

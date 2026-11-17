@@ -58,12 +58,15 @@ with two accounts on one IP, private displays :78/:79, named and ordinal DLL tes
 
 The outer handshake is our own protocol, not inferred Konami fields. Inside validated TLS each connection starts
 with ASCII `YO3TLS02` and a one-byte operation. Numbers are big-endian; tokens are opaque 32-byte random values.
-The compiled protocol version is 2 and the required DLL interface is 3 (`yo3-tunnel::PROTOCOL_VERSION` / `MOD_ABI`).
+The compiled protocol version is 3 and the required DLL interface is 3 (`yo3-tunnel::PROTOCOL_VERSION` / `MOD_ABI`).
+Every versioned server requires a launcher at least as new as its release. `min-launcher` may raise that floor,
+never lower it. Missing/invalid account versions and outdated key logins are refused by the server, independently
+of launcher preflight (confirmed: `account_contract.rs`, `auth_flow.rs`, tunnel `response_close.rs` and `version.rs`).
 Old transports are refused.
 
 | Operation | Payload after operation                              | Reply                                                    | Meaning                                                                                                    |
 | --------- | ---------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| 1 login   | u16 protocol, u16 DLL interface, 20-byte account key | status byte, then session token on success               | incompatible versions refused before reading the key; session lasts 12 hours                               |
+| 1 login   | u16 protocol, u16 DLL interface, u8 version length (1–64), UTF-8 launcher version, 20-byte account key | status byte, then session token on success               | incompatible versions refused before reading the key; session lasts 12 hours                               |
 | 2 ticket  | session token, role byte                             | status byte, then ticket on success                      | role 1 front, 2 duel, 3 assets; ticket lasts 30 seconds                                                    |
 | 3 connect | ticket, role, u16 launcher-local duel port           | status byte, then stock game frames (or HTTP for role 3) | consume ticket once, including failed wrong-role attempts; a front needs a nonzero local duel port         |
 | 4 logout  | session token                                        | status byte                                              | invalidate session, queued tickets and live connections; retry is harmless                                 |

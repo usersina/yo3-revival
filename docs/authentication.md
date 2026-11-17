@@ -88,7 +88,8 @@ Then the host chooses how password accounts are made, with the `registration` [l
 | `open` | Anyone who reaches the server |
 | `closed` | Only the host, with `add-user` |
 
-The `server-name` and `headline` settings show in the launcher's server list, and `min-launcher VERSION` refuses
+The server requires launchers at least as new as its own release. The `server-name` and `headline` settings show in
+the launcher's server list, and a higher `min-launcher VERSION` refuses
 launchers older than that version, which are told to update.
 
 Players find the server with an invite link (`yo3revival://server?address=HOST:PORT&identity=HEX&name=NAME`, which
@@ -165,7 +166,7 @@ Every connection starts with TLS, an 8-byte opener and one operation byte:
 
 | Op | What | Request | Reply |
 | --- | --- | --- | --- |
-| 1 | Key login | protocol and DLL interface versions, the 20-character key | status, then a 32-byte session |
+| 1 | Key login | protocol and DLL interface versions, a bounded launcher release string, the 20-character key | status, then a 32-byte session |
 | 2 | Ticket | session, role (front, duel or HTTP) | status, then a 32-byte ticket |
 | 3 | Connect | ticket, role, local duel port | status; the connection then carries the game's own frames |
 | 4 | Logout | session | status |
@@ -199,7 +200,7 @@ peer's close before dropping TCP. This avoids intermittent Windows socket resets
 ## Account requests
 
 Operation 6 carries one JSON object with an `"op"`. Each reply has `"ok"`, and `"error"` when it is false. Any
-request may carry `"launcher"`, its version: one older than the server's `min-launcher` setting gets `update_required`
+request must carry `"launcher"`, its version: a missing/invalid version or one older than the server release or a higher `min-launcher` gets `update_required`
 with `min_launcher`.
 
 | op | Asks for | Replies |
