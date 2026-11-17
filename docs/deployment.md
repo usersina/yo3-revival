@@ -2,7 +2,7 @@
 
 Run Ansible **from your local checkout**, supplying the VPS IP and a DNS name pointing to it. It sets up Docker,
 HTTPS, the server and dashboard. Later releases publish container images to GitHub; automatic VPS deployment is
-separate future work. This is Unreleased work on the dashboard branch. Public password sign-in is enabled for
+separate future work. This arrived in v0.1.0. Public password sign-in is enabled for
 VPS testing; MFA and recovery are still pending.
 
 ## Before running

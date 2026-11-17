@@ -1,7 +1,6 @@
 # Linux VPS with Docker Compose
 
-Run the Rust server/native duel engine and the React/nginx dashboard as separate services. This is the **Unreleased
-`codex/dashboard-ui` implementation**. The dashboard is public HTTPS with staff password sign-in, as requested for
+Run the Rust server/native duel engine and the React/nginx dashboard as separate services. This arrived in **v0.1.0**. The dashboard is public HTTPS with staff password sign-in, as requested for
 VPS testing; **MFA is not implemented yet**. The old HTML panel and host-token API remain container-local. A web
 session never grants host authority. Public database downloads are disabled; use SSH for backups.
 

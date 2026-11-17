@@ -1,7 +1,7 @@
 # Hosting a server
 
 For the separate React dashboard and container deployment, use [Docker Compose and HTTPS](docker.md).
-That Unreleased option supports public HTTPS/password sign-in for VPS testing; MFA is still pending. This page
+That option (v0.1.0) supports public HTTPS/password sign-in for VPS testing; MFA is still pending. This page
 covers the server bundle and its existing private HTML panel.
 
 How to run `yo3-server` as an always-on service on a Linux server (a VPS, or a spare PC) from the **server bundle**,

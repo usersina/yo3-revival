@@ -1,6 +1,6 @@
 # Protocol catalog
 
-Deployment note (Unreleased): Compose/nginx serves the staff API over a mounted Unix socket, with exact browser
+Deployment note (v0.1.0): Compose/nginx serves the staff API over a mounted Unix socket, with exact browser
 origin and proxy-header checks. This adds no game request/reply fields; `front.rs` and the game wire catalog are
 unchanged. [Container deployment](docker.md).
 
@@ -2418,7 +2418,7 @@ a trade or rental ready or cancel hangs nothing visible.
   Online 2 downloads under `download.yugioh-online.net`.
 
 
-### Transactional administrative account deletion (Unreleased)
+### Transactional administrative account deletion (v0.1.0)
 
 Confirmed by our API implementation and contracts; this is our management protocol, not a guessed client field.
 `POST /panel/api/v1/accounts/delete` requires an admin session, CSRF, `Idempotency-Key`, numeric `user_id` and a
@@ -2431,7 +2431,7 @@ Evidence: `deletion_admin_contract.rs`, `deletion_contract.rs`, `dashboard_contr
 `dashboard/e2e/deletion.spec.ts`. Backups/exported logs remain outside this deletion.
 
 
-### Run-bound administrative stop and live status (Unreleased)
+### Run-bound administrative stop and live status (v0.1.0)
 
 Confirmed by our management API/contracts. `GET /panel/api/v1/server` returns checked process state and a random
 per-run identity. Admin-only `POST /panel/api/v1/server/stop` requires that identity, CSRF and `Idempotency-Key`.
@@ -2442,7 +2442,7 @@ both kinds interrupted without replay. No game wire fields change. Evidence: `st
 `shutdown_contract.rs`, `dashboard_contract.rs`, `dashboard/e2e/server.spec.ts`.
 
 
-### Staff audit history and captured server logs (Unreleased)
+### Staff audit history and captured server logs (v0.1.0)
 
 Our confirmed management protocol, not a client wire change: `GET /panel/api/v1/audit` returns bounded pages with
 string IDs/cursors and formatted JSON text; `GET /panel/api/v1/logs` returns bounded, secret-filtered log entries,

@@ -4,7 +4,7 @@ The beta's security review (#39, 2026-11-16): what was reviewed, what was fixed,
 It looks at the server and the launcher as an attacker on the internet sees them and as a malicious player sees
 them. The player-facing summary of what is kept is the [rules and privacy page](rules-privacy.md).
 
-Deployment update (2026-11-17, Unreleased): public Compose/nginx testing now uses staff passwords, exact origin/host,
+Deployment update (2026-11-17, v0.1.0): public Compose/nginx testing now uses staff passwords, exact origin/host,
 CSRF and socket-only proxy authority; MFA is explicitly deferred. Host-token management stays local and public backup
 downloads are disabled. [Deployment boundaries](dashboard.md#separate-authority-and-listeners). The historical review
 below is not a completed review of the new local Ansible setup/release image workflow or a real VPS deployment.
