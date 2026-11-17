@@ -107,11 +107,44 @@ const BATTLE_TO_M2: u64 = 2;
 const BATTLE_TO_EP: u64 = 3;
 /// MSG_HINT's hint_type for "what the next selection is for" (HINTMSG_* in the card scripts' constant.lua).
 const HINT_SELECTMSG: u64 = 3;
-/// MSG_HINT's hint_type for the window a chance comes in, and its values for a phase's own window (the core's
-/// PhaseEvent: Draw 20, Standby 21, Battle Phase end 25, End 26, Battle start 28), the only chain chances that offer
-/// the phase's optional triggers ("During the End Phase: you can...") among other cards. #53
-const HINT_EVENT: u64 = 1;
-const PHASE_EVENT_HINTS: [u64; 5] = [20, 21, 25, 26, 28];
+/// MSG_HINT's hint_type for the window the next chance comes in (its value: [`CHAIN_WINDOWS`]).
+pub const HINT_EVENT: u64 = 1;
+
+/// What a window's chain question may hold, which decides whether the default Activation Message may answer it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChainWindow {
+    /// A phase's own window (the core's PhaseEvent): its optional triggers ("During the End Phase: you can...") come in
+    /// the chain question with any other card that could be activated, counted in spe_count. It must show (#53).
+    Phase,
+    /// A step's window (the core's PointEvent or QuickEffect): its optional triggers are asked one by one before it
+    /// (MSG_SELECT_EFFECTYN, which always shows), so the chain question holds cards the player may activate any time.
+    Step,
+}
+
+/// Every window the core marks with MSG_HINT HINT_EVENT (processor.cpp), by its value. A value the core sends that isn't
+/// here fails `the_cores_chain_windows_are_all_classified` and the duel check, until it is classified.
+pub const CHAIN_WINDOWS: [(u64, &str, ChainWindow); 15] = [
+    (20, "Draw Phase", ChainWindow::Phase),
+    (21, "Standby Phase", ChainWindow::Phase),
+    (25, "Battle Phase's end", ChainWindow::Phase),
+    (26, "End Phase", ChainWindow::Phase),
+    (28, "Battle Phase's start", ChainWindow::Phase),
+    (23, "Main Phase's end", ChainWindow::Step),
+    (24, "Battle Step", ChainWindow::Step),
+    (27, "turn's start", ChainWindow::Step),
+    (29, "battle step's end", ChainWindow::Step),
+    (40, "Damage Step's start", ChainWindow::Step),
+    (41, "before damage calculation", ChainWindow::Step),
+    (42, "damage calculation", ChainWindow::Step),
+    (43, "after damage calculation", ChainWindow::Step),
+    (44, "Damage Step's end", ChainWindow::Step),
+    (45, "damage calculation, again", ChainWindow::Step),
+];
+
+/// The kind of window a HINT_EVENT value marks; none for a value [`CHAIN_WINDOWS`] doesn't know.
+pub fn chain_window(hint: u64) -> Option<ChainWindow> {
+    CHAIN_WINDOWS.iter().find(|(h, _, _)| *h == hint).map(|&(_, _, w)| w)
+}
 const HINTMSG_RELEASE: u64 = 500;
 /// ocgcore positions.
 const POS_FACEUP_ATTACK: u64 = 1;
@@ -845,7 +878,7 @@ impl Translator {
                 }
                 Some(MSG_FIELD_DISABLED) => out.extend(self.disabled_zones(m)),
                 Some(MSG_HINT) if m["hint_type"].as_u64() == Some(HINT_EVENT) && self.player(&m["player"]) == CLIENT => {
-                    self.phase_window = m["hint"].as_u64().is_some_and(|h| PHASE_EVENT_HINTS.contains(&h));
+                    self.phase_window = m["hint"].as_u64().and_then(chain_window) == Some(ChainWindow::Phase);
                 }
                 Some(MSG_HINT) if m["hint_type"].as_u64() == Some(HINT_SELECTMSG) && self.player(&m["player"]) == CLIENT => {
                     self.hint = m["hint"].as_u64().unwrap_or(0);

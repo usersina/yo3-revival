@@ -103,6 +103,21 @@ Game output, native mod diagnostics, decoded packet traces and engine stderr are
 logs. The viewer hides verbose payloads until searched; exports include them by default. Privacy filtering at export
 omits payload traces and player activity and masks common personal paths/addresses without changing local evidence.
 
+**Questions the client answers by itself.** Below level 2, the client's Effect dialog answers No on its own under the
+default Activation Message (Semi Auto Cancel), so the player never sees that chance. `CHAIN_WINDOWS` in `translate.rs`
+classifies every window the core marks with `MSG_HINT` `HINT_EVENT`. A **Phase** window (Draw, Standby, Battle start
+and end, End) puts its optional triggers inside the chain question, so it must show. A **Step** window asks its triggers
+one by one first, so its chain question may follow the player's option. Two checks keep this honest:
+- `the_cores_chain_windows_are_all_classified` reads the vendored `processor.cpp` and fails when the core sends a
+  window the table lacks, or when the Phase rows stop matching its PhaseEvent.
+- The duel check plays every chance as the default option would: a chance that matters (`spe_count` above 0) left to
+  the client's own No in a Phase window, or a window the table doesn't know, fails the duel. So does the server
+  answering an optional effect's yes/no (`MSG_SELECT_EFFECTYN`) for the player. `Played::hidden_by_default` counts the
+  chances the default hides, by window.
+
+#53 (Stardust Dragon's End Phase return declined for the player) is the case this catches: with that fix undone, 14
+of the 240 duels fail.
+
 For state validation and exact engine replay, enable **Advanced → Hosting → Advanced → All server flags → --duel-check**,
 save and restart the managed server between games. For Scripts, pass `--duel-check` to the server; each player's
 play command already captures client output. This extra engine work is optional and separate from automatic logging.

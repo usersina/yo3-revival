@@ -1149,6 +1149,44 @@ fn a_phase_window_that_may_hold_an_optional_trigger_shows_by_default() {
     assert_eq!(chain_level(&mut t, end_phase), 1, "the opponent's window says nothing about the player's chance");
 }
 
+#[test]
+fn the_cores_chain_windows_are_all_classified() {
+    // A census of the core's own source, like ENGINE_MESSAGES for its message types: every window it marks with MSG_HINT
+    // HINT_EVENT (processor.cpp) has a row in CHAIN_WINDOWS, and the Phase rows are exactly the values its PhaseEvent
+    // sends, the windows whose chain question holds optional triggers (#53). A new or moved window in an engine update
+    // fails here until it is classified. Skipped unless engine/fetch.sh has run.
+    use yo3_server::translate::{CHAIN_WINDOWS, ChainWindow};
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../engine/vendor/ygopro-core/processor.cpp");
+    let Ok(source) = std::fs::read_to_string(&path) else { return };
+    let lines: Vec<&str> = source.lines().collect();
+    let value = |line: &str| line.trim().strip_prefix("message->write<uint64_t>(")?.strip_suffix(");")?.parse::<u64>().ok();
+    let (mut sent, mut phase) = (std::collections::BTreeSet::new(), std::collections::BTreeSet::new());
+    let mut in_phase_event = false;
+    for (i, line) in lines.iter().enumerate() {
+        if line.starts_with("bool field::process(") {
+            in_phase_event = line.contains("Processors::PhaseEvent&");
+        }
+        if !line.contains("write<uint8_t>(HINT_EVENT)") {
+            continue;
+        }
+        // The value follows the player; PhaseEvent picks it in an if/else by phase.
+        for next in lines.iter().skip(i + 1).take(12).take_while(|l| !l.contains("HINT_EVENT")) {
+            if let Some(v) = value(next) {
+                sent.insert(v);
+                if in_phase_event {
+                    phase.insert(v);
+                }
+            }
+        }
+    }
+    assert!(!phase.is_empty(), "no PhaseEvent window found in {}", path.display());
+    let known: std::collections::BTreeSet<u64> = CHAIN_WINDOWS.iter().map(|(h, _, _)| *h).collect();
+    let classified_phase: std::collections::BTreeSet<u64> =
+        CHAIN_WINDOWS.iter().filter(|(_, _, w)| *w == ChainWindow::Phase).map(|(h, _, _)| *h).collect();
+    assert_eq!(sent, known, "the core's HINT_EVENT windows and CHAIN_WINDOWS differ");
+    assert_eq!(phase, classified_phase, "the PhaseEvent windows and CHAIN_WINDOWS' Phase rows differ");
+}
+
 /// The cards' place words of the 0x1C commands among `out`.
 fn flips(out: &[Message]) -> Vec<u32> {
     out.iter().map(cmd).filter(|(id, _)| *id == 0x1C).map(|(_, p)| p[0]).collect()
