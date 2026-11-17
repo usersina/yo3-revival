@@ -78,7 +78,7 @@ impl Translator {
                 }
                 let mut out = vec![];
                 let text = self.hint_message(&mut out, hint);
-                out.extend(self.card_list(m, text));
+                out.extend(self.card_list(&CardList::of(m), text));
                 self.pending = Some(m.clone());
                 self.picks.clear();
                 Prompt::Client(out)
@@ -86,7 +86,8 @@ impl Translator {
             // Materials, one at a time: the card list until the engine lets the player finish and nothing is left.
             msg::SELECT_UNSELECT_CARD if m["select_cards"].as_array().is_some_and(|s| !s.is_empty()) => {
                 let open = m["can_finish"] == true || m["can_cancel"] == true;
-                let list = json!({ "selects": m["select_cards"], "min": if open { 0 } else { 1 }, "max": 1 });
+                let u: SelectUnselectCard = typed(m);
+                let list = CardList { selects: u.select_cards, min: if open { 0 } else { 1 }, max: 1, cancelable: false };
                 let mut out = vec![];
                 let hint = std::mem::take(&mut self.hint);
                 let text = self.hint_message(&mut out, hint);
@@ -105,7 +106,8 @@ impl Translator {
                 // discards held the player at two picks of six).
                 let n = m["selects"].as_array().map_or(0, Vec::len);
                 let (_, max) = sum_bounds(m);
-                let list = json!({ "selects": m["selects"], "min": 0, "max": max.min(n).max(1) });
+                let sum: SelectSum = typed(m);
+                let list = CardList { selects: sum.selects.into_iter().map(|c| c.loc).collect(), min: 0, max: max.min(n).max(1) as u64, cancelable: false };
                 // The engine's hint (Machina Fortress: "Select the card(s) in your hand you want to discard."), kept for
                 // the list shown again, else the prompt table's 207 "Tribute the necessary monsters to match the
                 // required number of Level.".
@@ -136,10 +138,11 @@ impl Translator {
                     let card = |i: usize| m["option_cids"][i].as_u64().filter(|&c| c != 0)
                         .or_else(|| self.chaining.as_ref().and_then(|c| c["cid"].as_u64()))
                         .unwrap_or(0);
-                    let selects: Vec<Json> = (0..m["options"].as_array().map_or(0, Vec::len))
-                        .map(|i| json!({ "controller": m["player"], "cid": card(i) }))
+                    let player = m["player"].as_u64().unwrap_or(0);
+                    let selects: Vec<Loc> = (0..m["options"].as_array().map_or(0, Vec::len))
+                        .map(|i| Loc { controller: player, cid: Some(card(i)), ..Loc::default() })
                         .collect();
-                    let out = self.card_list(&json!({ "selects": selects, "min": 1, "max": 1 }), Some(text::SELECT_EFFECT));
+                    let out = self.card_list(&CardList { selects, min: 1, max: 1, cancelable: false }, Some(text::SELECT_EFFECT));
                     // What each option does, from the engine's card strings: the chat window, numbered as listed.
                     for (i, text) in m["option_texts"].as_array().into_iter().flatten().enumerate() {
                         if let Some(text) = text.as_str().filter(|t| !t.is_empty()) {
@@ -160,7 +163,8 @@ impl Translator {
             msg::SORT_CHAIN | msg::SORT_CARD if m["cards"].as_array().is_some_and(|c| c.len() >= 2) => {
                 let n = m["cards"].as_array().map_or(0, Vec::len);
                 let text = if kind == msg::SORT_CARD { text::SORT } else { text::SELECT_EFFECT };
-                let out = self.card_list(&json!({ "selects": m["cards"], "min": n, "max": n }), Some(text));
+                let sort: SortCards = typed(m);
+                let out = self.card_list(&CardList { selects: sort.cards, min: n as u64, max: n as u64, cancelable: false }, Some(text));
                 self.pending = Some(m.clone());
                 self.picks.clear();
                 Prompt::Client(out)
@@ -336,9 +340,9 @@ impl Translator {
         self.picks.clear();
         self.chain_list = forced;
         if forced {
-            return Prompt::Client(self.card_list(m, Some(text::SELECT_EFFECT)));
+            return Prompt::Client(self.card_list(&CardList::chain(m), Some(text::SELECT_EFFECT)));
         }
-        let rows: Vec<u32> = selects.iter().map(|loc| self.row_of(loc) as u32).collect();
+        let rows: Vec<u32> = selects.iter().map(|loc| self.row_of(&loc_of(loc)) as u32).collect();
         let mut out = vec![command(cmd::LIST_BEGIN, [rows.len() as u32, 0, dialog::WITH_CARDS, 0])];
         out.extend(fours(cmd::LIST_ROWS, &rows));
         let entries = match &self.chaining {
@@ -370,19 +374,18 @@ impl Translator {
     /// hidden card (a Set card has no row for the client) opens as the card-back kind with a table entry per card
     /// (flag set for the cards shown), so face-up cards keep their faces and Set cards are backs; no pick is needed
     /// there, so the list closing with nothing picked asks again when the choice is forced.
-    pub(super) fn card_list(&mut self, m: &Json, text: Option<u32>) -> Vec<Message> {
-        let engine_order = m["selects"].as_array().map_or(&[][..], Vec::as_slice);
+    pub(super) fn card_list(&mut self, list: &CardList, text: Option<u32>) -> Vec<Message> {
+        let engine_order = &list.selects;
         let mut order: Vec<usize> = (0..engine_order.len()).collect();
         order.sort_by_key(|&i| self.field_order(&engine_order[i], i));
-        let shown: Vec<Json> = order.iter().map(|&i| engine_order[i].clone()).collect();
+        let shown: Vec<&Loc> = order.iter().map(|&i| &engine_order[i]).collect();
         let selects = &shown[..];
         self.list_order = order;
-        let (min, max) = (m["min"].as_u64().unwrap_or(1) as u32, m["max"].as_u64().unwrap_or(1) as u32);
+        let (min, max) = (list.min as u32, list.max as u32);
         // A choice the player may back out of (can_cancel, or a chain list that isn't forced) opens as kind 1: the list
         // (no OK button) closes on a right-click with the picks so far, none cancelling (dlg_cardlist.swf `onMouseUp`
         // with `_cancelable`, which 0x4C73A0 always sets).
-        let cancelable = m["can_cancel"] == true || (m["type"] == msg::SELECT_CHAIN && m["forced"] != true);
-        let min = if cancelable { 0 } else { min };
+        let min = if list.cancelable { 0 } else { min };
         let (kind, max) = match min {
             0 => (list::PICK_ANY, max),
             1 => (list::PICK_ONE, max),
@@ -392,7 +395,7 @@ impl Translator {
         let mixed = rows.contains(&0) && min <= 1;
         self.mixed = mixed;
         let (kind, player) = if mixed { (list::PICK_MIXED, CPU) } else { (kind, CLIENT) };
-        let marks: Vec<u32> = selects.iter().map(|loc| if self.player(&loc["controller"]) == CPU { list::OPPONENTS } else { 0 }).collect();
+        let marks: Vec<u32> = selects.iter().map(|loc| if self.side(loc.controller) == CPU { list::OPPONENTS } else { 0 }).collect();
         let mut out = vec![];
         if mixed {
             for (i, &row) in rows.iter().enumerate() {
@@ -406,7 +409,7 @@ impl Translator {
         out.extend(fours(cmd::LIST_MARKS, &marks));
         // A list that needs several picks says how many (min == max here): the hint alone left a player of Magical Hats
         // with one card marked and no hint that a second one decides.
-        let several = m["min"].as_u64().unwrap_or(1) >= 2 && max >= 2 && kind != list::PICK_MIXED;
+        let several = list.min >= 2 && max >= 2 && kind != list::PICK_MIXED;
         let entries: Vec<u32> = match (text, several) {
             (Some(text), true) => vec![entry::TEXT | text, entry::LINE_BREAK, entry::TEXT | text::SELECT_COUNT, entry::NUMBER | max],
             (None, true) => vec![entry::TEXT | text::SELECT_COUNT, entry::NUMBER | max],
@@ -436,15 +439,15 @@ impl Translator {
     }
 
     /// A card's row as a list shows it: none for the opponent's hidden cards when hiding.
-    pub(super) fn list_row(&self, loc: &Json) -> u32 {
+    pub(super) fn list_row(&self, loc: &Loc) -> u32 {
         let row = self.row_of(loc);
         self.engine_place(loc).map_or(row as u32, |place| self.shown_row(&place, row))
     }
 
     /// A card's CARD_Prop row: from the mirror at its place (any deck card with its id for the deck), else the
     /// first row with its id.
-    pub(super) fn row_of(&self, loc: &Json) -> u16 {
-        let cid = loc["cid"].as_u64().unwrap_or(0) as u16;
+    pub(super) fn row_of(&self, loc: &Loc) -> u16 {
+        let cid = loc.cid.unwrap_or(0) as u16;
         // A token has no Konami id: the one at its place.
         let has_cid = |c: &&Card| self.cards.get(&c.row).map(|s| s.cid) == Some(cid) || (cid == 0 && self.tokens.contains(&c.uid));
         let at_place = self.engine_place(loc).and_then(|p| {
@@ -468,7 +471,7 @@ impl Translator {
     /// opponent's zones are mirrored: their zone 0 is on the player's right), the Field Spells at their rows' ends;
     /// then the cards off the field (hand, piles) in the engine's order. The engine's order (the player's cards first,
     /// each side by zone number) didn't match the field, so two Set cards in a list couldn't be told apart.
-    pub(super) fn field_order(&self, loc: &Json, engine: usize) -> (u32, usize) {
+    pub(super) fn field_order(&self, loc: &Loc, engine: usize) -> (u32, usize) {
         let Some(place) = self.engine_place(loc).filter(|p| p.zone <= zone::FIELD_SPELL) else { return (4, engine) };
         let theirs = place.player == CPU;
         let (row, x) = match place.zone {
@@ -576,7 +579,7 @@ impl Translator {
             msg::SELECT_CHAIN if !self.chain_list && count == 1 && selects > 1 => {
                 self.chain_list = true;
                 self.picks.clear();
-                let out = self.card_list(&m, Some(text::SELECT_EFFECT));
+                let out = self.card_list(&CardList::chain(&m), Some(text::SELECT_EFFECT));
                 self.pending = Some(m);
                 return Some(Prompt::Client(out));
             }
@@ -670,7 +673,7 @@ impl Translator {
         let mut bits: Vec<(u32, u32)> = vec![];
         for &(list, bit, _) in lists {
             for loc in m[list].as_array().into_iter().flatten() {
-                let Some(place) = self.place(loc) else { continue };
+                let Some(place) = self.place(&loc_of(loc)) else { continue };
                 if list == "pos_changes" && bit != self.position_change(place) {
                     continue;
                 }
@@ -698,10 +701,10 @@ impl Translator {
     /// The card-table place of an engine card location: hand (0xB, index), monster zone (0, slot), Spell/Trap
     /// zone (5, slot), and the extra deck, Graveyard and banished cards (0xC, 0xE, 0xF) at the index of a card with
     /// the location's `cid` (the engine's extra deck order isn't ours).
-    pub(super) fn place(&self, loc: &Json) -> Option<u32> {
-        let p = self.player(&loc["controller"]);
-        let seq = loc["sequence"].as_u64()? as usize;
-        let zone = match loc["location"].as_u64()? {
+    pub(super) fn place(&self, loc: &Loc) -> Option<u32> {
+        let p = self.side(loc.controller);
+        let seq = loc.sequence as usize;
+        let zone = match loc.location {
             loc::HAND => zone::HAND,
             loc::MZONE => 0,
             loc::SZONE => 5,
@@ -714,8 +717,8 @@ impl Translator {
             let cid = |c: &Card| self.cards.get(&c.row).map(|s| s.cid as u64);
             let cards = self.sides[p as usize].zones.get(&zone)?;
             let index = match cards.get(seq) {
-                Some(c) if cid(c) == loc["cid"].as_u64() => seq,
-                _ => cards.iter().position(|c| cid(c) == loc["cid"].as_u64())?,
+                Some(c) if cid(c) == loc.cid => seq,
+                _ => cards.iter().position(|c| cid(c) == loc.cid)?,
             };
             return Some(table_place(p, zone, index));
         }

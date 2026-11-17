@@ -67,7 +67,7 @@ impl Translator {
                 // after it (DuelScene reads only its place and uid: the summon effect at the card).
                 Some(msg::FLIPSUMMONING) => {
                     let mut turned = self.turn(m, m["position"].as_u64().unwrap_or(0));
-                    let card = self.engine_place(m).and_then(|p| Some((p, self.sides[p.player as usize].zones.get(&p.zone)?.first()?.uid)));
+                    let card = self.engine_place(&loc_of(m)).and_then(|p| Some((p, self.sides[p.player as usize].zones.get(&p.zone)?.first()?.uid)));
                     if let Some((place, uid)) = card {
                         let flip = turned.iter().position(|c| c.get("id").and_then(Value::as_u32) == Some(cmd::FLIP_TURN)).unwrap_or(turned.len());
                         turned.insert(flip, command(cmd::SPEAK_SUMMON, [place.player, 0x8000 | uid, SUMMON_FLIP, 0]));
@@ -110,7 +110,7 @@ impl Translator {
                 Some(kind @ (msg::SUMMONING | msg::SPSUMMONING)) => {
                     let id = if kind == msg::SUMMONING { cmd::RUN_SUMMON } else { cmd::RUN_SP_SUMMON };
                     // The effect plays at the place's zone (0x514E5A), so the place, not only the player.
-                    let card = self.engine_place(m).and_then(|p| Some((p, self.sides[p.player as usize].zones.get(&p.zone)?.first()?.uid)));
+                    let card = self.engine_place(&loc_of(m)).and_then(|p| Some((p, self.sides[p.player as usize].zones.get(&p.zone)?.first()?.uid)));
                     // The place as moves give it, with its face and position bits (Konami's logs: 0x4000 | place for a
                     // Normal Summon, 0x4000/0xC000/0x8000 for a Special Summon).
                     // A Fusion or Synchro Summon said its line as it arrived; a Tribute Summon's line has its own kind.
@@ -238,7 +238,7 @@ impl Translator {
     /// lasting target) and MSG_CANCEL_TARGET (its end): the cards' links, by uid.
     pub(super) fn link(&mut self, m: &Json, kind: u64) {
         let uid = |t: &Self, loc: &Json| {
-            let place = t.engine_place(loc).filter(|p| p.zone <= zone::FIELD_SPELL)?;
+            let place = t.engine_place(&loc_of(loc)).filter(|p| p.zone <= zone::FIELD_SPELL)?;
             t.sides[place.player as usize].zones.get(&place.zone)?.first().map(|c| c.uid)
         };
         let (Some(card), Some(target)) = (uid(self, &m["card"]), uid(self, &m["target"])) else { return };
@@ -343,7 +343,7 @@ impl Translator {
                     continue;
                 }
                 let cid = x["cid"].as_u64().unwrap_or(0) as u16;
-                let Some(from) = self.engine_place(&x["from"]) else { continue };
+                let Some(from) = self.engine_place(&loc_of(&x["from"])) else { continue };
                 let taken: Vec<u32> = materials.iter().map(|&(_, _, uid, _)| uid).collect();
                 if let Some(uid) = self.uid_left(&from, cid, &taken) {
                     materials.push((cid, from, uid, self.tuners.contains(&cid)));
@@ -392,7 +392,7 @@ impl Translator {
         }
         // The Extra Deck monster arrives: its animation and its line (Konami's logs: 8 for a Synchro, 6 for a Fusion).
         let arriving = reason & reason::SPSUMMON != 0 && m["from"]["location"].as_u64() == Some(loc::EXTRA);
-        let place = self.engine_place(&m["from"]).and_then(|from| Some((from, self.uid_at(&from, cid)?)));
+        let place = self.engine_place(&loc_of(&m["from"])).and_then(|from| Some((from, self.uid_at(&from, cid)?)));
         if let Some(s) = self.summoning.as_mut().filter(|s| arriving && s.family != Family::Tribute && !s.arrived)
             && let Some((from, uid)) = place
         {
@@ -443,19 +443,19 @@ impl Translator {
 
     pub(super) fn move_card(&mut self, m: &Json) -> Vec<Message> {
         let cid = m["cid"].as_u64().unwrap_or(0) as u16;
-        if is_material(&m["to"]) && !is_material(&m["from"]) {
+        if loc_of(&m["to"]).is_material() && !loc_of(&m["from"]).is_material() {
             return self.attach(m, cid);
         }
-        if is_material(&m["from"]) {
-            return self.engine_place(&m["to"]).map(|to| self.detach(cid, to)).unwrap_or_default();
+        if loc_of(&m["from"]).is_material() {
+            return self.engine_place(&loc_of(&m["to"])).map(|to| self.detach(cid, to)).unwrap_or_default();
         }
         if m["from"]["location"].as_u64() == Some(0) {
-            return self.engine_place(&m["to"]).map(|to| self.token(m, to)).unwrap_or_default();
+            return self.engine_place(&loc_of(&m["to"])).map(|to| self.token(m, to)).unwrap_or_default();
         }
-        if let Some(from) = self.engine_place(&m["from"]).filter(|f| f.zone <= zone::FIELD_SPELL)
+        if let Some(from) = self.engine_place(&loc_of(&m["from"])).filter(|f| f.zone <= zone::FIELD_SPELL)
             && let Some(card) = self.sides[from.player as usize].zones.get(&from.zone).and_then(|z| z.first()).copied()
             && self.tokens.contains(&card.uid)
-            && !self.engine_place(&m["to"]).is_some_and(|to| to.zone <= zone::FIELD_SPELL)
+            && !self.engine_place(&loc_of(&m["to"])).is_some_and(|to| to.zone <= zone::FIELD_SPELL)
         {
             // A token leaving the field is gone (EDOPro may send it to a pile first): it shatters off the field, a monster
             // zone or, equipped as a card (Allure Queen LV3), a Spell/Trap zone. One that changes sides (a control
@@ -466,7 +466,7 @@ impl Translator {
             out.push(command(cmd::CARD_VANISH, [from.player, from.zone, 0, 0]));
             return out;
         }
-        match (self.engine_place(&m["from"]), self.engine_place(&m["to"])) {
+        match (self.engine_place(&loc_of(&m["from"])), self.engine_place(&loc_of(&m["to"]))) {
             (Some(from), Some(to)) => {
                 let reason = m["reason"].as_u64().unwrap_or(0);
                 let dropped = if to.zone > zone::FIELD_SPELL { self.drop_counters(&from) } else { vec![] };
@@ -537,7 +537,7 @@ impl Translator {
     /// there) and the mirror keeps it among the materials. **Shape**: the shatter effect plays for it. From elsewhere (a
     /// hand or pile) it isn't followed (logged).
     pub(super) fn attach(&mut self, m: &Json, cid: u16) -> Vec<Message> {
-        let Some(from) = self.engine_place(&m["from"]) else { return vec![] };
+        let Some(from) = self.engine_place(&loc_of(&m["from"])) else { return vec![] };
         if from.zone > zone::FIELD_SPELL {
             tracing::warn!("an Xyz material from a place the client can't take it from: {m}");
             return vec![];
@@ -605,7 +605,7 @@ impl Translator {
     /// MSG_SWAP {card1, card2}: two field cards trade places (Creature Swap: two monsters change sides), each keeping its
     /// own position. Which mirror card is the engine's card1 is told by its id; then [`trade`](Self::trade).
     pub(super) fn swap(&mut self, m: &Json) -> Vec<Message> {
-        let (Some(p1), Some(p2)) = (self.engine_place(&m["card1"]), self.engine_place(&m["card2"])) else { return vec![] };
+        let (Some(p1), Some(p2)) = (self.engine_place(&loc_of(&m["card1"])), self.engine_place(&loc_of(&m["card2"]))) else { return vec![] };
         if p1.zone > zone::FIELD_SPELL || p2.zone > zone::FIELD_SPELL {
             return vec![];
         }
@@ -626,7 +626,7 @@ impl Translator {
             .as_array()
             .into_iter()
             .flatten()
-            .filter_map(|p| Some((self.engine_place(p)?, p["cid"].as_u64().unwrap_or(0) as u16)))
+            .filter_map(|p| Some((self.engine_place(&loc_of(p))?, p["cid"].as_u64().unwrap_or(0) as u16)))
             .filter(|(p, _)| p.zone <= zone::FIELD_SPELL)
             .collect();
         let mut left: Vec<(u32, u16)> = places
@@ -736,7 +736,7 @@ impl Translator {
     /// 0x4FF000), the flip face up (0x1C), the card's popup (CardLockon 0x19 {player, zone, 2}), then the entry without a
     /// row, CardCheat and the flip back.
     pub(super) fn reveal_field(&mut self, loc: &Json) -> Vec<Message> {
-        let Some(place) = self.engine_place(loc).filter(|p| p.zone <= zone::FIELD_SPELL) else { return vec![] };
+        let Some(place) = self.engine_place(&loc_of(loc)).filter(|p| p.zone <= zone::FIELD_SPELL) else { return vec![] };
         let Some(&(face_up, defense)) = self.positions.get(&(place.player, place.zone)) else { return vec![] };
         let Some(card) = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied() else { return vec![] };
         if face_up || !self.hidden[place.player as usize] {
@@ -932,7 +932,7 @@ impl Translator {
     pub(super) fn activation(&self, m: &Json) -> Vec<Message> {
         let mut at = m.clone();
         at["location"] = json!(m["location"].as_u64().unwrap_or(0) & !loc::OVERLAY);
-        let Some(place) = self.engine_place(&at) else { return vec![] };
+        let Some(place) = self.engine_place(&loc_of(&at)) else { return vec![] };
         let index = if place.zone <= zone::FIELD_SPELL { 0 } else { place.index };
         let Some(card) = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.get(index)).copied() else { return vec![] };
         let cid = self.cards.get(&card.row).map_or(0, |c| c.cid as u32);
@@ -1036,8 +1036,8 @@ impl Translator {
 
     /// MSG_ATTACK {card, target}: the battle's start and the attack, at the target or directly.
     pub(super) fn attack(&mut self, m: &Json) -> Vec<Message> {
-        let Some(attacker) = self.engine_place(&m["card"]) else { return vec![] };
-        let target = self.engine_place(&m["target"]).map_or(Target::Direct { player: 1 - attacker.player }, |t| Target::Monster { player: t.player, zone: t.zone });
+        let Some(attacker) = self.engine_place(&loc_of(&m["card"])) else { return vec![] };
+        let target = self.engine_place(&loc_of(&m["target"])).map_or(Target::Direct { player: 1 - attacker.player }, |t| Target::Monster { player: t.player, zone: t.zone });
         self.in_battle = true;
         vec![Cmd::BattleInit.message(), Cmd::BattleAttack { player: attacker.player, zone: attacker.zone, target }.message()]
     }
@@ -1076,7 +1076,7 @@ impl Translator {
     /// A field card turns in place to `position`: 0x1C with its new face and position, after its table entry and record
     /// when it shows a row it didn't before (the opponent's face-down card turning face-up when hiding).
     pub(super) fn turn(&mut self, loc: &Json, position: u64) -> Vec<Message> {
-        let Some(place) = self.engine_place(loc) else { return vec![] };
+        let Some(place) = self.engine_place(&loc_of(loc)) else { return vec![] };
         if place.zone > zone::FIELD_SPELL {
             return vec![];
         }
@@ -1133,7 +1133,7 @@ impl Translator {
     /// MSG_ADD_COUNTER / MSG_REMOVE_COUNTER {counter_type, controller, location, sequence, count} on a field card: the
     /// change in the client's kind, a removal no more than the client holds.
     pub(super) fn counter(&mut self, m: &Json, add: bool) -> Vec<Message> {
-        let Some(place) = self.engine_place(m).filter(|p| p.zone <= zone::FIELD_SPELL) else { return vec![] };
+        let Some(place) = self.engine_place(&loc_of(m)).filter(|p| p.zone <= zone::FIELD_SPELL) else { return vec![] };
         let Some(card) = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied() else { return vec![] };
         let id = m["counter_type"].as_u64().unwrap_or(0);
         let kind = COUNTER_KINDS.iter().find(|(e, _)| *e == id).map_or(ANY_COUNTER, |(_, k)| *k);
@@ -1226,15 +1226,15 @@ impl Translator {
     }
 
     /// The client place of an engine location {controller, location, sequence, position}.
-    pub(super) fn engine_place(&self, loc: &Json) -> Option<Place> {
+    pub(super) fn engine_place(&self, loc: &Loc) -> Option<Place> {
         // An Xyz material: ocgcore-wasm gives its Xyz Monster's location with an `overlay_sequence` (a material attached
         // in the Extra Deck read as the Extra Deck, one detached as its monster's zone); the client has no place for it.
-        if is_material(loc) {
+        if loc.is_material() {
             return None;
         }
-        let player = self.player(&loc["controller"]);
-        let seq = loc["sequence"].as_u64()? as usize;
-        let (zone, index) = match loc["location"].as_u64()? {
+        let player = self.side(loc.controller);
+        let seq = loc.sequence as usize;
+        let (zone, index) = match loc.location {
             loc::DECK => (zone::DECK, 0),
             loc::HAND => (zone::HAND, seq),
             loc::MZONE => (seq as u32, 0),
@@ -1251,8 +1251,8 @@ impl Translator {
         // The Graveyard is face up: face down, its top card showed only its back (live).
         let position = match zone {
             zone::GRAVE => pos::FACEUP_ATTACK,
-            zone::REMOVED => loc["position"].as_u64().unwrap_or(pos::FACEUP_ATTACK),
-            zone if zone <= zone::FIELD_SPELL => loc["position"].as_u64().unwrap_or(0),
+            zone::REMOVED => loc.position.unwrap_or(pos::FACEUP_ATTACK),
+            zone if zone <= zone::FIELD_SPELL => loc.position.unwrap_or(0),
             _ => 0,
         };
         Some(Place { player, zone, index, face_up: position & 5 != 0, defense: zone < 5 && position & 12 != 0 })
@@ -1263,7 +1263,7 @@ impl Translator {
     pub(super) fn chain_link(&self, m: &Json) -> Message {
         let mut at = m.clone();
         at["location"] = json!(m["location"].as_u64().unwrap_or(0) & !loc::OVERLAY);
-        let zone = self.engine_place(&at).map_or(FIELD_CENTRE, |p| p.zone);
+        let zone = self.engine_place(&loc_of(&at)).map_or(FIELD_CENTRE, |p| p.zone);
         command(cmd::CHAIN_SET, [self.player(&m["controller"]), zone, m["chain_size"].as_u64().unwrap_or(0) as u32, 0])
     }
 

@@ -110,10 +110,6 @@ pub(super) fn with_card_ids(cards: &HashMap<u16, CardStats>, out: &mut [Message]
     }
 }
 
-/// Whether an engine location is an Xyz material's (ocgcore-wasm adds `overlay_sequence`; a raw location has bit 0x80).
-pub(super) fn is_material(loc: &Json) -> bool {
-    loc["overlay_sequence"].is_u64() || loc["location"].as_u64().unwrap_or(0) & loc::OVERLAY != 0
-}
 
 /// Tokens' uids, after any deck's (a move carries the uid in 16 bits).
 pub(super) const FIRST_TOKEN_UID: u32 = 0x4000;

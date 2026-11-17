@@ -3,6 +3,8 @@
 //! engine program (`yo3-engine`, which turns answers into the core's bytes and runs the NPCs' bot). Ids are named as
 //! the engine names them: message types, response types and actions, hints, positions, locations and reasons.
 
+pub mod message;
+
 /// Named ids, each with its doc comment, and `ALL` (name, value) for the tests that check a module against its table:
 /// `named! { u64; NAME = value, ... }`.
 #[macro_export]

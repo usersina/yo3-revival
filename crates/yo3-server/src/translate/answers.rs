@@ -73,8 +73,8 @@ impl Translator {
         // A card that offers this command more than once (two effects it can activate now): the card list asks which,
         // the card once per effect in the engine's order.
         if let Some((list, kind, action, indices)) = self.listed(&cmd).filter(|l| l.3.len() > 1) {
-            let selects: Vec<Json> = indices.iter().map(|&i| m[list][i].clone()).collect();
-            let out = self.card_list(&json!({ "selects": selects, "min": 0, "max": 1 }), Some(text::SELECT_EFFECT));
+            let selects: Vec<Loc> = indices.iter().map(|&i| loc_of(&m[list][i])).collect();
+            let out = self.card_list(&CardList { selects, min: 0, max: 1, cancelable: false }, Some(text::SELECT_EFFECT));
             self.asking = Asking::Choice { kind, action, candidates: indices };
             self.picks.clear();
             return Some(Prompt::Client(out));
@@ -105,7 +105,7 @@ impl Translator {
     pub(super) fn chose(&mut self, m: &Json, response: &Json) {
         if m["type"] == msg::SELECT_BATTLECMD && response["type"] == resp::BATTLECMD && response["action"] == battle::ATTACK {
             let attack = &m["attacks"][response["index"].as_u64().unwrap_or(u64::MAX) as usize];
-            self.attacker = self.engine_place(attack).filter(|p| p.zone < 5).map(|p| (p.player, p.zone));
+            self.attacker = self.engine_place(&loc_of(attack)).filter(|p| p.zone < 5).map(|p| (p.player, p.zone));
         }
     }
 
@@ -117,7 +117,7 @@ impl Translator {
         let (player, zone) = self.attacker?;
         let mut map = vec![];
         for card in m["selects"].as_array()? {
-            let place = self.place(card).filter(|p| p >> 8 & 0xFF == 0)?;
+            let place = self.place(&loc_of(card)).filter(|p| p >> 8 & 0xFF == 0)?;
             map.push((place, 1 << menu::CONFIRM));
         }
         self.asking = Asking::FieldTarget;
@@ -136,7 +136,7 @@ impl Translator {
         // A field card comes from its own slot, index 0 (see `listed`); targets are keyed at (zone 0, index slot).
         let slot = if cmd.index == 0 && cmd.zone < 5 { cmd.zone as usize } else { return None };
         let place = table_place(cmd.player, 0, slot);
-        let index = m["selects"].as_array()?.iter().position(|c| self.place(c) == Some(place)).filter(|_| cmd.command == menu::CONFIRM)?;
+        let index = m["selects"].as_array()?.iter().position(|c| self.place(&loc_of(c)) == Some(place)).filter(|_| cmd.command == menu::CONFIRM)?;
         self.asking = Asking::Prompt;
         self.pending = None;
         Some(Prompt::Answer(Response::Card(Some(vec![index])).json()))
@@ -169,7 +169,7 @@ impl Translator {
             .as_array()?
             .iter()
             .enumerate()
-            .filter(|(_, loc)| self.place(loc).is_some_and(|p| p & 0xFFFF == pile))
+            .filter(|(_, loc)| self.place(&loc_of(loc)).is_some_and(|p| p & 0xFFFF == pile))
             .collect();
         match candidates[..] {
             [] => None,
@@ -183,8 +183,8 @@ impl Translator {
                     (2, _) => text::SPSUMMON,
                     _ => text::SELECT_EFFECT,
                 };
-                let selects: Vec<Json> = candidates.iter().map(|(_, loc)| (*loc).clone()).collect();
-                let out = self.card_list(&json!({ "selects": selects, "min": 0, "max": 1 }), Some(text));
+                let selects: Vec<Loc> = candidates.iter().map(|(_, loc)| loc_of(loc)).collect();
+                let out = self.card_list(&CardList { selects, min: 0, max: 1, cancelable: false }, Some(text));
                 self.asking = Asking::Choice { kind, action, candidates: candidates.iter().map(|(i, _)| *i).collect() };
                 self.picks.clear();
                 Some(Prompt::Client(out))
@@ -260,7 +260,7 @@ impl Translator {
             if bit != cmd.command {
                 continue;
             }
-            let at: Vec<usize> = m[list].as_array()?.iter().enumerate().filter(|(_, loc)| self.place(loc) == Some(place)).map(|(i, _)| i).collect();
+            let at: Vec<usize> = m[list].as_array()?.iter().enumerate().filter(|(_, loc)| self.place(&loc_of(loc)) == Some(place)).map(|(i, _)| i).collect();
             if !at.is_empty() {
                 return Some((list, kind, action, at));
             }

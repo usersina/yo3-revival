@@ -737,14 +737,12 @@ fn a_chain_list_can_be_left_without_chaining() {
     // After Yes to a chain chance with several cards, the list opens with OK (kind 1): OK with no pick chains nothing.
     // A forced chain keeps the one-pick list.
     let mut t = with_cards();
-    let chain = json!({ "type": 16, "player": 0, "forced": false, "spe_count": 1,
-        "selects": [card_at(0, 8, 0, 4100), card_at(0, 8, 1, 4101)] });
+    let chain = select_chain(1, false, json!([card_at(0, 8, 0, 4100), card_at(0, 8, 1, 4101)]));
     t.prompt(&chain);
     let Some(Prompt::Client(out)) = t.dialog_result(1) else { panic!("the list") };
     assert_eq!(cmd(out.last().unwrap()), (0x37, [0, 1, 1, 0]));
     assert_eq!(t.dialog_result(0), Some(Prompt::Answer(json!({ "type": 8, "index": null }))));
-    let forced = json!({ "type": 16, "player": 0, "forced": true, "spe_count": 1,
-        "selects": [card_at(0, 8, 0, 4100), card_at(0, 8, 1, 4101)] });
+    let forced = select_chain(1, true, json!([card_at(0, 8, 0, 4100), card_at(0, 8, 1, 4101)]));
     let Prompt::Client(out) = t.prompt(&forced) else { panic!("the list") };
     assert_eq!(cmd(out.last().unwrap()), (0x37, [0, 0x27, 1, 0]));
 }
@@ -1031,8 +1029,12 @@ fn an_option_the_client_has_labels_for_opens_the_select_dialog() {
     assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 4, "index": 1 }))));
 }
 
-/// A chain chance for the client: `selects` its cards that may chain.
-fn select_chain(spe_count: u32, forced: bool, selects: serde_json::Value) -> serde_json::Value {
+/// A chain chance for the client: `selects` its cards that may chain (each with its effect's description, 0 unless
+/// given, as the engine sends it).
+fn select_chain(spe_count: u32, forced: bool, mut selects: serde_json::Value) -> serde_json::Value {
+    for s in selects.as_array_mut().into_iter().flatten() {
+        s.as_object_mut().unwrap().entry("description").or_insert(json!(0));
+    }
     json!({ "type": 16, "player": 0, "spe_count": spe_count, "forced": forced, "hint_timing": 0, "hint_timing_other": 0,
         "selects": selects })
 }

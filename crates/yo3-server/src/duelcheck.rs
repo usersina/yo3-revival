@@ -1007,7 +1007,9 @@ pub mod selfplay {
                     recent.join(" | ")
                 )
             };
-            let problems = model.check(&state);
+            let mut problems = model.check(&state);
+            // Every engine message fits the struct the server reads it as (yo3_ocg::message).
+            problems.extend(a.messages.iter().filter_map(|m| crate::ocg::message::parse(m).err()));
             if !problems.is_empty() {
                 return Err(fail(problems));
             }

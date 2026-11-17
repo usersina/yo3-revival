@@ -80,7 +80,7 @@ impl Translator {
     pub(super) fn unreachable_targets(&self, m: &Json) -> Vec<String> {
         let mut missing = vec![];
         for (i, card) in m["selects"].as_array().into_iter().flatten().enumerate() {
-            let Some(place) = self.place(card) else { continue };
+            let Some(place) = self.place(&loc_of(card)) else { continue };
             let click = CardCommand { command: menu::CONFIRM, player: place & 0xFF, zone: place >> 16 & 0xFF, index: 0 };
             if self.clone().command(click) != Some(Prompt::Answer(Response::Card(Some(vec![i])).json())) {
                 missing.push(format!("selects[{i}] (attack target on the field)"));

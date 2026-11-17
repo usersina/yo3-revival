@@ -13,6 +13,7 @@ use yo3_proto::{Message, Value};
 
 use crate::card_options::CARD_OPTION_LABELS;
 use crate::duel::{CLIENT, CPU, CardCommand, ClientRequest, TEXT_IDS, TEXT_SLOTS, command, command_data, text_message};
+use crate::ocg::message::{Loc, SelectCard, SelectChain, SelectSum, SelectUnselectCard, SortCards};
 use crate::ocg::{Response, battle, hint, hintmsg, idle, loc, msg, pos, reason, resp};
 use crate::wire::{Cmd, OPEN, Place, Target, cmd, dialog, entry, flag, list, menu, mode, move_place, result, table_place, text, zone};
 
@@ -29,6 +30,44 @@ use moves::*;
 use texts::*;
 pub use cpu::{Repeats, bot_answer};
 pub use moves::settle_positions;
+
+/// The place in an engine message's field, as the place helpers read it; an unreadable one is no place (a default
+/// location 0, which no helper maps). Callers whose message is typed pass its `Loc` instead.
+fn loc_of(v: &Json) -> Loc {
+    Loc::of(v).unwrap_or_default()
+}
+
+/// An engine message as the struct the server reads it as (`yo3_ocg::message`). The duel check fails a duel whose
+/// messages don't fit; here one that doesn't is warned about and read as empty.
+fn typed<T: for<'de> serde::Deserialize<'de> + Default>(m: &Json) -> T {
+    T::deserialize(m).unwrap_or_else(|e| {
+        tracing::warn!("engine message doesn't fit its struct: {e} in {m}");
+        T::default()
+    })
+}
+
+/// A card list's cards, in the engine's order, and how many picks it takes: `min` to `max`, none when the player may
+/// back out of it.
+pub(super) struct CardList {
+    pub(super) selects: Vec<Loc>,
+    pub(super) min: u64,
+    pub(super) max: u64,
+    pub(super) cancelable: bool,
+}
+
+impl CardList {
+    /// MSG_SELECT_CARD and MSG_SELECT_TRIBUTE: their cards and bounds; cancelable when the engine allows it.
+    fn of(m: &Json) -> CardList {
+        let c: SelectCard = typed(m);
+        CardList { selects: c.selects, min: c.min, max: c.max, cancelable: c.can_cancel }
+    }
+
+    /// MSG_SELECT_CHAIN's cards, one pick; one the player may back out of unless the chain is forced.
+    fn chain(m: &Json) -> CardList {
+        let c: SelectChain = typed(m);
+        CardList { selects: c.selects.into_iter().map(|e| e.loc).collect(), min: 1, max: 1, cancelable: !c.forced }
+    }
+}
 
 
 /// What a window's chain question may hold, which decides whether the default Activation Message may answer it.
@@ -625,6 +664,11 @@ impl Translator {
     /// The client's engine player of an engine team.
     fn player(&self, team: &Json) -> u32 {
         if team.as_u64() == Some(0) { self.first } else { 1 - self.first }
+    }
+
+    /// The client's player of an engine team.
+    fn side(&self, team: u64) -> u32 {
+        if team == 0 { self.first } else { 1 - self.first }
     }
 
     /// Whether an engine prompt asks this client (not the other side).
