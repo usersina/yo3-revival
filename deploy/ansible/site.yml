@@ -81,8 +81,17 @@
           ansible.builtin.set_fact:
             yo3_setup:
               domain: "{{ yo3_domain }}"
-              server_image: "{{ (local_images.stdout | from_json)[0]['Id'] }}"
-              dashboard_image: "{{ (local_images.stdout | from_json)[1]['Id'] }}"
+              server_image: "yo3-revival-server:setup-{{ (local_images.stdout | from_json)[0]['Id'] | replace('sha256:','') }}"
+              dashboard_image: "yo3-revival-dashboard:setup-{{ (local_images.stdout | from_json)[1]['Id'] | replace('sha256:','') }}"
+        - name: Name portable setup images
+          ansible.builtin.command:
+            argv: [docker, image, tag, "{{ item.id }}", "{{ item.name }}"]
+          loop:
+            - {id: "{{ (local_images.stdout | from_json)[0]['Id'] }}", name: "{{ yo3_setup.server_image }}"}
+            - {id: "{{ (local_images.stdout | from_json)[1]['Id'] }}", name: "{{ yo3_setup.dashboard_image }}"}
+          delegate_to: localhost
+          become: false
+          changed_when: true
         - name: Allocate a temporary image archive
           ansible.builtin.tempfile: {state: file, suffix: .yo3-images.tar}
           delegate_to: localhost
@@ -199,11 +208,10 @@
       when: not provisioned.stat.exists
       block:
         - name: Stop any partial first run before provisioning
-          community.docker.docker_compose_v2:
-            project_src: "{{ yo3_repo }}"
-            project_name: yo3-revival
-            files: [compose.yaml, compose.production.yaml]
-            state: stopped
+          ansible.builtin.command:
+            argv: "{{ yo3_compose + ['stop'] }}"
+            chdir: "{{ yo3_repo }}"
+          changed_when: true
         - name: Start the temporary certificate HTTP service
           ansible.builtin.command:
             argv: "{{ yo3_compose + ['-f', 'compose.yaml', '-f', 'compose.production.yaml', '-f', 'deploy/compose.acme.yaml', '--profile', 'certificate', 'up', '-d', '--no-deps', 'acme'] }}"

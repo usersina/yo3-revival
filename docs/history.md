@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-17 — First VPS checks and portable image exports](#2026-11-17--first-vps-checks-and-portable-image-exports)
   - [2026-11-17 — Compose hosting and local VPS setup](#2026-11-17--compose-hosting-and-local-vps-setup)
   - [2026-11-17 — Transactional account deletion in the connected dashboard](#2026-11-17--transactional-account-deletion-in-the-connected-dashboard)
   - [2026-11-17 — Durable graceful stop and checked live status](#2026-11-17--durable-graceful-stop-and-checked-live-status)
@@ -37,6 +38,26 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
 
+## 2026-11-17 — First VPS checks and portable image exports
+
+The first Ubuntu 24.04 VPS run exposed a real image-transfer failure: exporting by bare local IDs omitted repository
+names from `manifest.json`, and the fresh Docker 29 containerd store did not register usable images. Setup now assigns
+versioned tags before export and uses those names with automatic pulls disabled. Its partial-run stop uses Compose's
+actual stop command, which does not create containers or pull images. A regression test executes the real controller
+prepare/tag/export tasks with tiny images and checks the resulting archive; it fails against the original playbook.
+
+The corrected archive imported successfully on the VPS. An isolated Compose rehearsal there passed HTTPS sign-in,
+proxy/route/CSRF boundaries, retry-safe grants, backup/restore, identity retention, read-only mounts and ACME. A VPS test
+snapshot and its identity were copied off-machine and restored into a fresh local volume: table counts and both
+identity files matched, and the account CLI opened the restored database. These were disposable test accounts, not a
+production database. The 10-player baseline protocol soak passed with zero failures. A larger 100-player run under
+an artificial CPU quota hit its safety timeout; it is not counted as a pass and is being investigated separately.
+Workspace tests (1,223, five skips), Clippy, provisioning tests and doc links passed after the fix.
+
+Full public setup is paused before certificate issuance: authoritative DNS still points elsewhere. Real CA issuance,
+renewal, completed rerun and deployment reboot remain unverified. No production admin or public game server has been
+started, and no changes were pushed.
+
 ## 2026-11-17 — Compose hosting and local VPS setup
 
 Added separate server/native-engine and React/nginx containers with read-only roots, non-root users, persistent SQLite
@@ -54,7 +75,7 @@ Verified 1,223 workspace tests (five skips), clean Clippy, 20 dashboard unit tes
 drift, frontend lint/format/typecheck/build and documentation links. Real disposable Compose checks passed HTTPS game
 registration/staff sign-in, nginx spoofing/route/error handling, CSRF, grant receipts, offline restore, identity retention,
 read-only mounts and ACME. A real nginx browser check found/fixed missing font/logo routes and passed accessibility
-checks. Certificate-hook tests cover invalid certificates/keys and retry reload. Local image-ID startup and Ansible
+checks. Certificate-hook tests cover invalid certificates/keys and retry reload. Local image-reference startup and Ansible
 syntax/templates/password handling passed. Fresh-VPS setup, real CA renewal, reboot, off-machine restore and load/soak
 remain unverified; MFA/recovery and incremental schema normalization remain open.
 

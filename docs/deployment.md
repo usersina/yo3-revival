@@ -38,7 +38,7 @@ The comma after the IP makes it an inline inventory. The game path defaults to t
 `YO3_GAME_SOURCE_DIR` is omitted. For a sudo user, change `-u root`; use `--ask-become-pass` if sudo requires a password.
 SSH uses your normal agent/config. No GitHub Secrets are needed for this local setup.
 
-The playbook builds the current checkout **on your machine**, uploads the images by their exact IDs, installs Docker
+The playbook builds the current checkout **on your machine**, exports images by dedicated versioned tags and installs Docker
 and Compose on the VPS, configures the host firewall without resetting existing rules, obtains an HTTPS certificate,
 sets up renewal/reload checks, creates the game identity and first administrator, and waits for real HTTPS health.
 The VPS does not need Rust, Node or your source checkout.
@@ -54,7 +54,7 @@ add `-e @deploy/ansible/config.yml`. Email is optional; renewal runs through the
 
 ## Reruns and operations
 
-This is first setup, **not an update command**. A completed rerun reuses the saved image IDs and domain; it does not
+This is first setup, **not an update command**. A completed rerun reuses the saved image references and domain; it does not
 rebuild, change the password or replace the game identity. An interrupted first setup can be retried from the same
 checkout. The admin bootstrap has a durable receipt and refuses to adopt an existing account database, re-promote a
 demoted account or replace a deleted admin. Use the local administrative commands for recovery.
@@ -87,8 +87,8 @@ GitHub before expecting anonymous pulls.
 A later CD workflow can use GitHub Secrets for the VPS address, SSH key and verified host key. It is deliberately
 not part of first setup yet. Local builds and the Compose rehearsal work before any images are published.
 
-The local container rehearsal has passed; a fresh VPS run, unchanged rerun, reboot, real CA renewal and off-machine
-recovery are still required. Then run the game/load soak and implement MFA. See the
+Local and isolated Ubuntu VPS container rehearsals have passed, including off-machine restoration of a test snapshot.
+A full public bootstrap with correct DNS, completed rerun, reboot and real CA renewal are still required. Then run the game/load soak and implement MFA. See the
 [Ansible Compose module](https://docs.ansible.com/projects/ansible/latest/collections/community/docker/docker_compose_v2_module.html)
 and [GitHub container publishing documentation](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images)
 for the underlying tools.
