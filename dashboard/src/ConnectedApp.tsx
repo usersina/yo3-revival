@@ -21,6 +21,8 @@ import { ApiHttpError, setCsrfToken } from './api/transport'
 import { ConnectedAccountDialog } from './ConnectedAccountDialog'
 import { ConnectedCodes } from './ConnectedCodes'
 import { ConnectedInvites } from './ConnectedInvites'
+import { ConnectedGifts } from './ConnectedGifts'
+import type { GiftTarget } from './ConnectedGifts'
 import { ConnectedKeys } from './ConnectedKeys'
 import type { KeyAction } from './ConnectedKeys'
 import { ConnectedCredentials } from './ConnectedCredentials'
@@ -108,6 +110,7 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
   const accounts = useListAccounts()
   const [query, setQuery] = useState('')
   const [detailId, setDetailId] = useState<number | null>(null)
+  const [giftTarget, setGiftTarget] = useState<GiftTarget | null>(null)
   const [keyAction, setKeyAction] = useState<KeyAction | null>(null)
   const [credentialAction, setCredentialAction] = useState<CredentialAction | null>(null)
   const [selected, setSelected] = useState<AccountSummary | null>(null)
@@ -260,6 +263,7 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
             onChange={setQuery}
           />
           <div className="action-group">
+            <ConnectedGifts session={session} target={giftTarget} onChange={setGiftTarget} />
             <ConnectedKeys session={session} action={keyAction} onChange={setKeyAction} />
             <ConnectedCredentials
               key={`${session.user_id}:${credentialAction?.kind ?? 'closed'}:${credentialAction?.kind === 'reset_password' ? credentialAction.user_id : ''}`}
@@ -356,6 +360,10 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
         session={session}
         userId={detailId}
         onChange={setDetailId}
+        onGift={(player) => {
+          setDetailId(null)
+          setGiftTarget(player)
+        }}
         onRevealKey={(account) => {
           setDetailId(null)
           setKeyAction({ kind: 'reveal', user_id: account.user_id })

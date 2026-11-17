@@ -131,6 +131,16 @@ impl Mailbox {
         next
     }
 
+    /// A staged Host gift letter, never saved or notified before the enclosing commit.
+    pub(crate) fn prepare_host(&self, player: (u32, &str), title: &str, body: String) -> Result<Self, String> {
+        let mut next = self.clone();
+        next.last_id = next.last_id.checked_add(1).ok_or("The mail number limit has been reached.")?;
+        let mail = Mail { id: next.last_id, from: (0, "Host".into()), to: (player.0, player.1.into()), title: title.into(), body,
+            sent: (chrono::Utc::now() + chrono::Duration::hours(9)).format("%Y-%m-%d %H:%M:%S").to_string(), ..Mail::default() };
+        next.waiting.entry(player.0).or_default().push(mail);
+        Ok(next)
+    }
+
     /// Mail waiting for a player.
     pub fn count(&self, player_id: u32) -> u32 {
         self.waiting.get(&player_id).map_or(0, Vec::len) as u32

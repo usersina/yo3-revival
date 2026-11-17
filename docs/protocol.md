@@ -2220,6 +2220,15 @@ and a key digest, not the key or player names. A matching retry rechecks admin a
 account is not recreated. CLI `add-account`, `key` and `profile` use the same operations with `--request-id`.
 Evidence: `key_account_contract.rs`, `dashboard_contract.rs`, connected browser tests. These are our management API
 contracts; no game-client reply shapes change.
+Player gifts use `POST /panel/api/v1/gifts` with `kind: cards` (`player_id`, `row`, `count`), `recipe`
+(`player_id`, `deck_id`, `include_cards`) or `title` (`player_id`, `title_id`). The admin session, CSRF and request ID
+are required. Player, associated Host D-Mail, audit and receipt commit together; only then are the existing `0x2581`,
+`0x2774` and trunk 9000 notifications published. Busy trade/rental/duel scenes keep the existing deferred trunk rule.
+A retry returns its original generic confirmation and never repeats mail or presentation. Titles retain their
+no-mail behavior. Receipts contain IDs/counts, not names. `GET /panel/api/v1/gifts/choices?q=…` searches only actual
+game metadata (up to 50 choices per kind); unavailable files give a typed error. All three CLI commands accept
+`--request-id`. Evidence: `gift_admin_contract.rs`, `bp_contract.rs`, `dashboard_contract.rs`, connected browser tests.
+Existing game reply fields, present encodings and recipe/title display timing are unchanged.
 Role changes are admin-only and target password accounts. They use the same transaction and durable retry receipt;
 an old retry cannot restore an earlier role. The persisted staff-session revision changes only when the role changes,
 invalidating old cookies on both management interfaces even through an unobserved demotion/promotion round trip.

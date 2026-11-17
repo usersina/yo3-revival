@@ -32,6 +32,16 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 
 ## Status
 
+2026-11-17, transactional player gifts: an audit-failure test first reproduced false success and premature game
+notifications. Card, deck-recipe and title grants now commit player state, associated D-Mail, audit and a minimal
+receipt before publishing. Card/recipe mail also survives an offline grant. Concurrent/lost-response retries never
+give duplicates, send another letter or enqueue another present; receipts survive restart and audit pruning. Counts
+are checked before changing any row, including repeated cards in a recipe. The generated staff API and React gift
+form search game metadata by name/ID, choose artwork explicitly and confirm a specific player; CLI commands retain
+request IDs. Contract and browser coverage includes rollback at every write/commit, permissions, search/error states
+and mobile layout. The disposable dashboard example now serves the actual API with a clearly sample gift catalogue,
+SQLite and a private hub, without opening game listeners.
+
 2026-11-17, key accounts: a failing audit regression reproduced false success before the fix. Creation and explicit
 key disclosure now commit account, audit and durable retry receipt together, then return the credential. Receipts
 hold a key digest and account ID rather than credentials or player names; replay cannot recreate deleted accounts.

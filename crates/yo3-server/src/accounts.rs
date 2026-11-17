@@ -755,6 +755,13 @@ impl Directory {
         })
     }
 
+    /// A staged player edit. The caller commits it together with mail, audit and receipt before publishing.
+    pub(crate) fn prepare_player(&self, id: u32, change: impl FnOnce(&mut Player) -> Result<(), String>) -> Result<Self, String> {
+        let mut next = self.clone();
+        change(next.player_mut(id).ok_or("The player no longer exists.")?)?;
+        Ok(next)
+    }
+
     /// Pays `bp` into the account of a player; its new BP, if the player has an account and the payment was saved.
     pub fn reward(&mut self, player_id: u32, bp: u32) -> Option<u32> {
         self.pay(player_id, bp).inspect_err(|why| tracing::warn!("duel reward of {bp} BP to player {player_id} not paid: {why}")).ok().flatten()

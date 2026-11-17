@@ -28,8 +28,10 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/countries", "get", "listCountries"),
         ("/panel/api/v1/accounts/credentials", "post", "issueAccountCode"),
         ("/panel/api/v1/accounts/keys", "post", "manageAccountKey"),
+        ("/panel/api/v1/gifts", "post", "givePlayerGift"),
+        ("/panel/api/v1/gifts/choices", "get", "listGiftChoices"),
     ];
-    assert_eq!(paths.len(), 13);
+    assert_eq!(paths.len(), 15);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -514,4 +516,26 @@ async fn key_disclosure_is_explicit_admin_only_audited_and_absent_from_account_p
     b.sign_in("Croquet").await;
     let denied = b.call("POST", "/panel/api/v1/accounts/keys", reveal).await;
     assert_eq!((denied.status, denied.body["code"].as_str()), (403, Some("forbidden")));
+}
+
+#[tokio::test]
+async fn gifts_fail_with_typed_errors_without_metadata_and_never_accept_host_or_moderator_authority() {
+    let mut b = Browser::new("gifts").await;
+    let token = format!("Authorization: Bearer {}\r\n", b.admin.token);
+    assert_eq!(b.raw("GET", "/panel/api/v1/gifts/choices", "", &token).await.status,401);
+    b.sign_in("Pegasus").await;
+    let error = b.call("GET", "/panel/api/v1/gifts/choices", json!(null)).await;
+    assert_eq!((error.status,error.body["code"].as_str()),(503,Some("persistence_failed")));
+    let bad = b.call("GET", &format!("/panel/api/v1/gifts/choices?q={}", "x".repeat(81)), json!(null)).await;
+    assert_eq!((bad.status,bad.body["code"].as_str()),(400,Some("invalid_request")));
+    let admin = b.admin.clone();
+    tokio::task::spawn_blocking(move || api::call(&admin, &Op::AddPlayer { who: "Yugi".into(), name: "GiftTarget".into() })).await.unwrap().unwrap();
+    let accounts = b.call("GET", "/panel/api/v1/accounts", json!(null)).await;
+    let player = accounts.body["accounts"].as_array().unwrap().iter().find(|a| a["login"] == "Yugi").unwrap()["players"][0]["player_id"].clone();
+    let request = json!({"kind":"cards","player_id":player,"row":816,"count":1});
+    let error = b.call("POST", "/panel/api/v1/gifts", request.clone()).await;
+    assert_eq!(error.status,503);
+    b.sign_in("Croquet").await;
+    assert_eq!(b.call("GET", "/panel/api/v1/gifts/choices", json!(null)).await.status,403);
+    assert_eq!(b.call("POST", "/panel/api/v1/gifts", request).await.status,403);
 }

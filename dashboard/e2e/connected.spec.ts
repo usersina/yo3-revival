@@ -3,6 +3,8 @@ import type { Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {
   AccountList,
+  GiftResult,
+  GiftChoices,
   KeyAccountResult,
   AccountCodeResponse,
   AccountDetail,
@@ -778,4 +780,88 @@ test('key controls respect moderator permissions and the creation form fits narr
   expect(dialog!.x).toBeGreaterThanOrEqual(0)
   expect(dialog!.x + dialog!.width).toBeLessThanOrEqual(390)
   await page.screenshot({ path: '/tmp/yo3-key-account-mobile.png', animations: 'disabled' })
+})
+
+test('player gifts retain one request across a lost response and reload, including card mail and recipe/title choices', async ({
+  page,
+}) => {
+  await signIn(page)
+  const ids: string[] = []
+  await page.route('**/panel/api/v1/gifts', async (route) => {
+    ids.push(route.request().headers()['idempotency-key'])
+    const response = await route.fetch()
+    expect(response.status()).toBe(200)
+    expect(GiftResult.safeParse(await response.json()).success).toBe(true)
+    if (ids.length === 1) await route.abort('failed')
+    else await route.fulfill({ response })
+  })
+  await page.getByRole('button', { name: 'View account TestPlayer', exact: true }).click()
+  await page.getByRole('button', { name: 'Gift to TestPlayer', exact: true }).click()
+  const catalogue = await page.request.get('/panel/api/v1/gifts/choices?q=Blue-Eyes')
+  expect(GiftChoices.parse(await catalogue.json()).cards.length).toBe(2)
+  await page.getByLabel('Gift', { exact: true }).selectOption('816')
+  await page.getByLabel('Copies', { exact: true }).fill('3')
+  await page.getByLabel('Confirm this gift for the selected player').check()
+  await page.getByRole('button', { name: 'Give gift', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('Could not reach')
+  await page.reload()
+  await page.getByRole('button', { name: 'Resume gift', exact: true }).click()
+  await page.getByRole('button', { name: 'Retry same request', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('Additional copies of artwork #816: 3')
+  expect(ids[0]).toBe(ids[1])
+  await page.getByRole('button', { name: 'Done', exact: true }).click()
+  for (const kind of ['recipe', 'title']) {
+    await page.getByRole('button', { name: 'View account TestPlayer', exact: true }).click()
+    await page.getByRole('button', { name: 'Gift to TestPlayer', exact: true }).click()
+    await page.getByLabel('Gift type').selectOption(kind)
+    await page.getByLabel('Gift', { exact: true }).selectOption(kind === 'recipe' ? '7' : '300')
+    await page.getByLabel('Confirm this gift for the selected player').check()
+    await page.getByRole('button', { name: 'Give gift', exact: true }).click()
+    await expect(page.getByRole('dialog')).toContainText(
+      kind === 'recipe' ? 'Recipe #7 saved without its cards' : 'Title #300 saved',
+    )
+    await page.getByRole('button', { name: 'Done', exact: true }).click()
+  }
+})
+
+test('gift permissions, search, catalogue failures and mobile confirmation remain actionable', async ({
+  page,
+}) => {
+  await signIn(page, 'TestModerator')
+  await page.getByRole('button', { name: 'View account TestPlayer', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Gift to TestPlayer', exact: true })).toBeDisabled()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  await signIn(page)
+  await page.setViewportSize({ width: 390, height: 850 })
+  await page.getByRole('button', { name: 'View account TestResetTarget', exact: true }).click()
+  await page.getByRole('button', { name: 'Gift to TestResetTarget', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Give gift', exact: true })).toBeDisabled()
+  await page.route('**/panel/api/v1/gifts/choices*', (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 'persistence_failed',
+        message: 'Gift choices are unavailable.',
+      }),
+    }),
+  )
+  await page.getByLabel('Find a gift', { exact: true }).fill('missing')
+  await expect(page.getByRole('alert')).toContainText('Gift choices are unavailable')
+  await expect(page.getByRole('button', { name: 'Give gift', exact: true })).toBeDisabled()
+  await page.unroute('**/panel/api/v1/gifts/choices*')
+  await page.getByRole('button', { name: 'Retry choices', exact: true }).click()
+  await expect(page.getByText('No matching gifts. Try another name or ID.')).toBeVisible()
+  await page.getByLabel('Find a gift', { exact: true }).fill('4007')
+  await page.getByLabel('Gift', { exact: true }).selectOption('817')
+  await page.getByLabel('Copies', { exact: true }).fill('2')
+  await page.getByLabel('Confirm this gift for the selected player').check()
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
+  const box = await page.getByRole('dialog').boundingBox()
+  expect(box!.x).toBeGreaterThanOrEqual(0)
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+  await page.screenshot({ path: '/tmp/yo3-gift-mobile.png', animations: 'disabled' })
+  await page.getByRole('button', { name: 'Give gift', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('Additional copies of artwork #817: 2')
 })

@@ -247,6 +247,11 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
   sending; a prepared code is not a confirmation. For a lost response, reuse both through
   `--request-id ID --code-stdin < /path/to/private-code-file`. Never put the code in arguments or shell history.
   Codes work once for 24 hours. A retry reports current availability without reissuing or extending the code.
+- `give-cards`, `give-recipe` and `grant-title` accept `--request-id ID`. After a lost answer, repeat the identical
+  command with its printed ID. Gifts commit the player, associated D-Mail, audit and receipt before notifying the game;
+  retries never give another copy or send another letter. Card/recipe D-Mail is kept for offline grants too. Recipe
+  cards are counted together before checking the limit of 255 additional copies per artwork. The dashboard’s player
+  **Gift** action uses the same operations with searchable game metadata and an explicit recipient confirmation.
 - `set-role USER ROLE` is admin-only and commits the role, audit and retry receipt together. It accepts
   `--request-id ID`; repeat the same command with that ID after a lost response. A retry never reapplies an older role.
   Changing your own role can remove management access; another admin or the host must restore it with `set-role`.

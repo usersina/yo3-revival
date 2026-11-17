@@ -345,6 +345,25 @@ export const BpCodeList = zod.object({
 export type BpCodeList = zod.input<typeof BpCodeList>;
 export type BpCodeListOutput = zod.output<typeof BpCodeList>;
 
+export const cardChoiceArtMin = 0;
+export const cardChoiceArtMax = 4294967295;
+
+export const cardChoiceKonamiIdMin = 0;
+
+export const cardChoiceRowMin = 0;
+
+
+
+export const CardChoice = zod.object({
+  "art": zod.int().min(cardChoiceArtMin).max(cardChoiceArtMax),
+  "konami_id": zod.int().min(cardChoiceKonamiIdMin),
+  "name": zod.string(),
+  "row": zod.int().min(cardChoiceRowMin)
+});
+
+export type CardChoice = zod.input<typeof CardChoice>;
+export type CardChoiceOutput = zod.output<typeof CardChoice>;
+
 export const CountryList = zod.object({
   "codes": zod.array(zod.string())
 });
@@ -420,6 +439,138 @@ export const CreateInviteResult = zod.object({
 
 export type CreateInviteResult = zod.input<typeof CreateInviteResult>;
 export type CreateInviteResultOutput = zod.output<typeof CreateInviteResult>;
+
+export const recipeChoiceCardCountMin = 0;
+export const recipeChoiceCardCountMax = 4294967295;
+
+export const recipeChoiceDeckIdMin = 0;
+export const recipeChoiceDeckIdMax = 4294967295;
+
+
+
+export const RecipeChoice = zod.object({
+  "card_count": zod.int().min(recipeChoiceCardCountMin).max(recipeChoiceCardCountMax),
+  "deck_id": zod.int().min(recipeChoiceDeckIdMin).max(recipeChoiceDeckIdMax),
+  "name": zod.string()
+});
+
+export type RecipeChoice = zod.input<typeof RecipeChoice>;
+export type RecipeChoiceOutput = zod.output<typeof RecipeChoice>;
+
+export const titleChoiceTitleIdMin = 0;
+
+
+
+export const TitleChoice = zod.object({
+  "name": zod.string(),
+  "title_id": zod.int().min(titleChoiceTitleIdMin)
+});
+
+export type TitleChoice = zod.input<typeof TitleChoice>;
+export type TitleChoiceOutput = zod.output<typeof TitleChoice>;
+
+export const GiftChoices = zod.object({
+  "cards": zod.array(CardChoice),
+  "more_cards": zod.boolean(),
+  "more_recipes": zod.boolean(),
+  "more_titles": zod.boolean(),
+  "recipes": zod.array(RecipeChoice),
+  "titles": zod.array(TitleChoice)
+});
+
+export type GiftChoices = zod.input<typeof GiftChoices>;
+export type GiftChoicesOutput = zod.output<typeof GiftChoices>;
+
+export const giftOutcomeOneAddedMin = 0;
+export const giftOutcomeOneAddedMax = 255;
+
+export const giftOutcomeOneRowMin = 0;
+
+export const giftOutcomeOneTotalMin = 0;
+export const giftOutcomeOneTotalMax = 255;
+
+export const giftOutcomeTwoDeckIdMin = 0;
+export const giftOutcomeTwoDeckIdMax = 4294967295;
+
+export const giftOutcomeThreeTitleIdMin = 0;
+
+
+
+export const GiftOutcome = zod.union([zod.object({
+  "added": zod.int().min(giftOutcomeOneAddedMin).max(giftOutcomeOneAddedMax),
+  "kind": zod.enum(['cards']),
+  "row": zod.int().min(giftOutcomeOneRowMin),
+  "total": zod.int().min(giftOutcomeOneTotalMin).max(giftOutcomeOneTotalMax)
+}),zod.object({
+  "deck_id": zod.int().min(giftOutcomeTwoDeckIdMin).max(giftOutcomeTwoDeckIdMax),
+  "include_cards": zod.boolean(),
+  "kind": zod.enum(['recipe'])
+}),zod.object({
+  "already_owned": zod.boolean(),
+  "kind": zod.enum(['title']),
+  "title_id": zod.int().min(giftOutcomeThreeTitleIdMin)
+})]);
+
+export type GiftOutcome = zod.input<typeof GiftOutcome>;
+export type GiftOutcomeOutput = zod.output<typeof GiftOutcome>;
+
+export const giftRequestOneCountMax = 255;
+
+export const giftRequestOnePlayerIdMin = 0;
+export const giftRequestOnePlayerIdMax = 4294967295;
+
+export const giftRequestOneRowMin = 0;
+
+export const giftRequestTwoDeckIdMin = 0;
+export const giftRequestTwoDeckIdMax = 4294967295;
+
+export const giftRequestTwoPlayerIdMin = 0;
+export const giftRequestTwoPlayerIdMax = 4294967295;
+
+export const giftRequestThreePlayerIdMin = 0;
+export const giftRequestThreePlayerIdMax = 4294967295;
+
+export const giftRequestThreeTitleIdMin = 0;
+
+
+
+export const GiftRequest = zod.union([zod.object({
+  "count": zod.int().min(1).max(giftRequestOneCountMax),
+  "kind": zod.enum(['cards']),
+  "player_id": zod.int().min(giftRequestOnePlayerIdMin).max(giftRequestOnePlayerIdMax),
+  "row": zod.int().min(giftRequestOneRowMin)
+}),zod.object({
+  "deck_id": zod.int().min(giftRequestTwoDeckIdMin).max(giftRequestTwoDeckIdMax),
+  "include_cards": zod.boolean(),
+  "kind": zod.enum(['recipe']),
+  "player_id": zod.int().min(giftRequestTwoPlayerIdMin).max(giftRequestTwoPlayerIdMax)
+}),zod.object({
+  "kind": zod.enum(['title']),
+  "player_id": zod.int().min(giftRequestThreePlayerIdMin).max(giftRequestThreePlayerIdMax),
+  "title_id": zod.int().min(giftRequestThreeTitleIdMin)
+})]);
+
+export type GiftRequest = zod.input<typeof GiftRequest>;
+export type GiftRequestOutput = zod.output<typeof GiftRequest>;
+
+export const giftResultPlayerIdMin = 0;
+export const giftResultPlayerIdMax = 4294967295;
+
+export const giftResultUserIdMin = 0;
+export const giftResultUserIdMax = 4294967295;
+
+
+
+export const GiftResult = zod.object({
+  "gift": GiftOutcome,
+  "message": zod.string(),
+  "player_id": zod.int().min(giftResultPlayerIdMin).max(giftResultPlayerIdMax),
+  "request_id": zod.string(),
+  "user_id": zod.int().min(giftResultUserIdMin).max(giftResultUserIdMax)
+});
+
+export type GiftResult = zod.input<typeof GiftResult>;
+export type GiftResultOutput = zod.output<typeof GiftResult>;
 
 export const giveBpByIdRequestAmountMax = 4294967295;
 
@@ -892,6 +1043,69 @@ export const ListCountries415Response = ApiError
 export const ListCountries500Response = ApiError
 
 export const ListCountries503Response = ApiError
+
+
+export const givePlayerGiftHeaderIdempotencyKeyMin = 16;
+export const givePlayerGiftHeaderIdempotencyKeyMax = 128;
+
+
+export const givePlayerGiftHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const GivePlayerGiftHeader = zod.object({
+  "Idempotency-Key": zod.string().min(givePlayerGiftHeaderIdempotencyKeyMin).max(givePlayerGiftHeaderIdempotencyKeyMax).regex(givePlayerGiftHeaderIdempotencyKeyRegExp).describe('Retain this ID and input on retry. Retries never give duplicate cards or repeat mail or game notifications.')
+})
+
+export const GivePlayerGiftBody = GiftRequest
+
+export const GivePlayerGift200Response = GiftResult
+
+export const GivePlayerGift400Response = ApiError
+
+export const GivePlayerGift401Response = ApiError
+
+export const GivePlayerGift403Response = ApiError
+
+export const GivePlayerGift404Response = ApiError
+
+export const GivePlayerGift405Response = ApiError
+
+export const GivePlayerGift409Response = ApiError
+
+export const GivePlayerGift413Response = ApiError
+
+export const GivePlayerGift415Response = ApiError
+
+export const GivePlayerGift500Response = ApiError
+
+export const GivePlayerGift503Response = ApiError
+
+
+export const listGiftChoicesQueryQMax = 80;
+
+
+
+export const ListGiftChoicesQueryParams = zod.object({
+  "q": zod.string().max(listGiftChoicesQueryQMax).optional().describe('Search game metadata by name or ID; at most 50 results per kind')
+})
+
+export const ListGiftChoices200Response = GiftChoices
+
+export const ListGiftChoices400Response = ApiError
+
+export const ListGiftChoices401Response = ApiError
+
+export const ListGiftChoices403Response = ApiError
+
+export const ListGiftChoices405Response = ApiError
+
+export const ListGiftChoices413Response = ApiError
+
+export const ListGiftChoices415Response = ApiError
+
+export const ListGiftChoices500Response = ApiError
+
+export const ListGiftChoices503Response = ApiError
 
 
 export const giveBpHeaderIdempotencyKeyMin = 16;

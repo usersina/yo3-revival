@@ -36,6 +36,7 @@ pub mod invites;
 pub mod profiles;
 pub mod credentials;
 pub mod keys;
+pub mod gifts;
 pub use give_bp::{GiveBpRequest, GiveBpResult};
 pub use mutation::{Actor, MutationError, MutationErrorCode};
 
@@ -115,7 +116,7 @@ pub enum Op {
 
 impl Op {
     /// Operations migrated to a committed change/audit/receipt boundary.
-    fn receipted(&self) -> bool { matches!(self, Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
+    fn receipted(&self) -> bool { matches!(self, Self::GiveCards { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
     /// Its name in the API's path and the audit log.
     pub fn name(&self) -> String {
         serde_json::to_value(self).ok().and_then(|v| v["op"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -300,6 +301,7 @@ impl Api {
             Op::AddPlayer { .. } | Op::Rename { .. } | Op::SetCountry { .. } | Op::SetRole { .. } => self.edit_named_account(op, id, actor, origin),
             Op::AddUser { .. } | Op::ResetCode { .. } => self.issue_named_code(op, id, actor, origin),
             Op::CreateAccount { .. } | Op::Key { .. } => self.named_key_account(op, id, actor, origin),
+            Op::GiveCards { .. } | Op::GiveRecipe { .. } | Op::GrantTitle { .. } => self.named_gift(op, id, actor, origin),
             _ => Err(MutationError::new(MutationErrorCode::InvalidRequest, "This operation has not migrated to the typed mutation boundary.")),
         }
     }
@@ -355,14 +357,6 @@ impl Api {
         Ok(self.gifts.get_or_init(|| Arc::new(crate::gifts::Gifts::from_game(&data))).clone())
     }
 
-    /// Tells a player of a gift on a running server (`Hub::host_gift`): a D-Mail, their new collection when the gift holds
-    /// cards, and `present` for their PresentWindow.
-    fn tell_gift(&self, player: Option<crate::front::Player>, title: &str, body: String, cards: bool, present: Option<crate::shop::Present>) {
-        let (Some(hub), Some(player)) = (&self.hub, player) else { return };
-        let trunk = self.world.as_ref().filter(|_| cards).map(|w| crate::trade::trunk(w, &player));
-        hub.locked().host_gift((player.player_id, &player.name), title, body, trunk.as_ref(), present);
-    }
-
     fn titles(&self) -> Result<Arc<crate::titles::TitleData>, String> {
         if let Some(t) = &self.titles { return Ok(t.clone()) }
         let data = yo3_data::GameData::load(&self.game_dir).map_err(|e| format!("the game's titles: {e}"))?;
@@ -372,7 +366,6 @@ impl Api {
     /// The operation itself: its result, and the values before and after the change.
     fn run(&self, op: &Op) -> Done {
         let message = |text: String| json!({ "message": text });
-        let plain = |r: Result<String, String>| r.map(|t| (message(t), None, None));
         match op {
             Op::Status => {
                 let (players, online, duels) = match &self.hub {
@@ -547,63 +540,7 @@ impl Api {
                 names.sort();
                 Ok((json!({ "titles": names, "message": names.join("\n") }), None, None))
             }
-            Op::GrantTitle { player, title } => {
-                let titles = self.titles()?;
-                let id = crate::titles::by_name(&titles, title).ok_or_else(|| format!("no title named {title:?}; `titles` lists them"))?;
-                let mut d = self.accounts.locked();
-                let player_id = d.player_id_named(player).ok_or_else(|| format!("no player named {player:?}"))?;
-                d.update_player(player_id, |p| { p.items.insert(id); })?;
-                plain(Ok(format!("{player} has the title {} (they wear it in Avatar Settings)", titles.name(id).unwrap_or(title))))
-            }
-            Op::GiveCards { player, card, art, count } => {
-                let count = count.unwrap_or(1);
-                if !(1..=255).contains(&count) { return Err("give 1 to 255 copies (the trunk counts at most 255 of a card)".into()) }
-                let gifts = self.gifts()?;
-                let card = gifts.card(card, *art)?;
-                let mut d = self.accounts.locked();
-                let player_id = d.player_id_named(player).ok_or_else(|| format!("no player named {player:?}"))?;
-                let before = d.player(player_id).and_then(|p| p.cards.get(&card.row).copied()).unwrap_or(0);
-                d.update_player(player_id, |p| { *p.cards.entry(card.row).or_default() += count; })?;
-                let stored = d.player(player_id).cloned();
-                drop(d);
-                let after = before + count;
-                let art = if gifts.cards.iter().filter(|c| c.cid == card.cid).count() > 1 { format!(" (artwork {})", card.art) } else { String::new() };
-                // Shown as a present (at most five copies, a pack's worth), with the card's picture.
-                self.tell_gift(stored, "Cards received", format!("The host gave you {count} × {}{art}. They are in your cards now; you will \
-see them when you next come back to the map.", card.name), true, Some(crate::shop::Present::Gift { cards: vec![card.row; count.min(5) as usize] }));
-                Ok((json!({ "row": card.row, "count": after, "message": format!("gave {count} × {} (artwork {}, Konami id {}) to {player}: {after} beyond \
-their starting cards now (a running server mails them, an online game has them at once and shows them at the next map visit)", card.name, card.art, card.cid) }),
-                    Some(json!({ "card": card.name, "art": card.art, "count": before })), Some(json!({ "card": card.name, "art": card.art, "count": after }))))
-            }
-            Op::GiveRecipe { player, deck, cards } => {
-                let gifts = self.gifts()?;
-                let recipe = gifts.recipe(deck)?;
-                let mut d = self.accounts.locked();
-                let player_id = d.player_id_named(player).ok_or_else(|| format!("no player named {player:?}"))?;
-                let had = d.player(player_id).is_some_and(|p| p.items.contains(&recipe.item));
-                if had && !cards { return Err(format!("{player} already has the recipe {}", recipe.title)) }
-                d.update_player(player_id, |p| {
-                    p.items.insert(recipe.item);
-                    if *cards { for &row in &recipe.cards { *p.cards.entry(row).or_default() += 1; } }
-                })?;
-                let stored = d.player(player_id).cloned();
-                drop(d);
-                // With its cards, as a structure deck arrives: a present of type 1, which shows the deck's cards and sets the
-                // recipe's item in the game itself (PresentWindow case 1). Not the recipe alone: that window shows every card
-                // of the deck as if given.
-                let body = if *cards {
-                    format!("The host gave you the deck recipe {} and its {} cards. You will see them when you next come back to the map; \
-the recipe is then on Load Deck's Official tab.", recipe.title, recipe.cards.len())
-                } else {
-                    format!("The host gave you the deck recipe {} (not its cards). It is on Load Deck's Official tab from your next login, \
-or after your next duel.", recipe.title)
-                };
-                self.tell_gift(stored, "Recipe received", body, *cards, cards.then(|| crate::shop::Present::Deck { id: recipe.id, cards: vec![] }));
-                let with = if *cards { format!(" and its {} cards", recipe.cards.len()) } else { String::new() };
-                let when = if *cards { "(on Load Deck's Official tab once an online game shows it, at the next map visit, or at their next login)" }
-                    else { "(on Load Deck's Official tab at their next login or after their next duel)" };
-                plain(Ok(format!("gave the recipe {} (deck {}){with} to {player} {when}", recipe.title, recipe.id)))
-            }
+            Op::GrantTitle { .. } | Op::GiveCards { .. } | Op::GiveRecipe { .. } => Err("gifts require the typed mutation boundary".into()),
             Op::Recipes => {
                 let gifts = self.gifts()?;
                 let rows: Vec<Value> = gifts.recipes.iter().map(|r| json!({ "id": r.id, "title": r.title, "item": r.item, "cards": r.cards.len() })).collect();

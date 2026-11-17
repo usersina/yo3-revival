@@ -1783,30 +1783,19 @@ impl Hub {
         for (id, _) in players { self.push(*id, &Message::reply(0x2581)); }
     }
 
-    /// A D-Mail from "Host" to a player, with the bell's mail icon if they are online.
-    fn mail_from_host(&mut self, (id, name): (u32, &str), title: &str, body: String) {
-        let sent = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let mail = Mail { kind: MAIL_TO_PLAYER, from: (0, "Host".into()), to: (id, name.into()), title: title.into(), body, sent, ..Mail::default() };
-        self.mail.post(mail);
-        self.push(id, &Message::reply(0x2581));
-    }
-
-    /// The host's gift of cards or a deck recipe (#19), told to the player by D-Mail from "Host". With `trunk` (the
-    /// player's new collection, `trade::trunk`) an online player gets it at once, as both players of a trade do
-    /// (`0x2BC9`): the global dispatcher copies a trunk into the game's own on any screen (`0x4F5216`). Not during a duel
-    /// between players or a trade or rental scene, which hold their cards on screen; the next trunk request brings it
-    /// then. True if the trunk was pushed.
-    pub fn host_gift(&mut self, player: (u32, &str), title: &str, body: String, trunk: Option<&Message>, present: Option<crate::shop::Present>) -> bool {
-        self.mail_from_host(player, title, body);
+    /// Publishes an already committed gift and mailbox. Collection pushes are deferred during a duel, trade or rental.
+    pub(crate) fn publish_gift(&mut self, mail: Mailbox, player: u32, trunk: Option<&Message>, present: Option<crate::shop::Present>) -> bool {
+        self.mail = mail;
+        self.push(player, &Message::reply(0x2581));
         if let Some(present) = present {
-            let waiting = self.host_presents.entry(player.0).or_default();
+            let waiting = self.host_presents.entry(player).or_default();
             waiting.push_back(present);
             let count = waiting.len() as u32;
-            self.push(player.0, &Message::reply(0x2774).with("present_count", Value::U32(count)));
+            self.push(player, &Message::reply(0x2774).with("present_count", Value::U32(count)));
         }
-        let busy = self.in_scene(player.0) || self.matches.values().any(|m| m.players.contains(&player.0));
+        let busy = self.in_scene(player) || self.matches.values().any(|m| m.players.contains(&player));
         match trunk {
-            Some(trunk) if !busy => self.push(player.0, trunk),
+            Some(trunk) if !busy => self.push(player, trunk),
             _ => false,
         }
     }

@@ -115,7 +115,7 @@ pub enum Admin {
     Countries,
     /// Give a player a title by its name, as the game shows it (the staff and promotion ones, GAME MASTER or JUMP
     /// FESTA, or any other); `titles` lists them. They wear it in Avatar Settings.
-    GrantTitle { player: String, title: String },
+    GrantTitle { player: String, title: String, #[arg(long)] request_id: Option<String> },
     /// List the titles in the client.
     Titles,
     /// Give BOOSTERPASS Points to the account WHO (a User ID or one of its players' names). Works while the server
@@ -136,6 +136,7 @@ pub enum Admin {
         art: Option<u32>,
         #[arg(long)]
         count: Option<u32>,
+        #[arg(long)] request_id: Option<String>,
     },
     /// Give PLAYER a deck recipe for Load Deck's Official tab (#19): DECK is its title or preset id (`recipes` lists them);
     /// --cards gives the recipe's cards too. The game shows it at their next login or after their next duel.
@@ -144,6 +145,7 @@ pub enum Admin {
         deck: String,
         #[arg(long)]
         cards: bool,
+        #[arg(long)] request_id: Option<String>,
     },
     /// List the deck recipes in the client: preset id, title and how many cards.
     Recipes,

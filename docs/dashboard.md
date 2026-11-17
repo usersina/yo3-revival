@@ -6,7 +6,7 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 ## Current state
 
 - The approved React/Vite/SWC/Tailwind dashboard is in `dashboard/`. The main pages remain a labelled design preview.
-  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, Give BP, registration invites and BOOSTERPASS code management.
+  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, card/recipe/title gifts, Give BP, registration invites and BOOSTERPASS code management.
   It never falls back to fixtures.
 - Axum handles HTTP on separate sockets. Host-token operations, assets and the old HTML panel stay on `--http-port`.
   The staff JSON router has its own opt-in `--dashboard-port`, disabled by default and always bound to loopback.
@@ -29,6 +29,10 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 - Key-account creation and key disclosure are admin-only transactions: account, audit and receipt commit before
   any credential is returned. Account lists/details never expose keys. The React dialog confirms passwordless access;
   only its pending input/ID is retained across reloads, never the revealed key. Closing clears the credential.
+- Card, recipe and title gifts use numeric player/catalogue IDs. Card/recipe D-Mail, player state, audit and receipt
+  commit together before any bell, collection or present notification; titles keep their existing no-mail behavior.
+  The admin-only form searches real game metadata, identifies artworks explicitly, confirms the recipient and retains
+  an uncertain request across reloads. It shows catalogue failures rather than substituting sample cards.
 - SQLite schema 3 adds `operation_receipts`. Schemas 1 and 2 upgrade transactionally. Other domains are not normalized.
 - Remaining work: the other dashboard operations, staff MFA, the public-access/proxy gate, nginx and Compose.
 
@@ -49,7 +53,7 @@ expire or follow `audit-keep-days`. They keep the input fingerprint and a minima
 login credentials. A generated reward code is retained so a retry can retrieve it. Clients retain an ID for retries
 and generate a new one only for a new intended change. IDs share a namespace across operations for each actor.
 
-Give BP, invite creation, player profile/role edits, password setup/reset codes, key-account creation/disclosure and
+Give BP, invite creation, player profile/role edits, password setup/reset codes, key-account creation/disclosure, player gifts and
 BOOSTERPASS creation/removal use this boundary. Shared identity, error and receipt helpers live in
 `api/mutation.rs`; domain validation, preparation and commit stay in their operation modules. A generated-code retry
 returns the original code. A removal retry returns its original result even if someone has since recreated that
@@ -93,6 +97,15 @@ Receipts hold only the account ID, request ID and key digest. A retry resolves t
 and verifies its key against that digest before disclosure; deletion cannot recreate the account, and a changed key
 requires a new request. Roles are checked again before a replay. Keys already persist in the private account database;
 this does not add a second plaintext credential store. Friends should still join with password accounts and invites.
+
+`POST /panel/api/v1/gifts` takes a tagged card/recipe/title request and stable numeric IDs. The receipt records
+only IDs, quantities and a generic confirmation, never a player name. The CLI and old panel reconstruct readable
+card/recipe/title labels from available metadata; missing files cannot turn an already committed receipt into failure. Retries acknowledge the saved gift without
+repeating mail or presentation, even after restart or audit pruning. Cards and recipe cards must fit the stored
+additional-copy limit of 255 per artwork; recipe duplicates are counted together before any change. An already-owned
+recipe without cards is refused; granting an already-owned title confirms that state without adding a second item.
+`GET /panel/api/v1/gifts/choices?q=…` searches game metadata and returns at most 50 results per kind with explicit
+more-results flags. Neither endpoint accepts moderator or host-token authority on the staff listener.
 
 ## API and dashboard
 

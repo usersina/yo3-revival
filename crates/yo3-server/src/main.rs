@@ -72,11 +72,11 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::Rename { old, new, .. } => Op::Rename { old: old.clone(), new: new.clone() },
         Admin::SetCountry { who, code, .. } => Op::SetCountry { who: who.clone(), code: code.clone() },
         Admin::Countries => Op::Countries,
-        Admin::GrantTitle { player, title } => Op::GrantTitle { player: player.clone(), title: title.clone() },
+        Admin::GrantTitle { player, title, .. } => Op::GrantTitle { player: player.clone(), title: title.clone() },
         Admin::Titles => Op::Titles,
         Admin::GiveBp { who, amount, .. } => Op::GiveBp { who: who.clone(), amount: *amount },
-        Admin::GiveCards { player, card, art, count } => Op::GiveCards { player: player.clone(), card: card.clone(), art: *art, count: *count },
-        Admin::GiveRecipe { player, deck, cards } => Op::GiveRecipe { player: player.clone(), deck: deck.clone(), cards: *cards },
+        Admin::GiveCards { player, card, art, count, .. } => Op::GiveCards { player: player.clone(), card: card.clone(), art: *art, count: *count },
+        Admin::GiveRecipe { player, deck, cards, .. } => Op::GiveRecipe { player: player.clone(), deck: deck.clone(), cards: *cards },
         Admin::Recipes => Op::Recipes,
         Admin::AddCode { code, bp, uses, .. } => Op::AddCode { code: code.clone(), bp: *bp, uses: *uses },
         Admin::RemoveCode { code, .. } => Op::RemoveCode { code: code.clone() },
@@ -150,6 +150,7 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         anyhow::ensure!(a.advertise.is_some(), "pass --advertise ADDRESS: the address friends reach this server at (an IP or a name in its certificate)");
     }
     let mut result = if let Admin::GiveBp { request_id, .. } | Admin::AddCode { request_id, .. } | Admin::RemoveCode { request_id, .. } | Admin::Invite { request_id, .. }
+        | Admin::GiveCards { request_id, .. } | Admin::GiveRecipe { request_id, .. } | Admin::GrantTitle { request_id, .. }
         | Admin::AddAccount { request_id, .. } | Admin::Key { request_id, .. } | Admin::Profile { request_id, .. }
         | Admin::AddPlayer { request_id, .. } | Admin::Rename { request_id, .. } | Admin::SetCountry { request_id, .. } | Admin::SetRole { request_id, .. } = &command {
         let id = request_id.clone().unwrap_or_else(yo3_server::logins::new_token);

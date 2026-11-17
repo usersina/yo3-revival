@@ -86,6 +86,8 @@ fn an_admin_gives_cards_artworks_and_recipes_and_a_moderator_cannot() {
     let settings = std::sync::Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());
     let mut d = yo3_server::accounts::Directory::new(vec![]);
     d.add_account(&["Yugi".into()]).unwrap();
+    d.register(logins::Login::new("Pegasus", "HASH".into(), "RECOVERY".into()), None, logins::Registration::Open).unwrap();
+    d.set_role("Pegasus", logins::Role::Admin).unwrap();
     let accounts = std::sync::Arc::new(std::sync::Mutex::new(d));
     let card = |row, cid, art, name: &str| Card { row, cid, art, name: name.into() };
     let gifts = Gifts {

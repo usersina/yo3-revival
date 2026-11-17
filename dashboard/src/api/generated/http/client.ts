@@ -37,14 +37,19 @@ import type {
   CreateInviteRequest,
   CreateInviteResult,
   EditAccountHeaders,
+  GiftChoices,
+  GiftRequest,
+  GiftResult,
   GiveBpByIdRequest,
   GiveBpHeaders,
   GiveBpResult,
+  GivePlayerGiftHeaders,
   InviteList,
   IssueAccountCodeHeaders,
   IssueAccountCodeRequest,
   KeyAccountRequest,
   KeyAccountResult,
+  ListGiftChoicesParams,
   ManageAccountKeyHeaders,
   RemoveBpCodeHeaders,
   RemoveBpCodeRequest,
@@ -806,6 +811,176 @@ export function useListCountries<TData = Awaited<ReturnType<typeof listCountries
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListCountriesQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGivePlayerGiftUrl = () => {
+
+
+
+
+  return `/panel/api/v1/gifts`
+}
+
+export const givePlayerGift = async (giftRequest: GiftRequest,
+    headers: GivePlayerGiftHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<GiftResult> => {
+
+  return apiFetch<GiftResult>(getGivePlayerGiftUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(giftRequest)
+  }
+);}
+
+
+
+
+
+export const getGivePlayerGiftMutationKey = () => ['givePlayerGift'] as const;
+
+export const getGivePlayerGiftMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof givePlayerGift>>, TError,GivePlayerGiftMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof givePlayerGift>>, TError,GivePlayerGiftMutationVariables, TContext> => {
+
+const mutationKey = getGivePlayerGiftMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof givePlayerGift>>, GivePlayerGiftMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  givePlayerGift(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GivePlayerGiftMutationResult = NonNullable<Awaited<ReturnType<typeof givePlayerGift>>>
+    export type GivePlayerGiftMutationBody = GiftRequest
+    export type GivePlayerGiftMutationError = ErrorType<ApiError>
+    export type GivePlayerGiftMutationVariables = {data: GiftRequest;headers: GivePlayerGiftHeaders}
+
+    export const useGivePlayerGift = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof givePlayerGift>>, TError,GivePlayerGiftMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof givePlayerGift>>,
+        TError,
+        GivePlayerGiftMutationVariables,
+        TContext
+      > => {
+      return useMutation(getGivePlayerGiftMutationOptions(options), queryClient);
+    }
+
+export const getListGiftChoicesUrl = (params?: ListGiftChoicesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/panel/api/v1/gifts/choices?${stringifiedParams}` : `/panel/api/v1/gifts/choices`
+}
+
+export const listGiftChoices = async (params?: ListGiftChoicesParams, options?: Parameters<typeof apiFetch>[1]): Promise<GiftChoices> => {
+
+  return apiFetch<GiftChoices>(getListGiftChoicesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListGiftChoicesQueryKey = (params?: ListGiftChoicesParams,) => {
+    return [
+    `/panel/api/v1/gifts/choices`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListGiftChoicesQueryOptions = <TData = Awaited<ReturnType<typeof listGiftChoices>>, TError = ErrorType<ApiError>>(params?: ListGiftChoicesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listGiftChoices>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListGiftChoicesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listGiftChoices>>> = ({ signal }) => listGiftChoices(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listGiftChoices>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListGiftChoicesQueryResult = NonNullable<Awaited<ReturnType<typeof listGiftChoices>>>
+export type ListGiftChoicesQueryError = ErrorType<ApiError>
+
+
+export function useListGiftChoices<TData = Awaited<ReturnType<typeof listGiftChoices>>, TError = ErrorType<ApiError>>(
+ params: undefined |  ListGiftChoicesParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listGiftChoices>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listGiftChoices>>,
+          TError,
+          Awaited<ReturnType<typeof listGiftChoices>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListGiftChoices<TData = Awaited<ReturnType<typeof listGiftChoices>>, TError = ErrorType<ApiError>>(
+ params?: ListGiftChoicesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listGiftChoices>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listGiftChoices>>,
+          TError,
+          Awaited<ReturnType<typeof listGiftChoices>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListGiftChoices<TData = Awaited<ReturnType<typeof listGiftChoices>>, TError = ErrorType<ApiError>>(
+ params?: ListGiftChoicesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listGiftChoices>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListGiftChoices<TData = Awaited<ReturnType<typeof listGiftChoices>>, TError = ErrorType<ApiError>>(
+ params?: ListGiftChoicesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listGiftChoices>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListGiftChoicesQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

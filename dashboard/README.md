@@ -6,10 +6,14 @@ The main pages are a **labelled design preview** with sample data. Changes live 
 **Reset preview**. The role selector is not authentication.
 
 The separate **[/connected](http://127.0.0.1:5173/connected)** page uses generated API hooks for real staff sign-in,
-account details and player creation/rename/country edits, confirmed staff role changes, one-time password-account setup/reset codes, admin-only key-account creation and explicit key disclosure, Give BP, registration invites (list/create, limits, expiry, issuer and claims) and BOOSTERPASS codes
+account details and player creation/rename/country edits, confirmed staff role changes, one-time password-account setup/reset codes, admin-only key-account creation and explicit key disclosure, card/recipe/title gifts with searchable metadata, Give BP, registration invites (list/create, limits, expiry, issuer and claims) and BOOSTERPASS codes
 (list, create, remove and claims). It never substitutes sample data for a
 failed connection. This is local development work;
 public hosting, the remaining management pages, MFA and Compose are still pending.
+
+The disposable `dashboard_dev` API uses real operations and SQLite with test accounts and a small **sample gift
+catalogue**. It opens only its loopback staff API. A real server searches its game files; missing data is an error,
+never a fallback catalogue.
 
 ## Run
 

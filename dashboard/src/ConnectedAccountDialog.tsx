@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { LoaderCircle, Pencil, Plus, RefreshCw } from 'lucide-react'
+import { Gift, LoaderCircle, Pencil, Plus, RefreshCw } from 'lucide-react'
 import { z } from 'zod'
 import { Badge, Button, Field, Modal } from './components/ui'
 import {
@@ -38,10 +38,12 @@ export function ConnectedAccountDialog({
   onChange,
   onResetPassword,
   onRevealKey,
+  onGift,
 }: {
   session: StaffSession
   userId: number | null
   onChange: (id: number | null) => void
+  onGift: (player: { player_id: number; name: string }) => void
   onRevealKey: (account: AccountDetail) => void
   onResetPassword: (account: AccountDetail) => void
 }) {
@@ -476,6 +478,14 @@ export function ConnectedAccountDialog({
                             : 'Unavailable'}
                         </td>
                         <td>
+                          <Button
+                            aria-label={`Gift to ${p.name}`}
+                            onClick={() => onGift({ player_id: p.player_id, name: p.name })}
+                            disabled={!admin || !canStart}
+                            title={!admin ? 'Administrators only' : undefined}
+                          >
+                            <Gift size={14} /> Gift
+                          </Button>
                           <Button
                             aria-label={`Rename ${p.name}`}
                             onClick={() => start('rename_player', p.player_id, p.name)}
