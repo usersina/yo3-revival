@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { LoaderCircle, RefreshCw } from 'lucide-react'
 import { z } from 'zod'
-import { Button, Modal, Panel } from './components/ui'
+import { Badge, Button, Modal, Panel } from './components/ui'
 import {
   getGetStaffSessionQueryKey,
   useGetServerStatus,
@@ -14,6 +15,15 @@ import type { StaffSession, StopResponse } from './api/generated/http/models'
 import { StopRequest, StopServerHeader } from './api/generated/validation/schemas'
 import { ApiHttpError } from './api/transport'
 const pendingSchema = z.object({ data: StopRequest, headers: StopServerHeader })
+function memoryLabel(raw: string | null | undefined) {
+  if (raw == null) return 'Not available'
+  try {
+    const bytes = BigInt(raw)
+    return `${bytes / 1048576n}.${((bytes % 1048576n) * 10n) / 1048576n} MiB`
+  } catch {
+    return 'Not available'
+  }
+}
 export function ConnectedServer({ session }: { session: StaffSession }) {
   const client = useQueryClient()
   const status = useGetServerStatus({ query: { refetchInterval: 10000 } })
@@ -166,10 +176,54 @@ export function ConnectedServer({ session }: { session: StaffSession }) {
                 </dd>
               </div>
               <div>
+                <dt>Rules engines</dt>
+                <dd>{status.data.engines}</dd>
+              </div>
+              <div>
+                <dt>Server memory</dt>
+                <dd>{memoryLabel(status.data.memory_bytes)}</dd>
+              </div>
+              <div>
+                <dt>Latest backup</dt>
+                <dd>
+                  {status.data.backup.kind === 'available' ? (
+                    new Date(status.data.backup.at).toLocaleString()
+                  ) : status.data.backup.kind === 'none' ? (
+                    <Badge tone="amber">None yet</Badge>
+                  ) : (
+                    <Badge tone="red">Unavailable</Badge>
+                  )}
+                </dd>
+              </div>
+              <div>
                 <dt>Last checked</dt>
                 <dd>{new Date(status.data.checked_at).toLocaleTimeString()}</dd>
               </div>
             </dl>
+            {status.data.backup.kind === 'unavailable' && (
+              <p role="alert" className="connected-error">
+                Backup check failed: {status.data.backup.message}{' '}
+                <Link to="/backups">Open backups</Link>
+              </p>
+            )}
+            {status.data.backup.kind === 'none' && (
+              <p className="inline-notice">
+                No database snapshot yet.{' '}
+                <Link to="/backups">
+                  {session.role === 'admin' ? 'Create a backup' : 'View backups'}
+                </Link>
+                {session.role === 'admin'
+                  ? ' and keep a private copy off this machine.'
+                  : ' and ask an administrator to create a snapshot.'}
+              </p>
+            )}
+            {status.data.backup.kind === 'available' &&
+              Date.parse(status.data.checked_at) - Date.parse(status.data.backup.at) > 7200000 && (
+                <p role="alert" className="connected-error">
+                  The latest snapshot is over two hours old.{' '}
+                  <Link to="/backups">Check backups</Link> and inspect the server logs.
+                </p>
+              )}
             {!status.data.persistence_healthy && (
               <p role="alert" className="connected-error">
                 Saving has failed. New sign-ins are refused until a save succeeds. Check disk space
@@ -182,6 +236,39 @@ export function ConnectedServer({ session }: { session: StaffSession }) {
               </p>
             )}
           </>
+        )}
+        {status.data && (
+          <div className="connected-online">
+            <h3>Online now</h3>
+            {status.data.online_players.length ? (
+              <div className="table-scroll" role="region" aria-label="Online players" tabIndex={0}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Player</th>
+                      <th>Activity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {status.data.online_players.map((player) => (
+                      <tr key={player.player_id}>
+                        <td>
+                          {player.user_id == null ? (
+                            player.name
+                          ) : (
+                            <Link to={`/accounts?account=${player.user_id}`}>{player.name}</Link>
+                          )}
+                        </td>
+                        <td>{player.duelling ? 'Duelling' : 'In the game'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="muted">Nobody is online.</p>
+            )}
+          </div>
         )}
         {storageError && !open && (
           <p role="alert" className="connected-error">

@@ -100,6 +100,7 @@ pub struct SignedOut { pub signed_out: bool }
 /// A projection of existing account state: no keys, password hashes, device tokens or invented dates/presence.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AccountSummary {
+    pub standing:Option<crate::api::profiles::AccountStanding>,pub muted:Option<crate::api::profiles::AccountMute>,
     #[schema(maximum = 4294967295_u32)] pub user_id: u32, pub login: Option<String>, pub role: Role, #[schema(maximum = 4294967295_u32)] pub bp: u32, pub players: Vec<PlayerSummary>,
 }
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -240,13 +241,15 @@ async fn sign_out(State(state): State<Dashboard>, headers: HeaderMap) -> Respons
 #[utoipa::path(get, path = "/panel/api/v1/accounts", operation_id = "listAccounts", tag = "Accounts",
     security(("staffSession" = [])), responses((status = 200, description = "Success", body = AccountList),
         (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
-        (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 500, description = "Internal error; mutation outcome may be unknown", body = ApiError)))]
-async fn accounts(State(state): State<Dashboard>) -> Json<AccountList> {
-    let d = state.api.accounts.locked();
-    Json(AccountList { accounts: d.entries().map(|(user, _, a)| AccountSummary {
-        user_id: a.user_id, login: user.map(str::to_string), role: d.login_by_id(a.user_id).map_or(Role::Player, |l| l.role), bp: a.dpoint,
-        players: a.players.iter().map(|p| PlayerSummary { player_id: p.player_id, name: p.name.clone(), slot: p.index }).collect(),
-    }).collect() })
+        (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 503, description = "Account metadata unavailable", body = ApiError), (status = 500, description = "Internal error; mutation outcome may be unknown", body = ApiError)))]
+async fn accounts(State(state): State<Dashboard>) -> Result<Json<AccountList>,ApiError> {
+    let d=state.api.accounts.locked();let now=crate::logins::now();
+    let accounts=d.entries().map(|(user,_,a)|{
+        let login=d.login_by_id(a.user_id);let (standing,muted)=crate::api::profiles::badges(login,now)?;
+        Ok(AccountSummary{standing,muted,user_id:a.user_id,login:user.map(str::to_string),role:login.map_or(Role::Player,|l|l.role),bp:a.dpoint,
+            players:a.players.iter().map(|p|PlayerSummary{player_id:p.player_id,name:p.name.clone(),slot:p.index}).collect()})
+    }).collect::<Result<Vec<_>,MutationError>>()?;
+    Ok(Json(AccountList{accounts}))
 }
 
 #[utoipa::path(post, path = "/panel/api/v1/give-bp", operation_id = "giveBp", tag = "Accounts",
@@ -567,7 +570,7 @@ async fn backups(State(state):State<Dashboard>,Extension(viewer):Extension<Viewe
     params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "Retain this ID and input on retry. A retry observes the original saved outcome.")),
     responses((status = 200, description = "Saved snapshot intent and current outcome", body = CreateBackupResponse),
         (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
-        (status = 404, description = "Account not found", body = ApiError), (status = 409, description = "Retry input conflict", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
+        (status = 404, description = "Backup unavailable", body = ApiError), (status = 409, description = "Retry input conflict", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
         (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError),
         (status = 503, description = "Commit could not be confirmed; retry the same request", body = ApiError), (status = 500, description = "Internal error; outcome may be unknown", body = ApiError)))]
 async fn create_backup(State(state):State<Dashboard>,Extension(viewer):Extension<Viewer>,headers:HeaderMap,body:Result<Json<CreateBackupRequest>,JsonRejection>)->Result<Json<CreateBackupResponse>,ApiError>{
@@ -580,7 +583,7 @@ async fn create_backup(State(state):State<Dashboard>,Extension(viewer):Extension
     params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "Retain this ID and input on retry. A retry observes the original saved outcome.")),
     responses((status = 200, description = "Audited snapshot stream. Includes sensitive account data; keep it private.", body = BackupFile, content_type="application/octet-stream"),
         (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
-        (status = 404, description = "Account not found", body = ApiError), (status = 409, description = "Retry input conflict", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
+        (status = 404, description = "Backup unavailable", body = ApiError), (status = 409, description = "Retry input conflict", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
         (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError),
         (status = 503, description = "Commit could not be confirmed; retry the same request", body = ApiError), (status = 500, description = "Internal error; outcome may be unknown", body = ApiError)))]
 async fn download_backup(State(state):State<Dashboard>,Extension(viewer):Extension<Viewer>,headers:HeaderMap,body:Result<Json<DownloadBackupRequest>,JsonRejection>)->Result<Response,ApiError>{

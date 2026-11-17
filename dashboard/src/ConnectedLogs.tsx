@@ -3,9 +3,9 @@ import { Copy, LoaderCircle, RefreshCw } from 'lucide-react'
 import { Button, Field, Panel } from './components/ui'
 import { useGetServerLogs } from './api/generated/http/client'
 import { ApiHttpError } from './api/transport'
-export function ConnectedLogs() {
-  const [problems, setProblems] = useState(false)
-  const [limit, setLimit] = useState(200)
+export function ConnectedLogs({ summary = false }: { summary?: boolean }) {
+  const [problems, setProblems] = useState(summary)
+  const [limit, setLimit] = useState(summary ? 10 : 200)
   const [automatic, setAutomatic] = useState(false)
   const [copyState, setCopyState] = useState('')
   const logs = useGetServerLogs(
@@ -23,10 +23,10 @@ export function ConnectedLogs() {
     }
   }
   return (
-    <section aria-label="Server logs">
+    <section aria-label={summary ? 'Recent problems' : 'Server logs'}>
       <Panel
         className="connected-panel"
-        title="Server logs"
+        title={summary ? 'Recent problems' : 'Server logs'}
         description="Recent lines from this process, newest first. Verbose recordings stay in the server’s diagnostic files."
         action={
           <div className="action-group">
@@ -43,37 +43,39 @@ export function ConnectedLogs() {
           </div>
         }
       >
-        <div className="table-toolbar">
-          <label className="profile-role-confirm">
-            <input
-              type="checkbox"
-              checked={problems}
-              onChange={(event) => setProblems(event.target.checked)}
-            />{' '}
-            Warnings and errors only
-          </label>
-          <label className="profile-role-confirm">
-            <input
-              type="checkbox"
-              checked={automatic}
-              onChange={(event) => setAutomatic(event.target.checked)}
-            />{' '}
-            Refresh every 5 seconds
-          </label>
-          <Field id="logs-limit" label="Maximum lines">
-            <select
-              id="logs-limit"
-              value={limit}
-              onChange={(event) => setLimit(Number(event.target.value))}
-            >
-              {[50, 100, 200, 500].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
+        {!summary && (
+          <div className="table-toolbar">
+            <label className="profile-role-confirm">
+              <input
+                type="checkbox"
+                checked={problems}
+                onChange={(event) => setProblems(event.target.checked)}
+              />{' '}
+              Warnings and errors only
+            </label>
+            <label className="profile-role-confirm">
+              <input
+                type="checkbox"
+                checked={automatic}
+                onChange={(event) => setAutomatic(event.target.checked)}
+              />{' '}
+              Refresh every 5 seconds
+            </label>
+            <Field id="logs-limit" label="Maximum lines">
+              <select
+                id="logs-limit"
+                value={limit}
+                onChange={(event) => setLimit(Number(event.target.value))}
+              >
+                {[50, 100, 200, 500].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+        )}
         {logs.isPending && (
           <p role="status" className="connected-state">
             <LoaderCircle size={16} className="spin" /> Loading server logs…

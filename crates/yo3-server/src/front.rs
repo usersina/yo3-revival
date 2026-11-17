@@ -799,8 +799,12 @@ struct Online {
 
 impl Hub {
     pub(crate) fn manager_players(&self) -> Vec<serde_json::Value> {
-        self.online.values().map(|p| serde_json::json!({"player_id":p.player_id,"name":p.name,
-            "duelling":self.in_match(p.player_id).is_some()})).collect()
+        self.manager_player_states().into_iter().map(|(player_id,name,duelling)|serde_json::json!({"player_id":player_id,"name":name,"duelling":duelling})).collect()
+    }
+
+    pub(crate) fn manager_player_states(&self)->Vec<(u32,String,bool)> {
+        let mut players:Vec<_>=self.online.values().map(|p|(p.player_id,p.name.clone(),self.in_match(p.player_id).is_some())).collect();
+        players.sort_by_key(|p|p.0);players
     }
 
     pub fn online(&self) -> usize {

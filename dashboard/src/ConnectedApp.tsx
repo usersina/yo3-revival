@@ -157,7 +157,12 @@ function Workspace() {
           ) : heading ? (
             <>
               <PageHeading title={heading[0]} description={heading[1]} />
-              {pathname === '/' && <ConnectedServer session={user} />}
+              {pathname === '/' && (
+                <>
+                  <ConnectedServer session={user} />
+                  <ConnectedLogs summary />
+                </>
+              )}
               {pathname === '/invites' && (
                 <>
                   <ConnectedInvites session={user} />

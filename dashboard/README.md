@@ -2,7 +2,9 @@
 
 A standalone admin dashboard for YO3 Revival, built with React, TypeScript, Vite’s React SWC plugin, and Tailwind CSS.
 
-The default app uses real staff sign-in and generated API hooks. Its pages cover Overview, Accounts,
+The default app uses real staff sign-in and generated API hooks. Overview shows checked engines, memory, backup
+health, online-player links and recent problems. Accounts have moderation badges/filters and copyable detail URLs.
+Its pages cover Overview, Accounts,
 Invites & codes, News & maintenance, Moderation, Audit log, Server logs, Backups and Settings. Account changes,
 rewards and server controls use audited operations with retained request IDs for safe retries. A failed connection
 never falls back to sample data.
@@ -10,8 +12,7 @@ never falls back to sample data.
 The design preview is available only in development at **[/design/](http://127.0.0.1:5173/design/)**. Its sample
 changes reset on reload; its role selector is not authentication. The development-only `/connected` route collects
 real components on one page for operation tests. Production bundles exclude the sample pages and fixtures.
-MFA, public hosting and Compose are still pending; detailed Overview/moderation-list parity is also open. The old
-HTML panel remains private until the transition is complete.
+MFA, public hosting and Compose are still pending. The old HTML panel remains private during the transition.
 
 The disposable `dashboard_dev` API uses real operations and SQLite with test accounts and a small **sample gift
 catalogue**. It opens only its loopback staff API. A real server searches its game files; missing data is an error,

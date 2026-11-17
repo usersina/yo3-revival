@@ -702,3 +702,20 @@ async fn backups_use_typed_intents_and_stream_only_after_an_admin_access_audit()
     b.sign_in("Croquet").await;assert_eq!(b.call("POST","/panel/api/v1/backups/download",json!({"name":name})).await.status,403);
 
 }
+
+#[tokio::test]
+async fn account_lists_expose_current_moderation_badges_without_credentials(){
+    let mut b=Browser::new("list-standing").await;b.sign_in("Croquet").await;
+    let rows=b.call("GET","/panel/api/v1/accounts",json!(null)).await.body;
+    let yugi=rows["accounts"].as_array().unwrap().iter().find(|a|a["login"]=="Yugi").unwrap();
+    assert_eq!(yugi["standing"]["kind"],"active","the moderation list does not expose account standing");
+    assert!(yugi["muted"].is_null());
+    let host=b.admin.clone();tokio::task::spawn_blocking(move||{
+        api::call(&host,&Op::Ban{who:"Yugi".into(),reason:"list test".into(),days:Some(1)}).unwrap();
+        api::call(&host,&Op::Mute{who:"Yugi".into(),reason:"chat test".into(),minutes:Some(10)}).unwrap();
+    }).await.unwrap();
+    let rows=b.call("GET","/panel/api/v1/accounts",json!(null)).await.body;
+    let yugi=rows["accounts"].as_array().unwrap().iter().find(|a|a["login"]=="Yugi").unwrap();
+    assert_eq!(yugi["standing"]["kind"],"banned");assert_eq!(yugi["muted"]["reason"],"chat test");
+    let safe=rows.to_string();for secret in ["password","recovery","devices","HASH","credential"]{assert!(!safe.contains(secret),"list must not project {secret}");}
+}

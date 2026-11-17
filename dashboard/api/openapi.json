@@ -100,6 +100,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Account metadata unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1172,7 +1182,7 @@
             }
           },
           "404": {
-            "description": "Account not found",
+            "description": "Backup unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -1322,7 +1332,7 @@
             }
           },
           "404": {
-            "description": "Account not found",
+            "description": "Backup unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -4099,6 +4109,16 @@
               "null"
             ]
           },
+          "muted": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountMute"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "players": {
             "type": "array",
             "items": {
@@ -4107,6 +4127,16 @@
           },
           "role": {
             "$ref": "#/components/schemas/Role"
+          },
+          "standing": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountStanding"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "user_id": {
             "type": "integer",
@@ -4253,6 +4283,65 @@
       "BackupFile": {
         "type": "string",
         "format": "binary"
+      },
+      "BackupHealth": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "none"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "name",
+              "at",
+              "kind"
+            ],
+            "properties": {
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "available"
+                ]
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "unavailable"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        ]
       },
       "BackupList": {
         "type": "object",
@@ -5546,6 +5635,37 @@
           }
         }
       },
+      "OnlinePlayer": {
+        "type": "object",
+        "required": [
+          "player_id",
+          "name",
+          "duelling"
+        ],
+        "properties": {
+          "duelling": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "player_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "user_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        }
+      },
       "PlayerDetail": {
         "type": "object",
         "required": [
@@ -5758,7 +5878,10 @@
           "players",
           "online",
           "duels",
-          "persistence_healthy"
+          "persistence_healthy",
+          "engines",
+          "backup",
+          "online_players"
         ],
         "properties": {
           "accounts": {
@@ -5766,6 +5889,9 @@
             "format": "int32",
             "maximum": 4294967295,
             "minimum": 0
+          },
+          "backup": {
+            "$ref": "#/components/schemas/BackupHealth"
           },
           "can_stop": {
             "type": "boolean"
@@ -5786,11 +5912,30 @@
               "null"
             ]
           },
+          "engines": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          },
+          "memory_bytes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Decimal bytes, preserving precision in JavaScript. Missing on unsupported operating systems."
+          },
           "online": {
             "type": "integer",
             "format": "int32",
             "maximum": 4294967295,
             "minimum": 0
+          },
+          "online_players": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OnlinePlayer"
+            }
           },
           "persistence_healthy": {
             "type": "boolean"

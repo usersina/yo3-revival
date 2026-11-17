@@ -101,6 +101,17 @@ impl Input {
         })
     }
 }
+pub(crate) fn badges(login:Option<&crate::logins::Login>,now:i64)->Result<(Option<AccountStanding>,Option<AccountMute>),MutationError>{
+        let standing = login.map(|l| -> Result<AccountStanding, MutationError> { Ok(if l.refusal(now).is_none() { AccountStanding::Active } else {
+            match &l.standing {
+                Standing::Active => AccountStanding::Active,
+                Standing::Restricted { reason, until } => AccountStanding::Restricted { reason: reason.clone(), until: timestamp(*until)? },
+                Standing::Banned { reason, until } => AccountStanding::Banned { reason: reason.clone(), until: timestamp(*until)? },
+            }
+        }) }).transpose()?;
+        let muted = login.and_then(|l| l.mute(now)).map(|m| -> Result<AccountMute, MutationError> { Ok(AccountMute { reason: m.reason.clone(), until: timestamp(m.until)? }) }).transpose()?;
+    Ok((standing,muted))
+}
 impl Api {
     pub fn account_detail(&self, user: u32, actor: Actor<'_>) -> Result<AccountDetail, MutationError> {
         // Live hub -> stored accounts, matching the mutation/duel reward lock order.
@@ -110,14 +121,7 @@ impl Api {
         let a = d.account_of(user).ok_or_else(missing)?;
         let login = d.login_by_id(user);
         let now = crate::logins::now();
-        let standing = login.map(|l| -> Result<AccountStanding, MutationError> { Ok(if l.refusal(now).is_none() { AccountStanding::Active } else {
-            match &l.standing {
-                Standing::Active => AccountStanding::Active,
-                Standing::Restricted { reason, until } => AccountStanding::Restricted { reason: reason.clone(), until: timestamp(*until)? },
-                Standing::Banned { reason, until } => AccountStanding::Banned { reason: reason.clone(), until: timestamp(*until)? },
-            }
-        }) }).transpose()?;
-        let muted = login.and_then(|l| l.mute(now)).map(|m| -> Result<AccountMute, MutationError> { Ok(AccountMute { reason: m.reason.clone(), until: timestamp(m.until)? }) }).transpose()?;
+        let (standing,muted)=badges(login,now)?;
         Ok(AccountDetail { user_id: user, login: login.map(|l| l.user.clone()), has_key: d.entries().any(|(_, k, a)| a.user_id == user && k.is_some()),
             password_ready: login.map(|l| !l.password.is_empty()), role: login.map_or(Role::Player, |l| l.role), bp: a.dpoint, country: (!a.country.is_empty()).then_some(a.country), standing, muted,
             device_count: login.map_or(0, |l| l.devices.len() as u32), reset_pending: login.and_then(|l| l.reset.as_ref()).is_some_and(|(_, t)| *t > now),
@@ -216,5 +220,19 @@ impl Api {
         }
         *d = next;
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod badge_tests {
+    use super::*;
+    #[test]
+    fn expired_moderation_is_not_shown_as_active_and_bad_dates_are_reported() {
+        let now=crate::logins::now();let mut login=crate::logins::Login::new("Player","HASH".into(),"RECOVERY".into());
+        login.standing=Standing::Restricted{reason:"expired".into(),until:Some(now-1)};
+        login.muted=Some(crate::logins::Mute{reason:"expired".into(),until:Some(now-1)});
+        let (standing,muted)=badges(Some(&login),now).unwrap();assert!(matches!(standing,Some(AccountStanding::Active)));assert!(muted.is_none());
+        login.standing=Standing::Banned{reason:"invalid date".into(),until:Some(i64::MAX)};
+        assert_eq!(badges(Some(&login),now).unwrap_err().code,MutationErrorCode::PersistenceFailed);
     }
 }

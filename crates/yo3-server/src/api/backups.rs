@@ -39,15 +39,7 @@ impl Api {
     pub fn read_backups(&self,actor:Actor<'_>)->Result<BackupList,MutationError>{
         actor.resolve(&self.accounts.locked(),Role::Moderator)?;
         let dir=self.data_dir.as_ref().ok_or_else(missing)?;
-        let root=dir.join("backups");let mut rows=vec![];
-        if fs::symlink_metadata(&root).is_ok_and(|m|m.file_type().is_symlink()){return Err(io_error("the backup folder cannot be a symbolic link"))}
-        let entries=match fs::read_dir(root){Ok(e)=>e,Err(e)if e.kind()==std::io::ErrorKind::NotFound=>return Ok(BackupList{backups:rows,checked_at:Utc::now()}),Err(e)=>return Err(io_error(e))};
-        for entry in entries {let entry=entry.map_err(io_error)?;let Some(name)=entry.file_name().to_str().map(str::to_string)else{continue};
-            if !store::valid_backup_name(&name){continue}
-            let Some(path)=snapshot(dir,&name)? else{continue};let metadata=fs::metadata(path).map_err(io_error)?;
-            rows.push(BackupEntry{name,at:metadata.modified().ok().map(DateTime::<Utc>::from),bytes:metadata.len().to_string()});
-        }
-        rows.sort_by(|a,b|b.name.cmp(&a.name));Ok(BackupList{backups:rows,checked_at:Utc::now()})
+        list_snapshots(dir)
     }
     pub fn create_backup(&self,request:&CreateBackupRequest,id:&str,actor:Actor<'_>,origin:&str)->Result<CreateBackupResponse,MutationError>{
         validate_id(id)?;let d=self.accounts.locked();let identity=actor.resolve(&d,Role::Admin)?;let hash=fingerprint(request)?;
@@ -87,4 +79,29 @@ impl Api {
         }
         Ok(BackupDownload{file,filename:format!("yo3-backup-{}.db",request.name),bytes:metadata.len()})
     }
+}
+
+#[derive(Debug,Serialize,Deserialize,ToSchema)]
+#[serde(tag="kind",rename_all="snake_case")]
+pub enum BackupHealth { None, Available {name:String,at:DateTime<Utc>}, Unavailable {message:String} }
+pub(super) fn health(dir:Option<&Path>)->BackupHealth {
+    let Some(dir)=dir else{return BackupHealth::Unavailable{message:"No persistent data folder is configured.".into()}};
+    match list_snapshots(dir) {
+        Ok(list)=>match list.backups.into_iter().next(){
+            Some(row)=>match row.at{Some(at)=>BackupHealth::Available{name:row.name,at},None=>BackupHealth::Unavailable{message:"The latest backup's creation time could not be read.".into()}},
+            None=>BackupHealth::None,
+        },
+        Err(error)=>BackupHealth::Unavailable{message:error.message},
+    }
+}
+fn list_snapshots(dir:&Path)->Result<BackupList,MutationError> {
+        let root=dir.join("backups");let mut rows=vec![];
+        if fs::symlink_metadata(&root).is_ok_and(|m|m.file_type().is_symlink()){return Err(io_error("the backup folder cannot be a symbolic link"))}
+        let entries=match fs::read_dir(root){Ok(e)=>e,Err(e)if e.kind()==std::io::ErrorKind::NotFound=>return Ok(BackupList{backups:rows,checked_at:Utc::now()}),Err(e)=>return Err(io_error(e))};
+        for entry in entries {let entry=entry.map_err(io_error)?;let Some(name)=entry.file_name().to_str().map(str::to_string)else{continue};
+            if !store::valid_backup_name(&name){continue}
+            let Some(path)=snapshot(dir,&name)? else{continue};let metadata=fs::metadata(path).map_err(io_error)?;
+            rows.push(BackupEntry{name,at:metadata.modified().ok().map(DateTime::<Utc>::from),bytes:metadata.len().to_string()});
+        }
+        rows.sort_by(|a,b|b.name.cmp(&a.name));Ok(BackupList{backups:rows,checked_at:Utc::now()})
 }

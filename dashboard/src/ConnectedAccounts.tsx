@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Coins, Eye, LoaderCircle, LogOut, RefreshCw } from 'lucide-react'
 import { z } from 'zod'
-import { Button, Field, Modal, PageHeading, Panel, SearchField } from './components/ui'
+import { Badge, Button, Field, Modal, PageHeading, Panel, SearchField } from './components/ui'
 import {
   getGetStaffSessionQueryKey,
   getListAccountsQueryKey,
@@ -52,9 +53,27 @@ export default function ConnectedAccounts({
   const client = useQueryClient()
   const accounts = useListAccounts()
   const [query, setQuery] = useState('')
+  const [standingFilter, setStandingFilter] = useState('all')
   const [deletionId, setDeletionId] = useState<number | null>(null)
   const [moderationId, setModerationId] = useState<number | null>(null)
-  const [detailId, setDetailId] = useState<number | null>(null)
+  const [params, setParams] = useSearchParams()
+  const rawAccount = params.get('account')
+  const [integrationDetailId, setIntegrationDetailId] = useState<number | null>(null)
+  const linkedDetailId =
+    rawAccount && /^[1-9][0-9]{0,9}$/.test(rawAccount) && Number(rawAccount) <= 4294967295
+      ? Number(rawAccount)
+      : null
+  const detailId = full ? integrationDetailId : linkedDetailId
+  function setDetailId(value: number | null) {
+    if (full) {
+      setIntegrationDetailId(value)
+      return
+    }
+    const next = new URLSearchParams(params)
+    if (value === null) next.delete('account')
+    else next.set('account', String(value))
+    setParams(next, { preventScrollReset: true })
+  }
   const [giftTarget, setGiftTarget] = useState<GiftTarget | null>(null)
   const [keyAction, setKeyAction] = useState<KeyAction | null>(null)
   const [credentialAction, setCredentialAction] = useState<CredentialAction | null>(null)
@@ -157,10 +176,13 @@ export default function ConnectedAccounts({
         <p role="status">Your session has ended.</p>
       </Panel>
     )
-  const filtered = accounts.data?.accounts.filter((a) =>
-    `${a.login ?? ''} ${a.user_id} ${a.players.map((p) => p.name).join(' ')}`
-      .toLowerCase()
-      .includes(query.trim().toLowerCase()),
+  const filtered = accounts.data?.accounts.filter(
+    (a) =>
+      `${a.login ?? ''} ${a.user_id} ${a.players.map((p) => p.name).join(' ')}`
+        .toLowerCase()
+        .includes(query.trim().toLowerCase()) &&
+      (standingFilter === 'all' ||
+        (standingFilter === 'muted' ? a.muted != null : a.standing?.kind === standingFilter)),
   )
   return (
     <>
@@ -184,6 +206,11 @@ export default function ConnectedAccounts({
       {signOut.error && (
         <p className="connected-error" role="alert">
           {errorText(signOut.error)}
+        </p>
+      )}
+      {!full && rawAccount !== null && detailId === null && (
+        <p role="alert" className="connected-error">
+          This account link is invalid. Choose an account from the list.
         </p>
       )}
       {notice && (
@@ -217,6 +244,18 @@ export default function ConnectedAccounts({
             value={query}
             onChange={setQuery}
           />
+          <Field id="accounts-standing-filter" label="Standing">
+            <select
+              id="accounts-standing-filter"
+              value={standingFilter}
+              onChange={(event) => setStandingFilter(event.target.value)}
+            >
+              <option value="all">All accounts</option>
+              <option value="banned">Banned</option>
+              <option value="restricted">Restricted</option>
+              <option value="muted">Muted</option>
+            </select>
+          </Field>
           <div className="action-group">
             <ConnectedDeletion session={session} userId={deletionId} onChange={setDeletionId} />
             <ConnectedModeration
@@ -255,6 +294,7 @@ export default function ConnectedAccounts({
                   <th scope="col">Account</th>
                   <th scope="col">Players</th>
                   <th scope="col">Role</th>
+                  <th scope="col">Standing</th>
                   <th scope="col" className="numeric">
                     Balance
                   </th>
@@ -274,6 +314,22 @@ export default function ConnectedAccounts({
                       </td>
                       <td>{account.players.map((p) => p.name).join(', ') || 'No players yet'}</td>
                       <td>{account.role}</td>
+                      <td>
+                        <Badge
+                          tone={
+                            !account.standing
+                              ? 'neutral'
+                              : account.standing.kind === 'banned'
+                                ? 'red'
+                                : account.standing?.kind === 'restricted'
+                                  ? 'amber'
+                                  : 'green'
+                          }
+                        >
+                          {account.standing?.kind ?? 'Key account'}
+                        </Badge>
+                        {account.muted && <Badge tone="violet">Muted</Badge>}
+                      </td>
                       <td className="numeric">{account.bp.toLocaleString()} BP</td>
                       <td>
                         <div className="action-group">

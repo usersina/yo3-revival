@@ -2330,3 +2330,18 @@
     }
   }
 }
+
+@layer components {
+  .connected-online {
+    padding: 0 20px 20px;
+  }
+  .connected-online h3 {
+    margin-bottom: 12px;
+  }
+  .connected-online a,
+  .connected-panel .inline-notice a,
+  .connected-panel .connected-error a {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}

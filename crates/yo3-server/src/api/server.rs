@@ -13,6 +13,14 @@ pub struct ServerOverview {
     #[schema(maximum=4294967295_u32)] pub online:u32,
     #[schema(maximum=4294967295_u32)] pub duels:u32,
     pub uptime_seconds:Option<u32>, pub persistence_healthy:bool, pub engine_problem:Option<String>,
+    #[schema(maximum=4294967295_u32)] pub engines:u32,
+    /// Decimal bytes, preserving precision in JavaScript. Missing on unsupported operating systems.
+    pub memory_bytes:Option<String>, pub backup:super::backups::BackupHealth, pub online_players:Vec<OnlinePlayer>,
+}
+#[derive(Debug,Serialize,Deserialize,ToSchema)]
+pub struct OnlinePlayer {
+    #[schema(maximum=4294967295_u32)] pub player_id:u32,
+    #[schema(maximum=4294967295_u32)] pub user_id:Option<u32>,pub name:String,pub duelling:bool,
 }
 #[derive(Clone,Debug,Serialize,Deserialize,ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -27,9 +35,17 @@ impl Api {
     pub fn overview(&self)->ServerOverview {
         let hub=self.hub.as_ref().map(|h|h.locked());let d=self.accounts.locked();
         let (online,duels)=hub.as_ref().map(|h|(h.online(),h.tables.len())).unwrap_or_default();
+        let online_players=hub.as_ref().map(|h|h.manager_player_states().into_iter().map(|(player_id,name,duelling)|{
+            let user_id=d.accounts().find(|(_,a)|a.players.iter().any(|p|p.player_id==player_id)).map(|(id,_)|id);
+            OnlinePlayer{player_id,user_id,name,duelling}
+        }).collect()).unwrap_or_default();
+        let accounts=d.entries().count().try_into().unwrap_or(u32::MAX);
+        let players=d.entries().map(|(_,_,a)|a.players.len()).sum::<usize>().try_into().unwrap_or(u32::MAX);
+        drop(d);drop(hub); // Filesystem checks must not hold gameplay locks.
         ServerOverview {run_id:self.run_id.clone(),version:yo3_tunnel::BUILD_VERSION.into(),can_stop:self.shutdown.is_some(),checked_at:Utc::now(),
-            accounts:d.entries().count().try_into().unwrap_or(u32::MAX),players:d.entries().map(|(_,_,a)|a.players.len()).sum::<usize>().try_into().unwrap_or(u32::MAX),
+            accounts,players,
             online:online.try_into().unwrap_or(u32::MAX),duels:duels.try_into().unwrap_or(u32::MAX),
+            engines:crate::engine::running().try_into().unwrap_or(u32::MAX),memory_bytes:super::memory_bytes().map(|n|n.to_string()),backup:super::backups::health(self.data_dir.as_deref()),online_players,
             uptime_seconds:self.status.started.map(|t|t.elapsed().as_secs().try_into().unwrap_or(u32::MAX)),persistence_healthy:store::healthy(),engine_problem:self.status.engine_problem.clone()}
     }
     pub fn request_stop(&self,request:&StopRequest,id:&str,actor:Actor<'_>,origin:&str)->Result<StopResponse,MutationError> {

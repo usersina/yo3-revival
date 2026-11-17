@@ -81,7 +81,19 @@ test.describe.serial('Connected server settings', () => {
     expect(state.maintenance_at).toBe((results[0] as { maintenance_at: string }).maintenance_at)
     await page.getByRole('button', { name: 'Cancel maintenance', exact: true }).click()
     await dialog.getByLabel('Confirm this change').check()
+    const cancelled = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/panel/api/v1/settings') && response.request().method() === 'POST',
+    )
     await dialog.getByRole('button', { name: 'Save change', exact: true }).click()
+    const answer = await cancelled
+    if (!answer.ok()) {
+      const logs = await page.request.get('/panel/api/v1/logs?limit=20&problems=true')
+      await test
+        .info()
+        .attach('server-problems', { body: await logs.body(), contentType: 'application/json' })
+    }
+    expect(answer.status(), await answer.text()).toBe(200)
     await expect(dialog.getByRole('status')).toHaveText('maintenance is off')
   })
 

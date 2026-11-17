@@ -278,8 +278,10 @@ export const accountSummaryUserIdMax = 4294967295;
 export const AccountSummary = zod.object({
   "bp": zod.int().min(accountSummaryBpMin).max(accountSummaryBpMax),
   "login": zod.string().nullish(),
+  "muted": zod.union([AccountMute,zod.null()]).optional(),
   "players": zod.array(PlayerSummary),
   "role": Role,
+  "standing": zod.union([AccountStanding,zod.null()]).optional(),
   "user_id": zod.int().min(accountSummaryUserIdMin).max(accountSummaryUserIdMax)
 }).describe('A projection of existing account state: no keys, password hashes, device tokens or invented dates/presence.');
 
@@ -343,6 +345,20 @@ export const BackupFile = zod.instanceof(Blob);
 
 export type BackupFile = zod.input<typeof BackupFile>;
 export type BackupFileOutput = zod.output<typeof BackupFile>;
+
+export const BackupHealth = zod.union([zod.object({
+  "kind": zod.enum(['none'])
+}),zod.object({
+  "at": zod.iso.datetime({"offset":true}),
+  "kind": zod.enum(['available']),
+  "name": zod.string()
+}),zod.object({
+  "kind": zod.enum(['unavailable']),
+  "message": zod.string()
+})]);
+
+export type BackupHealth = zod.input<typeof BackupHealth>;
+export type BackupHealthOutput = zod.output<typeof BackupHealth>;
 
 export const BackupList = zod.object({
   "backups": zod.array(BackupEntry),
@@ -977,6 +993,24 @@ export const ModerationResponse = zod.object({
 export type ModerationResponse = zod.input<typeof ModerationResponse>;
 export type ModerationResponseOutput = zod.output<typeof ModerationResponse>;
 
+export const onlinePlayerPlayerIdMin = 0;
+export const onlinePlayerPlayerIdMax = 4294967295;
+
+export const onlinePlayerUserIdMin = 0;
+export const onlinePlayerUserIdMax = 4294967295;
+
+
+
+export const OnlinePlayer = zod.object({
+  "duelling": zod.boolean(),
+  "name": zod.string(),
+  "player_id": zod.int().min(onlinePlayerPlayerIdMin).max(onlinePlayerPlayerIdMax),
+  "user_id": zod.int().min(onlinePlayerUserIdMin).max(onlinePlayerUserIdMax).nullish()
+});
+
+export type OnlinePlayer = zod.input<typeof OnlinePlayer>;
+export type OnlinePlayerOutput = zod.output<typeof OnlinePlayer>;
+
 export const regulationChoiceIdMin = 0;
 
 
@@ -1018,6 +1052,9 @@ export const serverOverviewAccountsMax = 4294967295;
 export const serverOverviewDuelsMin = 0;
 export const serverOverviewDuelsMax = 4294967295;
 
+export const serverOverviewEnginesMin = 0;
+export const serverOverviewEnginesMax = 4294967295;
+
 export const serverOverviewOnlineMin = 0;
 export const serverOverviewOnlineMax = 4294967295;
 
@@ -1030,11 +1067,15 @@ export const serverOverviewUptimeSecondsMin = 0;
 
 export const ServerOverview = zod.object({
   "accounts": zod.int().min(serverOverviewAccountsMin).max(serverOverviewAccountsMax),
+  "backup": BackupHealth,
   "can_stop": zod.boolean(),
   "checked_at": zod.iso.datetime({"offset":true}),
   "duels": zod.int().min(serverOverviewDuelsMin).max(serverOverviewDuelsMax),
   "engine_problem": zod.string().nullish(),
+  "engines": zod.int().min(serverOverviewEnginesMin).max(serverOverviewEnginesMax),
+  "memory_bytes": zod.string().nullish().describe('Decimal bytes, preserving precision in JavaScript. Missing on unsupported operating systems.'),
   "online": zod.int().min(serverOverviewOnlineMin).max(serverOverviewOnlineMax),
+  "online_players": zod.array(OnlinePlayer),
   "persistence_healthy": zod.boolean(),
   "players": zod.int().min(serverOverviewPlayersMin).max(serverOverviewPlayersMax),
   "run_id": zod.string(),
@@ -1210,6 +1251,8 @@ export const ListAccounts413Response = ApiError
 export const ListAccounts415Response = ApiError
 
 export const ListAccounts500Response = ApiError
+
+export const ListAccounts503Response = ApiError
 
 
 export const issueAccountCodeHeaderIdempotencyKeyMin = 16;

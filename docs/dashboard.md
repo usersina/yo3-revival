@@ -43,8 +43,11 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
   warns before acting on your own account, enforces staff permissions and retains uncertain requests across reloads.
 - SQLite schema 6 extends `operation_effects` with backup intents and known-failed outcomes beside disconnects and run-bound stops. Schemas 1–5 upgrade transactionally, preserving old effects and receipts.
   Other domains are not normalized.
-- Remaining work: detailed Overview/moderation-list parity, staff MFA, the public-access/proxy gate, nginx and Compose.
-  The old private HTML panel stays available until parity and security coverage are complete.
+- Overview includes actual engine/memory metrics, backup health, online-player links and recent problems. Memory
+  bytes are decimal strings; missing and unreadable backup storage are distinct states. Account lists project the
+  same effective standing/mute badges as details, with filters and numeric account-detail links.
+- Remaining work: staff MFA, the public-access/proxy gate, nginx and Compose. The old private HTML panel remains
+  available during the security transition.
 
 ## Database backups
 

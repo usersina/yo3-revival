@@ -14,6 +14,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [2026-11-17 — Connected audit and server logs](#2026-11-17--connected-audit-and-server-logs)
   - [2026-11-17 — Checked backups and audited streaming downloads](#2026-11-17--checked-backups-and-audited-streaming-downloads)
   - [2026-11-17 — Real dashboard navigation and production entry](#2026-11-17--real-dashboard-navigation-and-production-entry)
+  - [2026-11-17 — Checked Overview and moderation-list parity](#2026-11-17--checked-overview-and-moderation-list-parity)
   - [Status](#status)
   - [▶ Overnight plan (2026-11-07): everything left, end to end](#-overnight-plan-2026-11-07-everything-left-end-to-end)
   - [▶ Windows VM test (2026-11-08): what a real Windows client turned up](#-windows-vm-test-2026-11-08-what-a-real-windows-client-turned-up)
@@ -34,6 +35,18 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-17 — Checked Overview and moderation-list parity
+
+Added actual engine/memory information, backup health, online players and recent problems to the connected Overview.
+Backup IO failures are shown separately from an empty directory. Account lists reuse details' effective standing/mute
+projection and expose filters; online-player links open numeric, reloadable account detail URLs. Added contract and
+browser checks for these states. Separately fixed build metadata watching a nonexistent `.git/HEAD` inside linked
+worktrees/source archives; real Git-layout tests and two unchanged Cargo checks confirm incremental builds stay fresh.
+The private HTML panel remains available during the MFA/public-access transition.
+One parallel browser run returned a maintenance-save refusal; it did not recur in the logged focused rerun or the
+subsequent full 52-case run. The cancellation test now attaches recent server problems if its save fails again;
+the original refusal's underlying cause remains unconfirmed.
 
 ## 2026-11-17 — Real dashboard navigation and production entry
 
