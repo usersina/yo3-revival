@@ -3,60 +3,55 @@ use super::*;
 
 /// The placeholder AI's answer to any prompt (see [`cpu_answer`]).
 pub fn bot_answer(m: &Json) -> Json {
-    cpu_answer(m["type"].as_u64().unwrap_or(0), m)
+    cpu_answer(m)
 }
 
 /// MSG_SELECT_SUM {amount: the target, selects_must: cards that count without being picked, select_max: 0 exactly the
 /// amount, 1 at least it with no card to spare (Ritual Summons), min..max: how many cards are picked}: its bounds
 /// on how many cards are picked, where 0 sets none (Machina Fortress: discard any number of monsters with Levels of 8
 /// or more).
-pub(super) fn sum_bounds(m: &Json) -> (usize, usize) {
-    (m["min"].as_u64().unwrap_or(0) as usize, m["max"].as_u64().filter(|&m| m != 0).unwrap_or(u32::MAX as u64) as usize)
+pub(super) fn sum_bounds(s: &SelectSum) -> (usize, usize) {
+    (s.min as usize, if s.max != 0 { s.max as usize } else { u32::MAX as usize })
 }
 
 /// Whether picking these of MSG_SELECT_SUM's `selects` (indices; the `selects_must` count too) makes its sum.
-pub(super) fn sum_fits(m: &Json, picked: &[usize]) -> bool {
-    let level = |c: &Json| c["amount"].as_u64().unwrap_or(0);
-    let selects: Vec<u64> = m["selects"].as_array().into_iter().flatten().map(level).collect();
+pub(super) fn sum_fits(s: &SelectSum, picked: &[usize]) -> bool {
+    let selects: Vec<u64> = s.selects.iter().map(|c| c.amount).collect();
     let mut seen = vec![];
     let distinct = picked.iter().all(|&i| i < selects.len() && !seen.contains(&i) && { seen.push(i); true });
-    let (min, max) = sum_bounds(m);
-    distinct && (min.min(selects.len())..=max).contains(&picked.len()) && sum_reached(m, &picked.iter().map(|&i| selects[i]).collect::<Vec<_>>())
+    let (min, max) = sum_bounds(s);
+    distinct && (min.min(selects.len())..=max).contains(&picked.len()) && sum_reached(s, &picked.iter().map(|&i| selects[i]).collect::<Vec<_>>())
 }
 
 /// Whether cards of these amounts (with the `selects_must`) count to MSG_SELECT_SUM's target: exactly, or with
 /// `select_max` at least it with no card to spare. A card's `amount` is its level, or two levels (low and high 16
 /// bits) it may count as.
-pub(super) fn sum_reached(m: &Json, chosen: &[u64]) -> bool {
-    let level = |c: &Json| c["amount"].as_u64().unwrap_or(0);
-    let must: Vec<u64> = m["selects_must"].as_array().into_iter().flatten().map(level).collect();
-    let target = m["amount"].as_u64().unwrap_or(0);
-    let greater = m["select_max"].as_u64().unwrap_or(0) != 0;
+pub(super) fn sum_reached(s: &SelectSum, chosen: &[u64]) -> bool {
+    let must: Vec<u64> = s.selects_must.iter().map(|c| c.amount).collect();
+    let target = s.amount;
+    let greater = s.select_max != 0;
     let values = |a: u64| -> Vec<u64> { [a & 0xFFFF, a >> 16].into_iter().filter(|v| *v > 0).collect() };
-    {
-        let all: Vec<u64> = must.iter().chain(chosen).copied().collect();
-        let mut sums = vec![0u64];
-        for a in &all {
-            let vs = values(*a);
-            sums = sums.iter().flat_map(|s| if vs.is_empty() { vec![*s] } else { vs.iter().map(|v| s + v).collect() }).collect();
-            sums.sort_unstable();
-            sums.dedup();
-        }
-        if !greater {
-            return sums.contains(&target);
-        }
-        // At least the target, and dropping the smallest card would leave less than it.
-        let smallest = all.iter().map(|a| values(*a).into_iter().min().unwrap_or(0)).min().unwrap_or(0);
-        sums.iter().any(|s| *s >= target && (all.is_empty() || s - smallest.min(*s) < target))
+    let all: Vec<u64> = must.iter().chain(chosen).copied().collect();
+    let mut sums = vec![0u64];
+    for a in &all {
+        let vs = values(*a);
+        sums = sums.iter().flat_map(|s| if vs.is_empty() { vec![*s] } else { vs.iter().map(|v| s + v).collect() }).collect();
+        sums.sort_unstable();
+        sums.dedup();
     }
+    if !greater {
+        return sums.contains(&target);
+    }
+    // At least the target, and dropping the smallest card would leave less than it.
+    let smallest = all.iter().map(|a| values(*a).into_iter().min().unwrap_or(0)).min().unwrap_or(0);
+    sums.iter().any(|s| *s >= target && (all.is_empty() || s - smallest.min(*s) < target))
 }
 
 /// Indices into MSG_SELECT_SUM's `selects` that make its sum (see [`sum_reached`]), the fewest cards first; none
 /// that fits: every card, which the core refuses and the caller's repeated-prompt check then ends.
-pub(super) fn sum_choice(m: &Json) -> Vec<usize> {
-    let selects: Vec<u64> = m["selects"].as_array().into_iter().flatten().map(|c| c["amount"].as_u64().unwrap_or(0)).collect();
-    let (min, max) = sum_bounds(m);
-    let fits = |chosen: &[u64]| sum_reached(m, chosen);
+pub(super) fn sum_choice(s: &SelectSum) -> Vec<usize> {
+    let selects: Vec<u64> = s.selects.iter().map(|c| c.amount).collect();
+    let (min, max) = sum_bounds(s);
     let n = selects.len();
     if n <= 16 {
         let mut masks: Vec<u32> = (0..1u32 << n).collect();
@@ -67,7 +62,7 @@ pub(super) fn sum_choice(m: &Json) -> Vec<usize> {
                 continue;
             }
             let chosen: Vec<u64> = (0..n).filter(|i| mask >> i & 1 == 1).map(|i| selects[i]).collect();
-            if fits(&chosen) {
+            if sum_reached(s, &chosen) {
                 return (0..n).filter(|i| mask >> i & 1 == 1).collect();
             }
         }
@@ -109,9 +104,8 @@ pub(super) const ZONE_ORDER: [u64; 5] = [2, 3, 1, 4, 0];
 
 /// The zones a place prompt leaves free (field_mask bits set = unavailable, relative to the choosing player: monster
 /// zones 0-4, Spell/Trap 8-12, the opponent's 16-20 and 24-28), as (engine player, location, sequence), centre out.
-pub(super) fn free_zones(m: &Json) -> Vec<(u64, u64, u64)> {
-    let mask = m["field_mask"].as_u64().unwrap_or(0);
-    let me = m["player"].as_u64().unwrap_or(0);
+pub(super) fn free_zones(p: &SelectPlace) -> Vec<(u64, u64, u64)> {
+    let (mask, me) = (p.field_mask, p.player);
     [(me, loc::MZONE, 0), (me, loc::SZONE, 8), (1 - me, loc::MZONE, 16), (1 - me, loc::SZONE, 24)]
         .into_iter()
         .flat_map(|(p, l, base)| ZONE_ORDER.map(|s| (p, l, s, base + s)))
@@ -120,57 +114,58 @@ pub(super) fn free_zones(m: &Json) -> Vec<(u64, u64, u64)> {
         .collect()
 }
 
-pub(super) fn cpu_answer(kind: u64, m: &Json) -> Json {
-    cpu_response(kind, m).json()
+/// The CPU's answer, and the default for the client's prompts that have no window yet (see [`cpu_response`]).
+pub(super) fn cpu_answer(m: &Json) -> Json {
+    match Ask::lenient(m) {
+        Ok(Some(ask)) => cpu_response(&ask).json(),
+        Ok(None) => {
+            tracing::warn!("rules engine: no answer for prompt {}", m["type"]);
+            Response::Chain(None).json()
+        }
+        Err(e) => {
+            tracing::warn!("rules engine: a prompt that doesn't fit its struct: {e}");
+            Response::Chain(None).json()
+        }
+    }
 }
 
-fn cpu_response(kind: u64, m: &Json) -> Response {
-    let list_len = |k: &str| m[k].as_array().map_or(0, Vec::len);
-    let first = |min: &Json, max: &Json, len: usize| {
-        let n = (min.as_u64().unwrap_or(1) as usize).max(1).min(max.as_u64().unwrap_or(1) as usize).min(len);
-        (0..n).collect::<Vec<_>>()
-    };
-    match kind {
-        msg::SELECT_IDLECMD => {
-            let (action, index) = if list_len("summons") > 0 {
+fn cpu_response(ask: &Ask) -> Response {
+    let first = |min: u64, max: u64, len: usize| (0..(min.max(1) as usize).min(max as usize).min(len)).collect::<Vec<_>>();
+    match ask {
+        Ask::IdleCmd(p) => {
+            let (action, index) = if !p.summons.is_empty() {
                 (idle::SUMMON, Some(0))
-            } else if list_len("monster_sets") > 0 {
+            } else if !p.monster_sets.is_empty() {
                 (idle::MONSTER_SET, Some(0))
-            } else if m["to_bp"] == true {
+            } else if p.to_bp {
                 (idle::TO_BP, None)
             } else {
                 (idle::TO_EP, None)
             };
             Response::IdleCmd { action, index }
         }
-        msg::SELECT_BATTLECMD if list_len("attacks") > 0 => Response::BattleCmd { action: battle::ATTACK, index: Some(0) },
-        msg::SELECT_BATTLECMD => Response::BattleCmd { action: battle::TO_EP, index: None },
-        msg::SELECT_CHAIN => Response::Chain((m["forced"].as_bool() == Some(true)).then_some(0)),
-        msg::SELECT_CARD => Response::Card(Some(first(&m["min"], &m["max"], list_len("selects")))),
-        msg::SELECT_TRIBUTE => Response::Tribute(Some(first(&m["min"], &m["max"], list_len("selects")))),
-        msg::SELECT_UNSELECT_CARD => {
+        Ask::BattleCmd(p) if !p.attacks.is_empty() => Response::BattleCmd { action: battle::ATTACK, index: Some(0) },
+        Ask::BattleCmd(_) => Response::BattleCmd { action: battle::TO_EP, index: None },
+        Ask::Chain(p) => Response::Chain(p.forced.then_some(0)),
+        Ask::Card(p) => Response::Card(Some(first(p.min, p.max, p.selects.len()))),
+        Ask::Tribute(p) => Response::Tribute(Some(first(p.min, p.max, p.selects.len()))),
+        Ask::UnselectCard(p) => {
             // Finishing with nothing picked cancels: Panther Warrior's attack (a Tribute to declare it) came back
             // again and again. Pick first.
-            let finish = m["can_finish"] == true && m["unselect_cards"].as_array().is_some_and(|c| !c.is_empty());
-            Response::UnselectCard((!finish).then_some(0))
+            Response::UnselectCard((!(p.can_finish && !p.unselect_cards.is_empty())).then_some(0))
         }
-        msg::SELECT_EFFECTYN => Response::EffectYn(true),
-        msg::SELECT_YESNO => Response::YesNo(true),
-        msg::SELECT_OPTION => Response::Option(0),
-        msg::SORT_CHAIN | msg::SORT_CARD => Response::Sort(None),
-        msg::SELECT_COUNTER => {
+        Ask::EffectYn(_) => Response::EffectYn(true),
+        Ask::YesNo(_) => Response::YesNo(true),
+        Ask::Option(_) => Response::Option(0),
+        Ask::SortChain(_) | Ask::SortCard(_) => Response::Sort(None),
+        Ask::Counter(p) => {
             // The counters from the cards in order, each giving what it holds until the count is made.
-            let mut left = m["count"].as_u64().unwrap_or(0);
-            let mut counters: Vec<u64> = m["cards"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|c| {
-                    let take = left.min(c["count"].as_u64().unwrap_or(0));
-                    left -= take;
-                    take
-                })
-                .collect();
+            let mut left = p.count;
+            let mut counters: Vec<u64> = p.cards.iter().map(|c| {
+                let take = left.min(c.count);
+                left -= take;
+                take
+            }).collect();
             if counters.is_empty() {
                 counters.push(left);
             }
@@ -178,41 +173,34 @@ fn cpu_response(kind: u64, m: &Json) -> Response {
         }
         // The free zones centre out, as Konami's server filled them: the player's monster zones, Spell/Trap zones, then
         // the opponent's (Give and Take and Black Garden place on the opponent's field), and the Field zone (13).
-        msg::SELECT_PLACE | msg::SELECT_DISFIELD => {
-            let mask = m["field_mask"].as_u64().unwrap_or(0);
-            let me = m["player"].as_u64().unwrap_or(0);
-            let field = (mask & 1 << 13 == 0).then_some((me, loc::SZONE, 5));
+        Ask::Place(p) | Ask::Disfield(p) => {
+            let field = (p.field_mask & 1 << 13 == 0).then_some((p.player, loc::SZONE, 5));
             // As many as asked (Ground Collapse and Phantom Dragon each disable two zones).
-            let count = (m["count"].as_u64().unwrap_or(1) as usize).max(1);
-            let mut places: Vec<Json> = free_zones(m)
+            let mut places: Vec<Json> = free_zones(p)
                 .into_iter()
                 .chain(field)
-                .take(count)
+                .take((p.count as usize).max(1))
                 .map(|(p, l, s)| json!({ "player": p, "location": l, "sequence": s }))
                 .collect();
             if places.is_empty() {
-                places.push(json!({ "player": me, "location": loc::MZONE, "sequence": 0 }));
+                places.push(json!({ "player": p.player, "location": loc::MZONE, "sequence": 0 }));
             }
-            if kind == msg::SELECT_PLACE { Response::Place(places) } else { Response::Disfield(places) }
+            if matches!(ask, Ask::Place(_)) { Response::Place(places) } else { Response::Disfield(places) }
         }
         // Face-up attack when allowed, else the first allowed position.
-        msg::SELECT_POSITION => {
-            let allowed = m["positions"].as_u64().unwrap_or(1);
-            Response::Position(if allowed & 1 != 0 { 1 } else { 1 << allowed.trailing_zeros() })
+        Ask::Position(p) => {
+            let allowed = if p.positions == 0 { pos::FACEUP_ATTACK } else { p.positions };
+            Response::Position(if allowed & pos::FACEUP_ATTACK != 0 { pos::FACEUP_ATTACK } else { 1 << allowed.trailing_zeros() })
         }
         // The lowest `count` of the available bits.
-        msg::ANNOUNCE_RACE | msg::ANNOUNCE_ATTRIB => {
-            let available = m["available"].as_u64().unwrap_or(1);
-            let picked: Vec<u64> = (0..64).map(|b| 1u64 << b).filter(|b| available & b != 0).take(m["count"].as_u64().unwrap_or(1) as usize).collect();
-            if kind == msg::ANNOUNCE_RACE { Response::Race(picked) } else { Response::Attrib(picked) }
+        Ask::Race(p) | Ask::Attrib(p) => {
+            let available = p.available.max(1);
+            let picked: Vec<u64> = (0..64).map(|b| 1u64 << b).filter(|b| available & b != 0).take(p.count.max(1) as usize).collect();
+            if matches!(ask, Ask::Race(_)) { Response::Race(picked) } else { Response::Attrib(picked) }
         }
-        msg::ANNOUNCE_NUMBER => Response::Number(0),
-        msg::ANNOUNCE_CARD => Response::CardName(m["fits"][0].as_u64().unwrap_or(0)),
-        msg::ROCK_PAPER_SCISSORS => Response::Rps(1),
-        msg::SELECT_SUM => Response::Sum(sum_choice(m)),
-        _ => {
-            tracing::warn!("rules engine: no answer for prompt {kind}");
-            Response::Chain(None)
-        }
+        Ask::Number(_) => Response::Number(0),
+        Ask::CardName(p) => Response::CardName(p.fits.first().copied().unwrap_or(0)),
+        Ask::RockPaperScissors(_) => Response::Rps(1),
+        Ask::Sum(p) => Response::Sum(sum_choice(p)),
     }
 }

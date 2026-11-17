@@ -95,7 +95,7 @@ impl Translator {
     /// [`unreachable_answers`] for a zone choice: each free zone through the OK dialog and its click (and, for several,
     /// the first ones in order).
     pub(super) fn unreachable_zones(&self, m: &Json) -> Vec<String> {
-        let zones = free_zones(m);
+        let zones = free_zones(&typed::<SelectPlace>(m));
         let count = (m["count"].as_u64().unwrap_or(1) as usize).max(1);
         let click = |t: &mut Translator, (player, location, sequence): (u64, u64, u64)| {
             let zone = if location == loc::MZONE { sequence as u32 } else { 5 + sequence as u32 };
@@ -169,7 +169,7 @@ impl Translator {
                 }
             }
             msg::SELECT_SUM => {
-                let picks: Vec<u32> = sum_choice(m).into_iter().map(|i| i as u32).collect();
+                let picks: Vec<u32> = sum_choice(&typed::<SelectSum>(m)).into_iter().map(|i| i as u32).collect();
                 let n = picks.len() as u32;
                 cases.push((format!("the sum {picks:?}"), vec![(picks.clone(), n)], Response::Sum(picks.iter().map(|&p| p as usize).collect()).json()));
             }

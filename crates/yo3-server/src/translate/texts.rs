@@ -13,13 +13,13 @@ pub(super) fn fours(id: u32, values: &[u32]) -> Vec<Message> {
 
 /// The option list for MSG_SELECT_OPTION {options}, when the client has a label for every option (at most four).
 /// A card's own strings (code << 20 | n) have labels only where CARD_OPTION_LABELS pairs them.
-pub(super) fn option_list(m: &Json) -> Option<Vec<Message>> {
-    let options = m["options"].as_array()?;
+pub(super) fn option_list(o: &SelectOption) -> Option<Vec<Message>> {
+    let options = &o.options;
     let label = |d: u64| {
         let system = OPTION_LABELS.iter().find(|(o, _, _)| *o == d).map(|&(_, label, title)| (label, title));
         system.or_else(|| CARD_OPTION_LABELS.iter().find(|(o, _)| *o == d).map(|&(_, label)| (label, text::SELECT_EFFECT)))
     };
-    let found: Option<Vec<(u32, u32)>> = options.iter().map(|o| label(o.as_u64()?)).collect();
+    let found: Option<Vec<(u32, u32)>> = options.iter().map(|&o| label(o)).collect();
     let found = found.filter(|f| !f.is_empty() && f.len() <= SELECT_MAX)?;
     let labels: Vec<u32> = found.iter().map(|(label, _)| label | dialog::LISTED).collect();
     let mut out = vec![command(cmd::LIST_BEGIN, [labels.len() as u32, 0, 0, 0])];
@@ -40,16 +40,14 @@ pub(super) fn message(entries: &[u32]) -> Vec<Message> {
 /// None when it can't ask it (several types at once, numbers outside the number dialog's range). `level`: the number is
 /// a Level (hint 567 before it), which the dialog says; Duel.AnnounceLevel is only an alias of AnnounceNumberRange, and
 /// the client's other cards declare counts and die rolls with it.
-pub(super) fn declaration(m: &Json, level: bool) -> Option<Vec<Message>> {
-    let kind = m["type"].as_u64()?;
-    let allowed = m["available"].as_u64().unwrap_or(0);
-    let bits = |table: &[u64]| table.iter().enumerate().filter(|(_, b)| allowed & **b != 0).fold(0u32, |f, (i, _)| f | 1 << (i + 1));
-    let (dialog, text, param3) = match kind {
-        msg::ANNOUNCE_RACE if m["count"].as_u64() == Some(1) => (dialog::TYPE, text::TYPE, bits(&TYPES)),
-        msg::ANNOUNCE_ATTRIB => (dialog::ATTRIBUTE, text::ATTRIBUTE, bits(&ATTRIBUTES) << 16 | m["count"].as_u64().unwrap_or(1) as u32),
-        msg::ANNOUNCE_NUMBER => {
-            let options: Vec<u64> = m["options"].as_array()?.iter().filter_map(Json::as_u64).collect();
-            let (unit, format) = number_unit(&options)?;
+pub(super) fn declaration(ask: &Ask, level: bool) -> Option<Vec<Message>> {
+    let bits = |allowed: u64, table: &[u64]| table.iter().enumerate().filter(|(_, b)| allowed & **b != 0).fold(0u32, |f, (i, _)| f | 1 << (i + 1));
+    let (dialog, text, param3) = match ask {
+        Ask::Race(a) if a.count == 1 => (dialog::TYPE, text::TYPE, bits(a.available, &TYPES)),
+        Ask::Attrib(a) => (dialog::ATTRIBUTE, text::ATTRIBUTE, bits(a.available, &ATTRIBUTES) << 16 | a.count as u32),
+        Ask::Number(n) => {
+            let options = &n.options;
+            let (unit, format) = number_unit(options)?;
             let (min, max) = (options.iter().min()? / unit, options.iter().max()? / unit);
             let step = options.windows(2).map(|w| w[1].abs_diff(w[0]) / unit).filter(|&d| d > 0).min().unwrap_or(1);
             if min > 15 || step > 15 || max > 255 {
@@ -64,7 +62,7 @@ pub(super) fn declaration(m: &Json, level: bool) -> Option<Vec<Message>> {
             }
             return Some(vec![Cmd::Dialog { kind: dialog::NUMBER, message: 0, param: param3 }.message()]);
         }
-        msg::ANNOUNCE_CARD => return Some(vec![command(cmd::LIST_BEGIN, [0, 1, 0, 0]), command(cmd::CARD_LIST, [CLIENT, list::SEARCH, 0, 0])]),
+        Ask::CardName(_) => return Some(vec![command(cmd::LIST_BEGIN, [0, 1, 0, 0]), command(cmd::CARD_LIST, [CLIENT, list::SEARCH, 0, 0])]),
         _ => return None,
     };
     let mut out = message(&[entry::TEXT | text]);

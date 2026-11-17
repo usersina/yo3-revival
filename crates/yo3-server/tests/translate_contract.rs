@@ -484,7 +484,8 @@ fn the_cpu_summons_then_attacks_with_everything_then_ends_its_turn() {
     assert_eq!(t.prompt(&idle(&json!([]), true)), Prompt::Answer(json!({ "type": 1, "action": 6, "index": null })));
     assert_eq!(t.prompt(&idle(&json!([]), false)), Prompt::Answer(json!({ "type": 1, "action": 7, "index": null })));
     let battle = |attacks: serde_json::Value| json!({ "type": 10, "player": 1, "chains": [], "attacks": attacks, "to_m2": true, "to_ep": true });
-    assert_eq!(t.prompt(&battle(json!([card]))), Prompt::Answer(json!({ "type": 0, "action": 1, "index": 0 })));
+    let attacker = json!({ "controller": 1, "location": 4, "sequence": 0, "can_direct": false });
+    assert_eq!(t.prompt(&battle(json!([attacker]))), Prompt::Answer(json!({ "type": 0, "action": 1, "index": 0 })));
     assert_eq!(t.prompt(&battle(json!([]))), Prompt::Answer(json!({ "type": 0, "action": 3, "index": null })));
 }
 
@@ -493,9 +494,11 @@ fn other_prompts_get_simple_answers() {
     // Card selections (15 SELECT_CARD, 20 SELECT_TRIBUTE) take the first `min` cards (at least one), yes/no
     // questions (12, 13) are answered yes, options (14) the first.
     let (mut t, _) = translator();
-    let select = json!({ "type": 15, "player": 1, "can_cancel": false, "min": 2, "max": 3, "selects": [{}, {}, {}] });
+    let select = json!({ "type": 15, "player": 1, "can_cancel": false, "min": 2, "max": 3,
+        "selects": [card_at(1, 2, 0, 4200), card_at(1, 2, 1, 4201), card_at(1, 2, 2, 4202)] });
     assert_eq!(t.prompt(&select), Prompt::Answer(json!({ "type": 5, "indicies": [0, 1] })));
-    let tribute = json!({ "type": 20, "player": 1, "can_cancel": false, "min": 1, "max": 1, "selects": [{}, {}] });
+    let tribute = json!({ "type": 20, "player": 1, "can_cancel": false, "min": 1, "max": 1,
+        "selects": [card_at(1, 4, 0, 4200), card_at(1, 4, 1, 4201)] });
     assert_eq!(t.prompt(&tribute), Prompt::Answer(json!({ "type": 12, "indicies": [0] })));
     assert_eq!(t.prompt(&json!({ "type": 13, "player": 1 })), Prompt::Answer(json!({ "type": 3, "yes": true })));
     assert_eq!(t.prompt(&json!({ "type": 12, "player": 1 })), Prompt::Answer(json!({ "type": 2, "yes": true })));

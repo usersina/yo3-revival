@@ -28,39 +28,49 @@ impl Translator {
     }
 
     pub(super) fn prompt_for(&mut self, m: &Json) -> Prompt {
-        let kind = m["type"].as_u64().unwrap_or(0);
-        if self.player(&m["player"]) == CPU {
-            if kind == msg::ANNOUNCE_CARD {
+        let ask = match Ask::lenient(m) {
+            Ok(Some(ask)) => ask,
+            _ => return Prompt::Answer(cpu_answer(m)),
+        };
+        if self.side(ask.player()) == CPU {
+            if let Ask::CardName(_) = ask {
                 return Prompt::Answer(self.cpu_card_name(m));
             }
-            return Prompt::Answer(cpu_answer(kind, m));
+            return Prompt::Answer(cpu_answer(m));
         }
-        match kind {
-            msg::SELECT_IDLECMD | msg::SELECT_BATTLECMD => {
-                let (lists, buttons, mode): (Lists, [(&str, u8); 2], u32) = if kind == msg::SELECT_IDLECMD {
-                    (&IDLE_LISTS, [("to_bp", flag::BUTTON_BP), ("to_ep", flag::BUTTON_EP)], mode::MAIN)
-                } else {
-                    (&BATTLE_LISTS, [("to_m2", flag::BUTTON_M2), ("to_ep", flag::BUTTON_EP)], mode::BATTLE)
+        match &ask {
+            Ask::IdleCmd(_) | Ask::BattleCmd(_) => {
+                let (lists, buttons, mode): (Lists, [(bool, u8); 2], u32) = match &ask {
+                    Ask::IdleCmd(p) => (&IDLE_LISTS, [(p.to_bp, flag::BUTTON_BP), (p.to_ep, flag::BUTTON_EP)], mode::MAIN),
+                    Ask::BattleCmd(p) => (&BATTLE_LISTS, [(p.to_m2, flag::BUTTON_M2), (p.to_ep, flag::BUTTON_EP)], mode::BATTLE),
+                    _ => unreachable!(),
                 };
                 self.attacker = None;
                 let mut map = self.command_map(m, lists);
                 self.add_pile_views(&mut map);
-                let flags: Vec<(u8, u8)> = buttons.into_iter().filter(|(k, _)| m[*k] == true).map(|(_, b)| (b, 1)).collect();
+                let flags: Vec<(u8, u8)> = buttons.into_iter().filter(|(on, _)| *on).map(|(_, b)| (b, 1)).collect();
                 self.pending = Some(m.clone());
                 Prompt::Client(vec![command_data(&map, &flags), command(cmd::INPUT, [mode, CLIENT, 0, 0])])
             }
-            msg::SELECT_EFFECTYN | msg::SELECT_YESNO => {
-                let battle = BATTLE_QUESTIONS.iter().find(|(d, _)| m["description"].as_u64() == Some(*d)).map(|(_, text)| *text);
-                let entries = match (kind, m["cid"].as_u64(), m["description_cid"].as_u64(), battle) {
-                    (msg::SELECT_EFFECTYN, cid, _, _) => vec![entry::TEXT | text::ACTIVATE, entry::CARD_NAME | cid.unwrap_or(0) as u32],
-                    (_, _, _, Some(text)) => vec![entry::TEXT | text],
-                    (_, _, Some(cid), _) => vec![entry::TEXT | text::USE, entry::CARD_NAME | cid as u32],
-                    _ => vec![entry::TEXT | text::USE_NOW],
+            Ask::EffectYn(_) | Ask::YesNo(_) => {
+                let (description, description_cid, description_text) = match &ask {
+                    Ask::EffectYn(p) => (p.effect.description, p.effect.description_cid, p.effect.description_text.clone()),
+                    Ask::YesNo(p) => (p.description, p.description_cid, p.description_text.clone()),
+                    _ => unreachable!(),
+                };
+                let battle = BATTLE_QUESTIONS.iter().find(|(d, _)| description == *d).map(|(_, text)| *text);
+                let entries = match (&ask, battle) {
+                    (Ask::EffectYn(p), _) => vec![entry::TEXT | text::ACTIVATE, entry::CARD_NAME | p.effect.loc.cid.unwrap_or(0) as u32],
+                    (_, Some(text)) => vec![entry::TEXT | text],
+                    _ => match description_cid {
+                        Some(cid) => vec![entry::TEXT | text::USE, entry::CARD_NAME | cid as u32],
+                        None => vec![entry::TEXT | text::USE_NOW],
+                    },
                 };
                 // A card's own question (its string as the description) under the client's line, through the DLL.
                 let mut out = vec![];
                 let mut entries = entries;
-                if let Some(question) = m["description_text"].as_str().filter(|t| !t.is_empty() && entries.len() <= 2) {
+                if let Some(question) = description_text.as_deref().filter(|t| !t.is_empty() && entries.len() <= 2) {
                     let id = self.text(&mut out, question);
                     entries.extend([entry::LINE_BREAK, entry::TEXT | id]);
                 }
@@ -69,8 +79,8 @@ impl Translator {
                 self.pending = Some(m.clone());
                 Prompt::Client(out)
             }
-            msg::SELECT_CARD | msg::SELECT_TRIBUTE => {
-                let hint = if kind == msg::SELECT_TRIBUTE { hintmsg::RELEASE } else { std::mem::take(&mut self.hint) };
+            Ask::Card(choice) | Ask::Tribute(choice) => {
+                let hint = if matches!(ask, Ask::Tribute(_)) { hintmsg::RELEASE } else { std::mem::take(&mut self.hint) };
                 if hint == hintmsg::ATTACKTARGET
                     && let Some(out) = self.target_on_field(m)
                 {
@@ -78,16 +88,16 @@ impl Translator {
                 }
                 let mut out = vec![];
                 let text = self.hint_message(&mut out, hint);
-                out.extend(self.card_list(&CardList::of(m), text));
+                let list = CardList { selects: choice.selects.clone(), min: choice.min, max: choice.max, cancelable: choice.can_cancel };
+                out.extend(self.card_list(&list, text));
                 self.pending = Some(m.clone());
                 self.picks.clear();
                 Prompt::Client(out)
             }
             // Materials, one at a time: the card list until the engine lets the player finish and nothing is left.
-            msg::SELECT_UNSELECT_CARD if m["select_cards"].as_array().is_some_and(|s| !s.is_empty()) => {
-                let open = m["can_finish"] == true || m["can_cancel"] == true;
-                let u: SelectUnselectCard = typed(m);
-                let list = CardList { selects: u.select_cards, min: if open { 0 } else { 1 }, max: 1, cancelable: false };
+            Ask::UnselectCard(u) if !u.select_cards.is_empty() => {
+                let open = u.can_finish || u.can_cancel;
+                let list = CardList { selects: u.select_cards.clone(), min: if open { 0 } else { 1 }, max: 1, cancelable: false };
                 let mut out = vec![];
                 let hint = std::mem::take(&mut self.hint);
                 let text = self.hint_message(&mut out, hint);
@@ -100,14 +110,13 @@ impl Translator {
             // picks that don't make the sum bring the list back. Only when some picks can make it: a list nothing
             // satisfies would hold the player forever, so that one gets the automatic answer (and the core's
             // refusals end the duel, see `Repeats`).
-            msg::SELECT_SUM if m["selects"].as_array().is_some_and(|s| !s.is_empty()) && sum_fits(m, &sum_choice(m)) => {
+            Ask::Sum(sum) if !sum.selects.is_empty() && sum_fits(sum, &sum_choice(sum)) => {
                 // Kind 1 (min 0): any number of picks, confirmed with a right-click (dlg_cardlist.swf has no OK
                 // button). A list of kind 0x27 with a larger max closes only at max picks (live: Machina Fortress's
                 // discards held the player at two picks of six).
-                let n = m["selects"].as_array().map_or(0, Vec::len);
-                let (_, max) = sum_bounds(m);
-                let sum: SelectSum = typed(m);
-                let list = CardList { selects: sum.selects.into_iter().map(|c| c.loc).collect(), min: 0, max: max.min(n).max(1) as u64, cancelable: false };
+                let n = sum.selects.len();
+                let (_, max) = sum_bounds(sum);
+                let list = CardList { selects: sum.selects.iter().map(|c| c.loc.clone()).collect(), min: 0, max: max.min(n).max(1) as u64, cancelable: false };
                 // The engine's hint (Machina Fortress: "Select the card(s) in your hand you want to discard."), kept for
                 // the list shown again, else the prompt table's 207 "Tribute the necessary monsters to match the
                 // required number of Level.".
@@ -120,32 +129,29 @@ impl Translator {
                 self.picks.clear();
                 Prompt::Client(out)
             }
-            msg::SELECT_POSITION => match self.position_dialog(m) {
+            Ask::Position(p) => match self.position_dialog(p) {
                 Some(out) => {
                     self.pending = Some(m.clone());
                     Prompt::Client(out)
                 }
-                None => Prompt::Answer(cpu_answer(kind, m)),
+                None => Prompt::Answer(cpu_answer(m)),
             },
-            msg::SELECT_OPTION => match option_list(m).or_else(|| self.worded_options(m)) {
+            Ask::Option(o) => match option_list(o).or_else(|| self.worded_options(o)) {
                 Some(out) => {
                     self.pending = Some(m.clone());
                     Prompt::Client(out)
                 }
                 // More options than the Select dialog's four labels, or one with no words: the card list, the option's
                 // card once per option in the engine's order, rather than the first option for the player.
-                None if m["options"].as_array().is_some_and(|o| o.len() > 1) => {
-                    let card = |i: usize| m["option_cids"][i].as_u64().filter(|&c| c != 0)
+                None if o.options.len() > 1 => {
+                    let card = |i: usize| o.option_cids.get(i).copied().filter(|&c| c != 0)
                         .or_else(|| self.chaining.as_ref().and_then(|c| c["cid"].as_u64()))
                         .unwrap_or(0);
-                    let player = m["player"].as_u64().unwrap_or(0);
-                    let selects: Vec<Loc> = (0..m["options"].as_array().map_or(0, Vec::len))
-                        .map(|i| Loc { controller: player, cid: Some(card(i)), ..Loc::default() })
-                        .collect();
+                    let selects: Vec<Loc> = (0..o.options.len()).map(|i| Loc { controller: o.player, cid: Some(card(i)), ..Loc::default() }).collect();
                     let out = self.card_list(&CardList { selects, min: 1, max: 1, cancelable: false }, Some(text::SELECT_EFFECT));
                     // What each option does, from the engine's card strings: the chat window, numbered as listed.
-                    for (i, text) in m["option_texts"].as_array().into_iter().flatten().enumerate() {
-                        if let Some(text) = text.as_str().filter(|t| !t.is_empty()) {
+                    for (i, text) in o.option_texts.iter().enumerate() {
+                        if let Some(text) = text.as_deref().filter(|t| !t.is_empty()) {
                             self.notes.push(format!("{}: {text}", i + 1));
                         }
                     }
@@ -154,38 +160,35 @@ impl Translator {
                     self.pending = Some(m.clone());
                     Prompt::Client(out)
                 }
-                None => Prompt::Answer(cpu_answer(kind, m)),
+                None => Prompt::Answer(cpu_answer(m)),
             },
-            msg::SELECT_CHAIN => self.chain_chance(m),
+            Ask::Chain(chain) => self.chain_chance(m, chain),
             // An order: chain links triggered together (21; the first pick becomes chain link 1) or cards put back on
             // the Deck (25, Big Eye). The card list orders the picks itself (dlg_cardlist.swf: a badge per click, a
             // second click takes it back; kind 6 needs all of them), and each card's rank answers the engine.
-            msg::SORT_CHAIN | msg::SORT_CARD if m["cards"].as_array().is_some_and(|c| c.len() >= 2) => {
-                let n = m["cards"].as_array().map_or(0, Vec::len);
-                let text = if kind == msg::SORT_CARD { text::SORT } else { text::SELECT_EFFECT };
-                let sort: SortCards = typed(m);
-                let out = self.card_list(&CardList { selects: sort.cards, min: n as u64, max: n as u64, cancelable: false }, Some(text));
+            Ask::SortChain(sort) | Ask::SortCard(sort) if sort.cards.len() >= 2 => {
+                let n = sort.cards.len() as u64;
+                let text = if matches!(ask, Ask::SortCard(_)) { text::SORT } else { text::SELECT_EFFECT };
+                let out = self.card_list(&CardList { selects: sort.cards.clone(), min: n, max: n, cancelable: false }, Some(text));
                 self.pending = Some(m.clone());
                 self.picks.clear();
                 Prompt::Client(out)
             }
-            msg::ANNOUNCE_RACE | msg::ANNOUNCE_ATTRIB | msg::ANNOUNCE_NUMBER | msg::ANNOUNCE_CARD => match declaration(m, std::mem::take(&mut self.hint) == hintmsg::LVRANK) {
+            Ask::Race(_) | Ask::Attrib(_) | Ask::Number(_) | Ask::CardName(_) => match declaration(&ask, std::mem::take(&mut self.hint) == hintmsg::LVRANK) {
                 Some(out) => {
                     self.pending = Some(m.clone());
                     Prompt::Client(out)
                 }
-                None if kind == msg::ANNOUNCE_CARD => Prompt::Answer(self.cpu_card_name(m)),
-                None => Prompt::Answer(cpu_answer(kind, m)),
+                None if matches!(ask, Ask::CardName(_)) => Prompt::Answer(self.cpu_card_name(m)),
+                None => Prompt::Answer(cpu_answer(m)),
             },
             // A zone an effect takes (Ground Collapse's, Senet Switch's move): the client's own prompt in an OK dialog, then
             // the zones as click targets (`zone_map`).
-            msg::SELECT_DISFIELD if !free_zones(m).is_empty() => self.zone_prompt(m),
+            Ask::Disfield(p) if !free_zones(p).is_empty() => self.zone_prompt(m),
             // Where a summoned, Set or activated card goes, with auto card placing off and a choice to make.
-            msg::SELECT_PLACE if !self.auto_place && free_zones(m).len() > m["count"].as_u64().unwrap_or(1).max(1) as usize => {
-                self.zone_prompt(m)
-            }
+            Ask::Place(p) if !self.auto_place && free_zones(p).len() > p.count.max(1) as usize => self.zone_prompt(m),
             // Where a summoned, Set or activated card goes: chosen for the player, centre out, as Konami's server did.
-            _ => Prompt::Answer(cpu_answer(kind, m)),
+            _ => Prompt::Answer(cpu_answer(m)),
         }
     }
 
@@ -193,7 +196,7 @@ impl Translator {
     /// an OK dialog, then the zones as click targets (`zone_map`).
     pub(super) fn zone_prompt(&mut self, m: &Json) -> Prompt {
         let hint = std::mem::take(&mut self.hint);
-        let zones = free_zones(m);
+        let zones = free_zones(&typed::<SelectPlace>(m));
         let spells = zones.iter().all(|&(_, location, _)| location == loc::SZONE);
         let mut out = vec![];
         // The client's prompts are the zone-disabling effects' ("Select Monster Card Zones to render unusable."); a
@@ -218,12 +221,12 @@ impl Translator {
     /// (`text`): each option the client's own label where it has one, else the engine's text for it (the card's
     /// string). None for more than the dialog's four labels or an option with no words. The title is the hint's, else
     /// "Select effect to activate." (276).
-    pub(super) fn worded_options(&mut self, m: &Json) -> Option<Vec<Message>> {
-        let options = m["options"].as_array().filter(|o| !o.is_empty() && o.len() <= SELECT_MAX)?;
-        let texts: Vec<Option<&str>> = (0..options.len()).map(|i| m["option_texts"][i].as_str().filter(|t| !t.is_empty())).collect();
+    pub(super) fn worded_options(&mut self, o: &SelectOption) -> Option<Vec<Message>> {
+        let options = Some(&o.options).filter(|o| !o.is_empty() && o.len() <= SELECT_MAX)?;
+        let texts: Vec<Option<&str>> = (0..options.len()).map(|i| o.option_texts.get(i).and_then(|t| t.as_deref()).filter(|t| !t.is_empty())).collect();
         let own = |d: u64| OPTION_LABELS.iter().find(|(o, _, _)| *o == d).map(|&(_, label, _)| label)
             .or_else(|| CARD_OPTION_LABELS.iter().find(|(o, _)| *o == d).map(|&(_, label)| label));
-        let codes: Vec<u64> = options.iter().map(|o| o.as_u64()).collect::<Option<_>>()?;
+        let codes: Vec<u64> = options.clone();
         if codes.iter().zip(&texts).any(|(&d, t)| own(d).is_none() && t.is_none()) {
             return None;
         }
@@ -267,12 +270,12 @@ impl Translator {
     /// nowhere): the dialog finds no card by uid and shows nothing to click, so the duel stops there (Gorz the
     /// Emissary of Darkness's token, live). It gets the uid and token card it will appear as now, in the card table at
     /// a free monster zone of its player (`token` puts it at its own zone).
-    pub(super) fn position_dialog(&mut self, m: &Json) -> Option<Vec<Message>> {
-        let allowed = m["positions"].as_u64().unwrap_or(0);
+    pub(super) fn position_dialog(&mut self, p: &SelectPosition) -> Option<Vec<Message>> {
+        let allowed = p.positions;
         if allowed & (pos::FACEUP_ATTACK | pos::FACEDOWN_ATTACK) == 0 {
             return None;
         }
-        let cid = m["cid"].as_u64().unwrap_or(0) as u16;
+        let cid = p.cid.unwrap_or(0) as u16;
         let mut out = vec![];
         // The message names only the card's id, so the dialog shows a copy of it: one the client can see. The
         // opponent's hidden copies (hand, deck, extra deck) have row 0 there and draw nothing (live: Doom Shaman
@@ -299,7 +302,7 @@ impl Translator {
             }
             None => None,
         };
-        let (uid, name) = match (held, self.token_card_rows(m)) {
+        let (uid, name) = match (held, self.token_card_rows(p.cid, p.name.as_deref())) {
             (Some(uid), _) => (uid, cid),
             (None, Some(rows)) => {
                 // The same one when the dialog opens again (after a look at a pile).
@@ -308,7 +311,7 @@ impl Translator {
                     _ => self.next_token_card(&rows),
                 };
                 self.reserved_token = Some((uid, row));
-                let player = self.player(&m["player"]);
+                let player = self.side(p.player);
                 let side = &self.sides[player as usize];
                 let zone = (0..5).find(|z| side.zones.get(z).is_none_or(Vec::is_empty)).unwrap_or(0);
                 out.push(Cmd::Card { uid, open: false, row: row as u32, place: table_place(player, zone, 0) }.message());
@@ -326,9 +329,9 @@ impl Translator {
     /// MSG_SELECT_CHAIN {spe_count, forced, hint_timing, selects}: the question shows the cards, names the chain's last
     /// link, and says how much it matters, so the player's Activation Message option decides whether it shows. A forced
     /// chain of several goes straight to the card list, of one needs no choice.
-    pub(super) fn chain_chance(&mut self, m: &Json) -> Prompt {
-        let selects = m["selects"].as_array().map_or(&[][..], Vec::as_slice);
-        let forced = m["forced"] == true;
+    pub(super) fn chain_chance(&mut self, m: &Json, chain: &SelectChain) -> Prompt {
+        let selects = &chain.selects;
+        let forced = chain.forced;
         let phase_window = self.phase_window;
         if selects.is_empty() {
             return Prompt::Answer(Response::Chain(None).json());
@@ -342,7 +345,7 @@ impl Translator {
         if forced {
             return Prompt::Client(self.card_list(&CardList::chain(m), Some(text::SELECT_EFFECT)));
         }
-        let rows: Vec<u32> = selects.iter().map(|loc| self.row_of(&loc_of(loc)) as u32).collect();
+        let rows: Vec<u32> = selects.iter().map(|e| self.row_of(&e.loc) as u32).collect();
         let mut out = vec![command(cmd::LIST_BEGIN, [rows.len() as u32, 0, dialog::WITH_CARDS, 0])];
         out.extend(fours(cmd::LIST_ROWS, &rows));
         let entries = match &self.chaining {
@@ -354,8 +357,8 @@ impl Translator {
             None => vec![entry::TEXT | text::ACTIVATE_CARD],
         };
         out.extend(message(&entries));
-        let timing = m["hint_timing"].as_u64().unwrap_or(0) | m["hint_timing_other"].as_u64().unwrap_or(0);
-        let level = if m["spe_count"].as_u64().unwrap_or(0) == 0 {
+        let timing = chain.hint_timing | chain.hint_timing_other;
+        let level = if chain.spe_count == 0 {
             dialog::LEVEL_UNFIT
         } else if self.chaining.is_some() || timing & !QUIET_TIMINGS != 0 || phase_window {
             // A phase's own window counts its optional triggers in spe_count (Stardust Dragon's return in the End
@@ -565,13 +568,13 @@ impl Translator {
                     _ => pos::FACEDOWN_DEFENSE,
                 };
                 match allowed & position {
-                    0 => cpu_answer(kind, &m),
+                    0 => cpu_answer(&m),
                     _ => Response::Position(position).json(),
                 }
             }
             msg::SELECT_OPTION if std::mem::take(&mut self.option_cards) => match std::mem::take(&mut self.picks)[..] {
                 [index] if index < m["options"].as_array().map_or(0, Vec::len) => Response::Option(index).json(),
-                _ => cpu_answer(kind, &m),
+                _ => cpu_answer(&m),
             },
             msg::SELECT_OPTION if (count as usize) < m["options"].as_array().map_or(0, Vec::len) => {
                 Response::Option(count as usize).json()
@@ -588,7 +591,7 @@ impl Translator {
             }
             msg::SELECT_CHAIN => match std::mem::take(&mut self.picks)[..] {
                 [index] if index < selects => Response::Chain(Some(index)).json(),
-                _ if m["forced"] == true => cpu_answer(kind, &m),
+                _ if m["forced"] == true => cpu_answer(&m),
                 _ => Response::Chain(None).json(),
             },
             // A mixed list needs no picks to close: a forced choice with nothing picked is asked again.
@@ -598,7 +601,7 @@ impl Translator {
             msg::SELECT_CARD | msg::SELECT_TRIBUTE => self.card_choice(&m, count),
             msg::SELECT_SUM => {
                 let picks = std::mem::take(&mut self.picks);
-                if !sum_fits(&m, &picks) {
+                if !sum_fits(&typed::<SelectSum>(&m), &picks) {
                     return Some(self.prompt(&m));
                 }
                 self.sum_text = None;
@@ -607,18 +610,18 @@ impl Translator {
             msg::SELECT_UNSELECT_CARD => match std::mem::take(&mut self.picks)[..] {
                 [index] if index < selects => Response::UnselectCard(Some(index)).json(),
                 _ if m["can_finish"] == true || m["can_cancel"] == true => Response::UnselectCard(None).json(),
-                _ => cpu_answer(kind, &m),
+                _ => cpu_answer(&m),
             },
             msg::ANNOUNCE_RACE => match TYPES.get((count as usize).wrapping_sub(1)) {
                 Some(&race) if m["available"].as_u64().unwrap_or(0) & race != 0 => Response::Race(vec![race]).json(),
-                _ => cpu_answer(kind, &m),
+                _ => cpu_answer(&m),
             },
             msg::ANNOUNCE_ATTRIB => {
                 let picked: Vec<u64> = ATTRIBUTES.iter().enumerate().filter(|(i, _)| count >> (i + 1) & 1 != 0).map(|(_, &a)| a).collect();
                 let allowed = m["available"].as_u64().unwrap_or(0);
                 match picked.len() as u64 == m["count"].as_u64().unwrap_or(1) && picked.iter().all(|a| allowed & a != 0) {
                     true => Response::Attrib(picked).json(),
-                    false => cpu_answer(kind, &m),
+                    false => cpu_answer(&m),
                 }
             }
             msg::ANNOUNCE_NUMBER => {
@@ -642,9 +645,9 @@ impl Translator {
                 let whole = picks.len() == n && picks.iter().enumerate().all(|(rank, &i)| {
                     i < n && order[i] == usize::MAX && { order[i] = rank; true }
                 });
-                if whole { Response::Sort(Some(json!(order))).json() } else { cpu_answer(kind, &m) }
+                if whole { Response::Sort(Some(json!(order))).json() } else { cpu_answer(&m) }
             }
-            _ => cpu_answer(kind, &m),
+            _ => cpu_answer(&m),
         };
         Some(Prompt::Answer(answer))
     }
@@ -665,7 +668,7 @@ impl Translator {
             return Response::cards(response, Some(picks)).json();
         }
         tracing::warn!("card list: picks {picks:?} don't fit min {min} max {max} of {len}");
-        cpu_answer(kind, m)
+        cpu_answer(m)
     }
 
     /// The command map of a prompt: each listed card's place and menu bits.
@@ -731,7 +734,7 @@ impl Translator {
     pub(super) fn zone_map(&self, m: &Json) -> Vec<Message> {
         let picked = match &self.asking { Asking::Zones(picks) => picks.clone(), _ => vec![] };
         let mut map = vec![];
-        for (player, location, sequence) in free_zones(m) {
+        for (player, location, sequence) in free_zones(&typed::<SelectPlace>(m)) {
             if picked.contains(&json!({ "player": player, "location": location, "sequence": sequence })) {
                 continue;
             }
@@ -755,7 +758,7 @@ impl Translator {
         };
         let place = json!({ "player": player, "location": location, "sequence": sequence });
         let mut picks = match std::mem::take(&mut self.asking) { Asking::Zones(picks) => picks, _ => vec![] };
-        if cmd.index == 0 && free_zones(m).contains(&(player, location, sequence)) && !picks.contains(&place) {
+        if cmd.index == 0 && free_zones(&typed::<SelectPlace>(m)).contains(&(player, location, sequence)) && !picks.contains(&place) {
             picks.push(place);
         }
         let count = (m["count"].as_u64().unwrap_or(1) as usize).max(1);

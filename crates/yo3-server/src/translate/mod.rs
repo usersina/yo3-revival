@@ -13,7 +13,7 @@ use yo3_proto::{Message, Value};
 
 use crate::card_options::CARD_OPTION_LABELS;
 use crate::duel::{CLIENT, CPU, CardCommand, ClientRequest, TEXT_IDS, TEXT_SLOTS, command, command_data, text_message};
-use crate::ocg::message::{Loc, SelectCard, SelectChain, SelectSum, SelectUnselectCard, SortCards};
+use crate::ocg::message::{Ask, Loc, SelectChain, SelectOption, SelectPlace, SelectPosition, SelectSum};
 use crate::ocg::{Response, battle, hint, hintmsg, idle, loc, msg, pos, reason, resp};
 use crate::wire::{Cmd, OPEN, Place, Target, cmd, dialog, entry, flag, list, menu, mode, move_place, result, table_place, text, zone};
 
@@ -39,8 +39,8 @@ fn loc_of(v: &Json) -> Loc {
 
 /// An engine message as the struct the server reads it as (`yo3_ocg::message`). The duel check fails a duel whose
 /// messages don't fit; here one that doesn't is warned about and read as empty.
-fn typed<T: for<'de> serde::Deserialize<'de> + Default>(m: &Json) -> T {
-    T::deserialize(m).unwrap_or_else(|e| {
+fn typed<T: serde::de::DeserializeOwned + serde::Serialize + Default>(m: &Json) -> T {
+    crate::ocg::message::lenient(m).unwrap_or_else(|e| {
         tracing::warn!("engine message doesn't fit its struct: {e} in {m}");
         T::default()
     })
@@ -56,12 +56,6 @@ pub(super) struct CardList {
 }
 
 impl CardList {
-    /// MSG_SELECT_CARD and MSG_SELECT_TRIBUTE: their cards and bounds; cancelable when the engine allows it.
-    fn of(m: &Json) -> CardList {
-        let c: SelectCard = typed(m);
-        CardList { selects: c.selects, min: c.min, max: c.max, cancelable: c.can_cancel }
-    }
-
     /// MSG_SELECT_CHAIN's cards, one pick; one the player may back out of unless the chain is forced.
     fn chain(m: &Json) -> CardList {
         let c: SelectChain = typed(m);

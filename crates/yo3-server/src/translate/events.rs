@@ -853,7 +853,7 @@ impl Translator {
     /// object (0x1A finds none by uid, 0x5003A0). A token with no card of its name isn't shown.
     pub(super) fn token(&mut self, m: &Json, to: Place) -> Vec<Message> {
         let reserved = self.reserved_token.take();
-        let Some(rows) = self.token_card_rows(m) else {
+        let Some(rows) = self.token_card_rows(m["cid"].as_u64(), m["name"].as_str()) else {
             tracing::warn!("a token the client has no card for: {} {}", m["cid"], m["name"]);
             return vec![];
         };
@@ -878,14 +878,14 @@ impl Translator {
 
     /// The client's token cards (CARD_Prop rows) for an engine token: a token with a Konami id (Doomsday Token, 3940)
     /// is the client's card of that id; one without, by its name. None for a card that isn't a token the client has.
-    pub(super) fn token_card_rows(&self, m: &Json) -> Option<Vec<u16>> {
-        let cid = m["cid"].as_u64().filter(|&c| c != 0).map(|c| c as u16);
+    pub(super) fn token_card_rows(&self, cid: Option<u64>, name: Option<&str>) -> Option<Vec<u16>> {
+        let cid = cid.filter(|&c| c != 0).map(|c| c as u16);
         let by_id: Option<Vec<u16>> = cid.map(|c| {
             let mut rows: Vec<u16> = self.cards.iter().filter(|(_, s)| s.cid == c).map(|(&r, _)| r).collect();
             rows.sort_unstable();
             rows
         });
-        let by_name = || m["name"].as_str().and_then(|n| self.token_rows.get(n)).cloned();
+        let by_name = || name.and_then(|n| self.token_rows.get(n)).cloned();
         by_id.filter(|r| !r.is_empty()).or_else(by_name).filter(|r| !r.is_empty())
     }
 
