@@ -723,6 +723,9 @@ pub struct Translator {
     /// prompt; with it, an attack target is picked on the field (`field_target`, see [`VIEW_BATTLE_SELECT`]).
     attacker: Option<(u32, u32)>,
     field_target: bool,
+    /// An attack taken back on the field: the client still marks its attacker (DuelBattle's state 3, effect 0x39)
+    /// until a BattleEnd, which the next prompt starts with (the battle commands then draw the swords again).
+    taken_back: bool,
     /// Lines for the player's chat window, for what a duel window can't say (`take_notes`).
     notes: Vec<String>,
     /// The next slot of the server's own dialog texts (`text`).
@@ -884,6 +887,7 @@ impl Translator {
             zone_picks: None,
             attacker: None,
             field_target: false,
+            taken_back: false,
             notes: vec![],
             decks_reversed: false,
             positions: HashMap::new(),
@@ -2292,6 +2296,9 @@ impl Translator {
         match prompt {
             Prompt::Client(out) => {
                 let mut all = self.unstage_n(staged);
+                if std::mem::take(&mut self.taken_back) {
+                    all.insert(0, command(VIEW_BATTLE_END, [0; 4]));
+                }
                 all.extend(out);
                 with_card_ids(&self.cards, &mut all);
                 Prompt::Client(all)
@@ -3127,6 +3134,7 @@ impl Translator {
             return None;
         }
         self.field_target = false;
+        self.taken_back = true;
         self.pending = None;
         Some(Prompt::Answer(json!({ "type": RESP_CARD, "indicies": null })))
     }

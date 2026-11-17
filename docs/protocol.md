@@ -1988,7 +1988,14 @@ index; any other click waits on. Other-flag 6 lets the field's right-click send 
 `0x5212B0`), which takes the attack back when the engine allows it (`can_cancel`), as OK with no pick did in the list
 (live with `--duel-check`, against Yami Bakura: the arc aimed at his face-down Defense monster, which stayed face
 down; the right-click sent `duelRequestName 5` and the battle commands came back; attacking again and clicking it
-destroyed it; no ERROR). A replay's second target prompt aims from the same attacker. The duel check
+destroyed it; no ERROR). After the right-click the client still marked the attacker (pulsing crossed swords: DuelBattle's
+attacker mark, effect `0x39`, with no BattleEnd since `0xC {attacker, −1}`), so the next prompt starts with BattleEnd
+`0xE` and the battle commands draw the attacker's sword again (live: the sword back, no crossed swords). `0xB` itself
+clears the swords while the player aims, as Konami's `0xC {attacker, −1}`, `0xB` did. The swords are the client's own
+attackers' only: DuelBattle's command 4 (`0x4F8AB4`) looks at its own five zones, by its own player number, so the
+opponent's attackers never show them (live, two clients: none on the attacking player's monster). Konami's logs record
+no input waits (no command 4 in the 228), so they show nothing more. Between two players (live, two clients): the
+attacker's click destroyed Berserk Gorilla on both screens. A replay's second target prompt aims from the same attacker. The duel check
 asks every target's click and the right-click to reach their answers.
 
 The client's MSG_SELECT_EFFECTYN opens the Yes/No dialog with 'Activate the effect of "%s"?' (250) and the card's

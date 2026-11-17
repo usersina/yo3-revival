@@ -834,6 +834,11 @@ fn a_client_attacks_target_is_picked_on_the_field() {
     let out = target_prompt(&mut t);
     assert_eq!(cmds(&out[1..2]), [(0xC, [2 << 8, 1, u32::MAX, 0])]);
     assert_eq!(t.finish(), Some(Prompt::Answer(json!({ "type": 5, "indicies": null }))));
+    // The client still marks the attacker (pulsing crossed swords, live) until a BattleEnd: the battle commands that
+    // follow start with one, and draw the attacker's sword again.
+    let Prompt::Client(out) = t.prompt(&battle) else { panic!("the battle commands") };
+    assert_eq!(cmd(&out[0]), (0xE, [0; 4]));
+    assert_eq!(cmd(out.last().unwrap()), (4, [3, 0, 0, 0]));
     // An attack target prompt with no attack of the client's before it (an effect's): the card list.
     let mut t = with_cards();
     let out = client_commands(Prompt::Client(target_prompt(&mut t)));
