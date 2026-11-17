@@ -556,19 +556,24 @@ launcher and its shortcut. The test
 
 ## Publish a release
 
-Windows releases are currently unsigned. The [Code signing policy](code-signing.md) proposes SignPath Foundation
-signing, subject to approval and CI integration; it does not mean existing downloads are signed.
+Windows releases remain unsigned with Authenticode. SignPath Foundation declined the application; certificate
+purchase/signing is deferred until funded (#48). The [code-signing policy](code-signing.md) is still a proposal.
+The separate Ed25519 update signatures remain required.
 
 1. Update the current **Unreleased** changelog entry with player-visible behavior, then give it the next unused
-   `## vX.Y.Z (YYYY-MM-DD)` heading. Never move or reuse a published tag. In
+   `## vX.Y.Z (YYYY-MM-DD)` heading and set that same version in the workspace `Cargo.toml` (without the leading v).
+   Update `Cargo.lock` too. Never move or reuse a published tag. In
    [features](features.md), replace each "Unreleased" in the Since column with that version and date.
 2. Keep documentation/screenshots current, run required checks and live-test the extracted bundles.
 3. Commit in logical slices on a feature branch. Follow the working guide's local merge policy and ask before pushing.
-4. A push to `main` with an untagged top changelog version runs the release workflow: tests/lints, four bundles,
+4. A push to `main` with an untagged top changelog version runs the release workflow: tests/lints, the Desktop/Scripts/Server bundles,
    the mandatory packaged-updater check (also from v0.0.21), a `SHA256SUMS` file signed as `SHA256SUMS.sig` with the
    `UPDATE_SIGNING_KEY` secret ([signing releases](#signing-releases)), the same checksums in the release notes (with how
    to check them; players read [antivirus warnings](antivirus.md)), and a GitHub release. An already published top
-   version skips verification, bundling and publishing after the changelog check.
+   version skips verification, bundling and publishing after the changelog/Cargo version check.
+5. Successful publication builds/pushes both GHCR images, then deploys their exact digests to the configured VPS.
+   There is no approval button. Configure the restricted key/secrets once using the
+   [deployment guide](deployment.md#enable-automatic-updates-once); startup failure restores previous images/data.
 
 Desktop checks select only the matching Desktop archive; Scripts updates stay manual. Maintainer architecture and
 protocol evidence live in [authentication](authentication.md), [protocol](protocol.md), [client internals](client-internals.md)

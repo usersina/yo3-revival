@@ -10,6 +10,13 @@ on:
       source-ref:
         required: true
         type: string
+    outputs:
+      server-image:
+        description: Immutable server image built from this release
+        value: ${{ jobs.publish.outputs.server-image }}
+      dashboard-image:
+        description: Immutable dashboard image built from this release
+        value: ${{ jobs.publish.outputs.dashboard-image }}
 
 permissions:
   contents: write
@@ -19,6 +26,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      server-image: ${{ steps.references.outputs.server-image }}
+      dashboard-image: ${{ steps.references.outputs.dashboard-image }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -32,6 +42,7 @@ jobs:
           ansible-galaxy collection install -r deploy/ansible/requirements.yml
           python tools/containers/test_config.py
           python tools/containers/test_provisioning.py
+          python tools/containers/test_deployment.py
       - uses: docker/setup-buildx-action@v4.4.1
       - uses: docker/login-action@v4.8.0
         with:
@@ -81,6 +92,7 @@ jobs:
           cache-from: type=gha,scope=dashboard
           cache-to: type=gha,mode=max,scope=dashboard
       - name: Attach exact image references to the release
+        id: references
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
@@ -96,6 +108,9 @@ jobs:
           manifest = {'version': env['VERSION'], 'commit': env['SOURCE_REF']}
           for name in ['server', 'dashboard']:
               manifest[name] = f"{env['IMAGE_BASE']}-{name}@{env[name.upper() + '_DIGEST']}"
+          with open(env['GITHUB_OUTPUT'], 'a') as output:
+              for name in ['server', 'dashboard']:
+                  print(f'{name}-image={manifest[name]}', file=output)
           Path('container-images.json').write_text(json.dumps(manifest, indent=2) + '\n')
           PYTHON
           gh release upload "$VERSION" container-images.json --clobber

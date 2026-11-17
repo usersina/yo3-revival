@@ -29,7 +29,7 @@ jobs:
       - name: The newest version in CHANGELOG.md, and whether it is released
         id: changelog
         run: |
-          version=$(python3 .github/scripts/release_notes.py version CHANGELOG.md)
+          version=$(python3 .github/scripts/release_notes.py check CHANGELOG.md Cargo.toml)
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
             echo "::notice::$version is already released: add a new version at the top of CHANGELOG.md to release."
@@ -79,6 +79,7 @@ jobs:
           python3 tools/test_release_notes.py
           python3 tools/test_host_scripts.py
           python3 tools/containers/test_config.py
+          python3 tools/containers/test_deployment.py
           python3 tools/test_docs_check.py
       - name: Documentation links and images
         run: tools/docs-check.py
@@ -181,3 +182,27 @@ jobs:
     with:
       version: ${{ needs.prepare.outputs.version }}
       source-ref: ${{ github.sha }}
+
+  deploy:
+    name: Update the hosted server
+    needs: [prepare, release, containers]
+    if: github.ref == 'refs/heads/main' && needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Deploy the successful release's exact images
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_REF: ${{ github.sha }}
+          SERVER_IMAGE: ${{ needs.containers.outputs.server-image }}
+          DASHBOARD_IMAGE: ${{ needs.containers.outputs.dashboard-image }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/deploy_vps.py

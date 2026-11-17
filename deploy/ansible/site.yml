@@ -1,5 +1,5 @@
 ---
-# One-time local bootstrap. Ongoing CD is deliberately out of scope.
+# One-time local bootstrap; optional dedicated access lets release CI update the images later.
 - name: Set up one YO3 VPS from this local checkout
   hosts: all
   become: true
@@ -287,6 +287,9 @@
         daemon_reload: "{{ monitor_units.changed }}"
         enabled: true
         state: started
+    - name: Configure automatic release deployment access when a dedicated key is supplied
+      ansible.builtin.import_tasks: deploy-access.yml
+      when: yo3_deploy_public_key_file is defined
     - name: Show where to open the dashboard and find the initial password
       ansible.builtin.debug:
         msg:

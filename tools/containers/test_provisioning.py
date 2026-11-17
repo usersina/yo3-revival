@@ -16,6 +16,15 @@ import unittest
 from jinja2 import Environment, StrictUndefined
 ROOT=Path(__file__).resolve().parents[2]
 class Provisioning(unittest.TestCase):
+    def test_deployment_depends_on_release_and_both_published_image_outputs(self):
+        workflow=yaml.load((ROOT/'.github/workflows/release.yml').read_text(),Loader=yaml.BaseLoader)
+        self.assertEqual(workflow['on']['push']['branches'],['main'])
+        job=workflow['jobs']['deploy']
+        self.assertEqual(set(job['needs']),{'prepare','release','containers'})
+        self.assertNotIn('environment',job,'No approval click in the normal deployment path')
+        env=job['steps'][-1]['env']
+        for name in ['SERVER_IMAGE','DASHBOARD_IMAGE']:self.assertIn('needs.containers.outputs.',env[name])
+
     def check_image_references(self, server_image, dashboard_image):
         with tempfile.TemporaryDirectory(prefix='yo3-provisioning-template-') as tmp:
             path=Path(tmp)
@@ -132,5 +141,6 @@ class Provisioning(unittest.TestCase):
                 finally:
                     server.shutdown();thread.join()
     def test_site_parses_with_the_pinned_collection(self):
-        subprocess.run(['ansible-playbook','-i',str(ROOT/'deploy/ansible/inventory.example.ini'),str(ROOT/'deploy/ansible/site.yml'),'--syntax-check'],check=True,cwd=ROOT)
+        for name in ['site.yml','cd.yml']:
+            subprocess.run(['ansible-playbook','-i',str(ROOT/'deploy/ansible/inventory.example.ini'),str(ROOT/'deploy/ansible'/name),'--syntax-check'],check=True,cwd=ROOT)
 if __name__=='__main__':unittest.main()

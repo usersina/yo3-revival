@@ -1,8 +1,8 @@
 # One-time VPS setup
 
 Run Ansible **from your local checkout**, supplying the VPS IP and a DNS name pointing to it. It sets up Docker,
-HTTPS, the server and dashboard. Later releases publish container images to GitHub; automatic VPS deployment is
-separate future work. This arrived in v0.1.0. Public password sign-in is enabled for
+HTTPS, the server and dashboard. After the one-time deployment-key setup below, a new changelog/Cargo version
+pushed or merged to `main` runs checks, publishes the release and its images, then updates this VPS automatically. This arrived in v0.1.0. Public password sign-in is enabled for
 VPS testing; MFA and recovery are still pending.
 
 ## Before running
@@ -84,12 +84,60 @@ another workflow through the `release` event.
 
 CI checks runtime configuration and Ansible syntax/templates, builds the server/engine and dashboard/nginx images,
 and pushes Linux x86_64 images to GHCR with release and commit tags. The dashboard build checks generated-client
-drift. The release receives `container-images.json` containing the exact image digests. The job uses the automatic
-GitHub token with package permission; it has no SSH key and does not contact the VPS. Check package visibility in
+drift. The release receives `container-images.json` containing the exact image digests. The image-publication job uses the automatic
+GitHub token with package permission. A separate dependent deployment job uses the restricted SSH key described below. Check package visibility in
 GitHub before expecting anonymous pulls.
 
-A later CD workflow can use GitHub Secrets for the VPS address, SSH key and verified host key. It is deliberately
-not part of first setup yet. Local builds and the Compose rehearsal work before any images are published.
+## Enable automatic updates once
+
+For an existing provisioned host, generate a dedicated key locally. Keep its private file outside the checkout:
+
+```sh
+ssh-keygen -t ed25519 -N '' -C yo3-release-deployment -f ~/.ssh/yo3-release-deploy
+ansible-playbook -i '203.0.113.10,' -u root deploy/ansible/cd.yml \
+  -e yo3_deploy_public_key_file=$HOME/.ssh/yo3-release-deploy.pub
+```
+
+For first provisioning, pass that same variable to `site.yml` instead. For a sudo user, use the same sudo access as
+first setup. This creates `yo3-deploy` with a root-owned forced SSH command and permission to run only the release
+updater. It has no shell access through that key, port forwarding, general sudo or Docker-group membership.
+
+Set repository **Actions secrets** using the GitHub CLI or Settings → Secrets and variables → Actions:
+
+| Secret | Value |
+| --- | --- |
+| `VPS_HOST` | VPS IP or SSH hostname |
+| `VPS_PORT` | SSH port; optional, defaults to 22 |
+| `VPS_SSH_KEY` | The dedicated private key |
+| `VPS_KNOWN_HOSTS` | Host-key entries already verified for that exact address/port |
+
+For example, `gh secret set VPS_SSH_KEY --repo usersina/yo3-revival < ~/.ssh/yo3-release-deploy` uploads the private
+key without displaying it. Obtain `VPS_KNOWN_HOSTS` from your verified SSH known-hosts file; do not trust a fresh
+`ssh-keyscan` result without checking its fingerprint. No runner agent is installed on the VPS.
+
+The automatic path is **main version bump → checks and bundles → published GitHub release → both GHCR images →
+SSH deployment**. There is no approval button. A failed build or image publication never runs deployment.
+`Cargo.toml` and the newest changelog version must agree; an already-released version publishes/deploys nothing.
+The deployment uses the successful build's image digests and verifies their release/commit labels. An ephemeral
+GitHub token can pull private GHCR packages; it is not retained on the VPS.
+
+Both images are pulled before shutdown. The updater stops the stack gracefully, snapshots the complete stopped data
+volume, installs the images, checks the running server's release/save/engine health and validates HTTPS. On a detected
+failure it restores the old images and data before restarting. A successful retry checks health without restarting;
+older releases and attempts to reuse a version with different images are refused. The previous snapshot/configuration
+is retained privately at `/srv/yo3/release-rollback/`; it contains credentials and is not an off-machine backup.
+The active image references are also recorded for future Ansible reruns, so rerunning setup cannot silently downgrade.
+Infrastructure/Compose layout changes still require updating the provisioned runtime files explicitly.
+
+Deployment briefly disconnects players and ends active duels. A server requires at least its own release version:
+a `v0.1.1` server refuses a `v0.1.0` launcher, including password, remembered-device and key logins. Discovery shows
+**Update required** before opening the game. Hosts may raise `min-launcher` further, but cannot lower that release
+floor. Desktop checks and downloads signed updates automatically; Scripts users replace their complete bundle.
+Other people's self-hosted servers are not changed by this workflow.
+
+If deployment fails, inspect its job output. After correcting the cause, **Re-run failed jobs** retries the same
+immutable release safely; do not move its tag or republish different files under that version. Local provisioning
+and rehearsals do not require a published release.
 
 An Ubuntu 24.04 VPS rehearsal passed public bootstrap, a zero-change rerun, reboot with preserved state, real CA
 issuance, staging renewal with nginx reload, isolated off-machine restore and a 100-player protocol soak. This does

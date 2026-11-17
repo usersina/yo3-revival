@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-17 — Automatic release deployment and launcher version floor](#2026-11-17--automatic-release-deployment-and-launcher-version-floor)
   - [2026-11-17 — Public VPS deployment and recovery](#2026-11-17--public-vps-deployment-and-recovery)
   - [2026-11-17 — First VPS checks and portable image exports](#2026-11-17--first-vps-checks-and-portable-image-exports)
   - [2026-11-17 — Compose hosting and local VPS setup](#2026-11-17--compose-hosting-and-local-vps-setup)
@@ -38,6 +39,38 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-17 — Automatic release deployment and launcher version floor
+
+The v0.1.0 PR now makes matching Cargo/changelog versions on main run the existing release checks, publish both
+GHCR images and automatically deploy their exact digests through a pinned, restricted SSH key. The one-time
+Ansible access setup creates a deploy-only account, without a shell, forwarding or general sudo. Repository
+secrets hold the address, key and verified SSH host key; no runner agent is installed on the VPS.
+
+The updater validates both images before shutdown, snapshots the stopped data volume, checks the actual running
+release and HTTPS, and restores previous images/data on failure. Receipts make duplicate releases a health check;
+older releases and reused versions are refused. The production host keeps its domain, assets, data and identity.
+
+Versioned servers require launchers at least as new as their own release. Discovery advertises the floor;
+password/device requests reject missing, invalid and old versions, and protocol 3 adds a bounded release to key
+admission. Hosts can raise the floor but cannot lower it. Desktop/Scripts/direct-start preflight explains updates
+before opening the game. The original game version remains 1.153. Cargo was still 0.0.21 in the release PR; it
+is now 0.1.0, and a release guard prevents future Cargo/changelog mismatches.
+
+TDD regressions first reproduced the admission bypass and missing release guard. All 1,248 Rust tests passed
+(five skipped), Clippy was clean, and generated-client drift, frontend format/lint/typecheck, deployment and
+provisioning checks, certificate tests, workflow syntax and documentation links passed. The browser suite
+passed 52 cases and exposed a stale lowercase expectation after the PR's User ID case-preservation fix; the
+corrected remaining case passed on its own.
+
+On an isolated VPS Compose project, the release Docker build was pushed/pulled through a private local registry.
+The actual updater passed upgrade, identical-release retry without restart, old/current client admission, HTTPS
+staff sign-in, and automatic rollback of an image whose advertised version disagreed with its running binary.
+Accounts and game identity survived both paths. Private fixtures were removed and public container IDs stayed
+unchanged. Restricted SSH refused arbitrary commands; the final Ansible rerun made no changes.
+
+The first actual GitHub release-to-GHCR-to-VPS run remains a publication-time check; the PR is not merged by
+these tests. Signing and a year of ongoing hosting still need funding; the coupon VPS is for testing.
 
 ## 2026-11-17 — Public VPS deployment and recovery
 
