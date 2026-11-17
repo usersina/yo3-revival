@@ -2197,6 +2197,49 @@
     padding: 24px;
     color: var(--color-muted);
   }
+  .settings-maintenance-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .settings-maintenance-row h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .settings-maintenance-row p {
+    color: var(--color-muted);
+    margin-top: 8px;
+  }
+  .connected-settings-list {
+    margin-top: 20px;
+  }
+  .connected-settings-list summary {
+    cursor: pointer;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+  .setting-value {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+    min-width: 0;
+  }
+  .setting-value code {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+  .settings-news-entry {
+    display: grid;
+    gap: 12px;
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--color-line);
+  }
   .connected-error {
     border: 1px solid #efcbc8;
     background: #fff3f1;

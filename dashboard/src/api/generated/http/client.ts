@@ -29,6 +29,7 @@ import type {
   AccountList,
   ApiError,
   BpCodeList,
+  ChangeSettingsHeaders,
   CountryList,
   CreateBpCodeHeaders,
   CreateBpCodeRequest,
@@ -54,6 +55,9 @@ import type {
   RemoveBpCodeHeaders,
   RemoveBpCodeRequest,
   RemoveBpCodeResult,
+  SettingsList,
+  SettingsRequest,
+  SettingsResult,
   SignInRequest,
   SignInStaffHeaders,
   SignOutStaffHeaders,
@@ -1318,6 +1322,169 @@ export function useGetStaffSession<TData = Awaited<ReturnType<typeof getStaffSes
 
 
 
+
+export const getListSettingsUrl = () => {
+
+
+
+
+  return `/panel/api/v1/settings`
+}
+
+export const listSettings = async ( options?: Parameters<typeof apiFetch>[1]): Promise<SettingsList> => {
+
+  return apiFetch<SettingsList>(getListSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSettingsQueryKey = () => {
+    return [
+    `/panel/api/v1/settings`
+    ] as const;
+    }
+
+
+export const getListSettingsQueryOptions = <TData = Awaited<ReturnType<typeof listSettings>>, TError = ErrorType<ApiError>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listSettings>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSettings>>> = ({ signal }) => listSettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSettings>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof listSettings>>>
+export type ListSettingsQueryError = ErrorType<ApiError>
+
+
+export function useListSettings<TData = Awaited<ReturnType<typeof listSettings>>, TError = ErrorType<ApiError>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listSettings>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listSettings>>,
+          TError,
+          Awaited<ReturnType<typeof listSettings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListSettings<TData = Awaited<ReturnType<typeof listSettings>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listSettings>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listSettings>>,
+          TError,
+          Awaited<ReturnType<typeof listSettings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListSettings<TData = Awaited<ReturnType<typeof listSettings>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listSettings>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListSettings<TData = Awaited<ReturnType<typeof listSettings>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listSettings>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListSettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getChangeSettingsUrl = () => {
+
+
+
+
+  return `/panel/api/v1/settings`
+}
+
+export const changeSettings = async (settingsRequest: SettingsRequest,
+    headers: ChangeSettingsHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<SettingsResult> => {
+
+  return apiFetch<SettingsResult>(getChangeSettingsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(settingsRequest)
+  }
+);}
+
+
+
+
+
+export const getChangeSettingsMutationKey = () => ['changeSettings'] as const;
+
+export const getChangeSettingsMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof changeSettings>>, TError,ChangeSettingsMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof changeSettings>>, TError,ChangeSettingsMutationVariables, TContext> => {
+
+const mutationKey = getChangeSettingsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof changeSettings>>, ChangeSettingsMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  changeSettings(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ChangeSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof changeSettings>>>
+    export type ChangeSettingsMutationBody = SettingsRequest
+    export type ChangeSettingsMutationError = ErrorType<ApiError>
+    export type ChangeSettingsMutationVariables = {data: SettingsRequest;headers: ChangeSettingsHeaders}
+
+    export const useChangeSettings = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof changeSettings>>, TError,ChangeSettingsMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof changeSettings>>,
+        TError,
+        ChangeSettingsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getChangeSettingsMutationOptions(options), queryClient);
+    }
 
 export const getSignInStaffUrl = () => {
 

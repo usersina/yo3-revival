@@ -2252,6 +2252,15 @@ the looking, moderation, invite and reset-code operations, and none on a staff a
 listener rather than guessing from saved settings. Only the authenticated game/discovery port is public; internal
 management/assets HTTP stays loopback.
 
+Settings `set`, `reset` and `maintenance` require one `Idempotency-Key` and commit the whole settings snapshot,
+audit and receipt before publishing. Maintenance validates message and deadline together. Retrying returns the
+original confirmation and RFC 3339 deadline without restoring an older value or repeating the countdown/chat;
+CLI and old panel forms preserve the same ID. `GET /panel/api/v1/settings` projects typed registry metadata,
+editable/default values and checked maintenance state; `POST` takes tagged set/reset/schedule/cancel requests.
+Staff read; only admins change. Existing `front::information` (`0x21FC`, R3) and cancellation chat are unchanged.
+Evidence: `settings_admin_contract.rs`, `settings_contract.rs`, `moderation_contract.rs`, `panel_contract.rs`,
+`dashboard_contract.rs`, `dashboard/e2e/settings.spec.ts`.
+
 The React dashboard has its own staff-session JSON routes at `/panel/api/v1/`, implemented in `dashboard.rs` with
 Axum and utoipa-axum. Rust exports `dashboard/api/openapi.json`; Orval generates the frontend fetch functions, hooks,
 types and Zod validators. It currently covers sign-in/out, session, account summaries/details and player edits, Give BP (a `user_id: u32`

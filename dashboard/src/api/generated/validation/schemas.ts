@@ -727,6 +727,18 @@ export const KeyAccountResult = zod.object({
 export type KeyAccountResult = zod.input<typeof KeyAccountResult>;
 export type KeyAccountResultOutput = zod.output<typeof KeyAccountResult>;
 
+export const regulationChoiceIdMin = 0;
+
+
+
+export const RegulationChoice = zod.object({
+  "id": zod.int().min(regulationChoiceIdMin),
+  "name": zod.string()
+});
+
+export type RegulationChoice = zod.input<typeof RegulationChoice>;
+export type RegulationChoiceOutput = zod.output<typeof RegulationChoice>;
+
 export const removeBpCodeRequestCodeMin = 16;
 export const removeBpCodeRequestCodeMax = 16;
 
@@ -749,6 +761,91 @@ export const RemoveBpCodeResult = zod.object({
 
 export type RemoveBpCodeResult = zod.input<typeof RemoveBpCodeResult>;
 export type RemoveBpCodeResultOutput = zod.output<typeof RemoveBpCodeResult>;
+
+export const settingKindOneMaxLengthMin = 0;
+
+export const settingKindTwoMaxMin = 0;
+
+export const settingKindTwoMinMin = 0;
+
+
+
+export const SettingKind = zod.union([zod.object({
+  "kind": zod.enum(['text']),
+  "max_length": zod.int().min(settingKindOneMaxLengthMin)
+}),zod.object({
+  "kind": zod.enum(['number']),
+  "max": zod.int().min(settingKindTwoMaxMin),
+  "min": zod.int().min(settingKindTwoMinMin)
+}),zod.object({
+  "choices": zod.array(zod.string()),
+  "kind": zod.enum(['choice'])
+}),zod.object({
+  "kind": zod.enum(['version'])
+}),zod.object({
+  "choices": zod.array(RegulationChoice),
+  "kind": zod.enum(['regulation'])
+}),zod.object({
+  "kind": zod.enum(['news'])
+})]);
+
+export type SettingKind = zod.input<typeof SettingKind>;
+export type SettingKindOutput = zod.output<typeof SettingKind>;
+
+export const SettingRow = zod.object({
+  "applies": zod.string(),
+  "default_value": zod.string(),
+  "help": zod.string(),
+  "input": SettingKind,
+  "name": zod.string(),
+  "overridden": zod.boolean(),
+  "value": zod.string()
+});
+
+export type SettingRow = zod.input<typeof SettingRow>;
+export type SettingRowOutput = zod.output<typeof SettingRow>;
+
+export const SettingsList = zod.object({
+  "checked_at": zod.iso.datetime({"offset":true}),
+  "maintenance_active": zod.boolean(),
+  "maintenance_at": zod.iso.datetime({"offset":true}).nullish(),
+  "settings": zod.array(SettingRow)
+});
+
+export type SettingsList = zod.input<typeof SettingsList>;
+export type SettingsListOutput = zod.output<typeof SettingsList>;
+
+export const settingsRequestThreeMinutesMin = 0;
+export const settingsRequestThreeMinutesMax = 4294967295;
+
+
+
+export const SettingsRequest = zod.union([zod.object({
+  "kind": zod.enum(['set']),
+  "name": zod.string(),
+  "value": zod.string()
+}),zod.object({
+  "kind": zod.enum(['reset']),
+  "name": zod.string()
+}),zod.object({
+  "kind": zod.enum(['schedule_maintenance']),
+  "message": zod.string().nullish(),
+  "minutes": zod.int().min(settingsRequestThreeMinutesMin).max(settingsRequestThreeMinutesMax)
+}),zod.object({
+  "kind": zod.enum(['cancel_maintenance'])
+})]);
+
+export type SettingsRequest = zod.input<typeof SettingsRequest>;
+export type SettingsRequestOutput = zod.output<typeof SettingsRequest>;
+
+export const SettingsResult = zod.object({
+  "maintenance_at": zod.iso.datetime({"offset":true}).nullish().describe('Committed deadline, not a live status. A retry returns this original deadline even after later changes.'),
+  "message": zod.string(),
+  "request_id": zod.string()
+});
+
+export type SettingsResult = zod.input<typeof SettingsResult>;
+export type SettingsResultOutput = zod.output<typeof SettingsResult>;
 
 export const signInRequestUserMax = 64;
 
@@ -1212,6 +1309,61 @@ export const GetStaffSession413Response = ApiError
 export const GetStaffSession415Response = ApiError
 
 export const GetStaffSession500Response = ApiError
+
+
+export const ListSettings200Response = SettingsList
+
+export const ListSettings400Response = ApiError
+
+export const ListSettings401Response = ApiError
+
+export const ListSettings403Response = ApiError
+
+export const ListSettings405Response = ApiError
+
+export const ListSettings413Response = ApiError
+
+export const ListSettings415Response = ApiError
+
+export const ListSettings500Response = ApiError
+
+export const ListSettings503Response = ApiError
+
+
+export const changeSettingsHeaderIdempotencyKeyMin = 16;
+export const changeSettingsHeaderIdempotencyKeyMax = 128;
+
+
+export const changeSettingsHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const ChangeSettingsHeader = zod.object({
+  "Idempotency-Key": zod.string().min(changeSettingsHeaderIdempotencyKeyMin).max(changeSettingsHeaderIdempotencyKeyMax).regex(changeSettingsHeaderIdempotencyKeyRegExp).describe('Retain this ID and input on retry. Retries return the original result without restoring old settings or moving a countdown.')
+})
+
+export const ChangeSettingsBody = SettingsRequest
+
+export const ChangeSettings200Response = SettingsResult
+
+export const ChangeSettings400Response = ApiError
+
+export const ChangeSettings401Response = ApiError
+
+export const ChangeSettings403Response = ApiError
+
+export const ChangeSettings404Response = ApiError
+
+export const ChangeSettings405Response = ApiError
+
+export const ChangeSettings409Response = ApiError
+
+export const ChangeSettings413Response = ApiError
+
+export const ChangeSettings415Response = ApiError
+
+export const ChangeSettings500Response = ApiError
+
+export const ChangeSettings503Response = ApiError
 
 
 export const signInStaffHeaderIdempotencyKeyMin = 16;

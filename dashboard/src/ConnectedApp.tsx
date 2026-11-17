@@ -19,6 +19,7 @@ import type { AccountSummary, StaffSession } from './api/generated/http/models'
 import { GiveBpHeader, GiveBpByIdRequest } from './api/generated/validation/schemas'
 import { ApiHttpError, setCsrfToken } from './api/transport'
 import { ConnectedAccountDialog } from './ConnectedAccountDialog'
+import { ConnectedSettings } from './ConnectedSettings'
 import { ConnectedCodes } from './ConnectedCodes'
 import { ConnectedInvites } from './ConnectedInvites'
 import { ConnectedGifts } from './ConnectedGifts'
@@ -379,6 +380,7 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
       />
       <ConnectedInvites session={session} />
       <ConnectedCodes session={session} />
+      <ConnectedSettings session={session} />
       <Modal
         open={open}
         onOpenChange={(value) => {

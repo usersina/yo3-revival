@@ -88,8 +88,8 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         // The caller creates the setup code before the operation, for a stable, secret-free receipt.
         Admin::AddUser { user, .. } => Op::AddUser { user: user.clone(), code: String::new().into() },
         Admin::Settings | Admin::Share { .. } => Op::Settings,
-        Admin::Set { name, value } => Op::Set { name: name.clone(), value: value.clone() },
-        Admin::Reset { name } => Op::Reset { name: name.clone() },
+        Admin::Set { name, value, .. } => Op::Set { name: name.clone(), value: value.clone() },
+        Admin::Reset { name, .. } => Op::Reset { name: name.clone() },
         Admin::Audit { limit } => Op::Audit { limit: Some(*limit) },
         Admin::Stop => Op::Shutdown,
         Admin::Kick { who } => Op::Kick { who: who.clone() },
@@ -103,7 +103,7 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
             anyhow::ensure!(*yes, "delete-account deletes {who:?} and everything kept for it for good: add --yes to go on");
             Op::DeleteAccount { who: who.clone() }
         }
-        Admin::Maintenance { minutes, message, off } => Op::Maintenance { minutes: *minutes, message: message.clone(), off: *off },
+        Admin::Maintenance { minutes, message, off, .. } => Op::Maintenance { minutes: *minutes, message: message.clone(), off: *off },
     }))
 }
 
@@ -150,6 +150,7 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         anyhow::ensure!(a.advertise.is_some(), "pass --advertise ADDRESS: the address friends reach this server at (an IP or a name in its certificate)");
     }
     let mut result = if let Admin::GiveBp { request_id, .. } | Admin::AddCode { request_id, .. } | Admin::RemoveCode { request_id, .. } | Admin::Invite { request_id, .. }
+        | Admin::Set { request_id, .. } | Admin::Reset { request_id, .. } | Admin::Maintenance { request_id, .. }
         | Admin::GiveCards { request_id, .. } | Admin::GiveRecipe { request_id, .. } | Admin::GrantTitle { request_id, .. }
         | Admin::AddAccount { request_id, .. } | Admin::Key { request_id, .. } | Admin::Profile { request_id, .. }
         | Admin::AddPlayer { request_id, .. } | Admin::Rename { request_id, .. } | Admin::SetCountry { request_id, .. } | Admin::SetRole { request_id, .. } = &command {

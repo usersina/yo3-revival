@@ -6,7 +6,7 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 ## Current state
 
 - The approved React/Vite/SWC/Tailwind dashboard is in `dashboard/`. The main pages remain a labelled design preview.
-  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, card/recipe/title gifts, Give BP, registration invites and BOOSTERPASS code management.
+  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, card/recipe/title gifts, Give BP, registration invites, BOOSTERPASS code management, live settings, news and maintenance.
   It never falls back to fixtures.
 - Axum handles HTTP on separate sockets. Host-token operations, assets and the old HTML panel stay on `--http-port`.
   The staff JSON router has its own opt-in `--dashboard-port`, disabled by default and always bound to loopback.
@@ -15,6 +15,10 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
   fetch functions, TanStack Query hooks and Zod validators in `dashboard/src/api/generated/`.
 - Give BP commits balance, D-Mail, audit and operation receipt together, then publishes state and notifications.
   The dashboard targets a numeric account ID and retains an uncertain request across reloads for safe retry.
+- Settings, news and maintenance commit the whole snapshot, audit and receipt before publication. The generated
+  registry supplies types, bounds, choices, defaults and application times. Maintenance shows its checked status
+  and absolute deadline; retries never restore an older setting, move a countdown or repeat cancellation chat.
+  Save, audit, receipt and deferred-COMMIT failures publish nothing, including after a subsequent successful save.
 - Creating/removing BOOSTERPASS codes commits the code change, audit and receipt together. Moderators can inspect
   codes and claims; only admins can change them. The CLI and old HTML forms use the same typed operations.
 - Admins and moderators can list and create registration invites through the generated API. Creation commits the
@@ -53,7 +57,7 @@ expire or follow `audit-keep-days`. They keep the input fingerprint and a minima
 login credentials. A generated reward code is retained so a retry can retrieve it. Clients retain an ID for retries
 and generate a new one only for a new intended change. IDs share a namespace across operations for each actor.
 
-Give BP, invite creation, player profile/role edits, password setup/reset codes, key-account creation/disclosure, player gifts and
+Give BP, invite creation, player profile/role edits, password setup/reset codes, key-account creation/disclosure, player gifts, settings/news/maintenance and
 BOOSTERPASS creation/removal use this boundary. Shared identity, error and receipt helpers live in
 `api/mutation.rs`; domain validation, preparation and commit stay in their operation modules. A generated-code retry
 returns the original code. A removal retry returns its original result even if someone has since recreated that
@@ -106,6 +110,17 @@ additional-copy limit of 255 per artwork; recipe duplicates are counted together
 recipe without cards is refused; granting an already-owned title confirms that state without adding a second item.
 `GET /panel/api/v1/gifts/choices?q=…` searches game metadata and returns at most 50 results per kind with explicit
 more-results flags. Neither endpoint accepts moderator or host-token authority on the staff listener.
+
+`GET /panel/api/v1/settings` is readable by current staff. It returns a coherent registry snapshot, default/override
+values as editable strings, tagged input metadata, a checked-at RFC 3339 time and maintenance deadline/status.
+`POST` is admin-only and accepts tagged `set`, `reset`, `schedule_maintenance` or `cancel_maintenance` requests.
+Scheduling validates the message and absolute deadline together. Settings mutations alone accept up to 256 KiB
+so ten valid multilingual announcements fit; other routes retain their 16 KiB request limit. `--off` cannot be combined with scheduling options.
+CLI `set`, `reset` and `maintenance` print and accept `--request-id`; existing HTML forms keep their hidden ID.
+Receipts retain the original confirmation (which can contain the setting value) and deadline. Audit pruning is a
+post-commit best-effort effect: failure is logged, does not undo the setting and does not repeat on receipt replay.
+The existing one-second maintenance worker still handles sign-outs at the committed deadline. No client wire shape
+changes. The game’s cancelled-maintenance icon still clears at the next login; cancellation chat explains that.
 
 ## API and dashboard
 

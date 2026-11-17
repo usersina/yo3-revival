@@ -29,9 +29,11 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/accounts/credentials", "post", "issueAccountCode"),
         ("/panel/api/v1/accounts/keys", "post", "manageAccountKey"),
         ("/panel/api/v1/gifts", "post", "givePlayerGift"),
+        ("/panel/api/v1/settings", "get", "listSettings"),
+        ("/panel/api/v1/settings", "post", "changeSettings"),
         ("/panel/api/v1/gifts/choices", "get", "listGiftChoices"),
     ];
-    assert_eq!(paths.len(), 15);
+    assert_eq!(paths.len(), 16);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -538,4 +540,43 @@ async fn gifts_fail_with_typed_errors_without_metadata_and_never_accept_host_or_
     b.sign_in("Croquet").await;
     assert_eq!(b.call("GET", "/panel/api/v1/gifts/choices", json!(null)).await.status,403);
     assert_eq!(b.call("POST", "/panel/api/v1/gifts", request).await.status,403);
+}
+
+#[tokio::test]
+async fn settings_routes_are_staff_readable_admin_writable_and_require_stable_request_ids() {
+    let mut b = Browser::new("settings-api").await;
+    let path = "/panel/api/v1/settings";
+    assert_eq!(b.call("GET",path,json!(null)).await.status,401);
+    b.sign_in("Croquet").await;
+    let list = b.call("GET",path,json!(null)).await;
+    assert_eq!(list.status,200);
+    assert!(list.body["checked_at"].as_str().is_some_and(|t| chrono::DateTime::parse_from_rfc3339(t).is_ok()));
+    let settings = list.body["settings"].as_array().unwrap();
+    assert_eq!(settings.len(),yo3_server::settings::REGISTRY.len());
+    assert!(settings.iter().any(|s| s["name"] == "start-lp" && s["input"]["max"] == 99999));
+    let request = json!({ "kind":"set","name":"headline","value":"Welcome from the API" });
+    assert_eq!(b.call("POST",path,request.clone()).await.status,403);
+    b.sign_in("Pegasus").await;
+    assert_eq!(b.raw("POST",path,&request.to_string(),"").await.status,400);
+    let result = b.call("POST",path,request.clone()).await;
+    assert_eq!(result.status,200,"{}",result.body);
+    assert_eq!(b.call("POST",path,request).await.body,result.body);
+    assert_eq!(b.call("POST",path,json!({ "kind":"reset","name":"headline" })).await.status,409);
+    let list = b.call("GET",path,json!(null)).await;
+    assert!(list.body["settings"].as_array().unwrap().iter().any(|s|s["name"]=="headline" && s["overridden"]==true && s["value"]=="Welcome from the API"));
+    let token = format!("Authorization: Bearer {}\r\n",b.admin.token);
+    assert_eq!(b.raw_on(b.live.http,"GET",path,"",&token).await.status,404);
+    let anonymous = Browser { cookie:String::new(),csrf:String::new(),..b };
+    assert_eq!(anonymous.raw("POST",path,"{}",&token).await.status,401,"host token cannot authorize dashboard mutations");
+}
+
+#[tokio::test]
+async fn settings_accept_all_ten_valid_unicode_announcements_with_a_bounded_payload() {
+    let mut b=Browser::new("news-payload").await; b.sign_in("Pegasus").await;
+    let entries: Vec<_>=(0..10).map(|_|json!({"title":"界".repeat(128),"body":"界".repeat(2048)})).collect();
+    let body=json!({"kind":"set","name":"news","value":serde_json::to_string(&entries).unwrap()});
+    let result=b.call("POST","/panel/api/v1/settings",body).await;
+    assert_eq!(result.status,200,"{}",result.body);
+    let huge=json!({"kind":"set","name":"news","value":"x".repeat(257*1024)});
+    assert_eq!(b.raw("POST","/panel/api/v1/settings",&huge.to_string(),"Idempotency-Key: oversized-news-request\r\n").await.status,413);
 }

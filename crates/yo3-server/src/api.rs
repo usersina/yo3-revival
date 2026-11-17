@@ -8,7 +8,7 @@
 //! Each operation is one function ([`Api::apply`]): it checks its values, applies the change to the running server's
 //! state (in memory and in the database together), then writes an audit row: who, from where, what, on what, the
 //! values before and after. Give BP commits the change, mail, audit and retry receipt together before publishing.
-//! Invite creation and BOOSTERPASS creation/removal also commit audit and receipt with their change. Other operations are
+//! Invite/code, profile/role, credential, gift and live-setting changes also commit audit and receipt with their change. Other operations are
 //! being adapted. With no server running, the CLI runs on the data folder (it
 //! holds the folder's lock meanwhile), and those changes are audited too, from "offline".
 //!
@@ -37,6 +37,7 @@ pub mod profiles;
 pub mod credentials;
 pub mod keys;
 pub mod gifts;
+pub mod settings;
 pub use give_bp::{GiveBpRequest, GiveBpResult};
 pub use mutation::{Actor, MutationError, MutationErrorCode};
 
@@ -116,7 +117,7 @@ pub enum Op {
 
 impl Op {
     /// Operations migrated to a committed change/audit/receipt boundary.
-    fn receipted(&self) -> bool { matches!(self, Self::GiveCards { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
+    fn receipted(&self) -> bool { matches!(self, Self::Set { .. } | Self::Reset { .. } | Self::Maintenance { .. } | Self::GiveCards { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
     /// Its name in the API's path and the audit log.
     pub fn name(&self) -> String {
         serde_json::to_value(self).ok().and_then(|v| v["op"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -245,7 +246,7 @@ impl Api {
         self.apply_request(op, actor, origin, role, &crate::logins::new_token())
     }
 
-    /// The same operation with a caller's stable retry ID (Give BP, invites and BOOSTERPASS code changes).
+    /// The same operation with a caller's stable retry ID for migrated transactional mutations.
     pub fn apply_request(&self, op: &Op, actor: &str, origin: &str, role: Option<crate::logins::Role>, request_id: &str) -> Result<Value, String> {
         use crate::logins::Role;
         match role {
@@ -292,6 +293,7 @@ impl Api {
 
     fn typed_change(&self, op: &Op, id: &str, actor: Actor<'_>, origin: &str) -> Result<Value, MutationError> {
         match op {
+            Op::Set { .. } | Op::Reset { .. } | Op::Maintenance { .. } => self.named_setting(op, id, actor, origin),
             Op::GiveBp { who, amount } => self.give_bp(&GiveBpRequest { who: who.clone(), amount: *amount }, id, actor, origin).map(|r| json!(r)),
             Op::AddCode { code, bp, uses } => self.create_bp_code(&codes::CreateBpCodeRequest {
                 code: (!code.trim().is_empty()).then(|| code.trim().to_string()), bp: *bp, uses: *uses,
@@ -327,22 +329,6 @@ impl Api {
     /// Ends the sessions of `user_id`: their game shows its own disconnect dialog.
     fn end_sessions(&self, user_id: u32) {
         if let Some(sessions) = &self.sessions { sessions.locked().logout_user(user_id) }
-    }
-
-    /// What a changed setting does at once on a running server: the news and the maintenance countdown are pushed to
-    /// everyone online (the game takes 0x21FC whenever it arrives: R3, #26).
-    fn after_setting(&self, name: &str) {
-        if name.trim().eq_ignore_ascii_case("audit-keep-days") && let Some(dir) = &self.data_dir {
-            match crate::store::prune_audit(dir, self.settings.now().audit_keep_days) {
-                Ok(n) if n > 0 => tracing::info!("audit log: {n} row(s) older than audit-keep-days removed"),
-                Ok(_) => {}
-                Err(e) => tracing::error!("audit log not pruned: {e}"),
-            }
-        }
-        let pushed = ["news", "maintenance-at", "maintenance-message"];
-        let (Some(hub), true) = (&self.hub, pushed.iter().any(|n| n.eq_ignore_ascii_case(name.trim()))) else { return };
-        let info = crate::front::information(&self.settings.now(), self.status.engine_problem.is_some(), crate::logins::now());
-        hub.locked().push_everyone(&info);
     }
 
     /// Uses `gifts` instead of the game's cards and recipes (tests).
@@ -442,40 +428,7 @@ impl Api {
                 Ok((json!({ "stopping": true, "message": "the server is stopping" }), None, None))
             }
             Op::Settings => Ok((json!({ "message": self.settings.list(), "settings": self.settings.rows() }), None, None)),
-            Op::Set { name, value } => {
-                let before = crate::settings::find(name).map(|s| self.settings.now().value(s.name).clone());
-                let done = self.settings.set(name, value)?;
-                let after = crate::settings::find(name).map(|s| self.settings.now().value(s.name).clone());
-                self.after_setting(name);
-                Ok((message(done), before, after))
-            }
-            Op::Reset { name } => {
-                let before = crate::settings::find(name).map(|s| self.settings.now().value(s.name).clone());
-                let done = self.settings.reset(name)?;
-                let after = crate::settings::find(name).map(|s| self.settings.now().value(s.name).clone());
-                self.after_setting(name);
-                Ok((message(done), before, after))
-            }
-            Op::Maintenance { minutes, message: text, off } => {
-                let before = self.settings.now().maintenance_at;
-                if *off {
-                    self.settings.reset("maintenance-at")?;
-                    self.after_setting("maintenance-at");
-                    // A countdown the game was showing: its wrench stays up (R3), so say why.
-                    if let (Some(hub), Some(at)) = (&self.hub, before) && at > crate::logins::now() {
-                        hub.locked().push_everyone(&crate::front::chat_note("Moderator", crate::front::MAINTENANCE_CANCELLED));
-                    }
-                    return Ok((message("maintenance is off".into()), before.map(|t| json!(t)), None));
-                }
-                let minutes = minutes.ok_or("maintenance needs --in MINUTES (0: now), or --off")?;
-                if let Some(text) = text { self.settings.set("maintenance-message", text)?; }
-                let at = crate::logins::now() + i64::from(minutes) * 60;
-                self.settings.set("maintenance-at", &at.to_string())?;
-                self.after_setting("maintenance-at");
-                let when = chrono::DateTime::from_timestamp(at, 0).map_or(String::new(), |t| t.format("%Y-%m-%d %H:%M UTC").to_string());
-                Ok((message(format!("maintenance starts at {when}: the game counts down until then; then only admins and moderators stay")),
-                    before.map(|t| json!(t)), Some(json!(at))))
-            }
+            Op::Set { .. } | Op::Reset { .. } | Op::Maintenance { .. } => Err("settings edits require the typed mutation boundary".into()),
             Op::Kick { who } => {
                 let user_id = self.accounts.locked().user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
                 self.end_sessions(user_id);

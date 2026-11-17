@@ -10,7 +10,7 @@
 //! (`config.rs`), and the testing aids stay command-line flags.
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 
 use serde::Serialize;
 use serde_json::{Map, Value as Json, json};
@@ -300,24 +300,40 @@ impl Live {
     }
 
     fn change(&self, setting: &Setting, value: Option<Json>) -> Result<String, String> {
-        let mut set = self.set.lock().unwrap_or_else(|e| e.into_inner());
-        let mut next = set.clone();
-        match value { Some(v) => { next.insert(setting.name.into(), v); } None => { next.remove(setting.name); } }
-        let settings = Settings::from_values(with_defaults(&next), &self.banlists)?;
-        if let Some(file) = &self.file {
-            crate::store::write(file, &Json::Object(next.clone())).map_err(|e| format!("not saved: {e}"))?;
-        }
-        *set = next;
-        let shown = shown(settings.value(setting.name));
-        *self.current.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(settings);
-        Ok(format!("{} is now {shown} (applies {})", setting.name, setting.applies.describe()))
+        let input = value.map(|v| match v { Json::String(s) => s, other => other.to_string() });
+        let next = self.prepare(&[(setting.name.to_string(), input)])?;
+        let message = next.message(setting.name);
+        next.persist().map_err(|e| format!("not saved: {e}"))?;
+        next.publish();
+        Ok(message)
     }
+
+    /// Serialize all writers, validate the complete edit, then let the caller commit it with audit and receipt.
+    pub(crate) fn prepare(&self, edits: &[(String, Option<String>)]) -> Result<Prepared<'_>, String> {
+        let set = self.set.lock().unwrap_or_else(|e| e.into_inner());
+        let before = self.now(); let mut next = set.clone();
+        for (name, input) in edits {
+            let setting = find(name).ok_or_else(|| format!("no setting {name:?}; `settings` lists them"))?;
+            match input {
+                Some(input) => { next.insert(setting.name.into(), parse(setting, input, &self.banlists)?); }
+                None => { next.remove(setting.name); }
+            }
+        }
+        let settings = Arc::new(Settings::from_values(with_defaults(&next), &self.banlists)?);
+        Ok(Prepared { live: self, set, next, before, settings })
+    }
+
+    pub(crate) fn snapshot(&self) -> (Arc<Settings>, Map<String,Json>) {
+        let set = self.set.lock().unwrap_or_else(|e| e.into_inner());
+        (self.now(), set.clone())
+    }
+    pub(crate) fn banlists(&self) -> &[(u32, String)] { &self.banlists }
 
     /// Every setting as a row (the admin panel, #36): its name, value as typed, whether it was set, when it applies, what it
     /// does, and its choices for a choice.
     pub fn rows(&self) -> Vec<Json> {
-        let now = self.now();
         let set = self.set.lock().unwrap_or_else(|e| e.into_inner());
+        let now = self.now();
         REGISTRY.iter().map(|s| {
             let value = match now.value(s.name) { Json::String(v) => v.clone(), other => other.to_string() };
             let choices = match s.kind { Kind::Choice(c) => json!(c), _ => Json::Null };
@@ -328,12 +344,32 @@ impl Live {
 
     /// Every setting with its value, whether it is the default, when it applies and what it does.
     pub fn list(&self) -> String {
-        let now = self.now();
         let set = self.set.lock().unwrap_or_else(|e| e.into_inner());
+        let now = self.now();
         REGISTRY.iter().map(|s| {
             let state = if set.contains_key(s.name) { "set" } else { "default" };
             format!("{}\t{}\t({state}; applies {})\n  {}", s.name, shown(now.value(s.name)), s.applies.describe(), s.help)
         }).collect::<Vec<_>>().join("\n")
+    }
+}
+
+/// Holding the override lock prevents a second edit from preparing against stale settings. Publish only after COMMIT.
+pub(crate) struct Prepared<'a> {
+    live: &'a Live, set: MutexGuard<'a, Map<String, Json>>, next: Map<String, Json>,
+    pub before: Arc<Settings>, pub settings: Arc<Settings>,
+}
+impl Prepared<'_> {
+    pub fn persist(&self) -> io::Result<()> {
+        if let Some(file) = &self.live.file { crate::store::write(file, &Json::Object(self.next.clone()))?; }
+        Ok(())
+    }
+    pub fn message(&self, name: &str) -> String {
+        let setting = find(name).expect("prepared setting");
+        format!("{} is now {} (applies {})", setting.name, shown(self.settings.value(setting.name)), setting.applies.describe())
+    }
+    pub fn publish(mut self) {
+        *self.set = self.next;
+        *self.live.current.write().unwrap_or_else(|e| e.into_inner()) = self.settings;
     }
 }
 

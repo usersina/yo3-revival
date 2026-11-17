@@ -8,10 +8,11 @@ use axum::{Json, Router, body::Body, extract::{ConnectInfo, DefaultBodyLimit, St
     routing::get, Extension};
 use serde::{Deserialize, Serialize};
 use utoipa::{ToSchema, openapi::{security::{ApiKey, ApiKeyValue, SecurityScheme}, OpenApi}};
-use utoipa_axum::{router::OpenApiRouter, routes};
+use utoipa_axum::{router::{OpenApiRouter, UtoipaMethodRouterExt}, routes};
 
 use crate::{api::{give_bp::GiveBpByIdRequest, Api, GiveBpResult, Actor, MutationError, MutationErrorCode}, lock::Locked,
     logins::Role, panel::{self, Panel, Viewer}};
+use crate::api::settings::{SettingsRequest, SettingsResult, SettingsList};
 use crate::api::gifts::{GiftRequest, GiftResult, GiftChoices};
 use crate::api::keys::{KeyAccountRequest, KeyAccountResult};
 use crate::api::credentials::{IssueAccountCodeRequest, AccountCodeResponse};
@@ -106,7 +107,7 @@ fn documented_routes() -> OpenApiRouter<Dashboard> {
     OpenApiRouter::new().routes(routes!(staff_session)).routes(routes!(sign_in)).routes(routes!(sign_out))
         .routes(routes!(accounts)).routes(routes!(give_bp)).routes(routes!(list_bp_codes))
         .routes(routes!(create_bp_code)).routes(routes!(remove_bp_code)).routes(routes!(list_invites)).routes(routes!(create_invite))
-        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices))
+        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices)).routes(routes!(live_settings)).routes(routes!(change_settings).layer(DefaultBodyLimit::max(256 * 1024)))
 }
 
 pub fn openapi() -> OpenApi {
@@ -428,6 +429,32 @@ async fn gift_choices(State(state): State<Dashboard>, Extension(viewer): Extensi
     let Query(query) = query.map_err(|_| ApiError::new(ApiErrorCode::InvalidRequest, "Use a single search term."))?;
     tokio::task::spawn_blocking(move || state.api.gift_choices(&query.q, Actor::Staff { user_id: viewer.user_id }))
         .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "Gift choices could not be read."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/settings", operation_id = "changeSettings", tag = "Settings",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = SettingsRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "Retain this ID and input on retry. Retries return the original result without restoring old settings or moving a countdown.")),
+    responses((status = 200, description = "Committed settings or original retry result", body = SettingsResult),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Account not found", body = ApiError), (status = 409, description = "Recipe already owned or retry input conflict", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError),
+        (status = 503, description = "Commit could not be confirmed; retry the same request", body = ApiError), (status = 500, description = "Internal error; outcome may be unknown", body = ApiError)))]
+async fn change_settings(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, headers: HeaderMap,
+    body: Result<Json<SettingsRequest>, JsonRejection>) -> Result<Json<SettingsResult>, ApiError> {
+    let Json(request) = body?;
+    let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
+    tokio::task::spawn_blocking(move || state.api.change_settings(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
+        .map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(get, path = "/panel/api/v1/settings", operation_id = "listSettings", tag = "Settings",
+    security(("staffSession" = [])), responses((status = 200, description = "Success", body = SettingsList),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 503, description = "Settings unavailable", body = ApiError), (status = 500, description = "Internal error", body = ApiError)))]
+async fn live_settings(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>) -> Result<Json<SettingsList>, ApiError> {
+    tokio::task::spawn_blocking(move || state.api.live_settings(Actor::Staff { user_id: viewer.user_id }))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "Settings could not be read."))?.map(Json).map_err(Into::into)
 }
 
 pub(crate) fn not_found() -> Response {

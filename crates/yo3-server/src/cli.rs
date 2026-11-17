@@ -206,9 +206,9 @@ pub enum Admin {
     Settings,
     /// Change a live setting (`settings` lists them), saved in the database: on a running server it applies without a
     /// restart, at the moment the setting says (at once, at the next login or at the next duel).
-    Set { name: String, value: String },
+    Set { name: String, value: String, #[arg(long)] request_id: Option<String> },
     /// Put a live setting back to its default. Works while the server runs.
-    Reset { name: String },
+    Reset { name: String, #[arg(long)] request_id: Option<String> },
     /// The newest administrative changes: when, who, from where, what, on what, before and after.
     Audit {
         #[arg(long, default_value_t = 50)]
@@ -238,6 +238,7 @@ pub enum Admin {
     /// Plan maintenance in --in MINUTES (0: now): the game counts down with --message, then only admins and moderators
     /// stay, duels end and sign-ins wait; --off calls it off.
     Maintenance {
+        #[arg(long)] request_id: Option<String>,
         #[arg(long = "in")]
         minutes: Option<u32>,
         #[arg(long)]

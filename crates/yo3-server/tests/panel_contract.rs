@@ -368,6 +368,8 @@ async fn the_api_refuses_a_moderator_what_only_an_admin_may_do() {
     // The panel's role checks live in the API (Api::apply_as), so a future client can't skip them.
     let settings = std::sync::Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());
     let accounts = std::sync::Arc::new(std::sync::Mutex::new(yo3_server::accounts::Directory::new(vec![])));
+    accounts.lock().unwrap().register(logins::Login::new("Pegasus", "HASH".into(), "RECOVERY".into()), None, logins::Registration::Open).unwrap();
+    accounts.lock().unwrap().set_role("Pegasus", logins::Role::Admin).unwrap();
     let a = api::Api::new(accounts, settings, None, std::path::PathBuf::new(), "server");
     let moderator = Some(logins::Role::Moderator);
     for op in [Op::Set { name: "start-lp".into(), value: "100".into() }, Op::Shutdown, Op::Key { who: "x".into() }, Op::BackUp,
@@ -458,4 +460,24 @@ async fn an_unobserved_role_round_trip_cannot_restore_an_old_staff_cookie() {
     s.host(Op::SetRole { user: "Croquet".into(), role: "player".into() }).await;
     s.host(Op::SetRole { user: "Croquet".into(), role: "moderator".into() }).await;
     assert_eq!(b.get("/panel/").await.location(), "/panel/login", "role changes must permanently revoke the old cookie, even if it was never used while demoted");
+}
+
+#[tokio::test]
+async fn repeated_settings_forms_keep_their_original_receipt_without_reapplying_an_older_value() {
+    let s=Live::staffed("settings-retry").await; let b=s.browser("Pegasus").await;
+    let page=b.get("/panel/settings").await; let csrf=page.csrf();
+    let id=page.body.split("name=\"request_id\" value=\"").nth(1).unwrap().split('"').next().unwrap();
+    let fields=[("csrf",csrf.as_str()),("request_id",id),("name","headline"),("value","Original headline")];
+    assert_eq!(b.post("/panel/settings",&fields).await.status,303);
+    s.host(Op::Set { name:"headline".into(),value:"Later headline".into() }).await;
+    assert_eq!(b.post("/panel/settings",&fields).await.status,303);
+    assert_eq!(s.setting("headline").await,"Later headline");
+    assert_eq!(s.audit().iter().filter(|r|r.op=="set" && r.target=="headline").count(),2);
+    let page=b.get("/panel/news").await; let csrf=page.csrf();
+    let id=page.body.split("name=\"request_id\" value=\"").nth(1).unwrap().split('"').next().unwrap();
+    let fields=[("csrf",csrf.as_str()),("request_id",id),("action","maintenance"),("minutes","30"),("message","Back soon")];
+    assert_eq!(b.post("/panel/news",&fields).await.status,303);
+    s.host(Op::Maintenance { minutes:None,message:None,off:true }).await;
+    assert_eq!(b.post("/panel/news",&fields).await.status,303);
+    assert_eq!(s.setting("maintenance-at").await,"0");
 }

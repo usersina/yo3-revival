@@ -301,6 +301,13 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
 `--help` on each subcommand lists the exact parameters. If playing from source, [the development guide](development.md#build-from-source)
 shows the explicit DLL/injector paths. For a release bundle, use its [play script](scripts.md#join-a-friends-server).
 
+`set`, `reset` and `maintenance` also print a request ID and accept `--request-id ID`. After a lost response,
+repeat the same command and values with that ID. Settings, audit and receipt save together; scheduling saves both
+the message and deadline or neither. A retry returns the original confirmation without restoring an old setting
+or moving the countdown. Use `settings` to inspect the current values. `maintenance --off` must be used alone,
+without `--in` or `--message`. The React development dashboard exposes the same controls; see the
+[dashboard guide](dashboard.md#local-development).
+
 ## Network settings
 
 Friends reach one **TLS listener**, normally TCP **7443**. The internal HTTP/admin listener remains on loopback;

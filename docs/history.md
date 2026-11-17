@@ -32,6 +32,14 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 
 ## Status
 
+2026-11-17, transactional settings and maintenance: failing tests reproduced false success after an audit failure
+and a maintenance message saved before an invalid deadline. Settings now prepare one snapshot and commit it with
+audit and receipt before publication. Concurrent changes preserve each other; retries survive restart/pruning,
+never restore older values, move a deadline or repeat game pushes. CLI and both panels share the boundary; old
+HTML forms retain their hidden request IDs. The generated registry supplies the React controls, including structured
+news editing, reset-to-default, checked maintenance status and safe retry after a lost response and reload.
+Failure tests include real deferred-COMMIT failure and a subsequent successful save. Public access remains disabled.
+
 2026-11-17, transactional player gifts: an audit-failure test first reproduced false success and premature game
 notifications. Card, deck-recipe and title grants now commit player state, associated D-Mail, audit and a minimal
 receipt before publishing. Card/recipe mail also survives an offline grant. Concurrent/lost-response retries never

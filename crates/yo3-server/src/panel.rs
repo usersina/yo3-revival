@@ -426,13 +426,13 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
                         let (title, body) = (r.field(&format!("title{i}")), r.field(&format!("body{i}")));
                         (!title.is_empty() || !body.is_empty()).then(|| json!({ "title": title, "body": body }))
                     }).collect();
-                    run(api, viewer, &Op::Set { name: "news".into(), value: Value::Array(entries).to_string() }).map(|v| said(&v))
+                    api.apply_request(&Op::Set { name: "news".into(), value: Value::Array(entries).to_string() }, &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id")).map(|v| said(&v))
                 }
                 "maintenance" => number(r.field("minutes")).and_then(|minutes| {
                     let message = Some(r.field("message").to_string()).filter(|m| !m.is_empty());
-                    run(api, viewer, &Op::Maintenance { minutes: Some(minutes.ok_or("in how many minutes? (0: now)")?), message, off: false })
+                    api.apply_request(&Op::Maintenance { minutes: Some(minutes.ok_or("in how many minutes? (0: now)")?), message, off: false }, &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id"))
                 }).map(|v| said(&v)),
-                "maintenance-off" => run(api, viewer, &Op::Maintenance { minutes: None, message: None, off: true }).map(|v| said(&v)),
+                "maintenance-off" => api.apply_request(&Op::Maintenance { minutes: None, message: None, off: true }, &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id")).map(|v| said(&v)),
                 other => Err(format!("unknown action {other:?}")),
             };
             (back("/news"), outcome)
@@ -440,7 +440,7 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
         "/settings" => {
             let name = r.field("name").to_string();
             let op = if r.field("action") == "reset" { Op::Reset { name } } else { Op::Set { name, value: r.field("value").into() } };
-            (back("/settings"), run(api, viewer, &op).map(|v| said(&v)))
+            (back("/settings"), api.apply_request(&op, &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id")).map(|v| said(&v)))
         }
         "/backups" => (back("/backups"), run(api, viewer, &Op::BackUp).map(|v| said(&v))),
         _ => return refused("404 Not Found", "No such form."),
