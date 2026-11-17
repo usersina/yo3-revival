@@ -1895,7 +1895,9 @@ picks in the card list, which needs no banner.
   (pop `0x522A50`): `0x3EF {count, max picks, _}` (`+0x2A8`, `+0x9B8`; max 0 = view only) resets the lists, `0x3F2`
   gives CARD_Prop rows four at a time (`+0x9BC`, read by getCardInfo `0x4C78A0`), `0x3F3` a mark per card four at a
   time (`+0xE6C`: bit 15 the opponent's card, low bits icons whose meaning is open); `0x3F0` gives u32 values four at a
-  time (`+0x2B0`, low 31 bits kept). The kind sets how many picks
+  time (`+0x2B0`, low 31 bits kept). `0x3F1` (1009) is not needed: Konami sent each card's place there (0 field, `0xB`
+  hand, `0xC` extra, `0xD` deck, `0xE` graveyard, `0xF` banished, `+0x80` the opponent's), the pop keeps it at `+0x760`,
+  and only the pick sender `0x521CC0` touches it, writing the pick order into its high byte; nothing shows it. The kind sets how many picks
   OK needs (`0x4C72D0`): 1–5, `0x48`, `0x4B` none; 6–`0x26` all of max; `0x27`–`0x47`, `0x4A` one. A non-zero message
   builds the dialog's text from `0x3EC {entries}` and `0x3ED {entry ×4}` (`0x519870`); an entry is kind << 28 | value:
   1 a text of the duel prompt table, 2 a line break, 5 a card name by Konami id (`0x5374B0`) put into the text's

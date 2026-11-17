@@ -150,7 +150,9 @@ pub const CLIENT_COMMANDS: &[ClientCommand] = &[
     c(1006, "the usable zones", &[POP], 282, Sent(Presentation)),
     c(1007, "a list's start", &[POP], 31333, Sent(Interaction)),
     c(1008, "a list's values", &[POP], 7012, Sent(Interaction)),
-    c(1009, "a list's fourth array", &[POP], 7012, Undecided("Konami sent it with every list; the pop keeps it (0x522D14), and what the list reads from it is unread")),
+    c(1009, "a list card's place", &[POP], 7012, NotSent("Konami's value is the card's place (0 field, 0xB hand, 0xC extra, \
+         0xD deck, 0xE graveyard, 0xF banished; +0x80 the opponent's), the same as 1011's marks; the pop keeps it as a u16 at \
+         +0x760 (0x522D14), and its only reader, the pick sender 0x521CC0, keeps the low byte and puts the pick order above it")),
     c(1010, "a list's CARD_Prop rows", &[POP], 7012, Sent(Interaction)),
     c(1011, "a list's marks", &[POP], 7012, Sent(Interaction)),
     c(1013, "a place's typed counter (0x523F50)", &[POP], 6280, Undecided("a per-place 3-value map the card info panel reads; Konami sent \
