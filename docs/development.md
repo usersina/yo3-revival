@@ -220,7 +220,7 @@ Game output, native mod diagnostics, decoded packet traces and engine stderr are
 logs. The viewer hides verbose payloads until searched; exports include them by default. Privacy filtering at export
 omits payload traces and player activity and masks common personal paths/addresses without changing local evidence.
 
-**Engine messages the client doesn't see.** `ENGINE_MESSAGES` in `crates/yo3-server/src/translate.rs` lists every
+**Engine messages the client doesn't see.** `ENGINE_MESSAGES` in `crates/yo3-server/src/translate/mod.rs` lists every
 message type the rules engine sends, as shown, asked (a prompt), ignored with a reason, or undecided (#52). The test
 `every_engine_message_type_is_accounted_for` fails when the engine decodes a type the list doesn't have, and a duel logs
 `engine message N (NAME) is not shown to the player` the first time it drops an undecided or unknown one. The duel check
@@ -237,8 +237,18 @@ The duel check takes its known commands from the table (`duelcheck::coverage::na
 doesn't mark sent fails the duel. To send one, mark it `Sent` with its coverage; to settle an undecided one, read its
 handler and Konami's uses, then mark it.
 
+**Names, not numbers.** Every duel id the server uses is defined once, with its client evidence: the engine's in
+`crates/yo3-server/src/ocg.rs` (message and response types, actions, hints, positions, locations, reasons) and the
+client's in `wire.rs` (`cmd` commands, `request` duelRequestNames, `zone`, the card `menu`'s bits, other `flag`s, input
+`mode`s, `dialog` kinds, message `entry` kinds, `list` kinds, prompt `text`s, `result`s). Tests tie `wire::cmd` to
+`CLIENT_COMMANDS` and `ocg::msg` to `ENGINE_MESSAGES`, so a new id needs its table entry. The commands both the server
+and the duel check's client model pack (the battle's, moves, card table entries, dialogs) go through `wire::Cmd`, one
+encoder and one decoder (`tests/wire.rs` round-trips them); the engine's answers are built as `ocg::Response`; the
+client's duel requests are read once as `duel::ClientRequest`; and what the client is answering besides a prompt's own
+window is one `Asking` state in the translator. Add a new id or packing there, not as a local constant.
+
 **Questions the client answers by itself.** Below level 2, the client's Effect dialog answers No on its own under the
-default Activation Message (Semi Auto Cancel), so the player never sees that chance. `CHAIN_WINDOWS` in `translate.rs`
+default Activation Message (Semi Auto Cancel), so the player never sees that chance. `CHAIN_WINDOWS` in `translate/mod.rs`
 classifies every window the core marks with `MSG_HINT` `HINT_EVENT`. A **Phase** window (Draw, Standby, Battle start
 and end, End) puts its optional triggers inside the chain question, so it must show. A **Step** window asks its triggers
 one by one first, so its chain question may follow the player's option. Two checks keep this honest:

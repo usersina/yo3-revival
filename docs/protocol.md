@@ -1539,7 +1539,7 @@ command 4):
   hand card 1 → `{CommandID 4, player 0, position 11, index 1}`.
 
 Carrying out a command needs the rules: which cards may do what, and what follows. The server runs EDOPro's core for
-that (`crates/yo3-engine`, the `yo3-engine` program; see history.md, M5); `translate.rs` maps its draws, turns and phases to the commands above (ocgcore phases
+that (`crates/yo3-engine`, the `yo3-engine` program; see history.md, M5); `translate/` maps its draws, turns and phases to the commands above (ocgcore phases
 1, 2, 4, 8–`0x80`, `0x100`, `0x200` → 0–5), its idle-command prompt to a command map (summons bit 4, special
 summons 2, position changes 5, 8 or 9 by the card's position as last shown (Flip Summon face down, to Attack
 Position in face-up defense, to Defence Position in attack: offering both showed "to Attack Position" on an attack
@@ -1828,7 +1828,7 @@ as listed: `0x2455 {from_id 0, pname "Effect", chat_type 0, chat_str "1: …"}`
 (**guess**: the name and type, chosen to show in the duel's chat window). A selection hint or a Yes/No question that
 is a card's own string (code << 20 | n) is shown too: the engine adds `hint_text` / `description_text`, a card list
 takes it as its message, and a Yes/No dialog adds it on a line under its client text ('Use the effect of "%s"?').
-EDOPro's hints with no client text (`HINT_WORDS` in `translate.rs`: Synchro, Xyz and Link Material, positions, …) are
+EDOPro's hints with no client text (`HINT_WORDS` in `translate/texts.rs`: Synchro, Xyz and Link Material, positions, …) are
 the server's own words in the table's style (**guess**: the original's wording is unknown).
 
 **Numbers.** The number dialog (`0x4C6430`: max `param3 >> 24`, step and min 4 bits each, format 302 thousands / 303
@@ -1979,7 +1979,7 @@ DuelCardCommand (built at `0x4F8E70`), whose `+0x44` holds the hovered card's me
 and the click sent `{CommandID 11, player 1, position 0}`, the attack on Germ (**confirmed**, live). So the original's
 targets were the monsters' Confirm entry, and #51's field targeting needs only commands the client already has.
 
-So the server does it (#51, `translate.rs` `target_on_field`, contract test
+So the server does it (#51, `translate/answers.rs` `target_on_field`, contract test
 `a_client_attacks_target_is_picked_on_the_field`): after the client's attack command (or, in the duel check, its
 self-played attack) the attacker is kept until the battle ends or the next command prompt, and an attack target prompt
 (hint 549) whose targets are all monsters on the field becomes `0xA`, `0xC {attacker, 1 − player, −1}`, `0xB`, the
