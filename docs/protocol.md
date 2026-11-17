@@ -1968,9 +1968,16 @@ battle commands again (**guess**: the original asked before every direct attack)
 effect `0xCB` from the attacker (`+0x2C` player, `+0x30` zone, set by `0xC {attacker, -1}`) to the field card under
 the pointer (the field manager's `+0x1E3` hover, `+0x1EC` slot), when a flag of the scene's `+0x98` object (`+0x44`
 bit `0x800`, not yet traced) is set; states 2 and 3 also mark the attacker and target (effect `0x39`). Konami's 718
-uses are all `0xC {attacker, -1}`, `0xB`, then `0xC {attacker, target}`: an aiming line while the player chose. **Open**
-(#51): whether a click on the aimed monster answers (a command map giving the opponent's monsters bit 0 would send
-`duelRequestName 2 {CommandID 0, player, position}`), and what sets the flag.
+uses are all `0xC {attacker, -1}`, `0xB`, then `0xC {attacker, target}`: an aiming line while the player chose. Live
+(2026-11-17, a spike behind an environment variable; Starter Deck against Kaiba, then Bandit Keith): for an attack
+target prompt the server sent `0xA`, `0xC {attacker, 1 − player, −1}`, `0xB`, a command map giving each target
+monster a menu bit, and command 4 mode 3. With bit 0 (Attack), hovering an opponent's monster opened its "Attack"
+entry, and clicking Manju of the Ten Thousand Hands sent `duelRequestName 2 {CommandID 0, player 1, position 0}`,
+which the engine took as the target (800 damage), but no line drew. The flag is on the scene's `+0x98` object,
+DuelCardCommand (built at `0x4F8E70`), whose `+0x44` holds the hovered card's menu bits (`0x4F9320`): `0x800` is bit
+11, Confirm. With bit 11 instead, hovering Giant Germ drew the green aiming arc from the attacker to it with no menu,
+and the click sent `{CommandID 11, player 1, position 0}`, the attack on Germ (**confirmed**, live). So the original's
+targets were the monsters' Confirm entry, and #51's field targeting needs only commands the client already has.
 
 The client's MSG_SELECT_EFFECTYN opens the Yes/No dialog with 'Activate the effect of "%s"?' (250) and the card's
 name, MSG_SELECT_YESNO with 'Use the effect of "%s"?' (226) naming the card whose script string the question is (the
