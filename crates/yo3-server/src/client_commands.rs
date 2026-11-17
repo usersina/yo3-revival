@@ -78,7 +78,7 @@ pub const CLIENT_COMMANDS: &[ClientCommand] = &[
     c(0xB, "BattleSelect", &[BATTLE], 718, Undecided("battle state 2 (0x4F8B95), no parameters: while a field card is \
          hovered, DuelBattle's frame (0x4F8CD9) draws effect 0xCB from the attacker an 0xC {attacker, -1} named to it, \
          behind a flag at the scene's +0x98 +0x44 (0x800) not yet traced; Konami sent 0xC {attacker, -1}, 0xB, then \
-         0xC {attacker, target} every time. Whether a click then answers is not checked (#51)")),
+         0xC {attacker, target} every time. Live, with a command map giving the targets bit 0, a click on one answered (#51)")),
     c(0xC, "BattleAttack", &[BATTLE], 3162, Sent(State)),
     c(0xD, "BattleRun", &[BATTLE], 1419, Sent(State)),
     c(0xE, "BattleEnd", &[BATTLE], 959, Sent(State)),

@@ -1949,7 +1949,7 @@ list with Search and Revert. Live: Giant Orc's attack opened the list with "Sele
 the CPU's monster marked as the opponent's; picking it sent `6`, `7 {index 0, data 1}`, `4 {DLGResult 1}` and the
 attack dealt 1200.
 
-**Attack targets are a dialog, as in the original.** The client has no way to pick a target on the field: DuelBattle
+**Attack targets are a dialog today.** We once read the client as having no way to pick a target on the field (but see `0xB` below, checked live): DuelBattle
 (`0x4F8A90`) handles command 4 only in battle mode 3, to highlight the client's own attackers (bit 0), and `0xA`–`0xE`
 are the battle's animations (but see `0xB` below); DuelFieldManager's command 4 (`0x50A690`) highlights cards of either side that have
 command bits, and a click runs the hovered card's menu entry (`0x50B700` → `0x4F9510`), with no target step; modes 4
