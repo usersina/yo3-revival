@@ -28,3 +28,22 @@ fn server_options_use_the_same_validation_as_the_cli() {
         assert!(cli::validate_server_args(args).is_err());
     }
 }
+
+#[test]
+fn dashboard_listener_is_opt_in_and_has_no_public_bind_option() {
+    let defaults = cli::Args::try_parse_from(["yo3-server"]).unwrap();
+    assert_eq!(defaults.dashboard_port, None);
+    assert_eq!(cli::Args::try_parse_from(["yo3-server", "--dashboard-port", "0"]).unwrap().dashboard_port, Some(0));
+    assert!(cli::validate_server_args(["--dashboard-port", "18081"]).is_ok());
+    for args in [vec!["--dashboard-port", "65536"], vec!["--dashboard-port", "-1"],
+        vec!["--dashboard-bind", "0.0.0.0"]] {
+        assert!(cli::validate_server_args(args).is_err());
+    }
+}
+
+#[test]
+fn dashboard_socket_configuration_can_be_split_between_file_and_flags() {
+    assert!(cli::validate_server_args(["--dashboard-origin","https://staff.example"]).is_ok());
+    assert!(cli::validate_server_args(["--dashboard-socket","/run/yo3/staff.sock"]).is_ok());
+    assert!(cli::validate_server_args(["--dashboard-socket","/run/yo3/staff.sock","--dashboard-port","18081"]).is_err());
+}

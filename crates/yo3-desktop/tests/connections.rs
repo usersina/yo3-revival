@@ -33,7 +33,7 @@ async fn the_local_connection_keeps_the_certificate_identity_when_dialling_the_s
         local.key = "x".repeat(20); assert!(sign_in(&local).is_err(), "a wrong key is refused");
         local.key = key; local.identity = Some("00".repeat(32)); assert!(sign_in(&local).is_err(), "another identity is refused");
         assert!(Path::new(&settings.data_dir).join("server.db").exists());
-        let live = admin::running(Path::new(&settings.data_dir)).unwrap(); api::call(&live, &Op::Shutdown).unwrap();
+        let live = admin::running(Path::new(&settings.data_dir)).unwrap(); api::stop(&live).unwrap();
     }).await.unwrap();
     server.wait().await;
 }

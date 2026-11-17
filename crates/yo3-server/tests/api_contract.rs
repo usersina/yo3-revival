@@ -58,7 +58,7 @@ async fn accounts_can_be_created_and_exported_while_the_tls_server_stays_online(
     assert!(get("/duellogs/missing.dlog").await.starts_with("HTTP/1.1 404"));
     // The game's links to Konami's old website, sent here by the connection DLL (tools/mod/web-links.h): a page each.
     let leaderboard = get("/web/v3/events/rank_info?country=GB").await;
-    assert!(leaderboard.starts_with("HTTP/1.1 200") && leaderboard.contains("Content-Type: text/html"), "{leaderboard}");
+    assert!(leaderboard.starts_with("HTTP/1.1 200") && leaderboard.to_ascii_lowercase().contains("content-type: text/html"), "{leaderboard}");
     assert!(leaderboard.contains("<title>Leaderboard</title>"));
     // The old routes are gone, and the API takes only POST with the token.
     for old in ["/admin?op=codes", "/manager"] { assert!(get(old).await.starts_with("HTTP/1.1 404"), "{old}") }
@@ -74,7 +74,7 @@ async fn accounts_can_be_created_and_exported_while_the_tls_server_stays_online(
         let mut out = Vec::new(); let _ = tunnel.read_to_end(&mut out).await;
         assert!(String::from_utf8_lossy(&out).starts_with("HTTP/1.1 403"), "{}", String::from_utf8_lossy(&out));
     }
-    tokio::task::spawn_blocking(move || api::call(&live, &Op::Shutdown)).await.unwrap().unwrap();
+    tokio::task::spawn_blocking(move || api::stop(&live)).await.unwrap().unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(3), server.wait()).await.unwrap();
 }
 
@@ -86,6 +86,8 @@ fn an_admin_gives_cards_artworks_and_recipes_and_a_moderator_cannot() {
     let settings = std::sync::Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());
     let mut d = yo3_server::accounts::Directory::new(vec![]);
     d.add_account(&["Yugi".into()]).unwrap();
+    d.register(logins::Login::new("Pegasus", "HASH".into(), "RECOVERY".into()), None, logins::Registration::Open).unwrap();
+    d.set_role("Pegasus", logins::Role::Admin).unwrap();
     let accounts = std::sync::Arc::new(std::sync::Mutex::new(d));
     let card = |row, cid, art, name: &str| Card { row, cid, art, name: name.into() };
     let gifts = Gifts {

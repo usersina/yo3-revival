@@ -44,6 +44,9 @@ storage. Select the complete installation with `--game-dir` and retry; keep exis
 | `--data-dir`                | Persistent SQLite state and server identity, default `data/`                                         |
 | `--log-dir`                 | Logs, default `logs/`                                                                                |
 | `--http-port`               | Internal loopback HTTP/admin listener, default `8080`; Desktop uses an automatically assigned port   |
+| `--dashboard-port`          | Opt-in staff API on loopback TCP; disabled when omitted, `0` assigns a free port. Separate from host commands |
+| `--dashboard-socket`        | Unix staff API socket mounted by nginx; mutually exclusive with `--dashboard-port`. TOML: `dashboard_socket` |
+| `--dashboard-origin`        | Exact web origin for the Unix socket, e.g. `https://play.example.com`; required with the socket. No paths or public plain HTTP. [Proxy setup](docker.md) |
 | `--auth-cert`, `--auth-key` | Explicit TLS certificate/key files                                                                   |
 | `--duel-check`              | Compare each player's modeled client state with the rules engine after each step                     |
 | `--no-packet-log`           | Disable separate raw packet files; decoded packet traces remain in bounded session diagnostics       |
@@ -130,7 +133,7 @@ log (default: host). They work on a running server; the ones that change an acco
 ./yo3-server --by Anna ban Yugi --reason "cheating" --days 7      # sign-in refused, devices signed out, game disconnected
 ./yo3-server --by Anna lift Yugi                                  # ends a ban or a restriction
 ./yo3-server --by Anna sign-out Yugi                              # every device signed out, the game disconnected
-./yo3-server delete-account Yugi --yes                           # an admin's: the account and its players, for good
+./yo3-server delete-account Yugi --yes --request-id delete-yugi-0001                           # an admin's: the account and its players, for good
 ./yo3-server maintenance --in 30 --message "Back at 10:00"        # the game counts down; --off calls it off
 ./yo3-server set news "Season 16 | The new banlist is live"        # pushed to everyone online
 ```
@@ -147,9 +150,15 @@ log (default: host). They work on a running server; the ones that change an acco
   items and titles go. So do their friends and ignore entries, friend, trade, rental and team invitations, rentals,
   the D-Mail they sent and that waits for them, a team they lead (disbanded, its members told) or their place in one,
   their duel records, user events they host, and their own duel logs. Their game is disconnected. The audit log
-  keeps one row, who deleted which User ID and when, and the earlier rows about the account go. What stays: other
-  players' records against them, the other player's copy of a duel log, and the backups until they are replaced
-  (the newest 24, hourly). Without `--yes` the command refuses.
+  keeps one row naming the User ID, actor and time, with non-secret request/disconnect metadata; earlier rows about
+  the account go. What stays: other players' records against them, the other player's copy of a duel log, and the
+  backups until they are replaced (the newest 24, hourly). Without `--yes` the command refuses.
+
+  Cleanup of every saved domain, duel logs and old audit rows commits with the deletion audit and retry receipt
+  before live changes or disconnects. Failures leave the account intact. Retain the printed request ID and retry with
+  `--request-id` after a lost response; this never deletes a replacement account with the same name. The last admin
+  cannot be deleted until another admin exists. In the React preview, type the numeric account number instead of
+  the User ID. An unknown disconnect outcome is reported separately from the committed deletion.
 
 ## The admin panel
 
@@ -159,7 +168,7 @@ tunnel ([hosting guide](hosting.md#the-admin-panel-through-an-ssh-tunnel)). Sign
 role is admin or moderator:
 
 ```bash
-./yo3-server add-user Anna          # prints Anna's first password; or sign up in the launcher with an invite
+./yo3-server add-user Anna          # prints a setup code; finish Forgot password/--recover before set-role
 ./yo3-server set-role Anna admin    # or moderator
 ```
 
@@ -180,14 +189,20 @@ role is admin or moderator:
   account.
 - Sign-in has the launcher's throttle: a wrong password makes the next try for that User ID wait 1 s, then 2, 4, …
   up to `backoff-max-seconds`. A session ends after 30 idle minutes, 12 hours, **Sign out**, or at once when the
-  account loses its role or is banned.
-- The panel keeps no data of its own and needs no restart: a role change applies at the account's next page.
+  account changes role or is banned.
+- The panel keeps no data of its own and needs no restart: a changed role ends existing staff sessions at their next
+  request, even if the account is promoted back. Setting the same role again leaves current sessions valid.
 
 ## Account commands
 
+For unattended first deployment only, `bootstrap-admin USER` reads a password from stdin and atomically creates the
+first admin with an audit row and permanent bootstrap receipt. It requires the server stopped and an empty account
+directory. Matching retries keep the current password; deletion/demotion or a different target closes bootstrap
+with an error. It is offline-only and never an HTTP operation. [One-time setup](deployment.md).
+
 On the `beta` branch every command works while the server runs (#25): it goes to the running server's admin API
 (loopback, with the private token in `data/admin.json`) and changes it at once. With no server running, the command
-works on the data folder itself, holding its lock (`server.lock`) meanwhile. Only `init-auth`, `restore` and
+works on the data folder itself, holding its lock (`server.lock`) meanwhile. `init-auth`, `bootstrap-admin`, `restore` and
 `backups` always work on the files. Every change is recorded in the audit log: `audit` lists the newest, with who,
 from where, what, on what, and the values before and after. Released versions still need the server stopped for all
 but the BP and code commands. Add `--data-dir PATH` to target a non-default setup. Players sign in with password
@@ -203,10 +218,13 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
 ./yo3-server rename Joey Joseph
 ./yo3-server set-country Alice TN
 ./yo3-server give-bp Alice 5000
+./yo3-server give-bp Alice 5000 --request-id <the-id-printed-by-the-first-try>  # retry a lost answer, not a second grant
 ./yo3-server grant-title Alice "GAME MASTER"
 ./yo3-server give-cards Alice "Blue-Eyes White Dragon" --art 2 --count 3
 ./yo3-server give-recipe Alice "E-HERO EVOLUTION DECK" --cards
 ./yo3-server add-code ABCD1234EFGH5678 2500
+./yo3-server add-code "" 500 --uses 10       # generate a code; keep the printed request ID
+./yo3-server remove-code ABCD1234EFGH5678
 ./yo3-server invite --uses 5 --days 7
 ./yo3-server --advertise 192.168.1.50 share --invite
 ./yo3-server add-user Alice
@@ -231,15 +249,40 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
   unique. `--also B,C` adds players to that account, up to four total.
 - `profile PLAYER FILE --advertise HOST` exports a key account's private profile for the play script. The profile
   references `server.crt`; copy the host's public certificate beside it. Existing profile files are not overwritten.
-  `key WHO` prints the key itself.
+  `key WHO` prints a private profile too. All three commands commit account changes, audit and retry receipt before
+  revealing a key and accept `--request-id ID`. After a lost answer, repeat the same input and ID: no duplicate
+  account or key is created. Existing keys are reused; retries cannot recreate a deleted account. Profile files and
+  keys grant game access without a password: share privately. Friends should use password accounts and invites.
+- `add-user USER` prepares a one-time setup code instead of a password. The owner chooses a password through
+  Desktop’s **Forgot password** or Scripts `--recover`, and saves their private recovery code. Finish setup before
+  promoting the account. `reset-code USER` replaces a lost setup/reset code after you verify the owner’s identity.
+  Both commands commit the change, audit and receipt together. They print a prepared code and request ID before
+  sending; a prepared code is not a confirmation. For a lost response, reuse both through
+  `--request-id ID --code-stdin < /path/to/private-code-file`. Never put the code in arguments or shell history.
+  Codes work once for 24 hours. A retry reports current availability without reissuing or extending the code.
+- `give-cards`, `give-recipe` and `grant-title` accept `--request-id ID`. After a lost answer, repeat the identical
+  command with its printed ID. Gifts commit the player, associated D-Mail, audit and receipt before notifying the game;
+  retries never give another copy or send another letter. Card/recipe D-Mail is kept for offline grants too. Recipe
+  cards are counted together before checking the limit of 255 additional copies per artwork. The dashboard’s player
+  **Gift** action uses the same operations with searchable game metadata and an explicit recipient confirmation.
+- `set-role USER ROLE` is admin-only and commits the role, audit and retry receipt together. It accepts
+  `--request-id ID`; repeat the same command with that ID after a lost response. A retry never reapplies an older role.
+  Changing your own role can remove management access; another admin or the host must restore it with `set-role`.
 - `invite`, `invites`, `add-user`, `reset-code` and `set-role` manage password accounts (beta) and work while the
-  server runs: invite codes for sign-up, an account the host makes with a first password, a one-day reset code for a
+  server runs: invite codes for sign-up, an account awaiting its owner’s password setup, a one-day reset code for a
   player who lost their password and recovery code, and roles. [Accounts](authentication.md#making-accounts-invites-and-recovery)
-  explains each.
+  explains each. `invite` and `share --invite` print a request ID before creation and accept `--request-id ID`.
+  After a lost response, repeat the same command and limits with that ID to retrieve the original code and expiry.
+  A retry does not add sign-ups back or extend the expiry. `invite --uses 0` means unlimited sign-ups; omit `--days`
+  for no expiry. Positive limits must be at least 1, and expiry must fit the supported RFC 3339 date range.
 - Commands that name an account (`key`, `add-player`, `set-country`, `give-bp`) take its User ID or one of its
   players' names.
 - `add-player`, `rename` and `set-country` manage an account's players. `countries` lists accepted country codes;
   `auto` clears an override.
+  `add-player`, `rename` and `set-country` print a request ID and accept `--request-id ID`. After an uncertain
+  response, repeat the same arguments and ID; a rename retry still works when the old name is gone. Names are
+  1–16 printable characters; accounts hold up to four players. Saved profile changes appear in game after the next
+  sign-in. Country codes still come from the client's table; `auto` clears the override without needing that table.
 - `grant-title PLAYER TITLE` gives a player a title by its name as the game shows it (`titles` lists them), such as
   GAME MASTER or JUMP FESTA, which no duel earns. The player wears it in Avatar Settings. A rename or title reaches
   a player who is online at their next login.
@@ -257,6 +300,12 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
   The D-Mail says which. Only an admin gives cards or recipes,
   and each gift is in the audit log.
 - `give-bp`, `add-code`, `remove-code` and `codes` manage points and redemption codes while hosting can continue.
+  `give-bp`, `add-code` and `remove-code` print a request ID before sending. After a timeout or lost answer, repeat
+  the same command and values with `--request-id ID`: the original result returns without a second payment, letter,
+  generated code or audit row. For `add-code`, an empty CODE (`""`) asks for a generated code. Changing `--by` does
+  not make it a new request. Successful receipts do not expire or follow audit pruning. The balance and D-Mail (for
+  Give BP), or the code change, commit with audit and receipt; a failed commit publishes nothing. A removal retry
+  does not delete a newly recreated code with the same name. Already claimed BP stays with players.
   Use them rather than editing `accounts.json`: after the first start of a current server, accounts live in
   `server.db`. The JSON files are old copies the server no longer reads; it warns while they exist, and they are safe
   to delete. A player who is online sees BP changes (gifts, duel rewards) on the game's next screen. `codes` lists
@@ -264,6 +313,33 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
 
 `--help` on each subcommand lists the exact parameters. If playing from source, [the development guide](development.md#build-from-source)
 shows the explicit DLL/injector paths. For a release bundle, use its [play script](scripts.md#join-a-friends-server).
+
+`set`, `reset` and `maintenance` also print a request ID and accept `--request-id ID`. After a lost response,
+repeat the same command and values with that ID. Settings, audit and receipt save together; scheduling saves both
+the message and deadline or neither. A retry returns the original confirmation without restoring an old setting
+or moving the countdown. Use `settings` to inspect the current values. `maintenance --off` must be used alone,
+without `--in` or `--message`. The React development dashboard exposes the same controls; see the
+[dashboard guide](dashboard.md#local-development).
+
+Moderation commands (`kick`, `ban`, `restrict`, `lift`, `mute`, `unmute`, `sign-out`) print and accept
+`--request-id ID`. After an uncertain answer, repeat the same arguments and ID. A receipt cannot repeat a disconnect,
+reinstate an older ban/mute or extend its expiry. Ban/sign-out save device revocation first; live disconnect intent
+saves in the same transaction. If its outcome cannot be recorded, the account change stays saved and the response
+warns that the disconnect is unknown. Startup labels it interrupted, without repeating it. Inspect the current
+account/session before requesting a new disconnect. Reasons are single-line, at most 200 characters. Use a positive
+duration or omit it until lifted. The React dialog offers the same actions from View account → Moderate account.
+
+`stop` first captures the running process's identity and prints its request/run IDs. After a lost response, copy
+its printed `stop --request-id ID --run-id RUN` command. Never substitute a new run ID when retrying. The saved
+receipt cannot stop a restarted process, and an old run is refused even if the original request never committed.
+Stop intent is saved before signalling; an uncertain outcome means inspect the process/logs, not send another stop.
+A confirmed signal still allows final saves and the shutdown backup to finish. Desktop uses the same run-bound
+operation. The connected React preview shows live checked status and requires confirmation before stopping.
+
+The connected dashboard's **Audit log** reads saved administrative history with search and older/newer pages. IDs
+are text so large values remain exact. **Server logs** shows up to 500 of the 2,000 most recent captured lines,
+newest first, with warnings/errors filtering, optional refresh and Copy visible logs. This view clears on restart;
+full diagnostics remain in the server's log folder. Fetch failures are shown explicitly and do not become empty results.
 
 ## Network settings
 
@@ -292,8 +368,9 @@ player would have to trust the server again.
 ## Existing data and backups
 
 `server.db` is SQLite in WAL mode, with one row per account (and its players), record, friendship, mail, team, event,
-rental and BP code; a save writes only the rows that changed. On the `beta` branch it is schema 2: a server from `main`
-(schema 1) can't open it, and a schema 1 database is converted once, in place. JSON files from versions before
+rental and BP code; a save writes only the rows that changed. This dashboard branch uses schema 6 (row-based state, retry receipts and disconnect/stop/backup outcomes). Schemas 1–5
+upgrade transactionally in place; older server binaries cannot open the upgraded database. Keep a pre-upgrade backup
+if you need to return to an older binary. JSON files from versions before
 `server.db` are not read (the beta starts fresh). A path change selects a different server's data; it does not move it.
 The running server holds its data directory: a second server on the same folder is refused, whatever its ports. A
 `server.lock` left after a crash holds nothing.
@@ -302,9 +379,11 @@ If a save fails (a full disk), the server says so in its log and refuses new log
 already in keep playing.
 
 The server backs up `server.db` into `backups/` when it starts, every hour while it runs, and when it stops, keeping the
-newest 24. With the server stopped:
+newest 24. Keep the printed request ID for a manual backup; retry with `backup --request-id ID` after a lost
+response. A retry checks the same outcome and never creates another snapshot. Only restore requires the server stopped:
 
 ```bash
+./yo3-server --data-dir data backup           # create a checked snapshot, also while the server runs
 ./yo3-server --data-dir data backups          # list them, newest first
 ./yo3-server --data-dir data restore latest   # or a name from the list; the replaced database is kept beside it
 ```

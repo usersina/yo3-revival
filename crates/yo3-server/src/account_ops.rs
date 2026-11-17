@@ -96,8 +96,12 @@ async fn check_password(user: &str, password: &str, ctx: &Context<'_>) -> Result
 }
 
 /// A session for `user_id` (ending its older one) and the reply around it.
-fn start_session(user_id: u32, login: &Login, ctx: &Context<'_>) -> Result<Json, Json> {
+fn start_session(user_id: u32, verified: &Login, ctx: &Context<'_>) -> Result<Json, Json> {
+    // Password hashing runs without this lock. Recheck its snapshot and hold account -> session through issuance.
+    let accounts = ctx.accounts.locked();
+    let login = accounts.login_by_id(user_id).ok_or_else(|| error("invalid_credentials"))?;
     if let Some(refused) = login.refusal(logins::now()) { return Err(refused) }
+    if login.staff_epoch != verified.staff_epoch || login.password != verified.password { return Err(error("invalid_credentials")) }
     // During maintenance only the staff comes in (#26); the others see the server's message.
     if ctx.settings.in_maintenance(logins::now()) && !login.staff() {
         return Err(json!({ "ok": false, "error": "maintenance", "message": ctx.settings.maintenance_message }));
@@ -119,7 +123,9 @@ async fn login(request: &Json, ctx: &Context<'_>) -> Json {
         let now = logins::now();
         let label: String = text(request, "device").chars().filter(|c| !c.is_control()).take(40).collect();
         let device = Device { token: logins::digest(&token), label, created: now, last_used: now, expires: now + logins::DEVICE_TTL };
-        if ctx.accounts.locked().add_device(user_id, device).is_ok() { reply["device_token"] = json!(token); }
+        let mut accounts = ctx.accounts.locked();
+        if accounts.login_by_id(user_id).is_some_and(|current| current.staff_epoch == login.staff_epoch && current.password == login.password && current.refusal(now).is_none())
+            && accounts.add_device(user_id, device).is_ok() { reply["device_token"] = json!(token); }
     }
     reply
 }
@@ -154,7 +160,9 @@ async fn change_password(request: &Json, ctx: &Context<'_>) -> Json {
     let new = text(request, "new_password");
     if let Some(problem) = logins::password_problem(&login.user, new) { return error(problem) }
     let Ok(hash) = logins::hash_password(new.to_owned()).await else { return error("server_error") };
-    if ctx.accounts.locked().set_password(user_id, hash).is_err() { return error("server_error") }
+    if let Err(problem) = ctx.accounts.locked().change_password_if_current(user_id, &login, hash) {
+        return error(if problem == "invalid_credentials" { "invalid_credentials" } else { "server_error" })
+    }
     // Every device is signed out (set_password), and every game session ends with them (#39).
     ctx.sessions.locked().logout_user(user_id);
     json!({ "ok": true })
@@ -169,7 +177,7 @@ async fn recover(request: &Json, ctx: &Context<'_>) -> Json {
     let now = logins::now();
     let by = found.as_ref().and_then(|(_, l)| if l.recovery == code { Some("recovery") }
         else if l.reset.as_ref().is_some_and(|(r, until)| *r == code && *until > now) { Some("reset") } else { None });
-    let (Some((user_id, login)), Some(by)) = (found, by) else {
+    let (Some((user_id, login)), Some(_by)) = (found, by) else {
         ctx.throttle.locked().failed(user, Instant::now());
         return error("invalid_recovery");
     };
@@ -179,12 +187,31 @@ async fn recover(request: &Json, ctx: &Context<'_>) -> Json {
     let Ok(hash) = logins::hash_password(new.to_owned()).await else { return error("server_error") };
     let recovery = logins::new_code();
     let mut accounts = ctx.accounts.locked();
-    if accounts.set_password(user_id, hash).is_err() { return error("server_error") }
-    // A used recovery code is replaced; a reset code leaves the recovery code as it was (set_password ended the reset).
-    let failed = by == "recovery" && accounts.set_recovery(user_id, logins::digest(&logins::normalize_code(&recovery))).is_err();
+    let rotated = match accounts.complete_recovery(user_id, &login, &code, hash, logins::digest(&logins::normalize_code(&recovery)), logins::now()) {
+        Ok(rotated) => rotated,
+        Err(problem) => return if problem == "invalid_recovery" { error("invalid_recovery") } else { error("server_error") },
+    };
     drop(accounts);
-    // Whoever had the account before is signed out of the game too, not only off its devices (#39).
     ctx.sessions.locked().logout_user(user_id);
-    if failed { return error("server_error") }
-    if by == "recovery" { json!({ "ok": true, "recovery_code": recovery }) } else { json!({ "ok": true }) }
+    if rotated { json!({ "ok": true, "recovery_code": recovery }) } else { json!({ "ok": true }) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn a_password_checked_before_a_ban_or_sign_out_cannot_create_a_session_afterwards() {
+        for ban in [false,true] {
+            let mut d=Directory::new(vec![]);
+            let user=d.register(Login::new("Yugi","HASH".into(),"RECOVERY".into()),None,Registration::Open).unwrap();
+            let verified=d.login_by_id(user).unwrap().clone();
+            if ban { d.set_standing_of(user,crate::logins::Standing::Banned{reason:"Spam".into(),until:None}).unwrap(); }
+            else { d.revoke_devices(user).unwrap(); }
+            let accounts=Mutex::new(d); let sessions=Mutex::new(Sessions::default()); let throttle=Mutex::new(Throttle::default());
+            let live=crate::settings::Live::open(None,vec![]).unwrap(); let settings=live.now();
+            let ctx=Context {accounts:&accounts,sessions:&sessions,throttle:&throttle,settings:&settings,peer:"127.0.0.1".parse().unwrap()};
+            assert!(start_session(user,&verified,&ctx).is_err(),"stale password snapshot bypassed moderation");
+            assert!(!sessions.locked().signed_in(user));
+        }
+    }
 }

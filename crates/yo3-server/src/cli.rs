@@ -36,6 +36,16 @@ pub struct Args {
     pub auth_key: Option<PathBuf>,
     #[arg(long, default_value_t = 8080, global = true)]
     pub http_port: u16,
+    /// Enable the staff dashboard JSON API on a separate loopback-only port (off by default; 0 assigns a free port).
+    /// TCP stays loopback-only. Hosted HTTPS uses the separate Unix socket/nginx transport.
+    #[arg(long, global = true)]
+    pub dashboard_port: Option<u16>,
+    /// Staff API socket shared with nginx (Unix only); never mounts host-token routes.
+    #[arg(long, global = true, conflicts_with = "dashboard_port")]
+    pub dashboard_socket: Option<PathBuf>,
+    /// Exact browser origin for the socket proxy (HTTPS, or HTTP localhost for local checks).
+    #[arg(long, global = true)]
+    pub dashboard_origin: Option<String>,
     /// Game install (for the patch index and the client's own data files).
     #[arg(long)]
     pub game_dir: Option<PathBuf>,
@@ -81,10 +91,13 @@ pub struct Args {
 
 #[derive(Subcommand)]
 pub enum Admin {
+    /// Offline first deployment only: read the initial admin password from stdin; atomically create an admin in an
+    /// empty account directory. Reruns preserve the password; never resets, re-promotes or replaces an account.
+    BootstrapAdmin { user:String },
     /// Generate the host's TLS identity once. NAME is the DNS name or IP friends connect to; repeat for aliases.
     InitAuth { #[arg(required = true)] names: Vec<String> },
     /// Export an existing account's private launcher profile. Send it and the public server.crt to that friend.
-    Profile { who: String, output: PathBuf },
+    Profile { who: String, output: PathBuf, #[arg(long)] request_id: Option<String> },
     /// List every account: its User ID (or that it has a key), role, country and players.
     Accounts,
     /// Make an account found by a secret key, not an address: NAME is its first player (the starting players when
@@ -94,28 +107,34 @@ pub enum Admin {
         name: Option<String>,
         #[arg(long, value_delimiter = ',')]
         also: Vec<String>,
+        #[arg(long)] request_id: Option<String>,
     },
     /// Print a private launcher profile for an existing account, by its User ID or one of its PLAYER names (assigning
     /// a key if needed; existing player data stays in place).
-    Key { who: String },
+    Key { who: String, #[arg(long)] request_id: Option<String> },
     /// Give an account (its User ID or one of its PLAYER names) a player named NAME.
-    AddPlayer { who: String, name: String },
+    AddPlayer { who: String, name: String, #[arg(long)] request_id: Option<String> },
     /// Rename a player.
-    Rename { old: String, new: String },
+    Rename { old: String, new: String, #[arg(long)] request_id: Option<String> },
     /// Set the country flag the account WHO (a User ID or a player's name) shows to others (a code from the
     /// client's table, such as FR or JP: `countries` lists them); "auto" goes back to the one the client's language
     /// implies.
-    SetCountry { who: String, code: String },
+    SetCountry { who: String, code: String, #[arg(long)] request_id: Option<String> },
     /// List the country codes the client has flags for.
     Countries,
     /// Give a player a title by its name, as the game shows it (the staff and promotion ones, GAME MASTER or JUMP
     /// FESTA, or any other); `titles` lists them. They wear it in Avatar Settings.
-    GrantTitle { player: String, title: String },
+    GrantTitle { player: String, title: String, #[arg(long)] request_id: Option<String> },
     /// List the titles in the client.
     Titles,
     /// Give BOOSTERPASS Points to the account WHO (a User ID or one of its players' names). Works while the server
     /// runs (on the server's PC).
-    GiveBp { who: String, amount: u32 },
+    GiveBp {
+        who: String,
+        amount: u32,
+        /// Reuse the printed request ID after a timeout or lost answer; a committed grant is never repeated.
+        #[arg(long)] request_id: Option<String>,
+    },
     /// Give PLAYER copies of a card no pack hands out, or another artwork of one (#19): CARD is its English name or Konami
     /// id, --art N which artwork (its first when omitted), --count N how many (1 when omitted, at most 255). Their trunk
     /// has them at its next request (Edit Deck, the shop). Works while the server runs.
@@ -126,6 +145,7 @@ pub enum Admin {
         art: Option<u32>,
         #[arg(long)]
         count: Option<u32>,
+        #[arg(long)] request_id: Option<String>,
     },
     /// Give PLAYER a deck recipe for Load Deck's Official tab (#19): DECK is its title or preset id (`recipes` lists them);
     /// --cards gives the recipe's cards too. The game shows it at their next login or after their next duel.
@@ -134,6 +154,7 @@ pub enum Admin {
         deck: String,
         #[arg(long)]
         cards: bool,
+        #[arg(long)] request_id: Option<String>,
     },
     /// List the deck recipes in the client: preset id, title and how many cards.
     Recipes,
@@ -144,9 +165,11 @@ pub enum Admin {
         bp: u32,
         #[arg(long)]
         uses: Option<u32>,
+        /// Reuse after an uncertain response to retrieve the original code without creating another.
+        #[arg(long)] request_id: Option<String>,
     },
     /// Remove a BOOSTERPASS code. Works while the server runs.
-    RemoveCode { code: String },
+    RemoveCode { code: String, #[arg(long)] request_id: Option<String> },
     /// List the BOOSTERPASS codes and how often each was used. Works while the server runs.
     Codes,
     /// Make an invite code for the launcher's sign-up (the registration setting's invite mode): --uses N sign-ups (1 when
@@ -156,67 +179,81 @@ pub enum Admin {
         uses: u32,
         #[arg(long)]
         days: Option<u32>,
+        /// Reuse after a lost response to retrieve the original invite and expiry.
+        #[arg(long)] request_id: Option<String>,
     },
     /// List the invite codes: whether each still works, who issued it and how many accounts used it. Works while the
     /// server runs.
     Invites,
     /// Make a reset code for a player who lost their password and recovery code (check it is them first): it works once,
     /// for 24 hours, in the launcher's "Forgot password". Works while the server runs.
-    ResetCode { user: String },
+    ResetCode { user: String, #[arg(long, requires = "code_stdin")] request_id: Option<String>,
+        /// Read the original code from piped stdin for a safe retry; never put it in command-line arguments.
+        #[arg(long)] code_stdin: bool },
     /// Make USER a player, moderator or admin. Works while the server runs.
-    SetRole { user: String, role: String },
+    SetRole { user: String, role: String, #[arg(long)] request_id: Option<String> },
     /// Print what a friend needs to join: the address (`--advertise`, with `--auth-port`), the server's identity and the
     /// invite link that carries both, for Desktop's Add a server or the Scripts helper's `--sign-in`. --invite also makes
     /// an invite code for one sign-up, working for a week. Works while the server runs.
     Share {
         #[arg(long)]
         invite: bool,
+        /// Reuse after a lost invite response; the shared invite keeps its original code and expiry.
+        #[arg(long, requires = "invite")] request_id: Option<String>,
     },
-    /// Make a password account with User ID USER and print its first password and recovery code, to hand to that
-    /// player (for a server whose registration setting is closed). Works while the server runs.
-    AddUser { user: String },
+    /// Make a password account with a one-time setup code (24 hours). The player chooses a password in Forgot password.
+    AddUser { user: String, #[arg(long, requires = "code_stdin")] request_id: Option<String>,
+        /// Read the original code from piped stdin for a safe retry.
+        #[arg(long)] code_stdin: bool },
     /// Put a backup back as the server's database (the server must be stopped): WHICH is a folder name under
     /// backups/ (`backups` lists them), or "latest". The database it replaces is kept beside it, renamed.
     Restore { which: String },
     /// List the backups, newest first: one at each start, every hour while running, and at each stop.
     Backups,
+    /// Create a checked backup now. Reuse the printed ID after a lost response.
+    Backup { #[arg(long)] request_id: Option<String> },
     /// List the live settings: each one's value, whether it is the default, and when a change applies. Works while
     /// the server runs.
     Settings,
     /// Change a live setting (`settings` lists them), saved in the database: on a running server it applies without a
     /// restart, at the moment the setting says (at once, at the next login or at the next duel).
-    Set { name: String, value: String },
+    Set { name: String, value: String, #[arg(long)] request_id: Option<String> },
     /// Put a live setting back to its default. Works while the server runs.
-    Reset { name: String },
+    Reset { name: String, #[arg(long)] request_id: Option<String> },
     /// The newest administrative changes: when, who, from where, what, on what, before and after.
     Audit {
         #[arg(long, default_value_t = 50)]
         limit: u32,
     },
     /// Stop the running server gracefully: logins close, duels end, everything is saved and backed up.
-    Stop,
+    Stop {
+        /// Reuse the printed request ID and run ID together after a lost response.
+        #[arg(long, requires = "run_id")] request_id: Option<String>,
+        #[arg(long)] run_id: Option<String>,
+    },
     /// Disconnect WHO's game (a User ID or one of its players' names); it shows its own disconnect dialog.
-    Kick { who: String },
+    Kick { who: String, #[arg(long)] request_id: Option<String> },
     /// Ban WHO: sign-in refused (for --days, or until `lift`), every device signed out, the game disconnected. The
     /// launcher shows the reason and the end.
-    Ban { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] days: Option<u32> },
+    Ban { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] days: Option<u32>, #[arg(long)] request_id: Option<String> },
     /// Restrict WHO: sign-in refused (for --days, or until `lift`); a game already signed in plays on until it logs in
     /// again, when the game says "This User ID is currently restricted."
-    Restrict { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] days: Option<u32> },
+    Restrict { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] days: Option<u32>, #[arg(long)] request_id: Option<String> },
     /// Lift WHO's ban or restriction.
-    Lift { who: String },
+    Lift { who: String, #[arg(long)] request_id: Option<String> },
     /// Mute WHO: their chat lines go nowhere (for --minutes, or until `unmute`), and they are told why.
-    Mute { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] minutes: Option<u32> },
-    Unmute { who: String },
+    Mute { who: String, #[arg(long, default_value = "")] reason: String, #[arg(long)] minutes: Option<u32>, #[arg(long)] request_id: Option<String> },
+    Unmute { who: String, #[arg(long)] request_id: Option<String> },
     /// Sign WHO out of every device and disconnect their game.
-    SignOut { who: String },
+    SignOut { who: String, #[arg(long)] request_id: Option<String> },
     /// Delete WHO's account for good (an admin's): its players with their cards, decks, mail, friends, team, records and
     /// duel logs, its User ID, password and devices; its game is disconnected. The audit log keeps only who deleted which
     /// User ID and when. Backups still hold it until they are replaced. Needs --yes.
-    DeleteAccount { who: String, #[arg(long)] yes: bool },
+    DeleteAccount { who: String, #[arg(long)] yes: bool, #[arg(long)] request_id: Option<String> },
     /// Plan maintenance in --in MINUTES (0: now): the game counts down with --message, then only admins and moderators
     /// stay, duels end and sign-ins wait; --off calls it off.
     Maintenance {
+        #[arg(long)] request_id: Option<String>,
         #[arg(long = "in")]
         minutes: Option<u32>,
         #[arg(long)]

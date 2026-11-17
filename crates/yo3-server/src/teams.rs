@@ -73,7 +73,7 @@ pub const BAD_NAME: u32 = 808;
 /// The longest team name kept (#39): the game's own field takes fewer; a modified client could send a megabyte.
 pub const MAX_NAME: usize = 32;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Teams {
     last_id: u32,
     teams: BTreeMap<u32, Team>,
@@ -101,7 +101,11 @@ impl Teams {
     }
 
     fn save(&self) {
-        let Some(file) = &self.file else { return };
+        if let Err(e) = self.persist() { tracing::warn!("teams not saved: {e}") }
+    }
+
+    pub(crate) fn persist(&self) -> std::io::Result<()> {
+        let Some(file) = &self.file else { return Ok(()) };
         let teams: Vec<Json> = self
             .teams
             .values()
@@ -110,9 +114,23 @@ impl Teams {
                 json!({ "id": t.id, "name": t.name, "created": t.created, "members": members })
             })
             .collect();
-        if let Err(e) = crate::store::write(file, &json!({ "last_id": self.last_id, "teams": teams })) {
-            tracing::warn!("teams not saved to {}: {e}", file.display());
+        crate::store::write(file, &json!({ "last_id": self.last_id, "teams": teams }))
+    }
+
+    /// Stage departures/disbanding, returning each former team for post-commit notifications.
+    pub(crate) fn prepare_forget(&self, players: &[u32]) -> (Self, Vec<(u32, Team)>) {
+        let mut next = self.clone(); let mut departures = vec![];
+        for &id in players {
+            if let Some(team) = next.of(id).cloned() {
+                if team.authority(id) == Some(LEADER) {
+                    next.teams.remove(&team.id);
+                    next.invites.retain(|_, (_, t)| *t != team.id);
+                } else if let Some(t) = next.teams.get_mut(&team.id) { t.members.retain(|m| m.id != id); }
+                departures.push((id, team));
+            }
         }
+        next.invites.retain(|to, (from, _)| !players.contains(to) && !players.contains(from));
+        (next, departures)
     }
 
     /// The team a player is in.

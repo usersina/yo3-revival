@@ -1,0 +1,4 @@
+# Optional overrides for local first setup. IP and domain are supplied on the command line.
+# yo3_acme_email: owner@example.com
+# yo3_game_source_dir: /path/to/Yu-Gi-Oh! ONLINE 3
+# yo3_admin_user: HostAdmin

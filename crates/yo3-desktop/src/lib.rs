@@ -414,7 +414,7 @@ impl Backend {
         let mut owned = self.server.lock().unwrap();
         let live=self.live(settings).context("Start your server first.")?;
         // Keep the captured endpoint: another app can replace the profile's live file during shutdown.
-        let reply=api::call(&live,&Op::Shutdown).map_err(anyhow::Error::msg)?;
+        let reply=api::stop(&live).map_err(anyhow::Error::msg)?;
         // The management response acknowledges the request before ports and data files are released.
         // Serialize Start with the owned child's graceful exit and original endpoint closure. An old child
         // handle may already have exited while this app attached to a replacement server, so check both.
@@ -786,10 +786,26 @@ mod tests {
         assert!(format!("{error:#}").contains("Still loading server resources"),"preserve the server's diagnostic details: {error:#}");
         assert!(format!("{error:#}").contains("try Start again"),"give the player an action they can take: {error:#}");
     }
+    fn mock_run_bound_stop(listener:&std::net::TcpListener) {
+        use std::io::{Read,Write};
+        let run_id="a".repeat(64);
+        for op in ["status","shutdown"] {
+            let (mut stream,_)=listener.accept().unwrap();stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+            let mut header=Vec::new();let mut byte=[0];
+            while !header.ends_with(b"\r\n\r\n") {stream.read_exact(&mut byte).unwrap();header.push(byte[0]);}
+            let header=String::from_utf8(header).unwrap();
+            let length:usize=header.lines().find_map(|line|line.strip_prefix("Content-Length: ")).unwrap().parse().unwrap();
+            let mut body=vec![0;length];stream.read_exact(&mut body).unwrap();let body:serde_json::Value=serde_json::from_slice(&body).unwrap();
+            assert_eq!(body["op"],op);
+            let result=if op=="status" {serde_json::json!({"run_id":run_id})} else {assert_eq!(body["run_id"],run_id);serde_json::json!({"stopping":true})};
+            let reply=serde_json::json!({"ok":true,"result":result}).to_string();
+            write!(stream,"HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",reply.len(),reply).unwrap();
+        }
+    }
     #[test]
     #[cfg(unix)]
     fn stopping_an_owned_server_waits_until_it_has_exited_before_start_can_retry() {
-        use std::io::{Read,Write};
+        use std::io::Write;
         let root=std::env::temp_dir().join(format!("yo3-server-shutdown-{}",std::process::id()));
         let backend=Backend::new(root.clone()).unwrap(); let settings=Settings::default();
         let listener=std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -799,13 +815,7 @@ mod tests {
         let manager=std::thread::spawn(move || {
             // admin::running makes a TCP liveness probe before the actual management request.
             drop(listener.accept().unwrap().0);
-            let (mut stream,_)=listener.accept().unwrap(); stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
-            let mut request=Vec::new(); let mut byte=[0];
-            while !request.ends_with(b"\r\n\r\n") { stream.read_exact(&mut byte).unwrap(); request.push(byte[0]); }
-            let mut body=vec![0;b"{\"op\":\"shutdown\"}".len()]; stream.read_exact(&mut body).unwrap();
-            assert_eq!(body,b"{\"op\":\"shutdown\"}");
-            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 38\r\nConnection: close\r\n\r\n{\"ok\":true,\"result\":{\"stopping\":true}}").unwrap();
-            drop(stream); finish.write_all(b"done\n").unwrap();
+            mock_run_bound_stop(&listener); finish.write_all(b"done\n").unwrap();
         });
         let reply=backend.stop_server(&settings).unwrap();
         let released=backend.server.lock().unwrap().is_none();
@@ -817,7 +827,6 @@ mod tests {
     }
     #[test]
     fn stopping_an_attached_server_waits_until_its_management_port_closes() {
-        use std::io::{Read,Write};
         for stale_owned in [false,true] {
         let root=std::env::temp_dir().join(format!("yo3-attached-shutdown-{}-{stale_owned}",std::process::id()));
         let backend=Backend::new(root.clone()).unwrap();let settings=Settings::default();
@@ -830,12 +839,7 @@ mod tests {
         let (finished,closed)=std::sync::mpsc::channel();
         let manager=std::thread::spawn(move || {
             drop(listener.accept().unwrap().0);
-            let (mut stream,_)=listener.accept().unwrap();stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
-            let mut request=Vec::new();let mut byte=[0];
-            while !request.ends_with(b"\r\n\r\n") {stream.read_exact(&mut byte).unwrap();request.push(byte[0]);}
-            let mut body=vec![0;b"{\"op\":\"shutdown\"}".len()];stream.read_exact(&mut body).unwrap();assert_eq!(body,b"{\"op\":\"shutdown\"}");
-            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 38\r\nConnection: close\r\n\r\n{\"ok\":true,\"result\":{\"stopping\":true}}").unwrap();
-            drop(stream);std::thread::sleep(std::time::Duration::from_millis(150));drop(listener);finished.send(()).unwrap();
+            mock_run_bound_stop(&listener);std::thread::sleep(std::time::Duration::from_millis(150));drop(listener);finished.send(()).unwrap();
         });
         let reply=backend.stop_server(&settings).unwrap();let waited=closed.try_recv().is_ok();
         manager.join().unwrap();drop(backend);std::fs::remove_dir_all(root).unwrap();

@@ -264,7 +264,10 @@ fn a_host_gift_arrives_as_a_d_mail_with_the_bell_icon() {
     c.pushed();
     let named = d.lock().unwrap().named_players_of("Yugi");
     assert_eq!(named.len(), 2, "both players of the account");
-    server.hub.lock().unwrap().mail_bp_gift(&named, 2000, START_BP + 2000);
+    let mut api = yo3_server::api::Api::new(d.clone(), std::sync::Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap()),
+        None, std::path::PathBuf::new(), "server");
+    api.hub = Some(server.hub.clone());
+    api.apply(&yo3_server::api::Op::GiveBp { who: "Yugi".into(), amount: 2000 }, "host").unwrap();
     assert!(c.pushed().iter().any(|m| m.request() == Some(0x2581)), "the bell's mail icon");
     let count = one(c.send(req(0x2583)));
     assert_eq!(count.get("count"), Some(&Value::U32(1)));

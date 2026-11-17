@@ -4,6 +4,9 @@ These commands run in a **source checkout**, not an extracted release. For playi
 [Desktop](launcher.md) or [Scripts](scripts.md). Contributors should first read the
 [working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md).
 
+The [dashboard development guide](dashboard.md#local-development) covers the React dashboard, disposable server,
+Rust/OpenAPI/Orval generation and contract checks.
+
 - [Development guide](#development-guide)
   - [Build from source](#build-from-source)
   - [Checks](#checks)
@@ -26,7 +29,7 @@ The release runner installs them before testing the packaged Desktop window.
 The root `Cargo.toml` owns the shared crate version, edition, license, Rust baseline, dependency versions and lint
 settings. Every crate inherits them; crate-specific features such as Iced's renderer and Windows APIs stay in that
 crate's manifest. Change shared versions there and review `Cargo.lock` when updating dependencies. Internal crate
-dependencies use workspace paths and all eight crates advance together. Published bundle versions still come from
+dependencies use workspace paths and the workspace crates advance together. Published bundle versions still come from
 `CHANGELOG.md` through `YO3_BUILD_VERSION`; reorganizing package metadata does not publish or bump a release.
 
 ```bash
@@ -36,6 +39,10 @@ engine/fetch.sh
 cargo build --release -p yo3-server -p yo3-launcher -p yo3-desktop -p yo3-engine
 tools/mod/build.sh
 ```
+
+Build metadata resolves Git's actual HEAD/reference paths, including linked worktrees and packed references.
+Source archives without `.git` use `YO3_BUILD_COMMIT` or `unknown`; neither case forces repeated unchanged builds.
+`yo3-tunnel/tests/build_metadata.rs` checks these layouts.
 
 For an existing checkout, skip cloning. Open `./target/release/yo3-revival` for the Desktop app. For CLI setup, follow
 [Scripts setup](scripts.md#play-on-your-own-pc), replacing `./yo3-server` with `./target/release/yo3-server` and staying
@@ -48,7 +55,7 @@ in the repository root. The play equivalent is:
 ```
 
 Source builds use the checkout's `engine/` data and the `yo3-engine` program beside the server in `target/release/`.
-The release bundles carry both; no Node.js is needed anywhere.
+The release bundles carry both. The rules engine runs natively; dashboard development and builds use Node.js.
 Game content comes from the installed client; never commit game files, extracted data or reverse-engineering exports.
 The [repo map and exact scratch commands](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md#commands)
 cover server setup beside an existing live session.

@@ -37,7 +37,7 @@ const CSS: &str = include_str!("panel/panel.css");
 const JS: &str = include_str!("panel/panel.js");
 
 /// A signed-in staff account.
-struct Session { user_id: u32, user: String, csrf: String, started: i64, last: i64, flash: Option<(bool, String)> }
+struct Session { user_id: u32, user: String, credential: String, csrf: String, started: i64, last: i64, flash: Option<(bool, String)> }
 
 /// The panel's state: its sessions and its sign-in throttle.
 #[derive(Default)]
@@ -134,7 +134,7 @@ fn text(v: &Value) -> String {
 }
 
 /// The headers every answer carries.
-fn security_headers() -> Vec<(&'static str, String)> {
+pub(crate) fn security_headers() -> Vec<(&'static str, String)> {
     vec![
         ("Content-Security-Policy", "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'".into()),
         ("X-Frame-Options", "DENY".into()),
@@ -176,26 +176,48 @@ const PAGES: &[(&str, &str)] = &[
 ];
 
 /// Who is looking at a page.
-struct Viewer { user: String, role: Role, csrf: String }
+#[derive(Clone)]
+pub(crate) struct Viewer { pub user_id: u32, pub user: String, pub role: Role, pub csrf: String, pub authenticated_at: i64, pub expires: i64 }
 
 impl Viewer {
+    pub(crate) fn fresh(&self)->bool{(0..=300).contains(&crate::logins::now().saturating_sub(self.authenticated_at))}
     fn admin(&self) -> bool { self.role == Role::Admin }
     /// The hidden field every form carries.
-    fn token(&self) -> String { format!("<input type=\"hidden\" name=\"csrf\" value=\"{}\">", esc(&self.csrf)) }
+    fn token(&self) -> String { format!("<input type=\"hidden\" name=\"csrf\" value=\"{}\"><input type=\"hidden\" name=\"request_id\" value=\"{}\">", esc(&self.csrf), crate::logins::new_token()) }
 }
 
 impl Panel {
     pub fn new() -> Panel { Panel::default() }
 
     /// Signs `user_id` in: the new session's cookie value.
-    fn open(&self, user_id: u32, user: &str) -> String {
+    fn open(&self, user_id: u32, user: &str, credential: String) -> String {
         let token = crate::logins::new_token();
         let now = crate::logins::now();
         let mut sessions = self.sessions.locked();
         sessions.retain(|_, s| now - s.last < IDLE && now - s.started < LONGEST);
-        sessions.insert(crate::logins::digest(&token), Session { user_id, user: user.into(), csrf: crate::logins::new_token(), started: now, last: now, flash: None });
+        sessions.insert(crate::logins::digest(&token), Session { user_id, user: user.into(), credential, csrf: crate::logins::new_token(), started: now, last: now, flash: None });
         token
     }
+
+    fn view(&self, key: &str, api: &Api) -> Option<(Viewer, Option<(bool, String)>)> {
+        let now = crate::logins::now();
+        let mut sessions = self.sessions.locked();
+        let s = sessions.get_mut(key)?;
+        if now - s.last >= IDLE || now - s.started >= LONGEST { sessions.remove(key); return None }
+        let d = api.accounts.locked();
+        let login = d.login_by_id(s.user_id).filter(|l| l.staff() && l.refusal(now).is_none()
+            && l.user.eq_ignore_ascii_case(&s.user) && credential(l) == s.credential);
+        let Some(login) = login else { drop(d); sessions.remove(key); return None };
+        s.last = now;
+        Some((Viewer { user_id: s.user_id, user: login.user.clone(), role: login.role, csrf: s.csrf.clone(),
+            authenticated_at:s.started, expires: (now + IDLE).min(s.started + LONGEST) }, s.flash.take()))
+    }
+
+    pub(crate) fn session(&self, cookie: &str, api: &Api) -> Option<Viewer> {
+        self.view(&crate::logins::digest(cookie), api).map(|(viewer, _)| viewer)
+    }
+
+    pub(crate) fn close(&self, cookie: &str) { self.sessions.locked().remove(&crate::logins::digest(cookie)); }
 
     fn flash(&self, key: &str, ok: bool, message: impl Into<String>) {
         if let Some(s) = self.sessions.locked().get_mut(key) { s.flash = Some((ok, message.into())) }
@@ -219,17 +241,7 @@ pub async fn handle(raw: &str, peer: IpAddr, panel: &Panel, api: &Api) -> Option
     }
     // Everything else needs a session of a staff account in good standing.
     let key = r.cookie().map(crate::logins::digest);
-    let now = crate::logins::now();
-    let viewer = key.as_ref().and_then(|key| {
-        let mut sessions = panel.sessions.locked();
-        let s = sessions.get_mut(key)?;
-        if now - s.last >= IDLE || now - s.started >= LONGEST { sessions.remove(key); return None }
-        let d = api.accounts.locked();
-        let login = d.login_by_id(s.user_id).filter(|l| l.staff() && l.refusal(now).is_none() && l.user.eq_ignore_ascii_case(&s.user));
-        let Some(login) = login else { drop(d); sessions.remove(key); return None };
-        s.last = now;
-        Some((Viewer { user: login.user.clone(), role: login.role, csrf: s.csrf.clone() }, s.flash.take()))
-    });
+    let viewer = key.as_ref().and_then(|key| panel.view(key, api));
     let Some((viewer, flash)) = viewer else {
         return Some(if r.method == "GET" { redirect(&format!("{PREFIX}/login"), vec![]) } else { refused("403 Forbidden", "Your session has ended: sign in again.") });
     };
@@ -291,30 +303,50 @@ async fn sign_in(r: &Request, peer: IpAddr, panel: &Panel, api: &Api) -> Respons
         tracing::warn!("[panel] a sign-in was refused: not from the panel's own page ({})", r.whence());
         return refused("403 Forbidden", "Sign in from the panel's own page.");
     }
-    let user = r.field("user").to_string();
-    let password = r.form.get("password").cloned().unwrap_or_default();
+    match authenticate(r.field("user"), r.form.get("password").cloned().unwrap_or_default(), peer, panel, api).await {
+        Ok((token, _)) => redirect(&format!("{PREFIX}/"), vec![("Set-Cookie", session_cookie(&token, false))]),
+        Err(SignInError::Throttled(wait)) => login_page(Some(&format!("Too many tries: wait {wait} seconds and try again.")), r.field("user")),
+        Err(SignInError::Wrong) => login_page(Some(WRONG), r.field("user")),
+    }
+}
+
+/// Password or recovery changes invalidate existing staff cookies as well as devices.
+fn credential(login: &crate::logins::Login) -> String { crate::logins::digest(&format!("{}:{}:{}", login.password, login.recovery, login.staff_epoch)) }
+
+pub(crate) enum SignInError { Wrong, Throttled(u64) }
+
+pub(crate) fn session_cookie(token: &str, clear: bool) -> String {
+    format!("{COOKIE}={token}; Path={PREFIX}; HttpOnly; Secure; SameSite=Strict; Max-Age={}", if clear { 0 } else { LONGEST })
+}
+
+/// Shared by the existing forms and the typed API. Never trust a role snapshot captured before password verification.
+pub(crate) async fn authenticate(user: &str, password: String, peer: IpAddr, panel: &Panel, api: &Api) -> Result<(String, Viewer), SignInError> {
     {
         let limits = api.settings.now().limits;
         let mut throttle = panel.throttle.locked();
         throttle.set_limits(limits);
         let at = Instant::now();
-        let wait = throttle.address(peer, at).err().or_else(|| throttle.user_wait(&user, at));
-        if let Some(wait) = wait { return login_page(Some(&format!("Too many tries: wait {} seconds and try again.", wait.as_secs().max(1))), &user) }
+        let wait = throttle.address(peer, at).err().or_else(|| throttle.user_wait(user, at));
+        if let Some(wait) = wait { return Err(SignInError::Throttled(wait.as_secs().max(1))) }
     }
-    let found = api.accounts.locked().login_of(&user);
+    let found = api.accounts.locked().login_of(user);
     let hash = found.as_ref().map(|(_, l)| l.password.clone()).filter(|h| !h.is_empty());
     let matched = crate::logins::verify_password(password, hash).await;
+    let current = api.accounts.locked().login_of(user);
     let now = crate::logins::now();
-    let Some((user_id, login)) = found.filter(|(_, l)| matched && l.staff() && l.refusal(now).is_none()) else {
-        panel.throttle.locked().failed(&user, Instant::now());
+    let valid = current.filter(|(_, l)| matched && l.staff() && l.refusal(now).is_none()
+        && found.as_ref().is_some_and(|(_, old)| credential(old) == credential(l)));
+    let Some((user_id, login)) = valid else {
+        panel.throttle.locked().failed(user, Instant::now());
         tracing::warn!("[panel] a sign-in was refused");
-        return login_page(Some(WRONG), &user);
+        return Err(SignInError::Wrong)
     };
-    panel.throttle.locked().succeeded(&user);
-    let token = panel.open(user_id, &login.user);
+    panel.throttle.locked().succeeded(user);
+    let token = panel.open(user_id, &login.user, credential(&login));
+    let viewer = panel.session(&token, api).ok_or(SignInError::Wrong)?;
     tracing::info!("[panel] {} signed in", login.user);
     api.note(&login.user, ORIGIN, "panel-sign-in", &login.user);
-    redirect(&format!("{PREFIX}/"), vec![("Set-Cookie", format!("{COOKIE}={token}; Path={PREFIX}; HttpOnly; Secure; SameSite=Strict; Max-Age={LONGEST}"))])
+    Ok((token, viewer))
 }
 
 /// Runs `op` as the viewer: its result, or why not.
@@ -350,7 +382,7 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
                 "lift" => Op::Lift { who: who.clone() },
                 "mute" => Op::Mute { who: who.clone(), reason, minutes: number(r.field("minutes"))? },
                 "unmute" => Op::Unmute { who: who.clone() },
-                "reset-code" => Op::ResetCode { user: who.clone() },
+                "reset-code" => Op::ResetCode { user: who.clone(), code: r.field("access_code").to_string().into() },
                 "rename" => Op::Rename { old: r.field("old").into(), new: r.field("new").into() },
                 "give-bp" => Op::GiveBp { who: who.clone(), amount: number(r.field("amount"))?.ok_or("give how many BP?")? },
                 "set-role" => Op::SetRole { user: who.clone(), role: r.field("role").into() },
@@ -368,10 +400,7 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
                 }
                 other => return Err(format!("unknown action {other:?}")),
             }))();
-            let outcome = op.and_then(|op| run(api, viewer, &op).map(|v| match &op {
-                Op::ResetCode { .. } => format!("Reset code for {who}: {}. Hand it to the player: it works once, for 24 hours, in the launcher's \"Forgot password\".", text(&v["code"])),
-                _ => said(&v),
-            }));
+            let outcome = op.and_then(|op| api.apply_request(&op, &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id")).map(|v| said(&v)));
             // A renamed player's page is under its new name.
             let shown = if r.field("action") == "rename" && outcome.is_ok() && who.eq_ignore_ascii_case(r.field("old")) { r.field("new").to_string() } else { who.clone() };
             // A deleted account has no page any more: back to the list.
@@ -381,10 +410,12 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
         "/invites" => {
             let outcome = match r.field("action") {
                 "invite" => number(r.field("uses")).and_then(|uses| Ok((uses, number(r.field("days"))?)))
-                    .and_then(|(uses, days)| run(api, viewer, &Op::Invite { uses, days })).map(|v| said(&v)),
+                    .and_then(|(uses, days)| api.apply_request(&Op::Invite { uses, days }, &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id"))).map(|v| said(&v)),
                 "add-code" => number(r.field("bp")).and_then(|bp| Ok((bp.ok_or("how many BP?")?, number(r.field("uses"))?)))
-                    .and_then(|(bp, uses)| run(api, viewer, &Op::AddCode { code: r.field("code").into(), bp, uses })).map(|v| said(&v)),
-                "remove-code" => run(api, viewer, &Op::RemoveCode { code: r.field("code").into() }).map(|v| said(&v)),
+                    .and_then(|(bp, uses)| api.apply_request(&Op::AddCode { code: r.field("code").into(), bp, uses },
+                        &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id"))).map(|v| said(&v)),
+                "remove-code" => api.apply_request(&Op::RemoveCode { code: r.field("code").into() },
+                    &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id")).map(|v| said(&v)),
                 other => Err(format!("unknown action {other:?}")),
             };
             (back("/invites"), outcome)
@@ -396,13 +427,13 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
                         let (title, body) = (r.field(&format!("title{i}")), r.field(&format!("body{i}")));
                         (!title.is_empty() || !body.is_empty()).then(|| json!({ "title": title, "body": body }))
                     }).collect();
-                    run(api, viewer, &Op::Set { name: "news".into(), value: Value::Array(entries).to_string() }).map(|v| said(&v))
+                    api.apply_request(&Op::Set { name: "news".into(), value: Value::Array(entries).to_string() }, &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id")).map(|v| said(&v))
                 }
                 "maintenance" => number(r.field("minutes")).and_then(|minutes| {
                     let message = Some(r.field("message").to_string()).filter(|m| !m.is_empty());
-                    run(api, viewer, &Op::Maintenance { minutes: Some(minutes.ok_or("in how many minutes? (0: now)")?), message, off: false })
+                    api.apply_request(&Op::Maintenance { minutes: Some(minutes.ok_or("in how many minutes? (0: now)")?), message, off: false }, &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id"))
                 }).map(|v| said(&v)),
-                "maintenance-off" => run(api, viewer, &Op::Maintenance { minutes: None, message: None, off: true }).map(|v| said(&v)),
+                "maintenance-off" => api.apply_request(&Op::Maintenance { minutes: None, message: None, off: true }, &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id")).map(|v| said(&v)),
                 other => Err(format!("unknown action {other:?}")),
             };
             (back("/news"), outcome)
@@ -410,9 +441,9 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
         "/settings" => {
             let name = r.field("name").to_string();
             let op = if r.field("action") == "reset" { Op::Reset { name } } else { Op::Set { name, value: r.field("value").into() } };
-            (back("/settings"), run(api, viewer, &op).map(|v| said(&v)))
+            (back("/settings"), api.apply_request(&op, &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id")).map(|v| said(&v)))
         }
-        "/backups" => (back("/backups"), run(api, viewer, &Op::BackUp).map(|v| said(&v))),
+        "/backups" => (back("/backups"), api.apply_request(&Op::BackUp,&viewer.user,ORIGIN,Some(viewer.role),r.field("request_id")).map(|v| said(&v))),
         _ => return refused("404 Not Found", "No such form."),
     };
     match &outcome {
@@ -549,7 +580,7 @@ fn account(r: &Request, viewer: &Viewer, api: &Api) -> String {
         out += &form("ban", "Ban", &format!("<label>Days <input name=\"days\" inputmode=\"numeric\" placeholder=\"until lifted\"></label>{reason}"), Some(&format!("Ban {name}? Their game is disconnected and every device signed out.")), true);
         out += &form("lift", "Lift ban or restriction", "", None, false);
         out += &form("sign-out", "Sign out everywhere", "", Some(&format!("Sign {name} out on every device?")), false);
-        out += &form("reset-code", "Make a reset code", "", Some(&format!("Make a password reset code for {name}?")), false);
+        out += &form("reset-code", "Make a reset code", &format!("<input type=\"hidden\" name=\"access_code\" value=\"{}\">", crate::logins::new_code()), Some(&format!("Make a password reset code for {name}?")), false);
     }
     let players: String = a["players"].as_array().into_iter().flatten().map(|p| format!("<option>{}</option>", esc(&text(&p["name"])))).collect();
     if !players.is_empty() { out += &form("rename", "Rename", &format!("<label>Player <select name=\"old\">{players}</select></label><label>New name <input name=\"new\" required maxlength=\"16\"></label>"), None, false); }
@@ -753,18 +784,19 @@ Copies off this machine are the host's job (see the hosting guide).</p>");
 /// A backup's database file, for an admin; the download is in the audit log.
 fn download(r: &Request, viewer: &Viewer, api: &Api) -> Response {
     if !viewer.admin() { return refused("403 Forbidden", "Only an admin downloads backups.") }
-    let name = r.query.get("name").cloned().unwrap_or_default();
-    let Some(dir) = &api.data_dir else { return refused("404 Not Found", "This server keeps no data folder.") };
-    let Some(found) = crate::store::backups(dir).into_iter().find(|b| b.file_name().is_some_and(|n| n.to_string_lossy() == name)) else {
-        return refused("404 Not Found", "No such backup.");
-    };
-    match std::fs::read(found.join("server.db")) {
-        Ok(body) => {
-            api.note(&viewer.user, ORIGIN, "download-backup", &name);
-            let file: String = name.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '.').collect();
-            answer("200 OK", "application/vnd.sqlite3", body, vec![("Content-Disposition", format!("attachment; filename=\"yo3-server-{file}.db\""))])
+    if !viewer.fresh(){return refused("403 Forbidden","Sign out and sign in again before downloading a backup.")}
+    let request=crate::api::backups::DownloadBackupRequest{name:r.query.get("name").cloned().unwrap_or_default()};
+    match api.open_backup_download(&request,&crate::logins::new_token(),crate::api::Actor::Staff{user_id:viewer.user_id},ORIGIN) {
+        Ok(mut snapshot)=>{
+            // This legacy response buffers its body. The generated dashboard endpoint streams without this limit.
+            if snapshot.bytes>64*1024*1024{return refused("413 Payload Too Large","Use the React dashboard or copy the snapshot through SSH for backups larger than 64 MB.")}
+            let mut body=Vec::new();
+            match std::io::Read::read_to_end(&mut snapshot.file,&mut body){
+                Ok(_)=>answer("200 OK","application/vnd.sqlite3",body,vec![("Content-Disposition",format!("attachment; filename=\"{}\"",snapshot.filename))]),
+                Err(_)=>refused("500 Internal Server Error","The snapshot could not be read. Check the server logs."),
+            }
         }
-        Err(e) => refused("500 Internal Server Error", &format!("The backup can't be read: {e}")),
+        Err(e)=>refused(match e.code {crate::api::MutationErrorCode::NotFound=>"404 Not Found",crate::api::MutationErrorCode::Forbidden=>"403 Forbidden",crate::api::MutationErrorCode::InvalidRequest=>"400 Bad Request",_=>"503 Service Unavailable"},&e.message),
     }
 }
 
@@ -783,6 +815,12 @@ fn logs(r: &Request, api: &Api) -> String {
 mod tests {
     use super::*;
 
+    #[test]
+    fn sensitive_downloads_require_a_sign_in_within_five_minutes_without_future_timestamps() {
+        let now=crate::logins::now();
+        let mut viewer=Viewer{user_id:1,user:"Admin".into(),role:Role::Admin,csrf:"csrf".into(),authenticated_at:now-299,expires:now+600};
+        assert!(viewer.fresh());viewer.authenticated_at=now-301;assert!(!viewer.fresh());viewer.authenticated_at=now+30;assert!(!viewer.fresh());
+    }
     #[test]
     fn forms_are_decoded_and_html_escaped() {
         let f = form("a=1+2&b=%3Cscript%3E&c=%E2%9C%93&d=%zz&e");

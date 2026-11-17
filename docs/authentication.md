@@ -125,13 +125,25 @@ These admin commands work on a running server too, through its admin API ([guide
 | --- | --- |
 | `invite [--uses N] [--days D]` | An invite code (`ABCD-EFGH-JKLM-NPQR`) for N sign-ups (1 by default, 0 for any number), working for D days (for good by default). It records who issued it and which accounts used it |
 | `invites` | Each invite code: whether it still works, uses left, end date, issuer and how many accounts used it |
-| `add-user USER` | A password account made by the host. Prints its first password and recovery code to hand to the player, who changes the password in the launcher |
+| `add-user USER` | A password account awaiting setup. Prints a one-time setup code, valid for 24 hours. Its owner chooses a password through Desktop’s Forgot password or Scripts `--recover`, and receives their own recovery code |
 | `reset-code USER` | For a player who lost both their password and recovery code, after the host or a moderator checked it is them (on Discord, for example). The code works once, for 24 hours, in the launcher's "Forgot password", and ends when the password changes |
-| `set-role USER ROLE` | player, moderator or admin |
+| `set-role USER ROLE` | player, moderator or admin; finish initial password setup before promotion. Actual role changes invalidate staff cookies and outstanding reset codes |
 | `share [--invite]` | What a friend needs: the address (`--advertise`, `--auth-port`), the identity and the invite link; with `--invite`, an invite code for one sign-up, for a week |
 | `add-account NAME [--also B,C]` | A key account and its first players (Scripts on your own PC) |
 | `profile PLAYER FILE --advertise HOST` | A key account's private profile for the Scripts helper. It never overwrites a file |
 | `key WHO [--advertise HOST]` | Prints a key account's key (or gives the account one) |
+
+Setup/reset issuance commits account state, audit and a permanent retry receipt together. The caller creates the
+random code before sending it; the server keeps only its digest. `add-user` and `reset-code` print their request ID
+and prepared code before sending, so a lost response can be retried with `--request-id ID --code-stdin`, feeding
+the original code from a private file. No code or password belongs in command-line arguments. A retry neither
+extends the expiry nor reactivates a used/replaced code. The React dashboard retains a pending code in this tab;
+after confirmation it removes it on **Done**, expiry or tab closure. Receipts retain only account numbers, kind,
+expiry and request ID. The response pairs that original confirmation with current availability.
+
+First setup consumes its code and saves the password and the owner’s new recovery code atomically. Recovery
+rechecks the code and credential revision after hashing, so concurrent uses, replacement and role changes cannot
+reuse a stale code. Password changes and sign-out everywhere end staff cookies too.
 
 Recovery works without email: the recovery code shown at sign-up sets a new password and is then replaced by a new
 one, shown once. A reset code does the same but leaves the player's recovery code as it was. Codes are typed in any

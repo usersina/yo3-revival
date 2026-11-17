@@ -9,6 +9,15 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-17 — Public VPS deployment and recovery](#2026-11-17--public-vps-deployment-and-recovery)
+  - [2026-11-17 — First VPS checks and portable image exports](#2026-11-17--first-vps-checks-and-portable-image-exports)
+  - [2026-11-17 — Compose hosting and local VPS setup](#2026-11-17--compose-hosting-and-local-vps-setup)
+  - [2026-11-17 — Transactional account deletion in the connected dashboard](#2026-11-17--transactional-account-deletion-in-the-connected-dashboard)
+  - [2026-11-17 — Durable graceful stop and checked live status](#2026-11-17--durable-graceful-stop-and-checked-live-status)
+  - [2026-11-17 — Connected audit and server logs](#2026-11-17--connected-audit-and-server-logs)
+  - [2026-11-17 — Checked backups and audited streaming downloads](#2026-11-17--checked-backups-and-audited-streaming-downloads)
+  - [2026-11-17 — Real dashboard navigation and production entry](#2026-11-17--real-dashboard-navigation-and-production-entry)
+  - [2026-11-17 — Checked Overview and moderation-list parity](#2026-11-17--checked-overview-and-moderation-list-parity)
   - [Status](#status)
   - [▶ Overnight plan (2026-11-07): everything left, end to end](#-overnight-plan-2026-11-07-everything-left-end-to-end)
   - [▶ Windows VM test (2026-11-08): what a real Windows client turned up](#-windows-vm-test-2026-11-08-what-a-real-windows-client-turned-up)
@@ -30,7 +39,233 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
 
+## 2026-11-17 — Public VPS deployment and recovery
+
+Deployed the separate Compose services on an Ubuntu 24.04 VPS with two vCPUs, 4 GB RAM and 60 GB storage.
+The domain's A record was corrected and explicitly saved; all four authoritative nameservers returned the VPS.
+Let's Encrypt issued a real certificate, and Certbot's staging renewal with deploy hooks passed, including nginx
+configuration validation and reload. The provider's recursive DNS cache still held the previous address. Setup now
+probes local nginx using the real domain/SNI and normal CA validation; its regression accepts the trusted fixture
+and refuses both a wrong hostname and an untrusted certificate. The DNS-based hourly monitor still reports this
+temporary propagation problem rather than hiding it.
+
+Public browser sign-in, Overview, Accounts and the disabled-public-download Backups view passed. Public probes
+refused the local host API, restore, raw backups and unexpected Host headers; nginx sanitized forged forwarding
+headers. An ordinary Ansible rerun finished with zero changes, preserving the containers and original credentials.
+After a VPS reboot both containers became healthy automatically; container/image identities, database row counts,
+the bootstrap receipt and both game identity files matched the pre-reboot record. HTTPS and game-port TLS checks
+passed before and after reboot.
+
+The release-build protocol soak used 100 password accounts, 40 fuzzing connections and 30 duel pairs for 300 seconds:
+9,255 plans, 382,651 messages, 211 canary rounds, zero failures and zero stalls. Canary p99 was 1,572 ms, maximum
+2,441 ms against a 4,000 ms threshold; server peak RSS was 157 MB with 618 file descriptors. The test controller had
+a 65,536 descriptor limit while the server kept the container's 1,024 soft limit. It ran without an artificial CPU
+quota. This corpus-free run began no actual duels, so it does not establish native-engine duel capacity. Earlier
+debug-generator timeouts and an incomplete streamed SSH run are not counted as passes; the successful report was
+recorded directly on the VPS.
+
+The isolated Compose/off-machine restore rehearsal is recorded below. Workspace tests passed (1,223, five skips),
+Clippy was clean, all six provisioning tests passed, and docs links were checked. Staff MFA, actual gameplay/engine
+load, isolated hash timing, off-machine backup scheduling and the first GitHub container publication remain open.
+No changes were pushed.
+
+## 2026-11-17 — First VPS checks and portable image exports
+
+The first Ubuntu 24.04 VPS run exposed a real image-transfer failure: exporting by bare local IDs omitted repository
+names from `manifest.json`, and the fresh Docker 29 containerd store did not register usable images. Setup now assigns
+versioned tags before export and uses those names with automatic pulls disabled. Its partial-run stop uses Compose's
+actual stop command, which does not create containers or pull images. A regression test executes the real controller
+prepare/tag/export tasks with tiny images and checks the resulting archive; it fails against the original playbook.
+
+The corrected archive imported successfully on the VPS. An isolated Compose rehearsal there passed HTTPS sign-in,
+proxy/route/CSRF boundaries, retry-safe grants, backup/restore, identity retention, read-only mounts and ACME. A VPS test
+snapshot and its identity were copied off-machine and restored into a fresh local volume: table counts and both
+identity files matched, and the account CLI opened the restored database. These were disposable test accounts, not a
+production database. The 10-player baseline protocol soak passed with zero failures. A larger 100-player run under
+an artificial CPU quota hit its safety timeout; it is not counted as a pass and is being investigated separately.
+Workspace tests (1,223, five skips), Clippy, provisioning tests and doc links passed after the fix.
+
+Full public setup is paused before certificate issuance: authoritative DNS still points elsewhere. Real CA issuance,
+renewal, completed rerun and deployment reboot remain unverified. No production admin or public game server has been
+started, and no changes were pushed.
+
+## 2026-11-17 — Compose hosting and local VPS setup
+
+Added separate server/native-engine and React/nginx containers with read-only roots, non-root users, persistent SQLite
+and read-only user game assets. A permission-restricted Unix staff socket keeps host-token authority container-local;
+nginx allowlists routes and overwrites proxy headers, and Rust checks exact origin/CSRF. Public password access is
+approved for VPS testing before MFA; public backup downloads remain disabled. Added checked certificate export/reload
+and expiry monitoring, plus offline atomic first-admin bootstrap with permanent retry receipts.
+
+The one-time Ansible command builds locally, transfers images/game assets and bootstraps from a VPS IP and DNS name.
+It generates a private local password file and preserves existing credentials/identity on retry. Release CI publishes
+version/commit-tagged GHCR images after the existing release succeeds; automated VPS deployments are deferred. Taskfile
+has only build, start, stop, status and logs. No VPS credentials were configured and nothing was pushed or deployed.
+
+Verified 1,223 workspace tests (five skips), clean Clippy, 20 dashboard unit tests, 53 browser tests, generated-client
+drift, frontend lint/format/typecheck/build and documentation links. Real disposable Compose checks passed HTTPS game
+registration/staff sign-in, nginx spoofing/route/error handling, CSRF, grant receipts, offline restore, identity retention,
+read-only mounts and ACME. A real nginx browser check found/fixed missing font/logo routes and passed accessibility
+checks. Certificate-hook tests cover invalid certificates/keys and retry reload. Local image-reference startup and Ansible
+syntax/templates/password handling passed. Fresh-VPS setup, real CA renewal, reboot, off-machine restore and load/soak
+remain unverified; MFA/recovery and incremental schema normalization remain open.
+
+## 2026-11-17 — Checked Overview and moderation-list parity
+
+Added actual engine/memory information, backup health, online players and recent problems to the connected Overview.
+Backup IO failures are shown separately from an empty directory. Account lists reuse details' effective standing/mute
+projection and expose filters; online-player links open numeric, reloadable account detail URLs. Added contract and
+browser checks for these states. Separately fixed build metadata watching a nonexistent `.git/HEAD` inside linked
+worktrees/source archives; real Git-layout tests and two unchanged Cargo checks confirm incremental builds stay fresh.
+The private HTML panel remains available during the MFA/public-access transition.
+One parallel browser run returned a maintenance-save refusal; it did not recur in the logged focused rerun or the
+subsequent full 52-case run. The cancellation test now attaches recent server problems if its save fails again;
+the original refusal's underlying cause remains unconfirmed.
+
+## 2026-11-17 — Real dashboard navigation and production entry
+
+The default app now signs in to real server data and separates its management areas using the approved sidebar and
+phone navigation. Preview fixtures are development-only; production assets were checked to contain no sample pages.
+Account forms and standalone pages load on demand, reducing the entry bundle from 567 KB to 469 KB before gzip.
+Navigation/accessibility tests cover every real page. Screenshot review found a mobile header squeezing its
+caption beside controls and missing Overview insets; added a failing readability check and corrected both layouts.
+The private HTML panel remains while detailed Overview/moderation-list parity and the security transition are open.
+
+## 2026-11-17 — Checked backups and audited streaming downloads
+
+Reproduced the legacy backup reporting success despite an audit failure. Creation now commits audit/receipt/intent
+before a checked, synced SQLite copy is atomically published. Retry receipts survive pruning, rotation and restart;
+failed/unknown outcomes are explicit. Partial folders do not count toward retention. Downloads require an admin's
+recent private sign-in and a committed access audit before any streamed bytes. Added generated Blob clients,
+confirmation/recovery UI, failure/migration/concurrency tests and browser download proof. Schema 6 preserves older
+stop/disconnect effects; restore remains offline. Public management still awaits MFA and the nginx gate.
+
+## 2026-11-17 — Connected audit and server logs
+
+Added real staff-only audit/log routes after reproducing the missing API path. Audit pages use string IDs and keyset
+pagination/search; log reads reuse the existing secret-filtered process capture. Added generated clients/validators,
+keyboard-accessible inspection, clear stale/error/empty states and mobile browser checks. Regression tests cover
+IDs above JavaScript's safe integer limit, new inserts while paging and malformed/database failures.
+
+## 2026-11-17 — Durable graceful stop and checked live status
+
+Reproduced a stop signalling/reporting success after its audit write failed. The stop now commits audit/receipt/
+intent before signalling and binds input to a fresh per-process identity. Even an uncommitted old request cannot
+stop a replacement process. Schema 5 preserves schema 4 disconnects and records interrupted stop outcomes at startup.
+CLI retries carry both IDs; Desktop and generated React API use the same boundary. Added live version/count/health
+snapshots and a confirmation/recovery dialog. Final saves and backups are explicitly distinguished from signal acceptance.
+
+## 2026-11-17 — Transactional account deletion in the connected dashboard
+
+Reproduced deletion reporting success after a refused audit write. Account/domain cleanup, duel-log and audit
+removal now commit with the deletion audit, receipt and disconnect intent. Live state and notifications wait for
+commit. Added failure/commit/later-save tests, concurrent/restart/name-reuse retries, last-admin and permission
+checks, plus generated API/client and a typed-number confirmation dialog that resumes uncertain requests.
+The old HTML panel and CLI share the boundary; CLI deletion supports `--request-id`. Graceful stop remains next.
+
 ## Status
+
+2026-11-17, transactional moderation and recorded disconnect outcomes: failure tests reproduced a ban reporting
+success after audit failure and a verified password snapshot bypassing later moderation. Moderation now commits
+account changes, audit, receipt and disconnect intent before publication; only then are live sessions ended and
+the outcome recorded. Outcome-recording failures leave a visible pending state; real server startup marks unfinished
+effects interrupted. Retries never repeat a disconnect or reapply older standing/mute values after reconnect, lift,
+restart or audit pruning. Schema 3 migration preserves accounts/audit/receipts. Staff restrictions revoke cookie
+revisions, and both key/password admission preserve account -> session order. The React form uses generated hooks,
+explicit effects/confirmation, role checks and retained request IDs; CLI and old panel share the operations.
+
+2026-11-17, transactional settings and maintenance: failing tests reproduced false success after an audit failure
+and a maintenance message saved before an invalid deadline. Settings now prepare one snapshot and commit it with
+audit and receipt before publication. Concurrent changes preserve each other; retries survive restart/pruning,
+never restore older values, move a deadline or repeat game pushes. CLI and both panels share the boundary; old
+HTML forms retain their hidden request IDs. The generated registry supplies the React controls, including structured
+news editing, reset-to-default, checked maintenance status and safe retry after a lost response and reload.
+Failure tests include real deferred-COMMIT failure and a subsequent successful save. Public access remains disabled.
+
+2026-11-17, transactional player gifts: an audit-failure test first reproduced false success and premature game
+notifications. Card, deck-recipe and title grants now commit player state, associated D-Mail, audit and a minimal
+receipt before publishing. Card/recipe mail also survives an offline grant. Concurrent/lost-response retries never
+give duplicates, send another letter or enqueue another present; receipts survive restart and audit pruning. Counts
+are checked before changing any row, including repeated cards in a recipe. The generated staff API and React gift
+form search game metadata by name/ID, choose artwork explicitly and confirm a specific player; CLI commands retain
+request IDs. Contract and browser coverage includes rollback at every write/commit, permissions, search/error states
+and mobile layout. The disposable dashboard example now serves the actual API with a clearly sample gift catalogue,
+SQLite and a private hub, without opening game listeners.
+
+2026-11-17, key accounts: a failing audit regression reproduced false success before the fix. Creation and explicit
+key disclosure now commit account, audit and durable retry receipt together, then return the credential. Receipts
+hold a key digest and account ID rather than credentials or player names; replay cannot recreate deleted accounts.
+CLI `add-account`, `key` and `profile` retain retry IDs. The generated staff API and React dialog require admin
+permission and confirm passwordless access. The tab retains only uncertain input/ID, clears revealed keys on close,
+and supports safe recovery after a lost answer/reload. Failure, concurrency, restart, CLI, HTTP and browser tests cover it.
+
+2026-11-17, password-account setup/reset: an audit-failure regression first reproduced false success. Creation
+and reset issuance now commit the account, audit and receipt together. Caller-generated one-time codes stay out
+of durable receipts and logs, and retries return the original confirmation plus live availability. The connected
+dashboard retains an uncertain code only in the tab, verifies it after reload, and clears confirmed expired codes.
+Initial setup uses recovery to atomically save the owner’s password and private recovery code. Recovery consumes
+a still-current code once after hashing; a stale password change is refused. Roles invalidate pending resets and
+wait for initial setup; sign-out everywhere revokes staff cookies. Scripts `--recover` completes setup without
+Desktop or game files. Contract, real TLS, CLI and browser tests cover the paths.
+
+2026-11-17, staff role administration: the original audit-failure and unobserved demotion/promotion cookie tests both
+failed first. Role changes now prepare a copy and commit account, audit and durable receipt together, including
+a persisted session revision that changes only with the role. Both management interfaces reject old cookies even
+after the role is restored. The generated profile-edit API and React account dialog share the operation with the
+CLI and old panel. Confirmation, self-demotion warnings, lost response/reload/retry and moderator refusal were
+checked in the browser. Credential provisioning remains a separate slice.
+
+2026-11-16, connected account profiles: audit-failure and old-name retry tests first failed on the original operations.
+Add player, rename and country edits now prepare copies and commit profile, audit and receipt before publishing.
+Dashboard edits use numeric IDs; the CLI and old panel share them. Detail DTOs exclude authentication material and
+separate saved statistics from checked live presence/records. Countries come from the archive (a synthetic archive
+covers the contract without game files); automatic works when choices are unavailable. Regression checks cover save,
+audit, receipt and COMMIT failures, later saves/ID allocation, concurrency, slots/names, role/target rechecks, restart,
+pruning, minimal receipts and account-deletion audit cleanup. Browser checks cover lost responses, reload/CSRF/safe
+retry, actual rename/country changes, permissions, missing/deleted data and narrow-screen accessibility. Public access,
+account creation/roles/password operations and the remaining management pages are still pending.
+
+2026-11-16, transactional registration invites: audit failure and same-ID retry tests first reproduced a falsely
+successful creation and a second generated code. Invite creation now commits the prepared invite, audit and receipt
+before publishing, for the CLI (including `share --invite`), old panel and generated staff API. Admins/moderators are
+recorded as the real issuer in the invite and audit, without retaining display names in permanent receipts.
+Save/receipt/COMMIT failures, concurrency, restart/pruning, consumed invites, role changes
+and subsequent saves are covered. The connected React section shows remaining uses, expiry, issuer and claims;
+browser checks cover lost responses, reload, a CSRF refusal and the same-ID retry, validation, failed refreshes and
+mobile accessibility. Expiry is checked against RFC 3339's four-digit range. Public access and the remaining screens
+are still pending.
+
+2026-11-16, standalone dashboard branch: Give BP now prepares copies and commits balance, D-Mail, audit and a
+separate retry receipt before publishing. The first audit/mail failure regressions failed on the original code;
+`grant_contract.rs` now covers all four write failures (including a deferred constraint that fails at COMMIT),
+concurrency with duel rewards, restart, audit pruning, role rechecks, CLI `--by` changes and a real discarded HTTP
+answer followed by a server restart and retry. Schema 3 adds receipts, without player names, independently of the
+audit's retention. Public management and the rest of the React connection remain pending: [accepted plan](dashboard.md).
+
+2026-11-16, generated dashboard API: Axum/utoipa-axum collect the real staff routes without server state; a pure
+export binary, Rust drift test, pinned Orval fetch/hooks/types/Zod and a separate non-writing client drift gate are
+in place. The `/connected` page signs staff in, lists real accounts and gives BP by stable account number. Browser
+checks deliberately discard a committed grant's response, reload the page and retry the same retained key. The
+HTTP migration also preserved half-closed CLI requests (the existing discarded-response regression caught Hyper's
+default) and EOF-delimited asset downloads, and password/recovery changes invalidate staff cookies. The other pages
+remain labelled samples; no public listener, MFA, nginx or Compose is claimed by this slice.
+
+2026-11-16, separate dashboard listener: the staff JSON API and schema moved off the management socket onto an
+opt-in `--dashboard-port`, disabled by default and bound only to loopback regardless of the game's `--bind`.
+The initial management-route regression failed before implementation. Real-socket contracts now prove that a
+valid host token, even with a staff cookie and loopback peer, cannot reach host commands, restore, backups, the old
+HTML panel or game assets on this listener. CLI discovery still selects the management port; bind conflicts fail
+before opening storage, and shutdown closes every listener. The disposable example and connected browser tests use
+the separate socket. Public binding, MFA, nginx and Compose remain pending.
+
+2026-11-16, typed BOOSTERPASS code management: failing creation/removal audit regressions led to prepared copies and
+one code/audit/receipt transaction, shared by the CLI, old panel and generated staff API. Shared actor and retry
+helpers preserve Give BP's receipt format and prevent cross-operation ID reuse. Code tests cover write/COMMIT
+failures, subsequent saves, concurrency, permission changes, restart, pruning and CLI retries. Repeated HTML forms
+retain their hidden ID. The connected React page lists real codes and claims, permits admin-only creation/removal,
+keeps uncertain changes across reloads, and distinguishes definite refusals from unknown results. Browser checks
+discard committed creation/removal responses and retry safely, plus expired sessions and duplicate-code feedback.
+Pending BP and code requests also survive a rejected CSRF/session retry; its refusal does not undo an earlier commit.
 
 Platform scope: **64-bit Windows 10/11** and **Linux with Wine**. **Windows 7 support is out of scope for now**,
 for both Desktop and Scripts. Current compatibility and native Windows verification work targets Windows 10/11.

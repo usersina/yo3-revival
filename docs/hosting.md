@@ -1,5 +1,9 @@
 # Hosting a server
 
+For the separate React dashboard and container deployment, use [Docker Compose and HTTPS](docker.md).
+That Unreleased option supports public HTTPS/password sign-in for VPS testing; MFA is still pending. This page
+covers the server bundle and its existing private HTML panel.
+
 How to run `yo3-server` as an always-on service on a Linux server (a VPS, or a spare PC) from the **server bundle**,
 and how to look after it: the admin panel through an SSH tunnel, backups on and off the machine, monitoring and
 alerts, and updates. On the `beta` branch (#36, #37); the released Desktop and Scripts editions host from a PC
@@ -129,18 +133,29 @@ The paths below are the ones the unit and the example file use: the bundle in `/
 
    ```bash
    sudo -u yo3 /opt/yo3-revival/yo3-server --config /etc/yo3/server.toml add-user <your-user-id>
+   ```
+
+   `add-user` prints a one-time setup code, valid for 24 hours. On your own computer, add the server in Desktop
+   and use **Forgot password** with your User ID and that code to choose a password. Save the recovery code it
+   gives you. Terminal-only users can use `yo3-launcher --recover LINK USER --profile client.json` instead
+   ([Scripts](scripts.md#password-setup-and-recovery)); the host’s `share` command prints LINK. No game files are needed
+   for that command. Complete setup **before** assigning a staff role:
+
+   ```bash
    sudo -u yo3 /opt/yo3-revival/yo3-server --config /etc/yo3/server.toml set-role <your-user-id> admin
    ```
 
-   `add-user` prints a first password. Sign in to the panel with it (next section), and change it in the launcher.
-   Moderators get `set-role USER moderator`.
+   Sign in to the panel with the password you chose. Moderators get `set-role USER moderator`.
+   Role changes invalidate outstanding setup/reset codes; an account awaiting its first password cannot be promoted.
 
 9. **Players** sign up in the launcher with an invite code (`registration` is `invite` by default). Make codes in the
    panel's **Invites and codes**, or with `invite --uses 5 --days 7`.
 
 ## The admin panel through an SSH tunnel
 
-The panel is a web page the server serves on its loopback HTTP port (D7: no public admin page in the beta). From your
+The existing HTML panel is served on the loopback HTTP port (D7). The separate
+[React dashboard](dashboard.md) now supports public HTTPS through [nginx/Compose](docker.md) for VPS testing, with
+MFA still pending. It does not expose this panel or the host-token CLI API. To use the existing private panel from your
 own PC, open a tunnel to the server and leave it open while you use the panel:
 
 ```bash
@@ -176,8 +191,12 @@ yo3 accounts
 yo3 --by <your-user-id> ban Someone --reason "cheating" --days 7
 yo3 maintenance --in 15 --message "Updating, back in 20 minutes"
 yo3 audit --limit 20
+yo3 give-bp Someone 500 --request-id <the-id-printed-by-the-first-try>  # only to retry that exact grant after a lost answer
 yo3 delete-account Someone --yes      # a player asked for their account to go: everything kept for it, for good
 ```
+
+Give BP prints a retry ID before sending. Reuse it with the same target and amount after an uncertain answer;
+changing the audit name (`--by`) does not permit a second grant. Details: [account commands](guide.md#account-commands).
 
 A deleted account still sits in the backups until they are replaced: the newest 24 on the server (a day), and the
 off-machine copies for as long as they keep them (below). [Moderation](guide.md#moderation-and-maintenance) and [account commands](guide.md#account-commands) list them all.

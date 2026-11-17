@@ -81,8 +81,11 @@ impl Browser {
 
     /// Posts a form of `page` with that page's CSRF token; the page shown after it (its flash message).
     async fn act(&self, page: &str, to: &str, fields: &[(&str, &str)]) -> Answer {
-        let csrf = self.get(page).await.csrf();
-        let mut all = vec![("csrf", csrf.as_str())];
+        let page = self.get(page).await;
+        let csrf = page.csrf();
+        let request_id = page.body.split("name=\"request_id\" value=\"").nth(1).expect("retry ID in form").split('"').next().unwrap();
+        let mut all = vec![("csrf", csrf.as_str()), ("request_id", request_id)];
+        if let Some(code) = page.body.split("name=\"access_code\" value=\"").nth(1).and_then(|s| s.split('"').next()) { all.push(("access_code", code)); }
         all.extend_from_slice(fields);
         let done = self.post(to, &all).await;
         assert_eq!(done.status, 303, "{}", done.body);
@@ -258,6 +261,39 @@ async fn a_moderator_moderates_but_cant_change_settings_or_act_on_staff() {
 }
 
 #[tokio::test]
+async fn repeated_code_forms_use_their_hidden_receipt_id() {
+    let s = Live::staffed("code-retry").await;
+    let b = s.browser("Pegasus").await;
+    let page = b.get("/panel/invites").await;
+    let csrf = page.csrf();
+    let form_id = |page: &Answer, action: &str| {
+        let form = page.body.split("<form ").find(|p| p.split("</form>").next().unwrap().contains(&format!("name=\"action\" value=\"{action}\""))).unwrap();
+        form.split("name=\"request_id\" value=\"").nth(1).unwrap().split('"').next().unwrap().to_string()
+    };
+    let invite_id = form_id(&page, "invite");
+    let fields = [("csrf", csrf.as_str()), ("request_id", invite_id.as_str()), ("action", "invite"), ("uses", "2"), ("days", "7")];
+    for _ in 0..2 { assert_eq!(b.post("/panel/invites", &fields).await.status, 303); }
+    let invites = s.host(Op::Invites).await;
+    assert_eq!(invites["invites"].as_array().unwrap().len(), 1, "repeating the invite form must return its original code");
+    assert_eq!(invites["invites"][0]["issued_by"], "Pegasus");
+    assert_eq!(s.audit().iter().filter(|r| r.op == "invite").count(), 1);
+    let id = form_id(&page, "add-code");
+    let fields = [("csrf", csrf.as_str()), ("request_id", id.as_str()), ("action", "add-code"), ("bp", "300"), ("code", "")];
+    for _ in 0..2 { assert_eq!(b.post("/panel/invites", &fields).await.status, 303); }
+    let codes = s.host(Op::Codes).await;
+    assert_eq!(codes.as_array().unwrap().len(), 1, "repeating a generated-code form must not create another code");
+    let code = codes[0]["code"].as_str().unwrap();
+    let page = b.get("/panel/invites").await;
+    let id = form_id(&page, "remove-code");
+    let fields = [("csrf", csrf.as_str()), ("request_id", id.as_str()), ("action", "remove-code"), ("code", code)];
+    assert_eq!(b.post("/panel/invites", &fields).await.status, 303);
+    s.host(Op::AddCode { code: code.into(), bp: 300, uses: None }).await;
+    assert_eq!(b.post("/panel/invites", &fields).await.status, 303);
+    assert_eq!(s.host(Op::Codes).await.as_array().unwrap().len(), 1, "an old removal form must not delete a newly recreated code");
+    assert_eq!(s.audit().iter().filter(|r| r.op == "remove-code").count(), 1);
+}
+
+#[tokio::test]
 async fn an_admin_runs_every_pages_forms() {
     let s = Live::staffed("admin").await;
     let b = s.browser("Pegasus").await;
@@ -286,12 +322,12 @@ async fn an_admin_runs_every_pages_forms() {
     said(&renamed, "Yugi is now Atem");
     // Backups: one now, listed, downloaded as the SQLite file, and the download audited.
     let backups = b.act("/panel/backups", "/panel/backups", &[]).await;
-    said(&backups, "backup ");
+    said(&backups, "Backup completed.");
     let name = s.host(Op::Backups).await["backups"][0]["name"].as_str().unwrap().to_string();
     let file = b.get(&format!("/panel/backups/download?name={name}")).await;
     assert_eq!((file.status, file.header("content-type")), (200, Some("application/vnd.sqlite3")));
     assert!(file.body.starts_with("SQLite format 3"));
-    assert_eq!(b.get("/panel/backups/download?name=../../server.key").await.status, 404);
+    assert_eq!(b.get("/panel/backups/download?name=../../server.key").await.status, 400);
     let ops: Vec<String> = s.audit().into_iter().filter(|r| r.origin == "panel").map(|r| r.op).collect();
     for op in ["download-backup", "back-up", "set", "reset", "maintenance", "rename", "give-bp", "set-role", "add-code", "remove-code", "mute"] {
         assert!(ops.iter().any(|o| o == op), "{op} in {ops:?}");
@@ -332,10 +368,12 @@ async fn the_api_refuses_a_moderator_what_only_an_admin_may_do() {
     // The panel's role checks live in the API (Api::apply_as), so a future client can't skip them.
     let settings = std::sync::Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());
     let accounts = std::sync::Arc::new(std::sync::Mutex::new(yo3_server::accounts::Directory::new(vec![])));
+    accounts.lock().unwrap().register(logins::Login::new("Pegasus", "HASH".into(), "RECOVERY".into()), None, logins::Registration::Open).unwrap();
+    accounts.lock().unwrap().set_role("Pegasus", logins::Role::Admin).unwrap();
     let a = api::Api::new(accounts, settings, None, std::path::PathBuf::new(), "server");
     let moderator = Some(logins::Role::Moderator);
-    for op in [Op::Set { name: "start-lp".into(), value: "100".into() }, Op::Shutdown, Op::Key { who: "x".into() }, Op::BackUp,
-        Op::Maintenance { minutes: Some(1), message: None, off: false }, Op::AddUser { user: "x".into(), hash: String::new() }] {
+    for op in [Op::Set { name: "start-lp".into(), value: "100".into() }, Op::Shutdown {run_id:"not-a-run".into()}, Op::Key { who: "x".into() }, Op::BackUp,
+        Op::Maintenance { minutes: Some(1), message: None, off: false }, Op::AddUser { user: "x".into(), code: String::new().into() }] {
         assert!(!op.for_moderators(), "{op:?}");
         assert!(a.apply_as(&op, "Croquet", "panel", moderator).unwrap_err().starts_with("only an admin"), "{op:?}");
     }
@@ -413,4 +451,33 @@ async fn an_admin_deletes_an_account_only_by_typing_its_user_id() {
     assert!(!m.get("/panel/account?who=Yugi").await.body.contains("Delete account"));
     let refused = m.act("/panel/account?who=Yugi", "/panel/account", &[("who", "Yugi"), ("action", "delete-account"), ("confirm", "Yugi")]).await;
     assert!(refused.body.contains("only an admin may do that"), "{}", refused.body);
+}
+
+#[tokio::test]
+async fn an_unobserved_role_round_trip_cannot_restore_an_old_staff_cookie() {
+    let s = Live::staffed("role-round-trip").await;
+    let b = s.browser("Croquet").await;
+    s.host(Op::SetRole { user: "Croquet".into(), role: "player".into() }).await;
+    s.host(Op::SetRole { user: "Croquet".into(), role: "moderator".into() }).await;
+    assert_eq!(b.get("/panel/").await.location(), "/panel/login", "role changes must permanently revoke the old cookie, even if it was never used while demoted");
+}
+
+#[tokio::test]
+async fn repeated_settings_forms_keep_their_original_receipt_without_reapplying_an_older_value() {
+    let s=Live::staffed("settings-retry").await; let b=s.browser("Pegasus").await;
+    let page=b.get("/panel/settings").await; let csrf=page.csrf();
+    let id=page.body.split("name=\"request_id\" value=\"").nth(1).unwrap().split('"').next().unwrap();
+    let fields=[("csrf",csrf.as_str()),("request_id",id),("name","headline"),("value","Original headline")];
+    assert_eq!(b.post("/panel/settings",&fields).await.status,303);
+    s.host(Op::Set { name:"headline".into(),value:"Later headline".into() }).await;
+    assert_eq!(b.post("/panel/settings",&fields).await.status,303);
+    assert_eq!(s.setting("headline").await,"Later headline");
+    assert_eq!(s.audit().iter().filter(|r|r.op=="set" && r.target=="headline").count(),2);
+    let page=b.get("/panel/news").await; let csrf=page.csrf();
+    let id=page.body.split("name=\"request_id\" value=\"").nth(1).unwrap().split('"').next().unwrap();
+    let fields=[("csrf",csrf.as_str()),("request_id",id),("action","maintenance"),("minutes","30"),("message","Back soon")];
+    assert_eq!(b.post("/panel/news",&fields).await.status,303);
+    s.host(Op::Maintenance { minutes:None,message:None,off:true }).await;
+    assert_eq!(b.post("/panel/news",&fields).await.status,303);
+    assert_eq!(s.setting("maintenance-at").await,"0");
 }

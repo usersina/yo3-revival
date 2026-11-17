@@ -15,9 +15,13 @@
 | Read the rules, or what a server keeps about you | [Rules and privacy](rules-privacy.md)                                                                                                    |
 | Understand the project, credits or license       | [About YO3 Revival](about.md)                                                                                                            |
 
+- [One-time VPS setup](deployment.md): local Ansible bootstrap using an IP and domain; container images published after successful releases.
+- [Docker Compose on a VPS](docker.md): repeatable server/dashboard builds, HTTPS issuance and renewal, backups and restore.
+
 ## Build and contribute
 
 - [Development guide](development.md): source builds, checks, duel diagnostics and release packaging.
+- [Standalone dashboard](dashboard.md): current preview, transactional admin operations and the accepted public-management/nginx plan.
 - [Code signing policy](code-signing.md): proposed signing scope, release approval, privacy and current unsigned status.
 - [Working guide](https://github.com/usersina/yo3-revival/blob/main/AGENTS.md): repository rules, tools and live-test safety.
 - [Features](features.md): what works today, area by area, with status and how each row was verified.

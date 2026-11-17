@@ -103,6 +103,10 @@ impl Saved {
     fn same(&self, e: &Entry) -> bool { Arc::ptr_eq(&self.account, &e.account) && self.key == e.key && self.login == e.login }
 }
 
+pub(crate) struct AccountDeletion {
+    pub next: Directory, pub label: String, pub players: Vec<(u32, String)>,
+}
+
 impl Directory {
     /// The account `pred` picks, to change: only that account is copied (copy-on-write), the others stay shared.
     fn account_mut_where(&mut self, pred: impl Fn(&Account) -> bool) -> Option<&mut Account> {
@@ -149,6 +153,25 @@ impl Directory {
             d.accounts.push(Entry { key: None, login: Some(login), account: Arc::new(account) });
             Ok(user_id)
         })
+    }
+
+    /// A host-created account waits for its owner to set a password with this one-time code.
+    pub(crate) fn prepare_password_account(&self, user: &str, digest: String, expires: i64) -> Result<(Self, u32), String> {
+        self.can_register(user, None, crate::logins::Registration::Open)?;
+        self.next_user.checked_add(1).ok_or("The account number limit has been reached.")?;
+        let mut next = self.clone();
+        let account = next.create_account(&[]);
+        let user_id = account.user_id;
+        let mut login = crate::logins::Login::new(user, String::new(), crate::logins::digest(&crate::logins::new_token()));
+        login.reset = Some((digest, expires));
+        next.accounts.push(Entry { key: None, login: Some(login), account: Arc::new(account) });
+        Ok((next, user_id))
+    }
+
+    pub(crate) fn prepare_reset(&self, user_id: u32, digest: String, expires: i64) -> Result<Self, String> {
+        let mut next = self.clone();
+        next.login_mut(user_id).ok_or("No such password account.")?.reset = Some((digest, expires));
+        Ok(next)
     }
 
     /// Whether `user` could sign up now with `invite` under `mode`, without using the invite: the account requests
@@ -207,17 +230,43 @@ impl Directory {
 
     /// Signs every device of `user_id` out.
     pub fn revoke_devices(&mut self, user_id: u32) -> Result<(), String> {
-        self.atomic(|d| { d.login_mut(user_id).ok_or("no such account")?.devices.clear(); Ok(()) })
+        self.atomic(|d| { let login = d.login_mut(user_id).ok_or("no such account")?;
+            login.staff_epoch = login.staff_epoch.checked_add(1).ok_or("session revision exhausted")?; login.devices.clear(); Ok(()) })
     }
 
     /// A new password (its PHC hash): every device is signed out and any reset code is used up.
     pub fn set_password(&mut self, user_id: u32, hash: String) -> Result<(), String> {
         self.atomic(|d| {
             let login = d.login_mut(user_id).ok_or("no such account")?;
+            login.staff_epoch = login.staff_epoch.checked_add(1).ok_or("session revision exhausted")?;
             login.password = hash;
             login.devices.clear();
             login.reset = None;
             Ok(())
+        })
+    }
+
+    /// The password verified outside the lock must still be current when its replacement commits.
+    pub fn change_password_if_current(&mut self, user_id: u32, expected: &crate::logins::Login, hash: String) -> Result<(), String> {
+        let login = self.login_by_id(user_id).ok_or("invalid_credentials")?;
+        if login.password != expected.password || login.recovery != expected.recovery || login.staff_epoch != expected.staff_epoch { return Err("invalid_credentials".into()) }
+        self.set_password(user_id, hash)
+    }
+
+    /// Consume a still-current recovery/reset code with the password change in one save. Hashing happens outside the lock.
+    pub fn complete_recovery(&mut self, user_id: u32, expected: &crate::logins::Login, code: &str, hash: String, recovery: String, now: i64) -> Result<bool, String> {
+        self.atomic(|d| {
+            let login = d.login_mut(user_id).ok_or("invalid_recovery")?;
+            if login.password != expected.password || login.recovery != expected.recovery || login.reset != expected.reset || login.staff_epoch != expected.staff_epoch {
+                return Err("invalid_recovery".into())
+            }
+            let by_recovery = login.recovery == code;
+            if !by_recovery && !login.reset.as_ref().is_some_and(|(digest, until)| digest == code && *until > now) { return Err("invalid_recovery".into()) }
+            let rotate = by_recovery || login.password.is_empty();
+            login.staff_epoch = login.staff_epoch.checked_add(1).ok_or("session revision exhausted")?;
+            login.password = hash; login.devices.clear(); login.reset = None;
+            if rotate { login.recovery = recovery; }
+            Ok(rotate)
         })
     }
 
@@ -237,7 +286,29 @@ impl Directory {
     pub fn set_role(&mut self, user: &str, role: crate::logins::Role) -> Result<(), String> {
         let at = self.login_at(user).ok_or("no such User ID")?;
         let user_id = self.accounts[at].account.user_id;
-        self.atomic(|d| { d.login_mut(user_id).ok_or("no such account")?.role = role; Ok(()) })
+        let mut next = self.prepare_role(user_id, role)?;
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok(())
+    }
+
+    pub(crate) fn prepare_role(&self, user_id: u32, role: crate::logins::Role) -> Result<Self, String> {
+        let mut next = self.clone();
+        let login = next.login_mut(user_id).ok_or("Only password accounts can have a staff role.")?;
+        if login.password.is_empty() && role != crate::logins::Role::Player { return Err("Finish password setup before assigning a staff role.".into()) }
+        if login.role != role {
+            login.staff_epoch = login.staff_epoch.checked_add(1).ok_or("The staff session revision limit has been reached.")?;
+            login.role = role;
+            login.reset = None;
+        }
+        Ok(next)
+    }
+
+    /// Stage a moderation change without publishing or saving it ahead of its audit and retry receipt.
+    pub(crate) fn prepare_login(&self, user: u32, change: impl FnOnce(&mut crate::logins::Login) -> Result<(),String>) -> Result<Self,String> {
+        let mut next = self.clone();
+        change(next.login_mut(user).ok_or("This is a key account: only password accounts have a standing, mute or device sign-out." )?)?;
+        Ok(next)
     }
 
     /// Sets the standing of User ID `user` (active, restricted or banned; #26 makes the moderation around it).
@@ -272,9 +343,18 @@ impl Directory {
 
     /// Makes an invite code: for `uses` accounts (any number if `None`), until `expires`, recorded as `issued_by`'s.
     pub fn add_invite(&mut self, uses: Option<u32>, expires: Option<i64>, issued_by: &str) -> Result<String, String> {
-        let code = crate::logins::new_code();
-        let invite = crate::logins::Invite { code: code.clone(), uses, expires, issued_by: issued_by.into(), used_by: vec![] };
-        self.atomic(|d| { d.invites.push(invite); Ok(code) })
+        let (mut next, code) = self.prepare_invite(uses, expires, issued_by);
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok(code)
+    }
+
+    pub(crate) fn prepare_invite(&self, uses: Option<u32>, expires: Option<i64>, issued_by: &str) -> (Self, String) {
+        let mut code = crate::logins::new_code();
+        while self.invites.iter().any(|i| i.code == code) { code = crate::logins::new_code(); }
+        let mut next = self.clone();
+        next.invites.push(crate::logins::Invite { code: code.clone(), uses, expires, issued_by: issued_by.into(), used_by: vec![] });
+        (next, code)
     }
 
     /// The invite codes, oldest first.
@@ -416,23 +496,38 @@ impl Directory {
     /// Makes an account found by key only, with players named `names` (at most four, made unique; the starting
     /// players when empty); its key.
     pub fn add_account(&mut self, names: &[String]) -> Result<String, String> {
-        let names: Vec<String> = if names.is_empty() {
-            self.player_names.iter().take(MAX_PLAYERS).map(|n| self.free_name(n)).collect()
-        } else {
-            names.to_vec()
-        };
-        if names.len() > MAX_PLAYERS || names.iter().any(|n| n.trim().is_empty() || n.chars().count() > MAX_NAME || n.chars().any(char::is_control)) {
-            return Err(format!("an account takes one to {MAX_PLAYERS} players with names of 1 to {MAX_NAME} characters"));
-        }
+        let (mut next, user) = self.prepare_key_account(names)?;
+        let key = next.key_for_user(user).expect("prepared key").to_owned();
+        next.persist().map_err(|e| format!("could not save accounts: {e}"))?;
+        *self = next;
+        Ok(key)
+    }
+
+    pub(crate) fn prepare_key_account(&self, names: &[String]) -> Result<(Self, u32), String> {
+        let names = if names.is_empty() { self.player_names.iter().take(MAX_PLAYERS).map(|n| self.free_name(n)).collect::<Vec<_>>() }
+            else { names.to_vec() };
+        let names = names.iter().map(|n| checked_name(n)).collect::<Result<Vec<_>, _>>()?;
+        if names.len() > MAX_PLAYERS { return Err("An account can have at most four players.".into()) }
         if let Some(n) = names.iter().enumerate().find_map(|(i, n)| (self.taken(n) || names[..i].iter().any(|m| m.eq_ignore_ascii_case(n))).then_some(n)) {
-            return Err(format!("the name {n:?} is taken"));
+            return Err(format!("The player name {n:?} is taken."))
         }
-        self.atomic(|d| {
-            let account = d.create_account(&names);
-            let key = new_key();
-            d.accounts.push(Entry { key: Some(key.clone()), login: None, account: Arc::new(account) });
-            Ok(key)
-        })
+        self.next_user.checked_add(1).ok_or("The account number limit has been reached.")?;
+        self.next_player.checked_add(names.len() as u32).ok_or("The player number limit has been reached.")?;
+        let mut next = self.clone();
+        let account = next.create_account(&names);
+        let user = account.user_id;
+        next.accounts.push(Entry { key: Some(new_key()), login: None, account: Arc::new(account) });
+        Ok((next, user))
+    }
+
+    pub(crate) fn key_for_user(&self, user: u32) -> Option<&str> {
+        self.accounts.iter().find(|e| e.account.user_id == user).and_then(|e| e.key.as_deref())
+    }
+    pub(crate) fn prepare_key(&self, user: u32) -> Result<Self, String> {
+        let mut next = self.clone();
+        let entry = next.accounts.iter_mut().find(|e| e.account.user_id == user).ok_or("No such account.")?;
+        if entry.key.is_none() { entry.key = Some(new_key()); }
+        Ok(next)
     }
 
     /// Whether `key` is an account's.
@@ -450,12 +545,13 @@ impl Directory {
 
     /// The key of the account at `who` (a User ID, or a player's name), made if the account has none.
     pub fn key_of(&mut self, who: &str) -> Result<String, String> {
-        let at = self.find(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
-        if let Some(key) = &self.accounts[at].key {
-            return Ok(key.clone());
-        }
-        let key = new_key();
-        self.atomic(|d| { d.accounts[at].key = Some(key.clone()); Ok(key) })
+        let user = self.user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
+        if let Some(key) = self.key_for_user(user) { return Ok(key.into()) }
+        let mut next = self.prepare_key(user)?;
+        let key = next.key_for_user(user).expect("prepared key").to_owned();
+        next.persist().map_err(|e| format!("could not save accounts: {e}"))?;
+        *self = next;
+        Ok(key)
     }
 
     /// The account an admin argument names: a User ID, or a player's name (ignoring case).
@@ -496,22 +592,26 @@ impl Directory {
 
     /// Gives account `user_id` a player named `name`.
     pub fn add_player_to(&mut self, user_id: u32, name: &str) -> Result<(), String> {
-        if name.is_empty() || self.taken(name) {
-            return Err(format!("the name {name:?} is taken or empty"));
-        }
-        self.atomic(|d| {
-            let id = d.next_player;
-            let Some(a) = d.account_mut_where(|a| a.user_id == user_id) else { return Err(format!("no account {user_id}")) };
-            if a.players.len() >= MAX_PLAYERS {
-                return Err(format!("account {user_id} already has {MAX_PLAYERS} players"));
-            }
-            let mut p = Player::new(id, name);
-            p.index = free_slot(&a.players).unwrap_or_default();
-            p.country.clone_from(&a.country);
-            a.players.push(p);
-            d.next_player += 1;
-            Ok(())
-        })
+        let (mut next, _) = self.prepare_add_player(user_id, name)?;
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok(())
+    }
+
+    pub(crate) fn prepare_add_player(&self, user_id: u32, name: &str) -> Result<(Self, u32), String> {
+        let name = checked_name(name)?;
+        if self.taken(&name) { return Err("That player name is already taken.".into()) }
+        let id = self.next_player;
+        let following = id.checked_add(1).ok_or("The player number limit has been reached.")?;
+        let mut next = self.clone();
+        let a = next.account_mut_where(|a| a.user_id == user_id).ok_or("No such account.")?;
+        let slot = free_slot(&a.players).filter(|_| a.players.len() < MAX_PLAYERS).ok_or("This account already has four players.")?;
+        let mut player = Player::new(id, &name);
+        player.index = slot;
+        player.country.clone_from(&a.country);
+        a.players.push(player);
+        next.next_player = following;
+        Ok((next, id))
     }
 
     /// Sets the country of account `user_id` (see `set_country`).
@@ -559,19 +659,23 @@ impl Directory {
     }
 
     fn set_country_at(&mut self, at: Option<usize>, code: &str) -> Result<(), String> {
+        let user = at.map(|i| self.accounts[i].account.user_id).ok_or("no such account")?;
+        let mut next = self.prepare_country(user, code)?;
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok(())
+    }
+
+    pub(crate) fn prepare_country(&self, user_id: u32, code: &str) -> Result<Self, String> {
         let code = code.trim().to_ascii_uppercase();
         if !code.is_empty() && !(code.len() == 2 && code.bytes().all(|b| b.is_ascii_uppercase())) {
-            return Err(format!("{code:?} is not a two-letter country code"));
+            return Err("Use a two-letter country code, or automatic.".into())
         }
-        let Some(at) = at else { return Err("no such account".into()) };
-        self.atomic(|d| {
-            let account = Arc::make_mut(&mut d.accounts[at].account);
-            account.country = code;
-            for p in &mut account.players {
-                p.country.clone_from(&account.country);
-            }
-            Ok(())
-        })
+        let mut next = self.clone();
+        let account = next.account_mut_where(|a| a.user_id == user_id).ok_or("No such account.")?;
+        account.country = code;
+        for p in &mut account.players { p.country.clone_from(&account.country); }
+        Ok(next)
     }
 
     /// The account `user_id`, as kept now.
@@ -619,28 +723,38 @@ impl Directory {
     /// devices, and its players with their collections and decks. An invite it issued no longer names it. What it was
     /// known by (its User ID, or "#ID" for a key account) and its players.
     pub fn delete_account(&mut self, user_id: u32) -> Result<(String, Vec<(u32, String)>), String> {
-        self.atomic(|d| {
-            let at = d.accounts.iter().position(|e| e.account.user_id == user_id).ok_or_else(|| format!("no account {user_id}"))?;
-            let entry = d.accounts.remove(at);
-            let label = entry.login.as_ref().map_or_else(|| format!("#{user_id}"), |l| l.user.clone());
-            if let Some(login) = &entry.login {
-                for invite in d.invites.iter_mut().filter(|i| i.issued_by.eq_ignore_ascii_case(&login.user)) { invite.issued_by = "(a deleted account)".into() }
-            }
-            Ok((label, entry.account.players.iter().map(|p| (p.player_id, p.name.clone())).collect()))
-        })
+        let AccountDeletion { mut next, label, players } = self.prepare_delete_account(user_id)?;
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok((label, players))
+    }
+
+    pub(crate) fn prepare_delete_account(&self, user_id: u32) -> Result<AccountDeletion, String> {
+        let mut next = self.clone();
+        let at = next.accounts.iter().position(|e| e.account.user_id == user_id).ok_or_else(|| format!("no account {user_id}"))?;
+        let entry = next.accounts.remove(at);
+        let label = entry.login.as_ref().map_or_else(|| format!("#{user_id}"), |l| l.user.clone());
+        if let Some(login) = &entry.login {
+            for invite in next.invites.iter_mut().filter(|i| i.issued_by.eq_ignore_ascii_case(&login.user)) { invite.issued_by = "(a deleted account)".into() }
+        }
+        Ok(AccountDeletion { next, label, players: entry.account.players.iter().map(|p| (p.player_id, p.name.clone())).collect() })
     }
 
     /// Renames a player (names are unique, ignoring case).
     pub fn rename(&mut self, old: &str, new: &str) -> Result<(), String> {
-        if new.is_empty() || (self.taken(new) && !old.eq_ignore_ascii_case(new)) {
-            return Err(format!("the name {new:?} is taken or empty"));
-        }
-        self.atomic(|d| {
-            let player = d.account_mut_where(|a| a.players.iter().any(|p| p.name.eq_ignore_ascii_case(old))).and_then(|a| a.players.iter_mut().find(|p| p.name.eq_ignore_ascii_case(old)));
-            let Some(player) = player else { return Err(format!("no player named {old:?}")) };
-            player.name = new.to_string();
-            Ok(())
-        })
+        let id = self.player_id_named(old).ok_or_else(|| format!("no player named {old:?}"))?;
+        let mut next = self.prepare_rename(id, new)?;
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok(())
+    }
+
+    pub(crate) fn prepare_rename(&self, player_id: u32, new: &str) -> Result<Self, String> {
+        let new = checked_name(new)?;
+        if self.player_id_named(&new).is_some_and(|id| id != player_id) { return Err("That player name is already taken.".into()) }
+        let mut next = self.clone();
+        next.player_mut(player_id).ok_or("No such player.")?.name = new;
+        Ok(next)
     }
 
     /// A player by id.
@@ -656,6 +770,13 @@ impl Directory {
             change(p.ok_or_else(|| format!("no player {player_id}"))?);
             Ok(())
         })
+    }
+
+    /// A staged player edit. The caller commits it together with mail, audit and receipt before publishing.
+    pub(crate) fn prepare_player(&self, id: u32, change: impl FnOnce(&mut Player) -> Result<(), String>) -> Result<Self, String> {
+        let mut next = self.clone();
+        change(next.player_mut(id).ok_or("The player no longer exists.")?)?;
+        Ok(next)
     }
 
     /// Pays `bp` into the account of a player; its new BP, if the player has an account and the payment was saved.
@@ -696,6 +817,16 @@ impl Directory {
         })
     }
 
+    /// A BP grant prepared on a copy. Nothing is written or published until its caller commits the whole operation.
+    pub(crate) fn prepare_bp(&self, user_id: u32, bp: u32) -> Result<(Self, u32), String> {
+        let mut next = self.clone();
+        let account = next.accounts.iter_mut().find(|e| e.account.user_id == user_id).ok_or("the account is gone")?;
+        let account = Arc::make_mut(&mut account.account);
+        let total = account.dpoint.checked_add(bp).ok_or("BP balance limit exceeded")?;
+        account.dpoint = total;
+        Ok((next, total))
+    }
+
     /// The host's BOOSTERPASS codes.
     pub fn codes(&self) -> &[BpCode] {
         &self.codes
@@ -704,6 +835,13 @@ impl Directory {
     /// Makes a BOOSTERPASS code worth `bp`, usable by `uses` accounts (any number when none), each once. It must fit the
     /// game's window ([`CODE_LEN`] letters and digits) and differ from the others, whatever the case.
     pub fn add_code(&mut self, code: &str, bp: u32, uses: Option<u32>) -> Result<(), String> {
+        let mut next = self.prepare_add_code(code, bp, uses)?;
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok(())
+    }
+
+    pub(crate) fn prepare_add_code(&self, code: &str, bp: u32, uses: Option<u32>) -> Result<Self, String> {
         if code.len() != CODE_LEN || !code.bytes().all(|b| b.is_ascii_alphanumeric()) {
             return Err(format!("a code is {CODE_LEN} letters and digits (the game's window has {CODE_LEN} boxes): {code:?}"));
         }
@@ -714,7 +852,9 @@ impl Directory {
             return Err(format!("the code {code} exists already"));
         }
         let code = BpCode { code: code.to_string(), bp, uses, used_by: vec![], claimed_at: vec![] };
-        self.atomic(|d| { d.codes.push(code); Ok(()) })
+        let mut next = self.clone();
+        next.codes.push(code);
+        Ok(next)
     }
 
     /// A new random BOOSTERPASS code that fits the game's window: capital letters and digits without look-alikes.
@@ -730,8 +870,17 @@ impl Directory {
 
     /// Removes a BOOSTERPASS code (any case).
     pub fn remove_code(&mut self, code: &str) -> Result<(), String> {
+        let mut next = self.prepare_remove_code(code)?;
+        next.persist().map_err(|e| format!("change was not saved: {e}"))?;
+        *self = next;
+        Ok(())
+    }
+
+    pub(crate) fn prepare_remove_code(&self, code: &str) -> Result<Self, String> {
         let at = self.code_at(code).ok_or_else(|| format!("no code {code}"))?;
-        self.atomic(|d| { d.codes.remove(at); Ok(()) })
+        let mut next = self.clone();
+        next.codes.remove(at);
+        Ok(next)
     }
 
     /// The game's BOOSTERPASS window: account `user_id` enters `code` (any case). The BP got and the account's BP now;
@@ -863,7 +1012,7 @@ impl Directory {
 
     /// Saves what changed since the last save. In server.db only the accounts whose `Arc` or fields changed are
     /// serialized and written (#22); outside it (tests, tools) the whole file.
-    fn persist(&mut self) -> io::Result<()> {
+    pub(crate) fn persist(&mut self) -> io::Result<()> {
         let Some(file) = self.file.clone() else { return Ok(()) };
         let codes: Vec<Json> = self.codes.iter().map(|c| json!({ "code": c.code, "bp": c.bp, "uses": c.uses, "used_by": c.used_by, "claimed_at": c.claimed_at })).collect();
         let mut whole = json!({ "next_user": self.next_user, "next_player": self.next_player, "bp_codes": codes, "invites": self.invites });
@@ -886,6 +1035,14 @@ impl Directory {
 }
 
 /// The first slot of the Select Player screen no player has.
+fn checked_name(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() || name.chars().count() > MAX_NAME || name.chars().any(char::is_control) {
+        return Err(format!("Use 1 to {MAX_NAME} printable characters for a player name."))
+    }
+    Ok(name.into())
+}
+
 fn free_slot(players: &[Player]) -> Option<u32> {
     (0..MAX_PLAYERS as u32).find(|i| players.iter().all(|p| p.index != *i))
 }

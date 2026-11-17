@@ -7,7 +7,9 @@
 //!
 //! Each operation is one function ([`Api::apply`]): it checks its values, applies the change to the running server's
 //! state (in memory and in the database together), then writes an audit row: who, from where, what, on what, the
-//! values before and after. With no server running, the CLI runs the same function on the data folder itself (it
+//! values before and after. Give BP commits the change, mail, audit and retry receipt together before publishing.
+//! Invite/code, profile/role, credential, gift and live-setting changes also commit audit and receipt with their change. Other operations are
+//! being adapted. With no server running, the CLI runs on the data folder (it
 //! holds the folder's lock meanwhile), and those changes are audited too, from "offline".
 //!
 //! No player connection reaches these routes: the TLS HTTP role forwards only the game's files (`transport.rs`), and
@@ -26,6 +28,23 @@ use crate::admin::{Live, Response, same};
 use crate::front::Hub;
 use crate::lock::Locked;
 use crate::store::AuditRow;
+
+pub mod give_bp;
+pub mod mutation;
+pub mod codes;
+pub mod invites;
+pub mod profiles;
+pub mod credentials;
+pub mod keys;
+pub mod gifts;
+pub mod settings;
+pub mod moderation;
+pub mod deletion;
+pub mod server;
+pub mod observability;
+pub mod backups;
+pub use give_bp::{GiveBpRequest, GiveBpResult};
+pub use mutation::{Actor, MutationError, MutationErrorCode};
 
 /// The path every operation is under.
 pub const PREFIX: &str = "/api/admin/v1/";
@@ -62,16 +81,16 @@ pub enum Op {
     RemoveCode { code: String },
     Invite { #[serde(default)] uses: Option<u32>, #[serde(default)] days: Option<u32> },
     Invites,
-    /// A password account made by the host: `hash` is its first password's PHC string, made by the client.
-    AddUser { user: String, hash: String },
-    ResetCode { user: String },
+    /// Provision a password account with a caller-generated one-time setup code.
+    AddUser { user: String, code: credentials::AccessCode },
+    ResetCode { user: String, code: credentials::AccessCode },
     SetRole { user: String, role: String },
     Settings,
     Set { name: String, value: String },
     Reset { name: String },
     /// The newest audit rows (50 when no limit is given).
     Audit { #[serde(default)] limit: Option<u32> },
-    Shutdown,
+    Shutdown { run_id: String },
     /// Moderation (#26). WHO is a User ID or one of its players' names.
     /// Disconnects the account's game: it shows its own disconnect dialog.
     Kick { who: String },
@@ -102,6 +121,8 @@ pub enum Op {
 }
 
 impl Op {
+    /// Operations migrated to a committed change/audit/receipt boundary.
+    fn receipted(&self) -> bool { matches!(self, Self::BackUp | Self::Shutdown { .. } | Self::DeleteAccount { .. } | Self::Kick { .. } | Self::Ban { .. } | Self::Restrict { .. } | Self::Lift { .. } | Self::Mute { .. } | Self::Unmute { .. } | Self::SignOut { .. } | Self::Set { .. } | Self::Reset { .. } | Self::Maintenance { .. } | Self::GiveCards { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
     /// Its name in the API's path and the audit log.
     pub fn name(&self) -> String {
         serde_json::to_value(self).ok().and_then(|v| v["op"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -125,7 +146,7 @@ impl Op {
     /// The account it acts on, if it acts on one (a User ID or a player's name).
     fn account(&self) -> Option<&str> {
         match self {
-            Op::ResetCode { user } | Op::SetRole { user, .. } => Some(user),
+            Op::ResetCode { user, .. } | Op::SetRole { user, .. } => Some(user),
             Op::Rename { old, .. } => Some(old),
             Op::Kick { who } | Op::Ban { who, .. } | Op::Restrict { who, .. } | Op::Lift { who } | Op::Mute { who, .. }
             | Op::Unmute { who } | Op::SignOut { who } | Op::GiveBp { who, .. } | Op::SetCountry { who, .. } | Op::Key { who }
@@ -141,7 +162,7 @@ impl Op {
             Op::AddPlayer { who, .. } | Op::Key { who } | Op::SetCountry { who, .. } | Op::GiveBp { who, .. } => who.clone(),
             Op::Rename { old, .. } => old.clone(),
             Op::GrantTitle { player, .. } | Op::GiveCards { player, .. } | Op::GiveRecipe { player, .. } => player.clone(),
-            Op::AddUser { user, .. } | Op::ResetCode { user } | Op::SetRole { user, .. } => user.clone(),
+            Op::AddUser { user, .. } | Op::ResetCode { user, .. } | Op::SetRole { user, .. } => user.clone(),
             Op::Kick { who } | Op::Ban { who, .. } | Op::Restrict { who, .. } | Op::Lift { who } | Op::Mute { who, .. }
             | Op::Unmute { who } | Op::SignOut { who } => who.clone(),
             Op::Set { name, .. } | Op::Reset { name } => name.clone(),
@@ -158,6 +179,7 @@ impl Op {
         let fields = v.as_object_mut()?;
         fields.remove("op");
         fields.remove("hash");
+        if matches!(self, Self::AddUser { .. } | Self::ResetCode { .. }) { fields.remove("code"); }
         (!fields.is_empty()).then_some(v)
     }
 }
@@ -208,14 +230,17 @@ pub struct Api {
     gifts: std::sync::OnceLock<Arc<crate::gifts::Gifts>>,
     /// "server" for a running server's operations, "offline" for the CLI's on a stopped server's folder.
     pub origin: &'static str,
+    run_id: String,
     memory: Mutex<Vec<AuditRow>>,
+    effects: Mutex<std::collections::HashMap<(String,String), crate::store::EffectState>>,
+    receipts: Mutex<std::collections::HashMap<(String, String), crate::store::Receipt>>,
 }
 
 type Done = Result<(Value, Option<Value>, Option<Value>), String>;
 
 impl Api {
     pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, data_dir: Option<PathBuf>, game_dir: PathBuf, origin: &'static str) -> Api {
-        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), origin, memory: Mutex::default() }
+        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), origin, run_id: crate::logins::new_token(), memory: Mutex::default(), effects: Mutex::default(), receipts: Mutex::default() }
     }
 
     /// Runs `op` for `actor` and writes its audit row: its result, or why it was refused.
@@ -225,6 +250,11 @@ impl Api {
     /// runs only [`Op::for_moderators`], and not on a staff account (no moderator resets an admin's password). With no
     /// role, the host's token holder, everything.
     pub fn apply_as(&self, op: &Op, actor: &str, origin: &str, role: Option<crate::logins::Role>) -> Result<Value, String> {
+        self.apply_request(op, actor, origin, role, &crate::logins::new_token())
+    }
+
+    /// The same operation with a caller's stable retry ID for migrated transactional mutations.
+    pub fn apply_request(&self, op: &Op, actor: &str, origin: &str, role: Option<crate::logins::Role>, request_id: &str) -> Result<Value, String> {
         use crate::logins::Role;
         match role {
             None | Some(Role::Admin) => {}
@@ -237,20 +267,16 @@ impl Api {
                 if staff && !own && !matches!(op, Op::Account { .. }) { return Err("a moderator can't act on an admin's or another moderator's account".into()) }
             }
         }
+        if op.receipted() {
+            let caller = if role.is_none() { Actor::Host { by: actor } } else {
+                let id = self.accounts.locked().login_of(actor).map(|(id, _)| id).ok_or("only an admin may do that")?;
+                Actor::Staff { user_id: id }
+            };
+            return self.typed_change(op, request_id, caller, origin).map_err(|e| e.to_string())
+        }
         let (result, before, after) = self.run(op)?;
         if op.changes() {
-            let (target, detail) = match op {
-                // A deleted account: the rows about it go, and this one names only its User ID (#39).
-                Op::DeleteAccount { .. } => {
-                    let names: Vec<String> = result["names"].as_array().into_iter().flatten().filter_map(|n| n.as_str().map(str::to_owned)).collect();
-                    match &self.data_dir {
-                        Some(dir) => if let Err(e) = crate::store::forget_in_audit(dir, &names) { tracing::error!("audit rows of a deleted account not removed: {e}") },
-                        None => self.memory.locked().retain(|r| !crate::store::mentions(&names, &r.target, r.detail.as_ref())),
-                    }
-                    (result["deleted"].as_str().unwrap_or_default().to_string(), None)
-                }
-                _ => (op.target(), op.detail()),
-            };
+            let (target, detail) = (op.target(), op.detail());
             let row = AuditRow { at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true), actor: actor.into(),
                 origin: origin.into(), op: op.name(), target, before, after, detail };
             match &self.data_dir {
@@ -259,6 +285,32 @@ impl Api {
             }
         }
         Ok(result)
+    }
+
+    fn typed_change(&self, op: &Op, id: &str, actor: Actor<'_>, origin: &str) -> Result<Value, MutationError> {
+        match op {
+            Op::BackUp => self.create_backup(&backups::CreateBackupRequest {},id,actor,origin).and_then(|r| {
+                if r.backup==crate::store::EffectState::Failed {return Err(MutationError::new(MutationErrorCode::PersistenceFailed,"Backup failed. Inspect the server logs; retrying this ID only checks the saved result."))}
+                let mut value=json!(r.result);value["backup"]=json!(r.backup);value["message"]=json!(if r.backup==crate::store::EffectState::Completed {"Backup completed."}else{"Backup outcome unknown. Inspect the backup list and server logs."});Ok(value)
+            }),
+            Op::Shutdown { run_id } => self.request_stop(&server::StopRequest { run_id: run_id.clone() }, id, actor, origin).map(|r| {
+                let mut value=json!(r.result);value["stop"]=json!(r.stop);value["stopping"]=json!(true);value
+            }),
+            Op::DeleteAccount { .. } => self.named_deletion(op, id, actor, origin),
+            Op::Kick { .. } | Op::Ban { .. } | Op::Restrict { .. } | Op::Lift { .. } | Op::Mute { .. } | Op::Unmute { .. } | Op::SignOut { .. } => self.named_moderation(op, id, actor, origin),
+            Op::Set { .. } | Op::Reset { .. } | Op::Maintenance { .. } => self.named_setting(op, id, actor, origin),
+            Op::GiveBp { who, amount } => self.give_bp(&GiveBpRequest { who: who.clone(), amount: *amount }, id, actor, origin).map(|r| json!(r)),
+            Op::AddCode { code, bp, uses } => self.create_bp_code(&codes::CreateBpCodeRequest {
+                code: (!code.trim().is_empty()).then(|| code.trim().to_string()), bp: *bp, uses: *uses,
+            }, id, actor, origin).map(|r| json!(r)),
+            Op::RemoveCode { code } => self.remove_bp_code(&codes::RemoveBpCodeRequest { code: code.trim().to_string() }, id, actor, origin).map(|r| json!(r)),
+            Op::Invite { uses, days } => self.create_invite(&invites::CreateInviteRequest { uses: *uses, days: *days }, id, actor, origin).map(|r| json!(r)),
+            Op::AddPlayer { .. } | Op::Rename { .. } | Op::SetCountry { .. } | Op::SetRole { .. } => self.edit_named_account(op, id, actor, origin),
+            Op::AddUser { .. } | Op::ResetCode { .. } => self.issue_named_code(op, id, actor, origin),
+            Op::CreateAccount { .. } | Op::Key { .. } => self.named_key_account(op, id, actor, origin),
+            Op::GiveCards { .. } | Op::GiveRecipe { .. } | Op::GrantTitle { .. } => self.named_gift(op, id, actor, origin),
+            _ => Err(MutationError::new(MutationErrorCode::InvalidRequest, "This operation has not migrated to the typed mutation boundary.")),
+        }
     }
 
     /// Writes an audit row for something that isn't an operation (the panel's backup download).
@@ -279,27 +331,6 @@ impl Api {
         }
     }
 
-    /// Ends the sessions of `user_id`: their game shows its own disconnect dialog.
-    fn end_sessions(&self, user_id: u32) {
-        if let Some(sessions) = &self.sessions { sessions.locked().logout_user(user_id) }
-    }
-
-    /// What a changed setting does at once on a running server: the news and the maintenance countdown are pushed to
-    /// everyone online (the game takes 0x21FC whenever it arrives: R3, #26).
-    fn after_setting(&self, name: &str) {
-        if name.trim().eq_ignore_ascii_case("audit-keep-days") && let Some(dir) = &self.data_dir {
-            match crate::store::prune_audit(dir, self.settings.now().audit_keep_days) {
-                Ok(n) if n > 0 => tracing::info!("audit log: {n} row(s) older than audit-keep-days removed"),
-                Ok(_) => {}
-                Err(e) => tracing::error!("audit log not pruned: {e}"),
-            }
-        }
-        let pushed = ["news", "maintenance-at", "maintenance-message"];
-        let (Some(hub), true) = (&self.hub, pushed.iter().any(|n| n.eq_ignore_ascii_case(name.trim()))) else { return };
-        let info = crate::front::information(&self.settings.now(), self.status.engine_problem.is_some(), crate::logins::now());
-        hub.locked().push_everyone(&info);
-    }
-
     /// Uses `gifts` instead of the game's cards and recipes (tests).
     pub fn with_gifts(self, gifts: crate::gifts::Gifts) -> Api {
         let _ = self.gifts.set(Arc::new(gifts));
@@ -312,14 +343,6 @@ impl Api {
         Ok(self.gifts.get_or_init(|| Arc::new(crate::gifts::Gifts::from_game(&data))).clone())
     }
 
-    /// Tells a player of a gift on a running server (`Hub::host_gift`): a D-Mail, their new collection when the gift holds
-    /// cards, and `present` for their PresentWindow.
-    fn tell_gift(&self, player: Option<crate::front::Player>, title: &str, body: String, cards: bool, present: Option<crate::shop::Present>) {
-        let (Some(hub), Some(player)) = (&self.hub, player) else { return };
-        let trunk = self.world.as_ref().filter(|_| cards).map(|w| crate::trade::trunk(w, &player));
-        hub.locked().host_gift((player.player_id, &player.name), title, body, trunk.as_ref(), present);
-    }
-
     fn titles(&self) -> Result<Arc<crate::titles::TitleData>, String> {
         if let Some(t) = &self.titles { return Ok(t.clone()) }
         let data = yo3_data::GameData::load(&self.game_dir).map_err(|e| format!("the game's titles: {e}"))?;
@@ -328,8 +351,6 @@ impl Api {
 
     /// The operation itself: its result, and the values before and after the change.
     fn run(&self, op: &Op) -> Done {
-        let message = |text: String| json!({ "message": text });
-        let plain = |r: Result<String, String>| r.map(|t| (message(t), None, None));
         match op {
             Op::Status => {
                 let (players, online, duels) = match &self.hub {
@@ -337,7 +358,7 @@ impl Api {
                     None => (json!([]), 0, 0),
                 };
                 let backup = self.data_dir.as_deref().and_then(last_backup);
-                Ok((json!({ "running": self.hub.is_some(), "ready": self.status.engine_problem.is_none(), "engine_problem": self.status.engine_problem,
+                Ok((json!({ "run_id": self.run_id, "can_stop": self.shutdown.is_some(), "running": self.hub.is_some(), "ready": self.status.engine_problem.is_none(), "engine_problem": self.status.engine_problem,
                     "listen": self.status.listen.map(|l| l.to_string()), "release": yo3_tunnel::BUILD_VERSION, "diagnostic_id": self.status.diagnostic_id,
                     "players": players, "online": online, "duels": duels, "engines": crate::engine::running(),
                     "uptime_seconds": self.status.started.map(|t| t.elapsed().as_secs()), "memory_bytes": memory_bytes(),
@@ -353,12 +374,7 @@ impl Api {
                 }).collect();
                 Ok((json!({ "backups": rows }), None, None))
             }
-            Op::BackUp => {
-                let dir = self.data_dir.as_ref().ok_or("this server keeps no data folder")?;
-                crate::store::back_up(dir).map_err(|e| format!("the backup failed: {e}"))?;
-                let name = last_backup(dir).map(|b| b.0).unwrap_or_default();
-                Ok((json!({ "name": name, "message": format!("backup {name} taken") }), None, Some(json!(name))))
-            }
+            Op::BackUp => Err("backups require the typed mutation boundary".into()),
             Op::Logs { limit, problems } => {
                 Ok((json!({ "lines": crate::recent::lines(limit.unwrap_or(200).min(crate::recent::KEEP as u32) as usize, *problems) }), None, None))
             }
@@ -384,112 +400,11 @@ impl Api {
                     "reset_pending": login.as_ref().and_then(|l| l.reset.as_ref()).is_some_and(|(_, until)| *until > now),
                     "players": players }), None, None))
             }
-            Op::DeleteAccount { who } => {
-                // Hub first, then accounts, as everywhere (duel results pay BP).
-                let mut hub = self.hub.as_ref().map(|h| h.locked());
-                let user_id = self.accounts.locked().user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
-                let (label, players) = self.accounts.locked().delete_account(user_id)?;
-                let ids: Vec<u32> = players.iter().map(|(id, _)| *id).collect();
-                if let Some(hub) = hub.as_mut() { hub.forget_account(&ids) }
-                drop(hub);
-                self.end_sessions(user_id);
-                if let Some(dir) = &self.data_dir && let Err(e) = crate::store::delete_duel_logs_of(dir, &ids) {
-                    tracing::error!("duel logs of a deleted account not removed: {e}");
-                }
-                let names: Vec<String> = std::iter::once(label.clone()).chain(players.iter().map(|(_, n)| n.clone())).collect();
-                Ok((json!({ "deleted": label, "names": names, "players": players.len(),
-                    "message": format!("{label} is deleted with {} player(s); its game was disconnected", players.len()) }), None, None))
-            }
-            Op::Shutdown => {
-                let stop = self.shutdown.as_ref().ok_or("the server isn't running")?;
-                stop.send_replace(true);
-                Ok((json!({ "stopping": true, "message": "the server is stopping" }), None, None))
-            }
+            Op::DeleteAccount { .. } => Err("deletion requires the typed mutation boundary".into()),
+            Op::Shutdown { .. } => Err("stop requires the typed mutation boundary".into()),
             Op::Settings => Ok((json!({ "message": self.settings.list(), "settings": self.settings.rows() }), None, None)),
-            Op::Set { name, value } => {
-                let before = crate::settings::find(name).map(|s| self.settings.now().value(s.name).clone());
-                let done = self.settings.set(name, value)?;
-                let after = crate::settings::find(name).map(|s| self.settings.now().value(s.name).clone());
-                self.after_setting(name);
-                Ok((message(done), before, after))
-            }
-            Op::Reset { name } => {
-                let before = crate::settings::find(name).map(|s| self.settings.now().value(s.name).clone());
-                let done = self.settings.reset(name)?;
-                let after = crate::settings::find(name).map(|s| self.settings.now().value(s.name).clone());
-                self.after_setting(name);
-                Ok((message(done), before, after))
-            }
-            Op::Maintenance { minutes, message: text, off } => {
-                let before = self.settings.now().maintenance_at;
-                if *off {
-                    self.settings.reset("maintenance-at")?;
-                    self.after_setting("maintenance-at");
-                    // A countdown the game was showing: its wrench stays up (R3), so say why.
-                    if let (Some(hub), Some(at)) = (&self.hub, before) && at > crate::logins::now() {
-                        hub.locked().push_everyone(&crate::front::chat_note("Moderator", crate::front::MAINTENANCE_CANCELLED));
-                    }
-                    return Ok((message("maintenance is off".into()), before.map(|t| json!(t)), None));
-                }
-                let minutes = minutes.ok_or("maintenance needs --in MINUTES (0: now), or --off")?;
-                if let Some(text) = text { self.settings.set("maintenance-message", text)?; }
-                let at = crate::logins::now() + i64::from(minutes) * 60;
-                self.settings.set("maintenance-at", &at.to_string())?;
-                self.after_setting("maintenance-at");
-                let when = chrono::DateTime::from_timestamp(at, 0).map_or(String::new(), |t| t.format("%Y-%m-%d %H:%M UTC").to_string());
-                Ok((message(format!("maintenance starts at {when}: the game counts down until then; then only admins and moderators stay")),
-                    before.map(|t| json!(t)), Some(json!(at))))
-            }
-            Op::Kick { who } => {
-                let user_id = self.accounts.locked().user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
-                self.end_sessions(user_id);
-                Ok((message(format!("{who} was disconnected")), None, None))
-            }
-            Op::Ban { who, reason, days } | Op::Restrict { who, reason, days } => {
-                let ban = matches!(op, Op::Ban { .. });
-                let until = days.map(|d| crate::logins::now() + i64::from(d) * 86_400);
-                let standing = if ban { crate::logins::Standing::Banned { reason: reason.clone(), until } }
-                    else { crate::logins::Standing::Restricted { reason: reason.clone(), until } };
-                let mut d = self.accounts.locked();
-                let (user_id, login) = d.login_named(who)?;
-                d.set_standing_of(user_id, standing.clone())?;
-                if ban { d.revoke_devices(user_id)?; }
-                drop(d);
-                // A ban takes effect at once; a restriction at the account's next sign-in.
-                if ban { self.end_sessions(user_id) }
-                let until = until.and_then(|t| chrono::DateTime::from_timestamp(t, 0)).map_or("until lifted".to_string(), |t| format!("until {}", t.format("%Y-%m-%d %H:%M UTC")));
-                let what = if ban { "banned (devices signed out, game disconnected)" } else { "restricted (refused at the next sign-in)" };
-                Ok((message(format!("{} is {what} {until}", login.user)), Some(json!(login.standing)), Some(json!(standing))))
-            }
-            Op::Lift { who } => {
-                let mut d = self.accounts.locked();
-                let (user_id, login) = d.login_named(who)?;
-                d.set_standing_of(user_id, crate::logins::Standing::Active)?;
-                Ok((message(format!("{} may sign in again", login.user)), Some(json!(login.standing)), Some(json!(crate::logins::Standing::Active))))
-            }
-            Op::Mute { who, reason, minutes } => {
-                let until = minutes.map(|m| crate::logins::now() + i64::from(m) * 60);
-                let mut d = self.accounts.locked();
-                let (user_id, login) = d.login_named(who)?;
-                let mute = crate::logins::Mute { reason: reason.clone(), until };
-                d.set_mute(user_id, Some(mute.clone()))?;
-                let until = until.and_then(|t| chrono::DateTime::from_timestamp(t, 0)).map_or("until unmuted".to_string(), |t| format!("until {}", t.format("%Y-%m-%d %H:%M UTC")));
-                Ok((message(format!("{} is muted {until}", login.user)), login.muted.map(|m| json!(m)), Some(json!(mute))))
-            }
-            Op::Unmute { who } => {
-                let mut d = self.accounts.locked();
-                let (user_id, login) = d.login_named(who)?;
-                d.set_mute(user_id, None)?;
-                Ok((message(format!("{} may chat again", login.user)), login.muted.map(|m| json!(m)), None))
-            }
-            Op::SignOut { who } => {
-                let mut d = self.accounts.locked();
-                let (user_id, login) = d.login_named(who)?;
-                d.revoke_devices(user_id)?;
-                drop(d);
-                self.end_sessions(user_id);
-                Ok((message(format!("{} is signed out everywhere", login.user)), Some(json!(login.devices.len())), Some(json!(0))))
-            }
+            Op::Set { .. } | Op::Reset { .. } | Op::Maintenance { .. } => Err("settings edits require the typed mutation boundary".into()),
+            Op::Kick { .. } | Op::Ban { .. } | Op::Restrict { .. } | Op::Lift { .. } | Op::Mute { .. } | Op::Unmute { .. } | Op::SignOut { .. } => Err("moderation requires the typed mutation boundary".into()),
             Op::Audit { limit } => {
                 let rows = self.audit(limit.unwrap_or(50).min(10_000))?;
                 Ok((json!({ "rows": rows }), None, None))
@@ -504,114 +419,21 @@ impl Api {
                 names.sort();
                 Ok((json!({ "titles": names, "message": names.join("\n") }), None, None))
             }
-            Op::GrantTitle { player, title } => {
-                let titles = self.titles()?;
-                let id = crate::titles::by_name(&titles, title).ok_or_else(|| format!("no title named {title:?}; `titles` lists them"))?;
-                let mut d = self.accounts.locked();
-                let player_id = d.player_id_named(player).ok_or_else(|| format!("no player named {player:?}"))?;
-                d.update_player(player_id, |p| { p.items.insert(id); })?;
-                plain(Ok(format!("{player} has the title {} (they wear it in Avatar Settings)", titles.name(id).unwrap_or(title))))
-            }
-            Op::GiveCards { player, card, art, count } => {
-                let count = count.unwrap_or(1);
-                if !(1..=255).contains(&count) { return Err("give 1 to 255 copies (the trunk counts at most 255 of a card)".into()) }
-                let gifts = self.gifts()?;
-                let card = gifts.card(card, *art)?;
-                let mut d = self.accounts.locked();
-                let player_id = d.player_id_named(player).ok_or_else(|| format!("no player named {player:?}"))?;
-                let before = d.player(player_id).and_then(|p| p.cards.get(&card.row).copied()).unwrap_or(0);
-                d.update_player(player_id, |p| { *p.cards.entry(card.row).or_default() += count; })?;
-                let stored = d.player(player_id).cloned();
-                drop(d);
-                let after = before + count;
-                let art = if gifts.cards.iter().filter(|c| c.cid == card.cid).count() > 1 { format!(" (artwork {})", card.art) } else { String::new() };
-                // Shown as a present (at most five copies, a pack's worth), with the card's picture.
-                self.tell_gift(stored, "Cards received", format!("The host gave you {count} × {}{art}. They are in your cards now; you will \
-see them when you next come back to the map.", card.name), true, Some(crate::shop::Present::Gift { cards: vec![card.row; count.min(5) as usize] }));
-                Ok((json!({ "row": card.row, "count": after, "message": format!("gave {count} × {} (artwork {}, Konami id {}) to {player}: {after} beyond \
-their starting cards now (a running server mails them, an online game has them at once and shows them at the next map visit)", card.name, card.art, card.cid) }),
-                    Some(json!({ "card": card.name, "art": card.art, "count": before })), Some(json!({ "card": card.name, "art": card.art, "count": after }))))
-            }
-            Op::GiveRecipe { player, deck, cards } => {
-                let gifts = self.gifts()?;
-                let recipe = gifts.recipe(deck)?;
-                let mut d = self.accounts.locked();
-                let player_id = d.player_id_named(player).ok_or_else(|| format!("no player named {player:?}"))?;
-                let had = d.player(player_id).is_some_and(|p| p.items.contains(&recipe.item));
-                if had && !cards { return Err(format!("{player} already has the recipe {}", recipe.title)) }
-                d.update_player(player_id, |p| {
-                    p.items.insert(recipe.item);
-                    if *cards { for &row in &recipe.cards { *p.cards.entry(row).or_default() += 1; } }
-                })?;
-                let stored = d.player(player_id).cloned();
-                drop(d);
-                // With its cards, as a structure deck arrives: a present of type 1, which shows the deck's cards and sets the
-                // recipe's item in the game itself (PresentWindow case 1). Not the recipe alone: that window shows every card
-                // of the deck as if given.
-                let body = if *cards {
-                    format!("The host gave you the deck recipe {} and its {} cards. You will see them when you next come back to the map; \
-the recipe is then on Load Deck's Official tab.", recipe.title, recipe.cards.len())
-                } else {
-                    format!("The host gave you the deck recipe {} (not its cards). It is on Load Deck's Official tab from your next login, \
-or after your next duel.", recipe.title)
-                };
-                self.tell_gift(stored, "Recipe received", body, *cards, cards.then(|| crate::shop::Present::Deck { id: recipe.id, cards: vec![] }));
-                let with = if *cards { format!(" and its {} cards", recipe.cards.len()) } else { String::new() };
-                let when = if *cards { "(on Load Deck's Official tab once an online game shows it, at the next map visit, or at their next login)" }
-                    else { "(on Load Deck's Official tab at their next login or after their next duel)" };
-                plain(Ok(format!("gave the recipe {} (deck {}){with} to {player} {when}", recipe.title, recipe.id)))
-            }
+            Op::GrantTitle { .. } | Op::GiveCards { .. } | Op::GiveRecipe { .. } => Err("gifts require the typed mutation boundary".into()),
             Op::Recipes => {
                 let gifts = self.gifts()?;
                 let rows: Vec<Value> = gifts.recipes.iter().map(|r| json!({ "id": r.id, "title": r.title, "item": r.item, "cards": r.cards.len() })).collect();
                 let lines: Vec<String> = gifts.recipes.iter().map(|r| format!("{}\t{}\t{} cards", r.id, r.title, r.cards.len())).collect();
                 Ok((json!({ "recipes": rows, "message": lines.join("\n") }), None, None))
             }
-            Op::GiveBp { who, amount } => {
-                let mut d = self.accounts.locked();
-                let before = d.user_of(who).and_then(|u| d.dpoint(u));
-                let (to, total) = d.give_bp(who, *amount)?;
-                let (players, named) = (d.players_of(who), d.named_players_of(who));
-                drop(d);
-                // A running server shows the gift at once (Hub::push_bp), not only at the player's next login or purchase.
-                if let Some(hub) = &self.hub {
-                    let mut hub = hub.locked();
-                    hub.push_bp(&players, total);
-                    hub.mail_bp_gift(&named, *amount, total);
-                }
-                Ok((json!({ "bp": total, "message": format!("gave {amount} BP to {to}: {total} BP now") }), before.map(|b| json!(b)), Some(json!(total))))
-            }
-            Op::SetRole { user, role } => {
-                let parsed: crate::logins::Role = role.parse()?;
-                let mut d = self.accounts.locked();
-                let before = d.login_of(user).map(|(_, l)| json!(l.role));
-                d.set_role(user, parsed)?;
-                Ok((message(format!("{user} is now {}", role.to_ascii_lowercase())), before, Some(json!(parsed))))
-            }
-            Op::Rename { old, new } => {
-                self.accounts.locked().rename(old, new)?;
-                Ok((message(format!("{old} is now {new} (online, at the player's next login)")), Some(json!(old)), Some(json!(new))))
-            }
-            Op::SetCountry { who, code } => {
-                let code = if code.eq_ignore_ascii_case("auto") { String::new() } else { code.to_ascii_uppercase() };
-                if !code.is_empty() {
-                    let known = yo3_data::countries(&self.game_dir).map_err(|e| e.to_string())?;
-                    if !known.contains(&code) { return Err(format!("{code} is not in the client's country table; `countries` lists them")) }
-                }
-                let mut d = self.accounts.locked();
-                let user = d.user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
-                let before = d.account_of(user).map(|a| json!(a.country));
-                d.set_country_of(user, &code)?;
-                let shown = if code.is_empty() { "auto (the game's language)".to_string() } else { code.clone() };
-                Ok((message(format!("{who}'s country is now {shown}")), before, Some(json!(code))))
-            }
+            Op::Rename { .. } | Op::SetCountry { .. } | Op::SetRole { .. } => Err("profile edits require the typed mutation boundary".into()),
             _ => self.accounts_op(op),
         }
     }
 
     /// The operations on the accounts alone.
     fn accounts_op(&self, op: &Op) -> Done {
-        let mut d = self.accounts.locked();
+        let d = self.accounts.locked();
         let done = |v: Value| Ok((v, None, None));
         match op {
             Op::Accounts => done(Value::Array(d.entries().map(|(login, key, account)| {
@@ -624,35 +446,10 @@ or after your next duel.", recipe.title)
                     "country": account.country, "standing": standing, "muted": muted,
                     "players": account.players.iter().map(|p| json!({ "player_id": p.player_id, "name": p.name, "slot": p.index })).collect::<Vec<_>>() })
             }).collect())),
-            Op::CreateAccount { names } => {
-                let key = d.add_account(names)?;
-                let made = d.entries().find(|(_, k, _)| *k == Some(key.as_str())).map(|(_, _, a)| a.players.iter().map(|p| p.name.clone()).collect::<Vec<_>>()).unwrap_or_default();
-                done(json!({ "created": made.first(), "players": made, "key": key }))
-            }
-            Op::AddPlayer { who, name } => {
-                let user = d.user_of(who).ok_or_else(|| format!("no account with the User ID or a player named {who:?}"))?;
-                d.add_player_to(user, name)?;
-                done(json!({ "created": name, "message": format!("{who}'s account has a player named {name}") }))
-            }
-            Op::Key { who } => done(json!({ "key": d.key_of(who)? })),
-            Op::Codes => done(Value::Array(d.codes().iter().map(|c| json!({
-                "code": c.code, "bp": c.bp, "uses": c.uses,
-                "claims": c.used_by.iter().zip(&c.claimed_at).map(|(&user, at)| json!({ "user_id": user, "players": d.player_names(user), "at": at })).collect::<Vec<_>>()
-            })).collect())),
-            Op::AddCode { code, bp, uses } => {
-                let code = if code.trim().is_empty() { d.new_code() } else { code.trim().to_string() };
-                d.add_code(&code, *bp, *uses)?;
-                let users = uses.map_or("any number of accounts".to_string(), |n| format!("{n} account(s)"));
-                done(json!({ "code": code, "message": format!("code {code}: {bp} BP, once per account, for {users}. Players enter it in Main Menu -> BOOSTERPASS.") }))
-            }
-            Op::RemoveCode { code } => { d.remove_code(code)?; done(json!({ "removed": code, "message": format!("code {code} removed") })) }
-            Op::Invite { uses, days } => {
-                let expires = days.map(|n| crate::logins::now() + i64::from(n) * 24 * 3600);
-                let code = d.add_invite(*uses, expires, "host")?;
-                let users = uses.map_or("any number of sign-ups".to_string(), |n| format!("{n} sign-up(s)"));
-                let until = days.map_or("with no end date".to_string(), |n| format!("for {n} day(s)"));
-                done(json!({ "code": code, "message": format!("invite code {code}: {users}, {until}. Players enter it when they make their account in the launcher.") }))
-            }
+            Op::CreateAccount { .. } | Op::Key { .. } => Err("key operations require the typed mutation boundary".into()),
+            Op::AddPlayer { .. } => Err("player creation requires the typed mutation boundary".into()),
+            Op::Codes => done(json!(Self::bp_codes(&d).codes)),
+            Op::Invite { .. } => Err("invite creation requires the typed mutation boundary".into()),
             Op::Invites => {
                 let now = crate::logins::now();
                 let text = if d.invites().is_empty() { "no invite codes (make one with invite)".to_string() } else {
@@ -665,20 +462,7 @@ or after your next duel.", recipe.title)
                 };
                 done(json!({ "invites": d.invites(), "message": text }))
             }
-            Op::ResetCode { user } => {
-                let code = crate::logins::new_code();
-                let expires = crate::logins::now() + crate::logins::RESET_TTL;
-                d.issue_reset(user, crate::logins::digest(&crate::logins::normalize_code(&code)), expires)?;
-                done(json!({ "code": code, "message": format!("reset code for {user}: {code}. It works once, for 24 hours, in the launcher's \"Forgot password\".") }))
-            }
-            Op::AddUser { user, hash } => {
-                if !crate::logins::valid_user_id(user) { return Err(format!("{user:?} is not a User ID: 3 to 16 letters or digits")) }
-                if !hash.starts_with("$argon2id$") { return Err("the password hash is not argon2id".into()) }
-                let recovery = crate::logins::new_code();
-                let login = crate::logins::Login::new(user, hash.clone(), crate::logins::digest(&crate::logins::normalize_code(&recovery)));
-                d.register(login, None, crate::logins::Registration::Open).map_err(|e| if e == "user_id_taken" { format!("the User ID {user} is taken") } else { e })?;
-                done(json!({ "recovery_code": recovery, "message": format!("recovery code: {recovery}") }))
-            }
+            Op::ResetCode { .. } | Op::AddUser { .. } => Err("credential operations require the typed mutation boundary".into()),
             other => Err(format!("{} is not an accounts operation", other.name())),
         }
     }
@@ -710,6 +494,26 @@ pub fn handle(request: &str, peer: IpAddr, token: Option<&str>, api: &Api) -> Op
         let (key, value) = line.split_once(':')?;
         key.eq_ignore_ascii_case("x-yo3-actor").then(|| value.trim().chars().filter(|c| !c.is_control()).take(40).collect::<String>())
     }).filter(|a| !a.is_empty()).unwrap_or_else(|| "host".into());
+    if op.receipted() {
+        let ids: Vec<&str> = head.lines().filter_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            key.eq_ignore_ascii_case("idempotency-key").then(|| value.trim())
+        }).collect();
+        if ids.len() != 1 {
+            return Some(reply("400 Bad Request", json!({ "ok": false, "code": "invalid_request", "error": "This change requires one Idempotency-Key header." })))
+        }
+        return Some(match api.typed_change(&op, ids[0], Actor::Host { by: &actor }, api.origin) {
+            Ok(result) => reply("200 OK", json!({ "ok": true, "result": result })),
+            Err(error) => {
+                let status = match error.code {
+                    MutationErrorCode::RequestConflict | MutationErrorCode::AlreadyExists => "409 Conflict", MutationErrorCode::Forbidden => "403 Forbidden",
+                    MutationErrorCode::NotFound => "404 Not Found", MutationErrorCode::PersistenceFailed => "503 Service Unavailable",
+                    MutationErrorCode::InvalidRequest => "400 Bad Request",
+                };
+                reply(status, json!({ "ok": false, "code": error.code, "error": error.message }))
+            }
+        })
+    }
     // Only the operation's name is logged: answers can hold keys and codes.
     match api.apply(&op, &actor) {
         Ok(result) => {
@@ -741,15 +545,28 @@ pub fn health(api: &Api) -> Response {
 /// Sends `op` to the running server `live`: its result, or why not.
 pub fn call(live: &Live, op: &Op) -> Result<Value, String> { call_as(live, op, "host") }
 
+/// Capture this process's identity before requesting a stop; a restarted endpoint must not be stopped accidentally.
+pub fn stop(live: &Live) -> Result<Value, String> {
+    let status=call(live,&Op::Status)?;
+    let run_id=status["run_id"].as_str().ok_or("The server did not provide a run identity")?.to_string();
+    call(live,&Op::Shutdown {run_id})
+}
+
 /// The same, recorded in the audit log as `actor`'s (a moderator's name).
 pub fn call_as(live: &Live, op: &Op, actor: &str) -> Result<Value, String> {
+    call_as_request(live, op, actor, &crate::logins::new_token())
+}
+
+/// Reuse `request_id` after an uncertain response: migrated mutations return their original committed result.
+pub fn call_as_request(live: &Live, op: &Op, actor: &str, request_id: &str) -> Result<Value, String> {
+    if !mutation::valid_request_id(request_id) { return Err("invalid request ID (16–128 letters, digits, hyphens or underscores)".into()) }
     let actor: String = actor.chars().filter(|c| c.is_ascii_graphic() || *c == ' ').take(40).collect();
     let send = || -> anyhow::Result<Value> {
         let mut stream = TcpStream::connect_timeout(&SocketAddr::from(([127, 0, 0, 1], live.port)), Duration::from_secs(3))?;
         stream.set_read_timeout(Some(Duration::from_secs(30)))?;
         stream.set_write_timeout(Some(Duration::from_secs(10)))?;
         let body = serde_json::to_vec(op)?;
-        write!(stream, "POST {PREFIX}{} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\nX-YO3-Actor: {actor}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        write!(stream, "POST {PREFIX}{} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\nX-YO3-Actor: {actor}\r\nIdempotency-Key: {request_id}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             op.name(), live.token, body.len())?;
         stream.write_all(&body)?;
         let mut response = String::new();

@@ -5,7 +5,7 @@ use clap::{CommandFactory, FromArgMatches};
 use clap::parser::ValueSource;
 use yo3_server::cli::{Args, Admin};
 use yo3_server::accounts::Directory;
-use std::io::Write;
+use std::io::{Read, Write, IsTerminal};
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
@@ -46,6 +46,9 @@ fn apply_file(a: &mut Args, matches: &clap::ArgMatches) -> anyhow::Result<Option
     if let Some(v) = file.bind && unset("bind") { a.bind = v }
     if let Some(v) = file.auth_port && unset("auth_port") { a.auth_port = v }
     if let Some(v) = file.http_port && unset("http_port") { a.http_port = v }
+    if let Some(v) = file.dashboard_port && unset("dashboard_port") { a.dashboard_port = Some(v) }
+    if let Some(v) = file.dashboard_socket && unset("dashboard_socket") { a.dashboard_socket = Some(v) }
+    if let Some(v) = file.dashboard_origin && unset("dashboard_origin") { a.dashboard_origin = Some(v) }
     if let Some(v) = file.advertise && unset("advertise") { a.advertise = Some(v) }
     if let Some(v) = file.game_dir && unset("game_dir") { a.game_dir = Some(v) }
     if let Some(v) = file.data_dir && unset("data_dir") { a.data_dir = v }
@@ -63,46 +66,47 @@ fn apply_file(a: &mut Args, matches: &clap::ArgMatches) -> anyhow::Result<Option
 /// The API operation a subcommand is (None for the ones that work on the files themselves).
 fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
     Ok(Some(match command {
-        Admin::InitAuth { .. } | Admin::Restore { .. } | Admin::Backups => return Ok(None),
-        Admin::Profile { who, .. } | Admin::Key { who } => Op::Key { who: who.clone() },
+        Admin::InitAuth { .. } | Admin::Restore { .. } | Admin::Backups | Admin::BootstrapAdmin { .. } => return Ok(None),
+        Admin::Profile { who, .. } | Admin::Key { who, .. } => Op::Key { who: who.clone() },
         Admin::Accounts => Op::Accounts,
-        Admin::AddAccount { name, also } => Op::CreateAccount { names: name.iter().cloned().chain(also.iter().cloned()).collect() },
-        Admin::AddPlayer { who, name } => Op::AddPlayer { who: who.clone(), name: name.clone() },
-        Admin::Rename { old, new } => Op::Rename { old: old.clone(), new: new.clone() },
-        Admin::SetCountry { who, code } => Op::SetCountry { who: who.clone(), code: code.clone() },
+        Admin::AddAccount { name, also, .. } => Op::CreateAccount { names: name.iter().cloned().chain(also.iter().cloned()).collect() },
+        Admin::AddPlayer { who, name, .. } => Op::AddPlayer { who: who.clone(), name: name.clone() },
+        Admin::Rename { old, new, .. } => Op::Rename { old: old.clone(), new: new.clone() },
+        Admin::SetCountry { who, code, .. } => Op::SetCountry { who: who.clone(), code: code.clone() },
         Admin::Countries => Op::Countries,
-        Admin::GrantTitle { player, title } => Op::GrantTitle { player: player.clone(), title: title.clone() },
+        Admin::GrantTitle { player, title, .. } => Op::GrantTitle { player: player.clone(), title: title.clone() },
         Admin::Titles => Op::Titles,
-        Admin::GiveBp { who, amount } => Op::GiveBp { who: who.clone(), amount: *amount },
-        Admin::GiveCards { player, card, art, count } => Op::GiveCards { player: player.clone(), card: card.clone(), art: *art, count: *count },
-        Admin::GiveRecipe { player, deck, cards } => Op::GiveRecipe { player: player.clone(), deck: deck.clone(), cards: *cards },
+        Admin::GiveBp { who, amount, .. } => Op::GiveBp { who: who.clone(), amount: *amount },
+        Admin::GiveCards { player, card, art, count, .. } => Op::GiveCards { player: player.clone(), card: card.clone(), art: *art, count: *count },
+        Admin::GiveRecipe { player, deck, cards, .. } => Op::GiveRecipe { player: player.clone(), deck: deck.clone(), cards: *cards },
         Admin::Recipes => Op::Recipes,
-        Admin::AddCode { code, bp, uses } => Op::AddCode { code: code.clone(), bp: *bp, uses: *uses },
-        Admin::RemoveCode { code } => Op::RemoveCode { code: code.clone() },
+        Admin::AddCode { code, bp, uses, .. } => Op::AddCode { code: code.clone(), bp: *bp, uses: *uses },
+        Admin::RemoveCode { code, .. } => Op::RemoveCode { code: code.clone() },
         Admin::Codes => Op::Codes,
-        Admin::Invite { uses, days } => Op::Invite { uses: (*uses > 0).then_some(*uses), days: *days },
+        Admin::Invite { uses, days, .. } => Op::Invite { uses: (*uses > 0).then_some(*uses), days: *days },
         Admin::Invites => Op::Invites,
-        Admin::ResetCode { user } => Op::ResetCode { user: user.clone() },
-        Admin::SetRole { user, role } => Op::SetRole { user: user.clone(), role: role.clone() },
-        // The password is made and hashed here: only its hash goes to the server.
-        Admin::AddUser { user } => Op::AddUser { user: user.clone(), hash: String::new() },
+        Admin::Backup { .. } => Op::BackUp,
+        Admin::ResetCode { user, .. } => Op::ResetCode { user: user.clone(), code: String::new().into() },
+        Admin::SetRole { user, role, .. } => Op::SetRole { user: user.clone(), role: role.clone() },
+        // The caller creates the setup code before the operation, for a stable, secret-free receipt.
+        Admin::AddUser { user, .. } => Op::AddUser { user: user.clone(), code: String::new().into() },
         Admin::Settings | Admin::Share { .. } => Op::Settings,
-        Admin::Set { name, value } => Op::Set { name: name.clone(), value: value.clone() },
-        Admin::Reset { name } => Op::Reset { name: name.clone() },
+        Admin::Set { name, value, .. } => Op::Set { name: name.clone(), value: value.clone() },
+        Admin::Reset { name, .. } => Op::Reset { name: name.clone() },
         Admin::Audit { limit } => Op::Audit { limit: Some(*limit) },
-        Admin::Stop => Op::Shutdown,
-        Admin::Kick { who } => Op::Kick { who: who.clone() },
-        Admin::Ban { who, reason, days } => Op::Ban { who: who.clone(), reason: reason.clone(), days: *days },
-        Admin::Restrict { who, reason, days } => Op::Restrict { who: who.clone(), reason: reason.clone(), days: *days },
-        Admin::Lift { who } => Op::Lift { who: who.clone() },
-        Admin::Mute { who, reason, minutes } => Op::Mute { who: who.clone(), reason: reason.clone(), minutes: *minutes },
-        Admin::Unmute { who } => Op::Unmute { who: who.clone() },
-        Admin::SignOut { who } => Op::SignOut { who: who.clone() },
-        Admin::DeleteAccount { who, yes } => {
+        Admin::Stop { .. } => return Ok(None),
+        Admin::Kick { who, .. } => Op::Kick { who: who.clone() },
+        Admin::Ban { who, reason, days, .. } => Op::Ban { who: who.clone(), reason: reason.clone(), days: *days },
+        Admin::Restrict { who, reason, days, .. } => Op::Restrict { who: who.clone(), reason: reason.clone(), days: *days },
+        Admin::Lift { who, .. } => Op::Lift { who: who.clone() },
+        Admin::Mute { who, reason, minutes, .. } => Op::Mute { who: who.clone(), reason: reason.clone(), minutes: *minutes },
+        Admin::Unmute { who, .. } => Op::Unmute { who: who.clone() },
+        Admin::SignOut { who, .. } => Op::SignOut { who: who.clone() },
+        Admin::DeleteAccount { who, yes, .. } => {
             anyhow::ensure!(*yes, "delete-account deletes {who:?} and everything kept for it for good: add --yes to go on");
             Op::DeleteAccount { who: who.clone() }
         }
-        Admin::Maintenance { minutes, message, off } => Op::Maintenance { minutes: *minutes, message: message.clone(), off: *off },
+        Admin::Maintenance { minutes, message, off, .. } => Op::Maintenance { minutes: *minutes, message: message.clone(), off: *off },
     }))
 }
 
@@ -128,47 +132,73 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         }
         _ => {}
     }
+    if let Admin::Stop {request_id,run_id} = &command {
+        let live=live::running(&a.data_dir).ok_or_else(||anyhow::anyhow!("No server is running on {}",a.data_dir.display()))?;
+        let id=request_id.clone().unwrap_or_else(yo3_server::logins::new_token);
+        anyhow::ensure!(api::mutation::valid_request_id(&id),"Invalid request ID");
+        let run_id=match run_id {Some(id)=>id.clone(),None=>api::call(&live,&Op::Status).map_err(anyhow::Error::msg)?["run_id"].as_str().ok_or_else(||anyhow::anyhow!("No run identity"))?.into()};
+        println!("Request ID: {id}\nRun ID: {run_id}\nRetry with: stop --request-id {id} --run-id {run_id}");std::io::stdout().flush()?;
+        let result=api::call_as_request(&live,&Op::Shutdown {run_id},&a.by,&id).map_err(anyhow::Error::msg)?;
+        return show(a,&command,&result,None)
+    }
     let mut op = operation(&command)?.expect("an API operation");
-    let mut handed = None;
-    if let Op::AddUser { user, hash } = &mut op {
-        let password = yo3_server::logins::new_password();
-        *hash = yo3_server::logins::hash_password_now(&password)?;
-        handed = Some(format!("User ID: {user}\nPassword: {password} (they change it in the launcher)"));
+    if let Admin::AddUser { user, request_id, code_stdin } | Admin::ResetCode { user, request_id, code_stdin } = &command {
+        let id = request_id.clone().unwrap_or_else(yo3_server::logins::new_token);
+        anyhow::ensure!(api::mutation::valid_request_id(&id), "invalid request ID (16–128 letters, digits, hyphens or underscores)");
+        let code = if *code_stdin {
+            anyhow::ensure!(!std::io::stdin().is_terminal(), "pipe the original code from a private file; do not type it into an echoing terminal");
+            let mut code = String::new(); std::io::stdin().take(128).read_to_string(&mut code)?; code.trim().to_string()
+        } else { yo3_server::logins::new_code() };
+        api::credentials::AccessCode::from(code.clone()).validate()?;
+        match &mut op { Op::AddUser { code: value, .. } | Op::ResetCode { code: value, .. } => *value = code.clone().into(), _ => unreachable!() }
+        eprintln!("Request ID: {id} (retry with --request-id ID --code-stdin and the original code)");
+        println!("Prepared code for {user}: {code} (not confirmed yet; keep it for a retry)");
+        std::io::stdout().flush()?;
+        let result = call_request(a, &op, &game_dir, &id)?;
+        return show(a, &command, &result, None)
     }
     if let Admin::Share { .. } = &command {
         // Before any request: what friends dial is the host's to say.
         anyhow::ensure!(a.advertise.is_some(), "pass --advertise ADDRESS: the address friends reach this server at (an IP or a name in its certificate)");
     }
-    let mut result = call(a, &op, &game_dir)?;
-    if let Admin::Share { invite: true } = &command {
-        result["invite"] = call(a, &Op::Invite { uses: Some(1), days: Some(7) }, &game_dir)?;
+    let mut result = if let Admin::Backup { request_id, .. } | Admin::GiveBp { request_id, .. } | Admin::AddCode { request_id, .. } | Admin::RemoveCode { request_id, .. } | Admin::Invite { request_id, .. }
+        | Admin::DeleteAccount { request_id, .. } | Admin::Kick { request_id, .. } | Admin::Ban { request_id, .. } | Admin::Restrict { request_id, .. } | Admin::Lift { request_id, .. }
+        | Admin::Mute { request_id, .. } | Admin::Unmute { request_id, .. } | Admin::SignOut { request_id, .. }
+        | Admin::Set { request_id, .. } | Admin::Reset { request_id, .. } | Admin::Maintenance { request_id, .. }
+        | Admin::GiveCards { request_id, .. } | Admin::GiveRecipe { request_id, .. } | Admin::GrantTitle { request_id, .. }
+        | Admin::AddAccount { request_id, .. } | Admin::Key { request_id, .. } | Admin::Profile { request_id, .. }
+        | Admin::AddPlayer { request_id, .. } | Admin::Rename { request_id, .. } | Admin::SetCountry { request_id, .. } | Admin::SetRole { request_id, .. } = &command {
+        let id = request_id.clone().unwrap_or_else(yo3_server::logins::new_token);
+        anyhow::ensure!(api::mutation::valid_request_id(&id), "invalid request ID (16–128 letters, digits, hyphens or underscores)");
+        eprintln!("Request ID: {id} (reuse with --request-id if the answer is lost)");
+        call_request(a, &op, &game_dir, &id)?
+    } else { call(a, &op, &game_dir)? };
+    if let Admin::Share { invite: true, request_id } = &command {
+        let id = request_id.clone().unwrap_or_else(yo3_server::logins::new_token);
+        anyhow::ensure!(api::mutation::valid_request_id(&id), "invalid request ID (16–128 letters, digits, hyphens or underscores)");
+        eprintln!("Request ID: {id} (reuse with --request-id if the invite answer is lost)");
+        result["invite"] = call_request(a, &Op::Invite { uses: Some(1), days: Some(7) }, &game_dir, &id)?;
     }
-    show(a, &command, &result, handed)
+    show(a, &command, &result, None)
 }
 
 /// One admin operation, on the running server or on its stopped data folder.
 fn call(a: &Args, op: &Op, game_dir: &std::path::Path) -> anyhow::Result<Value> {
+    call_request(a, op, game_dir, &yo3_server::logins::new_token())
+}
+
+fn call_request(a: &Args, op: &Op, game_dir: &std::path::Path, request_id: &str) -> anyhow::Result<Value> {
     match live::running(&a.data_dir) {
-        Some(server) => api::call_as(&server, op, &a.by),
+        Some(server) => api::call_as_request(&server, op, &a.by, request_id),
         None => {
-            if matches!(op, Op::Shutdown | Op::Kick { .. }) { anyhow::bail!("no server is running on {}", a.data_dir.display()) }
+            if matches!(op, Op::Shutdown { .. } | Op::Kick { .. }) { anyhow::bail!("no server is running on {}", a.data_dir.display()) }
             let _lock = if op.changes() { Some(yo3_server::store::lock(&a.data_dir)?) } else { None };
             yo3_server::store::initialize(&a.data_dir)?;
+            if op.changes() { yo3_server::store::interrupt_effects(&a.data_dir)?; }
             let accounts = Directory::open(a.players.clone(), &a.data_dir.join("accounts.json"))?;
             let settings = offline_settings(&a.data_dir, game_dir, matches!(op, Op::Set { .. }))?;
-            let mut offline = api::Api::new(Arc::new(Mutex::new(accounts)), Arc::new(settings), Some(a.data_dir.clone()), game_dir.to_path_buf(), "offline");
-            if matches!(op, Op::DeleteAccount { .. }) {
-                // What is kept for the account's players outside the accounts, as a server opens it.
-                let dir = &a.data_dir;
-                let mut hub = yo3_server::front::Hub::with_records(&dir.join("records.json"));
-                hub.keep_social(&dir.join("friends.json"));
-                hub.keep_mail(&dir.join("mail.json"));
-                hub.keep_teams(&dir.join("teams.json"));
-                hub.keep_events(&dir.join("events.json"));
-                hub.keep_rentals(&dir.join("rentals.json"));
-                offline.hub = Some(Arc::new(Mutex::new(hub)));
-            }
-            offline.apply(op, &a.by)
+            let offline = api::Api::new(Arc::new(Mutex::new(accounts)), Arc::new(settings), Some(a.data_dir.clone()), game_dir.to_path_buf(), "offline");
+            offline.apply_request(op, &a.by, "offline", None, request_id)
         }
     }.map_err(anyhow::Error::msg)
 }
@@ -267,6 +297,12 @@ async fn run(mut a: Args) -> anyhow::Result<()> {
         .init();
     if let Some(command) = a.admin.take() {
         let game_dir = a.game_dir.clone().unwrap_or_else(yo3_data::default_game_dir);
+        if let Admin::BootstrapAdmin { user } = command {
+            let mut password=String::new();std::io::stdin().take(128).read_to_string(&mut password)?;
+            let created=yo3_server::bootstrap::admin(&a.data_dir,&user,password.trim_end_matches(['\r','\n']).into()).await?;
+            println!("Initial administrator: {}",if created {"created"} else {"already provisioned; unchanged"});
+            return Ok(())
+        }
         return admin(&a, command, game_dir);
     }
     // Held until the server ends: a second server on this folder is refused before it renews or reads anything.
@@ -281,6 +317,7 @@ async fn run(mut a: Args) -> anyhow::Result<()> {
         bind: a.bind,
         advertise: a.advertise,
         http_port: a.http_port,
+        dashboard_port: a.dashboard_port, dashboard_socket: a.dashboard_socket, dashboard_origin: a.dashboard_origin,
         game_dir: a.game_dir.unwrap_or_else(yo3_data::default_game_dir),
         allow_missing_game_data: false,
         log_dir: a.log_dir,
@@ -335,6 +372,26 @@ async fn stop_signal() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn dashboard_port_comes_from_toml_unless_the_cli_overrides_it() {
+        let dir = std::env::temp_dir().join(format!("yo3-dashboard-config-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("server.toml");
+        std::fs::write(&file, "bind = \"0.0.0.0\"\nhttp_port = 18080\ndashboard_port = 18081\n").unwrap();
+        for (flags, expected) in [(vec![], 18081), (vec!["--dashboard-port", "18082"], 18082), (vec!["--dashboard-port", "0"], 0)] {
+            let args: Vec<std::ffi::OsString> = ["yo3-server".into(), "--config".into(), file.clone().into_os_string()].into_iter()
+                .chain(flags.into_iter().map(Into::into)).collect();
+            let matches = Args::command().try_get_matches_from(args).unwrap();
+            let mut args = Args::from_arg_matches(&matches).unwrap();
+            apply_file(&mut args, &matches).unwrap();
+            assert_eq!(args.dashboard_port, Some(expected));
+            assert_eq!(args.http_port, 18080);
+            assert_eq!(args.bind.to_string(), "0.0.0.0", "game bind is independent from web listeners");
+        }
+        std::fs::write(&file, "dashboard_bind = \"0.0.0.0\"\n").unwrap();
+        assert!(yo3_server::config::FileConfig::read(&file).is_err(), "no public dashboard configuration before the MFA gate");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn an_ipv6_profile_has_a_bracketed_address_and_an_unbracketed_certificate_name() {
         let args = <Args as clap::Parser>::try_parse_from(["yo3-server", "--advertise", "::1"]).unwrap();

@@ -23,7 +23,8 @@ async fn a_session_ended_elsewhere_asks_to_sign_in_again() {
     let first = mp::sign_in(&server, "Yugi", "LongPassphrase1", false).await.unwrap();
     let _second = mp::sign_in(&server, "Yugi", "LongPassphrase1", false).await.unwrap();
     assert_eq!(mp::session_alive(&server, &first.session).await, Err(Problem::SignInAgain));
-    admin(Op::Shutdown).await.unwrap().unwrap();
+    let live=admin::running(&data).unwrap();
+    tokio::task::spawn_blocking(move||api::stop(&live)).await.unwrap().unwrap();
     running.wait().await;
     assert_eq!(mp::session_alive(&server, &first.session).await, Err(Problem::Unreachable), "no answer is not a sign-out");
 }

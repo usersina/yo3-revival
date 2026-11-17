@@ -1,0 +1,71 @@
+name: yo3-revival
+services:
+  server:
+    image: yo3-revival-server:${YO3_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.server
+      args:
+        YO3_BUILD_VERSION: ${YO3_BUILD_VERSION:-dev}
+        YO3_BUILD_COMMIT: ${YO3_BUILD_COMMIT:-unknown}
+    environment:
+      YO3_HTTPS_PORT: ${YO3_HTTPS_PORT:-443}
+      YO3_DOMAIN: ${YO3_DOMAIN:?Set YO3_DOMAIN in .env}
+      YO3_DASHBOARD_ORIGIN: https://${YO3_DOMAIN}:${YO3_HTTPS_PORT:-443}
+    ports:
+      - "${YO3_GAME_BIND:-0.0.0.0}:${YO3_GAME_PORT:-7443}:7443"
+    volumes:
+      - data:/var/lib/yo3
+      - staff-socket:/run/yo3-dashboard
+      - type: bind
+        source: ${YO3_GAME_DIR:?Set YO3_GAME_DIR to your own game folder}
+        target: /game
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs: [/tmp:mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 60s
+    restart: unless-stopped
+    logging: &logging
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+  dashboard:
+    image: yo3-revival-dashboard:${YO3_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.dashboard
+    environment:
+      YO3_DOMAIN: ${YO3_DOMAIN}
+      YO3_HTTPS_PORT: ${YO3_HTTPS_PORT:-443}
+    depends_on:
+      server: {condition: service_healthy}
+    ports:
+      - "${YO3_WEB_BIND:-0.0.0.0}:${YO3_HTTP_PORT:-80}:8080"
+      - "${YO3_WEB_BIND:-0.0.0.0}:${YO3_HTTPS_PORT:-443}:8443"
+    volumes:
+      - staff-socket:/run/yo3-dashboard:ro
+      - type: bind
+        source: ${YO3_TLS_DIR:?Set YO3_TLS_DIR to the prepared web certificates}
+        target: /etc/yo3/tls
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${YO3_ACME_DIR:?Set YO3_ACME_DIR to the ACME webroot}
+        target: /var/www/acme
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs: [/tmp:mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s
+    restart: unless-stopped
+    logging: *logging
+volumes:
+  data:
+  staff-socket:

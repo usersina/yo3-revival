@@ -131,7 +131,7 @@ impl Backend {
     pub fn stop_hosting(&self) -> anyhow::Result<()> {
         let mut owned = self.hosted.lock().unwrap();
         let Some(live) = self.hosting_live() else { *owned = None; return Ok(()) };
-        api::call(&live, &Op::Shutdown).map_err(anyhow::Error::msg)?;
+        api::stop(&live).map_err(anyhow::Error::msg)?;
         *self.hosted_owner.lock().unwrap() = None;
         let started = std::time::Instant::now();
         while started.elapsed() < std::time::Duration::from_secs(10) {

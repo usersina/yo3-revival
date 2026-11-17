@@ -761,6 +761,19 @@ pub struct Hub {
     ratings: HashMap<u32, (u32, i32)>,
 }
 
+/// Only the state affected by account deletion, prepared while holding the live Hub lock.
+pub(crate) struct AccountCleanup {
+    social: Social, mail: Mailbox, teams: Teams, rentals: crate::rental::Rentals,
+    records: HashMap<(u32, u32), [u32; 3]>, events: Vec<crate::events::Event>,
+    players: Vec<u32>, notices: Vec<(Vec<u32>, Message)>,
+}
+impl AccountCleanup {
+    pub(crate) fn persist(&self, hub: &Hub) -> std::io::Result<()> {
+        self.social.persist()?; self.mail.persist()?; self.teams.persist()?; self.rentals.persist()?;
+        hub.persist_records(&self.records)?; hub.persist_events(&self.events)
+    }
+}
+
 /// 0x251F's error codes for a friend request (0x4A522E): "This player cannot receive another request.", " The
 /// opponent has left the lobby."; 0 is "A transmission error has occurred.".
 const REQUEST_WAITING: u32 = 106;
@@ -786,8 +799,12 @@ struct Online {
 
 impl Hub {
     pub(crate) fn manager_players(&self) -> Vec<serde_json::Value> {
-        self.online.values().map(|p| serde_json::json!({"player_id":p.player_id,"name":p.name,
-            "duelling":self.in_match(p.player_id).is_some()})).collect()
+        self.manager_player_states().into_iter().map(|(player_id,name,duelling)|serde_json::json!({"player_id":player_id,"name":name,"duelling":duelling})).collect()
+    }
+
+    pub(crate) fn manager_player_states(&self)->Vec<(u32,String,bool)> {
+        let mut players:Vec<_>=self.online.values().map(|p|(p.player_id,p.name.clone(),self.in_match(p.player_id).is_some())).collect();
+        players.sort_by_key(|p|p.0);players
     }
 
     pub fn online(&self) -> usize {
@@ -1195,11 +1212,13 @@ impl Hub {
     }
 
     fn save_events(&self) {
-        let Some(file) = &self.events_file else { return };
-        let events: Vec<serde_json::Value> = self.events.iter().filter(|e| e.status != crate::events::FINISHED).map(|e| e.to_json()).collect();
-        if let Err(e) = crate::store::write(file, &serde_json::json!({ "last_event": self.last_event, "events": events })) {
-            tracing::warn!("events not saved to {}: {e}", file.display());
-        }
+        if let Err(e) = self.persist_events(&self.events) { tracing::warn!("events not saved: {e}") }
+    }
+
+    fn persist_events(&self, events: &[crate::events::Event]) -> std::io::Result<()> {
+        let Some(file) = &self.events_file else { return Ok(()) };
+        let events: Vec<serde_json::Value> = events.iter().filter(|e| e.status != crate::events::FINISHED).map(|e| e.to_json()).collect();
+        crate::store::write(file, &serde_json::json!({ "last_event": self.last_event, "events": events }))
     }
 
     /// A player as the accounts keep them (none without accounts).
@@ -1770,40 +1789,32 @@ impl Hub {
         Message::reply(0x2584).with("mail_id", Value::U32(mail_id))
     }
 
-    /// The host's gift of `amount` BP, `total` now, told to every player of the account by D-Mail from "Host". The game
+    /// A snapshot for preparing the host's BP gift on a copy, told to every player by D-Mail from "Host". The game
     /// has no message that opens its BOOSTERPASS result unasked (that box belongs to the window the player opened),
     /// but `0x2581` lights the bell's mail icon from the global dispatcher (`0x4F5565`: only the connection's flag
     /// `0x1000`, no fields, no window), so it is safe on any screen, a duel included.
-    pub fn mail_bp_gift(&mut self, players: &[(u32, String)], amount: u32, total: u32) {
-        for (id, name) in players {
-            self.mail_from_host((*id, name), "BP received", format!("The host gave your account {amount} BP. You have {total} BP now."));
-        }
+    pub(crate) fn bp_mail(&self) -> Mailbox { self.mail.clone() }
+
+    /// Publishes an already committed grant: the mailbox and balance become visible together under the hub lock.
+    pub(crate) fn publish_bp(&mut self, mail: Mailbox, players: &[(u32, String)], total: u32) {
+        self.mail = mail;
+        self.push_bp(&players.iter().map(|(id, _)| *id).collect::<Vec<_>>(), total);
+        for (id, _) in players { self.push(*id, &Message::reply(0x2581)); }
     }
 
-    /// A D-Mail from "Host" to a player, with the bell's mail icon if they are online (`mail_bp_gift`).
-    fn mail_from_host(&mut self, (id, name): (u32, &str), title: &str, body: String) {
-        let sent = jst_now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let mail = Mail { kind: MAIL_TO_PLAYER, from: (0, "Host".into()), to: (id, name.into()), title: title.into(), body, sent, ..Mail::default() };
-        self.mail.post(mail);
-        self.push(id, &Message::reply(0x2581));
-    }
-
-    /// The host's gift of cards or a deck recipe (#19), told to the player by D-Mail from "Host". With `trunk` (the
-    /// player's new collection, `trade::trunk`) an online player gets it at once, as both players of a trade do
-    /// (`0x2BC9`): the global dispatcher copies a trunk into the game's own on any screen (`0x4F5216`). Not during a duel
-    /// between players or a trade or rental scene, which hold their cards on screen; the next trunk request brings it
-    /// then. True if the trunk was pushed.
-    pub fn host_gift(&mut self, player: (u32, &str), title: &str, body: String, trunk: Option<&Message>, present: Option<crate::shop::Present>) -> bool {
-        self.mail_from_host(player, title, body);
+    /// Publishes an already committed gift and mailbox. Collection pushes are deferred during a duel, trade or rental.
+    pub(crate) fn publish_gift(&mut self, mail: Mailbox, player: u32, trunk: Option<&Message>, present: Option<crate::shop::Present>) -> bool {
+        self.mail = mail;
+        self.push(player, &Message::reply(0x2581));
         if let Some(present) = present {
-            let waiting = self.host_presents.entry(player.0).or_default();
+            let waiting = self.host_presents.entry(player).or_default();
             waiting.push_back(present);
             let count = waiting.len() as u32;
-            self.push(player.0, &Message::reply(0x2774).with("present_count", Value::U32(count)));
+            self.push(player, &Message::reply(0x2774).with("present_count", Value::U32(count)));
         }
-        let busy = self.in_scene(player.0) || self.matches.values().any(|m| m.players.contains(&player.0));
+        let busy = self.in_scene(player) || self.matches.values().any(|m| m.players.contains(&player));
         match trunk {
-            Some(trunk) if !busy => self.push(player.0, trunk),
+            Some(trunk) if !busy => self.push(player, trunk),
             _ => false,
         }
     }
@@ -2344,48 +2355,56 @@ impl Hub {
         self.rentals.forget(player_id);
     }
 
-    /// A deleted account's players (`delete-account`, security review #39): what in-game Delete Player removes
-    /// ([`Self::forget_player`]), and also a team they lead (disbanded, its members told as by the leader's own
-    /// Disband), the mail they sent, their duel records, the user events they host or entered while still open, and what
-    /// this run keeps for them. Their sessions are ended by the caller; leaving the hub then does the rest.
-    pub fn forget_account(&mut self, players: &[u32]) {
-        for &id in players {
-            if let Some(team) = self.teams.of(id).filter(|t| t.authority(id) == Some(LEADER)).cloned() {
-                self.teams.disband(team.id);
-                self.tell_team(&team.ids(), Some(id), &Message::reply(0x2B07).with("team_name", Value::text(&team.name)));
-            }
-            self.forget_player(id);
-            self.mail.forget_from(id);
-            self.host_presents.remove(&id);
-            self.ratings.remove(&id);
-            self.evals.retain(|_, (rater, rated)| *rater != id && *rated != id);
+    /// Stopped-server administration has no live Hub. Refuse unreadable domains rather than deleting around them.
+    pub(crate) fn deletion_data(dir: &std::path::Path) -> std::io::Result<Self> {
+        for name in ["records.json", "friends.json", "mail.json", "teams.json", "events.json", "rentals.json"] {
+            crate::store::read(&dir.join(name))?;
         }
-        let mine = |p: &u32| players.contains(p);
-        let before = self.records.len();
-        self.records.retain(|(me, _), _| !mine(me));
-        if self.records.len() != before { self.save_records(); }
-        let hosted: Vec<usize> = (0..self.events.len()).rev().filter(|&at| mine(&self.events[at].host.0)).collect();
-        let changed = !hosted.is_empty() || self.events.iter().any(|e| e.status == crate::events::OPEN && e.entrants.iter().any(|(p, _)| mine(p)));
-        for at in hosted {
-            let event = self.events.remove(at);
-            for (p, _) in event.entrants.iter().filter(|(p, _)| !mine(p)) { self.push(*p, &Message::reply(0x3394)); }
-        }
-        for e in self.events.iter_mut().filter(|e| e.status == crate::events::OPEN) {
-            e.entrants.retain(|(p, _)| !mine(p));
-            e.alive.retain(|p| !mine(p));
-        }
-        if changed { self.save_events(); }
+        let mut hub = Self::with_records(&dir.join("records.json"));
+        hub.keep_social(&dir.join("friends.json")); hub.keep_mail(&dir.join("mail.json"));
+        hub.keep_teams(&dir.join("teams.json")); hub.keep_events(&dir.join("events.json")); hub.keep_rentals(&dir.join("rentals.json"));
+        Ok(hub)
     }
 
-    /// Writes the duel records as they are (after [`Self::forget_account`]).
-    fn save_records(&self) {
-        let Some(file) = &self.records_file else { return };
-        let mut all: Vec<_> = self.records.iter().collect();
-        all.sort();
+    /// Stage domain cleanup without saves, pushes or changes to the live Hub.
+    pub(crate) fn prepare_account_deletion(&self, players: &[u32]) -> AccountCleanup {
+        let (teams, departures) = self.teams.prepare_forget(players);
+        let mut notices = vec![];
+        for (id, team) in departures {
+            let message = if team.authority(id) == Some(LEADER) { Message::reply(0x2B07).with("team_name", Value::text(&team.name)) }
+                else { Message::reply(0x2B09).with("member_name", Value::text(&self.social.name(id))) };
+            notices.push((team.ids().into_iter().filter(|p| !players.contains(p)).collect(), message));
+        }
+        let mut events = self.events.clone();
+        events.retain(|e| {
+            if !players.contains(&e.host.0) { return true }
+            notices.push((e.entrants.iter().map(|(p, _)| *p).filter(|p| !players.contains(p)).collect(), Message::reply(0x3394)));
+            false
+        });
+        for e in events.iter_mut().filter(|e| e.status == crate::events::OPEN) {
+            e.entrants.retain(|(p, _)| !players.contains(p)); e.alive.retain(|p| !players.contains(p));
+        }
+        let mut records = self.records.clone(); records.retain(|(me, _), _| !players.contains(me));
+        AccountCleanup { social: self.social.prepare_forget(players), mail: self.mail.prepare_forget(players), teams,
+            rentals: self.rentals.prepare_forget(players), records, events, players: players.to_vec(), notices }
+    }
+
+    /// Install committed cleanup and notify surviving team/event members. Never called on transaction failure.
+    pub(crate) fn publish_account_deletion(&mut self, next: AccountCleanup) {
+        self.social = next.social; self.mail = next.mail; self.teams = next.teams; self.rentals = next.rentals;
+        self.records = next.records; self.events = next.events;
+        for id in &next.players { self.host_presents.remove(id); self.ratings.remove(id); }
+        self.evals.retain(|_, (rater, rated)| !next.players.contains(rater) && !next.players.contains(rated));
+        for (players, message) in next.notices { for player in players { self.push(player, &message); } }
+    }
+
+    fn persist_records(&self, records: &HashMap<(u32, u32), [u32; 3]>) -> std::io::Result<()> {
+        let Some(file) = &self.records_file else { return Ok(()) };
+        let mut all: Vec<_> = records.iter().collect(); all.sort();
         let rows: Vec<serde_json::Value> = all.into_iter()
             .map(|((me, them), [w, l, d])| serde_json::json!({ "player_id": me, "opponent": them, "win": w, "lose": l, "draw": d }))
             .collect();
-        if let Err(e) = crate::store::write(file, &serde_json::json!({ "records": rows })) { tracing::warn!("duel records not saved: {e}") }
+        crate::store::write(file, &serde_json::json!({ "records": rows }))
     }
 
     /// A challenger's offer is gone: the host's offer dialog closes (0x17C0) and it waits again.

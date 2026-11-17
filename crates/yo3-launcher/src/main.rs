@@ -13,18 +13,20 @@ struct Args {
     /// Sign in to SERVER (its invite link, or its address with --identity) as USER, asking for the password, and keep
     /// this PC signed in: the device token goes in the system's credential store and --profile becomes a profile
     /// without a secret, which `play` uses. A host's `yo3-server share` prints the link.
-    #[arg(long, num_args = 2, value_names = ["SERVER", "USER"], conflicts_with_all = ["register", "vault_set", "vault_delete"])] sign_in: Option<Vec<String>>,
+    #[arg(long, num_args = 2, value_names = ["SERVER", "USER"], conflicts_with_all = ["register", "recover", "vault_set", "vault_delete"])] sign_in: Option<Vec<String>>,
     /// Make an account USER on SERVER (asking for the host's invite code, a password and the server's rules), then sign in
     /// as --sign-in does.
-    #[arg(long, num_args = 2, value_names = ["SERVER", "USER"], conflicts_with_all = ["vault_set", "vault_delete"])] register: Option<Vec<String>>,
-    /// The server's identity (SHA-256 in hex) when --sign-in or --register names it by address.
+    #[arg(long, num_args = 2, value_names = ["SERVER", "USER"], conflicts_with_all = ["recover", "vault_set", "vault_delete"])] register: Option<Vec<String>>,
+    /// Choose a password with a setup, recovery or moderator reset code, then sign in. All secrets are prompted.
+    #[arg(long, num_args = 2, value_names = ["SERVER", "USER"], conflicts_with_all = ["sign_in", "register", "vault_set", "vault_delete"])] recover: Option<Vec<String>>,
+    /// The server's identity (SHA-256 in hex) when --sign-in, --register or --recover names it by address.
     #[arg(long, value_name = "HEX")] identity: Option<String>,
     /// Keep a device token (read from standard input) in this system's credential vault under NAME: the Linux launcher
     /// copies its saved sign-in into Wine's store for direct start (#33).
     #[arg(long, value_name = "NAME", conflicts_with = "vault_delete")] vault_set: Option<String>,
     /// Remove the device token kept under NAME.
     #[arg(long, value_name = "NAME")] vault_delete: Option<String>,
-    #[arg(long, required_unless_present_any = ["proxy_only", "vault_set", "vault_delete", "sign_in", "register"])] game_dir: Option<PathBuf>,
+    #[arg(long, required_unless_present_any = ["proxy_only", "vault_set", "vault_delete", "sign_in", "register", "recover"])] game_dir: Option<PathBuf>,
     #[arg(long)] injector: Option<PathBuf>,
     #[arg(long)] dll: Option<PathBuf>,
     #[arg(long)] trace_dll: Option<PathBuf>,
@@ -64,7 +66,7 @@ fn windows_injector(injector: &std::path::Path, game: &std::path::Path, dll: &st
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     if args.vault_set.is_some() || args.vault_delete.is_some() { return vault(&args) }
-    if args.sign_in.is_some() || args.register.is_some() { return sign_in(&args).await }
+    if args.sign_in.is_some() || args.register.is_some() || args.recover.is_some() { return sign_in(&args).await }
     let profile = args.profile.clone().context("--profile is required")?;
     let report = args.attach_game.and(args.ready_file.clone());
     let directory = args.diagnostics_dir.clone().unwrap_or_else(|| profile.parent().unwrap_or(std::path::Path::new(".")).join("logs/sessions"));
@@ -257,7 +259,8 @@ async fn run(args: Args, log: yo3_tunnel::diagnostics::Session) -> anyhow::Resul
 /// `--sign-in` and `--register`: a password sign-in for the Scripts edition (#23), kept in the credential store.
 async fn sign_in(args: &Args) -> anyhow::Result<()> {
     use yo3_launcher::signin::{self, Kept};
-    let (register, given) = match (&args.register, &args.sign_in) { (Some(given), _) => (true, given), (_, Some(given)) => (false, given), _ => unreachable!() };
+    let register = args.register.is_some();
+    let given = args.register.as_ref().or(args.recover.as_ref()).or(args.sign_in.as_ref()).expect("account mode");
     let (server, user) = (given[0].as_str(), given[1].trim());
     let profile = args.profile.as_deref().context("--profile names the file `play` will use")?;
     let invite = signin::server(server, args.identity.as_deref())?;
@@ -265,7 +268,15 @@ async fn sign_in(args: &Args) -> anyhow::Result<()> {
     let info = endpoint.info().await.with_context(|| format!("{} can't be reached at {}", invite.name, invite.address))?;
     info.ensure_compatible(yo3_tunnel::PROTOCOL_VERSION, yo3_tunnel::MOD_ABI)?;
     let mut input = Input::new();
-    let password = if register {
+    let password = if args.recover.is_some() {
+        let code = input.secret("Setup, recovery or reset code: ")?;
+        let password = input.secret("Choose a password (8 to 16 letters or digits): ")?;
+        anyhow::ensure!(input.secret("The password again: ")? == password, "The two passwords differ.");
+        let recovery = signin::recover(&endpoint, user, &code, &password).await?;
+        println!("Password set for {user} on {}.", invite.name);
+        if let Some(code) = recovery { println!("Recovery code: {code}\nKeep it somewhere safe: it resets the password when you forget it."); }
+        password
+    } else if register {
         // A link made for one friend carries their invite code.
         let code = match &invite.code { Some(code) => { println!("Invite code {code}, from the link."); code.clone() }
             None => input.line("Invite code from the host (Enter if the server needs none): ")? };

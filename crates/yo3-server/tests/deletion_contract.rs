@@ -54,6 +54,8 @@ fn deleting_an_account_removes_its_players_and_everything_kept_for_them() {
     let settings = Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());
     let mut api = api::Api::new(d.clone(), settings, None, std::path::PathBuf::new(), "server");
     api.hub = Some(s.hub.clone());
+    // A running server supplies its session manager even if this fixture has no authenticated sockets.
+    api.sessions = Some(Arc::new(Mutex::new(yo3_server::auth::Sessions::default())));
     api.apply(&Op::GiveBp { who: "Yugi".into(), amount: 10 }, "host").unwrap();
     api.apply(&Op::Kick { who: "kaiba".into() }, "host").unwrap();
     // Only an admin deletes: a moderator is refused.
@@ -78,7 +80,8 @@ fn deleting_an_account_removes_its_players_and_everything_kept_for_them() {
     let rows = api.audit(50).unwrap();
     let row = &rows[0];
     assert_eq!((row.actor.as_str(), row.op.as_str(), row.target.as_str()), ("host", "delete-account", "yugi"));
-    assert!(row.before.is_none() && row.after.is_none() && row.detail.is_none(), "{row:?}");
+    assert!(row.before.is_none() && row.after.is_none(), "{row:?}");
+    assert_eq!(row.detail.as_ref().unwrap()["disconnect"], "completed");
     assert!(rows[1..].iter().all(|r| !r.target.eq_ignore_ascii_case("yugi")), "earlier rows about it go: {rows:?}");
     assert!(rows.iter().any(|r| r.op == "kick" && r.target == "kaiba"), "rows about others stay");
     assert!(api.apply(&Op::DeleteAccount { who: "Yugi".into() }, "host").is_err(), "nothing left to delete");
@@ -132,11 +135,15 @@ fn the_cli_deletes_an_account_of_a_stopped_server_only_when_told_yes() {
     assert!(cli(&["add-account", "Kaiba"]).0);
     let (ok, out) = cli(&["delete-account", "Yugi"]);
     assert!(!ok && out.contains("--yes"), "{out}");
-    let (ok, out) = cli(&["delete-account", "Yugi", "--yes"]);
+    let (ok, out) = cli(&["delete-account", "Yugi", "--yes", "--request-id", "cli-delete-yugi-0001"]);
     assert!(ok, "{out}");
     let (_, accounts) = cli(&["accounts"]);
     assert!(!accounts.contains("Yugi") && accounts.contains("Kaiba"), "{accounts}");
     let (_, audit) = cli(&["audit"]);
     assert!(audit.contains("delete-account") && !audit.contains("Yugi"), "a key account is named by its number: {audit}");
+    assert!(cli(&["add-account", "Yugi"]).0);
+    let (ok, out) = cli(&["delete-account", "Yugi", "--yes", "--request-id", "cli-delete-yugi-0001", "--by", "new display name"]);
+    assert!(ok, "{out}");
+    assert!(cli(&["accounts"]).1.contains("Yugi"), "retry did not delete the replacement");
     let _ = std::fs::remove_dir_all(&dir);
 }

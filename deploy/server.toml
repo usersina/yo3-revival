@@ -1,0 +1,10 @@
+bind = "0.0.0.0"
+auth_port = 7443
+# Host-token API remains container loopback. Never publish it.
+http_port = 8080
+dashboard_socket = "/run/yo3-dashboard/staff.sock"
+game_dir = "/game"
+data_dir = "/var/lib/yo3"
+log_dir = "/var/lib/yo3/logs"
+engine = "/opt/yo3/yo3-engine"
+packet_log = false

@@ -1,5 +1,9 @@
 # Protocol catalog
 
+Deployment note (Unreleased): Compose/nginx serves the staff API over a mounted Unix socket, with exact browser
+origin and proxy-header checks. This adds no game request/reply fields; `front.rs` and the game wire catalog are
+unchanged. [Container deployment](docker.md).
+
 The client (`yo3.exe`) is the spec. Every row cites its evidence: a client address, a line of the client's own
 trace (`File.cpp Lnnn`), a recorded packet, or the **field tracer** (`vclient.sh start --trace`, then
 `tools/tracer/summarize.py`), which lists every field the client actually looked up in each reply. **Status** is one
@@ -11,6 +15,8 @@ of:
 - **open**: not answered yet
 
 The contract tests in `crates/yo3-server/tests/front_contract.rs` enforce the confirmed shapes.
+The staff dashboard backup/status APIs change no game requests or replies; its separate generated contract and offline
+restore boundary are described in [dashboard development](dashboard.md#database-backups).
 
 **Contents**
 
@@ -2244,31 +2250,122 @@ Select Player still chooses one of up to four account players (`0x1F4C`), and cr
 slot `pindex` 0–3). `CharMake.cpp` (`0x2CF5`/`0x2CF6`, the map's GoCharMake) remains the appearance editor. Account
 and player records keep their existing document schema and ids, stored in SQLite's `accounts` document.
 Key accounts (Singleplayer, the Scripts edition's profiles) and password accounts share that schema. No account is
-chosen by an address, and plain HTTP never makes or reveals one: fetching `yo3.idx` cannot select or create an
+chosen by an address, and public asset requests never make or reveal one: fetching `yo3.idx` cannot select or create an
 account. The internal asset service serves `/duellogs/NAME.dlog`, `/app/` and `/web/`; the launcher carries these
 requests over TLS. The patch index is the game's own, answered by the launcher, and patch files are never fetched
 (#39, [client internals](client-internals.md#the-patcher)); the server's own `yo3.idx` route stays for older launchers. The DLL routes the client's
 WinINet calls to its local authenticated asset proxy, including duel-log URLs (`0x498700`). No account key is put
 into a remote URL. See [authentication.md](authentication.md) for setup and credential lifetimes.
 
-Persistence uses `data/server.db`, schema version 2 (#22): one row per account, record, mail and so on, in WAL mode,
+Persistence uses `data/server.db`, schema version 3 (#22): one row per account, record, mail and so on, in WAL mode,
 with backups at start, hourly and at stop. References elsewhere in this catalog to `accounts.json`, `friends.json`,
 etc. name the domains' original formats. This changes storage, not Konami request/reply fields; tests live in
 `store.rs` and `tests/accounts.rs`.
 
-The host's tools (the desktop, the CLI, the admin panel at `/panel/`, #36) use our admin API (#25, `api.rs`): `POST
+The host's tools (the desktop and CLI) use our admin API (#25, `api.rs`): `POST
 /api/admin/v1/<op>` with a private bearer token and a JSON `op` (`status`, `accounts`, `create-account`, `key`,
 `give-bp`, `set`, `audit`, `shutdown` and the rest; `yo3-server --help` lists the commands). It binds loopback and the
 TLS asset role denies access (it forwards only GETs of the game's files). Answers are `{"ok", "result" | "error"}`.
 Account listings omit credentials; `key` is the explicit credential-bearing operation. Unknown operations/fields and
-incorrect tokens are refused. Each change writes an audit row. Mutations persist once and restore memory if saving
-fails. **Status: implemented/tested**, evidence `tests/api_contract.rs`; these are our API definitions, not inferred
+incorrect tokens are refused. Give BP requires one `Idempotency-Key` header (16–128 letters, digits, hyphens or
+underscores), and returns `user_id`, `bp`, `message`, `request_id`; its errors also carry a stable `code`. Schema 3
+adds separate operation receipts. Balance, D-Mail, audit and receipt commit together before memory and client pushes
+are published. A retry returns its original result without another grant, letter or audit row; changed input with
+the same ID is a conflict. Host-token/offline calls share fixed scope `host` regardless of `--by`; staff scope is the
+account number. Receipts have no expiry and do not follow audit pruning. Other operations retain their existing
+domain save paths and are being adapted. **Status: implemented/tested**, evidence `tests/api_contract.rs` and
+`tests/grant_contract.rs`; these are our API definitions, not inferred
 game-client reply shapes. It replaced `/manager` and `/admin`.
+`add-code` and `remove-code` also require one `Idempotency-Key`, return `request_id` and stable error codes, and
+commit the code change, audit and receipt before publishing. Generated codes replay their original value; a removal
+retry never removes a later replacement. Input codes are canonical uppercase and 16 letters/digits. Duplicate codes
+give `already_exists`, missing codes `not_found`, reused IDs with different operations/inputs `request_conflict`.
+The CLI prints IDs and accepts `--request-id`; old panel forms retain hidden IDs. Evidence: `code_contract.rs` and
+`panel_contract.rs`. The game's redemption request/reply and credited balances are unchanged.
+`invite` also requires one `Idempotency-Key` and atomically commits its generated code, audit and receipt. Retries
+keep the original code, issuer and expiry even after consumption, restart or audit pruning, without replenishing
+uses. The CLI's `invite` and `share --invite` accept `--request-id`; legacy forms reuse their hidden IDs. Both admins
+and moderators can create invites. Evidence: `invite_contract.rs`, `panel_contract.rs`, `dashboard_contract.rs`.
+Player creation, renaming and country edits also commit their change, audit and receipt together. The staff API's
+`POST /panel/api/v1/accounts/edit` takes a tagged `kind` (`add_player`, `rename_player`, `set_country`, `set_role`) and numeric
+account/player IDs. Name-based CLI/panel retries find the original receipt before resolving an old name. Successful
+receipts contain IDs and a generic result, not player names. Moderators retain their existing rename rule (own or
+non-staff accounts); creation/country are admin-only. `GET /panel/api/v1/accounts/{user_id}` returns a safe projection
+with RFC 3339 times and nullable live state, never keys/passwords/device/reset tokens. Country choices are read from
+the game archive through `GET /panel/api/v1/countries`, without a fabricated fallback list. Existing game reply shapes
+are unchanged; edits appear at the next sign-in. Evidence: `account_admin_contract.rs`, `dashboard_contract.rs` and
+connected browser tests.
+Key-account creation/disclosure uses `POST /panel/api/v1/accounts/keys` (`kind: create` with names, or `reveal`
+with `user_id`), never a GET or an account-list field. It requires an admin staff session, CSRF and a request ID.
+Account, audit and receipt commit together before disclosure; responses are `no-store`. Receipts contain only IDs
+and a key digest, not the key or player names. A matching retry rechecks admin authority and key identity; a deleted
+account is not recreated. CLI `add-account`, `key` and `profile` use the same operations with `--request-id`.
+Evidence: `key_account_contract.rs`, `dashboard_contract.rs`, connected browser tests. These are our management API
+contracts; no game-client reply shapes change.
+Player gifts use `POST /panel/api/v1/gifts` with `kind: cards` (`player_id`, `row`, `count`), `recipe`
+(`player_id`, `deck_id`, `include_cards`) or `title` (`player_id`, `title_id`). The admin session, CSRF and request ID
+are required. Player, associated Host D-Mail, audit and receipt commit together; only then are the existing `0x2581`,
+`0x2774` and trunk 9000 notifications published. Busy trade/rental/duel scenes keep the existing deferred trunk rule.
+A retry returns its original generic confirmation and never repeats mail or presentation. Titles retain their
+no-mail behavior. Receipts contain IDs/counts, not names. `GET /panel/api/v1/gifts/choices?q=…` searches only actual
+game metadata (up to 50 choices per kind); unavailable files give a typed error. All three CLI commands accept
+`--request-id`. Evidence: `gift_admin_contract.rs`, `bp_contract.rs`, `dashboard_contract.rs`, connected browser tests.
+Existing game reply fields, present encodings and recipe/title display timing are unchanged.
+Role changes are admin-only and target password accounts. They use the same transaction and durable retry receipt;
+an old retry cannot restore an earlier role. The persisted staff-session revision changes only when the role changes,
+invalidating old cookies on both management interfaces even through an unobserved demotion/promotion round trip.
+`set-role` accepts `--request-id`; the React form requires confirmation and warns before self-demotion. This changes
+management authority, not game reply shapes, and does not disconnect an active game. Evidence: `role_contract.rs`,
+`panel_contract.rs`, `dashboard_contract.rs` and connected browser tests.
+Password-account setup/reset uses `POST /panel/api/v1/accounts/credentials` (`issueAccountCode`), with one
+`Idempotency-Key` and a tagged request: `create_account` (User ID and generated code, admin-only) or `reset_password`
+(account number and generated code, moderator target rules). `code` is write-only in OpenAPI; responses contain
+an immutable confirmation (account ID, kind, original expiry, request ID) and separately checked availability.
+Codes are never returned by the staff API or retained in receipts. The caller keeps its original code through
+uncertain retries; old CLI/HTML presentation reconstructs only that caller’s input. The saved reset digest, audit
+and receipt commit together. First setup uses TLS account operation 6 `recover`, which returns a private recovery
+code to the owner and consumes setup atomically. Recovery rechecks the credential revision/code after hashing.
+Actual role changes invalidate reset codes; setup must complete before staff promotion. Sign-out everywhere
+revokes staff cookies. Scripts `--recover` uses the same TLS request. Game reply shapes are unchanged.
+Evidence: `credential_contract.rs`, `dashboard_contract.rs`, `scripts_sign_in.rs`, connected browser tests.
 The panel runs the same operations in the server (`Api::apply_as`) as its signed-in staff account: a moderator runs only
 the looking, moderation, invite and reset-code operations, and none on a staff account. `account`, `backups`, `back-up` and
 `logs` were added for its pages. Status also reports the actual `listen` socket and `release`, so a reopened manager and local game use the active
 listener rather than guessing from saved settings. Only the authenticated game/discovery port is public; internal
 management/assets HTTP stays loopback.
+
+Settings `set`, `reset` and `maintenance` require one `Idempotency-Key` and commit the whole settings snapshot,
+audit and receipt before publishing. Maintenance validates message and deadline together. Retrying returns the
+original confirmation and RFC 3339 deadline without restoring an older value or repeating the countdown/chat;
+CLI and old panel forms preserve the same ID. `GET /panel/api/v1/settings` projects typed registry metadata,
+editable/default values and checked maintenance state; `POST` takes tagged set/reset/schedule/cancel requests.
+Staff read; only admins change. Existing `front::information` (`0x21FC`, R3) and cancellation chat are unchanged.
+Evidence: `settings_admin_contract.rs`, `settings_contract.rs`, `moderation_contract.rs`, `panel_contract.rs`,
+`dashboard_contract.rs`, `dashboard/e2e/settings.spec.ts`.
+
+Moderation (`kick`, `ban`, `restrict`, `lift`, `mute`, `unmute`, `sign-out`) also requires a stable request ID.
+The typed staff endpoint `POST /panel/api/v1/moderation` uses tagged requests and numeric account IDs. Standing/mute/
+device changes, audit, receipt and any live disconnect intent commit together before publication. Schema 4 stores
+effect outcomes separately from prunable audit rows. After ending server sessions/tickets, the effect/audit outcome
+commits separately. A failed outcome write stays pending; startup marks unfinished effects interrupted, never repeats
+them. A receipt returns the original result plus current outcome, and cannot disconnect a new session or reinstate
+an older ban/mute. Moderators cannot act on another staff account, including on replay. Password/key admission cannot
+race a completed moderation action using an older account snapshot. No new game reply fields or wire pushes.
+Evidence: `moderation_admin_contract.rs`, `moderation_contract.rs`, `account_ops.rs` tests, `dashboard_contract.rs`,
+`panel_contract.rs`, `dashboard/e2e/moderation.spec.ts`.
+
+The React dashboard has its own staff-session JSON routes at `/panel/api/v1/`, implemented in `dashboard.rs` with
+Axum and utoipa-axum. Rust exports `dashboard/api/openapi.json`; Orval generates the frontend fetch functions, hooks,
+types and Zod validators. It currently covers sign-in/out, session, account summaries/details and player edits, Give BP (a `user_id: u32`
+target, not a player name), and code listing/creation/removal, including claim summaries with RFC 3339 times where
+known. Registration invite listing/creation returns remaining uses, RFC 3339 expiry, the actual issuer, claims and
+a checked-at status; both admins and moderators can create them. Moderators read BP codes, admins change them. The staff router never accepts host-token authority. It runs only on its own opt-in
+loopback listener (`--dashboard-port`, disabled by default), sharing panel sessions and the sign-in throttle.
+The host-token API, old HTML panel and assets stay on the management listener; the staff API and schema are absent
+there. A real host token sent from loopback to the dashboard socket still cannot reach host operations, restore or
+backups. These are our HTTP definitions, not stock-client shapes.
+Evidence: `dashboard_contract.rs`, the Rust schema drift test and the real browser flow in
+`dashboard/e2e/connected.spec.ts`. See the [dashboard plan and contract](dashboard.md#api-and-dashboard).
 
 ## Fields the client reads that we leave out
 
@@ -2319,3 +2416,37 @@ a trade or rental ready or cancel hangs nothing visible.
 - `DuelServerConnection` is mapped under "Duel connection"; remaining command meanings are labelled open there.
 - Official duel logs were served over HTTP (`http://download.yugioh-online.net/duellogs/last/`), alongside team and
   Online 2 downloads under `download.yugioh-online.net`.
+
+
+### Transactional administrative account deletion (Unreleased)
+
+Confirmed by our API implementation and contracts; this is our management protocol, not a guessed client field.
+`POST /panel/api/v1/accounts/delete` requires an admin session, CSRF, `Idempotency-Key`, numeric `user_id` and a
+matching `confirm_user_id`. The CLI and old panel use the same transaction. Accounts, social data, mail, teams,
+rentals, records, events, duel-log cleanup, audit cleanup/new row, receipt and disconnect intent commit before live
+publication. Existing team departure/disband and event notifications retain their shapes; no new game fields.
+Receipts contain numeric IDs/counts, not names or credentials. Replays recheck current admin authority and return
+the old result/current disconnect outcome; they never delete a replacement name or disconnect a newer session.
+Evidence: `deletion_admin_contract.rs`, `deletion_contract.rs`, `dashboard_contract.rs`, `panel_contract.rs` and
+`dashboard/e2e/deletion.spec.ts`. Backups/exported logs remain outside this deletion.
+
+
+### Run-bound administrative stop and live status (Unreleased)
+
+Confirmed by our management API/contracts. `GET /panel/api/v1/server` returns checked process state and a random
+per-run identity. Admin-only `POST /panel/api/v1/server/stop` requires that identity, CSRF and `Idempotency-Key`.
+Audit, receipt and intent commit before signalling; `stop` in the response is the signal outcome. A matching retry
+only reads its saved outcome. A different current run cannot be stopped by either an old receipt or an old request
+that never committed. Schema 5 preserves disconnect effects while adding nullable-user stop effects; startup marks
+both kinds interrupted without replay. No game wire fields change. Evidence: `stop_admin_contract.rs`,
+`shutdown_contract.rs`, `dashboard_contract.rs`, `dashboard/e2e/server.spec.ts`.
+
+
+### Staff audit history and captured server logs (Unreleased)
+
+Our confirmed management protocol, not a client wire change: `GET /panel/api/v1/audit` returns bounded pages with
+string IDs/cursors and formatted JSON text; `GET /panel/api/v1/logs` returns bounded, secret-filtered log entries,
+levels and RFC 3339 capture times. Both require current staff authority. Audit supports a literal server-side search
+and strict positive decimal cursor; errors are explicit, not empty success. Captured logs are volatile, newest first,
+with optional problems-only filtering. Evidence: `observability_contract.rs`, `dashboard_contract.rs`,
+`recent.rs` tests and `dashboard/e2e/observability.spec.ts`.

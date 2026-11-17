@@ -78,11 +78,36 @@ jobs:
           python3 tools/test_package_editions.py
           python3 tools/test_release_notes.py
           python3 tools/test_host_scripts.py
+          python3 tools/containers/test_config.py
           python3 tools/test_docs_check.py
       - name: Documentation links and images
         run: tools/docs-check.py
       - name: Tests
         run: cargo nextest run --workspace
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - name: Dashboard dependencies
+        working-directory: dashboard
+        run: npm ci
+      - name: Dashboard generated API client drift
+        working-directory: dashboard
+        run: npm run api:check
+      - name: Dashboard checks
+        working-directory: dashboard
+        run: |
+          npm run format:check
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Dashboard browser and real API contracts
+        working-directory: dashboard
+        run: |
+          npx playwright install --with-deps chromium --only-shell
+          npm run test:e2e -- --workers 2
       - name: Bundles
         if: needs.prepare.outputs.release == 'true'
         run: YO3_VERSION="$VERSION" tools/release.sh
@@ -144,3 +169,15 @@ jobs:
             --title "$VERSION (pre-alpha)" \
             --notes-file notes.md \
             --latest
+
+  containers:
+    name: Publish release containers
+    needs: [prepare, release]
+    if: needs.prepare.outputs.release == 'true'
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/containers.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      source-ref: ${{ github.sha }}
