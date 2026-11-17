@@ -1,0 +1,11 @@
+[Unit]
+Description=Check YO3 HTTPS and certificate expiry every hour for %i
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

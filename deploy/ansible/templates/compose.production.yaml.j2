@@ -1,0 +1,7 @@
+services:
+  server:
+    image: {{ yo3_server_image | to_json }}
+    build: !reset null
+  dashboard:
+    image: {{ yo3_dashboard_image | to_json }}
+    build: !reset null

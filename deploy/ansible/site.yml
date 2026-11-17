@@ -1,0 +1,282 @@
+---
+# One-time local bootstrap. Ongoing CD is deliberately out of scope.
+- name: Set up one YO3 VPS from this local checkout
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    yo3_repo: /opt/yo3-revival
+    yo3_controller_repo: "{{ playbook_dir }}/../.."
+    yo3_acme_email: ''
+    yo3_admin_user: HostAdmin
+    yo3_game_source_dir: "{{ lookup('ansible.builtin.env', 'YO3_GAME_SOURCE_DIR') or (lookup('ansible.builtin.env', 'HOME') + '/.wine/drive_c/Program Files (x86)/Konami/Yu-Gi-Oh! ONLINE 3') }}"
+    yo3_password_file: "{{ playbook_dir }}/.bootstrap-password-{{ yo3_domain }}"
+    yo3_compose: [docker, compose, --project-name, yo3-revival]
+  tasks:
+    - name: Validate the target
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] in ['Ubuntu', 'Debian']
+          - ansible_facts['architecture'] == 'x86_64'
+          - yo3_domain is match('^[a-z0-9][a-z0-9.-]*[a-z0-9]$')
+          - yo3_admin_user is match('^[A-Za-z0-9]{3,16}$')
+        fail_msg: Use an x86_64 Ubuntu/Debian VPS and a lowercase DNS name.
+
+    - name: Discover a completed setup
+      ansible.builtin.stat: {path: /srv/yo3/first-provisioned.json}
+      register: provisioned
+
+    - name: Read the saved setup on a rerun
+      ansible.builtin.slurp: {src: /srv/yo3/first-provisioned.json}
+      when: provisioned.stat.exists
+      register: saved_setup
+
+    - name: Reuse the original image identities and domain
+      ansible.builtin.set_fact:
+        yo3_setup: "{{ saved_setup.content | b64decode | from_json }}"
+      when: provisioned.stat.exists
+
+    - name: Refuse to repurpose an existing setup silently
+      ansible.builtin.assert:
+        that: yo3_setup.domain == yo3_domain
+        fail_msg: This VPS was configured for a different domain. Change an existing deployment explicitly.
+      when: provisioned.stat.exists
+
+    - name: Build and transfer the local images for first setup
+      when: not provisioned.stat.exists
+      block:
+        - name: Check the two original game files on the controller
+          ansible.builtin.stat: {path: "{{ yo3_game_source_dir }}/{{ item }}"}
+          loop: [yo3.idx, package/data002.ypk]
+          delegate_to: localhost
+          become: false
+          register: game_assets
+        - name: Explain missing local game files
+          ansible.builtin.assert:
+            that: item.stat.exists and item.stat.isreg
+            fail_msg: Set YO3_GAME_SOURCE_DIR to your game installation; yo3.idx and package/data002.ypk are required.
+          loop: "{{ game_assets.results }}"
+          loop_control: {label: "{{ item.item }}"}
+        - name: Build both images on the controller, not on the small VPS
+          ansible.builtin.command:
+            argv: [docker, compose, --env-file, /dev/null, -f, compose.yaml, build]
+            chdir: "{{ yo3_controller_repo }}"
+          environment:
+            YO3_DOMAIN: "{{ yo3_domain }}"
+            YO3_GAME_DIR: "{{ yo3_game_source_dir }}"
+            YO3_TLS_DIR: /tmp
+            YO3_ACME_DIR: /tmp
+            YO3_IMAGE_TAG: local
+          delegate_to: localhost
+          become: false
+          changed_when: true
+        - name: Get content-addressed local image IDs
+          ansible.builtin.command:
+            argv: [docker, image, inspect, yo3-revival-server:local, yo3-revival-dashboard:local]
+          delegate_to: localhost
+          become: false
+          register: local_images
+          changed_when: false
+        - name: Prepare the immutable setup record
+          ansible.builtin.set_fact:
+            yo3_setup:
+              domain: "{{ yo3_domain }}"
+              server_image: "{{ (local_images.stdout | from_json)[0]['Id'] }}"
+              dashboard_image: "{{ (local_images.stdout | from_json)[1]['Id'] }}"
+        - name: Allocate a temporary image archive
+          ansible.builtin.tempfile: {state: file, suffix: .yo3-images.tar}
+          delegate_to: localhost
+          become: false
+          register: image_archive
+        - name: Export and upload only our two images
+          block:
+            - name: Export local images
+              ansible.builtin.command:
+                argv: [docker, image, save, --output, "{{ image_archive.path }}", "{{ yo3_setup.server_image }}", "{{ yo3_setup.dashboard_image }}"]
+              delegate_to: localhost
+              become: false
+              changed_when: true
+            - name: Prepare the VPS archive folder
+              ansible.builtin.file: {path: /srv/yo3, state: directory, mode: '0755'}
+            - name: Upload the image archive
+              ansible.builtin.copy: {src: "{{ image_archive.path }}", dest: /srv/yo3/images.tar, mode: '0600'}
+          always:
+            - name: Remove the local temporary archive
+              ansible.builtin.file: {path: "{{ image_archive.path }}", state: absent}
+              delegate_to: localhost
+              become: false
+
+    - name: Install host dependencies
+      ansible.builtin.apt:
+        name: [ca-certificates, python3-requests, python3-debian, certbot, ufw, util-linux, curl]
+        update_cache: true
+        cache_valid_time: 3600
+        state: present
+    - name: Prepare Docker keyring
+      ansible.builtin.file: {path: /etc/apt/keyrings, state: directory, mode: '0755'}
+    - name: Install Docker repository signing key
+      ansible.builtin.get_url:
+        url: "https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}/gpg"
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+    - name: Configure Docker repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: "https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}"
+        suites: ["{{ ansible_facts['distribution_release'] }}"]
+        components: [stable]
+        architectures: [amd64]
+        signed_by: /etc/apt/keyrings/docker.asc
+      register: docker_repository
+    - name: Install Docker Engine and Compose
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+        state: present
+        update_cache: "{{ docker_repository.changed }}"
+    - name: Enable Docker across reboots
+      ansible.builtin.systemd_service: {name: docker, enabled: true, state: started}
+    - name: Allow SSH before enabling the host firewall
+      ansible.builtin.command: {argv: [ufw, allow, "{{ item }}/tcp"]}
+      loop: ["{{ ansible_port | default(22) }}", '7443', '80', '443']
+      register: firewall_rule
+      changed_when: "'added' in firewall_rule.stdout"
+    - name: Read firewall state
+      ansible.builtin.command: {argv: [ufw, status]}
+      register: firewall_status
+      changed_when: false
+    - name: Enable the firewall without resetting existing rules
+      ansible.builtin.command: {argv: [ufw, --force, enable]}
+      when: "'Status: inactive' in firewall_status.stdout"
+      changed_when: true
+    - name: Prepare application folders
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner | default('root') }}"
+        group: "{{ item.owner | default('root') }}"
+        mode: "{{ item.mode | default('0755') }}"
+      loop:
+        - {path: /opt/yo3-revival/deploy/nginx}
+        - {path: /srv/yo3/game/package}
+        - {path: /srv/yo3/acme}
+        - {path: /srv/yo3/tls, owner: '10001', mode: '0750'}
+    - name: Upload the two original game files separately from the images
+      ansible.builtin.copy:
+        src: "{{ yo3_game_source_dir }}/{{ item }}"
+        dest: "/srv/yo3/game/{{ item }}"
+        mode: '0644'
+      loop: [yo3.idx, package/data002.ypk]
+      when: not provisioned.stat.exists
+    - name: Load the saved image archive
+      when: not provisioned.stat.exists
+      ansible.builtin.command: {argv: [docker, image, load, --input, /srv/yo3/images.tar]}
+      changed_when: false
+    - name: Copy runtime files only
+      ansible.builtin.copy:
+        src: "{{ yo3_controller_repo }}/{{ item }}"
+        dest: "{{ yo3_repo }}/{{ item }}"
+        mode: '0644'
+      loop: [compose.yaml, deploy/compose.acme.yaml, deploy/nginx/acme.conf]
+    - name: Install certificate helpers
+      ansible.builtin.copy:
+        src: "{{ yo3_controller_repo }}/deploy/{{ item }}"
+        dest: "{{ yo3_repo }}/deploy/{{ item }}"
+        mode: '0755'
+      loop: [install-certificate.sh, check-https.sh]
+    - name: Render the image-only Compose override
+      ansible.builtin.template:
+        src: compose.production.yaml.j2
+        dest: "{{ yo3_repo }}/compose.production.yaml"
+        mode: '0644'
+      vars:
+        yo3_server_image: "{{ yo3_setup.server_image }}"
+        yo3_dashboard_image: "{{ yo3_setup.dashboard_image }}"
+    - name: Render public settings
+      ansible.builtin.template: {src: environment.j2, dest: "{{ yo3_repo }}/.env", mode: '0600'}
+
+    - name: Bootstrap certificates and the first administrator
+      when: not provisioned.stat.exists
+      block:
+        - name: Stop any partial first run before provisioning
+          community.docker.docker_compose_v2:
+            project_src: "{{ yo3_repo }}"
+            project_name: yo3-revival
+            files: [compose.yaml, compose.production.yaml]
+            state: stopped
+        - name: Start the temporary certificate HTTP service
+          ansible.builtin.command:
+            argv: "{{ yo3_compose + ['-f', 'compose.yaml', '-f', 'compose.production.yaml', '-f', 'deploy/compose.acme.yaml', '--profile', 'certificate', 'up', '-d', '--no-deps', 'acme'] }}"
+            chdir: "{{ yo3_repo }}"
+          changed_when: true
+        - name: Issue HTTPS without interactive prompts
+          ansible.builtin.command:
+            argv: "{{ ['certbot', 'certonly', '--non-interactive', '--agree-tos', '--webroot', '-w', '/srv/yo3/acme', '--keep-until-expiring', '--cert-name', yo3_domain, '-d', yo3_domain, '--deploy-hook', yo3_repo + '/deploy/install-certificate.sh ' + yo3_domain] + (['--email', yo3_acme_email] if yo3_acme_email | length > 0 else ['--register-unsafely-without-email']) }}"
+          changed_when: true
+        - name: Export the active certificate
+          ansible.builtin.command: {argv: ["{{ yo3_repo }}/deploy/install-certificate.sh", "{{ yo3_domain }}"]}
+          changed_when: true
+        - name: Remove only the temporary certificate service
+          ansible.builtin.command:
+            argv: "{{ yo3_compose + ['-f', 'compose.yaml', '-f', 'compose.production.yaml', '-f', 'deploy/compose.acme.yaml', '--profile', 'certificate', 'rm', '--stop', '--force', 'acme'] }}"
+            chdir: "{{ yo3_repo }}"
+          changed_when: true
+        - name: Initialize the game identity without ever replacing it
+          ansible.builtin.command:
+            argv: "{{ yo3_compose + ['run', '--rm', '--no-deps', '--entrypoint', '/bin/sh', 'server', '-ec', identity_script] }}"
+            chdir: "{{ yo3_repo }}"
+          vars:
+            identity_script: >-
+              if [ -f /var/lib/yo3/server.crt ] && [ -f /var/lib/yo3/server.key ]; then exit 0; fi;
+              if [ -e /var/lib/yo3/server.crt ] || [ -e /var/lib/yo3/server.key ]; then
+              echo Partial_game_identity_restore_the_missing_file >&2; exit 1; fi;
+              exec /opt/yo3/yo3-server --config /etc/yo3/server.toml init-auth "$YO3_DOMAIN"
+          changed_when: true
+        - name: Create the first admin using a locally retained random password
+          ansible.builtin.command:
+            argv: "{{ yo3_compose + ['run', '--rm', '--no-deps', 'server', 'bootstrap-admin', yo3_admin_user] }}"
+            stdin: "{{ lookup('ansible.builtin.env', 'YO3_BOOTSTRAP_PASSWORD') or lookup('ansible.builtin.password', yo3_password_file, length=16, chars=['ascii_letters','digits']) }}"
+            chdir: "{{ yo3_repo }}"
+          no_log: true
+          changed_when: true
+    - name: Start the stack and wait for health checks
+      community.docker.docker_compose_v2:
+        project_src: "{{ yo3_repo }}"
+        project_name: yo3-revival
+        files: [compose.yaml, compose.production.yaml]
+        build: never
+        pull: never
+        wait: true
+        wait_timeout: 180
+        remove_volumes: false
+    - name: Verify real HTTPS with certificate validation
+      ansible.builtin.uri: {url: "https://{{ yo3_domain }}/", status_code: 200, validate_certs: true}
+      register: web_health
+      retries: 6
+      delay: 5
+      until: web_health.status == 200
+    - name: Record successful setup without secrets
+      ansible.builtin.copy:
+        content: "{{ yo3_setup | to_nice_json }}\n"
+        dest: /srv/yo3/first-provisioned.json
+        mode: '0600'
+    - name: Enable certificate renewal
+      ansible.builtin.systemd_service: {name: certbot.timer, enabled: true, state: started}
+    - name: Install HTTPS monitoring units
+      ansible.builtin.copy:
+        src: "{{ yo3_controller_repo }}/deploy/systemd/{{ item }}"
+        dest: "/etc/systemd/system/{{ item }}"
+        mode: '0644'
+      loop: [yo3-https@.service, yo3-https@.timer]
+      register: monitor_units
+    - name: Enable the expiry check
+      ansible.builtin.systemd_service:
+        name: "yo3-https@{{ yo3_domain }}.timer"
+        daemon_reload: "{{ monitor_units.changed }}"
+        enabled: true
+        state: started
+    - name: Show where to open the dashboard and find the initial password
+      ansible.builtin.debug:
+        msg:
+          - "Dashboard: https://{{ yo3_domain }}/"
+          - "Initial administrator: {{ yo3_admin_user }}. Generated password (if used): {{ yo3_password_file }} on your local machine."

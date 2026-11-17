@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1.7
+FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS build
+WORKDIR /src
+COPY dashboard/package*.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+COPY dashboard/ ./
+RUN npm run api:check && npm run build
+
+FROM nginx:stable-alpine@sha256:901e593c95dc85f5a729f5765516321366ef4ac401821431d408897e95287d0a
+RUN apk add --no-cache openssl && mkdir -p /run/yo3-dashboard /etc/yo3/tls && chown -R 10001:10001 /var/cache/nginx /run/yo3-dashboard /etc/yo3/tls
+COPY deploy/nginx/nginx.conf /etc/nginx/nginx.conf
+COPY deploy/nginx/dashboard.conf.template /etc/nginx/templates/dashboard.conf.template
+COPY deploy/nginx/security.conf /etc/nginx/yo3-security.conf
+COPY deploy/nginx/proxy.conf /etc/nginx/yo3-proxy.conf
+COPY --chmod=755 deploy/nginx/entrypoint.sh /usr/local/bin/yo3-nginx
+COPY --from=build /src/dist/ /usr/share/nginx/html/
+USER 10001:10001
+EXPOSE 8080 8443
+STOPSIGNAL SIGQUIT
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD openssl x509 -in /etc/yo3/tls/fullchain.pem -noout -checkend 604800 && wget -q -O /dev/null http://127.0.0.1:8080/nginx-health || exit 1
+ENTRYPOINT ["/usr/local/bin/yo3-nginx"]

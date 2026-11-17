@@ -11,3 +11,11 @@ __pycache__/
 /.wine-*/
 /engine/vendor/
 /engine/node_modules/
+
+/.env
+
+/deploy/ansible/inventory.ini
+/deploy/ansible/config.yml
+/deploy/ansible/vault.yml
+
+/deploy/ansible/.bootstrap-password-*

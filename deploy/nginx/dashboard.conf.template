@@ -1,0 +1,78 @@
+server {
+    listen 8080 default_server;
+    server_name _;
+    location = /nginx-health { access_log off; return 200 'ok\n'; }
+    location ^~ /.well-known/acme-challenge/ { root /var/www/acme; try_files $uri =404; }
+    location / { return 308 https://${YO3_AUTHORITY}$request_uri; }
+}
+server {
+    listen 8443 ssl default_server;
+    server_name _;
+    ssl_certificate /etc/yo3/tls/fullchain.pem;
+    ssl_certificate_key /etc/yo3/tls/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    # Exact authority, not a wildcard/default-host proxy. Origin is checked again by Rust.
+    if ($http_host != '${YO3_AUTHORITY}') { return 421; }
+    root /usr/share/nginx/html;
+    client_max_body_size 256k;
+    include /etc/nginx/yo3-security.conf;
+    error_page 413 = @too_large;
+    error_page 429 = @too_many;
+    error_page 502 503 504 = @unavailable;
+    location @too_large {
+        include /etc/nginx/yo3-security.conf;
+        default_type application/json;
+        add_header Cache-Control no-store always;
+        return 413 '{"code":"payload_too_large","message":"The request is too large."}';
+    }
+    location @too_many {
+        include /etc/nginx/yo3-security.conf;
+        default_type application/json;
+        add_header Cache-Control no-store always;
+        add_header Retry-After 60 always;
+        return 429 '{"code":"rate_limited","message":"Too many tries. Wait a minute."}';
+    }
+    location @unavailable {
+        include /etc/nginx/yo3-security.conf;
+        default_type application/json;
+        add_header Cache-Control no-store always;
+        return 503 '{"code":"persistence_failed","message":"The server is unavailable. A change may have completed; retry the same request."}';
+    }
+    location = /panel/api/v1/sign-in {
+        limit_req zone=signin burst=5 nodelay;
+        limit_req_status 429;
+        include /etc/nginx/yo3-proxy.conf;
+    }
+    # Closed list of actual staff routes. No generic /panel/ or /api/ proxy.
+    location ~ ^/panel/api/v1/(session|sign-out|accounts|accounts/[0-9]+|accounts/edit|accounts/credentials|accounts/keys|accounts/delete|give-bp|bp-codes|bp-codes/remove|invites|countries|gifts|gifts/choices|moderation|server|server/stop|settings|audit|logs|backups)$ {
+        include /etc/nginx/yo3-proxy.conf;
+    }
+    location = /panel/openapi.json { include /etc/nginx/yo3-proxy.conf; }
+    # No public backup downloads; a snapshot contains every password hash.
+    location = /panel/api/v1/backups/download { return 404; }
+    location ~ ^/(accounts|invites|news|moderation|audit|logs|backups|settings)?$ {
+        try_files /index.html =404;
+        include /etc/nginx/yo3-security.conf;
+        add_header Cache-Control no-cache always;
+    }
+    location = /index.html {
+        include /etc/nginx/yo3-security.conf;
+        add_header Cache-Control no-cache always;
+    }
+    location = /revival-mark.png {
+        try_files $uri =404;
+        include /etc/nginx/yo3-security.conf;
+        add_header Cache-Control no-cache always;
+    }
+    location /fonts/ {
+        try_files $uri =404;
+        include /etc/nginx/yo3-security.conf;
+        add_header Cache-Control no-cache always;
+    }
+    location /assets/ {
+        try_files $uri =404;
+        include /etc/nginx/yo3-security.conf;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+    location / { return 404; }
+}

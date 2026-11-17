@@ -1,0 +1,12 @@
+[Unit]
+Description=YO3 HTTPS and certificate check for %i
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/yo3-revival/deploy/check-https.sh %i
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true

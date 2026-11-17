@@ -1,0 +1,17 @@
+version: '3'
+tasks:
+  build:
+    desc: Build the server and dashboard images
+    cmds: [docker compose build]
+  start:
+    desc: Start the stack and wait for health checks
+    cmds: [docker compose up -d --wait]
+  stop:
+    desc: Stop the stack (keep data and identities)
+    cmds: [docker compose stop]
+  status:
+    desc: Show containers and health
+    cmds: [docker compose ps]
+  logs:
+    desc: Follow recent container logs
+    cmds: [docker compose logs --tail=100 --follow]
