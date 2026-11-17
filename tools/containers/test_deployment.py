@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Release deployment transaction: validate and pull first, snapshot stopped data, check health, roll back failures."""
 import importlib.util
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
@@ -139,7 +140,163 @@ class Deployment(unittest.TestCase):
         self.assertEqual((self.data/'server.db').read_text(),'old-database')
         self.assertEqual((self.repo/'compose.production.yaml').read_text(),'old-images')
 
+    def test_a_new_release_replaces_the_ui_and_records_both_revisions(self):
+        old=request('v0.1.0')|{'commit':'c'*40,'dashboard_commit':'d'*40,
+            'dashboard':'ghcr.io/usersina/yo3-revival-dashboard@sha256:'+'3'*64,
+            'released_dashboard':'ghcr.io/usersina/yo3-revival-dashboard@sha256:'+'4'*64}
+        (self.state/'current-release.json').write_text(json.dumps(old))
+        self.worker.deploy(request())
+        state=self.worker.execute({'kind':'state'})
+        self.assertEqual(state['dashboard_commit'],request()['commit'])
+        self.assertEqual(state['released_dashboard'],request()['dashboard'])
+        self.assertEqual(state['previous_dashboard'],{'image':old['dashboard'],'commit':old['dashboard_commit']})
+
+
+def dashboard_request(image='3',commit='b'):
+    return request()|{'kind':'dashboard','dashboard':'ghcr.io/usersina/yo3-revival-dashboard@sha256:'+image*64,
+        'dashboard_commit':commit*40,'released_dashboard':request()['dashboard'],
+        'expected_dashboard':request()['dashboard'],'expected_dashboard_commit':request()['commit']}
+
+
+class DashboardDeployment(unittest.TestCase):
+    def setUp(self):
+        self.ui_mode=False
+        Deployment.setUp(self)
+        self.worker.deploy(request())
+        self.ui_mode=True;self.calls.clear()
+        self.running_dashboard=request()['dashboard']
+        self.actual_server='sha256:'+'1'*64
+        (self.data/'server.db').write_text('live-database')
+        self.before={name:(self.state/name).read_text() for name in ['current-release.json','first-provisioned.json']}
+        self.override=(self.repo/'compose.production.yaml').read_text()
+        runtime_patch=patch.object(deploy,'assert_dashboard_runtime',side_effect=self.check_runtime)
+        self.runtime=runtime_patch.start();self.addCleanup(runtime_patch.stop)
+
+    def check_runtime(self,*args):
+        if self.failure=='runtime':raise ValueError('Unexpected runtime change')
+
+    def fake_run(self,args,**kwargs):
+        if not self.ui_mode:return Deployment.fake_run(self,args,**kwargs)
+        self.calls.append(args)
+        if args[:3]==['docker','image','inspect']:
+            ref=args[-1];number=ref[-1]
+            revision={'1':'a','2':'a','3':'b','4':'c'}[number]*40
+            labels={'org.opencontainers.image.version':'v0.1.1','org.opencontainers.image.revision':revision,
+                'io.yo3.dashboard.base':request()['dashboard'],'io.yo3.server.image':request()['server']}
+            if self.failure=='labels' and number in '34':labels['io.yo3.dashboard.base']='wrong'
+            return json.dumps([{'Id':'sha256:'+number*64,'Config':{'User':'10001:10001','Labels':labels}}])
+        if args[:2]==['docker','inspect']:
+            identifier=self.actual_server if args[-1]=='server-id' else 'sha256:'+self.running_dashboard[-1]*64
+            return json.dumps([{'Image':identifier}])
+        if args[:2]==['docker','pull'] and self.failure=='pull':raise RuntimeError('pull failed')
+        if 'ps' in args:return 'server-id' if args[-1]=='server' else 'dashboard-id'
+        if 'up' in args:
+            text=(self.repo/'compose.production.yaml').read_text()
+            self.running_dashboard=next((dashboard_request(i)['dashboard'] for i in ['3','4']
+                if dashboard_request(i)['dashboard'] in text),request()['dashboard'])
+            if self.failure=='start' and self.running_dashboard!=request()['dashboard']:raise RuntimeError('start failed')
+        if 'http://127.0.0.1:8080/health' in args:
+            if self.failure=='health' and self.running_dashboard!=request()['dashboard']:raise RuntimeError('health failed')
+            return json.dumps({'ok':True,'release':'v0.1.1'})
+        return ''
+
+    def unchanged_data(self):
+        self.assertEqual((self.data/'server.db').read_text(),'live-database')
+        self.assertEqual((self.data/'server.key').read_text(),'original-identity')
+        self.assertFalse(any('stop' in args or 'down' in args for args in self.calls))
+        for args in self.calls:
+            if 'up' in args:
+                self.assertIn('--no-deps',args)
+                self.assertEqual(args[-1],'dashboard')
+
+    def test_success_replaces_only_dashboard_and_keeps_previous_good_and_released_images(self):
+        self.worker.execute(dashboard_request())
+        state=self.worker.execute({'kind':'state'})
+        self.assertEqual(state['dashboard_commit'],'b'*40)
+        self.assertEqual(state['dashboard'],dashboard_request()['dashboard'])
+        self.assertEqual(state['released_dashboard'],request()['dashboard'])
+        self.assertEqual(state['server'],request()['server'])
+        self.assertEqual(state['previous_dashboard'],{'image':request()['dashboard'],'commit':'a'*40})
+        self.runtime.assert_called_once_with(request()['dashboard'],dashboard_request()['dashboard'])
+        self.unchanged_data()
+
+    def test_stale_expected_revisions_and_tested_server_are_refused_before_pulling(self):
+        for change in [{'expected_dashboard':dashboard_request()['dashboard']}, {'expected_dashboard_commit':'c'*40},
+                       {'server':request()['server'][:-64]+'9'*64}, {'commit':'c'*40},
+                       {'released_dashboard':dashboard_request()['dashboard']}]:
+            with self.subTest(change=change),self.assertRaises(ValueError):self.worker.execute(dashboard_request()|change)
+        self.assertEqual(self.calls,[])
+
+    def test_foreign_images_tags_shell_fields_and_invalid_commits_are_refused(self):
+        for change in [{'dashboard':'ubuntu:latest'},{'dashboard_commit':'main'},
+                       {'expected_dashboard_commit':'--help'},{'command':'id'},
+                       {'dashboard':'ghcr.io/other/project@sha256:'+'3'*64}]:
+            with self.subTest(change=change),self.assertRaises(ValueError):self.worker.execute(dashboard_request()|change)
+        self.assertEqual(self.calls,[])
+
+    def test_actual_running_server_must_match_the_tested_digest(self):
+        self.actual_server='sha256:'+'9'*64
+        with self.assertRaisesRegex(ValueError,'running'):self.worker.execute(dashboard_request())
+        self.assertFalse(any('up' in args for args in self.calls))
+
+    def test_pull_labels_or_runtime_failures_do_not_change_the_stack(self):
+        for failure in ['pull','labels','runtime']:
+            self.failure=failure
+            with self.subTest(failure=failure),self.assertRaises((ValueError,RuntimeError)):
+                self.worker.execute(dashboard_request())
+            self.assertEqual((self.repo/'compose.production.yaml').read_text(),self.override)
+            self.assertFalse(any('up' in args for args in self.calls))
+        self.unchanged_data()
+
+    def test_start_or_health_failure_restores_only_dashboard_and_records(self):
+        for failure in ['start','health']:
+            self.failure=failure
+            with self.subTest(failure=failure),self.assertRaisesRegex(RuntimeError,'rolled back'):
+                self.worker.execute(dashboard_request())
+            self.assertEqual((self.repo/'compose.production.yaml').read_text(),self.override)
+            for name,content in self.before.items():self.assertEqual((self.state/name).read_text(),content)
+            self.unchanged_data()
+
+    def test_receipt_fsync_failure_after_rename_also_rolls_back(self):
+        original=deploy.atomic_write;failed=False
+        def write(path,content):
+            nonlocal failed
+            original(path,content)
+            if path.name=='current-release.json' and not failed:
+                failed=True;raise OSError('simulated fsync failure')
+        with patch.object(deploy,'atomic_write',side_effect=write):
+            with self.assertRaisesRegex(RuntimeError,'rolled back'):self.worker.execute(dashboard_request())
+        for name,content in self.before.items():self.assertEqual((self.state/name).read_text(),content)
+        self.unchanged_data()
+
+    def test_lost_response_duplicate_and_concurrent_duplicates_do_not_restart_twice(self):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            list(pool.map(self.worker.execute,[dashboard_request(),dashboard_request()]))
+        self.assertEqual(sum('up' in args for args in self.calls),1)
+        self.calls.clear()
+        self.worker.execute(dashboard_request())
+        self.assertFalse(any('up' in args or args[:2]==['docker','pull'] for args in self.calls))
+        self.unchanged_data()
+
+    def test_late_job_cannot_overwrite_the_winner_and_release_retry_keeps_the_new_ui(self):
+        self.worker.execute(dashboard_request());self.calls.clear()
+        with self.assertRaises(ValueError):self.worker.execute(dashboard_request('4','c'))
+        self.assertEqual(self.calls,[])
+        self.worker.execute(request())
+        self.assertFalse(any('up' in args or 'stop' in args for args in self.calls))
+        self.assertEqual(self.worker.execute({'kind':'state'})['dashboard_commit'],'b'*40)
+
 class Transport(unittest.TestCase):
+    def test_dashboard_request_uses_a_json_file_and_ephemeral_registry_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file=Path(directory)/'request.json';file.write_text(json.dumps(dashboard_request()))
+            env={'GITHUB_ACTOR':'usersina','GITHUB_TOKEN':'temporary-token'}
+            with patch.dict(os.environ,env,clear=True),patch.object(transport,'send',return_value='healthy') as send,\
+                    patch('builtins.print'):
+                transport.main(['dashboard',str(file)])
+            expected=dashboard_request()|{'registry_user':'usersina','registry_token':'temporary-token'}
+            send.assert_called_once_with(expected)
+            self.assertNotIn('temporary-token',file.read_text())
     def test_state_query_uses_the_same_pinned_ssh_without_release_or_registry_credentials(self):
         env={'VPS_HOST':'192.0.2.1','VPS_SSH_KEY':'test-key','VPS_KNOWN_HOSTS':'test-host-key'}
         def ssh(args,**kwargs):

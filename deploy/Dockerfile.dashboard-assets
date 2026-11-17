@@ -1,0 +1,14 @@
+# syntax=docker/dockerfile:1.7
+# Build context: dashboard/dist/ only. The caller supplies the released image by immutable digest.
+ARG RELEASED_DASHBOARD
+FROM ${RELEASED_DASHBOARD}
+ARG RELEASED_DASHBOARD
+ARG DASHBOARD_COMMIT
+ARG TESTED_SERVER
+USER 0:0
+RUN find /usr/share/nginx/html -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+COPY --chown=0:0 . /usr/share/nginx/html/
+USER 10001:10001
+LABEL org.opencontainers.image.revision="${DASHBOARD_COMMIT}" \
+      io.yo3.dashboard.base="${RELEASED_DASHBOARD}" \
+      io.yo3.server.image="${TESTED_SERVER}"

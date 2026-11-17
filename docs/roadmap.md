@@ -25,9 +25,9 @@ and Scripts.
 
 **Standalone management dashboard**
 
-- [ ] Independent dashboard updates from `main` (#62). Eligibility and the fixed-image browser gate are implemented;
-      the asset image, restricted dashboard replacement/rollback, automatic trigger/reconciliation, version/reload UI
-      and retention are still pending. [Compatibility checks](deployment.md#independent-dashboard-updates-62).
+- [ ] Independent dashboard updates from `main` (#62). Eligibility, browser/runtime gates, the asset image and
+      restricted replacement/rollback are implemented and rehearsed locally. Automatic delivery/reconciliation,
+      version/reload UI and retention are pending. [Checks](deployment.md#independent-dashboard-updates-62).
 - [ ] Staff MFA and recovery (#43), recent MFA for sensitive actions and a final public-access security review.
       Public HTTPS/password sign-in is approved for testing; the existing HTML panel remains private.
 - [ ] Finish hosted-server validation (#47): real Windows clients and native-engine duel load, isolated password-hash

@@ -125,6 +125,9 @@ python3 tools/containers/test_dashboard_delivery.py  # cumulative UI inputs, dep
 python3 tools/containers/test_dashboard_browser.py --server RELEASED_SERVER_IMAGE --dashboard CANDIDATE_IMAGE
 #   Existing images, disposable localhost HTTPS/SQLite, production pages, BP retry, roles and expired cookies;
 #   no Rust compilation or game files required (synthetic fixture). Optional --game-dir checks real game data too.
+python3 tools/containers/test_dashboard_runtime.py   # derived image equality, stale/hidden assets, root/process/config refusal
+python3 tools/containers/test_dashboard_deploy.py --server SERVER_IMAGE --dashboard RELEASED_DASHBOARD_IMAGE
+#   build dashboard/dist first: real local registry/Compose replacement, browser gate, rollback/retry; no production writes.
 python3 tools/containers/test_images.py              # built local images: runtime user, minimal rootfs, native engine/cards
 tools/docs-check.py --root /path/to/bundle         # the same checks against an extracted release
 tools/release.sh                                  # bundles in dist/ (Linux .tar.gz, Windows .zip), with docs/ and screenshots/

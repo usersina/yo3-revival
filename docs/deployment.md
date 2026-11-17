@@ -7,8 +7,9 @@ VPS testing; MFA and recovery are still pending.
 
 ## Independent dashboard updates (#62)
 
-In progress: the hosted dashboard still updates through full releases. The first slice provides compatibility
-checks; it does not enable independent deployments or change the running VPS.
+In progress: the hosted dashboard still updates through full releases. Compatibility checks, the asset image and
+the restricted dashboard-only transaction are implemented and rehearsed locally. Automatic delivery, reconciliation
+and retention are not enabled yet; production remains on the existing release path.
 
 The eligibility tool compares the candidate with the dashboard commit recorded in the VPS's `current-release.json`.
 It allows changes to `dashboard/src/`, `dashboard/public/`, `index.html`, `vite.config.ts`, `package.json` and the
@@ -17,10 +18,11 @@ changes do not block an eligible UI update. The committed OpenAPI specification 
 the recorded server release tag exactly. Missing state, mismatched release tags and non-ancestor revisions fail
 closed. An ineligible change produces a JSON explanation without deploying anything.
 
-The updater now supports the fixed read-only JSON request `{"kind":"state"}` through its existing forced SSH
-command. It returns only deployed versions, commits and image references, under the release lock. It accepts no
-filename, shell command or forwarding. This query needs the updated updater installed on the VPS; no dashboard
-mutation mode is available yet.
+The updater supports the fixed read-only JSON request `{"kind":"state"}` through its existing forced SSH command.
+It returns deployed versions, commits, released/current dashboard images and the previous successful dashboard,
+under the release lock. Its dashboard mutation accepts only this project's digest-pinned images, full commits,
+the tested server release and the expected dashboard revision. It accepts no arbitrary filename, shell command or
+forwarding. Both modes need the updated updater installed on the VPS through the existing deployment-access playbook.
 
 With the pinned SSH settings from CI in the environment, after installing that updater:
 
@@ -47,6 +49,62 @@ lazy assets, the actual API schema, a BP mutation with a lost response/retry, mo
 sessions and private-route refusal through nginx. Synthetic invented card/deck records let the unchanged server
 start without copying game assets into GitHub. This checks management behavior, not gameplay; use `--game-dir`
 with your own game installation for an additional local run.
+
+### Asset image and restricted replacement
+
+`deploy/Dockerfile.dashboard-assets` takes **only `dashboard/dist/` as its build context**. Its base is the released
+dashboard digest from the plan. It temporarily switches to root, removes all old static assets (including hidden
+files), copies the new build as root-owned files, then restores `USER 10001:10001`. It inherits nginx, configuration,
+entrypoint, environment, health check and release version. Three provenance labels identify the new commit, base
+dashboard image and tested server image.
+
+After checking the plan is eligible, building/checking the frontend and setting the image variables from that plan:
+
+```sh
+docker build -f deploy/Dockerfile.dashboard-assets \
+  --build-arg RELEASED_DASHBOARD="$RELEASED_DASHBOARD_IMAGE" \
+  --build-arg TESTED_SERVER="$TESTED_SERVER_IMAGE" \
+  --build-arg DASHBOARD_COMMIT="$(git rev-parse HEAD)" \
+  -t "$CANDIDATE_TAG" dashboard/dist
+# Publish the candidate, then set CANDIDATE_IMAGE to its immutable registry digest.
+python3 tools/containers/test_images.py --dashboard-only \
+  --released-dashboard "$RELEASED_DASHBOARD_IMAGE" --dashboard "$CANDIDATE_IMAGE"
+python3 tools/containers/test_dashboard_browser.py --server "$TESTED_SERVER_IMAGE" --dashboard "$CANDIDATE_IMAGE"
+python3 .github/scripts/dashboard_delivery.py --state /tmp/yo3-deployed.json \
+  --candidate "$(git rev-parse HEAD)" --dashboard-image "$CANDIDATE_IMAGE" > /tmp/yo3-dashboard-request.json
+python3 .github/scripts/deploy_vps.py dashboard /tmp/yo3-dashboard-request.json
+```
+
+This is the prepared transaction path; keep production delivery on full releases until the automatic workflow and
+dashboard-aware retention in slice 3 are complete. The existing cleanup only protects full-release images.
+
+The same runtime verifier runs locally/CI and on the VPS. It compares every file outside `/usr/share/nginx/html/`
+(content, permissions, owners, links, device metadata and extended attributes) and the process configuration.
+Container-export timestamps are ignored. Only the static assets and the three known provenance labels can differ.
+Assets must be root-owned, readable by nginx, regular files/directories, without writable group/other bits or links
+to runtime files. Missing `index.html` fails before deployment.
+
+Under the shared release lock, the updater checks the recorded release and dashboard revision, then verifies the
+**actual running image IDs**. It pulls/verifies the candidate before changing the override. Only
+`up -d --no-deps ... dashboard` runs; the server is never stopped or recreated, and no database snapshot/restore
+occurs. Health and image checks precede the final state write. A failed start, health check or state write restores
+the old dashboard/override/records. An identical retry checks health without restarting; stale revisions are refused.
+New releases install their tested pair, while retrying an already installed release preserves a later dashboard.
+Both paths record server and dashboard commits separately in `current-release.json`.
+
+Additional checks using your existing local images:
+
+```sh
+python3 tools/containers/test_dashboard_runtime.py
+python3 tools/containers/test_dashboard_deploy.py --server yo3-revival-server:optimized \
+  --dashboard yo3-revival-dashboard:optimized
+```
+
+Set `YO3_TEST_DASHBOARD` for a different runtime-test base. Build `dashboard/dist/` before the transaction rehearsal.
+The latter adds test-only labels to frozen local image copies, uses its own loopback registry and Compose project,
+and checks a successful update, browser behavior, duplicates/stale requests, injected health failure/rollback and
+retry. Its registry prefix replaces the GHCR constant only inside the test process. The installed production command
+continues to accept GHCR images from this repository only. No production data, credentials or ports are used.
 
 ## Before running
 

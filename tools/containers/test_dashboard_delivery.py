@@ -167,6 +167,18 @@ class Eligibility(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(json.loads(result.stdout)['eligible'])
 
+    def test_only_an_eligible_plan_becomes_a_minimal_dashboard_request(self):
+        candidate_image='ghcr.io/usersina/yo3-revival-dashboard@sha256:'+'3'*64
+        with self.assertRaises(ValueError):delivery.deployment_request(self.plan(),candidate_image)
+        self.write('dashboard/src/App.tsx','UI\n');candidate=self.commit()
+        result=delivery.deployment_request(self.plan(),candidate_image)
+        self.assertEqual(result['kind'],'dashboard')
+        self.assertEqual(result['dashboard_commit'],candidate)
+        self.assertEqual(result['expected_dashboard'],self.state['dashboard'])
+        self.assertNotIn('eligible',result)
+        self.assertNotIn('changes',result)
+        with self.assertRaises(ValueError):delivery.deployment_request(self.plan(),'ubuntu:latest')
+
 
 if __name__ == '__main__':
     unittest.main()

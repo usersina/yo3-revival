@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Send the successful container job's immutable release manifest over pinned, restricted SSH."""
+"""Send release/dashboard requests or query deployed state over pinned, restricted SSH."""
 import json
 import os
 from pathlib import Path
@@ -31,7 +31,16 @@ def main(args=()):
     if args==['state']:
         print(json.dumps(json.loads(send({'kind':'state'}))))
         return
-    if args:raise SystemExit('Usage: deploy_vps.py [state]')
+    if len(args)==2 and args[0]=='dashboard':
+        request=json.loads(Path(args[1]).read_text())
+        if not isinstance(request,dict) or request.get('kind')!='dashboard':
+            raise SystemExit('Expected a dashboard deployment request')
+        for key in ['registry_user','registry_token']:request.pop(key,None)
+        if os.environ.get('GITHUB_TOKEN'):
+            request|={'registry_user':os.environ['GITHUB_ACTOR'],'registry_token':os.environ['GITHUB_TOKEN']}
+        print(send(request),end='')
+        return
+    if args:raise SystemExit('Usage: deploy_vps.py [state | dashboard REQUEST.json]')
     required=['VPS_HOST','VPS_SSH_KEY','VPS_KNOWN_HOSTS','SERVER_IMAGE','DASHBOARD_IMAGE','VERSION','SOURCE_REF']
     missing=[name for name in required if not os.environ.get(name)]
     if missing:raise SystemExit('Missing deployment configuration: '+', '.join(missing))

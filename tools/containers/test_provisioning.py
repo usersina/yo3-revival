@@ -33,6 +33,8 @@ class Provisioning(unittest.TestCase):
         builds=[i for i,s in enumerate(steps) if s.get('uses','').startswith('docker/build-push-action@')]
         self.assertEqual(len(builds),2)
         self.assertTrue(all(check < i for i in builds))
+        proof=next(s['run'] for s in steps if s.get('name')=='Check the exact runtime images before deployment')
+        self.assertIn('test_dashboard_runtime.py',proof,'Release images must prove the asset-image runtime gate')
         updater=next(s['run'] for s in jobs['release']['steps'] if s.get('name')=='Packaged Desktop updater opens before activation')
         self.assertIn('release_lifecycle.py previous',updater)
         self.assertNotIn('v0.0.21',updater,'The mandatory gate must never download a release that retention deletes')

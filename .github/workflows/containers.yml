@@ -108,6 +108,7 @@ jobs:
           docker pull "$server"
           docker pull "$dashboard"
           python3 tools/containers/test_images.py --server "$server" --dashboard "$dashboard"
+          YO3_TEST_DASHBOARD="$dashboard" python3 tools/containers/test_dashboard_runtime.py
       - name: Attach exact image references to the release
         id: references
         env:

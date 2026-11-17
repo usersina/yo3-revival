@@ -64,12 +64,12 @@ def free_port():
         return sock.getsockname()[1]
 
 
-def main():
+def main(argv=None, exercise=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--server', required=True, help='Existing released server image; never built here')
     parser.add_argument('--dashboard', required=True, help='Exact candidate image to verify')
     parser.add_argument('--game-dir', type=Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     project = 'yo3-dashboard-check-'+uuid.uuid4().hex[:10]
     with tempfile.TemporaryDirectory(prefix=project) as folder:
         scratch = Path(folder)
@@ -141,9 +141,12 @@ def main():
             run(*cli, 'add-player', 'CheckModerator', 'CheckModerator')
             run('up', '-d', '--no-build', '--wait', '--wait-timeout', '90', 'dashboard')
             print(f'Browser gate: {origin}; server {args.server}; dashboard {args.dashboard}', flush=True)
-            subprocess.run(['npx', '--no-install', 'playwright', 'test', '--config', 'playwright.release.config.ts'],
-                           cwd=ROOT/'dashboard', check=True, timeout=600,
-                           env=os.environ | {'YO3_RELEASE_DASHBOARD_URL': origin})
+            def verify():
+                subprocess.run(['npx', '--no-install', 'playwright', 'test', '--config', 'playwright.release.config.ts'],
+                               cwd=ROOT/'dashboard', check=True, timeout=600,
+                               env=os.environ | {'YO3_RELEASE_DASHBOARD_URL': origin})
+            if exercise is None:verify()
+            else:exercise(scratch,compose,args,verify)
         except BaseException:
             print(run('logs', '--no-color', '--tail', '60', check=False).stdout)
             raise

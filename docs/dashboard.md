@@ -54,9 +54,11 @@ Implementation plan agreed on 2026-11-16. For deployment and HTTPS, see [Docker 
 ## Independent UI delivery
 
 Full releases still update both services. Issue [#62](https://github.com/usersina/yo3-revival/issues/62) adds a
-separate path for compatible frontend changes. The cumulative input/contract checks and production browser gate
-are implemented; automatic dashboard replacement is not enabled yet. The gate runs an existing server image,
-never unreleased Rust from `main`. See [deployment checks](deployment.md#independent-dashboard-updates-62).
+separate path for compatible frontend changes. The input/contract and browser gates, asset image and restricted
+replacement/rollback transaction are implemented. Runtime equality is checked in CI/local checks and again by the
+updater. Automatic delivery, reconciliation and dashboard-aware retention are pending; the VPS has not been changed.
+The gate runs an existing server image, never unreleased Rust from `main`.
+See [deployment checks](deployment.md#independent-dashboard-updates-62).
 
 ## Database backups
 

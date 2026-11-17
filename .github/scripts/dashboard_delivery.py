@@ -100,8 +100,18 @@ def main():
     parser.add_argument('--repo', type=Path, default=Path.cwd())
     parser.add_argument('--state', type=Path, required=True)
     parser.add_argument('--candidate', required=True)
+    parser.add_argument('--dashboard-image', help='Emit the minimal deployment request for a verified candidate digest')
     args = parser.parse_args()
-    print(json.dumps(plan(args.repo, json.loads(args.state.read_text()), args.candidate), indent=2))
+    result=plan(args.repo, json.loads(args.state.read_text()), args.candidate)
+    if args.dashboard_image:result=deployment_request(result,args.dashboard_image)
+    print(json.dumps(result, indent=2))
+
+
+def deployment_request(verified_plan,candidate_image):
+    if verified_plan.get('eligible') is not True:raise ValueError('Only an eligible dashboard plan can be deployed')
+    result={key:verified_plan[key] for key in ['version','commit','server','released_dashboard','dashboard_commit',
+        'expected_dashboard','expected_dashboard_commit']}
+    return result|{'kind':'dashboard','dashboard':image(candidate_image,'dashboard')}
 
 
 if __name__ == '__main__':

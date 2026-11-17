@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-17 — Restricted dashboard replacement (#62, slice 2)](#2026-11-17--restricted-dashboard-replacement-62-slice-2)
   - [2026-11-17 — Dashboard delivery compatibility gate (#62)](#2026-11-17--dashboard-delivery-compatibility-gate-62)
   - [2026-11-17 — Automatic release deployment and launcher version floor](#2026-11-17--automatic-release-deployment-and-launcher-version-floor)
   - [2026-11-17 — Public VPS deployment and recovery](#2026-11-17--public-vps-deployment-and-recovery)
@@ -40,6 +41,27 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-17 — Restricted dashboard replacement (#62, slice 2)
+
+Added the asset-only Dockerfile on the released dashboard digest, with a temporary root switch, complete static-file
+removal (including hidden files), root-owned replacement and restoration of UID/GID 10001. Runtime checks compare
+filesystem contents/ownership/permissions/links/xattrs outside the web root and the full process configuration, with
+only three provenance labels permitted to differ. Unsafe or missing assets and altered runtime/configuration fail.
+The same verifier runs in the restricted updater, not only the image test tool.
+
+The JSON dashboard mode shares the release lock and state file, checks expected revisions and actual running image
+IDs, and updates only the dashboard with `--no-deps`. Success records current/released/previous dashboard revisions.
+Failures restore dashboard images, override and records without stopping the server or touching the database.
+Tests cover stale/foreign inputs, runtime/label/pull refusal, concurrent duplicates, state-fsync failure, health/start
+rollback and release retries preserving a later UI. A new full release resets the UI to its tested pair.
+
+A real local rehearsal passed using frozen optimized images with test-only metadata, an isolated loopback registry,
+disposable Compose volumes and synthetic game records. The candidate passed all three production browser checks.
+A forced transient health failure rolled back; retries and stale requests behaved as expected. The server container,
+accounts and game identity remained unchanged. Runtime image tests also passed negative file/permission/user/env/
+entrypoint cases and proved stale hidden assets were removed. No production deployment or GHCR publication occurred.
+Automatic triggering, release reconciliation, version/reload UI and dashboard-aware retention remain for slice 3.
 
 ## 2026-11-17 — Dashboard delivery compatibility gate (#62)
 

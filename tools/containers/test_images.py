@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Smoke-test the built runtime images, without game files, published ports or production data."""
 import argparse
+import importlib.util
 import json
+from pathlib import Path
 import subprocess
 import tarfile
 import unittest
 
 SERVER = "yo3-revival-server:local"
 DASHBOARD = "yo3-revival-dashboard:local"
+RELEASED_DASHBOARD = None
 
 
 def run(image, *args, entrypoint="/bin/sh", input=None, mounts=()):
@@ -19,6 +22,14 @@ def run(image, *args, entrypoint="/bin/sh", input=None, mounts=()):
 
 
 class RuntimeImages(unittest.TestCase):
+    def test_dashboard_only_changes_static_assets(self):
+        if not RELEASED_DASHBOARD:
+            self.skipTest('Supply --released-dashboard for an independent asset image')
+        spec = importlib.util.spec_from_file_location('deployer', Path(__file__).resolve().parents[2]/'deploy/deploy-release.py')
+        deployer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(deployer)
+        deployer.assert_dashboard_runtime(RELEASED_DASHBOARD, DASHBOARD)
+
     def test_server_files_are_root_owned_and_have_no_setuid_or_setgid_bits(self):
         container = subprocess.check_output(["docker", "create", SERVER], text=True).strip()
         try:
@@ -117,6 +128,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server", default=SERVER)
     parser.add_argument("--dashboard", default=DASHBOARD)
+    parser.add_argument("--released-dashboard")
+    parser.add_argument("--dashboard-only", action="store_true")
     args, remaining = parser.parse_known_args()
     SERVER, DASHBOARD = args.server, args.dashboard
+    RELEASED_DASHBOARD = args.released_dashboard
+    if args.dashboard_only:
+        names = [name for name in unittest.defaultTestLoader.getTestCaseNames(RuntimeImages) if name.startswith('test_dashboard')]
+        suite = unittest.TestSuite(RuntimeImages(name) for name in names)
+        raise SystemExit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())
     unittest.main(argv=[__file__, *remaining])
