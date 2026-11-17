@@ -17,7 +17,7 @@ test('every page loads without browser errors or accessibility violations', asyn
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   for (const [path, name] of pages) {
-    await page.goto(path)
+    await page.goto(`/design${path}`)
     await expect(page.getByRole('heading', { name, level: 1 })).toBeVisible()
     await expect(page.getByText(/Sample data.*not connected/)).toBeVisible()
     const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
@@ -30,7 +30,7 @@ test('every page loads without browser errors or accessibility violations', asyn
 })
 
 test('account changes, invites and audit entries work across navigation', async ({ page }) => {
-  await page.goto('/accounts')
+  await page.goto('/design/accounts')
   await page.getByRole('button', { name: 'View YuseiFudo' }).click()
   let dialog = page.getByRole('dialog')
   await dialog.getByRole('button', { name: 'Give BP' }).click()
@@ -51,7 +51,7 @@ test('account changes, invites and audit entries work across navigation', async 
 
 test('phone navigation and tables stay within the viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/')
+  await page.goto('/design/')
   await page.getByRole('button', { name: 'Open navigation' }).click()
   const menu = page.getByRole('dialog', { name: 'Navigation' })
   await menu.getByRole('link', { name: 'Accounts', exact: true }).click()
@@ -63,7 +63,7 @@ test('phone navigation and tables stay within the viewport', async ({ page }) =>
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 844 })
     for (const [path] of pages) {
-      await page.goto(path)
+      await page.goto(`/design${path}`)
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth > window.innerWidth,
@@ -74,7 +74,7 @@ test('phone navigation and tables stay within the viewport', async ({ page }) =>
 })
 
 test('moderator preview cannot use admin actions', async ({ page }) => {
-  await page.goto('/settings')
+  await page.goto('/design/settings')
   await page.getByLabel('Preview role').selectOption('moderator')
   await expect(page.getByRole('button', { name: 'Save changes' })).toBeDisabled()
   await expect(page.getByLabel('Server name')).toBeDisabled()
@@ -88,12 +88,12 @@ test('page navigation returns to the top without stealing account dialog focus',
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 720 })
-  await page.goto('/settings')
+  await page.goto('/design/settings')
   await page.getByRole('button', { name: 'Save changes' }).scrollIntoViewIfNeeded()
   expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
   await page.getByRole('link', { name: 'Accounts', exact: true }).click()
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
-  await page.goto('/accounts?account=1')
+  await page.goto('/design/accounts?account=1')
   await expect(page.getByRole('dialog', { name: 'YuseiFudo' })).toBeVisible()
   await expect
     .poll(() =>

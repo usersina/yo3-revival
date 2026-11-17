@@ -2,15 +2,16 @@
 
 A standalone admin dashboard for YO3 Revival, built with React, TypeScript, Vite’s React SWC plugin, and Tailwind CSS.
 
-The main pages are a **labelled design preview** with sample data. Changes live in memory until reload or
-**Reset preview**. The role selector is not authentication.
+The default app uses real staff sign-in and generated API hooks. Its pages cover Overview, Accounts,
+Invites & codes, News & maintenance, Moderation, Audit log, Server logs, Backups and Settings. Account changes,
+rewards and server controls use audited operations with retained request IDs for safe retries. A failed connection
+never falls back to sample data.
 
-The separate **[/connected](http://127.0.0.1:5173/connected)** page uses generated API hooks for real staff sign-in,
-account details and player creation/rename/country edits, confirmed staff role changes, one-time password-account setup/reset codes, admin-only key-account creation and explicit key disclosure, card/recipe/title gifts with searchable metadata, Give BP, registration invites (list/create, limits, expiry, issuer and claims) and BOOSTERPASS codes
-(list, create, remove and claims), plus live settings, structured announcements, maintenance scheduling/cancellation account moderation, transactional account deletion and checked live server status with run-bound graceful stop, persisted audit history, captured server logs and audited database backup creation/downloads.
-The registry supplies limits, choices and application times. Uncertain changes keep their request ID across reloads. It never substitutes sample data for a
-failed connection. This is local development work;
-public hosting, the remaining management pages, MFA and Compose are still pending.
+The design preview is available only in development at **[/design/](http://127.0.0.1:5173/design/)**. Its sample
+changes reset on reload; its role selector is not authentication. The development-only `/connected` route collects
+real components on one page for operation tests. Production bundles exclude the sample pages and fixtures.
+MFA, public hosting and Compose are still pending; detailed Overview/moderation-list parity is also open. The old
+HTML panel remains private until the transition is complete.
 
 The disposable `dashboard_dev` API uses real operations and SQLite with test accounts and a small **sample gift
 catalogue**. It opens only its loopback staff API. A real server searches its game files; missing data is an error,
@@ -37,7 +38,7 @@ cargo run -p yo3-server --example dashboard_dev -- 18080
 ```
 
 It creates fresh temporary data, identity and accounts, listens only on loopback, and needs no game files. It never
-opens the normal server's `data/`. Open **Connect to a local server** in the preview, or visit `/connected`. Sign in
+opens the normal server's `data/`. Open the dashboard at `/` and sign in
 as `TestAdmin` or `TestModerator` with `DashboardDemo123!`. These are disposable example credentials, not production
 accounts. Ctrl+C stops the example and removes its temporary directory.
 
@@ -74,6 +75,8 @@ Operation IDs are explicit; declared errors have stable codes; each generated mu
 
 ## Try the design preview
 
+Visit `/design/` while running `npm run dev`. It is excluded from production.
+
 - Browse the overview, search and filter accounts, and open account details.
 - Give an account BP, then find the change in the audit log.
 - Create invites and BOOSTERPASS codes; copy a code or remove a reward code.
@@ -109,8 +112,10 @@ locally on port 4173 for review. It is not a production web server.
 
 ## Boundaries
 
-`src/data.ts` holds fixtures; `src/store.tsx` owns the in-memory preview. Reusable controls are in `src/components/`,
-and each area has a page under `src/pages/`. Routing uses normal URLs, including account detail links.
+`src/DashboardRoot.tsx` selects the real app and the explicit development preview. `src/ConnectedShell.tsx` owns
+navigation, `src/ConnectedAccounts.tsx` owns account forms, and the other `Connected*.tsx` modules use generated
+API hooks for their pages. Standalone pages load on demand. Reusable controls are in `src/components/`.
+`src/data.ts`, `src/store.tsx` and `src/pages/` belong to the development design preview.
 
 The HTTP services use Axum on separate sockets. Existing HTML pages share their sign-in throttle and staff sessions
 with the new JSON routes; the host-token API stays on the management socket and cannot be reached on the dashboard

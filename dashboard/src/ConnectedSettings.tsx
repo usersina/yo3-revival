@@ -44,7 +44,13 @@ const errorText = (error: unknown) =>
     ? error.message
     : 'Could not reach the server. Retry this same change to confirm its outcome.'
 
-export function ConnectedSettings({ session }: { session: StaffSession }) {
+export function ConnectedSettings({
+  session,
+  view = 'all',
+}: {
+  session: StaffSession
+  view?: 'all' | 'news' | 'registry'
+}) {
   const client = useQueryClient()
   const list = useListSettings()
   const storageKey = `yo3:pending-settings:${session.user_id}`
@@ -159,12 +165,16 @@ export function ConnectedSettings({ session }: { session: StaffSession }) {
       setAccepted(false)
     }
   }
-  const visible = current?.settings.filter((s) =>
-    `${s.name} ${s.help}`.toLowerCase().includes(query.trim().toLowerCase()),
+  const visible = current?.settings.filter(
+    (s) =>
+      (view !== 'news' || s.input.kind === 'news') &&
+      (view !== 'registry' || s.input.kind !== 'news') &&
+      `${s.name} ${s.help}`.toLowerCase().includes(query.trim().toLowerCase()),
   )
   return (
     <Panel
-      title="Server settings"
+      className="connected-panel"
+      title={view === 'news' ? 'News & maintenance' : 'Server settings'}
       description="Live settings are saved without restarting the server. Each setting says when it applies."
       action={
         <div className="action-group">
@@ -197,55 +207,61 @@ export function ConnectedSettings({ session }: { session: StaffSession }) {
       )}
       {current && (
         <>
-          <div className="settings-maintenance-row">
-            <div>
-              <h3>
-                <CalendarClock size={18} /> Maintenance{' '}
-                <Badge
-                  tone={
-                    current.maintenance_active ? 'red' : current.maintenance_at ? 'amber' : 'green'
+          {view !== 'registry' && (
+            <div className="settings-maintenance-row">
+              <div>
+                <h3>
+                  <CalendarClock size={18} /> Maintenance{' '}
+                  <Badge
+                    tone={
+                      current.maintenance_active
+                        ? 'red'
+                        : current.maintenance_at
+                          ? 'amber'
+                          : 'green'
+                    }
+                  >
+                    {current.maintenance_active
+                      ? 'Active'
+                      : current.maintenance_at
+                        ? 'Scheduled'
+                        : 'Off'}
+                  </Badge>
+                </h3>
+                <p>
+                  {current.maintenance_at
+                    ? `Starts ${new Date(current.maintenance_at).toLocaleString()}. Only staff can stay signed in during maintenance.`
+                    : 'Players can sign in and play.'}
+                </p>
+              </div>
+              <div className="action-group">
+                <Button
+                  disabled={blocked}
+                  onClick={() =>
+                    begin({
+                      kind: 'schedule_maintenance',
+                      minutes: 30,
+                      message:
+                        current.settings.find((s) => s.name === 'maintenance-message')?.value ?? '',
+                    })
                   }
                 >
-                  {current.maintenance_active
-                    ? 'Active'
-                    : current.maintenance_at
-                      ? 'Scheduled'
-                      : 'Off'}
-                </Badge>
-              </h3>
-              <p>
-                {current.maintenance_at
-                  ? `Starts ${new Date(current.maintenance_at).toLocaleString()}. Only staff can stay signed in during maintenance.`
-                  : 'Players can sign in and play.'}
-              </p>
-            </div>
-            <div className="action-group">
-              <Button
-                disabled={blocked}
-                onClick={() =>
-                  begin({
-                    kind: 'schedule_maintenance',
-                    minutes: 30,
-                    message:
-                      current.settings.find((s) => s.name === 'maintenance-message')?.value ?? '',
-                  })
-                }
-              >
-                Schedule maintenance
-              </Button>
-              {current.maintenance_at && (
-                <Button disabled={blocked} onClick={() => begin({ kind: 'cancel_maintenance' })}>
-                  Cancel maintenance
+                  Schedule maintenance
                 </Button>
-              )}
+                {current.maintenance_at && (
+                  <Button disabled={blocked} onClick={() => begin({ kind: 'cancel_maintenance' })}>
+                    Cancel maintenance
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
           <p className="field-hint">
             Checked {new Date(current.checked_at).toLocaleString()}. Refresh to check the current
             maintenance status.
           </p>
-          <details className="connected-settings-list">
-            <summary>All live settings</summary>
+          <details className="connected-settings-list" open={view !== 'all'}>
+            <summary>{view === 'news' ? 'Game announcements' : 'All live settings'}</summary>
             <SearchField
               value={query}
               onChange={setQuery}

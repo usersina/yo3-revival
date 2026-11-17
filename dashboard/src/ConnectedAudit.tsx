@@ -22,6 +22,7 @@ export function ConnectedAudit() {
   return (
     <section aria-label="Audit log">
       <Panel
+        className="connected-panel"
         title="Audit log"
         description="Saved administrative changes. Newest first; old entries follow the configured retention policy."
         action={

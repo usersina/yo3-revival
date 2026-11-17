@@ -2286,3 +2286,47 @@
   max-width: 30rem;
   padding-top: 8px;
 }
+
+/* Connected pages keep full-width tables, with the same inset for other panel content. */
+@layer components {
+  .connected-panel > .profile-facts {
+    padding: 0 20px 20px;
+  }
+  .connected-panel > .button {
+    margin: 0 20px 20px;
+  }
+  .connected-panel > .inline-notice,
+  .connected-panel > .connected-error {
+    margin: 0 20px 16px;
+  }
+  .connected-panel > .connected-state {
+    justify-content: flex-start;
+    padding: 0 20px 20px;
+  }
+  .connected-panel > .settings-maintenance-row,
+  .connected-panel > .connected-settings-list {
+    margin: 0 20px 20px;
+  }
+  .connected-panel > .field-hint {
+    margin: 0 20px 20px;
+  }
+  .connected-panel > .connected-log-output {
+    margin: 0 20px 20px;
+    max-width: calc(100% - 40px);
+  }
+  .main-content .inline-notice {
+    flex-wrap: wrap;
+  }
+  @media (max-width: 767px) {
+    .panel-heading {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .panel-heading p {
+      max-width: none;
+    }
+    .panel-heading > .action-group {
+      flex-wrap: wrap;
+    }
+  }
+}

@@ -111,6 +111,7 @@ export function ConnectedServer({ session }: { session: StaffSession }) {
   return (
     <section aria-label="Live server">
       <Panel
+        className="connected-panel"
         title="Live server"
         description="Checked from the running process. Presence and duels reset on restart."
         action={

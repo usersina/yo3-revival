@@ -25,7 +25,8 @@ and Scripts.
 
 **Standalone management dashboard**
 
-- [ ] Connect the approved React UI to real server data and preserve the existing panel's capabilities.
+- [ ] Finish detailed Overview and moderation-list parity with the old panel before removing it. The default React
+      app uses real staff routes; sample pages are confined to development `/design/`.
 - [ ] Public management gate: staff MFA and recovery (#43), session revocation, trusted nginx proxy, HTTPS renewal,
       route/header contract tests through nginx and a public-access security review. Do not expose the existing panel.
 - [ ] Compose packaging, thin Taskfile and hosting/backup/restore verification (#47), then gradual schema normalization.

@@ -13,6 +13,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [2026-11-17 — Durable graceful stop and checked live status](#2026-11-17--durable-graceful-stop-and-checked-live-status)
   - [2026-11-17 — Connected audit and server logs](#2026-11-17--connected-audit-and-server-logs)
   - [2026-11-17 — Checked backups and audited streaming downloads](#2026-11-17--checked-backups-and-audited-streaming-downloads)
+  - [2026-11-17 — Real dashboard navigation and production entry](#2026-11-17--real-dashboard-navigation-and-production-entry)
   - [Status](#status)
   - [▶ Overnight plan (2026-11-07): everything left, end to end](#-overnight-plan-2026-11-07-everything-left-end-to-end)
   - [▶ Windows VM test (2026-11-08): what a real Windows client turned up](#-windows-vm-test-2026-11-08-what-a-real-windows-client-turned-up)
@@ -33,6 +34,15 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-17 — Real dashboard navigation and production entry
+
+The default app now signs in to real server data and separates its management areas using the approved sidebar and
+phone navigation. Preview fixtures are development-only; production assets were checked to contain no sample pages.
+Account forms and standalone pages load on demand, reducing the entry bundle from 567 KB to 469 KB before gzip.
+Navigation/accessibility tests cover every real page. Screenshot review found a mobile header squeezing its
+caption beside controls and missing Overview insets; added a failing readability check and corrected both layouts.
+The private HTML panel remains while detailed Overview/moderation-list parity and the security transition are open.
 
 ## 2026-11-17 — Checked backups and audited streaming downloads
 

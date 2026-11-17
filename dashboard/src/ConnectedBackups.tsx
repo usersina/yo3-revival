@@ -124,6 +124,7 @@ export function ConnectedBackups({ session }: { session: StaffSession }) {
   return (
     <section aria-label="Database backups">
       <Panel
+        className="connected-panel"
         title="Database backups"
         description="Checked snapshots on this server. Copy them off the host to protect against losing the machine."
         action={

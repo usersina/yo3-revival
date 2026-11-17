@@ -5,9 +5,10 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 
 ## Current state
 
-- The approved React/Vite/SWC/Tailwind dashboard is in `dashboard/`. The main pages remain a labelled design preview.
-  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, card/recipe/title gifts, Give BP, registration invites, BOOSTERPASS code management, live settings, news, maintenance, moderation, account deletion, live server status/stop, audit history, captured server logs and audited database backups.
-  It never falls back to fixtures.
+- The React/Vite/SWC/Tailwind dashboard in `dashboard/` opens on real staff sign-in and has separate Overview, Accounts,
+  Invites & codes, News & maintenance, Moderation, Audit log, Server logs, Backups and Settings pages. It uses the local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, card/recipe/title gifts, Give BP, registration invites, BOOSTERPASS code management, live settings, news, maintenance, moderation, account deletion, live server status/stop, audit history, captured server logs and audited database backups.
+  It never falls back to fixtures. The sample design is development-only at `/design/`; `/connected` is a
+  development integration view. Neither preview is a production route. Page code loads on demand.
 - Axum handles HTTP on separate sockets. Host-token operations, assets and the old HTML panel stay on `--http-port`.
   The staff JSON router has its own opt-in `--dashboard-port`, disabled by default and always bound to loopback.
   There is no public dashboard binding option before the MFA/proxy gate.
@@ -42,7 +43,8 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
   warns before acting on your own account, enforces staff permissions and retains uncertain requests across reloads.
 - SQLite schema 6 extends `operation_effects` with backup intents and known-failed outcomes beside disconnects and run-bound stops. Schemas 1–5 upgrade transactionally, preserving old effects and receipts.
   Other domains are not normalized.
-- Remaining work: final navigation/production entry, staff MFA, the public-access/proxy gate, nginx and Compose.
+- Remaining work: detailed Overview/moderation-list parity, staff MFA, the public-access/proxy gate, nginx and Compose.
+  The old private HTML panel stays available until parity and security coverage are complete.
 
 ## Database backups
 
@@ -275,7 +277,7 @@ npm ci
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173/connected`. Use `TestAdmin` or `TestModerator`, password `DashboardDemo123!`.
+Open `http://127.0.0.1:5173/`. Use `TestAdmin` or `TestModerator`, password `DashboardDemo123!`.
 These are example accounts in a fresh temporary directory; no existing data is opened. Ctrl+C stops the example and
 removes its directory. Its dashboard API uses loopback port 18080; local management/assets use a separate, automatically
 assigned loopback port printed at startup. Vite's proxy targets the dashboard port; set `YO3_DASHBOARD_API` before

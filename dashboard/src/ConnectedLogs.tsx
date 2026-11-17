@@ -25,6 +25,7 @@ export function ConnectedLogs() {
   return (
     <section aria-label="Server logs">
       <Panel
+        className="connected-panel"
         title="Server logs"
         description="Recent lines from this process, newest first. Verbose recordings stay in the server’s diagnostic files."
         action={

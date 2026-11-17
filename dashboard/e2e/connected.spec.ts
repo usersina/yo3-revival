@@ -98,7 +98,7 @@ test('an expired staff cookie gives a typed error and asks for sign-in rather th
   const response = page.waitForResponse((r) => r.url().endsWith('/panel/api/v1/session'))
   await page.reload()
   expect(ApiError.parse(await (await response).json()).code).toBe('unauthenticated')
-  await expect(page.getByText('Sign in to your local server')).toBeVisible()
+  await expect(page.getByText('Sign in to your server')).toBeVisible()
   await expect(page.getByText('Design preview.')).toHaveCount(0)
 })
 
@@ -220,7 +220,7 @@ test('moderators can inspect codes and recover from a failed refresh or expired 
   await page.unroute('**/panel/api/v1/bp-codes')
   await page.context().clearCookies()
   await section.getByRole('button', { name: 'Refresh codes' }).click()
-  await section.getByRole('button', { name: 'Sign in again' }).click()
+  // Any expired API request now returns to the shared sign-in screen automatically.
   await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible()
 })
 
