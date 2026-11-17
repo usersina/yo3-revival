@@ -362,7 +362,7 @@ player would have to trust the server again.
 ## Existing data and backups
 
 `server.db` is SQLite in WAL mode, with one row per account (and its players), record, friendship, mail, team, event,
-rental and BP code; a save writes only the rows that changed. This dashboard branch uses schema 5 (row-based state, retry receipts and disconnect/stop outcomes). Schemas 1–4
+rental and BP code; a save writes only the rows that changed. This dashboard branch uses schema 6 (row-based state, retry receipts and disconnect/stop/backup outcomes). Schemas 1–5
 upgrade transactionally in place; older server binaries cannot open the upgraded database. Keep a pre-upgrade backup
 if you need to return to an older binary. JSON files from versions before
 `server.db` are not read (the beta starts fresh). A path change selects a different server's data; it does not move it.
@@ -373,9 +373,11 @@ If a save fails (a full disk), the server says so in its log and refuses new log
 already in keep playing.
 
 The server backs up `server.db` into `backups/` when it starts, every hour while it runs, and when it stops, keeping the
-newest 24. With the server stopped:
+newest 24. Keep the printed request ID for a manual backup; retry with `backup --request-id ID` after a lost
+response. A retry checks the same outcome and never creates another snapshot. Only restore requires the server stopped:
 
 ```bash
+./yo3-server --data-dir data backup           # create a checked snapshot, also while the server runs
 ./yo3-server --data-dir data backups          # list them, newest first
 ./yo3-server --data-dir data restore latest   # or a name from the list; the replaced database is kept beside it
 ```

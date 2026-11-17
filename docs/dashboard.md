@@ -6,7 +6,7 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 ## Current state
 
 - The approved React/Vite/SWC/Tailwind dashboard is in `dashboard/`. The main pages remain a labelled design preview.
-  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, card/recipe/title gifts, Give BP, registration invites, BOOSTERPASS code management, live settings, news, maintenance, moderation, account deletion, live server status/stop, audit history and captured server logs.
+  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, card/recipe/title gifts, Give BP, registration invites, BOOSTERPASS code management, live settings, news, maintenance, moderation, account deletion, live server status/stop, audit history, captured server logs and audited database backups.
   It never falls back to fixtures.
 - Axum handles HTTP on separate sockets. Host-token operations, assets and the old HTML panel stay on `--http-port`.
   The staff JSON router has its own opt-in `--dashboard-port`, disabled by default and always bound to loopback.
@@ -40,9 +40,26 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 - Moderation saves standing/mute/device changes with audit and receipt. Live disconnects have a durable intent
   before execution and an outcome afterwards. Retries never repeat them. The confirmation explains each action,
   warns before acting on your own account, enforces staff permissions and retains uncertain requests across reloads.
-- SQLite schema 5 extends `operation_effects` with run-bound stop intents beside disconnects. Schemas 1–4 upgrade transactionally, preserving old effects and receipts.
+- SQLite schema 6 extends `operation_effects` with backup intents and known-failed outcomes beside disconnects and run-bound stops. Schemas 1–5 upgrade transactionally, preserving old effects and receipts.
   Other domains are not normalized.
-- Remaining work: the other dashboard operations, staff MFA, the public-access/proxy gate, nginx and Compose.
+- Remaining work: final navigation/production entry, staff MFA, the public-access/proxy gate, nginx and Compose.
+
+## Database backups
+
+Admins create snapshots through `POST /panel/api/v1/backups`; moderators can only list them. The CLI's
+`backup --request-id ID` and old HTML form use the same boundary. Audit, receipt and intent commit before the
+filesystem effect. A checked SQLite copy is synced and published by directory rename; unfinished copies never
+appear in the list or count toward retention. The saved outcome is completed, failed, pending or interrupted.
+A retry only observes that outcome, including after restart/audit pruning or snapshot rotation; it never makes a
+replacement copy. Download availability is reported separately from the historical creation outcome.
+
+`POST /panel/api/v1/backups/download` streams the snapshot only after committing an admin access audit and receipt.
+A sign-in within five minutes is required on this private interface; public downloads remain behind the future
+MFA/public-access gate. The React confirmation warns about password hashes, account data and audit history.
+Only request metadata is kept across reloads, never backup bytes. The generated response type is a Blob; JSON
+errors remain typed and are never saved as a database. A successful response means a download started, not proof
+that the browser saved it. The legacy HTML download is audited too and capped at 64 MiB; use the new dashboard
+or SSH for larger snapshots. Restore remains offline, with the server stopped and the data folder locked.
 
 ## Operation boundary
 
@@ -237,7 +254,7 @@ require the CSRF header. Host-token, restore and credential-export operations ar
 existing HTML panel remains on the local management listener, sharing sessions and the sign-in throttle.
 Password/recovery changes invalidate its cookies as well as JSON API cookies. Full sign-out-everywhere/MFA revocation
 remains part of the public gate. The management listener does not mount the staff API or its schema; the dashboard
-listener never falls through to host-token operations, the HTML panel, backups, health details or game assets.
+listener never falls through to host-token operations, the HTML panel, raw host backup routes, health details or game assets.
 
 For a disposable local server and the connected page, see [local development](#local-development).
 

@@ -36,10 +36,13 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/server", "get", "getServerStatus"),
         ("/panel/api/v1/audit", "get", "getAuditHistory"),
         ("/panel/api/v1/logs", "get", "getServerLogs"),
+        ("/panel/api/v1/backups", "get", "listBackups"),
+        ("/panel/api/v1/backups", "post", "createBackup"),
+        ("/panel/api/v1/backups/download", "post", "downloadBackup"),
         ("/panel/api/v1/server/stop", "post", "stopServer"),
         ("/panel/api/v1/gifts/choices", "get", "listGiftChoices"),
     ];
-    assert_eq!(paths.len(), 22);
+    assert_eq!(paths.len(), 24);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -675,4 +678,27 @@ async fn audit_and_logs_are_typed_bounded_staff_reads_with_real_data_and_secret_
     assert_eq!(logs.body["retention_lines"],2000);
     assert_eq!(b.call("GET","/panel/api/v1/logs?limit=501",json!(null)).await.status,400);
     b.cookie.clear();assert_eq!(b.call("GET","/panel/api/v1/audit",json!(null)).await.status,401);
+}
+
+#[tokio::test]
+async fn backups_use_typed_intents_and_stream_only_after_an_admin_access_audit(){
+    let mut b=Browser::new("backups").await;b.sign_in("Croquet").await;
+    assert_eq!(b.call("GET","/panel/api/v1/backups",json!(null)).await.status,200);
+    assert_eq!(b.call("POST","/panel/api/v1/backups",json!({})).await.status,403);
+    b.sign_in("Pegasus").await;
+    let created=b.call("POST","/panel/api/v1/backups",json!({})).await;assert_eq!(created.status,200,"{}",created.body);assert_eq!(created.body["backup"],"completed");
+    let replay=b.call("POST","/panel/api/v1/backups",json!({})).await;assert_eq!(created.body,replay.body);
+    let name=created.body["result"]["name"].as_str().unwrap();let body=json!({"name":name}).to_string();
+    let addr=b.live.dashboard.unwrap();let mut stream=tokio::net::TcpStream::connect(addr).await.unwrap();
+    let raw=format!("POST /panel/api/v1/backups/download HTTP/1.1\r\nHost: localhost:{}\r\nOrigin: http://localhost:{}\r\nCookie: {}\r\nX-CSRF-Token: {}\r\nIdempotency-Key: download-backup-http-001\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",addr.port(),addr.port(),b.cookie,b.csrf,body.len());
+    stream.write_all(raw.as_bytes()).await.unwrap();let mut answer=vec![];stream.read_to_end(&mut answer).await.unwrap();
+    let split=answer.windows(4).position(|w|w==b"\r\n\r\n").unwrap();let head=String::from_utf8_lossy(&answer[..split]);
+    assert!(head.starts_with("HTTP/1.1 200"),"{head}");assert!(head.contains("application/octet-stream"));assert!(head.contains("attachment; filename=\"yo3-backup-"));
+    assert!(head.contains("no-store"));assert_eq!(&answer[split+4..split+20],b"SQLite format 3\0");
+    let admin=b.admin.clone();let audit=tokio::task::spawn_blocking(move||api::call(&admin,&Op::Audit{limit:Some(100)})).await.unwrap().unwrap();
+    assert_eq!(audit["rows"].as_array().unwrap().iter().filter(|row|row["op"]=="download-backup").count(),1);
+    assert_eq!(b.raw("POST","/panel/api/v1/backups/download",&body,"Idempotency-Key: missing-csrf-request-01\r\nX-CSRF-Token: forged\r\n").await.status,403);
+    assert_eq!(b.call("POST","/panel/api/v1/backups/download",json!({"name":"../server.db"})).await.status,400);
+    b.sign_in("Croquet").await;assert_eq!(b.call("POST","/panel/api/v1/backups/download",json!({"name":name})).await.status,403);
+
 }

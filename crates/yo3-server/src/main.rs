@@ -83,6 +83,7 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::Codes => Op::Codes,
         Admin::Invite { uses, days, .. } => Op::Invite { uses: (*uses > 0).then_some(*uses), days: *days },
         Admin::Invites => Op::Invites,
+        Admin::Backup { .. } => Op::BackUp,
         Admin::ResetCode { user, .. } => Op::ResetCode { user: user.clone(), code: String::new().into() },
         Admin::SetRole { user, role, .. } => Op::SetRole { user: user.clone(), role: role.clone() },
         // The caller creates the setup code before the operation, for a stable, secret-free receipt.
@@ -158,7 +159,7 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         // Before any request: what friends dial is the host's to say.
         anyhow::ensure!(a.advertise.is_some(), "pass --advertise ADDRESS: the address friends reach this server at (an IP or a name in its certificate)");
     }
-    let mut result = if let Admin::GiveBp { request_id, .. } | Admin::AddCode { request_id, .. } | Admin::RemoveCode { request_id, .. } | Admin::Invite { request_id, .. }
+    let mut result = if let Admin::Backup { request_id, .. } | Admin::GiveBp { request_id, .. } | Admin::AddCode { request_id, .. } | Admin::RemoveCode { request_id, .. } | Admin::Invite { request_id, .. }
         | Admin::DeleteAccount { request_id, .. } | Admin::Kick { request_id, .. } | Admin::Ban { request_id, .. } | Admin::Restrict { request_id, .. } | Admin::Lift { request_id, .. }
         | Admin::Mute { request_id, .. } | Admin::Unmute { request_id, .. } | Admin::SignOut { request_id, .. }
         | Admin::Set { request_id, .. } | Admin::Reset { request_id, .. } | Admin::Maintenance { request_id, .. }

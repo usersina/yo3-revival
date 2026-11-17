@@ -322,12 +322,12 @@ async fn an_admin_runs_every_pages_forms() {
     said(&renamed, "Yugi is now Atem");
     // Backups: one now, listed, downloaded as the SQLite file, and the download audited.
     let backups = b.act("/panel/backups", "/panel/backups", &[]).await;
-    said(&backups, "backup ");
+    said(&backups, "Backup completed.");
     let name = s.host(Op::Backups).await["backups"][0]["name"].as_str().unwrap().to_string();
     let file = b.get(&format!("/panel/backups/download?name={name}")).await;
     assert_eq!((file.status, file.header("content-type")), (200, Some("application/vnd.sqlite3")));
     assert!(file.body.starts_with("SQLite format 3"));
-    assert_eq!(b.get("/panel/backups/download?name=../../server.key").await.status, 404);
+    assert_eq!(b.get("/panel/backups/download?name=../../server.key").await.status, 400);
     let ops: Vec<String> = s.audit().into_iter().filter(|r| r.origin == "panel").map(|r| r.op).collect();
     for op in ["download-backup", "back-up", "set", "reset", "maintenance", "rename", "give-bp", "set-role", "add-code", "remove-code", "mute"] {
         assert!(ops.iter().any(|o| o == op), "{op} in {ops:?}");

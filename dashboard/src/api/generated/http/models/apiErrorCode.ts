@@ -17,6 +17,7 @@ export const ApiErrorCode = {
   already_exists: 'already_exists',
   request_conflict: 'request_conflict',
   persistence_failed: 'persistence_failed',
+  reauthentication_required: 'reauthentication_required',
   method_not_allowed: 'method_not_allowed',
   payload_too_large: 'payload_too_large',
   unsupported_media_type: 'unsupported_media_type',

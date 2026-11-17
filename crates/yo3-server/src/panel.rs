@@ -177,9 +177,10 @@ const PAGES: &[(&str, &str)] = &[
 
 /// Who is looking at a page.
 #[derive(Clone)]
-pub(crate) struct Viewer { pub user_id: u32, pub user: String, pub role: Role, pub csrf: String, pub expires: i64 }
+pub(crate) struct Viewer { pub user_id: u32, pub user: String, pub role: Role, pub csrf: String, pub authenticated_at: i64, pub expires: i64 }
 
 impl Viewer {
+    pub(crate) fn fresh(&self)->bool{(0..=300).contains(&crate::logins::now().saturating_sub(self.authenticated_at))}
     fn admin(&self) -> bool { self.role == Role::Admin }
     /// The hidden field every form carries.
     fn token(&self) -> String { format!("<input type=\"hidden\" name=\"csrf\" value=\"{}\"><input type=\"hidden\" name=\"request_id\" value=\"{}\">", esc(&self.csrf), crate::logins::new_token()) }
@@ -209,7 +210,7 @@ impl Panel {
         let Some(login) = login else { drop(d); sessions.remove(key); return None };
         s.last = now;
         Some((Viewer { user_id: s.user_id, user: login.user.clone(), role: login.role, csrf: s.csrf.clone(),
-            expires: (now + IDLE).min(s.started + LONGEST) }, s.flash.take()))
+            authenticated_at:s.started, expires: (now + IDLE).min(s.started + LONGEST) }, s.flash.take()))
     }
 
     pub(crate) fn session(&self, cookie: &str, api: &Api) -> Option<Viewer> {
@@ -442,7 +443,7 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
             let op = if r.field("action") == "reset" { Op::Reset { name } } else { Op::Set { name, value: r.field("value").into() } };
             (back("/settings"), api.apply_request(&op, &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id")).map(|v| said(&v)))
         }
-        "/backups" => (back("/backups"), run(api, viewer, &Op::BackUp).map(|v| said(&v))),
+        "/backups" => (back("/backups"), api.apply_request(&Op::BackUp,&viewer.user,ORIGIN,Some(viewer.role),r.field("request_id")).map(|v| said(&v))),
         _ => return refused("404 Not Found", "No such form."),
     };
     match &outcome {
@@ -783,18 +784,19 @@ Copies off this machine are the host's job (see the hosting guide).</p>");
 /// A backup's database file, for an admin; the download is in the audit log.
 fn download(r: &Request, viewer: &Viewer, api: &Api) -> Response {
     if !viewer.admin() { return refused("403 Forbidden", "Only an admin downloads backups.") }
-    let name = r.query.get("name").cloned().unwrap_or_default();
-    let Some(dir) = &api.data_dir else { return refused("404 Not Found", "This server keeps no data folder.") };
-    let Some(found) = crate::store::backups(dir).into_iter().find(|b| b.file_name().is_some_and(|n| n.to_string_lossy() == name)) else {
-        return refused("404 Not Found", "No such backup.");
-    };
-    match std::fs::read(found.join("server.db")) {
-        Ok(body) => {
-            api.note(&viewer.user, ORIGIN, "download-backup", &name);
-            let file: String = name.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '.').collect();
-            answer("200 OK", "application/vnd.sqlite3", body, vec![("Content-Disposition", format!("attachment; filename=\"yo3-server-{file}.db\""))])
+    if !viewer.fresh(){return refused("403 Forbidden","Sign out and sign in again before downloading a backup.")}
+    let request=crate::api::backups::DownloadBackupRequest{name:r.query.get("name").cloned().unwrap_or_default()};
+    match api.open_backup_download(&request,&crate::logins::new_token(),crate::api::Actor::Staff{user_id:viewer.user_id},ORIGIN) {
+        Ok(mut snapshot)=>{
+            // This legacy response buffers its body. The generated dashboard endpoint streams without this limit.
+            if snapshot.bytes>64*1024*1024{return refused("413 Payload Too Large","Use the React dashboard or copy the snapshot through SSH for backups larger than 64 MB.")}
+            let mut body=Vec::new();
+            match std::io::Read::read_to_end(&mut snapshot.file,&mut body){
+                Ok(_)=>answer("200 OK","application/vnd.sqlite3",body,vec![("Content-Disposition",format!("attachment; filename=\"{}\"",snapshot.filename))]),
+                Err(_)=>refused("500 Internal Server Error","The snapshot could not be read. Check the server logs."),
+            }
         }
-        Err(e) => refused("500 Internal Server Error", &format!("The backup can't be read: {e}")),
+        Err(e)=>refused(match e.code {crate::api::MutationErrorCode::NotFound=>"404 Not Found",crate::api::MutationErrorCode::Forbidden=>"403 Forbidden",crate::api::MutationErrorCode::InvalidRequest=>"400 Bad Request",_=>"503 Service Unavailable"},&e.message),
     }
 }
 
@@ -813,6 +815,12 @@ fn logs(r: &Request, api: &Api) -> String {
 mod tests {
     use super::*;
 
+    #[test]
+    fn sensitive_downloads_require_a_sign_in_within_five_minutes_without_future_timestamps() {
+        let now=crate::logins::now();
+        let mut viewer=Viewer{user_id:1,user:"Admin".into(),role:Role::Admin,csrf:"csrf".into(),authenticated_at:now-299,expires:now+600};
+        assert!(viewer.fresh());viewer.authenticated_at=now-301;assert!(!viewer.fresh());viewer.authenticated_at=now+30;assert!(!viewer.fresh());
+    }
     #[test]
     fn forms_are_decoded_and_html_escaped() {
         let f = form("a=1+2&b=%3Cscript%3E&c=%E2%9C%93&d=%zz&e");

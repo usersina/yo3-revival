@@ -32,6 +32,12 @@ export async function apiFetch<T>(url: string, options?: RequestInit): Promise<T
     headers.set('X-CSRF-Token', csrfToken)
   }
   const response = await fetch(url, { ...options, headers, credentials: 'same-origin' })
+  if (
+    response.ok &&
+    response.headers.get('Content-Type')?.split(';')[0].trim() === 'application/octet-stream'
+  ) {
+    return (await response.blob()) as T
+  }
   const data: unknown = await response.json().catch(() => null)
   if (!response.ok) {
     const decoded = ApiErrorSchema.safeParse(data)

@@ -16,6 +16,7 @@ use crate::api::moderation::{ModerationRequest,ModerationResponse};
 use crate::api::deletion::{DeleteAccountRequest,DeleteAccountResponse};
 use crate::api::server::{StopRequest,StopResponse,ServerOverview};
 use crate::api::observability::{AuditQuery,AuditPage,LogsQuery,LogPage};
+use crate::api::backups::{BackupList,CreateBackupRequest,CreateBackupResponse,DownloadBackupRequest};
 use crate::api::settings::{SettingsRequest, SettingsResult, SettingsList};
 use crate::api::gifts::{GiftRequest, GiftResult, GiftChoices};
 use crate::api::keys::{KeyAccountRequest, KeyAccountResult};
@@ -31,7 +32,7 @@ pub struct Dashboard { pub api: Arc<Api>, pub panel: Arc<Panel> }
 #[serde(rename_all = "snake_case")]
 pub enum ApiErrorCode {
     InvalidRequest, Unauthenticated, Forbidden, InvalidOrigin, CsrfInvalid, RateLimited, NotFound,
-    AlreadyExists, RequestConflict, PersistenceFailed, MethodNotAllowed, PayloadTooLarge, UnsupportedMediaType, InternalError,
+    AlreadyExists, RequestConflict, PersistenceFailed, ReauthenticationRequired, MethodNotAllowed, PayloadTooLarge, UnsupportedMediaType, InternalError,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -42,7 +43,7 @@ impl ApiError {
         match self.code {
             ApiErrorCode::InvalidRequest => StatusCode::BAD_REQUEST,
             ApiErrorCode::Unauthenticated => StatusCode::UNAUTHORIZED,
-            ApiErrorCode::Forbidden | ApiErrorCode::InvalidOrigin | ApiErrorCode::CsrfInvalid => StatusCode::FORBIDDEN,
+            ApiErrorCode::ReauthenticationRequired | ApiErrorCode::Forbidden | ApiErrorCode::InvalidOrigin | ApiErrorCode::CsrfInvalid => StatusCode::FORBIDDEN,
             ApiErrorCode::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             ApiErrorCode::NotFound => StatusCode::NOT_FOUND,
             ApiErrorCode::RequestConflict | ApiErrorCode::AlreadyExists => StatusCode::CONFLICT,
@@ -111,7 +112,7 @@ fn documented_routes() -> OpenApiRouter<Dashboard> {
     OpenApiRouter::new().routes(routes!(staff_session)).routes(routes!(sign_in)).routes(routes!(sign_out))
         .routes(routes!(accounts)).routes(routes!(give_bp)).routes(routes!(list_bp_codes))
         .routes(routes!(create_bp_code)).routes(routes!(remove_bp_code)).routes(routes!(list_invites)).routes(routes!(create_invite))
-        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices)).routes(routes!(moderate)).routes(routes!(delete_account)).routes(routes!(server_status)).routes(routes!(audit_history)).routes(routes!(server_logs)).routes(routes!(stop_server)).routes(routes!(live_settings)).routes(routes!(change_settings).layer(DefaultBodyLimit::max(256 * 1024)))
+        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices)).routes(routes!(moderate)).routes(routes!(delete_account)).routes(routes!(server_status)).routes(routes!(audit_history)).routes(routes!(server_logs)).routes(routes!(backups)).routes(routes!(create_backup)).routes(routes!(download_backup)).routes(routes!(stop_server)).routes(routes!(live_settings)).routes(routes!(change_settings).layer(DefaultBodyLimit::max(256 * 1024)))
 }
 
 pub fn openapi() -> OpenApi {
@@ -424,7 +425,7 @@ async fn give_gift(State(state): State<Dashboard>, Extension(viewer): Extension<
 
 #[utoipa::path(post, path = "/panel/api/v1/moderation", operation_id = "moderateAccount", tag = "Moderation",
     security(("staffSession" = [], "csrfToken" = [])), request_body = ModerationRequest,
-    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "Retain this ID and input on retry. Retries observe the saved outcome, never repeat a disconnect.")),
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "Retain this ID and input on retry. A retry observes the original saved outcome.")),
     responses((status = 200, description = "Committed moderation plus current disconnect outcome", body = ModerationResponse),
         (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
         (status = 404, description = "Account not found", body = ApiError), (status = 409, description = "Recipe already owned or retry input conflict", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
@@ -441,7 +442,7 @@ async fn moderate(State(state): State<Dashboard>, Extension(viewer): Extension<V
 
 #[utoipa::path(post, path = "/panel/api/v1/accounts/delete", operation_id = "deleteAccount", tag = "Accounts",
     security(("staffSession" = [], "csrfToken" = [])), request_body = DeleteAccountRequest,
-    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "Retain this ID and input on retry. Retries observe the saved outcome, never repeat a disconnect.")),
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "Retain this ID and input on retry. A retry observes the original saved outcome.")),
     responses((status = 200, description = "Committed account deletion plus current disconnect outcome", body = DeleteAccountResponse),
         (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
         (status = 404, description = "Account not found", body = ApiError), (status = 409, description = "Retry input conflict", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
@@ -511,7 +512,7 @@ async fn server_status(State(state): State<Dashboard>) -> Result<Json<ServerOver
 
 #[utoipa::path(post, path = "/panel/api/v1/server/stop", operation_id = "stopServer", tag = "Server",
     security(("staffSession" = [], "csrfToken" = [])), request_body = StopRequest,
-    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "Retain this ID and input on retry. Retries observe the saved outcome, never repeat a disconnect.")),
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "Retain this ID and input on retry. A retry observes the original saved outcome.")),
     responses((status = 200, description = "Committed stop request plus current signal outcome", body = StopResponse),
         (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
         (status = 404, description = "Account not found", body = ApiError), (status = 409, description = "Retry input conflict", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
@@ -546,4 +547,50 @@ async fn server_logs(State(state): State<Dashboard>, Extension(viewer): Extensio
     let Query(query)=query.map_err(|_|ApiError::new(ApiErrorCode::InvalidRequest,"Invalid history query parameters."))?;
     tokio::task::spawn_blocking(move||state.api.read_logs(&query,Actor::Staff{user_id:viewer.user_id})).await
         .map_err(|_|ApiError::new(ApiErrorCode::InternalError,"The history could not be read."))?.map(Json).map_err(Into::into)
+}
+
+#[derive(ToSchema)]
+#[allow(dead_code, reason="schema-only wrapper for the streamed SQLite response")]
+#[schema(value_type=String,format=Binary)]
+struct BackupFile(String);
+
+#[utoipa::path(get, path = "/panel/api/v1/backups", operation_id = "listBackups", tag = "Backups",
+    security(("staffSession" = [])), responses((status = 200, description = "Success", body = BackupList),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 404, description = "No backups", body = ApiError), (status = 503, description = "Backup storage unavailable", body = ApiError), (status = 500, description = "Internal error; mutation outcome may be unknown", body = ApiError)))]
+async fn backups(State(state):State<Dashboard>,Extension(viewer):Extension<Viewer>)->Result<Json<BackupList>,ApiError>{
+    tokio::task::spawn_blocking(move||state.api.read_backups(Actor::Staff{user_id:viewer.user_id})).await.map_err(|_|ApiError::new(ApiErrorCode::InternalError,"The backup list could not be read."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/backups", operation_id = "createBackup", tag = "Backups",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = CreateBackupRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "Retain this ID and input on retry. A retry observes the original saved outcome.")),
+    responses((status = 200, description = "Saved snapshot intent and current outcome", body = CreateBackupResponse),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Account not found", body = ApiError), (status = 409, description = "Retry input conflict", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError),
+        (status = 503, description = "Commit could not be confirmed; retry the same request", body = ApiError), (status = 500, description = "Internal error; outcome may be unknown", body = ApiError)))]
+async fn create_backup(State(state):State<Dashboard>,Extension(viewer):Extension<Viewer>,headers:HeaderMap,body:Result<Json<CreateBackupRequest>,JsonRejection>)->Result<Json<CreateBackupResponse>,ApiError>{
+    let Json(request)=body?;let id=one(&headers,"idempotency-key").unwrap_or_default().to_string();
+    tokio::task::spawn_blocking(move||state.api.create_backup(&request,&id,Actor::Staff{user_id:viewer.user_id},"dashboard")).await.map_err(|_|ApiError::new(ApiErrorCode::InternalError,"The backup outcome is unknown. Retry the same request."))?.map(Json).map_err(Into::into)
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/backups/download", operation_id = "downloadBackup", tag = "Backups",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = DownloadBackupRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "Retain this ID and input on retry. A retry observes the original saved outcome.")),
+    responses((status = 200, description = "Audited snapshot stream. Includes sensitive account data; keep it private.", body = BackupFile, content_type="application/octet-stream"),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Account not found", body = ApiError), (status = 409, description = "Retry input conflict", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError),
+        (status = 503, description = "Commit could not be confirmed; retry the same request", body = ApiError), (status = 500, description = "Internal error; outcome may be unknown", body = ApiError)))]
+async fn download_backup(State(state):State<Dashboard>,Extension(viewer):Extension<Viewer>,headers:HeaderMap,body:Result<Json<DownloadBackupRequest>,JsonRejection>)->Result<Response,ApiError>{
+    if !viewer.fresh(){return Err(ApiError::new(ApiErrorCode::ReauthenticationRequired,"Sign out and sign in again before downloading a backup."))}
+    let Json(request)=body?;let id=one(&headers,"idempotency-key").unwrap_or_default().to_string();
+    let snapshot=tokio::task::spawn_blocking(move||state.api.open_backup_download(&request,&id,Actor::Staff{user_id:viewer.user_id},"dashboard")).await
+        .map_err(|_|ApiError::new(ApiErrorCode::InternalError,"The snapshot download could not be opened."))??;
+    let mut response=Response::new(Body::from_stream(tokio_util::io::ReaderStream::new(tokio::fs::File::from_std(snapshot.file))));
+    response.headers_mut().insert(header::CONTENT_TYPE,HeaderValue::from_static("application/octet-stream"));
+    response.headers_mut().insert(header::CONTENT_LENGTH,HeaderValue::from_str(&snapshot.bytes.to_string()).unwrap());
+    response.headers_mut().insert(header::CONTENT_DISPOSITION,HeaderValue::from_str(&format!("attachment; filename=\"{}\"",snapshot.filename)).unwrap());
+    Ok(response)
 }

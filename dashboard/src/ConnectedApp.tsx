@@ -25,6 +25,7 @@ import { ConnectedSettings } from './ConnectedSettings'
 import { ConnectedServer } from './ConnectedServer'
 import { ConnectedAudit } from './ConnectedAudit'
 import { ConnectedLogs } from './ConnectedLogs'
+import { ConnectedBackups } from './ConnectedBackups'
 import { ConnectedCodes } from './ConnectedCodes'
 import { ConnectedInvites } from './ConnectedInvites'
 import { ConnectedGifts } from './ConnectedGifts'
@@ -373,6 +374,7 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
       </Panel>
       <ConnectedAudit />
       <ConnectedLogs />
+      <ConnectedBackups session={session} />
       <ConnectedAccountDialog
         session={session}
         userId={detailId}

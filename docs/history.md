@@ -12,6 +12,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [2026-11-17 — Transactional account deletion in the connected dashboard](#2026-11-17--transactional-account-deletion-in-the-connected-dashboard)
   - [2026-11-17 — Durable graceful stop and checked live status](#2026-11-17--durable-graceful-stop-and-checked-live-status)
   - [2026-11-17 — Connected audit and server logs](#2026-11-17--connected-audit-and-server-logs)
+  - [2026-11-17 — Checked backups and audited streaming downloads](#2026-11-17--checked-backups-and-audited-streaming-downloads)
   - [Status](#status)
   - [▶ Overnight plan (2026-11-07): everything left, end to end](#-overnight-plan-2026-11-07-everything-left-end-to-end)
   - [▶ Windows VM test (2026-11-08): what a real Windows client turned up](#-windows-vm-test-2026-11-08-what-a-real-windows-client-turned-up)
@@ -32,6 +33,15 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-17 — Checked backups and audited streaming downloads
+
+Reproduced the legacy backup reporting success despite an audit failure. Creation now commits audit/receipt/intent
+before a checked, synced SQLite copy is atomically published. Retry receipts survive pruning, rotation and restart;
+failed/unknown outcomes are explicit. Partial folders do not count toward retention. Downloads require an admin's
+recent private sign-in and a committed access audit before any streamed bytes. Added generated Blob clients,
+confirmation/recovery UI, failure/migration/concurrency tests and browser download proof. Schema 6 preserves older
+stop/disconnect effects; restore remains offline. Public management still awaits MFA and the nginx gate.
 
 ## 2026-11-17 — Connected audit and server logs
 

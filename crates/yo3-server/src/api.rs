@@ -42,6 +42,7 @@ pub mod moderation;
 pub mod deletion;
 pub mod server;
 pub mod observability;
+pub mod backups;
 pub use give_bp::{GiveBpRequest, GiveBpResult};
 pub use mutation::{Actor, MutationError, MutationErrorCode};
 
@@ -121,7 +122,7 @@ pub enum Op {
 
 impl Op {
     /// Operations migrated to a committed change/audit/receipt boundary.
-    fn receipted(&self) -> bool { matches!(self, Self::Shutdown { .. } | Self::DeleteAccount { .. } | Self::Kick { .. } | Self::Ban { .. } | Self::Restrict { .. } | Self::Lift { .. } | Self::Mute { .. } | Self::Unmute { .. } | Self::SignOut { .. } | Self::Set { .. } | Self::Reset { .. } | Self::Maintenance { .. } | Self::GiveCards { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
+    fn receipted(&self) -> bool { matches!(self, Self::BackUp | Self::Shutdown { .. } | Self::DeleteAccount { .. } | Self::Kick { .. } | Self::Ban { .. } | Self::Restrict { .. } | Self::Lift { .. } | Self::Mute { .. } | Self::Unmute { .. } | Self::SignOut { .. } | Self::Set { .. } | Self::Reset { .. } | Self::Maintenance { .. } | Self::GiveCards { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
     /// Its name in the API's path and the audit log.
     pub fn name(&self) -> String {
         serde_json::to_value(self).ok().and_then(|v| v["op"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -288,6 +289,10 @@ impl Api {
 
     fn typed_change(&self, op: &Op, id: &str, actor: Actor<'_>, origin: &str) -> Result<Value, MutationError> {
         match op {
+            Op::BackUp => self.create_backup(&backups::CreateBackupRequest {},id,actor,origin).and_then(|r| {
+                if r.backup==crate::store::EffectState::Failed {return Err(MutationError::new(MutationErrorCode::PersistenceFailed,"Backup failed. Inspect the server logs; retrying this ID only checks the saved result."))}
+                let mut value=json!(r.result);value["backup"]=json!(r.backup);value["message"]=json!(if r.backup==crate::store::EffectState::Completed {"Backup completed."}else{"Backup outcome unknown. Inspect the backup list and server logs."});Ok(value)
+            }),
             Op::Shutdown { run_id } => self.request_stop(&server::StopRequest { run_id: run_id.clone() }, id, actor, origin).map(|r| {
                 let mut value=json!(r.result);value["stop"]=json!(r.stop);value["stopping"]=json!(true);value
             }),
@@ -369,12 +374,7 @@ impl Api {
                 }).collect();
                 Ok((json!({ "backups": rows }), None, None))
             }
-            Op::BackUp => {
-                let dir = self.data_dir.as_ref().ok_or("this server keeps no data folder")?;
-                crate::store::back_up(dir).map_err(|e| format!("the backup failed: {e}"))?;
-                let name = last_backup(dir).map(|b| b.0).unwrap_or_default();
-                Ok((json!({ "name": name, "message": format!("backup {name} taken") }), None, Some(json!(name))))
-            }
+            Op::BackUp => Err("backups require the typed mutation boundary".into()),
             Op::Logs { limit, problems } => {
                 Ok((json!({ "lines": crate::recent::lines(limit.unwrap_or(200).min(crate::recent::KEEP as u32) as usize, *problems) }), None, None))
             }

@@ -1,4 +1,4 @@
-//! The server's state in SQLite (`server.db`, schema 5), one row per thing (#22), with durable operation receipts.
+//! The server's state in SQLite (`server.db`, schema 6), one row per thing (#22), with durable operation receipts.
 //!
 //! Each domain (accounts, records, friends, mail, teams, events, rentals) still hands the store its whole state as one
 //! JSON value, through `write(dir/NAME.json, value)`, and gets it back from `read`. The store splits that value into
@@ -28,7 +28,7 @@ use rusqlite::{Connection, OptionalExtension};
 const DOMAINS: &[&str] = &["accounts.json", "records.json", "friends.json", "mail.json", "teams.json", "events.json", "rentals.json", "settings.json"];
 const APPLICATION_ID: u32 = 0x594f3301;
 /// Schema 1 kept each domain as one JSON document (`state_documents`); schema 2 keeps one row per item.
-const SCHEMA: u32 = 5;
+const SCHEMA: u32 = 6;
 const SCHEMA_SQL: &str = "
     CREATE TABLE IF NOT EXISTS domains (name TEXT PRIMARY KEY, scalars TEXT NOT NULL CHECK(json_valid(scalars)),
         shape TEXT NOT NULL CHECK(json_valid(shape)));
@@ -225,7 +225,7 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
             tx.execute_batch("DROP TABLE state_documents;").map_err(sql)?;
             tx.pragma_update(None, "user_version", SCHEMA).map_err(sql)?;
         }
-        (APPLICATION_ID, 2..=4) => { tx.pragma_update(None, "user_version", SCHEMA).map_err(sql)?; }
+        (APPLICATION_ID, 2..=5) => { tx.pragma_update(None, "user_version", SCHEMA).map_err(sql)?; }
         (0, 0) if tables == 0 => {
             tx.execute_batch(SCHEMA_SQL).map_err(sql)?;
             tx.pragma_update(None, "application_id", APPLICATION_ID).map_err(sql)?;
@@ -239,11 +239,12 @@ pub fn initialize(dir: &Path) -> io::Result<()> {
     let effects_exist: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='operation_effects')", [], |r| r.get(0)).map_err(sql)?;
     if effects_exist {
         let has_kind: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM pragma_table_info('operation_effects') WHERE name='kind')", [], |r| r.get(0)).map_err(sql)?;
-        if !has_kind {
+        if !has_kind || version < SCHEMA {
             if version == SCHEMA { return Err(io::Error::other("server.db effect schema is incomplete")) }
             tx.execute_batch("ALTER TABLE operation_effects RENAME TO operation_effects_previous;").map_err(sql)?;
             tx.execute_batch(EFFECTS_TABLE).map_err(sql)?;
-            tx.execute_batch("INSERT INTO operation_effects(actor,request_id,user_id,state,created,updated) SELECT actor,request_id,user_id,state,created,updated FROM operation_effects_previous; DROP TABLE operation_effects_previous;").map_err(sql)?;
+            let kind=if has_kind { "kind" } else { "'disconnect'" };
+            tx.execute_batch(&format!("INSERT INTO operation_effects(actor,request_id,user_id,kind,state,created,updated) SELECT actor,request_id,user_id,{kind},state,created,updated FROM operation_effects_previous; DROP TABLE operation_effects_previous;")).map_err(sql)?;
         }
     }
     tx.execute_batch(EFFECTS_TABLE).map_err(sql)?;
@@ -279,17 +280,17 @@ pub(crate) fn put_receipt(dir: &Path, actor: &str, request_id: &str, receipt: &R
 // Effects are separate from prunable audit rows. A receipt retry observes the outcome; it never executes it again.
 const EFFECTS_TABLE: &str = "CREATE TABLE IF NOT EXISTS operation_effects (
     actor TEXT NOT NULL, request_id TEXT NOT NULL, user_id INTEGER,
-    kind TEXT NOT NULL DEFAULT 'disconnect' CHECK(kind IN ('disconnect','stop')),
-    state TEXT NOT NULL CHECK(state IN ('pending','completed','interrupted')),
+    kind TEXT NOT NULL DEFAULT 'disconnect' CHECK(kind IN ('disconnect','stop','backup')),
+    state TEXT NOT NULL CHECK(state IN ('pending','completed','interrupted','failed')),
     created INTEGER NOT NULL, updated INTEGER NOT NULL,
-    CHECK((kind='disconnect' AND user_id IS NOT NULL) OR (kind='stop' AND user_id IS NULL)),
+    CHECK((kind='disconnect' AND user_id IS NOT NULL) OR (kind IN ('stop','backup') AND user_id IS NULL)),
     PRIMARY KEY(actor, request_id), FOREIGN KEY(actor, request_id) REFERENCES operation_receipts(actor, request_id)
 ) WITHOUT ROWID;";
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum EffectState { Pending, Completed, Interrupted }
+pub enum EffectState { Pending, Completed, Interrupted, Failed }
 impl EffectState {
-    fn text(self) -> &'static str { match self { Self::Pending => "pending", Self::Completed => "completed", Self::Interrupted => "interrupted" } }
+    fn text(self) -> &'static str { match self { Self::Pending => "pending", Self::Completed => "completed", Self::Interrupted => "interrupted", Self::Failed => "failed" } }
 }
 pub(crate) fn put_effect(dir: &Path, actor: &str, id: &str, user: u32) -> io::Result<()> {
     if !in_batch(dir) { return Err(io::Error::other("an effect intent needs its operation's transaction")) }
@@ -303,19 +304,27 @@ pub(crate) fn put_stop_effect(dir: &Path, actor: &str, id: &str) -> io::Result<(
     hold(dir)?.execute("INSERT INTO operation_effects(actor,request_id,kind,state,created,updated) VALUES (?1,?2,'stop','pending',?3,?3)",
         rusqlite::params![actor,id,now]).map_err(sql)?; Ok(())
 }
+pub(crate) fn put_backup_effect(dir: &Path, actor: &str, id: &str) -> io::Result<()> {
+    if !in_batch(dir) { return Err(io::Error::other("a backup intent needs its operation's transaction")) }
+    let now=crate::logins::now();
+    hold(dir)?.execute("INSERT INTO operation_effects(actor,request_id,kind,state,created,updated) VALUES (?1,?2,'backup','pending',?3,?3)",rusqlite::params![actor,id,now]).map_err(sql)?;Ok(())
+}
 pub(crate) fn effect(dir: &Path, actor: &str, id: &str) -> io::Result<Option<EffectState>> {
     let state: Option<String> = hold(dir)?.query_row("SELECT state FROM operation_effects WHERE actor=?1 AND request_id=?2",(actor,id),|r|r.get(0)).optional().map_err(sql)?;
-    state.map(|s| match s.as_str() { "pending" => Ok(EffectState::Pending), "completed" => Ok(EffectState::Completed), "interrupted" => Ok(EffectState::Interrupted), _ => Err(io::Error::other("unknown effect state")) }).transpose()
+    state.map(|s| match s.as_str() { "pending" => Ok(EffectState::Pending), "completed" => Ok(EffectState::Completed), "interrupted" => Ok(EffectState::Interrupted), "failed" => Ok(EffectState::Failed), _ => Err(io::Error::other("unknown effect state")) }).transpose()
 }
 fn record_effect_state(dir: &Path, actor: &str, id: &str, state: EffectState) -> io::Result<()> {
     let conn = hold(dir)?;
     let kind: String = conn.query_row("SELECT kind FROM operation_effects WHERE actor=?1 AND request_id=?2", (actor,id), |r| r.get(0)).map_err(sql)?;
-    let path = match kind.as_str() { "disconnect" => "$.disconnect", "stop" => "$.stop", _ => return Err(io::Error::other("unknown effect kind")) };
+    let path = match kind.as_str() { "disconnect" => "$.disconnect", "stop" => "$.stop", "backup" => "$.backup", _ => return Err(io::Error::other("unknown effect kind")) };
     conn.execute("UPDATE operation_effects SET state=?3, updated=?4 WHERE actor=?1 AND request_id=?2 AND state='pending'",
         rusqlite::params![actor,id,state.text(),crate::logins::now()]).map_err(sql)?;
     conn.execute("UPDATE audit SET detail=json_set(detail,?4,?3) WHERE json_extract(detail,'$.receipt_actor')=?1 AND json_extract(detail,'$.request_id')=?2",
         rusqlite::params![actor,id,state.text(),path]).map_err(sql)?;
     Ok(())
+}
+pub(crate) fn finish_backup_effect(dir:&Path,actor:&str,id:&str,success:bool)->io::Result<()> {
+    together(dir,||record_effect_state(dir,actor,id,if success {EffectState::Completed}else{EffectState::Failed}))
 }
 pub(crate) fn complete_effect(dir: &Path, actor: &str, id: &str) -> io::Result<()> {
     together(dir,|| record_effect_state(dir,actor,id,EffectState::Completed))
@@ -678,14 +687,39 @@ pub fn write(path: &Path, value: &Json) -> io::Result<()> {
 
 /// Copies the SQLite database consistently into `backups/<time>/`, keeping the newest few.
 /// Legacy standalone callers without a database retain their JSON backup behavior.
+pub(crate) fn valid_backup_name(name:&str)->bool {
+    (1..=96).contains(&name.len()) && name.as_bytes()[0].is_ascii_alphanumeric()
+        && name.bytes().all(|b|b.is_ascii_alphanumeric() || matches!(b,b'-'|b'_'|b'.'))
+}
+/// Publish a checked SQLite snapshot atomically, never list or download an unfinished copy.
+pub(crate) fn back_up_as(dir:&Path,name:&str)->io::Result<()> {
+    if !valid_backup_name(name){return Err(io::Error::other("invalid backup name"))}
+    let backups=dir.join("backups");fs::create_dir_all(&backups)?;
+    if fs::symlink_metadata(&backups)?.file_type().is_symlink(){return Err(io::Error::other("the backup folder cannot be a symbolic link"))}
+    let destination=backups.join(name);
+    if destination.exists(){return Err(io::Error::new(io::ErrorKind::AlreadyExists,"backup already exists"))}
+    let temporary=backups.join(format!(".pending-{name}-{}",crate::logins::new_token()));fs::create_dir(&temporary)?;
+    let result=(||{
+        let database=temporary.join("server.db");hold(dir)?.backup("main",&database,None::<fn(rusqlite::backup::Progress)>).map_err(sql)?;
+        {let check=Connection::open_with_flags(&database,rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(sql)?;
+            let integrity:String=check.query_row("PRAGMA quick_check",[],|r|r.get(0)).map_err(sql)?;
+            if integrity!="ok"{return Err(io::Error::other("backup integrity check failed"))}}
+        #[cfg(unix)]{use std::os::unix::fs::PermissionsExt;fs::set_permissions(&database,fs::Permissions::from_mode(0o600))?;}
+        fs::OpenOptions::new().read(true).write(true).open(&database)?.sync_all()?;
+        #[cfg(unix)]fs::File::open(&temporary)?.sync_all()?;
+        fs::rename(&temporary,&destination)?;
+        #[cfg(unix)]fs::File::open(&backups)?.sync_all()?;
+        Ok(())
+    })();
+    if result.is_err(){let _=fs::remove_dir_all(&temporary);}
+    result?;
+    if let Err(e)=rotate(&backups){tracing::error!("Backup completed, but retention cleanup failed: {e}");}
+    Ok(())
+}
+
 pub fn back_up(dir: &Path) -> io::Result<()> {
     if dir.join("server.db").is_file() {
-        let backups = dir.join("backups");
-        let to = backups.join(chrono::Local::now().format("%Y%m%d-%H%M%S%.9f").to_string());
-        fs::create_dir_all(&to)?;
-        hold(dir)?.backup("main", to.join("server.db"), None::<fn(rusqlite::backup::Progress)>).map_err(sql)?;
-        rotate(&backups)?;
-        return Ok(());
+        return back_up_as(dir,&chrono::Local::now().format("%Y%m%d-%H%M%S%.9f").to_string());
     }
     // Only files that parse are backed up: a damaged file must not rotate the last good copy out.
     let parses = |p: &std::path::PathBuf| match fs::read(p).map(|b| serde_json::from_slice::<Json>(&b)) {
@@ -720,7 +754,7 @@ pub fn back_up(dir: &Path) -> io::Result<()> {
 }
 
 fn rotate(backups: &Path) -> io::Result<()> {
-    let mut kept: Vec<_> = fs::read_dir(backups)?.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir()).collect();
+    let mut kept: Vec<_> = fs::read_dir(backups)?.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.file_name().and_then(|n|n.to_str()).is_some_and(valid_backup_name) && fs::symlink_metadata(p).is_ok_and(|m|m.is_dir() && !m.file_type().is_symlink())).collect();
     kept.sort();
     for old in kept.iter().rev().skip(BACKUPS) {
         fs::remove_dir_all(old)?;
@@ -826,7 +860,7 @@ pub fn fail_saves(dir: &Path, fail: bool) -> io::Result<()> {
 /// The backups in `dir`, newest first.
 pub fn backups(dir: &Path) -> Vec<PathBuf> {
     let mut all: Vec<PathBuf> = fs::read_dir(dir.join("backups")).into_iter().flatten().flatten().map(|e| e.path())
-        .filter(|p| p.join("server.db").is_file()).collect();
+        .filter(|p|p.file_name().and_then(|n|n.to_str()).is_some_and(valid_backup_name) && p.join("server.db").is_file()).collect();
     all.sort();
     all.reverse();
     all

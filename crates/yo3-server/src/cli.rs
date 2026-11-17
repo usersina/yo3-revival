@@ -201,6 +201,8 @@ pub enum Admin {
     Restore { which: String },
     /// List the backups, newest first: one at each start, every hour while running, and at each stop.
     Backups,
+    /// Create a checked backup now. Reuse the printed ID after a lost response.
+    Backup { #[arg(long)] request_id: Option<String> },
     /// List the live settings: each one's value, whether it is the default, and when a change applies. Works while
     /// the server runs.
     Settings,

@@ -137,7 +137,7 @@ fn current_permissions_target_roles_and_durations_are_checked_before_any_change_
 fn schema_three_migrates_without_losing_accounts_audit_or_receipts() {
     let f=Fixture::new("schema3");let original=f.api.moderate(&request(f.user,"mute"),ID,Actor::Host{by:"host"},"server").unwrap();
     f.sql("DROP TABLE operation_effects;PRAGMA user_version=3;");store::close(&f.dir);store::initialize(&f.dir).unwrap();
-    let conn=rusqlite::Connection::open(f.dir.join("server.db")).unwrap();assert_eq!(conn.pragma_query_value(None,"user_version",|r|r.get::<_,u32>(0)).unwrap(),5);
+    let conn=rusqlite::Connection::open(f.dir.join("server.db")).unwrap();assert_eq!(conn.pragma_query_value(None,"user_version",|r|r.get::<_,u32>(0)).unwrap(),6);
     assert_eq!(f.api.moderate(&request(f.user,"mute"),ID,Actor::Host{by:"host"},"server").unwrap().result,original.result);assert_eq!(f.api.audit(100).unwrap().len(),1);
     assert!(Directory::open(vec![],&f.dir.join("accounts.json")).unwrap().login_by_id(f.user).unwrap().muted.is_some());
 }

@@ -29,9 +29,13 @@ import type {
   AccountList,
   ApiError,
   AuditPage,
+  BackupList,
   BpCodeList,
   ChangeSettingsHeaders,
   CountryList,
+  CreateBackupHeaders,
+  CreateBackupRequest,
+  CreateBackupResponse,
   CreateBpCodeHeaders,
   CreateBpCodeRequest,
   CreateBpCodeResult,
@@ -41,6 +45,8 @@ import type {
   DeleteAccountHeaders,
   DeleteAccountRequest,
   DeleteAccountResponse,
+  DownloadBackupHeaders,
+  DownloadBackupRequest,
   EditAccountHeaders,
   GetAuditHistoryParams,
   GetServerLogsParams,
@@ -684,6 +690,238 @@ export function useGetAuditHistory<TData = Awaited<ReturnType<typeof getAuditHis
 
 
 
+
+export const getListBackupsUrl = () => {
+
+
+
+
+  return `/panel/api/v1/backups`
+}
+
+export const listBackups = async ( options?: Parameters<typeof apiFetch>[1]): Promise<BackupList> => {
+
+  return apiFetch<BackupList>(getListBackupsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBackupsQueryKey = () => {
+    return [
+    `/panel/api/v1/backups`
+    ] as const;
+    }
+
+
+export const getListBackupsQueryOptions = <TData = Awaited<ReturnType<typeof listBackups>>, TError = ErrorType<ApiError>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBackups>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBackupsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBackups>>> = ({ signal }) => listBackups({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBackups>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListBackupsQueryResult = NonNullable<Awaited<ReturnType<typeof listBackups>>>
+export type ListBackupsQueryError = ErrorType<ApiError>
+
+
+export function useListBackups<TData = Awaited<ReturnType<typeof listBackups>>, TError = ErrorType<ApiError>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBackups>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listBackups>>,
+          TError,
+          Awaited<ReturnType<typeof listBackups>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListBackups<TData = Awaited<ReturnType<typeof listBackups>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBackups>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listBackups>>,
+          TError,
+          Awaited<ReturnType<typeof listBackups>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListBackups<TData = Awaited<ReturnType<typeof listBackups>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBackups>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListBackups<TData = Awaited<ReturnType<typeof listBackups>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listBackups>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListBackupsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateBackupUrl = () => {
+
+
+
+
+  return `/panel/api/v1/backups`
+}
+
+export const createBackup = async (createBackupRequest: CreateBackupRequest,
+    headers: CreateBackupHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<CreateBackupResponse> => {
+
+  return apiFetch<CreateBackupResponse>(getCreateBackupUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(createBackupRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateBackupMutationKey = () => ['createBackup'] as const;
+
+export const getCreateBackupMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBackup>>, TError,CreateBackupMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createBackup>>, TError,CreateBackupMutationVariables, TContext> => {
+
+const mutationKey = getCreateBackupMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBackup>>, CreateBackupMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  createBackup(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateBackupMutationResult = NonNullable<Awaited<ReturnType<typeof createBackup>>>
+    export type CreateBackupMutationBody = CreateBackupRequest
+    export type CreateBackupMutationError = ErrorType<ApiError>
+    export type CreateBackupMutationVariables = {data: CreateBackupRequest;headers: CreateBackupHeaders}
+
+    export const useCreateBackup = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBackup>>, TError,CreateBackupMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createBackup>>,
+        TError,
+        CreateBackupMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateBackupMutationOptions(options), queryClient);
+    }
+
+export const getDownloadBackupUrl = () => {
+
+
+
+
+  return `/panel/api/v1/backups/download`
+}
+
+export const downloadBackup = async (downloadBackupRequest: DownloadBackupRequest,
+    headers: DownloadBackupHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<Blob> => {
+
+  return apiFetch<Blob>(getDownloadBackupUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(downloadBackupRequest)
+  }
+);}
+
+
+
+
+
+export const getDownloadBackupMutationKey = () => ['downloadBackup'] as const;
+
+export const getDownloadBackupMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof downloadBackup>>, TError,DownloadBackupMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof downloadBackup>>, TError,DownloadBackupMutationVariables, TContext> => {
+
+const mutationKey = getDownloadBackupMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof downloadBackup>>, DownloadBackupMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  downloadBackup(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DownloadBackupMutationResult = NonNullable<Awaited<ReturnType<typeof downloadBackup>>>
+    export type DownloadBackupMutationBody = DownloadBackupRequest
+    export type DownloadBackupMutationError = ErrorType<ApiError>
+    export type DownloadBackupMutationVariables = {data: DownloadBackupRequest;headers: DownloadBackupHeaders}
+
+    export const useDownloadBackup = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof downloadBackup>>, TError,DownloadBackupMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof downloadBackup>>,
+        TError,
+        DownloadBackupMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDownloadBackupMutationOptions(options), queryClient);
+    }
 
 export const getListBpCodesUrl = () => {
 

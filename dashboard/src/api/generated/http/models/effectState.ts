@@ -10,4 +10,5 @@ export const EffectState = {
   pending: 'pending',
   completed: 'completed',
   interrupted: 'interrupted',
+  failed: 'failed',
 } as const;

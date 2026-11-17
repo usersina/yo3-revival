@@ -11,6 +11,8 @@ of:
 - **open**: not answered yet
 
 The contract tests in `crates/yo3-server/tests/front_contract.rs` enforce the confirmed shapes.
+The staff dashboard backup API changes no game requests or replies; its separate generated contract and offline
+restore boundary are described in [dashboard development](dashboard.md#database-backups).
 
 **Contents**
 

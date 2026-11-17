@@ -16,6 +16,33 @@ afterEach(() => {
 })
 
 describe('generated API transport', () => {
+  it('returns a backup as a Blob while decoding JSON failures before any download', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response('SQLite format 3\\0', {
+          headers: { 'Content-Type': 'application/octet-stream' },
+        }),
+      ),
+    )
+    const blob = await apiFetch<Blob>('/panel/api/v1/backups/download', { method: 'POST' })
+    expect(blob).toBeInstanceOf(Blob)
+    expect(await blob.text()).toContain('SQLite format 3')
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json(
+            { code: 'reauthentication_required', message: 'Sign in again.' },
+            { status: 403 },
+          ),
+        ),
+    )
+    await expect(
+      apiFetch('/panel/api/v1/backups/download', { method: 'POST' }),
+    ).rejects.toMatchObject({ status: 403, data: { code: 'reauthentication_required' } })
+  })
   it('preserves the generated body, required request ID, cancellation and same-origin credentials', async () => {
     const fetch = vi.fn().mockResolvedValue(Response.json(result))
     vi.stubGlobal('fetch', fetch)

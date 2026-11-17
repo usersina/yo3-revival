@@ -293,7 +293,7 @@ export const AccountList = zod.object({
 export type AccountList = zod.input<typeof AccountList>;
 export type AccountListOutput = zod.output<typeof AccountList>;
 
-export const ApiErrorCode = zod.enum(['invalid_request', 'unauthenticated', 'forbidden', 'invalid_origin', 'csrf_invalid', 'rate_limited', 'not_found', 'already_exists', 'request_conflict', 'persistence_failed', 'method_not_allowed', 'payload_too_large', 'unsupported_media_type', 'internal_error']);
+export const ApiErrorCode = zod.enum(['invalid_request', 'unauthenticated', 'forbidden', 'invalid_origin', 'csrf_invalid', 'rate_limited', 'not_found', 'already_exists', 'request_conflict', 'persistence_failed', 'reauthentication_required', 'method_not_allowed', 'payload_too_large', 'unsupported_media_type', 'internal_error']);
 
 export type ApiErrorCode = zod.input<typeof ApiErrorCode>;
 export type ApiErrorCodeOutput = zod.output<typeof ApiErrorCode>;
@@ -329,6 +329,28 @@ export const AuditPage = zod.object({
 
 export type AuditPage = zod.input<typeof AuditPage>;
 export type AuditPageOutput = zod.output<typeof AuditPage>;
+
+export const BackupEntry = zod.object({
+  "at": zod.iso.datetime({"offset":true}).nullish(),
+  "bytes": zod.string(),
+  "name": zod.string()
+});
+
+export type BackupEntry = zod.input<typeof BackupEntry>;
+export type BackupEntryOutput = zod.output<typeof BackupEntry>;
+
+export const BackupFile = zod.instanceof(Blob);
+
+export type BackupFile = zod.input<typeof BackupFile>;
+export type BackupFileOutput = zod.output<typeof BackupFile>;
+
+export const BackupList = zod.object({
+  "backups": zod.array(BackupEntry),
+  "checked_at": zod.iso.datetime({"offset":true})
+});
+
+export type BackupList = zod.input<typeof BackupList>;
+export type BackupListOutput = zod.output<typeof BackupList>;
 
 export const bpCodeClaimUserIdMin = 0;
 export const bpCodeClaimUserIdMax = 4294967295;
@@ -394,6 +416,36 @@ export const CountryList = zod.object({
 
 export type CountryList = zod.input<typeof CountryList>;
 export type CountryListOutput = zod.output<typeof CountryList>;
+
+export const CreateBackupRequest = zod.object({
+
+});
+
+export type CreateBackupRequest = zod.input<typeof CreateBackupRequest>;
+export type CreateBackupRequestOutput = zod.output<typeof CreateBackupRequest>;
+
+export const EffectState = zod.enum(['pending', 'completed', 'interrupted', 'failed']);
+
+export type EffectState = zod.input<typeof EffectState>;
+export type EffectStateOutput = zod.output<typeof EffectState>;
+
+export const CreateBackupResult = zod.object({
+  "message": zod.string(),
+  "name": zod.string(),
+  "request_id": zod.string()
+});
+
+export type CreateBackupResult = zod.input<typeof CreateBackupResult>;
+export type CreateBackupResultOutput = zod.output<typeof CreateBackupResult>;
+
+export const CreateBackupResponse = zod.object({
+  "available": zod.boolean(),
+  "backup": EffectState,
+  "result": CreateBackupResult
+});
+
+export type CreateBackupResponse = zod.input<typeof CreateBackupResponse>;
+export type CreateBackupResponseOutput = zod.output<typeof CreateBackupResponse>;
 
 export const createBpCodeRequestBpMax = 4294967295;
 
@@ -480,11 +532,6 @@ export const DeleteAccountRequest = zod.object({
 export type DeleteAccountRequest = zod.input<typeof DeleteAccountRequest>;
 export type DeleteAccountRequestOutput = zod.output<typeof DeleteAccountRequest>;
 
-export const EffectState = zod.enum(['pending', 'completed', 'interrupted']);
-
-export type EffectState = zod.input<typeof EffectState>;
-export type EffectStateOutput = zod.output<typeof EffectState>;
-
 export const deleteAccountResultPlayersMin = 0;
 export const deleteAccountResultPlayersMax = 4294967295;
 
@@ -510,6 +557,19 @@ export const DeleteAccountResponse = zod.object({
 
 export type DeleteAccountResponse = zod.input<typeof DeleteAccountResponse>;
 export type DeleteAccountResponseOutput = zod.output<typeof DeleteAccountResponse>;
+
+export const downloadBackupRequestNameMax = 96;
+
+
+export const downloadBackupRequestNameRegExp = new RegExp('^[A-Za-z0-9][A-Za-z0-9._-]*$');
+
+
+export const DownloadBackupRequest = zod.object({
+  "name": zod.string().min(1).max(downloadBackupRequestNameMax).regex(downloadBackupRequestNameRegExp)
+});
+
+export type DownloadBackupRequest = zod.input<typeof DownloadBackupRequest>;
+export type DownloadBackupRequestOutput = zod.output<typeof DownloadBackupRequest>;
 
 export const recipeChoiceCardCountMin = 0;
 export const recipeChoiceCardCountMax = 4294967295;
@@ -1196,7 +1256,7 @@ export const deleteAccountHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-
 
 
 export const DeleteAccountHeader = zod.object({
-  "Idempotency-Key": zod.string().min(deleteAccountHeaderIdempotencyKeyMin).max(deleteAccountHeaderIdempotencyKeyMax).regex(deleteAccountHeaderIdempotencyKeyRegExp).describe('Retain this ID and input on retry. Retries observe the saved outcome, never repeat a disconnect.')
+  "Idempotency-Key": zod.string().min(deleteAccountHeaderIdempotencyKeyMin).max(deleteAccountHeaderIdempotencyKeyMax).regex(deleteAccountHeaderIdempotencyKeyRegExp).describe('Retain this ID and input on retry. A retry observes the original saved outcome.')
 })
 
 export const DeleteAccountBody = DeleteAccountRequest
@@ -1361,6 +1421,99 @@ export const GetAuditHistory415Response = ApiError
 export const GetAuditHistory500Response = ApiError
 
 export const GetAuditHistory503Response = ApiError
+
+
+export const ListBackups200Response = BackupList
+
+export const ListBackups400Response = ApiError
+
+export const ListBackups401Response = ApiError
+
+export const ListBackups403Response = ApiError
+
+export const ListBackups404Response = ApiError
+
+export const ListBackups405Response = ApiError
+
+export const ListBackups413Response = ApiError
+
+export const ListBackups415Response = ApiError
+
+export const ListBackups500Response = ApiError
+
+export const ListBackups503Response = ApiError
+
+
+export const createBackupHeaderIdempotencyKeyMin = 16;
+export const createBackupHeaderIdempotencyKeyMax = 128;
+
+
+export const createBackupHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const CreateBackupHeader = zod.object({
+  "Idempotency-Key": zod.string().min(createBackupHeaderIdempotencyKeyMin).max(createBackupHeaderIdempotencyKeyMax).regex(createBackupHeaderIdempotencyKeyRegExp).describe('Retain this ID and input on retry. A retry observes the original saved outcome.')
+})
+
+export const CreateBackupBody = CreateBackupRequest
+
+export const CreateBackup200Response = CreateBackupResponse
+
+export const CreateBackup400Response = ApiError
+
+export const CreateBackup401Response = ApiError
+
+export const CreateBackup403Response = ApiError
+
+export const CreateBackup404Response = ApiError
+
+export const CreateBackup405Response = ApiError
+
+export const CreateBackup409Response = ApiError
+
+export const CreateBackup413Response = ApiError
+
+export const CreateBackup415Response = ApiError
+
+export const CreateBackup500Response = ApiError
+
+export const CreateBackup503Response = ApiError
+
+
+export const downloadBackupHeaderIdempotencyKeyMin = 16;
+export const downloadBackupHeaderIdempotencyKeyMax = 128;
+
+
+export const downloadBackupHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const DownloadBackupHeader = zod.object({
+  "Idempotency-Key": zod.string().min(downloadBackupHeaderIdempotencyKeyMin).max(downloadBackupHeaderIdempotencyKeyMax).regex(downloadBackupHeaderIdempotencyKeyRegExp).describe('Retain this ID and input on retry. A retry observes the original saved outcome.')
+})
+
+export const DownloadBackupBody = DownloadBackupRequest
+
+export const DownloadBackup200Response = zod.unknown()
+
+export const DownloadBackup400Response = ApiError
+
+export const DownloadBackup401Response = ApiError
+
+export const DownloadBackup403Response = ApiError
+
+export const DownloadBackup404Response = ApiError
+
+export const DownloadBackup405Response = ApiError
+
+export const DownloadBackup409Response = ApiError
+
+export const DownloadBackup413Response = ApiError
+
+export const DownloadBackup415Response = ApiError
+
+export const DownloadBackup500Response = ApiError
+
+export const DownloadBackup503Response = ApiError
 
 
 export const ListBpCodes200Response = BpCodeList
@@ -1659,7 +1812,7 @@ export const moderateAccountHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9
 
 
 export const ModerateAccountHeader = zod.object({
-  "Idempotency-Key": zod.string().min(moderateAccountHeaderIdempotencyKeyMin).max(moderateAccountHeaderIdempotencyKeyMax).regex(moderateAccountHeaderIdempotencyKeyRegExp).describe('Retain this ID and input on retry. Retries observe the saved outcome, never repeat a disconnect.')
+  "Idempotency-Key": zod.string().min(moderateAccountHeaderIdempotencyKeyMin).max(moderateAccountHeaderIdempotencyKeyMax).regex(moderateAccountHeaderIdempotencyKeyRegExp).describe('Retain this ID and input on retry. A retry observes the original saved outcome.')
 })
 
 export const ModerateAccountBody = ModerationRequest
@@ -1712,7 +1865,7 @@ export const stopServerHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$
 
 
 export const StopServerHeader = zod.object({
-  "Idempotency-Key": zod.string().min(stopServerHeaderIdempotencyKeyMin).max(stopServerHeaderIdempotencyKeyMax).regex(stopServerHeaderIdempotencyKeyRegExp).describe('Retain this ID and input on retry. Retries observe the saved outcome, never repeat a disconnect.')
+  "Idempotency-Key": zod.string().min(stopServerHeaderIdempotencyKeyMin).max(stopServerHeaderIdempotencyKeyMax).regex(stopServerHeaderIdempotencyKeyRegExp).describe('Retain this ID and input on retry. A retry observes the original saved outcome.')
 })
 
 export const StopServerBody = StopRequest
