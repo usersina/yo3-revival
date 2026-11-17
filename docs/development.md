@@ -238,14 +238,23 @@ doesn't mark sent fails the duel. To send one, mark it `Sent` with its coverage;
 handler and Konami's uses, then mark it.
 
 **Names, not numbers.** Every duel id the server uses is defined once, with its client evidence: the engine's in
-`crates/yo3-server/src/ocg.rs` (message and response types, actions, hints, positions, locations, reasons) and the
+`crates/yo3-ocg` (message and response types, actions, hints, positions, locations, reasons; shared with the engine
+program, whose bot and answer encoder use it too) and the
 client's in `wire.rs` (`cmd` commands, `request` duelRequestNames, `zone`, the card `menu`'s bits, other `flag`s, input
 `mode`s, `dialog` kinds, message `entry` kinds, `list` kinds, prompt `text`s, `result`s). Tests tie `wire::cmd` to
 `CLIENT_COMMANDS` and `ocg::msg` to `ENGINE_MESSAGES`, so a new id needs its table entry. The commands both the server
 and the duel check's client model pack (the battle's, moves, card table entries, dialogs) go through `wire::Cmd`, one
-encoder and one decoder (`tests/wire.rs` round-trips them); the engine's answers are built as `ocg::Response`; the
-client's duel requests are read once as `duel::ClientRequest`; and what the client is answering besides a prompt's own
-window is one `Asking` state in the translator. Add a new id or packing there, not as a local constant.
+encoder and one decoder (`tests/wire.rs` round-trips them); the engine's answers are built as `ocg::Response` (the
+engine's `every_answer_the_server_builds_is_the_bytes_the_core_reads` runs each through its encoder); the client's duel
+requests are read once as `duel::ClientRequest`; and what the client is answering besides a prompt's own window is one
+`Asking` state in the translator. Add a new id or packing there, not as a local constant.
+
+**Typed engine messages.** The server reads the engine's messages as structs, never `m["field"]`:
+`yo3_ocg::message` has one per prompt (`Ask`) and per event it reads (`Event`), field for field as `yo3-engine` sends
+them. The server reads leniently (a field a message lacks takes its default, as it always did); the duel check reads
+strictly and fails a duel whose messages don't fit, so the 240 self-played duels check every struct against what the
+engine really sends. A new field the server needs goes in its struct first; a hand-written test message must carry the
+fields the engine sends. Only the engine's state report (the duel check's own `state` query) is still JSON.
 
 **Questions the client answers by itself.** Below level 2, the client's Effect dialog answers No on its own under the
 default Activation Message (Semi Auto Cancel), so the player never sees that chance. `CHAIN_WINDOWS` in `translate/mod.rs`
