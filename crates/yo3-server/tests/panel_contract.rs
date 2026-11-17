@@ -85,6 +85,7 @@ impl Browser {
         let csrf = page.csrf();
         let request_id = page.body.split("name=\"request_id\" value=\"").nth(1).expect("retry ID in form").split('"').next().unwrap();
         let mut all = vec![("csrf", csrf.as_str()), ("request_id", request_id)];
+        if let Some(code) = page.body.split("name=\"access_code\" value=\"").nth(1).and_then(|s| s.split('"').next()) { all.push(("access_code", code)); }
         all.extend_from_slice(fields);
         let done = self.post(to, &all).await;
         assert_eq!(done.status, 303, "{}", done.body);
@@ -370,7 +371,7 @@ async fn the_api_refuses_a_moderator_what_only_an_admin_may_do() {
     let a = api::Api::new(accounts, settings, None, std::path::PathBuf::new(), "server");
     let moderator = Some(logins::Role::Moderator);
     for op in [Op::Set { name: "start-lp".into(), value: "100".into() }, Op::Shutdown, Op::Key { who: "x".into() }, Op::BackUp,
-        Op::Maintenance { minutes: Some(1), message: None, off: false }, Op::AddUser { user: "x".into(), hash: String::new() }] {
+        Op::Maintenance { minutes: Some(1), message: None, off: false }, Op::AddUser { user: "x".into(), code: String::new().into() }] {
         assert!(!op.for_moderators(), "{op:?}");
         assert!(a.apply_as(&op, "Croquet", "panel", moderator).unwrap_err().starts_with("only an admin"), "{op:?}");
     }

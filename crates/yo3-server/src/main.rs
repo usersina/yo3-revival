@@ -5,7 +5,7 @@ use clap::{CommandFactory, FromArgMatches};
 use clap::parser::ValueSource;
 use yo3_server::cli::{Args, Admin};
 use yo3_server::accounts::Directory;
-use std::io::Write;
+use std::io::{Read, Write, IsTerminal};
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
@@ -83,10 +83,10 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::Codes => Op::Codes,
         Admin::Invite { uses, days, .. } => Op::Invite { uses: (*uses > 0).then_some(*uses), days: *days },
         Admin::Invites => Op::Invites,
-        Admin::ResetCode { user } => Op::ResetCode { user: user.clone() },
+        Admin::ResetCode { user, .. } => Op::ResetCode { user: user.clone(), code: String::new().into() },
         Admin::SetRole { user, role, .. } => Op::SetRole { user: user.clone(), role: role.clone() },
-        // The password is made and hashed here: only its hash goes to the server.
-        Admin::AddUser { user } => Op::AddUser { user: user.clone(), hash: String::new() },
+        // The caller creates the setup code before the operation, for a stable, secret-free receipt.
+        Admin::AddUser { user, .. } => Op::AddUser { user: user.clone(), code: String::new().into() },
         Admin::Settings | Admin::Share { .. } => Op::Settings,
         Admin::Set { name, value } => Op::Set { name: name.clone(), value: value.clone() },
         Admin::Reset { name } => Op::Reset { name: name.clone() },
@@ -130,11 +130,20 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         _ => {}
     }
     let mut op = operation(&command)?.expect("an API operation");
-    let mut handed = None;
-    if let Op::AddUser { user, hash } = &mut op {
-        let password = yo3_server::logins::new_password();
-        *hash = yo3_server::logins::hash_password_now(&password)?;
-        handed = Some(format!("User ID: {user}\nPassword: {password} (they change it in the launcher)"));
+    if let Admin::AddUser { user, request_id, code_stdin } | Admin::ResetCode { user, request_id, code_stdin } = &command {
+        let id = request_id.clone().unwrap_or_else(yo3_server::logins::new_token);
+        anyhow::ensure!(api::mutation::valid_request_id(&id), "invalid request ID (16–128 letters, digits, hyphens or underscores)");
+        let code = if *code_stdin {
+            anyhow::ensure!(!std::io::stdin().is_terminal(), "pipe the original code from a private file; do not type it into an echoing terminal");
+            let mut code = String::new(); std::io::stdin().take(128).read_to_string(&mut code)?; code.trim().to_string()
+        } else { yo3_server::logins::new_code() };
+        api::credentials::AccessCode::from(code.clone()).validate()?;
+        match &mut op { Op::AddUser { code: value, .. } | Op::ResetCode { code: value, .. } => *value = code.clone().into(), _ => unreachable!() }
+        eprintln!("Request ID: {id} (retry with --request-id ID --code-stdin and the original code)");
+        println!("Prepared code for {user}: {code} (not confirmed yet; keep it for a retry)");
+        std::io::stdout().flush()?;
+        let result = call_request(a, &op, &game_dir, &id)?;
+        return show(a, &command, &result, None)
     }
     if let Admin::Share { .. } = &command {
         // Before any request: what friends dial is the host's to say.
@@ -153,7 +162,7 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
         eprintln!("Request ID: {id} (reuse with --request-id if the invite answer is lost)");
         result["invite"] = call_request(a, &Op::Invite { uses: Some(1), days: Some(7) }, &game_dir, &id)?;
     }
-    show(a, &command, &result, handed)
+    show(a, &command, &result, None)
 }
 
 /// One admin operation, on the running server or on its stopped data folder.

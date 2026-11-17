@@ -25,10 +25,9 @@ and Scripts.
 
 **Standalone management dashboard**
 
-- [ ] Extend the typed, atomic Give BP/invite/code/player-profile/role operations to the remaining admin operations, including proper save-failure
-      handling and durable intent/outcome records for irreversible effects. Account creation, password flows, gifts,
-      settings, moderation and backups remain.
-- [ ] Extend the generated staff API beyond sign-in/out, account details/player and role edits, Give BP, invites and code management. The generated client, offline drift
+- [ ] Extend the typed, atomic Give BP/invite/code/player-profile/role/password-account operations to the remaining admin operations, including proper save-failure
+      handling and durable intent/outcome records for irreversible effects. Key-account creation/keys, gifts, settings, moderation and backups remain.
+- [ ] Extend the generated staff API beyond sign-in/out, account details/player and role edits, password-account setup/reset, Give BP, invites and code management. The generated client, offline drift
       checks and separate opt-in loopback dashboard listener are implemented; public binding awaits the access gate.
 - [ ] Connect the approved React UI to real server data and preserve the existing panel's capabilities.
 - [ ] Public management gate: staff MFA and recovery (#43), session revocation, trusted nginx proxy, HTTPS renewal,

@@ -21,6 +21,8 @@ import { ApiHttpError, setCsrfToken } from './api/transport'
 import { ConnectedAccountDialog } from './ConnectedAccountDialog'
 import { ConnectedCodes } from './ConnectedCodes'
 import { ConnectedInvites } from './ConnectedInvites'
+import { ConnectedCredentials } from './ConnectedCredentials'
+import type { CredentialAction } from './ConnectedCredentials'
 
 const pendingSchema = z.object({ data: GiveBpByIdRequest, headers: GiveBpHeader })
 
@@ -104,6 +106,7 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
   const accounts = useListAccounts()
   const [query, setQuery] = useState('')
   const [detailId, setDetailId] = useState<number | null>(null)
+  const [credentialAction, setCredentialAction] = useState<CredentialAction | null>(null)
   const [selected, setSelected] = useState<AccountSummary | null>(null)
   const [amount, setAmount] = useState('500')
   const [notice, setNotice] = useState('')
@@ -253,9 +256,17 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
             value={query}
             onChange={setQuery}
           />
-          <Button onClick={() => void accounts.refetch()} disabled={accounts.isFetching}>
-            <RefreshCw size={15} /> Refresh
-          </Button>
+          <div className="action-group">
+            <ConnectedCredentials
+              key={`${session.user_id}:${credentialAction?.kind ?? 'closed'}:${credentialAction?.kind === 'reset_password' ? credentialAction.user_id : ''}`}
+              session={session}
+              action={credentialAction}
+              onChange={setCredentialAction}
+            />
+            <Button onClick={() => void accounts.refetch()} disabled={accounts.isFetching}>
+              <RefreshCw size={15} /> Refresh
+            </Button>
+          </div>
         </div>
         {accounts.isPending && (
           <p className="connected-state" role="status">
@@ -337,7 +348,19 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
           </div>
         )}
       </Panel>
-      <ConnectedAccountDialog session={session} userId={detailId} onChange={setDetailId} />
+      <ConnectedAccountDialog
+        session={session}
+        userId={detailId}
+        onChange={setDetailId}
+        onResetPassword={(account) => {
+          setDetailId(null)
+          setCredentialAction({
+            kind: 'reset_password',
+            user_id: account.user_id,
+            login: account.login ?? `Account #${account.user_id}`,
+          })
+        }}
+      />
       <ConnectedInvites session={session} />
       <ConnectedCodes session={session} />
       <Modal

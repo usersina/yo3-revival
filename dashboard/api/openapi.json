@@ -109,6 +109,156 @@
         ]
       }
     },
+    "/panel/api/v1/accounts/credentials": {
+      "post": {
+        "tags": [
+          "Accounts"
+        ],
+        "operationId": "issueAccountCode",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Retain this ID and the same generated code on retry. Codes never appear in durable receipts.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 16,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueAccountCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Immutable issuance confirmation and current code availability; never the code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountCodeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Account not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "User ID taken or retry input conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error; outcome may be unknown",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commit could not be confirmed; retry the same request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrfToken": [],
+            "staffSession": []
+          }
+        ]
+      }
+    },
     "/panel/api/v1/accounts/edit": {
       "post": {
         "tags": [
@@ -1601,6 +1751,71 @@
   },
   "components": {
     "schemas": {
+      "AccessCode": {
+        "type": "string",
+        "maxLength": 19,
+        "minLength": 16,
+        "pattern": "^([A-Za-z0-9]{16}|[A-Za-z0-9]{4}(-[A-Za-z0-9]{4}){3})$"
+      },
+      "AccountCodeConfirmation": {
+        "type": "object",
+        "required": [
+          "kind",
+          "user_id",
+          "expires_at",
+          "request_id"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AccountCodeKind"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 4294967295,
+            "minimum": 0
+          }
+        }
+      },
+      "AccountCodeKind": {
+        "type": "string",
+        "enum": [
+          "setup",
+          "reset"
+        ]
+      },
+      "AccountCodeResponse": {
+        "type": "object",
+        "required": [
+          "confirmation",
+          "state"
+        ],
+        "properties": {
+          "confirmation": {
+            "$ref": "#/components/schemas/AccountCodeConfirmation",
+            "description": "Immutable issuance receipt. A retry never creates or extends a code."
+          },
+          "state": {
+            "$ref": "#/components/schemas/AccountCodeState",
+            "description": "Live availability, checked now; not part of the stored receipt."
+          }
+        }
+      },
+      "AccountCodeState": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "expired",
+          "used_or_replaced"
+        ]
+      },
       "AccountDetail": {
         "type": "object",
         "required": [
@@ -1653,6 +1868,12 @@
               {
                 "type": "null"
               }
+            ]
+          },
+          "password_ready": {
+            "type": [
+              "boolean",
+              "null"
             ]
           },
           "players": {
@@ -2401,6 +2622,62 @@
             "minimum": 0
           }
         }
+      },
+      "IssueAccountCodeRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "user",
+              "code",
+              "kind"
+            ],
+            "properties": {
+              "code": {
+                "$ref": "#/components/schemas/AccessCode",
+                "writeOnly": true
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "create_account"
+                ]
+              },
+              "user": {
+                "type": "string",
+                "maxLength": 16,
+                "minLength": 3,
+                "pattern": "^[A-Za-z0-9]+$"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "user_id",
+              "code",
+              "kind"
+            ],
+            "properties": {
+              "code": {
+                "$ref": "#/components/schemas/AccessCode",
+                "writeOnly": true
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reset_password"
+                ]
+              },
+              "user_id": {
+                "type": "integer",
+                "format": "int32",
+                "maximum": 4294967295,
+                "minimum": 0
+              }
+            }
+          }
+        ]
       },
       "PlayerDetail": {
         "type": "object",

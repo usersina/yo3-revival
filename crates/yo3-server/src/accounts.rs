@@ -151,6 +151,25 @@ impl Directory {
         })
     }
 
+    /// A host-created account waits for its owner to set a password with this one-time code.
+    pub(crate) fn prepare_password_account(&self, user: &str, digest: String, expires: i64) -> Result<(Self, u32), String> {
+        self.can_register(user, None, crate::logins::Registration::Open)?;
+        self.next_user.checked_add(1).ok_or("The account number limit has been reached.")?;
+        let mut next = self.clone();
+        let account = next.create_account(&[]);
+        let user_id = account.user_id;
+        let mut login = crate::logins::Login::new(user, String::new(), crate::logins::digest(&crate::logins::new_token()));
+        login.reset = Some((digest, expires));
+        next.accounts.push(Entry { key: None, login: Some(login), account: Arc::new(account) });
+        Ok((next, user_id))
+    }
+
+    pub(crate) fn prepare_reset(&self, user_id: u32, digest: String, expires: i64) -> Result<Self, String> {
+        let mut next = self.clone();
+        next.login_mut(user_id).ok_or("No such password account.")?.reset = Some((digest, expires));
+        Ok(next)
+    }
+
     /// Whether `user` could sign up now with `invite` under `mode`, without using the invite: the account requests
     /// ask before hashing the password (security review, #39), and [`Directory::register`] asks again.
     pub fn can_register(&self, user: &str, invite: Option<&str>, mode: crate::logins::Registration) -> Result<(), String> {
@@ -207,17 +226,43 @@ impl Directory {
 
     /// Signs every device of `user_id` out.
     pub fn revoke_devices(&mut self, user_id: u32) -> Result<(), String> {
-        self.atomic(|d| { d.login_mut(user_id).ok_or("no such account")?.devices.clear(); Ok(()) })
+        self.atomic(|d| { let login = d.login_mut(user_id).ok_or("no such account")?;
+            login.staff_epoch = login.staff_epoch.checked_add(1).ok_or("session revision exhausted")?; login.devices.clear(); Ok(()) })
     }
 
     /// A new password (its PHC hash): every device is signed out and any reset code is used up.
     pub fn set_password(&mut self, user_id: u32, hash: String) -> Result<(), String> {
         self.atomic(|d| {
             let login = d.login_mut(user_id).ok_or("no such account")?;
+            login.staff_epoch = login.staff_epoch.checked_add(1).ok_or("session revision exhausted")?;
             login.password = hash;
             login.devices.clear();
             login.reset = None;
             Ok(())
+        })
+    }
+
+    /// The password verified outside the lock must still be current when its replacement commits.
+    pub fn change_password_if_current(&mut self, user_id: u32, expected: &crate::logins::Login, hash: String) -> Result<(), String> {
+        let login = self.login_by_id(user_id).ok_or("invalid_credentials")?;
+        if login.password != expected.password || login.recovery != expected.recovery || login.staff_epoch != expected.staff_epoch { return Err("invalid_credentials".into()) }
+        self.set_password(user_id, hash)
+    }
+
+    /// Consume a still-current recovery/reset code with the password change in one save. Hashing happens outside the lock.
+    pub fn complete_recovery(&mut self, user_id: u32, expected: &crate::logins::Login, code: &str, hash: String, recovery: String, now: i64) -> Result<bool, String> {
+        self.atomic(|d| {
+            let login = d.login_mut(user_id).ok_or("invalid_recovery")?;
+            if login.password != expected.password || login.recovery != expected.recovery || login.reset != expected.reset || login.staff_epoch != expected.staff_epoch {
+                return Err("invalid_recovery".into())
+            }
+            let by_recovery = login.recovery == code;
+            if !by_recovery && !login.reset.as_ref().is_some_and(|(digest, until)| digest == code && *until > now) { return Err("invalid_recovery".into()) }
+            let rotate = by_recovery || login.password.is_empty();
+            login.staff_epoch = login.staff_epoch.checked_add(1).ok_or("session revision exhausted")?;
+            login.password = hash; login.devices.clear(); login.reset = None;
+            if rotate { login.recovery = recovery; }
+            Ok(rotate)
         })
     }
 
@@ -246,9 +291,11 @@ impl Directory {
     pub(crate) fn prepare_role(&self, user_id: u32, role: crate::logins::Role) -> Result<Self, String> {
         let mut next = self.clone();
         let login = next.login_mut(user_id).ok_or("Only password accounts can have a staff role.")?;
+        if login.password.is_empty() && role != crate::logins::Role::Player { return Err("Finish password setup before assigning a staff role.".into()) }
         if login.role != role {
             login.staff_epoch = login.staff_epoch.checked_add(1).ok_or("The staff session revision limit has been reached.")?;
             login.role = role;
+            login.reset = None;
         }
         Ok(next)
     }

@@ -13,7 +13,12 @@ import {
   useListCountries,
 } from './api/generated/http/client'
 import type { EditAccountMutationVariables } from './api/generated/http/client'
-import type { AccountEditRequest, Role, StaffSession } from './api/generated/http/models'
+import type {
+  AccountDetail,
+  AccountEditRequest,
+  Role,
+  StaffSession,
+} from './api/generated/http/models'
 import {
   AccountEditRequest as EditRequestSchema,
   EditAccountHeader,
@@ -31,10 +36,12 @@ export function ConnectedAccountDialog({
   session,
   userId,
   onChange,
+  onResetPassword,
 }: {
   session: StaffSession
   userId: number | null
   onChange: (id: number | null) => void
+  onResetPassword: (account: AccountDetail) => void
 }) {
   const client = useQueryClient()
   const account = useGetAccount(userId ?? 0, { query: { enabled: userId !== null } })
@@ -290,13 +297,15 @@ export function ConnectedAccountDialog({
                     {data.role}
                     <Button
                       onClick={() => start('set_role')}
-                      disabled={!admin || !data.login || !canStart}
+                      disabled={!admin || !data.login || data.password_ready === false || !canStart}
                       title={
                         !admin
                           ? 'Administrators only'
                           : !data.login
                             ? 'Only password accounts can have staff roles'
-                            : undefined
+                            : data.password_ready === false
+                              ? 'Finish password setup before assigning a staff role'
+                              : undefined
                       }
                     >
                       Change role
@@ -315,7 +324,9 @@ export function ConnectedAccountDialog({
                   <dt>Sign-in method</dt>
                   <dd>
                     {data.login
-                      ? 'Password account'
+                      ? data.password_ready === false
+                        ? 'Setup required'
+                        : 'Password account'
                       : data.has_key
                         ? 'Key account'
                         : 'No sign-in configured'}
@@ -361,7 +372,22 @@ export function ConnectedAccountDialog({
                 </div>
                 <div>
                   <dt>Password reset</dt>
-                  <dd>{data.reset_pending ? 'Code pending' : 'No pending code'}</dd>
+                  <dd>
+                    {data.reset_pending ? 'Code pending' : 'No pending code'}
+                    <Button
+                      onClick={() => onResetPassword(data)}
+                      disabled={!data.login || !canRename || !canStart}
+                      title={
+                        !data.login
+                          ? 'Key accounts do not have passwords'
+                          : !canRename
+                            ? 'You cannot reset another staff account'
+                            : undefined
+                      }
+                    >
+                      Reset password
+                    </Button>
+                  </dd>
                 </div>
               </dl>
               <div className="table-toolbar">

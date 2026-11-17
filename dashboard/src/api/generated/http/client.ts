@@ -22,6 +22,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AccountCodeResponse,
   AccountDetail,
   AccountEditRequest,
   AccountEditResult,
@@ -40,6 +41,8 @@ import type {
   GiveBpHeaders,
   GiveBpResult,
   InviteList,
+  IssueAccountCodeHeaders,
+  IssueAccountCodeRequest,
   RemoveBpCodeHeaders,
   RemoveBpCodeRequest,
   RemoveBpCodeResult,
@@ -184,6 +187,75 @@ export function useListAccounts<TData = Awaited<ReturnType<typeof listAccounts>>
 
 
 
+
+export const getIssueAccountCodeUrl = () => {
+
+
+
+
+  return `/panel/api/v1/accounts/credentials`
+}
+
+export const issueAccountCode = async (issueAccountCodeRequest: IssueAccountCodeRequest,
+    headers: IssueAccountCodeHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<AccountCodeResponse> => {
+
+  return apiFetch<AccountCodeResponse>(getIssueAccountCodeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(issueAccountCodeRequest)
+  }
+);}
+
+
+
+
+
+export const getIssueAccountCodeMutationKey = () => ['issueAccountCode'] as const;
+
+export const getIssueAccountCodeMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof issueAccountCode>>, TError,IssueAccountCodeMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof issueAccountCode>>, TError,IssueAccountCodeMutationVariables, TContext> => {
+
+const mutationKey = getIssueAccountCodeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof issueAccountCode>>, IssueAccountCodeMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  issueAccountCode(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type IssueAccountCodeMutationResult = NonNullable<Awaited<ReturnType<typeof issueAccountCode>>>
+    export type IssueAccountCodeMutationBody = IssueAccountCodeRequest
+    export type IssueAccountCodeMutationError = ErrorType<ApiError>
+    export type IssueAccountCodeMutationVariables = {data: IssueAccountCodeRequest;headers: IssueAccountCodeHeaders}
+
+    export const useIssueAccountCode = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof issueAccountCode>>, TError,IssueAccountCodeMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof issueAccountCode>>,
+        TError,
+        IssueAccountCodeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getIssueAccountCodeMutationOptions(options), queryClient);
+    }
 
 export const getEditAccountUrl = () => {
 

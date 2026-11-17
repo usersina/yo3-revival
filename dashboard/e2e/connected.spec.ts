@@ -3,6 +3,7 @@ import type { Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {
   AccountList,
+  AccountCodeResponse,
   AccountDetail,
   AccountEditResult,
   BpCodeList,
@@ -537,4 +538,177 @@ test('moderators cannot change roles and changing your own role signs you out', 
   await expect(
     page.getByRole('dialog').getByRole('button', { name: 'Change role', exact: true }),
   ).toBeDisabled()
+})
+
+test('account setup: lost response and reload retain the same code and request ID', async ({
+  page,
+}) => {
+  await signIn(page)
+  const sent: { code: string; id: string }[] = []
+  await page.route('**/panel/api/v1/accounts/credentials', async (route) => {
+    const data = route.request().postDataJSON() as { code: string }
+    sent.push({ code: data.code, id: route.request().headers()['idempotency-key'] })
+    if (sent.length === 1) {
+      const result = AccountCodeResponse.parse(await (await route.fetch()).json())
+      expect(result.state).toBe('ready')
+      expect(JSON.stringify(result)).not.toContain(data.code)
+      return route.abort('failed')
+    }
+    return route.continue()
+  })
+  await page.getByRole('button', { name: 'Create account', exact: true }).click()
+  await page.getByRole('dialog').getByLabel('User ID', { exact: true }).fill('NewOwner')
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Create account', exact: true })
+    .click()
+  await expect(
+    page.getByRole('dialog').getByText('Could not confirm this code request.'),
+  ).toBeVisible()
+  await expect(page.getByLabel('One-time code', { exact: true })).toHaveCount(0)
+  await page.reload()
+  await page.getByRole('button', { name: 'Resume code', exact: true }).click()
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = page.waitForResponse((r) =>
+      r.url().endsWith('/panel/api/v1/accounts/credentials'),
+    )
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Retry same request', exact: true })
+      .click()
+    const status = (await response).status()
+    if (status === 200) break
+    expect(status).toBe(403)
+    await page.waitForLoadState('networkidle')
+  }
+  await expect(page.getByLabel('One-time code', { exact: true })).toHaveText(sent[0].code)
+  expect(new Set(sent.map((r) => r.id)).size).toBe(1)
+  expect(new Set(sent.map((r) => r.code)).size).toBe(1)
+  await page.setViewportSize({ width: 320, height: 850 })
+  expect(
+    (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()).violations,
+  ).toEqual([])
+  await page.getByRole('dialog').getByRole('button', { name: 'Done', exact: true }).click()
+  expect(
+    await page.evaluate(() =>
+      Object.keys(sessionStorage).some((key) => key.startsWith('yo3:account-code:')),
+    ),
+  ).toBe(false)
+  await expect(
+    page.getByRole('button', { name: 'View account newowner', exact: true }),
+  ).toBeVisible()
+})
+
+test('reset codes require identity confirmation and cannot be shared after replacement', async ({
+  page,
+}) => {
+  await signIn(page, 'TestModerator')
+  await expect(page.getByRole('button', { name: 'Create account', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'View account TestResetTarget', exact: true }).click()
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Reset password', exact: true })
+    .click()
+  let dialog = page.getByRole('dialog', { name: 'Reset password', exact: true })
+  await expect(
+    dialog.getByRole('button', { name: 'Create reset code', exact: true }),
+  ).toBeDisabled()
+  await dialog.getByRole('checkbox', { name: /I have verified/ }).check()
+  const confirmed = page.waitForResponse((r) =>
+    r.url().endsWith('/panel/api/v1/accounts/credentials'),
+  )
+  await dialog.getByRole('button', { name: 'Create reset code', exact: true }).click()
+  const original = AccountCodeResponse.parse(await (await confirmed).json())
+  await expect(page.getByLabel('One-time code', { exact: true })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await page.reload()
+  await page.getByRole('button', { name: 'Resume code', exact: true }).click()
+  dialog = page.getByRole('dialog', { name: 'Reset password', exact: true })
+  await expect(page.getByLabel('One-time code', { exact: true })).toHaveCount(0)
+  const staff = StaffSession.parse(await (await page.request.get('/panel/api/v1/session')).json())
+  const replacement = await page.request.post('/panel/api/v1/accounts/credentials', {
+    headers: {
+      'X-CSRF-Token': staff.csrf_token,
+      Origin: new URL(page.url()).origin,
+      'Idempotency-Key': 'browser-replace-code-00001',
+    },
+    data: {
+      kind: 'reset_password',
+      user_id: original.confirmation.user_id,
+      code: 'QRST-UVWX-YZ23-4567',
+    },
+  })
+  expect(replacement.status()).toBe(200)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = page.waitForResponse((r) =>
+      r.url().endsWith('/panel/api/v1/accounts/credentials'),
+    )
+    await dialog.getByRole('button', { name: 'Retry same request', exact: true }).click()
+    const status = (await response).status()
+    if (status === 200) break
+    expect(status).toBe(403)
+    await page.waitForLoadState('networkidle')
+  }
+  await expect(dialog.getByText(/This code was used, replaced or invalidated/)).toBeVisible()
+  await expect(page.getByLabel('One-time code', { exact: true })).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click()
+  await page.getByRole('button', { name: 'View account TestAdmin', exact: true }).click()
+  await expect(
+    page.getByRole('dialog').getByRole('button', { name: 'Reset password', exact: true }),
+  ).toBeDisabled()
+})
+
+test('account setup errors keep the form useful and expired confirmations discard the stored code', async ({
+  page,
+}) => {
+  await signIn(page)
+  await page.getByRole('button', { name: 'Create account', exact: true }).click()
+  let dialog = page.getByRole('dialog')
+  await dialog.getByLabel('User ID', { exact: true }).fill('ab')
+  await expect(dialog.getByRole('button', { name: 'Create account', exact: true })).toBeDisabled()
+  await dialog.getByLabel('User ID', { exact: true }).fill('TestPlayer')
+  await dialog.getByRole('button', { name: 'Create account', exact: true }).click()
+  await expect(dialog.getByText('That User ID is already taken.')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Edit request', exact: true }).click()
+  await expect(dialog.getByLabel('User ID', { exact: true })).toHaveValue('TestPlayer')
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  const staff = StaffSession.parse(await (await page.request.get('/panel/api/v1/session')).json())
+  await page.evaluate(
+    (staffId) =>
+      sessionStorage.setItem(
+        `yo3:account-code:${staffId}`,
+        JSON.stringify({
+          label: 'ExpiredUser',
+          intent: {
+            data: { kind: 'create_account', user: 'ExpiredUser', code: 'ABCD-EFGH-JKLM-NPQR' },
+            headers: { 'Idempotency-Key': 'expired-browser-code-00001' },
+          },
+          result: {
+            confirmation: {
+              kind: 'setup',
+              user_id: 1234,
+              expires_at: '2000-01-01T00:00:00Z',
+              request_id: 'expired-browser-code-00001',
+            },
+            state: 'ready',
+          },
+        }),
+      ),
+    staff.user_id,
+  )
+  await page.reload()
+  await page.getByRole('button', { name: 'Resume code', exact: true }).click()
+  dialog = page.getByRole('dialog')
+  await expect(dialog.getByText(/This code has expired/)).toBeVisible()
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (staffId) =>
+          sessionStorage.getItem(`yo3:account-code:${staffId}`)?.includes('ABCD-EFGH-JKLM-NPQR') ??
+          false,
+        staff.user_id,
+      ),
+    )
+    .toBe(false)
+  await expect(page.getByLabel('One-time code', { exact: true })).toHaveCount(0)
 })

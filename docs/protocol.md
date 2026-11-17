@@ -2219,6 +2219,17 @@ invalidating old cookies on both management interfaces even through an unobserve
 `set-role` accepts `--request-id`; the React form requires confirmation and warns before self-demotion. This changes
 management authority, not game reply shapes, and does not disconnect an active game. Evidence: `role_contract.rs`,
 `panel_contract.rs`, `dashboard_contract.rs` and connected browser tests.
+Password-account setup/reset uses `POST /panel/api/v1/accounts/credentials` (`issueAccountCode`), with one
+`Idempotency-Key` and a tagged request: `create_account` (User ID and generated code, admin-only) or `reset_password`
+(account number and generated code, moderator target rules). `code` is write-only in OpenAPI; responses contain
+an immutable confirmation (account ID, kind, original expiry, request ID) and separately checked availability.
+Codes are never returned by the staff API or retained in receipts. The caller keeps its original code through
+uncertain retries; old CLI/HTML presentation reconstructs only that caller’s input. The saved reset digest, audit
+and receipt commit together. First setup uses TLS account operation 6 `recover`, which returns a private recovery
+code to the owner and consumes setup atomically. Recovery rechecks the credential revision/code after hashing.
+Actual role changes invalidate reset codes; setup must complete before staff promotion. Sign-out everywhere
+revokes staff cookies. Scripts `--recover` uses the same TLS request. Game reply shapes are unchanged.
+Evidence: `credential_contract.rs`, `dashboard_contract.rs`, `scripts_sign_in.rs`, connected browser tests.
 The panel runs the same operations in the server (`Api::apply_as`) as its signed-in staff account: a moderator runs only
 the looking, moderation, invite and reset-code operations, and none on a staff account. `account`, `backups`, `back-up` and
 `logs` were added for its pages. Status also reports the actual `listen` socket and `release`, so a reopened manager and local game use the active

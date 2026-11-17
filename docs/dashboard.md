@@ -6,7 +6,7 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 ## Current state
 
 - The approved React/Vite/SWC/Tailwind dashboard is in `dashboard/`. The main pages remain a labelled design preview.
-  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits and staff roles, Give BP, registration invites and BOOSTERPASS code management.
+  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles and password-account setup/reset codes, Give BP, registration invites and BOOSTERPASS code management.
   It never falls back to fixtures.
 - Axum handles HTTP on separate sockets. Host-token operations, assets and the old HTML panel stay on `--http-port`.
   The staff JSON router has its own opt-in `--dashboard-port`, disabled by default and always bound to loopback.
@@ -23,7 +23,7 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
   without credentials. Player creation, renaming and country changes commit profile/audit/receipt together. Moderators
   can rename their own or non-staff players; adding players and changing country remain admin-only.
 - Role changes are admin-only and use the same profile/audit/receipt transaction. A stored staff-session revision
-  invalidates old cookies on both interfaces, even if an account is demoted and promoted again without making a request.
+  invalidates old cookies on both interfaces, even if an account is demoted and promoted again without making a request. Pending setup/reset codes are invalidated too.
   Setting the same role again does not invalidate a fresh session; a retry never reapplies an older role. The React
   form requires confirmation and warns before changing your own role.
 - SQLite schema 3 adds `operation_receipts`. Schemas 1 and 2 upgrade transactionally. Other domains are not normalized.
@@ -65,8 +65,16 @@ collection counts explicitly exclude the starter deck. Deleted/unauthorized acco
 Role edits use `kind: set_role` and a typed player/moderator/admin value on the same endpoint. Only password accounts
 can have a staff role. CLI `set-role USER ROLE --request-id ID` and the old HTML form share this transaction.
 A self-demotion removes management permissions; another admin or the host must restore them. A lost response
-must not be treated as a failed change: inspect the current role before issuing a new request. Account creation
-and reset-code delivery still need a safe retry design that keeps credentials out of permanent receipts.
+must not be treated as a failed change: inspect the current role before issuing a new request. Password-account creation and reset-code delivery now use caller-generated random one-time codes. No password is
+chosen by staff. The code travels only in the authenticated request; account storage keeps its digest and permanent
+receipts keep IDs, expiry and kind. The response contains the original confirmation plus current availability
+(`ready`, `expired`, `used_or_replaced`). A retry never reactivates or extends a code. The dashboard retains it in
+this tab until Done, confirmed expiry or tab closure, and checks with the server after reload before showing it.
+Unconfirmed requests retain their original ID/code for retry. The CLI accepts the original code through
+`--code-stdin`; old HTML forms retain a hidden code. Initial setup uses the existing recovery operation to atomically
+set the owner’s password and private recovery code. Staff promotion waits until setup is complete. Password
+recovery rechecks code/revision after hashing; sign-out everywhere invalidates staff cookies. Key-account creation
+and other unmigrated admin operations remain separate work.
 
 The browser retains pending IDs through session/permission/CSRF refusals too: those checks run before receipt lookup,
 so a refusal cannot prove an earlier attempt did not commit. Refresh the staff session and retry the same intent.

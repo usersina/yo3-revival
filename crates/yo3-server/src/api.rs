@@ -34,6 +34,7 @@ pub mod mutation;
 pub mod codes;
 pub mod invites;
 pub mod profiles;
+pub mod credentials;
 pub use give_bp::{GiveBpRequest, GiveBpResult};
 pub use mutation::{Actor, MutationError, MutationErrorCode};
 
@@ -72,9 +73,9 @@ pub enum Op {
     RemoveCode { code: String },
     Invite { #[serde(default)] uses: Option<u32>, #[serde(default)] days: Option<u32> },
     Invites,
-    /// A password account made by the host: `hash` is its first password's PHC string, made by the client.
-    AddUser { user: String, hash: String },
-    ResetCode { user: String },
+    /// Provision a password account with a caller-generated one-time setup code.
+    AddUser { user: String, code: credentials::AccessCode },
+    ResetCode { user: String, code: credentials::AccessCode },
     SetRole { user: String, role: String },
     Settings,
     Set { name: String, value: String },
@@ -113,7 +114,7 @@ pub enum Op {
 
 impl Op {
     /// Operations migrated to a committed change/audit/receipt boundary.
-    fn receipted(&self) -> bool { matches!(self, Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. }) }
+    fn receipted(&self) -> bool { matches!(self, Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
     /// Its name in the API's path and the audit log.
     pub fn name(&self) -> String {
         serde_json::to_value(self).ok().and_then(|v| v["op"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -137,7 +138,7 @@ impl Op {
     /// The account it acts on, if it acts on one (a User ID or a player's name).
     fn account(&self) -> Option<&str> {
         match self {
-            Op::ResetCode { user } | Op::SetRole { user, .. } => Some(user),
+            Op::ResetCode { user, .. } | Op::SetRole { user, .. } => Some(user),
             Op::Rename { old, .. } => Some(old),
             Op::Kick { who } | Op::Ban { who, .. } | Op::Restrict { who, .. } | Op::Lift { who } | Op::Mute { who, .. }
             | Op::Unmute { who } | Op::SignOut { who } | Op::GiveBp { who, .. } | Op::SetCountry { who, .. } | Op::Key { who }
@@ -153,7 +154,7 @@ impl Op {
             Op::AddPlayer { who, .. } | Op::Key { who } | Op::SetCountry { who, .. } | Op::GiveBp { who, .. } => who.clone(),
             Op::Rename { old, .. } => old.clone(),
             Op::GrantTitle { player, .. } | Op::GiveCards { player, .. } | Op::GiveRecipe { player, .. } => player.clone(),
-            Op::AddUser { user, .. } | Op::ResetCode { user } | Op::SetRole { user, .. } => user.clone(),
+            Op::AddUser { user, .. } | Op::ResetCode { user, .. } | Op::SetRole { user, .. } => user.clone(),
             Op::Kick { who } | Op::Ban { who, .. } | Op::Restrict { who, .. } | Op::Lift { who } | Op::Mute { who, .. }
             | Op::Unmute { who } | Op::SignOut { who } => who.clone(),
             Op::Set { name, .. } | Op::Reset { name } => name.clone(),
@@ -170,6 +171,7 @@ impl Op {
         let fields = v.as_object_mut()?;
         fields.remove("op");
         fields.remove("hash");
+        if matches!(self, Self::AddUser { .. } | Self::ResetCode { .. }) { fields.remove("code"); }
         (!fields.is_empty()).then_some(v)
     }
 }
@@ -295,6 +297,7 @@ impl Api {
             Op::RemoveCode { code } => self.remove_bp_code(&codes::RemoveBpCodeRequest { code: code.trim().to_string() }, id, actor, origin).map(|r| json!(r)),
             Op::Invite { uses, days } => self.create_invite(&invites::CreateInviteRequest { uses: *uses, days: *days }, id, actor, origin).map(|r| json!(r)),
             Op::AddPlayer { .. } | Op::Rename { .. } | Op::SetCountry { .. } | Op::SetRole { .. } => self.edit_named_account(op, id, actor, origin),
+            Op::AddUser { .. } | Op::ResetCode { .. } => self.issue_named_code(op, id, actor, origin),
             _ => Err(MutationError::new(MutationErrorCode::InvalidRequest, "This operation has not migrated to the typed mutation boundary.")),
         }
     }
@@ -646,20 +649,7 @@ or after your next duel.", recipe.title)
                 };
                 done(json!({ "invites": d.invites(), "message": text }))
             }
-            Op::ResetCode { user } => {
-                let code = crate::logins::new_code();
-                let expires = crate::logins::now() + crate::logins::RESET_TTL;
-                d.issue_reset(user, crate::logins::digest(&crate::logins::normalize_code(&code)), expires)?;
-                done(json!({ "code": code, "message": format!("reset code for {user}: {code}. It works once, for 24 hours, in the launcher's \"Forgot password\".") }))
-            }
-            Op::AddUser { user, hash } => {
-                if !crate::logins::valid_user_id(user) { return Err(format!("{user:?} is not a User ID: 3 to 16 letters or digits")) }
-                if !hash.starts_with("$argon2id$") { return Err("the password hash is not argon2id".into()) }
-                let recovery = crate::logins::new_code();
-                let login = crate::logins::Login::new(user, hash.clone(), crate::logins::digest(&crate::logins::normalize_code(&recovery)));
-                d.register(login, None, crate::logins::Registration::Open).map_err(|e| if e == "user_id_taken" { format!("the User ID {user} is taken") } else { e })?;
-                done(json!({ "recovery_code": recovery, "message": format!("recovery code: {recovery}") }))
-            }
+            Op::ResetCode { .. } | Op::AddUser { .. } => Err("credential operations require the typed mutation boundary".into()),
             other => Err(format!("{} is not an accounts operation", other.name())),
         }
     }

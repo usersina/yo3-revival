@@ -183,3 +183,25 @@ async fn the_register_and_sign_in_commands_write_the_profile() {
     assert!(out.contains("play"), "it says what comes next: {out}");
     let _ = std::fs::remove_dir_all(&s.dir);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_recover_command_completes_host_provisioning_without_desktop_or_game_files() {
+    let s = scratch("recover-cli", &[("registration", "closed")]).await;
+    let admin = yo3_server::admin::running(&s.data).unwrap();
+    let code = "ABCD-EFGH-JKLM-NPQR";
+    tokio::task::spawn_blocking(move || yo3_server::api::call(&admin, &yo3_server::api::Op::AddUser { user: "Owner".into(), code: code.to_string().into() })).await.unwrap().unwrap();
+    let profile = s.dir.join("player/client.json");
+    let link = s.invite.link();
+    let run = || {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_yo3-launcher")).args(["--recover", &link, "Owner", "--profile", profile.to_str().unwrap()])
+            .env("DBUS_SESSION_BUS_ADDRESS", format!("unix:path={}", s.dir.join("no-bus").display())).env("XDG_RUNTIME_DIR", s.dir.join("player"))
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+        child.stdin.take().unwrap().write_all(format!("{code}\n{PASSWORD}\n{PASSWORD}\n").as_bytes()).unwrap(); child.wait_with_output().unwrap()
+    };
+    let result = tokio::task::block_in_place(run);
+    let out = String::from_utf8_lossy(&result.stdout); let err = String::from_utf8_lossy(&result.stderr);
+    assert!(result.status.success(), "{out}\n{err}"); assert!(out.contains("Recovery code:"));
+    for secret in [code, PASSWORD] { assert!(!out.contains(secret) && !err.contains(secret)); }
+    assert!(yo3_launcher::Profile::read(&profile).is_ok());
+    let result = tokio::task::block_in_place(run); assert!(!result.status.success(), "a setup code cannot be used again");
+}

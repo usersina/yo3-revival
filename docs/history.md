@@ -32,6 +32,15 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 
 ## Status
 
+2026-11-17, password-account setup/reset: an audit-failure regression first reproduced false success. Creation
+and reset issuance now commit the account, audit and receipt together. Caller-generated one-time codes stay out
+of durable receipts and logs, and retries return the original confirmation plus live availability. The connected
+dashboard retains an uncertain code only in the tab, verifies it after reload, and clears confirmed expired codes.
+Initial setup uses recovery to atomically save the owner’s password and private recovery code. Recovery consumes
+a still-current code once after hashing; a stale password change is refused. Roles invalidate pending resets and
+wait for initial setup; sign-out everywhere revokes staff cookies. Scripts `--recover` completes setup without
+Desktop or game files. Contract, real TLS, CLI and browser tests cover the paths.
+
 2026-11-17, staff role administration: the original audit-failure and unobserved demotion/promotion cookie tests both
 failed first. Role changes now prepare a copy and commit account, audit and durable receipt together, including
 a persisted session revision that changes only with the role. Both management interfaces reject old cookies even

@@ -4,6 +4,51 @@
  */
 import * as zod from 'zod';
 
+export const AccessCodeMin = 16;
+export const AccessCodeMax = 19;
+
+
+export const AccessCodeRegExp = new RegExp('^([A-Za-z0-9]{16}|[A-Za-z0-9]{4}(-[A-Za-z0-9]{4}){3})$');
+
+
+export const AccessCode = zod.string().min(AccessCodeMin).max(AccessCodeMax).regex(AccessCodeRegExp);
+
+export type AccessCode = zod.input<typeof AccessCode>;
+export type AccessCodeOutput = zod.output<typeof AccessCode>;
+
+export const AccountCodeKind = zod.enum(['setup', 'reset']);
+
+export type AccountCodeKind = zod.input<typeof AccountCodeKind>;
+export type AccountCodeKindOutput = zod.output<typeof AccountCodeKind>;
+
+export const accountCodeConfirmationUserIdMin = 0;
+export const accountCodeConfirmationUserIdMax = 4294967295;
+
+
+
+export const AccountCodeConfirmation = zod.object({
+  "expires_at": zod.iso.datetime({"offset":true}),
+  "kind": AccountCodeKind,
+  "request_id": zod.string(),
+  "user_id": zod.int().min(accountCodeConfirmationUserIdMin).max(accountCodeConfirmationUserIdMax)
+});
+
+export type AccountCodeConfirmation = zod.input<typeof AccountCodeConfirmation>;
+export type AccountCodeConfirmationOutput = zod.output<typeof AccountCodeConfirmation>;
+
+export const AccountCodeState = zod.enum(['ready', 'expired', 'used_or_replaced']);
+
+export type AccountCodeState = zod.input<typeof AccountCodeState>;
+export type AccountCodeStateOutput = zod.output<typeof AccountCodeState>;
+
+export const AccountCodeResponse = zod.object({
+  "confirmation": AccountCodeConfirmation.describe('Immutable issuance receipt. A retry never creates or extends a code.'),
+  "state": AccountCodeState.describe('Live availability, checked now; not part of the stored receipt.')
+});
+
+export type AccountCodeResponse = zod.input<typeof AccountCodeResponse>;
+export type AccountCodeResponseOutput = zod.output<typeof AccountCodeResponse>;
+
 export const AccountMute = zod.object({
   "reason": zod.string(),
   "until": zod.iso.datetime({"offset":true}).nullish()
@@ -118,6 +163,7 @@ export const AccountDetail = zod.object({
   "has_key": zod.boolean(),
   "login": zod.string().nullish(),
   "muted": zod.union([AccountMute,zod.null()]).optional(),
+  "password_ready": zod.boolean().nullish(),
   "players": zod.array(PlayerDetail),
   "reset_pending": zod.boolean(),
   "role": Role,
@@ -441,6 +487,39 @@ export const InviteList = zod.object({
 export type InviteList = zod.input<typeof InviteList>;
 export type InviteListOutput = zod.output<typeof InviteList>;
 
+export const issueAccountCodeRequestOneCodeMin = 16;
+export const issueAccountCodeRequestOneCodeMax = 19;
+
+
+export const issueAccountCodeRequestOneCodeRegExp = new RegExp('^([A-Za-z0-9]{16}|[A-Za-z0-9]{4}(-[A-Za-z0-9]{4}){3})$');
+export const issueAccountCodeRequestOneUserMin = 3;
+export const issueAccountCodeRequestOneUserMax = 16;
+
+
+export const issueAccountCodeRequestOneUserRegExp = new RegExp('^[A-Za-z0-9]+$');
+export const issueAccountCodeRequestTwoCodeMin = 16;
+export const issueAccountCodeRequestTwoCodeMax = 19;
+
+
+export const issueAccountCodeRequestTwoCodeRegExp = new RegExp('^([A-Za-z0-9]{16}|[A-Za-z0-9]{4}(-[A-Za-z0-9]{4}){3})$');
+export const issueAccountCodeRequestTwoUserIdMin = 0;
+export const issueAccountCodeRequestTwoUserIdMax = 4294967295;
+
+
+
+export const IssueAccountCodeRequest = zod.union([zod.object({
+  "code": zod.string().min(issueAccountCodeRequestOneCodeMin).max(issueAccountCodeRequestOneCodeMax).regex(issueAccountCodeRequestOneCodeRegExp),
+  "kind": zod.enum(['create_account']),
+  "user": zod.string().min(issueAccountCodeRequestOneUserMin).max(issueAccountCodeRequestOneUserMax).regex(issueAccountCodeRequestOneUserRegExp)
+}),zod.object({
+  "code": zod.string().min(issueAccountCodeRequestTwoCodeMin).max(issueAccountCodeRequestTwoCodeMax).regex(issueAccountCodeRequestTwoCodeRegExp),
+  "kind": zod.enum(['reset_password']),
+  "user_id": zod.int().min(issueAccountCodeRequestTwoUserIdMin).max(issueAccountCodeRequestTwoUserIdMax)
+})]);
+
+export type IssueAccountCodeRequest = zod.input<typeof IssueAccountCodeRequest>;
+export type IssueAccountCodeRequestOutput = zod.output<typeof IssueAccountCodeRequest>;
+
 export const removeBpCodeRequestCodeMin = 16;
 export const removeBpCodeRequestCodeMax = 16;
 
@@ -513,6 +592,42 @@ export const ListAccounts413Response = ApiError
 export const ListAccounts415Response = ApiError
 
 export const ListAccounts500Response = ApiError
+
+
+export const issueAccountCodeHeaderIdempotencyKeyMin = 16;
+export const issueAccountCodeHeaderIdempotencyKeyMax = 128;
+
+
+export const issueAccountCodeHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const IssueAccountCodeHeader = zod.object({
+  "Idempotency-Key": zod.string().min(issueAccountCodeHeaderIdempotencyKeyMin).max(issueAccountCodeHeaderIdempotencyKeyMax).regex(issueAccountCodeHeaderIdempotencyKeyRegExp).describe('Retain this ID and the same generated code on retry. Codes never appear in durable receipts.')
+})
+
+export const IssueAccountCodeBody = IssueAccountCodeRequest
+
+export const IssueAccountCode200Response = AccountCodeResponse
+
+export const IssueAccountCode400Response = ApiError
+
+export const IssueAccountCode401Response = ApiError
+
+export const IssueAccountCode403Response = ApiError
+
+export const IssueAccountCode404Response = ApiError
+
+export const IssueAccountCode405Response = ApiError
+
+export const IssueAccountCode409Response = ApiError
+
+export const IssueAccountCode413Response = ApiError
+
+export const IssueAccountCode415Response = ApiError
+
+export const IssueAccountCode500Response = ApiError
+
+export const IssueAccountCode503Response = ApiError
 
 
 export const editAccountHeaderIdempotencyKeyMin = 16;

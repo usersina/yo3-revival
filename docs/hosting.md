@@ -129,11 +129,20 @@ The paths below are the ones the unit and the example file use: the bundle in `/
 
    ```bash
    sudo -u yo3 /opt/yo3-revival/yo3-server --config /etc/yo3/server.toml add-user <your-user-id>
+   ```
+
+   `add-user` prints a one-time setup code, valid for 24 hours. On your own computer, add the server in Desktop
+   and use **Forgot password** with your User ID and that code to choose a password. Save the recovery code it
+   gives you. Terminal-only users can use `yo3-launcher --recover LINK USER --profile client.json` instead
+   ([Scripts](scripts.md#password-setup-and-recovery)); the host’s `share` command prints LINK. No game files are needed
+   for that command. Complete setup **before** assigning a staff role:
+
+   ```bash
    sudo -u yo3 /opt/yo3-revival/yo3-server --config /etc/yo3/server.toml set-role <your-user-id> admin
    ```
 
-   `add-user` prints a first password. Sign in to the panel with it (next section), and change it in the launcher.
-   Moderators get `set-role USER moderator`.
+   Sign in to the panel with the password you chose. Moderators get `set-role USER moderator`.
+   Role changes invalidate outstanding setup/reset codes; an account awaiting its first password cannot be promoted.
 
 9. **Players** sign up in the launcher with an invite code (`registration` is `invite` by default). Make codes in the
    panel's **Invites and codes**, or with `invite --uses 5 --days 7`.

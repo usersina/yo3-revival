@@ -26,8 +26,9 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/accounts/{user_id}", "get", "getAccount"),
         ("/panel/api/v1/accounts/edit", "post", "editAccount"),
         ("/panel/api/v1/countries", "get", "listCountries"),
+        ("/panel/api/v1/accounts/credentials", "post", "issueAccountCode"),
     ];
-    assert_eq!(paths.len(), 11);
+    assert_eq!(paths.len(), 12);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -340,7 +341,7 @@ async fn password_changes_and_recovery_end_existing_html_and_json_staff_cookies(
     assert_eq!(old_panel.status, 303);
     b.sign_in("Croquet").await;
     let admin = b.admin.clone();
-    let reset = tokio::task::spawn_blocking(move || api::call(&admin, &Op::ResetCode { user: "Croquet".into() })).await.unwrap().unwrap();
+    let reset = tokio::task::spawn_blocking(move || api::call(&admin, &Op::ResetCode { user: "Croquet".into(), code: logins::new_code().into() })).await.unwrap().unwrap();
     let recovered = b.endpoint.account(&json!({ "op": "recover", "user": "Croquet", "code": reset["code"],
         "new_password": "RecoveryPass123" })).await.unwrap();
     assert_eq!(recovered["ok"], true, "{recovered}");
@@ -448,4 +449,43 @@ async fn role_edits_are_admin_only_and_revoke_staff_cookies_on_both_listeners() 
     }
     assert_eq!(b.call("GET", "/panel/api/v1/session", json!(null)).await.status, 401);
     assert_eq!(b.raw_on(b.live.http, "GET", "/panel/", "", "").await.status, 303, "legacy panel rejects the same stale staff cookie");
+}
+
+#[tokio::test]
+async fn provisioned_accounts_choose_their_own_password_and_code_retries_do_not_reactivate_them() {
+    use yo3_server::api::credentials::{AccountCodeResponse, AccountCodeState};
+    let mut b = Browser::new("setup-codes").await; b.sign_in("Pegasus").await;
+    let path = "/panel/api/v1/accounts/credentials";
+    let code = "ABCD-EFGH-JKLM-NPQR";
+    let request = json!({ "kind": "create_account", "user": "NewOwner", "code": code });
+    let token = format!("Authorization: Bearer {}\r\n", b.admin.token);
+    assert_eq!(b.raw_on(b.live.http, "POST", path, &request.to_string(), &token).await.status, 404);
+    let first = b.call("POST", path, request.clone()).await; assert_eq!(first.status, 200, "{}", first.body);
+    let confirmation: AccountCodeResponse = serde_json::from_value(first.body.clone()).unwrap(); assert_eq!(confirmation.state, AccountCodeState::Ready);
+    assert!(!first.body.to_string().contains(code)); assert!(first.body.get("code").is_none());
+    let user = confirmation.confirmation.user_id;
+    assert_eq!(b.call("GET", &format!("/panel/api/v1/accounts/{user}"), json!(null)).await.body["password_ready"], false);
+    let login = b.endpoint.account(&json!({ "op": "login", "user": "newowner", "password": "anything" })).await.unwrap(); assert_eq!(login["ok"], false);
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await; // the failed sign-in also throttles recovery
+    let recovered = b.endpoint.account(&json!({ "op": "recover", "user": "newowner", "code": code, "new_password": "ChosenPassword1" })).await.unwrap();
+    assert_eq!(recovered["ok"], true, "{recovered}"); assert!(recovered["recovery_code"].is_string(), "first setup must give the owner a private recovery code");
+    let retry: AccountCodeResponse = serde_json::from_value(b.call("POST", path, request).await.body).unwrap();
+    assert_eq!(retry.confirmation, confirmation.confirmation); assert_eq!(retry.state, AccountCodeState::UsedOrReplaced);
+    let signed = b.endpoint.account(&json!({ "op": "login", "user": "newowner", "password": "ChosenPassword1" })).await.unwrap(); assert_eq!(signed["ok"], true);
+    let refused = b.endpoint.account(&json!({ "op": "recover", "user": "newowner", "code": code, "new_password": "StolenPassword1" })).await.unwrap(); assert_eq!(refused["error"], "invalid_recovery");
+    assert_eq!(b.call("POST", path, json!({ "kind": "create_account", "user": "Someone", "code": code, "role": "admin" })).await.status, 400);
+    b.sign_in("Croquet").await;
+    assert_eq!(b.call("POST", path, json!({ "kind": "create_account", "user": "Someone", "code": code })).await.status, 403);
+    let admin_id = b.call("GET", "/panel/api/v1/accounts", json!(null)).await.body["accounts"].as_array().unwrap().iter().find(|a| a["login"] == "Pegasus").unwrap()["user_id"].clone();
+    assert_eq!(b.call("POST", path, json!({ "kind": "reset_password", "user_id": admin_id, "code": code })).await.status, 403);
+    let reset = b.call("POST", path, json!({ "kind": "reset_password", "user_id": user, "code": "QRST-UVWX-YZ23-4567" })).await; assert_eq!(reset.status, 200);
+    assert_eq!(b.call("POST", path, json!({ "kind": "reset_password", "user_id": u32::MAX, "code": code })).await.status, 409, "request IDs share one namespace for the actor");
+}
+
+#[tokio::test]
+async fn signing_out_everywhere_revokes_both_management_cookies() {
+    let mut b = Browser::new("all-staff-sessions").await; b.sign_in("Croquet").await;
+    let admin = b.admin.clone(); tokio::task::spawn_blocking(move || api::call(&admin, &Op::SignOut { who: "Croquet".into() })).await.unwrap().unwrap();
+    assert_eq!(b.call("GET", "/panel/api/v1/session", json!(null)).await.status, 401);
+    assert_eq!(b.raw_on(b.live.http, "GET", "/panel/", "", "").await.status, 303);
 }

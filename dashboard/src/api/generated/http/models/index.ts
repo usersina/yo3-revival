@@ -3,6 +3,11 @@
  * Regenerate: npm run api:generate
  */
 
+export * from './accessCode';
+export * from './accountCodeConfirmation';
+export * from './accountCodeKind';
+export * from './accountCodeResponse';
+export * from './accountCodeState';
 export * from './accountDetail';
 export * from './accountEditRequest';
 export * from './accountEditResult';
@@ -31,6 +36,8 @@ export * from './inviteClaim';
 export * from './inviteList';
 export * from './inviteState';
 export * from './inviteSummary';
+export * from './issueAccountCodeHeaders';
+export * from './issueAccountCodeRequest';
 export * from './playerDetail';
 export * from './playerSummary';
 export * from './removeBpCodeHeaders';

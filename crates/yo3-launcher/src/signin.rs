@@ -86,6 +86,12 @@ pub async fn register(endpoint: &Endpoint, user: &str, password: &str, invite: &
     reply["recovery_code"].as_str().map(str::to_owned).context("the server's reply has no recovery code")
 }
 
+/// Complete initial password setup or recovery. A new recovery code is shown only to its owner.
+pub async fn recover(endpoint: &Endpoint, user: &str, code: &str, password: &str) -> anyhow::Result<Option<String>> {
+    let reply = ask(endpoint, serde_json::json!({ "op": "recover", "user": user, "code": code, "new_password": password })).await?;
+    Ok(reply["recovery_code"].as_str().map(str::to_owned))
+}
+
 /// How a sign-in ended here.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Kept {

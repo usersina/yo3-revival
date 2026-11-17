@@ -111,6 +111,22 @@ Use absolute paths. Linux users can add `--wine-prefix "/absolute/path/private-p
 Do not edit `yo3.ini` or the game executable; the connection DLL supplies the private endpoints. A key profile from an
 older host (`client.json` with `server.crt`) still plays the same way.
 
+## Password setup and recovery
+
+If the host made your account, they give you a one-time setup code instead of a password. The same command also
+accepts your saved recovery code or a moderator's reset code. It asks for the code and a new password twice;
+neither is echoed in a terminal. No game folder or Desktop app is needed:
+
+```bash
+./yo3-launcher --recover "yo3revival://server?address=..." YourUserID --profile "$PWD/client.json"
+```
+
+On Windows use `yo3-launcher.exe` in Command Prompt. Use the host's real invite link (from `yo3-server share`).
+Save the recovery code printed after first setup or use of a recovery code. Then play with the saved profile as
+usual. An expired, used or replaced setup/reset code needs a new one from the host; retrying issuance does not
+reactivate it. If a response is lost after setting the password, try `--sign-in` with your chosen password before
+trying recovery again. Never put passwords or codes in arguments or shell history.
+
 ## Host friends
 
 You need your own original game installation too, because the server reads its card/deck data.
@@ -189,8 +205,8 @@ explains the optional `--duel-check` flag and replay tools.
 - **Already initialized / profile already exists:** reuse the existing `data/` and profile. These setup commands
   deliberately refuse to overwrite them. Do not delete account data just to rerun initialization.
 - **Connection refused or timed out:** check the profile address/port and whether the host is running and reachable.
-- **Wrong User ID or password:** sign in again with `--sign-in`; a forgotten password takes the recovery code (Desktop's
-  "Forgot password") or a reset code from the host.
+- **Wrong User ID or password:** sign in again with `--sign-in`; a forgotten password takes the recovery code or a reset code from the host
+  through `--recover` ([setup and recovery](#password-setup-and-recovery)).
 - **TLS or account refused:** use the profile made for this host (and, for a key profile, its adjacent certificate). Confirm
   unexpected identity changes with the host; certificate checks cannot be bypassed. Check both PCs' clocks: a
   certificate is only accepted within its validity, and a new one starts just 5 minutes before it was made.

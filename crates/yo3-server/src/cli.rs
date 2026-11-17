@@ -175,7 +175,9 @@ pub enum Admin {
     Invites,
     /// Make a reset code for a player who lost their password and recovery code (check it is them first): it works once,
     /// for 24 hours, in the launcher's "Forgot password". Works while the server runs.
-    ResetCode { user: String },
+    ResetCode { user: String, #[arg(long, requires = "code_stdin")] request_id: Option<String>,
+        /// Read the original code from piped stdin for a safe retry; never put it in command-line arguments.
+        #[arg(long)] code_stdin: bool },
     /// Make USER a player, moderator or admin. Works while the server runs.
     SetRole { user: String, role: String, #[arg(long)] request_id: Option<String> },
     /// Print what a friend needs to join: the address (`--advertise`, with `--auth-port`), the server's identity and the
@@ -187,9 +189,10 @@ pub enum Admin {
         /// Reuse after a lost invite response; the shared invite keeps its original code and expiry.
         #[arg(long, requires = "invite")] request_id: Option<String>,
     },
-    /// Make a password account with User ID USER and print its first password and recovery code, to hand to that
-    /// player (for a server whose registration setting is closed). Works while the server runs.
-    AddUser { user: String },
+    /// Make a password account with a one-time setup code (24 hours). The player chooses a password in Forgot password.
+    AddUser { user: String, #[arg(long, requires = "code_stdin")] request_id: Option<String>,
+        /// Read the original code from piped stdin for a safe retry.
+        #[arg(long)] code_stdin: bool },
     /// Put a backup back as the server's database (the server must be stopped): WHICH is a folder name under
     /// backups/ (`backups` lists them), or "latest". The database it replaces is kept beside it, renamed.
     Restore { which: String },

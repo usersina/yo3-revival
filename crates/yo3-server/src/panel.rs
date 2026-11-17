@@ -381,7 +381,7 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
                 "lift" => Op::Lift { who: who.clone() },
                 "mute" => Op::Mute { who: who.clone(), reason, minutes: number(r.field("minutes"))? },
                 "unmute" => Op::Unmute { who: who.clone() },
-                "reset-code" => Op::ResetCode { user: who.clone() },
+                "reset-code" => Op::ResetCode { user: who.clone(), code: r.field("access_code").to_string().into() },
                 "rename" => Op::Rename { old: r.field("old").into(), new: r.field("new").into() },
                 "give-bp" => Op::GiveBp { who: who.clone(), amount: number(r.field("amount"))?.ok_or("give how many BP?")? },
                 "set-role" => Op::SetRole { user: who.clone(), role: r.field("role").into() },
@@ -399,10 +399,7 @@ fn post(at: &str, r: &Request, viewer: &Viewer, key: &str, panel: &Panel, api: &
                 }
                 other => return Err(format!("unknown action {other:?}")),
             }))();
-            let outcome = op.and_then(|op| api.apply_request(&op, &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id")).map(|v| match &op {
-                Op::ResetCode { .. } => format!("Reset code for {who}: {}. Hand it to the player: it works once, for 24 hours, in the launcher's \"Forgot password\".", text(&v["code"])),
-                _ => said(&v),
-            }));
+            let outcome = op.and_then(|op| api.apply_request(&op, &viewer.user, ORIGIN, Some(viewer.role), r.field("request_id")).map(|v| said(&v)));
             // A renamed player's page is under its new name.
             let shown = if r.field("action") == "rename" && outcome.is_ok() && who.eq_ignore_ascii_case(r.field("old")) { r.field("new").to_string() } else { who.clone() };
             // A deleted account has no page any more: back to the list.
@@ -582,7 +579,7 @@ fn account(r: &Request, viewer: &Viewer, api: &Api) -> String {
         out += &form("ban", "Ban", &format!("<label>Days <input name=\"days\" inputmode=\"numeric\" placeholder=\"until lifted\"></label>{reason}"), Some(&format!("Ban {name}? Their game is disconnected and every device signed out.")), true);
         out += &form("lift", "Lift ban or restriction", "", None, false);
         out += &form("sign-out", "Sign out everywhere", "", Some(&format!("Sign {name} out on every device?")), false);
-        out += &form("reset-code", "Make a reset code", "", Some(&format!("Make a password reset code for {name}?")), false);
+        out += &form("reset-code", "Make a reset code", &format!("<input type=\"hidden\" name=\"access_code\" value=\"{}\">", crate::logins::new_code()), Some(&format!("Make a password reset code for {name}?")), false);
     }
     let players: String = a["players"].as_array().into_iter().flatten().map(|p| format!("<option>{}</option>", esc(&text(&p["name"])))).collect();
     if !players.is_empty() { out += &form("rename", "Rename", &format!("<label>Player <select name=\"old\">{players}</select></label><label>New name <input name=\"new\" required maxlength=\"16\"></label>"), None, false); }

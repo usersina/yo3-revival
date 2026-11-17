@@ -160,7 +160,7 @@ tunnel ([hosting guide](hosting.md#the-admin-panel-through-an-ssh-tunnel)). Sign
 role is admin or moderator:
 
 ```bash
-./yo3-server add-user Anna          # prints Anna's first password; or sign up in the launcher with an invite
+./yo3-server add-user Anna          # prints a setup code; finish Forgot password/--recover before set-role
 ./yo3-server set-role Anna admin    # or moderator
 ```
 
@@ -237,11 +237,18 @@ accounts for the Scripts edition on your own PC. Keep each key profile private (
 - `profile PLAYER FILE --advertise HOST` exports a key account's private profile for the play script. The profile
   references `server.crt`; copy the host's public certificate beside it. Existing profile files are not overwritten.
   `key WHO` prints the key itself.
+- `add-user USER` prepares a one-time setup code instead of a password. The owner chooses a password through
+  Desktop’s **Forgot password** or Scripts `--recover`, and saves their private recovery code. Finish setup before
+  promoting the account. `reset-code USER` replaces a lost setup/reset code after you verify the owner’s identity.
+  Both commands commit the change, audit and receipt together. They print a prepared code and request ID before
+  sending; a prepared code is not a confirmation. For a lost response, reuse both through
+  `--request-id ID --code-stdin < /path/to/private-code-file`. Never put the code in arguments or shell history.
+  Codes work once for 24 hours. A retry reports current availability without reissuing or extending the code.
 - `set-role USER ROLE` is admin-only and commits the role, audit and retry receipt together. It accepts
   `--request-id ID`; repeat the same command with that ID after a lost response. A retry never reapplies an older role.
   Changing your own role can remove management access; another admin or the host must restore it with `set-role`.
 - `invite`, `invites`, `add-user`, `reset-code` and `set-role` manage password accounts (beta) and work while the
-  server runs: invite codes for sign-up, an account the host makes with a first password, a one-day reset code for a
+  server runs: invite codes for sign-up, an account awaiting its owner’s password setup, a one-day reset code for a
   player who lost their password and recovery code, and roles. [Accounts](authentication.md#making-accounts-invites-and-recovery)
   explains each. `invite` and `share --invite` print a request ID before creation and accept `--request-id ID`.
   After a lost response, repeat the same command and limits with that ID to retrieve the original code and expiry.

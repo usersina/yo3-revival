@@ -25,6 +25,8 @@ export interface AccountDetail {
   /** @nullable */
   login?: string | null;
   muted?: AccountMute | null;
+  /** @nullable */
+  password_ready?: boolean | null;
   players: PlayerDetail[];
   reset_pending: boolean;
   role: Role;
