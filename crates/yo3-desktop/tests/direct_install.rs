@@ -89,17 +89,23 @@ fn changing_the_game_folder_takes_direct_start_out_of_the_old_one() {
     // new one. Needs a real game for the new folder's check.
     let real = yo3_data::default_game_dir();
     if !real.join("yo3.exe").is_file() { eprintln!("skipped: no game at {}", real.display()); return }
-    let p = scratch(); let old = p.join("old game"); std::fs::create_dir(&old).unwrap(); std::fs::write(old.join("yo3.exe"), b"game").unwrap();
+    let p = scratch();
+    // Validate a private copy; the real installation may already have the user's direct-start loader.
+    let new = p.join("new game"); std::fs::create_dir_all(new.join("package")).unwrap();
+    for name in ["yo3.exe", "yo3.idx"] { std::fs::copy(real.join(name), new.join(name)).unwrap(); }
+    #[cfg(unix)] std::os::unix::fs::symlink(real.join("package/data002.ypk"), new.join("package/data002.ypk")).unwrap();
+    #[cfg(not(unix))] std::fs::copy(real.join("package/data002.ypk"), new.join("package/data002.ypk")).unwrap();
+    let old = p.join("old game"); std::fs::create_dir(&old).unwrap(); std::fs::write(old.join("yo3.exe"), b"game").unwrap();
     let root = p.join("app"); let backend = set_up(&root, &old);
     let db = yo3_desktop::LauncherDb::open(&root).unwrap();
     db.save_settings(&yo3_desktop::Settings { game_dir: old.to_string_lossy().into(), ..Default::default() }).unwrap();
     direct::set_registry_for_tests(Some(|_, _| Ok(())));
-    let draft = yo3_desktop::Settings { game_dir: real.to_string_lossy().into(), ..Default::default() };
+    let draft = yo3_desktop::Settings { game_dir: new.to_string_lossy().into(), ..Default::default() };
     let saved = backend.save_preferences(yo3_desktop::preferences::Section::Game, &draft);
     direct::set_registry_for_tests(None);
     assert_eq!(saved.expect("the folder change goes through").game_dir, draft.game_dir);
     assert!(!old.join("winmm.dll").exists() && !old.join("yo3-revival-loader.json").exists(), "the old folder is left clean");
     assert!(!root.join("profiles/loader.ini").exists());
-    assert!(!real.join("yo3-revival-loader.json").exists(), "nothing put in the new folder until Play");
+    assert!(!new.join("yo3-revival-loader.json").exists(), "nothing put in the new folder until Play");
     std::fs::remove_dir_all(p).unwrap();
 }
