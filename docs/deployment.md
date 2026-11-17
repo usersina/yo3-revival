@@ -105,6 +105,36 @@ no additional token is needed. GitHub may refuse deletion of a public package ve
 see [package deletion permissions and limits](https://docs.github.com/en/rest/packages/packages#delete-package-version-for-a-user).
 The packaged-updater gate downloads the latest existing release, so it never depends on a pruned archive.
 
+The server runtime is assembled **from scratch** using the same Debian builder's ELF loader and shared libraries
+as the compiled server and C++ engine. It includes CA certificates, files/DNS resolution, UTC time data and the
+small shell/cat/id/curl tools used by provisioning, administration and health checks. No compiler, package manager,
+Rust toolchain or source checkout goes into that runtime. Copied packages retain their copyright and version
+metadata so vulnerability scanners can identify the libraries. The dashboard stays on nginx Alpine, without Node.
+
+Both programs run as UID/GID **10001:10001**. Executables and libraries belong to root; only the server's data and
+shared socket directories belong to that user. Compose keeps the root filesystem read-only, drops all capabilities,
+forbids privilege escalation and makes `/tmp` a `noexec,nosuid,nodev` tmpfs. Server startup uses `umask 077`.
+The game and web certificates remain read-only mounts; the dashboard never receives game files or the database.
+
+Builds use pinned cargo-chef to cache compiled Rust dependencies in an ordinary Docker layer, exported by CI's
+GitHub cache. The planner masks local version numbers; the real manifests and release metadata are restored before
+compiling the shipped binaries. Engine fetching depends only on the fetch script and pinned card IDs; editing a
+card override repackages data without recompiling Rust. Runtime binaries are stripped. Tests and generated-client
+drift checks run in release CI, not inside the Dockerfiles; the dashboard build still typechecks its source.
+
+After image publication, CI smoke-tests the exact digests before attaching deployment references: the runtime
+user/permissions, certificates, hostname resolution, packaged native engine, real cards and a started duel. To check
+local images without touching a running setup:
+
+```sh
+python3 tools/containers/test_images.py --server yo3-revival-server:local --dashboard yo3-revival-dashboard:local
+python3 tools/containers/test_stack.py --image-tag local --game-dir '/path/to/Yu-Gi-Oh! ONLINE 3'
+```
+
+The second command needs your game files read-only and creates its own Compose project, ports, certificates and
+volumes, removing them afterwards. Neither command rebuilds images or changes the live host. To test a separately
+tagged build, replace `local` with that tag (and use the corresponding image names in the first command).
+
 ## Enable automatic updates once
 
 For an existing provisioned host, generate a dedicated key locally. Keep its private file outside the checkout:

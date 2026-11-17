@@ -97,6 +97,17 @@ jobs:
             org.opencontainers.image.version=${{ inputs.version }}
           cache-from: type=gha,scope=dashboard
           cache-to: type=gha,mode=max,scope=dashboard
+      - name: Check the exact runtime images before deployment
+        env:
+          IMAGE_BASE: ${{ steps.names.outputs.base }}
+          SERVER_DIGEST: ${{ steps.server.outputs.digest }}
+          DASHBOARD_DIGEST: ${{ steps.dashboard.outputs.digest }}
+        run: |
+          server="$IMAGE_BASE-server@$SERVER_DIGEST"
+          dashboard="$IMAGE_BASE-dashboard@$DASHBOARD_DIGEST"
+          docker pull "$server"
+          docker pull "$dashboard"
+          python3 tools/containers/test_images.py --server "$server" --dashboard "$dashboard"
       - name: Attach exact image references to the release
         id: references
         env:

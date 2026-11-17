@@ -4,7 +4,8 @@ WORKDIR /src
 COPY dashboard/package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY dashboard/ ./
-RUN npm run api:check && npm run build
+# Tests, lint and generated-client drift run in release CI before image publication.
+RUN npm run build
 
 FROM nginx:stable-alpine@sha256:901e593c95dc85f5a729f5765516321366ef4ac401821431d408897e95287d0a
 RUN apk add --no-cache openssl && mkdir -p /run/yo3-dashboard /etc/yo3/tls && chown -R 10001:10001 /var/cache/nginx /run/yo3-dashboard /etc/yo3/tls

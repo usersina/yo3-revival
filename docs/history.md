@@ -55,6 +55,22 @@ annotated tags, retained platform/provenance manifests, orphan cleanup, missing 
 the selector and tag guard also passed read-only checks against the actual v0.0.26 release. No live releases or
 packages were deleted during development; first live cleanup remains part of the next release pipeline.
 
+The server image is now a scratch filesystem assembled from the compiler image's exact runtime libraries/loader,
+with certificates, NSS/UTC data and the shell/cat/id/curl tools needed by existing host scripts. Package identity and
+copyright metadata remain for scanners and attribution. It runs as UID/GID 10001, with root-owned executables,
+private data/socket directories, a 077 startup umask and hardened temporary mounts. The local uncompressed image
+decreased from 155,539,228 to 84,869,046 bytes (about 45%). The dashboard remains about 64 MB on nginx Alpine.
+Pinned cargo-chef caches compiled dependencies in a normal exported layer; an isolated source/version edit reused
+that layer, and a separate override-only edit reused the native compilation layer. Card overrides are packaged after compilation. Dockerfiles run no Rust tests, and duplicate frontend
+API drift checking moved to release CI.
+
+Five image checks cover runtime ownership, setuid/setgid absence, privileges, temporary mounts, resolution,
+certificates, real engine cards and duel startup. The exact built images passed an isolated Compose rehearsal:
+HTTPS, real account/staff sign-in, nginx spoofing/route checks, CSRF, grants and retry receipts, saved state,
+backup/offline restore, identity preservation, ACME and CLI. An outbound curl request also verified real DNS and CA
+trust. Release CI runs the image checks against exact registry digests before emitting deployment references.
+The existing VPS was not changed by this local image rehearsal.
+
 The updater validates both images before shutdown, snapshots the stopped data volume, checks the actual running
 release and HTTPS, and restores previous images/data on failure. Receipts make duplicate releases a health check;
 older releases and reused versions are refused. The production host keeps its domain, assets, data and identity.

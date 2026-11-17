@@ -121,6 +121,7 @@ python3 tools/test_package_editions.py             # editions, archives, literal
 python3 tools/test_release_notes.py                # matching Cargo/changelog versions, release notes and SHA256SUMS
 python3 tools/test_release_lifecycle.py            # published-tag gate and two-release/image retention (fixtures only)
 python3 tools/containers/test_deployment.py          # image validation, pre-upgrade snapshots, rollback and SSH transport
+python3 tools/containers/test_images.py              # built local images: runtime user, minimal rootfs, native engine/cards
 tools/docs-check.py --root /path/to/bundle         # the same checks against an extracted release
 tools/release.sh                                  # bundles in dist/ (Linux .tar.gz, Windows .zip), with docs/ and screenshots/
 tools/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-linux-x86_64.tar.gz

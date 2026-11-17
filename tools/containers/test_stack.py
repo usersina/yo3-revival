@@ -29,6 +29,7 @@ def port():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--game-dir', required=True, type=Path)
+    parser.add_argument('--image-tag', default='local', help='Existing local image tag to rehearse (never rebuilds or retags)')
     parser.add_argument('--keep', action='store_true', help='Keep only this disposable project for inspection')
     a = parser.parse_args()
     for f in ['package/data002.ypk', 'yo3.idx']:
@@ -43,7 +44,7 @@ def main():
     env = os.environ | {'YO3_DOMAIN':'localhost', 'YO3_GAME_DIR':str(a.game_dir.resolve()),
         'YO3_TLS_DIR':str(scratch/'tls'), 'YO3_ACME_DIR':str(scratch/'acme'),
         'YO3_GAME_BIND':'127.0.0.1', 'YO3_WEB_BIND':'127.0.0.1', 'YO3_GAME_PORT':str(game_port),
-        'YO3_HTTP_PORT':str(http_port), 'YO3_HTTPS_PORT':str(https_port), 'YO3_IMAGE_TAG':'local'}
+        'YO3_HTTP_PORT':str(http_port), 'YO3_HTTPS_PORT':str(https_port), 'YO3_IMAGE_TAG':a.image_tag}
     compose = ['docker','compose','--env-file','/dev/null','--project-name',project,'-f',str(ROOT/'compose.yaml')]
     def run(args, *, check=True, input=None):
         return subprocess.run(compose+args, cwd=ROOT, env=env, check=check, input=input, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=240)

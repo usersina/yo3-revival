@@ -20,6 +20,11 @@ are told to update before playing. Container builds require the latest published
 commit. After successful deployment, GitHub keeps that release and the previous version, removing older downloads
 and container versions. The updater check always starts from the latest published Desktop bundle.
 
+The server container now uses a minimal scratch runtime with its required libraries and health/admin tools, still
+running as an unprivileged user. Builds cache compiled Rust dependencies across releases, avoid recompiling for card
+override edits and remove duplicate frontend API checks. Temporary files cannot execute or gain privileges; image
+checks cover the packaged engine, runtime permissions and actual cards before deployment.
+
 The first beta: a new launcher, accounts with a User ID and password, and a server that can be hosted for real.
 Choose **Desktop** for the graphical app or **Scripts** for terminal commands. Both editions include the server, rules
 engine and required connection components. Original game files are not included. **Windows 7 is not supported.**
