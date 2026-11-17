@@ -900,6 +900,39 @@ export const RemoveBpCodeResult = zod.object({
 export type RemoveBpCodeResult = zod.input<typeof RemoveBpCodeResult>;
 export type RemoveBpCodeResultOutput = zod.output<typeof RemoveBpCodeResult>;
 
+export const serverOverviewAccountsMin = 0;
+export const serverOverviewAccountsMax = 4294967295;
+
+export const serverOverviewDuelsMin = 0;
+export const serverOverviewDuelsMax = 4294967295;
+
+export const serverOverviewOnlineMin = 0;
+export const serverOverviewOnlineMax = 4294967295;
+
+export const serverOverviewPlayersMin = 0;
+export const serverOverviewPlayersMax = 4294967295;
+
+export const serverOverviewUptimeSecondsMin = 0;
+
+
+
+export const ServerOverview = zod.object({
+  "accounts": zod.int().min(serverOverviewAccountsMin).max(serverOverviewAccountsMax),
+  "can_stop": zod.boolean(),
+  "checked_at": zod.iso.datetime({"offset":true}),
+  "duels": zod.int().min(serverOverviewDuelsMin).max(serverOverviewDuelsMax),
+  "engine_problem": zod.string().nullish(),
+  "online": zod.int().min(serverOverviewOnlineMin).max(serverOverviewOnlineMax),
+  "persistence_healthy": zod.boolean(),
+  "players": zod.int().min(serverOverviewPlayersMin).max(serverOverviewPlayersMax),
+  "run_id": zod.string(),
+  "uptime_seconds": zod.int().min(serverOverviewUptimeSecondsMin).nullish(),
+  "version": zod.string()
+});
+
+export type ServerOverview = zod.input<typeof ServerOverview>;
+export type ServerOverviewOutput = zod.output<typeof ServerOverview>;
+
 export const settingKindOneMaxLengthMin = 0;
 
 export const settingKindTwoMaxMin = 0;
@@ -1019,6 +1052,37 @@ export const StaffSession = zod.object({
 
 export type StaffSession = zod.input<typeof StaffSession>;
 export type StaffSessionOutput = zod.output<typeof StaffSession>;
+
+export const stopRequestRunIdMin = 64;
+export const stopRequestRunIdMax = 64;
+
+
+export const stopRequestRunIdRegExp = new RegExp('^[a-f0-9]{64}$');
+
+
+export const StopRequest = zod.object({
+  "run_id": zod.string().min(stopRequestRunIdMin).max(stopRequestRunIdMax).regex(stopRequestRunIdRegExp)
+});
+
+export type StopRequest = zod.input<typeof StopRequest>;
+export type StopRequestOutput = zod.output<typeof StopRequest>;
+
+export const StopResult = zod.object({
+  "message": zod.string(),
+  "request_id": zod.string(),
+  "run_id": zod.string()
+});
+
+export type StopResult = zod.input<typeof StopResult>;
+export type StopResultOutput = zod.output<typeof StopResult>;
+
+export const StopResponse = zod.object({
+  "result": StopResult,
+  "stop": EffectState
+});
+
+export type StopResponse = zod.input<typeof StopResponse>;
+export type StopResponseOutput = zod.output<typeof StopResponse>;
 export const ListAccounts200Response = AccountList
 
 export const ListAccounts400Response = ApiError
@@ -1502,6 +1566,59 @@ export const ModerateAccount415Response = ApiError
 export const ModerateAccount500Response = ApiError
 
 export const ModerateAccount503Response = ApiError
+
+
+export const GetServerStatus200Response = ServerOverview
+
+export const GetServerStatus400Response = ApiError
+
+export const GetServerStatus401Response = ApiError
+
+export const GetServerStatus403Response = ApiError
+
+export const GetServerStatus405Response = ApiError
+
+export const GetServerStatus413Response = ApiError
+
+export const GetServerStatus415Response = ApiError
+
+export const GetServerStatus500Response = ApiError
+
+
+export const stopServerHeaderIdempotencyKeyMin = 16;
+export const stopServerHeaderIdempotencyKeyMax = 128;
+
+
+export const stopServerHeaderIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const StopServerHeader = zod.object({
+  "Idempotency-Key": zod.string().min(stopServerHeaderIdempotencyKeyMin).max(stopServerHeaderIdempotencyKeyMax).regex(stopServerHeaderIdempotencyKeyRegExp).describe('Retain this ID and input on retry. Retries observe the saved outcome, never repeat a disconnect.')
+})
+
+export const StopServerBody = StopRequest
+
+export const StopServer200Response = StopResponse
+
+export const StopServer400Response = ApiError
+
+export const StopServer401Response = ApiError
+
+export const StopServer403Response = ApiError
+
+export const StopServer404Response = ApiError
+
+export const StopServer405Response = ApiError
+
+export const StopServer409Response = ApiError
+
+export const StopServer413Response = ApiError
+
+export const StopServer415Response = ApiError
+
+export const StopServer500Response = ApiError
+
+export const StopServer503Response = ApiError
 
 
 export const GetStaffSession200Response = StaffSession

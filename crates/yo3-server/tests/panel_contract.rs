@@ -372,7 +372,7 @@ async fn the_api_refuses_a_moderator_what_only_an_admin_may_do() {
     accounts.lock().unwrap().set_role("Pegasus", logins::Role::Admin).unwrap();
     let a = api::Api::new(accounts, settings, None, std::path::PathBuf::new(), "server");
     let moderator = Some(logins::Role::Moderator);
-    for op in [Op::Set { name: "start-lp".into(), value: "100".into() }, Op::Shutdown, Op::Key { who: "x".into() }, Op::BackUp,
+    for op in [Op::Set { name: "start-lp".into(), value: "100".into() }, Op::Shutdown {run_id:"not-a-run".into()}, Op::Key { who: "x".into() }, Op::BackUp,
         Op::Maintenance { minutes: Some(1), message: None, off: false }, Op::AddUser { user: "x".into(), code: String::new().into() }] {
         assert!(!op.for_moderators(), "{op:?}");
         assert!(a.apply_as(&op, "Croquet", "panel", moderator).unwrap_err().starts_with("only an admin"), "{op:?}");

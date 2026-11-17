@@ -215,7 +215,11 @@ pub enum Admin {
         limit: u32,
     },
     /// Stop the running server gracefully: logins close, duels end, everything is saved and backed up.
-    Stop,
+    Stop {
+        /// Reuse the printed request ID and run ID together after a lost response.
+        #[arg(long, requires = "run_id")] request_id: Option<String>,
+        #[arg(long)] run_id: Option<String>,
+    },
     /// Disconnect WHO's game (a User ID or one of its players' names); it shows its own disconnect dialog.
     Kick { who: String, #[arg(long)] request_id: Option<String> },
     /// Ban WHO: sign-in refused (for --days, or until `lift`), every device signed out, the game disconnected. The

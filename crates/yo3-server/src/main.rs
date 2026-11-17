@@ -91,7 +91,7 @@ fn operation(command: &Admin) -> anyhow::Result<Option<Op>> {
         Admin::Set { name, value, .. } => Op::Set { name: name.clone(), value: value.clone() },
         Admin::Reset { name, .. } => Op::Reset { name: name.clone() },
         Admin::Audit { limit } => Op::Audit { limit: Some(*limit) },
-        Admin::Stop => Op::Shutdown,
+        Admin::Stop { .. } => return Ok(None),
         Admin::Kick { who, .. } => Op::Kick { who: who.clone() },
         Admin::Ban { who, reason, days, .. } => Op::Ban { who: who.clone(), reason: reason.clone(), days: *days },
         Admin::Restrict { who, reason, days, .. } => Op::Restrict { who: who.clone(), reason: reason.clone(), days: *days },
@@ -128,6 +128,15 @@ fn admin(a: &Args, command: Admin, game_dir: PathBuf) -> anyhow::Result<()> {
             return Ok(());
         }
         _ => {}
+    }
+    if let Admin::Stop {request_id,run_id} = &command {
+        let live=live::running(&a.data_dir).ok_or_else(||anyhow::anyhow!("No server is running on {}",a.data_dir.display()))?;
+        let id=request_id.clone().unwrap_or_else(yo3_server::logins::new_token);
+        anyhow::ensure!(api::mutation::valid_request_id(&id),"Invalid request ID");
+        let run_id=match run_id {Some(id)=>id.clone(),None=>api::call(&live,&Op::Status).map_err(anyhow::Error::msg)?["run_id"].as_str().ok_or_else(||anyhow::anyhow!("No run identity"))?.into()};
+        println!("Request ID: {id}\nRun ID: {run_id}\nRetry with: stop --request-id {id} --run-id {run_id}");std::io::stdout().flush()?;
+        let result=api::call_as_request(&live,&Op::Shutdown {run_id},&a.by,&id).map_err(anyhow::Error::msg)?;
+        return show(a,&command,&result,None)
     }
     let mut op = operation(&command)?.expect("an API operation");
     if let Admin::AddUser { user, request_id, code_stdin } | Admin::ResetCode { user, request_id, code_stdin } = &command {
@@ -179,7 +188,7 @@ fn call_request(a: &Args, op: &Op, game_dir: &std::path::Path, request_id: &str)
     match live::running(&a.data_dir) {
         Some(server) => api::call_as_request(&server, op, &a.by, request_id),
         None => {
-            if matches!(op, Op::Shutdown | Op::Kick { .. }) { anyhow::bail!("no server is running on {}", a.data_dir.display()) }
+            if matches!(op, Op::Shutdown { .. } | Op::Kick { .. }) { anyhow::bail!("no server is running on {}", a.data_dir.display()) }
             let _lock = if op.changes() { Some(yo3_server::store::lock(&a.data_dir)?) } else { None };
             yo3_server::store::initialize(&a.data_dir)?;
             if op.changes() { yo3_server::store::interrupt_effects(&a.data_dir)?; }

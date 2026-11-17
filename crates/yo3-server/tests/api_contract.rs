@@ -74,7 +74,7 @@ async fn accounts_can_be_created_and_exported_while_the_tls_server_stays_online(
         let mut out = Vec::new(); let _ = tunnel.read_to_end(&mut out).await;
         assert!(String::from_utf8_lossy(&out).starts_with("HTTP/1.1 403"), "{}", String::from_utf8_lossy(&out));
     }
-    tokio::task::spawn_blocking(move || api::call(&live, &Op::Shutdown)).await.unwrap().unwrap();
+    tokio::task::spawn_blocking(move || api::stop(&live)).await.unwrap().unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(3), server.wait()).await.unwrap();
 }
 

@@ -10,6 +10,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 
 - [History](#history)
   - [2026-11-17 — Transactional account deletion in the connected dashboard](#2026-11-17--transactional-account-deletion-in-the-connected-dashboard)
+  - [2026-11-17 — Durable graceful stop and checked live status](#2026-11-17--durable-graceful-stop-and-checked-live-status)
   - [Status](#status)
   - [▶ Overnight plan (2026-11-07): everything left, end to end](#-overnight-plan-2026-11-07-everything-left-end-to-end)
   - [▶ Windows VM test (2026-11-08): what a real Windows client turned up](#-windows-vm-test-2026-11-08-what-a-real-windows-client-turned-up)
@@ -30,6 +31,14 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-17 — Durable graceful stop and checked live status
+
+Reproduced a stop signalling/reporting success after its audit write failed. The stop now commits audit/receipt/
+intent before signalling and binds input to a fresh per-process identity. Even an uncommitted old request cannot
+stop a replacement process. Schema 5 preserves schema 4 disconnects and records interrupted stop outcomes at startup.
+CLI retries carry both IDs; Desktop and generated React API use the same boundary. Added live version/count/health
+snapshots and a confirmation/recovery dialog. Final saves and backups are explicitly distinguished from signal acceptance.
 
 ## 2026-11-17 — Transactional account deletion in the connected dashboard
 

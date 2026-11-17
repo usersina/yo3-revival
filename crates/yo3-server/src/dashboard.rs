@@ -14,6 +14,7 @@ use crate::{api::{give_bp::GiveBpByIdRequest, Api, GiveBpResult, Actor, Mutation
     logins::Role, panel::{self, Panel, Viewer}};
 use crate::api::moderation::{ModerationRequest,ModerationResponse};
 use crate::api::deletion::{DeleteAccountRequest,DeleteAccountResponse};
+use crate::api::server::{StopRequest,StopResponse,ServerOverview};
 use crate::api::settings::{SettingsRequest, SettingsResult, SettingsList};
 use crate::api::gifts::{GiftRequest, GiftResult, GiftChoices};
 use crate::api::keys::{KeyAccountRequest, KeyAccountResult};
@@ -109,7 +110,7 @@ fn documented_routes() -> OpenApiRouter<Dashboard> {
     OpenApiRouter::new().routes(routes!(staff_session)).routes(routes!(sign_in)).routes(routes!(sign_out))
         .routes(routes!(accounts)).routes(routes!(give_bp)).routes(routes!(list_bp_codes))
         .routes(routes!(create_bp_code)).routes(routes!(remove_bp_code)).routes(routes!(list_invites)).routes(routes!(create_invite))
-        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices)).routes(routes!(moderate)).routes(routes!(delete_account)).routes(routes!(live_settings)).routes(routes!(change_settings).layer(DefaultBodyLimit::max(256 * 1024)))
+        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices)).routes(routes!(moderate)).routes(routes!(delete_account)).routes(routes!(server_status)).routes(routes!(stop_server)).routes(routes!(live_settings)).routes(routes!(change_settings).layer(DefaultBodyLimit::max(256 * 1024)))
 }
 
 pub fn openapi() -> OpenApi {
@@ -497,4 +498,29 @@ pub(crate) fn not_found() -> Response {
     let mut response = ApiError::new(ApiErrorCode::NotFound, "No such dashboard API route.").into_response();
     secure(&mut response);
     response
+}
+
+#[utoipa::path(get, path = "/panel/api/v1/server", operation_id = "getServerStatus", tag = "Server",
+    security(("staffSession" = [])), responses((status = 200, description = "Success", body = ServerOverview),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 405, description = "Method not allowed", body = ApiError), (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError), (status = 500, description = "Internal error; mutation outcome may be unknown", body = ApiError)))]
+async fn server_status(State(state): State<Dashboard>) -> Result<Json<ServerOverview>,ApiError> {
+    tokio::task::spawn_blocking(move||state.api.overview()).await.map(Json).map_err(|_|ApiError::new(ApiErrorCode::InternalError,"The server status could not be read."))
+}
+
+#[utoipa::path(post, path = "/panel/api/v1/server/stop", operation_id = "stopServer", tag = "Server",
+    security(("staffSession" = [], "csrfToken" = [])), request_body = StopRequest,
+    params(("Idempotency-Key" = String, Header, min_length = 16, max_length = 128, pattern = "^[A-Za-z0-9_-]+$", description = "Retain this ID and input on retry. Retries observe the saved outcome, never repeat a disconnect.")),
+    responses((status = 200, description = "Committed stop request plus current signal outcome", body = StopResponse),
+        (status = 400, description = "Invalid request", body = ApiError), (status = 401, description = "Staff sign-in required", body = ApiError), (status = 403, description = "Forbidden", body = ApiError),
+        (status = 404, description = "Account not found", body = ApiError), (status = 409, description = "Retry input conflict", body = ApiError), (status = 405, description = "Method not allowed", body = ApiError),
+        (status = 413, description = "Request too large", body = ApiError), (status = 415, description = "JSON required", body = ApiError),
+        (status = 503, description = "Commit could not be confirmed; retry the same request", body = ApiError), (status = 500, description = "Internal error; outcome may be unknown", body = ApiError)))]
+async fn stop_server(State(state): State<Dashboard>, Extension(viewer): Extension<Viewer>, headers: HeaderMap,
+    body: Result<Json<StopRequest>, JsonRejection>) -> Result<Json<StopResponse>, ApiError> {
+    let Json(request) = body?;
+    let id = one(&headers, "idempotency-key").unwrap_or_default().to_string();
+    tokio::task::spawn_blocking(move || state.api.request_stop(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
+        .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
+        .map(Json).map_err(Into::into)
 }

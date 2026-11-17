@@ -40,6 +40,7 @@ pub mod gifts;
 pub mod settings;
 pub mod moderation;
 pub mod deletion;
+pub mod server;
 pub use give_bp::{GiveBpRequest, GiveBpResult};
 pub use mutation::{Actor, MutationError, MutationErrorCode};
 
@@ -87,7 +88,7 @@ pub enum Op {
     Reset { name: String },
     /// The newest audit rows (50 when no limit is given).
     Audit { #[serde(default)] limit: Option<u32> },
-    Shutdown,
+    Shutdown { run_id: String },
     /// Moderation (#26). WHO is a User ID or one of its players' names.
     /// Disconnects the account's game: it shows its own disconnect dialog.
     Kick { who: String },
@@ -119,7 +120,7 @@ pub enum Op {
 
 impl Op {
     /// Operations migrated to a committed change/audit/receipt boundary.
-    fn receipted(&self) -> bool { matches!(self, Self::DeleteAccount { .. } | Self::Kick { .. } | Self::Ban { .. } | Self::Restrict { .. } | Self::Lift { .. } | Self::Mute { .. } | Self::Unmute { .. } | Self::SignOut { .. } | Self::Set { .. } | Self::Reset { .. } | Self::Maintenance { .. } | Self::GiveCards { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
+    fn receipted(&self) -> bool { matches!(self, Self::Shutdown { .. } | Self::DeleteAccount { .. } | Self::Kick { .. } | Self::Ban { .. } | Self::Restrict { .. } | Self::Lift { .. } | Self::Mute { .. } | Self::Unmute { .. } | Self::SignOut { .. } | Self::Set { .. } | Self::Reset { .. } | Self::Maintenance { .. } | Self::GiveCards { .. } | Self::GiveRecipe { .. } | Self::GrantTitle { .. } | Self::CreateAccount { .. } | Self::Key { .. } | Self::GiveBp { .. } | Self::AddCode { .. } | Self::RemoveCode { .. } | Self::Invite { .. } | Self::AddPlayer { .. } | Self::Rename { .. } | Self::SetCountry { .. } | Self::SetRole { .. } | Self::AddUser { .. } | Self::ResetCode { .. }) }
     /// Its name in the API's path and the audit log.
     pub fn name(&self) -> String {
         serde_json::to_value(self).ok().and_then(|v| v["op"].as_str().map(str::to_owned)).unwrap_or_default()
@@ -227,6 +228,7 @@ pub struct Api {
     gifts: std::sync::OnceLock<Arc<crate::gifts::Gifts>>,
     /// "server" for a running server's operations, "offline" for the CLI's on a stopped server's folder.
     pub origin: &'static str,
+    run_id: String,
     memory: Mutex<Vec<AuditRow>>,
     effects: Mutex<std::collections::HashMap<(String,String), crate::store::EffectState>>,
     receipts: Mutex<std::collections::HashMap<(String, String), crate::store::Receipt>>,
@@ -236,7 +238,7 @@ type Done = Result<(Value, Option<Value>, Option<Value>), String>;
 
 impl Api {
     pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, data_dir: Option<PathBuf>, game_dir: PathBuf, origin: &'static str) -> Api {
-        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), origin, memory: Mutex::default(), effects: Mutex::default(), receipts: Mutex::default() }
+        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), origin, run_id: crate::logins::new_token(), memory: Mutex::default(), effects: Mutex::default(), receipts: Mutex::default() }
     }
 
     /// Runs `op` for `actor` and writes its audit row: its result, or why it was refused.
@@ -285,6 +287,9 @@ impl Api {
 
     fn typed_change(&self, op: &Op, id: &str, actor: Actor<'_>, origin: &str) -> Result<Value, MutationError> {
         match op {
+            Op::Shutdown { run_id } => self.request_stop(&server::StopRequest { run_id: run_id.clone() }, id, actor, origin).map(|r| {
+                let mut value=json!(r.result);value["stop"]=json!(r.stop);value["stopping"]=json!(true);value
+            }),
             Op::DeleteAccount { .. } => self.named_deletion(op, id, actor, origin),
             Op::Kick { .. } | Op::Ban { .. } | Op::Restrict { .. } | Op::Lift { .. } | Op::Mute { .. } | Op::Unmute { .. } | Op::SignOut { .. } => self.named_moderation(op, id, actor, origin),
             Op::Set { .. } | Op::Reset { .. } | Op::Maintenance { .. } => self.named_setting(op, id, actor, origin),
@@ -347,7 +352,7 @@ impl Api {
                     None => (json!([]), 0, 0),
                 };
                 let backup = self.data_dir.as_deref().and_then(last_backup);
-                Ok((json!({ "running": self.hub.is_some(), "ready": self.status.engine_problem.is_none(), "engine_problem": self.status.engine_problem,
+                Ok((json!({ "run_id": self.run_id, "can_stop": self.shutdown.is_some(), "running": self.hub.is_some(), "ready": self.status.engine_problem.is_none(), "engine_problem": self.status.engine_problem,
                     "listen": self.status.listen.map(|l| l.to_string()), "release": yo3_tunnel::BUILD_VERSION, "diagnostic_id": self.status.diagnostic_id,
                     "players": players, "online": online, "duels": duels, "engines": crate::engine::running(),
                     "uptime_seconds": self.status.started.map(|t| t.elapsed().as_secs()), "memory_bytes": memory_bytes(),
@@ -395,11 +400,7 @@ impl Api {
                     "players": players }), None, None))
             }
             Op::DeleteAccount { .. } => Err("deletion requires the typed mutation boundary".into()),
-            Op::Shutdown => {
-                let stop = self.shutdown.as_ref().ok_or("the server isn't running")?;
-                stop.send_replace(true);
-                Ok((json!({ "stopping": true, "message": "the server is stopping" }), None, None))
-            }
+            Op::Shutdown { .. } => Err("stop requires the typed mutation boundary".into()),
             Op::Settings => Ok((json!({ "message": self.settings.list(), "settings": self.settings.rows() }), None, None)),
             Op::Set { .. } | Op::Reset { .. } | Op::Maintenance { .. } => Err("settings edits require the typed mutation boundary".into()),
             Op::Kick { .. } | Op::Ban { .. } | Op::Restrict { .. } | Op::Lift { .. } | Op::Mute { .. } | Op::Unmute { .. } | Op::SignOut { .. } => Err("moderation requires the typed mutation boundary".into()),
@@ -542,6 +543,13 @@ pub fn health(api: &Api) -> Response {
 
 /// Sends `op` to the running server `live`: its result, or why not.
 pub fn call(live: &Live, op: &Op) -> Result<Value, String> { call_as(live, op, "host") }
+
+/// Capture this process's identity before requesting a stop; a restarted endpoint must not be stopped accidentally.
+pub fn stop(live: &Live) -> Result<Value, String> {
+    let status=call(live,&Op::Status)?;
+    let run_id=status["run_id"].as_str().ok_or("The server did not provide a run identity")?.to_string();
+    call(live,&Op::Shutdown {run_id})
+}
 
 /// The same, recorded in the audit log as `actor`'s (a moderator's name).
 pub fn call_as(live: &Live, op: &Op, actor: &str) -> Result<Value, String> {

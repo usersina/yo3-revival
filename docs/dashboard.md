@@ -6,7 +6,7 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 ## Current state
 
 - The approved React/Vite/SWC/Tailwind dashboard is in `dashboard/`. The main pages remain a labelled design preview.
-  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, card/recipe/title gifts, Give BP, registration invites, BOOSTERPASS code management, live settings, news, maintenance, moderation and account deletion.
+  `/connected` uses the real local API for staff sign-in/out, account summaries/details, player edits, staff roles, password-account setup/reset codes and explicit key-account creation/disclosure, card/recipe/title gifts, Give BP, registration invites, BOOSTERPASS code management, live settings, news, maintenance, moderation, account deletion and live server status/stop.
   It never falls back to fixtures.
 - Axum handles HTTP on separate sockets. Host-token operations, assets and the old HTML panel stay on `--http-port`.
   The staff JSON router has its own opt-in `--dashboard-port`, disabled by default and always bound to loopback.
@@ -40,7 +40,7 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 - Moderation saves standing/mute/device changes with audit and receipt. Live disconnects have a durable intent
   before execution and an outcome afterwards. Retries never repeat them. The confirmation explains each action,
   warns before acting on your own account, enforces staff permissions and retains uncertain requests across reloads.
-- SQLite schema 4 adds `operation_effects` beside schema 3's receipts. Schemas 1–3 upgrade transactionally.
+- SQLite schema 5 extends `operation_effects` with run-bound stop intents beside disconnects. Schemas 1–4 upgrade transactionally, preserving old effects and receipts.
   Other domains are not normalized.
 - Remaining work: the other dashboard operations, staff MFA, the public-access/proxy gate, nginx and Compose.
 
@@ -146,7 +146,7 @@ Ban/sign-out clear devices and revoke staff cookies; restriction also revokes ol
 restore a previous cookie. A password verified before moderation must recheck standing and session revision before
 session issuance; key admission holds the same account -> session lock order. A remembered device is not saved if
 moderation/recovery invalidated its password snapshot. The CLI's seven moderation commands accept `--request-id`;
-old HTML forms reuse their hidden ID. Stop and backup operations are still separate work.
+old HTML forms reuse their hidden ID. Backup operations are still separate work.
 
 Account deletion is admin-only at `POST /panel/api/v1/accounts/delete`. The numeric account ID must match
 `confirm_user_id`; the React dialog asks the admin to type it. The last administrator cannot be deleted.
@@ -161,6 +161,19 @@ a new account using its old name is never deleted or disconnected by that retry.
 accepts `--request-id`, and the old HTML panel reuses its hidden form ID. Uncertain disconnects use the same durable
 outcome rules as moderation. The React dialog retains the request across reloads and can resume it without loading
 the deleted account. Storage failure blocks the destructive request instead of risking an untracked retry.
+
+`GET /panel/api/v1/server` returns a checked live snapshot: version/run identity, saved account/player counts,
+current online/duel counts, uptime and save/engine health. These process values are not stored state. The disposable
+API truthfully disables stop because it does not control a game server.
+
+`POST /panel/api/v1/server/stop` requires an admin, CSRF, retry ID and the exact `run_id` from status. Audit, receipt
+and stop intent commit before the shutdown signal. The outcome means the signal was requested, not that shutdown's
+final save/backup has finished. Failed outcome recording stays unknown. Startup labels unfinished stop/disconnect
+intents interrupted without executing them. A committed retry returns its original result even on a new process;
+an uncommitted request naming an old run is refused. Receipts still outlive audit retention. The dashboard retains
+uncertain input/IDs across reloads, requires disconnect confirmation and blocks sending if storage fails. The CLI
+prints a retry command with both IDs: `stop --request-id ID --run-id RUN`. Desktop's host client captures the run
+identity before asking it to stop, rather than signalling whatever process might replace its endpoint.
 
 ## API and dashboard
 
@@ -190,6 +203,8 @@ Connected routes in this slice:
 | GET | `/panel/api/v1/session` | Staff identity, CSRF token and RFC 3339 idle expiry |
 | POST | `/panel/api/v1/sign-in` | Staff session and HttpOnly cookie; shared sign-in throttle |
 | POST | `/panel/api/v1/sign-out` | End the current staff cookie |
+| GET | `/panel/api/v1/server` | Live checked version, run identity, counts and health |
+| POST | `/panel/api/v1/server/stop` | Admin-only, explicitly confirmed, run-bound graceful stop |
 | GET | `/panel/api/v1/accounts` | Safe account/player summaries without credentials |
 | GET | `/panel/api/v1/accounts/{user_id}` | Staff-visible profile details and checked live state; credentials excluded |
 | GET | `/panel/api/v1/countries` | Country codes from the game archive, or an explicit unavailable error |

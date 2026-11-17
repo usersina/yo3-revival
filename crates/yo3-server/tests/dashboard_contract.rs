@@ -33,9 +33,11 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/settings", "post", "changeSettings"),
         ("/panel/api/v1/moderation", "post", "moderateAccount"),
         ("/panel/api/v1/accounts/delete", "post", "deleteAccount"),
+        ("/panel/api/v1/server", "get", "getServerStatus"),
+        ("/panel/api/v1/server/stop", "post", "stopServer"),
         ("/panel/api/v1/gifts/choices", "get", "listGiftChoices"),
     ];
-    assert_eq!(paths.len(), 18);
+    assert_eq!(paths.len(), 20);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);
@@ -158,7 +160,7 @@ async fn real_listeners_keep_host_authority_assets_and_staff_routes_separate() {
     let admin = b.admin.clone();
     tokio::task::spawn_blocking(move || {
         api::call(&admin, &Op::GiveBp { who: "Yugi".into(), amount: 17 }).unwrap();
-        api::call(&admin, &Op::Shutdown).unwrap();
+        api::stop(&admin).unwrap();
     }).await.unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(5), b.live.wait()).await.unwrap();
     for addr in [local, auth, dashboard] {
@@ -631,4 +633,21 @@ async fn account_deletion_is_admin_only_confirmed_idempotent_and_removes_current
     assert_eq!(b.call("POST",path,request).await.body,first.body,"retry resolves even after account is gone");
     assert_eq!(b.call("POST",path,json!({"user_id":pegasus,"confirm_user_id":pegasus})).await.status,409);
     let text=first.body.to_string();for secret in ["Yugi","password","recovery","device_token"] {assert!(!text.contains(secret),"{text}");}
+}
+
+#[tokio::test]
+async fn staff_server_status_is_live_and_stop_requires_admin_and_the_current_run() {
+    let mut b=Browser::new("stop-api").await;b.sign_in("Croquet").await;
+    let status=b.call("GET","/panel/api/v1/server",json!(null)).await;
+    assert_eq!(status.status,200);assert_eq!(status.body["can_stop"],true);assert_eq!(status.body["accounts"],4);
+    let run_id=status.body["run_id"].as_str().unwrap();assert_eq!(run_id.len(),64);
+    assert!(chrono::DateTime::parse_from_rfc3339(status.body["checked_at"].as_str().unwrap()).is_ok());
+    let request=json!({"run_id":run_id});let path="/panel/api/v1/server/stop";
+    assert_eq!(b.call("POST",path,request.clone()).await.status,403);
+    b.sign_in("Pegasus").await;
+    assert_eq!(b.call("POST",path,json!({"run_id":"old-run"})).await.status,409);
+    let stopped=b.call("POST",path,request).await;assert_eq!(stopped.status,200,"{}",stopped.body);
+    assert_eq!(stopped.body["stop"],"completed");assert_eq!(stopped.body["result"]["run_id"],run_id);
+    let addr=b.live.dashboard.unwrap();tokio::time::timeout(std::time::Duration::from_secs(5),b.live.wait()).await.unwrap();
+    assert!(tokio::net::TcpStream::connect(addr).await.is_err());
 }

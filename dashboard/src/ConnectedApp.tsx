@@ -22,6 +22,7 @@ import { ConnectedAccountDialog } from './ConnectedAccountDialog'
 import { ConnectedModeration } from './ConnectedModeration'
 import { ConnectedDeletion } from './ConnectedDeletion'
 import { ConnectedSettings } from './ConnectedSettings'
+import { ConnectedServer } from './ConnectedServer'
 import { ConnectedCodes } from './ConnectedCodes'
 import { ConnectedInvites } from './ConnectedInvites'
 import { ConnectedGifts } from './ConnectedGifts'
@@ -259,6 +260,7 @@ function AccountWorkspace({ session }: { session: StaffSession }) {
           <Button onClick={() => setOpen(true)}>Resume grant</Button>
         </div>
       )}
+      <ConnectedServer session={session} />
       <Panel>
         <div className="table-toolbar">
           <SearchField

@@ -322,6 +322,13 @@ warns that the disconnect is unknown. Startup labels it interrupted, without rep
 account/session before requesting a new disconnect. Reasons are single-line, at most 200 characters. Use a positive
 duration or omit it until lifted. The React dialog offers the same actions from View account → Moderate account.
 
+`stop` first captures the running process's identity and prints its request/run IDs. After a lost response, copy
+its printed `stop --request-id ID --run-id RUN` command. Never substitute a new run ID when retrying. The saved
+receipt cannot stop a restarted process, and an old run is refused even if the original request never committed.
+Stop intent is saved before signalling; an uncertain outcome means inspect the process/logs, not send another stop.
+A confirmed signal still allows final saves and the shutdown backup to finish. Desktop uses the same run-bound
+operation. The connected React preview shows live checked status and requires confirmation before stopping.
+
 ## Network settings
 
 Friends reach one **TLS listener**, normally TCP **7443**. The internal HTTP/admin listener remains on loopback;
@@ -350,7 +357,7 @@ player would have to trust the server again.
 ## Existing data and backups
 
 `server.db` is SQLite in WAL mode, with one row per account (and its players), record, friendship, mail, team, event,
-rental and BP code; a save writes only the rows that changed. This dashboard branch uses schema 4 (row-based state, retry receipts and disconnect outcomes). Schemas 1–3
+rental and BP code; a save writes only the rows that changed. This dashboard branch uses schema 5 (row-based state, retry receipts and disconnect/stop outcomes). Schemas 1–4
 upgrade transactionally in place; older server binaries cannot open the upgraded database. Keep a pre-upgrade backup
 if you need to return to an older binary. JSON files from versions before
 `server.db` are not read (the beta starts fresh). A path change selects a different server's data; it does not move it.

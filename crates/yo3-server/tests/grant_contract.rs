@@ -294,7 +294,7 @@ async fn a_retry_over_http_after_discarding_the_answer_and_restarting_does_not_g
             assert!(std::time::Instant::now() < until, "first request did not commit");
             std::thread::yield_now();
         }
-        api::call(&polling, &Op::Shutdown).unwrap();
+        api::stop(&polling).unwrap();
     }).await.unwrap();
     server.wait().await;
     let server = yo3_server::start(config).await.unwrap();
@@ -308,7 +308,7 @@ async fn a_retry_over_http_after_discarding_the_answer_and_restarting_does_not_g
         let audit = api::call(&live, &Op::Audit { limit: None }).unwrap();
         assert_eq!(audit["rows"].as_array().unwrap().iter().filter(|r| r["op"] == "give-bp").count(), 1);
         assert_eq!(store::read(&dir.join("mail.json")).unwrap().unwrap()["waiting"].as_array().unwrap().len(), 1);
-        api::call(&live, &Op::Shutdown).unwrap();
+        api::stop(&live).unwrap();
     }).await.unwrap();
     server.wait().await;
 }

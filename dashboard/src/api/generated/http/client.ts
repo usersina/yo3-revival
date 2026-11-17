@@ -61,6 +61,7 @@ import type {
   RemoveBpCodeHeaders,
   RemoveBpCodeRequest,
   RemoveBpCodeResult,
+  ServerOverview,
   SettingsList,
   SettingsRequest,
   SettingsResult,
@@ -68,7 +69,10 @@ import type {
   SignInStaffHeaders,
   SignOutStaffHeaders,
   SignedOut,
-  StaffSession
+  StaffSession,
+  StopRequest,
+  StopResponse,
+  StopServerHeaders
 } from './models';
 
 import { apiFetch } from '../../transport';
@@ -1371,6 +1375,169 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getModerateAccountMutationOptions(options), queryClient);
+    }
+
+export const getGetServerStatusUrl = () => {
+
+
+
+
+  return `/panel/api/v1/server`
+}
+
+export const getServerStatus = async ( options?: Parameters<typeof apiFetch>[1]): Promise<ServerOverview> => {
+
+  return apiFetch<ServerOverview>(getGetServerStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetServerStatusQueryKey = () => {
+    return [
+    `/panel/api/v1/server`
+    ] as const;
+    }
+
+
+export const getGetServerStatusQueryOptions = <TData = Awaited<ReturnType<typeof getServerStatus>>, TError = ErrorType<ApiError>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getServerStatus>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetServerStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getServerStatus>>> = ({ signal }) => getServerStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getServerStatus>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetServerStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getServerStatus>>>
+export type GetServerStatusQueryError = ErrorType<ApiError>
+
+
+export function useGetServerStatus<TData = Awaited<ReturnType<typeof getServerStatus>>, TError = ErrorType<ApiError>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getServerStatus>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getServerStatus>>,
+          TError,
+          Awaited<ReturnType<typeof getServerStatus>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetServerStatus<TData = Awaited<ReturnType<typeof getServerStatus>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getServerStatus>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getServerStatus>>,
+          TError,
+          Awaited<ReturnType<typeof getServerStatus>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetServerStatus<TData = Awaited<ReturnType<typeof getServerStatus>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getServerStatus>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetServerStatus<TData = Awaited<ReturnType<typeof getServerStatus>>, TError = ErrorType<ApiError>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getServerStatus>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetServerStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getStopServerUrl = () => {
+
+
+
+
+  return `/panel/api/v1/server/stop`
+}
+
+export const stopServer = async (stopRequest: StopRequest,
+    headers: StopServerHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<StopResponse> => {
+
+  return apiFetch<StopResponse>(getStopServerUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }, headers, options?.headers),
+    body: JSON.stringify(stopRequest)
+  }
+);}
+
+
+
+
+
+export const getStopServerMutationKey = () => ['stopServer'] as const;
+
+export const getStopServerMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stopServer>>, TError,StopServerMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof stopServer>>, TError,StopServerMutationVariables, TContext> => {
+
+const mutationKey = getStopServerMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof stopServer>>, StopServerMutationVariables> = (props) => {
+          const {data,headers} = props ?? {};
+
+          return  stopServer(data,headers,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StopServerMutationResult = NonNullable<Awaited<ReturnType<typeof stopServer>>>
+    export type StopServerMutationBody = StopRequest
+    export type StopServerMutationError = ErrorType<ApiError>
+    export type StopServerMutationVariables = {data: StopRequest;headers: StopServerHeaders}
+
+    export const useStopServer = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stopServer>>, TError,StopServerMutationVariables, TContext>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof stopServer>>,
+        TError,
+        StopServerMutationVariables,
+        TContext
+      > => {
+      return useMutation(getStopServerMutationOptions(options), queryClient);
     }
 
 export const getGetStaffSessionUrl = () => {

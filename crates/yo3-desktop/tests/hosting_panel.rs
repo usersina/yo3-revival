@@ -23,7 +23,7 @@ async fn the_launcher_probes_the_panel_where_the_server_serves_it() {
     }).await.unwrap();
     assert_eq!(status, "200", "the panel's sign-in page answers at {}", panel_path());
     let live = admin::running(&data).unwrap();
-    tokio::task::spawn_blocking(move || api::call(&live, &Op::Shutdown)).await.unwrap().unwrap();
+    tokio::task::spawn_blocking(move || api::stop(&live)).await.unwrap().unwrap();
     running.wait().await;
 }
 
@@ -55,6 +55,6 @@ async fn make_admin_gives_the_hosts_account_the_panel() {
     let b = backend.clone();
     assert!(tokio::task::spawn_blocking(move || b.hosting_make_admin("nobody")).await.unwrap().is_err(), "an unknown User ID says so");
     let live = admin::running(&backend.hosting_dir()).unwrap();
-    tokio::task::spawn_blocking(move || api::call(&live, &Op::Shutdown)).await.unwrap().unwrap();
+    tokio::task::spawn_blocking(move || api::stop(&live)).await.unwrap().unwrap();
     running.wait().await;
 }

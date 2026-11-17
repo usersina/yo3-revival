@@ -2347,3 +2347,14 @@ Receipts contain numeric IDs/counts, not names or credentials. Replays recheck c
 the old result/current disconnect outcome; they never delete a replacement name or disconnect a newer session.
 Evidence: `deletion_admin_contract.rs`, `deletion_contract.rs`, `dashboard_contract.rs`, `panel_contract.rs` and
 `dashboard/e2e/deletion.spec.ts`. Backups/exported logs remain outside this deletion.
+
+
+### Run-bound administrative stop and live status (Unreleased)
+
+Confirmed by our management API/contracts. `GET /panel/api/v1/server` returns checked process state and a random
+per-run identity. Admin-only `POST /panel/api/v1/server/stop` requires that identity, CSRF and `Idempotency-Key`.
+Audit, receipt and intent commit before signalling; `stop` in the response is the signal outcome. A matching retry
+only reads its saved outcome. A different current run cannot be stopped by either an old receipt or an old request
+that never committed. Schema 5 preserves disconnect effects while adding nullable-user stop effects; startup marks
+both kinds interrupted without replay. No game wire fields change. Evidence: `stop_admin_contract.rs`,
+`shutdown_contract.rs`, `dashboard_contract.rs`, `dashboard/e2e/server.spec.ts`.
