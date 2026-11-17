@@ -12,103 +12,10 @@ use serde_json::{Value as Json, json};
 use yo3_proto::{Message, Value};
 
 use crate::card_options::CARD_OPTION_LABELS;
-use crate::duel::{
-    CARD, CHANGE_LP, CLIENT, CPU, CardCommand, DECK, DECK_RESET, HAND, INPUT, MOVE, PHASE, SET_LP, TEXT_IDS, TEXT_SLOTS, TURN, command,
-    command_data, move_place, table_place, text_message,
-};
+use crate::duel::{CLIENT, CPU, CardCommand, TEXT_IDS, TEXT_SLOTS, command, command_data, move_place, table_place, text_message};
+use crate::ocg::{battle, hint, hintmsg, idle, loc, msg, pos, reason, resp};
+use crate::wire::{cmd, dialog, entry, flag, list, menu, mode, result, text, zone};
 
-/// ocgcore message types (OcgMessageType).
-const MSG_HINT: u64 = 2;
-const MSG_WIN: u64 = 5;
-const MSG_SELECT_BATTLECMD: u64 = 10;
-const MSG_SELECT_IDLECMD: u64 = 11;
-const MSG_SELECT_EFFECTYN: u64 = 12;
-const MSG_SELECT_YESNO: u64 = 13;
-const MSG_SELECT_OPTION: u64 = 14;
-const MSG_SELECT_CARD: u64 = 15;
-const MSG_SELECT_CHAIN: u64 = 16;
-const MSG_SELECT_PLACE: u64 = 18;
-const MSG_SELECT_POSITION: u64 = 19;
-const MSG_SELECT_TRIBUTE: u64 = 20;
-const MSG_SORT_CHAIN: u64 = 21;
-const MSG_SELECT_COUNTER: u64 = 22;
-const MSG_SELECT_SUM: u64 = 23;
-const MSG_SELECT_DISFIELD: u64 = 24;
-const MSG_FIELD_DISABLED: u64 = 56;
-const MSG_SORT_CARD: u64 = 25;
-const MSG_SELECT_UNSELECT_CARD: u64 = 26;
-const MSG_TOSS_COIN: u64 = 130;
-const MSG_TOSS_DICE: u64 = 131;
-const MSG_ROCK_PAPER_SCISSORS: u64 = 132;
-const MSG_ANNOUNCE_RACE: u64 = 140;
-const MSG_ANNOUNCE_ATTRIB: u64 = 141;
-const MSG_ANNOUNCE_CARD: u64 = 142;
-const MSG_ANNOUNCE_NUMBER: u64 = 143;
-const MSG_MOVE: u64 = 50;
-const MSG_NEW_TURN: u64 = 40;
-const MSG_NEW_PHASE: u64 = 41;
-const MSG_DRAW: u64 = 90;
-const MSG_DAMAGE: u64 = 91;
-const MSG_RECOVER: u64 = 92;
-const MSG_LPUPDATE: u64 = 94;
-const MSG_CONFIRM_DECKTOP: u64 = 30;
-const MSG_REVERSE_DECK: u64 = 37;
-const MSG_DECK_TOP: u64 = 38;
-const MSG_CONFIRM_CARDS: u64 = 31;
-const MSG_SHUFFLE_HAND: u64 = 33;
-const MSG_EQUIP: u64 = 93;
-const MSG_CARD_TARGET: u64 = 96;
-const MSG_CANCEL_TARGET: u64 = 97;
-const MSG_SWAP_GRAVE_DECK: u64 = 35;
-const MSG_SHUFFLE_SET_CARD: u64 = 36;
-const MSG_SWAP: u64 = 55;
-const MSG_POS_CHANGE: u64 = 53;
-const MSG_SUMMONING: u64 = 60;
-const MSG_SPSUMMONING: u64 = 62;
-const MSG_FLIPSUMMONING: u64 = 64;
-const MSG_ATTACK: u64 = 110;
-const MSG_BATTLE: u64 = 111;
-const MSG_ATTACK_DISABLED: u64 = 112;
-const MSG_DAMAGE_STEP_END: u64 = 114;
-const MSG_CHAINING: u64 = 70;
-const MSG_CHAIN_SOLVING: u64 = 72;
-const MSG_CHAIN_END: u64 = 74;
-const MSG_PAY_LPCOST: u64 = 100;
-const MSG_ADD_COUNTER: u64 = 101;
-const MSG_REMOVE_COUNTER: u64 = 102;
-/// ocgcore response types (OcgResponseType) and actions.
-const RESP_BATTLECMD: u64 = 0;
-const RESP_IDLECMD: u64 = 1;
-const RESP_EFFECTYN: u64 = 2;
-const RESP_YESNO: u64 = 3;
-const RESP_OPTION: u64 = 4;
-const RESP_CARD: u64 = 5;
-const RESP_UNSELECT_CARD: u64 = 7;
-const RESP_CHAIN: u64 = 8;
-const RESP_DISFIELD: u64 = 9;
-const RESP_PLACE: u64 = 10;
-const RESP_POSITION: u64 = 11;
-const RESP_TRIBUTE: u64 = 12;
-const RESP_COUNTER: u64 = 13;
-const RESP_SUM: u64 = 14;
-const RESP_SORT: u64 = 15;
-const RESP_RACE: u64 = 16;
-const RESP_ATTRIB: u64 = 17;
-const RESP_CARD_NAME: u64 = 18;
-const RESP_NUMBER: u64 = 19;
-const RESP_RPS: u64 = 20;
-const IDLE_SUMMON: u64 = 0;
-const IDLE_MONSTER_SET: u64 = 3;
-const IDLE_TO_BP: u64 = 6;
-const IDLE_TO_EP: u64 = 7;
-const BATTLE_CHAIN: u64 = 0;
-const BATTLE_ATTACK: u64 = 1;
-const BATTLE_TO_M2: u64 = 2;
-const BATTLE_TO_EP: u64 = 3;
-/// MSG_HINT's hint_type for "what the next selection is for" (HINTMSG_* in the card scripts' constant.lua).
-const HINT_SELECTMSG: u64 = 3;
-/// MSG_HINT's hint_type for the window the next chance comes in (its value: [`CHAIN_WINDOWS`]).
-pub const HINT_EVENT: u64 = 1;
 
 /// What a window's chain question may hold, which decides whether the default Activation Message may answer it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -145,74 +52,16 @@ pub const CHAIN_WINDOWS: [(u64, &str, ChainWindow); 15] = [
 pub fn chain_window(hint: u64) -> Option<ChainWindow> {
     CHAIN_WINDOWS.iter().find(|(h, _, _)| *h == hint).map(|&(_, _, w)| w)
 }
-const HINTMSG_RELEASE: u64 = 500;
-const HINTMSG_ATTACKTARGET: u64 = 549;
-/// ocgcore positions.
-const POS_FACEUP_ATTACK: u64 = 1;
-const POS_FACEDOWN_ATTACK: u64 = 2;
-const POS_FACEUP_DEFENSE: u64 = 4;
-const POS_FACEDOWN_DEFENSE: u64 = 8;
-/// ocgcore locations.
-const LOC_DECK: u64 = 1;
-const LOC_HAND: u64 = 2;
-const LOC_MZONE: u64 = 4;
-const LOC_SZONE: u64 = 8;
-const LOC_GRAVE: u64 = 16;
-const LOC_REMOVED: u64 = 32;
-const LOC_EXTRA: u64 = 64;
-/// ocgcore reasons (MSG_MOVE's `reason`, which the sidecar reads back).
-const REASON_DESTROY: u64 = 0x1;
-/// An Xyz material: or'ed with its monster's location, whose sequence it takes.
-const LOC_OVERLAY: u64 = 0x80;
-/// The client's list zones besides hand and deck.
-const EXTRA: u32 = 0xC;
-const GRAVE: u32 = 0xE;
-const REMOVED: u32 = 0xF;
-/// A field card's new face and position in place {place as moves give it} (CardFlipTurn, DuelCardManager 0x4FF000).
-/// A card destroyed {player, zone | index << 8}, zone at most the hand (CardVanish): its label goes, the shatter
-/// (effect 0x33) plays at it and it is hidden (state 0x4FC520), before its move.
-const FLIP_TURN: u32 = 0x1C;
-/// CardCheat {place word with face bits, Konami id, uid}: the card object (made when the uid has none) reloads its face
-/// from its table row and its stats from the place's record (DuelCardManager 0x4FF000; Konami's logs, 46 a duel).
-const CARD_CHEAT: u32 = 0x1D;
-/// CardLockon {player, zone | index << 8, 2}: the card at that place pops up, face or not (0x4FF000 case 0x19).
-const CARD_LOCKON: u32 = 0x19;
 const POPUP: u32 = 2;
-/// DeckFlipTop {player, pile 0xD or 0xC}: the pile's top card (the table's index 0 of the Deck, the last of the Extra
-/// Deck) turns over, face up from its row, or back (0x4FF000 case 0x17; Konami's logs: 611 Deck, 48 Extra Deck).
-const DECK_FLIP_TOP: u32 = 0x17;
-const CARD_VANISH: u32 = 0x1F;
-/// HandShow {player, index}: a hand card shows its face (DuelCardManager 0x4FF15C).
-const HAND_SHOW: u32 = 0x13;
-/// HandShuffle {player}: the client rebuilds the player's hand from its card table, index by index (the card at
-/// (player, hand, i) by 0x523DF0, its object by uid 0x500470; DuelCardManager 0x4FF000 case 0x12). Every index below
-/// the hand's count needs an entry, or the client stops with an error state (0x1200).
-const HAND_SHUFFLE: u32 = 0x12;
-/// Card relations, which the client draws as markers on the related slots while the pointer is on a face-up field card
-/// (0x50B700 → 0x50B1C0): 1017 {source place, target place, marker type 1-8, 1 add (0x5224E0) / 0 remove the entry with
-/// all three (0x522530)} (pump 0x3F9), places as `player | zone << 8`; 0x26 redraws the hovered card's (DuelFieldManager
-/// 0x50A690). See "Card relations" in docs/protocol.md.
-const RELATION: u32 = 0x3F9;
-const RELATIONS_REDRAW: u32 = 0x26;
-/// The zones each side can use (pump 1006 → engine +0x124: own side low, bits 0-4 monster zones, 5-9 Spell/Trap).
-const ZONES_USABLE: u32 = 1006;
 const ALL_ZONES_USABLE: u32 = 0x3FF_03FF;
 /// The marker types used: an equip, the yellow ∞ (effect 0x35); a lasting target, the pink reticle (0x3B). A guess:
 /// the client names none of its eight markers.
 const MARK_EQUIP: u32 = 2;
 const MARK_TARGET: u32 = 8;
-/// CardSwap {_, place A, place B} as moves give them, both field places (zone < 11): the cards in the two slots trade
-/// places, each taking the word of the place it lands on as its place and position (DuelCardManager 0x4FF000 case 0x1B:
-/// the objects by 0x4F8240, 0x5000E0 with param_6 1, the slot array swapped). **Shape**: read in the code, not seen live.
-const CARD_SWAP: u32 = 0x1B;
 /// A card table entry's flag (command 1000's uid top byte, kept as `!= 0` by 0x521DF0): a pile whose count changes
 /// draws its top card's face when its entry has it, else a back (0x4FE4D0 → 0x523DA0), and the pointer over the pile
 /// previews that card (0x50B9C0). Set for the open piles: the Graveyard and the banished cards.
 const OPEN: u32 = 1 << 24;
-/// A field card's counters {player | zone << 8, change, kind} (DuelCardManager 0x4FFD8E): the change is added to the
-/// card's count of that kind (0 erases it; a negative count is ignored), shown on its field label with the kind's
-/// icon (table 0x789020) and named in the card info as UI text 200 + kind (0x4551DB).
-const COUNTER: u32 = 0x27;
 /// EDOPro's counter ids (strings.conf, less COUNTER_NEED_ENABLE) by the client's counter kinds of the same name:
 /// Spell, Wedge, Bushido, Psychic, Shine, Crystal, Morph, Venom, Genex, A-, Worm, Black Feather, Hyper-Venom,
 /// Spellstone ("Magical Stone", **guess**), Flower, Fog, Clock, D, Junk, Gate, Plant, Guard, Dragonic, Ocean,
@@ -253,229 +102,50 @@ pub(crate) const COUNTER_KINDS: [(u64, u32); 32] = [
     (0x1097, 22),
 ];
 const ANY_COUNTER: u32 = 38;
-/// A battle (DuelBattle 0x4F8A90): start; the attack {attacker's player | zone << 8, target's player, target's zone or
-/// DIRECT_TARGET}; damage figures per player, then end. Native BattleRun also accepts destroy flags, but those hide
-/// the card: only a confirmed destruction move can do that, after any battle protection has applied.
-const VIEW_BATTLE_INIT: u32 = 0xA;
-const VIEW_BATTLE_ATTACK: u32 = 0xC;
-const VIEW_BATTLE_RUN: u32 = 0xD;
-const VIEW_BATTLE_END: u32 = 0xE;
-/// BattleSelect (no parameters, 0x4F8B95): DuelBattle's aiming state. While a field card whose menu has Confirm is
-/// hovered, it draws the aiming arc (effect 0xCB) to it from the attacker a BattleAttack with no target named
-/// (0x4F8CD9, DuelCardCommand +0x44 & 0x800): how the original asked for an attack target (#51).
-const VIEW_BATTLE_SELECT: u32 = 0xB;
 /// BattleAttack's target zone for "none yet" (Konami's 0xC {attacker, 0, -1} before every 0xB).
 const NO_TARGET: u32 = u32::MAX;
-/// The command map's other flag that lets the field's right-click send duelRequestName 5 (0x50B700 → 0x501C00).
-const RIGHT_CLICK: u8 = 6;
 /// A direct attack's target zone: any zone from 5 plays as one (the direct cut-in and strike, 0x4F8430 state 3);
 /// 0xFFFFFFFF plays nothing. 16 is the field's centre, as ChainSet's.
 const DIRECT_TARGET: u32 = 16;
-/// The summon effects at a card {player, uid} (DuelScene 0x514290): Normal (or the player's ace), Special.
-const RUN_SUMMON: u32 = 0x38;
-/// Commands Konami's server sent that only show something (227 original duel logs), by their handlers:
-/// FieldChange 7 {Field Spell's Konami id, or 0} changes the duel field's background (DuelScene → `0x50CD60`);
-/// CardSet `0x1E` {player, zone, 1 for a monster} plays the Set effect (`0x22`, DuelScene); CardActivate `0x22`
-/// {place as moves give it, Konami id, uid} plays a card's activation effect by its type (DuelScene, waited for);
-/// the avatar speech cut-ins (DuelCutin `0x505A70`, each player's Avatar Settings lines; the client's duel option
-/// "speech" turns them off): `0x43` {player, 1, 0} at the turn's draw, `0x44` {player, 0x8000 | uid, kind} a summon
-/// (the "ace monster" line for the configured card, 8 a Synchro Summon's line), `0x47` {player, 0x8000 | uid, step}
-/// an activation (steps 1 or 2 note how the card came, 3 and up speak; the "trump card" line for the configured card),
-/// `0x48` {player, Konami id, face up, to a Spell/Trap zone} a card leaving the hand for the field (a Set speaks),
-/// `0x4C` {player} the turn's end, `0x4D` {player, LP change, kind} damage (by the LP left; not for a cost or gain).
-const FIELD_CHANGE: u32 = 7;
-const CARD_SET: u32 = 0x1E;
-const CARD_ACTIVATE: u32 = 0x22;
-const SPEAK_DRAW: u32 = 0x43;
-const SPEAK_SUMMON: u32 = 0x44;
-const SPEAK_ACTIVATE: u32 = 0x47;
-/// A card revealed to activate (a Set Spell/Trap, a hand card's effect): {player, 1, Konami id}, the speech slot 19
-/// (DuelCutin 0x505A70); the next 0x47 stays silent.
-const SPEAK_REVEAL: u32 = 0x46;
-const SPEAK_PLAY: u32 = 0x48;
-const SPEAK_TURN_END: u32 = 0x4C;
-const SPEAK_DAMAGE: u32 = 0x4D;
 /// LifeDamage `0x10`'s kinds (`param3 >> 8`), as in Konami's logs: 0 effect damage, 1 battle damage (after BattleRun),
 /// 2 a cost, 4 a gain. DuelCockpit (`0x502EB0`) plays the recover sound for 4, the payment sound for 2, else damage's.
 const DAMAGE_EFFECT: u32 = 0;
 const DAMAGE_BATTLE: u32 = 1;
 const DAMAGE_COST: u32 = 2;
 const DAMAGE_GAIN: u32 = 4;
-const RUN_SP_SUMMON: u32 = 0x39;
-/// DuelSummon (0x5165A0): Set marks a card {player, zone (11 the hand), uid, variant} with its family's effect, Run
-/// plays the family's effect on it, Reset clears the marks. Tribute (effects 0x25 / 0x24), Material (0x27 / 0x26),
-/// Tuning (0x2B / 0x2A; Run's param4 is the level, with 1 in the next byte for the first Tuner, 2 for another).
-const TRIBUTE_SET: u32 = 0x2A;
-const TRIBUTE_RUN: u32 = 0x2C;
-const MATERIAL_SET: u32 = 0x2D;
-const MATERIAL_RUN: u32 = 0x2F;
-const TUNING_SET: u32 = 0x30;
-const TUNING_RUN: u32 = 0x32;
-/// RunFusion {player, the summoned monster's uid, kind << 16 | the number of materials} (DuelScene 0x514290 by the
-/// kind: 0 or 1 the Fusion animation, 2 the Synchro's).
-const RUN_FUSION: u32 = 0x3A;
-/// DuelScene's RunCoin (0x51500E): DuelCoinToss (0x508050, duel_cointoss.swf) {player | coins << 6 | winning side <<
-/// 14, 0, one bit a coin (1 heads)}. The SWF shows one to three coins, each "head" or "tail", "ok" on the winning side.
-const RUN_COIN: u32 = 0x3C;
 const COINS_A_TOSS: usize = 3;
-/// DuelScene's RunDice (0x5150CD): DuelDiceRoll (0x507D10, duel_diceroll.swf) {player, 0, face}: one die.
-const RUN_DICE: u32 = 0x3D;
 /// EDOPro's SELECT_HEADS and SELECT_TAILS strings: a call's options (Time Wizard).
 const CALL_HEADS: u64 = 60;
 const CALL_TAILS: u64 = 61;
-/// The summon's materials for the Fusion and Synchro animations (the pump 0x522A50 into the engine state's list at
-/// +0x1330, which DuelSynchro 0x507940 walks from the Tuner count on to show the others): 1015 {count, uid, uid, uid}
-/// starts it, 1016 {uid, uid, uid, uid} adds more (Konami's logs: right before every RunFusion, the Tuner first).
-const MATERIAL_LIST: u32 = 1015;
-const MATERIAL_LIST_MORE: u32 = 1016;
-/// The chain's links (DuelChain 0x501560): a new link {player, zone it shows over, link number}, link 1 starting the
-/// list; a link resolving {_, _, link number}, which must come last link first (the list's end leaves).
-const CHAIN_SET: u32 = 0x33;
-const CHAIN_RUN: u32 = 0x34;
 /// ChainSet's zone for a card with no place on the client's field: the centre (place table 0x81AE38).
 const FIELD_CENTRE: u32 = 16;
-/// The card info panel's level for a monster in the hand (0x453740, hand case): a map uid -> level at the engine state
-/// +0x90 +0xD8 (0x5227E0), which 1018 {uid, level} sets (0x5226B0) and {uid, 0xFFFF} clears (0x522750). Without an
-/// entry the panel gets -1 and draws no stars. Konami's logs: right before a monster's move into a hand, cleared right
-/// before it leaves.
-const HAND_LEVEL: u32 = 1018;
 const NO_LEVEL: u32 = 0xFFFF;
-/// The card info panel's attribute, Type and level for a monster in a Graveyard (0x453740, case 0xE: 0x5241D0,
-/// 0x524170, 0x524230): a map Konami id -> {attribute, Type, level} at +0x90 +0xF8. 1019 {id, id, attribute, Type}
-/// stages it and 1020 {id, level} stores it (0x522850; with a 1019 of zeros it deletes, 0x522910). Without an entry
-/// all three are -1: no icons or stars, and Type -1 names the duel prompt text before the Types ("Send ... from your
-/// Deck."). Konami's logs: both right before a monster's table entry in a Graveyard.
-const PILE_STATS: u32 = 1019;
-const PILE_STATS_COMMIT: u32 = 1020;
-/// Data commands that build a field card's record (pop 0x522A50).
-const RECORD_BEGIN: u32 = 0x3E9;
-const RECORD_MORE: u32 = 0x3EA;
-const RECORD_COMMIT: u32 = 0x3EB;
-/// The Field Spell slot.
-const FIELD_SPELL: u32 = 10;
-/// The card list dialog: DuelScene command 0x37 {player, kind, message} (DuelCardListDialog 0x4C72D0), filled by
-/// data commands the pop keeps (0x522A50): 0x3EF {count, max picks}, 0x3F2 CARD_Prop rows and 0x3F3 marks, four at a
-/// time, and a message of 0x3EC {entries} and 0x3ED {entry, ...} (built by 0x519870).
-const CARD_LIST: u32 = 0x37;
-const LIST_BEGIN: u32 = 0x3EF;
-const LIST_VALUES: u32 = 0x3F0;
-const LIST_ROWS: u32 = 0x3F2;
-const LIST_MARKS: u32 = 0x3F3;
-const MESSAGE_LENGTH: u32 = 0x3EC;
-const MESSAGE: u32 = 0x3ED;
-/// A list mark: the opponent's card (dlg_cardlist.swf). The low bits add icons, meaning unknown.
-const OPPONENTS: u32 = 0x8000;
-/// Card list kinds by the picks OK needs (0x4C72D0): none, all `max`, one.
-const PICK_ANY: u32 = 1;
-const PICK_ALL: u32 = 6;
-const PICK_ONE: u32 = 0x27;
-/// The kind that draws a card as a back where its flag is clear (getCardInfo 0x4C78A0, "0000" for data/mini/0000.png),
-/// by the card table's flag at the banished place of the same index on the side `(client != the list's player)`: so
-/// a list of the CPU's side (player 1) reads the opponent's banished entries. No picks needed, like kind 1 (the
-/// other kinds draw a card's image from its row's id, so a hidden card, row 0, drew nothing and couldn't be clicked).
-const PICK_MIXED: u32 = 4;
 /// The uids of the entries a mixed list puts in the table (no card has one).
 const STAGED_UID: u32 = 0xF0_0000;
-/// Message entries (0x519870): a text of the duel prompt table, and a card name by Konami id (0x5374B0) put into
-/// the text's %s.
-const TEXT: u32 = 1 << 28;
-const CARD_NAME: u32 = 5 << 28;
-/// Message entry kinds 2 (a line break) and 8 (a number put into the text's `%d`, `0x519D60`), and the duel prompt
-/// text "Select %d card(s)."
-const LINE_BREAK: u32 = 2 << 28;
-const NUMBER: u32 = 8 << 28;
-const SELECT_COUNT_TEXT: u32 = 592;
-/// "@3Tribute@0 the necessary @3monsters@0 to match the required number of Level." (the duel prompt table's 207).
-const SUM_TEXT: u32 = 207;
-/// Duel prompt texts for a zone an effect takes: 155 "Select Monster Card Zones to render unusable.", 324 "Select a Spell
-/// & Trap Card Zone to make unusable.", 472 "Move this card to an adjacent unoccupied Monster Card Zone.".
-const MONSTER_ZONE_TEXT: u32 = 155;
-const SPELL_ZONE_TEXT: u32 = 324;
-const ADJACENT_ZONE_TEXT: u32 = 472;
 /// A placement's prompt with auto card placing off (the client has none of its own).
 const PLACE_MONSTER_WORDS: &str = "Select a Monster Card Zone to place the card in.";
 const PLACE_SPELL_WORDS: &str = "Select a Spell & Trap Card Zone to place the card in.";
-/// HINTMSG_TOZONE: Card.SelectAdjacent's hint (utility.lua) before its zone choice.
-const HINTMSG_TOZONE: u64 = 571;
-/// HINTMSG_LVRANK: the hint before a Level is declared (Reasoning).
-const HINTMSG_LVRANK: u64 = 567;
-/// The OK dialog (factory 0x4C8CD0 kind 0).
-const OK: u32 = 0;
 /// The command a zone's click sends (any bit works; the menu a right-click opens would name it): Summon for a monster
 /// zone, Set for a Spell/Trap zone.
 const ZONE_PICK_MONSTER: u32 = 4;
 const ZONE_PICK_SPELL: u32 = 6;
-/// Duel prompt text 245: "Select the cards you wish to return to the Deck in order of your choice."
-const SORT_TEXT: u32 = 245;
-/// Duel prompt texts: "Select the @3monster(s)@0 as @3Tribute@0.", 'Activate the effect of "@3%s@0"?', 'Use the
-/// effect of "@3%s@0"?', "Use the effect now?".
-const TRIBUTE_TEXT: u32 = 18;
-const ACTIVATE_TEXT: u32 = 250;
-const USE_TEXT: u32 = 226;
-const USE_NOW_TEXT: u32 = 270;
 /// The battle questions EDOPro's core asks by system string (processor.cpp: 31 attack directly instead of a monster,
 /// 30 a replay), as the client's dialog texts 225 "@3Attack@0 your opponent directly?" and 223 "Replay happens.
 /// Continue to @3attack@0?".
 const BATTLE_QUESTIONS: [(u64, u32); 2] = [(31, 225), (30, 223)];
-const DIRECT_TEXT: u32 = 225;
-/// "Select the @3monster(s)@0 to @3Special Summon@0 from your @2Extra Deck@0." and "Select the @3monster(s)@0 to
-/// @3Special Summon@0.".
-const SPSUMMON_EXTRA_TEXT: u32 = 26;
-const SPSUMMON_TEXT: u32 = 25;
 /// The pile views' titles (the duel prompts): 582/583 "Your/Opponent's Extra Deck", 586/587 "Your/Opponent's
 /// Graveyard", 588/589 "Your/Opponent's Removed Cards", by zone, the opponent's one more.
-const PILE_TITLES: [(u32, u32); 3] = [(EXTRA, 582), (GRAVE, 586), (REMOVED, 588)];
-/// The card menu's Confirm (bit 11): on a pile, its view.
-const CONFIRM: u32 = 11;
-/// 'Select position for "@3%s@0".'
-const POSITION_TEXT: u32 = 327;
-/// 'The effect of "@3%s@0" is @3activated@0. @3Chain@0 another card or effect?', '"@3%s@0" is @3activated@0. ...' and,
-/// outside a chain, "@3Activate@0 the effect of a @3card@0?"; then "Select effect to @3activate@0.".
-const CHAIN_EFFECT_TEXT: u32 = 7;
-const CHAIN_CARD_TEXT: u32 = 8;
-const ACTIVATE_CARD_TEXT: u32 = 269;
-const SELECT_EFFECT_TEXT: u32 = 276;
+const PILE_TITLES: [(u32, u32); 3] = [(zone::EXTRA, 582), (zone::GRAVE, 586), (zone::REMOVED, 588)];
 /// Option labels of the duel prompt table for EDOPro's system strings, with the list's title: SELECT_HEADS/TAILS (60,
 /// 61) "Heads", "Tails" under "Coin Toss Selection:"; DECLTYPE_MONSTER/SPELL/TRAP (70-72) "Monster Cards", "Spell
 /// Cards", "Trap Cards" under "Select @3card@0 type.".
 const OPTION_LABELS: [(u64, u32, u32); 5] =
     [(60, 400, 56), (61, 401, 56), (70, 440, 260), (71, 441, 260), (72, 442, 260)];
-/// Dialog command {kind, message, _} (DuelScene 0x514C0C, factory 0x4C8CD0) and its Yes/No kind (buttons 0 "No", 1
-/// "Yes"); message 1 = from the message entries.
-const DIALOG: u32 = 0x36;
-const YES_NO: u32 = 2;
-const FROM_ENTRIES: u32 = 1;
-/// The chain question {_, message, level} (DuelEffectDialog 0x4C5120): buttons as Yes/No's, with the list's rows
-/// (dlg_yesno_card.swf, at most five) when 0x3EF's param3 is 0xFF (0x4C51A0). Whether it shows depends on the level
-/// and the player's Activation Message option (invoke_conf, 0x4C5560): Manual shows every level, Semi Auto Cancel (the
-/// default) levels 2 and up, Auto Cancel none (unless a mouse button is held; level 4+ always shows). Unshown, it
-/// answers No. The levels sent: something happened, a phase or step, and no card fitting the timing.
-const EFFECT: u32 = 3;
-const WITH_CARDS: u32 = 0xFF;
-const LEVEL_EVENT: u32 = 3;
-const LEVEL_PHASE: u32 = 1;
-const LEVEL_UNFIT: u32 = 0;
 /// EDOPro's timings (TIMING_* in constant.lua) that only mark a phase or step: draw, standby and end phases, the
 /// main phase's end, the battle's start, steps and end, a chain's end, a draw.
 const QUIET_TIMINGS: u64 = 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x20 | 0x8000 | 0x10000 | 0x100_0000 | 0x400_0000;
-/// The option list (DuelSelectDialog 0x4C5750): the 0x3F0 values up to 0x3EF's count, each a duel prompt text listed
-/// with bit 15, at most four (0x4C5880); DLGResult the value's index (0x4C5B20).
-const SELECT: u32 = 4;
-const LISTED: u32 = 0x8000;
 const SELECT_MAX: usize = 4;
-/// The declaration dialogs (factory 0x4C8CD0): Type {_, message, allowed types} (DuelSelectTypeDialog, dlg_seltype.swf:
-/// bit k for type k, one pick, DLGResult k), Attribute {_, message, allowed << 16 | picks} (DuelSelectAttrDialog,
-/// dlg_selattr.swf: DLGResult the picks as bits), Number {_, message, max << 24 | step << 20 | min << 16 | format}
-/// (DuelSelectNumberDialog 0x4C6430, dlg_selnum.swf: in thousands for format 302 "%d000LP", hundreds for 303
-/// "%d00LP", else ones; DLGResult the number in those units).
-const TYPE_DIALOG: u32 = 5;
-const ATTRIBUTE_DIALOG: u32 = 7;
-const NUMBER_DIALOG: u32 = 11;
 const NUMBER_FORMATS: [(u64, u32); 3] = [(1000, 302), (100, 303), (1, 283)];
-/// "Select @3Type(s)@0.", "Select @3Attribute(s)@0.", "Declare @3monster@0 level."
-const TYPE_TEXT: u32 = 241;
-const ATTRIBUTE_TEXT: u32 = 242;
-const LEVEL_TEXT: u32 = 280;
 /// The client's types (UI texts 1031-1052) and attributes (1061-1067) in its order, as EDOPro's RACE_* and
 /// ATTRIBUTE_* bits.
 const TYPES: [u64; 22] = [
@@ -483,31 +153,13 @@ const TYPES: [u64; 22] = [
     0x2, 0x1000, 0x80000, 0x100000, 0x200000,
 ];
 const ATTRIBUTES: [u64; 7] = [0x10, 0x20, 0x2, 0x4, 0x1, 0x8, 0x40];
-/// The card list's extended kind that lists the client's own card database with a name search (DuelCardListDialogEx
-/// 0x5131E0, dlg_cardlistex.swf; CardDuelFilter 0x4976A0 mode 0: any card); DLGResult the card's Konami id.
-const CARD_SEARCH: u32 = 0x4C;
-/// The position dialog {_, message, uid | face-up defense << 16} (DuelSelectStandDialog 0x4C5E50, dlg_selstand.swf):
-/// button 0 attack, 1 defense, face-down unless the flag is set.
-const POSITION: u32 = 8;
-const FACE_UP_DEFENSE: u32 = 1 << 16;
-/// Duel end {result for this client: 1 won, 2 lost, 3 draw; reason} (DuelScene 0x514290).
-pub(crate) const DUEL_END: u32 = 2;
-pub(crate) const WON: u32 = 1;
-pub(crate) const LOST: u32 = 2;
-pub(crate) const DRAW: u32 = 3;
 /// WIN's player for a draw.
 const TEAM_DRAW: u64 = 2;
-/// Phase panel buttons (0 DP .. 5 EP) and the input mode that turns the panel on (command 4's param1).
-const BUTTON_BP: u8 = 3;
-const BUTTON_M2: u8 = 4;
-const BUTTON_EP: u8 = 5;
-const MODE_MAIN: u32 = 2;
-const MODE_BATTLE: u32 = 3;
 /// A prompt's card lists: (list name, card menu bit, response action).
 type Lists = &'static [(&'static str, u32, u64)];
 
 /// Card menu bits of the battle prompt's lists, with their actions.
-const BATTLE_LISTS: [(&str, u32, u64); 2] = [("attacks", 0, BATTLE_ATTACK), ("chains", 3, BATTLE_CHAIN)];
+const BATTLE_LISTS: [(&str, u32, u64); 2] = [("attacks", 0, battle::ATTACK), ("chains", 3, battle::CHAIN)];
 
 /// Card menu bits (`CardCommand::command`) per idle-command list, with the list's action number. Set: bit 6 for
 /// monsters and 7 for Spells/Traps (`duel_cardcmd.swf` draws item 6 as a card set sideways, 7 as one set upright).
@@ -802,10 +454,10 @@ impl Translator {
         for (p, extra) in extras.iter().enumerate() {
             for &row in extra.iter() {
                 uid += 1;
-                let zone = self.sides[p].zone(EXTRA);
+                let zone = self.sides[p].zone(zone::EXTRA);
                 zone.push(Card { uid, row });
                 let shown = if self.hidden[p] { 0 } else { row as u32 };
-                out.push(command(CARD, [uid, shown, 0, table_place(p as u32, EXTRA, zone.len() - 1)]));
+                out.push(command(cmd::CARD, [uid, shown, 0, table_place(p as u32, zone::EXTRA, zone.len() - 1)]));
             }
         }
         with_card_ids(&self.cards, &mut out);
@@ -850,14 +502,14 @@ impl Translator {
         let mut sides = [Side::default(), Side::default()];
         // Every zone usable, as Konami's openings say (1006 0x3FF03FF): the client's starting mask isn't known, and a
         // later disabled zone is drawn against it.
-        let mut out = vec![command(ZONES_USABLE, [ALL_ZONES_USABLE, 0, 0, 0])];
+        let mut out = vec![command(cmd::ZONES_USABLE, [ALL_ZONES_USABLE, 0, 0, 0])];
         let mut uid = 0;
         for (p, deck) in decks.iter().enumerate() {
             for (i, &row) in deck.iter().enumerate() {
                 uid += 1;
-                sides[p].zone(DECK).push(Card { uid, row });
+                sides[p].zone(zone::DECK).push(Card { uid, row });
                 let shown = if hidden[p] { 0 } else { row as u32 };
-                out.push(command(CARD, [uid, shown, 0, table_place(p as u32, DECK, i)]));
+                out.push(command(cmd::CARD, [uid, shown, 0, table_place(p as u32, zone::DECK, i)]));
             }
         }
         let t = Translator {
@@ -970,8 +622,8 @@ impl Translator {
     /// The row the client gets for a card at a place: none for the opponent's hidden cards when hiding.
     fn shown_row(&self, place: &Place, row: u16) -> u32 {
         let hidden = match place.zone {
-            HAND | DECK | EXTRA => true,
-            zone => zone <= FIELD_SPELL && !place.face_up,
+            zone::HAND | zone::DECK | zone::EXTRA => true,
+            zone => zone <= zone::FIELD_SPELL && !place.face_up,
         };
         if self.hidden[place.player as usize] && hidden { 0 } else { row as u32 }
     }
@@ -986,71 +638,71 @@ impl Translator {
                 continue;
             }
             match m["type"].as_u64() {
-                Some(MSG_DRAW) => {
+                Some(msg::DRAW) => {
                     let p = self.player(&m["player"]);
                     for drawn in m["drawn"].as_array().into_iter().flatten() {
                         out.extend(self.draw(p, drawn["cid"].as_u64().unwrap_or(0) as u16));
                     }
                 }
-                Some(MSG_NEW_TURN) => {
+                Some(msg::NEW_TURN) => {
                     // The turn's end speaks for the player whose turn it was.
                     if self.turns > 0 {
-                        out.push(command(SPEAK_TURN_END, [self.turn_player, 0, 0, 0]));
+                        out.push(command(cmd::SPEAK_TURN_END, [self.turn_player, 0, 0, 0]));
                     }
                     self.turn_player = self.player(&m["player"]);
                     self.turns += 1;
                     // The client starts on turn 1; 6 would count it again.
                     if self.turns > 1 {
-                        out.push(command(TURN, [self.turn_player, 0, 0, 0]));
+                        out.push(command(cmd::TURN, [self.turn_player, 0, 0, 0]));
                     }
                 }
-                Some(MSG_NEW_PHASE) => {
+                Some(msg::NEW_PHASE) => {
                     self.summoning = None;
                     // Leaving a Battle Phase ends its battle mode even with no attack: the swords the client drew over
                     // the possible attackers (effect 0x3C) go only with BattleSelect, BattleAttack or BattleEnd.
                     let battle = (0x08..=0x80).contains(&m["phase"].as_u64().unwrap_or(0));
                     let ended = self.end_battle();
                     if ended.is_empty() && self.battle_phase && !battle {
-                        out.push(command(VIEW_BATTLE_END, [0; 4]));
+                        out.push(command(cmd::BATTLE_END, [0; 4]));
                     }
                     out.extend(ended);
                     self.battle_phase = battle;
                     if let Some(phase) = m["phase"].as_u64().and_then(client_phase) {
-                        out.push(command(PHASE, [self.turn_player, phase, 0, 0]));
+                        out.push(command(cmd::PHASE, [self.turn_player, phase, 0, 0]));
                         // The turn player's draw line, as the Draw Phase starts.
                         if phase == 0 {
-                            out.push(command(SPEAK_DRAW, [self.turn_player, 1, 0, 0]));
+                            out.push(command(cmd::SPEAK_DRAW, [self.turn_player, 1, 0, 0]));
                         }
                     }
                 }
-                Some(MSG_MOVE) => {
+                Some(msg::MOVE) => {
                     out.extend(self.summon_before_move(&messages[i..]));
                     out.extend(self.move_card(m));
                 }
-                Some(MSG_FIELD_DISABLED) => out.extend(self.disabled_zones(m)),
-                Some(MSG_HINT) if m["hint_type"].as_u64() == Some(HINT_EVENT) && self.player(&m["player"]) == CLIENT => {
+                Some(msg::FIELD_DISABLED) => out.extend(self.disabled_zones(m)),
+                Some(msg::HINT) if m["hint_type"].as_u64() == Some(hint::EVENT) && self.player(&m["player"]) == CLIENT => {
                     self.phase_window = m["hint"].as_u64().and_then(chain_window) == Some(ChainWindow::Phase);
                 }
-                Some(MSG_HINT) if m["hint_type"].as_u64() == Some(HINT_SELECTMSG) && self.player(&m["player"]) == CLIENT => {
+                Some(msg::HINT) if m["hint_type"].as_u64() == Some(hint::SELECTMSG) && self.player(&m["player"]) == CLIENT => {
                     self.hint = m["hint"].as_u64().unwrap_or(0);
                     self.hint_note = m["hint_text"].as_str().filter(|t| !t.is_empty()).map(|t| (self.hint, t.to_owned()));
                 }
                 // Also a Set Spell/Trap turning face-up as it is activated.
-                Some(MSG_POS_CHANGE) => out.extend(self.turn(m, m["position"].as_u64().unwrap_or(0))),
+                Some(msg::POS_CHANGE) => out.extend(self.turn(m, m["position"].as_u64().unwrap_or(0))),
                 // A Flip Summon as Konami's logs show it: the summon line with kind 4 before the flip, RunSummon with 1
                 // after it (DuelScene reads only its place and uid: the summon effect at the card).
-                Some(MSG_FLIPSUMMONING) => {
+                Some(msg::FLIPSUMMONING) => {
                     let mut turned = self.turn(m, m["position"].as_u64().unwrap_or(0));
                     let card = self.engine_place(m).and_then(|p| Some((p, self.sides[p.player as usize].zones.get(&p.zone)?.first()?.uid)));
                     if let Some((place, uid)) = card {
-                        let flip = turned.iter().position(|c| c.get("id").and_then(Value::as_u32) == Some(FLIP_TURN)).unwrap_or(turned.len());
-                        turned.insert(flip, command(SPEAK_SUMMON, [place.player, 0x8000 | uid, SUMMON_FLIP, 0]));
+                        let flip = turned.iter().position(|c| c.get("id").and_then(Value::as_u32) == Some(cmd::FLIP_TURN)).unwrap_or(turned.len());
+                        turned.insert(flip, command(cmd::SPEAK_SUMMON, [place.player, 0x8000 | uid, SUMMON_FLIP, 0]));
                         let place = Place { index: 0, face_up: true, ..place };
-                        turned.push(command(RUN_SUMMON, [place.packed(), uid, 1, 0]));
+                        turned.push(command(cmd::RUN_SUMMON, [place.packed(), uid, 1, 0]));
                     }
                     out.extend(turned);
                 }
-                Some(MSG_CHAINING) => {
+                Some(msg::CHAINING) => {
                     if self.player(&m["controller"]) == CLIENT {
                         match self.card_kinds.get(&(m["cid"].as_u64().unwrap_or(0) as u16)) {
                             Some(13) => self.stats.spells += 1,
@@ -1064,25 +716,25 @@ impl Translator {
                     self.chain.push((param("param1"), param("param2")));
                     out.push(link);
                     // A hand card's effect: its avatar's reveal line after the ChainSet (Konami's logs).
-                    if m["location"].as_u64() == Some(LOC_HAND) {
-                        out.push(command(SPEAK_REVEAL, [self.player(&m["controller"]), 1, m["cid"].as_u64().unwrap_or(0) as u32, 0]));
+                    if m["location"].as_u64() == Some(loc::HAND) {
+                        out.push(command(cmd::SPEAK_REVEAL, [self.player(&m["controller"]), 1, m["cid"].as_u64().unwrap_or(0) as u32, 0]));
                     }
                     self.chaining = Some(m.clone());
                 }
                 // The link's own {player, zone, link}, as its ChainSet (Konami's logs; the client reads only the link).
-                Some(MSG_CHAIN_SOLVING) => {
+                Some(msg::CHAIN_SOLVING) => {
                     let n = m["chain_size"].as_u64().unwrap_or(0) as u32;
                     let (player, zone) = self.chain.get((n as usize).wrapping_sub(1)).copied().unwrap_or((0, 0));
-                    out.push(command(CHAIN_RUN, [player, zone, n, 0]));
+                    out.push(command(cmd::CHAIN_RUN, [player, zone, n, 0]));
                 }
-                Some(MSG_ATTACK) => {
+                Some(msg::ATTACK) => {
                     out.extend(self.end_battle());
                     out.extend(self.attack(m));
                 }
-                Some(MSG_BATTLE) => out.extend(self.battle(m)),
-                Some(MSG_DAMAGE_STEP_END | MSG_ATTACK_DISABLED) => out.extend(self.end_battle()),
-                Some(kind @ (MSG_SUMMONING | MSG_SPSUMMONING)) => {
-                    let id = if kind == MSG_SUMMONING { RUN_SUMMON } else { RUN_SP_SUMMON };
+                Some(msg::BATTLE) => out.extend(self.battle(m)),
+                Some(msg::DAMAGE_STEP_END | msg::ATTACK_DISABLED) => out.extend(self.end_battle()),
+                Some(kind @ (msg::SUMMONING | msg::SPSUMMONING)) => {
+                    let id = if kind == msg::SUMMONING { cmd::RUN_SUMMON } else { cmd::RUN_SP_SUMMON };
                     // The effect plays at the place's zone (0x514E5A), so the place, not only the player.
                     let card = self.engine_place(m).and_then(|p| Some((p, self.sides[p.player as usize].zones.get(&p.zone)?.first()?.uid)));
                     // The place as moves give it, with its face and position bits (Konami's logs: 0x4000 | place for a
@@ -1101,52 +753,52 @@ impl Translator {
                     if let Some((place, uid)) = card {
                         // The summon line first: 0 a Normal Summon, 1 a Tribute Summon, 5 a Special Summon (Konami's).
                         let kind = match kind {
-                            MSG_SUMMONING if tribute => SUMMON_TRIBUTE,
-                            MSG_SUMMONING => SUMMON_NORMAL,
+                            msg::SUMMONING if tribute => SUMMON_TRIBUTE,
+                            msg::SUMMONING => SUMMON_NORMAL,
                             _ => SUMMON_SPECIAL,
                         };
                         if !spoken {
-                            out.push(command(SPEAK_SUMMON, [place.player, 0x8000 | uid, kind, 0]));
+                            out.push(command(cmd::SPEAK_SUMMON, [place.player, 0x8000 | uid, kind, 0]));
                         }
                         out.push(command(id, [Place { index: 0, ..place }.packed(), uid, 0, 0]));
                     }
                 }
-                Some(MSG_CONFIRM_CARDS) => out.extend(self.confirm(m)),
-                Some(MSG_CONFIRM_DECKTOP) => out.extend(self.reveal_deck_top(m)),
-                Some(MSG_REVERSE_DECK) => {
+                Some(msg::CONFIRM_CARDS) => out.extend(self.confirm(m)),
+                Some(msg::CONFIRM_DECKTOP) => out.extend(self.reveal_deck_top(m)),
+                Some(msg::REVERSE_DECK) => {
                     self.decks_reversed = !self.decks_reversed;
                     if !self.decks_reversed {
                         out.extend((0..2).flat_map(|p| self.face_down_deck_top(p)).collect::<Vec<_>>());
                     }
                 }
-                Some(MSG_DECK_TOP) => out.extend(self.face_up_deck_top(m)),
-                Some(MSG_SHUFFLE_HAND) => out.extend(self.shuffle_hand(m)),
-                Some(MSG_SWAP) => out.extend(self.swap(m)),
-                Some(MSG_SHUFFLE_SET_CARD) => out.extend(self.shuffle_set(m)),
-                Some(MSG_SWAP_GRAVE_DECK) => out.extend(self.swap_grave_deck(m)),
-                Some(MSG_CHAIN_END) => {
+                Some(msg::DECK_TOP) => out.extend(self.face_up_deck_top(m)),
+                Some(msg::SHUFFLE_HAND) => out.extend(self.shuffle_hand(m)),
+                Some(msg::SWAP) => out.extend(self.swap(m)),
+                Some(msg::SHUFFLE_SET_CARD) => out.extend(self.shuffle_set(m)),
+                Some(msg::SWAP_GRAVE_DECK) => out.extend(self.swap_grave_deck(m)),
+                Some(msg::CHAIN_END) => {
                     self.chaining = None;
                     self.chain.clear();
                 }
-                Some(MSG_WIN) => {
+                Some(msg::WIN) => {
                     let result = match m["player"].as_u64() {
-                        Some(TEAM_DRAW) => DRAW,
-                        _ if self.player(&m["player"]) == CLIENT => WON,
-                        _ => LOST,
+                        Some(TEAM_DRAW) => result::DRAW,
+                        _ if self.player(&m["player"]) == CLIENT => result::WON,
+                        _ => result::LOST,
                     };
-                    if result == WON {
+                    if result == result::WON {
                         self.stats.win_reason = m["reason"].as_u64();
                     }
                     let reason = end_reason(m["reason"].as_u64().unwrap_or(1));
-                    out.push(command(DUEL_END, [result, reason, 0, 0]));
+                    out.push(command(cmd::DUEL_END, [result, reason, 0, 0]));
                     self.result = Some(result);
                 }
-                Some(kind @ (MSG_DAMAGE | MSG_RECOVER | MSG_PAY_LPCOST)) => {
+                Some(kind @ (msg::DAMAGE | msg::RECOVER | msg::PAY_LPCOST)) => {
                     let amount = m["amount"].as_i64().unwrap_or(0) as i32;
-                    let change = if kind == MSG_RECOVER { amount } else { -amount };
+                    let change = if kind == msg::RECOVER { amount } else { -amount };
                     let damage = match kind {
-                        MSG_RECOVER => DAMAGE_GAIN,
-                        MSG_PAY_LPCOST => DAMAGE_COST,
+                        msg::RECOVER => DAMAGE_GAIN,
+                        msg::PAY_LPCOST => DAMAGE_COST,
                         _ if self.in_battle => DAMAGE_BATTLE,
                         _ => DAMAGE_EFFECT,
                     };
@@ -1157,28 +809,28 @@ impl Translator {
                         self.lp_change += change as i64;
                         self.stats.lowest_change = self.stats.lowest_change.min(self.lp_change);
                     }
-                    out.push(command(CHANGE_LP, [p, change as u32, damage << 8 | 1, 0]));
-                    out.push(command(SPEAK_DAMAGE, [p, change as u32, damage, 0]));
-                    out.push(command(CHANGE_LP, [p, change as u32, damage << 8, 0]));
+                    out.push(command(cmd::CHANGE_LP, [p, change as u32, damage << 8 | 1, 0]));
+                    out.push(command(cmd::SPEAK_DAMAGE, [p, change as u32, damage, 0]));
+                    out.push(command(cmd::CHANGE_LP, [p, change as u32, damage << 8, 0]));
                 }
-                Some(kind @ (MSG_ADD_COUNTER | MSG_REMOVE_COUNTER)) => out.extend(self.counter(m, kind == MSG_ADD_COUNTER)),
-                Some(MSG_LPUPDATE) => {
-                    out.push(command(SET_LP, [self.player(&m["player"]), m["lp"].as_u64().unwrap_or(0) as u32, 0, 0]));
+                Some(kind @ (msg::ADD_COUNTER | msg::REMOVE_COUNTER)) => out.extend(self.counter(m, kind == msg::ADD_COUNTER)),
+                Some(msg::LPUPDATE) => {
+                    out.push(command(cmd::SET_LP, [self.player(&m["player"]), m["lp"].as_u64().unwrap_or(0) as u32, 0, 0]));
                 }
-                Some(kind @ (MSG_EQUIP | MSG_CARD_TARGET | MSG_CANCEL_TARGET)) => self.link(m, kind),
-                Some(MSG_TOSS_COIN) => {
+                Some(kind @ (msg::EQUIP | msg::CARD_TARGET | msg::CANCEL_TARGET)) => self.link(m, kind),
+                Some(msg::TOSS_COIN) => {
                     let p = self.player(&m["player"]);
                     let wins = self.coin_call.take().unwrap_or(true) as u32;
                     let heads: Vec<bool> = m["results"].as_array().into_iter().flatten().map(|r| r.as_bool().unwrap_or(false)).collect();
                     for coins in heads.chunks(COINS_A_TOSS) {
                         let faces = coins.iter().enumerate().fold(0, |bits, (i, &h)| bits | (h as u32) << i);
-                        out.push(command(RUN_COIN, [p | (coins.len() as u32) << 6 | wins << 14, 0, faces, 0]));
+                        out.push(command(cmd::RUN_COIN, [p | (coins.len() as u32) << 6 | wins << 14, 0, faces, 0]));
                     }
                 }
-                Some(MSG_TOSS_DICE) => {
+                Some(msg::TOSS_DICE) => {
                     let p = self.player(&m["player"]);
                     for face in m["results"].as_array().into_iter().flatten() {
-                        out.push(command(RUN_DICE, [p, 0, face.as_u64().unwrap_or(1) as u32, 0]));
+                        out.push(command(cmd::RUN_DICE, [p, 0, face.as_u64().unwrap_or(1) as u32, 0]));
                     }
                 }
                 _ => self.unshown(m),
@@ -1212,17 +864,17 @@ impl Translator {
     /// lasting target) and MSG_CANCEL_TARGET (its end): the cards' links, by uid.
     fn link(&mut self, m: &Json, kind: u64) {
         let uid = |t: &Self, loc: &Json| {
-            let place = t.engine_place(loc).filter(|p| p.zone <= FIELD_SPELL)?;
+            let place = t.engine_place(loc).filter(|p| p.zone <= zone::FIELD_SPELL)?;
             t.sides[place.player as usize].zones.get(&place.zone)?.first().map(|c| c.uid)
         };
         let (Some(card), Some(target)) = (uid(self, &m["card"]), uid(self, &m["target"])) else { return };
         match kind {
-            MSG_EQUIP => {
+            msg::EQUIP => {
                 self.links.retain(|&(c, _, mark)| !(c == card && mark == MARK_EQUIP));
                 self.links.push((card, target, MARK_EQUIP));
             }
-            MSG_CARD_TARGET if !self.links.contains(&(card, target, MARK_TARGET)) => self.links.push((card, target, MARK_TARGET)),
-            MSG_CANCEL_TARGET => self.links.retain(|&l| l != (card, target, MARK_TARGET)),
+            msg::CARD_TARGET if !self.links.contains(&(card, target, MARK_TARGET)) => self.links.push((card, target, MARK_TARGET)),
+            msg::CANCEL_TARGET => self.links.retain(|&l| l != (card, target, MARK_TARGET)),
             _ => {}
         }
     }
@@ -1232,7 +884,7 @@ impl Translator {
     fn sync_relations(&mut self) -> Vec<Message> {
         let place_of = |t: &Self, uid: u32| {
             (0..2u32).find_map(|p| {
-                (0..=FIELD_SPELL).find(|z| t.sides[p as usize].zones.get(z).and_then(|c| c.first()).is_some_and(|c| c.uid == uid)).map(|z| p | z << 8)
+                (0..=zone::FIELD_SPELL).find(|z| t.sides[p as usize].zones.get(z).and_then(|c| c.first()).is_some_and(|c| c.uid == uid)).map(|z| p | z << 8)
             })
         };
         let placed: Vec<_> = self.links.iter().map(|&(a, b, mark)| (place_of(self, a), place_of(self, b), mark)).collect();
@@ -1252,11 +904,11 @@ impl Translator {
             .relations
             .iter()
             .filter(|r| !wanted.contains(r))
-            .map(|&(a, b, mark)| command(RELATION, [a, b, mark, 0]))
+            .map(|&(a, b, mark)| command(cmd::RELATION, [a, b, mark, 0]))
             .collect();
-        out.extend(wanted.iter().filter(|r| !self.relations.contains(r)).map(|&(a, b, mark)| command(RELATION, [a, b, mark, 1])));
+        out.extend(wanted.iter().filter(|r| !self.relations.contains(r)).map(|&(a, b, mark)| command(cmd::RELATION, [a, b, mark, 1])));
         if !out.is_empty() {
-            out.push(command(RELATIONS_REDRAW, [0; 4]));
+            out.push(command(cmd::RELATIONS_REDRAW, [0; 4]));
         }
         self.relations = wanted;
         out
@@ -1276,10 +928,10 @@ impl Translator {
             let side = self.player(&json!(player));
             // Keyed like a card on that zone (`place`): monster zones as zone 0, Spell/Trap zones as zone 5, with the
             // zone's index; the click comes back as the zone itself (position, index 0).
-            let (zone, bit) = if location == LOC_MZONE { (0, ZONE_PICK_MONSTER) } else { (5, ZONE_PICK_SPELL) };
+            let (zone, bit) = if location == loc::MZONE { (0, ZONE_PICK_MONSTER) } else { (5, ZONE_PICK_SPELL) };
             map.push((table_place(side, zone, sequence as usize), 1 << bit));
         }
-        vec![command_data(&map, &[]), command(INPUT, [MODE_MAIN, CLIENT, 0, 0])]
+        vec![command_data(&map, &[]), command(cmd::INPUT, [mode::MAIN, CLIENT, 0, 0])]
     }
 
     /// A zone clicked for MSG_SELECT_DISFIELD: a free one not picked yet counts; with `count` of them the answer, else
@@ -1287,8 +939,8 @@ impl Translator {
     fn zone_click(&mut self, m: &Json, cmd: CardCommand) -> Prompt {
         let player = (0..2u64).find(|&p| self.player(&json!(p)) == cmd.player).unwrap_or(0);
         let (location, sequence) = match cmd.zone {
-            z @ 0..=4 => (LOC_MZONE, z as u64),
-            z @ 5..=9 => (LOC_SZONE, z as u64 - 5),
+            z @ 0..=4 => (loc::MZONE, z as u64),
+            z @ 5..=9 => (loc::SZONE, z as u64 - 5),
             _ => (0, 0),
         };
         let place = json!({ "player": player, "location": location, "sequence": sequence });
@@ -1301,7 +953,7 @@ impl Translator {
             let places = std::mem::take(picks);
             self.zone_picks = None;
             self.pending = None;
-            let kind = if m["type"] == MSG_SELECT_PLACE { RESP_PLACE } else { RESP_DISFIELD };
+            let kind = if m["type"] == msg::SELECT_PLACE { resp::PLACE } else { resp::DISFIELD };
             return Prompt::Answer(json!({ "type": kind, "places": places }));
         }
         Prompt::Client(self.zone_map(m))
@@ -1318,13 +970,13 @@ impl Translator {
             (0..5).filter(|z| dis & 1 << z == 0).fold(0, |a, z| a | 1 << z) | (0..5).filter(|z| dis & 1 << (8 + z) == 0).fold(0, |a, z| a | 1 << (5 + z))
         };
         let own = (0..2).find(|&p| self.player(&json!(p)) == CLIENT).unwrap_or(0);
-        vec![command(ZONES_USABLE, [usable(own) | usable(1 - own) << 16, 0, 0, 0]), command(RELATIONS_REDRAW, [0; 4])]
+        vec![command(cmd::ZONES_USABLE, [usable(own) | usable(1 - own) << 16, 0, 0, 0]), command(cmd::RELATIONS_REDRAW, [0; 4])]
     }
 
     fn draw(&mut self, p: u32, cid: u16) -> Vec<Message> {
-        let hand = self.sides[p as usize].zone(HAND).len();
-        let from = Place { player: p, zone: DECK, index: 0, face_up: false, defense: false };
-        let to = Place { player: p, zone: HAND, index: hand, face_up: false, defense: false };
+        let hand = self.sides[p as usize].zone(zone::HAND).len();
+        let from = Place { player: p, zone: zone::DECK, index: 0, face_up: false, defense: false };
+        let to = Place { player: p, zone: zone::HAND, index: hand, face_up: false, defense: false };
         self.relocate(cid, from, to)
     }
 
@@ -1357,7 +1009,7 @@ impl Translator {
             // among the cards the earlier ones left.
             let mut materials: Vec<(u16, Place, u32, bool)> = vec![];
             for x in rest {
-                if x["type"].as_u64() != Some(MSG_MOVE) || Family::of(x["reason"].as_u64().unwrap_or(0)) != Some(family) {
+                if x["type"].as_u64() != Some(msg::MOVE) || Family::of(x["reason"].as_u64().unwrap_or(0)) != Some(family) {
                     continue;
                 }
                 let cid = x["cid"].as_u64().unwrap_or(0) as u16;
@@ -1404,12 +1056,12 @@ impl Translator {
             return out;
         }
         // A tribute for a Set: the monster goes to its zone face down and no summon follows.
-        let set = m["to"]["location"].as_u64() == Some(LOC_MZONE) && m["to"]["position"].as_u64().is_some_and(|p| p & 0xA != 0);
+        let set = m["to"]["location"].as_u64() == Some(loc::MZONE) && m["to"]["position"].as_u64().is_some_and(|p| p & 0xA != 0);
         if set && self.summoning.as_ref().is_some_and(|s| s.family == Family::Tribute) {
             self.summoning = None;
         }
         // The Extra Deck monster arrives: its animation and its line (Konami's logs: 8 for a Synchro, 6 for a Fusion).
-        let arriving = reason & REASON_SPSUMMON != 0 && m["from"]["location"].as_u64() == Some(LOC_EXTRA);
+        let arriving = reason & reason::SPSUMMON != 0 && m["from"]["location"].as_u64() == Some(loc::EXTRA);
         let place = self.engine_place(&m["from"]).and_then(|from| Some((from, self.uid_at(&from, cid)?)));
         if let Some(s) = self.summoning.as_mut().filter(|s| arriving && s.family != Family::Tribute && !s.arrived)
             && let Some((from, uid)) = place
@@ -1420,10 +1072,10 @@ impl Translator {
                 _ => (0, SUMMON_EXTRA),
             };
             let at = |i: usize| s.uids.get(i).copied().unwrap_or(0);
-            out.push(command(MATERIAL_LIST, [s.uids.len() as u32, at(0), at(1), at(2)]));
+            out.push(command(cmd::MATERIAL_LIST, [s.uids.len() as u32, at(0), at(1), at(2)]));
             for more in s.uids.get(3..).unwrap_or_default().chunks(4) {
                 let at = |i: usize| more.get(i).copied().unwrap_or(0);
-                out.push(command(MATERIAL_LIST_MORE, [at(0), at(1), at(2), at(3)]));
+                out.push(command(cmd::MATERIAL_LIST_MORE, [at(0), at(1), at(2), at(3)]));
             }
             if from.player == CLIENT {
                 match s.family {
@@ -1431,8 +1083,8 @@ impl Translator {
                     _ => self.stats.fusions += 1,
                 }
             }
-            out.push(command(RUN_FUSION, [from.player, uid, kind << 16 | s.count, 0]));
-            out.push(command(SPEAK_SUMMON, [from.player, 0x8000 | uid, line, 0]));
+            out.push(command(cmd::RUN_FUSION, [from.player, uid, kind << 16 | s.count, 0]));
+            out.push(command(cmd::SPEAK_SUMMON, [from.player, 0x8000 | uid, line, 0]));
             s.arrived = true;
             s.cid = cid;
         }
@@ -1470,10 +1122,10 @@ impl Translator {
         if m["from"]["location"].as_u64() == Some(0) {
             return self.engine_place(&m["to"]).map(|to| self.token(m, to)).unwrap_or_default();
         }
-        if let Some(from) = self.engine_place(&m["from"]).filter(|f| f.zone <= FIELD_SPELL)
+        if let Some(from) = self.engine_place(&m["from"]).filter(|f| f.zone <= zone::FIELD_SPELL)
             && let Some(card) = self.sides[from.player as usize].zones.get(&from.zone).and_then(|z| z.first()).copied()
             && self.tokens.contains(&card.uid)
-            && !self.engine_place(&m["to"]).is_some_and(|to| to.zone <= FIELD_SPELL)
+            && !self.engine_place(&m["to"]).is_some_and(|to| to.zone <= zone::FIELD_SPELL)
         {
             // A token leaving the field is gone (EDOPro may send it to a pile first): it shatters off the field, a monster
             // zone or, equipped as a card (Allure Queen LV3), a Spell/Trap zone. One that changes sides (a control
@@ -1481,29 +1133,29 @@ impl Translator {
             let mut out = self.drop_counters(&from);
             self.sides[from.player as usize].zone(from.zone).clear();
             self.tokens.retain(|&t| t != card.uid);
-            out.push(command(CARD_VANISH, [from.player, from.zone, 0, 0]));
+            out.push(command(cmd::CARD_VANISH, [from.player, from.zone, 0, 0]));
             return out;
         }
         match (self.engine_place(&m["from"]), self.engine_place(&m["to"])) {
             (Some(from), Some(to)) => {
                 let reason = m["reason"].as_u64().unwrap_or(0);
-                let dropped = if to.zone > FIELD_SPELL { self.drop_counters(&from) } else { vec![] };
+                let dropped = if to.zone > zone::FIELD_SPELL { self.drop_counters(&from) } else { vec![] };
                 let kind = move_kind(reason, from, to);
                 let mut moved = self.relocate_as(cid, from, to, kind);
                 if !moved.is_empty() {
                     moved = self.presented(moved, cid, from, to, kind);
                 }
-                if to.zone == HAND && let Some(at) = self.revealing.iter().position(|&c| c == cid) {
+                if to.zone == zone::HAND && let Some(at) = self.revealing.iter().position(|&c| c == cid) {
                     self.revealing.remove(at);
-                    let index = self.sides[to.player as usize].zone(HAND).len().saturating_sub(1).min(to.index);
+                    let index = self.sides[to.player as usize].zone(zone::HAND).len().saturating_sub(1).min(to.index);
                     moved.extend(self.show_hand(to.player, index));
                 }
                 // Only an actual destruction move confirms the card died. MSG_BATTLE precedes limited battle
                 // protection (Fortress Warrior, Shield Wing), so its tentative destroy flag cannot hide the card.
-                if moved.is_empty() || reason & REASON_DESTROY == 0 || from.zone > HAND {
+                if moved.is_empty() || reason & reason::DESTROY == 0 || from.zone > zone::HAND {
                     return dropped.into_iter().chain(moved).collect();
                 }
-                let vanish = command(CARD_VANISH, [from.player, from.zone | (from.index as u32) << 8, 0, 0]);
+                let vanish = command(cmd::CARD_VANISH, [from.player, from.zone | (from.index as u32) << 8, 0, 0]);
                 dropped.into_iter().chain(std::iter::once(vanish)).chain(moved).collect()
             }
             // Tokens and Xyz materials have no client place yet.
@@ -1519,7 +1171,7 @@ impl Translator {
         let p = self.player(&m["player"]);
         let cids: Vec<u16> = m["cids"].as_array().into_iter().flatten().map(|c| c.as_u64().unwrap_or(0) as u16).collect();
         let cards = &self.cards;
-        let hand = self.sides[p as usize].zone(HAND);
+        let hand = self.sides[p as usize].zone(zone::HAND);
         if cids.len() != hand.len() {
             tracing::warn!("a hand shuffle of {} cards for a hand of {}", cids.len(), hand.len());
             return vec![];
@@ -1542,11 +1194,11 @@ impl Translator {
             .iter()
             .enumerate()
             .map(|(i, c)| {
-                let row = self.shown_row(&Place { player: p, zone: HAND, index: i, face_up: false, defense: false }, c.row);
-                command(CARD, [c.uid, row, 0, table_place(p, HAND, i)])
+                let row = self.shown_row(&Place { player: p, zone: zone::HAND, index: i, face_up: false, defense: false }, c.row);
+                command(cmd::CARD, [c.uid, row, 0, table_place(p, zone::HAND, i)])
             })
             .collect();
-        out.push(command(HAND_SHUFFLE, [p, 0, 0, 0]));
+        out.push(command(cmd::HAND_SHUFFLE, [p, 0, 0, 0]));
         out
     }
 
@@ -1556,7 +1208,7 @@ impl Translator {
     /// hand or pile) it isn't followed (logged).
     fn attach(&mut self, m: &Json, cid: u16) -> Vec<Message> {
         let Some(from) = self.engine_place(&m["from"]) else { return vec![] };
-        if from.zone > FIELD_SPELL {
+        if from.zone > zone::FIELD_SPELL {
             tracing::warn!("an Xyz material from a place the client can't take it from: {m}");
             return vec![];
         }
@@ -1568,7 +1220,7 @@ impl Translator {
         self.sides[from.player as usize].zone(from.zone).clear();
         self.positions.remove(&(from.player, from.zone));
         self.materials.push((card, from));
-        out.push(command(CARD_VANISH, [from.player, from.zone, 0, 0]));
+        out.push(command(cmd::CARD_VANISH, [from.player, from.zone, 0, 0]));
         out
     }
 
@@ -1580,7 +1232,7 @@ impl Translator {
         let Some(at) = self.materials.iter().position(|(c, _)| self.cards.get(&c.row).map(|s| s.cid) == Some(cid) || cid == 0) else { return vec![] };
         let empty_at = |s: &Self, p: u32, z: u32| s.sides[p as usize].zones.get(&z).is_none_or(Vec::is_empty);
         let left = self.materials[at].1;
-        let empty = |s: &Self, p: u32| (0..=FIELD_SPELL).find(|&z| empty_at(s, p, z)).map(|z| (p, z));
+        let empty = |s: &Self, p: u32| (0..=zone::FIELD_SPELL).find(|&z| empty_at(s, p, z)).map(|z| (p, z));
         let slot = if empty_at(self, left.player, left.zone) { Some((left.player, left.zone)) } else { empty(self, to.player).or_else(|| empty(self, 1 - to.player)) };
         let Some((player, zone)) = slot else {
             tracing::warn!("an Xyz material leaves with no empty field slot to move it from");
@@ -1603,19 +1255,19 @@ impl Translator {
         let cid_of = |s: &Self, c: &Card| s.cards.get(&c.row).map_or(0, |s| s.cid);
         let at = |zone: u32, index: usize| Place { player: p, zone, index, face_up: true, defense: false };
         let mut out = vec![];
-        while let Some(card) = self.sides[p as usize].zones.get(&GRAVE).and_then(|z| z.last()).copied() {
+        while let Some(card) = self.sides[p as usize].zones.get(&zone::GRAVE).and_then(|z| z.last()).copied() {
             let cid = cid_of(self, &card);
-            let index = self.sides[p as usize].zone(GRAVE).len() - 1;
-            let in_extra = self.sides[p as usize].zones.get(&EXTRA).map_or(0, |z| z.iter().filter(|c| cid_of(self, c) == cid).count());
+            let index = self.sides[p as usize].zone(zone::GRAVE).len() - 1;
+            let in_extra = self.sides[p as usize].zones.get(&zone::EXTRA).map_or(0, |z| z.iter().filter(|c| cid_of(self, c) == cid).count());
             let to = if extra.iter().filter(|&&c| c == cid).count() > in_extra {
-                Place { face_up: false, ..at(EXTRA, self.sides[p as usize].zone(EXTRA).len()) }
+                Place { face_up: false, ..at(zone::EXTRA, self.sides[p as usize].zone(zone::EXTRA).len()) }
             } else {
-                Place { face_up: false, ..at(DECK, 0) }
+                Place { face_up: false, ..at(zone::DECK, 0) }
             };
-            out.extend(self.relocate(cid, at(GRAVE, index), to));
+            out.extend(self.relocate(cid, at(zone::GRAVE, index), to));
         }
         for (i, cid) in grave.into_iter().enumerate() {
-            out.extend(self.relocate(cid, Place { face_up: false, ..at(DECK, 0) }, at(GRAVE, i)));
+            out.extend(self.relocate(cid, Place { face_up: false, ..at(zone::DECK, 0) }, at(zone::GRAVE, i)));
         }
         out
     }
@@ -1624,7 +1276,7 @@ impl Translator {
     /// own position. Which mirror card is the engine's card1 is told by its id; then [`trade`](Self::trade).
     fn swap(&mut self, m: &Json) -> Vec<Message> {
         let (Some(p1), Some(p2)) = (self.engine_place(&m["card1"]), self.engine_place(&m["card2"])) else { return vec![] };
-        if p1.zone > FIELD_SPELL || p2.zone > FIELD_SPELL {
+        if p1.zone > zone::FIELD_SPELL || p2.zone > zone::FIELD_SPELL {
             return vec![];
         }
         let cid1 = m["card1"]["cid"].as_u64().unwrap_or(0) as u16;
@@ -1645,7 +1297,7 @@ impl Translator {
             .into_iter()
             .flatten()
             .filter_map(|p| Some((self.engine_place(p)?, p["cid"].as_u64().unwrap_or(0) as u16)))
-            .filter(|(p, _)| p.zone <= FIELD_SPELL)
+            .filter(|(p, _)| p.zone <= zone::FIELD_SPELL)
             .collect();
         let mut left: Vec<(u32, u16)> = places
             .iter()
@@ -1664,7 +1316,7 @@ impl Translator {
         let mut out = vec![];
         for (uid, to) in moves {
             let at = self.sides.iter().enumerate().find_map(|(p, side)| {
-                side.zones.iter().find(|(z, cards)| **z <= FIELD_SPELL && cards.first().is_some_and(|c| c.uid == uid)).map(|(z, _)| (p as u32, *z))
+                side.zones.iter().find(|(z, cards)| **z <= zone::FIELD_SPELL && cards.first().is_some_and(|c| c.uid == uid)).map(|(z, _)| (p as u32, *z))
             });
             let Some((player, zone)) = at.filter(|&(p, z)| (p, z) != (to.player, to.zone)) else { continue };
             // The card already in the new zone takes this card's old zone as it is shown now.
@@ -1682,9 +1334,9 @@ impl Translator {
         let (card_a, card_b) = (at(self, &a), at(self, &b));
         let (record_a, record_b) = (self.records.get(&(a.player, a.zone)).copied(), self.records.get(&(b.player, b.zone)).copied());
         let mut out = match (card_a, card_b) {
-            (Some(_), Some(_)) => vec![command(CARD_SWAP, [0, a.packed(), b.packed(), 0])],
-            (Some(c), None) => vec![command(MOVE, [c.uid, Place { face_up: false, defense: false, ..a }.packed(), b.packed(), 0])],
-            (None, Some(c)) => vec![command(MOVE, [c.uid, Place { face_up: false, defense: false, ..b }.packed(), a.packed(), 0])],
+            (Some(_), Some(_)) => vec![command(cmd::CARD_SWAP, [0, a.packed(), b.packed(), 0])],
+            (Some(c), None) => vec![command(cmd::MOVE, [c.uid, Place { face_up: false, defense: false, ..a }.packed(), b.packed(), 0])],
+            (None, Some(c)) => vec![command(cmd::MOVE, [c.uid, Place { face_up: false, defense: false, ..b }.packed(), a.packed(), 0])],
             (None, None) => return vec![],
         };
         for (place, card, record) in [(a, card_b, record_b), (b, card_a, record_a)] {
@@ -1695,7 +1347,7 @@ impl Translator {
                 Some(c) => {
                     self.positions.insert((place.player, place.zone), (place.face_up, place.defense));
                     let row = self.shown_row(&place, c.row);
-                    out.push(command(CARD, [c.uid | open(place.zone), row, 0, table_place(place.player, place.zone, 0)]));
+                    out.push(command(cmd::CARD, [c.uid | open(place.zone), row, 0, table_place(place.player, place.zone, 0)]));
                     if place.zone < 5 && row != 0 && place.face_up {
                         out.extend(match record {
                             Some(values) => self.record(place.player, place.zone, c.row, values),
@@ -1719,10 +1371,10 @@ impl Translator {
         let mut out = vec![];
         // A Deck's top cards shown to the client (Ancient Telescope): turned over on the pile, as MSG_CONFIRM_DECKTOP.
         let cards: Vec<&Json> = m["cards"].as_array().into_iter().flatten().collect();
-        let deck_cards: Vec<&Json> = cards.iter().copied().filter(|c| c["location"].as_u64() == Some(LOC_DECK)).collect();
+        let deck_cards: Vec<&Json> = cards.iter().copied().filter(|c| c["location"].as_u64() == Some(loc::DECK)).collect();
         if viewer == CLIENT && !deck_cards.is_empty() && deck_cards.len() == cards.len() {
             let owner = deck_cards[0]["controller"].clone();
-            let size = self.sides[self.player(&owner) as usize].zones.get(&DECK).map_or(0, Vec::len) as u64;
+            let size = self.sides[self.player(&owner) as usize].zones.get(&zone::DECK).map_or(0, Vec::len) as u64;
             let top = deck_cards.iter().all(|c| c["controller"] == owner && c["sequence"].as_u64().is_some_and(|s| s + deck_cards.len() as u64 >= size));
             if top {
                 let shown = json!({ "player": owner, "cards": deck_cards });
@@ -1736,8 +1388,8 @@ impl Translator {
             }
             let cid = card["cid"].as_u64().unwrap_or(0) as u16;
             match card["location"].as_u64() {
-                Some(LOC_HAND) => out.extend(self.show_hand(owner, card["sequence"].as_u64().unwrap_or(0) as usize)),
-                Some(LOC_MZONE | LOC_SZONE) => {
+                Some(loc::HAND) => out.extend(self.show_hand(owner, card["sequence"].as_u64().unwrap_or(0) as usize)),
+                Some(loc::MZONE | loc::SZONE) => {
                     if viewer == CLIENT && owner != CLIENT {
                         out.extend(self.reveal_field(card));
                     }
@@ -1754,7 +1406,7 @@ impl Translator {
     /// 0x4FF000), the flip face up (0x1C), the card's popup (CardLockon 0x19 {player, zone, 2}), then the entry without a
     /// row, CardCheat and the flip back.
     fn reveal_field(&mut self, loc: &Json) -> Vec<Message> {
-        let Some(place) = self.engine_place(loc).filter(|p| p.zone <= FIELD_SPELL) else { return vec![] };
+        let Some(place) = self.engine_place(loc).filter(|p| p.zone <= zone::FIELD_SPELL) else { return vec![] };
         let Some(&(face_up, defense)) = self.positions.get(&(place.player, place.zone)) else { return vec![] };
         let Some(card) = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied() else { return vec![] };
         if face_up || !self.hidden[place.player as usize] {
@@ -1765,13 +1417,13 @@ impl Translator {
         let up = Place { face_up: true, ..down };
         let key = table_place(place.player, place.zone, 0);
         vec![
-            command(CARD, [card.uid, card.row as u32, 0, key]),
-            command(CARD_CHEAT, [up.packed(), cid, card.uid, 0]),
-            command(FLIP_TURN, [up.packed(), 0, 0, 0]),
-            command(CARD_LOCKON, [place.player, place.zone, POPUP, 0]),
-            command(CARD, [card.uid, 0, 0, key]),
-            command(CARD_CHEAT, [down.packed(), 0, card.uid, 0]),
-            command(FLIP_TURN, [down.packed(), 0, 0, 0]),
+            command(cmd::CARD, [card.uid, card.row as u32, 0, key]),
+            command(cmd::CARD_CHEAT, [up.packed(), cid, card.uid, 0]),
+            command(cmd::FLIP_TURN, [up.packed(), 0, 0, 0]),
+            command(cmd::CARD_LOCKON, [place.player, place.zone, POPUP, 0]),
+            command(cmd::CARD, [card.uid, 0, 0, key]),
+            command(cmd::CARD_CHEAT, [down.packed(), 0, card.uid, 0]),
+            command(cmd::FLIP_TURN, [down.packed(), 0, 0, 0]),
         ]
     }
 
@@ -1779,11 +1431,11 @@ impl Translator {
     fn note_deck_tops(&mut self, out: &[Message]) {
         for m in out {
             let int = |k: &str| m.get(k).and_then(Value::as_u32).unwrap_or(0);
-            if int("id") != CARD {
+            if int("id") != cmd::CARD {
                 continue;
             }
             for p in 0..2 {
-                if int("param4") == table_place(p, DECK, 0) {
+                if int("param4") == table_place(p, zone::DECK, 0) {
                     self.deck_tops[p as usize] = Some([int("param1"), int("param2"), int("param3"), int("param4")]);
                 }
             }
@@ -1796,8 +1448,8 @@ impl Translator {
     /// its last entry again, and DeckReset redraws the pile.
     fn reveal_deck_top(&mut self, m: &Json) -> Vec<Message> {
         let p = self.player(&m["player"]);
-        let key = table_place(p, DECK, 0);
-        let deck = self.sides[p as usize].zones.get(&DECK).cloned().unwrap_or_default();
+        let key = table_place(p, zone::DECK, 0);
+        let deck = self.sides[p as usize].zones.get(&zone::DECK).cloned().unwrap_or_default();
         let mut used: Vec<u32> = vec![];
         let mut out = vec![];
         for c in m["cards"].as_array().into_iter().flatten() {
@@ -1805,22 +1457,22 @@ impl Translator {
             let has_cid = |d: &&Card| !used.contains(&d.uid) && self.cards.get(&d.row).map(|s| s.cid) == Some(cid);
             let Some(card) = deck.iter().find(has_cid).copied() else { continue };
             used.push(card.uid);
-            let hidden = self.shown_row(&Place { player: p, zone: DECK, index: 0, face_up: false, defense: false }, card.row);
+            let hidden = self.shown_row(&Place { player: p, zone: zone::DECK, index: 0, face_up: false, defense: false }, card.row);
             // Index 0's last entry back while its card is still in the Deck; one that has left (drawn, sent) would pull
             // its table entry off its new place, so the revealed card stays there instead, hidden.
             let in_deck = |uid: u32| deck.iter().any(|d| d.uid == uid & !OPEN);
             let back = self.deck_tops[p as usize].filter(|e| in_deck(e[0]) && e[0] & OPEN == 0).unwrap_or([card.uid, hidden, 0, key]);
-            out.push(command(CARD, [card.uid, card.row as u32, 0, key]));
+            out.push(command(cmd::CARD, [card.uid, card.row as u32, 0, key]));
             if used.len() == 1 {
-                out.push(command(DECK_RESET, [p, DECK, 0, 0]));
+                out.push(command(cmd::DECK_RESET, [p, zone::DECK, 0, 0]));
             }
             out.extend([
-                command(CARD_CHEAT, [0x4000 | move_place(p, DECK, 0), cid as u32, card.uid, 0]),
-                command(DECK_FLIP_TOP, [p, DECK, 0, 0]),
-                command(CARD_LOCKON, [p, DECK, POPUP, 0]),
-                command(DECK_FLIP_TOP, [p, DECK, 0, 0]),
-                command(CARD, back),
-                command(DECK_RESET, [p, DECK, 0, 0]),
+                command(cmd::CARD_CHEAT, [0x4000 | move_place(p, zone::DECK, 0), cid as u32, card.uid, 0]),
+                command(cmd::DECK_FLIP_TOP, [p, zone::DECK, 0, 0]),
+                command(cmd::CARD_LOCKON, [p, zone::DECK, POPUP, 0]),
+                command(cmd::DECK_FLIP_TOP, [p, zone::DECK, 0, 0]),
+                command(cmd::CARD, back),
+                command(cmd::DECK_RESET, [p, zone::DECK, 0, 0]),
             ]);
         }
         out
@@ -1834,15 +1486,15 @@ impl Translator {
         let cid = m["cid"].as_u64().unwrap_or(0) as u16;
         // A reversed Deck's top is public though its cards keep their position (field.cpp reverse_deck only reorders);
         // otherwise only a card turned face up in the Deck (ReverseInDeck).
-        let face_up = self.decks_reversed || m["position"].as_u64().unwrap_or(0) & (POS_FACEUP_ATTACK | POS_FACEUP_DEFENSE) != 0;
+        let face_up = self.decks_reversed || m["position"].as_u64().unwrap_or(0) & (pos::FACEUP_ATTACK | pos::FACEUP_DEFENSE) != 0;
         if m["count"].as_u64().unwrap_or(0) != 0 || !face_up {
             return vec![];
         }
-        let deck = self.sides[p as usize].zones.get(&DECK);
+        let deck = self.sides[p as usize].zones.get(&zone::DECK);
         let Some(card) = deck.and_then(|d| d.iter().find(|c| self.cards.get(&c.row).map(|s| s.cid) == Some(cid))).copied() else {
             return vec![];
         };
-        vec![command(CARD, [card.uid | OPEN, card.row as u32, 0, table_place(p, DECK, 0)]), command(DECK_RESET, [p, DECK, 0, 0])]
+        vec![command(cmd::CARD, [card.uid | OPEN, card.row as u32, 0, table_place(p, zone::DECK, 0)]), command(cmd::DECK_RESET, [p, zone::DECK, 0, 0])]
     }
 
     /// The Decks turned back: the card last shown on top of player `p`'s Deck loses its face (and, hidden, its row).
@@ -1850,19 +1502,19 @@ impl Translator {
         let Some([uid, row, _, place]) = self.deck_tops[p as usize].filter(|e| e[0] & OPEN != 0) else { return vec![] };
         let uid = uid & !OPEN;
         // Only while that card is still in the Deck (a drawn one has its own entry by now).
-        if !self.sides[p as usize].zones.get(&DECK).is_some_and(|d| d.iter().any(|c| c.uid == uid)) {
+        if !self.sides[p as usize].zones.get(&zone::DECK).is_some_and(|d| d.iter().any(|c| c.uid == uid)) {
             return vec![];
         }
-        let shown = self.shown_row(&Place { player: p, zone: DECK, index: 0, face_up: false, defense: false }, row as u16);
-        vec![command(CARD, [uid, shown, 0, place]), command(DECK_RESET, [p, DECK, 0, 0])]
+        let shown = self.shown_row(&Place { player: p, zone: zone::DECK, index: 0, face_up: false, defense: false }, row as u16);
+        vec![command(cmd::CARD, [uid, shown, 0, place]), command(cmd::DECK_RESET, [p, zone::DECK, 0, 0])]
     }
 
     /// A hand card shows its face: its table entry with the row (the opponent's hand has none), then HandShow.
     fn show_hand(&self, player: u32, index: usize) -> Vec<Message> {
-        let Some(card) = self.sides[player as usize].zones.get(&HAND).and_then(|z| z.get(index)).copied() else { return vec![] };
+        let Some(card) = self.sides[player as usize].zones.get(&zone::HAND).and_then(|z| z.get(index)).copied() else { return vec![] };
         vec![
-            command(CARD, [card.uid, card.row as u32, 0, table_place(player, HAND, index)]),
-            command(HAND_SHOW, [player, index as u32, 0, 0]),
+            command(cmd::CARD, [card.uid, card.row as u32, 0, table_place(player, zone::HAND, index)]),
+            command(cmd::HAND_SHOW, [player, index as u32, 0, 0]),
         ]
     }
 
@@ -1888,9 +1540,9 @@ impl Translator {
         zone.clear();
         zone.push(Card { uid, row });
         self.positions.insert((to.player, to.zone), (to.face_up, to.defense));
-        let mut out = vec![command(CARD, [uid, row as u32, 0, table_place(to.player, to.zone, 0)])];
+        let mut out = vec![command(cmd::CARD, [uid, row as u32, 0, table_place(to.player, to.zone, 0)])];
         out.extend(self.monster_record(to.player, to.zone, row));
-        out.push(command(MOVE, [uid | MOVE_SPECIAL_SUMMON << 16, to.packed(), to.packed(), 0]));
+        out.push(command(cmd::MOVE, [uid | MOVE_SPECIAL_SUMMON << 16, to.packed(), to.packed(), 0]));
         out
     }
 
@@ -1926,19 +1578,19 @@ impl Translator {
     /// field's background (7: its Konami id face up, 0 when it leaves).
     fn presented(&self, moved: Vec<Message>, cid: u16, from: Place, to: Place, kind: u32) -> Vec<Message> {
         let mut out = vec![];
-        if from.zone == HAND && to.zone <= FIELD_SPELL && matches!(kind, MOVE_NORMAL_SUMMON | MOVE_ACTIVATE | MOVE_SET) {
+        if from.zone == zone::HAND && to.zone <= zone::FIELD_SPELL && matches!(kind, MOVE_NORMAL_SUMMON | MOVE_ACTIVATE | MOVE_SET) {
             // The speech never reads the id; a Set card the client may not see goes without it.
             let shown = if kind == MOVE_SET && self.hidden[to.player as usize] { 0 } else { cid as u32 };
-            out.push(command(SPEAK_PLAY, [from.player, shown, (kind != MOVE_SET) as u32, (to.zone >= 5) as u32]));
+            out.push(command(cmd::SPEAK_PLAY, [from.player, shown, (kind != MOVE_SET) as u32, (to.zone >= 5) as u32]));
         }
         out.extend(moved);
-        if kind == MOVE_SET && to.zone <= FIELD_SPELL {
-            out.push(command(CARD_SET, [to.player, to.zone, (to.zone < 5) as u32, 0]));
+        if kind == MOVE_SET && to.zone <= zone::FIELD_SPELL {
+            out.push(command(cmd::CARD_SET, [to.player, to.zone, (to.zone < 5) as u32, 0]));
         }
-        if to.zone == FIELD_SPELL && to.face_up {
-            out.push(command(FIELD_CHANGE, [cid as u32, 0, 0, 0]));
-        } else if from.zone == FIELD_SPELL && from.face_up && to.zone != FIELD_SPELL {
-            out.push(command(FIELD_CHANGE, [0; 4]));
+        if to.zone == zone::FIELD_SPELL && to.face_up {
+            out.push(command(cmd::FIELD_CHANGE, [cid as u32, 0, 0, 0]));
+        } else if from.zone == zone::FIELD_SPELL && from.face_up && to.zone != zone::FIELD_SPELL {
+            out.push(command(cmd::FIELD_CHANGE, [0; 4]));
         }
         out
     }
@@ -1949,20 +1601,20 @@ impl Translator {
     /// the client has no place for.
     fn activation(&self, m: &Json) -> Vec<Message> {
         let mut at = m.clone();
-        at["location"] = json!(m["location"].as_u64().unwrap_or(0) & !LOC_OVERLAY);
+        at["location"] = json!(m["location"].as_u64().unwrap_or(0) & !loc::OVERLAY);
         let Some(place) = self.engine_place(&at) else { return vec![] };
-        let index = if place.zone <= FIELD_SPELL { 0 } else { place.index };
+        let index = if place.zone <= zone::FIELD_SPELL { 0 } else { place.index };
         let Some(card) = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.get(index)).copied() else { return vec![] };
         let cid = self.cards.get(&card.row).map_or(0, |c| c.cid as u32);
         let mut out = vec![];
-        if (5..=FIELD_SPELL).contains(&place.zone) {
-            out.push(command(SPEAK_ACTIVATE, [place.player, 0x8000 | card.uid, 2, 0]));
-            out.push(command(SPEAK_ACTIVATE, [place.player, 0x8000 | card.uid, 3, 0]));
+        if (5..=zone::FIELD_SPELL).contains(&place.zone) {
+            out.push(command(cmd::SPEAK_ACTIVATE, [place.player, 0x8000 | card.uid, 2, 0]));
+            out.push(command(cmd::SPEAK_ACTIVATE, [place.player, 0x8000 | card.uid, 3, 0]));
         } else {
-            out.push(command(SPEAK_ACTIVATE, [place.player, 0x8000 | card.uid, 4, 0]));
+            out.push(command(cmd::SPEAK_ACTIVATE, [place.player, 0x8000 | card.uid, 4, 0]));
         }
         let place = Place { index, face_up: true, ..place };
-        out.push(command(CARD_ACTIVATE, [place.packed(), cid, card.uid, 0]));
+        out.push(command(cmd::CARD_ACTIVATE, [place.packed(), cid, card.uid, 0]));
         out
     }
 
@@ -1972,25 +1624,25 @@ impl Translator {
     fn panel_stats(&self, card: Card, from: Place, to: Place, row: u32) -> Vec<Message> {
         let Some(s) = self.cards.get(&card.row).filter(|s| s.level > 0) else { return vec![] };
         let mut out = vec![];
-        if from.zone == HAND && to.zone != HAND && from.player == CLIENT {
-            out.push(command(HAND_LEVEL, [card.uid, NO_LEVEL, 0, 0]));
+        if from.zone == zone::HAND && to.zone != zone::HAND && from.player == CLIENT {
+            out.push(command(cmd::HAND_LEVEL, [card.uid, NO_LEVEL, 0, 0]));
         }
-        if to.zone == HAND && from.zone != HAND && to.player == CLIENT && row != 0 {
-            out.push(command(HAND_LEVEL, [card.uid, s.level, 0, 0]));
+        if to.zone == zone::HAND && from.zone != zone::HAND && to.player == CLIENT && row != 0 {
+            out.push(command(cmd::HAND_LEVEL, [card.uid, s.level, 0, 0]));
         }
-        if to.zone == GRAVE && from.zone != GRAVE {
+        if to.zone == zone::GRAVE && from.zone != zone::GRAVE {
             let id = s.cid as u32;
-            out.extend([command(PILE_STATS, [id, id, s.attribute, s.race]), command(PILE_STATS_COMMIT, [id, s.level, 0, 0])]);
+            out.extend([command(cmd::PILE_STATS, [id, id, s.attribute, s.race]), command(cmd::PILE_STATS_COMMIT, [id, s.level, 0, 0])]);
         }
         out
     }
 
     /// [`relocate`] with the move's kind (`move_kind`), which the client's move takes in `param1`'s high half.
     fn relocate_as(&mut self, cid: u16, from: Place, to: Place, kind: u32) -> Vec<Message> {
-        let record = (from.zone <= FIELD_SPELL).then(|| self.records.get(&(from.player, from.zone)).copied()).flatten();
+        let record = (from.zone <= zone::FIELD_SPELL).then(|| self.records.get(&(from.player, from.zone)).copied()).flatten();
         let cards = &self.cards;
         let source = self.sides[from.player as usize].zone(from.zone);
-        let at = if from.zone == DECK || from.zone == EXTRA {
+        let at = if from.zone == zone::DECK || from.zone == zone::EXTRA {
             source.iter().position(|c| cards.get(&c.row).map(|s| s.cid) == Some(cid)).or(if source.is_empty() { None } else { Some(0) })
         } else if source.is_empty() {
             None
@@ -2011,22 +1663,22 @@ impl Translator {
         // The client takes a hand card out by the move's index (0x5000E0 → 0x5005D0), so the move names the index the
         // mirror (the client's view) found it at, not the engine's: from another index the client drops the wrong card
         // and keeps this one in its hand list, and the next renumbering of that hand crashes on it (0x516185).
-        let from = if from.zone == DECK || from.zone == EXTRA { from } else { Place { index: at, ..from } };
+        let from = if from.zone == zone::DECK || from.zone == zone::EXTRA { from } else { Place { index: at, ..from } };
         let card = source.remove(at);
         let dest = self.sides[to.player as usize].zone(to.zone);
-        let index = if to.zone > FIELD_SPELL { to.index.min(dest.len()) } else { 0 };
-        if to.zone <= FIELD_SPELL {
+        let index = if to.zone > zone::FIELD_SPELL { to.index.min(dest.len()) } else { 0 };
+        if to.zone <= zone::FIELD_SPELL {
             dest.clear();
         }
         dest.insert(index, card);
         let to = Place { index, ..to };
         // Monsters' face and position, and Spell/Traps' face (a revealed Set card, `reveal_field`).
-        if to.zone <= FIELD_SPELL {
+        if to.zone <= zone::FIELD_SPELL {
             self.positions.insert((to.player, to.zone), (to.face_up, to.defense));
         }
         let row = self.shown_row(&to, card.row);
         let mut out = self.panel_stats(card, from, to, row);
-        out.push(command(CARD, [card.uid | open(to.zone), row, 0, table_place(to.player, to.zone, index)]));
+        out.push(command(cmd::CARD, [card.uid | open(to.zone), row, 0, table_place(to.player, to.zone, index)]));
         if to.zone < 5 && row != 0 {
             out.extend(match record {
                 Some(values) => self.record(to.player, to.zone, card.row, values),
@@ -2037,17 +1689,17 @@ impl Translator {
         // count change redraws the pile from the table's top entry (0x4FE4D0); the hand's after.
         let mut hand = vec![];
         for (p, zone, start) in [(from.player, from.zone, at), (to.player, to.zone, index + 1)] {
-            if zone <= FIELD_SPELL || zone == DECK {
+            if zone <= zone::FIELD_SPELL || zone == zone::DECK {
                 continue;
             }
             let shifted: Vec<(usize, Card)> = self.sides[p as usize].zone(zone).iter().copied().enumerate().skip(start).collect();
             for (i, c) in shifted {
                 let row = self.shown_row(&Place { player: p, zone, index: i, face_up: true, defense: false }, c.row);
-                let entry = command(CARD, [c.uid | open(zone), row, 0, table_place(p, zone, i)]);
-                if zone == HAND { hand.push(entry) } else { out.push(entry) }
+                let entry = command(cmd::CARD, [c.uid | open(zone), row, 0, table_place(p, zone, i)]);
+                if zone == zone::HAND { hand.push(entry) } else { out.push(entry) }
             }
         }
-        out.push(command(MOVE, [card.uid | kind << 16, from.packed(), to.packed(), 0]));
+        out.push(command(cmd::MOVE, [card.uid | kind << 16, from.packed(), to.packed(), 0]));
         out.extend(hand);
         out
     }
@@ -2057,7 +1709,7 @@ impl Translator {
         let Some(attacker) = self.engine_place(&m["card"]) else { return vec![] };
         let (player, zone) = self.engine_place(&m["target"]).map_or((1 - attacker.player, DIRECT_TARGET), |t| (t.player, t.zone));
         self.in_battle = true;
-        vec![command(VIEW_BATTLE_INIT, [0; 4]), command(VIEW_BATTLE_ATTACK, [attacker.player | attacker.zone << 8, player, zone, 0])]
+        vec![command(cmd::BATTLE_INIT, [0; 4]), command(cmd::BATTLE_ATTACK, [attacker.player | attacker.zone << 8, player, zone, 0])]
     }
 
     /// MSG_BATTLE {card, target: {attack, defense, position, destroyed}}: per player, the battle damage they take, by
@@ -2069,10 +1721,10 @@ impl Translator {
     fn battle(&self, m: &Json) -> Vec<Message> {
         let (card, target) = (&m["card"], &m["target"]);
         if target["location"].as_u64().unwrap_or(0) == 0 {
-            return vec![command(VIEW_BATTLE_RUN, [0; 4])];
+            return vec![command(cmd::BATTLE_RUN, [0; 4])];
         }
         let n = |c: &Json, k: &str| c[k].as_i64().unwrap_or(0);
-        let (to_attacker, to_target) = if target["position"].as_u64().unwrap_or(0) & (POS_FACEUP_ATTACK | POS_FACEDOWN_ATTACK) != 0 {
+        let (to_attacker, to_target) = if target["position"].as_u64().unwrap_or(0) & (pos::FACEUP_ATTACK | pos::FACEDOWN_ATTACK) != 0 {
             let diff = n(card, "attack") - n(target, "attack");
             (-diff.min(0), diff.max(0))
         } else {
@@ -2082,20 +1734,20 @@ impl Translator {
         let attacker = self.player(&card["controller"]) as usize;
         damage[attacker] = to_attacker as u32;
         damage[1 - attacker] = to_target as u32;
-        vec![command(VIEW_BATTLE_RUN, [damage[0], damage[1], 0, 0])]
+        vec![command(cmd::BATTLE_RUN, [damage[0], damage[1], 0, 0])]
     }
 
     /// The end of the battle shown on the client, if one is.
     fn end_battle(&mut self) -> Vec<Message> {
         self.attacker = None;
-        if std::mem::take(&mut self.in_battle) { vec![command(VIEW_BATTLE_END, [0; 4])] } else { vec![] }
+        if std::mem::take(&mut self.in_battle) { vec![command(cmd::BATTLE_END, [0; 4])] } else { vec![] }
     }
 
     /// A field card turns in place to `position`: 0x1C with its new face and position, after its table entry and record
     /// when it shows a row it didn't before (the opponent's face-down card turning face-up when hiding).
     fn turn(&mut self, loc: &Json, position: u64) -> Vec<Message> {
         let Some(place) = self.engine_place(loc) else { return vec![] };
-        if place.zone > FIELD_SPELL {
+        if place.zone > zone::FIELD_SPELL {
             return vec![];
         }
         // A Spell/Trap has no battle position.
@@ -2112,7 +1764,7 @@ impl Translator {
                 && place.face_up
             {
                 let cid = self.cards.get(&card.row).map_or(0, |c| c.cid as u32);
-                out.push(command(SPEAK_REVEAL, [place.player, 1, cid, 0]));
+                out.push(command(cmd::SPEAK_REVEAL, [place.player, 1, cid, 0]));
             }
         }
         // Face down, the client empties the card's counters itself (0x4FBE50); so does EDOPro.
@@ -2125,14 +1777,14 @@ impl Translator {
             && self.hidden[place.player as usize]
             && place.face_up
         {
-            out.push(command(CARD, [card.uid, card.row as u32, 0, table_place(place.player, place.zone, 0)]));
+            out.push(command(cmd::CARD, [card.uid, card.row as u32, 0, table_place(place.player, place.zone, 0)]));
             if place.zone < 5 {
                 out.extend(self.monster_record(place.player, place.zone, card.row));
             } else {
                 // The field card takes its face from a move (a flip only turns it over), and a Spell/Trap has no
                 // record to carry its id: it moves onto its own slot with its row, face up.
                 let down = Place { face_up: false, ..place };
-                out.push(command(MOVE, [card.uid, down.packed(), place.packed(), 0]));
+                out.push(command(cmd::MOVE, [card.uid, down.packed(), place.packed(), 0]));
                 return out;
             }
         }
@@ -2142,16 +1794,16 @@ impl Translator {
         if let (Some(before), Some(card)) = (before, card) {
             let (face_up, defense) = before.unwrap_or((!place.face_up, !place.defense));
             let from = Place { face_up, defense, ..place };
-            out.push(command(MOVE, [card.uid, from.packed(), place.packed(), 0]));
+            out.push(command(cmd::MOVE, [card.uid, from.packed(), place.packed(), 0]));
         }
-        out.push(command(FLIP_TURN, [place.packed(), 0, 0, 0]));
+        out.push(command(cmd::FLIP_TURN, [place.packed(), 0, 0, 0]));
         out
     }
 
     /// MSG_ADD_COUNTER / MSG_REMOVE_COUNTER {counter_type, controller, location, sequence, count} on a field card: the
     /// change in the client's kind, a removal no more than the client holds.
     fn counter(&mut self, m: &Json, add: bool) -> Vec<Message> {
-        let Some(place) = self.engine_place(m).filter(|p| p.zone <= FIELD_SPELL) else { return vec![] };
+        let Some(place) = self.engine_place(m).filter(|p| p.zone <= zone::FIELD_SPELL) else { return vec![] };
         let Some(card) = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied() else { return vec![] };
         let id = m["counter_type"].as_u64().unwrap_or(0);
         let kind = COUNTER_KINDS.iter().find(|(e, _)| *e == id).map_or(ANY_COUNTER, |(_, k)| *k);
@@ -2162,13 +1814,13 @@ impl Translator {
         if change == 0 {
             return vec![];
         }
-        vec![command(COUNTER, [place.player | place.zone << 8, change as u32, kind, 0])]
+        vec![command(cmd::COUNTER, [place.player | place.zone << 8, change as u32, kind, 0])]
     }
 
     /// A field card about to leave its place gives up its counters on the client, which would keep them (EDOPro drops
     /// them without a message).
     fn drop_counters(&mut self, place: &Place) -> Vec<Message> {
-        if place.zone > FIELD_SPELL {
+        if place.zone > zone::FIELD_SPELL {
             return vec![];
         }
         let Some(card) = self.sides[place.player as usize].zones.get(&place.zone).and_then(|z| z.first()).copied() else { return vec![] };
@@ -2176,7 +1828,7 @@ impl Translator {
             self.counters.iter().filter(|((uid, _), n)| *uid == card.uid && **n > 0).map(|((_, kind), n)| (*kind, *n)).collect();
         held.sort_unstable();
         self.counters.retain(|(uid, _), _| *uid != card.uid);
-        held.into_iter().map(|(kind, n)| command(COUNTER, [place.player | place.zone << 8, (n as i32).wrapping_neg() as u32, kind, 0])).collect()
+        held.into_iter().map(|(kind, n)| command(cmd::COUNTER, [place.player | place.zone << 8, (n as i32).wrapping_neg() as u32, kind, 0])).collect()
     }
 
     /// The record the card info and the field label show for a monster zone (0x523F00, keyed player | zone << 8):
@@ -2206,9 +1858,9 @@ impl Translator {
         }
         let [level, atk, def, base_atk, base_def] = values;
         vec![
-            command(RECORD_BEGIN, [0, cid, race, attribute]),
-            command(RECORD_MORE, [0, level, atk, def]),
-            command(RECORD_COMMIT, [player | zone << 8, base_atk, base_def, cid]),
+            command(cmd::RECORD_BEGIN, [0, cid, race, attribute]),
+            command(cmd::RECORD_MORE, [0, level, atk, def]),
+            command(cmd::RECORD_COMMIT, [player | zone << 8, base_atk, base_def, cid]),
         ]
     }
 
@@ -2222,7 +1874,7 @@ impl Translator {
         let mut out = vec![];
         for s in m["monsters"].as_array().into_iter().flatten() {
             let int = |k: &str| s[k].as_u64().unwrap_or(0) as u32;
-            if int("position") as u64 & (POS_FACEUP_ATTACK | POS_FACEUP_DEFENSE) == 0 || int("sequence") >= 5 {
+            if int("position") as u64 & (pos::FACEUP_ATTACK | pos::FACEUP_DEFENSE) == 0 || int("sequence") >= 5 {
                 continue;
             }
             let (player, zone) = (self.player(&s["controller"]), int("sequence"));
@@ -2253,14 +1905,14 @@ impl Translator {
         let player = self.player(&loc["controller"]);
         let seq = loc["sequence"].as_u64()? as usize;
         let (zone, index) = match loc["location"].as_u64()? {
-            LOC_DECK => (DECK, 0),
-            LOC_HAND => (HAND, seq),
-            LOC_MZONE => (seq as u32, 0),
-            LOC_SZONE if seq == 5 => (FIELD_SPELL, 0),
-            LOC_SZONE => (5 + seq as u32, 0),
-            LOC_GRAVE => (GRAVE, seq),
-            LOC_REMOVED => (REMOVED, seq),
-            LOC_EXTRA => (EXTRA, seq),
+            loc::DECK => (zone::DECK, 0),
+            loc::HAND => (zone::HAND, seq),
+            loc::MZONE => (seq as u32, 0),
+            loc::SZONE if seq == 5 => (zone::FIELD_SPELL, 0),
+            loc::SZONE => (5 + seq as u32, 0),
+            loc::GRAVE => (zone::GRAVE, seq),
+            loc::REMOVED => (zone::REMOVED, seq),
+            loc::EXTRA => (zone::EXTRA, seq),
             _ => return None,
         };
         // ocgcore positions: 1 face-up attack, 2 face-down attack, 4 face-up defense, 8 face-down defense. Only
@@ -2268,9 +1920,9 @@ impl Translator {
         // Spell/Trap comes face-down defense, which drew it like a set monster (live).
         // The Graveyard is face up: face down, its top card showed only its back (live).
         let position = match zone {
-            GRAVE => POS_FACEUP_ATTACK,
-            REMOVED => loc["position"].as_u64().unwrap_or(POS_FACEUP_ATTACK),
-            zone if zone <= FIELD_SPELL => loc["position"].as_u64().unwrap_or(0),
+            zone::GRAVE => pos::FACEUP_ATTACK,
+            zone::REMOVED => loc["position"].as_u64().unwrap_or(pos::FACEUP_ATTACK),
+            zone if zone <= zone::FIELD_SPELL => loc["position"].as_u64().unwrap_or(0),
             _ => 0,
         };
         Some(Place { player, zone, index, face_up: position & 5 != 0, defense: zone < 5 && position & 12 != 0 })
@@ -2280,9 +1932,9 @@ impl Translator {
     /// material's over its monster).
     fn chain_link(&self, m: &Json) -> Message {
         let mut at = m.clone();
-        at["location"] = json!(m["location"].as_u64().unwrap_or(0) & !LOC_OVERLAY);
+        at["location"] = json!(m["location"].as_u64().unwrap_or(0) & !loc::OVERLAY);
         let zone = self.engine_place(&at).map_or(FIELD_CENTRE, |p| p.zone);
-        command(CHAIN_SET, [self.player(&m["controller"]), zone, m["chain_size"].as_u64().unwrap_or(0) as u32, 0])
+        command(cmd::CHAIN_SET, [self.player(&m["controller"]), zone, m["chain_size"].as_u64().unwrap_or(0) as u32, 0])
     }
 
     /// What to do with the engine's prompt (the last message when it awaits).
@@ -2297,7 +1949,7 @@ impl Translator {
             Prompt::Client(out) => {
                 let mut all = self.unstage_n(staged);
                 if std::mem::take(&mut self.taken_back) {
-                    all.insert(0, command(VIEW_BATTLE_END, [0; 4]));
+                    all.insert(0, command(cmd::BATTLE_END, [0; 4]));
                 }
                 all.extend(out);
                 with_card_ids(&self.cards, &mut all);
@@ -2313,48 +1965,48 @@ impl Translator {
     fn prompt_for(&mut self, m: &Json) -> Prompt {
         let kind = m["type"].as_u64().unwrap_or(0);
         if self.player(&m["player"]) == CPU {
-            if kind == MSG_ANNOUNCE_CARD {
+            if kind == msg::ANNOUNCE_CARD {
                 return Prompt::Answer(self.cpu_card_name(m));
             }
             return Prompt::Answer(cpu_answer(kind, m));
         }
         match kind {
-            MSG_SELECT_IDLECMD | MSG_SELECT_BATTLECMD => {
-                let (lists, buttons, mode): (Lists, [(&str, u8); 2], u32) = if kind == MSG_SELECT_IDLECMD {
-                    (&IDLE_LISTS, [("to_bp", BUTTON_BP), ("to_ep", BUTTON_EP)], MODE_MAIN)
+            msg::SELECT_IDLECMD | msg::SELECT_BATTLECMD => {
+                let (lists, buttons, mode): (Lists, [(&str, u8); 2], u32) = if kind == msg::SELECT_IDLECMD {
+                    (&IDLE_LISTS, [("to_bp", flag::BUTTON_BP), ("to_ep", flag::BUTTON_EP)], mode::MAIN)
                 } else {
-                    (&BATTLE_LISTS, [("to_m2", BUTTON_M2), ("to_ep", BUTTON_EP)], MODE_BATTLE)
+                    (&BATTLE_LISTS, [("to_m2", flag::BUTTON_M2), ("to_ep", flag::BUTTON_EP)], mode::BATTLE)
                 };
                 self.attacker = None;
                 let mut map = self.command_map(m, lists);
                 self.add_pile_views(&mut map);
                 let flags: Vec<(u8, u8)> = buttons.into_iter().filter(|(k, _)| m[*k] == true).map(|(_, b)| (b, 1)).collect();
                 self.pending = Some(m.clone());
-                Prompt::Client(vec![command_data(&map, &flags), command(INPUT, [mode, CLIENT, 0, 0])])
+                Prompt::Client(vec![command_data(&map, &flags), command(cmd::INPUT, [mode, CLIENT, 0, 0])])
             }
-            MSG_SELECT_EFFECTYN | MSG_SELECT_YESNO => {
+            msg::SELECT_EFFECTYN | msg::SELECT_YESNO => {
                 let battle = BATTLE_QUESTIONS.iter().find(|(d, _)| m["description"].as_u64() == Some(*d)).map(|(_, text)| *text);
                 let entries = match (kind, m["cid"].as_u64(), m["description_cid"].as_u64(), battle) {
-                    (MSG_SELECT_EFFECTYN, cid, _, _) => vec![TEXT | ACTIVATE_TEXT, CARD_NAME | cid.unwrap_or(0) as u32],
-                    (_, _, _, Some(text)) => vec![TEXT | text],
-                    (_, _, Some(cid), _) => vec![TEXT | USE_TEXT, CARD_NAME | cid as u32],
-                    _ => vec![TEXT | USE_NOW_TEXT],
+                    (msg::SELECT_EFFECTYN, cid, _, _) => vec![entry::TEXT | text::ACTIVATE, entry::CARD_NAME | cid.unwrap_or(0) as u32],
+                    (_, _, _, Some(text)) => vec![entry::TEXT | text],
+                    (_, _, Some(cid), _) => vec![entry::TEXT | text::USE, entry::CARD_NAME | cid as u32],
+                    _ => vec![entry::TEXT | text::USE_NOW],
                 };
                 // A card's own question (its string as the description) under the client's line, through the DLL.
                 let mut out = vec![];
                 let mut entries = entries;
                 if let Some(question) = m["description_text"].as_str().filter(|t| !t.is_empty() && entries.len() <= 2) {
                     let id = self.text(&mut out, question);
-                    entries.extend([LINE_BREAK, TEXT | id]);
+                    entries.extend([entry::LINE_BREAK, entry::TEXT | id]);
                 }
                 out.extend(message(&entries));
-                out.push(command(DIALOG, [YES_NO, FROM_ENTRIES, 0, 0]));
+                out.push(command(cmd::DIALOG, [dialog::YES_NO, dialog::FROM_ENTRIES, 0, 0]));
                 self.pending = Some(m.clone());
                 Prompt::Client(out)
             }
-            MSG_SELECT_CARD | MSG_SELECT_TRIBUTE => {
-                let hint = if kind == MSG_SELECT_TRIBUTE { HINTMSG_RELEASE } else { std::mem::take(&mut self.hint) };
-                if hint == HINTMSG_ATTACKTARGET
+            msg::SELECT_CARD | msg::SELECT_TRIBUTE => {
+                let hint = if kind == msg::SELECT_TRIBUTE { hintmsg::RELEASE } else { std::mem::take(&mut self.hint) };
+                if hint == hintmsg::ATTACKTARGET
                     && let Some(out) = self.target_on_field(m)
                 {
                     return Prompt::Client(out);
@@ -2367,7 +2019,7 @@ impl Translator {
                 Prompt::Client(out)
             }
             // Materials, one at a time: the card list until the engine lets the player finish and nothing is left.
-            MSG_SELECT_UNSELECT_CARD if m["select_cards"].as_array().is_some_and(|s| !s.is_empty()) => {
+            msg::SELECT_UNSELECT_CARD if m["select_cards"].as_array().is_some_and(|s| !s.is_empty()) => {
                 let open = m["can_finish"] == true || m["can_cancel"] == true;
                 let list = json!({ "selects": m["select_cards"], "min": if open { 0 } else { 1 }, "max": 1 });
                 let mut out = vec![];
@@ -2382,7 +2034,7 @@ impl Translator {
             // picks that don't make the sum bring the list back. Only when some picks can make it: a list nothing
             // satisfies would hold the player forever, so that one gets the automatic answer (and the core's
             // refusals end the duel, see `Repeats`).
-            MSG_SELECT_SUM if m["selects"].as_array().is_some_and(|s| !s.is_empty()) && sum_fits(m, &sum_choice(m)) => {
+            msg::SELECT_SUM if m["selects"].as_array().is_some_and(|s| !s.is_empty()) && sum_fits(m, &sum_choice(m)) => {
                 // Kind 1 (min 0): any number of picks, confirmed with a right-click (dlg_cardlist.swf has no OK
                 // button). A list of kind 0x27 with a larger max closes only at max picks (live: Machina Fortress's
                 // discards held the player at two picks of six).
@@ -2394,21 +2046,21 @@ impl Translator {
                 // required number of Level.".
                 let mut out = vec![];
                 let hint = std::mem::take(&mut self.hint);
-                let text = self.hint_message(&mut out, hint).or(self.sum_text).unwrap_or(SUM_TEXT);
+                let text = self.hint_message(&mut out, hint).or(self.sum_text).unwrap_or(text::SUM);
                 self.sum_text = Some(text);
                 out.extend(self.card_list(&list, Some(text)));
                 self.pending = Some(m.clone());
                 self.picks.clear();
                 Prompt::Client(out)
             }
-            MSG_SELECT_POSITION => match self.position_dialog(m) {
+            msg::SELECT_POSITION => match self.position_dialog(m) {
                 Some(out) => {
                     self.pending = Some(m.clone());
                     Prompt::Client(out)
                 }
                 None => Prompt::Answer(cpu_answer(kind, m)),
             },
-            MSG_SELECT_OPTION => match option_list(m).or_else(|| self.worded_options(m)) {
+            msg::SELECT_OPTION => match option_list(m).or_else(|| self.worded_options(m)) {
                 Some(out) => {
                     self.pending = Some(m.clone());
                     Prompt::Client(out)
@@ -2422,7 +2074,7 @@ impl Translator {
                     let selects: Vec<Json> = (0..m["options"].as_array().map_or(0, Vec::len))
                         .map(|i| json!({ "controller": m["player"], "cid": card(i) }))
                         .collect();
-                    let out = self.card_list(&json!({ "selects": selects, "min": 1, "max": 1 }), Some(SELECT_EFFECT_TEXT));
+                    let out = self.card_list(&json!({ "selects": selects, "min": 1, "max": 1 }), Some(text::SELECT_EFFECT));
                     // What each option does, from the engine's card strings: the chat window, numbered as listed.
                     for (i, text) in m["option_texts"].as_array().into_iter().flatten().enumerate() {
                         if let Some(text) = text.as_str().filter(|t| !t.is_empty()) {
@@ -2436,31 +2088,31 @@ impl Translator {
                 }
                 None => Prompt::Answer(cpu_answer(kind, m)),
             },
-            MSG_SELECT_CHAIN => self.chain_chance(m),
+            msg::SELECT_CHAIN => self.chain_chance(m),
             // An order: chain links triggered together (21; the first pick becomes chain link 1) or cards put back on
             // the Deck (25, Big Eye). The card list orders the picks itself (dlg_cardlist.swf: a badge per click, a
             // second click takes it back; kind 6 needs all of them), and each card's rank answers the engine.
-            MSG_SORT_CHAIN | MSG_SORT_CARD if m["cards"].as_array().is_some_and(|c| c.len() >= 2) => {
+            msg::SORT_CHAIN | msg::SORT_CARD if m["cards"].as_array().is_some_and(|c| c.len() >= 2) => {
                 let n = m["cards"].as_array().map_or(0, Vec::len);
-                let text = if kind == MSG_SORT_CARD { SORT_TEXT } else { SELECT_EFFECT_TEXT };
+                let text = if kind == msg::SORT_CARD { text::SORT } else { text::SELECT_EFFECT };
                 let out = self.card_list(&json!({ "selects": m["cards"], "min": n, "max": n }), Some(text));
                 self.pending = Some(m.clone());
                 self.picks.clear();
                 Prompt::Client(out)
             }
-            MSG_ANNOUNCE_RACE | MSG_ANNOUNCE_ATTRIB | MSG_ANNOUNCE_NUMBER | MSG_ANNOUNCE_CARD => match declaration(m, std::mem::take(&mut self.hint) == HINTMSG_LVRANK) {
+            msg::ANNOUNCE_RACE | msg::ANNOUNCE_ATTRIB | msg::ANNOUNCE_NUMBER | msg::ANNOUNCE_CARD => match declaration(m, std::mem::take(&mut self.hint) == hintmsg::LVRANK) {
                 Some(out) => {
                     self.pending = Some(m.clone());
                     Prompt::Client(out)
                 }
-                None if kind == MSG_ANNOUNCE_CARD => Prompt::Answer(self.cpu_card_name(m)),
+                None if kind == msg::ANNOUNCE_CARD => Prompt::Answer(self.cpu_card_name(m)),
                 None => Prompt::Answer(cpu_answer(kind, m)),
             },
             // A zone an effect takes (Ground Collapse's, Senet Switch's move): the client's own prompt in an OK dialog, then
             // the zones as click targets (`zone_map`).
-            MSG_SELECT_DISFIELD if !free_zones(m).is_empty() => self.zone_prompt(m),
+            msg::SELECT_DISFIELD if !free_zones(m).is_empty() => self.zone_prompt(m),
             // Where a summoned, Set or activated card goes, with auto card placing off and a choice to make.
-            MSG_SELECT_PLACE if !self.auto_place && free_zones(m).len() > m["count"].as_u64().unwrap_or(1).max(1) as usize => {
+            msg::SELECT_PLACE if !self.auto_place && free_zones(m).len() > m["count"].as_u64().unwrap_or(1).max(1) as usize => {
                 self.zone_prompt(m)
             }
             // Where a summoned, Set or activated card goes: chosen for the player, centre out, as Konami's server did.
@@ -2473,21 +2125,21 @@ impl Translator {
     fn zone_prompt(&mut self, m: &Json) -> Prompt {
         let hint = std::mem::take(&mut self.hint);
         let zones = free_zones(m);
-        let spells = zones.iter().all(|&(_, location, _)| location == LOC_SZONE);
+        let spells = zones.iter().all(|&(_, location, _)| location == loc::SZONE);
         let mut out = vec![];
         // The client's prompts are the zone-disabling effects' ("Select Monster Card Zones to render unusable."); a
         // placement is worded by the server through the connection DLL, in the client's terms.
-        let text = if m["type"] == MSG_SELECT_PLACE {
+        let text = if m["type"] == msg::SELECT_PLACE {
             self.text(&mut out, if spells { PLACE_SPELL_WORDS } else { PLACE_MONSTER_WORDS })
-        } else if hint == HINTMSG_TOZONE {
-            ADJACENT_ZONE_TEXT
+        } else if hint == hintmsg::TOZONE {
+            text::ADJACENT_ZONE
         } else if spells {
-            SPELL_ZONE_TEXT
+            text::SPELL_ZONE
         } else {
-            MONSTER_ZONE_TEXT
+            text::MONSTER_ZONE
         };
-        out.extend(message(&[TEXT | text]));
-        out.push(command(DIALOG, [OK, FROM_ENTRIES, 0, 0]));
+        out.extend(message(&[entry::TEXT | text]));
+        out.push(command(cmd::DIALOG, [dialog::OK, dialog::FROM_ENTRIES, 0, 0]));
         self.pending = Some(m.clone());
         self.zone_picks = None;
         Prompt::Client(out)
@@ -2513,14 +2165,14 @@ impl Translator {
                 Some(label) => label,
                 None => self.text(&mut out, &shortened(text.unwrap_or_default(), LABEL_CHARS)),
             };
-            labels.push(label | LISTED);
+            labels.push(label | dialog::LISTED);
         }
         let hint = std::mem::take(&mut self.hint);
-        let title = self.hint_message(&mut out, hint).unwrap_or(SELECT_EFFECT_TEXT);
-        out.push(command(LIST_BEGIN, [labels.len() as u32, 0, 0, 0]));
-        out.extend(fours(LIST_VALUES, &labels));
-        out.extend(message(&[TEXT | title]));
-        out.push(command(DIALOG, [SELECT, FROM_ENTRIES, 0, 0]));
+        let title = self.hint_message(&mut out, hint).unwrap_or(text::SELECT_EFFECT);
+        out.push(command(cmd::LIST_BEGIN, [labels.len() as u32, 0, 0, 0]));
+        out.extend(fours(cmd::LIST_VALUES, &labels));
+        out.extend(message(&[entry::TEXT | title]));
+        out.push(command(cmd::DIALOG, [dialog::SELECT, dialog::FROM_ENTRIES, 0, 0]));
         Some(out)
     }
 
@@ -2528,7 +2180,7 @@ impl Translator {
     fn cpu_card_name(&mut self, m: &Json) -> Json {
         // A card the effect's filter allows (the sidecar's `fits`, the duel's own cards first).
         if let Some(cid) = m["fits"].as_array().and_then(|f| f.first()).and_then(Json::as_u64) {
-            return json!({ "type": RESP_CARD_NAME, "cid": cid });
+            return json!({ "type": resp::CARD_NAME, "cid": cid });
         }
         let mut cids: Vec<u16> =
             self.sides.iter().flat_map(|s| s.zones.values()).flatten().filter_map(|c| self.cards.get(&c.row)).map(|c| c.cid).collect();
@@ -2536,7 +2188,7 @@ impl Translator {
         cids.dedup();
         let cid = cids.get(self.declared % cids.len().max(1)).copied().unwrap_or(0);
         self.declared += 1;
-        json!({ "type": RESP_CARD_NAME, "cid": cid })
+        json!({ "type": resp::CARD_NAME, "cid": cid })
     }
 
     /// The position dialog for MSG_SELECT_POSITION {cid, positions}, with the card's image (any uid with its id) and
@@ -2548,7 +2200,7 @@ impl Translator {
     /// a free monster zone of its player (`token` puts it at its own zone).
     fn position_dialog(&mut self, m: &Json) -> Option<Vec<Message>> {
         let allowed = m["positions"].as_u64().unwrap_or(0);
-        if allowed & (POS_FACEUP_ATTACK | POS_FACEDOWN_ATTACK) == 0 {
+        if allowed & (pos::FACEUP_ATTACK | pos::FACEDOWN_ATTACK) == 0 {
             return None;
         }
         let cid = m["cid"].as_u64().unwrap_or(0) as u16;
@@ -2572,7 +2224,7 @@ impl Translator {
         let held = match seen.or(copies.first()) {
             Some(&(uid, row, ref place)) => {
                 if self.shown_row(place, row) == 0 {
-                    out.push(command(CARD, [uid, row as u32, 0, table_place(place.player, place.zone, place.index)]));
+                    out.push(command(cmd::CARD, [uid, row as u32, 0, table_place(place.player, place.zone, place.index)]));
                 }
                 Some(uid)
             }
@@ -2590,15 +2242,15 @@ impl Translator {
                 let player = self.player(&m["player"]);
                 let side = &self.sides[player as usize];
                 let zone = (0..5).find(|z| side.zones.get(z).is_none_or(Vec::is_empty)).unwrap_or(0);
-                out.push(command(CARD, [uid, row as u32, 0, table_place(player, zone, 0)]));
+                out.push(command(cmd::CARD, [uid, row as u32, 0, table_place(player, zone, 0)]));
                 // A token without a Konami id is named by its client card's.
                 (uid, self.cards.get(&row).map_or(cid, |s| s.cid))
             }
             (None, None) => (0, cid),
         };
-        let face_up = if allowed & POS_FACEUP_DEFENSE != 0 { FACE_UP_DEFENSE } else { 0 };
-        out.extend(message(&[TEXT | POSITION_TEXT, CARD_NAME | name as u32]));
-        out.push(command(DIALOG, [POSITION, FROM_ENTRIES, uid | face_up, 0]));
+        let face_up = if allowed & pos::FACEUP_DEFENSE != 0 { dialog::FACE_UP_DEFENSE } else { 0 };
+        out.extend(message(&[entry::TEXT | text::POSITION, entry::CARD_NAME | name as u32]));
+        out.push(command(cmd::DIALOG, [dialog::POSITION, dialog::FROM_ENTRIES, uid | face_up, 0]));
         Some(out)
     }
 
@@ -2610,41 +2262,41 @@ impl Translator {
         let forced = m["forced"] == true;
         let phase_window = self.phase_window;
         if selects.is_empty() {
-            return Prompt::Answer(json!({ "type": RESP_CHAIN, "index": null }));
+            return Prompt::Answer(json!({ "type": resp::CHAIN, "index": null }));
         }
         if forced && selects.len() == 1 {
-            return Prompt::Answer(json!({ "type": RESP_CHAIN, "index": 0 }));
+            return Prompt::Answer(json!({ "type": resp::CHAIN, "index": 0 }));
         }
         self.pending = Some(m.clone());
         self.picks.clear();
         self.chain_list = forced;
         if forced {
-            return Prompt::Client(self.card_list(m, Some(SELECT_EFFECT_TEXT)));
+            return Prompt::Client(self.card_list(m, Some(text::SELECT_EFFECT)));
         }
         let rows: Vec<u32> = selects.iter().map(|loc| self.row_of(loc) as u32).collect();
-        let mut out = vec![command(LIST_BEGIN, [rows.len() as u32, 0, WITH_CARDS, 0])];
-        out.extend(fours(LIST_ROWS, &rows));
+        let mut out = vec![command(cmd::LIST_BEGIN, [rows.len() as u32, 0, dialog::WITH_CARDS, 0])];
+        out.extend(fours(cmd::LIST_ROWS, &rows));
         let entries = match &self.chaining {
             Some(link) => {
-                let spell_trap = link["location"].as_u64() == Some(LOC_SZONE);
-                let text = if spell_trap { CHAIN_CARD_TEXT } else { CHAIN_EFFECT_TEXT };
-                vec![TEXT | text, CARD_NAME | link["cid"].as_u64().unwrap_or(0) as u32]
+                let spell_trap = link["location"].as_u64() == Some(loc::SZONE);
+                let text = if spell_trap { text::CHAIN_CARD } else { text::CHAIN_EFFECT };
+                vec![entry::TEXT | text, entry::CARD_NAME | link["cid"].as_u64().unwrap_or(0) as u32]
             }
-            None => vec![TEXT | ACTIVATE_CARD_TEXT],
+            None => vec![entry::TEXT | text::ACTIVATE_CARD],
         };
         out.extend(message(&entries));
         let timing = m["hint_timing"].as_u64().unwrap_or(0) | m["hint_timing_other"].as_u64().unwrap_or(0);
         let level = if m["spe_count"].as_u64().unwrap_or(0) == 0 {
-            LEVEL_UNFIT
+            dialog::LEVEL_UNFIT
         } else if self.chaining.is_some() || timing & !QUIET_TIMINGS != 0 || phase_window {
             // A phase's own window counts its optional triggers in spe_count (Stardust Dragon's return in the End
             // Phase): at the phase level the default Activation Message answered No for the player, and the chance
             // was gone (#53). The core doesn't say which cards are triggers, so the whole window shows.
-            LEVEL_EVENT
+            dialog::LEVEL_EVENT
         } else {
-            LEVEL_PHASE
+            dialog::LEVEL_PHASE
         };
-        out.push(command(DIALOG, [EFFECT, FROM_ENTRIES, level, 0]));
+        out.push(command(cmd::DIALOG, [dialog::EFFECT, dialog::FROM_ENTRIES, level, 0]));
         Prompt::Client(out)
     }
 
@@ -2664,42 +2316,42 @@ impl Translator {
         // A choice the player may back out of (can_cancel, or a chain list that isn't forced) opens as kind 1: the list
         // (no OK button) closes on a right-click with the picks so far, none cancelling (dlg_cardlist.swf `onMouseUp`
         // with `_cancelable`, which 0x4C73A0 always sets).
-        let cancelable = m["can_cancel"] == true || (m["type"] == MSG_SELECT_CHAIN && m["forced"] != true);
+        let cancelable = m["can_cancel"] == true || (m["type"] == msg::SELECT_CHAIN && m["forced"] != true);
         let min = if cancelable { 0 } else { min };
         let (kind, max) = match min {
-            0 => (PICK_ANY, max),
-            1 => (PICK_ONE, max),
-            _ => (PICK_ALL, min),
+            0 => (list::PICK_ANY, max),
+            1 => (list::PICK_ONE, max),
+            _ => (list::PICK_ALL, min),
         };
         let rows: Vec<u32> = selects.iter().map(|loc| self.list_row(loc)).collect();
         let mixed = rows.contains(&0) && min <= 1;
         self.mixed = mixed;
-        let (kind, player) = if mixed { (PICK_MIXED, CPU) } else { (kind, CLIENT) };
-        let marks: Vec<u32> = selects.iter().map(|loc| if self.player(&loc["controller"]) == CPU { OPPONENTS } else { 0 }).collect();
+        let (kind, player) = if mixed { (list::PICK_MIXED, CPU) } else { (kind, CLIENT) };
+        let marks: Vec<u32> = selects.iter().map(|loc| if self.player(&loc["controller"]) == CPU { list::OPPONENTS } else { 0 }).collect();
         let mut out = vec![];
         if mixed {
             for (i, &row) in rows.iter().enumerate() {
                 let flag = if row != 0 { OPEN } else { 0 };
-                out.push(command(CARD, [(STAGED_UID + i as u32) | flag, row, 0, table_place(CPU, REMOVED, i)]));
+                out.push(command(cmd::CARD, [(STAGED_UID + i as u32) | flag, row, 0, table_place(CPU, zone::REMOVED, i)]));
             }
             self.staged = Some(rows.len());
         }
-        out.push(command(LIST_BEGIN, [selects.len() as u32, max, 0, 0]));
-        out.extend(fours(LIST_ROWS, &rows));
-        out.extend(fours(LIST_MARKS, &marks));
+        out.push(command(cmd::LIST_BEGIN, [selects.len() as u32, max, 0, 0]));
+        out.extend(fours(cmd::LIST_ROWS, &rows));
+        out.extend(fours(cmd::LIST_MARKS, &marks));
         // A list that needs several picks says how many (min == max here): the hint alone left a player of Magical Hats
         // with one card marked and no hint that a second one decides.
-        let several = m["min"].as_u64().unwrap_or(1) >= 2 && max >= 2 && kind != PICK_MIXED;
+        let several = m["min"].as_u64().unwrap_or(1) >= 2 && max >= 2 && kind != list::PICK_MIXED;
         let entries: Vec<u32> = match (text, several) {
-            (Some(text), true) => vec![TEXT | text, LINE_BREAK, TEXT | SELECT_COUNT_TEXT, NUMBER | max],
-            (None, true) => vec![TEXT | SELECT_COUNT_TEXT, NUMBER | max],
-            (Some(text), false) => vec![TEXT | text],
+            (Some(text), true) => vec![entry::TEXT | text, entry::LINE_BREAK, entry::TEXT | text::SELECT_COUNT, entry::NUMBER | max],
+            (None, true) => vec![entry::TEXT | text::SELECT_COUNT, entry::NUMBER | max],
+            (Some(text), false) => vec![entry::TEXT | text],
             (None, false) => vec![],
         };
         if !entries.is_empty() {
             out.extend(message(&entries));
         }
-        out.push(command(CARD_LIST, [player, kind, !entries.is_empty() as u32, 0]));
+        out.push(command(cmd::CARD_LIST, [player, kind, !entries.is_empty() as u32, 0]));
         out
     }
 
@@ -2707,13 +2359,13 @@ impl Translator {
     /// once it closes.
     fn unstage_n(&self, n: Option<usize>) -> Vec<Message> {
         let Some(n) = n else { return vec![] };
-        let pile = self.sides[CPU as usize].zones.get(&REMOVED).map_or(&[][..], Vec::as_slice);
+        let pile = self.sides[CPU as usize].zones.get(&zone::REMOVED).map_or(&[][..], Vec::as_slice);
         pile.iter()
             .enumerate()
             .take(n)
             .map(|(i, c)| {
-                let row = self.shown_row(&Place { player: CPU, zone: REMOVED, index: i, face_up: true, defense: false }, c.row);
-                command(CARD, [c.uid | OPEN, row, 0, table_place(CPU, REMOVED, i)])
+                let row = self.shown_row(&Place { player: CPU, zone: zone::REMOVED, index: i, face_up: true, defense: false }, c.row);
+                command(cmd::CARD, [c.uid | OPEN, row, 0, table_place(CPU, zone::REMOVED, i)])
             })
             .collect()
     }
@@ -2732,7 +2384,7 @@ impl Translator {
         let has_cid = |c: &&Card| self.cards.get(&c.row).map(|s| s.cid) == Some(cid) || (cid == 0 && self.tokens.contains(&c.uid));
         let at_place = self.engine_place(loc).and_then(|p| {
             let zone = self.sides[p.player as usize].zones.get(&p.zone)?;
-            if p.zone == DECK { zone.iter().find(has_cid) } else { zone.get(p.index).filter(has_cid) }.map(|c| c.row)
+            if p.zone == zone::DECK { zone.iter().find(has_cid) } else { zone.get(p.index).filter(has_cid) }.map(|c| c.row)
         });
         at_place.or_else(|| self.cards.iter().find(|(_, s)| s.cid == cid).map(|(&row, _)| row)).unwrap_or(0)
     }
@@ -2752,10 +2404,10 @@ impl Translator {
     /// then the cards off the field (hand, piles) in the engine's order. The engine's order (the player's cards first,
     /// each side by zone number) didn't match the field, so two Set cards in a list couldn't be told apart.
     fn field_order(&self, loc: &Json, engine: usize) -> (u32, usize) {
-        let Some(place) = self.engine_place(loc).filter(|p| p.zone <= FIELD_SPELL) else { return (4, engine) };
+        let Some(place) = self.engine_place(loc).filter(|p| p.zone <= zone::FIELD_SPELL) else { return (4, engine) };
         let theirs = place.player == CPU;
         let (row, x) = match place.zone {
-            FIELD_SPELL => (if theirs { 0 } else { 3 }, 5),
+            zone::FIELD_SPELL => (if theirs { 0 } else { 3 }, 5),
             z if z >= 5 => (if theirs { 0 } else { 3 }, if theirs { 4 - (z - 5) } else { z - 5 }),
             z => (if theirs { 1 } else { 2 }, if theirs { 4 - z } else { z }),
         };
@@ -2770,8 +2422,8 @@ impl Translator {
         let asked = self.pending.clone();
         let prompt = self.dialog_result_for(count);
         if let (Some(m), Some(Prompt::Answer(a))) = (&asked, &prompt)
-            && m["type"] == MSG_SELECT_OPTION
-            && a["type"] == RESP_OPTION
+            && m["type"] == msg::SELECT_OPTION
+            && a["type"] == resp::OPTION
         {
             let called = a["index"].as_u64().and_then(|i| m["options"][i as usize].as_u64());
             self.coin_call = match called { Some(CALL_HEADS) => Some(true), Some(CALL_TAILS) => Some(false), _ => self.coin_call };
@@ -2803,27 +2455,27 @@ impl Translator {
             return Some(if count == 1 { Prompt::Answer(response) } else { self.prompt(&m) });
         }
         let kind = self.pending.as_ref()?["type"].as_u64()?;
-        if matches!(kind, MSG_SELECT_DISFIELD | MSG_SELECT_PLACE) && self.zone_picks.is_none() {
+        if matches!(kind, msg::SELECT_DISFIELD | msg::SELECT_PLACE) && self.zone_picks.is_none() {
             self.zone_picks = Some(vec![]);
             let m = self.pending.clone()?;
             return Some(Prompt::Client(self.zone_map(&m)));
         }
         const DIALOGS: [u64; 15] = [
-            MSG_SORT_CHAIN,
-            MSG_SORT_CARD,
-            MSG_SELECT_SUM,
-            MSG_SELECT_CARD,
-            MSG_SELECT_UNSELECT_CARD,
-            MSG_SELECT_TRIBUTE,
-            MSG_SELECT_EFFECTYN,
-            MSG_SELECT_YESNO,
-            MSG_SELECT_POSITION,
-            MSG_SELECT_OPTION,
-            MSG_SELECT_CHAIN,
-            MSG_ANNOUNCE_RACE,
-            MSG_ANNOUNCE_ATTRIB,
-            MSG_ANNOUNCE_NUMBER,
-            MSG_ANNOUNCE_CARD,
+            msg::SORT_CHAIN,
+            msg::SORT_CARD,
+            msg::SELECT_SUM,
+            msg::SELECT_CARD,
+            msg::SELECT_UNSELECT_CARD,
+            msg::SELECT_TRIBUTE,
+            msg::SELECT_EFFECTYN,
+            msg::SELECT_YESNO,
+            msg::SELECT_POSITION,
+            msg::SELECT_OPTION,
+            msg::SELECT_CHAIN,
+            msg::ANNOUNCE_RACE,
+            msg::ANNOUNCE_ATTRIB,
+            msg::ANNOUNCE_NUMBER,
+            msg::ANNOUNCE_CARD,
         ];
         if !DIALOGS.contains(&kind) {
             return None;
@@ -2831,75 +2483,75 @@ impl Translator {
         let m = self.pending.take()?;
         let selects = m["selects"].as_array().or(m["select_cards"].as_array()).map_or(0, Vec::len);
         let answer = match kind {
-            MSG_SELECT_EFFECTYN => json!({ "type": RESP_EFFECTYN, "yes": count == 1 }),
-            MSG_SELECT_YESNO => json!({ "type": RESP_YESNO, "yes": count == 1 }),
-            MSG_SELECT_POSITION => {
+            msg::SELECT_EFFECTYN => json!({ "type": resp::EFFECTYN, "yes": count == 1 }),
+            msg::SELECT_YESNO => json!({ "type": resp::YESNO, "yes": count == 1 }),
+            msg::SELECT_POSITION => {
                 let allowed = m["positions"].as_u64().unwrap_or(0);
                 let position = match count {
-                    0 if allowed & POS_FACEUP_ATTACK != 0 => POS_FACEUP_ATTACK,
-                    0 => POS_FACEDOWN_ATTACK,
-                    _ if allowed & POS_FACEUP_DEFENSE != 0 => POS_FACEUP_DEFENSE,
-                    _ => POS_FACEDOWN_DEFENSE,
+                    0 if allowed & pos::FACEUP_ATTACK != 0 => pos::FACEUP_ATTACK,
+                    0 => pos::FACEDOWN_ATTACK,
+                    _ if allowed & pos::FACEUP_DEFENSE != 0 => pos::FACEUP_DEFENSE,
+                    _ => pos::FACEDOWN_DEFENSE,
                 };
                 match allowed & position {
                     0 => cpu_answer(kind, &m),
-                    _ => json!({ "type": RESP_POSITION, "position": position }),
+                    _ => json!({ "type": resp::POSITION, "position": position }),
                 }
             }
-            MSG_SELECT_OPTION if std::mem::take(&mut self.option_cards) => match std::mem::take(&mut self.picks)[..] {
-                [index] if index < m["options"].as_array().map_or(0, Vec::len) => json!({ "type": RESP_OPTION, "index": index }),
+            msg::SELECT_OPTION if std::mem::take(&mut self.option_cards) => match std::mem::take(&mut self.picks)[..] {
+                [index] if index < m["options"].as_array().map_or(0, Vec::len) => json!({ "type": resp::OPTION, "index": index }),
                 _ => cpu_answer(kind, &m),
             },
-            MSG_SELECT_OPTION if (count as usize) < m["options"].as_array().map_or(0, Vec::len) => {
-                json!({ "type": RESP_OPTION, "index": count })
+            msg::SELECT_OPTION if (count as usize) < m["options"].as_array().map_or(0, Vec::len) => {
+                json!({ "type": resp::OPTION, "index": count })
             }
-            MSG_SELECT_CHAIN if !self.chain_list && count == 1 && selects > 1 => {
+            msg::SELECT_CHAIN if !self.chain_list && count == 1 && selects > 1 => {
                 self.chain_list = true;
                 self.picks.clear();
-                let out = self.card_list(&m, Some(SELECT_EFFECT_TEXT));
+                let out = self.card_list(&m, Some(text::SELECT_EFFECT));
                 self.pending = Some(m);
                 return Some(Prompt::Client(out));
             }
-            MSG_SELECT_CHAIN if !self.chain_list => {
+            msg::SELECT_CHAIN if !self.chain_list => {
                 let index = if count == 1 { json!(0) } else { Json::Null };
-                json!({ "type": RESP_CHAIN, "index": index })
+                json!({ "type": resp::CHAIN, "index": index })
             }
-            MSG_SELECT_CHAIN => match std::mem::take(&mut self.picks)[..] {
-                [index] if index < selects => json!({ "type": RESP_CHAIN, "index": index }),
+            msg::SELECT_CHAIN => match std::mem::take(&mut self.picks)[..] {
+                [index] if index < selects => json!({ "type": resp::CHAIN, "index": index }),
                 _ if m["forced"] == true => cpu_answer(kind, &m),
-                _ => json!({ "type": RESP_CHAIN, "index": null }),
+                _ => json!({ "type": resp::CHAIN, "index": null }),
             },
             // A mixed list needs no picks to close: a forced choice with nothing picked is asked again.
-            MSG_SELECT_CARD | MSG_SELECT_TRIBUTE if self.mixed && self.picks.is_empty() && m["can_cancel"] != true && m["min"].as_u64().unwrap_or(1) >= 1 => {
+            msg::SELECT_CARD | msg::SELECT_TRIBUTE if self.mixed && self.picks.is_empty() && m["can_cancel"] != true && m["min"].as_u64().unwrap_or(1) >= 1 => {
                 return Some(self.prompt(&m));
             }
-            MSG_SELECT_CARD | MSG_SELECT_TRIBUTE => self.card_choice(&m, count),
-            MSG_SELECT_SUM => {
+            msg::SELECT_CARD | msg::SELECT_TRIBUTE => self.card_choice(&m, count),
+            msg::SELECT_SUM => {
                 let picks = std::mem::take(&mut self.picks);
                 if !sum_fits(&m, &picks) {
                     return Some(self.prompt(&m));
                 }
                 self.sum_text = None;
-                json!({ "type": RESP_SUM, "indicies": picks })
+                json!({ "type": resp::SUM, "indicies": picks })
             }
-            MSG_SELECT_UNSELECT_CARD => match std::mem::take(&mut self.picks)[..] {
-                [index] if index < selects => json!({ "type": RESP_UNSELECT_CARD, "index": index }),
-                _ if m["can_finish"] == true || m["can_cancel"] == true => json!({ "type": RESP_UNSELECT_CARD, "index": null }),
+            msg::SELECT_UNSELECT_CARD => match std::mem::take(&mut self.picks)[..] {
+                [index] if index < selects => json!({ "type": resp::UNSELECT_CARD, "index": index }),
+                _ if m["can_finish"] == true || m["can_cancel"] == true => json!({ "type": resp::UNSELECT_CARD, "index": null }),
                 _ => cpu_answer(kind, &m),
             },
-            MSG_ANNOUNCE_RACE => match TYPES.get((count as usize).wrapping_sub(1)) {
-                Some(&race) if m["available"].as_u64().unwrap_or(0) & race != 0 => json!({ "type": RESP_RACE, "races": [race] }),
+            msg::ANNOUNCE_RACE => match TYPES.get((count as usize).wrapping_sub(1)) {
+                Some(&race) if m["available"].as_u64().unwrap_or(0) & race != 0 => json!({ "type": resp::RACE, "races": [race] }),
                 _ => cpu_answer(kind, &m),
             },
-            MSG_ANNOUNCE_ATTRIB => {
+            msg::ANNOUNCE_ATTRIB => {
                 let picked: Vec<u64> = ATTRIBUTES.iter().enumerate().filter(|(i, _)| count >> (i + 1) & 1 != 0).map(|(_, &a)| a).collect();
                 let allowed = m["available"].as_u64().unwrap_or(0);
                 match picked.len() as u64 == m["count"].as_u64().unwrap_or(1) && picked.iter().all(|a| allowed & a != 0) {
-                    true => json!({ "type": RESP_ATTRIB, "attributes": picked }),
+                    true => json!({ "type": resp::ATTRIB, "attributes": picked }),
                     false => cpu_answer(kind, &m),
                 }
             }
-            MSG_ANNOUNCE_NUMBER => {
+            msg::ANNOUNCE_NUMBER => {
                 let options: Vec<u64> = m["options"].as_array().into_iter().flatten().filter_map(Json::as_u64).collect();
                 let unit = number_unit(&options).map_or(1, |(unit, _)| unit);
                 let value = count as u64 * unit;
@@ -2908,19 +2560,19 @@ impl Translator {
                 let index = options.iter().enumerate().filter(|(_, o)| **o >= value).min_by_key(|(_, o)| **o)
                     .or_else(|| options.iter().enumerate().max_by_key(|(_, o)| **o))
                     .map_or(0, |(i, _)| i);
-                json!({ "type": RESP_NUMBER, "value": index })
+                json!({ "type": resp::NUMBER, "value": index })
             }
-            MSG_ANNOUNCE_CARD => json!({ "type": RESP_CARD_NAME, "cid": count }),
+            msg::ANNOUNCE_CARD => json!({ "type": resp::CARD_NAME, "cid": count }),
             // The clicks in order: card picks[k] gets rank k (the core reads byte i as card i's rank). Anything but each
             // card once keeps the engine's own order.
-            MSG_SORT_CHAIN | MSG_SORT_CARD => {
+            msg::SORT_CHAIN | msg::SORT_CARD => {
                 let picks = std::mem::take(&mut self.picks);
                 let n = m["cards"].as_array().map_or(0, Vec::len);
                 let mut order = vec![usize::MAX; n];
                 let whole = picks.len() == n && picks.iter().enumerate().all(|(rank, &i)| {
                     i < n && order[i] == usize::MAX && { order[i] = rank; true }
                 });
-                if whole { json!({ "type": RESP_SORT, "order": order }) } else { cpu_answer(kind, &m) }
+                if whole { json!({ "type": resp::SORT, "order": order }) } else { cpu_answer(kind, &m) }
             }
             _ => cpu_answer(kind, &m),
         };
@@ -2930,7 +2582,7 @@ impl Translator {
     /// The response for a closed card list of MSG_SELECT_CARD or MSG_SELECT_TRIBUTE.
     fn card_choice(&mut self, m: &Json, count: u32) -> Json {
         let kind = m["type"].as_u64().unwrap_or(0);
-        let response = if kind == MSG_SELECT_TRIBUTE { RESP_TRIBUTE } else { RESP_CARD };
+        let response = if kind == msg::SELECT_TRIBUTE { resp::TRIBUTE } else { resp::CARD };
         let picks = std::mem::take(&mut self.picks);
         let len = m["selects"].as_array().map_or(0, Vec::len);
         let (min, max) = (m["min"].as_u64().unwrap_or(1) as usize, m["max"].as_u64().unwrap_or(1) as usize);
@@ -2956,7 +2608,7 @@ impl Translator {
                     continue;
                 }
                 // The client looks a pile's commands up at index 0 only (0x50B510, 0x5204E0).
-                let place = if place >> 8 & 0xFF >= EXTRA { place & 0xFFFF } else { place };
+                let place = if place >> 8 & 0xFF >= zone::EXTRA { place & 0xFFFF } else { place };
                 match bits.iter_mut().find(|(p, _)| *p == place) {
                     Some((_, b)) => *b |= 1 << bit,
                     None => bits.push((place, 1 << bit)),
@@ -2983,15 +2635,15 @@ impl Translator {
         let p = self.player(&loc["controller"]);
         let seq = loc["sequence"].as_u64()? as usize;
         let zone = match loc["location"].as_u64()? {
-            LOC_HAND => HAND,
-            LOC_MZONE => 0,
-            LOC_SZONE => 5,
-            LOC_EXTRA => EXTRA,
-            LOC_GRAVE => GRAVE,
-            LOC_REMOVED => REMOVED,
+            loc::HAND => zone::HAND,
+            loc::MZONE => 0,
+            loc::SZONE => 5,
+            loc::EXTRA => zone::EXTRA,
+            loc::GRAVE => zone::GRAVE,
+            loc::REMOVED => zone::REMOVED,
             _ => return None,
         };
-        if zone >= EXTRA {
+        if zone >= zone::EXTRA {
             let cid = |c: &Card| self.cards.get(&c.row).map(|s| s.cid as u64);
             let cards = self.sides[p as usize].zones.get(&zone)?;
             let index = match cards.get(seq) {
@@ -3006,12 +2658,12 @@ impl Translator {
     /// The engine response for a phase button (0 DP .. 5 EP), if the pending prompt allows that phase.
     pub fn phase(&mut self, button: u32) -> Option<Json> {
         let m = self.pending.as_ref()?;
-        let battle = m["type"].as_u64() == Some(MSG_SELECT_BATTLECMD);
+        let battle = m["type"].as_u64() == Some(msg::SELECT_BATTLECMD);
         let (kind, action) = match (battle, button as u8) {
-            (false, BUTTON_BP) if m["to_bp"] == true => (RESP_IDLECMD, IDLE_TO_BP),
-            (false, BUTTON_EP) if m["to_ep"] == true => (RESP_IDLECMD, IDLE_TO_EP),
-            (true, BUTTON_M2) if m["to_m2"] == true => (RESP_BATTLECMD, BATTLE_TO_M2),
-            (true, BUTTON_EP) if m["to_ep"] == true => (RESP_BATTLECMD, BATTLE_TO_EP),
+            (false, flag::BUTTON_BP) if m["to_bp"] == true => (resp::IDLECMD, idle::TO_BP),
+            (false, flag::BUTTON_EP) if m["to_ep"] == true => (resp::IDLECMD, idle::TO_EP),
+            (true, flag::BUTTON_M2) if m["to_m2"] == true => (resp::BATTLECMD, battle::TO_M2),
+            (true, flag::BUTTON_EP) if m["to_ep"] == true => (resp::BATTLECMD, battle::TO_EP),
             _ => return None,
         };
         self.pending = None;
@@ -3042,23 +2694,23 @@ impl Translator {
         if self.field_target {
             return self.target_click(&m, cmd);
         }
-        if (m["type"] == MSG_SELECT_DISFIELD || m["type"] == MSG_SELECT_PLACE) && self.zone_picks.is_some() {
+        if (m["type"] == msg::SELECT_DISFIELD || m["type"] == msg::SELECT_PLACE) && self.zone_picks.is_some() {
             return Some(self.zone_click(&m, cmd));
         }
-        if cmd.command == CONFIRM
+        if cmd.command == menu::CONFIRM
             && let Some(out) = self.pile_view(cmd.player, cmd.zone)
         {
             self.viewing = true;
             return Some(Prompt::Client(out));
         }
-        if cmd.zone >= EXTRA && cmd.zone != DECK {
+        if cmd.zone >= zone::EXTRA && cmd.zone != zone::DECK {
             return self.pile_command(&m, cmd);
         }
         // A card that offers this command more than once (two effects it can activate now): the card list asks which,
         // the card once per effect in the engine's order.
         if let Some((list, kind, action, indices)) = self.listed(&cmd).filter(|l| l.3.len() > 1) {
             let selects: Vec<Json> = indices.iter().map(|&i| m[list][i].clone()).collect();
-            let out = self.card_list(&json!({ "selects": selects, "min": 0, "max": 1 }), Some(SELECT_EFFECT_TEXT));
+            let out = self.card_list(&json!({ "selects": selects, "min": 0, "max": 1 }), Some(text::SELECT_EFFECT));
             self.choosing = Some((kind, action, indices));
             self.picks.clear();
             return Some(Prompt::Client(out));
@@ -3068,13 +2720,13 @@ impl Translator {
         let attack = &m["attacks"][response["index"].as_u64().unwrap_or(u64::MAX) as usize];
         let opponent = 1 - self.player(&attack["controller"]) as usize;
         let no_target = (0..5).all(|zone| self.sides[opponent].zones.get(&zone).is_none_or(Vec::is_empty));
-        if response["type"] != RESP_BATTLECMD || response["action"] != BATTLE_ATTACK || attack["can_direct"] != true || !no_target {
+        if response["type"] != resp::BATTLECMD || response["action"] != battle::ATTACK || attack["can_direct"] != true || !no_target {
             return Some(Prompt::Answer(response));
         }
         self.pending = Some(m);
         self.direct = Some(response);
-        let mut out = message(&[TEXT | DIRECT_TEXT]);
-        out.push(command(DIALOG, [YES_NO, FROM_ENTRIES, 0, 0]));
+        let mut out = message(&[entry::TEXT | text::DIRECT]);
+        out.push(command(cmd::DIALOG, [dialog::YES_NO, dialog::FROM_ENTRIES, 0, 0]));
         Some(Prompt::Client(out))
     }
 
@@ -3087,7 +2739,7 @@ impl Translator {
     }
 
     fn chose(&mut self, m: &Json, response: &Json) {
-        if m["type"] == MSG_SELECT_BATTLECMD && response["type"] == RESP_BATTLECMD && response["action"] == BATTLE_ATTACK {
+        if m["type"] == msg::SELECT_BATTLECMD && response["type"] == resp::BATTLECMD && response["action"] == battle::ATTACK {
             let attack = &m["attacks"][response["index"].as_u64().unwrap_or(u64::MAX) as usize];
             self.attacker = self.engine_place(attack).filter(|p| p.zone < 5).map(|p| (p.player, p.zone));
         }
@@ -3102,16 +2754,16 @@ impl Translator {
         let mut map = vec![];
         for card in m["selects"].as_array()? {
             let place = self.place(card).filter(|p| p >> 8 & 0xFF == 0)?;
-            map.push((place, 1 << CONFIRM));
+            map.push((place, 1 << menu::CONFIRM));
         }
         self.field_target = true;
         self.pending = Some(m.clone());
         Some(vec![
-            command(VIEW_BATTLE_INIT, [0; 4]),
-            command(VIEW_BATTLE_ATTACK, [player | zone << 8, 1 - player, NO_TARGET, 0]),
-            command(VIEW_BATTLE_SELECT, [0; 4]),
-            command_data(&map, &[(RIGHT_CLICK, 1)]),
-            command(INPUT, [MODE_BATTLE, CLIENT, 0, 0]),
+            command(cmd::BATTLE_INIT, [0; 4]),
+            command(cmd::BATTLE_ATTACK, [player | zone << 8, 1 - player, NO_TARGET, 0]),
+            command(cmd::BATTLE_SELECT, [0; 4]),
+            command_data(&map, &[(flag::RIGHT_CLICK, 1)]),
+            command(cmd::INPUT, [mode::BATTLE, CLIENT, 0, 0]),
         ])
     }
 
@@ -3120,10 +2772,10 @@ impl Translator {
         // A field card comes from its own slot, index 0 (see `listed`); targets are keyed at (zone 0, index slot).
         let slot = if cmd.index == 0 && cmd.zone < 5 { cmd.zone as usize } else { return None };
         let place = table_place(cmd.player, 0, slot);
-        let index = m["selects"].as_array()?.iter().position(|c| self.place(c) == Some(place)).filter(|_| cmd.command == CONFIRM)?;
+        let index = m["selects"].as_array()?.iter().position(|c| self.place(c) == Some(place)).filter(|_| cmd.command == menu::CONFIRM)?;
         self.field_target = false;
         self.pending = None;
-        Some(Prompt::Answer(json!({ "type": RESP_CARD, "indicies": [index] })))
+        Some(Prompt::Answer(json!({ "type": resp::CARD, "indicies": [index] })))
     }
 
     /// The field's right-click (duelRequestName 5): while an attack target is picked on the field, the attack taken
@@ -3136,7 +2788,7 @@ impl Translator {
         self.field_target = false;
         self.taken_back = true;
         self.pending = None;
-        Some(Prompt::Answer(json!({ "type": RESP_CARD, "indicies": null })))
+        Some(Prompt::Answer(json!({ "type": resp::CARD, "indicies": null })))
     }
 
     /// A command on a pile (sent at index 0, where the client found it): the one card of the pile it fits, or with
@@ -3144,8 +2796,8 @@ impl Translator {
     /// Deck.", 26).
     fn pile_command(&mut self, m: &Json, cmd: CardCommand) -> Option<Prompt> {
         let (lists, kind): (Lists, u64) = match m["type"].as_u64() {
-            Some(MSG_SELECT_BATTLECMD) => (&BATTLE_LISTS, RESP_BATTLECMD),
-            _ => (&IDLE_LISTS, RESP_IDLECMD),
+            Some(msg::SELECT_BATTLECMD) => (&BATTLE_LISTS, resp::BATTLECMD),
+            _ => (&IDLE_LISTS, resp::IDLECMD),
         };
         let &(list, _, action) = lists.iter().find(|(_, bit, _)| *bit == cmd.command)?;
         let pile = table_place(cmd.player, cmd.zone, 0);
@@ -3163,9 +2815,9 @@ impl Translator {
             }
             _ => {
                 let text = match (cmd.command, cmd.zone) {
-                    (2, EXTRA) => SPSUMMON_EXTRA_TEXT,
-                    (2, _) => SPSUMMON_TEXT,
-                    _ => SELECT_EFFECT_TEXT,
+                    (2, zone::EXTRA) => text::SPSUMMON_EXTRA,
+                    (2, _) => text::SPSUMMON,
+                    _ => text::SELECT_EFFECT,
                 };
                 let selects: Vec<Json> = candidates.iter().map(|(_, loc)| (*loc).clone()).collect();
                 let out = self.card_list(&json!({ "selects": selects, "min": 0, "max": 1 }), Some(text));
@@ -3180,14 +2832,14 @@ impl Translator {
     /// piles and the player's own extra deck, when not empty. The field highlights a pile of either player whose
     /// bits there have Activate Effect or Confirm (0x808, 0x50A690).
     fn add_pile_views(&self, map: &mut Vec<(u32, u32)>) {
-        for (player, zone) in [(CLIENT, GRAVE), (CPU, GRAVE), (CLIENT, REMOVED), (CPU, REMOVED), (CLIENT, EXTRA)] {
+        for (player, zone) in [(CLIENT, zone::GRAVE), (CPU, zone::GRAVE), (CLIENT, zone::REMOVED), (CPU, zone::REMOVED), (CLIENT, zone::EXTRA)] {
             if self.sides[player as usize].zones.get(&zone).is_none_or(Vec::is_empty) {
                 continue;
             }
             let place = table_place(player, zone, 0);
             match map.iter_mut().find(|(p, _)| *p == place) {
-                Some((_, bits)) => *bits |= 1 << CONFIRM,
-                None => map.push((place, 1 << CONFIRM)),
+                Some((_, bits)) => *bits |= 1 << menu::CONFIRM,
+                None => map.push((place, 1 << menu::CONFIRM)),
             }
         }
     }
@@ -3196,7 +2848,7 @@ impl Translator {
     /// clicks, and a right-click closes it), under the pile's title.
     fn pile_view(&self, player: u32, zone: u32) -> Option<Vec<Message>> {
         let title = PILE_TITLES.iter().find(|(z, _)| *z == zone)?.1 + (player != CLIENT) as u32;
-        if zone == EXTRA && player != CLIENT {
+        if zone == zone::EXTRA && player != CLIENT {
             return None;
         }
         let cards = self.sides.get(player as usize)?.zones.get(&zone).filter(|c| !c.is_empty())?;
@@ -3205,12 +2857,12 @@ impl Translator {
             .enumerate()
             .map(|(index, c)| self.shown_row(&Place { player, zone, index, face_up: true, defense: false }, c.row))
             .collect();
-        let mark = if player == CLIENT { 0 } else { OPPONENTS };
-        let mut out = vec![command(LIST_BEGIN, [rows.len() as u32, 0, 0, 0])];
-        out.extend(fours(LIST_ROWS, &rows));
-        out.extend(fours(LIST_MARKS, &vec![mark; rows.len()]));
-        out.extend(message(&[TEXT | title]));
-        out.push(command(CARD_LIST, [CLIENT, PICK_ANY, 1, 0]));
+        let mark = if player == CLIENT { 0 } else { list::OPPONENTS };
+        let mut out = vec![command(cmd::LIST_BEGIN, [rows.len() as u32, 0, 0, 0])];
+        out.extend(fours(cmd::LIST_ROWS, &rows));
+        out.extend(fours(cmd::LIST_MARKS, &vec![mark; rows.len()]));
+        out.extend(message(&[entry::TEXT | title]));
+        out.push(command(cmd::CARD_LIST, [CLIENT, list::PICK_ANY, 1, 0]));
         Some(out)
     }
 
@@ -3222,10 +2874,10 @@ impl Translator {
     pub fn unreachable_answers(&self) -> Vec<String> {
         let Some(m) = self.pending.as_ref() else { return vec![] };
         let (lists, kind, phases): (Lists, u64, &[(&str, u64)]) = match m["type"].as_u64() {
-            Some(MSG_SELECT_IDLECMD) => (&IDLE_LISTS, RESP_IDLECMD, &[("to_bp", IDLE_TO_BP), ("to_ep", IDLE_TO_EP)]),
-            Some(MSG_SELECT_BATTLECMD) => (&BATTLE_LISTS, RESP_BATTLECMD, &[("to_m2", BATTLE_TO_M2), ("to_ep", BATTLE_TO_EP)]),
-            Some(MSG_SELECT_DISFIELD) if self.player(&m["player"]) == CLIENT => return self.unreachable_zones(m),
-            Some(MSG_SELECT_CARD) if self.field_target => return self.unreachable_targets(m),
+            Some(msg::SELECT_IDLECMD) => (&IDLE_LISTS, resp::IDLECMD, &[("to_bp", idle::TO_BP), ("to_ep", idle::TO_EP)]),
+            Some(msg::SELECT_BATTLECMD) => (&BATTLE_LISTS, resp::BATTLECMD, &[("to_m2", battle::TO_M2), ("to_ep", battle::TO_EP)]),
+            Some(msg::SELECT_DISFIELD) if self.player(&m["player"]) == CLIENT => return self.unreachable_zones(m),
+            Some(msg::SELECT_CARD) if self.field_target => return self.unreachable_targets(m),
             _ => return self.unreachable_choices(m),
         };
         let mut reachable: Vec<Json> = vec![];
@@ -3252,7 +2904,7 @@ impl Translator {
             // As the client sends it: a field card from its own slot, index 0 (see `answer`).
             let (zone, index) = match (zone, index) {
                 (0, i @ 1..=4) => (i, 0),
-                (5, 5) => (FIELD_SPELL, 0),
+                (5, 5) => (zone::FIELD_SPELL, 0),
                 (5, i @ 0..=4) => (5 + i, 0),
                 other => other,
             };
@@ -3262,7 +2914,7 @@ impl Translator {
                 reach(p, &t);
             }
         }
-        for button in [BUTTON_BP, BUTTON_M2, BUTTON_EP] {
+        for button in [flag::BUTTON_BP, flag::BUTTON_M2, flag::BUTTON_EP] {
             if let Some(r) = self.clone().phase(button as u32) {
                 reachable.push(r);
             }
@@ -3292,8 +2944,8 @@ impl Translator {
         let mut missing = vec![];
         for (i, card) in m["selects"].as_array().into_iter().flatten().enumerate() {
             let Some(place) = self.place(card) else { continue };
-            let click = CardCommand { command: CONFIRM, player: place & 0xFF, zone: place >> 16 & 0xFF, index: 0 };
-            if self.clone().command(click) != Some(Prompt::Answer(json!({ "type": RESP_CARD, "indicies": [i] }))) {
+            let click = CardCommand { command: menu::CONFIRM, player: place & 0xFF, zone: place >> 16 & 0xFF, index: 0 };
+            if self.clone().command(click) != Some(Prompt::Answer(json!({ "type": resp::CARD, "indicies": [i] }))) {
                 missing.push(format!("selects[{i}] (attack target on the field)"));
             }
         }
@@ -3309,7 +2961,7 @@ impl Translator {
         let zones = free_zones(m);
         let count = (m["count"].as_u64().unwrap_or(1) as usize).max(1);
         let click = |t: &mut Translator, (player, location, sequence): (u64, u64, u64)| {
-            let zone = if location == LOC_MZONE { sequence as u32 } else { 5 + sequence as u32 };
+            let zone = if location == loc::MZONE { sequence as u32 } else { 5 + sequence as u32 };
             t.command(CardCommand { command: ZONE_PICK_MONSTER, player: t.player(&json!(player)), zone, index: 0 })
         };
         let place = |(p, l, s): (u64, u64, u64)| json!({ "player": p, "location": l, "sequence": s });
@@ -3322,7 +2974,7 @@ impl Translator {
             for &z in &pick {
                 last = click(&mut t, z);
             }
-            let expected = json!({ "type": RESP_DISFIELD, "places": pick.iter().map(|&z| place(z)).collect::<Vec<_>>() });
+            let expected = json!({ "type": resp::DISFIELD, "places": pick.iter().map(|&z| place(z)).collect::<Vec<_>>() });
             if last != Some(Prompt::Answer(expected)) {
                 missing.push(format!("zones {pick:?}"));
             }
@@ -3339,8 +2991,8 @@ impl Translator {
         type Case = (String, Vec<(Vec<u32>, u32)>, Json);
         let mut cases: Vec<Case> = vec![];
         match kind {
-            MSG_SELECT_CARD | MSG_SELECT_TRIBUTE => {
-                let response = if kind == MSG_SELECT_TRIBUTE { RESP_TRIBUTE } else { RESP_CARD };
+            msg::SELECT_CARD | msg::SELECT_TRIBUTE => {
+                let response = if kind == msg::SELECT_TRIBUTE { resp::TRIBUTE } else { resp::CARD };
                 let (min, max) = (m["min"].as_u64().unwrap_or(1), m["max"].as_u64().unwrap_or(1));
                 if min <= 1 && max >= 1 {
                     for i in 0..len("selects") as u32 {
@@ -3355,16 +3007,16 @@ impl Translator {
                     cases.push(("cancelling".into(), vec![(vec![], 0)], json!({ "type": response, "indicies": null })));
                 }
             }
-            MSG_SELECT_UNSELECT_CARD => {
+            msg::SELECT_UNSELECT_CARD => {
                 for i in 0..len("select_cards") as u32 {
-                    cases.push((format!("select_cards[{i}]"), vec![(vec![i], 1)], json!({ "type": RESP_UNSELECT_CARD, "index": i })));
+                    cases.push((format!("select_cards[{i}]"), vec![(vec![i], 1)], json!({ "type": resp::UNSELECT_CARD, "index": i })));
                 }
                 if m["can_cancel"] == true || m["can_finish"] == true {
                     let what = if m["can_cancel"] == true { "cancelling" } else { "finishing" };
-                    cases.push((what.into(), vec![(vec![], 0)], json!({ "type": RESP_UNSELECT_CARD, "index": null })));
+                    cases.push((what.into(), vec![(vec![], 0)], json!({ "type": resp::UNSELECT_CARD, "index": null })));
                 }
             }
-            MSG_SELECT_CHAIN => {
+            msg::SELECT_CHAIN => {
                 let n = len("selects") as u32;
                 for i in 0..n {
                     // Yes, then the card list when there are several (or a forced chain's list right away).
@@ -3373,64 +3025,64 @@ impl Translator {
                         (false, 1) => vec![(vec![], 1)],
                         (false, _) => vec![(vec![], 1), (vec![i], 1)],
                     };
-                    cases.push((format!("selects[{i}] (chain)"), clicks, json!({ "type": RESP_CHAIN, "index": i })));
+                    cases.push((format!("selects[{i}] (chain)"), clicks, json!({ "type": resp::CHAIN, "index": i })));
                 }
                 if m["forced"] != true {
-                    cases.push(("passing the chain".into(), vec![(vec![], 0)], json!({ "type": RESP_CHAIN, "index": null })));
+                    cases.push(("passing the chain".into(), vec![(vec![], 0)], json!({ "type": resp::CHAIN, "index": null })));
                 }
             }
-            MSG_SELECT_SUM => {
+            msg::SELECT_SUM => {
                 let picks: Vec<u32> = sum_choice(m).into_iter().map(|i| i as u32).collect();
                 let n = picks.len() as u32;
-                cases.push((format!("the sum {picks:?}"), vec![(picks.clone(), n)], json!({ "type": RESP_SUM, "indicies": picks })));
+                cases.push((format!("the sum {picks:?}"), vec![(picks.clone(), n)], json!({ "type": resp::SUM, "indicies": picks })));
             }
-            MSG_SELECT_EFFECTYN | MSG_SELECT_YESNO => {
-                let response = if kind == MSG_SELECT_EFFECTYN { RESP_EFFECTYN } else { RESP_YESNO };
+            msg::SELECT_EFFECTYN | msg::SELECT_YESNO => {
+                let response = if kind == msg::SELECT_EFFECTYN { resp::EFFECTYN } else { resp::YESNO };
                 cases.push(("yes".into(), vec![(vec![], 1)], json!({ "type": response, "yes": true })));
                 cases.push(("no".into(), vec![(vec![], 0)], json!({ "type": response, "yes": false })));
             }
-            MSG_SELECT_OPTION => {
+            msg::SELECT_OPTION => {
                 for i in 0..len("options") as u32 {
                     let clicks = if self.option_cards { vec![(vec![i], 1)] } else { vec![(vec![], i)] };
-                    cases.push((format!("options[{i}]"), clicks, json!({ "type": RESP_OPTION, "index": i })));
+                    cases.push((format!("options[{i}]"), clicks, json!({ "type": resp::OPTION, "index": i })));
                 }
             }
             // Each allowed position: the dialog's button 0 (attack) or 1 (defense).
-            MSG_SELECT_POSITION => {
+            msg::SELECT_POSITION => {
                 let allowed = m["positions"].as_u64().unwrap_or(0);
-                for (bit, button) in [(POS_FACEUP_ATTACK, 0), (POS_FACEDOWN_ATTACK, 0), (POS_FACEUP_DEFENSE, 1), (POS_FACEDOWN_DEFENSE, 1)] {
+                for (bit, button) in [(pos::FACEUP_ATTACK, 0), (pos::FACEDOWN_ATTACK, 0), (pos::FACEUP_DEFENSE, 1), (pos::FACEDOWN_DEFENSE, 1)] {
                     if allowed & bit != 0 {
-                        cases.push((format!("position {bit}"), vec![(vec![], button)], json!({ "type": RESP_POSITION, "position": bit })));
+                        cases.push((format!("position {bit}"), vec![(vec![], button)], json!({ "type": resp::POSITION, "position": bit })));
                     }
                 }
             }
             // Each allowed Type and Attribute, one declared (the client's number, or its bit for an attribute).
-            MSG_ANNOUNCE_RACE if m["count"].as_u64() == Some(1) => {
+            msg::ANNOUNCE_RACE if m["count"].as_u64() == Some(1) => {
                 let allowed = m["available"].as_u64().unwrap_or(0);
                 for (i, &race) in TYPES.iter().enumerate().filter(|(_, r)| allowed & **r != 0) {
-                    cases.push((format!("type {race:#x}"), vec![(vec![], i as u32 + 1)], json!({ "type": RESP_RACE, "races": [race] })));
+                    cases.push((format!("type {race:#x}"), vec![(vec![], i as u32 + 1)], json!({ "type": resp::RACE, "races": [race] })));
                 }
             }
-            MSG_ANNOUNCE_ATTRIB if m["count"].as_u64() == Some(1) => {
+            msg::ANNOUNCE_ATTRIB if m["count"].as_u64() == Some(1) => {
                 let allowed = m["available"].as_u64().unwrap_or(0);
                 for (i, &attribute) in ATTRIBUTES.iter().enumerate().filter(|(_, a)| allowed & **a != 0) {
-                    cases.push((format!("attribute {attribute:#x}"), vec![(vec![], 1 << (i + 1))], json!({ "type": RESP_ATTRIB, "attributes": [attribute] })));
+                    cases.push((format!("attribute {attribute:#x}"), vec![(vec![], 1 << (i + 1))], json!({ "type": resp::ATTRIB, "attributes": [attribute] })));
                 }
             }
             // Each number offered, as the dialog sends it (in its unit).
-            MSG_ANNOUNCE_NUMBER => {
+            msg::ANNOUNCE_NUMBER => {
                 let options: Vec<u64> = m["options"].as_array().into_iter().flatten().filter_map(Json::as_u64).collect();
                 let unit = number_unit(&options).map_or(1, |(unit, _)| unit);
                 for (i, &o) in options.iter().enumerate() {
-                    cases.push((format!("number {o}"), vec![(vec![], (o / unit) as u32)], json!({ "type": RESP_NUMBER, "value": i })));
+                    cases.push((format!("number {o}"), vec![(vec![], (o / unit) as u32)], json!({ "type": resp::NUMBER, "value": i })));
                 }
             }
             // An order: the cards clicked last to first.
-            MSG_SORT_CHAIN | MSG_SORT_CARD if len("cards") >= 2 => {
+            msg::SORT_CHAIN | msg::SORT_CARD if len("cards") >= 2 => {
                 let n = len("cards") as u32;
                 let picks: Vec<u32> = (0..n).rev().collect();
                 let order: Vec<u32> = (0..n).rev().collect();
-                cases.push(("the reverse order".into(), vec![(picks, n)], json!({ "type": RESP_SORT, "order": order })));
+                cases.push(("the reverse order".into(), vec![(picks, n)], json!({ "type": resp::SORT, "order": order })));
             }
             _ => {}
         }
@@ -3466,8 +3118,8 @@ impl Translator {
     fn listed(&self, cmd: &CardCommand) -> Option<(&'static str, u64, u64, Vec<usize>)> {
         let m = self.pending.as_ref()?;
         let (lists, kind): (Lists, u64) = match m["type"].as_u64() {
-            Some(MSG_SELECT_BATTLECMD) => (&BATTLE_LISTS, RESP_BATTLECMD),
-            _ => (&IDLE_LISTS, RESP_IDLECMD),
+            Some(msg::SELECT_BATTLECMD) => (&BATTLE_LISTS, resp::BATTLECMD),
+            _ => (&IDLE_LISTS, resp::IDLECMD),
         };
         // The client looks a card's commands up at (zone 0, index slot) for monsters and (zone 5, index slot) for
         // Spells/Traps (0x50A690), but sends the one picked with the card's own place, (zone slot, index 0) (live: an
@@ -3475,7 +3127,7 @@ impl Translator {
         let (zone, index) = match (cmd.zone, cmd.index) {
             (z @ 1..=4, 0) => (0, z as usize),
             (z @ 6..=9, 0) => (5, z as usize - 5),
-            (FIELD_SPELL, 0) => (5, 5),
+            (zone::FIELD_SPELL, 0) => (5, 5),
             (z, i) => (z, i as usize),
         };
         let place = table_place(cmd.player, zone, index);
@@ -3505,15 +3157,6 @@ const MOVE_SET: u32 = 5;
 const MOVE_DESTROYED: u32 = 6;
 const MOVE_DESTROYED_BY_BATTLE: u32 = 8;
 const MOVE_TRIBUTED: u32 = 9;
-const REASON_RELEASE: u64 = 0x2;
-const REASON_SUMMON: u64 = 0x10;
-const REASON_BATTLE: u64 = 0x20;
-const REASON_SPSUMMON: u64 = 0x800;
-const REASON_MATERIAL: u64 = 0x8;
-const REASON_FUSION: u64 = 0x40000;
-const REASON_SYNCHRO: u64 = 0x80000;
-const REASON_RITUAL: u64 = 0x100000;
-const REASON_XYZ: u64 = 0x200000;
 
 /// The summon line's kinds (SpeakSummon 0x44 param3) in Konami's logs: 0 a Normal Summon, 1 a Tribute Summon, 5 a
 /// Special Summon, 6 an Extra Deck monster's arrival (after RunFusion), 8 a Synchro Summon (DuelCutin: its own slot).
@@ -3537,13 +3180,13 @@ enum Family {
 impl Family {
     /// The family of a material's move by its reason: a tribute for a summon, a Fusion or Synchro material.
     fn of(reason: u64) -> Option<Family> {
-        if reason & REASON_RELEASE != 0 && reason & REASON_SUMMON != 0 {
+        if reason & reason::RELEASE != 0 && reason & reason::SUMMON != 0 {
             Some(Family::Tribute)
-        } else if reason & REASON_MATERIAL != 0 && reason & REASON_SYNCHRO != 0 {
+        } else if reason & reason::MATERIAL != 0 && reason & reason::SYNCHRO != 0 {
             Some(Family::Synchro)
-        } else if reason & REASON_MATERIAL != 0 && reason & REASON_FUSION != 0 {
+        } else if reason & reason::MATERIAL != 0 && reason & reason::FUSION != 0 {
             Some(Family::Fusion)
-        } else if reason & REASON_MATERIAL != 0 && reason & (REASON_RELEASE | REASON_RITUAL | REASON_XYZ) == 0 {
+        } else if reason & reason::MATERIAL != 0 && reason & (reason::RELEASE | reason::RITUAL | reason::XYZ) == 0 {
             Some(Family::Contact)
         } else {
             None
@@ -3553,9 +3196,9 @@ impl Family {
     /// The DuelSummon commands that mark a material and play its effect (none for a Contact Fusion's).
     fn set_and_run(self) -> Option<(u32, u32)> {
         match self {
-            Family::Tribute => Some((TRIBUTE_SET, TRIBUTE_RUN)),
-            Family::Fusion => Some((MATERIAL_SET, MATERIAL_RUN)),
-            Family::Synchro => Some((TUNING_SET, TUNING_RUN)),
+            Family::Tribute => Some((cmd::TRIBUTE_SET, cmd::TRIBUTE_RUN)),
+            Family::Fusion => Some((cmd::MATERIAL_SET, cmd::MATERIAL_RUN)),
+            Family::Synchro => Some((cmd::TUNING_SET, cmd::TUNING_RUN)),
             Family::Contact => None,
         }
     }
@@ -3582,18 +3225,18 @@ struct Summoning {
 
 /// A move's kind (see [`MOVE_PLAIN`]) from MSG_MOVE's reason and the places.
 fn move_kind(reason: u64, from: Place, to: Place) -> u32 {
-    if reason & REASON_DESTROY != 0 {
-        return if reason & REASON_BATTLE != 0 { MOVE_DESTROYED_BY_BATTLE } else { MOVE_DESTROYED };
+    if reason & reason::DESTROY != 0 {
+        return if reason & reason::BATTLE != 0 { MOVE_DESTROYED_BY_BATTLE } else { MOVE_DESTROYED };
     }
-    if reason & REASON_RELEASE != 0 {
+    if reason & reason::RELEASE != 0 {
         return MOVE_TRIBUTED;
     }
     match (from.zone, to.zone) {
-        (_, 0..5) if reason & REASON_SPSUMMON != 0 => MOVE_SPECIAL_SUMMON,
-        (HAND, 0..5) if !to.face_up => MOVE_SET,
-        (HAND, 0..5) if reason & REASON_SUMMON != 0 => MOVE_NORMAL_SUMMON,
-        (HAND, 5..=FIELD_SPELL) if to.face_up => MOVE_ACTIVATE,
-        (HAND, 5..=FIELD_SPELL) => MOVE_SET,
+        (_, 0..5) if reason & reason::SPSUMMON != 0 => MOVE_SPECIAL_SUMMON,
+        (zone::HAND, 0..5) if !to.face_up => MOVE_SET,
+        (zone::HAND, 0..5) if reason & reason::SUMMON != 0 => MOVE_NORMAL_SUMMON,
+        (zone::HAND, 5..=zone::FIELD_SPELL) if to.face_up => MOVE_ACTIVATE,
+        (zone::HAND, 5..=zone::FIELD_SPELL) => MOVE_SET,
         _ => MOVE_PLAIN,
     }
 }
@@ -3601,7 +3244,7 @@ fn move_kind(reason: u64, from: Place, to: Place) -> u32 {
 /// Card table entries (1000) carry the card's Konami id in `param3`, as Konami's server sent them (all 53,586 entries of
 /// 227 original duel logs); a hidden card (row 0) has none. The client keeps it in its card table (`0x521DF0`).
 fn with_card_ids(cards: &HashMap<u16, CardStats>, out: &mut [Message]) {
-    for m in out.iter_mut().filter(|m| m.get("id").and_then(Value::as_u32) == Some(CARD)) {
+    for m in out.iter_mut().filter(|m| m.get("id").and_then(Value::as_u32) == Some(cmd::CARD)) {
         let row = m.get("param2").and_then(Value::as_u32).unwrap_or(0) as u16;
         let Some(cid) = cards.get(&row).map(|c| c.cid).filter(|_| row != 0) else { continue };
         if let Some((_, v)) = m.fields.iter_mut().find(|(k, _)| k == "param3") {
@@ -3612,7 +3255,7 @@ fn with_card_ids(cards: &HashMap<u16, CardStats>, out: &mut [Message]) {
 
 /// Whether an engine location is an Xyz material's (ocgcore-wasm adds `overlay_sequence`; a raw location has bit 0x80).
 fn is_material(loc: &Json) -> bool {
-    loc["overlay_sequence"].is_u64() || loc["location"].as_u64().unwrap_or(0) & LOC_OVERLAY != 0
+    loc["overlay_sequence"].is_u64() || loc["location"].as_u64().unwrap_or(0) & loc::OVERLAY != 0
 }
 
 /// Tokens' uids, after any deck's (a move carries the uid in 16 bits).
@@ -3620,7 +3263,7 @@ const FIRST_TOKEN_UID: u32 = 0x4000;
 
 /// The table entry flag of a card in this zone: open in the Graveyard and among the banished cards.
 fn open(zone: u32) -> u32 {
-    if zone == GRAVE || zone == REMOVED { OPEN } else { 0 }
+    if zone == zone::GRAVE || zone == zone::REMOVED { OPEN } else { 0 }
 }
 
 /// A monster turned right after its summon lands in its new position: within one batch to the client, a summon move
@@ -3636,7 +3279,7 @@ pub fn settle_positions(out: &mut [Message]) {
         let id = param(&out[i], "id");
         let slot = |p: u32| ((p >> 1) & 0x1F < 5).then_some(p & 0x3F);
         match id {
-            MOVE => {
+            cmd::MOVE => {
                 if let Some(from) = slot(param(&out[i], "param2")) {
                     moved.remove(&from);
                 }
@@ -3644,8 +3287,8 @@ pub fn settle_positions(out: &mut [Message]) {
                     moved.insert(to, (i, false));
                 }
             }
-            RUN_SUMMON | RUN_SP_SUMMON => moved.values_mut().for_each(|(_, effect)| *effect = true),
-            FLIP_TURN => {
+            cmd::RUN_SUMMON | cmd::RUN_SP_SUMMON => moved.values_mut().for_each(|(_, effect)| *effect = true),
+            cmd::FLIP_TURN => {
                 let place = param(&out[i], "param1");
                 if let Some((at, true)) = slot(place).and_then(|s| moved.remove(&s)) {
                     let to = param(&out[at], "param3") & !0xC000 | place & 0xC000;
@@ -3675,15 +3318,15 @@ fn option_list(m: &Json) -> Option<Vec<Message>> {
     let options = m["options"].as_array()?;
     let label = |d: u64| {
         let system = OPTION_LABELS.iter().find(|(o, _, _)| *o == d).map(|&(_, label, title)| (label, title));
-        system.or_else(|| CARD_OPTION_LABELS.iter().find(|(o, _)| *o == d).map(|&(_, label)| (label, SELECT_EFFECT_TEXT)))
+        system.or_else(|| CARD_OPTION_LABELS.iter().find(|(o, _)| *o == d).map(|&(_, label)| (label, text::SELECT_EFFECT)))
     };
     let found: Option<Vec<(u32, u32)>> = options.iter().map(|o| label(o.as_u64()?)).collect();
     let found = found.filter(|f| !f.is_empty() && f.len() <= SELECT_MAX)?;
-    let labels: Vec<u32> = found.iter().map(|(label, _)| label | LISTED).collect();
-    let mut out = vec![command(LIST_BEGIN, [labels.len() as u32, 0, 0, 0])];
-    out.extend(fours(LIST_VALUES, &labels));
-    out.extend(message(&[TEXT | found[0].1]));
-    out.push(command(DIALOG, [SELECT, FROM_ENTRIES, 0, 0]));
+    let labels: Vec<u32> = found.iter().map(|(label, _)| label | dialog::LISTED).collect();
+    let mut out = vec![command(cmd::LIST_BEGIN, [labels.len() as u32, 0, 0, 0])];
+    out.extend(fours(cmd::LIST_VALUES, &labels));
+    out.extend(message(&[entry::TEXT | found[0].1]));
+    out.push(command(cmd::DIALOG, [dialog::SELECT, dialog::FROM_ENTRIES, 0, 0]));
     Some(out)
 }
 
@@ -3691,7 +3334,7 @@ fn option_list(m: &Json) -> Option<Vec<Message>> {
 fn message(entries: &[u32]) -> Vec<Message> {
     let mut params = [0; 4];
     params[..entries.len()].copy_from_slice(entries);
-    vec![command(MESSAGE_LENGTH, [entries.len() as u32, 0, 0, 0]), command(MESSAGE, params)]
+    vec![command(cmd::MESSAGE_LENGTH, [entries.len() as u32, 0, 0, 0]), command(cmd::MESSAGE, params)]
 }
 
 /// The client's dialog for a declaration (MSG_ANNOUNCE_RACE / ATTRIB {count, available}, NUMBER {options}, CARD):
@@ -3703,9 +3346,9 @@ fn declaration(m: &Json, level: bool) -> Option<Vec<Message>> {
     let allowed = m["available"].as_u64().unwrap_or(0);
     let bits = |table: &[u64]| table.iter().enumerate().filter(|(_, b)| allowed & **b != 0).fold(0u32, |f, (i, _)| f | 1 << (i + 1));
     let (dialog, text, param3) = match kind {
-        MSG_ANNOUNCE_RACE if m["count"].as_u64() == Some(1) => (TYPE_DIALOG, TYPE_TEXT, bits(&TYPES)),
-        MSG_ANNOUNCE_ATTRIB => (ATTRIBUTE_DIALOG, ATTRIBUTE_TEXT, bits(&ATTRIBUTES) << 16 | m["count"].as_u64().unwrap_or(1) as u32),
-        MSG_ANNOUNCE_NUMBER => {
+        msg::ANNOUNCE_RACE if m["count"].as_u64() == Some(1) => (dialog::TYPE, text::TYPE, bits(&TYPES)),
+        msg::ANNOUNCE_ATTRIB => (dialog::ATTRIBUTE, text::ATTRIBUTE, bits(&ATTRIBUTES) << 16 | m["count"].as_u64().unwrap_or(1) as u32),
+        msg::ANNOUNCE_NUMBER => {
             let options: Vec<u64> = m["options"].as_array()?.iter().filter_map(Json::as_u64).collect();
             let (unit, format) = number_unit(&options)?;
             let (min, max) = (options.iter().min()? / unit, options.iter().max()? / unit);
@@ -3716,17 +3359,17 @@ fn declaration(m: &Json, level: bool) -> Option<Vec<Message>> {
             let param3 = (max as u32) << 24 | (step as u32) << 20 | (min as u32) << 16 | format;
             // A Level gets "Declare monster level."; other numbers no message.
             if level {
-                let mut out = message(&[TEXT | LEVEL_TEXT]);
-                out.push(command(DIALOG, [NUMBER_DIALOG, FROM_ENTRIES, param3, 0]));
+                let mut out = message(&[entry::TEXT | text::LEVEL]);
+                out.push(command(cmd::DIALOG, [dialog::NUMBER, dialog::FROM_ENTRIES, param3, 0]));
                 return Some(out);
             }
-            return Some(vec![command(DIALOG, [NUMBER_DIALOG, 0, param3, 0])]);
+            return Some(vec![command(cmd::DIALOG, [dialog::NUMBER, 0, param3, 0])]);
         }
-        MSG_ANNOUNCE_CARD => return Some(vec![command(LIST_BEGIN, [0, 1, 0, 0]), command(CARD_LIST, [CLIENT, CARD_SEARCH, 0, 0])]),
+        msg::ANNOUNCE_CARD => return Some(vec![command(cmd::LIST_BEGIN, [0, 1, 0, 0]), command(cmd::CARD_LIST, [CLIENT, list::SEARCH, 0, 0])]),
         _ => return None,
     };
-    let mut out = message(&[TEXT | text]);
-    out.push(command(DIALOG, [dialog, FROM_ENTRIES, param3, 0]));
+    let mut out = message(&[entry::TEXT | text]);
+    out.push(command(cmd::DIALOG, [dialog, dialog::FROM_ENTRIES, param3, 0]));
     Some(out)
 }
 
@@ -3748,7 +3391,7 @@ fn number_unit(options: &[u64]) -> Option<(u64, u32)> {
 /// The duel prompt table's text for an EDOPro selection hint (HINTMSG_*), where one says the same thing.
 fn hint_text(hint: u64) -> Option<u32> {
     Some(match hint {
-        HINTMSG_RELEASE => TRIBUTE_TEXT,
+        hintmsg::RELEASE => text::TRIBUTE,
         501 => 347, // HINTMSG_DISCARD: "Select the @2card(s)@0 in your hand you want to discard."
         502 => 281, // HINTMSG_DESTROY: "Select @3card@0 to @3destroy@0."
         503 => 70,  // HINTMSG_REMOVE: "Select @3card(s)@0 to @3remove from play@0."
@@ -3768,7 +3411,7 @@ fn hint_text(hint: u64) -> Option<u32> {
         526 => 341, // HINTMSG_CONFIRM: "Select the @3card(s)@0 to show your opponent."
         528 => 357, // HINTMSG_POSCHANGE: "Select the @3monster@0 to change its battle position."
         549 => 222, // HINTMSG_ATTACKTARGET: "Select an attack target @3monster@0."
-        550 => SELECT_EFFECT_TEXT, // HINTMSG_EFFECT: "Select effect to @3activate@0."
+        550 => text::SELECT_EFFECT, // HINTMSG_EFFECT: "Select effect to @3activate@0."
         551 => 94,  // HINTMSG_TARGET: "Select the @3card(s)@0 to target."
         _ => return None,
     })
@@ -3990,7 +3633,7 @@ const ZONE_ORDER: [u64; 5] = [2, 3, 1, 4, 0];
 fn free_zones(m: &Json) -> Vec<(u64, u64, u64)> {
     let mask = m["field_mask"].as_u64().unwrap_or(0);
     let me = m["player"].as_u64().unwrap_or(0);
-    [(me, LOC_MZONE, 0), (me, LOC_SZONE, 8), (1 - me, LOC_MZONE, 16), (1 - me, LOC_SZONE, 24)]
+    [(me, loc::MZONE, 0), (me, loc::SZONE, 8), (1 - me, loc::MZONE, 16), (1 - me, loc::SZONE, 24)]
         .into_iter()
         .flat_map(|(p, l, base)| ZONE_ORDER.map(|s| (p, l, s, base + s)))
         .filter(|&(_, _, _, bit)| mask & 1 << bit == 0)
@@ -4005,38 +3648,38 @@ fn cpu_answer(kind: u64, m: &Json) -> Json {
         (0..n).collect::<Vec<_>>()
     };
     match kind {
-        MSG_SELECT_IDLECMD => {
+        msg::SELECT_IDLECMD => {
             let (action, index) = if list_len("summons") > 0 {
-                (IDLE_SUMMON, json!(0))
+                (idle::SUMMON, json!(0))
             } else if list_len("monster_sets") > 0 {
-                (IDLE_MONSTER_SET, json!(0))
+                (idle::MONSTER_SET, json!(0))
             } else if m["to_bp"] == true {
-                (IDLE_TO_BP, Json::Null)
+                (idle::TO_BP, Json::Null)
             } else {
-                (IDLE_TO_EP, Json::Null)
+                (idle::TO_EP, Json::Null)
             };
-            json!({ "type": RESP_IDLECMD, "action": action, "index": index })
+            json!({ "type": resp::IDLECMD, "action": action, "index": index })
         }
-        MSG_SELECT_BATTLECMD if list_len("attacks") > 0 => json!({ "type": RESP_BATTLECMD, "action": BATTLE_ATTACK, "index": 0 }),
-        MSG_SELECT_BATTLECMD => json!({ "type": RESP_BATTLECMD, "action": BATTLE_TO_EP, "index": null }),
-        MSG_SELECT_CHAIN => {
+        msg::SELECT_BATTLECMD if list_len("attacks") > 0 => json!({ "type": resp::BATTLECMD, "action": battle::ATTACK, "index": 0 }),
+        msg::SELECT_BATTLECMD => json!({ "type": resp::BATTLECMD, "action": battle::TO_EP, "index": null }),
+        msg::SELECT_CHAIN => {
             let index = if m["forced"].as_bool() == Some(true) { json!(0) } else { Json::Null };
-            json!({ "type": RESP_CHAIN, "index": index })
+            json!({ "type": resp::CHAIN, "index": index })
         }
-        MSG_SELECT_CARD => json!({ "type": RESP_CARD, "indicies": first(&m["min"], &m["max"], list_len("selects")) }),
-        MSG_SELECT_TRIBUTE => json!({ "type": RESP_TRIBUTE, "indicies": first(&m["min"], &m["max"], list_len("selects")) }),
-        MSG_SELECT_UNSELECT_CARD => {
+        msg::SELECT_CARD => json!({ "type": resp::CARD, "indicies": first(&m["min"], &m["max"], list_len("selects")) }),
+        msg::SELECT_TRIBUTE => json!({ "type": resp::TRIBUTE, "indicies": first(&m["min"], &m["max"], list_len("selects")) }),
+        msg::SELECT_UNSELECT_CARD => {
             // Finishing with nothing picked cancels: Panther Warrior's attack (a Tribute to declare it) came back
             // again and again. Pick first.
             let finish = m["can_finish"] == true && m["unselect_cards"].as_array().is_some_and(|c| !c.is_empty());
             let index = if finish { Json::Null } else { json!(0) };
-            json!({ "type": RESP_UNSELECT_CARD, "index": index })
+            json!({ "type": resp::UNSELECT_CARD, "index": index })
         }
-        MSG_SELECT_EFFECTYN => json!({ "type": RESP_EFFECTYN, "yes": true }),
-        MSG_SELECT_YESNO => json!({ "type": RESP_YESNO, "yes": true }),
-        MSG_SELECT_OPTION => json!({ "type": RESP_OPTION, "index": 0 }),
-        MSG_SORT_CHAIN | MSG_SORT_CARD => json!({ "type": RESP_SORT, "order": null }),
-        MSG_SELECT_COUNTER => {
+        msg::SELECT_EFFECTYN => json!({ "type": resp::EFFECTYN, "yes": true }),
+        msg::SELECT_YESNO => json!({ "type": resp::YESNO, "yes": true }),
+        msg::SELECT_OPTION => json!({ "type": resp::OPTION, "index": 0 }),
+        msg::SORT_CHAIN | msg::SORT_CARD => json!({ "type": resp::SORT, "order": null }),
+        msg::SELECT_COUNTER => {
             // The counters from the cards in order, each giving what it holds until the count is made.
             let mut left = m["count"].as_u64().unwrap_or(0);
             let mut counters: Vec<u64> = m["cards"]
@@ -4052,14 +3695,14 @@ fn cpu_answer(kind: u64, m: &Json) -> Json {
             if counters.is_empty() {
                 counters.push(left);
             }
-            json!({ "type": RESP_COUNTER, "counters": counters })
+            json!({ "type": resp::COUNTER, "counters": counters })
         }
         // The free zones centre out, as Konami's server filled them: the player's monster zones, Spell/Trap zones, then
         // the opponent's (Give and Take and Black Garden place on the opponent's field), and the Field zone (13).
-        MSG_SELECT_PLACE | MSG_SELECT_DISFIELD => {
+        msg::SELECT_PLACE | msg::SELECT_DISFIELD => {
             let mask = m["field_mask"].as_u64().unwrap_or(0);
             let me = m["player"].as_u64().unwrap_or(0);
-            let field = (mask & 1 << 13 == 0).then_some((me, LOC_SZONE, 5));
+            let field = (mask & 1 << 13 == 0).then_some((me, loc::SZONE, 5));
             // As many as asked (Ground Collapse and Phantom Dragon each disable two zones).
             let count = (m["count"].as_u64().unwrap_or(1) as usize).max(1);
             let mut places: Vec<Json> = free_zones(m)
@@ -4069,31 +3712,31 @@ fn cpu_answer(kind: u64, m: &Json) -> Json {
                 .map(|(p, l, s)| json!({ "player": p, "location": l, "sequence": s }))
                 .collect();
             if places.is_empty() {
-                places.push(json!({ "player": me, "location": LOC_MZONE, "sequence": 0 }));
+                places.push(json!({ "player": me, "location": loc::MZONE, "sequence": 0 }));
             }
-            let kind = if kind == MSG_SELECT_PLACE { RESP_PLACE } else { RESP_DISFIELD };
+            let kind = if kind == msg::SELECT_PLACE { resp::PLACE } else { resp::DISFIELD };
             json!({ "type": kind, "places": places })
         }
         // Face-up attack when allowed, else the first allowed position.
-        MSG_SELECT_POSITION => {
+        msg::SELECT_POSITION => {
             let allowed = m["positions"].as_u64().unwrap_or(1);
             let position = if allowed & 1 != 0 { 1 } else { 1 << allowed.trailing_zeros() };
-            json!({ "type": RESP_POSITION, "position": position })
+            json!({ "type": resp::POSITION, "position": position })
         }
         // The lowest `count` of the available bits.
-        MSG_ANNOUNCE_RACE | MSG_ANNOUNCE_ATTRIB => {
+        msg::ANNOUNCE_RACE | msg::ANNOUNCE_ATTRIB => {
             let available = m["available"].as_u64().unwrap_or(1);
             let picked: Vec<u64> = (0..64).map(|b| 1u64 << b).filter(|b| available & b != 0).take(m["count"].as_u64().unwrap_or(1) as usize).collect();
-            let (kind, key) = if kind == MSG_ANNOUNCE_RACE { (RESP_RACE, "races") } else { (RESP_ATTRIB, "attributes") };
+            let (kind, key) = if kind == msg::ANNOUNCE_RACE { (resp::RACE, "races") } else { (resp::ATTRIB, "attributes") };
             json!({ "type": kind, key: picked })
         }
-        MSG_ANNOUNCE_NUMBER => json!({ "type": RESP_NUMBER, "value": 0 }),
-        MSG_ANNOUNCE_CARD => json!({ "type": RESP_CARD_NAME, "cid": m["fits"][0].as_u64().unwrap_or(0) }),
-        MSG_ROCK_PAPER_SCISSORS => json!({ "type": RESP_RPS, "value": 1 }),
-        MSG_SELECT_SUM => json!({ "type": RESP_SUM, "indicies": sum_choice(m) }),
+        msg::ANNOUNCE_NUMBER => json!({ "type": resp::NUMBER, "value": 0 }),
+        msg::ANNOUNCE_CARD => json!({ "type": resp::CARD_NAME, "cid": m["fits"][0].as_u64().unwrap_or(0) }),
+        msg::ROCK_PAPER_SCISSORS => json!({ "type": resp::RPS, "value": 1 }),
+        msg::SELECT_SUM => json!({ "type": resp::SUM, "indicies": sum_choice(m) }),
         _ => {
             tracing::warn!("rules engine: no answer for prompt {kind}");
-            json!({ "type": RESP_CHAIN, "index": null })
+            json!({ "type": resp::CHAIN, "index": null })
         }
     }
 }
@@ -4114,9 +3757,9 @@ mod tests {
     /// An idle prompt of the client's: the hand card at sequence 0 offers `effects` activations.
     fn idle_with_activations(effects: u64) -> Json {
         let activates: Vec<Json> = (0..effects)
-            .map(|e| json!({ "controller": 0, "location": LOC_HAND, "sequence": 0, "cid": 4007, "description": e }))
+            .map(|e| json!({ "controller": 0, "location": loc::HAND, "sequence": 0, "cid": 4007, "description": e }))
             .collect();
-        json!({ "type": MSG_SELECT_IDLECMD, "player": 0, "summons": [], "special_summons": [], "pos_changes": [],
+        json!({ "type": msg::SELECT_IDLECMD, "player": 0, "summons": [], "special_summons": [], "pos_changes": [],
                 "monster_sets": [], "spell_sets": [], "activates": activates, "to_bp": false, "to_ep": true, "shuffle": false })
     }
 
@@ -4126,12 +3769,12 @@ mod tests {
         assert!(matches!(t.prompt(&idle_with_activations(2)), Prompt::Client(_)));
         // The round trip (the duel check's): before the card list, only the first effect was reachable.
         assert_eq!(t.unreachable_answers(), Vec::<String>::new());
-        let activate = CardCommand { command: 3, player: CLIENT, zone: HAND, index: 0 };
+        let activate = CardCommand { command: 3, player: CLIENT, zone: zone::HAND, index: 0 };
         let Some(Prompt::Client(list)) = t.command(activate) else { panic!("a card list") };
-        let begin = list.iter().find(|m| m.get("id").and_then(yo3_proto::Value::as_u32) == Some(LIST_BEGIN)).expect("a list");
+        let begin = list.iter().find(|m| m.get("id").and_then(yo3_proto::Value::as_u32) == Some(cmd::LIST_BEGIN)).expect("a list");
         assert_eq!(begin.get("param1").and_then(yo3_proto::Value::as_u32), Some(2));
         t.pick(1);
-        assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": RESP_IDLECMD, "action": 5, "index": 1 }))));
+        assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": resp::IDLECMD, "action": 5, "index": 1 }))));
     }
 
     #[test]

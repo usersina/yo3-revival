@@ -175,3 +175,24 @@ fn konamis_commands_are_all_in_the_table_as_often_as_it_says() {
     }
     assert!(wrong.is_empty(), "{duels} duels:\n{}", wrong.join("\n"));
 }
+
+#[test]
+fn every_command_the_server_names_is_in_the_table_once() {
+    // `wire::cmd` is the server's one place for command ids: each of them is in CLIENT_COMMANDS, and no id has two names.
+    let mut seen = BTreeMap::new();
+    for &(name, id) in yo3_server::wire::cmd::ALL {
+        assert!(CLIENT_COMMANDS.iter().any(|c| c.id == id), "cmd::{name} ({id:#x}) is not in CLIENT_COMMANDS");
+        if let Some(other) = seen.insert(id, name) {
+            panic!("{id:#x} is both cmd::{other} and cmd::{name}");
+        }
+    }
+}
+
+#[test]
+fn every_engine_message_the_server_names_is_in_engine_messages_under_its_name() {
+    // `ocg::msg` is the server's one place for the engine's message types; ENGINE_MESSAGES says what each one does.
+    for &(name, id) in yo3_server::ocg::msg::ALL {
+        let entry = yo3_server::translate::ENGINE_MESSAGES.iter().find(|(k, _, _)| *k == id);
+        assert_eq!(entry.map(|e| e.1.to_string()), Some(format!("MSG_{name}")), "msg::{name} ({id})");
+    }
+}

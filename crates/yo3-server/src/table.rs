@@ -8,14 +8,13 @@ use std::time::Instant;
 use serde_json::Value as Json;
 use yo3_proto::Message;
 
-use crate::duel::{
-    CLIENT, CPU, CardCommand, DUEL_START, FIRST, FIRST_BEGIN, FIRST_RESOLVE, JANKEN_BEGIN, JANKEN_RESOLVE, SECOND, SET_LP,
-    command, piles, setup, shuffle,
-};
+use crate::duel::{CLIENT, CPU, CardCommand, FIRST, SECOND, command, piles, setup, shuffle};
 use crate::clock::Clocks;
 use crate::engine::{Answer, Engine};
 use crate::front::{DuelEntry, Ended, Hub, MATCH_MODE, Outbox, SINGLE_MODE, World};
-use crate::translate::{DRAW, DUEL_END, LOST, Prompt, Repeats, Translator, WON};
+use crate::ocg::msg;
+use crate::translate::{Prompt, Repeats, Translator};
+use crate::wire::{cmd, result};
 
 /// The usual starting LP (the server's own unless --duel-lp changes it).
 const DEFAULT_LP: u32 = 8000;
@@ -24,13 +23,6 @@ const TIME_OUT: u32 = 11;
 const DISCONNECTED: u32 = 14;
 /// The most prompts the server answers by itself between two of a client's choices (a duel needs far fewer).
 const MAX_ANSWERS: u32 = 10_000;
-/// The engine's MSG_NEW_TURN {player}.
-const MSG_NEW_TURN: u64 = 40;
-/// Card Swap between a match's duels (DuelManager 0x50FC00 takes it to 0x50FDF0), instead of the next janken's 1500.
-const CARD_SWAP: u32 = 1504;
-/// A match's end for a spectator {match result: 1 won, 2 lost, 3 draw}: its DuelResult (0x512070) reads it at the
-/// head of its queue (MainGamen +0x820) where a player's reads the front's 0x2009.
-pub(crate) const MATCH_END: u32 = 1505;
 
 struct Seat {
     player_id: u32,
@@ -134,7 +126,7 @@ impl Table {
         let seat = self.seats.len() - 1;
         let mut out = Out::default();
         if self.seats.len() == 2 {
-            out = [vec![command(JANKEN_BEGIN, [0; 4])], vec![command(JANKEN_BEGIN, [0; 4])]];
+            out = [vec![command(cmd::JANKEN_BEGIN, [0; 4])], vec![command(cmd::JANKEN_BEGIN, [0; 4])]];
         }
         Some((seat, out))
     }
@@ -152,7 +144,7 @@ impl Table {
         for (s, (mine, theirs)) in [(h0, h1), (h1, h0)].into_iter().enumerate() {
             // Each hand beats the next one: rock > scissors > paper > rock.
             let result = if theirs == mine { 0 } else if theirs == (mine + 1) % 3 { 1 } else { 2 };
-            out[s].push(command(JANKEN_RESOLVE, [result, theirs, mine, 0]));
+            out[s].push(command(cmd::JANKEN_RESOLVE, [result, theirs, mine, 0]));
             if s == 0 && result != 0 {
                 self.janken = [result, theirs, mine];
             }
@@ -160,9 +152,9 @@ impl Table {
                 0 => {}
                 1 => {
                     self.picker = Some(s);
-                    out[s].push(command(FIRST_BEGIN, [1, 0, 0, 0]));
+                    out[s].push(command(cmd::FIRST_BEGIN, [1, 0, 0, 0]));
                 }
-                _ => out[s].push(command(FIRST_BEGIN, [0; 4])),
+                _ => out[s].push(command(cmd::FIRST_BEGIN, [0; 4])),
             }
         }
         out
@@ -177,7 +169,7 @@ impl Table {
         self.ordered = true;
         let first = if choice == SECOND { 1 - seat } else { seat };
         for (s, part) in out.iter_mut().enumerate() {
-            part.push(command(FIRST_RESOLVE, [if s == first { FIRST } else { SECOND }, 0, 0, 0]));
+            part.push(command(cmd::FIRST_RESOLVE, [if s == first { FIRST } else { SECOND }, 0, 0, 0]));
         }
         let opening = self.open(first);
         for (part, more) in out.iter_mut().zip(opening) {
@@ -244,7 +236,7 @@ impl Table {
             self.translators.push(translator);
             part.push(setup(order, mine, theirs));
             part.extend(table);
-            part.extend([command(DUEL_START, [0; 4]), command(SET_LP, [CLIENT, lp, 0, 0]), command(SET_LP, [CPU, lp, 0, 0])]);
+            part.extend([command(cmd::DUEL_START, [0; 4]), command(cmd::SET_LP, [CLIENT, lp, 0, 0]), command(cmd::SET_LP, [CPU, lp, 0, 0])]);
             part.extend(piles());
         }
         for i in 0..self.spectators.len() {
@@ -280,14 +272,14 @@ impl Table {
         table.extend(translator.extra_decks([&mine.extra, &theirs.extra]));
         let [result, their_hand, my_hand] = self.janken;
         let mut out = vec![
-            command(JANKEN_BEGIN, [0; 4]),
-            command(JANKEN_RESOLVE, [result, their_hand, my_hand, 0]),
-            command(FIRST_BEGIN, [0; 4]),
-            command(FIRST_RESOLVE, [if self.first == 0 { FIRST } else { SECOND }, 0, 0, 0]),
+            command(cmd::JANKEN_BEGIN, [0; 4]),
+            command(cmd::JANKEN_RESOLVE, [result, their_hand, my_hand, 0]),
+            command(cmd::FIRST_BEGIN, [0; 4]),
+            command(cmd::FIRST_RESOLVE, [if self.first == 0 { FIRST } else { SECOND }, 0, 0, 0]),
             setup(order, mine, theirs),
         ];
         out.extend(table);
-        out.extend([command(DUEL_START, [0; 4]), command(SET_LP, [CLIENT, self.lp, 0, 0]), command(SET_LP, [CPU, self.lp, 0, 0])]);
+        out.extend([command(cmd::DUEL_START, [0; 4]), command(cmd::SET_LP, [CLIENT, self.lp, 0, 0]), command(cmd::SET_LP, [CPU, self.lp, 0, 0])]);
         out.extend(piles());
         (translator, out)
     }
@@ -368,7 +360,7 @@ impl Table {
             }
             history.extend(a.messages.iter().cloned());
             if let Some(c) = clocks.as_mut() {
-                for m in a.messages.iter().filter(|m| m["type"].as_u64() == Some(MSG_NEW_TURN)) {
+                for m in a.messages.iter().filter(|m| m["type"].as_u64() == Some(msg::NEW_TURN)) {
                     let seat = if m["player"].as_u64() == Some(0) { *first } else { 1 - *first };
                     c.new_turn(seat, now);
                 }
@@ -443,9 +435,9 @@ impl Table {
     fn abandon(&mut self) -> Out {
         self.engine = None;
         self.clocks = None;
-        let end = || command(DUEL_END, [DRAW, 0, 0, 0]);
+        let end = || command(cmd::DUEL_END, [result::DRAW, 0, 0, 0]);
         self.tell_spectators(vec![vec![end()]; self.spectators.len()]);
-        self.report([DRAW; 2]);
+        self.report([result::DRAW; 2]);
         [vec![end()], vec![end()]]
     }
 
@@ -505,11 +497,11 @@ impl Table {
         if self.over || self.seats.len() < 2 {
             return;
         }
-        let mut results = [WON; 2];
-        results[seat] = LOST;
-        let watched = vec![vec![command(DUEL_END, [results[0], TIME_OUT, 0, 0])]; self.spectators.len()];
+        let mut results = [result::WON; 2];
+        results[seat] = result::LOST;
+        let watched = vec![vec![command(cmd::DUEL_END, [results[0], TIME_OUT, 0, 0])]; self.spectators.len()];
         self.tell_spectators(watched);
-        let mut out: Out = results.map(|r| vec![command(DUEL_END, [r, TIME_OUT, 0, 0])]);
+        let mut out: Out = results.map(|r| vec![command(cmd::DUEL_END, [r, TIME_OUT, 0, 0])]);
         for (part, more) in out.iter_mut().zip(self.duel_over(results)) {
             part.extend(more);
         }
@@ -528,16 +520,16 @@ impl Table {
     fn duel_over(&mut self, results: [u32; 2]) -> Out {
         self.played += 1;
         for (wins, result) in self.wins.iter_mut().zip(results) {
-            *wins += (result == WON) as u32;
+            *wins += (result == result::WON) as u32;
         }
         let needed = self.best_of / 2 + 1;
         if self.best_of <= 1 || self.wins.iter().any(|&w| w >= needed) {
             let match_results = if self.best_of <= 1 {
                 results
             } else if self.wins[0] > self.wins[1] {
-                [WON, LOST]
+                [result::WON, result::LOST]
             } else {
-                [LOST, WON]
+                [result::LOST, result::WON]
             };
             self.report(match_results);
             return Out::default();
@@ -554,7 +546,7 @@ impl Table {
         let mut out = Out::default();
         for (s, part) in out.iter_mut().enumerate() {
             self.swapping[s] = !self.seats[s].entry.deck.side.is_empty();
-            part.push(command(if self.swapping[s] { CARD_SWAP } else { JANKEN_BEGIN }, [0; 4]));
+            part.push(command(if self.swapping[s] { cmd::SWAP_BETWEEN_DUELS } else { cmd::JANKEN_BEGIN }, [0; 4]));
         }
         out
     }
@@ -577,7 +569,7 @@ impl Table {
             Some(e) if sorted(&e.deck) == sorted(&self.seats[seat].entry.deck) => self.seats[seat].entry.deck = e.deck,
             _ => tracing::warn!("duel {}: seat {seat}'s swapped deck isn't its deck; kept the one it had", self.duel_id),
         }
-        out[seat].push(command(JANKEN_BEGIN, [0; 4]));
+        out[seat].push(command(cmd::JANKEN_BEGIN, [0; 4]));
         out
     }
 
@@ -610,11 +602,11 @@ impl Table {
             };
             hub.finish_duel(&ended);
         }
-        let winner = results.iter().position(|&r| r == WON).map(|s| self.seats[s].player_id);
+        let winner = results.iter().position(|&r| r == result::WON).map(|s| self.seats[s].player_id);
         hub.end_match(self.duel_id, winner);
         drop(hub);
         // Delivery checks the final state before releasing the engine process.
-        self.tell_spectators(vec![vec![command(MATCH_END, [results[0], 0, 0, 0])]; self.spectators.len()]);
+        self.tell_spectators(vec![vec![command(cmd::MATCH_END, [results[0], 0, 0, 0])]; self.spectators.len()]);
     }
 
     /// A client's response, then the engine onwards.
@@ -701,12 +693,12 @@ impl Table {
     pub fn leave(&mut self, seat: usize) {
         if !self.over && self.seats.len() == 2 {
             let other = 1 - seat;
-            let _ = self.seats[other].outbox.send(command(DUEL_END, [WON, DISCONNECTED, 0, 0]));
-            let seat0 = if seat == 0 { LOST } else { WON };
-            self.tell_spectators(vec![vec![command(DUEL_END, [seat0, DISCONNECTED, 0, 0])]; self.spectators.len()]);
+            let _ = self.seats[other].outbox.send(command(cmd::DUEL_END, [result::WON, DISCONNECTED, 0, 0]));
+            let seat0 = if seat == 0 { result::LOST } else { result::WON };
+            self.tell_spectators(vec![vec![command(cmd::DUEL_END, [seat0, DISCONNECTED, 0, 0])]; self.spectators.len()]);
             if self.engine.is_some() || self.played > 0 {
-                let mut results = [WON; 2];
-                results[seat] = LOST;
+                let mut results = [result::WON; 2];
+                results[seat] = result::LOST;
                 self.report(results);
             } else {
                 // Both seats taken and no duel yet: the other client is on the janken or turn order screen.
@@ -781,7 +773,7 @@ mod diagnostic_tests {
             table.seats.push(Seat { player_id, entry: DuelEntry::default(), outbox });
         }
         table.checks = (0..2).map(|_| crate::duelcheck::ClientModel::new(0, Default::default())).collect();
-        table.duel_over([WON, LOST]);
+        table.duel_over([result::WON, result::LOST]);
         assert_eq!(table.checks.len(), 2, "the final LP/moves still need checking before teardown");
     }
 }

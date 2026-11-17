@@ -46,38 +46,12 @@ use serde_json::Value as Json;
 use yo3_proto::{Message, Value};
 
 use crate::translate::CardStats;
+use crate::wire::{cmd, dialog, request, zone};
 pub mod native;
 pub mod coverage;
 pub mod summon;
 
 const SERVER_DUEL: u32 = crate::duel::SERVER_DUEL;
-/// Pump cases (duelRequestName): an engine command, the duel setup.
-const ENGINE_COMMAND: u32 = 0x11;
-const DUEL_SETUP: u32 = 0x15;
-/// Card commands the model follows.
-const CARD: u32 = 1000;
-const MOVE: u32 = 0x1A;
-const HAND_SHUFFLE: u32 = 0x12;
-const DECK_RESET: u32 = 0x16;
-const CARD_SWAP: u32 = 0x1B;
-const FLIP_TURN: u32 = 0x1C;
-const CARD_VANISH: u32 = 0x1F;
-const BATTLE_INIT: u32 = 0xA;
-const BATTLE_SELECT: u32 = 0xB;
-const BATTLE_ATTACK: u32 = 0xC;
-const BATTLE_RUN: u32 = 0xD;
-const BATTLE_END: u32 = 0xE;
-const RELATION: u32 = 0x3F9;
-/// The dialog command and its position kind.
-const DIALOG: u32 = 0x36;
-const POSITION_DIALOG: u32 = 8;
-/// Zones: field slots 0-10 (monsters 0-4, Spell/Trap 5-9, Field Spell 10), then the hand and the piles.
-const FIELD_SPELL: u32 = 10;
-const HAND: u32 = 0xB;
-const EXTRA: u32 = 0xC;
-const DECK: u32 = 0xD;
-const GRAVE: u32 = 0xE;
-const REMOVED: u32 = 0xF;
 /// The uids a mixed card list puts in the table for the time it is open (`translate.rs` STAGED_UID), and the first
 /// token uid.
 const STAGED: u32 = 0xF0_0000;
@@ -107,7 +81,7 @@ impl Place {
     }
 
     fn pile(self) -> Option<usize> {
-        (EXTRA..=REMOVED).contains(&self.zone).then(|| (self.zone - EXTRA) as usize)
+        (zone::EXTRA..=zone::REMOVED).contains(&self.zone).then(|| (self.zone - zone::EXTRA) as usize)
     }
 }
 
@@ -225,7 +199,7 @@ impl ClientModel {
         }
         let int = |k: &str| m.get(k).and_then(Value::as_u32).unwrap_or(0);
         match m.get("duelRequestName").and_then(Value::as_u32) {
-            Some(DUEL_SETUP) => {
+            Some(request::DUEL_SETUP) => {
                 // A new duel (a match's next one too): nothing of the last one stays.
                 let rows = std::mem::take(&mut self.rows);
                 let gaps = std::mem::take(&mut self.coverage_gaps);
@@ -240,7 +214,7 @@ impl ClientModel {
                 ];
                 self.note("setup".into());
             }
-            Some(ENGINE_COMMAND) => {
+            Some(request::ENGINE_COMMAND) => {
                 let p = [int("param1"), int("param2"), int("param3"), int("param4")];
                 self.command(int("id"), p);
             }
@@ -269,8 +243,8 @@ impl ClientModel {
         if matches!(id, 0x2A | 0x2C | 0x2D | 0x2F | 0x30 | 0x32) {
             let (player, zone, uid) = ((p1 & 1) as usize, p2, p3 & 0xFFFF);
             let there = match zone {
-                HAND => self.hands[player].contains(&uid),
-                z if z <= FIELD_SPELL => self.slots[player][z as usize] == Some(uid),
+                zone::HAND => self.hands[player].contains(&uid),
+                z if z <= zone::FIELD_SPELL => self.slots[player][z as usize] == Some(uid),
                 _ => true,
             };
             self.note(format!("{id:#x} {{{p1}, {p2}, uid {uid}, {p4:#x}}}"));
@@ -278,7 +252,7 @@ impl ClientModel {
                 self.problem(format!("summon command {id:#x} names {} at player {player} zone {zone}, where the client doesn't hold it", self.describe(uid)));
             }
         }
-        if id == DIALOG && p1 == POSITION_DIALOG {
+        if id == cmd::DIALOG && p1 == dialog::POSITION {
             let uid = p3 & 0xFFFF;
             self.note(format!("0x36 position {{uid {uid}}}"));
             if self.rows.get(&uid).is_none_or(|&row| row == 0) {
@@ -307,14 +281,14 @@ impl ClientModel {
                     *count = (*count + p2 as i32 as i64).max(0);
                 } else { self.problem(format!("counter change at empty player {p} zone {z}")); }
             },
-            BATTLE_INIT | BATTLE_END => self.battle = [None; 2],
-            BATTLE_ATTACK => {
+            cmd::BATTLE_INIT | cmd::BATTLE_END => self.battle = [None; 2],
+            cmd::BATTLE_ATTACK => {
                 self.battle = [None; 2];
                 let (attacker, zone, target) = ((p1 & 1) as usize, (p1 >> 8 & 0xFF) as usize, (p2 & 1) as usize);
                 if zone < 5 { self.battle[attacker] = Some((attacker, zone)); }
                 if p3 < 5 { self.battle[target] = Some((target, p3 as usize)); }
             },
-            BATTLE_RUN => {
+            cmd::BATTLE_RUN => {
                 self.note(format!("BattleRun flags {p3:#x}"));
                 for player in 0..2 {
                     if p3 & (2 << (player * 8)) != 0
@@ -323,7 +297,7 @@ impl ClientModel {
                     { self.off_field.insert(uid); }
                 }
             },
-            CARD => {
+            cmd::CARD => {
                 let uid = p1 & 0xFF_FFFF;
                 if p2 != 0 && uid < STAGED {
                     self.rows.insert(uid, p2 as u16);
@@ -331,25 +305,25 @@ impl ClientModel {
                 self.table.insert(uid, p4);
                 self.note(format!("1000 {{uid {uid}, row {p2}, place {p4:#x}}}"));
             }
-            MOVE => {
+            cmd::MOVE => {
                 self.note(format!("0x1A {{uid {}, {:#x} -> {:#x}}}", p1 & 0xFFFF, p2, p3));
                 self.card_move(p1 & 0xFFFF, Place::of_move(p2), Place::of_move(p3));
             }
-            HAND_SHUFFLE => {
+            cmd::HAND_SHUFFLE => {
                 self.note(format!("0x12 {{{p1}}}"));
                 self.hand_shuffle((p1 & 1) as usize);
             }
-            DECK_RESET => {
+            cmd::DECK_RESET => {
                 let (player, zone) = ((p1 & 1) as usize, p2);
-                if (EXTRA..=REMOVED).contains(&zone) {
-                    let pile = (zone - EXTRA) as usize;
+                if (zone::EXTRA..=zone::REMOVED).contains(&zone) {
+                    let pile = (zone - zone::EXTRA) as usize;
                     self.piles[player][pile] = self.counts[player][pile];
                 }
             }
-            CARD_SWAP => {
+            cmd::CARD_SWAP => {
                 let (a, b) = (Place::of_move(p2), Place::of_move(p3));
                 self.note(format!("0x1B {{{p2:#x}, {p3:#x}}}"));
-                if a.zone > FIELD_SPELL || b.zone > FIELD_SPELL {
+                if a.zone > zone::FIELD_SPELL || b.zone > zone::FIELD_SPELL {
                     self.problem(format!("CardSwap of {p2:#x} and {p3:#x}: the client swaps only field places"));
                     return;
                 }
@@ -365,9 +339,9 @@ impl ClientModel {
                     }
                 }
             }
-            FLIP_TURN => {
+            cmd::FLIP_TURN => {
                 let place = Place::of_move(p1);
-                if place.zone <= FIELD_SPELL
+                if place.zone <= zone::FIELD_SPELL
                     && let Some(uid) = self.slots[place.player][place.zone as usize]
                 {
                     if self.places.get(&uid).is_some_and(|old| old.face_up != place.face_up) {
@@ -377,11 +351,11 @@ impl ClientModel {
                 }
                 self.note(format!("0x1C {{{p1:#x}}}"));
             }
-            CARD_VANISH => {
+            cmd::CARD_VANISH => {
                 let (player, zone, index) = ((p1 & 1) as usize, p2 & 0xFF, (p2 >> 8 & 0xFF) as usize);
                 let uid = match zone {
-                    z if z <= FIELD_SPELL => self.slots[player][z as usize],
-                    HAND => self.hands[player].get(index).copied(),
+                    z if z <= zone::FIELD_SPELL => self.slots[player][z as usize],
+                    zone::HAND => self.hands[player].get(index).copied(),
                     _ => None,
                 };
                 if let Some(uid) = uid {
@@ -389,7 +363,7 @@ impl ClientModel {
                 }
                 self.note(format!("0x1F {{{p1}, {p2:#x}}}"));
             }
-            RELATION => {
+            cmd::RELATION => {
                 self.note(format!("1017 {{{p1:#x}, {p2:#x}, {p3}, {p4}}}"));
                 if p4 != 0 {
                     self.relations.push((p1, p2, p3));
@@ -406,16 +380,16 @@ impl ClientModel {
 
     /// 0x5000E0 for one card (param_6 0, as case 0x1A calls it).
     fn card_move(&mut self, uid: u32, from: Place, to: Place) {
-        if from.zone <= FIELD_SPELL && from.face_up != to.face_up {
+        if from.zone <= zone::FIELD_SPELL && from.face_up != to.face_up {
             self.counters.retain(|(card, _), _| *card != uid);
         }
-        if from.zone <= FIELD_SPELL {
+        if from.zone <= zone::FIELD_SPELL {
             self.slots[from.player][from.zone as usize] = None;
         }
-        if to.zone <= FIELD_SPELL {
+        if to.zone <= zone::FIELD_SPELL {
             self.slots[to.player][to.zone as usize] = Some(uid);
         }
-        if from.zone == HAND {
+        if from.zone == zone::HAND {
             let hand = &mut self.hands[from.player];
             match hand.get(from.index).copied() {
                 None => {
@@ -434,7 +408,7 @@ impl ClientModel {
                 }
             }
         }
-        if to.zone == HAND {
+        if to.zone == zone::HAND {
             if self.hands.iter().any(|h| h.contains(&uid)) {
                 self.problem(format!("uid {uid} reaches hand {} while a hand list still holds it", to.player));
             }
@@ -462,7 +436,7 @@ impl ClientModel {
     fn hand_shuffle(&mut self, player: usize) {
         let mut rebuilt = vec![];
         for i in 0..self.hands[player].len() {
-            match self.at_table(table_place(player, HAND, i))[..] {
+            match self.at_table(table_place(player, zone::HAND, i))[..] {
                 [uid] => rebuilt.push(uid),
                 [] => {
                     self.problem(format!("HandShuffle {player}: no table entry at hand index {i} (the client's error 0x1200)"));
@@ -520,7 +494,7 @@ impl ClientModel {
         }
         let held = |place: u32| {
             let (player, zone) = ((place & 1) as usize, (place >> 8 & 0xFF) as usize);
-            zone <= FIELD_SPELL as usize && self.slots[player][zone].is_some_and(|uid| !self.off_field.contains(&uid))
+            zone <= zone::FIELD_SPELL as usize && self.slots[player][zone].is_some_and(|uid| !self.off_field.contains(&uid))
         };
         for &(a, b, mark) in &self.relations {
             if !held(a) || !held(b) {
@@ -553,7 +527,7 @@ impl ClientModel {
             }
         }
         for (i, &uid) in mine.iter().enumerate() {
-            let entries = self.at_table(table_place(p, HAND, i));
+            let entries = self.at_table(table_place(p, zone::HAND, i));
             if entries != [uid] {
                 out.push(format!("player {p}'s hand index {i}: the client holds {}, its table has {entries:?} there", self.describe(uid)));
             }
@@ -563,7 +537,7 @@ impl ClientModel {
         let szone = list("szone");
         let mut slots: Vec<(u32, Json)> = (0..5).map(|s| (s as u32, mzone.get(s).cloned().unwrap_or(Json::Null))).collect();
         slots.extend((0..5).map(|s| (5 + s as u32, szone.get(s).cloned().unwrap_or(Json::Null))));
-        slots.push((FIELD_SPELL, szone.get(5).cloned().unwrap_or(Json::Null)));
+        slots.push((zone::FIELD_SPELL, szone.get(5).cloned().unwrap_or(Json::Null)));
         for (seq, c) in mzone.iter().enumerate().skip(5).chain(szone.iter().enumerate().skip(6)) {
             if !c.is_null() {
                 out.push(format!("player {p} has card {} at an engine place the client has no slot for (sequence {seq})", cid_of(c)));
@@ -625,19 +599,19 @@ impl ClientModel {
             }
         }
         // The piles: counts, and for the Graveyard (whose top card and views come from the table) each index's entry.
-        for (key, zone) in [("extra", EXTRA), ("grave", GRAVE), ("removed", REMOVED)] {
+        for (key, zone) in [("extra", zone::EXTRA), ("grave", zone::GRAVE), ("removed", zone::REMOVED)] {
             let n = list(key).len() as i64;
-            let shown = self.piles[p][(zone - EXTRA) as usize];
+            let shown = self.piles[p][(zone - zone::EXTRA) as usize];
             if n != shown {
                 out.push(format!("player {p}'s {key} pile: the engine has {n} cards, the client counts {shown}"));
             }
         }
         let deck = side["deck"].as_i64().unwrap_or(0);
-        if deck != self.piles[p][(DECK - EXTRA) as usize] {
-            out.push(format!("player {p}'s deck: the engine has {deck} cards, the client counts {}", self.piles[p][(DECK - EXTRA) as usize]));
+        if deck != self.piles[p][(zone::DECK - zone::EXTRA) as usize] {
+            out.push(format!("player {p}'s deck: the engine has {deck} cards, the client counts {}", self.piles[p][(zone::DECK - zone::EXTRA) as usize]));
         }
         for (i, engine) in list("grave").iter().enumerate() {
-            match self.at_table(table_place(p, GRAVE, i))[..] {
+            match self.at_table(table_place(p, zone::GRAVE, i))[..] {
                 [uid] if self.cid(uid).is_none_or(|c| c == cid_of(engine)) => {}
                 ref entries => out.push(format!(
                     "player {p}'s Graveyard index {i}: the engine has card {}, the table has {:?}",
@@ -660,34 +634,13 @@ pub mod selfplay {
     use serde_json::{Value as Json, json};
 
     use super::ClientModel;
-    use crate::duel::{CLIENT, CPU, DUEL_START, SET_LP, command, next, piles, setup, shuffle};
+    use crate::duel::{CLIENT, CPU, command, next, piles, setup, shuffle};
+    use crate::ocg::{hint, msg};
+    use crate::wire::{cmd, dialog, zone};
     use crate::engine::Engine;
     use crate::front::Deck;
-    use crate::translate::{CardStats, ChainWindow, HINT_EVENT, Prompt, Translator, bot_answer, chain_window, settle_positions};
+    use crate::translate::{CardStats, ChainWindow, Prompt, Translator, bot_answer, chain_window, settle_positions};
 
-    /// ocgcore message types the harness looks at.
-    const MSG_RETRY: u64 = 1;
-    const MSG_SELECT_BATTLECMD: u64 = 10;
-    const MSG_SELECT_IDLECMD: u64 = 11;
-    const MSG_SELECT_EFFECTYN: u64 = 12;
-    const MSG_SELECT_YESNO: u64 = 13;
-    const MSG_SELECT_OPTION: u64 = 14;
-    const MSG_SELECT_CARD: u64 = 15;
-    const MSG_SELECT_CHAIN: u64 = 16;
-    const MSG_SELECT_PLACE: u64 = 18;
-    const MSG_SELECT_POSITION: u64 = 19;
-    const MSG_SELECT_TRIBUTE: u64 = 20;
-    const MSG_SELECT_SUM: u64 = 23;
-    const MSG_SELECT_UNSELECT_CARD: u64 = 26;
-    const MSG_NEW_TURN: u64 = 40;
-    const MSG_SUMMONING: u64 = 60;
-    const MSG_SPSUMMONING: u64 = 62;
-    const MSG_FLIPSUMMONING: u64 = 64;
-    const MSG_CHAINING: u64 = 70;
-    const MSG_HINT: u64 = 2;
-    /// The Effect dialog's kind and the lowest level the default Activation Message (Semi Auto Cancel) shows; below it the
-    /// client answers No for the player at once (0x4C5560, docs/protocol.md "Chains").
-    const EFFECT_DIALOG: u32 = 3;
     const SHOWN_BY_DEFAULT: u32 = 2;
     /// The Sheep Tokens' rows in the harness's card data (the client's token cards are 3900-3999; any rows do here).
     const SHEEP_ROWS: [u16; 4] = [60001, 60002, 60003, 60004];
@@ -984,7 +937,7 @@ pub mod selfplay {
         opening.extend(table);
         // Every fourth duel starts low, so that duels reach their end too.
         let lp = if seed.is_multiple_of(4) { 2000 } else { 8000 };
-        opening.extend([command(DUEL_START, [0; 4]), command(SET_LP, [CLIENT, lp, 0, 0]), command(SET_LP, [CPU, lp, 0, 0])]);
+        opening.extend([command(cmd::DUEL_START, [0; 4]), command(cmd::SET_LP, [CLIENT, lp, 0, 0]), command(cmd::SET_LP, [CPU, lp, 0, 0])]);
         opening.extend(piles());
         model.apply_all(&opening);
 
@@ -1023,8 +976,8 @@ pub mod selfplay {
             for m in &a.messages {
                 let card = m["cid"].as_u64().unwrap_or(0) as u16;
                 match m["type"].as_u64() {
-                    Some(MSG_CHAINING) => *played.activated.entry(card).or_default() += 1,
-                    Some(MSG_SUMMONING | MSG_SPSUMMONING | MSG_FLIPSUMMONING) => *played.summoned.entry(card).or_default() += 1,
+                    Some(msg::CHAINING) => *played.activated.entry(card).or_default() += 1,
+                    Some(msg::SUMMONING | msg::SPSUMMONING | msg::FLIPSUMMONING) => *played.summoned.entry(card).or_default() += 1,
                     _ => {}
                 }
                 if let Some(kind) = m["type"].as_u64() {
@@ -1032,21 +985,21 @@ pub mod selfplay {
                     if kind == 50 && (m["to"]["overlay_sequence"].is_u64() || m["from"]["overlay_sequence"].is_u64()) {
                         played.materials += 1;
                     }
-                    if kind == MSG_NEW_TURN {
+                    if kind == msg::NEW_TURN {
                         played.turns += 1;
                         actions = 0;
                     }
                 }
             }
             // Every window the core marks must be one the translator knows how to treat (CHAIN_WINDOWS).
-            let windows: Vec<u64> = a.messages.iter().filter(|m| m["type"].as_u64() == Some(MSG_HINT) && m["hint_type"].as_u64() == Some(HINT_EVENT))
+            let windows: Vec<u64> = a.messages.iter().filter(|m| m["type"].as_u64() == Some(msg::HINT) && m["hint_type"].as_u64() == Some(hint::EVENT))
                 .filter_map(|m| m["hint"].as_u64()).collect();
             if let Some(h) = windows.iter().find(|&&h| chain_window(h).is_none()) {
                 return Err(format!("seed {seed}, step {}: the core's window {h} (MSG_HINT HINT_EVENT) isn't in CHAIN_WINDOWS", played.steps));
             }
             // The client's window for the prompt this step ends with: the last one the core marked for its player.
             let window = a.messages.iter().rev()
-                .find(|m| m["type"].as_u64() == Some(MSG_HINT) && m["hint_type"].as_u64() == Some(HINT_EVENT) && m["player"].as_u64() == Some(client_team as u64))
+                .find(|m| m["type"].as_u64() == Some(msg::HINT) && m["hint_type"].as_u64() == Some(hint::EVENT) && m["player"].as_u64() == Some(client_team as u64))
                 .and_then(|m| m["hint"].as_u64());
             let mut out = t.events(&a.messages);
             settle_positions(&mut out);
@@ -1055,7 +1008,7 @@ pub mod selfplay {
                 let int = |k: &str| m.get(k).and_then(yo3_proto::Value::as_u32).unwrap_or(0);
                 match int("id") {
                     0x3A => *played.animations.entry(int("param3") >> 16).or_default() += 1,
-                    0x2F if int("param2") == super::HAND => played.hand_materials += 1,
+                    0x2F if int("param2") == zone::HAND => played.hand_materials += 1,
                     _ => {}
                 }
             }
@@ -1080,7 +1033,7 @@ pub mod selfplay {
                 return Ok(played);
             }
             let last = a.messages.last().cloned().unwrap_or(Json::Null);
-            let response = if last["type"].as_u64() == Some(MSG_RETRY) {
+            let response = if last["type"].as_u64() == Some(msg::RETRY) {
                 // The core refused the last answer: the safe one this time, a few times at most.
                 retries += 1;
                 if retries > 4 {
@@ -1097,7 +1050,7 @@ pub mod selfplay {
                         if msgs.iter().any(|m| int(m, "id") == 0x36 && int(m, "param1") == 8 && int(m, "param3") & 0xFFFF >= super::FIRST_TOKEN) {
                             played.token_positions += 1;
                         }
-                        if msgs.iter().any(|m| int(m, "id") == super::BATTLE_SELECT) {
+                        if msgs.iter().any(|m| int(m, "id") == cmd::BATTLE_SELECT) {
                             played.field_targets += 1;
                         }
                         settle_positions(&mut msgs);
@@ -1105,8 +1058,8 @@ pub mod selfplay {
                         let mut problems = model.check(&state);
                         // A chance that matters, on the default Activation Message: shown, or answered No by the client
                         // itself, which only a window without optional triggers may be (#53: Stardust Dragon's return).
-                        if last["type"].as_u64() == Some(MSG_SELECT_CHAIN) && last["spe_count"].as_u64().unwrap_or(0) > 0 {
-                            let level = msgs.iter().find(|m| int(m, "id") == super::DIALOG && int(m, "param1") == EFFECT_DIALOG).map(|m| int(m, "param3"));
+                        if last["type"].as_u64() == Some(msg::SELECT_CHAIN) && last["spe_count"].as_u64().unwrap_or(0) > 0 {
+                            let level = msgs.iter().find(|m| int(m, "id") == cmd::DIALOG && int(m, "param1") == dialog::EFFECT).map(|m| int(m, "param3"));
                             let phase = window.and_then(chain_window) == Some(ChainWindow::Phase);
                             match level {
                                 Some(level) if level < SHOWN_BY_DEFAULT && phase => problems.push(format!(
@@ -1129,7 +1082,7 @@ pub mod selfplay {
                     Prompt::Answer(_) if last["player"].as_u64() == Some(client_team as u64) && choices(&last).is_some_and(|n| n > 1) => {
                         let kind = last["type"].as_u64().unwrap_or(0);
                         // The options of an effect always reach the player (a card list when the client has no labels).
-                        if kind == MSG_SELECT_OPTION || kind == MSG_SELECT_SUM || kind == MSG_SELECT_EFFECTYN {
+                        if kind == msg::SELECT_OPTION || kind == msg::SELECT_SUM || kind == msg::SELECT_EFFECTYN {
                             return Err(fail(vec![format!("the server chose for the player: {}", short(&last))]));
                         }
                         *played.decided.entry(kind).or_default() += 1;
@@ -1162,7 +1115,7 @@ pub mod selfplay {
         let len = |k: &str| m[k].as_array().map_or(0, Vec::len);
         let mut pick = |n: usize| (next(rng) as usize) % n.max(1);
         match m["type"].as_u64().unwrap_or(0) {
-            MSG_SELECT_IDLECMD => {
+            msg::SELECT_IDLECMD => {
                 let mut options: Vec<(u64, Json)> = vec![];
                 if !tired {
                     for (list, action) in [("summons", 0), ("special_summons", 1), ("pos_changes", 2), ("monster_sets", 3), ("spell_sets", 4), ("activates", 5)] {
@@ -1182,7 +1135,7 @@ pub mod selfplay {
                 let (action, index) = options[pick(options.len())].clone();
                 json!({ "type": 1, "action": action, "index": index })
             }
-            MSG_SELECT_BATTLECMD => {
+            msg::SELECT_BATTLECMD => {
                 let mut options: Vec<(u64, Json)> = vec![];
                 if !tired {
                     options.extend((0..len("attacks")).map(|i| (1, json!(i))));
@@ -1195,15 +1148,15 @@ pub mod selfplay {
                 let (action, index) = options[pick(options.len())].clone();
                 json!({ "type": 0, "action": action, "index": index })
             }
-            MSG_SELECT_CHAIN => {
+            msg::SELECT_CHAIN => {
                 let n = len("selects");
                 let index = if n > 0 && (m["forced"] == true || pick(2) == 0) { json!(pick(n)) } else { Json::Null };
                 json!({ "type": 8, "index": index })
             }
-            MSG_SELECT_EFFECTYN => json!({ "type": 2, "yes": pick(2) == 0 }),
-            MSG_SELECT_YESNO => json!({ "type": 3, "yes": pick(2) == 0 }),
-            MSG_SELECT_OPTION => json!({ "type": 4, "index": pick(len("options")) }),
-            kind @ (MSG_SELECT_CARD | MSG_SELECT_TRIBUTE) => {
+            msg::SELECT_EFFECTYN => json!({ "type": 2, "yes": pick(2) == 0 }),
+            msg::SELECT_YESNO => json!({ "type": 3, "yes": pick(2) == 0 }),
+            msg::SELECT_OPTION => json!({ "type": 4, "index": pick(len("options")) }),
+            kind @ (msg::SELECT_CARD | msg::SELECT_TRIBUTE) => {
                 let n = len("selects");
                 let min = (m["min"].as_u64().unwrap_or(1) as usize).min(n);
                 let max = (m["max"].as_u64().unwrap_or(1) as usize).clamp(min, n.max(min));
@@ -1214,14 +1167,14 @@ pub mod selfplay {
                 }
                 all.truncate(count);
                 all.sort_unstable();
-                json!({ "type": if kind == MSG_SELECT_CARD { 5 } else { 12 }, "indicies": all })
+                json!({ "type": if kind == msg::SELECT_CARD { 5 } else { 12 }, "indicies": all })
             }
-            MSG_SELECT_UNSELECT_CARD => {
+            msg::SELECT_UNSELECT_CARD => {
                 let n = len("select_cards");
                 let index = if n == 0 || (m["can_finish"] == true && pick(2) == 0) { Json::Null } else { json!(pick(n)) };
                 json!({ "type": 7, "index": index })
             }
-            kind @ (MSG_SELECT_PLACE | 24) => {
+            kind @ (msg::SELECT_PLACE | 24) => {
                 // Random free zones, `count` of them (field_mask bits set = unavailable): the player's monster zones
                 // 0-4, Spell/Trap 8-13, then the opponent's 16-20 and 24-29.
                 let mask = m["field_mask"].as_u64().unwrap_or(0);
@@ -1243,9 +1196,9 @@ pub mod selfplay {
                         json!({ "player": player, "location": location, "sequence": sequence })
                     })
                     .collect();
-                json!({ "type": if kind == MSG_SELECT_PLACE { 10 } else { 9 }, "places": places })
+                json!({ "type": if kind == msg::SELECT_PLACE { 10 } else { 9 }, "places": places })
             }
-            MSG_SELECT_POSITION => {
+            msg::SELECT_POSITION => {
                 let allowed = m["positions"].as_u64().unwrap_or(1);
                 let bits: Vec<u64> = [1, 2, 4, 8].into_iter().filter(|b| allowed & b != 0).collect();
                 json!({ "type": 11, "position": if bits.is_empty() { 1 } else { bits[pick(bits.len())] } })

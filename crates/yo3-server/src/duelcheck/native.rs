@@ -14,7 +14,7 @@ impl ClientModel {
     pub fn checkpoint_into(&mut self, part: &mut Vec<Message>) {
         if part.is_empty() { return; }
         let at = part.iter().position(|m| m.get("duelRequestName") == Some(&Value::U32(0x11))
-            && m.get("id") == Some(&Value::U32(crate::translate::DUEL_END))).unwrap_or(part.len());
+            && m.get("id") == Some(&Value::U32(crate::wire::cmd::DUEL_END))).unwrap_or(part.len());
         part.insert(at, self.checkpoint());
     }
 

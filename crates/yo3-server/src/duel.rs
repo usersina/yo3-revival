@@ -14,8 +14,9 @@ use yo3_proto::{Message, Packet, Value};
 use crate::banter::{self, Banter, Said};
 use crate::engine::{Answer, Engine};
 use crate::front::{Deck, DuelEntry, Ended, Hub, Outbox, SINGLE_MODE, World};
-use crate::table::{MATCH_END, Table};
-use crate::translate::{DRAW, DUEL_END, Prompt, Repeats, Translator};
+use crate::table::Table;
+use crate::translate::{Prompt, Repeats, Translator};
+use crate::wire::{cmd, request, result, zone};
 
 /// Request id of the server's duel messages. A guess: the pump (0x5233A0) reads only
 /// duelRequestName, and treats a negative id as a lost connection.
@@ -26,69 +27,13 @@ const ENTER: u32 = 0x200A;
 const WATCH: u32 = 0x1838;
 /// Every later client message (0x49F990), told apart by duelRequestName.
 const CLIENT_DUEL: u32 = 0x200C;
-/// duelRequestName of an engine command {id, param1..param4} (pump case 0x11).
-const ENGINE_COMMAND: u32 = 0x11;
-/// duelRequestName of the duel setup (pump case 0x15).
-const DUEL_SETUP: u32 = 0x15;
-/// duelRequestName of the command map (pump case 0x12).
-const COMMAND_DATA: u32 = 0x12;
-/// Client duelRequestName of a card command (0x520FD0) and of a phase button {phase} (0x521180).
-const CARD_COMMAND: u32 = 2;
-const PHASE_BUTTON: u32 = 3;
-/// Client duelRequestName (bare) of the field's right-click while the command map's other flag 6 is set (0x5212B0, from
-/// DuelFieldManager 0x50B700): taking back an attack whose target is picked on the field.
-const RIGHT_CLICK: u32 = 5;
-/// Client duelRequestNames of a closing dialog: its result {DLGResult, debug} (0x521A70), and for the card list
-/// (0x4C74F0) first the first pick {SetIndex} (0x521BC0) and each pick {index, data: its order} (0x521CC0).
-const DIALOG_RESULT: u32 = 4;
-const PICK: u32 = 7;
-/// Client duelRequestNames: the janken hand {selectHand} (0x4F1330), first or second {choice}
-/// (0x4F1430).
-const SELECT_HAND: u32 = 0xC;
-const SELECT_FIRST: u32 = 0xD;
-/// Client duelRequestName (bare) of Card Swap's end, once the front took the swapped deck (DuelManager 0x50FDF0).
-const SWAPPED: u32 = 0xE;
-/// Client duelRequestName of the duel options {player, autoSet} (0x515790): on entering the field and when the player
-/// changes them; `autoSet` is DUEL OPTIONS' auto card placing.
-const DUEL_OPTIONS: u32 = 0xF;
 
-/// JankenScene commands (0x518400): begin, resolve, who chooses, chosen (its step leaves the scene by itself,
-/// 0x519230). 1505 there is the match's end {match result, ...} (0x5185A3), not part of the janken.
-pub(crate) const JANKEN_BEGIN: u32 = 1500;
-pub(crate) const JANKEN_RESOLVE: u32 = 1501;
-pub(crate) const FIRST_BEGIN: u32 = 1502;
-pub(crate) const FIRST_RESOLVE: u32 = 1503;
 
 /// Turn order as the janken commands give it: 1 first, 2 second.
 pub(crate) const FIRST: u32 = 1;
 pub(crate) const SECOND: u32 = 2;
 
-/// Duel commands: start (DuelScene 0x514290), set LP {player, LP} (DuelCockpit 0x502EB0), phase
-/// {player, phase} (DuelScene, DuelCockpit).
-pub(crate) const DUEL_START: u32 = 1;
-pub(crate) const SET_LP: u32 = 0xF;
-/// Change a player's LP {player, signed change} (DuelCockpit 0x502EB0).
-pub(crate) const CHANGE_LP: u32 = 0x10;
-pub(crate) const PHASE: u32 = 5;
-/// Turn change {the player whose turn starts} (DuelScene; the pop counts the turn).
-pub(crate) const TURN: u32 = 6;
-/// Wait for a player's input {mode, player}: DuelFieldManager highlights the player's cards in the command map,
-/// and modes 2 and 3 turn the phase panel on (0x504890).
-pub(crate) const INPUT: u32 = 4;
 const DRAW_PHASE: u32 = 0;
-/// Card commands: set a card in the engine's card table {uid, row, 0, table place} (0x521DF0), and
-/// move a card on screen {uid | row << 16, from, to} (DuelCardManager 0x4FF6A2).
-pub(crate) const CARD: u32 = 1000;
-pub(crate) const MOVE: u32 = 0x1A;
-/// Zones (the client's numbering): 0-4 monsters, 5-9 Spell/Trap, then these.
-pub(crate) const HAND: u32 = 0xB;
-const EXTRA: u32 = 0xC;
-pub(crate) const DECK: u32 = 0xD;
-/// DeckReset {player, pile zone 0xC-0xF} (DuelCardManager 0x4FF3A5): the pile takes its count from the engine's
-/// per-zone count (0x5240F0, the setup's MainDeckNum and ExtraDeckNum at first) and shows it, with the count on its
-/// label. After that each pile counts itself (a card landing +1, 0x4FBF30; leaving -1, 0x5000E0), so without it the
-/// deck pile starts at 0 and never shows.
-pub(crate) const DECK_RESET: u32 = 0x16;
 const OPENING_HAND: usize = 5;
 /// Engine players: the client is player 0 (setup PlayerNum), the CPU player 1.
 pub(crate) const CLIENT: u32 = 0;
@@ -133,9 +78,6 @@ pub fn tick_tables(hub: &Arc<Mutex<Hub>>, now: std::time::Instant) {
     }
 }
 
-/// duelRequestName of a dialog text of the server's own {slot, text} (Revival, read by the connection DLL,
-/// `tools/mod/dialog-text.h`). The stock pump (0x5233A0) drops it: only cases 0x10-0x15 do anything (0x52341C).
-pub const REVIVAL_TEXT: u32 = 0x7A12;
 /// The duel prompt ids that name the server's texts: `TEXT_IDS + slot`, slots used in turn. The client's table
 /// (data manager +8, vector at +0x84) is a few hundred texts long; the DLL answers only ids past its end, and the
 /// Select dialog keeps 14 bits of a label's id (0x4C592E), so they sit at the top of that range.
@@ -163,14 +105,14 @@ pub fn text_message(slot: u32, text: &str) -> Message {
         escaped.push_str(piece);
     }
     Message::reply(SERVER_DUEL)
-        .with("duelRequestName", Value::U32(REVIVAL_TEXT))
+        .with("duelRequestName", Value::U32(request::REVIVAL_TEXT))
         .with("slot", Value::U32(slot))
         .with("text", Value::text(&escaped))
 }
 
 /// An engine command, as pump case 0x11 reads it.
 pub fn command(id: u32, params: [u32; 4]) -> Message {
-    let m = Message::reply(SERVER_DUEL).with("duelRequestName", Value::U32(ENGINE_COMMAND)).with("id", Value::U32(id));
+    let m = Message::reply(SERVER_DUEL).with("duelRequestName", Value::U32(request::ENGINE_COMMAND)).with("id", Value::U32(id));
     params.iter().zip(["param1", "param2", "param3", "param4"]).fold(m, |m, (v, k)| m.with(k, Value::U32(*v)))
 }
 
@@ -181,7 +123,7 @@ pub fn command_data(cards: &[(u32, u32)], flags: &[(u8, u8)]) -> Message {
     let mut data: Vec<u8> = cards.iter().flat_map(|(place, bits)| place.to_be_bytes().into_iter().chain(bits.to_be_bytes())).collect();
     data.extend(flags.iter().flat_map(|(k, v)| [*k, *v]));
     Message::reply(SERVER_DUEL)
-        .with("duelRequestName", Value::U32(COMMAND_DATA))
+        .with("duelRequestName", Value::U32(request::COMMAND_DATA))
         .with("comIDsize", Value::U32(cards.len() as u32))
         .with("helpIDsize", Value::U32(0))
         .with("otherFlagSize", Value::U32(flags.len() as u32))
@@ -203,7 +145,7 @@ pub struct CardCommand {
 impl CardCommand {
     pub fn from_message(m: &Message) -> Option<CardCommand> {
         let int = |k| m.get(k).and_then(Value::as_u32);
-        if m.request() != Some(CLIENT_DUEL) || int("duelRequestName") != Some(CARD_COMMAND) {
+        if m.request() != Some(CLIENT_DUEL) || int("duelRequestName") != Some(request::CARD_COMMAND) {
             return None;
         }
         Some(CardCommand { command: int("CommandID")?, player: int("player")?, zone: int("position")?, index: int("index")? })
@@ -232,12 +174,12 @@ pub(crate) fn setup(first: u32, mine: &Deck, theirs: &Deck) -> Message {
         ("ExtraDeckNum002", len(&theirs.extra)),
     ]
     .into_iter()
-    .fold(Message::reply(SERVER_DUEL).with("duelRequestName", Value::U32(DUEL_SETUP)), |m, (k, v)| m.with(k, Value::U32(v)))
+    .fold(Message::reply(SERVER_DUEL).with("duelRequestName", Value::U32(request::DUEL_SETUP)), |m, (k, v)| m.with(k, Value::U32(v)))
 }
 
 /// The deck and extra deck piles of both players, from the setup's counts: after the setup and before any draw.
 pub(crate) fn piles() -> [Message; 4] {
-    [(CLIENT, DECK), (CPU, DECK), (CLIENT, EXTRA), (CPU, EXTRA)].map(|(player, zone)| command(DECK_RESET, [player, zone, 0, 0]))
+    [(CLIENT, zone::DECK), (CPU, zone::DECK), (CLIENT, zone::EXTRA), (CPU, zone::EXTRA)].map(|(player, zone)| command(cmd::DECK_RESET, [player, zone, 0, 0]))
 }
 
 /// The janken {result, the opponent's hand, own hand} as the player who went first saw it, given as seat 0's (or the
@@ -256,18 +198,18 @@ pub fn replay_commands(world: &World, decks: [&Deck; 2], janken: [u32; 3], lp: u
     translator.tuners(world.tuners.clone());
     let [result, theirs, mine] = janken;
     let mut messages = vec![
-        command(JANKEN_BEGIN, [0; 4]),
-        command(JANKEN_RESOLVE, [result, theirs, mine, 0]),
-        command(FIRST_BEGIN, [0; 4]),
-        command(FIRST_RESOLVE, [FIRST, 0, 0, 0]),
+        command(cmd::JANKEN_BEGIN, [0; 4]),
+        command(cmd::JANKEN_RESOLVE, [result, theirs, mine, 0]),
+        command(cmd::FIRST_BEGIN, [0; 4]),
+        command(cmd::FIRST_RESOLVE, [FIRST, 0, 0, 0]),
     ];
     messages.extend(table);
     messages.extend(translator.extra_decks([&decks[0].extra, &decks[1].extra]));
-    messages.extend([command(DUEL_START, [0; 4]), command(SET_LP, [CLIENT, lp, 0, 0]), command(SET_LP, [CPU, lp, 0, 0])]);
+    messages.extend([command(cmd::DUEL_START, [0; 4]), command(cmd::SET_LP, [CLIENT, lp, 0, 0]), command(cmd::SET_LP, [CPU, lp, 0, 0])]);
     messages.extend(piles());
     messages.extend(translator.events(history));
     // The match's end for the leading player, which takes a watching client's DuelResult out of the duel.
-    messages.push(command(MATCH_END, [translator.result().unwrap_or(3), 0, 0, 0]));
+    messages.push(command(cmd::MATCH_END, [translator.result().unwrap_or(3), 0, 0, 0]));
     crate::duellog::commands(&messages)
 }
 
@@ -394,7 +336,7 @@ impl DuelSession {
             if hub.ended(duel_id) {
                 hub.cancel_for(player_id);
                 self.closed = true;
-                return vec![command(DUEL_END, [crate::translate::WON, 14, 0, 0])];
+                return vec![command(cmd::DUEL_END, [result::WON, 14, 0, 0])];
             }
             let make = || Arc::new(Mutex::new(Table::new(self.world.clone(), self.hub.clone(), duel_id, seed)));
             let table = hub.tables.entry(duel_id).or_insert_with(make).clone();
@@ -415,21 +357,21 @@ impl DuelSession {
         let mut t = table.locked();
         let int = |k| msg.get(k).and_then(Value::as_u32);
         let out = match (msg.request(), int("duelRequestName")) {
-            (Some(CLIENT_DUEL), Some(SELECT_HAND)) => t.hand(seat, int("selectHand").unwrap_or(0) % 3),
-            (Some(CLIENT_DUEL), Some(SELECT_FIRST)) => t.choose(seat, if int("choice") == Some(SECOND) { SECOND } else { FIRST }),
-            (Some(CLIENT_DUEL), Some(CARD_COMMAND)) => match CardCommand::from_message(msg) {
+            (Some(CLIENT_DUEL), Some(request::SELECT_HAND)) => t.hand(seat, int("selectHand").unwrap_or(0) % 3),
+            (Some(CLIENT_DUEL), Some(request::SELECT_FIRST)) => t.choose(seat, if int("choice") == Some(SECOND) { SECOND } else { FIRST }),
+            (Some(CLIENT_DUEL), Some(request::CARD_COMMAND)) => match CardCommand::from_message(msg) {
                 Some(cmd) => t.card_command(seat, cmd),
                 None => Default::default(),
             },
-            (Some(CLIENT_DUEL), Some(PHASE_BUTTON)) => t.phase(seat, int("phase").unwrap_or(u32::MAX)),
-            (Some(CLIENT_DUEL), Some(RIGHT_CLICK)) => t.finish(seat),
-            (Some(CLIENT_DUEL), Some(PICK)) => {
+            (Some(CLIENT_DUEL), Some(request::PHASE_BUTTON)) => t.phase(seat, int("phase").unwrap_or(u32::MAX)),
+            (Some(CLIENT_DUEL), Some(request::RIGHT_CLICK)) => t.finish(seat),
+            (Some(CLIENT_DUEL), Some(request::PICK)) => {
                 t.pick(seat, int("index").unwrap_or(u32::MAX));
                 Default::default()
             }
-            (Some(CLIENT_DUEL), Some(DIALOG_RESULT)) => t.dialog_result(seat, int("DLGResult").unwrap_or(0)),
-            (Some(CLIENT_DUEL), Some(SWAPPED)) => t.swapped(seat),
-            (Some(CLIENT_DUEL), Some(DUEL_OPTIONS)) => {
+            (Some(CLIENT_DUEL), Some(request::DIALOG_RESULT)) => t.dialog_result(seat, int("DLGResult").unwrap_or(0)),
+            (Some(CLIENT_DUEL), Some(request::SWAPPED)) => t.swapped(seat),
+            (Some(CLIENT_DUEL), Some(request::DUEL_OPTIONS)) => {
                 t.auto_place(seat, int("autoSet") != Some(0));
                 Default::default()
             }
@@ -513,10 +455,10 @@ impl DuelSession {
                     return self.sit(duel_id, entry);
                 }
                 self.entry = entry;
-                vec![command(JANKEN_BEGIN, [0; 4])]
+                vec![command(cmd::JANKEN_BEGIN, [0; 4])]
             }
             _ if self.table.is_some() => self.at_table(msg),
-            (Some(CLIENT_DUEL), Some(DUEL_OPTIONS)) => {
+            (Some(CLIENT_DUEL), Some(request::DUEL_OPTIONS)) => {
                 let on = int("autoSet") != Some(0);
                 if let Some(entry) = self.entry.as_mut() {
                     entry.manual_place = !on;
@@ -526,16 +468,16 @@ impl DuelSession {
                 }
                 vec![]
             }
-            (Some(CLIENT_DUEL), Some(SELECT_HAND)) if !self.ordered => self.janken(int("selectHand").unwrap_or(0) % 3),
-            (Some(CLIENT_DUEL), Some(CARD_COMMAND)) => {
+            (Some(CLIENT_DUEL), Some(request::SELECT_HAND)) if !self.ordered => self.janken(int("selectHand").unwrap_or(0) % 3),
+            (Some(CLIENT_DUEL), Some(request::CARD_COMMAND)) => {
                 let prompt = CardCommand::from_message(msg).and_then(|cmd| self.engine.as_mut().and_then(|(_, t)| t.command(cmd)));
                 self.prompted(prompt)
             }
-            (Some(CLIENT_DUEL), Some(RIGHT_CLICK)) => {
+            (Some(CLIENT_DUEL), Some(request::RIGHT_CLICK)) => {
                 let prompt = self.engine.as_mut().and_then(|(_, t)| t.finish());
                 self.prompted(prompt)
             }
-            (Some(CLIENT_DUEL), Some(PHASE_BUTTON)) => {
+            (Some(CLIENT_DUEL), Some(request::PHASE_BUTTON)) => {
                 let answer = int("phase")
                     .and_then(|phase| self.engine.as_mut().and_then(|(_, t)| t.phase(phase)))
                     .and_then(|r| self.engine.as_mut().map(|(e, _)| e.respond(r)));
@@ -544,17 +486,17 @@ impl DuelSession {
                     None => vec![],
                 }
             }
-            (Some(CLIENT_DUEL), Some(PICK)) => {
+            (Some(CLIENT_DUEL), Some(request::PICK)) => {
                 if let (Some((_, t)), Some(index)) = (self.engine.as_mut(), int("index")) {
                     t.pick(index);
                 }
                 vec![]
             }
-            (Some(CLIENT_DUEL), Some(DIALOG_RESULT)) => {
+            (Some(CLIENT_DUEL), Some(request::DIALOG_RESULT)) => {
                 let prompt = int("DLGResult").and_then(|n| self.engine.as_mut().and_then(|(_, t)| t.dialog_result(n)));
                 self.prompted(prompt)
             }
-            (Some(CLIENT_DUEL), Some(SELECT_FIRST)) if !self.ordered => {
+            (Some(CLIENT_DUEL), Some(request::SELECT_FIRST)) if !self.ordered => {
                 let order = if int("choice") == Some(SECOND) { SECOND } else { FIRST };
                 self.turn_order(order)
             }
@@ -569,13 +511,13 @@ impl DuelSession {
         let theirs = (self.next() % 3) as u32;
         // Each hand beats the next one: rock > scissors > paper > rock.
         let result = if theirs == mine { 0 } else if theirs == (mine + 1) % 3 { 1 } else { 2 };
-        let mut out = vec![command(JANKEN_RESOLVE, [result, theirs, mine, 0])];
+        let mut out = vec![command(cmd::JANKEN_RESOLVE, [result, theirs, mine, 0])];
         self.janken_seen = [result, theirs, mine];
         match result {
             0 => {}
-            1 => out.push(command(FIRST_BEGIN, [1, 0, 0, 0])),
+            1 => out.push(command(cmd::FIRST_BEGIN, [1, 0, 0, 0])),
             _ => {
-                out.push(command(FIRST_BEGIN, [0; 4]));
+                out.push(command(cmd::FIRST_BEGIN, [0; 4]));
                 out.extend(self.turn_order(SECOND));
             }
         }
@@ -585,7 +527,7 @@ impl DuelSession {
     /// The player's turn order, then the duel's opening.
     fn turn_order(&mut self, order: u32) -> Vec<Message> {
         self.ordered = true;
-        let mut out = vec![command(FIRST_RESOLVE, [order, 0, 0, 0])];
+        let mut out = vec![command(cmd::FIRST_RESOLVE, [order, 0, 0, 0])];
         let first = if order == FIRST { CLIENT } else { CPU };
         let opening = match self.world.engine_dir.clone() {
             Some(dir) => self.engine_opening(first, &dir),
@@ -602,8 +544,8 @@ impl DuelSession {
                 if !scripted.is_empty() {
                     tracing::warn!("NPC duel: the rules engine can't run, so the duel ends as a draw");
                     out.extend(scripted);
-                    out.push(command(DUEL_END, [DRAW, 0, 0, 0]));
-                    self.report(DRAW);
+                    out.push(command(cmd::DUEL_END, [result::DRAW, 0, 0, 0]));
+                    self.report(result::DRAW);
                 }
             }
         }
@@ -672,9 +614,9 @@ impl DuelSession {
         let mut out = vec![setup(first, &entry.deck, &npc)];
         out.extend(table);
         out.extend([
-            command(DUEL_START, [0; 4]),
-            command(SET_LP, [CLIENT, lp, 0, 0]),
-            command(SET_LP, [CPU, lp, 0, 0]),
+            command(cmd::DUEL_START, [0; 4]),
+            command(cmd::SET_LP, [CLIENT, lp, 0, 0]),
+            command(cmd::SET_LP, [CPU, lp, 0, 0]),
         ]);
         out.extend(piles());
         out.extend(self.advance(answer));
@@ -767,8 +709,8 @@ impl DuelSession {
         crate::translate::settle_positions(&mut out);
         // An engine that died or hung can't be asked again: the duel ends as a draw (a no-result end the client shows).
         let result = if failed {
-            out.push(command(DUEL_END, [DRAW, 0, 0, 0]));
-            Some(DRAW)
+            out.push(command(cmd::DUEL_END, [result::DRAW, 0, 0, 0]));
+            Some(result::DRAW)
         } else {
             translator.result()
         };
@@ -857,24 +799,24 @@ impl DuelSession {
             for (i, &row) in deck.iter().enumerate() {
                 let uid = uids[0].len() as u32 + uids[1].len() as u32 + 1;
                 uids[player].push(uid);
-                out.push(command(CARD, [uid, row as u32, 0, table_place(player as u32, DECK, i)]));
+                out.push(command(cmd::CARD, [uid, row as u32, 0, table_place(player as u32, zone::DECK, i)]));
             }
         }
         out.extend([
-            command(DUEL_START, [0; 4]),
-            command(SET_LP, [CLIENT, self.start_lp, 0, 0]),
-            command(SET_LP, [CPU, self.start_lp, 0, 0]),
+            command(cmd::DUEL_START, [0; 4]),
+            command(cmd::SET_LP, [CLIENT, self.start_lp, 0, 0]),
+            command(cmd::SET_LP, [CPU, self.start_lp, 0, 0]),
         ]);
         out.extend(piles());
         for player in [first, 1 - first] {
             let p = player as usize;
             for i in 0..OPENING_HAND.min(decks[p].len()) {
                 let (uid, row) = (uids[p][i], decks[p][i] as u32);
-                out.push(command(CARD, [uid, row, 0, table_place(player, HAND, i)]));
-                out.push(command(MOVE, [uid | row << 16, move_place(player, DECK, 0), move_place(player, HAND, i), 0]));
+                out.push(command(cmd::CARD, [uid, row, 0, table_place(player, zone::HAND, i)]));
+                out.push(command(cmd::MOVE, [uid | row << 16, move_place(player, zone::DECK, 0), move_place(player, zone::HAND, i), 0]));
             }
         }
-        out.push(command(PHASE, [first, DRAW_PHASE, 0, 0]));
+        out.push(command(cmd::PHASE, [first, DRAW_PHASE, 0, 0]));
         out
     }
 
@@ -915,7 +857,7 @@ mod tests {
 
     fn ended_as_draw(rx: &mut tokio::sync::mpsc::UnboundedReceiver<Message>) -> bool {
         std::iter::from_fn(|| rx.try_recv().ok())
-            .any(|m| m.get("id") == Some(&Value::U32(DUEL_END)) && m.get("param1") == Some(&Value::U32(DRAW)))
+            .any(|m| m.get("id") == Some(&Value::U32(cmd::DUEL_END)) && m.get("param1") == Some(&Value::U32(result::DRAW)))
     }
 
     #[test]
@@ -924,7 +866,7 @@ mod tests {
         let (hub, [(mut a, _ra), (_b, _rb)]) = seated();
         let table = hub.locked().tables.get(&7).cloned().expect("the table");
         assert_eq!(table.locked().manual_place(0), Some(false));
-        let options = |on| message(CLIENT_DUEL, &[("duelRequestName", DUEL_OPTIONS), ("player", 0), ("autoSet", on)]);
+        let options = |on| message(CLIENT_DUEL, &[("duelRequestName", request::DUEL_OPTIONS), ("player", 0), ("autoSet", on)]);
         a.handle(&options(0));
         assert_eq!(table.locked().manual_place(0), Some(true));
         a.handle(&options(1));

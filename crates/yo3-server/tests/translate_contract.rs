@@ -2876,11 +2876,11 @@ fn every_engine_message_type_is_accounted_for() {
     assert!(missing.is_empty(), "decoded but not in ENGINE_MESSAGES: {missing:?}");
     let stale: Vec<_> = set.difference(&decoded).collect();
     assert!(stale.is_empty(), "in ENGINE_MESSAGES but not decoded: {stale:?}");
-    // A type said to be shown or asked is one the translator names, with the same number.
-    let translate = std::fs::read_to_string(root.join("yo3-server/src/translate.rs")).unwrap();
+    // A type said to be shown or asked is one the server names (`ocg::msg`), with the same number.
     for (kind, name, handling) in ENGINE_MESSAGES {
         if matches!(handling, Handling::Shown | Handling::Asked) {
-            assert!(translate.contains(&format!("const {name}: u64 = {kind};")), "{name} ({kind}) is {handling:?} but translate.rs has no constant for it");
+            let named = yo3_server::ocg::msg::ALL.iter().any(|&(n, k)| format!("MSG_{n}") == *name && k == *kind);
+            assert!(named, "{name} ({kind}) is {handling:?} but ocg::msg has no constant for it");
         }
     }
 }
