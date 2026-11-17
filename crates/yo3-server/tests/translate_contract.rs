@@ -585,8 +585,9 @@ fn the_clients_card_choice_opens_the_card_list() {
         client_commands(t.prompt(&select)),
         [
             (0x3EF, [2, 1, 0, 0]),
-            (0x3F2, [101, 200, 0, 0]),
-            (0x3F3, [0, 0x8000, 0, 0]),
+            // The field's cards first, as they lie (the opponent's monster), then the hand's.
+            (0x3F2, [200, 101, 0, 0]),
+            (0x3F3, [0x8000, 0, 0, 0]),
             (0x3EC, [1, 0, 0, 0]),
             (0x3ED, [1 << 28 | 94, 0, 0, 0]),
             (0x37, [0, 0x27, 1, 0]),
@@ -662,10 +663,31 @@ fn the_picks_answer_the_engine_when_the_list_closes() {
     let select = json!({ "type": 15, "player": 0, "can_cancel": false, "min": 1, "max": 1,
         "selects": [card_at(0, 2, 1, 4101), card_at(1, 4, 1, 4200)] });
     t.prompt(&select);
+    // The list shows the field's card (the engine's second) first: list position 1 is the hand card, the engine's 0.
     t.pick(1);
-    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 5, "indicies": [1] }))));
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 5, "indicies": [0] }))));
     // Nothing is pending any more.
     assert_eq!(t.dialog_result(1), None);
+}
+
+#[test]
+fn a_card_list_shows_the_fields_cards_as_they_lie() {
+    // Mystical Space Typhoon's list put the player's own Set card first and the opponent's two after it, by zone
+    // number, while the opponent's zones are mirrored on the player's screen (their zone 0 on the right): two card
+    // backs couldn't be told apart (live). The list now reads like the field from the player's seat: the opponent's
+    // Spell & Trap row, their monsters, the player's monsters, the player's Spell & Trap row, each left to right; the
+    // cards off the field after, in the engine's order. A pick answers with the engine's index.
+    let mut t = with_cards();
+    let engine = [card_at(0, 8, 3, 4101), card_at(0, 8, 1, 4100), card_at(1, 8, 0, 4200), card_at(1, 8, 2, 4201),
+        card_at(0, 2, 0, 4102), card_at(1, 4, 4, 4202), card_at(0, 4, 0, 4103)];
+    let select = json!({ "type": 15, "player": 0, "can_cancel": false, "min": 1, "max": 1, "selects": engine });
+    let out = client_commands(t.prompt(&select));
+    let rows: Vec<u32> = out.iter().filter(|(id, _)| *id == 0x3F2).flat_map(|(_, p)| *p).take(engine.len()).collect();
+    // Their zone 2 (left of their zone 0), their monster, my monster, my zone 1 then 3, then my hand's card.
+    assert_eq!(rows, [201, 200, 202, 103, 100, 101, 102], "{out:?}");
+    // The list's first card is the engine's fourth (their Spell & Trap zone 2).
+    t.pick(0);
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 5, "indicies": [3] }))));
 }
 
 #[test]
@@ -1082,11 +1104,12 @@ fn a_list_with_the_opponents_hidden_card_shows_card_backs() {
         "selects": [json!({ "code": 4200, "cid": 4200, "controller": 1, "location": 8, "sequence": 0, "position": 10 }),
             card_at(1, 8, 1, 4201)] });
     let out = client_commands(t.prompt(&target(false)));
-    // The entries at the opponent's banished places 0 and 1 (place 1 | 0xF << 8 | index << 16): the Set card's clear,
-    // the face-up card's with the flag and its row.
-    assert_eq!(out[0], (1000, [0xF0_0000, 0, 0, 1 | 0xF << 8]), "{out:?}");
-    assert_eq!(out[1], (1000, [0xF0_0001 | 1 << 24, 201, 4201, 1 | 0xF << 8 | 1 << 16]), "{out:?}");
-    assert!(out.contains(&(0x3F2, [0, 201, 0, 0])), "{out:?}");
+    // The list follows the field: the opponent's zone 1 is left of their zone 0 on the player's screen, so the face-up
+    // card comes first. The entries at the opponent's banished places 0 and 1 (place 1 | 0xF << 8 | index << 16): the
+    // face-up card's with the flag and its row, the Set card's clear.
+    assert_eq!(out[0], (1000, [0xF0_0000 | 1 << 24, 201, 4201, 1 | 0xF << 8]), "{out:?}");
+    assert_eq!(out[1], (1000, [0xF0_0001, 0, 0, 1 | 0xF << 8 | 1 << 16]), "{out:?}");
+    assert!(out.contains(&(0x3F2, [201, 0, 0, 0])), "{out:?}");
     assert_eq!(out.last(), Some(&(0x37, [1, 4, 0, 0])), "{out:?}");
     // Even a choice the player could back out of: the card is reachable only this way.
     assert_eq!(client_commands(t.prompt(&target(true))).last().map(|&(id, p)| (id, p[1])), Some((0x37, 4)));
@@ -1094,8 +1117,9 @@ fn a_list_with_the_opponents_hidden_card_shows_card_backs() {
     t.prompt(&target(false));
     let again = client_commands(t.dialog_result(0).expect("asked again"));
     assert_eq!(again.last().map(|&(id, p)| (id, p[1])), Some((0x37, 4)));
+    // The list's second card, the Set one, is the engine's first.
     t.pick(1);
-    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 5, "indicies": [1] }))));
+    assert_eq!(t.dialog_result(1), Some(Prompt::Answer(json!({ "type": 5, "indicies": [0] }))));
     // The banished entries the list borrowed go back before anything else (none are banished here, so none).
     assert!(t.events(&[]).is_empty());
     // All cards shown: the usual kind, and no entries.

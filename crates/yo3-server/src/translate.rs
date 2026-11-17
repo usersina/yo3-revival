@@ -693,6 +693,8 @@ pub struct Translator {
     hint: u64,
     hint_note: Option<(u64, String)>,
     picks: Vec<usize>,
+    /// The engine's index of each card list position: the list shows the field's cards as they lie on it.
+    list_order: Vec<usize>,
     /// The duel's result for the client (1 won, 2 lost, 3 draw), once it ended.
     result: Option<u32>,
     /// By player, whether that side's hidden cards (deck, hand, extra deck, face-down) go to the client without their
@@ -860,6 +862,7 @@ impl Translator {
             hint_note: None,
             next_text: 0,
             picks: vec![],
+            list_order: vec![],
             result: None,
             hidden,
             records: HashMap::new(),
@@ -2265,6 +2268,7 @@ impl Translator {
     /// What to do with the engine's prompt (the last message when it awaits).
     pub fn prompt(&mut self, m: &Json) -> Prompt {
         let staged = self.staged.take();
+        self.list_order.clear();
         let prompt = self.prompt_for(m);
         // A window's hint is for the prompt right after it, whichever it was.
         self.phase_window = false;
@@ -2620,7 +2624,12 @@ impl Translator {
     /// (flag set for the cards shown), so face-up cards keep their faces and Set cards are backs; no pick is needed
     /// there, so the list closing with nothing picked asks again when the choice is forced.
     fn card_list(&mut self, m: &Json, text: Option<u32>) -> Vec<Message> {
-        let selects = m["selects"].as_array().map_or(&[][..], Vec::as_slice);
+        let engine_order = m["selects"].as_array().map_or(&[][..], Vec::as_slice);
+        let mut order: Vec<usize> = (0..engine_order.len()).collect();
+        order.sort_by_key(|&i| self.field_order(&engine_order[i], i));
+        let shown: Vec<Json> = order.iter().map(|&i| engine_order[i].clone()).collect();
+        let selects = &shown[..];
+        self.list_order = order;
         let (min, max) = (m["min"].as_u64().unwrap_or(1) as u32, m["max"].as_u64().unwrap_or(1) as u32);
         // A choice the player may back out of (can_cancel, or a chain list that isn't forced) opens as kind 1: the list
         // (no OK button) closes on a right-click with the picks so far, none cancelling (dlg_cardlist.swf `onMouseUp`
@@ -2698,12 +2707,29 @@ impl Translator {
         at_place.or_else(|| self.cards.iter().find(|(_, s)| s.cid == cid).map(|(&row, _)| row)).unwrap_or(0)
     }
 
-    /// A pick in the card list (duelRequestName 7 {index: the list position}).
+    /// A pick in the card list (duelRequestName 7 {index: the list position}), kept as the engine's index.
     pub fn pick(&mut self, index: u32) {
         // A list holds a few dozen entries: more picks than that are a client making the server keep them.
         if self.picks.len() < MAX_PICKS {
-            self.picks.push(index as usize);
+            let index = index as usize;
+            self.picks.push(self.list_order.get(index).copied().unwrap_or(index));
         }
+    }
+
+    /// Where a card list puts a card: as the field lies from the player's seat, top to bottom (the opponent's Spell &
+    /// Trap row, their monsters, the player's monsters, the player's Spell & Trap row), each row left to right (the
+    /// opponent's zones are mirrored: their zone 0 is on the player's right), the Field Spells at their rows' ends;
+    /// then the cards off the field (hand, piles) in the engine's order. The engine's order (the player's cards first,
+    /// each side by zone number) didn't match the field, so two Set cards in a list couldn't be told apart.
+    fn field_order(&self, loc: &Json, engine: usize) -> (u32, usize) {
+        let Some(place) = self.engine_place(loc).filter(|p| p.zone <= FIELD_SPELL) else { return (4, engine) };
+        let theirs = place.player == CPU;
+        let (row, x) = match place.zone {
+            FIELD_SPELL => (if theirs { 0 } else { 3 }, 5),
+            z if z >= 5 => (if theirs { 0 } else { 3 }, if theirs { 4 - (z - 5) } else { z - 5 }),
+            z => (if theirs { 1 } else { 2 }, if theirs { 4 - z } else { z }),
+        };
+        (row, x as usize)
     }
 
     /// A dialog closed (duelRequestName 4 {DLGResult}): the engine response for the pending question (the button: 1
@@ -3302,8 +3328,10 @@ impl Translator {
                 let mut t = self.clone();
                 let mut last = None;
                 for (picks, result) in clicks {
+                    // A case names the engine's indices; the client clicks where the list shows each (`field_order`).
                     for &p in picks {
-                        t.pick(p);
+                        let at = t.list_order.iter().position(|&e| e == p as usize).map_or(p, |at| at as u32);
+                        t.pick(at);
                     }
                     last = t.dialog_result(*result);
                 }

@@ -1651,6 +1651,15 @@ of the same index and draw the card back where it is clear (`0x4C7A13`): the ori
 cards, used for the mixed lists below. Live: "Your Extra Deck" listed the three Synchros with ATK/DEF, Kaiba's "Opponent's Graveyard"
 listed Yugi's Spellbinding Circle, and a right-click closed each and gave the field back.
 
+**List order.** A card choice's list shows the field's cards as they lie from the player's seat: the opponent's Spell &
+Trap row, their monsters, the player's monsters, the player's Spell & Trap row, each left to right (the opponent's
+zones mirrored: their zone 0 on the player's right), Field Spells at their rows' ends, then hand and pile cards in the
+engine's order. A pick (`7 {index}`) is the list position, which the server turns back into the engine's index. The
+engine's own order (the chooser's cards first, each side by zone number) didn't match the field: in Mystical Space
+Typhoon's list two of the opponent's Set cards, both card backs, couldn't be told apart (live, 2026-11-17). The
+player's own Set cards show their faces (the player knows them), the opponent's are backs; the bar over each card
+says whose it is (blue the player's, pink the opponent's: mark `0x8000`).
+
 A monster's field label and card info read a 9-value record per place (`0x523F00`, key `player | zone<<8`; the info
 panel `0x453740`): shown Konami id, a second id, race, attribute, level, ATK, DEF, base ATK, base DEF (ATK below base in
 red, above in blue, `0xFFFF` = "?"). Data commands build it: `0x3E9 {_, values 0, 2, 3}`, `0x3EA {_, values 4, 5, 6}`,
