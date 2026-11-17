@@ -44,7 +44,9 @@ storage. Select the complete installation with `--game-dir` and retry; keep exis
 | `--data-dir`                | Persistent SQLite state and server identity, default `data/`                                         |
 | `--log-dir`                 | Logs, default `logs/`                                                                                |
 | `--http-port`               | Internal loopback HTTP/admin listener, default `8080`; Desktop uses an automatically assigned port   |
-| `--dashboard-port`          | Opt-in staff JSON API on a separate loopback-only socket; disabled when omitted, `0` assigns a free port. Private development only until the [public-access gate](dashboard.md#public-access-gate) is complete |
+| `--dashboard-port`          | Opt-in staff API on loopback TCP; disabled when omitted, `0` assigns a free port. Separate from host commands |
+| `--dashboard-socket`        | Unix staff API socket mounted by nginx; mutually exclusive with `--dashboard-port`. TOML: `dashboard_socket` |
+| `--dashboard-origin`        | Exact web origin for the Unix socket, e.g. `https://play.example.com`; required with the socket. No paths or public plain HTTP. [Proxy setup](docker.md) |
 | `--auth-cert`, `--auth-key` | Explicit TLS certificate/key files                                                                   |
 | `--duel-check`              | Compare each player's modeled client state with the rules engine after each step                     |
 | `--no-packet-log`           | Disable separate raw packet files; decoded packet traces remain in bounded session diagnostics       |
@@ -193,9 +195,14 @@ role is admin or moderator:
 
 ## Account commands
 
+For unattended first deployment only, `bootstrap-admin USER` reads a password from stdin and atomically creates the
+first admin with an audit row and permanent bootstrap receipt. It requires the server stopped and an empty account
+directory. Matching retries keep the current password; deletion/demotion or a different target closes bootstrap
+with an error. It is offline-only and never an HTTP operation. [One-time setup](deployment.md).
+
 On the `beta` branch every command works while the server runs (#25): it goes to the running server's admin API
 (loopback, with the private token in `data/admin.json`) and changes it at once. With no server running, the command
-works on the data folder itself, holding its lock (`server.lock`) meanwhile. Only `init-auth`, `restore` and
+works on the data folder itself, holding its lock (`server.lock`) meanwhile. `init-auth`, `bootstrap-admin`, `restore` and
 `backups` always work on the files. Every change is recorded in the audit log: `audit` lists the newest, with who,
 from where, what, on what, and the values before and after. Released versions still need the server stopped for all
 but the BP and code commands. Add `--data-dir PATH` to target a non-default setup. Players sign in with password
@@ -339,7 +346,6 @@ full diagnostics remain in the server's log folder. Fetch failures are shown exp
 Friends reach one **TLS listener**, normally TCP **7443**. The internal HTTP/admin listener remains on loopback;
 never forward it. A launcher supplies the game's gate/front/duel/HTTP ports locally through the required DLL.
 There is no stock-client/IP-auth fallback, browser `/join` setup or INI download.
-
 
 - **Bind** chooses which local interfaces accept connections. `0.0.0.0` listens on all IPv4 interfaces;
   `127.0.0.1` permits only this PC.

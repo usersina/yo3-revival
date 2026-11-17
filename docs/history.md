@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-17 — Compose hosting and local VPS setup](#2026-11-17--compose-hosting-and-local-vps-setup)
   - [2026-11-17 — Transactional account deletion in the connected dashboard](#2026-11-17--transactional-account-deletion-in-the-connected-dashboard)
   - [2026-11-17 — Durable graceful stop and checked live status](#2026-11-17--durable-graceful-stop-and-checked-live-status)
   - [2026-11-17 — Connected audit and server logs](#2026-11-17--connected-audit-and-server-logs)
@@ -35,6 +36,27 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-17 — Compose hosting and local VPS setup
+
+Added separate server/native-engine and React/nginx containers with read-only roots, non-root users, persistent SQLite
+and read-only user game assets. A permission-restricted Unix staff socket keeps host-token authority container-local;
+nginx allowlists routes and overwrites proxy headers, and Rust checks exact origin/CSRF. Public password access is
+approved for VPS testing before MFA; public backup downloads remain disabled. Added checked certificate export/reload
+and expiry monitoring, plus offline atomic first-admin bootstrap with permanent retry receipts.
+
+The one-time Ansible command builds locally, transfers images/game assets and bootstraps from a VPS IP and DNS name.
+It generates a private local password file and preserves existing credentials/identity on retry. Release CI publishes
+version/commit-tagged GHCR images after the existing release succeeds; automated VPS deployments are deferred. Taskfile
+has only build, start, stop, status and logs. No VPS credentials were configured and nothing was pushed or deployed.
+
+Verified 1,223 workspace tests (five skips), clean Clippy, 20 dashboard unit tests, 53 browser tests, generated-client
+drift, frontend lint/format/typecheck/build and documentation links. Real disposable Compose checks passed HTTPS game
+registration/staff sign-in, nginx spoofing/route/error handling, CSRF, grant receipts, offline restore, identity retention,
+read-only mounts and ACME. A real nginx browser check found/fixed missing font/logo routes and passed accessibility
+checks. Certificate-hook tests cover invalid certificates/keys and retry reload. Local image-ID startup and Ansible
+syntax/templates/password handling passed. Fresh-VPS setup, real CA renewal, reboot, off-machine restore and load/soak
+remain unverified; MFA/recovery and incremental schema normalization remain open.
 
 ## 2026-11-17 — Checked Overview and moderation-list parity
 

@@ -1,5 +1,9 @@
 # Hosting a server
 
+For the separate React dashboard and container deployment, use [Docker Compose and HTTPS](docker.md).
+That Unreleased option supports public HTTPS/password sign-in for VPS testing; MFA is still pending. This page
+covers the server bundle and its existing private HTML panel.
+
 How to run `yo3-server` as an always-on service on a Linux server (a VPS, or a spare PC) from the **server bundle**,
 and how to look after it: the admin panel through an SSH tunnel, backups on and off the machine, monitoring and
 alerts, and updates. On the `beta` branch (#36, #37); the released Desktop and Scripts editions host from a PC
@@ -149,9 +153,9 @@ The paths below are the ones the unit and the example file use: the bundle in `/
 
 ## The admin panel through an SSH tunnel
 
-The panel is a web page the server serves on its loopback HTTP port (D7: no public admin page in the beta). The
-[React dashboard under development](dashboard.md) uses a separate opt-in loopback API socket; it does not change
-this panel's port or the CLI's access, and must not be proxied publicly before its MFA/proxy gate is complete. From your
+The existing HTML panel is served on the loopback HTTP port (D7). The separate
+[React dashboard](dashboard.md) now supports public HTTPS through [nginx/Compose](docker.md) for VPS testing, with
+MFA still pending. It does not expose this panel or the host-token CLI API. To use the existing private panel from your
 own PC, open a tunnel to the server and leave it open while you use the panel:
 
 ```bash

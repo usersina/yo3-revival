@@ -1,6 +1,6 @@
 # Standalone dashboard
 
-Implementation plan agreed on 2026-11-16. This is development work, not a public hosting guide. The existing
+Implementation plan agreed on 2026-11-16. For deployment and HTTPS, see [Docker Compose on a VPS](docker.md). The existing
 [panel](hosting.md#the-admin-panel-through-an-ssh-tunnel) still answers only through loopback.
 
 ## Current state
@@ -11,7 +11,8 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
   development integration view. Neither preview is a production route. Page code loads on demand.
 - Axum handles HTTP on separate sockets. Host-token operations, assets and the old HTML panel stay on `--http-port`.
   The staff JSON router has its own opt-in `--dashboard-port`, disabled by default and always bound to loopback.
-  There is no public dashboard binding option before the MFA/proxy gate.
+  A separate Unix socket now connects the staff-only router to nginx for Compose hosting. It requires an explicit
+  web origin and trusts forwarding headers only on that filesystem transport. The TCP router stays loopback-only.
 - Rust handlers and DTOs generate `dashboard/api/openapi.json` through utoipa-axum. Orval generates the committed
   fetch functions, TanStack Query hooks and Zod validators in `dashboard/src/api/generated/`.
 - Give BP commits balance, D-Mail, audit and operation receipt together, then publishes state and notifications.
@@ -46,7 +47,8 @@ Implementation plan agreed on 2026-11-16. This is development work, not a public
 - Overview includes actual engine/memory metrics, backup health, online-player links and recent problems. Memory
   bytes are decimal strings; missing and unreadable backup storage are distinct states. Account lists project the
   same effective standing/mute badges as details, with filters and numeric account-detail links.
-- Remaining work: staff MFA, the public-access/proxy gate, nginx and Compose. The old private HTML panel remains
+- The user approved public HTTPS/password sign-in for VPS testing before MFA. Compose/nginx and HTTPS setup are
+  implemented; staff MFA/recovery and the real VPS deployment/soak remain. The old private HTML panel remains
   available during the security transition.
 
 ## Database backups
@@ -59,8 +61,8 @@ A retry only observes that outcome, including after restart/audit pruning or sna
 replacement copy. Download availability is reported separately from the historical creation outcome.
 
 `POST /panel/api/v1/backups/download` streams the snapshot only after committing an admin access audit and receipt.
-A sign-in within five minutes is required on this private interface; public downloads remain behind the future
-MFA/public-access gate. The React confirmation warns about password hashes, account data and audit history.
+A sign-in within five minutes is required on the private interface. Public nginx/socket downloads are refused,
+and the backup list reports `downloads_allowed: false` so React shows SSH copy guidance instead of download buttons. The React confirmation warns about password hashes, account data and audit history.
 Only request metadata is kept across reloads, never backup bytes. The generated response type is a Blob; JSON
 errors remain typed and are never saved as a database. A successful response means a download started, not proof
 that the browser saved it. The legacy HTML download is audited too and capped at 64 MiB; use the new dashboard
@@ -254,7 +256,7 @@ Connected routes in this slice:
 | GET | `/panel/api/v1/invites` | Staff-visible invites, remaining uses, expiry, issuer, claims and checked status |
 | POST | `/panel/api/v1/invites` | Admin/moderator creation; omit `uses` for unlimited sign-ups, `days` for no expiry |
 
-Every route checks the loopback peer and local Host. Posts also require same-origin evidence, and authenticated posts
+TCP requests check the loopback peer and local Host; Unix proxy requests check the configured Host and one forwarded hop. Posts also require same-origin evidence, and authenticated posts
 require the CSRF header. Host-token, restore and credential-export operations are absent from the staff router. The
 existing HTML panel remains on the local management listener, sharing sessions and the sign-in throttle.
 Password/recovery changes invalidate its cookies as well as JSON API cookies. Full sign-out-everywhere/MFA revocation
@@ -290,7 +292,10 @@ For a normal source server, opt in with `--dashboard-port 18081`, or `dashboard_
 Omitting it leaves the API disabled; `0` assigns a free port, reported at startup. `--bind` affects only game TLS,
 even when set to `0.0.0.0`. A dashboard port conflict stops startup before database initialization/migration or live
 CLI discovery, rather than silently dropping the requested service. All listeners stop with the server. These
-options support private development only; do not proxy this unfinished API publicly.
+TCP options support private development. For nginx use `--dashboard-socket PATH --dashboard-origin https://HOST`
+(or the corresponding TOML settings), as the [container setup](docker.md) does. Socket and TCP modes are mutually
+exclusive. Invalid configuration fails before storage opens; stale socket files recover under an exclusive socket
+lock, while active sockets, symlinks and unrelated files are preserved.
 
 From `dashboard/`, `npm run api:generate` regenerates Rust's spec and the frontend. `npm run api:check` checks client
 drift without writing. From the root, `cargo nextest run -p yo3-server --test dashboard_contract` checks the schema
@@ -300,27 +305,28 @@ and the actual API without Node. Frontend gates are `npm run format:check`, `npm
 
 ## Separate authority and listeners
 
-The planned public management option supersedes D7's tunnel-only product decision, not the existing implementation's
-safety checks. Public access stays disabled until the gate below is implemented and verified (#43, #47).
+The public Compose option supersedes D7's tunnel-only product decision for the React dashboard. On 2026-11-17 the
+user explicitly approved public VPS testing before MFA. Password authentication, exact origin, CSRF, live staff
+permissions and throttling apply now; MFA/recovery remain unfinished (#43). The old HTML panel stays private.
 
 | Listener | Access and authority |
 | --- | --- |
 | Game TLS | Public TCP 7443, existing authenticated game transport |
 | Local management | Loopback, unpublished; host-token CLI API, assets and existing HTML panel |
-| Dashboard API | Separate loopback socket today, disabled by default; private Compose network only after the public-access gate; staff-session router only, never host-token authority even from 127.0.0.1 |
+| Dashboard API | Opt-in loopback TCP or mounted Unix socket; staff-session router only. Unix mode validates the exact configured web origin and one nginx forwarding hop; no host-token authority |
 | nginx | Public HTTPS; dashboard files and an explicit allowlist of dashboard API routes on one browser origin |
 
 Restore remains an offline CLI command with the server stopped and the data folder exclusively locked. Host-token
 routes are absent from the dashboard router and nginx's allowlist. Test this on the dashboard listener with a real
 host token and a loopback peer. Source address alone never grants local authority.
 
-## Public access gate
+## Public security requirements
 
-- Staff MFA before usable dashboard sessions. Include enrollment, protected TOTP seeds, replay checks, throttling,
+- Pending: staff MFA before usable dashboard sessions in the final hardened deployment. Include enrollment, protected TOTP seeds, replay checks, throttling,
   hashed single-use recovery codes and local administrative recovery. Require recent MFA for sensitive actions.
 - Explicit staff-session revocation after password recovery, MFA reset and sign-out everywhere; live role/standing
   checks. Test existing panel cookies, not only game sessions. Keep passwords, factors and recovery codes out of logs.
-- Configured public host/origin and a specific trusted proxy. nginx overwrites `X-Forwarded-For` with `$remote_addr`,
+- Implemented: configured public host/origin and a mounted Unix socket held by the nginx container. nginx overwrites `X-Forwarded-For` with `$remote_addr`,
   sets Host and `X-Forwarded-Proto` explicitly, and clears incoming `Forwarded`. No client-supplied forwarding chain
   is accepted. Rust trusts only that single proxy hop. Rust throttles remain authoritative for sign-in, MFA and
   recovery attempts; nginx `limit_req` is an additional outer limit.
@@ -338,7 +344,8 @@ host token and a loopback peer. Source address alone never grants local authorit
 
 Separate server/engine and dashboard/nginx images in Compose. Persistent SQLite data, read-only user-supplied game
 assets, protected keys outside the dashboard, health checks and graceful shutdown. Rehearse backup and restore.
-Taskfile stays a convenience wrapper for build, up, down, status and logs.
+Taskfile has only build, start, stop, status and logs. [Deployment guide](docker.md) covers certificate bootstrapping,
+renewal/reload, monitoring and offline restore. The game identity and SQLite volume never reach nginx.
 
 Normalize domains gradually behind the API, with versioned migrations, constraints and tested restore. The first
 operation needs no PostgreSQL/Turso migration, generic repository framework or new authentication provider.

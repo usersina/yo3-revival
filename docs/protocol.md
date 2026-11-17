@@ -1,5 +1,9 @@
 # Protocol catalog
 
+Deployment note (Unreleased): Compose/nginx serves the staff API over a mounted Unix socket, with exact browser
+origin and proxy-header checks. This adds no game request/reply fields; `front.rs` and the game wire catalog are
+unchanged. [Container deployment](docker.md).
+
 The client (`yo3.exe`) is the spec. Every row cites its evidence: a client address, a line of the client's own
 trace (`File.cpp Lnnn`), a recorded packet, or the **field tracer** (`vclient.sh start --trace`, then
 `tools/tracer/summarize.py`), which lists every field the client actually looked up in each reply. **Status** is one

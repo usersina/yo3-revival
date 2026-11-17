@@ -43,6 +43,7 @@ Use **64-bit Windows 10/11**, or **Linux with Wine**. **Windows 7 is not support
 
 - **Desktop:** **Host for friends** on the Multiplayer tab runs a server on your PC and gives you an invite link for
   each friend to send. [Hosting guide](docs/launcher.md#host-friends).
+- **Linux VPS:** [One-time setup](docs/deployment.md) or [Docker Compose and HTTPS setup](docs/docker.md) (Unreleased).
 - **Scripts edition:** Follow the [terminal hosting setup](docs/scripts.md#host-friends) and
   [server and account commands](docs/guide.md).
 

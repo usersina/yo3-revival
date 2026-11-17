@@ -25,10 +25,12 @@ and Scripts.
 
 **Standalone management dashboard**
 
-- [ ] Public management gate: staff MFA and recovery (#43), session revocation, trusted nginx proxy, HTTPS renewal,
-      route/header contract tests through nginx and a public-access security review. Do not expose the existing panel.
-- [ ] Compose packaging, thin Taskfile and hosting/backup/restore verification (#47), then gradual schema normalization.
-      Accepted boundaries and nginx requirements: [dashboard plan](dashboard.md).
+- [ ] Staff MFA and recovery (#43), recent MFA for sensitive actions and a final public-access security review.
+      Public HTTPS/password sign-in is approved for testing; the existing HTML panel remains private.
+- [ ] Deploy the Compose stack on the actual VPS, rehearse off-machine recovery there and run load/soak checks (#47).
+      Images, nginx, certificate workflow and local deployment rehearsal: [Docker guide](docker.md).
+      [Local Ansible setup](deployment.md) is prepared; verify first provisioning, an unchanged second run, reboot and renewal. Release CI publishes images; automatic VPS updates are deferred.
+- [ ] Normalize SQLite domains incrementally after deployment validation; keep the generated API unchanged.
 
 **Duels**
 
