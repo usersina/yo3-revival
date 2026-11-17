@@ -618,7 +618,7 @@ pub mod selfplay {
 
     use super::ClientModel;
     use crate::duel::{CLIENT, CPU, command, next, piles, setup, shuffle};
-    use crate::ocg::{hint, msg};
+    use crate::ocg::{Response, battle, hint, idle, loc, msg, pos};
     use crate::wire::{cmd, dialog, zone};
     use crate::engine::Engine;
     use crate::front::Deck;
@@ -1099,46 +1099,45 @@ pub mod selfplay {
         let mut pick = |n: usize| (next(rng) as usize) % n.max(1);
         match m["type"].as_u64().unwrap_or(0) {
             msg::SELECT_IDLECMD => {
-                let mut options: Vec<(u64, Json)> = vec![];
+                let mut options: Vec<(u64, Option<usize>)> = vec![];
                 if !tired {
                     for (list, action) in [("summons", 0), ("special_summons", 1), ("pos_changes", 2), ("monster_sets", 3), ("spell_sets", 4), ("activates", 5)] {
-                        options.extend((0..len(list)).map(|i| (action, json!(i))));
+                        options.extend((0..len(list)).map(|i| (action, Some(i))));
                     }
                 }
-                let leave: Vec<(u64, Json)> =
-                    [(m["to_bp"] == true, 6), (m["to_ep"] == true, 7)].into_iter().filter(|(ok, _)| *ok).map(|(_, a)| (a, Json::Null)).collect();
+                let leave: Vec<(u64, Option<usize>)> =
+                    [(m["to_bp"] == true, idle::TO_BP), (m["to_ep"] == true, idle::TO_EP)].into_iter().filter(|(ok, _)| *ok).map(|(_, a)| (a, None)).collect();
                 // Leaving is one option among the others (always, once tired).
                 if !leave.is_empty() && (options.is_empty() || pick(options.len() + 2) < 2) {
-                    let (action, index) = leave[pick(leave.len())].clone();
-                    return json!({ "type": 1, "action": action, "index": index });
+                    let (action, index) = leave[pick(leave.len())];
+                    return Response::IdleCmd { action, index }.json();
                 }
                 if options.is_empty() {
                     return bot_answer(m);
                 }
-                let (action, index) = options[pick(options.len())].clone();
-                json!({ "type": 1, "action": action, "index": index })
+                let (action, index) = options[pick(options.len())];
+                Response::IdleCmd { action, index }.json()
             }
             msg::SELECT_BATTLECMD => {
-                let mut options: Vec<(u64, Json)> = vec![];
+                let mut options: Vec<(u64, Option<usize>)> = vec![];
                 if !tired {
-                    options.extend((0..len("attacks")).map(|i| (1, json!(i))));
-                    options.extend((0..len("chains")).map(|i| (0, json!(i))));
+                    options.extend((0..len("attacks")).map(|i| (battle::ATTACK, Some(i))));
+                    options.extend((0..len("chains")).map(|i| (battle::CHAIN, Some(i))));
                 }
                 if options.is_empty() || pick(options.len() + 1) == 0 {
-                    let action = if m["to_m2"] == true && pick(2) == 0 { 2 } else { 3 };
-                    return json!({ "type": 0, "action": action, "index": null });
+                    let action = if m["to_m2"] == true && pick(2) == 0 { battle::TO_M2 } else { battle::TO_EP };
+                    return Response::BattleCmd { action, index: None }.json();
                 }
-                let (action, index) = options[pick(options.len())].clone();
-                json!({ "type": 0, "action": action, "index": index })
+                let (action, index) = options[pick(options.len())];
+                Response::BattleCmd { action, index }.json()
             }
             msg::SELECT_CHAIN => {
                 let n = len("selects");
-                let index = if n > 0 && (m["forced"] == true || pick(2) == 0) { json!(pick(n)) } else { Json::Null };
-                json!({ "type": 8, "index": index })
+                Response::Chain((n > 0 && (m["forced"] == true || pick(2) == 0)).then(|| pick(n))).json()
             }
-            msg::SELECT_EFFECTYN => json!({ "type": 2, "yes": pick(2) == 0 }),
-            msg::SELECT_YESNO => json!({ "type": 3, "yes": pick(2) == 0 }),
-            msg::SELECT_OPTION => json!({ "type": 4, "index": pick(len("options")) }),
+            msg::SELECT_EFFECTYN => Response::EffectYn(pick(2) == 0).json(),
+            msg::SELECT_YESNO => Response::YesNo(pick(2) == 0).json(),
+            msg::SELECT_OPTION => Response::Option(pick(len("options"))).json(),
             kind @ (msg::SELECT_CARD | msg::SELECT_TRIBUTE) => {
                 let n = len("selects");
                 let min = (m["min"].as_u64().unwrap_or(1) as usize).min(n);
@@ -1150,19 +1149,18 @@ pub mod selfplay {
                 }
                 all.truncate(count);
                 all.sort_unstable();
-                json!({ "type": if kind == msg::SELECT_CARD { 5 } else { 12 }, "indicies": all })
+                if kind == msg::SELECT_CARD { Response::Card(Some(all)).json() } else { Response::Tribute(Some(all)).json() }
             }
             msg::SELECT_UNSELECT_CARD => {
                 let n = len("select_cards");
-                let index = if n == 0 || (m["can_finish"] == true && pick(2) == 0) { Json::Null } else { json!(pick(n)) };
-                json!({ "type": 7, "index": index })
+                Response::UnselectCard((n != 0 && !(m["can_finish"] == true && pick(2) == 0)).then(|| pick(n))).json()
             }
-            kind @ (msg::SELECT_PLACE | 24) => {
+            kind @ (msg::SELECT_PLACE | msg::SELECT_DISFIELD) => {
                 // Random free zones, `count` of them (field_mask bits set = unavailable): the player's monster zones
                 // 0-4, Spell/Trap 8-13, then the opponent's 16-20 and 24-29.
                 let mask = m["field_mask"].as_u64().unwrap_or(0);
                 let me = m["player"].as_u64().unwrap_or(0);
-                let free: Vec<(u64, u64, u64)> = [(me, 4, 0..5, 0), (me, 8, 0..6, 8), (1 - me, 4, 0..5, 16), (1 - me, 8, 0..6, 24)]
+                let free: Vec<(u64, u64, u64)> = [(me, loc::MZONE, 0..5, 0), (me, loc::SZONE, 0..6, 8), (1 - me, loc::MZONE, 0..5, 16), (1 - me, loc::SZONE, 0..6, 24)]
                     .into_iter()
                     .flat_map(|(p, l, seqs, base)| seqs.map(move |s| (p, l, s, base + s)))
                     .filter(|&(_, _, _, b)| mask & 1 << b == 0)
@@ -1179,15 +1177,15 @@ pub mod selfplay {
                         json!({ "player": player, "location": location, "sequence": sequence })
                     })
                     .collect();
-                json!({ "type": if kind == msg::SELECT_PLACE { 10 } else { 9 }, "places": places })
+                if kind == msg::SELECT_PLACE { Response::Place(places).json() } else { Response::Disfield(places).json() }
             }
             msg::SELECT_POSITION => {
                 let allowed = m["positions"].as_u64().unwrap_or(1);
-                let bits: Vec<u64> = [1, 2, 4, 8].into_iter().filter(|b| allowed & b != 0).collect();
-                json!({ "type": 11, "position": if bits.is_empty() { 1 } else { bits[pick(bits.len())] } })
+                let bits: Vec<u64> = [pos::FACEUP_ATTACK, pos::FACEDOWN_ATTACK, pos::FACEUP_DEFENSE, pos::FACEDOWN_DEFENSE].into_iter().filter(|b| allowed & b != 0).collect();
+                Response::Position(if bits.is_empty() { pos::FACEUP_ATTACK } else { bits[pick(bits.len())] }).json()
             }
-            // An order (chain links 21, cards 25): half the time a random rank per card, else the engine's own.
-            21 | 25 => {
+            // An order (chain links, cards): half the time a random rank per card, else the engine's own.
+            msg::SORT_CHAIN | msg::SORT_CARD => {
                 let n = len("cards");
                 if n < 2 || pick(2) == 0 {
                     return bot_answer(m);
@@ -1196,7 +1194,7 @@ pub mod selfplay {
                 for i in (1..n).rev() {
                     order.swap(i, pick(i + 1));
                 }
-                json!({ "type": 15, "order": order })
+                Response::Sort(Some(json!(order))).json()
             }
             _ => bot_answer(m),
         }

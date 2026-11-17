@@ -14,7 +14,7 @@ impl Translator {
             _ => return None,
         };
         self.pending = None;
-        Some(json!({ "type": kind, "action": action, "index": null }))
+        Some(Response::command(kind, action, None).json())
     }
 
     /// What the client's card command leads to: an attack with no monster to target asks "Attack your opponent
@@ -139,7 +139,7 @@ impl Translator {
         let index = m["selects"].as_array()?.iter().position(|c| self.place(c) == Some(place)).filter(|_| cmd.command == menu::CONFIRM)?;
         self.asking = Asking::Prompt;
         self.pending = None;
-        Some(Prompt::Answer(json!({ "type": resp::CARD, "indicies": [index] })))
+        Some(Prompt::Answer(Response::Card(Some(vec![index])).json()))
     }
 
     /// The field's right-click (duelRequestName 5): while an attack target is picked on the field, the attack taken
@@ -152,7 +152,7 @@ impl Translator {
         self.asking = Asking::Prompt;
         self.taken_back = true;
         self.pending = None;
-        Some(Prompt::Answer(json!({ "type": resp::CARD, "indicies": null })))
+        Some(Prompt::Answer(Response::Card(None).json()))
     }
 
     /// A command on a pile (sent at index 0, where the client found it): the one card of the pile it fits, or with
@@ -175,7 +175,7 @@ impl Translator {
             [] => None,
             [(index, _)] => {
                 self.pending = None;
-                Some(Prompt::Answer(json!({ "type": kind, "action": action, "index": index })))
+                Some(Prompt::Answer(Response::command(kind, action, Some(index)).json()))
             }
             _ => {
                 let text = match (cmd.command, cmd.zone) {
@@ -235,7 +235,7 @@ impl Translator {
     pub fn answer(&mut self, cmd: CardCommand) -> Option<Json> {
         let (_, kind, action, indices) = self.listed(&cmd)?;
         self.pending = None;
-        Some(json!({ "type": kind, "action": action, "index": indices[0] }))
+        Some(Response::command(kind, action, Some(indices[0])).json())
     }
 
     /// The pending prompt's entries the client's card command names: the list, the response's type and action, and

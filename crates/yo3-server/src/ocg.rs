@@ -50,6 +50,8 @@ pub mod msg {
         SWAP_GRAVE_DECK = 35,
         SHUFFLE_SET_CARD = 36,
         SWAP = 55,
+        /// A card is Set (banter's "I set a card"; the client is shown the move).
+        SET = 54,
         POS_CHANGE = 53,
         SUMMONING = 60,
         SPSUMMONING = 62,
@@ -175,5 +177,99 @@ pub mod reason {
         SYNCHRO = 0x80000,
         RITUAL = 0x100000,
         XYZ = 0x200000,
+    }
+}
+
+/// An answer to the engine's prompt, built here only, as ocgcore-wasm 0.1.6's JSON takes it (`yo3-engine`'s
+/// `encode.rs`): `{type, ...}` with the response type's own fields. Indices are positions in the prompt's lists;
+/// `None` is the JSON null that passes, cancels or leaves.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Response {
+    /// MSG_SELECT_BATTLECMD: an action ([`battle`]), with its list index (none for a phase change).
+    BattleCmd { action: u64, index: Option<usize> },
+    /// MSG_SELECT_IDLECMD: an action ([`idle`]), with its list index (none for a phase change).
+    IdleCmd { action: u64, index: Option<usize> },
+    EffectYn(bool),
+    YesNo(bool),
+    /// MSG_SELECT_OPTION: the option's index.
+    Option(usize),
+    /// MSG_SELECT_CARD: the picks, or none to cancel.
+    Card(Option<Vec<usize>>),
+    /// MSG_SELECT_TRIBUTE: the picks, or none to cancel.
+    Tribute(Option<Vec<usize>>),
+    /// MSG_SELECT_UNSELECT_CARD: a card, or none to finish or cancel.
+    UnselectCard(Option<usize>),
+    /// MSG_SELECT_CHAIN: a chain link to add, or none to pass.
+    Chain(Option<usize>),
+    /// MSG_SELECT_DISFIELD and MSG_SELECT_PLACE: zones {player, location, sequence}.
+    Disfield(Vec<serde_json::Value>),
+    Place(Vec<serde_json::Value>),
+    /// MSG_SELECT_POSITION: the position ([`pos`]).
+    Position(u64),
+    /// MSG_SELECT_COUNTER: counters to remove per card.
+    Counter(serde_json::Value),
+    /// MSG_SELECT_SUM: the picks.
+    Sum(Vec<usize>),
+    /// MSG_SORT_CARD / MSG_SORT_CHAIN: an order, or none for the engine's.
+    Sort(Option<serde_json::Value>),
+    /// MSG_ANNOUNCE_RACE: Types (RACE_* bits).
+    Race(Vec<u64>),
+    /// MSG_ANNOUNCE_ATTRIB: Attributes (ATTRIBUTE_* bits).
+    Attrib(Vec<u64>),
+    /// MSG_ANNOUNCE_CARD: a card's code.
+    CardName(u64),
+    /// MSG_ANNOUNCE_NUMBER: the option's index.
+    Number(u64),
+    /// MSG_ROCK_PAPER_SCISSORS: 1 rock, 2 paper, 3 scissors.
+    Rps(u64),
+}
+
+impl Response {
+    /// A battle or idle command by the response type (for code that serves both lists).
+    pub fn command(kind: u64, action: u64, index: Option<usize>) -> Response {
+        if kind == resp::BATTLECMD { Response::BattleCmd { action, index } } else { Response::IdleCmd { action, index } }
+    }
+
+    /// A card or tribute choice by the response type.
+    pub fn cards(kind: u64, picks: Option<Vec<usize>>) -> Response {
+        if kind == resp::TRIBUTE { Response::Tribute(picks) } else { Response::Card(picks) }
+    }
+
+    /// A yes or no by the response type (MSG_SELECT_EFFECTYN or MSG_SELECT_YESNO).
+    pub fn yes(kind: u64, yes: bool) -> Response {
+        if kind == resp::EFFECTYN { Response::EffectYn(yes) } else { Response::YesNo(yes) }
+    }
+
+    /// The JSON the engine takes.
+    pub fn json(&self) -> serde_json::Value {
+        use serde_json::json;
+        match self {
+            Response::BattleCmd { action, index } => json!({ "type": resp::BATTLECMD, "action": action, "index": index }),
+            Response::IdleCmd { action, index } => json!({ "type": resp::IDLECMD, "action": action, "index": index }),
+            Response::EffectYn(yes) => json!({ "type": resp::EFFECTYN, "yes": yes }),
+            Response::YesNo(yes) => json!({ "type": resp::YESNO, "yes": yes }),
+            Response::Option(index) => json!({ "type": resp::OPTION, "index": index }),
+            Response::Card(picks) => json!({ "type": resp::CARD, "indicies": picks }),
+            Response::Tribute(picks) => json!({ "type": resp::TRIBUTE, "indicies": picks }),
+            Response::UnselectCard(index) => json!({ "type": resp::UNSELECT_CARD, "index": index }),
+            Response::Chain(index) => json!({ "type": resp::CHAIN, "index": index }),
+            Response::Disfield(places) => json!({ "type": resp::DISFIELD, "places": places }),
+            Response::Place(places) => json!({ "type": resp::PLACE, "places": places }),
+            Response::Position(position) => json!({ "type": resp::POSITION, "position": position }),
+            Response::Counter(counters) => json!({ "type": resp::COUNTER, "counters": counters }),
+            Response::Sum(picks) => json!({ "type": resp::SUM, "indicies": picks }),
+            Response::Sort(order) => json!({ "type": resp::SORT, "order": order }),
+            Response::Race(races) => json!({ "type": resp::RACE, "races": races }),
+            Response::Attrib(attributes) => json!({ "type": resp::ATTRIB, "attributes": attributes }),
+            Response::CardName(cid) => json!({ "type": resp::CARD_NAME, "cid": cid }),
+            Response::Number(value) => json!({ "type": resp::NUMBER, "value": value }),
+            Response::Rps(value) => json!({ "type": resp::RPS, "value": value }),
+        }
+    }
+}
+
+impl From<Response> for serde_json::Value {
+    fn from(r: Response) -> Self {
+        r.json()
     }
 }

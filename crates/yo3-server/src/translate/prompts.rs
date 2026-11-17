@@ -245,7 +245,7 @@ impl Translator {
     pub(super) fn cpu_card_name(&mut self, m: &Json) -> Json {
         // A card the effect's filter allows (the sidecar's `fits`, the duel's own cards first).
         if let Some(cid) = m["fits"].as_array().and_then(|f| f.first()).and_then(Json::as_u64) {
-            return json!({ "type": resp::CARD_NAME, "cid": cid });
+            return Response::CardName(cid).json();
         }
         let mut cids: Vec<u16> =
             self.sides.iter().flat_map(|s| s.zones.values()).flatten().filter_map(|c| self.cards.get(&c.row)).map(|c| c.cid).collect();
@@ -253,7 +253,7 @@ impl Translator {
         cids.dedup();
         let cid = cids.get(self.declared % cids.len().max(1)).copied().unwrap_or(0);
         self.declared += 1;
-        json!({ "type": resp::CARD_NAME, "cid": cid })
+        Response::CardName(cid as u64).json()
     }
 
     /// The position dialog for MSG_SELECT_POSITION {cid, positions}, with the card's image (any uid with its id) and
@@ -327,10 +327,10 @@ impl Translator {
         let forced = m["forced"] == true;
         let phase_window = self.phase_window;
         if selects.is_empty() {
-            return Prompt::Answer(json!({ "type": resp::CHAIN, "index": null }));
+            return Prompt::Answer(Response::Chain(None).json());
         }
         if forced && selects.len() == 1 {
-            return Prompt::Answer(json!({ "type": resp::CHAIN, "index": 0 }));
+            return Prompt::Answer(Response::Chain(Some(0)).json());
         }
         self.pending = Some(m.clone());
         self.picks.clear();
@@ -504,7 +504,7 @@ impl Translator {
                 self.picks.clear();
                 if let Some(index) = pick {
                     self.pending = None;
-                    return Some(Prompt::Answer(json!({ "type": kind, "action": action, "index": index })));
+                    return Some(Prompt::Answer(Response::command(kind, action, Some(index)).json()));
                 }
                 let m = self.pending.clone()?;
                 return Some(self.prompt(&m));
@@ -551,8 +551,8 @@ impl Translator {
         let m = self.pending.take()?;
         let selects = m["selects"].as_array().or(m["select_cards"].as_array()).map_or(0, Vec::len);
         let answer = match kind {
-            msg::SELECT_EFFECTYN => json!({ "type": resp::EFFECTYN, "yes": count == 1 }),
-            msg::SELECT_YESNO => json!({ "type": resp::YESNO, "yes": count == 1 }),
+            msg::SELECT_EFFECTYN => Response::EffectYn(count == 1).json(),
+            msg::SELECT_YESNO => Response::YesNo(count == 1).json(),
             msg::SELECT_POSITION => {
                 let allowed = m["positions"].as_u64().unwrap_or(0);
                 let position = match count {
@@ -563,15 +563,15 @@ impl Translator {
                 };
                 match allowed & position {
                     0 => cpu_answer(kind, &m),
-                    _ => json!({ "type": resp::POSITION, "position": position }),
+                    _ => Response::Position(position).json(),
                 }
             }
             msg::SELECT_OPTION if std::mem::take(&mut self.option_cards) => match std::mem::take(&mut self.picks)[..] {
-                [index] if index < m["options"].as_array().map_or(0, Vec::len) => json!({ "type": resp::OPTION, "index": index }),
+                [index] if index < m["options"].as_array().map_or(0, Vec::len) => Response::Option(index).json(),
                 _ => cpu_answer(kind, &m),
             },
             msg::SELECT_OPTION if (count as usize) < m["options"].as_array().map_or(0, Vec::len) => {
-                json!({ "type": resp::OPTION, "index": count })
+                Response::Option(count as usize).json()
             }
             msg::SELECT_CHAIN if !self.chain_list && count == 1 && selects > 1 => {
                 self.chain_list = true;
@@ -581,13 +581,12 @@ impl Translator {
                 return Some(Prompt::Client(out));
             }
             msg::SELECT_CHAIN if !self.chain_list => {
-                let index = if count == 1 { json!(0) } else { Json::Null };
-                json!({ "type": resp::CHAIN, "index": index })
+                Response::Chain((count == 1).then_some(0)).json()
             }
             msg::SELECT_CHAIN => match std::mem::take(&mut self.picks)[..] {
-                [index] if index < selects => json!({ "type": resp::CHAIN, "index": index }),
+                [index] if index < selects => Response::Chain(Some(index)).json(),
                 _ if m["forced"] == true => cpu_answer(kind, &m),
-                _ => json!({ "type": resp::CHAIN, "index": null }),
+                _ => Response::Chain(None).json(),
             },
             // A mixed list needs no picks to close: a forced choice with nothing picked is asked again.
             msg::SELECT_CARD | msg::SELECT_TRIBUTE if self.mixed && self.picks.is_empty() && m["can_cancel"] != true && m["min"].as_u64().unwrap_or(1) >= 1 => {
@@ -600,22 +599,22 @@ impl Translator {
                     return Some(self.prompt(&m));
                 }
                 self.sum_text = None;
-                json!({ "type": resp::SUM, "indicies": picks })
+                Response::Sum(picks).json()
             }
             msg::SELECT_UNSELECT_CARD => match std::mem::take(&mut self.picks)[..] {
-                [index] if index < selects => json!({ "type": resp::UNSELECT_CARD, "index": index }),
-                _ if m["can_finish"] == true || m["can_cancel"] == true => json!({ "type": resp::UNSELECT_CARD, "index": null }),
+                [index] if index < selects => Response::UnselectCard(Some(index)).json(),
+                _ if m["can_finish"] == true || m["can_cancel"] == true => Response::UnselectCard(None).json(),
                 _ => cpu_answer(kind, &m),
             },
             msg::ANNOUNCE_RACE => match TYPES.get((count as usize).wrapping_sub(1)) {
-                Some(&race) if m["available"].as_u64().unwrap_or(0) & race != 0 => json!({ "type": resp::RACE, "races": [race] }),
+                Some(&race) if m["available"].as_u64().unwrap_or(0) & race != 0 => Response::Race(vec![race]).json(),
                 _ => cpu_answer(kind, &m),
             },
             msg::ANNOUNCE_ATTRIB => {
                 let picked: Vec<u64> = ATTRIBUTES.iter().enumerate().filter(|(i, _)| count >> (i + 1) & 1 != 0).map(|(_, &a)| a).collect();
                 let allowed = m["available"].as_u64().unwrap_or(0);
                 match picked.len() as u64 == m["count"].as_u64().unwrap_or(1) && picked.iter().all(|a| allowed & a != 0) {
-                    true => json!({ "type": resp::ATTRIB, "attributes": picked }),
+                    true => Response::Attrib(picked).json(),
                     false => cpu_answer(kind, &m),
                 }
             }
@@ -628,9 +627,9 @@ impl Translator {
                 let index = options.iter().enumerate().filter(|(_, o)| **o >= value).min_by_key(|(_, o)| **o)
                     .or_else(|| options.iter().enumerate().max_by_key(|(_, o)| **o))
                     .map_or(0, |(i, _)| i);
-                json!({ "type": resp::NUMBER, "value": index })
+                Response::Number(index as u64).json()
             }
-            msg::ANNOUNCE_CARD => json!({ "type": resp::CARD_NAME, "cid": count }),
+            msg::ANNOUNCE_CARD => Response::CardName(count as u64).json(),
             // The clicks in order: card picks[k] gets rank k (the core reads byte i as card i's rank). Anything but each
             // card once keeps the engine's own order.
             msg::SORT_CHAIN | msg::SORT_CARD => {
@@ -640,7 +639,7 @@ impl Translator {
                 let whole = picks.len() == n && picks.iter().enumerate().all(|(rank, &i)| {
                     i < n && order[i] == usize::MAX && { order[i] = rank; true }
                 });
-                if whole { json!({ "type": resp::SORT, "order": order }) } else { cpu_answer(kind, &m) }
+                if whole { Response::Sort(Some(json!(order))).json() } else { cpu_answer(kind, &m) }
             }
             _ => cpu_answer(kind, &m),
         };
@@ -655,12 +654,12 @@ impl Translator {
         let len = m["selects"].as_array().map_or(0, Vec::len);
         let (min, max) = (m["min"].as_u64().unwrap_or(1) as usize, m["max"].as_u64().unwrap_or(1) as usize);
         if count == 0 && picks.is_empty() && m["can_cancel"] == true {
-            return json!({ "type": response, "indicies": null });
+            return Response::cards(response, None).json();
         }
         let mut seen = vec![];
         let fits = picks.iter().all(|&i| i < len && !seen.contains(&i) && { seen.push(i); true });
         if fits && (min..=max).contains(&picks.len()) {
-            return json!({ "type": response, "indicies": picks });
+            return Response::cards(response, Some(picks)).json();
         }
         tracing::warn!("card list: picks {picks:?} don't fit min {min} max {max} of {len}");
         cpu_answer(kind, m)
@@ -759,8 +758,8 @@ impl Translator {
         let count = (m["count"].as_u64().unwrap_or(1) as usize).max(1);
         if picks.len() >= count {
             self.pending = None;
-            let kind = if m["type"] == msg::SELECT_PLACE { resp::PLACE } else { resp::DISFIELD };
-            return Prompt::Answer(json!({ "type": kind, "places": picks }));
+            let answer = if m["type"] == msg::SELECT_PLACE { Response::Place(picks) } else { Response::Disfield(picks) };
+            return Prompt::Answer(answer.json());
         }
         self.asking = Asking::Zones(picks);
         Prompt::Client(self.zone_map(m))

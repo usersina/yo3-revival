@@ -121,6 +121,10 @@ pub(super) fn free_zones(m: &Json) -> Vec<(u64, u64, u64)> {
 }
 
 pub(super) fn cpu_answer(kind: u64, m: &Json) -> Json {
+    cpu_response(kind, m).json()
+}
+
+fn cpu_response(kind: u64, m: &Json) -> Response {
     let list_len = |k: &str| m[k].as_array().map_or(0, Vec::len);
     let first = |min: &Json, max: &Json, len: usize| {
         let n = (min.as_u64().unwrap_or(1) as usize).max(1).min(max.as_u64().unwrap_or(1) as usize).min(len);
@@ -129,35 +133,31 @@ pub(super) fn cpu_answer(kind: u64, m: &Json) -> Json {
     match kind {
         msg::SELECT_IDLECMD => {
             let (action, index) = if list_len("summons") > 0 {
-                (idle::SUMMON, json!(0))
+                (idle::SUMMON, Some(0))
             } else if list_len("monster_sets") > 0 {
-                (idle::MONSTER_SET, json!(0))
+                (idle::MONSTER_SET, Some(0))
             } else if m["to_bp"] == true {
-                (idle::TO_BP, Json::Null)
+                (idle::TO_BP, None)
             } else {
-                (idle::TO_EP, Json::Null)
+                (idle::TO_EP, None)
             };
-            json!({ "type": resp::IDLECMD, "action": action, "index": index })
+            Response::IdleCmd { action, index }
         }
-        msg::SELECT_BATTLECMD if list_len("attacks") > 0 => json!({ "type": resp::BATTLECMD, "action": battle::ATTACK, "index": 0 }),
-        msg::SELECT_BATTLECMD => json!({ "type": resp::BATTLECMD, "action": battle::TO_EP, "index": null }),
-        msg::SELECT_CHAIN => {
-            let index = if m["forced"].as_bool() == Some(true) { json!(0) } else { Json::Null };
-            json!({ "type": resp::CHAIN, "index": index })
-        }
-        msg::SELECT_CARD => json!({ "type": resp::CARD, "indicies": first(&m["min"], &m["max"], list_len("selects")) }),
-        msg::SELECT_TRIBUTE => json!({ "type": resp::TRIBUTE, "indicies": first(&m["min"], &m["max"], list_len("selects")) }),
+        msg::SELECT_BATTLECMD if list_len("attacks") > 0 => Response::BattleCmd { action: battle::ATTACK, index: Some(0) },
+        msg::SELECT_BATTLECMD => Response::BattleCmd { action: battle::TO_EP, index: None },
+        msg::SELECT_CHAIN => Response::Chain((m["forced"].as_bool() == Some(true)).then_some(0)),
+        msg::SELECT_CARD => Response::Card(Some(first(&m["min"], &m["max"], list_len("selects")))),
+        msg::SELECT_TRIBUTE => Response::Tribute(Some(first(&m["min"], &m["max"], list_len("selects")))),
         msg::SELECT_UNSELECT_CARD => {
             // Finishing with nothing picked cancels: Panther Warrior's attack (a Tribute to declare it) came back
             // again and again. Pick first.
             let finish = m["can_finish"] == true && m["unselect_cards"].as_array().is_some_and(|c| !c.is_empty());
-            let index = if finish { Json::Null } else { json!(0) };
-            json!({ "type": resp::UNSELECT_CARD, "index": index })
+            Response::UnselectCard((!finish).then_some(0))
         }
-        msg::SELECT_EFFECTYN => json!({ "type": resp::EFFECTYN, "yes": true }),
-        msg::SELECT_YESNO => json!({ "type": resp::YESNO, "yes": true }),
-        msg::SELECT_OPTION => json!({ "type": resp::OPTION, "index": 0 }),
-        msg::SORT_CHAIN | msg::SORT_CARD => json!({ "type": resp::SORT, "order": null }),
+        msg::SELECT_EFFECTYN => Response::EffectYn(true),
+        msg::SELECT_YESNO => Response::YesNo(true),
+        msg::SELECT_OPTION => Response::Option(0),
+        msg::SORT_CHAIN | msg::SORT_CARD => Response::Sort(None),
         msg::SELECT_COUNTER => {
             // The counters from the cards in order, each giving what it holds until the count is made.
             let mut left = m["count"].as_u64().unwrap_or(0);
@@ -174,7 +174,7 @@ pub(super) fn cpu_answer(kind: u64, m: &Json) -> Json {
             if counters.is_empty() {
                 counters.push(left);
             }
-            json!({ "type": resp::COUNTER, "counters": counters })
+            Response::Counter(json!(counters))
         }
         // The free zones centre out, as Konami's server filled them: the player's monster zones, Spell/Trap zones, then
         // the opponent's (Give and Take and Black Garden place on the opponent's field), and the Field zone (13).
@@ -193,29 +193,26 @@ pub(super) fn cpu_answer(kind: u64, m: &Json) -> Json {
             if places.is_empty() {
                 places.push(json!({ "player": me, "location": loc::MZONE, "sequence": 0 }));
             }
-            let kind = if kind == msg::SELECT_PLACE { resp::PLACE } else { resp::DISFIELD };
-            json!({ "type": kind, "places": places })
+            if kind == msg::SELECT_PLACE { Response::Place(places) } else { Response::Disfield(places) }
         }
         // Face-up attack when allowed, else the first allowed position.
         msg::SELECT_POSITION => {
             let allowed = m["positions"].as_u64().unwrap_or(1);
-            let position = if allowed & 1 != 0 { 1 } else { 1 << allowed.trailing_zeros() };
-            json!({ "type": resp::POSITION, "position": position })
+            Response::Position(if allowed & 1 != 0 { 1 } else { 1 << allowed.trailing_zeros() })
         }
         // The lowest `count` of the available bits.
         msg::ANNOUNCE_RACE | msg::ANNOUNCE_ATTRIB => {
             let available = m["available"].as_u64().unwrap_or(1);
             let picked: Vec<u64> = (0..64).map(|b| 1u64 << b).filter(|b| available & b != 0).take(m["count"].as_u64().unwrap_or(1) as usize).collect();
-            let (kind, key) = if kind == msg::ANNOUNCE_RACE { (resp::RACE, "races") } else { (resp::ATTRIB, "attributes") };
-            json!({ "type": kind, key: picked })
+            if kind == msg::ANNOUNCE_RACE { Response::Race(picked) } else { Response::Attrib(picked) }
         }
-        msg::ANNOUNCE_NUMBER => json!({ "type": resp::NUMBER, "value": 0 }),
-        msg::ANNOUNCE_CARD => json!({ "type": resp::CARD_NAME, "cid": m["fits"][0].as_u64().unwrap_or(0) }),
-        msg::ROCK_PAPER_SCISSORS => json!({ "type": resp::RPS, "value": 1 }),
-        msg::SELECT_SUM => json!({ "type": resp::SUM, "indicies": sum_choice(m) }),
+        msg::ANNOUNCE_NUMBER => Response::Number(0),
+        msg::ANNOUNCE_CARD => Response::CardName(m["fits"][0].as_u64().unwrap_or(0)),
+        msg::ROCK_PAPER_SCISSORS => Response::Rps(1),
+        msg::SELECT_SUM => Response::Sum(sum_choice(m)),
         _ => {
             tracing::warn!("rules engine: no answer for prompt {kind}");
-            json!({ "type": resp::CHAIN, "index": null })
+            Response::Chain(None)
         }
     }
 }

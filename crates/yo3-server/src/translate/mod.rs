@@ -13,7 +13,7 @@ use yo3_proto::{Message, Value};
 
 use crate::card_options::CARD_OPTION_LABELS;
 use crate::duel::{CLIENT, CPU, CardCommand, ClientRequest, TEXT_IDS, TEXT_SLOTS, command, command_data, text_message};
-use crate::ocg::{battle, hint, hintmsg, idle, loc, msg, pos, reason, resp};
+use crate::ocg::{Response, battle, hint, hintmsg, idle, loc, msg, pos, reason, resp};
 use crate::wire::{Cmd, OPEN, Place, Target, cmd, dialog, entry, flag, list, menu, mode, move_place, result, table_place, text, zone};
 
 mod answers;

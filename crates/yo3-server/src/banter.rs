@@ -17,25 +17,10 @@ use yo3_proto::{Message, Value};
 
 use crate::engine::Engine;
 use crate::front::World;
+use crate::ocg::msg;
 
 const LINES: &str = include_str!("npc_lines.txt");
 
-const MSG_WIN: u64 = 5;
-const MSG_NEW_TURN: u64 = 40;
-const MSG_NEW_PHASE: u64 = 41;
-const MSG_MOVE: u64 = 50;
-const MSG_POS_CHANGE: u64 = 53;
-const MSG_SET: u64 = 54;
-const MSG_SUMMONING: u64 = 60;
-const MSG_SPSUMMONING: u64 = 62;
-const MSG_FLIPSUMMONING: u64 = 64;
-const MSG_CHAINING: u64 = 70;
-const MSG_DRAW: u64 = 90;
-const MSG_DAMAGE: u64 = 91;
-const MSG_RECOVER: u64 = 92;
-const MSG_PAY_LPCOST: u64 = 100;
-const MSG_ATTACK: u64 = 110;
-const MSG_BATTLE: u64 = 111;
 
 /// The chat type of an NPC's line: shown in the duel's chat window with the speaker's name in red (ChatWindow
 /// `0x435950`: colour 0xB for chat type 0, its tab 7).
@@ -216,7 +201,7 @@ impl Banter {
             let player = m["player"].as_u64();
             let controller = m["controller"].as_u64();
             let said = match kind {
-                MSG_NEW_TURN => {
+                msg::NEW_TURN => {
                     self.turns += 1;
                     self.turn_player = player;
                     self.said_this_turn = 0;
@@ -236,14 +221,14 @@ impl Banter {
                     }
                 }
                 // A draw in the NPC's own turn (not the opening hand): the hero's Heart of the Cards.
-                MSG_DRAW if player == Some(self.npc) && self.turn_player == Some(self.npc) && self.has("heart") => {
+                msg::DRAW if player == Some(self.npc) && self.turn_player == Some(self.npc) && self.has("heart") => {
                     self.chance("heart", 0.35).then(|| self.line("heart", None)).flatten()
                 }
-                MSG_SET if controller == Some(1 - self.npc) && self.has("eye_set") && !self.blind => {
+                msg::SET if controller == Some(1 - self.npc) && self.has("eye_set") && !self.blind => {
                     let card = cid(m).and_then(|c| duel.card_name(c)).map(str::to_string);
                     card.filter(|_| self.chance("eye_set", 0.5)).and_then(|card| self.line("eye_set", Some(&card)))
                 }
-                MSG_SUMMONING | MSG_SPSUMMONING | MSG_FLIPSUMMONING if controller == Some(self.npc) => {
+                msg::SUMMONING | msg::SPSUMMONING | msg::FLIPSUMMONING if controller == Some(self.npc) => {
                     let ace = cid(m).filter(|&c| duel.card_atk(c) >= ACE_ATK && !self.aces.contains(&c));
                     let card = ace.and_then(|c| duel.card_name(c).map(|n| (c, n.to_string())));
                     card.and_then(|(c, card)| {
@@ -251,13 +236,13 @@ impl Banter {
                         self.line("ace", Some(&card))
                     })
                 }
-                MSG_ATTACK if m["card"]["controller"].as_u64() == Some(self.npc) && m["target"].is_null() => {
+                msg::ATTACK if m["card"]["controller"].as_u64() == Some(self.npc) && m["target"].is_null() => {
                     self.chance("direct", 0.3).then(|| self.line("direct", None)).flatten()
                 }
-                MSG_DAMAGE if player == Some(self.npc) && m["amount"].as_u64().unwrap_or(0) >= HURT => {
+                msg::DAMAGE if player == Some(self.npc) && m["amount"].as_u64().unwrap_or(0) >= HURT => {
                     self.chance("hurt", 0.6).then(|| self.line("hurt", None)).flatten()
                 }
-                MSG_WIN => {
+                msg::WIN => {
                     self.over = true;
                     match player {
                         Some(p) if p == self.npc => self.say("win", None),
@@ -330,16 +315,16 @@ fn cid(m: &Json) -> Option<u16> {
 /// About how long the client takes to show an engine message, in seconds (its animations; a rough pace).
 fn pace(kind: u64, m: &Json) -> f64 {
     match kind {
-        MSG_NEW_TURN => 1.5,
-        MSG_NEW_PHASE => 0.5,
-        MSG_DRAW => 0.5 * m["drawn"].as_array().map_or(1, Vec::len) as f64,
-        MSG_MOVE | MSG_POS_CHANGE => 0.5,
-        MSG_SET => 0.8,
-        MSG_SUMMONING | MSG_SPSUMMONING | MSG_FLIPSUMMONING => 1.5,
-        MSG_CHAINING => 1.2,
-        MSG_ATTACK => 1.0,
-        MSG_BATTLE => 1.5,
-        MSG_DAMAGE | MSG_RECOVER | MSG_PAY_LPCOST => 1.0,
+        msg::NEW_TURN => 1.5,
+        msg::NEW_PHASE => 0.5,
+        msg::DRAW => 0.5 * m["drawn"].as_array().map_or(1, Vec::len) as f64,
+        msg::MOVE | msg::POS_CHANGE => 0.5,
+        msg::SET => 0.8,
+        msg::SUMMONING | msg::SPSUMMONING | msg::FLIPSUMMONING => 1.5,
+        msg::CHAINING => 1.2,
+        msg::ATTACK => 1.0,
+        msg::BATTLE => 1.5,
+        msg::DAMAGE | msg::RECOVER | msg::PAY_LPCOST => 1.0,
         _ => 0.0,
     }
 }
@@ -412,12 +397,12 @@ mod tests {
         let greet = b.greet();
         assert!(greet[0].text.contains("Tester") || !greet[0].text.contains("{you}"));
         let mut d = duel();
-        let set = json!({ "type": MSG_SET, "cid": 1, "controller": 0, "location": 8, "sequence": 0, "position": 10 });
-        let said = b.observe(&[json!({ "type": MSG_NEW_TURN, "player": 0 }), set], &mut d);
+        let set = json!({ "type": msg::SET, "cid": 1, "controller": 0, "location": 8, "sequence": 0, "position": 10 });
+        let said = b.observe(&[json!({ "type": msg::NEW_TURN, "player": 0 }), set], &mut d);
         assert_eq!(said.len(), 1, "{said:?}");
         assert!(said[0].text.contains("Mirror Force"), "{said:?}");
         assert!(said[0].after > 1.5, "said after the Set shows, not before: {said:?}");
-        let said = b.observe(&[json!({ "type": MSG_NEW_TURN, "player": 1 })], &mut d);
+        let said = b.observe(&[json!({ "type": msg::NEW_TURN, "player": 1 })], &mut d);
         assert!(said[0].text.contains("Dark Magician"), "his first turn reads the hand: {said:?}");
     }
 
@@ -429,14 +414,14 @@ mod tests {
         let peg = &table()["Maximillion Pegasus"];
         let greet = b.greet();
         assert!(peg["blind_greet"].iter().any(|l| l.replace("{you}", "Tester") == greet[0].text), "{greet:?}");
-        let set = json!({ "type": MSG_SET, "cid": 1, "controller": 0, "location": 8, "sequence": 0, "position": 10 });
+        let set = json!({ "type": msg::SET, "cid": 1, "controller": 0, "location": 8, "sequence": 0, "position": 10 });
         let mut said = vec![];
         for _ in 0..6 {
-            said.extend(b.observe(&[json!({ "type": MSG_NEW_TURN, "player": 0 }), set.clone(), json!({ "type": MSG_NEW_TURN, "player": 1 })], &mut d));
+            said.extend(b.observe(&[json!({ "type": msg::NEW_TURN, "player": 0 }), set.clone(), json!({ "type": msg::NEW_TURN, "player": 1 })], &mut d));
         }
         assert!(said.iter().all(|s| !s.text.contains("Mirror Force") && !s.text.contains("Dark Magician")), "{said:?}");
         assert!(said.iter().any(|s| peg["blind"].contains(&s.text.as_str())), "he notices he can't see: {said:?}");
-        let said = b.observe(&[json!({ "type": MSG_WIN, "player": 0, "reason": 1 })], &mut d);
+        let said = b.observe(&[json!({ "type": msg::WIN, "player": 0, "reason": 1 })], &mut d);
         assert!(peg["blind_lose"].contains(&said[0].text.as_str()), "{said:?}");
         let kaiba = Banter::new("Seto Kaiba", 1, "Tester", 7).unwrap().blind();
         assert!(!kaiba.blind, "only a character who sees can be blinded");
@@ -446,9 +431,9 @@ mod tests {
     fn only_pegasus_sees_and_only_the_heroes_call_on_their_cards() {
         let mut d = duel();
         let mut kaiba = Banter::new("Seto Kaiba", 1, "Tester", 7).unwrap();
-        let set = json!({ "type": MSG_SET, "cid": 1, "controller": 0, "location": 8, "sequence": 0, "position": 10 });
-        let turn = json!({ "type": MSG_NEW_TURN, "player": 1 });
-        let draw = json!({ "type": MSG_DRAW, "player": 1, "drawn": [{ "cid": 4 }] });
+        let set = json!({ "type": msg::SET, "cid": 1, "controller": 0, "location": 8, "sequence": 0, "position": 10 });
+        let turn = json!({ "type": msg::NEW_TURN, "player": 1 });
+        let draw = json!({ "type": msg::DRAW, "player": 1, "drawn": [{ "cid": 4 }] });
         let said = kaiba.observe(&[set.clone(), turn.clone(), draw.clone()], &mut d);
         assert!(said.iter().all(|s| !s.text.contains("Mirror Force") && !s.text.contains("Dark Magician")), "{said:?}");
         assert!(said.is_empty(), "Kaiba has nothing to say about a draw: {said:?}");
@@ -462,18 +447,18 @@ mod tests {
     fn an_ace_is_named_once_and_the_end_speaks_for_the_winner() {
         let mut d = duel();
         let mut kaiba = Banter::new("Seto Kaiba", 0, "Tester", 3).unwrap();
-        let summon = json!({ "type": MSG_SPSUMMONING, "cid": 3, "controller": 0, "location": 4, "sequence": 2, "position": 1 });
-        let said = kaiba.observe(&[json!({ "type": MSG_NEW_TURN, "player": 0 }), summon.clone()], &mut d);
+        let summon = json!({ "type": msg::SPSUMMONING, "cid": 3, "controller": 0, "location": 4, "sequence": 2, "position": 1 });
+        let said = kaiba.observe(&[json!({ "type": msg::NEW_TURN, "player": 0 }), summon.clone()], &mut d);
         assert!(said.iter().any(|s| s.text.contains("Blue-Eyes White Dragon")), "{said:?}");
-        let said = kaiba.observe(&[json!({ "type": MSG_NEW_TURN, "player": 0 }), summon], &mut d);
+        let said = kaiba.observe(&[json!({ "type": msg::NEW_TURN, "player": 0 }), summon], &mut d);
         assert!(said.iter().all(|s| !s.text.contains("Blue-Eyes")), "the same ace again goes unsaid: {said:?}");
-        let small = json!({ "type": MSG_SUMMONING, "cid": 4, "controller": 0, "location": 4, "sequence": 1, "position": 1 });
+        let small = json!({ "type": msg::SUMMONING, "cid": 4, "controller": 0, "location": 4, "sequence": 1, "position": 1 });
         assert!(kaiba.observe(&[small], &mut d).is_empty(), "Kuriboh is no ace");
-        let said = kaiba.observe(&[json!({ "type": MSG_WIN, "player": 0, "reason": 1 })], &mut d);
+        let said = kaiba.observe(&[json!({ "type": msg::WIN, "player": 0, "reason": 1 })], &mut d);
         assert!(table()["Seto Kaiba"]["win"].contains(&said[0].text.as_str()), "{said:?}");
-        assert!(kaiba.observe(&[json!({ "type": MSG_NEW_TURN, "player": 0 })], &mut d).is_empty(), "nothing after the end");
+        assert!(kaiba.observe(&[json!({ "type": msg::NEW_TURN, "player": 0 })], &mut d).is_empty(), "nothing after the end");
         let mut lost = Banter::new("Seto Kaiba", 0, "Tester", 3).unwrap();
-        let said = lost.observe(&[json!({ "type": MSG_WIN, "player": 1, "reason": 1 })], &mut d);
+        let said = lost.observe(&[json!({ "type": msg::WIN, "player": 1, "reason": 1 })], &mut d);
         assert!(table()["Seto Kaiba"]["lose"].contains(&said[0].text.replace("Tester", "{you}").as_str()), "{said:?}");
     }
 
@@ -481,13 +466,13 @@ mod tests {
     fn a_kind_speaks_once_a_turn_and_never_the_same_line_twice_running() {
         let mut d = duel();
         let mut b = Banter::new("Maximillion Pegasus", 1, "Tester", 5).unwrap();
-        let set = |c: u16| json!({ "type": MSG_SET, "cid": c, "controller": 0, "location": 8, "sequence": 0, "position": 10 });
-        let said = b.observe(&[json!({ "type": MSG_NEW_TURN, "player": 0 }), set(1), set(4)], &mut d);
+        let set = |c: u16| json!({ "type": msg::SET, "cid": c, "controller": 0, "location": 8, "sequence": 0, "position": 10 });
+        let said = b.observe(&[json!({ "type": msg::NEW_TURN, "player": 0 }), set(1), set(4)], &mut d);
         assert_eq!(said.len(), 1, "one Set named a turn: {said:?}");
         let mut lines = vec![];
         for _ in 0..40 {
-            let turn = json!({ "type": MSG_NEW_TURN, "player": 1 });
-            lines.extend(b.observe(&[turn, json!({ "type": MSG_WIN, "player": 3 })], &mut d).into_iter().map(|s| s.text));
+            let turn = json!({ "type": msg::NEW_TURN, "player": 1 });
+            lines.extend(b.observe(&[turn, json!({ "type": msg::WIN, "player": 3 })], &mut d).into_iter().map(|s| s.text));
             b.over = false;
         }
         assert!(lines.windows(2).all(|w| w[0] != w[1]), "{lines:?}");
@@ -499,12 +484,12 @@ mod tests {
         // attack went unsaid.
         let mut d = duel();
         let mut b = Banter::new("Yami Yugi", 1, "Tester", 9).unwrap();
-        b.observe(&[json!({ "type": MSG_NEW_TURN, "player": 1 }), json!({ "type": MSG_NEW_TURN, "player": 0 })], &mut d);
+        b.observe(&[json!({ "type": msg::NEW_TURN, "player": 1 }), json!({ "type": msg::NEW_TURN, "player": 0 })], &mut d);
         let batch = [
-            json!({ "type": MSG_NEW_TURN, "player": 1 }),
-            json!({ "type": MSG_DRAW, "player": 1, "drawn": [{ "cid": 4 }] }),
-            json!({ "type": MSG_SPSUMMONING, "cid": 2, "controller": 1, "location": 4, "sequence": 0, "position": 1 }),
-            json!({ "type": MSG_ATTACK, "card": { "controller": 1 }, "target": null }),
+            json!({ "type": msg::NEW_TURN, "player": 1 }),
+            json!({ "type": msg::DRAW, "player": 1, "drawn": [{ "cid": 4 }] }),
+            json!({ "type": msg::SPSUMMONING, "cid": 2, "controller": 1, "location": 4, "sequence": 0, "position": 1 }),
+            json!({ "type": msg::ATTACK, "card": { "controller": 1 }, "target": null }),
         ];
         let said: Vec<String> = b.observe(&batch, &mut d).into_iter().map(|s| s.text).collect();
         let kind = |k: &str| said.iter().any(|s| table()["Yami Yugi"][k].iter().any(|l| s == l || l.contains("{card}") && s.contains("Dark Magician")));
@@ -516,11 +501,11 @@ mod tests {
     fn a_turn_says_at_most_two_lines() {
         let mut d = duel();
         let mut b = Banter::new("Maximillion Pegasus", 1, "Tester", 11).unwrap();
-        let mut batch = vec![json!({ "type": MSG_NEW_TURN, "player": 1 })];
+        let mut batch = vec![json!({ "type": msg::NEW_TURN, "player": 1 })];
         for c in [2u16, 3] {
-            batch.push(json!({ "type": MSG_SUMMONING, "cid": c, "controller": 1, "location": 4, "sequence": 0, "position": 1 }));
+            batch.push(json!({ "type": msg::SUMMONING, "cid": c, "controller": 1, "location": 4, "sequence": 0, "position": 1 }));
         }
-        batch.push(json!({ "type": MSG_DAMAGE, "player": 1, "amount": 3000 }));
+        batch.push(json!({ "type": msg::DAMAGE, "player": 1, "amount": 3000 }));
         let said = b.observe(&batch, &mut d);
         assert_eq!(said.len(), PER_TURN as usize, "{said:?}");
         assert!(said.windows(2).all(|w| w[0].after < w[1].after));
