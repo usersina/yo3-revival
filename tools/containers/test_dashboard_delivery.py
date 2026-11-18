@@ -80,6 +80,29 @@ class Eligibility(unittest.TestCase):
                 self.assertFalse(result['eligible'])
                 self.assertIn(path, result['blocked'])
 
+    def test_browser_specs_can_accompany_ui_but_do_not_trigger_delivery_alone(self):
+        self.write('dashboard/e2e/ergonomics.spec.ts', 'browser regression\n')
+        self.commit()
+        self.assertFalse(self.plan()['eligible'])
+        self.assertEqual(self.plan()['blocked'], [])
+        self.write('dashboard/src/App.tsx', 'responsive UI\n')
+        self.commit()
+        result = self.plan()
+        self.assertTrue(result['eligible'], result)
+        self.assertNotIn('dashboard/e2e/ergonomics.spec.ts', result['changes'])
+
+    def test_test_directory_cannot_hide_build_configuration_or_symlinks(self):
+        self.write('dashboard/src/App.tsx', 'UI\n')
+        path = 'dashboard/e2e/escape.spec.ts'
+        (self.repo/path).parent.mkdir(parents=True)
+        (self.repo/path).symlink_to('../../crates/server.rs')
+        self.commit()
+        self.assertIn(path, self.plan()['blocked'])
+        (self.repo/path).unlink()
+        self.write('dashboard/e2e/build.config.ts', 'unknown config\n')
+        self.commit()
+        self.assertIn('dashboard/e2e/build.config.ts', self.plan()['blocked'])
+
     def test_runtime_changes_wait_even_after_a_later_ui_only_push(self):
         self.write('deploy/nginx/nginx.conf', 'new CSP\n')
         self.commit()  # This run fails or is skipped.

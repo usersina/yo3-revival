@@ -19,7 +19,8 @@ deployment and cleanup. They never run pull-request code on the home runner.
 
 The eligibility tool compares the candidate with the dashboard commit recorded in the VPS's `current-release.json`.
 It allows changes to `dashboard/src/`, `dashboard/public/`, `index.html`, `vite.config.ts`, `package.json` and the
-lockfile. Other dashboard inputs or deployment/runtime changes wait for a release; unrelated Rust and documentation
+lockfile. Regular `dashboard/e2e/**/*.spec.ts` browser regressions may accompany these changes but do not trigger
+delivery by themselves; symlinks and other files in that directory are refused. Other dashboard inputs or deployment/runtime changes wait for a release; unrelated Rust and documentation
 changes do not block an eligible UI update. The committed OpenAPI specification and generated client must match
 the recorded server release tag exactly. Missing state, mismatched release tags and non-ancestor revisions fail
 closed. An ineligible change produces a JSON explanation without deploying anything.

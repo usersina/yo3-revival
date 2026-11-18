@@ -68,8 +68,10 @@ def plan(repo, state, candidate):
         if path.startswith('dashboard/'):
             if path == 'dashboard/README.md':
                 continue
-            if path in ALLOWED or path.startswith(('dashboard/src/', 'dashboard/public/')):
-                frontend.append(path)
+            browser_test = path.startswith('dashboard/e2e/') and path.endswith('.spec.ts')
+            if path in ALLOWED or path.startswith(('dashboard/src/', 'dashboard/public/')) or browser_test:
+                # Browser regressions can accompany UI work, but never cause a deployment themselves.
+                if not browser_test:frontend.append(path)
                 # Build inputs cannot redirect the frontend build outside its source tree.
                 entries = git(repo, 'ls-tree', candidate, '--', path).decode().splitlines()
                 if any(line.startswith(('120000 ', '160000 ')) for line in entries):
