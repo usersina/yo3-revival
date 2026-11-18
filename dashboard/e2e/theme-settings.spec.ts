@@ -31,12 +31,21 @@ test('theme follows the system until chosen, persists and stays in sync across t
     'data-value',
     'light',
   )
+  await expect(page.getByLabel('Color theme', { exact: true })).toHaveAccessibleDescription(
+    'Always use light mode on this browser.',
+  )
   const other = await context.newPage()
   await other.goto('/accounts')
   await expect(other.locator('html')).toHaveAttribute('data-theme', 'light')
   await chooseOption(page.getByLabel('Color theme', { exact: true }), 'dark')
+  await expect(page.getByLabel('Color theme', { exact: true })).toHaveAccessibleDescription(
+    'Always use dark mode on this browser.',
+  )
   await expect(other.locator('html')).toHaveAttribute('data-theme', 'dark')
   await chooseOption(page.getByLabel('Color theme', { exact: true }), 'system')
+  await expect(page.getByLabel('Color theme', { exact: true })).toHaveAccessibleDescription(
+    'Follows your device’s appearance.',
+  )
   await page.emulateMedia({ colorScheme: 'light' })
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await page.emulateMedia({ colorScheme: 'dark' })

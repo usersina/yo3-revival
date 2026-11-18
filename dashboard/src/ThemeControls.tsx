@@ -31,7 +31,11 @@ export function AppearanceSettings() {
       <Field
         id="dashboard-theme"
         label="Color theme"
-        hint="System follows your device’s appearance."
+        hint={
+          preference === 'system'
+            ? 'Follows your device’s appearance.'
+            : `Always use ${preference} mode on this browser.`
+        }
       >
         <SelectControl
           id="dashboard-theme"
