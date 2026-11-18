@@ -91,6 +91,23 @@ impl Ypk {
         Ok(Some(out))
     }
 
+    /// Reads an untrusted image entry with limits on both compressed and inflated bytes.
+    pub fn read_bounded(&self, name: &str, limit: usize) -> Result<Option<Vec<u8>>> {
+        let Some(e) = self.entries.iter().find(|e| e.name == name) else { return Ok(None) };
+        let invalid = || std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid or oversized archive entry");
+        if e.size as usize > limit || e.compressed as usize > limit || !matches!(e.method, 0 | 8) { return Err(invalid().into()) }
+        let mut file = File::open(&self.path)?;
+        file.seek(SeekFrom::Start(e.offset))?;
+        let mut raw = vec![0; e.compressed as usize]; file.read_exact(&mut raw)?;
+        let out = if e.method == 0 { raw } else {
+            let mut out = Vec::new();
+            flate2::read::DeflateDecoder::new(&raw[..]).take(limit as u64 + 1).read_to_end(&mut out)?;
+            out
+        };
+        if out.len() > limit || out.len() != e.size as usize { return Err(invalid().into()) }
+        Ok(Some(out))
+    }
+
     fn read_required(&self, name: &str) -> Result<Vec<u8>> {
         self.read(name)?.ok_or_else(|| Error::Missing(name.into()))
     }
