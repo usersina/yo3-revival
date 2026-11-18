@@ -40,6 +40,10 @@ validity dates and hostnames remain checked. Game-server identity pinning is sep
 `cargo test -p yo3-desktop --lib github_live_https_with_bundled_roots -- --ignored --nocapture`; ordinary tests use
 local TLS fixtures and need no GitHub connection.
 
+The scratch-server lifecycle check needs a built server and the original game files. Run it explicitly with
+`python3 tools/dev/test_scratch_server_live.py` (`YO3_SERVER` / `YO3_GAME_DIR` can select them). The ordinary Python
+CI group keeps only its hermetic checks, so a cached binary cannot accidentally opt CI into starting a real server.
+
 ```bash
 git clone https://github.com/usersina/yo3-revival.git
 cd yo3-revival

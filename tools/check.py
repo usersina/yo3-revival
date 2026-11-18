@@ -43,6 +43,7 @@ PY = [
 
 # Tests that need something CI's release job doesn't have at that point, and where they run instead.
 OTHER = {
+    'tools/dev/test_scratch_server_live.py': 'built server and original game files; run explicitly on a development machine',
     'tools/containers/test_build_cache.py': 'Docker Buildx; containers.yml runs it before release image builds',
     'tools/containers/test_provisioning.py': 'Ansible; containers.yml runs it',
     'tools/containers/test_images.py': 'built images (--server, --dashboard); containers.yml and dashboard.yml',
