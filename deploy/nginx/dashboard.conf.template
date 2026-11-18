@@ -55,6 +55,11 @@ server {
         include /etc/nginx/yo3-security.conf;
         add_header Cache-Control no-cache always;
     }
+    location ~ "^/accounts/[1-9][0-9]{0,9}/?$" {
+        try_files /index.html =404;
+        include /etc/nginx/yo3-security.conf;
+        add_header Cache-Control no-cache always;
+    }
     location = /index.html {
         include /etc/nginx/yo3-security.conf;
         add_header Cache-Control no-cache always;

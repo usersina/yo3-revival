@@ -24,8 +24,10 @@ export function ConnectedKeys({
   session,
   action,
   onChange,
+  showCreate = true,
 }: {
   session: StaffSession
+  showCreate?: boolean
   action: KeyAction | null
   onChange: (value: KeyAction | null) => void
 }) {
@@ -125,12 +127,14 @@ export function ConnectedKeys({
   const title = create ? 'Create key account' : 'Reveal account key'
   return (
     <>
-      <Button
-        disabled={session.role !== 'admin' || !!storageError}
-        onClick={() => onChange(pending ? pending.data : { kind: 'create' })}
-      >
-        <KeyRound size={15} /> {pending ? 'Resume key request' : 'Create key account'}
-      </Button>
+      {(showCreate || pending) && (
+        <Button
+          disabled={session.role !== 'admin' || !!storageError}
+          onClick={() => onChange(pending ? pending.data : { kind: 'create' })}
+        >
+          <KeyRound size={15} /> {pending ? 'Resume key request' : 'Create key account'}
+        </Button>
+      )}
       {storageError && (
         <p role="alert" className="connected-error">
           {storageError}

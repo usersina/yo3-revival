@@ -88,7 +88,7 @@ test('an expired session keeps a refused sign-in visible instead of restoring st
   await page.getByLabel('Password', { exact: true }).fill('DashboardDemo123!')
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(
-    page.getByRole('button', { name: 'View account TestPlayer', exact: true }),
+    page.getByRole('link', { name: 'View account TestPlayer', exact: true }),
   ).toBeVisible({ timeout: 15000 })
   await page.context().clearCookies()
   await page.getByRole('button', { name: 'Refresh', exact: true }).click()

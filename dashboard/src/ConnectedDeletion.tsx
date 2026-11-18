@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { Button, Field, Modal } from './components/ui'
 import {
   getListAccountsQueryKey,
+  getGetAccountQueryKey,
   getGetStaffSessionQueryKey,
   useDeleteAccount,
   useGetAccount,
@@ -66,6 +67,7 @@ export function ConnectedDeletion({
         setRefused(false)
         if (value.disconnect !== 'pending' && value.disconnect !== 'interrupted') clearIntent()
         void client.invalidateQueries({ queryKey: getListAccountsQueryKey() })
+        void client.invalidateQueries({ queryKey: getGetAccountQueryKey(value.result.user_id) })
         if (value.result.user_id === session.user_id)
           void client.invalidateQueries({ queryKey: getGetStaffSessionQueryKey() })
       },

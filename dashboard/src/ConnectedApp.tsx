@@ -145,6 +145,7 @@ function Workspace() {
       ],
     }
     const heading = headings[pathname]
+    const accountPath = /^\/accounts\/([^/]+)\/?$/.exec(pathname)
     return (
       <ConnectedShell session={user}>
         <Suspense
@@ -154,11 +155,12 @@ function Workspace() {
             </p>
           }
         >
-          {pathname === '/accounts' || pathname === '/moderation' ? (
+          {pathname === '/accounts' || pathname === '/moderation' || accountPath ? (
             <AccountWorkspace
               key={user.user_id}
               session={user}
               full={false}
+              accountId={accountPath?.[1]}
               title={pathname === '/moderation' ? 'Moderation' : 'Accounts'}
             />
           ) : heading ? (

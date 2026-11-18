@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Coins, Eye, LoaderCircle, LogOut, RefreshCw } from 'lucide-react'
 import { z } from 'zod'
 import { Badge, Button, Field, Modal, PageHeading, Panel, SearchField } from './components/ui'
 import {
   getGetStaffSessionQueryKey,
+  getGetAccountQueryKey,
   getListAccountsQueryKey,
   useGiveBp,
   useListAccounts,
@@ -45,34 +46,34 @@ export default function ConnectedAccounts({
   session,
   full = true,
   title = 'Accounts',
+  accountId,
 }: {
   session: StaffSession
   full?: boolean
   title?: string
+  accountId?: string
 }) {
   const client = useQueryClient()
-  const accounts = useListAccounts()
   const [query, setQuery] = useState('')
   const [standingFilter, setStandingFilter] = useState('all')
   const [deletionId, setDeletionId] = useState<number | null>(null)
   const [moderationId, setModerationId] = useState<number | null>(null)
-  const [params, setParams] = useSearchParams()
-  const rawAccount = params.get('account')
+  const navigate = useNavigate()
+  const rawAccount = accountId ?? null
+  const accountPage = !full && accountId !== undefined
   const [integrationDetailId, setIntegrationDetailId] = useState<number | null>(null)
   const linkedDetailId =
     rawAccount && /^[1-9][0-9]{0,9}$/.test(rawAccount) && Number(rawAccount) <= 4294967295
       ? Number(rawAccount)
       : null
   const detailId = full ? integrationDetailId : linkedDetailId
+  const accounts = useListAccounts({ query: { enabled: !accountPage } })
   function setDetailId(value: number | null) {
     if (full) {
       setIntegrationDetailId(value)
       return
     }
-    const next = new URLSearchParams(params)
-    if (value === null) next.delete('account')
-    else next.set('account', String(value))
-    setParams(next, { preventScrollReset: true })
+    void navigate(value === null ? '/accounts' : `/accounts/${value}`)
   }
   const [giftTarget, setGiftTarget] = useState<GiftTarget | null>(null)
   const [keyAction, setKeyAction] = useState<KeyAction | null>(null)
@@ -116,7 +117,7 @@ export default function ConnectedAccounts({
           }
         }
       },
-      onSuccess: () => {
+      onSuccess: (_result, variables) => {
         // Keep the receipt key until the server confirms the response, including after a reload.
         try {
           sessionStorage.removeItem(storageKey)
@@ -129,6 +130,7 @@ export default function ConnectedAccounts({
           }))
         }
         setNotice('BP added. The balance, D-Mail and audit log were saved together.')
+        void client.invalidateQueries({ queryKey: getGetAccountQueryKey(variables.data.user_id) })
         setOpen(false)
         void client.invalidateQueries({ queryKey: getListAccountsQueryKey() })
       },
@@ -170,6 +172,26 @@ export default function ConnectedAccounts({
     }
     grant.mutate(intent)
   }
+  const actionControls = (
+    <>
+      <ConnectedDeletion session={session} userId={deletionId} onChange={setDeletionId} />
+      <ConnectedModeration session={session} userId={moderationId} onChange={setModerationId} />
+      <ConnectedGifts session={session} target={giftTarget} onChange={setGiftTarget} />
+      <ConnectedKeys
+        showCreate={!accountPage}
+        session={session}
+        action={keyAction}
+        onChange={setKeyAction}
+      />
+      <ConnectedCredentials
+        key={`${session.user_id}:${credentialAction?.kind ?? 'closed'}:${credentialAction?.kind === 'reset_password' ? credentialAction.user_id : ''}`}
+        showCreate={!accountPage}
+        session={session}
+        action={credentialAction}
+        onChange={setCredentialAction}
+      />
+    </>
+  )
   if (accounts.error instanceof ApiHttpError && accounts.error.status === 401)
     return (
       <Panel title="Session ended" description="Returning to sign-in…">
@@ -186,23 +208,25 @@ export default function ConnectedAccounts({
   )
   return (
     <>
-      <PageHeading
-        title={title}
-        description="Find players, manage access and send rewards."
-        action={
-          full && (
-            <Button
-              onClick={() =>
-                signOut.mutate({ headers: { 'Idempotency-Key': crypto.randomUUID() } })
-              }
-              disabled={signOut.isPending || grant.isPending}
-            >
-              <LogOut size={16} />
-              {signOut.isPending ? 'Signing out…' : 'Sign out'}
-            </Button>
-          )
-        }
-      />
+      {!accountPage && (
+        <PageHeading
+          title={title}
+          description="Find players, manage access and send rewards."
+          action={
+            full && (
+              <Button
+                onClick={() =>
+                  signOut.mutate({ headers: { 'Idempotency-Key': crypto.randomUUID() } })
+                }
+                disabled={signOut.isPending || grant.isPending}
+              >
+                <LogOut size={16} />
+                {signOut.isPending ? 'Signing out…' : 'Sign out'}
+              </Button>
+            )
+          }
+        />
+      )}
       {signOut.error && (
         <p className="connected-error" role="alert">
           {errorText(signOut.error)}
@@ -210,7 +234,7 @@ export default function ConnectedAccounts({
       )}
       {!full && rawAccount !== null && detailId === null && (
         <p role="alert" className="connected-error">
-          This account link is invalid. Choose an account from the list.
+          This account link is invalid. <Link to="/accounts">Back to accounts</Link>.
         </p>
       )}
       {notice && (
@@ -236,164 +260,164 @@ export default function ConnectedAccounts({
         </div>
       )}
       {full && <ConnectedServer session={session} />}
-      <Panel>
-        <div className="table-toolbar accounts-toolbar">
-          <SearchField
-            label="Search accounts"
-            placeholder="User ID or player name…"
-            value={query}
-            onChange={setQuery}
-          />
-          <Field id="accounts-standing-filter" label="Standing">
-            <select
-              id="accounts-standing-filter"
-              value={standingFilter}
-              onChange={(event) => setStandingFilter(event.target.value)}
-            >
-              <option value="all">All accounts</option>
-              <option value="banned">Banned</option>
-              <option value="restricted">Restricted</option>
-              <option value="muted">Muted</option>
-            </select>
-          </Field>
-          <div className="action-group">
-            <ConnectedDeletion session={session} userId={deletionId} onChange={setDeletionId} />
-            <ConnectedModeration
-              session={session}
-              userId={moderationId}
-              onChange={setModerationId}
+      {!accountPage && (
+        <Panel>
+          <div className="table-toolbar accounts-toolbar">
+            <SearchField
+              label="Search accounts"
+              placeholder="User ID or player name…"
+              value={query}
+              onChange={setQuery}
             />
-            <ConnectedGifts session={session} target={giftTarget} onChange={setGiftTarget} />
-            <ConnectedKeys session={session} action={keyAction} onChange={setKeyAction} />
-            <ConnectedCredentials
-              key={`${session.user_id}:${credentialAction?.kind ?? 'closed'}:${credentialAction?.kind === 'reset_password' ? credentialAction.user_id : ''}`}
-              session={session}
-              action={credentialAction}
-              onChange={setCredentialAction}
-            />
-            <Button onClick={() => void accounts.refetch()} disabled={accounts.isFetching}>
-              <RefreshCw size={15} /> Refresh
-            </Button>
-          </div>
-        </div>
-        {accounts.isPending && (
-          <p className="connected-state" role="status">
-            <LoaderCircle size={17} className="animate-spin" /> Loading accounts…
-          </p>
-        )}
-        {accounts.error && (
-          <p role="alert" className="connected-error">
-            {errorText(accounts.error)} The list could not be refreshed.
-          </p>
-        )}
-        {filtered && (
-          <div className="table-scroll" role="region" aria-label="Accounts table" tabIndex={0}>
-            <table className="responsive-table">
-              <thead>
-                <tr>
-                  <th scope="col">Account</th>
-                  <th scope="col">Players</th>
-                  <th scope="col">Role</th>
-                  <th scope="col">Standing</th>
-                  <th scope="col" className="numeric">
-                    Balance
-                  </th>
-                  <th scope="col">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((account) => {
-                  const name = account.login ?? `#${account.user_id}`
-                  return (
-                    <tr key={account.user_id}>
-                      <td className="row-heading">
-                        <strong>{name}</strong>
-                        <small className="block muted">#{account.user_id}</small>
-                      </td>
-                      <td data-label="Players">
-                        {account.players.map((p) => p.name).join(', ') || 'No players yet'}
-                      </td>
-                      <td data-label="Role">{account.role}</td>
-                      <td data-label="Standing">
-                        <Badge
-                          tone={
-                            !account.standing
-                              ? 'neutral'
-                              : account.standing.kind === 'banned'
-                                ? 'red'
-                                : account.standing?.kind === 'restricted'
-                                  ? 'amber'
-                                  : 'green'
-                          }
-                        >
-                          {account.standing?.kind ?? 'Key account'}
-                        </Badge>
-                        {account.muted && <Badge tone="violet">Muted</Badge>}
-                      </td>
-                      <td className="numeric" data-label="Balance">
-                        {account.bp.toLocaleString()} BP
-                      </td>
-                      <td className="row-actions">
-                        <div className="action-group">
-                          <Button
-                            aria-label={`View account ${name}`}
-                            onClick={() => setDetailId(account.user_id)}
-                          >
-                            <Eye size={15} />
-                            View
-                          </Button>
-                          <Button
-                            aria-label={`Give BP to ${name}`}
-                            disabled={
-                              session.role !== 'admin' ||
-                              Boolean(stored.intent) ||
-                              Boolean(stored.error)
-                            }
-                            title={session.role !== 'admin' ? 'Administrators only' : undefined}
-                            onClick={() => {
-                              setSelected(account)
-                              setAmount('500')
-                              setNotice('')
-                              grant.reset()
-                              setOpen(true)
-                            }}
-                          >
-                            <Coins size={15} /> Give BP
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            {filtered.length === 0 && (
-              <div className="connected-empty">
-                <p>
-                  {query || standingFilter !== 'all'
-                    ? 'No accounts match your filters.'
-                    : 'No accounts yet.'}
-                </p>
-                {(query || standingFilter !== 'all') && (
-                  <Button
-                    onClick={() => {
-                      setQuery('')
-                      setStandingFilter('all')
-                    }}
-                  >
-                    Clear filters
-                  </Button>
-                )}
-              </div>
-            )}
-            <div className="table-footer" aria-live="polite">
-              {filtered.length} of {accounts.data?.accounts.length ?? 0} accounts
+            <Field id="accounts-standing-filter" label="Standing">
+              <select
+                id="accounts-standing-filter"
+                value={standingFilter}
+                onChange={(event) => setStandingFilter(event.target.value)}
+              >
+                <option value="all">All accounts</option>
+                <option value="banned">Banned</option>
+                <option value="restricted">Restricted</option>
+                <option value="muted">Muted</option>
+              </select>
+            </Field>
+            <div className="action-group">
+              {actionControls}
+              <Button onClick={() => void accounts.refetch()} disabled={accounts.isFetching}>
+                <RefreshCw size={15} /> Refresh
+              </Button>
             </div>
           </div>
-        )}
-      </Panel>
+          {accounts.isPending && (
+            <p className="connected-state" role="status">
+              <LoaderCircle size={17} className="animate-spin" /> Loading accounts…
+            </p>
+          )}
+          {accounts.error && (
+            <p role="alert" className="connected-error">
+              {errorText(accounts.error)} The list could not be refreshed.
+            </p>
+          )}
+          {filtered && (
+            <div className="table-scroll" role="region" aria-label="Accounts table" tabIndex={0}>
+              <table className="responsive-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Account</th>
+                    <th scope="col">Players</th>
+                    <th scope="col">Role</th>
+                    <th scope="col">Standing</th>
+                    <th scope="col" className="numeric">
+                      Balance
+                    </th>
+                    <th scope="col">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((account) => {
+                    const name = account.login ?? `#${account.user_id}`
+                    return (
+                      <tr key={account.user_id}>
+                        <td className="row-heading">
+                          <strong>{name}</strong>
+                          <small className="block muted">#{account.user_id}</small>
+                        </td>
+                        <td data-label="Players">
+                          {account.players.map((p) => p.name).join(', ') || 'No players yet'}
+                        </td>
+                        <td data-label="Role">{account.role}</td>
+                        <td data-label="Standing">
+                          <Badge
+                            tone={
+                              !account.standing
+                                ? 'neutral'
+                                : account.standing.kind === 'banned'
+                                  ? 'red'
+                                  : account.standing?.kind === 'restricted'
+                                    ? 'amber'
+                                    : 'green'
+                            }
+                          >
+                            {account.standing?.kind ?? 'Key account'}
+                          </Badge>
+                          {account.muted && <Badge tone="violet">Muted</Badge>}
+                        </td>
+                        <td className="numeric" data-label="Balance">
+                          {account.bp.toLocaleString()} BP
+                        </td>
+                        <td className="row-actions">
+                          <div className="action-group">
+                            {full ? (
+                              <Button
+                                aria-label={`View account ${name}`}
+                                onClick={() => setDetailId(account.user_id)}
+                              >
+                                <Eye size={15} />
+                                View
+                              </Button>
+                            ) : (
+                              <Link
+                                className="button button-secondary"
+                                aria-label={`View account ${name}`}
+                                to={`/accounts/${account.user_id}`}
+                              >
+                                <Eye size={15} />
+                                View
+                              </Link>
+                            )}
+                            <Button
+                              aria-label={`Give BP to ${name}`}
+                              disabled={
+                                session.role !== 'admin' ||
+                                Boolean(stored.intent) ||
+                                Boolean(stored.error)
+                              }
+                              title={session.role !== 'admin' ? 'Administrators only' : undefined}
+                              onClick={() => {
+                                setSelected(account)
+                                setAmount('500')
+                                setNotice('')
+                                grant.reset()
+                                setOpen(true)
+                              }}
+                            >
+                              <Coins size={15} /> Give BP
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              {filtered.length === 0 && (
+                <div className="connected-empty">
+                  <p>
+                    {query || standingFilter !== 'all'
+                      ? 'No accounts match your filters.'
+                      : 'No accounts yet.'}
+                  </p>
+                  {(query || standingFilter !== 'all') && (
+                    <Button
+                      onClick={() => {
+                        setQuery('')
+                        setStandingFilter('all')
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  )}
+                </div>
+              )}
+              <div className="table-footer" aria-live="polite">
+                {filtered.length} of {accounts.data?.accounts.length ?? 0} accounts
+              </div>
+            </div>
+          )}
+        </Panel>
+      )}
       {full && (
         <>
           <ConnectedAudit />
@@ -401,35 +425,49 @@ export default function ConnectedAccounts({
           <ConnectedBackups session={session} />
         </>
       )}
-      <ConnectedAccountDialog
-        session={session}
-        userId={detailId}
-        onChange={setDetailId}
-        onDelete={(account) => {
-          setDetailId(null)
-          setDeletionId(account.user_id)
-        }}
-        onModerate={(account) => {
-          setDetailId(null)
-          setModerationId(account.user_id)
-        }}
-        onGift={(player) => {
-          setDetailId(null)
-          setGiftTarget(player)
-        }}
-        onRevealKey={(account) => {
-          setDetailId(null)
-          setKeyAction({ kind: 'reveal', user_id: account.user_id })
-        }}
-        onResetPassword={(account) => {
-          setDetailId(null)
-          setCredentialAction({
-            kind: 'reset_password',
-            user_id: account.user_id,
-            login: account.login ?? `Account #${account.user_id}`,
-          })
-        }}
-      />
+      {accountPage && <div className="account-action-hosts">{actionControls}</div>}
+      {(!accountPage || detailId !== null) && (
+        <ConnectedAccountDialog
+          key={accountPage ? detailId : 'integration'}
+          page={accountPage}
+          grantBlocked={Boolean(stored.intent) || Boolean(stored.error)}
+          onGiveBp={(account) => {
+            if (stored.intent || stored.error) return
+            setSelected(account)
+            setAmount('500')
+            setNotice('')
+            grant.reset()
+            setOpen(true)
+          }}
+          session={session}
+          userId={detailId}
+          onChange={setDetailId}
+          onDelete={(account) => {
+            if (!accountPage) setDetailId(null)
+            setDeletionId(account.user_id)
+          }}
+          onModerate={(account) => {
+            if (!accountPage) setDetailId(null)
+            setModerationId(account.user_id)
+          }}
+          onGift={(player) => {
+            if (!accountPage) setDetailId(null)
+            setGiftTarget(player)
+          }}
+          onRevealKey={(account) => {
+            if (!accountPage) setDetailId(null)
+            setKeyAction({ kind: 'reveal', user_id: account.user_id })
+          }}
+          onResetPassword={(account) => {
+            if (!accountPage) setDetailId(null)
+            setCredentialAction({
+              kind: 'reset_password',
+              user_id: account.user_id,
+              login: account.login ?? `Account #${account.user_id}`,
+            })
+          }}
+        />
+      )}
       {full && (
         <>
           <ConnectedInvites session={session} />

@@ -256,7 +256,7 @@ export function ConnectedServer({ session }: { session: StaffSession }) {
                           {player.user_id == null ? (
                             player.name
                           ) : (
-                            <Link to={`/accounts?account=${player.user_id}`}>{player.name}</Link>
+                            <Link to={`/accounts/${player.user_id}`}>{player.name}</Link>
                           )}
                         </td>
                         <td data-label="Activity">

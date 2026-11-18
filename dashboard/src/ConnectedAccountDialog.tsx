@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import { Link } from 'react-router-dom'
+import { AccountDetails } from './AccountDetails'
 import { useQueryClient } from '@tanstack/react-query'
-import { Gift, LoaderCircle, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { ArrowLeft, Gift, LoaderCircle, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { z } from 'zod'
-import { Badge, Button, Field, Modal } from './components/ui'
+import { Badge, Button, Field, Modal, PageHeading } from './components/ui'
 import {
   getGetAccountQueryKey,
   getGetStaffSessionQueryKey,
@@ -41,8 +43,14 @@ export function ConnectedAccountDialog({
   onGift,
   onModerate,
   onDelete,
+  page = false,
+  onGiveBp,
+  grantBlocked = false,
 }: {
   session: StaffSession
+  page?: boolean
+  onGiveBp?: (account: AccountDetail) => void
+  grantBlocked?: boolean
   userId: number | null
   onChange: (id: number | null) => void
   onDelete: (account: AccountDetail) => void
@@ -169,8 +177,8 @@ export function ConnectedAccountDialog({
   }
   function resume() {
     if (!stored.intent) return
-    onChange(stored.intent.data.user_id)
-    setMode(stored.intent.data.kind)
+    if (!page || stored.intent.data.user_id !== userId) onChange(stored.intent.data.user_id)
+    if (!page || stored.intent.data.user_id === userId) setMode(stored.intent.data.kind)
     setFailure('')
   }
   function close() {
@@ -178,7 +186,7 @@ export function ConnectedAccountDialog({
     setMode(null)
     setFailure('')
     setNotice('')
-    onChange(null)
+    if (!page) onChange(null)
   }
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -211,6 +219,43 @@ export function ConnectedAccountDialog({
 
   return (
     <>
+      {page && (
+        <>
+          <Link to="/accounts" className="account-back">
+            <ArrowLeft size={16} />
+            Back to accounts
+          </Link>
+          <PageHeading
+            title={data?.login ?? `Account #${userId ?? ''}`}
+            description={`Account #${userId ?? ''} · ${data ? `Checked ${new Date(data.checked_at).toLocaleString()}` : 'Players, access and rewards'}`}
+            action={
+              <Button
+                onClick={() => void account.refetch()}
+                disabled={account.isFetching || edit.isPending}
+              >
+                <RefreshCw size={15} />
+                Refresh account
+              </Button>
+            }
+          />
+          {account.isPending && (
+            <p role="status" className="connected-state">
+              <LoaderCircle size={17} className="spin" />
+              Loading account…
+            </p>
+          )}
+          {account.error && (
+            <p role="alert" className="connected-error">
+              Account details could not be refreshed. {errorText(account.error)}
+            </p>
+          )}
+          {notice && (
+            <p role="status" className="inline-notice">
+              {notice}
+            </p>
+          )}
+        </>
+      )}
       {stored.error && (
         <p role="alert" className="connected-error">
           {stored.error}
@@ -230,314 +275,359 @@ export function ConnectedAccountDialog({
           </Button>
         </div>
       )}
+      {page && data && (
+        <AccountDetails
+          data={data}
+          session={session}
+          canStart={canStart}
+          canRename={canRename}
+          canGiveBp={admin && canStart && !grantBlocked}
+          onEdit={start}
+          onGiveBp={() => onGiveBp?.(data)}
+          onGift={onGift}
+          onRevealKey={() => onRevealKey(data)}
+          onResetPassword={() => onResetPassword(data)}
+          onModerate={() => onModerate(data)}
+          onDelete={() => onDelete(data)}
+        />
+      )}
       <Modal
-        open={userId !== null}
+        open={userId !== null && (!page || mode !== null)}
         onOpenChange={(value) => {
           if (!value) close()
         }}
-        title={data?.login ?? `Account #${userId ?? ''}`}
-        description="Players, account access and recent activity."
+        title={
+          page
+            ? mode === 'add_player'
+              ? 'Add player'
+              : mode === 'rename_player'
+                ? 'Rename player'
+                : mode === 'set_role'
+                  ? 'Change role'
+                  : 'Change country'
+            : (data?.login ?? `Account #${userId ?? ''}`)
+        }
+        description={
+          page
+            ? `Account #${userId} · ${data?.login ?? 'Game account'}. Saved changes are audited.`
+            : 'Players, account access and recent activity.'
+        }
         wide
       >
         <div className="modal-body connected-profile">
-          <div className="table-toolbar">
-            <span className="muted">
-              {data
-                ? `#${data.user_id} · Checked ${new Date(data.checked_at).toLocaleString()}`
-                : 'Account details'}
-            </span>
-            <Button
-              onClick={() => void account.refetch()}
-              disabled={account.isFetching || edit.isPending}
-            >
-              <RefreshCw size={15} />
-              Refresh account
-            </Button>
-          </div>
-          {account.isPending && (
-            <p role="status" className="connected-state">
-              <LoaderCircle size={17} className="animate-spin" />
-              Loading account…
-            </p>
-          )}
-          {account.error && (
-            <p role="alert" className="connected-error">
-              Account details could not be refreshed. {errorText(account.error)}
-              {account.error instanceof ApiHttpError && account.error.status === 401 && (
-                <Button
-                  onClick={() =>
-                    void client.invalidateQueries({ queryKey: getGetStaffSessionQueryKey() })
-                  }
-                >
-                  Sign in again
-                </Button>
-              )}
-            </p>
-          )}
-          {notice && (
-            <p role="status" className="inline-notice">
-              {notice}
-            </p>
-          )}
-          {stored.error && (
-            <p role="alert" className="connected-error">
-              {stored.error}
-            </p>
-          )}
-          {stored.intent && !pending && (
-            <div className="inline-notice">
-              <p>An edit for account #{stored.intent.data.user_id} needs confirmation first.</p>
-              <Button onClick={resume}>Resume profile change</Button>
-            </div>
-          )}
-          {pending && !mode && (
-            <div className="inline-notice">
-              <p>This account has an unconfirmed change.</p>
-              <Button onClick={resume}>Resume this change</Button>
-            </div>
-          )}
-          {data && !mode && (
+          {!page && (
             <>
-              <Button
-                onClick={() => onModerate(data)}
-                disabled={
-                  !canStart ||
-                  (session.role !== 'admin' &&
-                    data.role !== 'player' &&
-                    data.user_id !== session.user_id)
-                }
-              >
-                Moderate account
-              </Button>
-              <dl className="profile-facts">
-                <div>
-                  <dt>Role</dt>
-                  <dd>
-                    {data.role}
-                    <Button
-                      onClick={() => start('set_role')}
-                      disabled={!admin || !data.login || data.password_ready === false || !canStart}
-                      title={
-                        !admin
-                          ? 'Administrators only'
-                          : !data.login
-                            ? 'Only password accounts can have staff roles'
-                            : data.password_ready === false
-                              ? 'Finish password setup before assigning a staff role'
-                              : undefined
-                      }
-                    >
-                      Change role
-                    </Button>
-                  </dd>
-                </div>
-                <div>
-                  <dt>Balance</dt>
-                  <dd>{data.bp.toLocaleString()} BP</dd>
-                </div>
-                <div>
-                  <dt>Country</dt>
-                  <dd>{data.country ?? 'Automatic (game language)'}</dd>
-                </div>
-                <div>
-                  <dt>Sign-in method</dt>
-                  <dd>
-                    {data.login
-                      ? data.password_ready === false
-                        ? 'Setup required'
-                        : 'Password account'
-                      : data.has_key
-                        ? 'Key account'
-                        : 'No sign-in configured'}
-                    {data.login && data.has_key ? ' · Also has a key' : ''}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Standing</dt>
-                  <dd>
-                    {data.standing?.kind ?? 'Not applicable'}
-                    {data.standing && data.standing.kind !== 'active' && (
-                      <>
-                        <span className="block">{data.standing.reason}</span>
-                        <span className="block muted">
-                          {data.standing.until
-                            ? `Until ${new Date(data.standing.until).toLocaleString()}`
-                            : 'Until lifted'}
-                        </span>
-                      </>
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Chat</dt>
-                  <dd>
-                    {data.muted ? (
-                      <>
-                        {data.muted.reason}
-                        <span className="block muted">
-                          {data.muted.until
-                            ? `Muted until ${new Date(data.muted.until).toLocaleString()}`
-                            : 'Muted until lifted'}
-                        </span>
-                      </>
-                    ) : (
-                      'Not muted'
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Remembered devices</dt>
-                  <dd>{data.device_count}</dd>
-                </div>
-                <div>
-                  <dt>Game key</dt>
-                  <dd>
-                    {data.has_key ? 'Key assigned' : 'No key assigned'}{' '}
-                    <Button
-                      disabled={!admin || !canStart}
-                      onClick={() => onRevealKey(data)}
-                      title={!admin ? 'Administrators only' : undefined}
-                    >
-                      Reveal key
-                    </Button>
-                  </dd>
-                </div>
-                <div>
-                  <dt>Password reset</dt>
-                  <dd>
-                    {data.reset_pending ? 'Code pending' : 'No pending code'}
-                    <Button
-                      onClick={() => onResetPassword(data)}
-                      disabled={!data.login || !canRename || !canStart}
-                      title={
-                        !data.login
-                          ? 'Key accounts do not have passwords'
-                          : !canRename
-                            ? 'You cannot reset another staff account'
-                            : undefined
-                      }
-                    >
-                      Reset password
-                    </Button>
-                  </dd>
-                </div>
-              </dl>
               <div className="table-toolbar">
-                <strong>Players ({data.players.length}/4)</strong>
-                <div className="action-group">
+                <span className="muted">
+                  {data
+                    ? `#${data.user_id} · Checked ${new Date(data.checked_at).toLocaleString()}`
+                    : 'Account details'}
+                </span>
+                <Button
+                  onClick={() => void account.refetch()}
+                  disabled={account.isFetching || edit.isPending}
+                >
+                  <RefreshCw size={15} />
+                  Refresh account
+                </Button>
+              </div>
+              {account.isPending && (
+                <p role="status" className="connected-state">
+                  <LoaderCircle size={17} className="animate-spin" />
+                  Loading account…
+                </p>
+              )}
+              {account.error && (
+                <p role="alert" className="connected-error">
+                  Account details could not be refreshed. {errorText(account.error)}
+                  {account.error instanceof ApiHttpError && account.error.status === 401 && (
+                    <Button
+                      onClick={() =>
+                        void client.invalidateQueries({ queryKey: getGetStaffSessionQueryKey() })
+                      }
+                    >
+                      Sign in again
+                    </Button>
+                  )}
+                </p>
+              )}
+              {notice && (
+                <p role="status" className="inline-notice">
+                  {notice}
+                </p>
+              )}
+              {stored.error && (
+                <p role="alert" className="connected-error">
+                  {stored.error}
+                </p>
+              )}
+              {stored.intent && !pending && (
+                <div className="inline-notice">
+                  <p>An edit for account #{stored.intent.data.user_id} needs confirmation first.</p>
+                  <Button onClick={resume}>Resume profile change</Button>
+                </div>
+              )}
+              {pending && !mode && (
+                <div className="inline-notice">
+                  <p>This account has an unconfirmed change.</p>
+                  <Button onClick={resume}>Resume this change</Button>
+                </div>
+              )}
+              {data && !mode && (
+                <>
                   <Button
-                    onClick={() => start('set_country')}
-                    disabled={!admin || !canStart}
-                    title={!admin ? 'Administrators only' : undefined}
-                  >
-                    Change country
-                  </Button>
-                  <Button
-                    onClick={() => start('add_player')}
-                    disabled={!admin || !canStart || data.players.length >= 4}
-                    title={
-                      !admin
-                        ? 'Administrators only'
-                        : data.players.length >= 4
-                          ? 'An account holds up to four players'
-                          : undefined
+                    onClick={() => onModerate(data)}
+                    disabled={
+                      !canStart ||
+                      (session.role !== 'admin' &&
+                        data.role !== 'player' &&
+                        data.user_id !== session.user_id)
                     }
                   >
-                    <Plus size={15} />
-                    Add player
+                    Moderate account
                   </Button>
-                </div>
-              </div>
-              <div className="table-scroll" role="region" aria-label="Account players" tabIndex={0}>
-                <table className="responsive-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Player</th>
-                      <th scope="col">Presence</th>
-                      <th scope="col">Additional cards</th>
-                      <th scope="col">Decks</th>
-                      <th scope="col">Record</th>
-                      <th scope="col">
-                        <span className="sr-only">Actions</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.players.map((p) => (
-                      <tr key={p.player_id}>
-                        <td className="row-heading">
-                          <strong>{p.name}</strong>
-                          <small className="block muted">
-                            #{p.player_id} · Slot {p.slot + 1} · Level {p.level} · Title #
-                            {p.title_id}
-                          </small>
-                        </td>
-                        <td data-label="Presence">
-                          <Badge tone={p.online ? 'green' : 'neutral'}>
-                            {p.online == null ? 'Unknown' : p.online ? 'Online' : 'Offline'}
-                          </Badge>
-                        </td>
-                        <td data-label="Additional cards">
-                          {p.additional_cards.toLocaleString()}
-                          <small className="block muted">
-                            {p.card_kinds} kinds · {p.owned_items} items
-                          </small>
-                        </td>
-                        <td data-label="Decks">
-                          {p.purchased_decks} purchased
-                          <small className="block muted">{p.uploaded_decks} uploaded</small>
-                        </td>
-                        <td data-label="Record">
-                          {p.record
-                            ? `${p.record.wins} W / ${p.record.losses} L / ${p.record.draws} D`
-                            : 'Unavailable'}
-                        </td>
-                        <td className="row-actions">
-                          <Button
-                            aria-label={`Gift to ${p.name}`}
-                            onClick={() => onGift({ player_id: p.player_id, name: p.name })}
-                            disabled={!admin || !canStart}
-                            title={!admin ? 'Administrators only' : undefined}
-                          >
-                            <Gift size={14} /> Gift
-                          </Button>
-                          <Button
-                            aria-label={`Rename ${p.name}`}
-                            onClick={() => start('rename_player', p.player_id, p.name)}
-                            disabled={!canRename || !canStart}
-                            title={
-                              !canRename
-                                ? 'Moderators cannot edit another staff account'
+                  <dl className="profile-facts">
+                    <div>
+                      <dt>Role</dt>
+                      <dd>
+                        {data.role}
+                        <Button
+                          onClick={() => start('set_role')}
+                          disabled={
+                            !admin || !data.login || data.password_ready === false || !canStart
+                          }
+                          title={
+                            !admin
+                              ? 'Administrators only'
+                              : !data.login
+                                ? 'Only password accounts can have staff roles'
+                                : data.password_ready === false
+                                  ? 'Finish password setup before assigning a staff role'
+                                  : undefined
+                          }
+                        >
+                          Change role
+                        </Button>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Balance</dt>
+                      <dd>{data.bp.toLocaleString()} BP</dd>
+                    </div>
+                    <div>
+                      <dt>Country</dt>
+                      <dd>{data.country ?? 'Automatic (game language)'}</dd>
+                    </div>
+                    <div>
+                      <dt>Sign-in method</dt>
+                      <dd>
+                        {data.login
+                          ? data.password_ready === false
+                            ? 'Setup required'
+                            : 'Password account'
+                          : data.has_key
+                            ? 'Key account'
+                            : 'No sign-in configured'}
+                        {data.login && data.has_key ? ' · Also has a key' : ''}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Standing</dt>
+                      <dd>
+                        {data.standing?.kind ?? 'Not applicable'}
+                        {data.standing && data.standing.kind !== 'active' && (
+                          <>
+                            <span className="block">{data.standing.reason}</span>
+                            <span className="block muted">
+                              {data.standing.until
+                                ? `Until ${new Date(data.standing.until).toLocaleString()}`
+                                : 'Until lifted'}
+                            </span>
+                          </>
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Chat</dt>
+                      <dd>
+                        {data.muted ? (
+                          <>
+                            {data.muted.reason}
+                            <span className="block muted">
+                              {data.muted.until
+                                ? `Muted until ${new Date(data.muted.until).toLocaleString()}`
+                                : 'Muted until lifted'}
+                            </span>
+                          </>
+                        ) : (
+                          'Not muted'
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Remembered devices</dt>
+                      <dd>{data.device_count}</dd>
+                    </div>
+                    <div>
+                      <dt>Game key</dt>
+                      <dd>
+                        {data.has_key ? 'Key assigned' : 'No key assigned'}{' '}
+                        <Button
+                          disabled={!admin || !canStart}
+                          onClick={() => onRevealKey(data)}
+                          title={!admin ? 'Administrators only' : undefined}
+                        >
+                          Reveal key
+                        </Button>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Password reset</dt>
+                      <dd>
+                        {data.reset_pending ? 'Code pending' : 'No pending code'}
+                        <Button
+                          onClick={() => onResetPassword(data)}
+                          disabled={!data.login || !canRename || !canStart}
+                          title={
+                            !data.login
+                              ? 'Key accounts do not have passwords'
+                              : !canRename
+                                ? 'You cannot reset another staff account'
                                 : undefined
-                            }
-                          >
-                            <Pencil size={14} />
-                            Rename
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {data.players.length === 0 && <p className="connected-state">No players yet.</p>}
-              </div>
-              <p className="field-hint">
-                Additional card counts exclude the starter deck. Presence is a snapshot; refresh for
-                the latest state.
-              </p>
+                          }
+                        >
+                          Reset password
+                        </Button>
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="table-toolbar">
+                    <strong>Players ({data.players.length}/4)</strong>
+                    <div className="action-group">
+                      <Button
+                        onClick={() => start('set_country')}
+                        disabled={!admin || !canStart}
+                        title={!admin ? 'Administrators only' : undefined}
+                      >
+                        Change country
+                      </Button>
+                      <Button
+                        onClick={() => start('add_player')}
+                        disabled={!admin || !canStart || data.players.length >= 4}
+                        title={
+                          !admin
+                            ? 'Administrators only'
+                            : data.players.length >= 4
+                              ? 'An account holds up to four players'
+                              : undefined
+                        }
+                      >
+                        <Plus size={15} />
+                        Add player
+                      </Button>
+                    </div>
+                  </div>
+                  <div
+                    className="table-scroll"
+                    role="region"
+                    aria-label="Account players"
+                    tabIndex={0}
+                  >
+                    <table className="responsive-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">Player</th>
+                          <th scope="col">Presence</th>
+                          <th scope="col">Additional cards</th>
+                          <th scope="col">Decks</th>
+                          <th scope="col">Record</th>
+                          <th scope="col">
+                            <span className="sr-only">Actions</span>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.players.map((p) => (
+                          <tr key={p.player_id}>
+                            <td className="row-heading">
+                              <strong>{p.name}</strong>
+                              <small className="block muted">
+                                #{p.player_id} · Slot {p.slot + 1} · Level {p.level} · Title #
+                                {p.title_id}
+                              </small>
+                            </td>
+                            <td data-label="Presence">
+                              <Badge tone={p.online ? 'green' : 'neutral'}>
+                                {p.online == null ? 'Unknown' : p.online ? 'Online' : 'Offline'}
+                              </Badge>
+                            </td>
+                            <td data-label="Additional cards">
+                              {p.additional_cards.toLocaleString()}
+                              <small className="block muted">
+                                {p.card_kinds} kinds · {p.owned_items} items
+                              </small>
+                            </td>
+                            <td data-label="Decks">
+                              {p.purchased_decks} purchased
+                              <small className="block muted">{p.uploaded_decks} uploaded</small>
+                            </td>
+                            <td data-label="Record">
+                              {p.record
+                                ? `${p.record.wins} W / ${p.record.losses} L / ${p.record.draws} D`
+                                : 'Unavailable'}
+                            </td>
+                            <td className="row-actions">
+                              <Button
+                                aria-label={`Gift to ${p.name}`}
+                                onClick={() => onGift({ player_id: p.player_id, name: p.name })}
+                                disabled={!admin || !canStart}
+                                title={!admin ? 'Administrators only' : undefined}
+                              >
+                                <Gift size={14} /> Gift
+                              </Button>
+                              <Button
+                                aria-label={`Rename ${p.name}`}
+                                onClick={() => start('rename_player', p.player_id, p.name)}
+                                disabled={!canRename || !canStart}
+                                title={
+                                  !canRename
+                                    ? 'Moderators cannot edit another staff account'
+                                    : undefined
+                                }
+                              >
+                                <Pencil size={14} />
+                                Rename
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {data.players.length === 0 && (
+                      <p className="connected-state">No players yet.</p>
+                    )}
+                  </div>
+                  <p className="field-hint">
+                    Additional card counts exclude the starter deck. Presence is a snapshot; refresh
+                    for the latest state.
+                  </p>
+                </>
+              )}
             </>
           )}
           {mode && (
             <form id="connected-profile-edit" onSubmit={submit}>
-              <h3>
-                {mode === 'add_player'
-                  ? 'Add player'
-                  : mode === 'rename_player'
-                    ? 'Rename player'
-                    : mode === 'set_role'
-                      ? 'Change role'
-                      : 'Change country'}
-              </h3>
+              {!page && (
+                <h3>
+                  {mode === 'add_player'
+                    ? 'Add player'
+                    : mode === 'rename_player'
+                      ? 'Rename player'
+                      : mode === 'set_role'
+                        ? 'Change role'
+                        : 'Change country'}
+                </h3>
+              )}
               {mode === 'set_role' ? (
                 <>
                   <Field
@@ -662,7 +752,7 @@ export function ConnectedAccountDialog({
           )}
         </div>
         <div className="modal-actions profile-actions">
-          {data && !mode && admin && (
+          {!page && data && !mode && admin && (
             <Button
               variant="ghost"
               className="danger-text"
@@ -687,7 +777,7 @@ export function ConnectedAccountDialog({
                 }}
                 disabled={edit.isPending}
               >
-                Back
+                {page ? 'Cancel' : 'Back'}
               </Button>
             )}
             {(!mode || pending) && (

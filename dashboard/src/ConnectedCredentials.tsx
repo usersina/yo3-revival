@@ -47,8 +47,10 @@ export function ConnectedCredentials({
   session,
   action,
   onChange,
+  showCreate = true,
 }: {
   session: StaffSession
+  showCreate?: boolean
   action: CredentialAction | null
   onChange: (action: CredentialAction | null) => void
 }) {
@@ -222,14 +224,16 @@ export function ConnectedCredentials({
 
   return (
     <>
-      <Button
-        onClick={open}
-        disabled={!saved && !storageError && session.role !== 'admin'}
-        title={session.role !== 'admin' && !saved ? 'Administrators only' : undefined}
-      >
-        <UserPlus size={15} />
-        {saved ? 'Resume code' : storageError ? 'Review code request' : 'Create account'}
-      </Button>
+      {(showCreate || saved || storageError) && (
+        <Button
+          onClick={open}
+          disabled={!saved && !storageError && session.role !== 'admin'}
+          title={session.role !== 'admin' && !saved ? 'Administrators only' : undefined}
+        >
+          <UserPlus size={15} />
+          {saved ? 'Resume code' : storageError ? 'Review code request' : 'Create account'}
+        </Button>
+      )}
       <Modal
         open={action !== null}
         onOpenChange={(value) => {

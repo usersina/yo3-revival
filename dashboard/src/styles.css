@@ -2710,3 +2710,212 @@
     flex-shrink: 0;
   }
 }
+
+/* Account detail routes use the workspace rather than a nested scrolling dialog. */
+.account-back {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  color: var(--color-primary);
+  margin-bottom: 18px;
+  font-weight: 600;
+}
+.account-workspace {
+  min-width: 0;
+}
+.account-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 24px;
+  background: white;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.account-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 20px;
+  border-right: 1px solid var(--color-line);
+}
+.account-stat:last-child {
+  border-right: 0;
+}
+.account-stat > span:first-child {
+  color: #53677a;
+  font-size: 13px;
+}
+.account-stat > strong {
+  font-size: 27px;
+  line-height: 1.25;
+}
+.account-stat strong small {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--color-muted);
+}
+.account-stat p {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.account-stat .button {
+  margin-top: auto;
+}
+.account-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(350px, 1fr);
+  align-items: start;
+  gap: 24px;
+}
+.account-primary,
+.account-layout > *,
+.account-side > *,
+.account-control-list > div > div {
+  min-width: 0;
+}
+.account-player-list {
+  padding: 0 20px;
+}
+.account-player {
+  border-top: 1px solid var(--color-line);
+  padding: 20px 0;
+}
+.account-player header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.account-player h3 {
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+.account-player header p {
+  color: var(--color-muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+.account-player .profile-facts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.account-player-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+.account-section-note {
+  margin: 0 20px 20px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.account-control-list {
+  padding: 0 20px;
+}
+.account-control-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--color-line);
+}
+.account-control-list strong {
+  font-size: 13px;
+}
+.account-control-list p {
+  color: #5e6773;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.account-control-list .button {
+  flex-shrink: 0;
+}
+.account-moderation {
+  padding: 0 20px 20px;
+}
+.account-moderation .profile-facts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.account-moderation > .button {
+  margin-top: 20px;
+}
+.account-danger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px;
+  background: white;
+  border: 1px solid #efdcda;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+.account-danger h2 {
+  font-size: 14px;
+}
+.account-danger p {
+  font-size: 13px;
+  color: #5e6773;
+  margin-top: 5px;
+}
+.account-danger > .button {
+  flex-shrink: 0;
+}
+.account-action-hosts {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.account-action-hosts:empty {
+  display: none;
+}
+@media (max-width: 1200px) {
+  .account-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .account-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .account-stat:first-child {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-line);
+  }
+  .account-stat:first-child > .button {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    align-self: center;
+    margin: 0;
+  }
+  .account-stat:first-child > strong {
+    grid-column: 1;
+  }
+  .account-side {
+    display: block;
+  }
+  .account-danger {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .account-player header {
+    flex-wrap: wrap;
+  }
+  .account-player-actions .button {
+    flex: 1;
+  }
+  .account-stat {
+    padding: 16px;
+  }
+}

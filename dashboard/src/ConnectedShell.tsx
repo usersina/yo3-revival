@@ -70,7 +70,9 @@ export function ConnectedShell({
   const status = useGetServerStatus({ query: { refetchInterval: 10000 } })
   const [menu, setMenu] = useState(false)
   const { pathname } = useLocation()
-  const current = connectedPages[pathname] ?? 'Page not found'
+  const current = pathname.startsWith('/accounts/')
+    ? 'Account details'
+    : (connectedPages[pathname] ?? 'Page not found')
   const signOut = useSignOutStaff({
     mutation: {
       onSuccess: () => {

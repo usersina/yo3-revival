@@ -149,3 +149,21 @@ test('an open form survives an update notice and a missing lazy asset has a relo
   await expect(page.getByText('This page needs the latest dashboard files.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Reload dashboard' }).first()).toBeVisible()
 })
+
+test('account deep links reload through nginx while unrelated routes stay closed', async ({
+  page,
+}) => {
+  await signIn(page)
+  await page.getByRole('link', { name: 'Accounts', exact: true }).click()
+  await page.getByRole('link', { name: 'View account CheckAdmin', exact: true }).click()
+  const url = page.url()
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'CheckAdmin', exact: true }),
+  ).toBeVisible()
+  const response = await page.reload()
+  expect(response?.status()).toBe(200)
+  await expect(page).toHaveURL(url)
+  await expect(page.getByRole('region', { name: 'Players', exact: true })).toBeVisible()
+  for (const path of ['/accounts/1/extra', '/accounts/settings', '/accounts/1/admin'])
+    expect((await page.request.get(path)).status(), path).toBe(404)
+})

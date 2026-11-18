@@ -46,12 +46,12 @@ test('overview shows checked operational metrics, backup failures and links onli
     'Backup check failed: Backup storage unavailable.',
   )
   await section.getByRole('link', { name: 'TestOverview', exact: true }).click()
-  await expect(page).toHaveURL(`/accounts?account=${target.user_id}`)
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await expect(page.getByRole('dialog')).toContainText('TestOverview')
+  await expect(page).toHaveURL(`/accounts/${target.user_id}`)
+  await expect(page.getByRole('heading', { name: 'TestOverview', level: 1 })).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.reload()
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await page.getByRole('button', { name: 'Close dialog', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'TestOverview', level: 1 })).toBeVisible()
+  await page.getByRole('link', { name: 'Back to accounts', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 test('moderation lists real saved standing and mute badges, with working filters', async ({

@@ -56,12 +56,18 @@ Implementation plan agreed on 2026-11-16. For deployment and HTTPS, see [Docker 
 The sign-in screen uses the project logo and a compact centered form. Connection errors offer a retry; refused
 credentials stay visible without clearing the User ID, including after a session expires.
 
-Navigation collapses at tablet widths. Account, player, invite, code, audit and backup tables switch to labelled
+Navigation collapses at tablet widths. Account, invite, code, audit and backup tables switch to labelled
 rows in narrow panels, keeping actions in view.
 Searches have a clear button, account filters show the result count and an empty result offers **Clear filters**.
 Long dialogs scroll their body while keeping the heading and action buttons visible. Backup download confirmations
 use the same body inset as other dialogs. Nested settings and moderation forms keep a consistent field gap, and
 log output aligns with its panel heading.
+
+**Accounts → View** opens a full page at `/accounts/<id>`. The balance, player slots and standing appear first,
+followed by player cards with rewards and rename controls, moderation, account access and country. Admin-only
+deletion stays at the bottom. Short action dialogs keep the account underneath; closing or cancelling returns
+to that page. Successful balance and profile changes refresh the visible data. Uncertain requests retain their
+original retry ID, including after reload, and permissions still govern every action.
 
 **Give a gift → Cards** searches the host's catalogue and lists each artwork separately, with keyboard-selectable
 rows and card icons. Copy counts are checked before confirmation, and the confirmation stays beside the submit
@@ -73,10 +79,12 @@ Hosted image/effect previews need a future server release: the current catalogue
 locally; its image URLs must not become live dashboard hotlinks. Konami IDs, game artwork rows and card passcodes
 are different identifiers and need an explicit mapping before choosing an external image.
 
-All 28 documented staff operations are consumed by the dashboard. The current UI pass uses the released API
-without changing the schema, generated client or nginx image policy. Responsive and accessibility checks are in
+All 28 documented staff operations are consumed by the dashboard. Account pages use the released API without
+changing its schema or generated client. Their new nginx route requires a full release; the independent UI gate
+must not deliver it against an older nginx configuration. Responsive and accessibility checks are in
 `dashboard/e2e/ergonomics.spec.ts` and `dashboard/e2e/auth-layout.spec.ts`; gift retry and permission checks remain
-in `dashboard/e2e/connected.spec.ts`.
+in `dashboard/e2e/connected.spec.ts`. `dashboard/e2e/account-page.spec.ts` checks direct links, history, permissions,
+action dialogs and safe balance retries; production browser checks reload account URLs through real nginx.
 
 ## Independent UI delivery
 

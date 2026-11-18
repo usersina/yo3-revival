@@ -12,7 +12,7 @@ async function signIn(page: Page) {
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   expect((await signingIn).status()).toBe(200)
   await expect(
-    page.getByRole('button', { name: 'View account TestPlayer', exact: true }),
+    page.getByRole('link', { name: 'View account TestPlayer', exact: true }),
   ).toBeVisible()
 }
 async function insideViewport(control: Locator, width: number, height: number) {
@@ -37,7 +37,7 @@ test('account actions and filters fit phones and tablets without sideways scroll
     )
     await page.getByRole('searchbox', { name: 'Search accounts' }).fill('TestPlayer')
     await insideViewport(
-      page.getByRole('button', { name: 'View account TestPlayer', exact: true }),
+      page.getByRole('link', { name: 'View account TestPlayer', exact: true }),
       width,
       850,
     )
@@ -53,31 +53,35 @@ test('account actions and filters fit phones and tablets without sideways scroll
   await expect(page.getByText('No accounts match your filters.')).toBeVisible()
   await page.getByRole('button', { name: 'Clear filters', exact: true }).click()
   await expect(
-    page.getByRole('button', { name: 'View account TestPlayer', exact: true }),
+    page.getByRole('link', { name: 'View account TestPlayer', exact: true }),
   ).toBeVisible()
 })
 
-test('long account dialogs retain their heading and actions on a short screen', async ({
+test('account edit dialogs retain their heading and actions on a short screen', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 520 })
   await signIn(page)
-  await page.getByRole('button', { name: 'View account TestPlayer', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: 'TestPlayer', exact: true })
-  await insideViewport(dialog.getByRole('button', { name: 'Close', exact: true }), 390, 520)
+  await page.getByRole('link', { name: 'View account TestPlayer', exact: true }).click()
+  await page.getByRole('button', { name: 'Change role', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Change role', exact: true })
+  await insideViewport(dialog.getByRole('button', { name: 'Save role', exact: true }), 390, 520)
   await dialog.locator('.modal-body').evaluate((el) => {
     el.scrollTop = el.scrollHeight
   })
   await insideViewport(dialog.getByRole('button', { name: 'Close dialog', exact: true }), 390, 520)
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(dialog).not.toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'TestPlayer', level: 1, exact: true }),
+  ).toBeVisible()
 })
 
-test('player actions fit the account dialog even on a wide desktop', async ({ page }) => {
+test('player actions fit the full account workspace on a wide desktop', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await signIn(page)
-  await page.getByRole('button', { name: 'View account TestPlayer', exact: true }).click()
-  const players = page.getByRole('region', { name: 'Account players', exact: true })
+  await page.getByRole('link', { name: 'View account TestPlayer', exact: true }).click()
+  const players = page.getByRole('region', { name: 'Players', exact: true })
   expect(await players.evaluate((el) => el.scrollWidth)).toBeLessThanOrEqual(
     await players.evaluate((el) => el.clientWidth),
   )
@@ -90,7 +94,7 @@ test('card gifts identify artworks, link to official card details and validate c
 }) => {
   await page.setViewportSize({ width: 390, height: 650 })
   await signIn(page)
-  await page.getByRole('button', { name: 'View account TestPlayer', exact: true }).click()
+  await page.getByRole('link', { name: 'View account TestPlayer', exact: true }).click()
   await page.getByRole('button', { name: 'Gift to TestPlayer', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Give a gift', exact: true })
   const artwork = dialog.getByRole('radio', {
@@ -234,7 +238,7 @@ test('maintenance and moderation forms separate fields and confirmations consist
   expect(confirmation!.y - message!.y - message!.height).toBeGreaterThanOrEqual(12)
   await page.getByRole('button', { name: 'Close dialog', exact: true }).click()
   await page.goto('/accounts')
-  await page.getByRole('button', { name: 'View account TestPlayer', exact: true }).click()
+  await page.getByRole('link', { name: 'View account TestPlayer', exact: true }).click()
   await page.getByRole('button', { name: 'Moderate account', exact: true }).click()
   const reason = await dialog.getByLabel('Reason', { exact: true }).locator('..').boundingBox()
   const duration = await dialog

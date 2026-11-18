@@ -15,6 +15,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Accounts now have their own dashboard pages at `/accounts/<id>`, with player cards, rewards, access controls,
+  profile and moderation sections. Closing an action keeps the account open; balance changes refresh in place.
+  Direct links and reloads are supported by nginx, so this routing change ships with a full release.
 - Dashboard sign-in now uses the project logo and a compact centered form. Failed sign-ins keep their error
   visible, including after session expiry. Tablet navigation, audit/invite/code/backup rows, log insets and
   backup confirmations now follow the same responsive layout as the account pages.
