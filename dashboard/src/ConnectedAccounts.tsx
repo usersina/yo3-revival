@@ -188,7 +188,7 @@ export default function ConnectedAccounts({
     <>
       <PageHeading
         title={title}
-        description={`Signed in as ${session.user} · ${session.role}`}
+        description="Find players, manage access and send rewards."
         action={
           full && (
             <Button
@@ -237,7 +237,7 @@ export default function ConnectedAccounts({
       )}
       {full && <ConnectedServer session={session} />}
       <Panel>
-        <div className="table-toolbar">
+        <div className="table-toolbar accounts-toolbar">
           <SearchField
             label="Search accounts"
             placeholder="User ID or player name…"
@@ -288,7 +288,7 @@ export default function ConnectedAccounts({
         )}
         {filtered && (
           <div className="table-scroll" role="region" aria-label="Accounts table" tabIndex={0}>
-            <table>
+            <table className="responsive-table">
               <thead>
                 <tr>
                   <th scope="col">Account</th>
@@ -308,13 +308,15 @@ export default function ConnectedAccounts({
                   const name = account.login ?? `#${account.user_id}`
                   return (
                     <tr key={account.user_id}>
-                      <td>
+                      <td className="row-heading">
                         <strong>{name}</strong>
                         <small className="block muted">#{account.user_id}</small>
                       </td>
-                      <td>{account.players.map((p) => p.name).join(', ') || 'No players yet'}</td>
-                      <td>{account.role}</td>
-                      <td>
+                      <td data-label="Players">
+                        {account.players.map((p) => p.name).join(', ') || 'No players yet'}
+                      </td>
+                      <td data-label="Role">{account.role}</td>
+                      <td data-label="Standing">
                         <Badge
                           tone={
                             !account.standing
@@ -330,8 +332,10 @@ export default function ConnectedAccounts({
                         </Badge>
                         {account.muted && <Badge tone="violet">Muted</Badge>}
                       </td>
-                      <td className="numeric">{account.bp.toLocaleString()} BP</td>
-                      <td>
+                      <td className="numeric" data-label="Balance">
+                        {account.bp.toLocaleString()} BP
+                      </td>
+                      <td className="row-actions">
                         <div className="action-group">
                           <Button
                             aria-label={`View account ${name}`}
@@ -366,10 +370,27 @@ export default function ConnectedAccounts({
               </tbody>
             </table>
             {filtered.length === 0 && (
-              <p className="connected-state">
-                {query ? 'No accounts match your search.' : 'No accounts yet.'}
-              </p>
+              <div className="connected-empty">
+                <p>
+                  {query || standingFilter !== 'all'
+                    ? 'No accounts match your filters.'
+                    : 'No accounts yet.'}
+                </p>
+                {(query || standingFilter !== 'all') && (
+                  <Button
+                    onClick={() => {
+                      setQuery('')
+                      setStandingFilter('all')
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                )}
+              </div>
             )}
+            <div className="table-footer" aria-live="polite">
+              {filtered.length} of {accounts.data?.accounts.length ?? 0} accounts
+            </div>
           </div>
         )}
       </Panel>

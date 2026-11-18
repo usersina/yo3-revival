@@ -173,10 +173,12 @@ export function SearchField({
   maxLength?: number
   placeholder: string
 }) {
+  const input = useRef<HTMLInputElement>(null)
   return (
     <div className="search-field">
       <Search size={17} />
       <input
+        ref={input}
         type="search"
         maxLength={maxLength}
         aria-label={label}
@@ -184,6 +186,19 @@ export function SearchField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />
+      {value && (
+        <button
+          type="button"
+          className="clear-search"
+          aria-label="Clear search"
+          onClick={() => {
+            onChange('')
+            input.current?.focus()
+          }}
+        >
+          <X size={15} />
+        </button>
+      )}
     </div>
   )
 }

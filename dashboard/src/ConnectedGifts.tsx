@@ -1,7 +1,7 @@
 import { useDeferredValue, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Gift, LoaderCircle, RefreshCw } from 'lucide-react'
+import { BookOpen, ExternalLink, Gift, Layers, LoaderCircle, RefreshCw } from 'lucide-react'
 import { z } from 'zod'
 import { Button, Field, Modal } from './components/ui'
 import {
@@ -87,6 +87,14 @@ export function ConnectedGifts({
     },
   })
   const playerId = pending?.data.player_id ?? target?.player_id
+  const catalogueBusy = choices.isFetching || query !== search
+  const selectedCard =
+    kind === 'cards' && !catalogueBusy && !choices.error
+      ? choices.data?.cards.find((card) => String(card.row) === choice)
+      : undefined
+  const validCopies =
+    kind !== 'cards' ||
+    (Number.isInteger(Number(copies)) && Number(copies) >= 1 && Number(copies) <= 255)
   const options =
     kind === 'cards'
       ? choices.data?.cards.map((c) => ({
@@ -113,8 +121,9 @@ export function ConnectedGifts({
       if (
         !playerId ||
         !accepted ||
+        !validCopies ||
         !options?.some((o) => String(o.id) === choice) ||
-        choices.isFetching ||
+        catalogueBusy ||
         choices.error
       )
         return
@@ -273,6 +282,9 @@ export function ConnectedGifts({
               >
                 <input
                   id="gift-search"
+                  type="search"
+                  placeholder={kind === 'cards' ? 'Card name or Konami ID…' : 'Name or ID…'}
+                  aria-describedby="gift-search-hint"
                   value={query}
                   maxLength={80}
                   onChange={(e) => {
@@ -283,7 +295,7 @@ export function ConnectedGifts({
                   autoComplete="off"
                 />
               </Field>
-              {choices.isFetching && (
+              {catalogueBusy && (
                 <p role="status">
                   <LoaderCircle size={15} className="animate-spin" /> Loading gift choices…
                 </p>
@@ -295,12 +307,50 @@ export function ConnectedGifts({
                     <RefreshCw size={14} /> Retry choices
                   </Button>
                 </div>
+              ) : kind === 'cards' ? (
+                <fieldset className="gift-artworks" disabled={catalogueBusy}>
+                  <legend>Card artwork</legend>
+                  <div className="gift-options">
+                    {choices.data?.cards.map((card) => (
+                      <label className="gift-option" key={card.row}>
+                        <input
+                          type="radio"
+                          name="gift-card"
+                          value={card.row}
+                          checked={String(card.row) === choice}
+                          aria-label={`${card.name} · Artwork ${card.art} · Konami ${card.konami_id}`}
+                          onChange={() => {
+                            setChoice(String(card.row))
+                            setAccepted(false)
+                          }}
+                        />
+                        <span className="gift-symbol" aria-hidden="true">
+                          <Layers size={21} />
+                        </span>
+                        <span className="gift-card-name">
+                          <strong>{card.name}</strong>
+                          <small>
+                            Artwork {card.art} · Konami {card.konami_id}
+                          </small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  {choices.data?.cards.length === 0 && (
+                    <p className="field-hint">No matching gifts. Try another name or ID.</p>
+                  )}
+                  {more && (
+                    <p className="field-hint">
+                      Showing the first 50. Search to narrow the choices.
+                    </p>
+                  )}
+                </fieldset>
               ) : (
                 <Field id="gift-choice" label="Gift">
                   <select
                     id="gift-choice"
                     value={choice}
-                    disabled={choices.isFetching || !options?.length}
+                    disabled={catalogueBusy || !options?.length}
                     onChange={(e) => {
                       setChoice(e.target.value)
                       setAccepted(false)
@@ -323,6 +373,26 @@ export function ConnectedGifts({
                   )}
                 </Field>
               )}
+              {selectedCard && (
+                <div className="gift-selection" aria-label="Selected card">
+                  <strong>
+                    {selectedCard.name} · Artwork {selectedCard.art}
+                  </strong>
+                  {selectedCard.konami_id > 0 && (
+                    <a
+                      href={`https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid=${selectedCard.konami_id}&request_locale=en`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Card details (opens in a new tab)"
+                    >
+                      <BookOpen size={15} /> Card details <ExternalLink size={13} />
+                    </a>
+                  )}
+                  <p className="field-hint">
+                    Official database with current text. In-game effects may follow older card text.
+                  </p>
+                </div>
+              )}
               {kind === 'cards' && (
                 <Field
                   id="gift-count"
@@ -336,6 +406,8 @@ export function ConnectedGifts({
                     max={255}
                     step={1}
                     required
+                    aria-invalid={!validCopies}
+                    aria-describedby="gift-count-hint"
                     value={copies}
                     onChange={(e) => {
                       setCopies(e.target.value)
@@ -357,14 +429,6 @@ export function ConnectedGifts({
                   Include the recipe’s cards
                 </label>
               )}
-              <label className="profile-role-confirm">
-                <input
-                  type="checkbox"
-                  checked={accepted}
-                  onChange={(e) => setAccepted(e.target.checked)}
-                />{' '}
-                Confirm this gift for the selected player
-              </label>
             </>
           )}
           {failure && (
@@ -377,7 +441,18 @@ export function ConnectedGifts({
             <p className="field-hint">Request ID: {pending.headers['Idempotency-Key']}</p>
           )}
         </form>
-        <div className="modal-actions">
+        <div className="modal-actions gift-actions">
+          {!result && !pending && (
+            <label className="profile-role-confirm">
+              <input
+                type="checkbox"
+                form="connected-gift"
+                checked={accepted}
+                onChange={(e) => setAccepted(e.target.checked)}
+              />{' '}
+              Confirm this gift for the selected player
+            </label>
+          )}
           <Button onClick={close} disabled={mutation.isPending}>
             {result ? 'Done' : 'Close'}
           </Button>
@@ -391,7 +466,8 @@ export function ConnectedGifts({
                 mutation.isPending ||
                 !!storageError ||
                 refused ||
-                (!pending && (!accepted || !choice || choices.isFetching || !!choices.error))
+                (!pending &&
+                  (!accepted || !choice || !validCopies || catalogueBusy || !!choices.error))
               }
             >
               {mutation.isPending && <LoaderCircle size={15} className="animate-spin" />}

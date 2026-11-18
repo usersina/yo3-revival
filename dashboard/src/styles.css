@@ -78,7 +78,7 @@
   b {
     font-weight: 600;
   }
-  input:not([type='checkbox']),
+  input:not([type='checkbox']):not([type='radio']),
   textarea,
   select {
     @apply w-full rounded-lg border border-line bg-white text-ink;
@@ -927,10 +927,35 @@
     pointer-events: none;
   }
   .search-field input {
-    padding-left: 35px;
+    padding-inline: 35px;
     min-height: 37px;
     font-size: 13px;
     background: #fcfdfe;
+  }
+  .search-field input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+  }
+  .clear-search {
+    position: absolute;
+    right: 3px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-muted);
+  }
+  .clear-search:hover {
+    background: #eaf1f8;
+    color: var(--color-ink);
+  }
+  .clear-search svg {
+    position: static;
+    transform: none;
   }
   .filter-controls {
     display: flex;
@@ -1137,7 +1162,9 @@
     transform: translate(-50%, -50%);
     width: min(460px, calc(100% - 32px));
     max-height: calc(100dvh - 40px);
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     background: #fff;
     border: 1px solid #ffffff88;
     border-radius: 15px;
@@ -1149,6 +1176,7 @@
     width: min(570px, calc(100% - 32px));
   }
   .modal-heading {
+    flex-shrink: 0;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -1170,8 +1198,21 @@
   }
   .modal-body {
     padding: 4px 24px 25px;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+  .modal-body:not(.connected-profile) {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .modal-body > * {
+    flex-shrink: 0;
   }
   .modal-actions {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -2152,7 +2193,8 @@
     overflow-wrap: anywhere;
   }
   .connected-profile {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 20px;
   }
   .connected-profile input:not([type='checkbox']),
@@ -2371,4 +2413,220 @@
 }
 .dashboard-update span {
   color: #596878;
+}
+
+/* Responsive controls override the existing viewport rules above. */
+.profile-actions {
+  justify-content: space-between;
+}
+.profile-actions > .action-group {
+  margin-left: auto;
+}
+.profile-actions > .muted {
+  font-size: 12px;
+}
+.gift-actions {
+  flex-wrap: wrap;
+}
+.gift-actions > label {
+  flex-basis: 100%;
+}
+.gift-actions > button:first-of-type {
+  margin-left: auto;
+}
+.field,
+.main-shell,
+.table-toolbar > *,
+.panel-heading > div {
+  min-width: 0;
+}
+.action-group {
+  flex-wrap: wrap;
+}
+.mobile-nav {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.accounts-toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  align-items: end;
+}
+.accounts-toolbar .search-field {
+  max-width: none;
+}
+.accounts-toolbar > .action-group {
+  justify-content: flex-end;
+}
+.connected-empty {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 32px 20px;
+  color: var(--color-muted);
+  text-align: center;
+}
+.gift-artworks {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.gift-artworks legend {
+  margin-bottom: 8px;
+  color: #53677a;
+  font-weight: 600;
+  font-size: 13px;
+}
+.gift-options {
+  display: grid;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 3px;
+}
+.gift-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.gift-option:hover {
+  background: #f7f9fb;
+}
+.gift-option:has(input:checked) {
+  border-color: #7294b4;
+  background: #edf4fa;
+}
+.gift-option:has(input:focus-visible) {
+  outline: 2px solid #5285b3;
+  outline-offset: 1px;
+}
+.gift-option input[type='radio'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--color-primary);
+}
+.gift-symbol {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 44px;
+  flex: 0 0 auto;
+  color: var(--color-primary);
+  background: #eaf0f6;
+  border: 1px solid #d5e1ec;
+  border-radius: 6px;
+}
+.gift-card-name {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.gift-card-name small {
+  color: #53677a;
+}
+.gift-selection {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  background: var(--color-canvas);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+}
+.gift-selection a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.gift-selection .field-hint {
+  margin: 0;
+}
+.table-scroll:has(> .responsive-table) {
+  container-type: inline-size;
+}
+@media (max-width: 1100px) {
+  .accounts-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .accounts-toolbar > .action-group {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+@container (max-width: 850px) {
+  .responsive-table {
+    min-width: 0;
+  }
+  .responsive-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .responsive-table tbody {
+    display: block;
+  }
+  .responsive-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px 16px;
+    padding: 18px 20px;
+    border-top: 1px solid var(--color-line);
+  }
+  .responsive-table td {
+    display: block;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+  .responsive-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    font-size: 11px;
+    color: var(--color-muted);
+  }
+  .responsive-table .row-heading,
+  .responsive-table .row-actions {
+    grid-column: 1 / -1;
+  }
+  .responsive-table .row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .responsive-table .row-actions .action-group {
+    width: 100%;
+  }
+  .responsive-table .row-actions .button {
+    flex: 1;
+  }
+}
+@media (max-width: 600px) {
+  .accounts-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .modal-actions .button {
+    min-height: 42px;
+  }
+  .gift-option {
+    min-height: 64px;
+  }
 }

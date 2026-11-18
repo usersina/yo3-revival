@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Gift, LoaderCircle, Pencil, Plus, RefreshCw } from 'lucide-react'
+import { Gift, LoaderCircle, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { z } from 'zod'
 import { Badge, Button, Field, Modal } from './components/ui'
 import {
@@ -236,7 +236,7 @@ export function ConnectedAccountDialog({
           if (!value) close()
         }}
         title={data?.login ?? `Account #${userId ?? ''}`}
-        description="Account details from the server. Role changes apply immediately; in-game profile edits appear after signing in again."
+        description="Players, account access and recent activity."
         wide
       >
         <div className="modal-body connected-profile">
@@ -449,7 +449,7 @@ export function ConnectedAccountDialog({
                 </div>
               </div>
               <div className="table-scroll" role="region" aria-label="Account players" tabIndex={0}>
-                <table>
+                <table className="responsive-table">
                   <thead>
                     <tr>
                       <th scope="col">Player</th>
@@ -465,34 +465,34 @@ export function ConnectedAccountDialog({
                   <tbody>
                     {data.players.map((p) => (
                       <tr key={p.player_id}>
-                        <td>
+                        <td className="row-heading">
                           <strong>{p.name}</strong>
                           <small className="block muted">
                             #{p.player_id} · Slot {p.slot + 1} · Level {p.level} · Title #
                             {p.title_id}
                           </small>
                         </td>
-                        <td>
+                        <td data-label="Presence">
                           <Badge tone={p.online ? 'green' : 'neutral'}>
                             {p.online == null ? 'Unknown' : p.online ? 'Online' : 'Offline'}
                           </Badge>
                         </td>
-                        <td>
+                        <td data-label="Additional cards">
                           {p.additional_cards.toLocaleString()}
                           <small className="block muted">
                             {p.card_kinds} kinds · {p.owned_items} items
                           </small>
                         </td>
-                        <td>
+                        <td data-label="Decks">
                           {p.purchased_decks} purchased
                           <small className="block muted">{p.uploaded_decks} uploaded</small>
                         </td>
-                        <td>
+                        <td data-label="Record">
                           {p.record
                             ? `${p.record.wins} W / ${p.record.losses} L / ${p.record.draws} D`
                             : 'Unavailable'}
                         </td>
-                        <td>
+                        <td className="row-actions">
                           <Button
                             aria-label={`Gift to ${p.name}`}
                             onClick={() => onGift({ player_id: p.player_id, name: p.name })}
@@ -661,19 +661,23 @@ export function ConnectedAccountDialog({
             </form>
           )}
         </div>
-        <div className="modal-actions">
+        <div className="modal-actions profile-actions">
           {data && !mode && admin && (
-            <Button variant="danger" disabled={!canStart} onClick={() => onDelete(data)}>
+            <Button
+              variant="ghost"
+              className="danger-text"
+              disabled={!canStart}
+              onClick={() => onDelete(data)}
+            >
+              <Trash2 size={15} />
               Delete account…
             </Button>
           )}
-          <span className="muted">
-            {pending
-              ? 'Request saved for safe retry'
-              : mode
-                ? 'Saved changes are audited'
-                : 'Credentials stay hidden until explicitly requested'}
-          </span>
+          {(pending || mode) && (
+            <span className="muted">
+              {pending ? 'Request saved for safe retry' : 'Saved changes are audited'}
+            </span>
+          )}
           <div className="action-group">
             {mode && !pending && (
               <Button

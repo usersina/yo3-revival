@@ -802,7 +802,9 @@ test('player gifts retain one request across a lost response and reload, includi
   await page.getByRole('button', { name: 'Gift to TestPlayer', exact: true }).click()
   const catalogue = await page.request.get('/panel/api/v1/gifts/choices?q=Blue-Eyes')
   expect(GiftChoices.parse(await catalogue.json()).cards.length).toBe(2)
-  await page.getByLabel('Gift', { exact: true }).selectOption('816')
+  await page
+    .getByRole('radio', { name: 'Blue-Eyes White Dragon · Artwork 1 · Konami 4007', exact: true })
+    .check()
   await page.getByLabel('Copies', { exact: true }).fill('3')
   await page.getByLabel('Confirm this gift for the selected player').check()
   await page.getByRole('button', { name: 'Give gift', exact: true }).click()
@@ -857,7 +859,9 @@ test('gift permissions, search, catalogue failures and mobile confirmation remai
   await page.getByRole('button', { name: 'Retry choices', exact: true }).click()
   await expect(page.getByText('No matching gifts. Try another name or ID.')).toBeVisible()
   await page.getByLabel('Find a gift', { exact: true }).fill('4007')
-  await page.getByLabel('Gift', { exact: true }).selectOption('817')
+  await page
+    .getByRole('radio', { name: 'Blue-Eyes White Dragon · Artwork 2 · Konami 4007', exact: true })
+    .check()
   await page.getByLabel('Copies', { exact: true }).fill('2')
   await page.getByLabel('Confirm this gift for the selected player').check()
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
