@@ -25,6 +25,9 @@ and Scripts.
 
 **Standalone management dashboard**
 
+- [ ] Add same-origin card images and effect previews to the staff gift catalogue in a server release. Keep explicit
+      game/Konami/passcode mappings and a local image cache; no third-party hotlinking. The dashboard already has
+      artwork selection, icons and an official card-database link. [Current interface](dashboard.md#staff-interface).
 - [ ] Verify the first automatic dashboard delivery on the home runner (#62), including its disposable workflow-token
       package-deletion probe and protected-image retention. Triggers/reconciliation, version/reload UI and cleanup
       are implemented; published v0.1.0 compatibility is checked locally. [Checks](deployment.md#independent-dashboard-updates-62).
@@ -33,8 +36,8 @@ and Scripts.
 - [ ] Finish hosted-server validation (#47): real Windows clients and native-engine duel load, isolated password-hash
       timing, and the DNS-based HTTPS monitor after resolver caches expire. Choose off-machine backup storage and
       alert destinations. Completed provisioning, recovery and protocol checks: [VPS record](history.md#2026-11-17--public-vps-deployment-and-recovery).
-- [ ] Verify a full release on the new home runner, including its cross-platform build's disk capacity and the
-      workflow-token retention probe. Published v0.1.0 digests already match the healthy live VPS containers.
+- [ ] Verify an actual release workflow on the new home runner, including the workflow-token retention probe.
+      The isolated cross-platform build and capacity rehearsal passed; published v0.1.0 digests already match the healthy live VPS containers.
       [Local Ansible setup](deployment.md) is checked on the VPS.
 - [ ] Normalize SQLite domains incrementally after deployment validation; keep the generated API unchanged.
 

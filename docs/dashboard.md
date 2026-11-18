@@ -51,6 +51,26 @@ Implementation plan agreed on 2026-11-16. For deployment and HTTPS, see [Docker 
   implemented; staff MFA/recovery and the real VPS deployment/soak remain. The old private HTML panel remains
   available during the security transition.
 
+## Staff interface
+
+Account and player tables switch to labelled rows on phones and narrow tablets, keeping actions in view.
+Searches have a clear button, account filters show the result count and an empty result offers **Clear filters**.
+Long dialogs scroll their body while keeping the heading and action buttons visible.
+
+**Give a gift → Cards** searches the host's catalogue and lists each artwork separately, with keyboard-selectable
+rows and card icons. Copy counts are checked before confirmation, and the confirmation stays beside the submit
+button. **Card details** opens the official Konami database in a new tab using the catalogue's Konami ID. That page
+shows current text; Revival may use older card effects. No external image is embedded or fetched by the dashboard.
+
+Hosted image/effect previews need a future server release: the current catalogue returns names and IDs only.
+[YGOPRODeck's API guide](https://ygoprodeck.com/api-guide/) requires downloading images once and hosting them
+locally; its image URLs must not become live dashboard hotlinks. Konami IDs, game artwork rows and card passcodes
+are different identifiers and need an explicit mapping before choosing an external image.
+
+All 28 documented staff operations are consumed by the dashboard. The current UI pass uses the released API
+without changing the schema, generated client or nginx image policy. Responsive and accessibility checks are in
+`dashboard/e2e/ergonomics.spec.ts`; gift retry and permission checks remain in `dashboard/e2e/connected.spec.ts`.
+
 ## Independent UI delivery
 
 Full releases still update both services. Issue [#62](https://github.com/usersina/yo3-revival/issues/62) adds a
@@ -62,6 +82,12 @@ release server image, never unreleased Rust from `main`. The footer separates se
 old tabs offer an explicit reload without interrupting forms. Published v0.1.0 compatibility passed locally; the
 first real workflow-token deletion probe remains to be checked on GitHub.
 See [deployment checks](deployment.md#independent-dashboard-updates-62).
+
+The 2026-11-18 UI rehearsal used the VPS's exact v0.1.0 server/dashboard digests with the new frontend assets.
+Runtime equality, production browser checks and a disposable registry/Compose replacement passed, including
+duplicate/stale-request refusal, rollback and retry with the same server, account data and identity.
+The live planner still defers delivery because the unpublished Docker/deployer changes differ from v0.1.0;
+those foundation changes must ship in a full release before independent UI delivery can start.
 
 ## Database backups
 
