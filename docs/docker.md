@@ -131,8 +131,9 @@ Finish password setup before promotion; role changes invalidate outstanding setu
 the dashboard or `invite --uses 5 --days 7`. The [account commands](guide.md#account-commands) work with the same
 `docker compose exec server /opt/yo3/yo3-server --config /etc/yo3/server.toml` prefix.
 
-Task is optional and has exactly five convenience tasks: `task build`, `task start`, `task stop`, `task status` and
+Task is optional. Its five Compose convenience tasks are: `task build`, `task start`, `task stop`, `task status` and
 `task logs`. The equivalent Compose commands are `build`, `up -d --wait`, `stop`, `ps` and `logs --tail=100 --follow`.
+Other tasks cover local development and checks; see `task --list`.
 `stop` preserves volumes. Use Compose/Task to stop a deployment: the dashboard's process Stop can be restarted by
 Docker's `unless-stopped` policy. **Do not use `docker compose down --volumes` on a deployment.**
 

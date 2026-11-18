@@ -1,5 +1,5 @@
 #!/bin/sh
-# tools/engine-files.sh DEST: what the engine program reads, into DEST/engine (tools/release.sh, for each platform; run
+# tools/engine/engine-files.sh DEST: what the engine program reads, into DEST/engine (tools/release/release.sh, for each platform; run
 # from the repository root). Only the scripts it loads (the root utilities, official/, and pre-errata/ and
 # pre-release/, where a few current scripts live), our own scripts that take the place of some (engine/overrides/),
 # only cards.cdb, and the pinned Konami card ids (each card's passcode, artworks and Konami ids). The program itself

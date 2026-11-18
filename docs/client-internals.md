@@ -193,7 +193,7 @@ below 12 and enters player selection. Native failure dialogs, player creation an
 their own transitions. No stock files are patched, and an unexpected call instruction refuses mod readiness.
 
 The shared C fixture checks both fresh and saved login data, preservation of unrelated native state, and byte-guard
-rejection. `tools/mod/test.sh` also runs it as 32-bit Windows code under Wine and independently checks changed
+rejection. `tools/mod/test-dll.sh` also runs it as 32-bit Windows code under Wine and independently checks changed
 login and starter hook sites. Live verification is recorded in [the history](history.md).
 
 ### The game's own login form (#34, research R1)
@@ -453,7 +453,7 @@ so a check doesn't need a screenshot. It is off unless `YO3_UI_PROBE` names an e
 `logs/<instance>/ui` for its private clients, and the launchers never set it. Its own thread checks that folder for a
 `request` file every 200 ms, then writes `ui.json` (a temporary file renamed into place). `vclient.sh ui` prints it
 readably, `vclient.sh ui --raw` as JSON. Its readers (`ui-state.h`) take a checked read callback and are tested on
-synthetic memory (`ui-state-test.c`, run by `tools/mod/test.sh`); it writes no game memory.
+synthetic memory (`ui-state-test.c`, run by `tools/mod/test-dll.sh`); it writes no game memory.
 
 - **Components.** Every screen, window and dialog is a component made by the factory `0x4EEB90` and added to its
   parent with the parent's vtable slot 14 (`+0x38`). For a container (`BroadcastComponent`, add-child `0x403C00`,

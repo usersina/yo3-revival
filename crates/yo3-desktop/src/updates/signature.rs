@@ -13,7 +13,7 @@
 //! and older) are never offered to a launcher that checks signatures; they themselves don't check, so they still
 //! update to a signed release.
 //!
-//! `tools/test-packaged-update.sh` checks a signed manifest end to end with a key it makes for the test, never this one.
+//! `tools/release/test-packaged-update.sh` checks a signed manifest end to end with a key it makes for the test, never this one.
 use anyhow::{Context, ensure};
 use super::Release;
 

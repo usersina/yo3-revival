@@ -84,7 +84,7 @@ The local injector's own startup protocol is `YO3_MOD_READY` (LF/CRLF accepted) 
 `Yo3ModReady` confirms DLL interface 3; the game stays suspended. The parent authenticates and writes `resume\n`
 to stdin only after that acknowledgement. EOF/failure kills the suspended child. `.yo3` PE metadata carries the
 mod interface, release and commit, while `bundle.json` inventories release hashes. Tests: launcher `components`,
-`desktop_control`, `tools/mod/test.sh`; this is our bootstrap protocol, not a game reply shape.
+`desktop_control`, `tools/mod/test-dll.sh`; this is our bootstrap protocol, not a game reply shape.
 
 Direct launch (set up by Desktop Play) uses a game-local WINMM proxy (the seven imports in `tools/mod/loader.c`), leaving the executable
 unchanged. Its IAT wrappers defer process/UI/network work until a relevant INI/WinInet/connect call, outside DllMain.

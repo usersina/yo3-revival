@@ -432,7 +432,7 @@ host token and a loopback peer. Source address alone never grants local authorit
 
 Separate server/engine and dashboard/nginx images in Compose. Persistent SQLite data, read-only user-supplied game
 assets, protected keys outside the dashboard, health checks and graceful shutdown. Rehearse backup and restore.
-Taskfile has only build, start, stop, status and logs. [Deployment guide](docker.md) covers certificate bootstrapping,
+The Compose tasks are build, start, stop, status and logs (`task --list` shows the rest). [Deployment guide](docker.md) covers certificate bootstrapping,
 renewal/reload, monitoring and offline restore. The game identity and SQLite volume never reach nginx.
 
 Normalize domains gradually behind the API, with versioned migrations, constraints and tested restore. The first

@@ -17,7 +17,7 @@ SPEC.loader.exec_module(editions)
 
 class Editions(unittest.TestCase):
     def test_both_editions_keep_offline_docs_and_screenshots_links_valid(self):
-        repo = Path(__file__).resolve().parent.parent
+        repo = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory(prefix="yo3 bundled docs ") as tmp:
             root = Path(tmp)
             source = root / "source"
@@ -29,7 +29,7 @@ class Editions(unittest.TestCase):
             for edition in ("desktop", "scripts"):
                 destination = root / edition
                 editions.prepare(source, destination, edition, False)
-                result = subprocess.run([sys.executable, repo / "tools/docs-check.py", "--root", destination], capture_output=True, text=True)
+                result = subprocess.run([sys.executable, repo / "tools/docs/docs-check.py", "--root", destination], capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertTrue((destination / "screenshots/desktop.png").is_file())
                 if edition == "scripts":
@@ -75,7 +75,7 @@ class Editions(unittest.TestCase):
 
     def test_the_linux_server_bundle_has_the_server_engine_units_and_hosting_guide_only(self):
         # #37: what a VPS runs, nothing a player runs; its README is the hosting guide with working offline links.
-        repo = Path(__file__).resolve().parent.parent
+        repo = Path(__file__).resolve().parents[2]
         self.assertEqual(editions.editions("linux-x86_64"), ("desktop", "scripts", "server"))
         self.assertEqual(editions.editions("windows-x86_64"), ("desktop", "scripts"))
         with tempfile.TemporaryDirectory(prefix="yo3 server bundle ") as tmp:
@@ -111,7 +111,7 @@ class Editions(unittest.TestCase):
                          "ExecStart=/opt/yo3-revival/yo3-server --config /etc/yo3/server.toml"):
                 self.assertIn(line, unit)
             self.assertIn("ExecStart=/opt/yo3-revival/systemd/yo3-monitor.sh", (destination / "systemd/yo3-monitor.service").read_text())
-            result = subprocess.run([sys.executable, repo / "tools/docs-check.py", "--root", destination], capture_output=True, text=True)
+            result = subprocess.run([sys.executable, repo / "tools/docs/docs-check.py", "--root", destination], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             archive = editions.archive(destination, root, "v0.0.30", "linux-x86_64")
             self.assertEqual(archive.name, "yo3-revival-server-v0.0.30-linux-x86_64.tar.gz")
@@ -120,7 +120,7 @@ class Editions(unittest.TestCase):
                 self.assertTrue(t.getmember("yo3-revival-server/systemd/yo3-monitor.sh").mode & 0o111, "kept executable in the archive")
 
     def test_the_engine_files_carry_the_card_script_overrides(self):
-        repo = Path(__file__).resolve().parent.parent
+        repo = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory(prefix="yo3 engine files ") as tmp:
             root = Path(tmp)
             fixture = {
@@ -136,7 +136,7 @@ class Editions(unittest.TestCase):
             for name, text in fixture.items():
                 (root / name).parent.mkdir(parents=True, exist_ok=True)
                 (root / name).write_text(text)
-            subprocess.run(["sh", repo / "tools/engine-files.sh", root / "bundle"], cwd=root, check=True)
+            subprocess.run(["sh", repo / "tools/engine/engine-files.sh", root / "bundle"], cwd=root, check=True)
             engine = root / "bundle/engine"
             self.assertEqual((engine / "vendor/CardScripts/official/c1.lua").read_text(), "upstream")
             overrides = sorted(p.name for p in (repo / "engine/overrides").iterdir())

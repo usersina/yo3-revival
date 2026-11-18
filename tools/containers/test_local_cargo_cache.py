@@ -94,7 +94,11 @@ class LocalCargoCache(unittest.TestCase):
         step = steps[names.index('Reuse the runner’s local Cargo output')]
         self.assertIn('local_cargo_cache.py', step['run'])
         self.assertLess(names.index(step['name']), names.index('Lints'))
-        self.assertIn('test_local_cargo_cache.py', '\n'.join(s.get('run', '') for s in steps))
+        self.assertIn('python3 tools/check.py py', '\n'.join(s.get('run', '') for s in steps))
+        checks_spec = importlib.util.spec_from_file_location('checks', ROOT / 'tools/check.py')
+        checks = importlib.util.module_from_spec(checks_spec)
+        checks_spec.loader.exec_module(checks)
+        self.assertIn('tools/containers/test_local_cargo_cache.py', checks.PY)
 
 
 if __name__ == '__main__': unittest.main()

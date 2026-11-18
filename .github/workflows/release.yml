@@ -94,23 +94,10 @@ jobs:
         run: |
           # actionlint 1.7.12 predates GitHub's documented FIFO queue property; only that diagnostic is exempt.
           actionlint -ignore '^unexpected key "queue" for "concurrency" section\.' .github/workflows/*.yml
-          python3 tools/mod/test_fixture_layout.py
-          python3 tools/mod/test_winmm_exports.py
-          python3 tools/client/test_vclient.py
-          python3 tools/monkey/test_duel_report.py
-          python3 tools/monkey/test_duel_replay.py
-          python3 tools/test_package_editions.py
-          python3 tools/test_release_notes.py
-          python3 tools/test_release_lifecycle.py
-          python3 tools/test_host_scripts.py
-          python3 tools/containers/test_config.py
-          python3 tools/containers/test_deployment.py
-          python3 tools/containers/test_dashboard_delivery.py
-          python3 tools/containers/test_dashboard_workflow.py
-          python3 tools/containers/test_local_cargo_cache.py
-          python3 tools/test_docs_check.py
+          # The hermetic Python tests: the one list in tools/check.py, also run by `task check`.
+          python3 tools/check.py py
       - name: Documentation links and images
-        run: tools/docs-check.py
+        run: python3 tools/check.py docs
       - name: Tests
         run: cargo nextest run --workspace
       - uses: actions/setup-node@v6
@@ -139,7 +126,7 @@ jobs:
           npm run test:e2e -- --workers 3
       - name: Bundles
         if: needs.prepare.outputs.release == 'true'
-        run: YO3_VERSION="$VERSION" tools/release.sh
+        run: YO3_VERSION="$VERSION" tools/release/release.sh
       - name: The bundled rules engine plays every card of the client's era
         if: needs.prepare.outputs.release == 'true'
         run: |
@@ -157,7 +144,7 @@ jobs:
           previous=$(python3 .github/scripts/release_lifecycle.py previous "$VERSION")
           mkdir -p dist/released
           gh release download "$previous" --dir dist/released --clobber -p "yo3-revival-desktop-$previous-linux-x86_64.tar.gz"
-          tools/test-packaged-update.sh "$VERSION" "dist/yo3-revival-desktop-$VERSION-linux-x86_64.tar.gz" \
+          tools/release/test-packaged-update.sh "$VERSION" "dist/yo3-revival-desktop-$VERSION-linux-x86_64.tar.gz" \
             --from "dist/released/yo3-revival-desktop-$previous-linux-x86_64.tar.gz"
       - name: Official server list
         if: needs.prepare.outputs.release == 'true'
@@ -167,7 +154,7 @@ jobs:
           # Launchers fetch releases/latest/download/servers.json and trust only multiplayer::OFFICIAL_LIST_KEYS. The
           # private key (PKCS#8, base64 in the secret) only ever sits in a private temporary file; it is never echoed.
           [ -n "$SERVER_LIST_KEY" ] || { echo "The SERVER_LIST_KEY secret is missing" >&2; exit 1; }
-          # tools/release.sh already built every Desktop binary with the release metadata. Reuse that signer:
+          # tools/release/release.sh already built every Desktop binary with the release metadata. Reuse that signer:
           # invoking Cargo here without that metadata needlessly recompiles the shared crates as a dev build.
           test -x target/release/yo3-server-list
           key="$(umask 077 && mktemp)"

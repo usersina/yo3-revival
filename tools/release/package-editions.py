@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tarfile
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
 # What only the players' editions carry: the launchers, the connection DLL and its loader, the play scripts.
 PLAYER_FILES = ("yo3-revival", "yo3-revival.exe", "yo3-launcher", "yo3-launcher.exe", "yo3-launcher-windows.exe", "yo3-auth.dll",
                 "yo3-auth-launch.exe", "yo3-bootstrap.dll", "yo3-revival.ico", "yo3-revival.png")
@@ -98,10 +98,10 @@ def main():
         if directory.exists():
             shutil.rmtree(directory)
         prepare(Path(source), directory, edition, windows)
-        subprocess.run([sys.executable, str(REPO / "tools/bundle-licenses.py"), str(directory), target, edition], cwd=REPO, check=True)
-        subprocess.run([sys.executable, str(REPO / "tools/bundle-manifest.py"), str(directory), edition], cwd=REPO,
+        subprocess.run([sys.executable, str(REPO / "tools/release/bundle-licenses.py"), str(directory), target, edition], cwd=REPO, check=True)
+        subprocess.run([sys.executable, str(REPO / "tools/release/bundle-manifest.py"), str(directory), edition], cwd=REPO,
                        env={**os.environ, "YO3_BUILD_VERSION": version}, check=True)
-        subprocess.run([sys.executable, str(REPO / "tools/docs-check.py"), "--root", str(directory)], cwd=REPO, check=True)
+        subprocess.run([sys.executable, str(REPO / "tools/docs/docs-check.py"), "--root", str(directory)], cwd=REPO, check=True)
         print(archive(directory, dist, version, platform))
 
 

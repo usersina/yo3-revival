@@ -6,7 +6,7 @@
 #
 # KEY_FILE is an Ed25519 private key in PEM (the Release workflow writes the UPDATE_SIGNING_KEY secret to a private
 # temporary file and removes it afterwards). PUBLIC_KEY_HEX (64 hex digits) defaults to the key in
-# crates/yo3-desktop/src/updates/signature.rs; tools/test-packaged-update.sh passes the key it made for the test.
+# crates/yo3-desktop/src/updates/signature.rs; tools/release/test-packaged-update.sh passes the key it made for the test.
 # Prints nothing secret: only the public key and the result.
 set -euo pipefail
 if [[ $# -lt 2 || $# -gt 3 ]]; then echo 'usage: sign_release.sh DIR KEY_FILE [PUBLIC_KEY_HEX]' >&2; exit 2; fi

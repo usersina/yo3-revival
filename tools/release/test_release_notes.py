@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / ".github/scripts/release_notes.py"
 SIGN = REPO / ".github/scripts/sign_release.sh"
 SPEC = importlib.util.spec_from_file_location("release_notes", SCRIPT)

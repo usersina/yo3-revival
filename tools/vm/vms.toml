@@ -1,0 +1,19 @@
+# The libvirt VMs used for native Windows checks (tools/vm/vm.py, `task vm -- …`). A file at
+# ~/.config/yo3-revival/vms.toml, with the same layout, overrides values per VM.
+#
+# share: the host folder each guest mounts (as `guest_share`); vm.py runs guest commands and copies files through it.
+# ssh: optional "user@host" for OpenSSH on the guest; `run` then uses it instead of typing into the Run box.
+
+[defaults]
+connect = "qemu:///system"
+share = "/data/shared"
+guest_share = "Z:"
+
+[win7]
+description = "Windows 7 SP1 64-bit, VxKex installed (docs/launcher.md#windows-7); game in C:\\Games"
+
+[win10]
+description = "Windows 10, protected-folder checks"
+
+[win11]
+description = "Windows 11 build 22000, the native client's main check machine"
