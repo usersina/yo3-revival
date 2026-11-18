@@ -67,7 +67,9 @@ For independent dashboard delivery (#62), see the [compatibility gate](deploymen
 `tools/containers/test_dashboard_browser.py` runs production browser checks against existing images, without
 compiling Rust or using production data. `tools/containers/test_dashboard_runtime.py` builds disposable images to
 test runtime equality and stale-asset removal. `test_dashboard_deploy.py` rehearses real replacement/rollback with
-its own registry and stack. Automatic dashboard deployment is still pending.
+its own registry and stack. `test_dashboard_workflow.py` checks the shared FIFO, home runner, trusted triggers and
+verification-before-deploy wiring. Full releases and independent UI delivery run on `[self-hosted, home]`; see
+the [runner prerequisites](deployment.md#home-runner). The first automatic run still needs verification on GitHub.
 
 ```bash
 cargo nextest run --workspace
@@ -80,6 +82,7 @@ python3 tools/monkey/test_duel_replay.py
 python3 tools/test_package_editions.py
 python3 tools/test_release_notes.py
 python3 tools/test_release_lifecycle.py
+python3 tools/containers/test_dashboard_workflow.py
 python3 tools/test_host_scripts.py
 python3 tools/test_docs_check.py
 tools/docs-check.py

@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-18 — Dashboard automation and home runner (#62)](#2026-11-18--dashboard-automation-and-home-runner-62)
   - [2026-11-17 — Restricted dashboard replacement (#62, slice 2)](#2026-11-17--restricted-dashboard-replacement-62-slice-2)
   - [2026-11-17 — Dashboard delivery compatibility gate (#62)](#2026-11-17--dashboard-delivery-compatibility-gate-62)
   - [2026-11-17 — Automatic release deployment and launcher version floor](#2026-11-17--automatic-release-deployment-and-launcher-version-floor)
@@ -41,6 +42,28 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-18 — Dashboard automation and home runner (#62)
+
+Implemented the final delivery slice: `Deploy dashboard` follows successful main-branch Release runs, including
+ordinary pushes, and supports a manual retry. It checks latest `main` against the authoritative VPS receipt, tests
+the candidate against the released server/runtime, then publishes an asset-only commit tag and performs the existing
+compare-and-swap transaction. Release publication, UI delivery and cleanup share one non-cancelling FIFO queue.
+Cleanup validates both release trees and active/previous UI manifest trees before deletion; a uniquely tagged tiny
+probe first checks that the workflow token can delete exactly its disposable package version. Early UI deliveries
+are described in the next release notes when the previous receipt is available.
+
+Added separate server/build versions to the footer, uncached periodic/focus metadata checks and explicit reload
+recovery for missing lazy modules. Tests cover silent network failures, preserved form drafts and no forced reload.
+The published v0.1.0 server/nginx digests were pulled for local compatibility checks with synthetic test data.
+
+The existing Ubuntu `home-runner` VM had two stopped Mashroomies registrations. Left those alone and installed a
+separate repository runner, `home-yo3`, under its own account with label `home`, checksum-verified runner 2.338.2,
+boot-enabled service, Docker access, Rust and the existing release's OS prerequisites. GitHub reports it online.
+Linux jobs use `[self-hosted, home]`; credentials use per-job temporary paths. No pull-request trigger was added.
+The first real Actions run and workflow-token deletion proof remain pending; no image was published locally.
+Installed the tested restricted updater on the VPS without restarting services. Its state query, actual running
+image IDs and HTTPS health matched the v0.1.0 release receipt. The previous updater was retained privately for recovery.
 
 ## 2026-11-17 — Restricted dashboard replacement (#62, slice 2)
 

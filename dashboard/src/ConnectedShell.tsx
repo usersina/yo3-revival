@@ -21,6 +21,7 @@ import { Badge, Button, Modal } from './components/ui'
 import { useGetServerStatus, useSignOutStaff } from './api/generated/http/client'
 import type { StaffSession } from './api/generated/http/models'
 import { ApiHttpError, setCsrfToken } from './api/transport'
+import { dashboardCommit } from './build'
 const navigation = [
   { label: 'Overview', path: '/', icon: LayoutDashboard, group: 'Workspace' },
   { label: 'Accounts', path: '/accounts', icon: Users, group: 'Workspace' },
@@ -170,8 +171,10 @@ export function ConnectedShell({
           <footer className="page-footer">
             <span>YO3 Revival · Made for one more duel.</span>
             <span>
-              {status.data ? `Version ${status.data.version}` : 'Version unavailable'} · Staff
-              management
+              {status.data
+                ? `Server v${status.data.version.replace(/^v/, '')}`
+                : 'Server version unavailable'}
+              {' · '}Dashboard {dashboardCommit.slice(0, 7)}
             </span>
           </footer>
         </main>

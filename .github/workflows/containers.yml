@@ -24,15 +24,24 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, home]
     timeout-minutes: 60
     outputs:
       server-image: ${{ steps.references.outputs.server-image }}
       dashboard-image: ${{ steps.references.outputs.dashboard-image }}
     steps:
+      - name: Prepare private job credentials
+        run: |
+          umask 077
+          for name in DOCKER_CONFIG GH_CONFIG_DIR; do
+            path="$RUNNER_TEMP/yo3-containers-$name-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            mkdir -p "$path"
+            echo "$name=$path" >> "$GITHUB_ENV"
+          done
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.source-ref }}
+          persist-credentials: false
       - name: Require the newest published release tag at this exact commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -91,6 +100,8 @@ jobs:
           tags: |
             ${{ steps.names.outputs.base }}-dashboard:${{ inputs.version }}
             ${{ steps.names.outputs.base }}-dashboard:sha-${{ inputs.source-ref }}
+          build-args: |
+            YO3_BUILD_COMMIT=${{ inputs.source-ref }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ inputs.source-ref }}
@@ -132,3 +143,6 @@ jobs:
           Path('container-images.json').write_text(json.dumps(manifest, indent=2) + '\n')
           PYTHON
           gh release upload "$VERSION" container-images.json --clobber
+      - name: Remove job registry credentials
+        if: always()
+        run: rm -rf -- "$DOCKER_CONFIG" "$GH_CONFIG_DIR"

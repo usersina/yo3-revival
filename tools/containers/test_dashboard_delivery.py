@@ -130,6 +130,17 @@ class Eligibility(unittest.TestCase):
         self.assertTrue(result['eligible'])
         self.assertEqual(result['expected_dashboard_commit'], deployed)
 
+    def test_release_notes_identify_only_ui_changes_already_delivered(self):
+        self.assertEqual(delivery.early_release_notes(self.repo,self.state,self.release),'')
+        self.write('dashboard/src/App.tsx','delivered UI\n')
+        shipped=self.commit();self.state['dashboard_commit']=shipped
+        self.write('crates/server.rs','new release\n');candidate=self.commit()
+        self.assertIn(shipped[:7],delivery.early_release_notes(self.repo,self.state,candidate))
+        # A future dashboard may be newer than the cut release; describe only their shared history.
+        self.write('dashboard/src/App.tsx','newer UI\n');newer=self.commit()
+        self.state['dashboard_commit']=newer
+        self.assertNotIn(newer,delivery.early_release_notes(self.repo,self.state,candidate))
+
     def test_delayed_candidate_cannot_overwrite_a_newer_dashboard(self):
         self.write('dashboard/src/App.tsx', 'newer deployed UI\n')
         self.state['dashboard_commit'] = self.commit()

@@ -2,11 +2,12 @@
 """Gate image builds on a published tag; retain the newest two stable releases after deployment.
 Releases before v0.1.0 (the alpha) are never deleted.
 
-Commands: previous VERSION | verify VERSION COMMIT | prune VERSION COMMIT.
+Commands: previous VERSION | verify VERSION COMMIT | prune VERSION COMMIT --state FILE.
 Uses the job's GH_TOKEN and Docker login. Git refs/tags are never deleted.
 """
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -113,7 +114,7 @@ def manifest_tree(image, root, inspect):
     return retained
 
 
-def retention_plan(api, version, commit, inspect):
+def retention_plan(api, version, commit, inspect, state=None):
     releases = verify_release(api, version, commit)
     keep = releases[:2]
     manifests = {}
@@ -129,6 +130,23 @@ def retention_plan(api, version, commit, inspect):
             if release["tag_name"] == version and manifest["commit"] != commit:
                 raise ValueError("Image metadata disagrees with the deployed commit")
             manifests[release["tag_name"]] = manifest
+    protected={'server':[], 'dashboard':[]}
+    if state is not None:
+        if not isinstance(state,dict):raise ValueError('Expected current deployment state')
+        # Authoritative host receipt, not tags or a caller's last successful job. Never prune without validating it.
+        if state.get('version')!=version or state.get('commit')!=commit:
+            raise ValueError('Deployment changed; read current host state before cleanup')
+        canonical=manifests.get(version,{})
+        if state.get('server')!=canonical.get('server') or state.get('released_dashboard',state.get('dashboard'))!=canonical.get('dashboard'):
+            raise ValueError('Deployment state disagrees with the published release images')
+        if not COMMIT.fullmatch(str(state.get('dashboard_commit',commit))):raise ValueError('Invalid dashboard commit')
+        protected['server'].append(state['server'])
+        protected['dashboard'] += [state['dashboard'],state.get('released_dashboard',state['dashboard'])]
+        if state.get('previous_dashboard') is not None:
+            previous=state['previous_dashboard']
+            if not isinstance(previous,dict) or not COMMIT.fullmatch(str(previous.get('commit'))):
+                raise ValueError('Invalid previous dashboard state')
+            protected['dashboard'].append(previous.get('image'))
     owner, name = api.repo.split("/")
     owner_type = api.get(f"/repos/{api.repo}")["owner"]["type"]
     if owner_type not in {"User", "Organization"}:
@@ -158,6 +176,12 @@ def retention_plan(api, version, commit, inspect):
             root = ref.removeprefix(prefix)
             roots.add(root)
             retained.update(manifest_tree(image, root, inspect))
+        for ref in protected[role]:
+            prefix=image+'@'
+            if not isinstance(ref,str) or not ref.startswith(prefix) or not DIGEST.fullmatch(ref.removeprefix(prefix)):
+                raise ValueError('Invalid active dashboard image reference')
+            root=ref.removeprefix(prefix);roots.add(root)
+            retained.update(manifest_tree(image,root,inspect))
         if not roots.issubset({v["name"] for v in versions}):
             raise ValueError(f"Retained image versions are missing from GitHub: {package}")
         for item in versions:
@@ -170,9 +194,9 @@ def retention_plan(api, version, commit, inspect):
     return [r["tag_name"] for r in keep], deletes
 
 
-def prune(api, version, commit, inspect=inspect_manifest):
+def prune(api, version, commit, inspect=inspect_manifest, state=None):
     # Complete all reads before deleting anything. Errors fail CI; they never roll back a healthy deployment.
-    keep, deletes = retention_plan(api, version, commit, inspect)
+    keep, deletes = retention_plan(api, version, commit, inspect, state)
     print("Retaining releases: " + ", ".join(keep), flush=True)
     for path in deletes:
         print("Deleting " + path, flush=True)
@@ -184,6 +208,26 @@ def prune(api, version, commit, inspect=inspect_manifest):
             file.write(message + "\n")
 
 
+def delete_probe(api,digest,tag):
+    """Prove this job's token can delete one uniquely tagged disposable version in the real dashboard package."""
+    if not DIGEST.fullmatch(digest) or not re.fullmatch(r'deletion-probe-[0-9]+-[0-9]+',tag):
+        raise ValueError('Invalid disposable probe identity')
+    owner,name=api.repo.split('/')
+    owner_type=api.get(f'/repos/{api.repo}')['owner']['type']
+    if owner_type not in {'User','Organization'}:raise ValueError('Unknown repository owner type')
+    scope='users' if owner_type=='User' else 'orgs'
+    path=f'/{scope}/{owner}/packages/container/{name}-dashboard'
+    if api.get(path).get('repository',{}).get('full_name','').lower()!=api.repo:
+        raise ValueError('Probe package must belong to this repository')
+    matches=[v for v in api.list(path+'/versions') if v['name']==digest]
+    if len(matches)!=1 or matches[0]['metadata']['container']['tags']!=[tag]:
+        raise ValueError('Refusing to delete anything except the exact disposable version')
+    identifier=matches[0]['id']
+    if not isinstance(identifier,int) or identifier<=0:raise ValueError('Invalid probe version id')
+    api.delete(f'{path}/versions/{identifier}')
+    print('Workflow-token deletion probe passed',flush=True)
+
+
 def main():
     api = GitHub(os.environ["GITHUB_REPOSITORY"])
     args = sys.argv[1:]
@@ -192,8 +236,8 @@ def main():
     elif len(args) == 3 and args[0] == "verify":
         verify_release(api, args[1], args[2])
         print(f"Verified published {args[1]} at {args[2]}")
-    elif len(args) == 3 and args[0] == "prune":
-        prune(api, args[1], args[2])
+    elif len(args) == 5 and args[0] == 'prune' and args[3]=='--state':
+        prune(api,args[1],args[2],state=json.loads(Path(args[4]).read_text()))
     else:
         sys.exit(__doc__)
 

@@ -25,7 +25,8 @@ class Provisioning(unittest.TestCase):
         self.assertEqual(set(cleanup['needs']),{'prepare','release','containers','deploy'})
         self.assertNotIn('always()',cleanup.get('if',''),'A failed deploy must preserve all previous downloads/images')
         self.assertEqual(cleanup['permissions'],{'contents':'write','packages':'write'})
-        self.assertIn('release_lifecycle.py prune',cleanup['steps'][-1]['run'])
+        self.assertIn('release_lifecycle.py prune',next(s['run'] for s in cleanup['steps']
+            if s.get('name')=='Remove old downloads and image versions after healthy deployment'))
         containers=yaml.load((ROOT/'.github/workflows/containers.yml').read_text(),Loader=yaml.BaseLoader)
         self.assertEqual(set(containers['on']),{'workflow_call'},'No per-push or standalone image build')
         steps=containers['jobs']['publish']['steps']

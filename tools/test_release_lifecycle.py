@@ -124,6 +124,52 @@ class ReleaseLifecycle(unittest.TestCase):
         # REST release deletion removes its downloads, never its Git ref/tag.
         self.assertFalse(any("/git/" in path for path in api.deleted))
 
+    def test_retention_protects_running_previous_and_released_dashboard_trees(self):
+        api = Fixture()
+        state = self.dashboard_state(api)
+        lifecycle.prune(api, "v0.1.10", COMMIT, api.inspect, state=state)
+        for number in [80, 81, 1080, 1081]:
+            self.assertNotIn(api.package('dashboard')+f'/versions/{number}', api.deleted)
+        self.assertIn(api.package('dashboard')+'/versions/77', api.deleted)
+
+    def dashboard_state(self, api):
+        for number in [80, 81]:
+            api.data[api.package('dashboard')+'/versions'] += [
+                {'id': n, 'name': digest(n), 'metadata': {'container': {'tags': tags}}}
+                for n, tags in [(number, ['dashboard-'+str(number)*20]), (number+1000, [])]]
+            image=f'ghcr.io/{REPO}-dashboard'
+            api.registry[f'{image}@{digest(number)}']={'mediaType':'application/vnd.oci.image.index.v1+json',
+                'manifests':[{'digest':digest(number+1000)}]}
+            api.registry[f'{image}@{digest(number+1000)}']={'mediaType':'application/vnd.oci.image.manifest.v1+json'}
+        return api.blobs[110] | {'released_dashboard': api.blobs[110]['dashboard'],
+            'dashboard':f'ghcr.io/{REPO}-dashboard@{digest(80)}', 'dashboard_commit':'b'*40,
+            'previous_dashboard':{'image':f'ghcr.io/{REPO}-dashboard@{digest(81)}','commit':'c'*40}}
+
+    def test_bad_deployment_state_or_missing_ui_tree_refuses_every_delete(self):
+        for failure in ['foreign', 'missing', 'release', 'previous', 'empty previous']:
+            api=Fixture();state=self.dashboard_state(api)
+            if failure=='foreign':state['dashboard']='ghcr.io/other/image@'+digest(80)
+            elif failure=='missing':del api.registry[f'ghcr.io/{REPO}-dashboard@{digest(1081)}']
+            elif failure=='release':state['server']=state['server'].replace(digest(10),digest(9))
+            elif failure=='previous':state['previous_dashboard']['commit']='main'
+            else:state['previous_dashboard']={}
+            with self.subTest(failure=failure),self.assertRaises((ValueError, KeyError)):
+                lifecycle.prune(api,'v0.1.10',COMMIT,api.inspect,state=state)
+            self.assertEqual(api.deleted,[])
+
+    def test_package_probe_can_delete_only_its_exact_disposable_version(self):
+        api=Fixture();path=api.package('dashboard')
+        tag='deletion-probe-123-1'
+        version={'id':900,'name':digest(900),'metadata':{'container':{'tags':[tag]}}}
+        api.data[path+'/versions'].append(version)
+        lifecycle.delete_probe(api,digest(900),tag)
+        self.assertEqual(api.deleted,[path+'/versions/900'])
+        for change in [{'name':digest(10)}, {'metadata':{'container':{'tags':[tag,'v0.1.10']}}}]:
+            api=Fixture();api.data[path+'/versions'].append(version|change)
+            with self.subTest(change=change),self.assertRaises(ValueError):
+                lifecycle.delete_probe(api,digest(900),tag)
+            self.assertEqual(api.deleted,[])
+
     def test_alpha_releases_before_v0_1_0_are_never_deleted(self):
         # The owner keeps v0.0.1–v0.0.26 (the alpha) for good; only beta releases past the newest two go.
         api = Fixture()
@@ -251,18 +297,22 @@ else:
                 executable.chmod(0o700)
             env = dict(os.environ, PATH=str(root) + os.pathsep + os.environ["PATH"], GITHUB_REPOSITORY=REPO,
                        GITHUB_STEP_SUMMARY=str(root / "summary.md"))
+            receipt=root/'active.json';receipt.write_text(json.dumps(api.blobs[110]))
             def run(command, *args):
                 state.write_text(json.dumps({"data": api.data, "blobs": api.blobs, "registry": api.registry}))
                 return subprocess.run([sys.executable, SPEC.origin, command, *args], env=env, capture_output=True, text=True)
             self.assertEqual(run("previous", "v0.1.11").stdout.strip(), "v0.1.10")
             self.assertEqual(run("verify", "v0.1.10", COMMIT).returncode, 0)
+            refused=run('prune','v0.1.10',COMMIT)
+            self.assertNotEqual(refused.returncode,0,'Cleanup must require current deployment state')
+            self.assertFalse(calls.exists())
             ref = f"ghcr.io/{REPO}-dashboard@{digest(2009)}"
             missing = api.registry.pop(ref)
-            failed = run("prune", "v0.1.10", COMMIT)
+            failed = run("prune", "v0.1.10", COMMIT, '--state', str(receipt))
             self.assertNotEqual(failed.returncode, 0)
             self.assertFalse(calls.exists(), failed.stderr)
             api.registry[ref] = missing
-            success = run("prune", "v0.1.10", COMMIT)
+            success = run("prune", "v0.1.10", COMMIT, '--state', str(receipt))
             self.assertEqual(success.returncode, 0, success.stderr)
             deleted = [json.loads(line) for line in calls.read_text().splitlines()]
             self.assertEqual(len(deleted), 9)

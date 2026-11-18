@@ -25,16 +25,17 @@ and Scripts.
 
 **Standalone management dashboard**
 
-- [ ] Independent dashboard updates from `main` (#62). Eligibility, browser/runtime gates, the asset image and
-      restricted replacement/rollback are implemented and rehearsed locally. Automatic delivery/reconciliation,
-      version/reload UI and retention are pending. [Checks](deployment.md#independent-dashboard-updates-62).
+- [ ] Verify the first automatic dashboard delivery on the home runner (#62), including its disposable workflow-token
+      package-deletion probe and protected-image retention. Triggers/reconciliation, version/reload UI and cleanup
+      are implemented; published v0.1.0 compatibility is checked locally. [Checks](deployment.md#independent-dashboard-updates-62).
 - [ ] Staff MFA and recovery (#43), recent MFA for sensitive actions and a final public-access security review.
       Public HTTPS/password sign-in is approved for testing; the existing HTML panel remains private.
 - [ ] Finish hosted-server validation (#47): real Windows clients and native-engine duel load, isolated password-hash
       timing, and the DNS-based HTTPS monitor after resolver caches expire. Choose off-machine backup storage and
       alert destinations. Completed provisioning, recovery and protocol checks: [VPS record](history.md#2026-11-17--public-vps-deployment-and-recovery).
-- [ ] Verify GHCR publishing on the first release using the container workflow. [Local Ansible setup](deployment.md)
-      is checked on the VPS; release-triggered SSH deployment and two-release/image retention are implemented; their first published-release run remains to be verified.
+- [ ] Verify a full release on the new home runner, including its cross-platform build's disk capacity and the
+      workflow-token retention probe. Published v0.1.0 digests already match the healthy live VPS containers.
+      [Local Ansible setup](deployment.md) is checked on the VPS.
 - [ ] Normalize SQLite domains incrementally after deployment validation; keep the generated API unchanged.
 
 **Duels**

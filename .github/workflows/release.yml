@@ -9,7 +9,8 @@ on:
 
 # One release at a time; a push made during a release waits for it
 concurrency:
-  group: release
+  group: hosted-delivery
+  queue: max
   cancel-in-progress: false
 
 permissions:
@@ -19,7 +20,7 @@ jobs:
   prepare:
     name: Changelog
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, home]
     outputs:
       version: ${{ steps.changelog.outputs.version }}
       release: ${{ steps.changelog.outputs.release }}
@@ -27,6 +28,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: The newest version in CHANGELOG.md, and whether it is released
         id: changelog
         run: |
@@ -44,7 +46,7 @@ jobs:
     name: Verify code and prepare ${{ needs.prepare.outputs.version }}
     needs: prepare
     if: needs.prepare.outputs.release == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, home]
     timeout-minutes: 60
     permissions:
       contents: write
@@ -52,25 +54,32 @@ jobs:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - name: Rust (with the Windows target) and mingw-w64, which links it
         run: |
+          source "$HOME/.cargo/env"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           rustup update stable --no-self-update
           rustup default stable
           rustup component add clippy
           rustup target add x86_64-pc-windows-gnu
-          sudo apt-get update -q
-          sudo apt-get install -yq mingw-w64 pkg-config libxkbcommon-dev libwayland-dev libx11-dev xvfb xauth \
-            libxcursor1 libx11-xcb1 libxi6 libxkbcommon-x11-0
+          # OS dependencies are installed once on the home VM; jobs have no sudo.
+          x86_64-w64-mingw32-gcc --version
+          i686-w64-mingw32-gcc --version
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-nextest
+          tool: cargo-nextest,actionlint
       - name: The rules engine's core sources, card scripts and card database
         run: engine/fetch.sh
       - name: Lints
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Headless client helper
         run: |
+          # actionlint 1.7.12 predates GitHub's documented FIFO queue property; only that diagnostic is exempt.
+          actionlint -ignore '^unexpected key "queue" for "concurrency" section\.' .github/workflows/*.yml
           python3 tools/mod/test_fixture_layout.py
           python3 tools/mod/test_winmm_exports.py
           python3 tools/client/test_vclient.py
@@ -83,6 +92,7 @@ jobs:
           python3 tools/containers/test_config.py
           python3 tools/containers/test_deployment.py
           python3 tools/containers/test_dashboard_delivery.py
+          python3 tools/containers/test_dashboard_workflow.py
           python3 tools/test_docs_check.py
       - name: Documentation links and images
         run: tools/docs-check.py
@@ -110,7 +120,7 @@ jobs:
       - name: Dashboard browser and real API contracts
         working-directory: dashboard
         run: |
-          npx playwright install --with-deps chromium --only-shell
+          npx playwright install chromium --only-shell
           npm run test:e2e -- --workers 2
       - name: Bundles
         if: needs.prepare.outputs.release == 'true'
@@ -179,6 +189,21 @@ jobs:
           ls -l assets
           python3 .github/scripts/release_notes.py notes CHANGELOG.md assets > notes.md
           cat notes.md
+      - name: Mention dashboard changes delivered before this release
+        if: needs.prepare.outputs.release == 'true'
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          state="$RUNNER_TEMP/yo3-notes-state-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.json"
+          trap 'rm -f -- "$state"' EXIT
+          if python3 .github/scripts/deploy_vps.py state > "$state"; then
+            python3 .github/scripts/dashboard_delivery.py --state "$state" --candidate "$GITHUB_SHA" --release-notes >> notes.md
+          else
+            echo '::warning::Could not read previous dashboard delivery records; no early-delivery notes added.'
+          fi
       - name: Release
         if: needs.prepare.outputs.release == 'true'
         env:
@@ -206,13 +231,15 @@ jobs:
     name: Update the hosted server
     needs: [prepare, release, containers]
     if: github.ref == 'refs/heads/main' && needs.prepare.outputs.release == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, home]
     timeout-minutes: 20
     permissions:
       contents: read
       packages: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Deploy the successful release's exact images
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -230,22 +257,47 @@ jobs:
     name: Retain the newest two releases and images
     needs: [prepare, release, containers, deploy]
     if: github.ref == 'refs/heads/main' && needs.prepare.outputs.release == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, home]
     timeout-minutes: 20
     permissions:
       contents: write
       packages: write
     steps:
+      - name: Prepare private job credentials
+        run: |
+          umask 077
+          for name in DOCKER_CONFIG GH_CONFIG_DIR; do
+            path="$RUNNER_TEMP/yo3-release-$name-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            mkdir -p "$path"
+            echo "$name=$path" >> "$GITHUB_ENV"
+          done
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: docker/setup-buildx-action@v4.4.1
       - uses: docker/login-action@v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
+      - name: Prove workflow-token package deletion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/package_probe.py
       - name: Remove old downloads and image versions after healthy deployment
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
           SOURCE_REF: ${{ github.sha }}
-        run: python3 .github/scripts/release_lifecycle.py prune "$VERSION" "$SOURCE_REF"
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          state="$RUNNER_TEMP/yo3-release-state-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.json"
+          trap 'rm -f -- "$state"' EXIT
+          python3 .github/scripts/deploy_vps.py state > "$state"
+          python3 .github/scripts/release_lifecycle.py prune "$VERSION" "$SOURCE_REF" --state "$state"
+      - name: Remove job registry credentials
+        if: always()
+        run: rm -rf -- "$DOCKER_CONFIG" "$GH_CONFIG_DIR"

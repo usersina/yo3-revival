@@ -2345,3 +2345,30 @@
     text-underline-offset: 3px;
   }
 }
+/* Explicit reload only: background deployments never interrupt an open staff form. */
+.dashboard-update {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  max-width: min(620px, calc(100vw - 40px));
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  color: #183a55;
+  background: #eef5fc;
+  border: 1px solid #cbdbe9;
+  border-radius: 12px;
+  box-shadow: 0 6px 24px #23364d18;
+}
+.dashboard-update > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.dashboard-update span {
+  color: #596878;
+}

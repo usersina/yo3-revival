@@ -101,7 +101,11 @@ def main():
     parser.add_argument('--state', type=Path, required=True)
     parser.add_argument('--candidate', required=True)
     parser.add_argument('--dashboard-image', help='Emit the minimal deployment request for a verified candidate digest')
+    parser.add_argument('--release-notes',action='store_true',help='Describe previously delivered UI changes included in this release')
     args = parser.parse_args()
+    if args.release_notes:
+        print(early_release_notes(args.repo,json.loads(args.state.read_text()),args.candidate),end='')
+        return
     result=plan(args.repo, json.loads(args.state.read_text()), args.candidate)
     if args.dashboard_image:result=deployment_request(result,args.dashboard_image)
     print(json.dumps(result, indent=2))
@@ -112,6 +116,18 @@ def deployment_request(verified_plan,candidate_image):
     result={key:verified_plan[key] for key in ['version','commit','server','released_dashboard','dashboard_commit',
         'expected_dashboard','expected_dashboard_commit']}
     return result|{'kind':'dashboard','dashboard':image(candidate_image,'dashboard')}
+
+
+def early_release_notes(repo,state,candidate):
+    state=deployed(state)
+    if not COMMIT.fullmatch(candidate):raise ValueError('Expected the full release commit')
+    common=git(repo,'merge-base',state['dashboard_commit'],candidate).decode().strip()
+    if not changed(repo,state['commit'],common,'dashboard/'):
+        return ''
+    return ('\n## Dashboard updates delivered earlier\n\n'
+        f'The dashboard changes through [{common[:7]}](https://github.com/usersina/yo3-revival/commit/{common}) '
+        f'were already available on the hosted dashboard while the game server remained on {state["version"]}. '
+        'This release installs its own tested server/dashboard pair, then checks main for further compatible UI updates.\n')
 
 
 if __name__ == '__main__':

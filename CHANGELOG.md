@@ -8,10 +8,19 @@ Each section is a release. To release, rename the "Unreleased" section at the to
 the bundles, publishes the version and container images, then updates the configured VPS automatically. After a healthy
 deployment, only the newest two beta releases and their images remain on GitHub; the alpha releases (v0.0.x), Git tags
 and this history stay. A push
-whose newest version is already released publishes nothing, so changes can gather under "Unreleased" first.
+whose newest version is already released skips the server release but can deliver compatible dashboard changes.
 
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
+
+## Unreleased
+
+- Compatible dashboard changes can deploy automatically from `main` without restarting the game server or requiring
+  player updates. The generated API must match the deployed release, and runtime/browser checks precede delivery.
+- The dashboard shows its own build alongside the server version and offers an explicit reload when new files are
+  available. Open forms stay intact, and missing page files get a recovery message.
+- Release and dashboard delivery share a FIFO queue on the `self-hosted, home` runner. Cleanup protects the running
+  and previous successful dashboard alongside retained releases, after a disposable package-deletion probe.
 
 ## v0.1.0 (2026-11-17)
 

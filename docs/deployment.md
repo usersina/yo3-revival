@@ -7,9 +7,15 @@ VPS testing; MFA and recovery are still pending.
 
 ## Independent dashboard updates (#62)
 
-In progress: the hosted dashboard still updates through full releases. Compatibility checks, the asset image and
-the restricted dashboard-only transaction are implemented and rehearsed locally. Automatic delivery, reconciliation
-and retention are not enabled yet; production remains on the existing release path.
+There are two delivery paths: releases replace the tested server/dashboard pair; compatible dashboard changes
+replace only the dashboard. The workflow is implemented and checked locally against the published v0.1.0 images.
+Its first automatic run and workflow-token deletion probe still need verification on GitHub.
+
+Every successful `Release` workflow on `main` triggers **Deploy dashboard**, including pushes without a new
+version. It reads the VPS receipt and checks the latest `main`, so a queued job reconciles the current tree after
+a release finishes. **Actions → Deploy dashboard → Run workflow → main** retries the same checks manually.
+Both workflows share a non-cancelling FIFO queue (`hosted-delivery`, `queue: max`), covering publication,
+deployment and cleanup. They never run pull-request code on the home runner.
 
 The eligibility tool compares the candidate with the dashboard commit recorded in the VPS's `current-release.json`.
 It allows changes to `dashboard/src/`, `dashboard/public/`, `index.html`, `vite.config.ts`, `package.json` and the
@@ -34,7 +40,7 @@ python3 .github/scripts/dashboard_delivery.py --state /tmp/yo3-deployed.json --c
 Fetch the deployed release tag and dashboard commit first. The tool deliberately uses that state rather than the
 previous push or GitHub's newest release, which may not have reached the VPS yet.
 
-The browser gate accepts existing server and candidate dashboard images. CI will supply digest-pinned images
+The browser gate accepts existing server and candidate dashboard images. CI supplies digest-pinned images
 from the plan. It never compiles Rust from `main` or connects to production:
 
 ```sh
@@ -75,8 +81,9 @@ python3 .github/scripts/dashboard_delivery.py --state /tmp/yo3-deployed.json \
 python3 .github/scripts/deploy_vps.py dashboard /tmp/yo3-dashboard-request.json
 ```
 
-This is the prepared transaction path; keep production delivery on full releases until the automatic workflow and
-dashboard-aware retention in slice 3 are complete. The existing cleanup only protects full-release images.
+The automated path builds and tests locally before publishing a `dashboard-<full-commit>` image. It never builds
+the server from `main`. npm dependencies, format/lint/types, generated-client drift, unit tests, exact runtime
+comparison and the production browser gate must pass before publication and deployment.
 
 The same runtime verifier runs locally/CI and on the VPS. It compares every file outside `/usr/share/nginx/html/`
 (content, permissions, owners, links, device metadata and extended attributes) and the process configuration.
@@ -105,6 +112,51 @@ The latter adds test-only labels to frozen local image copies, uses its own loop
 and checks a successful update, browser behavior, duplicates/stale requests, injected health failure/rollback and
 retry. Its registry prefix replaces the GHCR constant only inside the test process. The installed production command
 continues to accept GHCR images from this repository only. No production data, credentials or ports are used.
+
+### Versions, old browser tabs and retention
+
+The footer shows **Server vX.Y.Z · Dashboard abc1234**. Full release builds and standalone UI builds embed their
+source commit and emit `assets/dashboard-version.json`. An open tab checks this uncached file once a minute and
+on focus, then offers **Reload dashboard**. It never reloads automatically or discards an open form. A missing
+lazy-loaded module gets a recovery message and the same explicit reload action. Network failures during the
+background check stay quiet.
+
+Cleanup reads fresh VPS state, protects both retained release trees plus the running and previous successful
+dashboard trees, and validates all registry metadata before deleting anything. This includes platform and
+attestation manifests. A tiny uniquely tagged `deletion-probe-<run>-<attempt>` version first proves the workflow's
+own token can delete from the dashboard package. The probe refuses release/shared tags and fails closed if GitHub
+denies deletion; the healthy deployment stays running. No personal access token is required. Release notes identify
+UI changes already delivered ahead of that server release when the previous receipt is available.
+
+Deployment/runtime changes in this implementation intentionally defer independent delivery until a full release
+contains them. This is how the allowlist protects nginx and the image recipe; changing the workflow alone does not
+bypass it.
+
+### Home runner
+
+All Linux jobs select `runs-on: [self-hosted, home]`. The dedicated repository registration is **home-yo3**, running
+as `yo3-runner` in `/opt/actions-runner-yo3` on the Ubuntu 24.04 x86_64 `home-runner` VM. The other projects'
+registrations are separate. The service is `actions.runner.usersina-yo3-revival.home-yo3.service`; it starts at boot.
+This runner is on the development VM, not the public game VPS.
+
+One-time runner prerequisites are Docker/Compose/Buildx usable by that account, GitHub CLI, Git, OpenSSL with its
+legacy provider, Python 3 with PyYAML, a minimal stable Rust toolchain, mingw-w64 (32/64-bit), pkg-config, the X11/
+Wayland build libraries and Xvfb/xauth used by the existing release gate. Install those as the VM administrator.
+Playwright's Ubuntu Chromium runtime/font dependencies must also be installed once; jobs download their pinned
+browser without `--with-deps` and have no sudo grant. Actions set up pinned Node/Python versions, Clippy/Windows
+targets and nextest as needed. Keep enough free disk for the cross-platform release build and Docker build cache;
+the runner's first full release is a separate capacity check.
+
+To recreate the registration, use **Settings → Actions → Runners → New self-hosted runner**, verify the official
+archive checksum, configure it for this repository with label `home` under its dedicated account, and install/start
+`svc.sh` as a service. The registration token is short-lived; never commit it or the runner's `.credentials` files.
+Runner state is private to its account. Registry and GitHub configuration use job-specific private temporary paths
+and are removed in `always()` cleanup. Test stacks remove only their own containers/volumes; no global Docker
+prune is performed on this shared VM.
+
+Workflow linting knows the custom `home` label through `.github/actionlint.yaml`. actionlint 1.7.12 does not yet
+recognize GitHub's [FIFO queue property](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
+CI exempts only that diagnostic; `test_dashboard_workflow.py` explicitly checks both workflows' queue settings.
 
 ## Before running
 
@@ -184,8 +236,9 @@ job succeeds**. This explicit dependency also works for releases created using `
 another workflow through the `release` event.
 
 Before either image builds, CI verifies that this is the newest published stable `vX.Y.Z` release and that its Git
-tag resolves to the exact source commit. Ordinary pushes, older tags, draft releases and failed release jobs do not
-build published images. Local Ansible provisioning can still build the checkout without publishing anything.
+tag resolves to the exact source commit. Ordinary pushes never build a server image; they can publish an eligible
+dashboard image through the separate path above. Older tags, draft releases and failed release jobs do not publish
+release images. Local Ansible provisioning can still build the checkout without publishing anything.
 
 CI checks runtime configuration and Ansible syntax/templates, builds the server/engine and dashboard/nginx images,
 and pushes Linux x86_64 images to GHCR with release and commit tags. The dashboard build checks generated-client
@@ -194,7 +247,8 @@ GitHub token with package permission. A separate dependent deployment job uses t
 GitHub before expecting anonymous pulls.
 
 After deployment passes its health checks, cleanup keeps the **newest two published stable releases** and their
-server/dashboard images. For example, v0.1.1 keeps v0.1.0; v0.1.2 removes v0.1.0 and keeps v0.1.1. Releases before v0.1.0 (the alpha) are never deleted. Older
+server/dashboard images, plus the current and previous successful dashboard builds from the VPS receipt. For example,
+v0.1.1 keeps v0.1.0; v0.1.2 removes v0.1.0 and keeps v0.1.1. Releases before v0.1.0 (the alpha) are never deleted. Older
 beta release objects and their downloads are deleted, together with unused versions of these two GHCR packages. The retained
 images' platform and provenance manifests stay even when GitHub calls them untagged. Drafts and tags outside the
 stable release naming scheme are left alone. Git tags and the changelog remain as source history.
@@ -265,7 +319,8 @@ key without displaying it. Obtain `VPS_KNOWN_HOSTS` from your verified SSH known
 
 The automatic path is **main version bump → checks and bundles → published GitHub release → both GHCR images →
 SSH deployment → retain two releases**. There is no approval button. A failed build or image publication never runs deployment.
-`Cargo.toml` and the newest changelog version must agree; an already-released version publishes/deploys nothing.
+`Cargo.toml` and the newest changelog version must agree; an already-released version skips the server release and
+then checks for eligible dashboard updates.
 The deployment uses the successful build's image digests and verifies their release/commit labels. An ephemeral
 GitHub token can pull private GHCR packages; it is not retained on the VPS.
 
@@ -289,8 +344,9 @@ and rehearsals do not require a published release.
 
 An Ubuntu 24.04 VPS rehearsal passed public bootstrap, a zero-change rerun, reboot with preserved state, real CA
 issuance, staging renewal with nginx reload, isolated off-machine restore and a 100-player protocol soak. This does
-not yet establish native-engine duel capacity. MFA, an off-machine backup destination and the first actual GitHub
-image publication remain; DNS-based monitoring may report the previous address during propagation. See the
+not yet establish native-engine duel capacity. The published v0.1.0 digests now match the VPS's live containers and
+HTTPS health. MFA, an off-machine backup destination and verification of the new home-runner workflow/token probe
+remain. DNS-based monitoring can report a previous address during propagation. See the
 [Ansible Compose module](https://docs.ansible.com/projects/ansible/latest/collections/community/docker/docker_compose_v2_module.html)
 and [GitHub container publishing documentation](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images)
 for the underlying tools.

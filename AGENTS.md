@@ -122,6 +122,7 @@ python3 tools/test_release_notes.py                # matching Cargo/changelog ve
 python3 tools/test_release_lifecycle.py            # published-tag gate and two-release/image retention, alpha releases kept (fixtures only)
 python3 tools/containers/test_deployment.py          # image validation, pre-upgrade snapshots, rollback and SSH transport
 python3 tools/containers/test_dashboard_delivery.py  # cumulative UI inputs, deployed baselines and exact API/client gate (#62)
+python3 tools/containers/test_dashboard_workflow.py  # main-only triggers, shared FIFO, home runner and ordered deploy/retention gates
 python3 tools/containers/test_dashboard_browser.py --server RELEASED_SERVER_IMAGE --dashboard CANDIDATE_IMAGE
 #   Existing images, disposable localhost HTTPS/SQLite, production pages, BP retry, roles and expired cookies;
 #   no Rust compilation or game files required (synthetic fixture). Optional --game-dir checks real game data too.
@@ -134,7 +135,8 @@ tools/release.sh                                  # bundles in dist/ (Linux .tar
 tools/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-linux-x86_64.tar.gz
 #   after building that stable-version test archive; private Xvfb/xauth and fresh app data, no game/server start.
 #   Release CI requires this integration test after bundling and before publishing; no matching test is a failure.
-#   CI lints/tests, setup and packaging run only before publishing a new version; other pushes just check the changelog.
+#   Full release checks/builds run before publishing a new version. Other main pushes reconcile eligible dashboard
+#   changes against the deployed release; no unreleased Rust is built by that path. Linux jobs use [self-hosted, home].
 #   Desktop and Scripts editions for each platform, Server for Linux; stable inner roots yo3-revival-desktop/,
 #   yo3-revival-scripts/ and yo3-revival-server/ (its README is docs/hosting.md; python3 tools/test_host_scripts.py).
 #   Desktop README is the short project README; Scripts README is the terminal guide with relocated links.

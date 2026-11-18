@@ -56,8 +56,11 @@ Implementation plan agreed on 2026-11-16. For deployment and HTTPS, see [Docker 
 Full releases still update both services. Issue [#62](https://github.com/usersina/yo3-revival/issues/62) adds a
 separate path for compatible frontend changes. The input/contract and browser gates, asset image and restricted
 replacement/rollback transaction are implemented. Runtime equality is checked in CI/local checks and again by the
-updater. Automatic delivery, reconciliation and dashboard-aware retention are pending; the VPS has not been changed.
-The gate runs an existing server image, never unreleased Rust from `main`.
+updater. The automatic workflow reconciles current `main` after each successful Release run; manual retries use
+Actions → Deploy dashboard. It retains release images plus the active/previous UI trees. The gate runs the deployed
+release server image, never unreleased Rust from `main`. The footer separates server version from UI commit, and
+old tabs offer an explicit reload without interrupting forms. Published v0.1.0 compatibility passed locally; the
+first real workflow-token deletion probe remains to be checked on GitHub.
 See [deployment checks](deployment.md#independent-dashboard-updates-62).
 
 ## Database backups

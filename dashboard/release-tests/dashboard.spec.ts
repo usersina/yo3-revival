@@ -35,6 +35,7 @@ test('production pages and lazy assets work through the released nginx and real 
       errors.push(`API failed: ${response.status()} ${path}`)
   })
   await signIn(page)
+  await expect(page.locator('.page-footer')).toContainText(/Server v\S+ · Dashboard /)
   for (const [path, title] of [
     ['/', 'Overview'],
     ['/accounts', 'Accounts'],
@@ -124,4 +125,27 @@ test('moderator restrictions and expired sessions are enforced by the released s
   await page.context().clearCookies()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Sign in to your server' })).toBeVisible()
+})
+
+test('an open form survives an update notice and a missing lazy asset has a reload action', async ({
+  page,
+}) => {
+  await signIn(page)
+  await page.getByRole('link', { name: 'Accounts', exact: true }).click()
+  await page.getByRole('button', { name: 'Give BP to CheckModerator', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('BP amount').fill('77')
+  await page.route('**/assets/dashboard-version.json?*', (route) =>
+    route.fulfill({ json: { commit: 'd'.repeat(40) } }),
+  )
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.getByText('An update is available.')).toBeVisible()
+  await expect(dialog.getByLabel('BP amount')).toHaveValue('77')
+  await page.screenshot({ path: '../logs/dashboard-update-notice.png' })
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  // Earlier pages may have preloaded the module already. Start a document with that real asset unavailable.
+  await page.route('**/assets/ConnectedInvites-*.js', (route) => route.abort())
+  await page.goto('/invites')
+  await expect(page.getByText('This page needs the latest dashboard files.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reload dashboard' }).first()).toBeVisible()
 })
