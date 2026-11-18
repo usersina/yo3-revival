@@ -60,8 +60,7 @@ pub fn inspect(current: &str, platform: Platform, body: &[u8]) -> anyhow::Result
     Ok(Decision::Available(Release { tag, url, notes, asset }))
 }
 fn client(timeout: Duration) -> anyhow::Result<reqwest::Client> {
-    let _ = yo3_tunnel::tokio_rustls::rustls::crypto::ring::default_provider().install_default();
-    Ok(reqwest::Client::builder().https_only(true).redirect(reqwest::redirect::Policy::none())
+    Ok(crate::github_http::builder().https_only(true).redirect(reqwest::redirect::Policy::none())
         .connect_timeout(Duration::from_secs(4)).read_timeout(Duration::from_secs(30)).timeout(timeout)
         .user_agent(format!("yo3-revival/{}", yo3_tunnel::BUILD_VERSION)).build()?)
 }

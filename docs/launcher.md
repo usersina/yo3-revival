@@ -391,8 +391,10 @@ Setup, a Singleplayer duel against Kaiba, and joining a server by address.
 3. Install the game's runtimes as usual: DirectX End-User Runtimes (June 2010) and Visual C++ 2008 (x86).
 4. If the game says "Initialization of direct3d device failed" (no Direct3D acceleration, as in most virtual machines),
    put SwiftShader's software `d3d9.dll` in the game folder. Rendering is slow.
-5. Multiplayer's server list may stay empty: Windows 7 lacks the certificates for GitHub, where the list is published.
-   **Add a server** by its address instead (ours: `ygo-3-revival.work.gd:7443`).
+5. Releases through v0.1.2 can fail GitHub update checks with `UnknownIssuer`, and leave the server list empty when
+   Windows lacks current root certificates. The next release bundles its own Mozilla certificates for GitHub;
+   download it manually once to receive this fix. Until then, **Add a server** by its address
+   (ours: `ygo-3-revival.work.gd:7443`).
 
 Desktop v0.1.0's Setup wrongly reports `d3dx9_40.dll` missing (Windows error 87) on Windows 7; later releases fix it.
 Scripts was not tried.

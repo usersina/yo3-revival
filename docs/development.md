@@ -33,6 +33,13 @@ crate's manifest. Change shared versions there and review `Cargo.lock` when upda
 dependencies use workspace paths and the workspace crates advance together. Published bundle versions still come from
 `CHANGELOG.md` through `YO3_BUILD_VERSION`; reorganizing package metadata does not publish or bump a release.
 
+Desktop's GitHub HTTPS clients use the Mozilla roots in `webpki-root-certs`, independently of the operating
+system's certificate store. Refresh that dependency with releases. This trust policy does not accept OS-installed
+private or HTTPS-interception CAs and does not use the platform verifier's revocation data; certificate signatures,
+validity dates and hostnames remain checked. Game-server identity pinning is separate. The opt-in live check is
+`cargo test -p yo3-desktop --lib github_live_https_with_bundled_roots -- --ignored --nocapture`; ordinary tests use
+local TLS fixtures and need no GitHub connection.
+
 ```bash
 git clone https://github.com/usersina/yo3-revival.git
 cd yo3-revival

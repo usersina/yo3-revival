@@ -104,7 +104,7 @@ pub async fn official_list(root: &Path) -> Vec<Listed> {
     let cache = root.join("server-list.json");
     let cached = std::fs::read(&cache).ok().and_then(|bytes| verify_list(&bytes, OFFICIAL_LIST_KEYS).ok());
     let fetched = async {
-        let client = reqwest::Client::builder().https_only(true).timeout(Duration::from_secs(10)).build()?;
+        let client = crate::github_http::builder().https_only(true).timeout(Duration::from_secs(10)).build()?;
         let bytes = client.get(OFFICIAL_LIST_URL).send().await?.error_for_status()?.bytes().await?;
         let list = verify_list(&bytes, OFFICIAL_LIST_KEYS)?;
         Ok::<_, anyhow::Error>((bytes, list))

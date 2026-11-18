@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-18 — Bundled GitHub TLS trust](#2026-11-18--bundled-github-tls-trust)
   - [2026-11-18 — Measured release-runner concurrency](#2026-11-18--measured-release-runner-concurrency)
   - [2026-11-18 — Production image dependency-cache inputs](#2026-11-18--production-image-dependency-cache-inputs)
   - [2026-11-18 — The shop disconnect and another program's winmm.dll (#65)](#2026-11-18--the-shop-disconnect-and-another-programs-winmmdll-65)
@@ -50,6 +51,23 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-18 — Bundled GitHub TLS trust
+
+Desktop's update discovery/downloads, signed official server list and GitHub reporting now share bundled Mozilla
+roots (`webpki-root-certs` 1.0.12), independent of the OS certificate store. Server identity pinning is unchanged.
+Local TLS regressions first failed with `UnknownIssuer`, then passed with the configured trust; untrusted issuers,
+expired certificates and wrong hostnames are still refused. The opt-in live check reached GitHub and verified the
+published official list.
+
+Native Windows 7 SP1 with VxKex: the existing v0.1.0 launcher reproduced the reported `UnknownIssuer` update error.
+The current development build on the same VM, without changing its root certificates, checked the latest v0.1.2
+release and populated Multiplayer with the signed official server and its live status. Tests used isolated launcher
+storage; the installed launcher and game were not replaced. This does not change Windows 7's unsupported status.
+Released launchers with broken GitHub trust need a manual download once the fix ships.
+
+Validation: 1,265 workspace tests passed (six opt-in/environment checks skipped), Clippy with warnings denied and
+the documentation link check passed. The Windows x64 release build and the opt-in GitHub live check also passed.
 
 ## 2026-11-18 — Measured release-runner concurrency
 

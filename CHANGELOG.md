@@ -15,6 +15,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- GitHub update checks, downloads, the official server list and bug reporting use bundled Mozilla certificates,
+  so an outdated Windows certificate store no longer prevents secure connections.
+
 - Play warns when an unrecognized `winmm.dll` is in the game folder, without changing or removing it.
   Connection errors now identify whether the game side or server side failed.
 

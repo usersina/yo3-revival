@@ -55,8 +55,7 @@ pub fn configured_client_id()->Option<String> {
 impl Client {
     pub fn new()->Result<Self,Failure> {Self::build(API,OAUTH,Duration::from_secs(20),Duration::from_secs(1),true)}
     fn build(api:&str,oauth:&str,timeout:Duration,poll_unit:Duration,https_only:bool)->Result<Self,Failure> {
-        let _ = yo3_tunnel::tokio_rustls::rustls::crypto::ring::default_provider().install_default();
-        let http=reqwest::Client::builder().user_agent("YO3-Revival-Reports")
+        let http=crate::github_http::builder().user_agent("YO3-Revival-Reports")
             .redirect(reqwest::redirect::Policy::none()).retry(reqwest::retry::never()).https_only(https_only)
             .connect_timeout(Duration::from_secs(8)).timeout(timeout).build().map_err(|_|Failure::new(Stage::Authorize,"Could not initialize the secure GitHub connection."))?;
         Ok(Self {http,api:reqwest::Url::parse(api).map_err(|_|Failure::new(Stage::Authorize,"Invalid GitHub endpoint."))?,oauth:reqwest::Url::parse(oauth).map_err(|_|Failure::new(Stage::Authorize,"Invalid GitHub endpoint."))?,poll_unit})

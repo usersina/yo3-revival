@@ -34,6 +34,7 @@ pub mod words;
 pub mod hosting;
 mod game_data_platform;
 mod process;
+mod github_http;
 
 pub fn server_address(input: &str) -> anyhow::Result<(String, String)> { yo3_tunnel::invite::address(input) }
 
