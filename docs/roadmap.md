@@ -19,7 +19,7 @@ This page says what is open and what comes next. Three other pages hold the rest
   - [Leads (outside the code)](#leads-outside-the-code)
 
 Platform scope: **64-bit Windows 10/11** and **Linux with Wine**. Windows 7 is out of scope for now, for both Desktop
-and Scripts.
+and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#windows-7)).
 
 ## Open now
 

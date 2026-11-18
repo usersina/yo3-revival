@@ -22,12 +22,13 @@ terminal. Both editions include the server, rules engine and required connection
   - [Your data and upgrades](#your-data-and-upgrades)
   - [Reset local game data](#reset-local-game-data)
   - [Troubleshooting](#troubleshooting)
+  - [Windows 7](#windows-7)
   - [Getting the original game](#getting-the-original-game)
 
 ## First launch
 
 You need a complete original **Yu-Gi-Oh! ONLINE 3 v1.153** installation and **64-bit Windows 10/11** or **Linux with Wine**.
-**Windows 7 is not supported in either Desktop or Scripts; compatibility work is out of scope for now.**
+**Windows 7 is not supported**, but Desktop can run there with a third-party compatibility layer: [Windows 7](#windows-7).
 macOS does not have a supported build. [Game installation help](#getting-the-original-game).
 
 1. [Download the latest release](https://github.com/usersina/yo3-revival/releases/latest). Choose the **Desktop**
@@ -363,7 +364,7 @@ Help in the footer has these topics too; an error's **Help** opens its own.
 | A long session disconnects | Sessions last 12 hours. Close the game and start it again. |
 | A duel ends immediately as a draw | The server's logs say **DUELS WON'T WORK**: restore the complete bundled engine. Source builds need the [engine dependencies](development.md#build-from-source). |
 | A card seems to behave incorrectly | Check [card rules](playing.md#card-effects-and-summon-rules), then [report it](#logs-and-support). |
-| Windows 7 | The current release requires a supported modern OS, even if the original game itself runs there. |
+| "The program can't start because api-ms-win-core-synch-l1-2-0.dll is missing" (or `bcryptprimitives.dll`) | You're on Windows 7 or 8. Don't download that DLL: see [Windows 7](#windows-7). |
 
 On minimal Debian/Ubuntu X11 systems, install Desktop's runtime libraries with
 `sudo apt install libxcursor1 libx11-xcb1 libxi6 libxkbcommon-x11-0`. Missing-library errors prevent the app from
@@ -372,6 +373,24 @@ opening its window.
 These executables and the injector/DLL are unsigned for now ([#38](https://github.com/usersina/yo3-revival/issues/38)).
 [Antivirus warnings](antivirus.md) explains how to check a download against its published checksum. For terminal errors,
 see [Scripts troubleshooting](scripts.md#when-something-fails).
+
+## Windows 7
+
+Unsupported and untested in releases: use it at your own risk. Checked once on 64-bit Windows 7 SP1 (2026-11-18):
+Setup, a Singleplayer duel against Kaiba, and joining a server by address.
+
+1. Install [VxKex](https://github.com/i486/VxKex/releases) (1.2.2.2316 checked). It warns about missing updates; it
+   worked without them.
+2. Right-click `yo3-revival.exe` → **Properties** → **VxKex** → tick **Enable VxKex for this program** → **OK**. The
+   programs it starts (server, engine, game connection) inherit it.
+3. Install the game's runtimes as usual: DirectX End-User Runtimes (June 2010) and Visual C++ 2008 (x86).
+4. If the game says "Initialization of direct3d device failed" (no Direct3D acceleration, as in most virtual machines),
+   put SwiftShader's software `d3d9.dll` in the game folder. Rendering is slow.
+5. Multiplayer's server list may stay empty: Windows 7 lacks the certificates for GitHub, where the list is published.
+   **Add a server** by its address instead (ours: `ygo-3-revival.work.gd:7443`).
+
+Desktop v0.1.0's Setup wrongly reports `d3dx9_40.dll` missing (Windows error 87) on Windows 7; later releases fix it.
+Scripts was not tried.
 
 ## Getting the original game
 

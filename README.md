@@ -9,7 +9,7 @@ own PC, or play with others on our server or a friend's, using the original game
 
 You need the original game **v1.153**, installed separately: Revival does not include it
 ([where to get it](docs/launcher.md#getting-the-original-game)). It runs on **64-bit Windows 10/11** or **Linux with
-Wine**. Windows 7 is not supported.
+Wine**. Windows 7 is not supported ([at your own risk](docs/launcher.md#windows-7)).
 
 1. [Download the latest release](https://github.com/usersina/yo3-revival/releases/latest): **Desktop** for your
    system. Extract the whole archive and open **`yo3-revival`** (`.exe` on Windows) in `yo3-revival-desktop/`.

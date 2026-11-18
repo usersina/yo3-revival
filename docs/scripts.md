@@ -5,7 +5,7 @@ connection helper and DLL. Account/profile setup and updates are manual. For a P
 use [Desktop](launcher.md).
 
 You still need the original **Yu-Gi-Oh! ONLINE 3 v1.153** installation. Windows builds support **64-bit Windows 10/11**;
-**Windows 7 is not supported.** Linux needs Wine for the game. No Rust or other installation is needed
+**Windows 7 is not supported** (Desktop [can run there](launcher.md#windows-7); Scripts was not tried). Linux needs Wine for the game. No Rust or other installation is needed
 for a release bundle.
 
 [Download Scripts for your system](https://github.com/usersina/yo3-revival/releases/latest) and extract the entire
