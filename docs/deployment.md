@@ -166,6 +166,13 @@ A lost cache just makes the next build cold. `.github/buildkitd.toml` sets colle
 10 GiB free, with 2 GiB reserved for reusable cache. These are collection targets, not hard quotas on an active build. They only
 apply to this builder, not the other projects' caches.
 
+The full release's browser suite uses three workers on this runner, and its production server/engine compile
+sets `YO3_BUILD_JOBS=4`. Local image builds default to two jobs; dependency cooking retains its existing budget.
+Repeated complete browser suites passed with retries disabled, averaging about 20% faster than two workers;
+controlled image builds took 1m20s versus 2m25s, with at least 7.7 GiB memory available at four jobs. All release
+gates remain in place. These component benchmarks exclude registry transfer and do not predict the complete
+next release time. [Benchmark conditions](history.md#2026-11-18--measured-release-runner-concurrency).
+
 Runtime-image contexts omit `crates/*/tests`: discovering a new integration-test target must not invalidate
 cargo-chef's production dependency recipe. The complete host checkout still runs every existing release test.
 `tools/containers/test_build_cache.py --builder yo3-release` exports the real planner recipe and proves reuse

@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-18 — Measured release-runner concurrency](#2026-11-18--measured-release-runner-concurrency)
   - [2026-11-18 — Production image dependency-cache inputs](#2026-11-18--production-image-dependency-cache-inputs)
   - [2026-11-18 — Original card previews in the staff dashboard](#2026-11-18--original-card-previews-in-the-staff-dashboard)
   - [2026-11-18 — Local Cargo cache on the home runner](#2026-11-18--local-cargo-cache-on-the-home-runner)
@@ -48,6 +49,27 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-18 — Measured release-runner concurrency
+
+Benchmarked the complete 77-test browser suite on the 6-vCPU/12-GiB home runner with retries disabled, fresh test
+servers per run and no concurrent image builds. Other projects briefly used the shared VM, so repeated both
+settings rather than relying on the fastest run. All 308 test executions passed.
+
+| Work | Previous setting | Candidate setting | Result |
+| --- | --- | --- | --- |
+| Full browser suite | 2 workers: 6m20s, 6m35s | 3 workers: 4m47s, 5m32s | About 20% faster on average; at least 5.7 GiB memory available with 3 workers |
+| Build/load the server and native engine image | 2 Cargo jobs: 2m25s | 4 Cargo jobs: 1m20s | About 45% faster; at least 7.7 GiB memory available with 4 jobs |
+
+Both image runs reused the same warmed dependency, engine-download and source-input layers. Their measured times
+include image export/loading, not registry uploads; sampled CPU steal was about 1% in both. Both server and engine
+binaries had identical SHA-256 hashes between the two builds. CI selects four jobs
+through `YO3_BUILD_JOBS`; local Docker builds retain a two-job default. Dependency cooking keeps its existing
+budget. Release CI uses three browser workers; its test coverage, retry policy and subsequent release/deployment
+checks stay intact. The four-job image passed runtime checks and all seven production HTTPS/nginx browser tests,
+including original card previews. The workspace passed 1,256 Rust tests (5 skipped) and Clippy with warnings denied;
+workflow linting and documentation links passed. These are component benchmarks; the next versioned release must
+establish the end-to-end time.
 
 ## 2026-11-18 — Production image dependency-cache inputs
 

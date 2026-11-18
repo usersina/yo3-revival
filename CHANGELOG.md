@@ -15,6 +15,8 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Release CI uses measured browser/build concurrency on the home runner, reducing component times without
+  dropping checks. Local image builds keep their conservative compilation default.
 - Adding Rust integration tests no longer makes release images rebuild unchanged third-party dependencies.
   All existing release checks remain required, with an additional cache-invalidation regression.
 

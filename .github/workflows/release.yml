@@ -136,7 +136,7 @@ jobs:
         working-directory: dashboard
         run: |
           npx playwright install chromium --only-shell
-          npm run test:e2e -- --workers 2
+          npm run test:e2e -- --workers 3
       - name: Bundles
         if: needs.prepare.outputs.release == 'true'
         run: YO3_VERSION="$VERSION" tools/release.sh

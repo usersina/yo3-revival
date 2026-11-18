@@ -90,6 +90,7 @@ jobs:
           build-args: |
             YO3_BUILD_VERSION=${{ inputs.version }}
             YO3_BUILD_COMMIT=${{ inputs.source-ref }}
+            YO3_BUILD_JOBS=4
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ inputs.source-ref }}
