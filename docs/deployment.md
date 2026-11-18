@@ -164,8 +164,20 @@ registry credentials and remove them when finished; temporary Buildx metadata is
 remove the builder container while keeping the cache. Docker cache stays local instead of being uploaded to GitHub.
 A lost cache just makes the next build cold. `.github/buildkitd.toml` sets collection targets of 8 GiB used and
 10 GiB free, with 2 GiB reserved for reusable cache. These are collection targets, not hard quotas on an active build. They only
-apply to this builder, not the other projects' caches. Cargo still uses the existing dependency cache; measure the
-first full release's disk usage before adding persistent workspace artifacts.
+apply to this builder, not the other projects' caches.
+
+Cargo output is retained locally at `~/.cache/yo3-revival/cargo-target` on the dedicated runner account. After
+checkout cleanup, `.github/scripts/local_cargo_cache.py` links the ignored `target/` directory to that cache, so
+existing build/package paths stay the same. Git cleanup removes the link, leaving the external cache intact;
+Cargo still checks source, dependency, compiler and build-script inputs before reuse. This replaces the remote
+Rust cache archive, including its upload and tool-pruning post action. Tool installations and the Cargo registry
+remain outside this cache. The helper clears only its marked cache when it exceeds 40 GiB or the filesystem has
+less than 20 GiB free, and refuses the build if eviction cannot restore that free space. A missing/cleared cache
+only makes the next build cold. Never share it with pull-request jobs or other repositories.
+
+Regression checks exercise real Git cleanup and a changed Rust executable, bounded eviction, preservation of
+foreign paths/tool installations and insufficient disk space. A full-release speed comparison still needs the
+next versioned run; removing the previous 7m38s upload is not proof of its total duration.
 
 An isolated rehearsal on 2026-11-18 passed 1,249 Rust tests, Clippy, all five release bundles, the published
 v0.1.0 Desktop update/shortcut gate and production-container browser checks. Identical image builds took

@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-18 — Local Cargo cache on the home runner](#2026-11-18--local-cargo-cache-on-the-home-runner)
   - [2026-11-18 — Full release and independent dashboard delivery](#2026-11-18--full-release-and-independent-dashboard-delivery)
   - [2026-11-18 — First home-runner Actions check](#2026-11-18--first-home-runner-actions-check)
   - [2026-11-18 — Dashboard automation and home runner (#62)](#2026-11-18--dashboard-automation-and-home-runner-62)
@@ -45,6 +46,21 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-18 — Local Cargo cache on the home runner
+
+Replaced the Rust cache archive action with a local, repository-owned `target/` cache outside checkout. It avoids
+the v0.1.1 upload of about 1.5 GB (7m38s). Checkout still cleans the workspace; the next build recreates only its
+symlink. Cargo’s input checks and every existing release gate stay in place. Cache eviction is limited to the
+marked cache at 40 GiB or under 20 GiB free; insufficient space after eviction refuses the build. Tool installations
+and other repositories are untouched. Full-release timing still needs the next versioned run.
+
+Also found that the cache action’s post step had removed `~/.cargo/bin/rustup`, leaving the compiler/Cargo proxy
+links dangling on the persistent runner. Restored rustup 1.29.3 from the official SHA-256-verified installer without
+replacing the existing Rust 1.100.0 toolchain. Removing the archive action prevents its pruning post step recurring.
+Five regression checks passed locally and under the runner account: actual Git cleanup preserves external output,
+a changed Rust executable prints its new value, size/free-space eviction preserves installed tools, foreign paths
+are refused and low space fails before building. The actual runner cache prepared successfully with 106 GiB free.
 
 ## 2026-11-18 — Full release and independent dashboard delivery
 

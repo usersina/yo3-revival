@@ -13,6 +13,11 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- The home runner keeps Cargo build output locally instead of transferring a large Rust cache archive to GitHub.
+  The cache is bounded, survives checkout cleanup and leaves installed tools intact; release checks are unchanged.
+
 ## v0.1.1 (2026-11-18)
 
 - The Windows game-runtime check now falls back to the game’s own DLL search when Windows rejects newer

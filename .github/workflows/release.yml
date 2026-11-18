@@ -52,6 +52,7 @@ jobs:
       contents: write
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
+      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -68,7 +69,8 @@ jobs:
           # OS dependencies are installed once on the home VM; jobs have no sudo.
           x86_64-w64-mingw32-gcc --version
           i686-w64-mingw32-gcc --version
-      - uses: Swatinem/rust-cache@v2
+      - name: Reuse the runner’s local Cargo output
+        run: python3 .github/scripts/local_cargo_cache.py
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
@@ -105,6 +107,7 @@ jobs:
           python3 tools/containers/test_deployment.py
           python3 tools/containers/test_dashboard_delivery.py
           python3 tools/containers/test_dashboard_workflow.py
+          python3 tools/containers/test_local_cargo_cache.py
           python3 tools/test_docs_check.py
       - name: Documentation links and images
         run: tools/docs-check.py
