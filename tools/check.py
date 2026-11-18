@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""The repository's checks, by group: the single list CI and `task check` both run.
+
+    tools/check.py                  every group CI's release job runs, in its order
+    tools/check.py py docs          some groups
+    tools/check.py --list           the groups and their steps
+    tools/check.py --fail-fast ...  stop at the first failure (default: run all, then report)
+
+A Python test under tools/ is either in PY (hermetic: CI runs it) or in OTHER with what it needs; test_check.py fails
+on one that is in neither, so a new test can't be forgotten.
+"""
+import os
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+# Hermetic Python tests: no images, game files, display or network. .github/workflows/release.yml runs them through
+# `tools/check.py py`.
+PY = [
+    'tools/mod/test_fixture_layout.py',
+    'tools/mod/test_winmm_exports.py',
+    'tools/client/test_vclient.py',
+    'tools/monkey/test_duel_report.py',
+    'tools/monkey/test_duel_replay.py',
+    'tools/release/test_package_editions.py',
+    'tools/release/test_release_notes.py',
+    'tools/release/test_release_lifecycle.py',
+    'tools/host/test_host_scripts.py',
+    'tools/containers/test_config.py',
+    'tools/containers/test_deployment.py',
+    'tools/containers/test_dashboard_delivery.py',
+    'tools/containers/test_dashboard_workflow.py',
+    'tools/docs/test_docs_check.py',
+    'tools/vm/test_vm.py',
+    'tools/dev/test_scratch_server.py',
+    'tools/test_check.py',
+]
+
+# Tests that need something CI's release job doesn't have at that point, and where they run instead.
+OTHER = {
+    'tools/containers/test_provisioning.py': 'Ansible; containers.yml runs it',
+    'tools/containers/test_images.py': 'built images (--server, --dashboard); containers.yml and dashboard.yml',
+    'tools/containers/test_dashboard_browser.py': 'a released server and a candidate dashboard image; dashboard.yml',
+    'tools/containers/test_dashboard_deploy.py': 'images and a built dashboard/dist',
+    'tools/containers/test_dashboard_runtime.py': 'a built dashboard image (YO3_TEST_DASHBOARD); containers.yml',
+    'tools/containers/test_certificates.py': 'a built dashboard image',
+    'tools/containers/test_stack.py': 'built images and the game files',
+}
+
+ACTIONLINT_IGNORE = r'^unexpected key "queue" for "concurrency" section\.'
+
+
+def steps(group):
+    """The (name, argv, cwd) steps of a group."""
+    py = [sys.executable]
+    if group == 'lint':
+        return [('actionlint', ['actionlint', '-ignore', ACTIONLINT_IGNORE, *sorted(map(str, ROOT.glob('.github/workflows/*.yml')))], ROOT),
+                ('clippy', ['cargo', 'clippy', '--workspace', '--all-targets', '--', '-D', 'warnings'], ROOT)]
+    if group == 'py':
+        return [(Path(t).name, [*py, t], ROOT) for t in PY]
+    if group == 'docs':
+        return [('docs links', [*py, 'tools/docs/docs-check.py'], ROOT)]
+    if group == 'rust':
+        return [('engine sources', ['engine/fetch.sh'], ROOT), ('nextest', ['cargo', 'nextest', 'run', '--workspace'], ROOT)]
+    if group == 'dashboard':
+        d = ROOT / 'dashboard'
+        install = [] if (d / 'node_modules').is_dir() else [('npm ci', ['npm', 'ci'], d)]
+        return install + [(n, ['npm', 'run', *a], d) for n, a in [
+            ('api drift', ['api:check']), ('format', ['format:check']), ('lint', ['lint']),
+            ('typecheck', ['typecheck']), ('unit tests', ['test']), ('build', ['build'])]]
+    if group == 'e2e':
+        d = ROOT / 'dashboard'
+        return [('browser', ['npx', 'playwright', 'install', 'chromium', '--only-shell'], d),
+                ('e2e', ['npm', 'run', 'test:e2e', '--', '--workers', '2'], d)]
+    raise KeyError(group)
+
+
+GROUPS = ['lint', 'py', 'docs', 'rust', 'dashboard', 'e2e']
+
+
+def run(groups, fail_fast):
+    results = []
+    for group in groups:
+        for name, argv, cwd in steps(group):
+            label = f'{group}: {name}'
+            if shutil.which(argv[0]) is None and not Path(cwd, argv[0]).exists():
+                # actionlint is provisioned by CI; elsewhere a missing tool is reported, not hidden.
+                if argv[0] == 'actionlint' and not os.environ.get('CI'):
+                    results.append((label, 'skipped', 0.0, 'actionlint is not installed'))
+                    continue
+                results.append((label, 'FAILED', 0.0, f'{argv[0]} is not installed'))
+                if fail_fast:
+                    return results
+                continue
+            print(f'\n==> {label}', flush=True)
+            start = time.monotonic()
+            code = subprocess.run(argv, cwd=cwd).returncode
+            results.append((label, 'ok' if code == 0 else 'FAILED', time.monotonic() - start, '' if code == 0 else f'exit {code}'))
+            if code and fail_fast:
+                return results
+    return results
+
+
+def main(argv):
+    args = [a for a in argv if not a.startswith('--')]
+    if '--help' in argv or '-h' in argv:
+        print(__doc__)
+        return 0
+    if '--list' in argv:
+        for group in GROUPS:
+            print(group)
+            for name, command, cwd in steps(group):
+                where = '' if cwd == ROOT else f'  (in {cwd.relative_to(ROOT)})'
+                print(f'  {name}: {" ".join(command[:6])}{" …" if len(command) > 6 else ""}{where}')
+        return 0
+    unknown = [a for a in args if a not in GROUPS]
+    if unknown:
+        print(f'unknown group {", ".join(unknown)}; the groups are {", ".join(GROUPS)}', file=sys.stderr)
+        return 2
+    results = run(args or GROUPS, '--fail-fast' in argv)
+    print('\nSummary')
+    for label, status, seconds, note in results:
+        print(f'  {status:8} {label}{f" ({seconds:.0f} s)" if seconds >= 1 else ""}{f": {note}" if note else ""}')
+    return 1 if any(status == 'FAILED' for _, status, _, _ in results) else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

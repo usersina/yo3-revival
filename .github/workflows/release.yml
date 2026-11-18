@@ -92,22 +92,10 @@ jobs:
         run: |
           # actionlint 1.7.12 predates GitHub's documented FIFO queue property; only that diagnostic is exempt.
           actionlint -ignore '^unexpected key "queue" for "concurrency" section\.' .github/workflows/*.yml
-          python3 tools/mod/test_fixture_layout.py
-          python3 tools/mod/test_winmm_exports.py
-          python3 tools/client/test_vclient.py
-          python3 tools/monkey/test_duel_report.py
-          python3 tools/monkey/test_duel_replay.py
-          python3 tools/release/test_package_editions.py
-          python3 tools/release/test_release_notes.py
-          python3 tools/release/test_release_lifecycle.py
-          python3 tools/host/test_host_scripts.py
-          python3 tools/containers/test_config.py
-          python3 tools/containers/test_deployment.py
-          python3 tools/containers/test_dashboard_delivery.py
-          python3 tools/containers/test_dashboard_workflow.py
-          python3 tools/docs/test_docs_check.py
+          # The hermetic Python tests: the one list in tools/check.py, also run by `task check`.
+          python3 tools/check.py py
       - name: Documentation links and images
-        run: tools/docs/docs-check.py
+        run: python3 tools/check.py docs
       - name: Tests
         run: cargo nextest run --workspace
       - uses: actions/setup-node@v6
