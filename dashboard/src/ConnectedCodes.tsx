@@ -233,7 +233,7 @@ export function ConnectedCodes({ session }: { session: StaffSession }) {
             aria-label="BOOSTERPASS codes table"
             tabIndex={0}
           >
-            <table>
+            <table className="responsive-table">
               <thead>
                 <tr>
                   <th scope="col">Code</th>
@@ -248,7 +248,7 @@ export function ConnectedCodes({ session }: { session: StaffSession }) {
               <tbody>
                 {codes.data.codes.map((code) => (
                   <tr key={code.code}>
-                    <td>
+                    <td className="row-heading" data-label="Code">
                       <div className="code-cell">
                         <code>{code.code}</code>
                         <Button
@@ -268,8 +268,10 @@ export function ConnectedCodes({ session }: { session: StaffSession }) {
                         </Button>
                       </div>
                     </td>
-                    <td className="numeric">{code.bp.toLocaleString()} BP</td>
-                    <td>
+                    <td className="numeric" data-label="Reward">
+                      {code.bp.toLocaleString()} BP
+                    </td>
+                    <td data-label="Claims">
                       {code.claims.length ? (
                         <details>
                           <summary>{code.claims.length} claims</summary>
@@ -288,12 +290,12 @@ export function ConnectedCodes({ session }: { session: StaffSession }) {
                         '0'
                       )}
                     </td>
-                    <td>
+                    <td data-label="Remaining">
                       {code.uses == null
                         ? 'Unlimited'
                         : Math.max(0, code.uses - code.claims.length).toLocaleString()}
                     </td>
-                    <td>
+                    <td className="row-actions">
                       {admin && (
                         <Button
                           variant="ghost"

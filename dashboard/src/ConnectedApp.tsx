@@ -8,10 +8,11 @@ import {
   QueryClientProvider,
   useQueryClient,
 } from '@tanstack/react-query'
-import { Layers, LoaderCircle } from 'lucide-react'
+import { LoaderCircle } from 'lucide-react'
 import { Button, Field, PageHeading, Panel } from './components/ui'
 import {
   getGetStaffSessionQueryKey,
+  getSignInStaffMutationKey,
   useGetStaffSession,
   useSignInStaff,
 } from './api/generated/http/client'
@@ -64,54 +65,56 @@ function SignIn() {
   })
   function submit(event: FormEvent) {
     event.preventDefault()
-    if (signIn.isPending) return
+    if (signIn.isPending || !user.trim() || !password) return
     signIn.mutate({
       data: { user: user.trim(), password },
       headers: { 'Idempotency-Key': crypto.randomUUID() },
     })
   }
   return (
-    <>
-      <PageHeading title="Server management" description="Sign in to manage your server." />
-      <Panel
-        title="Sign in to your server"
-        description="Use an administrator or moderator game account."
-      >
-        <form onSubmit={submit} className="connected-sign-in">
-          <Field id="staff-user" label="User ID">
-            <input
-              id="staff-user"
-              value={user}
-              onChange={(e) => setUser(e.target.value)}
-              autoComplete="username"
-              required
-              maxLength={64}
-              disabled={signIn.isPending}
-            />
-          </Field>
-          <Field id="staff-password" label="Password">
-            <input
-              id="staff-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-              disabled={signIn.isPending}
-            />
-          </Field>
-          {signIn.error && (
-            <p role="alert" className="connected-error">
-              {errorText(signIn.error)}
-            </p>
-          )}
-          <Button variant="primary" type="submit" disabled={!user || !password || signIn.isPending}>
-            {signIn.isPending && <LoaderCircle size={16} className="animate-spin" />}
-            {signIn.isPending ? 'Signing in…' : 'Sign in'}
-          </Button>
-        </form>
-      </Panel>
-    </>
+    <section className="panel auth-card" aria-labelledby="sign-in-heading">
+      <div className="auth-heading">
+        <h1 id="sign-in-heading">Sign in to your server</h1>
+        <p>Use an administrator or moderator game account.</p>
+      </div>
+      <form onSubmit={submit} className="connected-sign-in">
+        <Field id="staff-user" label="User ID">
+          <input
+            id="staff-user"
+            value={user}
+            onChange={(e) => setUser(e.target.value)}
+            autoComplete="username"
+            required
+            maxLength={64}
+            disabled={signIn.isPending}
+          />
+        </Field>
+        <Field id="staff-password" label="Password">
+          <input
+            id="staff-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            required
+            disabled={signIn.isPending}
+          />
+        </Field>
+        {signIn.error && (
+          <p role="alert" className="connected-error">
+            {errorText(signIn.error)}
+          </p>
+        )}
+        <Button
+          variant="primary"
+          type="submit"
+          disabled={!user.trim() || !password || signIn.isPending}
+        >
+          {signIn.isPending && <LoaderCircle size={16} className="animate-spin" />}
+          {signIn.isPending ? 'Signing in…' : 'Sign in'}
+        </Button>
+      </form>
+    </section>
   )
 }
 
@@ -123,6 +126,10 @@ function Workspace() {
     setCsrfToken(session.data?.csrf_token)
   }, [session.data?.csrf_token])
   const signedOut = session.error instanceof ApiHttpError && session.error.status === 401
+  const entry = !session.data || Boolean(session.error)
+  useEffect(() => {
+    if (entry) document.title = 'Sign in · YO3 Revival'
+  }, [entry])
   if (session.data && !session.error && !integration) {
     const user = session.data
     const headings: Record<string, [string, string]> = {
@@ -190,25 +197,35 @@ function Workspace() {
   return (
     <div className="connected-shell">
       <header className="connected-header">
-        <Link to="/" className="brand">
-          <Layers size={23} /> YO3 Revival
+        <Link to="/" className="brand" aria-label="YO3 Revival home">
+          <img src="/revival-mark.png" width="43" height="43" alt="" />
+          <div>
+            <strong>
+              YO3 <span>REVIVAL</span>
+            </strong>
+            <small>SERVER DASHBOARD</small>
+          </div>
         </Link>
-        <Link to="/">Dashboard</Link>
       </header>
-      <main id="main" className="connected-main">
+      <main id="main" className={`connected-main${entry ? ' auth-main' : ''}`}>
         {integration && (
           <p className="inline-notice">
             Local integration view · Real server data. Use the production build for hosting.
           </p>
         )}
         {session.isPending ? (
-          <p role="status" className="connected-state">
+          <p role="status" className="panel auth-card connected-state">
+            <LoaderCircle size={18} className="spin" />
             Connecting to your server…
           </p>
         ) : signedOut ? (
           <SignIn />
         ) : session.error ? (
-          <Panel title="Server unavailable" description={errorText(session.error)}>
+          <Panel
+            className="auth-card"
+            title="Server unavailable"
+            description={errorText(session.error)}
+          >
             <div className="connected-state">
               <Button onClick={() => void session.refetch()}>Try again</Button>
             </div>
@@ -233,7 +250,13 @@ export default function ConnectedApp() {
           if (query.queryKey[0] !== getGetStaffSessionQueryKey()[0]) authError(error)
         },
       }),
-      mutationCache: new MutationCache({ onError: authError }),
+      mutationCache: new MutationCache({
+        onError: (error, _variables, _context, mutation) => {
+          // A refused sign-in is a form error, not an expired staff session.
+          // Refetching the session would remount the form and discard that error.
+          if (mutation.options.mutationKey?.[0] !== getSignInStaffMutationKey()[0]) authError(error)
+        },
+      }),
       defaultOptions: { queries: { retry: false }, mutations: { retry: false, gcTime: 0 } },
     })
     return client

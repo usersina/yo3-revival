@@ -1407,10 +1407,18 @@
     flex-shrink: 0;
   }
   .settings-fieldset {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
     border: 0;
     padding: 0;
     margin: 0;
     min-width: 0;
+  }
+  .settings-fieldset > .inline-notice,
+  .settings-fieldset > .connected-error,
+  .settings-fieldset > .settings-news-entry {
+    margin: 0;
   }
   .settings-fieldset:disabled input,
   .settings-fieldset:disabled select {
@@ -2146,7 +2154,7 @@
     justify-content: space-between;
     align-items: center;
     gap: 16px;
-    padding: 20px 28px;
+    padding: 14px 28px;
     border-bottom: 1px solid var(--color-line);
     background: white;
   }
@@ -2154,8 +2162,8 @@
     display: flex;
     align-items: center;
     gap: 9px;
-    font-weight: 700;
-    font-size: 19px;
+    margin: 0;
+    padding: 0;
   }
   .connected-main {
     max-width: 1200px;
@@ -2163,10 +2171,38 @@
     padding: 28px;
   }
   .connected-sign-in {
-    padding: 24px;
-    max-width: 440px;
+    padding: 0 28px 28px;
     display: grid;
     gap: 16px;
+  }
+  .auth-main {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    min-height: calc(100dvh - 72px);
+    padding-block: 32px;
+  }
+  .auth-card {
+    width: 100%;
+    max-width: 460px;
+    margin-bottom: 0;
+  }
+  .auth-heading {
+    padding: 28px 28px 24px;
+  }
+  .auth-heading h1 {
+    font-size: 25px;
+  }
+  .auth-heading p {
+    margin-top: 8px;
+    color: #5e6773;
+  }
+  .connected-sign-in .connected-error {
+    margin: 0;
+  }
+  .connected-sign-in .button {
+    margin-top: 4px;
+    min-height: 42px;
   }
   .connected-sign-in input,
   .connected-codes input,
@@ -2302,31 +2338,33 @@
       padding: 16px;
     }
     .connected-header {
-      padding: 16px;
+      padding: 14px 16px;
       font-size: 13px;
     }
   }
 }
 
-.connected-log-output,
-.audit-entry-detail pre {
-  max-width: 100%;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: 12px/1.65 var(--font-mono, monospace);
-}
-.connected-log-output {
-  max-height: 28rem;
-  margin: 16px 0 0;
-  padding: 16px;
-  border: 1px solid var(--color-line);
-  border-radius: 8px;
-  background: var(--color-canvas);
-}
-.audit-entry-detail {
-  max-width: 30rem;
-  padding-top: 8px;
+@layer components {
+  .connected-log-output,
+  .audit-entry-detail pre {
+    max-width: 100%;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: 12px/1.65 var(--font-mono, monospace);
+  }
+  .connected-log-output {
+    max-height: 28rem;
+    margin: 16px 0 0;
+    padding: 16px;
+    border: 1px solid var(--color-line);
+    border-radius: 8px;
+    background: var(--color-canvas);
+  }
+  .audit-entry-detail {
+    max-width: 30rem;
+    padding-top: 8px;
+  }
 }
 
 /* Connected pages keep full-width tables, with the same inset for other panel content. */
@@ -2628,5 +2666,47 @@
   }
   .gift-option {
     min-height: 64px;
+  }
+}
+
+/* Keep the workspace usable before a fixed sidebar starts squeezing the content. */
+@media (max-width: 1024px) {
+  .sidebar {
+    display: none;
+  }
+  .main-shell {
+    margin-left: 0;
+  }
+  .mobile-menu {
+    display: inline-flex;
+    margin-left: -7px;
+  }
+}
+.main-shell > .main-content {
+  min-height: calc(100dvh - 64px);
+}
+.sidebar {
+  overflow-y: auto;
+}
+.connected-panel > .profile-facts,
+.connected-profile > .profile-facts {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+}
+.main-content > .connected-invites,
+.main-content > .connected-codes {
+  margin-top: 0;
+}
+.connected-panel .table-toolbar {
+  align-items: flex-end;
+}
+.backup-snapshot {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 767px) {
+  .main-shell > .main-content {
+    min-height: calc(100dvh - 56px);
+  }
+  .topbar > .button {
+    flex-shrink: 0;
   }
 }

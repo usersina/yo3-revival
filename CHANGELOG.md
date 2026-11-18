@@ -15,6 +15,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Dashboard sign-in now uses the project logo and a compact centered form. Failed sign-ins keep their error
+  visible, including after session expiry. Tablet navigation, audit/invite/code/backup rows, log insets and
+  backup confirmations now follow the same responsive layout as the account pages.
 - Dashboard account/player actions now fit phones and tablets. Long dialogs keep their actions visible, searches
   can be cleared, and card gifts list artworks with icons, an official card-database link and checked copy counts.
 - Compatible dashboard changes can deploy automatically from `main` without restarting the game server or requiring

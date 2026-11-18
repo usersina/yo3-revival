@@ -53,9 +53,15 @@ Implementation plan agreed on 2026-11-16. For deployment and HTTPS, see [Docker 
 
 ## Staff interface
 
-Account and player tables switch to labelled rows on phones and narrow tablets, keeping actions in view.
+The sign-in screen uses the project logo and a compact centered form. Connection errors offer a retry; refused
+credentials stay visible without clearing the User ID, including after a session expires.
+
+Navigation collapses at tablet widths. Account, player, invite, code, audit and backup tables switch to labelled
+rows in narrow panels, keeping actions in view.
 Searches have a clear button, account filters show the result count and an empty result offers **Clear filters**.
-Long dialogs scroll their body while keeping the heading and action buttons visible.
+Long dialogs scroll their body while keeping the heading and action buttons visible. Backup download confirmations
+use the same body inset as other dialogs. Nested settings and moderation forms keep a consistent field gap, and
+log output aligns with its panel heading.
 
 **Give a gift → Cards** searches the host's catalogue and lists each artwork separately, with keyboard-selectable
 rows and card icons. Copy counts are checked before confirmation, and the confirmation stays beside the submit
@@ -69,7 +75,8 @@ are different identifiers and need an explicit mapping before choosing an extern
 
 All 28 documented staff operations are consumed by the dashboard. The current UI pass uses the released API
 without changing the schema, generated client or nginx image policy. Responsive and accessibility checks are in
-`dashboard/e2e/ergonomics.spec.ts`; gift retry and permission checks remain in `dashboard/e2e/connected.spec.ts`.
+`dashboard/e2e/ergonomics.spec.ts` and `dashboard/e2e/auth-layout.spec.ts`; gift retry and permission checks remain
+in `dashboard/e2e/connected.spec.ts`.
 
 ## Independent UI delivery
 

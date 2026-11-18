@@ -83,7 +83,7 @@ export function ConnectedAudit() {
               {history.isFetching ? ' · Refreshing…' : ''}
             </p>
             <div className="table-scroll" role="region" aria-label="Audit entries" tabIndex={0}>
-              <table>
+              <table className="responsive-table">
                 <thead>
                   <tr>
                     <th>When</th>
@@ -96,11 +96,11 @@ export function ConnectedAudit() {
                 <tbody>
                   {history.data.entries.map((entry) => (
                     <tr key={entry.id} data-audit-id={entry.id}>
-                      <td>{new Date(entry.at).toLocaleString()}</td>
-                      <td>{entry.actor}</td>
-                      <td>{entry.operation}</td>
-                      <td>{entry.target}</td>
-                      <td>
+                      <td data-label="When">{new Date(entry.at).toLocaleString()}</td>
+                      <td data-label="Actor">{entry.actor}</td>
+                      <td data-label="Action">{entry.operation}</td>
+                      <td data-label="Target">{entry.target}</td>
+                      <td className="row-heading" data-label="Details">
                         <details>
                           <summary>View entry</summary>
                           <div className="audit-entry-detail">

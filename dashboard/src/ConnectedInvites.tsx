@@ -199,7 +199,7 @@ export function ConnectedInvites({ session }: { session: StaffSession }) {
               aria-label="Registration invites table"
               tabIndex={0}
             >
-              <table>
+              <table className="responsive-table">
                 <thead>
                   <tr>
                     <th scope="col">Code</th>
@@ -213,7 +213,7 @@ export function ConnectedInvites({ session }: { session: StaffSession }) {
                 <tbody>
                   {[...invites.data.invites].reverse().map((invite) => (
                     <tr key={invite.code}>
-                      <td>
+                      <td className="row-heading" data-label="Code">
                         <div className="code-cell">
                           <code>{invite.code}</code>
                           <Button
@@ -235,7 +235,7 @@ export function ConnectedInvites({ session }: { session: StaffSession }) {
                           </Button>
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Status">
                         <Badge tone={invite.state === 'usable' ? 'green' : 'neutral'}>
                           {invite.state === 'usable'
                             ? 'Usable'
@@ -244,10 +244,10 @@ export function ConnectedInvites({ session }: { session: StaffSession }) {
                               : 'Used up'}
                         </Badge>
                       </td>
-                      <td className="numeric">
+                      <td className="numeric" data-label="Sign-ups left">
                         {invite.uses == null ? 'Unlimited' : invite.uses.toLocaleString()}
                       </td>
-                      <td>
+                      <td data-label="Expires">
                         {invite.expires_at ? (
                           <time dateTime={invite.expires_at}>
                             {new Date(invite.expires_at).toLocaleString()}
@@ -256,8 +256,8 @@ export function ConnectedInvites({ session }: { session: StaffSession }) {
                           'No expiry'
                         )}
                       </td>
-                      <td>{invite.issued_by}</td>
-                      <td>
+                      <td data-label="Issued by">{invite.issued_by}</td>
+                      <td data-label="Used by">
                         {invite.claims.length ? (
                           <details>
                             <summary>{invite.claims.length} accounts</summary>

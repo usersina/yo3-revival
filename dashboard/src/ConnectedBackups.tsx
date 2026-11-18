@@ -243,7 +243,7 @@ export function ConnectedBackups({ session }: { session: StaffSession }) {
                 aria-label="Available database backups"
                 tabIndex={0}
               >
-                <table>
+                <table className="responsive-table">
                   <thead>
                     <tr>
                       <th>Snapshot</th>
@@ -255,13 +255,15 @@ export function ConnectedBackups({ session }: { session: StaffSession }) {
                   <tbody>
                     {list.data.backups.map((row) => (
                       <tr key={row.name}>
-                        <td>
+                        <td className="row-heading" data-label="Snapshot">
                           <code>{row.name}</code>
                         </td>
-                        <td>{row.at ? new Date(row.at).toLocaleString() : 'Unknown'}</td>
-                        <td>{row.bytes} bytes</td>
+                        <td data-label="Created">
+                          {row.at ? new Date(row.at).toLocaleString() : 'Unknown'}
+                        </td>
+                        <td data-label="Size">{row.bytes} bytes</td>
                         {session.role === 'admin' && list.data.downloads_allowed && (
-                          <td>
+                          <td className="row-actions">
                             <Button
                               aria-label={`Download ${row.name}`}
                               disabled={
@@ -299,21 +301,23 @@ export function ConnectedBackups({ session }: { session: StaffSession }) {
         title="Download database backup"
         description="Contains account data, password hashes and audit history. Store it privately; never attach it to a public bug report."
       >
-        <p className="connected-state">Snapshot: {selected}</p>
-        <label className="profile-role-confirm">
-          <input
-            type="checkbox"
-            checked={confirmed}
-            disabled={save.isPending}
-            onChange={(event) => setConfirmed(event.target.checked)}
-          />{' '}
-          I will keep this backup private.
-        </label>
-        {save.error && (
-          <p role="alert" className="connected-error">
-            {errorText(save.error)}
-          </p>
-        )}
+        <div className="modal-body">
+          <p className="backup-snapshot">Snapshot: {selected}</p>
+          <label className="profile-role-confirm">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              disabled={save.isPending}
+              onChange={(event) => setConfirmed(event.target.checked)}
+            />{' '}
+            I will keep this backup private.
+          </label>
+          {save.error && (
+            <p role="alert" className="connected-error">
+              {errorText(save.error)}
+            </p>
+          )}
+        </div>
         <div className="modal-actions">
           <Button disabled={save.isPending} onClick={() => setSelected(null)}>
             Cancel

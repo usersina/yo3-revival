@@ -124,3 +124,123 @@ test('card gifts identify artworks, link to official card details and validate c
     (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()).violations,
   ).toEqual([])
 })
+
+test('every workspace keeps table data and actions readable without sideways scrolling', async ({
+  page,
+}) => {
+  test.setTimeout(90000) // Nine workspaces at four widths, with real requests at each navigation.
+  await page.route('**/panel/api/v1/bp-codes', async (route) => {
+    const response = await route.fetch()
+    await route.fulfill({
+      response,
+      json: {
+        ...(await response.json()),
+        codes: [{ code: 'VISUAL-CHECK', bp: 500, uses: 20, claims: [] }],
+      },
+    })
+  })
+  await signIn(page)
+  await page.goto('/backups')
+  await page.getByRole('button', { name: 'Create backup', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('Backup created.')
+  await page.goto('/invites')
+  await page.getByRole('button', { name: 'Create invite', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Create invite', exact: true }).click()
+  await expect(page.getByRole('dialog')).not.toBeVisible()
+  for (const width of [320, 390, 768, 1024]) {
+    await page.setViewportSize({ width, height: 850 })
+    for (const path of [
+      '/',
+      '/accounts',
+      '/invites',
+      '/news',
+      '/moderation',
+      '/audit',
+      '/logs',
+      '/backups',
+      '/settings',
+    ]) {
+      await page.goto(path)
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Open navigation', exact: true })).toBeVisible()
+      const expectedRegions: Record<string, string> = {
+        '/accounts': 'Accounts table',
+        '/moderation': 'Accounts table',
+        '/invites': 'Registration invites table',
+        '/audit': 'Audit entries',
+        '/backups': 'Available database backups',
+      }
+      if (expectedRegions[path])
+        await expect(
+          page.getByRole('region', { name: expectedRegions[path], exact: true }),
+        ).toBeVisible()
+      const regions = page.locator('.table-scroll')
+      for (let i = 0; i < (await regions.count()); i++) {
+        const region = regions.nth(i)
+        await expect
+          .poll(() => region.evaluate((el) => el.scrollWidth - el.clientWidth), {
+            message: `${path} at ${width}px`,
+          })
+          .toBeLessThanOrEqual(1)
+      }
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+        path,
+      ).toBeLessThanOrEqual(width)
+    }
+  }
+})
+
+test('backup download confirmation uses the same inset and persistent actions as other dialogs', async ({
+  page,
+}) => {
+  await signIn(page)
+  await page.goto('/backups')
+  await page.getByRole('button', { name: 'Create backup', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('Backup created.')
+  await page.setViewportSize({ width: 390, height: 520 })
+  await page
+    .getByRole('button', { name: /^Download / })
+    .first()
+    .click()
+  const dialog = page.getByRole('dialog', { name: 'Download database backup', exact: true })
+  const confirm = dialog.getByLabel('I will keep this backup private.')
+  const label = confirm.locator('..')
+  const box = await dialog.boundingBox()
+  const checkbox = await label.boundingBox()
+  expect(checkbox!.x - box!.x).toBeGreaterThanOrEqual(20)
+  await insideViewport(
+    dialog.getByRole('button', { name: 'Download backup', exact: true }),
+    390,
+    520,
+  )
+  await confirm.check()
+  await expect(dialog.getByRole('button', { name: 'Download backup', exact: true })).toBeEnabled()
+})
+
+test('maintenance and moderation forms separate fields and confirmations consistently', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 650 })
+  await signIn(page)
+  await page.goto('/news')
+  await page.getByRole('button', { name: 'Schedule maintenance', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  const minutes = await dialog.getByLabel('Starts in (minutes)').boundingBox()
+  const messageField = await dialog.getByLabel('Message to players').locator('..').boundingBox()
+  expect(messageField!.y - minutes!.y - minutes!.height).toBeGreaterThanOrEqual(12)
+  const message = await dialog.getByLabel('Message to players').boundingBox()
+  const confirmation = await dialog.getByLabel('Confirm this change').locator('..').boundingBox()
+  expect(confirmation!.y - message!.y - message!.height).toBeGreaterThanOrEqual(12)
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click()
+  await page.goto('/accounts')
+  await page.getByRole('button', { name: 'View account TestPlayer', exact: true }).click()
+  await page.getByRole('button', { name: 'Moderate account', exact: true }).click()
+  const reason = await dialog.getByLabel('Reason', { exact: true }).locator('..').boundingBox()
+  const duration = await dialog
+    .getByLabel('Duration (minutes)', { exact: true })
+    .locator('..')
+    .boundingBox()
+  expect(duration!.y - reason!.y - reason!.height).toBeGreaterThanOrEqual(12)
+  await insideViewport(dialog.getByRole('button', { name: 'Apply action', exact: true }), 390, 650)
+})

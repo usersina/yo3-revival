@@ -242,7 +242,7 @@ export function ConnectedServer({ session }: { session: StaffSession }) {
             <h3>Online now</h3>
             {status.data.online_players.length ? (
               <div className="table-scroll" role="region" aria-label="Online players" tabIndex={0}>
-                <table>
+                <table className="responsive-table">
                   <thead>
                     <tr>
                       <th>Player</th>
@@ -252,14 +252,16 @@ export function ConnectedServer({ session }: { session: StaffSession }) {
                   <tbody>
                     {status.data.online_players.map((player) => (
                       <tr key={player.player_id}>
-                        <td>
+                        <td className="row-heading" data-label="Player">
                           {player.user_id == null ? (
                             player.name
                           ) : (
                             <Link to={`/accounts?account=${player.user_id}`}>{player.name}</Link>
                           )}
                         </td>
-                        <td>{player.duelling ? 'Duelling' : 'In the game'}</td>
+                        <td data-label="Activity">
+                          {player.duelling ? 'Duelling' : 'In the game'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
