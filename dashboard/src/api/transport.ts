@@ -34,7 +34,9 @@ export async function apiFetch<T>(url: string, options?: RequestInit): Promise<T
   const response = await fetch(url, { ...options, headers, credentials: 'same-origin' })
   if (
     response.ok &&
-    response.headers.get('Content-Type')?.split(';')[0].trim() === 'application/octet-stream'
+    ['application/octet-stream', 'image/png'].includes(
+      response.headers.get('Content-Type')?.split(';')[0].trim() ?? '',
+    )
   ) {
     return (await response.blob()) as T
   }

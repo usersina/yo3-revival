@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-18 — Original card previews in the staff dashboard](#2026-11-18--original-card-previews-in-the-staff-dashboard)
   - [2026-11-18 — Local Cargo cache on the home runner](#2026-11-18--local-cargo-cache-on-the-home-runner)
   - [2026-11-18 — Full release and independent dashboard delivery](#2026-11-18--full-release-and-independent-dashboard-delivery)
   - [2026-11-18 — First home-runner Actions check](#2026-11-18--first-home-runner-actions-check)
@@ -46,6 +47,27 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-18 — Original card previews in the staff dashboard
+
+Added same-origin authenticated card PNGs and original description text to the gift catalogue, with generated
+OpenAPI/Orval fetch/types/Zod output. Images remain in the host's original read-only archives, outside container images and
+Git. The thumbnail/full paths use the actual card row, Konami ID and artwork; the installed-game check compares
+both sizes with the archive's original bytes. Bounded reads reject oversized allocations, inflated output,
+unsupported methods and mismatched sizes. Invalid PNG types/dimensions, absent archives and unknown revisions
+cannot become a cacheable success.
+
+Successful images alone use a versioned private one-day cache and content ETags. Authentication and admin roles
+are checked before 304; account/session/catalogue/error responses remain no-store. The UI loads thumbnails lazily,
+opens full artwork only on demand and shows original text separately. Preview controls do not select or give a card;
+Escape preserves the current gift, copy count and focus. Missing images retain a useful fallback and working gifts.
+Ansible copies the optional image archives on first setup and reruns; nginx allowlists only numeric card image
+routes. This is a full-release change, not an independent dashboard deployment.
+The full workspace passed 1,256 Rust tests (5 skipped), clippy with warnings denied, frontend type/lint/format and
+26 unit tests. Browser checks cover cache reuse, retained gifts/focus, fallback, responsive themes and retry safety;
+all seven production HTTPS/nginx checks passed. Staged both original image archives on the VPS (574,299,752 bytes),
+verified SHA-256 hashes and readable permissions, without changing or restarting its running release. Feature is
+Unreleased until a full server/dashboard release ships it.
 
 ## 2026-11-18 — Local Cargo cache on the home runner
 

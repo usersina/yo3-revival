@@ -16,6 +16,17 @@ afterEach(() => {
 })
 
 describe('generated API transport', () => {
+  it('returns card PNGs as blobs using normal browser HTTP caching', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(new Response('png-bytes', { headers: { 'Content-Type': 'image/png' } }))
+    vi.stubGlobal('fetch', fetch)
+    const image = await apiFetch<Blob>('/panel/api/v1/cards/817/full?v=revision')
+    expect(await image.text()).toBe('png-bytes')
+    expect(fetch.mock.calls[0][1]).toMatchObject({ credentials: 'same-origin' })
+    expect(fetch.mock.calls[0][1].cache).toBeUndefined()
+  })
+
   it('returns a backup as a Blob while decoding JSON failures before any download', async () => {
     vi.stubGlobal(
       'fetch',

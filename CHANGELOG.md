@@ -15,6 +15,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Card gifts show original game thumbnails and a larger preview with readable original effect text. Images stay on
+  the host, load on demand and use a private browser cache; missing artwork never prevents giving a card.
+
 - The home runner keeps Cargo build output locally instead of transferring a large Rust cache archive to GitHub.
   The cache is bounded, survives checkout cleanup and leaves installed tools intact; release checks are unchanged.
 

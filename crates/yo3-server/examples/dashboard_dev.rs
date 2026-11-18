@@ -1,4 +1,6 @@
 //! Disposable loopback server for the connected dashboard and its browser tests. Never opens the host's data folder.
+#[path="support/card_images.rs"]
+mod card_images;
 use std::sync::{Arc, Mutex};
 use yo3_server::{accounts::Directory, logins::{self, Login, Registration, Role}, api::Api, front::{Hub, World}, gifts::{Card, Gifts, Recipe}};
 
@@ -18,6 +20,7 @@ async fn main() -> anyhow::Result<()> {
         accounts.set_role(user, role).map_err(anyhow::Error::msg)?;
         accounts.add_player_to(id, user).map_err(anyhow::Error::msg)?;
     }
+    card_images::write(&scratch)?;
     let accounts = Arc::new(Mutex::new(accounts));
     let mut hub = Hub::with_records(&dir.join("records.json"));
     hub.set_directory(accounts.clone()); hub.keep_mail(&dir.join("mail.json"));
@@ -25,8 +28,8 @@ async fn main() -> anyhow::Result<()> {
     hub.keep_events(&dir.join("events.json"));hub.keep_rentals(&dir.join("rentals.json"));
     let mut world = World::new(vec![]); world.card_rows = 1000;
     let mut api = Api::new(accounts, Arc::new(yo3_server::settings::Live::open(Some(&dir.join("settings.json")), vec![])?), Some(dir.clone()),
-        scratch.join("no-game-files-needed"), "dashboard-dev").with_gifts(Gifts {
-            cards: vec![Card { row: 816, cid: 4007, art: 1, name: "Blue-Eyes White Dragon".into() }, Card { row: 817, cid: 4007, art: 2, name: "Blue-Eyes White Dragon".into() }],
+        scratch.clone(), "dashboard-dev").with_gifts(Gifts {
+            cards: vec![Card { row: 816, cid: 4007, art: 1, name: "Blue-Eyes White Dragon".into(), description: "Invented browser fixture description.\nSecond line of original game text.".into() }, Card { row: 817, cid: 4007, art: 2, name: "Blue-Eyes White Dragon".into(), description: "Invented browser fixture description.\nSecond line of original game text.".into() }],
             recipes: vec![Recipe { id: 7, title: "Example deck recipe".into(), item: 769, cards: vec![816,816,817] }],
         });
     api.sessions = Some(Arc::new(Mutex::new(yo3_server::auth::Sessions::default())));

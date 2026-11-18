@@ -9,9 +9,14 @@ export interface CardChoice {
      * @maximum 4294967295
      */
   art: number;
+  description: string;
+  /** @nullable */
+  image_url?: string | null;
   /** @minimum 0 */
   konami_id: number;
   name: string;
   /** @minimum 0 */
   row: number;
+  /** @nullable */
+  thumbnail_url?: string | null;
 }

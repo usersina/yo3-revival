@@ -1793,6 +1793,152 @@
         ]
       }
     },
+    "/panel/api/v1/cards/{row}/{size}": {
+      "get": {
+        "tags": [
+          "Gifts"
+        ],
+        "operationId": "getCardImage",
+        "parameters": [
+          {
+            "name": "row",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "size",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CardImageSize"
+            }
+          },
+          {
+            "name": "v",
+            "in": "query",
+            "description": "Archive revision from the gift catalogue",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "description": "Previously received ETag",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Original game PNG; private browser cache for one day",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardPng"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Image unchanged; authentication and permissions rechecked"
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Staff sign-in required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Image or revision unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "staffSession": []
+          }
+        ]
+      }
+    },
     "/panel/api/v1/countries": {
       "get": {
         "tags": [
@@ -4448,7 +4594,8 @@
           "row",
           "konami_id",
           "art",
-          "name"
+          "name",
+          "description"
         ],
         "properties": {
           "art": {
@@ -4456,6 +4603,15 @@
             "format": "int32",
             "maximum": 4294967295,
             "minimum": 0
+          },
+          "description": {
+            "type": "string"
+          },
+          "image_url": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "konami_id": {
             "type": "integer",
@@ -4469,8 +4625,25 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "thumbnail_url": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
+      },
+      "CardImageSize": {
+        "type": "string",
+        "enum": [
+          "mini",
+          "full"
+        ]
+      },
+      "CardPng": {
+        "type": "string",
+        "format": "binary"
       },
       "CountryList": {
         "type": "object",

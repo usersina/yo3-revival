@@ -201,8 +201,13 @@ CI exempts only that diagnostic; `test_dashboard_workflow.py` explicitly checks 
 - A lowercase DNS name with an A record pointing to that VPS. Remove a stale AAAA record if IPv6 is not configured.
   Allow SSH and TCP **7443, 80 and 443** in the provider's firewall. Use DNS-only records: the game port is not HTTP.
 - Locally: Linux x86_64, Docker with Compose and enough space to build both images, Python and Ansible.
-- Your original game installation. The playbook copies only `yo3.idx` and `package/data002.ypk` privately to the VPS;
-  they never go into Git, GitHub or the container images.
+- Your original game installation. The playbook copies `yo3.idx` and `package/data002.ypk` privately to the VPS.
+  If present, it also copies `package/data000.ypk` and `package/data001.ypk` for dashboard card previews (about
+  574 MB together), including on setup reruns. These files never go into Git, GitHub or container images. The
+  existing server-only read-only `/game` mount serves individual authenticated images through nginx; no bucket
+  or additional service is required. Missing image archives leave card names, descriptions and gifts usable.
+  After adding/replacing archives on a running host, restart the server during a maintenance window to refresh its
+  cached index and image revisions; Ansible does not force a live restart just to refresh artwork.
 
 Install the pinned Ansible version in your preferred Python environment, then its Docker collection:
 

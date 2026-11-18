@@ -88,16 +88,28 @@ to that page. Successful balance and profile changes refresh the visible data. U
 original retry ID, including after reload, and permissions still govern every action.
 
 **Give a gift → Cards** searches the host's catalogue and lists each artwork separately, with keyboard-selectable
-rows and card icons. Copy counts are checked before confirmation, and the confirmation stays beside the submit
-button. **Card details** opens the official Konami database in a new tab using the catalogue's Konami ID. That page
-shows current text; Revival may use older card effects. No external image is embedded or fetched by the dashboard.
+rows and original 50×72 thumbnails. A separate **Preview** button opens the original 200×290 card and readable
+2010–2012 game text without selecting or giving anything. Escape returns to the selected gift and copy count.
+Copy counts are checked before confirmation, and the confirmation stays beside the submit button. **Card details**
+opens Konami's current database; its wording can differ from the game's original text.
 
-Hosted image/effect previews need a future server release: the current catalogue returns names and IDs only.
-[YGOPRODeck's API guide](https://ygoprodeck.com/api-guide/) requires downloading images once and hosting them
-locally; its image URLs must not become live dashboard hotlinks. Konami IDs, game artwork rows and card passcodes
-are different identifiers and need an explicit mapping before choosing an external image.
+Artwork comes from the host's read-only `package/data000.ypk` (`data/mini/<cid>_<art>.png`) and
+`package/data001.ypk` (`data/card/<cid>_<art>.png`), using the catalogue's exact Konami ID and artwork, never a
+passcode guessed from another database. The client loader at `0x4FB090` constructs the full-image path; `yo3-data`
+already decodes the corresponding artwork bits. Descriptions come from `CARD_Desc_E.bin`. No third-party host,
+image download, bucket or public archive URL is needed. Missing/corrupt images show a fallback; gifting still works.
 
-All 28 documented staff operations are consumed by the dashboard. Account pages use the released API without
+`GET /panel/api/v1/cards/{row}/{size}?v=REVISION` accepts `mini` or `full`, current admin sessions only. The catalogue
+supplies the URLs and source revision. Rust retains each archive's index, bounds compressed and decoded reads to
+512 KiB, checks PNG type/dimensions and returns a content ETag. Successful images alone use
+`Cache-Control: private, max-age=86400`; an authenticated `If-None-Match` can return 304. Refusals and other APIs
+retain `no-store`. nginx does not share-cache authenticated images. The browser loads thumbnails lazily and full
+cards only when opened; the catalogue query remains fresh in memory for one minute. Replace archives while the
+server is stopped, then restart: the new file timestamp/size yields new URLs, so no browser-cache clearing is needed.
+This API, generated client and nginx allowlist change ship together in a full server release.
+
+All 29 documented staff operations are available to the dashboard (image elements use the generated catalogue URLs).
+Account pages use the released API without
 changing its schema or generated client. Their new nginx route requires a full release; the independent UI gate
 must not deliver it against an older nginx configuration. Responsive and accessibility checks are in
 `dashboard/e2e/ergonomics.spec.ts` and `dashboard/e2e/auth-layout.spec.ts`; gift retry and permission checks remain

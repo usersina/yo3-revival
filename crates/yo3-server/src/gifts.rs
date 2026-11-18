@@ -11,6 +11,7 @@ pub struct Card {
     pub cid: u16,
     pub art: u32,
     pub name: String,
+    pub description: String,
 }
 
 /// A deck recipe the host can give.
@@ -37,7 +38,7 @@ impl Gifts {
     /// has an item.
     pub fn from_game(data: &yo3_data::GameData) -> Gifts {
         let cards = data.cards.iter().filter(|c| c.kind != 10)
-            .map(|c| Card { row: c.row, cid: c.cid, art: c.art, name: c.name.clone() }).collect();
+            .map(|c| Card { row: c.row, cid: c.cid, art: c.art, name: c.name.clone(), description: c.desc.clone() }).collect();
         let recipes = data.decks.iter().filter_map(|d| Some(Recipe {
             id: d.id,
             title: d.name_id().and_then(|t| data.text(t)).map_or_else(|| format!("deck {}", d.id), str::to_owned),
@@ -88,7 +89,7 @@ mod tests {
     use super::*;
 
     fn gifts() -> Gifts {
-        let card = |row, cid, art, name: &str| Card { row, cid, art, name: name.into() };
+        let card = |row, cid, art, name: &str| Card { row, cid, art, name: name.into(), description: String::new() };
         let recipe = |id, title: &str, item| Recipe { id, title: title.into(), item, cards: vec![816, 816] };
         Gifts {
             cards: vec![card(816, 4007, 1, "Blue-Eyes White Dragon"), card(817, 4007, 2, "Blue-Eyes White Dragon"),

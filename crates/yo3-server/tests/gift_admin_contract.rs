@@ -15,7 +15,7 @@ impl Fixture {
         server.hub.lock().unwrap().set_directory(accounts.clone()); server.hub.lock().unwrap().keep_mail(&dir.join("mail.json"));
         let mut client = server.join_saved(&accounts, user); client.pushed();
         let mut api = Api::new(accounts, Arc::new(settings::Live::open(None, vec![]).unwrap()), Some(dir.clone()), Default::default(), "server").with_gifts(Gifts {
-            cards: vec![Card { row: 816, cid: 4007, art: 1, name: "Blue-Eyes White Dragon".into() }],
+            cards: vec![Card { row: 816, cid: 4007, art: 1, name: "Blue-Eyes White Dragon".into(), description: String::new() }],
             recipes: vec![Recipe { id: 7, title: "E-HERO EVOLUTION DECK".into(), item: 769, cards: vec![816,816,816] }],
         });
         api.hub = Some(server.hub); api.world = Some(server.world);
@@ -133,7 +133,7 @@ fn only_current_admins_can_give_gifts_or_replay_receipts_and_catalogues_are_boun
     assert_eq!(f.api.give_gift(&req(&f,"cards"), ID, actor, "panel").unwrap_err().code, MutationErrorCode::Forbidden);
     assert_eq!(f.api.gift_choices("", actor).unwrap_err().code, MutationErrorCode::Forbidden);
     let base = f.api.accounts.clone();
-    let cards = (1..=80).map(|row| Card { row, cid: row, art:1, name: format!("Card {row:03}") }).collect();
+    let cards = (1..=80).map(|row| Card { row, cid: row, art:1, name: format!("Card {row:03}"), description: String::new() }).collect();
     let mut api = Api::new(base, f.api.settings.clone(), None, Default::default(), "server").with_gifts(Gifts { cards,recipes:vec![] });
     api.titles = Some(Arc::new(TitleData::default()));
     let choices = api.gift_choices("", Actor::Host { by:"host" }).unwrap(); assert_eq!(choices.cards.len(),50); assert!(choices.more_cards);

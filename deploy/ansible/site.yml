@@ -177,6 +177,20 @@
         mode: '0644'
       loop: [yo3.idx, package/data002.ypk]
       when: not provisioned.stat.exists
+    - name: Discover optional original card image archives on the controller
+      ansible.builtin.stat: {path: "{{ yo3_game_source_dir }}/package/{{ item }}"}
+      loop: [data000.ypk, data001.ypk]
+      delegate_to: localhost
+      become: false
+      register: card_image_assets
+    - name: Upload original card images when available, including on existing hosts
+      ansible.builtin.copy:
+        src: "{{ yo3_game_source_dir }}/package/{{ item.item }}"
+        dest: "/srv/yo3/game/package/{{ item.item }}"
+        mode: '0644'
+      loop: "{{ card_image_assets.results }}"
+      loop_control: {label: "{{ item.item }}"}
+      when: item.stat.exists and item.stat.isreg
     - name: Load the saved image archive
       when: not provisioned.stat.exists
       ansible.builtin.command: {argv: [docker, image, load, --input, /srv/yo3/images.tar]}

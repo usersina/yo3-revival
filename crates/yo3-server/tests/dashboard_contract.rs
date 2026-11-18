@@ -41,8 +41,9 @@ fn committed_openapi_matches_the_router_without_starting_a_server() {
         ("/panel/api/v1/backups/download", "post", "downloadBackup"),
         ("/panel/api/v1/server/stop", "post", "stopServer"),
         ("/panel/api/v1/gifts/choices", "get", "listGiftChoices"),
+        ("/panel/api/v1/cards/{row}/{size}", "get", "getCardImage"),
     ];
-    assert_eq!(paths.len(), 24);
+    assert_eq!(paths.len(), 25);
     for (path, method, id) in expected {
         let op = &generated["paths"][path][method];
         assert_eq!(op["operationId"], id);

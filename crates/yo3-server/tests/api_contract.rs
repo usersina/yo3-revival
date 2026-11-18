@@ -89,7 +89,7 @@ fn an_admin_gives_cards_artworks_and_recipes_and_a_moderator_cannot() {
     d.register(logins::Login::new("Pegasus", "HASH".into(), "RECOVERY".into()), None, logins::Registration::Open).unwrap();
     d.set_role("Pegasus", logins::Role::Admin).unwrap();
     let accounts = std::sync::Arc::new(std::sync::Mutex::new(d));
-    let card = |row, cid, art, name: &str| Card { row, cid, art, name: name.into() };
+    let card = |row, cid, art, name: &str| Card { row, cid, art, name: name.into(), description: String::new() };
     let gifts = Gifts {
         cards: vec![card(816, 4007, 1, "Blue-Eyes White Dragon"), card(817, 4007, 2, "Blue-Eyes White Dragon")],
         recipes: vec![Recipe { id: 7, title: "E-HERO EVOLUTION DECK".into(), item: 769, cards: vec![816, 816, 816] }],

@@ -419,13 +419,26 @@ export const cardChoiceRowMin = 0;
 
 export const CardChoice = zod.object({
   "art": zod.int().min(cardChoiceArtMin).max(cardChoiceArtMax),
+  "description": zod.string(),
+  "image_url": zod.string().nullish(),
   "konami_id": zod.int().min(cardChoiceKonamiIdMin),
   "name": zod.string(),
-  "row": zod.int().min(cardChoiceRowMin)
+  "row": zod.int().min(cardChoiceRowMin),
+  "thumbnail_url": zod.string().nullish()
 });
 
 export type CardChoice = zod.input<typeof CardChoice>;
 export type CardChoiceOutput = zod.output<typeof CardChoice>;
+
+export const CardImageSize = zod.enum(['mini', 'full']);
+
+export type CardImageSize = zod.input<typeof CardImageSize>;
+export type CardImageSizeOutput = zod.output<typeof CardImageSize>;
+
+export const CardPng = zod.instanceof(Blob);
+
+export type CardPng = zod.input<typeof CardPng>;
+export type CardPngOutput = zod.output<typeof CardPng>;
 
 export const CountryList = zod.object({
   "codes": zod.array(zod.string())
@@ -1645,6 +1658,44 @@ export const RemoveBpCode415Response = ApiError
 export const RemoveBpCode500Response = ApiError
 
 export const RemoveBpCode503Response = ApiError
+
+
+export const getCardImagePathRowMin = 0;
+
+
+
+export const GetCardImageParams = zod.object({
+  "row": zod.int().min(getCardImagePathRowMin),
+  "size": zod.enum(['mini', 'full'])
+})
+
+export const GetCardImageQueryParams = zod.object({
+  "v": zod.string().describe('Archive revision from the gift catalogue')
+})
+
+export const GetCardImageHeader = zod.object({
+  "If-None-Match": zod.string().optional().describe('Previously received ETag')
+})
+
+export const GetCardImage200Response = zod.unknown()
+
+export const GetCardImage304Response = zod.unknown()
+
+export const GetCardImage400Response = ApiError
+
+export const GetCardImage401Response = ApiError
+
+export const GetCardImage403Response = ApiError
+
+export const GetCardImage404Response = ApiError
+
+export const GetCardImage405Response = ApiError
+
+export const GetCardImage413Response = ApiError
+
+export const GetCardImage415Response = ApiError
+
+export const GetCardImage500Response = ApiError
 
 
 export const ListCountries200Response = CountryList

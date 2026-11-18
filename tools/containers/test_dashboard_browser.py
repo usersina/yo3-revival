@@ -14,6 +14,7 @@ import struct
 import subprocess
 import tempfile
 import uuid
+import zlib
 
 ROOT = Path(__file__).resolve().parents[2]
 PASSWORD = 'GateCheck12345'
@@ -40,21 +41,34 @@ def synthetic_game(path):
                               check=True, capture_output=True).stdout
         return struct.pack('>I', len(body) ^ 0x77777777)+swap_words(body)
 
+    names, descs, index = bytearray(), bytearray(), bytearray(8)
+    for card in range(1,41):
+        index += struct.pack('<II',len(names),len(descs))
+        names += f'Example card {card:02}\0'.encode('utf-16-le')
+        descs += 'Invented fixture effect.\nOriginal game text stays readable.\0'.encode('utf-16-le')
     files = {'data/bin#/CARD_Prop.bin': b'\0'*8+b''.join(struct.pack('<II', i, 4 << 12) for i in range(1, 41)),
-             'data/bin#/CARD_Indx_E.bin': b'', 'data/bin#/CARD_Name_E.bin': b'',
-             'data/bin#/CARD_Desc_E.bin': b'', 'data/text/txttbl_E.bin': b'',
+             'data/bin#/CARD_Indx_E.bin': index, 'data/bin#/CARD_Name_E.bin': names,
+             'data/bin#/CARD_Desc_E.bin': descs, 'data/text/txttbl_E.bin': b'',
              'data/extra/yo3pbininfo.bin': b'',
              'data/regulation/1.y3r': record({'regulation_id': 1}),
              'data/recipe/1.y3d': record({'deck_id': 1, 'deck_type': 1,
                                         'main': b''.join(struct.pack('>H', i) for i in range(1, 41))})}
-    with (package/'data002.ypk').open('wb') as file:
-        for name, payload in files.items():
-            encoded = name.encode()
-            header = bytearray(30)
-            header[:4] = b'YO\x03\x04'
-            struct.pack_into('<II', header, 18, len(payload), len(payload))
-            struct.pack_into('<H', header, 26, len(encoded))
-            file.write(header+encoded+payload)
+    def archive(filename, files):
+        with (package/filename).open('wb') as file:
+            for name, payload in files.items():
+                encoded = name.encode()
+                header = bytearray(30)
+                header[:4] = b'YO\x03\x04'
+                struct.pack_into('<II', header, 18, len(payload), len(payload))
+                struct.pack_into('<H', header, 26, len(encoded))
+                file.write(header+encoded+payload)
+    archive('data002.ypk', files)
+    def png(width, height):
+        def chunk(kind, body):
+            return struct.pack('>I',len(body))+kind+body+struct.pack('>I',zlib.crc32(kind+body))
+        return b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',width,height,8,2,0,0,0))+chunk(b'IDAT',zlib.compress((b'\0'+bytes([53,92,138])*width)*height))+chunk(b'IEND',b'')
+    for filename,folder,width,height in [('data000.ypk','mini',50,72),('data001.ypk','card',200,290)]:
+        archive(filename,{f'data/{folder}/{i}_0.png':png(width,height) for i in range(1,41)})
     (path/'yo3.idx').write_bytes(b'')
 
 

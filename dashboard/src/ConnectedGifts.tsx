@@ -2,7 +2,7 @@ import { SelectControl, SelectOption, Input } from './components/form-controls'
 import { useDeferredValue, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { BookOpen, ExternalLink, Gift, Layers, LoaderCircle, RefreshCw } from 'lucide-react'
+import { BookOpen, ExternalLink, Gift, ZoomIn, LoaderCircle, RefreshCw } from 'lucide-react'
 import { z } from 'zod'
 import { Button, Field, Modal } from './components/ui'
 import {
@@ -13,12 +13,13 @@ import {
   useListGiftChoices,
 } from './api/generated/http/client'
 import type { GivePlayerGiftMutationVariables } from './api/generated/http/client'
-import type { GiftRequest, GiftResult, StaffSession } from './api/generated/http/models'
+import type { CardChoice, GiftRequest, GiftResult, StaffSession } from './api/generated/http/models'
 import {
   GiftRequest as RequestSchema,
   GivePlayerGiftHeader,
 } from './api/generated/validation/schemas'
 import { ApiHttpError } from './api/transport'
+import { CardPreview, CardThumbnail } from './CardPreview'
 
 export type GiftTarget = { player_id: number; name: string }
 const pendingSchema = z.object({ data: RequestSchema, headers: GivePlayerGiftHeader })
@@ -52,6 +53,7 @@ export function ConnectedGifts({
   const [query, setQuery] = useState('')
   const search = useDeferredValue(query)
   const [choice, setChoice] = useState('')
+  const [preview, setPreview] = useState<CardChoice | null>(null)
   const [copies, setCopies] = useState('1')
   const [includeCards, setIncludeCards] = useState(false)
   const [accepted, setAccepted] = useState(false)
@@ -60,7 +62,12 @@ export function ConnectedGifts({
   const [refused, setRefused] = useState(false)
   const choices = useListGiftChoices(
     { q: search },
-    { query: { enabled: target !== null && !pending && !result && session.role === 'admin' } },
+    {
+      query: {
+        enabled: target !== null && !pending && !result && session.role === 'admin',
+        staleTime: 60_000,
+      },
+    },
   )
   const mutation = useGivePlayerGift({
     mutation: {
@@ -215,7 +222,7 @@ export function ConnectedGifts({
       <Modal
         open={target !== null}
         onOpenChange={(open) => {
-          if (!open) close()
+          if (!open && !preview) close()
         }}
         title="Give a gift"
         description={`${result ? `Player #${result.player_id}` : pending ? `Player #${playerId}` : (target?.name ?? '')} · Saved gifts are audited.`}
@@ -313,28 +320,36 @@ export function ConnectedGifts({
                   <legend>Card artwork</legend>
                   <div className="gift-options">
                     {choices.data?.cards.map((card) => (
-                      <label className="gift-option" key={card.row}>
-                        <input
-                          type="radio"
-                          name="gift-card"
-                          value={card.row}
-                          checked={String(card.row) === choice}
-                          aria-label={`${card.name} · Artwork ${card.art} · Konami ${card.konami_id}`}
-                          onChange={() => {
-                            setChoice(String(card.row))
-                            setAccepted(false)
-                          }}
-                        />
-                        <span className="gift-symbol" aria-hidden="true">
-                          <Layers size={21} />
-                        </span>
-                        <span className="gift-card-name">
-                          <strong>{card.name}</strong>
-                          <small>
-                            Artwork {card.art} · Konami {card.konami_id}
-                          </small>
-                        </span>
-                      </label>
+                      <div className="gift-option" key={card.row}>
+                        <label className="gift-option-label">
+                          <input
+                            type="radio"
+                            name="gift-card"
+                            value={card.row}
+                            checked={String(card.row) === choice}
+                            aria-label={`${card.name} · Artwork ${card.art} · Konami ${card.konami_id}`}
+                            onChange={() => {
+                              setChoice(String(card.row))
+                              setAccepted(false)
+                            }}
+                          />
+                          <CardThumbnail key={card.thumbnail_url} url={card.thumbnail_url} />
+                          <span className="gift-card-name">
+                            <strong>{card.name}</strong>
+                            <small>
+                              Artwork {card.art} · Konami {card.konami_id}
+                            </small>
+                          </span>
+                        </label>
+                        <Button
+                          variant="ghost"
+                          className="icon-button"
+                          aria-label={`Preview ${card.name} · Artwork ${card.art}`}
+                          onClick={() => setPreview(card)}
+                        >
+                          <ZoomIn size={18} />
+                        </Button>
+                      </div>
                     ))}
                   </div>
                   {choices.data?.cards.length === 0 && (
@@ -476,6 +491,9 @@ export function ConnectedGifts({
             </Button>
           )}
         </div>
+        {preview && (
+          <CardPreview key={preview.row} card={preview} onClose={() => setPreview(null)} />
+        )}
       </Modal>
     </>
   )

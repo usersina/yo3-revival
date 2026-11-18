@@ -25,9 +25,6 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
 
 **Standalone management dashboard**
 
-- [ ] Add same-origin card images and effect previews to the staff gift catalogue in a server release. Keep explicit
-      game/Konami/passcode mappings and a local image cache; no third-party hotlinking. The dashboard already has
-      artwork selection, icons and an official card-database link. [Current interface](dashboard.md#staff-interface).
 - [ ] Staff MFA and recovery (#43), recent MFA for sensitive actions and a final public-access security review.
       Public HTTPS/password sign-in is approved for testing; the existing HTML panel remains private.
 - [ ] Finish hosted-server validation (#47): real Windows clients and native-engine duel load, isolated password-hash

@@ -14,7 +14,8 @@ Want one setup command instead? [Local Ansible setup](deployment.md) uses these 
 - TCP **7443** for the game, **80** for certificate challenges/HTTPS redirects and **443** for the dashboard, allowed
   in the provider firewall. Keep SSH available. Docker publishes its own ports; do not rely only on a host UFW rule.
   [Docker port-publishing behavior](https://docs.docker.com/engine/network/port-publishing/).
-- Your own game's `yo3.idx` and `package/data002.ypk`. They are mounted read-only and never built into an image.
+- Your own game's `yo3.idx` and `package/data002.ypk`. For card previews, also copy `package/data000.ypk` and
+  `package/data001.ypk` (about 574 MB together). All stay mounted read-only, outside the images.
 - Enough space for a source build and backups. The first Rust/native-engine build is heavier than running the server;
   it uses two compilation jobs by default. Neither Node.js nor Rust needs installing on the VPS.
 
@@ -25,21 +26,28 @@ normal HTTP-only CDN proxy: the game speaks its own TLS protocol on 7443.
 
 ```sh
 sudo install -d -o "$USER" -g "$(id -gn)" /opt/yo3-revival
-git clone --branch codex/dashboard-ui https://github.com/usersina/yo3-revival.git /opt/yo3-revival
+git clone --branch main https://github.com/usersina/yo3-revival.git /opt/yo3-revival
 cd /opt/yo3-revival
 cp deploy/.env.example .env
 sudo install -d -m 0755 /srv/yo3/game/package /srv/yo3/acme
 sudo install -d -o 10001 -g 10001 -m 0750 /srv/yo3/tls
 ```
 
-Copy the two game files from your PC, keeping this layout:
+Copy the required game files from your PC, keeping this layout. Include the two optional image archives for card previews:
 
 ```text
 /srv/yo3/game/
 ├── yo3.idx
 └── package/
+    ├── data000.ypk  # Optional: card thumbnails
+    ├── data001.ypk  # Optional: full card images
     └── data002.ypk
 ```
+
+Rust serves individual card images through authenticated same-origin HTTPS routes. No bucket or additional
+image service is required. Missing artwork leaves gifts usable. After replacing/adding archives on an existing
+host, restart the server during maintenance so its cached index and image revisions refresh. See
+[card previews and caching](dashboard.md#staff-interface).
 
 They need to be readable by container UID 10001 (`0644` files, `0755` parent directories). Edit `.env`: set
 `YO3_DOMAIN`, the three absolute paths, and the version/commit for the build. For example:

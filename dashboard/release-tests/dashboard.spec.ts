@@ -6,6 +6,7 @@ import {
   AccountList,
   ApiError,
   GiveBpResult,
+  GiftChoices,
   StaffSession,
 } from '../src/api/generated/validation/schemas'
 
@@ -188,4 +189,48 @@ test('a saved dark theme and grouped settings work under the production security
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await expect(page.getByTestId('setting-server-name')).toBeVisible()
+})
+
+test('original card previews are served and cached through production nginx', async ({ page }) => {
+  await signIn(page)
+  const response = await page.request.get('/panel/api/v1/gifts/choices')
+  const choices = GiftChoices.parse(await response.json())
+  const card = choices.cards.find((card) => card.thumbnail_url && card.image_url)!
+  expect(card).toBeDefined()
+  expect(response.headers()['cache-control']).toBe('no-store')
+  for (const url of [card.thumbnail_url!, card.image_url!]) {
+    const image = await page.request.get(url)
+    expect(image.status()).toBe(200)
+    expect(image.headers()['content-type']).toBe('image/png')
+    expect(image.headers()['cache-control']).toBe('private, max-age=86400')
+    expect((await image.body()).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+    const unchanged = await page.request.get(url, {
+      headers: { 'If-None-Match': image.headers().etag },
+    })
+    expect(unchanged.status()).toBe(304)
+    expect(unchanged.headers()['cache-control']).toBe('private, max-age=86400')
+    const anonymous = await page.context().browser()!.newContext({ ignoreHTTPSErrors: true })
+    expect((await anonymous.request.get(new URL(url, page.url()).href)).status()).toBe(401)
+    await anonymous.close()
+  }
+  for (const path of [
+    '/panel/api/v1/cards/file/full?v=x',
+    '/panel/api/v1/cards/1/other?v=x',
+    '/game/package/data001.ypk',
+    '/package/data001.ypk',
+  ])
+    expect((await page.request.get(path)).status()).toBe(404)
+  await page.goto('/accounts')
+  await page.getByRole('link', { name: 'View account CheckModerator', exact: true }).click()
+  await page.getByRole('button', { name: 'Gift to CheckModerator', exact: true }).click()
+  const gift = page.getByRole('dialog', { name: 'Give a gift', exact: true })
+  await gift
+    .getByRole('button', { name: `Preview ${card.name} · Artwork ${card.art}`, exact: true })
+    .click()
+  const preview = page.getByRole('dialog', { name: card.name, exact: true })
+  await expect(preview.getByRole('img')).toBeVisible()
+  await expect
+    .poll(() => preview.getByRole('img').evaluate((img) => (img as HTMLImageElement).naturalWidth))
+    .toBe(200)
+  await expect(preview.getByText(card.description, { exact: true })).toBeVisible()
 })

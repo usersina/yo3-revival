@@ -30,6 +30,7 @@ use crate::lock::Locked;
 use crate::store::AuditRow;
 
 pub mod give_bp;
+pub mod card_images;
 pub mod mutation;
 pub mod codes;
 pub mod invites;
@@ -227,6 +228,7 @@ pub struct Api {
     /// The running server's world, for the collection a gift of cards pushes (none: no push).
     pub world: Option<Arc<crate::front::World>>,
     /// The cards and recipes the host can give, read from the game at the first gift.
+    card_images: std::sync::OnceLock<card_images::CardImages>,
     gifts: std::sync::OnceLock<Arc<crate::gifts::Gifts>>,
     /// "server" for a running server's operations, "offline" for the CLI's on a stopped server's folder.
     pub origin: &'static str,
@@ -240,7 +242,7 @@ type Done = Result<(Value, Option<Value>, Option<Value>), String>;
 
 impl Api {
     pub fn new(accounts: Arc<Mutex<Directory>>, settings: Arc<crate::settings::Live>, data_dir: Option<PathBuf>, game_dir: PathBuf, origin: &'static str) -> Api {
-        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), origin, run_id: crate::logins::new_token(), memory: Mutex::default(), effects: Mutex::default(), receipts: Mutex::default() }
+        Api { accounts, settings, hub: None, sessions: None, shutdown: None, status: Status::default(), data_dir, game_dir, titles: None, world: None, gifts: Default::default(), card_images: Default::default(), origin, run_id: crate::logins::new_token(), memory: Mutex::default(), effects: Mutex::default(), receipts: Mutex::default() }
     }
 
     /// Runs `op` for `actor` and writes its audit row: its result, or why it was refused.

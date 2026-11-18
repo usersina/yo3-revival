@@ -295,7 +295,7 @@ fn a_host_gift_of_cards_or_a_recipe_is_mailed_and_the_cards_arrive_at_once() {
     c.pushed();
     let settings = Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());
     let gifts = Gifts {
-        cards: vec![Card { row: 816, cid: 4007, art: 1, name: "Blue-Eyes White Dragon".into() }, Card { row: 817, cid: 4007, art: 2, name: "Blue-Eyes White Dragon".into() }],
+        cards: vec![Card { row: 816, cid: 4007, art: 1, name: "Blue-Eyes White Dragon".into(), description: String::new() }, Card { row: 817, cid: 4007, art: 2, name: "Blue-Eyes White Dragon".into(), description: String::new() }],
         recipes: vec![Recipe { id: 7, title: "E-HERO EVOLUTION DECK".into(), item: 769, cards: vec![816] }],
     };
     let mut a = api::Api::new(d.clone(), settings, None, std::path::PathBuf::new(), "server").with_gifts(gifts);
@@ -340,7 +340,7 @@ fn a_gift_to_a_player_who_is_away_waits_for_the_present_window_at_their_login() 
     let d = directory();
     server.hub.lock().unwrap().set_directory(d.clone());
     let settings = Arc::new(yo3_server::settings::Live::open(None, vec![]).unwrap());
-    let gifts = Gifts { cards: vec![Card { row: 816, cid: 4007, art: 1, name: "Blue-Eyes White Dragon".into() }], recipes: vec![] };
+    let gifts = Gifts { cards: vec![Card { row: 816, cid: 4007, art: 1, name: "Blue-Eyes White Dragon".into(), description: String::new() }], recipes: vec![] };
     let mut a = api::Api::new(d.clone(), settings, None, std::path::PathBuf::new(), "server").with_gifts(gifts);
     a.hub = Some(server.hub.clone());
     drop(client(&server, &d, ADDR)); // the account's first visit makes its players

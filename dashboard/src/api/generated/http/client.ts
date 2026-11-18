@@ -31,6 +31,7 @@ import type {
   AuditPage,
   BackupList,
   BpCodeList,
+  CardImageSize,
   ChangeSettingsHeaders,
   CountryList,
   CreateBackupHeaders,
@@ -49,6 +50,8 @@ import type {
   DownloadBackupRequest,
   EditAccountHeaders,
   GetAuditHistoryParams,
+  GetCardImageHeaders,
+  GetCardImageParams,
   GetServerLogsParams,
   GiftChoices,
   GiftRequest,
@@ -1154,6 +1157,129 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getRemoveBpCodeMutationOptions(options), queryClient);
     }
+
+export const getGetCardImageUrl = (row: number,
+    size: CardImageSize,
+    params: GetCardImageParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/panel/api/v1/cards/${row}/${size}?${stringifiedParams}` : `/panel/api/v1/cards/${row}/${size}`
+}
+
+export const getCardImage = async (row: number,
+    size: CardImageSize,
+    params: GetCardImageParams,
+    headers?: GetCardImageHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<Blob> => {
+
+  return apiFetch<Blob>(getGetCardImageUrl(row,size,params),
+  {
+    ...options,
+    method: 'GET',
+    headers: getHeaders(headers, options?.headers)
+
+  }
+);}
+
+
+
+
+
+export const getGetCardImageQueryKey = (row: number,
+    size: CardImageSize,
+    params?: GetCardImageParams,) => {
+    return [
+    `/panel/api/v1/cards/${row}/${size}`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetCardImageQueryOptions = <TData = Awaited<ReturnType<typeof getCardImage>>, TError = ErrorType<void | ApiError>>(row: number,
+    size: CardImageSize,
+    params: GetCardImageParams,
+    headers?: GetCardImageHeaders, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCardImage>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCardImageQueryKey(row,size,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCardImage>>> = ({ signal }) => getCardImage(row,size,params,headers, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: row !== null && row !== undefined && size !== null && size !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCardImage>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetCardImageQueryResult = NonNullable<Awaited<ReturnType<typeof getCardImage>>>
+export type GetCardImageQueryError = ErrorType<void | ApiError>
+
+
+export function useGetCardImage<TData = Awaited<ReturnType<typeof getCardImage>>, TError = ErrorType<void | ApiError>>(
+ row: number,
+    size: CardImageSize,
+    params: GetCardImageParams,
+    headers: undefined |  GetCardImageHeaders, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCardImage>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCardImage>>,
+          TError,
+          Awaited<ReturnType<typeof getCardImage>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCardImage<TData = Awaited<ReturnType<typeof getCardImage>>, TError = ErrorType<void | ApiError>>(
+ row: number,
+    size: CardImageSize,
+    params: GetCardImageParams,
+    headers?: GetCardImageHeaders, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCardImage>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCardImage>>,
+          TError,
+          Awaited<ReturnType<typeof getCardImage>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCardImage<TData = Awaited<ReturnType<typeof getCardImage>>, TError = ErrorType<void | ApiError>>(
+ row: number,
+    size: CardImageSize,
+    params: GetCardImageParams,
+    headers?: GetCardImageHeaders, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCardImage>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCardImage<TData = Awaited<ReturnType<typeof getCardImage>>, TError = ErrorType<void | ApiError>>(
+ row: number,
+    size: CardImageSize,
+    params: GetCardImageParams,
+    headers?: GetCardImageHeaders, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCardImage>>, TError, TData>>, request?: SecondParameter<typeof apiFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetCardImageQueryOptions(row,size,params,headers,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListCountriesUrl = () => {
 

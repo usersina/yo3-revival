@@ -18,6 +18,7 @@ use crate::api::server::{StopRequest,StopResponse,ServerOverview};
 use crate::api::observability::{AuditQuery,AuditPage,LogsQuery,LogPage};
 use crate::api::backups::{BackupList,CreateBackupRequest,CreateBackupResponse,DownloadBackupRequest};
 use crate::api::settings::{SettingsRequest, SettingsResult, SettingsList};
+use crate::api::card_images::CardImageSize;
 use crate::api::gifts::{GiftRequest, GiftResult, GiftChoices};
 use crate::api::keys::{KeyAccountRequest, KeyAccountResult};
 use crate::api::credentials::{IssueAccountCodeRequest, AccountCodeResponse};
@@ -113,7 +114,7 @@ fn documented_routes() -> OpenApiRouter<Dashboard> {
     OpenApiRouter::new().routes(routes!(staff_session)).routes(routes!(sign_in)).routes(routes!(sign_out))
         .routes(routes!(accounts)).routes(routes!(give_bp)).routes(routes!(list_bp_codes))
         .routes(routes!(create_bp_code)).routes(routes!(remove_bp_code)).routes(routes!(list_invites)).routes(routes!(create_invite))
-        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices)).routes(routes!(moderate)).routes(routes!(delete_account)).routes(routes!(server_status)).routes(routes!(audit_history)).routes(routes!(server_logs)).routes(routes!(backups)).routes(routes!(create_backup)).routes(routes!(download_backup)).routes(routes!(stop_server)).routes(routes!(live_settings)).routes(routes!(change_settings).layer(DefaultBodyLimit::max(256 * 1024)))
+        .routes(routes!(get_account)).routes(routes!(edit_account)).routes(routes!(country_choices)).routes(routes!(issue_account_code)).routes(routes!(key_account)).routes(routes!(give_gift)).routes(routes!(gift_choices)).routes(routes!(card_image)).routes(routes!(moderate)).routes(routes!(delete_account)).routes(routes!(server_status)).routes(routes!(audit_history)).routes(routes!(server_logs)).routes(routes!(backups)).routes(routes!(create_backup)).routes(routes!(download_backup)).routes(routes!(stop_server)).routes(routes!(live_settings)).routes(routes!(change_settings).layer(DefaultBodyLimit::max(256 * 1024)))
 }
 
 pub fn openapi() -> OpenApi {
@@ -121,6 +122,7 @@ pub fn openapi() -> OpenApi {
     spec.info.title = "YO3 Revival staff API".into();
     spec.info.description = Some("Staff dashboard API. Host-token operations and offline restore are not routes on this router.".into());
     let components = spec.components.get_or_insert_default();
+    components.schemas.insert("CardImageSize".into(), <CardImageSize as utoipa::PartialSchema>::schema());
     components.add_security_scheme("staffSession", SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::new(panel::COOKIE))));
     components.add_security_scheme("csrfToken", SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("X-CSRF-Token"))));
     spec
@@ -223,10 +225,15 @@ async fn guard(State(state): State<Dashboard>, ConnectInfo(peer): ConnectInfo<So
     response
 }
 
+#[derive(Clone)]
+struct PrivateCardImage;
+
 fn secure(response: &mut Response) {
+    let image = response.extensions().get::<PrivateCardImage>().is_some();
     for (name, value) in panel::security_headers() {
         response.headers_mut().insert(axum::http::HeaderName::from_bytes(name.as_bytes()).unwrap(), HeaderValue::from_str(&value).unwrap());
     }
+    if image { response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=86400")); }
 }
 
 #[utoipa::path(get, path = "/panel/api/v1/session", operation_id = "getStaffSession", tag = "Staff",
@@ -494,6 +501,38 @@ async fn delete_account(State(state): State<Dashboard>, Extension(viewer): Exten
     tokio::task::spawn_blocking(move || state.api.delete_account(&request, &id, Actor::Staff { user_id: viewer.user_id }, "dashboard"))
         .await.map_err(|_| ApiError::new(ApiErrorCode::InternalError, "The result could not be confirmed. Retry with the same request ID."))?
         .map(Json).map_err(Into::into)
+}
+
+#[derive(Deserialize)]
+struct CardRevision { v: String }
+#[derive(ToSchema)]
+#[allow(dead_code, reason="binary response schema")]
+#[schema(value_type=String, format=Binary)]
+struct CardPng(String);
+#[utoipa::path(get, path="/panel/api/v1/cards/{row}/{size}", operation_id="getCardImage", tag="Gifts",
+    security(("staffSession"=[])), params(("row"=u16, Path), ("size"=CardImageSize, Path),
+        ("v"=String, Query, description="Archive revision from the gift catalogue"),
+        ("If-None-Match"=Option<String>, Header, nullable=false, description="Previously received ETag")),
+    responses((status=200, description="Original game PNG; private browser cache for one day", body=CardPng, content_type="image/png"),
+        (status=304, description="Image unchanged; authentication and permissions rechecked"),
+        (status=400, description="Invalid request", body=ApiError), (status=401, description="Staff sign-in required", body=ApiError),
+        (status=403, description="Forbidden", body=ApiError), (status=404, description="Image or revision unavailable", body=ApiError),
+        (status=405, description="Method not allowed", body=ApiError), (status=413, description="Request too large", body=ApiError),
+        (status=415, description="JSON required", body=ApiError), (status=500, description="Internal error", body=ApiError)))]
+async fn card_image(State(state):State<Dashboard>, Extension(viewer):Extension<Viewer>, headers:HeaderMap,
+    path:Result<Path<(u16,CardImageSize)>,PathRejection>, query:Result<Query<CardRevision>,QueryRejection>)->Result<Response,ApiError> {
+    let Path((row,size))=path.map_err(|_|ApiError::new(ApiErrorCode::InvalidRequest,"Choose a card row and mini or full image."))?;
+    let Query(query)=query.map_err(|_|ApiError::new(ApiErrorCode::InvalidRequest,"An image revision is required."))?;
+    if query.v.len()!=64 { return Err(ApiError::new(ApiErrorCode::NotFound,"This image revision is unavailable.")) }
+    let image=tokio::task::spawn_blocking(move ||state.api.card_image(row,size,&query.v,Actor::Staff { user_id:viewer.user_id }))
+        .await.map_err(|_|ApiError::new(ApiErrorCode::InternalError,"The image could not be loaded."))??;
+    let unchanged=headers.get_all(header::IF_NONE_MATCH).iter().filter_map(|v|v.to_str().ok()).flat_map(|v|v.split(','))
+        .any(|v|v.trim()=="*" || v.trim().strip_prefix("W/").unwrap_or(v.trim())==image.etag);
+    let mut response=if unchanged { StatusCode::NOT_MODIFIED.into_response() } else { image.bytes.into_response() };
+    response.headers_mut().insert(header::CONTENT_TYPE,HeaderValue::from_static("image/png"));
+    response.headers_mut().insert(header::ETAG,HeaderValue::from_str(&image.etag).expect("hex ETag"));
+    response.extensions_mut().insert(PrivateCardImage);
+    Ok(response)
 }
 
 #[derive(Default, Deserialize)]

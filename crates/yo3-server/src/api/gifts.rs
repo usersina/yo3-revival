@@ -30,7 +30,7 @@ pub struct GiftResult {
     pub gift: GiftOutcome, pub request_id: String, pub message: String,
 }
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct CardChoice { pub row: u16, pub konami_id: u16, #[schema(maximum = 4294967295_u32)] pub art: u32, pub name: String }
+pub struct CardChoice { pub row: u16, pub konami_id: u16, #[schema(maximum = 4294967295_u32)] pub art: u32, pub name: String, pub description: String, pub thumbnail_url: Option<String>, pub image_url: Option<String> }
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RecipeChoice { #[schema(maximum = 4294967295_u32)] pub deck_id: u32, pub name: String, #[schema(maximum = 4294967295_u32)] pub card_count: u32 }
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -56,7 +56,7 @@ impl Api {
         let g = self.gifts().map_err(unavailable)?; let t = self.titles().map_err(unavailable)?;
         let q = query.trim().to_lowercase();
         let mut cards: Vec<_> = g.cards.iter().filter(|c| c.name.to_lowercase().contains(&q) || c.cid.to_string() == q || c.row.to_string() == q)
-            .map(|c| CardChoice { row: c.row, konami_id: c.cid, art: c.art, name: c.name.clone() }).collect();
+            .collect();
         cards.sort_by(|a,b| (&a.name, a.art, a.row).cmp(&(&b.name, b.art, b.row)));
         let mut recipes: Vec<_> = g.recipes.iter().filter(|r| r.title.to_lowercase().contains(&q) || r.id.to_string() == q)
             .map(|r| RecipeChoice { deck_id: r.id, name: r.title.clone(), card_count: r.cards.len() as u32 }).collect();
@@ -66,6 +66,7 @@ impl Api {
         titles.sort_by(|a,b| (&a.name, a.title_id).cmp(&(&b.name, b.title_id)));
         let (more_cards, more_recipes, more_titles) = (cards.len() > 50, recipes.len() > 50, titles.len() > 50);
         cards.truncate(50); recipes.truncate(50); titles.truncate(50);
+        let cards = cards.into_iter().map(|c| CardChoice { row: c.row, konami_id: c.cid, art: c.art, name: c.name.clone(), description: c.description.clone(), thumbnail_url: self.card_image_url(c, super::card_images::CardImageSize::Mini), image_url: self.card_image_url(c, super::card_images::CardImageSize::Full) }).collect();
         Ok(GiftChoices { cards, recipes, titles, more_cards, more_recipes, more_titles })
     }
     pub fn give_gift(&self, request: &GiftRequest, id: &str, actor: Actor<'_>, origin: &str) -> Result<GiftResult, MutationError> {
