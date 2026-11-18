@@ -424,14 +424,14 @@ impl App {
 
     fn footer(&self) -> Element<'_, Message> {
         let version = format!("v{}", yo3_tunnel::BUILD_VERSION.trim_start_matches('v'));
-        // A newer version is known: a dot on the version, which opens What's new (#32).
+        // The version opens About; a separate update link opens What's new (#32).
         let mut line = match self.updater.offered() {
             Some(offered) => row![
-                row![yo3_skin::link(version, Message::Home(home::Message::WhatsNew), true),
+                row![yo3_skin::link(version, Message::OpenSettings(settings::Section::About), true),
                     container(container(Space::new().width(8).height(8)).style(|_| dot(color::WARN))).height(20).align_y(iced::alignment::Vertical::Top)].spacing(1),
                 yo3_skin::link(update_line(offered, self.updater.ready().is_some()), Message::Home(home::Message::WhatsNew), true),
             ],
-            None => row![text(version).size(14).color(color::ON_DARK_SOFT)],
+            None => row![yo3_skin::link(version, Message::OpenSettings(settings::Section::About), true)],
         }.spacing(10).align_y(Center);
         if self.host.hosted.is_some() {
             // Hosting for friends runs while the launcher is open: the footer says so and opens its dialog.

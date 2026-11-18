@@ -13,6 +13,10 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- Clicking the launcher's footer version opens Settings → About. The update notice still opens What's new.
+
 ## v0.1.3 (2026-11-18)
 
 Multiplayer: update to v0.1.3 to join the hosted server after deployment.

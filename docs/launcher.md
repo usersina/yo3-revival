@@ -167,6 +167,8 @@ once and applies at the next PLAY (or your server's next start), without restart
 | Advanced | On Linux, the Wine prefix and the Wine program (empty for Wine's defaults; **Save** checks it); **Detailed logs** for your servers; **Export logs…** and **Open logs folder**; [Reset local game data](#reset-local-game-data) |
 | About | The version, **Check for updates**, release notes, the project, licences and credits |
 
+**Unreleased:** clicking the version at the bottom left also opens **About**.
+
 ### Screen size
 
 Settings → Game → **Screen size** draws the game larger and sharp, in its own 4:3 shape. Menus, text and the duel
