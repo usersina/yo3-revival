@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { PreviewProvider } from './store'
+import { ThemeToggle } from './ThemeControls'
 import { usePreview } from './preview'
 import { Avatar, Badge, Button, Modal, Notice } from './components/ui'
 import { Overview } from './pages/Overview'
@@ -145,6 +146,7 @@ function Shell() {
             <strong>{current}</strong>
           </div>
           <div className="topbar-right">
+            <ThemeToggle />
             <span className="topbar-project">Duel Accelerator, revived.</span>
             <Badge tone="green" dot>
               Sample server

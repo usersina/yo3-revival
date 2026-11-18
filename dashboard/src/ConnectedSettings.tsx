@@ -44,6 +44,78 @@ const errorText = (error: unknown) =>
     ? error.message
     : 'Could not reach the server. Retry this same change to confirm its outcome.'
 
+// Presentation only: values, types, permissions and validation still come from the registry.
+const sections = [
+  {
+    name: 'Server & access',
+    description: 'How players find and join your server.',
+    keys: ['server-name', 'headline', 'registration', 'min-launcher'],
+  },
+  {
+    name: 'Duels',
+    description: 'Rules and clocks for the next duel or sign-in.',
+    keys: ['login-regulation', 'start-lp', 'turn-seconds', 'total-seconds'],
+  },
+  {
+    name: 'Capacity & traffic',
+    description: 'Player limits and game connection pacing.',
+    keys: [
+      'max-players',
+      'max-duels',
+      'max-connections',
+      'request-burst',
+      'requests-per-second',
+      'outbox-max',
+    ],
+  },
+  {
+    name: 'Sign-in protection',
+    description: 'Connection limits and waits after failed sign-ins.',
+    keys: [
+      'handshake-burst',
+      'handshakes-per-second',
+      'address-burst',
+      'address-refill-seconds',
+      'backoff-max-seconds',
+    ],
+  },
+  {
+    name: 'Maintenance',
+    description: 'Use News & maintenance for the scheduling controls.',
+    keys: ['maintenance-at', 'maintenance-message'],
+  },
+  {
+    name: 'Audit & other',
+    description: 'History retention and additional server settings.',
+    keys: ['audit-keep-days'],
+  },
+]
+const labels: Record<string, string> = {
+  'server-name': 'Server name',
+  headline: 'Server headline',
+  registration: 'Registration',
+  'min-launcher': 'Minimum launcher version',
+  'login-regulation': 'Default banlist',
+  'start-lp': 'Starting Life Points',
+  'turn-seconds': 'Turn clock (seconds)',
+  'total-seconds': 'Total duel clock (seconds)',
+  'max-players': 'Maximum players',
+  'max-duels': 'Maximum duels',
+  'max-connections': 'Maximum connections',
+  'request-burst': 'Game request burst',
+  'requests-per-second': 'Game requests per second',
+  'outbox-max': 'Queued game messages',
+  'handshake-burst': 'Connection burst per address',
+  'handshakes-per-second': 'Connections per second',
+  'address-burst': 'Account request burst',
+  'address-refill-seconds': 'Account request refill (seconds)',
+  'backoff-max-seconds': 'Maximum sign-in wait (seconds)',
+  'maintenance-at': 'Maintenance start (Unix seconds)',
+  'maintenance-message': 'Maintenance message',
+  'audit-keep-days': 'Audit retention (days)',
+  news: 'Game announcements',
+}
+
 export function ConnectedSettings({
   session,
   view = 'all',
@@ -72,6 +144,8 @@ export function ConnectedSettings({
   const [row, setRow] = useState<SettingRow | null>(null)
   const [accepted, setAccepted] = useState(false)
   const [query, setQuery] = useState('')
+  const [group, setGroup] = useState('all')
+  const [customOnly, setCustomOnly] = useState(false)
   const [failure, setFailure] = useState('')
   const [refused, setRefused] = useState(false)
   const [result, setResult] = useState<SettingsResult | null>(null)
@@ -106,6 +180,7 @@ export function ConnectedSettings({
   const blocked =
     !admin || Boolean(pending || storageError) || busy || list.isFetching || Boolean(list.error)
   const current = list.data
+  const ListContainer = view === 'all' ? 'details' : 'div'
   const request = pending?.data ?? draft
   const setting =
     row ??
@@ -169,11 +244,65 @@ export function ConnectedSettings({
     (s) =>
       (view !== 'news' || s.input.kind === 'news') &&
       (view !== 'registry' || s.input.kind !== 'news') &&
-      `${s.name} ${s.help}`.toLowerCase().includes(query.trim().toLowerCase()),
+      (!customOnly || s.overridden) &&
+      `${labels[s.name] ?? ''} ${s.name} ${s.help}`
+        .toLowerCase()
+        .includes(query.trim().toLowerCase()),
   )
+  const groups = sections
+    .map((section, index) => ({
+      ...section,
+      rows:
+        visible?.filter((s) => {
+          const found = sections.findIndex((item) => item.keys.includes(s.name))
+          return (found < 0 ? sections.length - 1 : found) === index
+        }) ?? [],
+    }))
+    .filter((section) => (group === 'all' || group === section.name) && section.rows.length > 0)
+  const count =
+    view === 'registry'
+      ? groups.reduce((sum, section) => sum + section.rows.length, 0)
+      : (visible?.length ?? 0)
+  function clearFilters() {
+    setQuery('')
+    setGroup('all')
+    setCustomOnly(false)
+  }
+  function settingRow(s: SettingRow) {
+    return (
+      <div key={s.name} className="setting-row" data-testid={`setting-${s.name}`}>
+        <div>
+          <strong>{labels[s.name] ?? s.name}</strong>
+          <span className="setting-key">{s.name}</span>
+          <p>{s.help}</p>
+          <p className="setting-applies">Applies {s.applies}</p>
+        </div>
+        <div className="setting-value">
+          <Badge tone={s.overridden ? 'blue' : 'neutral'}>
+            {s.overridden ? 'Custom value' : 'Default value'}
+          </Badge>
+          <code>{s.input.kind === 'news' ? 'Game announcements' : s.value || 'Not set'}</code>
+          <div className="action-group">
+            <Button
+              disabled={blocked}
+              onClick={() => begin({ kind: 'set', name: s.name, value: s.value }, s)}
+            >
+              Edit
+            </Button>
+            <Button
+              disabled={blocked || !s.overridden}
+              onClick={() => begin({ kind: 'reset', name: s.name }, s)}
+            >
+              Reset
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
   return (
     <Panel
-      className="connected-panel"
+      className={`connected-panel ${view === 'registry' ? 'settings-registry' : ''}`}
       title={view === 'news' ? 'News & maintenance' : 'Server settings'}
       description="Live settings are saved without restarting the server. Each setting says when it applies."
       action={
@@ -257,53 +386,71 @@ export function ConnectedSettings({
             </div>
           )}
           <p className="field-hint">
-            Checked {new Date(current.checked_at).toLocaleString()}. Refresh to check the current
-            maintenance status.
+            Checked {new Date(current.checked_at).toLocaleString()}.
+            {view !== 'registry' && ' Refresh to check the current maintenance status.'}
           </p>
-          <details className="connected-settings-list" open={view !== 'all'}>
-            <summary>{view === 'news' ? 'Game announcements' : 'All live settings'}</summary>
-            <SearchField
-              value={query}
-              onChange={setQuery}
-              placeholder="Find a setting…"
-              label="Find a setting"
-            />
-            <div className="settings-section">
-              {visible?.map((s) => (
-                <div key={s.name} className="setting-row" data-testid={`setting-${s.name}`}>
-                  <div>
-                    <strong>{s.name}</strong>
-                    <p>{s.help}</p>
-                    <p>
-                      Applies {s.applies} · {s.overridden ? 'Custom value' : 'Default value'}
-                    </p>
-                  </div>
-                  <div className="setting-value">
-                    <code>
-                      {s.input.kind === 'news' ? 'Game announcements' : s.value || '(none)'}
-                    </code>
-                    <div className="action-group">
-                      <Button
-                        disabled={blocked}
-                        onClick={() => begin({ kind: 'set', name: s.name, value: s.value }, s)}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        disabled={blocked || !s.overridden}
-                        onClick={() => begin({ kind: 'reset', name: s.name }, s)}
-                      >
-                        Reset
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {visible?.length === 0 && (
-                <p className="connected-state">No matching settings. Try another name.</p>
+          <ListContainer className="connected-settings-list">
+            {view === 'all' && <summary>All live settings</summary>}
+            <div className="settings-filters">
+              <SearchField
+                value={query}
+                onChange={setQuery}
+                placeholder="Find a setting…"
+                label="Find a setting"
+              />
+              {view === 'registry' && (
+                <>
+                  <Field id="settings-group" label="Setting group">
+                    <select
+                      id="settings-group"
+                      value={group}
+                      onChange={(event) => setGroup(event.target.value)}
+                    >
+                      <option value="all">All groups</option>
+                      {sections.map((section) => (
+                        <option key={section.name}>{section.name}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <label className="settings-custom-filter">
+                    <input
+                      type="checkbox"
+                      checked={customOnly}
+                      onChange={(event) => setCustomOnly(event.target.checked)}
+                    />
+                    Custom values only
+                  </label>
+                </>
               )}
             </div>
-          </details>
+            <p className="settings-result-count">
+              {count} {count === 1 ? 'setting' : 'settings'}
+              {view === 'registry' ? ' shown' : ''}
+            </p>
+            <div className="settings-section">
+              {view === 'registry'
+                ? groups.map((section) => (
+                    <section
+                      key={section.name}
+                      className="settings-group"
+                      aria-label={section.name}
+                    >
+                      <header>
+                        <h3>{section.name}</h3>
+                        <p>{section.description}</p>
+                      </header>
+                      {section.rows.map(settingRow)}
+                    </section>
+                  ))
+                : visible?.map(settingRow)}
+              {count === 0 && (
+                <div className="connected-empty">
+                  <p>No matching settings.</p>
+                  <Button onClick={clearFilters}>Clear filters</Button>
+                </div>
+              )}
+            </div>
+          </ListContainer>
         </>
       )}
       <Modal
@@ -326,7 +473,7 @@ export function ConnectedSettings({
       >
         <form id="connected-settings-change" onSubmit={submit} className="modal-body">
           {result ? (
-            <p role="status" className="inline-notice">
+            <p role="status" className="inline-notice notice-success">
               {result.message}
             </p>
           ) : (
@@ -469,7 +616,7 @@ export function ConnectedSettings({
                   )}
                   {request.kind === 'schedule_maintenance' && (
                     <>
-                      <p className="inline-notice">
+                      <p className="inline-notice notice-warning">
                         When maintenance starts, player duels end and everyone except staff is
                         signed out. Set 0 to start now.
                       </p>

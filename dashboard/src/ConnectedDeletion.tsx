@@ -154,20 +154,20 @@ export function ConnectedDeletion({
         <form id="connected-deletion" onSubmit={submit} className="modal-body">
           {result ? (
             <>
-              <p role="status" className="inline-notice">
+              <p role="status" className="inline-notice notice-success">
                 {result.result.message}
               </p>
               <p>{result.result.players} player(s) removed.</p>
               {result.disconnect === 'completed' && <p>This account’s sessions were ended.</p>}
               {(result.disconnect === 'pending' || result.disconnect === 'interrupted') && (
-                <p role="alert" className="connected-error">
+                <p role="alert" className="inline-notice notice-warning">
                   The account is deleted. Its disconnect outcome could not be confirmed. Check
                   current sessions; retrying this request only checks the saved outcome.
                 </p>
               )}
             </>
           ) : pending ? (
-            <p className="inline-notice">
+            <p className="inline-notice notice-warning">
               Deletion of account #{pending.data.user_id} needs confirmation from the server. Retry
               this same request, even if the account has disappeared from the list.
             </p>

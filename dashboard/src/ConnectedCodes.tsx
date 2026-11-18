@@ -177,7 +177,7 @@ export function ConnectedCodes({ session }: { session: StaffSession }) {
       >
         {!admin && <ReadOnlyNote>Only administrators can create or remove codes.</ReadOnlyNote>}
         {notice && (
-          <p className="inline-notice" role="status">
+          <p className="inline-notice notice-success" role="status">
             {notice}
           </p>
         )}

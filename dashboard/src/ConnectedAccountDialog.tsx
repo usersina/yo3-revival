@@ -250,7 +250,7 @@ export function ConnectedAccountDialog({
             </p>
           )}
           {notice && (
-            <p role="status" className="inline-notice">
+            <p role="status" className="inline-notice notice-success">
               {notice}
             </p>
           )}
@@ -262,7 +262,7 @@ export function ConnectedAccountDialog({
         </p>
       )}
       {stored.intent && (
-        <div className="inline-notice">
+        <div className="inline-notice notice-warning">
           <div>
             <strong>Unconfirmed profile change</strong>
             <p>
@@ -352,7 +352,7 @@ export function ConnectedAccountDialog({
                 </p>
               )}
               {notice && (
-                <p role="status" className="inline-notice">
+                <p role="status" className="inline-notice notice-success">
                   {notice}
                 </p>
               )}
@@ -362,13 +362,13 @@ export function ConnectedAccountDialog({
                 </p>
               )}
               {stored.intent && !pending && (
-                <div className="inline-notice">
+                <div className="inline-notice notice-warning">
                   <p>An edit for account #{stored.intent.data.user_id} needs confirmation first.</p>
                   <Button onClick={resume}>Resume profile change</Button>
                 </div>
               )}
               {pending && !mode && (
-                <div className="inline-notice">
+                <div className="inline-notice notice-warning">
                   <p>This account has an unconfirmed change.</p>
                   <Button onClick={resume}>Resume this change</Button>
                 </div>

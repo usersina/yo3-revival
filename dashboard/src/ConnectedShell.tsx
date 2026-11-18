@@ -22,6 +22,7 @@ import { useGetServerStatus, useSignOutStaff } from './api/generated/http/client
 import type { StaffSession } from './api/generated/http/models'
 import { ApiHttpError, setCsrfToken } from './api/transport'
 import { dashboardCommit } from './build'
+import { ThemeToggle } from './ThemeControls'
 const navigation = [
   { label: 'Overview', path: '/', icon: LayoutDashboard, group: 'Workspace' },
   { label: 'Accounts', path: '/accounts', icon: Users, group: 'Workspace' },
@@ -153,13 +154,18 @@ export function ConnectedShell({
             <span aria-hidden="true">/</span>
             <strong>{current}</strong>
           </div>
-          <Button
-            onClick={() => signOut.mutate({ headers: { 'Idempotency-Key': crypto.randomUUID() } })}
-            disabled={signOut.isPending}
-          >
-            <LogOut size={16} />
-            {signOut.isPending ? 'Signing out…' : 'Sign out'}
-          </Button>
+          <div className="topbar-right">
+            <ThemeToggle />
+            <Button
+              onClick={() =>
+                signOut.mutate({ headers: { 'Idempotency-Key': crypto.randomUUID() } })
+              }
+              disabled={signOut.isPending}
+            >
+              <LogOut size={16} />
+              {signOut.isPending ? 'Signing out…' : 'Sign out'}
+            </Button>
+          </div>
         </header>
         <main id="main" className="main-content" tabIndex={-1}>
           {signOut.error && (

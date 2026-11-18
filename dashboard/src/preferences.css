@@ -1,0 +1,158 @@
+/* Status tones share the palette used by badges, fields and destructive controls. */
+.notice-success,
+.toast-success {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+}
+.notice-warning {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+}
+.connected-error,
+.toast-error {
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+}
+.toast-info {
+  color: var(--color-info);
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+}
+.inline-notice .field-hint {
+  color: inherit;
+}
+.theme-toggle {
+  min-width: 38px;
+}
+.topbar-right {
+  gap: 8px;
+  flex-shrink: 0;
+}
+.breadcrumbs {
+  min-width: 0;
+}
+.breadcrumbs strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.appearance-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.appearance-panel .panel-heading {
+  padding-block: 20px;
+}
+.appearance-panel > .field {
+  flex: 0 1 280px;
+  padding: 20px;
+}
+.settings-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 220px) auto;
+  align-items: end;
+  gap: 16px;
+}
+.settings-filters .search-field {
+  margin: 0;
+  width: 100%;
+  max-width: none;
+}
+.settings-custom-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-block: 10px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.settings-result-count {
+  color: var(--color-muted);
+  font-size: 12px;
+  margin: 12px 0 20px;
+}
+.settings-registry .settings-section {
+  padding: 0;
+}
+.settings-group + .settings-group {
+  margin-top: 24px;
+}
+.settings-group > header {
+  padding: 14px 16px;
+  background: var(--color-raised);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+}
+.settings-group h3 {
+  font-size: 15px;
+}
+.settings-group header p {
+  color: var(--color-muted);
+  font-size: 12px;
+  margin-top: 3px;
+}
+.settings-group .setting-row {
+  grid-template-columns: minmax(0, 1.65fr) minmax(200px, 1fr);
+  padding-inline: 16px;
+}
+.settings-group .setting-row:first-of-type {
+  border-top: 0;
+}
+.setting-key {
+  display: block;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: var(--color-muted);
+  margin-top: 2px;
+}
+.settings-group .setting-value {
+  align-items: flex-end;
+  text-align: right;
+}
+.settings-group .setting-value code {
+  color: var(--color-ink);
+  font-size: 13px;
+}
+.settings-group .setting-applies {
+  margin-top: 8px;
+}
+@media (max-width: 900px) {
+  .settings-filters {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .settings-custom-filter {
+    grid-column: 1 / -1;
+    padding-top: 0;
+  }
+}
+@media (max-width: 600px) {
+  .theme-toggle span {
+    display: none;
+  }
+  .connected-header {
+    gap: 8px;
+  }
+  .appearance-panel {
+    display: block;
+  }
+  .appearance-panel > .field {
+    padding-top: 0;
+  }
+  .settings-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .settings-group .setting-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    padding-inline: 0;
+  }
+  .settings-group .setting-value {
+    align-items: flex-start;
+    text-align: left;
+  }
+}

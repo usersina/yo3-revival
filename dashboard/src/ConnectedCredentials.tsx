@@ -264,7 +264,7 @@ export function ConnectedCredentials({
                 </strong>
               </p>
               {!checked && saved.intent && (
-                <p className="inline-notice">
+                <p className="inline-notice notice-warning">
                   This tab retained the original request. Confirm it with the server before sharing
                   the code.
                 </p>
@@ -301,7 +301,7 @@ export function ConnectedCredentials({
                 </>
               )}
               {result && result.state !== 'ready' && (
-                <p role="status" className="inline-notice">
+                <p role="status" className="inline-notice notice-warning">
                   {result.state === 'expired'
                     ? 'This code has expired.'
                     : 'This code was used, replaced or invalidated.'}{' '}

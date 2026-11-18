@@ -18,6 +18,7 @@ import {
 } from './api/generated/http/client'
 import { ApiHttpError, setCsrfToken } from './api/transport'
 import { ConnectedShell } from './ConnectedShell'
+import { AppearanceSettings, ThemeToggle } from './ThemeControls'
 const AccountWorkspace = lazy(() => import('./ConnectedAccounts'))
 const ConnectedServer = lazy(() =>
   import('./ConnectedServer').then((m) => ({ default: m.ConnectedServer })),
@@ -139,10 +140,7 @@ function Workspace() {
       '/audit': ['Audit log', 'Persisted administrative changes and saved outcomes.'],
       '/logs': ['Server logs', 'Recent output from this server process.'],
       '/backups': ['Backups', 'Create snapshots and keep a private copy off the host.'],
-      '/settings': [
-        'Settings',
-        'Live configuration, with types and application times supplied by the server.',
-      ],
+      '/settings': ['Settings', 'Dashboard appearance and your server’s configuration.'],
     }
     const heading = headings[pathname]
     const accountPath = /^\/accounts\/([^/]+)\/?$/.exec(pathname)
@@ -180,7 +178,10 @@ function Workspace() {
               )}
               {pathname === '/news' && <ConnectedSettings key="news" session={user} view="news" />}
               {pathname === '/settings' && (
-                <ConnectedSettings key="registry" session={user} view="registry" />
+                <>
+                  <AppearanceSettings />
+                  <ConnectedSettings key="registry" session={user} view="registry" />
+                </>
               )}
               {pathname === '/audit' && <ConnectedAudit />}
               {pathname === '/logs' && <ConnectedLogs />}
@@ -208,6 +209,7 @@ function Workspace() {
             <small>SERVER DASHBOARD</small>
           </div>
         </Link>
+        <ThemeToggle />
       </header>
       <main id="main" className={`connected-main${entry ? ' auth-main' : ''}`}>
         {integration && (

@@ -308,7 +308,7 @@ export function ConnectedServer({ session }: { session: StaffSession }) {
           <form id="connected-stop-server" onSubmit={submit} className="modal-body">
             {result ? (
               <>
-                <p role="status" className="inline-notice">
+                <p role="status" className="inline-notice notice-success">
                   {result.result.message}
                 </p>
                 <p>
@@ -316,14 +316,14 @@ export function ConnectedServer({ session }: { session: StaffSession }) {
                   stopping.
                 </p>
                 {result.stop !== 'completed' && (
-                  <p role="alert" className="connected-error">
+                  <p role="alert" className="inline-notice notice-warning">
                     The signal outcome is unknown. Check the server process and logs. This request
                     will never signal another server run.
                   </p>
                 )}
               </>
             ) : pending ? (
-              <p className="inline-notice">
+              <p className="inline-notice notice-warning">
                 This request is bound to server run {pending.data.run_id.slice(0, 12)}. Retry it to
                 check what happened; a restarted server will not be stopped.
               </p>

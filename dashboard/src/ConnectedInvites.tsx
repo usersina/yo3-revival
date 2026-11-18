@@ -140,7 +140,7 @@ export function ConnectedInvites({ session }: { session: StaffSession }) {
         }
       >
         {notice && (
-          <p className="inline-notice" role="status">
+          <p className="inline-notice notice-success" role="status">
             {notice}
           </p>
         )}
@@ -150,7 +150,7 @@ export function ConnectedInvites({ session }: { session: StaffSession }) {
           </p>
         )}
         {stored.intent && (
-          <div className="inline-notice">
+          <div className="inline-notice notice-warning">
             <div>
               <strong>Unconfirmed invite</strong>
               <p>It may already exist. Resume the same request before creating another.</p>

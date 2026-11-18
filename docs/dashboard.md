@@ -56,6 +56,17 @@ Implementation plan agreed on 2026-11-16. For deployment and HTTPS, see [Docker 
 The sign-in screen uses the project logo and a compact centered form. Connection errors offer a retry; refused
 credentials stay visible without clearing the User ID, including after a session expires.
 
+The theme button is available before sign-in and in the workspace header. **Settings → Appearance** offers
+**System**, **Light** and **Dark**. The choice is saved per browser and synchronized between tabs; System follows
+device changes without discarding forms. If browser storage is blocked, switching still works for that page.
+Both palettes use green for confirmed actions, amber for warnings or uncertain outcomes, red for errors and
+destructive controls, and blue for information. Status text continues to explain the outcome.
+
+Server settings are grouped into access, duels, capacity/traffic, sign-in protection, maintenance and audit/other.
+Search includes readable labels, internal names and help text; group and custom-value filters can narrow the list.
+Unknown setting names appear under **Audit & other**. The server still supplies values, bounds, choices and application
+times, and edits retain their existing confirmations, permissions and safe retries.
+
 Navigation collapses at tablet widths. Account, invite, code, audit and backup tables switch to labelled
 rows in narrow panels, keeping actions in view.
 Searches have a clear button, account filters show the result count and an empty result offers **Clear filters**.
@@ -85,6 +96,9 @@ must not deliver it against an older nginx configuration. Responsive and accessi
 `dashboard/e2e/ergonomics.spec.ts` and `dashboard/e2e/auth-layout.spec.ts`; gift retry and permission checks remain
 in `dashboard/e2e/connected.spec.ts`. `dashboard/e2e/account-page.spec.ts` checks direct links, history, permissions,
 action dialogs and safe balance retries; production browser checks reload account URLs through real nginx.
+`dashboard/e2e/theme-settings.spec.ts` checks saved/system themes, tab synchronization, blocked storage, grouped and
+future settings, dark-mode contrast, narrow layouts and form preservation. Production browser checks also exercise
+themes and settings under nginx's existing content-security policy. These appearance changes use the existing API.
 
 ## Independent UI delivery
 

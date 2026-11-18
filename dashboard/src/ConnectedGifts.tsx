@@ -221,7 +221,7 @@ export function ConnectedGifts({
       >
         <form id="connected-gift" className="modal-body" onSubmit={submit}>
           {result ? (
-            <div role="status" className="inline-notice">
+            <div role="status" className="inline-notice notice-success">
               <div>
                 <strong>Gift confirmed for player #{result.player_id}</strong>
                 <p>
@@ -242,7 +242,7 @@ export function ConnectedGifts({
               </div>
             </div>
           ) : pending ? (
-            <div className="inline-notice">
+            <div className="inline-notice notice-warning">
               <div>
                 <strong>Unconfirmed gift for player #{pending.data.player_id}</strong>
                 <p>

@@ -191,7 +191,13 @@ export function ConnectedBackups({ session }: { session: StaffSession }) {
           )}
         {outcome && (
           <div
-            className={outcome.backup === 'completed' ? 'inline-notice' : 'connected-error'}
+            className={
+              outcome.backup === 'completed'
+                ? `inline-notice${outcome.available ? ' notice-success' : ''}`
+                : outcome.backup === 'failed'
+                  ? 'connected-error'
+                  : 'inline-notice notice-warning'
+            }
             role={outcome.backup === 'completed' ? 'status' : 'alert'}
           >
             {outcome.backup === 'completed'
@@ -213,7 +219,7 @@ export function ConnectedBackups({ session }: { session: StaffSession }) {
           </div>
         )}
         {download && (
-          <p className="inline-notice">
+          <p className="inline-notice notice-warning">
             Unconfirmed download: {download.data.name}.{' '}
             <Button
               onClick={() => {
@@ -226,7 +232,7 @@ export function ConnectedBackups({ session }: { session: StaffSession }) {
           </p>
         )}
         {notice && (
-          <p role="status" className="inline-notice">
+          <p role="status" className="inline-notice notice-success">
             {notice}
           </p>
         )}

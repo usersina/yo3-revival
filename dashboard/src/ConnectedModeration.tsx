@@ -229,7 +229,7 @@ export function ConnectedModeration({
         <form id="connected-moderation" onSubmit={submit} className="modal-body">
           {result ? (
             <>
-              <p role="status" className="inline-notice">
+              <p role="status" className="inline-notice notice-success">
                 {result.result.message}
               </p>
               {result.result.until && (
@@ -242,7 +242,7 @@ export function ConnectedModeration({
                 </p>
               )}
               {(result.disconnect === 'pending' || result.disconnect === 'interrupted') && (
-                <div role="alert" className="connected-error">
+                <div role="alert" className="inline-notice notice-warning">
                   The account change is saved, but the disconnect outcome is unknown
                   {result.disconnect === 'interrupted' ? ' after an interruption' : ''}. Check their
                   current session before requesting another disconnect. Retrying this receipt will

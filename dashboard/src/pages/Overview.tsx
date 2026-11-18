@@ -89,18 +89,26 @@ function ActivityChart({ online }: { online: number }) {
           >
             <defs>
               <linearGradient id="chart-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#459c84" stopOpacity=".23" />
-                <stop offset="100%" stopColor="#459c84" stopOpacity=".015" />
+                <stop offset="0%" stopColor="var(--color-success)" stopOpacity=".23" />
+                <stop offset="100%" stopColor="var(--color-success)" stopOpacity=".015" />
               </linearGradient>
             </defs>
             {[18, 53, 88, 123, 158].map((y) => (
-              <line key={y} x1="0" y1={y} x2="690" y2={y} stroke="#e8edef" strokeDasharray="4 5" />
+              <line
+                key={y}
+                x1="0"
+                y1={y}
+                x2="690"
+                y2={y}
+                stroke="var(--color-line)"
+                strokeDasharray="4 5"
+              />
             ))}
             <polygon points={`0,175 ${points} 690,175`} fill="url(#chart-fill)" />
             <polyline
               points={points}
               fill="none"
-              stroke="#27806b"
+              stroke="var(--color-success)"
               strokeWidth="2.5"
               vectorEffect="non-scaling-stroke"
               strokeLinejoin="round"
@@ -109,7 +117,7 @@ function ActivityChart({ online }: { online: number }) {
               cx="690"
               cy={158 - online * 7}
               r="4"
-              fill="#27806b"
+              fill="var(--color-success)"
               stroke="white"
               strokeWidth="2"
             />

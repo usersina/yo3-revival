@@ -238,7 +238,7 @@ export default function ConnectedAccounts({
         </p>
       )}
       {notice && (
-        <p className="inline-notice" role="status">
+        <p className="inline-notice notice-success" role="status">
           {notice}
         </p>
       )}
@@ -248,7 +248,7 @@ export default function ConnectedAccounts({
         </p>
       )}
       {stored.intent && (
-        <div className="inline-notice">
+        <div className="inline-notice notice-warning">
           <div>
             <strong>Unconfirmed grant</strong>
             <p>

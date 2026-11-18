@@ -167,3 +167,21 @@ test('account deep links reload through nginx while unrelated routes stay closed
   for (const path of ['/accounts/1/extra', '/accounts/settings', '/accounts/1/admin'])
     expect((await page.request.get(path)).status(), path).toBe(404)
 })
+
+test('a saved dark theme and grouped settings work under the production security policy', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'light' })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Switch to dark mode', exact: true }).click()
+  await signIn(page)
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expect(page.getByLabel('Color theme', { exact: true })).toHaveValue('dark')
+  await page.getByLabel('Setting group', { exact: true }).selectOption('Duels')
+  await expect(page.getByTestId('setting-start-lp')).toBeVisible()
+  await expect(page.getByTestId('setting-server-name')).toHaveCount(0)
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expect(page.getByTestId('setting-server-name')).toBeVisible()
+})

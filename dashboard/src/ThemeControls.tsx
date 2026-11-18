@@ -1,0 +1,50 @@
+import { Moon, Sun } from 'lucide-react'
+import { Button, Field, Panel } from './components/ui'
+import { useTheme } from './theme'
+
+export function ThemeToggle() {
+  const { theme, setPreference } = useTheme()
+  const label = `Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`
+  return (
+    <Button
+      variant="ghost"
+      className="theme-toggle"
+      aria-label={label}
+      title={label}
+      onClick={() => setPreference(theme === 'dark' ? 'light' : 'dark')}
+    >
+      {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+      <span>{theme === 'dark' ? 'Dark' : 'Light'}</span>
+    </Button>
+  )
+}
+
+export function AppearanceSettings() {
+  const { preference, setPreference } = useTheme()
+  return (
+    <Panel
+      title="Appearance"
+      description="Choose the dashboard’s appearance on this browser."
+      className="appearance-panel"
+    >
+      <Field
+        id="dashboard-theme"
+        label="Color theme"
+        hint="System follows your device’s appearance."
+      >
+        <select
+          id="dashboard-theme"
+          value={preference}
+          onChange={(event) => {
+            const value = event.target.value
+            if (value === 'light' || value === 'dark' || value === 'system') setPreference(value)
+          }}
+        >
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </Field>
+    </Panel>
+  )
+}

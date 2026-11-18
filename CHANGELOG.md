@@ -15,6 +15,10 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- The staff dashboard has a saved light/dark toggle and a System appearance option. Success, warnings, errors,
+  information, fields and dialogs now share a consistent palette in both modes.
+- Server settings are grouped by purpose, with readable names and units, group/search/custom-value filters,
+  and visible default/custom states. Additional server settings remain available under Audit & other.
 - Accounts now have their own dashboard pages at `/accounts/<id>`, with player cards, rewards, access controls,
   profile and moderation sections. Closing an action keeps the account open; balance changes refresh in place.
   Direct links and reloads are supported by nginx, so this routing change ships with a full release.

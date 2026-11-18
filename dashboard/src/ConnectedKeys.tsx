@@ -194,7 +194,7 @@ export function ConnectedKeys({
               )}
             </>
           ) : pending ? (
-            <p className="inline-notice">
+            <p className="inline-notice notice-warning">
               {create
                 ? 'Account creation'
                 : `Key request for account #${pending.data.kind === 'reveal' ? pending.data.user_id : ''}`}{' '}
