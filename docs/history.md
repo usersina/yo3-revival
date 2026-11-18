@@ -66,8 +66,14 @@ routes. This is a full-release change, not an independent dashboard deployment.
 The full workspace passed 1,256 Rust tests (5 skipped), clippy with warnings denied, frontend type/lint/format and
 26 unit tests. Browser checks cover cache reuse, retained gifts/focus, fallback, responsive themes and retry safety;
 all seven production HTTPS/nginx checks passed. Staged both original image archives on the VPS (574,299,752 bytes),
-verified SHA-256 hashes and readable permissions, without changing or restarting its running release. Feature is
-Unreleased until a full server/dashboard release ships it.
+verified SHA-256 hashes and readable permissions, without changing or restarting its running release.
+
+Shipped in v0.1.2 from `1242af8`. The [release run](https://github.com/usersina/yo3-revival/actions/runs/44315682958)
+passed 1,256 Rust tests (5 skipped), 77 dashboard browser tests, all five bundles, the packaged v0.1.1→v0.1.2 updater,
+signed manifests, production-image checks, automatic deployment and retention. The VPS runs the exact published
+image digests; both containers are healthy. Pinned-identity game discovery reports v0.1.2, ready, with minimum
+launcher 0.1.2. Public dashboard metadata identifies `1242af8`, and the new image route refuses unauthenticated
+requests. Authenticated rendering of the original images was checked with the production containers locally.
 
 ## 2026-11-18 — Local Cargo cache on the home runner
 
@@ -75,7 +81,13 @@ Replaced the Rust cache archive action with a local, repository-owned `target/` 
 the v0.1.1 upload of about 1.5 GB (7m38s). Checkout still cleans the workspace; the next build recreates only its
 symlink. Cargo’s input checks and every existing release gate stay in place. Cache eviction is limited to the
 marked cache at 40 GiB or under 20 GiB free; insufficient space after eviction refuses the build. Tool installations
-and other repositories are untouched. Full-release timing still needs the next versioned run.
+and other repositories are untouched.
+
+The v0.1.2 release exercised this with an initially empty cache. Its verification/publishing job took 26m22s,
+against v0.1.1's 33m53s, without a cache archive upload or download. All jobs together took about 35½ minutes,
+against 52 minutes previously; retained container layers also reduced the image builds. This is a measured
+release comparison, not proof of a warm Cargo-cache speedup. After subsequent checkout cleanup, the runner
+still had 31 GiB of cached output, 61 GiB free and its executable rustup intact.
 
 Also found that the cache action’s post step had removed `~/.cargo/bin/rustup`, leaving the compiler/Cargo proxy
 links dangling on the persistent runner. Restored rustup 1.29.3 from the official SHA-256-verified installer without
