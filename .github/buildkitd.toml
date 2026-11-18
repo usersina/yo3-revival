@@ -1,0 +1,6 @@
+# The home VM is shared: collect only this builder's cache, leaving room for release bundles.
+[worker.oci]
+  gc = true
+  reservedSpace = "2GB"
+  maxUsedSpace = "8GB"
+  minFreeSpace = "10GB"

@@ -154,6 +154,14 @@ Runner state is private to its account. Registry and GitHub configuration use jo
 and are removed in `always()` cleanup. Test stacks remove only their own containers/volumes; no global Docker
 prune is performed on this shared VM.
 
+Release container builds reuse the state of the **yo3-release** BuildKit builder on this VM. Jobs still create fresh
+registry credentials and remove them when finished; temporary Buildx metadata is separate so its post action can
+remove the builder container while keeping the cache. Docker cache stays local instead of being uploaded to GitHub.
+A lost cache just makes the next build cold. `.github/buildkitd.toml` sets collection targets of 8 GiB used and
+10 GiB free, with 2 GiB reserved for reusable cache. These are collection targets, not hard quotas on an active build. They only
+apply to this builder, not the other projects' caches. Cargo still uses the existing dependency cache; measure the
+first full release's disk usage before adding persistent workspace artifacts.
+
 Workflow linting knows the custom `home` label through `.github/actionlint.yaml`. actionlint 1.7.12 does not yet
 recognize GitHub's [FIFO queue property](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
 CI exempts only that diagnostic; `test_dashboard_workflow.py` explicitly checks both workflows' queue settings.
@@ -271,11 +279,11 @@ shared socket directories belong to that user. Compose keeps the root filesystem
 forbids privilege escalation and makes `/tmp` a `noexec,nosuid,nodev` tmpfs. Server startup uses `umask 077`.
 The game and web certificates remain read-only mounts; the dashboard never receives game files or the database.
 
-Builds use pinned cargo-chef to cache compiled Rust dependencies in an ordinary Docker layer, exported by CI's
-GitHub cache. The planner masks local version numbers; the real manifests and release metadata are restored before
-compiling the shipped binaries. Engine fetching depends only on the fetch script and pinned card IDs; editing a
-card override repackages data without recompiling Rust. Runtime binaries are stripped. Tests and generated-client
-drift checks run in release CI, not inside the Dockerfiles; the dashboard build still typechecks its source.
+Builds use pinned cargo-chef to cache compiled Rust dependencies in an ordinary Docker layer, retained by the home
+runner's named BuildKit builder. The planner masks local version numbers; the real manifests and release metadata
+are restored before compiling the shipped binaries. Engine fetching depends only on the fetch script and pinned
+card IDs; editing a card override repackages data without recompiling Rust. Runtime binaries are stripped. Tests and
+generated-client drift checks run in release CI, not inside the Dockerfiles; the dashboard build still typechecks its source.
 
 After image publication, CI smoke-tests the exact digests before attaching deployment references: the runtime
 user/permissions, certificates, hostname resolution, packaged native engine, real cards and a started duel. To check

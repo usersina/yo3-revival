@@ -152,7 +152,9 @@ jobs:
           # Launchers fetch releases/latest/download/servers.json and trust only multiplayer::OFFICIAL_LIST_KEYS. The
           # private key (PKCS#8, base64 in the secret) only ever sits in a private temporary file; it is never echoed.
           [ -n "$SERVER_LIST_KEY" ] || { echo "The SERVER_LIST_KEY secret is missing" >&2; exit 1; }
-          cargo build --release -p yo3-desktop --bin yo3-server-list
+          # tools/release.sh already built every Desktop binary with the release metadata. Reuse that signer:
+          # invoking Cargo here without that metadata needlessly recompiles the shared crates as a dev build.
+          test -x target/release/yo3-server-list
           key="$(umask 077 && mktemp)"
           trap 'rm -f "$key"' EXIT
           printf '%s' "$SERVER_LIST_KEY" | base64 -d > "$key"

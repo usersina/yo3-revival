@@ -14,7 +14,7 @@ RUN sed -i '/^\[workspace.package\]/,/^\[/s/^version = "[^"]*"/version = "0.0.1"
 
 FROM toolchain AS dependencies
 COPY --from=planner /src/recipe.json recipe.json
-# Keep target/ in an ordinary layer: cache mounts alone are not exported by GitHub's cache backend.
+# Keep target/ in an ordinary layer so the dependency build is reusable as one layer.
 RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/usr/local/cargo/git \
     cargo chef cook --locked --release --recipe-path recipe.json -p yo3-server -p yo3-engine --bin yo3-server --bin yo3-engine
 
