@@ -365,6 +365,10 @@ Help in the footer has these topics too; an error's **Help** opens its own.
 | A card seems to behave incorrectly | Check [card rules](playing.md#card-effects-and-summon-rules), then [report it](#logs-and-support). |
 | Windows 7 | The current release requires a supported modern OS, even if the original game itself runs there. |
 
+The published Linux Desktop v0.1.0 also requires **glibc 2.43 or newer** (for example, Ubuntu 26.04).
+On Ubuntu 24.04 it exits before opening a window with `GLIBC_2.43 not found`. Use a newer distribution or
+[build from source](development.md#build-from-source) on your own system.
+
 On minimal Debian/Ubuntu X11 systems, install Desktop's runtime libraries with
 `sudo apt install libxcursor1 libx11-xcb1 libxi6 libxkbcommon-x11-0`. Missing-library errors prevent the app from
 opening its window.

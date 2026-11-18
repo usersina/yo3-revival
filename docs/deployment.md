@@ -135,7 +135,7 @@ bypass it.
 ### Home runner
 
 All Linux jobs select `runs-on: [self-hosted, home]`. The dedicated repository registration is **home-yo3**, running
-as `yo3-runner` in `/opt/actions-runner-yo3` on the Ubuntu 24.04 x86_64 `home-runner` VM. The other projects'
+as `yo3-runner` in `/opt/actions-runner-yo3` on the Ubuntu 26.04.1 x86_64 `home-runner` VM. The other projects'
 registrations are separate. The service is `actions.runner.usersina-yo3-revival.home-yo3.service`; it starts at boot.
 This runner is on the development VM, not the public game VPS.
 
@@ -144,8 +144,10 @@ legacy provider, Python 3 with PyYAML, a minimal stable Rust toolchain, mingw-w6
 Wayland build libraries and Xvfb/xauth used by the existing release gate. Install those as the VM administrator.
 Playwright's Ubuntu Chromium runtime/font dependencies must also be installed once; jobs download their pinned
 browser without `--with-deps` and have no sudo grant. Actions set up pinned Node/Python versions, Clippy/Windows
-targets and nextest as needed. Keep enough free disk for the cross-platform release build and Docker build cache;
-the runner's first full release is a separate capacity check.
+targets and nextest as needed. The packaged-updater gate starts the previous published Desktop binary: its glibc
+requirement also applies to the runner. Desktop v0.1.0 requires glibc 2.43, so Ubuntu 24.04 cannot run that gate.
+The VM has 6 vCPUs, 12 GiB RAM and a 150 GiB virtual disk; leave room for cross-platform bundles as well as Docker
+build cache. The disk is thin-provisioned, so also watch free space on the host's `/data` filesystem.
 
 To recreate the registration, use **Settings → Actions → Runners → New self-hosted runner**, verify the official
 archive checksum, configure it for this repository with label `home` under its dedicated account, and install/start
@@ -161,6 +163,13 @@ A lost cache just makes the next build cold. `.github/buildkitd.toml` sets colle
 10 GiB free, with 2 GiB reserved for reusable cache. These are collection targets, not hard quotas on an active build. They only
 apply to this builder, not the other projects' caches. Cargo still uses the existing dependency cache; measure the
 first full release's disk usage before adding persistent workspace artifacts.
+
+An isolated rehearsal on 2026-11-18 passed 1,249 Rust tests, Clippy, all five release bundles, the published
+v0.1.0 Desktop update/shortcut gate and production-container browser checks. Identical image builds took
+8m36s / 2m41s cold (server / dashboard), then 2.5s / 2.1s with the retained cache and fresh job configuration
+directories. Changed inputs still rebuild their affected layers. Peak total guest disk usage was 64.6 GiB and
+memory usage 4.7 GiB. No artifacts were published or deployed; GitHub token permissions and Actions uploads still
+need verification in the first automatic run.
 
 Workflow linting knows the custom `home` label through `.github/actionlint.yaml`. actionlint 1.7.12 does not yet
 recognize GitHub's [FIFO queue property](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).

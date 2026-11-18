@@ -24,7 +24,7 @@ curl, and 32-bit MinGW GCC/binutils (`i686-w64-mingw32-gcc`, `i686-w64-mingw32-d
 The GUI also needs pkg-config and X11/Wayland/xkbcommon development libraries; on Debian/Ubuntu these are
 `pkg-config libx11-dev libwayland-dev libxkbcommon-dev`.
 X11 startup also needs `libxcursor1 libx11-xcb1 libxi6 libxkbcommon-x11-0` at runtime.
-The release runner installs them before testing the packaged Desktop window.
+The self-hosted release runner has them installed as one-time prerequisites; jobs do not have sudo access.
 
 The root `Cargo.toml` owns the shared crate version, edition, license, Rust baseline, dependency versions and lint
 settings. Every crate inherits them; crate-specific features such as Iced's renderer and Windows APIs stay in that
