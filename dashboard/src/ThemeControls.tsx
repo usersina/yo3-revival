@@ -1,3 +1,4 @@
+import { SelectControl, SelectOption } from './components/form-controls'
 import { Moon, Sun } from 'lucide-react'
 import { Button, Field, Panel } from './components/ui'
 import { useTheme } from './theme'
@@ -32,18 +33,17 @@ export function AppearanceSettings() {
         label="Color theme"
         hint="System follows your device’s appearance."
       >
-        <select
+        <SelectControl
           id="dashboard-theme"
           value={preference}
-          onChange={(event) => {
-            const value = event.target.value
+          onValueChange={(value) => {
             if (value === 'light' || value === 'dark' || value === 'system') setPreference(value)
           }}
         >
-          <option value="system">System</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
+          <SelectOption value="system">System</SelectOption>
+          <SelectOption value="light">Light</SelectOption>
+          <SelectOption value="dark">Dark</SelectOption>
+        </SelectControl>
       </Field>
     </Panel>
   )

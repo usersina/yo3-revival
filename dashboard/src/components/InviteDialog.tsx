@@ -1,3 +1,4 @@
+import { SelectControl, SelectOption, Input } from './form-controls'
 import { useState } from 'react'
 import { Ticket } from 'lucide-react'
 import { usePreview } from '../preview'
@@ -56,7 +57,7 @@ export function InviteDialog({
               label="Number of sign-ups"
               hint="How many accounts can use this code."
             >
-              <input
+              <Input
                 id="invite-uses"
                 type="number"
                 min="1"
@@ -67,11 +68,15 @@ export function InviteDialog({
               />
             </Field>
             <Field id="invite-days" label="Expires after">
-              <select id="invite-days" value={days} onChange={(e) => setDays(e.target.value)}>
-                <option value="1">1 day</option>
-                <option value="7">7 days</option>
-                <option value="30">30 days</option>
-              </select>
+              <SelectControl
+                id="invite-days"
+                value={days}
+                onValueChange={(value) => setDays(value)}
+              >
+                <SelectOption value="1">1 day</SelectOption>
+                <SelectOption value="7">7 days</SelectOption>
+                <SelectOption value="30">30 days</SelectOption>
+              </SelectControl>
             </Field>
           </div>
         </div>

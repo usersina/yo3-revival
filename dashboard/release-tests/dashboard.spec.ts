@@ -1,3 +1,4 @@
+import { chooseOption } from '../e2e/select'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
@@ -177,8 +178,11 @@ test('a saved dark theme and grouped settings work under the production security
   await signIn(page)
   await page.getByRole('link', { name: 'Settings', exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  await expect(page.getByLabel('Color theme', { exact: true })).toHaveValue('dark')
-  await page.getByLabel('Setting group', { exact: true }).selectOption('Duels')
+  await expect(page.getByLabel('Color theme', { exact: true })).toHaveAttribute(
+    'data-value',
+    'dark',
+  )
+  await chooseOption(page.getByLabel('Setting group', { exact: true }), 'Duels')
   await expect(page.getByTestId('setting-start-lp')).toBeVisible()
   await expect(page.getByTestId('setting-server-name')).toHaveCount(0)
   await page.reload()

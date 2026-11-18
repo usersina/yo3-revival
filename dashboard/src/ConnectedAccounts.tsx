@@ -1,3 +1,4 @@
+import { SelectControl, SelectOption, Input } from './components/form-controls'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -270,16 +271,16 @@ export default function ConnectedAccounts({
               onChange={setQuery}
             />
             <Field id="accounts-standing-filter" label="Standing">
-              <select
+              <SelectControl
                 id="accounts-standing-filter"
                 value={standingFilter}
-                onChange={(event) => setStandingFilter(event.target.value)}
+                onValueChange={(value) => setStandingFilter(value)}
               >
-                <option value="all">All accounts</option>
-                <option value="banned">Banned</option>
-                <option value="restricted">Restricted</option>
-                <option value="muted">Muted</option>
-              </select>
+                <SelectOption value="all">All accounts</SelectOption>
+                <SelectOption value="banned">Banned</SelectOption>
+                <SelectOption value="restricted">Restricted</SelectOption>
+                <SelectOption value="muted">Muted</SelectOption>
+              </SelectControl>
             </Field>
             <div className="action-group">
               {actionControls}
@@ -485,7 +486,7 @@ export default function ConnectedAccounts({
       >
         <form id="connected-grant" onSubmit={submit} className="modal-body">
           <Field id="connected-bp" label="BP amount">
-            <input
+            <Input
               id="connected-bp"
               type="number"
               min={1}

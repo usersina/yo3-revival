@@ -1,3 +1,4 @@
+import { Input } from './components/form-controls'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -338,7 +339,7 @@ export function ConnectedCodes({ session }: { session: StaffSession }) {
                 label="Custom code (optional)"
                 hint="16 letters or digits. Leave empty to generate a code."
               >
-                <input
+                <Input
                   id="code-custom"
                   value={stored.intent?.data.code ?? custom}
                   onChange={(e) => setCustom(e.target.value.toUpperCase())}
@@ -348,7 +349,7 @@ export function ConnectedCodes({ session }: { session: StaffSession }) {
                 />
               </Field>
               <Field id="code-bp" label="BP reward">
-                <input
+                <Input
                   id="code-bp"
                   type="number"
                   min={1}
@@ -365,7 +366,7 @@ export function ConnectedCodes({ session }: { session: StaffSession }) {
                 label="Maximum claims"
                 hint="Leave empty for unlimited accounts. Each account can claim it once."
               >
-                <input
+                <Input
                   id="code-uses"
                   type="number"
                   min={1}

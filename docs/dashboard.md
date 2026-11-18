@@ -62,8 +62,15 @@ device changes without discarding forms. If browser storage is blocked, switchin
 Both palettes use green for confirmed actions, amber for warnings or uncertain outcomes, red for errors and
 destructive controls, and blue for information. Status text continues to explain the outcome.
 
+Shared dropdowns, text fields and setting groups use locally owned shadcn/ui components on Radix, with the same
+semantic light/dark palette. Dropdowns support keyboard navigation, Escape and focus return, including inside dialogs.
+Field hints and errors are linked to their inputs. Validation appears after blur or an attempted submission, clears
+as the value is corrected, and focuses the first invalid input without sending the change.
+
 Server settings are grouped into access, duels, capacity/traffic, sign-in protection, maintenance and audit/other.
-Search includes readable labels, internal names and help text; group and custom-value filters can narrow the list.
+Each group can collapse independently. Searching or filtering reveals matching groups; clearing filters restores
+which groups you had open. Search includes readable labels, internal names and help text; group and custom-value
+filters can narrow the list.
 Unknown setting names appear under **Audit & other**. The server still supplies values, bounds, choices and application
 times, and edits retain their existing confirmations, permissions and safe retries.
 
@@ -98,7 +105,9 @@ in `dashboard/e2e/connected.spec.ts`. `dashboard/e2e/account-page.spec.ts` check
 action dialogs and safe balance retries; production browser checks reload account URLs through real nginx.
 `dashboard/e2e/theme-settings.spec.ts` checks saved/system themes, tab synchronization, blocked storage, grouped and
 future settings, dark-mode contrast, narrow layouts and form preservation. Production browser checks also exercise
-themes and settings under nginx's existing content-security policy. These appearance changes use the existing API.
+themes and settings under nginx's existing content-security policy. `dashboard/e2e/controls.spec.ts` covers
+collapse/search, keyboard selection, mobile popup placement, inline errors, invalid-submit focus and light/dark accessibility. The shared field regression test covers programmatic resets and
+screen-reader descriptions. These interface changes use the existing API.
 
 ## Independent UI delivery
 

@@ -1,3 +1,4 @@
+import { SelectControl, SelectOption, Input } from './components/form-controls'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -277,24 +278,24 @@ export function ConnectedModeration({
                   disabled={busy || Boolean(pending) || !mayAct}
                 >
                   <Field id="moderation-action" label="Action">
-                    <select
+                    <SelectControl
                       id="moderation-action"
                       value={currentKind}
-                      onChange={(e) => {
-                        setKind(e.target.value as ModerationRequest['kind'])
+                      onValueChange={(value) => {
+                        setKind(value as ModerationRequest['kind'])
                         setAccepted(false)
                       }}
                     >
                       {Object.entries(actions).map(([value, action]) => (
-                        <option
+                        <SelectOption
                           key={value}
                           value={value}
                           disabled={!account.data?.login && value !== 'kick'}
                         >
                           {action.label}
-                        </option>
+                        </SelectOption>
                       ))}
-                    </select>
+                    </SelectControl>
                   </Field>
                   <p className="inline-notice">{actions[currentKind].help}</p>
                   {target === session.user_id && (
@@ -309,7 +310,7 @@ export function ConnectedModeration({
                       label="Reason"
                       hint="Shown to the player. Optional; up to 200 characters on one line."
                     >
-                      <input
+                      <Input
                         id="moderation-reason"
                         value={shownReason}
                         maxLength={200}
@@ -326,7 +327,7 @@ export function ConnectedModeration({
                       label={currentKind === 'mute' ? 'Duration (minutes)' : 'Duration (days)'}
                       hint="Leave empty until a staff member lifts it."
                     >
-                      <input
+                      <Input
                         id="moderation-duration"
                         type="number"
                         min={1}

@@ -1,3 +1,4 @@
+import { chooseOption } from './select'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { ModerationResponse, StaffSession } from '../src/api/generated/validation/schemas'
@@ -31,7 +32,7 @@ test.describe.serial('Connected moderation', () => {
     })
     await moderate(page)
     const dialog = page.getByRole('dialog')
-    await dialog.getByLabel('Action', { exact: true }).selectOption('mute')
+    await chooseOption(dialog.getByLabel('Action', { exact: true }), 'mute')
     await dialog.getByLabel('Reason', { exact: true }).fill('Browser moderation check')
     await dialog.getByLabel('Duration (minutes)').fill('30')
     await expect(dialog.getByRole('button', { name: 'Apply action', exact: true })).toBeDisabled()
@@ -50,7 +51,7 @@ test.describe.serial('Connected moderation', () => {
     await dialog.getByRole('button', { name: 'Done', exact: true }).click()
     await page.unroute('**/panel/api/v1/moderation')
     await moderate(page)
-    await dialog.getByLabel('Action', { exact: true }).selectOption('unmute')
+    await chooseOption(dialog.getByLabel('Action', { exact: true }), 'unmute')
     await dialog.getByLabel('Confirm this action for this account').check()
     await dialog.getByRole('button', { name: 'Apply action', exact: true }).click()
     await expect(dialog.getByRole('status')).toContainText('Saved unmute')
@@ -61,7 +62,7 @@ test.describe.serial('Connected moderation', () => {
     await signIn(page)
     await moderate(page)
     const dialog = page.getByRole('dialog')
-    await dialog.getByLabel('Action', { exact: true }).selectOption('ban')
+    await chooseOption(dialog.getByLabel('Action', { exact: true }), 'ban')
     await dialog.getByLabel('Duration (days)').fill('4294967295')
     await dialog.getByLabel('Confirm this action for this account').check()
     await dialog.getByRole('button', { name: 'Apply action', exact: true }).click()
@@ -92,7 +93,7 @@ test.describe.serial('Connected moderation', () => {
     await dialog.getByRole('button', { name: 'Done', exact: true }).click()
     await page.unroute('**/panel/api/v1/moderation')
     await moderate(page)
-    await dialog.getByLabel('Action', { exact: true }).selectOption('lift')
+    await chooseOption(dialog.getByLabel('Action', { exact: true }), 'lift')
     await dialog.getByLabel('Confirm this action for this account').check()
     await dialog.getByRole('button', { name: 'Apply action', exact: true }).click()
     await expect(dialog.getByRole('status')).toContainText('Saved lift')
@@ -107,7 +108,7 @@ test.describe.serial('Connected moderation', () => {
     await page.getByRole('button', { name: 'Close', exact: true }).click()
     await page.setViewportSize({ width: 390, height: 844 })
     await moderate(page)
-    await page.getByLabel('Action', { exact: true }).selectOption('ban')
+    await chooseOption(page.getByLabel('Action', { exact: true }), 'ban')
     await expect(page.getByRole('dialog')).toContainText('disconnects their game')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })
@@ -124,7 +125,7 @@ test.describe.serial('Connected moderation', () => {
     })
     await moderate(page, 'TestModAdmin')
     const dialog = page.getByRole('dialog')
-    await dialog.getByLabel('Action', { exact: true }).selectOption('sign_out')
+    await chooseOption(dialog.getByLabel('Action', { exact: true }), 'sign_out')
     await expect(dialog).toContainText('This is your account.')
     await dialog.getByLabel('Confirm this action for this account').check()
     await dialog.getByRole('button', { name: 'Apply action', exact: true }).click()

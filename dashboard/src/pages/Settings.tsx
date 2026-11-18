@@ -1,3 +1,4 @@
+import { SelectControl, SelectOption, Input, Textarea } from '../components/form-controls'
 import { useState } from 'react'
 import {
   CalendarClock,
@@ -79,7 +80,7 @@ export function SettingsPage() {
                   <p>A short, recognisable name for your community.</p>
                 </div>
                 <div>
-                  <input
+                  <Input
                     id="server-name"
                     required
                     maxLength={64}
@@ -100,7 +101,7 @@ export function SettingsPage() {
                   <label htmlFor="server-headline">Welcome headline</label>
                   <p>Shown to players when they join.</p>
                 </div>
-                <input
+                <Input
                   id="server-headline"
                   maxLength={128}
                   value={draft.headline}
@@ -116,20 +117,20 @@ export function SettingsPage() {
                   <label htmlFor="registration">Registration</label>
                   <p>Existing players can still sign in when registration is closed.</p>
                 </div>
-                <select
+                <SelectControl
                   id="registration"
                   value={draft.registration}
-                  onChange={(e) =>
+                  onValueChange={(value) =>
                     setDraft({
                       ...draft,
-                      registration: e.target.value as typeof draft.registration,
+                      registration: value as typeof draft.registration,
                     })
                   }
                 >
-                  <option value="invite">Invite only</option>
-                  <option value="open">Open to everyone</option>
-                  <option value="closed">Closed</option>
-                </select>
+                  <SelectOption value="invite">Invite only</SelectOption>
+                  <SelectOption value="open">Open to everyone</SelectOption>
+                  <SelectOption value="closed">Closed</SelectOption>
+                </SelectControl>
               </div>
             </div>
           </Panel>
@@ -145,7 +146,7 @@ export function SettingsPage() {
                 </div>
                 <div>
                   <div className="input-unit">
-                    <input
+                    <Input
                       id="starting-lp"
                       type="number"
                       min="100"
@@ -172,7 +173,7 @@ export function SettingsPage() {
                 </div>
                 <div>
                   <div className="input-unit">
-                    <input
+                    <Input
                       id="turn-time"
                       type="number"
                       min="0"
@@ -199,7 +200,7 @@ export function SettingsPage() {
                 </div>
                 <div>
                   <div className="input-unit">
-                    <input
+                    <Input
                       id="total-time"
                       type="number"
                       min="0"
@@ -224,7 +225,7 @@ export function SettingsPage() {
                   <label htmlFor="regulation">Default regulation</label>
                   <p>Card limits applied when players sign in.</p>
                 </div>
-                <input
+                <Input
                   id="regulation"
                   value={draft.regulation}
                   readOnly
@@ -325,7 +326,7 @@ function NewsEditor({ entry, close }: { entry: News | null; close: () => void })
           ) : (
             <>
               <Field id="news-title" label="Title">
-                <input
+                <Input
                   id="news-title"
                   maxLength={128}
                   required
@@ -339,7 +340,7 @@ function NewsEditor({ entry, close }: { entry: News | null; close: () => void })
                 label="Message"
                 hint={`${body.length}/2,048 characters. Plain text, just like the game.`}
               >
-                <textarea
+                <Textarea
                   id="news-body"
                   rows={6}
                   maxLength={2048}
@@ -558,7 +559,7 @@ export function NewsPage() {
                   hint="Minutes from now. 0 starts immediately."
                 >
                   <div className="input-unit">
-                    <input
+                    <Input
                       id="maintenance-minutes"
                       type="number"
                       min="0"
@@ -571,7 +572,7 @@ export function NewsPage() {
                   </div>
                 </Field>
                 <Field id="maintenance-message" label="Player message">
-                  <textarea
+                  <Textarea
                     id="maintenance-message"
                     rows={3}
                     maxLength={200}

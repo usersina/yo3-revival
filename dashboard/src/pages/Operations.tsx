@@ -1,3 +1,4 @@
+import { SelectControl, SelectOption, Textarea } from '../components/form-controls'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
@@ -168,32 +169,32 @@ function ModerationDialog({
           ) : (
             <>
               <Field id="moderation-account" label="Account">
-                <select
+                <SelectControl
                   id="moderation-account"
                   value={accountId}
-                  onChange={(e) => setAccountId(e.target.value)}
+                  onValueChange={(value) => setAccountId(value)}
                 >
                   {data.accounts
                     .filter((a) => a.role === 'player')
                     .map((a) => (
-                      <option value={a.id} key={a.id}>
+                      <SelectOption value={a.id} key={a.id}>
                         {a.user}
-                      </option>
+                      </SelectOption>
                     ))}
-                </select>
+                </SelectControl>
               </Field>
               <Field id="moderation-action" label="Action">
-                <select
+                <SelectControl
                   id="moderation-action"
                   value={action}
-                  onChange={(e) => setAction(e.target.value)}
+                  onValueChange={(value) => setAction(value)}
                 >
                   {Object.entries(actions).map(([key, value]) => (
-                    <option key={key} value={key}>
+                    <SelectOption key={key} value={key}>
                       {value.label}
-                    </option>
+                    </SelectOption>
                   ))}
-                </select>
+                </SelectControl>
               </Field>
               <p className="field-hint">{actions[action].help}</p>
               <Field
@@ -201,7 +202,7 @@ function ModerationDialog({
                 label="Reason"
                 hint="3–200 characters. Keep it useful for the next moderator."
               >
-                <textarea
+                <Textarea
                   id="moderation-reason"
                   rows={3}
                   minLength={3}
@@ -373,12 +374,16 @@ export function AuditPage() {
             <label htmlFor="audit-source" className="sr-only">
               Audit source
             </label>
-            <select id="audit-source" value={source} onChange={(e) => setSource(e.target.value)}>
-              <option value="all">All sources</option>
-              <option>Dashboard</option>
-              <option>CLI</option>
-              <option>Server</option>
-            </select>
+            <SelectControl
+              id="audit-source"
+              value={source}
+              onValueChange={(value) => setSource(value)}
+            >
+              <SelectOption value="all">All sources</SelectOption>
+              <SelectOption value="Dashboard">Dashboard</SelectOption>
+              <SelectOption value="CLI">CLI</SelectOption>
+              <SelectOption value="Server">Server</SelectOption>
+            </SelectControl>
           </div>
         </div>
         {rows.length ? (
@@ -489,12 +494,12 @@ export function LogsPage() {
             <label htmlFor="log-level" className="sr-only">
               Log level
             </label>
-            <select id="log-level" value={level} onChange={(e) => setLevel(e.target.value)}>
-              <option value="all">All levels</option>
-              <option value="info">Information</option>
-              <option value="warning">Warnings</option>
-              <option value="error">Errors</option>
-            </select>
+            <SelectControl id="log-level" value={level} onValueChange={(value) => setLevel(value)}>
+              <SelectOption value="all">All levels</SelectOption>
+              <SelectOption value="info">Information</SelectOption>
+              <SelectOption value="warning">Warnings</SelectOption>
+              <SelectOption value="error">Errors</SelectOption>
+            </SelectControl>
             <Badge tone="neutral">
               <Terminal size={12} />
               Sample log

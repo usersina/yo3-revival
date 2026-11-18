@@ -1,3 +1,10 @@
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from './components/ui/accordion'
+import { SelectControl, SelectOption, Input, Textarea } from './components/form-controls'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -146,6 +153,7 @@ export function ConnectedSettings({
   const [query, setQuery] = useState('')
   const [group, setGroup] = useState('all')
   const [customOnly, setCustomOnly] = useState(false)
+  const [expandedGroups, setExpandedGroups] = useState(sections.map((section) => section.name))
   const [failure, setFailure] = useState('')
   const [refused, setRefused] = useState(false)
   const [result, setResult] = useState<SettingsResult | null>(null)
@@ -263,6 +271,8 @@ export function ConnectedSettings({
     view === 'registry'
       ? groups.reduce((sum, section) => sum + section.rows.length, 0)
       : (visible?.length ?? 0)
+  const filtering = Boolean(query.trim() || group !== 'all' || customOnly)
+  const filterKey = JSON.stringify([query.trim(), group, customOnly])
   function clearFilters() {
     setQuery('')
     setGroup('all')
@@ -401,16 +411,18 @@ export function ConnectedSettings({
               {view === 'registry' && (
                 <>
                   <Field id="settings-group" label="Setting group">
-                    <select
+                    <SelectControl
                       id="settings-group"
                       value={group}
-                      onChange={(event) => setGroup(event.target.value)}
+                      onValueChange={(value) => setGroup(value)}
                     >
-                      <option value="all">All groups</option>
+                      <SelectOption value="all">All groups</SelectOption>
                       {sections.map((section) => (
-                        <option key={section.name}>{section.name}</option>
+                        <SelectOption key={section.name} value={section.name}>
+                          {section.name}
+                        </SelectOption>
                       ))}
-                    </select>
+                    </SelectControl>
                   </Field>
                   <label className="settings-custom-filter">
                     <input
@@ -428,21 +440,41 @@ export function ConnectedSettings({
               {view === 'registry' ? ' shown' : ''}
             </p>
             <div className="settings-section">
-              {view === 'registry'
-                ? groups.map((section) => (
-                    <section
+              {view === 'registry' ? (
+                <Accordion
+                  key={filterKey}
+                  type="multiple"
+                  value={filtering ? undefined : expandedGroups}
+                  defaultValue={groups.map((section) => section.name)}
+                  onValueChange={(value) => {
+                    if (!filtering) setExpandedGroups(value)
+                  }}
+                >
+                  {groups.map((section) => (
+                    <AccordionItem
                       key={section.name}
+                      value={section.name}
                       className="settings-group"
                       aria-label={section.name}
                     >
-                      <header>
-                        <h3>{section.name}</h3>
-                        <p>{section.description}</p>
-                      </header>
-                      {section.rows.map(settingRow)}
-                    </section>
-                  ))
-                : visible?.map(settingRow)}
+                      <AccordionTrigger className="settings-group-trigger">
+                        <span>
+                          <span className="settings-group-title">
+                            {section.name}
+                            <span className="settings-group-count">{section.rows.length}</span>
+                          </span>
+                          <span className="settings-group-description">{section.description}</span>
+                        </span>
+                      </AccordionTrigger>
+                      <AccordionContent className="settings-group-content">
+                        {section.rows.map(settingRow)}
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+              ) : (
+                visible?.map(settingRow)
+              )}
               {count === 0 && (
                 <div className="connected-empty">
                   <p>No matching settings.</p>
@@ -500,7 +532,7 @@ export function ConnectedSettings({
                             news.data.map((entry, index) => (
                               <div className="settings-news-entry" key={index}>
                                 <Field id={`live-news-title-${index}`} label={`Title ${index + 1}`}>
-                                  <input
+                                  <Input
                                     id={`live-news-title-${index}`}
                                     value={entry.title}
                                     maxLength={128}
@@ -517,7 +549,7 @@ export function ConnectedSettings({
                                   />
                                 </Field>
                                 <Field id={`live-news-body-${index}`} label={`Body ${index + 1}`}>
-                                  <textarea
+                                  <Textarea
                                     id={`live-news-body-${index}`}
                                     value={entry.body}
                                     maxLength={2048}
@@ -559,37 +591,37 @@ export function ConnectedSettings({
                       ) : (
                         <Field id="live-setting-value" label="Value">
                           {setting.input.kind === 'choice' ? (
-                            <select
+                            <SelectControl
                               id="live-setting-value"
                               value={request.value}
-                              onChange={(e) => updateValue(e.target.value)}
+                              onValueChange={(value) => updateValue(value)}
                             >
                               {setting.input.choices.map((c) => (
-                                <option key={c} value={c}>
+                                <SelectOption key={c} value={c}>
                                   {c}
-                                </option>
+                                </SelectOption>
                               ))}
-                            </select>
+                            </SelectControl>
                           ) : setting.input.kind === 'regulation' &&
                             setting.input.choices.length > 0 ? (
-                            <select
+                            <SelectControl
                               id="live-setting-value"
                               value={request.value}
-                              onChange={(e) => updateValue(e.target.value)}
+                              onValueChange={(value) => updateValue(value)}
                             >
-                              <option value="">Default regulation</option>
+                              <SelectOption value="">Default regulation</SelectOption>
                               {!setting.input.choices.some((c) => String(c.id) === request.value) &&
                                 request.value && (
-                                  <option value={request.value}>{request.value}</option>
+                                  <SelectOption value={request.value}>{request.value}</SelectOption>
                                 )}
                               {setting.input.choices.map((c) => (
-                                <option key={c.id} value={c.id}>
+                                <SelectOption key={c.id} value={c.id}>
                                   {c.name}
-                                </option>
+                                </SelectOption>
                               ))}
-                            </select>
+                            </SelectControl>
                           ) : (
-                            <input
+                            <Input
                               id="live-setting-value"
                               type={setting.input.kind === 'number' ? 'number' : 'text'}
                               value={request.value}
@@ -621,7 +653,7 @@ export function ConnectedSettings({
                         signed out. Set 0 to start now.
                       </p>
                       <Field id="maintenance-minutes" label="Starts in (minutes)">
-                        <input
+                        <Input
                           id="maintenance-minutes"
                           type="number"
                           min={0}
@@ -642,7 +674,7 @@ export function ConnectedSettings({
                         />
                       </Field>
                       <Field id="maintenance-message" label="Message to players">
-                        <input
+                        <Input
                           id="maintenance-message"
                           value={request.message ?? ''}
                           maxLength={200}

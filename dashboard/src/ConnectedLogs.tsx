@@ -1,3 +1,4 @@
+import { SelectControl, SelectOption } from './components/form-controls'
 import { useState } from 'react'
 import { Copy, LoaderCircle, RefreshCw } from 'lucide-react'
 import { Button, Field, Panel } from './components/ui'
@@ -62,17 +63,17 @@ export function ConnectedLogs({ summary = false }: { summary?: boolean }) {
               Refresh every 5 seconds
             </label>
             <Field id="logs-limit" label="Maximum lines">
-              <select
+              <SelectControl
                 id="logs-limit"
                 value={limit}
-                onChange={(event) => setLimit(Number(event.target.value))}
+                onValueChange={(value) => setLimit(Number(value))}
               >
                 {[50, 100, 200, 500].map((n) => (
-                  <option key={n} value={n}>
+                  <SelectOption key={n} value={n}>
                     {n}
-                  </option>
+                  </SelectOption>
                 ))}
-              </select>
+              </SelectControl>
             </Field>
           </div>
         )}

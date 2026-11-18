@@ -29,7 +29,8 @@ describe('dashboard preview', () => {
     await user.type(screen.getByRole('searchbox', { name: 'Search accounts' }), 'Yusei')
     expect(screen.getByRole('button', { name: 'View YuseiFudo' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'View SetoKaiba' })).not.toBeInTheDocument()
-    await user.selectOptions(screen.getByLabelText('Account status'), 'offline')
+    await user.click(screen.getByLabelText('Account status'))
+    await user.click(screen.getByRole('option', { name: 'Offline' }))
     expect(screen.getByText('No accounts found')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Clear filters' }))
     expect(screen.getByRole('button', { name: 'View SetoKaiba' })).toBeVisible()
@@ -75,8 +76,10 @@ describe('dashboard preview', () => {
     const user = open('/moderation')
     await user.click(screen.getByRole('button', { name: 'Take action' }))
     const dialog = screen.getByRole('dialog', { name: 'Moderation action' })
-    await user.selectOptions(within(dialog).getByLabelText('Account'), '3')
-    await user.selectOptions(within(dialog).getByLabelText('Action'), 'ban')
+    await user.click(within(dialog).getByLabelText('Account'))
+    await user.click(screen.getByRole('option', { name: 'AkizaIzinski' }))
+    await user.click(within(dialog).getByLabelText('Action'))
+    await user.click(screen.getByRole('option', { name: 'Ban account' }))
     await user.type(within(dialog).getByLabelText('Reason'), 'Repeated harassment')
     await user.click(within(dialog).getByRole('button', { name: 'Review action' }))
     expect(within(dialog).getByText(/Ban AkizaIzinski/)).toBeVisible()
@@ -87,7 +90,8 @@ describe('dashboard preview', () => {
 
   it('keeps moderator controls read-only where admin access is needed', async () => {
     const user = open('/settings')
-    await user.selectOptions(screen.getByLabelText('Preview role'), 'moderator')
+    await user.click(screen.getByLabelText('Preview role'))
+    await user.click(screen.getByRole('option', { name: 'View as moderator' }))
     expect(screen.getByText('Only administrators can change server settings.')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
     await user.click(screen.getByRole('link', { name: 'Backups' }))
@@ -107,7 +111,8 @@ describe('dashboard preview', () => {
 
   it('shows errors independently from informational server logs', async () => {
     const user = open('/logs')
-    await user.selectOptions(screen.getByLabelText('Log level'), 'warning')
+    await user.click(screen.getByLabelText('Log level'))
+    await user.click(screen.getByRole('option', { name: 'Warnings' }))
     expect(screen.getByText(/Sign-in throttled/)).toBeVisible()
     expect(screen.queryByText(/Database backup completed/)).not.toBeInTheDocument()
   })

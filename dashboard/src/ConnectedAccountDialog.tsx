@@ -1,3 +1,4 @@
+import { SelectControl, SelectOption, Input } from './components/form-controls'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
@@ -635,19 +636,19 @@ export function ConnectedAccountDialog({
                     label="New role"
                     hint="Players cannot use management. Moderators can help players. Administrators have full management access."
                   >
-                    <select
+                    <SelectControl
                       id="profile-role"
                       value={displayedRole}
-                      onChange={(event) => {
-                        setRole(event.target.value as Role)
+                      onValueChange={(value) => {
+                        setRole(value as Role)
                         setConfirmedRole(false)
                       }}
                       disabled={edit.isPending || Boolean(pending)}
                     >
-                      <option value="player">Player</option>
-                      <option value="moderator">Moderator</option>
-                      <option value="admin">Administrator</option>
-                    </select>
+                      <SelectOption value="player">Player</SelectOption>
+                      <SelectOption value="moderator">Moderator</SelectOption>
+                      <SelectOption value="admin">Administrator</SelectOption>
+                    </SelectControl>
                   </Field>
                   <p className="field-hint">
                     A changed role signs this account out of both management interfaces. It does not
@@ -681,24 +682,24 @@ export function ConnectedAccountDialog({
                     label="Country"
                     hint="Automatic uses the game's language. Available flags come from the original game files."
                   >
-                    <select
+                    <SelectControl
                       id="profile-country"
                       value={displayedCountry}
-                      onChange={(e) => setCountry(e.target.value)}
+                      onValueChange={(value) => setCountry(value)}
                       disabled={edit.isPending || Boolean(pending)}
                     >
-                      <option value="">Automatic (game language)</option>
+                      <SelectOption value="">Automatic (game language)</SelectOption>
                       {displayedCountry && !countries.data?.codes.includes(displayedCountry) && (
-                        <option value={displayedCountry}>
+                        <SelectOption value={displayedCountry}>
                           {displayedCountry} ({pending ? 'pending change' : 'current'})
-                        </option>
+                        </SelectOption>
                       )}
                       {countries.data?.codes.map((code) => (
-                        <option key={code} value={code}>
+                        <SelectOption key={code} value={code}>
                           {code}
-                        </option>
+                        </SelectOption>
                       ))}
-                    </select>
+                    </SelectControl>
                   </Field>
                   {countries.isFetching && <p role="status">Loading country choices…</p>}
                   {countries.error && (
@@ -719,7 +720,7 @@ export function ConnectedAccountDialog({
                   label="Player name"
                   hint="1–16 printable characters. Names are unique across all accounts."
                 >
-                  <input
+                  <Input
                     id="profile-name"
                     value={
                       pending &&

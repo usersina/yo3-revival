@@ -1,3 +1,4 @@
+import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
@@ -7,6 +8,7 @@ if (commit !== 'development' && !/^[0-9a-f]{40}$/.test(commit))
   throw new Error('VITE_DASHBOARD_COMMIT must be a full Git commit')
 
 export default defineConfig({
+  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   plugins: [
     react(),
     tailwindcss(),

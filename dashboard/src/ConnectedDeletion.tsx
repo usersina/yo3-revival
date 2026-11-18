@@ -1,3 +1,4 @@
+import { Input } from './components/form-controls'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -206,7 +207,7 @@ export function ConnectedDeletion({
                     </p>
                   )}
                   <Field label={`Type ${target} to confirm deletion`} id="delete-account-confirm">
-                    <input
+                    <Input
                       id="delete-account-confirm"
                       inputMode="numeric"
                       autoComplete="off"

@@ -1,3 +1,4 @@
+import { Input } from './components/form-controls'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -326,7 +327,7 @@ export function ConnectedCredentials({
               label="User ID"
               hint="3–16 letters or digits. Case does not matter."
             >
-              <input
+              <Input
                 id="account-new-user"
                 value={user}
                 onChange={(event) => setUser(event.target.value)}

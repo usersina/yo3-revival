@@ -1,3 +1,4 @@
+import { SelectControl, SelectOption } from './components/form-controls'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import {
@@ -165,14 +166,14 @@ function Shell() {
             <label className="sr-only" htmlFor="preview-role">
               Preview role
             </label>
-            <select
+            <SelectControl
               id="preview-role"
               value={role}
-              onChange={(e) => setRole(e.target.value as typeof role)}
+              onValueChange={(value) => setRole(value as typeof role)}
             >
-              <option value="admin">View as admin</option>
-              <option value="moderator">View as moderator</option>
-            </select>
+              <SelectOption value="admin">View as admin</SelectOption>
+              <SelectOption value="moderator">View as moderator</SelectOption>
+            </SelectControl>
             <button className="text-button" onClick={() => setResetOpen(true)}>
               <RotateCcw size={13} />
               <span>Reset preview</span>

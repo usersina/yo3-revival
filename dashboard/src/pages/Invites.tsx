@@ -1,3 +1,4 @@
+import { Input } from '../components/form-controls'
 import { useState } from 'react'
 import { CalendarClock, Check, Coins, Plus, Ticket, Trash2 } from 'lucide-react'
 import { usePreview } from '../preview'
@@ -58,7 +59,7 @@ function RewardDialog({ open, close }: { open: boolean; close: () => void }) {
       <form onSubmit={submit}>
         <div className="modal-body form-stack">
           <Field id="reward-code" label="Code" hint="3–32 letters, numbers or hyphens.">
-            <input
+            <Input
               id="reward-code"
               autoComplete="off"
               maxLength={32}
@@ -75,7 +76,7 @@ function RewardDialog({ open, close }: { open: boolean; close: () => void }) {
           )}
           <div className="form-grid">
             <Field id="reward-bp" label="BP per account">
-              <input
+              <Input
                 id="reward-bp"
                 type="number"
                 min="1"
@@ -85,7 +86,7 @@ function RewardDialog({ open, close }: { open: boolean; close: () => void }) {
               />
             </Field>
             <Field id="reward-limit" label="Maximum claims">
-              <input
+              <Input
                 id="reward-limit"
                 type="number"
                 min="1"

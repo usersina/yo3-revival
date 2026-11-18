@@ -1,3 +1,4 @@
+import { chooseOption } from './select'
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
@@ -16,7 +17,7 @@ test('audit history reads real entries, pages by string cursor and distinguishes
 }) => {
   await signIn(page)
   const audit = page.getByRole('region', { name: 'Audit log', exact: true })
-  await audit.getByLabel('Entries per page').selectOption('5')
+  await chooseOption(audit.getByLabel('Entries per page'), '5')
   const first = AuditPage.parse(
     await (await page.request.get('/panel/api/v1/audit?limit=5')).json(),
   )

@@ -15,6 +15,9 @@ Older entries describe their release at the time. For current setup, use the [RE
 
 ## Unreleased
 
+- Dashboard dropdowns now use shadcn controls with keyboard navigation and consistent light/dark styling.
+  Settings groups can collapse; searching reveals matching settings. Invalid fields show a specific inline error,
+  keep focus on the first invalid input, and clear errors when corrected or reset.
 - The staff dashboard has a saved light/dark toggle and a System appearance option. Success, warnings, errors,
   information, fields and dialogs now share a consistent palette in both modes.
 - Server settings are grouped by purpose, with readable names and units, group/search/custom-value filters,

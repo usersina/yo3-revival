@@ -1,4 +1,21 @@
 @import 'tailwindcss';
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* shadcn primitives share the dashboard's semantic palette. */
+@theme inline {
+  --color-background: var(--color-surface);
+  --color-foreground: var(--color-ink);
+  --color-primary-foreground: var(--color-on-primary);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-ink);
+  --color-muted-foreground: var(--color-muted);
+  --color-accent: var(--color-selected);
+  --color-accent-foreground: var(--color-ink);
+  --color-border: var(--color-line);
+  --color-input: var(--color-control-line);
+  --color-ring: var(--color-focus);
+  --color-destructive: var(--color-danger);
+}
 
 @font-face {
   font-family: Barlow;

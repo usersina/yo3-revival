@@ -1,3 +1,4 @@
+import { chooseOption } from './select'
 import { expect, test } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 
@@ -75,7 +76,7 @@ test('phone navigation and tables stay within the viewport', async ({ page }) =>
 
 test('moderator preview cannot use admin actions', async ({ page }) => {
   await page.goto('/design/settings')
-  await page.getByLabel('Preview role').selectOption('moderator')
+  await chooseOption(page.getByLabel('Preview role'), 'moderator')
   await expect(page.getByRole('button', { name: 'Save changes' })).toBeDisabled()
   await expect(page.getByLabel('Server name')).toBeDisabled()
   await page.getByRole('link', { name: 'News & maintenance', exact: true }).click()

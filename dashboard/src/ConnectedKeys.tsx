@@ -1,3 +1,4 @@
+import { Input } from './components/form-controls'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -161,7 +162,7 @@ export function ConnectedKeys({
                 {result.players.length > 0 && ` · ${result.players.map((p) => p.name).join(', ')}`}
               </p>
               <Field id="account-key" label="Account key">
-                <input
+                <Input
                   id="account-key"
                   readOnly
                   value={result.key}
@@ -204,7 +205,7 @@ export function ConnectedKeys({
             <>
               {create ? (
                 <Field id="key-player-names" label="Player names">
-                  <input
+                  <Input
                     id="key-player-names"
                     value={names}
                     onChange={(e) => setNames(e.target.value)}

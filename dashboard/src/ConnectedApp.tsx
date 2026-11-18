@@ -1,3 +1,4 @@
+import { Input } from './components/form-controls'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -80,7 +81,7 @@ function SignIn() {
       </div>
       <form onSubmit={submit} className="connected-sign-in">
         <Field id="staff-user" label="User ID">
-          <input
+          <Input
             id="staff-user"
             value={user}
             onChange={(e) => setUser(e.target.value)}
@@ -91,7 +92,7 @@ function SignIn() {
           />
         </Field>
         <Field id="staff-password" label="Password">
-          <input
+          <Input
             id="staff-password"
             type="password"
             value={password}

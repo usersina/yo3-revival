@@ -116,6 +116,14 @@ locally on port 4173 for review. It is not a production web server.
 `src/DashboardRoot.tsx` selects the real app and the explicit development preview. `src/ConnectedShell.tsx` owns
 navigation, `src/ConnectedAccounts.tsx` owns account forms, and the other `Connected*.tsx` modules use generated
 API hooks for their pages. Standalone pages load on demand. Reusable controls are in `src/components/`.
+
+Shared controls use locally owned [shadcn/ui](https://ui.shadcn.com/) source in `src/components/ui/`, with Radix
+primitives and the `@/` alias configured in `components.json`, TypeScript and Vite. Application forms use
+`src/components/form-controls.tsx`; `components/ui.tsx` keeps the common field/modal/page wrappers. Use the shared
+controls rather than adding native dropdowns or duplicating validation. Input constraints stay with each caller;
+settings get theirs from the generated server metadata. Keep the existing semantic palette in `styles.css` and
+`preferences.css` when updating primitives. Generated API files remain separate and untouched.
+
 `src/data.ts`, `src/store.tsx` and `src/pages/` belong to the development design preview.
 
 The HTTP services use Axum on separate sockets. Existing HTML pages share their sign-in throttle and staff sessions
@@ -126,8 +134,9 @@ invalidate old cookies even if the role is later restored; the form warns before
 [accepted plan](../docs/dashboard.md).
 
 The [launcher mark](../crates/yo3-desktop/assets/branding/README.md) and Barlow fonts are reused from the existing app.
-The fonts’ license is included in [public/fonts/OFL.txt](public/fonts/OFL.txt). The minimatch override applies a
-patched release to the development linter’s dependency; build, lint and interaction checks exercise it.
+The fonts’ license is included in [public/fonts/OFL.txt](public/fonts/OFL.txt), and the shadcn/ui notice in
+[public/licenses/shadcn-ui.txt](public/licenses/shadcn-ui.txt). Both ship with the dashboard assets.
+The minimatch override applies a patched release to the development linter’s dependency; build, lint and interaction checks exercise it.
 
 Setup/reset requests use a browser-generated code and retain it only in this tab for safe retry. The staff API
 returns confirmation/availability, never the code. Done or confirmed expiry clears the retained code. Reload requires

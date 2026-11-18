@@ -1,3 +1,4 @@
+import { chooseOption } from './select'
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
@@ -81,12 +82,12 @@ test('moderation lists real saved standing and mute badges, with working filters
     await change('ban')
     await change('mute')
     await page.getByRole('button', { name: 'Refresh', exact: true }).click()
-    await page.getByLabel('Standing', { exact: true }).selectOption('banned')
+    await chooseOption(page.getByLabel('Standing', { exact: true }), 'banned')
     const row = page.getByRole('row').filter({ hasText: 'TestOverview' })
     await expect(row).toContainText('banned')
     await expect(row).toContainText('Muted')
     await expect(page.getByRole('row').filter({ hasText: 'TestPlayer' })).toHaveCount(0)
-    await page.getByLabel('Standing', { exact: true }).selectOption('muted')
+    await chooseOption(page.getByLabel('Standing', { exact: true }), 'muted')
     await expect(row).toBeVisible()
   } finally {
     await change('lift')

@@ -1,3 +1,4 @@
+import { SelectControl, SelectOption, Input } from '../components/form-controls'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
@@ -151,7 +152,7 @@ function AccountDetails({ account, close }: { account: Account; close: () => voi
               label="BP amount"
               hint="Added to the existing balance. The change is recorded in the audit log."
             >
-              <input
+              <Input
                 id="bp-amount"
                 type="number"
                 min="1"
@@ -254,20 +255,24 @@ export function Accounts() {
             <label className="sr-only" htmlFor="account-status">
               Account status
             </label>
-            <select id="account-status" value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="all">All statuses</option>
-              <option value="online">Online</option>
-              <option value="offline">Offline</option>
-              <option value="flagged">Needs attention</option>
-            </select>
+            <SelectControl
+              id="account-status"
+              value={status}
+              onValueChange={(value) => setStatus(value)}
+            >
+              <SelectOption value="all">All statuses</SelectOption>
+              <SelectOption value="online">Online</SelectOption>
+              <SelectOption value="offline">Offline</SelectOption>
+              <SelectOption value="flagged">Needs attention</SelectOption>
+            </SelectControl>
             <label className="sr-only" htmlFor="account-sort">
               Sort accounts
             </label>
-            <select id="account-sort" value={sort} onChange={(e) => setSort(e.target.value)}>
-              <option value="joined">Newest first</option>
-              <option value="name">Name A–Z</option>
-              <option value="bp">Highest BP</option>
-            </select>
+            <SelectControl id="account-sort" value={sort} onValueChange={(value) => setSort(value)}>
+              <SelectOption value="joined">Newest first</SelectOption>
+              <SelectOption value="name">Name A–Z</SelectOption>
+              <SelectOption value="bp">Highest BP</SelectOption>
+            </SelectControl>
           </div>
         </div>
         {accounts.length ? (

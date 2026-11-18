@@ -1,3 +1,4 @@
+import { SelectControl, SelectOption, Input } from './components/form-controls'
 import { useDeferredValue, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -261,26 +262,26 @@ export function ConnectedGifts({
           ) : (
             <>
               <Field id="gift-kind" label="Gift type">
-                <select
+                <SelectControl
                   id="gift-kind"
                   value={kind}
-                  onChange={(e) => {
-                    setKind(e.target.value as GiftRequest['kind'])
+                  onValueChange={(value) => {
+                    setKind(value as GiftRequest['kind'])
                     setChoice('')
                     setAccepted(false)
                   }}
                 >
-                  <option value="cards">Cards</option>
-                  <option value="recipe">Deck recipe</option>
-                  <option value="title">Title</option>
-                </select>
+                  <SelectOption value="cards">Cards</SelectOption>
+                  <SelectOption value="recipe">Deck recipe</SelectOption>
+                  <SelectOption value="title">Title</SelectOption>
+                </SelectControl>
               </Field>
               <Field
                 id="gift-search"
                 label="Find a gift"
                 hint="Search by English name or ID. Choices come from the host’s game files."
               >
-                <input
+                <Input
                   id="gift-search"
                   type="search"
                   placeholder={kind === 'cards' ? 'Card name or Konami ID…' : 'Name or ID…'}
@@ -347,22 +348,22 @@ export function ConnectedGifts({
                 </fieldset>
               ) : (
                 <Field id="gift-choice" label="Gift">
-                  <select
+                  <SelectControl
                     id="gift-choice"
                     value={choice}
                     disabled={catalogueBusy || !options?.length}
-                    onChange={(e) => {
-                      setChoice(e.target.value)
+                    onValueChange={(value) => {
+                      setChoice(value)
                       setAccepted(false)
                     }}
                   >
-                    <option value="">Choose a gift…</option>
+                    <SelectOption value="">Choose a gift…</SelectOption>
                     {options?.map((o) => (
-                      <option key={o.id} value={o.id}>
+                      <SelectOption key={o.id} value={o.id}>
                         {o.label}
-                      </option>
+                      </SelectOption>
                     ))}
-                  </select>
+                  </SelectControl>
                   {options?.length === 0 && (
                     <p className="field-hint">No matching gifts. Try another name or ID.</p>
                   )}
@@ -399,7 +400,7 @@ export function ConnectedGifts({
                   label="Copies"
                   hint="1–255 additional copies per artwork in total."
                 >
-                  <input
+                  <Input
                     id="gift-count"
                     type="number"
                     min={1}

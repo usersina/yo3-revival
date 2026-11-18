@@ -1,3 +1,6 @@
+import { FieldContext } from './field-context'
+import { Field as FieldRoot, FieldLabel, FieldDescription } from './ui/field'
+import { Input } from './form-controls'
 import * as Dialog from '@radix-ui/react-dialog'
 import {
   Check,
@@ -148,15 +151,17 @@ export function Field({
   children: ReactNode
 }) {
   return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      {children}
-      {hint && (
-        <p className="field-hint" id={`${id}-hint`}>
-          {hint}
-        </p>
-      )}
-    </div>
+    <FieldContext.Provider value={{ id, hintId: hint ? `${id}-hint` : undefined }}>
+      <FieldRoot className="field">
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        {children}
+        {hint && (
+          <FieldDescription className="field-hint" id={`${id}-hint`}>
+            {hint}
+          </FieldDescription>
+        )}
+      </FieldRoot>
+    </FieldContext.Provider>
   )
 }
 
@@ -177,9 +182,10 @@ export function SearchField({
   return (
     <div className="search-field">
       <Search size={17} />
-      <input
+      <Input
         ref={input}
         type="search"
+        className="px-[35px]"
         maxLength={maxLength}
         aria-label={label}
         placeholder={placeholder}

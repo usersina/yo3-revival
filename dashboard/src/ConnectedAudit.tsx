@@ -1,3 +1,4 @@
+import { SelectControl, SelectOption } from './components/form-controls'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { LoaderCircle, RefreshCw } from 'lucide-react'
@@ -47,20 +48,20 @@ export function ConnectedAudit() {
             Search
           </Button>
           <Field id="audit-limit" label="Entries per page">
-            <select
+            <SelectControl
               id="audit-limit"
               value={limit}
-              onChange={(event) => {
-                setLimit(Number(event.target.value))
+              onValueChange={(value) => {
+                setLimit(Number(value))
                 setCursors([])
               }}
             >
               {[5, 25, 50, 100, 200].map((n) => (
-                <option key={n} value={n}>
+                <SelectOption key={n} value={n}>
                   {n}
-                </option>
+                </SelectOption>
               ))}
-            </select>
+            </SelectControl>
           </Field>
         </form>
         {history.isPending && (

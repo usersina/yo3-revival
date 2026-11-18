@@ -1,3 +1,4 @@
+import { chooseOption } from './select'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
@@ -402,7 +403,7 @@ test('account profiles: add and rename keep stable IDs through lost responses an
   await expect(dialog.getByText('ProfileAtem', { exact: true })).toBeVisible()
   await dialog.getByRole('button', { name: 'Change country', exact: true }).click()
   await expect(dialog.getByRole('alert')).toContainText('Country choices are unavailable')
-  await dialog.getByLabel('Country', { exact: true }).selectOption('')
+  await chooseOption(dialog.getByLabel('Country', { exact: true }), '')
   await dialog.getByRole('button', { name: 'Save country', exact: true }).click()
   await expect(dialog.getByRole('status')).toContainText('Profile saved')
 })
@@ -461,7 +462,7 @@ test('account profiles: a saved country edit stays explicit when country choices
   await page.reload()
   await page.getByRole('button', { name: 'Resume profile change' }).click()
   const dialog = page.getByRole('dialog', { name: 'TestPlayer', exact: true })
-  await expect(dialog.getByLabel('Country', { exact: true })).toHaveValue('JP')
+  await expect(dialog.getByLabel('Country', { exact: true })).toHaveAttribute('data-value', 'JP')
   await expect(dialog.getByLabel('Country', { exact: true })).toBeDisabled()
   await page.setViewportSize({ width: 320, height: 850 })
   expect(
@@ -469,7 +470,7 @@ test('account profiles: a saved country edit stays explicit when country choices
   ).toEqual([])
   await dialog.getByRole('button', { name: 'Retry same change', exact: true }).click()
   await expect(dialog.getByText('We could not confirm this profile change.')).toBeVisible()
-  await expect(dialog.getByLabel('Country', { exact: true })).toHaveValue('JP')
+  await expect(dialog.getByLabel('Country', { exact: true })).toHaveAttribute('data-value', 'JP')
 })
 
 test('role changes require confirmation and retain their ID after a lost response and reload', async ({
@@ -491,7 +492,7 @@ test('role changes require confirmation and retain their ID after a lost respons
   await page.getByRole('button', { name: 'View account TestRoleTarget', exact: true }).click()
   let dialog = page.getByRole('dialog', { name: 'TestRoleTarget', exact: true })
   await dialog.getByRole('button', { name: 'Change role', exact: true }).click()
-  await dialog.getByLabel('New role', { exact: true }).selectOption('moderator')
+  await chooseOption(dialog.getByLabel('New role', { exact: true }), 'moderator')
   await expect(dialog.getByRole('button', { name: 'Save role', exact: true })).toBeDisabled()
   await dialog.getByRole('checkbox', { name: /I confirm this role change/ }).check()
   await dialog.getByRole('button', { name: 'Save role', exact: true }).click()
@@ -499,7 +500,10 @@ test('role changes require confirmation and retain their ID after a lost respons
   await page.reload()
   await page.getByRole('button', { name: 'Resume profile change', exact: true }).click()
   dialog = page.getByRole('dialog', { name: 'TestRoleTarget', exact: true })
-  await expect(dialog.getByLabel('New role', { exact: true })).toHaveValue('moderator')
+  await expect(dialog.getByLabel('New role', { exact: true })).toHaveAttribute(
+    'data-value',
+    'moderator',
+  )
   await expect(dialog.getByLabel('New role', { exact: true })).toBeDisabled()
   for (let attempt = 0; attempt < 2; attempt++) {
     const response = page.waitForResponse((r) => r.url().endsWith('/panel/api/v1/accounts/edit'))
@@ -532,7 +536,7 @@ test('moderators cannot change roles and changing your own role signs you out', 
   await page.getByRole('button', { name: 'View account TestRoleAdmin', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'TestRoleAdmin', exact: true })
   await dialog.getByRole('button', { name: 'Change role', exact: true }).click()
-  await dialog.getByLabel('New role', { exact: true }).selectOption('moderator')
+  await chooseOption(dialog.getByLabel('New role', { exact: true }), 'moderator')
   await expect(
     dialog.getByText('Changing your own role signs you out. You will lose administrator access.'),
   ).toBeVisible()
@@ -818,8 +822,8 @@ test('player gifts retain one request across a lost response and reload, includi
   for (const kind of ['recipe', 'title']) {
     await page.getByRole('button', { name: 'View account TestPlayer', exact: true }).click()
     await page.getByRole('button', { name: 'Gift to TestPlayer', exact: true }).click()
-    await page.getByLabel('Gift type').selectOption(kind)
-    await page.getByLabel('Gift', { exact: true }).selectOption(kind === 'recipe' ? '7' : '300')
+    await chooseOption(page.getByLabel('Gift type'), kind)
+    await chooseOption(page.getByLabel('Gift', { exact: true }), kind === 'recipe' ? '7' : '300')
     await page.getByLabel('Confirm this gift for the selected player').check()
     await page.getByRole('button', { name: 'Give gift', exact: true }).click()
     await expect(page.getByRole('dialog')).toContainText(

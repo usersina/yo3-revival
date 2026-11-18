@@ -1,3 +1,4 @@
+import { Input } from './components/form-controls'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -294,7 +295,7 @@ export function ConnectedInvites({ session }: { session: StaffSession }) {
       >
         <form id="connected-invite" onSubmit={submit} className="modal-body">
           <Field id="invite-uses" label="Sign-up limit" hint="Leave empty for unlimited sign-ups.">
-            <input
+            <Input
               id="invite-uses"
               type="number"
               min={1}
@@ -310,7 +311,7 @@ export function ConnectedInvites({ session }: { session: StaffSession }) {
             label="Expires after (days)"
             hint="Leave empty for no expiry. Starts when the invite is created."
           >
-            <input
+            <Input
               id="invite-days"
               type="number"
               min={1}

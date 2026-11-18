@@ -1,3 +1,4 @@
+import { chooseOption } from './select'
 import { expect, test } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
@@ -49,7 +50,7 @@ test('account actions and filters fit phones and tablets without sideways scroll
     await page.getByRole('button', { name: 'Clear search', exact: true }).click()
     await expect(page.getByRole('searchbox', { name: 'Search accounts' })).toBeFocused()
   }
-  await page.getByLabel('Standing', { exact: true }).selectOption('banned')
+  await chooseOption(page.getByLabel('Standing', { exact: true }), 'banned')
   await expect(page.getByText('No accounts match your filters.')).toBeVisible()
   await page.getByRole('button', { name: 'Clear filters', exact: true }).click()
   await expect(
