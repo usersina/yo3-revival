@@ -13,8 +13,10 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.1 (2026-11-18)
 
+- The Windows game-runtime check now falls back to the game’s own DLL search when Windows rejects newer
+  loader flags. This fixes a false “missing DirectX” result on older systems; Windows 7 remains unsupported.
 - Dashboard dropdowns now use shadcn controls with keyboard navigation and consistent light/dark styling.
   Settings groups can collapse; searching reveals matching settings. Invalid fields show a specific inline error,
   keep focus on the first invalid input, and clear errors when corrected or reset.

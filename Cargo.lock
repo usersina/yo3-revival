@@ -5727,7 +5727,7 @@ checksum = "ac366ea532fa8ee6a992cec9dea525b1dc284e69702f36c2ab5fbebadc81ec86"
 
 [[package]]
 name = "yo3-data"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "flate2",
  "thiserror 2.0.21",
@@ -5736,7 +5736,7 @@ dependencies = [
 
 [[package]]
 name = "yo3-desktop"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -5767,7 +5767,7 @@ dependencies = [
 
 [[package]]
 name = "yo3-engine"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cc",
  "ring",
@@ -5778,7 +5778,7 @@ dependencies = [
 
 [[package]]
 name = "yo3-launcher"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -5799,7 +5799,7 @@ dependencies = [
 
 [[package]]
 name = "yo3-monkey"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -5812,7 +5812,7 @@ dependencies = [
 
 [[package]]
 name = "yo3-ocg"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -5820,7 +5820,7 @@ dependencies = [
 
 [[package]]
 name = "yo3-proto"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "blowfish",
  "proptest",
@@ -5829,7 +5829,7 @@ dependencies = [
 
 [[package]]
 name = "yo3-server"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "argon2",
@@ -5862,14 +5862,14 @@ dependencies = [
 
 [[package]]
 name = "yo3-skin"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "iced",
 ]
 
 [[package]]
 name = "yo3-tunnel"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
