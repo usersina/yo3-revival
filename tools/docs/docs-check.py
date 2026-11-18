@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Checks the Markdown docs and prints tables of contents.
 
-    tools/docs-check.py                 every relative link and #anchor in root Markdown files and docs/**/*.md resolves
-    tools/docs-check.py --toc FILE      a table of contents for FILE (H2 and H3 headings), ready to paste under its title
-    tools/docs-check.py --root DIR      validate the same layout in an extracted release
+    tools/docs/docs-check.py                 every relative link and #anchor in root Markdown files and docs/**/*.md resolves
+    tools/docs/docs-check.py --toc FILE      a table of contents for FILE (H2 and H3 headings), ready to paste under its title
+    tools/docs/docs-check.py --root DIR      validate the same layout in an extracted release
 
 Anchors follow GitHub's rule: lowercase, drop everything but letters, digits, spaces, hyphens and underscores, spaces
 become hyphens, repeated headings get -1, -2. Exit status 1 when a link is broken.
@@ -13,7 +13,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 LINK = re.compile(r"(?<!\!)\[[^\]]*\]\(([^)\s]+)\)|!\[[^\]]*\]\(([^)\s]+)\)")
 
 

@@ -79,17 +79,17 @@ python3 tools/mod/test_winmm_exports.py
 python3 tools/client/test_vclient.py
 python3 tools/monkey/test_duel_report.py
 python3 tools/monkey/test_duel_replay.py
-python3 tools/test_package_editions.py
-python3 tools/test_release_notes.py
-python3 tools/test_release_lifecycle.py
+python3 tools/release/test_package_editions.py
+python3 tools/release/test_release_notes.py
+python3 tools/release/test_release_lifecycle.py
 python3 tools/containers/test_dashboard_workflow.py
-python3 tools/test_host_scripts.py
-python3 tools/test_docs_check.py
-tools/docs-check.py
+python3 tools/host/test_host_scripts.py
+python3 tools/docs/test_docs_check.py
+tools/docs/docs-check.py
 ```
 
 Fetch engine dependencies before engine tests; game-data tests can skip without an original installation.
-DLL/loader changes also need `tools/mod/test.sh` and `tools/mod/test-loader.sh`. See the working guide for the
+DLL/loader changes also need `tools/mod/test-dll.sh` and `tools/mod/test-loader.sh`. See the working guide for the
 additional direct-launch fixture and prerequisites.
 
 Keep the user's screen, default ports, live data and `:77` client untouched. Use private Xvfb displays, separate
@@ -140,7 +140,7 @@ Two more things keep a live check private:
 
 **Updates (#32) without publishing a release.** A development build (debug assertions on) reads a fake newer release
 from `YO3_UPDATE_FAKE_METADATA` (GitHub's release JSON: `tag_name`, `body`, and one asset with its `sha256:` digest) and
-stages `YO3_UPDATE_FAKE_ARCHIVE` in place of the download, without the signature check (`tools/test-packaged-update.sh`
+stages `YO3_UPDATE_FAKE_ARCHIVE` in place of the download, without the signature check (`tools/release/test-packaged-update.sh`
 checks that); release builds ignore both. Build it with a stable version
 (`YO3_BUILD_VERSION=v0.0.21`, in its own `CARGO_TARGET_DIR` so the main build isn't rebuilt), or the check says it is a
 development build. The archive needs a `bundle.json` whose components' checksums match, like the fixtures in
@@ -382,8 +382,8 @@ one:
 4. Rebuild the engine and sweep the card: `YO3_CARD_SWEEP=<cid>, YO3_CARD_SWEEP_SEEDS=10 cargo nextest run --release -p
    yo3-server --test card_sweep --no-capture` (the report counts the duels it was used in).
 
-Both release editions ship the folder as `engine/overrides/` (`tools/engine-files.sh`, checked by
-`tools/test_package_editions.py`). The engine's `identity` fingerprints the overrides with the scripts, so a recorded
+Both release editions ship the folder as `engine/overrides/` (`tools/engine/engine-files.sh`, checked by
+`tools/release/test_package_editions.py`). The engine's `identity` fingerprints the overrides with the scripts, so a recorded
 duel replays only with the same overrides. The old sidecar (`engine/duelcore.ts`) reads them too, so the parity check
 compares like with like. After `engine/fetch.sh --update`, compare each overridden card's new upstream script with the one it was copied
 from: carry an upstream change over, or delete an override upstream has fixed.
@@ -462,7 +462,7 @@ The Windows target also needs 64-bit MinGW (`x86_64-w64-mingw32-gcc`). Install `
 
 ```bash
 rustup target add x86_64-pc-windows-gnu
-tools/release.sh
+tools/release/release.sh
 ```
 
 Set `YO3_VERSION` when building a specific unreleased version; otherwise the script uses Git's description.
@@ -482,13 +482,13 @@ Five archives are produced under `dist/`:
 All contain the shared `docs/` and root `screenshots/` tree. Desktop opens with the short project README; Scripts
 opens with its terminal guide; Server, for a Linux server or VPS (#37), opens with the [hosting guide](hosting.md) and
 has only the server and the rules engine, plus `server.toml.example` and `systemd/` (the unit, the monitor and the
-off-machine backup, from `tools/host/`; `tools/test_host_scripts.py` fires each alert against a fake webhook).
+off-machine backup, from `tools/host/`; `tools/host/test_host_scripts.py` fires each alert against a fake webhook).
 Packaging validates copied links and anchors before making each archive:
 
 ```bash
-tools/docs-check.py --root /absolute/path/to/extracted/yo3-revival-desktop
-tools/docs-check.py --root /absolute/path/to/extracted/yo3-revival-scripts
-tools/docs-check.py --root /absolute/path/to/extracted/yo3-revival-server
+tools/docs/docs-check.py --root /absolute/path/to/extracted/yo3-revival-desktop
+tools/docs/docs-check.py --root /absolute/path/to/extracted/yo3-revival-scripts
+tools/docs/docs-check.py --root /absolute/path/to/extracted/yo3-revival-server
 ```
 
 Check the real app and scripts from extracted archives, including paths with spaces and non-default ports/data
@@ -507,8 +507,8 @@ When the changelog version is already released, the workflow stops after checkin
 Run the same check locally on Linux with `Xvfb`, `xvfb-run` and `xauth` installed:
 
 ```bash
-YO3_VERSION=v0.0.5 tools/release.sh
-tools/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-linux-x86_64.tar.gz
+YO3_VERSION=v0.0.5 tools/release/release.sh
+tools/release/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-linux-x86_64.tar.gz
 ```
 
 Use the version being tested. Building with a stable version label does not publish or create a Git tag; `-dev`
@@ -528,7 +528,7 @@ This checks Linux package activation; native Windows verification remains separa
   ```bash
   previous=$(GITHUB_REPOSITORY=usersina/yo3-revival python3 .github/scripts/release_lifecycle.py previous v0.1.0)
   gh release download "$previous" --dir /tmp/released -p "yo3-revival-desktop-$previous-linux-x86_64.tar.gz"
-  tools/test-packaged-update.sh v0.1.0 dist/yo3-revival-desktop-v0.1.0-linux-x86_64.tar.gz \
+  tools/release/test-packaged-update.sh v0.1.0 dist/yo3-revival-desktop-v0.1.0-linux-x86_64.tar.gz \
     --from "/tmp/released/yo3-revival-desktop-$previous-linux-x86_64.tar.gz"
   ```
 

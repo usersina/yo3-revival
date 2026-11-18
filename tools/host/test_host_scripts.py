@@ -12,7 +12,7 @@ import time
 import unittest
 from pathlib import Path
 
-HOST = Path(__file__).resolve().parent / "host"
+HOST = Path(__file__).resolve().parent
 
 
 class Fake(http.server.BaseHTTPRequestHandler):

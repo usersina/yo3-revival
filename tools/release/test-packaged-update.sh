@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Exercise the real release archive on an owned display and fresh application data; never publishes anything.
 #
-#   tools/test-packaged-update.sh VERSION DESKTOP-LINUX.tar.gz [--from RELEASED-DESKTOP-LINUX.tar.gz]
+#   tools/release/test-packaged-update.sh VERSION DESKTOP-LINUX.tar.gz [--from RELEASED-DESKTOP-LINUX.tar.gz]
 #
 # 1. Signed updates (#32): SHA256SUMS over the archive, signed by the Release workflow's own script
 #    (.github/scripts/sign_release.sh) with a key made here for this run only; the launcher's check accepts it and
@@ -11,7 +11,7 @@
 #    launcher makes its data, this release opens on it and is promoted, then the released binary (the player's original
 #    shortcut) must hand over to the installed update.
 set -euo pipefail
-usage() { echo 'usage: tools/test-packaged-update.sh VERSION DESKTOP-LINUX.tar.gz [--from RELEASED-DESKTOP-LINUX.tar.gz]' >&2; exit 2; }
+usage() { echo 'usage: tools/release/test-packaged-update.sh VERSION DESKTOP-LINUX.tar.gz [--from RELEASED-DESKTOP-LINUX.tar.gz]' >&2; exit 2; }
 [[ $# == 2 || ( $# == 4 && "$3" == --from ) ]] || usage
 export YO3_UPDATE_TEST_TAG="$1"
 export YO3_UPDATE_TEST_ARCHIVE YO3_UPDATE_TEST_FROM=""
@@ -21,7 +21,7 @@ if [[ $# == 4 ]]; then
   YO3_UPDATE_TEST_FROM="$(realpath "$4")"
   [[ -f "$YO3_UPDATE_TEST_FROM" ]] || { echo "Released archive not found: $YO3_UPDATE_TEST_FROM" >&2; exit 2; }
 fi
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 export YO3_UPDATE_TEST_ROOT="$scratch/app"

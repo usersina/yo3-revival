@@ -45,9 +45,9 @@ use the Desktop or Scripts guide for current setup.
 From a source checkout:
 
 ```bash
-tools/docs-check.py                         # repository links and anchors
-tools/docs-check.py --toc docs/launcher.md  # generate a table of contents
-tools/docs-check.py --root /path/to/bundle  # check an extracted release
+tools/docs/docs-check.py                         # repository links and anchors
+tools/docs/docs-check.py --toc docs/launcher.md  # generate a table of contents
+tools/docs/docs-check.py --root /path/to/bundle  # check an extracted release
 ```
 
 Release packaging checks its copied documentation too, so screenshots and links must work both here and offline

@@ -115,7 +115,7 @@ fn an_update_that_fails_to_start_rolls_back_with_a_notice_and_isnt_retried() {
     assert_eq!(install::failed_start(&root).unwrap().as_deref(),Some("v0.3.0"),"not downloaded again by itself");
     std::fs::remove_dir_all(root).unwrap();
 }
-/// The release under test, as `tools/test-packaged-update.sh` hands it over.
+/// The release under test, as `tools/release/test-packaged-update.sh` hands it over.
 fn packaged_release() -> (PathBuf, PathBuf, Release) {
     let archive=PathBuf::from(std::env::var_os("YO3_UPDATE_TEST_ARCHIVE").expect("release archive"));
     let tag=std::env::var("YO3_UPDATE_TEST_TAG").expect("release tag");

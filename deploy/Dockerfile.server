@@ -32,8 +32,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,targe
     strip --strip-unneeded /out/yo3-server /out/yo3-engine
 # A card override change only repackages data; it never recompiles the native programs.
 COPY engine/overrides engine/overrides
-COPY tools/engine-files.sh tools/engine-files.sh
-RUN tools/engine-files.sh /out
+COPY tools/engine/engine-files.sh tools/engine/engine-files.sh
+RUN tools/engine/engine-files.sh /out
 COPY LICENSE /out/LICENSE
 COPY tools/containers/server-rootfs.sh /tmp/server-rootfs.sh
 RUN sh /tmp/server-rootfs.sh /out /rootfs

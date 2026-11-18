@@ -315,7 +315,7 @@ are not supported. A rollback restores the previous binary and backed-up data on
 cargo nextest run --workspace                    # tests/account_contract.rs: every account request
 cargo clippy --workspace --all-targets -- -D warnings
 tools/monkey/protocol-monkey.sh accounts --seed 1 --requests 1500 --par 16
-tools/mod/test.sh                                # private :78 / .wine-b; no game needed
+tools/mod/test-dll.sh                                # private :78 / .wine-b; no game needed
 export YO3_AUTH_PROFILE=/path/to/private/client.json
 YO3_INSTANCE=b tools/client/vclient.sh start --trace
 YO3_INSTANCE=b tools/client/vclient.sh login
