@@ -166,6 +166,11 @@ A lost cache just makes the next build cold. `.github/buildkitd.toml` sets colle
 10 GiB free, with 2 GiB reserved for reusable cache. These are collection targets, not hard quotas on an active build. They only
 apply to this builder, not the other projects' caches.
 
+Runtime-image contexts omit `crates/*/tests`: discovering a new integration-test target must not invalidate
+cargo-chef's production dependency recipe. The complete host checkout still runs every existing release test.
+`tools/containers/test_build_cache.py --builder yo3-release` exports the real planner recipe and proves reuse
+after source/test/version edits and invalidation after a dependency-feature change. CI runs it before image builds.
+
 Cargo output is retained locally at `~/.cache/yo3-revival/cargo-target` on the dedicated runner account. After
 checkout cleanup, `.github/scripts/local_cargo_cache.py` links the ignored `target/` directory to that cache, so
 existing build/package paths stay the same. Git cleanup removes the link, leaving the external cache intact;
@@ -176,8 +181,10 @@ less than 20 GiB free, and refuses the build if eviction cannot restore that fre
 only makes the next build cold. Never share it with pull-request jobs or other repositories.
 
 Regression checks exercise real Git cleanup and a changed Rust executable, bounded eviction, preservation of
-foreign paths/tool installations and insufficient disk space. A full-release speed comparison still needs the
-next versioned run; removing the previous 7m38s upload is not proof of its total duration.
+foreign paths/tool installations and insufficient disk space. The v0.1.2 release took about 35½ minutes versus
+52 minutes for v0.1.1, with all gates retained. Its initially empty local Cargo cache removed network archive
+transfers; retained container layers also contributed. This is not a warm Cargo-cache benchmark.
+[Measured release proof](history.md#2026-11-18--local-cargo-cache-on-the-home-runner).
 
 An isolated rehearsal on 2026-11-18 passed 1,249 Rust tests, Clippy, all five release bundles, the published
 v0.1.0 Desktop update/shortcut gate and production-container browser checks. Identical image builds took

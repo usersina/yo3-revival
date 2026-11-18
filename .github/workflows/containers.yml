@@ -64,6 +64,8 @@ jobs:
           name: yo3-release
           keep-state: true
           buildkitd-config: .github/buildkitd.toml
+      - name: Check production dependency cache inputs
+        run: python3 tools/containers/test_build_cache.py --builder yo3-release
       - uses: docker/login-action@v4.8.0
         with:
           registry: ghcr.io

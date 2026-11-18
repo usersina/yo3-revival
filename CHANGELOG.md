@@ -13,6 +13,11 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
+## Unreleased
+
+- Adding Rust integration tests no longer makes release images rebuild unchanged third-party dependencies.
+  All existing release checks remain required, with an additional cache-invalidation regression.
+
 ## v0.1.2 (2026-11-18)
 
 - The staff dashboard’s card picker now shows original game thumbnails and a larger preview with readable original

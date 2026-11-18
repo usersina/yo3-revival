@@ -3,6 +3,8 @@
 **/node_modules
 **/dist
 **/target
+# Runtime images build binaries only. New integration tests must not invalidate cargo-chef dependencies.
+crates/*/tests
 **/test-results
 **/playwright-report
 engine/vendor

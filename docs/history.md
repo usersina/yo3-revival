@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-18 — Production image dependency-cache inputs](#2026-11-18--production-image-dependency-cache-inputs)
   - [2026-11-18 — Original card previews in the staff dashboard](#2026-11-18--original-card-previews-in-the-staff-dashboard)
   - [2026-11-18 — Local Cargo cache on the home runner](#2026-11-18--local-cargo-cache-on-the-home-runner)
   - [2026-11-18 — Full release and independent dashboard delivery](#2026-11-18--full-release-and-independent-dashboard-delivery)
@@ -47,6 +48,19 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-18 — Production image dependency-cache inputs
+
+Compared the actual cargo-chef 0.1.78 recipes for v0.1.1 and v0.1.2 on the home runner. The only differences were
+new integration-test targets (`bounded_archive` and `card_preview_contract`); third-party dependencies and masked
+workspace versions matched. Discovering those tests unnecessarily invalidated the runtime image's dependency
+layer, which took 1m57s to rebuild in v0.1.2.
+
+Added a failing-then-passing Docker integration regression and excluded `crates/*/tests` from the image context.
+The host checkout and its full test gates remain unchanged. The test exports the real production planner's recipe:
+source edits, new contract files and release-version bumps retain it, while a changed dependency feature invalidates
+it. It passed on the home runner in about four seconds with the existing builder cache. Release CI runs this check
+before building the server image. The image still compiles production source after the dependency layer.
 
 ## 2026-11-18 — Original card previews in the staff dashboard
 

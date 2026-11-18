@@ -130,6 +130,8 @@ python3 tools/containers/test_dashboard_runtime.py   # derived image equality, s
 python3 tools/containers/test_dashboard_deploy.py --server SERVER_IMAGE --dashboard RELEASED_DASHBOARD_IMAGE
 #   build dashboard/dist first: real local registry/Compose replacement, browser gate, rollback/retry; no production writes.
 python3 tools/containers/test_images.py              # built local images: runtime user, minimal rootfs, native engine/cards
+python3 tools/containers/test_build_cache.py         # real Docker planner: source/test/version reuse, dependency invalidation
+#   --builder NAME reuses an existing Buildx builder. It exports recipes only, without publishing images.
 tools/docs-check.py --root /path/to/bundle         # the same checks against an extracted release
 tools/release.sh                                  # bundles in dist/ (Linux .tar.gz, Windows .zip), with docs/ and screenshots/
 tools/test-packaged-update.sh v0.0.5 dist/yo3-revival-desktop-v0.0.5-linux-x86_64.tar.gz
