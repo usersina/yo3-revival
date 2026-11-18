@@ -13,11 +13,11 @@ whose newest version is already released skips the server release but can delive
 Older entries describe their release at the time. For current setup, use the [README](README.md) and
 [graphical setup guide](docs/launcher.md). Releases through v0.0.3 predate the graphical launcher and TLS login.
 
-## Unreleased
+## v0.1.2 (2026-11-18)
 
-- Card gifts show original game thumbnails and a larger preview with readable original effect text. Images stay on
-  the host, load on demand and use a private browser cache; missing artwork never prevents giving a card.
-
+- The staff dashboard’s card picker now shows original game thumbnails and a larger preview with readable original
+  effect text. Images stay on the host, load on demand and use a private browser cache; missing artwork never prevents
+  giving a card.
 - The home runner keeps Cargo build output locally instead of transferring a large Rust cache archive to GitHub.
   The cache is bounded, survives checkout cleanup and leaves installed tools intact; release checks are unchanged.
 
