@@ -109,3 +109,18 @@ fn changing_the_game_folder_takes_direct_start_out_of_the_old_one() {
     assert!(!new.join("yo3-revival-loader.json").exists(), "nothing put in the new folder until Play");
     std::fs::remove_dir_all(p).unwrap();
 }
+#[test]
+fn play_names_a_winmm_dll_that_yo3_revival_did_not_put_there() {
+    // #65: a player's shop kept disconnecting with another winmm.dll in the game folder. Windows loads it into the game
+    // beside YO3 Revival's connection DLL on every start, and only direct start's log mentioned it.
+    let p = scratch(); let source = p.join("bootstrap.dll"); let game = p.join("game"); std::fs::create_dir(&game).unwrap();
+    std::fs::write(game.join("yo3.exe"), b"game").unwrap(); std::fs::write(&source, b"our loader").unwrap();
+    assert_eq!(direct::foreign_winmm(&game), None, "no winmm.dll");
+    direct::install_files(&game, &source).unwrap();
+    assert_eq!(direct::foreign_winmm(&game), None, "ours, with its receipt");
+    std::fs::write(game.join("winmm.dll"), b"another mod replaced ours").unwrap();
+    assert_eq!(direct::foreign_winmm(&game), Some(game.join("winmm.dll")), "replaced since we installed it");
+    std::fs::remove_file(game.join("yo3-revival-loader.json")).unwrap();
+    assert_eq!(direct::foreign_winmm(&game), Some(game.join("winmm.dll")), "no receipt: an old install's or another mod's");
+    std::fs::remove_dir_all(p).unwrap();
+}

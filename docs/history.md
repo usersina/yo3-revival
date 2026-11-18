@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-18 — The shop disconnect and another program's winmm.dll (#65)](#2026-11-18--the-shop-disconnect-and-another-programs-winmmdll-65)
   - [2026-11-18 — Original card previews in the staff dashboard](#2026-11-18--original-card-previews-in-the-staff-dashboard)
   - [2026-11-18 — Local Cargo cache on the home runner](#2026-11-18--local-cargo-cache-on-the-home-runner)
   - [2026-11-18 — Full release and independent dashboard delivery](#2026-11-18--full-release-and-independent-dashboard-delivery)
@@ -47,6 +48,19 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-18 — The shop disconnect and another program's winmm.dll (#65)
+
+A player's report ZIP (v0.1.2, Windows 11): the client signed in and opened the shop, which received the trunk, shop
+texts, shop items (7202) and Blister's exchange items (7206, "shop exchange item success"); then the helper logged
+`Front connection: An established connection was aborted by the software in your host machine. (os error 10053)` and
+the game ended three seconds later. The server logged the Front connection's start and nothing after: no close, no
+error. 10053 is raised on the player's PC. The same app log said `An unowned WINMM mod is installed`: a `winmm.dll`
+without Revival's receipt, which Windows loads into the game beside our connection DLL on every start, and which
+only direct start's log line mentioned. The player was asked to move it out. Two changes: Play's bell names another
+program's `winmm.dll` in the game folder, and the helper's relay replaces `copy_bidirectional` with one pump per
+direction, so its error says whether the game's connection or the one to the server failed. The player's clock was
+about 20 s behind the server's (the trace's timestamps against the server log).
 
 ## 2026-11-18 — Original card previews in the staff dashboard
 

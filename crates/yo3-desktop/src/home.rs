@@ -131,6 +131,17 @@ impl Notice {
     pub fn problem(summary: impl Into<String>, action: Option<(&'static str, Message)>) -> Self { Self { summary: summary.into(), details: None, open: false, action, good: false, everywhere: false } }
     /// A game opened directly couldn't play (#33): said once, on whichever tab is open.
     pub fn direct(problem: &DirectProblem) -> Self { Self { details: Some(problem.reason.clone()), everywhere: true, ..Self::problem(problem.summary(), None) } }
+    /// Another program's `winmm.dll` runs inside the game (#65): said at each Play, in the bell, without stopping it.
+    pub fn foreign_winmm(file: &std::path::Path) -> Self {
+        Self { details: Some(format!("{}\nWindows loads this file into the game every time it starts. If it's from an older YO3 Revival \
+            or another mod, move it out of the game folder while you play with YO3 Revival.", file.display())), everywhere: true,
+            ..Self::problem("Another program's file in your game folder runs inside the game beside YO3 Revival and can break it, \
+                for example by disconnecting you in the shop.", None) }
+    }
+    /// The notice for the game folder in `settings`, if another program's `winmm.dll` is there.
+    pub fn foreign_winmm_in(settings: &yo3_desktop::Settings) -> Option<Self> {
+        yo3_desktop::direct::foreign_winmm(std::path::Path::new(&settings.game_dir)).map(|file| Self::foreign_winmm(&file))
+    }
 }
 
 /// A banlist choice: the value saved for the server, the name shown.
@@ -254,6 +265,7 @@ impl State {
     fn play_multiplayer(&mut self, ctx: &mut Ctx, session: yo3_tunnel::Token) -> Task<Message> {
         let (Some(backend), Some((server, _))) = (ctx.backend.clone(), self.multi.session()) else { self.game.starting = None; return Task::none() };
         let settings = ctx.settings.clone();
+        if let Some(notice) = Notice::foreign_winmm_in(&settings) { self.tell(notice) }
         let played = self.multi.played(ctx).map(Message::Multi);
         self.allow_for = Some(server.clone());
         let start = job(move || backend.play_signed_in(&settings, &server, &session), Message::Started);
@@ -308,6 +320,7 @@ impl State {
                 self.game.starting = Some((Step::Server, Instant::now()));
                 self.notice = None;
                 self.allow_for = None;
+                if let Some(notice) = Notice::foreign_winmm_in(&settings) { self.tell(notice) }
                 // Your own server first (reused when it is still running from the last game).
                 return job(move || backend.start_server(&settings).map(|_| ()), Message::ServerStarted);
             }
