@@ -57,6 +57,15 @@ class DashboardWorkflow(unittest.TestCase):
         self.assertEqual(steps[-1]['if'],'always()')
         self.assertIn('DOCKER_CONFIG',steps[-1]['run'])
 
+    def test_actionlint_uses_its_own_checksummed_release_not_a_rust_installer(self):
+        steps=workflow('release.yml')['jobs']['release']['steps']
+        installer=next(s for s in steps if s.get('uses','').startswith('taiki-e/install-action@'))
+        self.assertEqual(installer['with']['tool'],'cargo-nextest')
+        lint=next(s for s in steps if s.get('name')=='Install actionlint')
+        self.assertIn('rhysd/actionlint/releases/download/v1.7.12/',lint['run'])
+        self.assertIn('sha256sum -c',lint['run'])
+        self.assertIn('GITHUB_PATH',lint['run'])
+
     def test_release_cleanup_reads_host_state_and_probes_before_deleting(self):
         steps=workflow('release.yml')['jobs']['cleanup']['steps']
         names=[s.get('name') for s in steps]

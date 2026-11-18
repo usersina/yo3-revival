@@ -71,7 +71,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-nextest,actionlint
+          tool: cargo-nextest
+          fallback: none
+      - name: Install actionlint
+        run: |
+          tools_dir="$RUNNER_TEMP/yo3-actionlint"
+          mkdir -p "$tools_dir"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            -o "$tools_dir/actionlint.tar.gz"
+          printf '%s  %s\n' 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8 "$tools_dir/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$tools_dir/actionlint.tar.gz" -C "$tools_dir" actionlint
+          echo "$tools_dir" >> "$GITHUB_PATH"
+          "$tools_dir/actionlint" -version
       - name: The rules engine's core sources, card scripts and card database
         run: engine/fetch.sh
       - name: Lints
