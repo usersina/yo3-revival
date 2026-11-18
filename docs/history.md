@@ -9,6 +9,7 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
 **Contents**
 
 - [History](#history)
+  - [2026-11-18 — First home-runner Actions check](#2026-11-18--first-home-runner-actions-check)
   - [2026-11-18 — Dashboard automation and home runner (#62)](#2026-11-18--dashboard-automation-and-home-runner-62)
   - [2026-11-18 — Windows 7 with VxKex (#5)](#2026-11-18--windows-7-with-vxkex-5)
   - [2026-11-17 — Restricted dashboard replacement (#62, slice 2)](#2026-11-17--restricted-dashboard-replacement-62-slice-2)
@@ -43,6 +44,25 @@ M6. The ✅ and ▶ in a heading meant done and in progress when it was written;
   - [M4: Accounts, collection and economy](#m4-accounts-collection-and-economy)
   - [✅ M5: Duels](#-m5-duels)
   - [▶ M6: Play with friends](#-m6-play-with-friends)
+
+## 2026-11-18 — First home-runner Actions check
+
+Pushed the 13 pending commits through `227da49` to main. [Release run 44282183488](https://github.com/usersina/yo3-revival/actions/runs/44282183488)
+passed in 26 seconds; its already-published v0.1.0 gate skipped verification/builds, publication, deployment and
+retention. [Dashboard run 44282262648](https://github.com/usersina/yo3-revival/actions/runs/44282262648) followed
+automatically and passed in 23 seconds on `home-yo3`. Checkout v7 and the restricted SSH state query worked.
+The reconciliation step took one second; private job files were removed.
+
+The API contract matches the deployed release. Accumulated nginx, Docker, deployment and frontend configuration
+changes correctly require a full release, so no image was built/published and no player upgrade was imposed.
+Both live containers retained their v0.1.0 digests and original start times and remained healthy; the public
+sign-in page returned HTTP 200. These successful runs prove the skip path, not the full publication/deployment path
+or workflow-token deletion. Rechecked the delivery/workflow/retention fixtures: 36 passed.
+
+The runner has 6 vCPUs, about 11.2 GiB usable RAM, 112 GiB free disk and no swap in use. The preceding full release
+on the previous runner took 38m46s: bundles 7m40s, Rust tests 6m40s, server image 6m29s and browser contracts 5m40s
+were its largest steps. Keep those gates and benchmark the retained cache in a real release before claiming a
+full-release speedup from the runner change.
 
 ## 2026-11-18 — Dashboard automation and home runner (#62)
 

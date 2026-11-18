@@ -9,7 +9,9 @@ VPS testing; MFA and recovery are still pending.
 
 There are two delivery paths: releases replace the tested server/dashboard pair; compatible dashboard changes
 replace only the dashboard. The workflow is implemented and checked locally against the published v0.1.0 images.
-Its first automatic run and workflow-token deletion probe still need verification on GitHub.
+The first automatic GitHub run on 2026-11-18 passed its state query and safely deferred deployment because current
+runtime/build changes need a full release. Image publication, an eligible UI replacement and the workflow-token
+deletion probe still need an actual eligible run. [Recorded checks](history.md#2026-11-18--first-home-runner-actions-check).
 
 Every successful `Release` workflow on `main` triggers **Deploy dashboard**, including pushes without a new
 version. It reads the VPS receipt and checks the latest `main`, so a queued job reconciles the current tree after
@@ -169,8 +171,10 @@ An isolated rehearsal on 2026-11-18 passed 1,249 Rust tests, Clippy, all five re
 v0.1.0 Desktop update/shortcut gate and production-container browser checks. Identical image builds took
 8m36s / 2m41s cold (server / dashboard), then 2.5s / 2.1s with the retained cache and fresh job configuration
 directories. Changed inputs still rebuild their affected layers. Peak total guest disk usage was 64.6 GiB and
-memory usage 4.7 GiB. No artifacts were published or deployed; GitHub token permissions and Actions uploads still
-need verification in the first automatic run.
+memory usage 4.7 GiB. No artifacts were published or deployed in that rehearsal. The first real Actions run then
+verified the runner, triggers, restricted SSH state query, deferred-build gates and private temporary-file cleanup;
+release uploads, image publication/deployment and workflow-token deletion remain unverified on the new runner.
+After that run the VM used 28 GiB of its 146 GiB filesystem, with 112 GiB free and no swap in use.
 
 Workflow linting knows the custom `home` label through `.github/actionlint.yaml`. actionlint 1.7.12 does not yet
 recognize GitHub's [FIFO queue property](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).

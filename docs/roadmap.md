@@ -30,7 +30,8 @@ and Scripts; players can use VxKex at their own risk ([launcher](launcher.md#win
       artwork selection, icons and an official card-database link. [Current interface](dashboard.md#staff-interface).
 - [ ] Verify the first automatic dashboard delivery on the home runner (#62), including its disposable workflow-token
       package-deletion probe and protected-image retention. Triggers/reconciliation, version/reload UI and cleanup
-      are implemented; published v0.1.0 compatibility is checked locally. [Checks](deployment.md#independent-dashboard-updates-62).
+      are implemented; published v0.1.0 compatibility is checked locally. The first real Actions reconciliation safely
+      deferred on 2026-11-18; eligible image publication/replacement is still pending. [Checks](deployment.md#independent-dashboard-updates-62).
 - [ ] Staff MFA and recovery (#43), recent MFA for sensitive actions and a final public-access security review.
       Public HTTPS/password sign-in is approved for testing; the existing HTML panel remains private.
 - [ ] Finish hosted-server validation (#47): real Windows clients and native-engine duel load, isolated password-hash
